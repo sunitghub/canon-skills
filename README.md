@@ -25,14 +25,14 @@ Add to `~/.claude/CLAUDE.md`:
 ```
 @~/Developer/AI-Skills/adapters/claude/CLAUDE.md
 ```
-✓ Already done on this machine.
+[x] Already done on this machine.
 
 ### Codex CLI
 Add to `~/.codex/AGENTS.md`:
 ```
 @/Users/<you>/Developer/AI-Skills/AGENTS.md
 ```
-✓ Already done on this machine.
+[x] Already done on this machine.
 
 ### Pi
 Add to `~/.pi/agent/AGENTS.md` (create if missing):
