@@ -12,5 +12,6 @@ ticket                    tools        TK is CLI ticket system for task manageme
 code-reviewer             skills       Review local changes or a remote PR across correctness, maintainability, security, and test coverage
 code-simplifier           skills       Simplify and refine recently modified code for clarity, consistency, and maintainability without changing behavior
 pdf                       skills       Read, extract, merge, split, create, encrypt and OCR PDF files
+polish                    skills       Run code-simplifier, code-reviewer, and security-review in the right order after completing a task — skips steps that don't apply
 security-review           skills       Identify high-confidence, exploitable security vulnerabilities in code — not theoretical issues
 ```
