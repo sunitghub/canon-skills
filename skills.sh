@@ -175,6 +175,27 @@ cmd_remove() {
   echo "Unregistered: $skill"
 }
 
+cmd_help() {
+  local skill="${1:-}"
+  [ -z "$skill" ] && { echo "Usage: skills.sh help <skill-name>"; exit 1; }
+
+  local skill_file
+  skill_file=$(find_skill "$skill") || {
+    echo "Error: skill '$skill' not found. Run 'skills.sh list' to see available skills."
+    exit 1
+  }
+
+  # Strip YAML frontmatter, print body
+  local body
+  body=$(awk 'BEGIN{fm=0;done=0} /^---$/{if(fm)done=1; fm=1; next} done{print}' "$skill_file")
+
+  if command -v bat &>/dev/null; then
+    echo "$body" | bat -l md --plain
+  else
+    echo "$body"
+  fi
+}
+
 cmd_delete() {
   local skill="${1:-}"
   [ -z "$skill" ] && { echo "Usage: skills.sh delete <skill-name>"; exit 1; }
@@ -219,20 +240,28 @@ cmd_delete() {
 cmd="${1:-list}"
 shift || true
 
+# Handle: skills <skill-name> --h / -h / --help
+case "${1:-}" in
+  --h|--help|-h) cmd_help "$cmd"; exit 0 ;;
+esac
+
 case "$cmd" in
   list)   cmd_list   "$@" ;;
   add)    cmd_add    "$@" ;;
   status) cmd_status "$@" ;;
   remove) cmd_remove "$@" ;;
   delete) cmd_delete "$@" ;;
+  help)   cmd_help   "$@" ;;
   *)
-    echo "Usage: skills.sh <list|add|status|remove|delete> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|status|remove|delete|help> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
     echo "  status [dir]            Show registered skills (default: cwd)"
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
     echo "  delete <skill>          Permanently remove a skill from AI-Skills"
+    echo "  help <skill>            Show full documentation for a skill"
+    echo "  <skill> --h             Same as: skills.sh help <skill>"
     exit 1
     ;;
 esac
