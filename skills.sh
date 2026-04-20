@@ -33,19 +33,27 @@ find_skill() {
 }
 
 cmd_list() {
-  printf "%-25s %-12s %s\n" "SKILL" "CATEGORY" "DESCRIPTION"
-  printf "%-25s %-12s %s\n" "─────────────────────────" "────────────" "───────────────────────────────────────"
-  for dir in "${SEARCH_DIRS[@]}"; do
-    [ -d "$dir" ] || continue
-    while IFS= read -r f; do
-      name=$(fm_field "$f" name)
-      [ -z "$name" ] && continue
-      summary=$(fm_field "$f" summary)
-      desc="${summary:-$(fm_field "$f" description)}"
-      category=$(fm_field "$f" category)
-      printf "%-25s %-12s %s\n" "$name" "$category" "$desc"
-    done < <(find "$dir" -name "SKILL.md" -o -name "*.md" -type f 2>/dev/null | sort)
-  done
+  local output
+  output=$(
+    printf "%-25s %-12s %s\n" "SKILL" "CATEGORY" "DESCRIPTION"
+    printf "%-25s %-12s %s\n" "─────────────────────────" "────────────" "───────────────────────────────────────"
+    for dir in "${SEARCH_DIRS[@]}"; do
+      [ -d "$dir" ] || continue
+      while IFS= read -r f; do
+        name=$(fm_field "$f" name)
+        [ -z "$name" ] && continue
+        summary=$(fm_field "$f" summary)
+        desc="${summary:-$(fm_field "$f" description)}"
+        category=$(fm_field "$f" category)
+        printf "%-25s %-12s %s\n" "$name" "$category" "$desc"
+      done < <(find "$dir" -name "SKILL.md" -o -name "*.md" -type f 2>/dev/null | sort)
+    done
+  )
+  if command -v bat &>/dev/null; then
+    echo "$output" | bat -l md --plain
+  else
+    echo "$output"
+  fi
 }
 
 cmd_add() {
