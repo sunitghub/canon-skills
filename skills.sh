@@ -165,6 +165,46 @@ cmd_remove() {
   echo "Unregistered: $skill"
 }
 
+cmd_delete() {
+  local skill="${1:-}"
+  [ -z "$skill" ] && { echo "Usage: skills.sh delete <skill-name>"; exit 1; }
+
+  local skill_file
+  skill_file=$(find_skill "$skill") || {
+    echo "Error: skill '$skill' not found. Run 'skills.sh list' to see available skills."
+    exit 1
+  }
+
+  # For skills/ dir entries, remove the whole directory; otherwise just the file
+  local skill_dir
+  skill_dir=$(dirname "$skill_file")
+  local rel_dir="${skill_dir#$SKILLS_ROOT/}"
+
+  if [[ "$rel_dir" == skills/* ]]; then
+    echo "Deleting skill directory: $rel_dir"
+    rm -rf "$skill_dir"
+  else
+    echo "Deleting skill file: ${skill_file#$SKILLS_ROOT/}"
+    rm "$skill_file"
+  fi
+
+  # Regenerate CATALOG.md
+  {
+    echo "# AI-Skills Catalog"
+    echo ""
+    echo "> Auto-generated snapshot. Run \`skills.sh list\` for live output."
+    echo ""
+    echo "\`\`\`"
+    "$SKILLS_ROOT/skills.sh" list
+    echo "\`\`\`"
+  } > "$SKILLS_ROOT/CATALOG.md"
+
+  echo ""
+  echo "Deleted: $skill"
+  echo "CATALOG.md updated."
+  echo "Note: any projects with this skill registered will have a dangling reference — run 'skills.sh remove $skill' in those projects."
+}
+
 # ── dispatch ────────────────────────────────────────────────────────────────
 cmd="${1:-list}"
 shift || true
@@ -174,13 +214,15 @@ case "$cmd" in
   add)    cmd_add    "$@" ;;
   status) cmd_status "$@" ;;
   remove) cmd_remove "$@" ;;
+  delete) cmd_delete "$@" ;;
   *)
-    echo "Usage: skills.sh <list|add|status|remove> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|status|remove|delete> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
     echo "  status [dir]            Show registered skills (default: cwd)"
-    echo "  remove <skill> [dir]    Unregister a skill (default: cwd)"
+    echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
+    echo "  delete <skill>          Permanently remove a skill from AI-Skills"
     exit 1
     ;;
 esac
