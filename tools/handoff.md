@@ -55,6 +55,52 @@ Or just create it manually using the template at the bottom of this file.
 - **Session end**: Tell the agent "wrap up" — it updates `HANDOFF.md` and commits it.
 - **Next session / switching agents**: The next agent reads `HANDOFF.md` before starting work.
 
+#### Scenario — switching from Claude to Codex mid-feature
+
+**Setup:** You're building a rate-limiter in Claude. Halfway through you need to switch to Codex.
+
+---
+
+**In Claude** — you've implemented `auth/rate_limiter.py` but haven't touched `auth/views.py` yet.
+
+You say: "wrap up"
+
+Claude writes and commits `HANDOFF.md`:
+```markdown
+# Handoff
+
+_Last updated: 2026-04-20 14:30 by Claude (claude-sonnet-4-6)_
+
+## Current Focus
+Wiring the rate-limiter middleware into the auth views.
+
+## In Progress
+- auth/rate_limiter.py: done — RateLimiter class implemented, tests passing
+- auth/views.py: not started — needs @rate_limit decorator on login endpoint
+
+## Recent Decisions
+- Used Redis INCR + EXPIRE over a DB counter — atomic, no locking needed
+- Keyed on user IP, not session — handles logged-out brute force
+
+## Dead Ends
+- Tried sliding window algorithm — too complex, fixed window is sufficient here
+
+## Next Steps
+1. Add @rate_limit to auth/views.py login endpoint
+2. Add integration test for rate limit exceeded (429 response)
+3. Run polish when done
+```
+
+---
+
+**You open Codex** on the same repo.
+
+Codex reads `AGENTS.md` → sees handoff skill → reads `HANDOFF.md` immediately.
+
+Codex says: "Resuming — rate-limiter is done, next is wiring it into `auth/views.py` login endpoint."
+
+You say nothing about context. Codex already knows.
+
 ---
 
 ### Level 2 — Automated (Claude Code with hooks)
@@ -117,6 +163,61 @@ cat ~/.claude/settings.json | grep -A5 "Stop\|UserPromptSubmit"
 - Context window fills → Stop hook saves current git state to `HANDOFF.md` and commits it
 - Next session → Claude picks up from the snapshot, no re-explaining needed
 
+#### Scenario — context window exhausted mid-session
+
+**Setup:** Long session implementing OAuth. No hooks yet → context dies, handoff never written. With Level 2 hooks, here's what happens instead.
+
+---
+
+**Hour 1** — Claude implements `auth/oauth.py`, `auth/tokens.py`. Working tree has changes. Claude stops responding (end of a turn).
+
+Stop hook fires → `auto-handoff.sh` runs → sees uncommitted files → appends snapshot:
+```markdown
+<!-- HANDOFF-SNAPSHOT:START 2026-04-20 11:15 branch:feat/oauth -->
+**Modified files:**
+M auth/oauth.py
+M auth/tokens.py
+?? auth/tests/test_oauth.py
+
+**Recent commits:**
+a1b2c3d Add OAuth provider config
+d4e5f6a Scaffold token refresh flow
+
+**In-progress tickets:**
+nw-14 Implement OAuth login (in_progress)
+<!-- HANDOFF-SNAPSHOT:END -->
+```
+
+**Hour 3** — Context window fills. Claude stops mid-sentence. Can't respond.
+
+Stop hook fires again → new snapshot prepended, old one kept (FIFO, max 2):
+```markdown
+<!-- HANDOFF-SNAPSHOT:START 2026-04-20 13:42 branch:feat/oauth -->
+**Modified files:**
+M auth/oauth.py
+M auth/tokens.py
+M auth/middleware.py
+?? auth/tests/test_oauth.py
+
+**Recent commits:**
+...
+<!-- HANDOFF-SNAPSHOT:END -->
+
+<!-- HANDOFF-SNAPSHOT:START 2026-04-20 11:15 branch:feat/oauth -->
+...prior state...
+<!-- HANDOFF-SNAPSHOT:END -->
+```
+
+---
+
+**Next day — new Claude session.**
+
+`handoff-inject.sh` fires on your first message → injects `HANDOFF.md` silently.
+
+Claude says: "Resuming OAuth work. You were mid-session when context ran out — `auth/middleware.py` was modified but `test_oauth.py` was untracked. Ticket nw-14 in progress. Where do you want to pick up?"
+
+You say: "Tests." Claude starts immediately, no context re-explaining.
+
 ---
 
 ### Level 3 — Full multi-agent (Claude + Codex + Pi)
@@ -145,6 +246,46 @@ For session-end automation, check Pi's config for a `on_exit` or `hooks` key —
 #### Manual fallback (any agent without hook support)
 
 Before ending any session, say: **"wrap up"** — the agent updates `HANDOFF.md` and commits it. This works in every agent that has loaded the handoff skill.
+
+#### Scenario — three-agent rotation on the same repo
+
+**Setup:** `blissful-chants-videos` repo. Morning in Claude, afternoon in Codex, evening quick check in Pi.
+
+---
+
+**Morning — Claude**
+
+You work on the video upload pipeline. Context is getting long.
+
+You say: "wrap up"
+
+Claude writes `HANDOFF.md` with focus, decisions, next steps. Commits it. Pushes.
+
+---
+
+**Afternoon — Codex**
+
+You open the same repo. Codex reads `AGENTS.md` → handoff skill loaded → reads `HANDOFF.md`.
+
+Codex: "Resuming video upload pipeline. Upload chunking is done, thumbnail generation is next. Decided against FFmpeg — using sharp instead because it's already a dependency."
+
+You say: "Continue." Codex picks up thumbnail generation.
+
+Before you stop: "wrap up" → Codex updates `HANDOFF.md` with new state. Commits.
+
+---
+
+**Evening — Pi**
+
+Pi reads the project's `AGENTS.md` → sees handoff → reads `HANDOFF.md`.
+
+Pi: "Thumbnail generation implemented. Remaining: wire thumbnails into the video metadata API (Next Steps #1). One open question: thumbnail storage — S3 bucket or same volume as videos?"
+
+You answer the question. Pi updates `HANDOFF.md`. Commits.
+
+---
+
+All three agents shared one file. No Slack messages, no copy-pasting context, no re-explaining.
 
 ---
 
