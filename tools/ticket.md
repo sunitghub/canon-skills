@@ -10,6 +10,30 @@ tags: [project-management, tasks, cli, git]
 This project uses [ticket](https://github.com/wedow/ticket) (`tk`) for task management.
 Tickets are markdown files with YAML frontmatter stored in `.tickets/`.
 
+## Getting Started
+
+**Step 1 — Install `tk` on your machine** (one-time):
+```bash
+brew tap wedow/tools
+brew install ticket
+```
+
+**Step 2 — Register this skill in your project:**
+```bash
+~/Developer/AI-Skills/skills.sh add ticket /path/to/your/project
+```
+
+**Step 3 — Verify:**
+```bash
+~/Developer/AI-Skills/skills.sh status /path/to/your/project
+```
+
+**Step 4 — Use it:**
+- **Claude**: "Create a ticket for the login bug" or "Show me open tickets" — Claude runs `tk` commands automatically.
+- **Codex**: Same natural language — Codex reads the skill from `AGENTS.md` and uses `tk`.
+
+No slash command needed. Just describe what you want to track.
+
 ## Installation (required before use)
 
 ```bash

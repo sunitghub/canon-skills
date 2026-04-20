@@ -9,6 +9,26 @@ tags: [code-quality, workflow, orchestration, refactoring, security]
 
 Run this after completing any task or closing a ticket. It executes three skills in sequence, skipping steps that don't apply to the current change.
 
+## Getting Started
+
+**Step 1 — Register all four skills in your project** (polish + the three it orchestrates):
+```bash
+for s in code-simplifier code-reviewer security-review polish; do
+  ~/Developer/AI-Skills/skills.sh add $s /path/to/your/project
+done
+```
+
+**Step 2 — Verify:**
+```bash
+~/Developer/AI-Skills/skills.sh status /path/to/your/project
+```
+
+**Step 3 — Use it after completing a task:**
+- **Claude**: "Polish" or "Polish the changes for ticket nw-42."
+- **Codex**: "Polish" or "Polish my changes."
+
+The agent decides which of the three steps to run or skip based on what changed — you don't need to think about it. See **Skip Logic** below for the rules.
+
 ## Pipeline
 
 ```

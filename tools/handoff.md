@@ -9,6 +9,28 @@ tags: [context, memory, handoff, multi-agent]
 
 This project uses a `HANDOFF.md` file in the repo root to preserve working context across sessions and agents. It bridges the gap between Claude, Codex, and any other agent that touches this repo.
 
+## Getting Started
+
+**Step 1 — Register this skill in your project:**
+```bash
+~/Developer/AI-Skills/skills.sh add handoff /path/to/your/project
+```
+
+**Step 2 — Verify:**
+```bash
+~/Developer/AI-Skills/skills.sh status /path/to/your/project
+```
+
+**Step 3 — Create `HANDOFF.md` in the repo root** (first time only):
+
+Tell the agent: "Initialize the handoff file" — it will create it from the template below. Or create it manually using the format in this file.
+
+**Step 4 — Use it:**
+- **At session start**: The agent reads `HANDOFF.md` automatically and tells you where things stand before doing anything.
+- **During a session**: The agent updates it when significant decisions are made or direction changes.
+- **At session end**: Tell the agent "wrap up" or "handoff" — it updates `HANDOFF.md` and commits it.
+- **Switching agents**: The next agent (Claude or Codex) reads the committed `HANDOFF.md` and picks up in context.
+
 ## The problem it solves
 
 AI agents don't share memory. When you switch from Codex to Claude (or vice versa), the new agent starts cold. `HANDOFF.md` is the shared state — a lightweight, git-tracked snapshot of where things stand.

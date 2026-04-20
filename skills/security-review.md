@@ -9,6 +9,26 @@ tags: [security, vulnerabilities, code-review]
 
 Systematically identify exploitable security vulnerabilities. Report only high-confidence findings — skip theoretical issues and framework-mitigated patterns.
 
+## Getting Started
+
+**Step 1 — Register this skill in your project:**
+```bash
+~/Developer/AI-Skills/skills.sh add security-review /path/to/your/project
+```
+
+**Step 2 — Verify:**
+```bash
+~/Developer/AI-Skills/skills.sh status /path/to/your/project
+```
+
+**Step 3 — Use it:**
+- **Claude**: "Run a security review" or "Security review my changes."
+- **Codex**: "Run a security review."
+
+The agent traces data flow before flagging anything — no noisy pattern-match reports. Findings come back with location, evidence, and a concrete fix.
+
+> Tip: Use `polish` instead if you want simplify + review + security in one go after finishing a task.
+
 ## Confidence Threshold
 
 Only report what meets HIGH or MEDIUM confidence:

@@ -7,6 +7,22 @@ tags: [coding, quality, security]
 
 # General Coding Standards
 
+## Getting Started
+
+**Step 1 — Register this skill in your project:**
+```bash
+~/Developer/AI-Skills/skills.sh add general /path/to/your/project
+```
+
+**Step 2 — Verify:**
+```bash
+~/Developer/AI-Skills/skills.sh status /path/to/your/project
+```
+
+**Step 3 — Use it:**
+
+No invocation needed. Once registered, Claude and Codex apply these standards automatically to every piece of code they write or modify in this project.
+
 ## Principles
 
 - Prefer editing existing files over creating new ones.

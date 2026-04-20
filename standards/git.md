@@ -7,6 +7,22 @@ tags: [git, commits, branches, pull-requests]
 
 # Git & Commit Conventions
 
+## Getting Started
+
+**Step 1 — Register this skill in your project:**
+```bash
+~/Developer/AI-Skills/skills.sh add git /path/to/your/project
+```
+
+**Step 2 — Verify:**
+```bash
+~/Developer/AI-Skills/skills.sh status /path/to/your/project
+```
+
+**Step 3 — Use it:**
+
+No invocation needed. Once registered, Claude and Codex follow these conventions automatically — commit messages, branch names, PR structure — without being asked.
+
 ## Commits
 
 - Message format: imperative mood, present tense ("Add X", "Fix Y", "Remove Z").

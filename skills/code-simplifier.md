@@ -9,6 +9,26 @@ tags: [refactoring, code-quality, cleanup]
 
 Simplify and refine code after writing or modifying it. Focus on recently modified code unless told otherwise.
 
+## Getting Started
+
+**Step 1 — Register this skill in your project:**
+```bash
+~/Developer/AI-Skills/skills.sh add code-simplifier /path/to/your/project
+```
+
+**Step 2 — Verify:**
+```bash
+~/Developer/AI-Skills/skills.sh status /path/to/your/project
+```
+
+**Step 3 — Use it:**
+- **Claude**: "Simplify the changes" or "Clean up what you just wrote."
+- **Codex**: "Simplify the changes."
+
+Targets only code modified in the current session unless you say otherwise. No need to specify files — the agent knows what was touched.
+
+> Tip: Use `polish` instead if you want simplify + review + security in one go.
+
 ## Rules
 
 **Preserve functionality** — never change what the code does, only how it does it.
