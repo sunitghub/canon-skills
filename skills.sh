@@ -10,7 +10,7 @@
 set -euo pipefail
 
 SKILLS_ROOT="$(cd "$(dirname "$0")" && pwd)"
-SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools")
+SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
 
 # Extract a single frontmatter field value from a file
 fm_field() {
@@ -38,10 +38,11 @@ cmd_list() {
     while IFS= read -r f; do
       name=$(fm_field "$f" name)
       [ -z "$name" ] && continue
-      desc=$(fm_field "$f" description)
+      summary=$(fm_field "$f" summary)
+      desc="${summary:-$(fm_field "$f" description)}"
       category=$(fm_field "$f" category)
       printf "%-25s %-12s %s\n" "$name" "$category" "$desc"
-    done < <(find "$dir" -name "*.md" -type f 2>/dev/null | sort)
+    done < <(find "$dir" -name "SKILL.md" -o -name "*.md" -type f 2>/dev/null | sort)
   done
 }
 
