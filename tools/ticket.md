@@ -63,7 +63,8 @@ tk dep cycle                   # find dependency cycles
 - Before starting work: run `tk ls` to understand open tasks.
 - When picking up a task: run `tk start <id>`.
 - When creating sub-tasks: use `--parent <id>` to link them.
-- When done: run `tk close <id>`.
+- When done: run `tk close <id>`, then immediately run `/polish` on all modified files. Do not commit until polish completes.
+- Before `git commit`: confirm the relevant ticket is closed and `/polish` has been run.
 - Don't create tickets for trivial 1-line fixes. Use judgment.
 - Prefer updating an existing ticket over creating a duplicate.
 

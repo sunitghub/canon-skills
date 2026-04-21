@@ -35,6 +35,26 @@ Claude Code loads this via `adapters/claude/CLAUDE.md`.
 See [standards/general.md](standards/general.md) for coding conventions.
 See [standards/git.md](standards/git.md) for git and commit conventions.
 
+## RTK — Token Optimization
+
+RTK (Rust Token Killer) filters verbose CLI output before it hits the token budget.
+Claude Code rewrites commands automatically via a `PreToolUse` hook — no action needed.
+Codex does not have an equivalent hook: use the `rtk` prefix explicitly.
+
+```bash
+rtk git status          # git status
+rtk git log --oneline   # git log --oneline
+rtk gh api ...          # gh api ...
+rtk grep pattern file   # grep pattern file
+rtk find . -name "..."  # find . -name "..."
+rtk ls -la              # ls -la
+rtk read file           # cat file
+rtk brew install pkg    # brew install pkg
+rtk cargo test          # cargo test
+```
+
+When in doubt: `rtk <any-command>`. If RTK has no rule for it, the command passes through unchanged.
+
 ## Skill Discovery & Registration
 
 To see all available skills:

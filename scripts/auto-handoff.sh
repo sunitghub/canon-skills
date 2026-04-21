@@ -83,7 +83,7 @@ else
   cat > "$HANDOFF" << EOF
 # Handoff
 
-_Auto-created: $TIMESTAMP | Branch: $BRANCH_
+_Auto-created: $TIMESTAMP | Branch: ${BRANCH}_
 
 ## Current Focus
 <!-- One sentence: what were you working on? Fill this in. -->
