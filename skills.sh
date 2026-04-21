@@ -125,6 +125,14 @@ cmd_add() {
     echo "  [AGENTS.md]  added row to skill block"
   fi
 
+  # @-import so Codex and Pi load full skill content (mirrors CLAUDE.md behaviour)
+  if grep -qF "$import_line" "$agents_file" 2>/dev/null; then
+    echo "  [AGENTS.md]  @-import already present"
+  else
+    echo "$import_line" >> "$agents_file"
+    echo "  [AGENTS.md]  added @-import"
+  fi
+
   echo ""
   echo "Done. $desc"
 }
@@ -175,11 +183,13 @@ cmd_remove() {
     echo "  [CLAUDE.md]  removed"
   fi
 
-  # Remove row from AGENTS.md skill block
+  # Remove row and @-import from AGENTS.md
   local agents_file="$project_dir/AGENTS.md"
-  if [ -f "$agents_file" ] && grep -qF "| $skill |" "$agents_file"; then
-    grep -vF "| $skill |" "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
-    echo "  [AGENTS.md]  removed"
+  if [ -f "$agents_file" ]; then
+    if grep -qF "| $skill |" "$agents_file" || grep -qF "$import_line" "$agents_file"; then
+      grep -vF "| $skill |" "$agents_file" | grep -vF "$import_line" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+      echo "  [AGENTS.md]  removed"
+    fi
   fi
 
   echo "Unregistered: $skill"

@@ -52,6 +52,8 @@ rtk --version   # verify
 
 > If `rtk gain` fails after install, you may have the wrong `rtk` package (name collision on crates.io). Use `brew install rtk` — not `cargo install rtk`.
 
+> Installing the binary is enough for now. The agent-specific RTK hook (`rtk init`) is wired up automatically in Step 3 by `init-agent.sh`.
+
 **tk** — git-native task tracker used by the ticket skill and the quality pipeline hooks. Required if using ticket management.
 
 ```bash
