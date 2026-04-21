@@ -3,6 +3,7 @@ name: polish
 description: Run code-simplifier, code-reviewer, and security-review in the right order after completing a task — skips steps that don't apply
 category: skills
 tags: [code-quality, workflow, orchestration, refactoring, security]
+depends: [code-simplifier, code-reviewer, security-review]
 ---
 
 # Polish — Quality Pipeline
@@ -13,7 +14,7 @@ Run this after completing any task or closing a ticket. It executes three skills
 
 **Step 1 — Register all required skills in your project:**
 ```bash
-~/Developer/AI-Skills/scripts/init-polish.sh /path/to/your/project
+~/Developer/AI-Skills/skills.sh add polish /path/to/your/project
 ```
 
 **Step 2 — Verify:**
@@ -134,6 +135,6 @@ Address criticals before committing. Improvements and nitpicks at your discretio
 ## Prerequisites
 
 ```bash
-~/Developer/AI-Skills/scripts/init-polish.sh /path/to/repo
+~/Developer/AI-Skills/skills.sh add polish /path/to/repo
 ~/Developer/AI-Skills/skills.sh status   # verify
 ```

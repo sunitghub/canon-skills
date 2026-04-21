@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# init-polish.sh — Register all skills required by the polish quality pipeline.
-# Run once per project. Safe to re-run — skips already-registered skills.
+# init-polish.sh — Convenience wrapper for registering the polish pipeline.
+# Dependencies are declared in polish.md frontmatter and resolved automatically
+# by skills.sh. To add new pipeline skills, update the `depends` field there.
 #
 # Usage:
 #   init-polish.sh                    # registers in current directory
@@ -10,22 +11,4 @@ SCRIPT="${BASH_SOURCE[0]}"
 while [ -L "$SCRIPT" ]; do SCRIPT="$(readlink "$SCRIPT")"; done
 SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
 
-PROJECT="${1:-$(pwd)}"
-
-# Skills required by the polish pipeline — add new ones here as the pipeline grows
-POLISH_SKILLS=(
-  code-simplifier
-  code-reviewer
-  security-review
-  polish
-)
-
-echo "Registering polish pipeline skills in: $PROJECT"
-echo
-
-for skill in "${POLISH_SKILLS[@]}"; do
-  "$SKILLS_ROOT/skills.sh" add "$skill" "$PROJECT"
-  echo
-done
-
-echo "Done. Run '/polish' in Claude or Codex to use the pipeline."
+"$SKILLS_ROOT/skills.sh" add polish "${1:-$(pwd)}"

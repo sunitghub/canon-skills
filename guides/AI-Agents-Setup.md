@@ -147,8 +147,8 @@ cd /path/to/your-project
 ~/Developer/AI-Skills/skills.sh add general
 ~/Developer/AI-Skills/skills.sh add git
 
-# Quality pipeline
-~/Developer/AI-Skills/scripts/init-polish.sh
+# Quality pipeline (installs dependencies automatically)
+~/Developer/AI-Skills/skills.sh add polish
 ```
 
 ### Verify registration
