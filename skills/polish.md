@@ -8,25 +8,15 @@ depends: [code-simplifier, code-reviewer, security-review]
 
 # Polish — Quality Pipeline
 
-Run this after completing any task or closing a ticket. It executes three skills in sequence, skipping steps that don't apply to the current change.
+Run this after completing any task or closing a ticket. It executes three steps in sequence, skipping any that don't apply to the current change.
 
-## Getting Started
+## How to Run
 
-**Step 1 — Register all required skills in your project:**
-```bash
-~/Developer/AI-Skills/skills.sh add polish /path/to/your/project
+```
+/polish
 ```
 
-**Step 2 — Verify:**
-```bash
-~/Developer/AI-Skills/skills.sh status /path/to/your/project
-```
-
-**Step 3 — Use it after completing a task:**
-- **Claude**: "Polish" or "Polish the changes for ticket nw-42."
-- **Codex**: "Polish" or "Polish my changes."
-
-The agent decides which of the three steps to run or skip based on what changed — you don't need to think about it. See **Skip Logic** below for the rules.
+Or: "Polish the changes for ticket nw-42."
 
 ## Pipeline
 
@@ -41,7 +31,7 @@ Each step builds on the last:
 
 ## Skip Logic
 
-Before running each step, assess the change and skip if the criteria apply:
+Before running each step, assess the change and skip if the criteria apply. When skipping, state why in one line.
 
 ### Skip code-simplifier if:
 - Change is a single line or a trivial rename
@@ -55,86 +45,134 @@ Before running each step, assess the change and skip if the criteria apply:
 - No security-sensitive files or patterns changed
 - Security-sensitive means: authentication, authorization, DB queries, user input handling, file I/O, API endpoints, crypto, session management, environment/secret access
 
-When skipping a step, state why in one line so the user knows it was considered, not missed.
+---
 
-## How to Run
+## Step 1 — Code Simplifier
 
-Invoke after closing or completing a ticket:
+Simplify and refine recently modified code for clarity, consistency, and maintainability without changing behavior.
+
+**Preserve functionality** — never change what the code does, only how it does it.
+
+**Enhance clarity:**
+- Reduce unnecessary nesting and complexity
+- Eliminate redundant code and abstractions
+- Improve variable and function names
+- Consolidate related logic
+- Remove comments that describe obvious code
+- No nested ternaries — use `if/else` or `switch` instead
+- Explicit over compact — a clear longer line beats a dense one-liner
+
+**Do not:**
+- Sacrifice readability for fewer lines
+- Create clever solutions that are hard to follow
+- Merge unrelated concerns into one function
+- Remove abstractions that genuinely aid organization
+
+**Scope** — only refine code touched in the current session unless explicitly asked otherwise.
+
+**Process:**
+1. Identify recently modified sections.
+2. Analyze for clarity, consistency, and redundancy.
+3. Apply project standards from CLAUDE.md / AGENTS.md.
+4. Verify behavior is unchanged.
+5. Note only changes that meaningfully affect understanding.
+
+---
+
+## Step 2 — Code Reviewer
+
+Review the simplified code across seven dimensions.
+
+**Seven Dimensions:**
+1. **Correctness** — does the code fulfill its purpose without logical errors?
+2. **Maintainability** — is the structure clean, modular, and pattern-consistent?
+3. **Readability** — are naming, comments, and formatting clear?
+4. **Efficiency** — any performance bottlenecks or unnecessary resource use?
+5. **Security** — any vulnerabilities or unsafe practices? (defer details to Step 3)
+6. **Edge cases** — are errors and unexpected inputs handled?
+7. **Test coverage** — are tests adequate? What's missing?
+
+**Report format:**
+```
+## Critical
+Issues that must be fixed before merge.
+
+## Improvements
+Meaningful changes worth making.
+
+## Nitpicks
+Minor style or preference notes (optional to act on).
+
+## Recommendations
+Broader suggestions — refactors, missing tests, follow-up work.
+```
+
+Tone: constructive, professional, specific. Explain why, not just what.
+
+---
+
+## Step 3 — Security Review
+
+Identify exploitable vulnerabilities. Report only high-confidence findings — skip theoretical issues and framework-mitigated patterns.
+
+**Confidence threshold:**
+
+| Level | Criteria | Action |
+|---|---|---|
+| HIGH | Vulnerable pattern + attacker-controlled input confirmed | Report with severity |
+| MEDIUM | Vulnerable pattern, input source unclear | Note as "Needs verification" |
+| LOW | Theoretical or best-practice only | Do not report |
+
+**Do not flag:** test files, dead/commented-out code, constants, server-controlled config, code paths requiring prior authentication, Django settings / env vars / framework constants.
+
+**Process:**
+1. Trace data flow end-to-end before flagging anything.
+2. Confirm attacker-controlled input reaches the vulnerable pattern.
+3. Check for validation, sanitization, or framework mitigations.
+4. Only then report — with exploitability evidence, not pattern matches alone.
+
+**Vulnerability categories:** injection, XSS, authorization bypass, weak cryptography, unsafe deserialization, SSRF, CSRF, file security, broken authentication, business logic flaws, API security, misconfiguration, error handling leaks, sensitive data in logs.
+
+**Severity:**
+- **Critical** — direct exploit, severe impact, no auth required
+- **High** — exploitable with some conditions, significant impact
+- **Medium** — requires specific conditions, moderate impact
+- **Low** — defense-in-depth gap, minimal direct impact
+
+**Report format:**
+```
+## Findings
+
+### [SEVERITY] Title
+- **Location**: file:line
+- **Pattern**: what the vulnerable code does
+- **Evidence**: why attacker input reaches it
+- **Impact**: what an attacker can do
+- **Fix**: concrete remediation
+
+## Needs Verification
+Issues where input source is unclear — flag for human review.
+
+## Out of Scope
+Patterns reviewed and ruled out (briefly, to show coverage).
+```
+
+---
+
+## Final Output
 
 ```
-/polish
-```
-
-Or tell the agent:
-> "Polish the changes for ticket nw-42."
-
-## Step-by-Step Scenario
-
-**Setup**: you've just implemented a login rate-limiter (ticket `nw-42`). Changed files: `auth/rate_limiter.py`, `auth/views.py`, `tests/test_rate_limiter.py`.
-
----
-
-**Step 1 — code-simplifier**
-
-Agent scans recently modified files. Finds:
-- Nested conditionals in `rate_limiter.py` that can be flattened
-- A redundant dict lookup happening twice in `views.py`
-
-Simplifies both. Functionality unchanged. Reports what changed and why.
-
----
-
-**Step 2 — code-reviewer**
-
-Agent reviews the now-simplified code across seven dimensions:
-
-- **Correctness**: rate limit counter resets on the right boundary? ✓
-- **Maintainability**: limiter is self-contained, easy to extend ✓
-- **Readability**: variable names clear ✓
-- **Efficiency**: Redis call happening inside a loop — flags as improvement
-- **Security**: deferred to Step 3
-- **Edge cases**: what if Redis is unavailable? — flags as critical
-- **Tests**: happy path covered, no test for Redis failure — flags as missing
-
-Produces a structured report: 1 critical, 1 improvement, 1 missing test.
-
----
-
-**Step 3 — security-review**
-
-`auth/` files changed → security-sensitive, not skipped.
-
-Agent traces data flow:
-- User IP → rate limit key: is IP spoofable via `X-Forwarded-For`? Checks validation. Finds no sanitization → **HIGH: IP spoofing bypasses rate limit**
-- Login attempt count stored in Redis: any race condition allowing burst? Traces to atomic `INCR` → safe, not flagged
-
-Reports 1 critical finding with location, evidence, and fix.
-
----
-
-**Final output summary:**
-
-```
-## Polish Report — nw-42
+## Polish Report — <ticket or task>
 
 ### code-simplifier
-- Flattened nested conditionals in rate_limiter.py:34
-- Removed duplicate lookup in views.py:18
+- <what was simplified and where>
 
 ### code-reviewer
-- [Critical] Redis unavailable: no fallback — auth/views.py:52
-- [Improvement] Move Redis call outside loop — auth/rate_limiter.py:67
-- [Missing test] Redis failure path uncovered
+- [Critical] ...
+- [Improvement] ...
 
 ### security-review
-- [High] X-Forwarded-For not validated — IP spoofing bypasses limiter (auth/views.py:29)
+- [High] ...
 ```
 
 Address criticals before committing. Improvements and nitpicks at your discretion.
-
-## Prerequisites
-
-```bash
-~/Developer/AI-Skills/skills.sh add polish /path/to/repo
-~/Developer/AI-Skills/skills.sh status   # verify
-```

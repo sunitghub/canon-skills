@@ -59,6 +59,7 @@ cmd_list() {
 cmd_add() {
   local skill="${1:-}"
   local project_dir="${2:-$(pwd)}"
+  local as_dep="${3:-}"  # "dep" when called recursively for a dependency
 
   [ -z "$skill" ] && { echo "Usage: skills.sh add <skill-name> [project-dir]"; exit 1; }
 
@@ -75,24 +76,26 @@ cmd_add() {
   depends=$(fm_field "$skill_file" depends)
   local import_line="@$skill_file"
 
-  # Resolve dependencies first
+  # Resolve dependencies first (as deps — table row only, no @-import)
   if [ -n "$depends" ]; then
     local deps
     deps=$(echo "$depends" | tr -d '[]' | tr ',' '\n' | tr -d ' ')
     while IFS= read -r dep; do
-      [ -n "$dep" ] && cmd_add "$dep" "$project_dir"
+      [ -n "$dep" ] && cmd_add "$dep" "$project_dir" "dep"
     done <<< "$deps"
   fi
 
   echo "Registering: $name ($category)"
 
-  # --- CLAUDE.md: append @-import ---
+  # --- CLAUDE.md: append @-import (top-level skills only) ---
   local claude_file="$project_dir/CLAUDE.md"
-  if grep -qF "$import_line" "$claude_file" 2>/dev/null; then
-    echo "  [CLAUDE.md]  already registered"
-  else
-    echo "$import_line" >> "$claude_file"
-    echo "  [CLAUDE.md]  added @-import"
+  if [ -z "$as_dep" ]; then
+    if grep -qF "$import_line" "$claude_file" 2>/dev/null; then
+      echo "  [CLAUDE.md]  already registered"
+    else
+      echo "$import_line" >> "$claude_file"
+      echo "  [CLAUDE.md]  added @-import"
+    fi
   fi
 
   # --- AGENTS.md: managed block with skill table ---
@@ -125,12 +128,14 @@ cmd_add() {
     echo "  [AGENTS.md]  added row to skill block"
   fi
 
-  # @-import so Codex and Pi load full skill content (mirrors CLAUDE.md behaviour)
-  if grep -qF "$import_line" "$agents_file" 2>/dev/null; then
-    echo "  [AGENTS.md]  @-import already present"
-  else
-    echo "$import_line" >> "$agents_file"
-    echo "  [AGENTS.md]  added @-import"
+  # @-import so Codex and Pi load full skill content (top-level skills only)
+  if [ -z "$as_dep" ]; then
+    if grep -qF "$import_line" "$agents_file" 2>/dev/null; then
+      echo "  [AGENTS.md]  @-import already present"
+    else
+      echo "$import_line" >> "$agents_file"
+      echo "  [AGENTS.md]  added @-import"
+    fi
   fi
 
   echo ""
