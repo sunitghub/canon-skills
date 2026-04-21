@@ -41,9 +41,9 @@ ls ~/Developer/AI-Skills/skills.sh   # should exist
 
 ---
 
-## Step 2 — Install RTK (token optimizer)
+## Step 2 — Install prerequisites
 
-RTK filters verbose CLI output before it reaches the AI's token budget. Required for all agents.
+**RTK** — filters verbose CLI output before it reaches the AI's token budget. Required for all agents.
 
 ```bash
 brew install rtk
@@ -51,6 +51,14 @@ rtk --version   # verify
 ```
 
 > If `rtk gain` fails after install, you may have the wrong `rtk` package (name collision on crates.io). Use `brew install rtk` — not `cargo install rtk`.
+
+**tk** — git-native task tracker used by the ticket skill and the quality pipeline hooks. Required if using ticket management.
+
+```bash
+brew tap wedow/tools
+brew install ticket
+tk help   # verify
+```
 
 ---
 
@@ -122,7 +130,7 @@ cp ~/Developer/AI-Skills/extensions/pi/handoff.ts ~/.pi/agent/extensions/handoff
 
 ---
 
-## Step 6 — Per-project setup
+## Step 4 — Per-project setup
 
 Run this once per project you want to use skills in.
 
@@ -139,7 +147,7 @@ cd /path/to/your-project
 ~/Developer/AI-Skills/skills.sh add general
 ~/Developer/AI-Skills/skills.sh add git
 
-# Quality pipeline (runs after tk close, before git commit)
+# Quality pipeline — all four are required (polish orchestrates the other three)
 for s in code-simplifier code-reviewer security-review polish; do
   ~/Developer/AI-Skills/skills.sh add $s
 done
@@ -156,18 +164,6 @@ You should see all registered skills listed under both `CLAUDE.md` and `AGENTS.m
 ### Initialize HANDOFF.md
 
 Tell Claude or Codex: "Initialize the handoff file" — it creates `HANDOFF.md` in the project root from the template.
-
----
-
-## Step 7 — Install tk (optional, for ticket management)
-
-```bash
-brew tap wedow/tools
-brew install ticket
-tk help   # verify
-```
-
-tk is only needed if you're using the `ticket` skill and `tk` commands for task tracking.
 
 ---
 
