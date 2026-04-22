@@ -34,6 +34,40 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-04-22 10:33 branch:main -->
+**Modified files:**
+```
+ M AGENTS.md
+ D README.pdf
+ M guides/AI-Agents-Setup.md
+ M guides/AI-Agents-Setup.pdf
+ M init-agent.sh
+ M scripts/auto-polish-trigger.sh
+ D scripts/init-polish.sh
+ M scripts/pre-commit-check.sh
+ M skills.sh
+ M skills/code-reviewer.md
+ M skills/code-simplifier.md
+ D skills/polish.md
+ M skills/security-review.md
+ M tools/handoff.md
+ M tools/ticket.md
+?? .tickets/
+?? scripts/init-wrapup.sh
+?? skills/wrapup.md
+?? temp.txt
+```
+
+**Recent commits:**
+```
+ff2ce72 chore: auto-update handoff snapshot [2026-04-22 10:09]
+219f800 chore: auto-update handoff snapshot [2026-04-22 10:00]
+c121cfb chore: auto-update handoff snapshot [2026-04-22 09:53]
+fe93318 chore: auto-update handoff snapshot [2026-04-22 09:51]
+a8345fc chore: auto-update handoff snapshot [2026-04-22 09:46]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-04-22 10:09 branch:main -->
 **Modified files:**
 ```
@@ -65,39 +99,5 @@ c121cfb chore: auto-update handoff snapshot [2026-04-22 09:53]
 fe93318 chore: auto-update handoff snapshot [2026-04-22 09:51]
 a8345fc chore: auto-update handoff snapshot [2026-04-22 09:46]
 19cb9fd chore: auto-update handoff snapshot [2026-04-22 09:22]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-04-22 10:00 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- D README.pdf
- M guides/AI-Agents-Setup.md
- M guides/AI-Agents-Setup.pdf
- M init-agent.sh
- M scripts/auto-polish-trigger.sh
- D scripts/init-polish.sh
- M scripts/pre-commit-check.sh
- M skills.sh
- M skills/code-reviewer.md
- M skills/code-simplifier.md
- D skills/polish.md
- M skills/security-review.md
- M tools/handoff.md
- M tools/ticket.md
-?? .tickets/
-?? scripts/init-wrapup.sh
-?? skills/wrapup.md
-?? temp.txt
-```
-
-**Recent commits:**
-```
-c121cfb chore: auto-update handoff snapshot [2026-04-22 09:53]
-fe93318 chore: auto-update handoff snapshot [2026-04-22 09:51]
-a8345fc chore: auto-update handoff snapshot [2026-04-22 09:46]
-19cb9fd chore: auto-update handoff snapshot [2026-04-22 09:22]
-3328481 chore: auto-update handoff snapshot [2026-04-22 09:10]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
