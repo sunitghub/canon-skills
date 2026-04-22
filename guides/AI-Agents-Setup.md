@@ -82,6 +82,8 @@ tk help   # verify
 $SKILLS/skills.sh init
 ```
 
+> Re-run `skills.sh init` any time you move or rename the canon folder — it rewires the hook paths in `~/.claude/settings.json` to the new location.
+
 **Claude Code + Codex + Pi** — run the full setup script. It is safe to run multiple times:
 
 ```bash
@@ -152,7 +154,16 @@ cp $SKILLS/extensions/pi/handoff.ts ~/.pi/agent/extensions/handoff.ts
 
 Run this once per project you want to use skills in.
 
-### Register the core skills
+### Register skills
+
+**All at once** (recommended for new projects):
+
+```bash
+cd /path/to/your-project
+$SKILLS/skills.sh addall
+```
+
+**Or pick individually:**
 
 ```bash
 cd /path/to/your-project
@@ -169,10 +180,12 @@ $SKILLS/skills.sh add git
 $SKILLS/skills.sh add wrapup
 ```
 
+`addall` is idempotent — safe to re-run if new skills have been added to canon since you last registered.
+
 ### Verify registration
 
 ```bash
-$SKILLS/skills.sh status
+$SKILLS/skills.sh status          # or: skills.sh --scan /path/to/your-project
 ```
 
 You should see all registered skills listed under both `CLAUDE.md` and `AGENTS.md`.
@@ -377,9 +390,10 @@ cd $SKILLS && git pull
 
 **That's it for existing skills.** Because your project's `CLAUDE.md` uses live `@`-import references into this repo, Claude Code picks up updated skill content automatically on the next session. Hook scripts update immediately too — they're called by path.
 
-**For newly added skills:** you'll need to opt in explicitly:
+**For newly added skills:** opt in with `addall` (picks up everything new at once) or individually:
 ```bash
-$SKILLS/skills.sh add <new-skill> /path/to/your-project
+$SKILLS/skills.sh addall /path/to/your-project        # register any new skills
+$SKILLS/skills.sh add <new-skill> /path/to/your-project  # or just one
 ```
 
 Check what's new:
