@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # pre-commit-check.sh — Before git commit, remind Claude to close any
-# in-progress tickets and confirm polish has been run.
+# in-progress tickets and confirm wrapup has been run.
 # PreToolUse[Bash] hook. Outputs context Claude acts on; never blocks.
 
 INPUT=$(cat)
@@ -22,13 +22,13 @@ if command -v tk &>/dev/null; then
 fi
 
 CLAUDE_MD="$(pwd)/CLAUDE.md"
-POLISH_REGISTERED=0
-if [ -f "$CLAUDE_MD" ] && grep -qF "polish" "$CLAUDE_MD" 2>/dev/null; then
-  POLISH_REGISTERED=1
+WRAPUP_REGISTERED=0
+if [ -f "$CLAUDE_MD" ] && grep -qF "wrapup" "$CLAUDE_MD" 2>/dev/null; then
+  WRAPUP_REGISTERED=1
 fi
 
 # Only output if there's something to check
-[ -n "$TICKETS" ] || [ "$POLISH_REGISTERED" = "1" ] || exit 0
+[ -n "$TICKETS" ] || [ "$WRAPUP_REGISTERED" = "1" ] || exit 0
 
 echo ""
 echo "[pre-commit] Before committing, verify:"
@@ -36,9 +36,9 @@ if [ -n "$TICKETS" ]; then
   echo "  1. In-progress tickets — should any be closed for this commit?"
   echo "$TICKETS" | sed 's/^/     /'
 fi
-if [ "$POLISH_REGISTERED" = "1" ]; then
+if [ "$WRAPUP_REGISTERED" = "1" ]; then
   [ -n "$TICKETS" ] && N=2 || N=1
-  echo "  $N. Run /polish if not already done for these changes."
+  echo "  $N. Run /wrapup if not already done for these changes."
 fi
 
 exit 0

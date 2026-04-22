@@ -31,19 +31,19 @@ Best for: simple projects, occasional agent switching.
 
 **Step 1 — Register the skill in your project:**
 ```bash
-~/Developer/AI-Skills/skills.sh add handoff /path/to/your/project
+<path-to-canon>/skills.sh add handoff /path/to/your/project
 ```
 
 **Step 2 — Verify:**
 ```bash
-~/Developer/AI-Skills/skills.sh status /path/to/your/project
+<path-to-canon>/skills.sh status /path/to/your/project
 ```
 
 **Step 3 — Initialize `HANDOFF.md` in the repo root:**
 
 Tell the agent: "Initialize the handoff file" — it creates it from the template. Or run:
 ```bash
-curl -s https://raw.githubusercontent.com/<your-ai-skills-repo>/main/tools/handoff.md \
+curl -s https://raw.githubusercontent.com/sunitghub/canon/main/tools/handoff.md \
   | awk '/^```markdown$/,/^```$/{if(!/^```/)print}' > HANDOFF.md
 ```
 
@@ -88,7 +88,7 @@ Wiring the rate-limiter middleware into the auth views.
 ## Next Steps
 1. Add @rate_limit to auth/views.py login endpoint
 2. Add integration test for rate limit exceeded (429 response)
-3. Run polish when done
+3. Run /wrapup when done
 ```
 
 ---
@@ -113,10 +113,10 @@ Adds two hooks to Claude Code's global settings:
 
 **Step 1 — Complete Level 1 first.**
 
-**Step 2 — Copy the two hook scripts to your AI-Skills repo:**
+**Step 2 — Copy the two hook scripts to your canon repo:**
 ```bash
-# Already included in AI-Skills at:
-ls ~/Developer/AI-Skills/scripts/
+# Already included in canon at:
+ls <path-to-canon>/scripts/
 # auto-handoff.sh   — Stop hook
 # handoff-inject.sh — UserPromptSubmit hook
 ```
@@ -133,7 +133,7 @@ Open `~/.claude/settings.json` and add to the `"hooks"` object:
         "hooks": [
           {
             "type": "command",
-            "command": "~/Developer/AI-Skills/scripts/auto-handoff.sh"
+            "command": "<path-to-canon>/scripts/auto-handoff.sh"
           }
         ]
       }
@@ -144,7 +144,7 @@ Open `~/.claude/settings.json` and add to the `"hooks"` object:
         "hooks": [
           {
             "type": "command",
-            "command": "~/Developer/AI-Skills/scripts/handoff-inject.sh"
+            "command": "<path-to-canon>/scripts/handoff-inject.sh"
           }
         ]
       }
@@ -233,23 +233,23 @@ Codex reads `AGENTS.md` natively. Since `skills.sh add handoff` already writes t
 For the Stop hook equivalent, add to `~/.codex/config.toml`:
 ```toml
 [hooks]
-on_session_end = "~/Developer/AI-Skills/scripts/auto-handoff.sh"
+on_session_end = "<path-to-canon>/scripts/auto-handoff.sh"
 ```
 > Note: Codex hook support varies by version. Check `codex --help` or the Codex docs for your installed version.
 
 #### Pi
 
-Pi uses TypeScript extensions with lifecycle events. The handoff extension is included in AI-Skills at `extensions/pi/handoff.ts`. It hooks into `session_start`, `input`, and `agent_end` — equivalent to Claude Code's `UserPromptSubmit` and `Stop` hooks.
+Pi uses TypeScript extensions with lifecycle events. The handoff extension is included in canon at `extensions/pi/handoff.ts`. It hooks into `session_start`, `input`, and `agent_end` — equivalent to Claude Code's `UserPromptSubmit` and `Stop` hooks.
 
 **Install globally** (applies to all Pi projects):
 ```bash
-cp ~/Developer/AI-Skills/extensions/pi/handoff.ts ~/.pi/agent/extensions/handoff.ts
+cp <path-to-canon>/extensions/pi/handoff.ts ~/.pi/agent/extensions/handoff.ts
 ```
 
 **Install per project** (applies to this project only):
 ```bash
 mkdir -p .pi/extensions
-cp ~/Developer/AI-Skills/extensions/pi/handoff.ts .pi/extensions/handoff.ts
+cp <path-to-canon>/extensions/pi/handoff.ts .pi/extensions/handoff.ts
 ```
 
 **Reload without restarting Pi:**

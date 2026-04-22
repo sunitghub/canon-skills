@@ -16,7 +16,6 @@ SCRIPT="${BASH_SOURCE[0]}"
 while [ -L "$SCRIPT" ]; do SCRIPT="$(readlink "$SCRIPT")"; done
 SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")" && pwd)"
 SCRIPTS="$SKILLS_ROOT/scripts"
-STANDARD_PATH="$HOME/Developer/AI-Skills"
 
 GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; BOLD='\033[1m'; NC='\033[0m'
 ok()   { echo -e "  ${GREEN}[ok]${NC}   $*"; }
@@ -27,21 +26,17 @@ step() { echo -e "\n${BOLD}$*${NC}"; }
 
 # ── prerequisite checks ──────────────────────────────────────────────────────
 
-check_path() {
-  if [ "$SKILLS_ROOT" != "$STANDARD_PATH" ]; then
-    echo -e "${YELLOW}Warning:${NC} This repo is at $SKILLS_ROOT"
-    echo    "         Expected: $STANDARD_PATH"
-    echo    "         Hook scripts in settings.json are hardcoded to the standard path."
-    echo    "         Either move the repo or symlink: ln -s $SKILLS_ROOT $STANDARD_PATH"
-    echo
-    read -r -p "Continue anyway? [y/N] " confirm
-    [[ "$confirm" =~ ^[Yy]$ ]] || exit 0
+rtk_install_hint() {
+  if grep -qi microsoft /proc/version 2>/dev/null || [ -n "${WSL_DISTRO_NAME:-}" ]; then
+    echo "cargo install rtk  # WSL — or check https://github.com/sunitghub/rtk for a binary"
+  else
+    echo "brew install rtk   # macOS"
   fi
 }
 
 check_rtk() {
   if ! command -v rtk &>/dev/null; then
-    fail "rtk not found. Install with: brew install rtk"
+    skip "rtk not found (optional — token optimization). Install: $(rtk_install_hint)"
     return 1
   fi
   ok "rtk $(rtk --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)"
@@ -82,14 +77,6 @@ for event, matcher, command in required:
     configured = [os.path.expanduser(h.get("command", "")) for h in entry.get("hooks", [])]
     if os.path.expanduser(command) not in configured:
         sys.exit(1)
-# Also verify RTK's native hook is present in PreToolUse
-rtk_present = any(
-    "rtk" in h.get("command", "")
-    for entry in hooks.get("PreToolUse", [])
-    for h in entry.get("hooks", [])
-)
-if not rtk_present:
-    sys.exit(1)
 sys.exit(0)
 PYEOF
 }
@@ -143,7 +130,7 @@ for event, matcher, command in desired:
         entry = {"matcher": matcher, "hooks": []}
         event_list.append(entry)
     entry_hooks = entry.setdefault("hooks", [])
-    if any(h.get("command") == command for h in entry_hooks):
+    if any(os.path.expanduser(h.get("command", "")) == command for h in entry_hooks):
         print(f"exists\t{event}\t{os.path.basename(command)}")
     else:
         entry_hooks.append({"type": "command", "command": command})
@@ -170,14 +157,15 @@ setup_claude() {
   fi
   ok "claude installed"
 
-  check_rtk || return 1
   check_python || return 1
 
-  echo "  → Wiring RTK hook..."
-  if rtk init -g --auto-patch > /dev/null 2>&1; then
-    ok "RTK hook wired (rtk hook claude)"
-  else
-    skip "RTK hook already present"
+  if check_rtk; then
+    echo "  → Wiring RTK hook..."
+    if rtk init -g --auto-patch > /dev/null 2>&1; then
+      ok "RTK hook wired"
+    else
+      skip "RTK hook already present"
+    fi
   fi
 
   echo "  → Merging handoff + quality hooks into ~/.claude/settings.json..."
@@ -208,13 +196,13 @@ setup_codex() {
   fi
   ok "codex installed"
 
-  check_rtk || return 1
-
-  echo "  → Wiring RTK for Codex..."
-  if rtk init -g --codex --auto-patch > /dev/null 2>&1; then
-    ok "RTK wired into ~/.codex/AGENTS.md"
-  else
-    skip "Already configured"
+  if check_rtk; then
+    echo "  → Wiring RTK for Codex..."
+    if rtk init -g --codex --auto-patch > /dev/null 2>&1; then
+      ok "RTK wired into ~/.codex/AGENTS.md"
+    else
+      skip "Already configured"
+    fi
   fi
 
   ok "Codex setup complete"
@@ -262,10 +250,8 @@ setup_pi() {
 # ── dispatch ──────────────────────────────────────────────────────────────────
 
 main() {
-  echo -e "\n${BOLD}AI-Skills Agent Setup${NC}"
+  echo -e "\n${BOLD}canon setup${NC}"
   echo    "━━━━━━━━━━━━━━━━━━━━━"
-
-  check_path
 
   local agent="${1:-}"
 
@@ -282,8 +268,7 @@ main() {
       2) agent="codex"  ;;
       3) agent="pi"     ;;
       4) agent="all"    ;;
-      "") echo "Exiting."; exit 0 ;;
-      [nN]|[nN][oO]) echo "Exiting."; exit 0 ;;
+      ""|[nN]|[nN][oO]) echo "Exiting."; exit 0 ;;
       *) echo "Invalid choice."; exit 1 ;;
     esac
   fi
@@ -300,7 +285,7 @@ main() {
   esac
 
   echo -e "\n${GREEN}${BOLD}Done.${NC} Next: register skills in your project:"
-  echo    "  ~/Developer/AI-Skills/skills.sh add <skill> /path/to/your-project"
+  echo    "  $SKILLS_ROOT/skills.sh add <skill> /path/to/your-project"
   echo    "  See guides/AI-Agents-Setup.md for the full per-project checklist."
   echo
 }

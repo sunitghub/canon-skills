@@ -1,4 +1,4 @@
-# AI-Skills: Agent Instructions
+# canon: Agent Instructions
 
 Universal instructions for AI coding agents. Loaded natively by Pi and Codex CLI.
 Claude Code loads this via `adapters/claude/CLAUDE.md`.
@@ -57,20 +57,27 @@ When in doubt: `rtk <any-command>`. If RTK has no rule for it, the command passe
 
 ## Skill Discovery & Registration
 
+The `skills.sh` script is at the root of this repo. Run it from wherever the repo is cloned.
+
 To see all available skills:
 ```bash
-~/Developer/AI-Skills/skills.sh list
+<path-to-canon>/skills.sh list
 ```
 
 To register a skill into the current project:
 ```bash
-~/Developer/AI-Skills/skills.sh add <skill-name>
-~/Developer/AI-Skills/skills.sh add <skill-name> /path/to/project
+<path-to-canon>/skills.sh add <skill-name>
+<path-to-canon>/skills.sh add <skill-name> /path/to/project
 ```
 
 To check what's registered in a project:
 ```bash
-~/Developer/AI-Skills/skills.sh status
+<path-to-canon>/skills.sh status
+```
+
+To wire Claude Code hooks after cloning to a new location:
+```bash
+<path-to-canon>/skills.sh init
 ```
 
 See [CATALOG.md](CATALOG.md) for a static snapshot of all available skills.

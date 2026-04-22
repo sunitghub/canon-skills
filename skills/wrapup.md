@@ -1,22 +1,22 @@
 ---
-name: polish
-description: Run code-simplifier, code-reviewer, and security-review in the right order after completing a task — skips steps that don't apply
+name: wrapup
+description: Run code-simplifier, code-reviewer, and security-review in the right order after completing any unit of work — skips steps that don't apply
 category: skills
 tags: [code-quality, workflow, orchestration, refactoring, security]
 depends: [code-simplifier, code-reviewer, security-review]
 ---
 
-# Polish — Quality Pipeline
+# Wrapup — Quality Pipeline
 
-Run this after completing any task or closing a ticket. It executes three steps in sequence, skipping any that don't apply to the current change.
+Run this after completing any unit of work — a session, a feature, a bug fix, or a ticket. It executes three steps in sequence, skipping any that don't apply to the current change.
 
 ## How to Run
 
 ```
-/polish
+/wrapup
 ```
 
-Or: "Polish the changes for ticket nw-42."
+Or: "Wrapup the changes" / "Wrapup the auth refactor" / "Wrapup ticket nw-42."
 
 ## Pipeline
 
@@ -162,7 +162,7 @@ Patterns reviewed and ruled out (briefly, to show coverage).
 ## Final Output
 
 ```
-## Polish Report — <ticket or task>
+## Wrapup Report — <description of work>
 
 ### code-simplifier
 - <what was simplified and where>
@@ -176,3 +176,10 @@ Patterns reviewed and ruled out (briefly, to show coverage).
 ```
 
 Address criticals before committing. Improvements and nitpicks at your discretion.
+
+---
+
+> **Migrating from `polish`?** If your project has `polish` registered, update it:
+> ```bash
+> skills.sh remove polish && skills.sh add wrapup
+> ```

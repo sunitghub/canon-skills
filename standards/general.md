@@ -11,12 +11,12 @@ tags: [coding, quality, security]
 
 **Step 1 — Register this skill in your project:**
 ```bash
-~/Developer/AI-Skills/skills.sh add general /path/to/your/project
+<path-to-canon>/skills.sh add general /path/to/your/project
 ```
 
 **Step 2 — Verify:**
 ```bash
-~/Developer/AI-Skills/skills.sh status /path/to/your/project
+<path-to-canon>/skills.sh status /path/to/your/project
 ```
 
 **Step 3 — Use it:**

@@ -20,12 +20,12 @@ brew install ticket
 
 **Step 2 — Register this skill in your project:**
 ```bash
-~/Developer/AI-Skills/skills.sh add ticket /path/to/your/project
+<path-to-canon>/skills.sh add ticket /path/to/your/project
 ```
 
 **Step 3 — Verify:**
 ```bash
-~/Developer/AI-Skills/skills.sh status /path/to/your/project
+<path-to-canon>/skills.sh status /path/to/your/project
 ```
 
 **Step 4 — Use it:**
@@ -67,9 +67,7 @@ This replaces manually asking to close, clean up, and review — one phrase cove
 1. **Pre-flight** — run `tk dep cycle`. Abort if cycles are detected.
 2. **Walk the tree** — run `tk dep tree <id>`. Close all dependencies bottom-up (leaves first, then parents). The user only ever specifies the root — never list deps manually.
 3. **Close ticket** — `tk close <id>`.
-4. **Polish** — run `/polish` on all files modified since the ticket was started.
-5. **Simplify** — run `/simplify` on those same files.
-6. **Security** — run `/security-review` only if the user passed `--security` or explicitly requested it.
+4. **Wrapup** — run `/wrapup` on all files modified since the ticket was started.
 
 ## Agent Workflow
 
@@ -77,7 +75,7 @@ This replaces manually asking to close, clean up, and review — one phrase cove
 - **When picking up a task: run `tk start <id>` before writing any code.** Never skip this — tickets must reflect actual state.
 - When creating sub-tasks: use `--parent <id>` to link them.
 - Prepend the ticket ID to every commit message (e.g. `nw-5c46: add SSE connection`).
-- **Never run `tk close <id>` directly.** Always use the approve workflow so polish and simplify run consistently.
+- **Never run `tk close <id>` directly.** Always use the approve workflow so wrapup runs consistently.
 - Don't create tickets for trivial 1-line fixes. Use judgment.
 - Prefer updating an existing ticket over creating a duplicate.
 

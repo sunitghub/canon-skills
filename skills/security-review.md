@@ -13,12 +13,12 @@ Systematically identify exploitable security vulnerabilities. Report only high-c
 
 **Step 1 — Register this skill in your project:**
 ```bash
-~/Developer/AI-Skills/skills.sh add security-review /path/to/your/project
+<path-to-canon>/skills.sh add security-review /path/to/your/project
 ```
 
 **Step 2 — Verify:**
 ```bash
-~/Developer/AI-Skills/skills.sh status /path/to/your/project
+<path-to-canon>/skills.sh status /path/to/your/project
 ```
 
 **Step 3 — Use it:**
@@ -27,7 +27,7 @@ Systematically identify exploitable security vulnerabilities. Report only high-c
 
 The agent traces data flow before flagging anything — no noisy pattern-match reports. Findings come back with location, evidence, and a concrete fix.
 
-> Tip: Use `polish` instead if you want simplify + review + security in one go after finishing a task.
+> Tip: Use `wrapup` instead if you want simplify + review + security in one go after finishing a task.
 
 ## Confidence Threshold
 

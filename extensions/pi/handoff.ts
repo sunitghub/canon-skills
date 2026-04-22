@@ -20,7 +20,7 @@ import { homedir } from "os";
 
 const AUTO_HANDOFF_SCRIPT = join(
   homedir(),
-  "Developer/AI-Skills/scripts/auto-handoff.sh"
+  "Developer/canon/scripts/auto-handoff.sh"
 );
 const MAX_LINES = 80;
 

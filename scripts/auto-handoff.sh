@@ -52,11 +52,10 @@ NEW_SNAPSHOT="${NEW_SNAPSHOT}
 
 if [ -f "$HANDOFF" ]; then
   # Use Python to cleanly manage the LIFO snapshot window
-  python3 - "$HANDOFF" "$MAX_SNAPSHOTS" << PYEOF
+  python3 - "$HANDOFF" "$MAX_SNAPSHOTS" "$NEW_SNAPSHOT" << 'PYEOF'
 import sys, re
 
-path, max_snap = sys.argv[1], int(sys.argv[2])
-new_snap = """${NEW_SNAPSHOT}"""
+path, max_snap, new_snap = sys.argv[1], int(sys.argv[2]), sys.argv[3]
 
 content = open(path).read()
 

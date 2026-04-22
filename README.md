@@ -1,111 +1,106 @@
-# AI-Skills
+# canon
 
-A personal library of skills, standards, and tool guides for AI coding agents.
-Write a rule once — every agent in every project benefits.
+> One repo. Every agent. Consistent behaviors across all your projects.
 
-## What's in here
-
-| Path | What it is |
-|------|-----------|
-| `AGENTS.md` | Universal agent instructions (behavior, quality, output style) |
-| `standards/` | Coding and git conventions — each file is a registerable skill |
-| `tools/` | Usage guides for specific tools (e.g. ticket/tk) |
-| `skills/` | Claude Code `SKILL.md` format for reusable slash commands |
-| `supplements/` | Personal notes, cert prep, reference docs |
-| `adapters/claude/` | Claude-specific `@`-import adapter |
-| `skills.sh` | CLI to list, add, and remove skills per project |
-| `CATALOG.md` | Static snapshot of all available skills |
+canon is a shared skill library for AI coding agents — Claude Code, Codex, and Pi. Register skills once and they live-import into any project. Update the canon, and every project picks up the change automatically on the next session.
 
 ---
 
-## Agent Setup (one-time, per machine)
+## The problem
 
-### Claude Code
-Add to `~/.claude/CLAUDE.md`:
-```
-@~/Developer/AI-Skills/adapters/claude/CLAUDE.md
-```
-[x] Already done on this machine.
+You've carefully configured an AI agent: enforce your git conventions, run a quality check before committing, keep context across sessions. Then you start a new project — and explain it all from scratch.
 
-### Codex CLI
-Add to `~/.codex/AGENTS.md`:
-```
-@/Users/<you>/Developer/AI-Skills/AGENTS.md
-```
-[x] Already done on this machine.
-
-### Pi
-Add to `~/.pi/agent/AGENTS.md` (create if missing):
-```
-@~/Developer/AI-Skills/AGENTS.md
-```
-Or symlink: `ln -s ~/Developer/AI-Skills/AGENTS.md ~/.pi/agent/AGENTS.md`
-
-### Cursor
-Create `.cursor/rules/ai-skills.mdc` in your project:
-```
-@~/Developer/AI-Skills/AGENTS.md
-```
-
-### Other agents (Aider, Continue, Windsurf, etc.)
-Point their system prompt or rules config at `AGENTS.md` or the relevant skill file.
-See each tool's docs for the exact config path.
+canon solves this with a **live-reference model**. Skills live in one place and are `@`-imported directly into each project's `CLAUDE.md` and `AGENTS.md`. No copies. No drift. One source of truth for every agent, every project.
 
 ---
 
-## Per-project skill setup
+## What's inside
 
-### 1. See what's available
+| Skill | Category | What it does |
+|---|---|---|
+| `wrapup` | skills | Quality pipeline: simplify → review → security — scoped to current unit of work |
+| `code-reviewer` | skills | Structured review across correctness, maintainability, security, edge cases, and coverage |
+| `code-simplifier` | skills | Refactor recently modified code for clarity without changing behavior |
+| `security-review` | skills | High-confidence vulnerability detection — traces data flow before flagging |
+| `handoff` | tools | Session context that persists across agents, resets, and long gaps |
+| `ticket` | tools | Git-native task tracking with `tk` *(optional)* |
+| `general` | standards | Language-agnostic coding principles, applied automatically |
+| `git` | standards | Commit, branch, and PR conventions, applied automatically |
+
+---
+
+## Quick start
+
+**1. Clone**
+
 ```bash
-~/Developer/AI-Skills/skills.sh list
+git clone https://github.com/sunitghub/canon.git ~/Developer/canon
+export SKILLS=~/Developer/canon
 ```
 
-### 2. Register skills into a project
-```bash
-# Run from inside the project, or pass the path
-~/Developer/AI-Skills/skills.sh add ticket
-~/Developer/AI-Skills/skills.sh add git
-~/Developer/AI-Skills/skills.sh add general
+**2. Wire your agents**
 
-# Or with explicit path:
-~/Developer/AI-Skills/skills.sh add ticket ~/Developer/react-admin
+```bash
+$SKILLS/skills.sh init        # Claude Code only
+$SKILLS/init-agent.sh all     # Claude Code + Codex + Pi
 ```
 
-`add` writes to:
-- **`CLAUDE.md`** — `@`-imports for Claude Code
-- **`AGENTS.md`** — managed skill block for Codex, Pi, and others
+> RTK and `tk` are optional. Setup detects them and wires their hooks if present; everything else works without them.
 
-### 3. Check what's registered
+**3. Register skills in a project**
+
 ```bash
-~/Developer/AI-Skills/skills.sh status
+cd /path/to/your-project
+
+$SKILLS/skills.sh add general   # coding standards — auto-applied, no invocation needed
+$SKILLS/skills.sh add git       # git conventions — auto-applied
+$SKILLS/skills.sh add wrapup    # quality pipeline
+$SKILLS/skills.sh add handoff   # session context across resets
 ```
 
-### 4. Remove a skill
-```bash
-~/Developer/AI-Skills/skills.sh remove ticket
+Start a session. Your agent now follows your standards, runs quality checks on demand, and maintains context across conversations.
+
+---
+
+## How the live-reference model works
+
+`skills.sh add` writes a single line into your project's config files — not a copy of the skill, a reference to it:
+
+```
+# CLAUDE.md — Claude Code reads this on every session start
+@/path/to/canon/standards/general.md
+
+# AGENTS.md — Codex and Pi read this
+| general | standards | /path/to/canon/standards/general.md |
+```
+
+When canon is updated, every project picks up the new version automatically. No re-registration. No copying. To opt into a new skill: one command. To remove one: one command.
+
+---
+
+## The CLI
+
+```
+skills.sh list                     List all available skills
+skills.sh add <skill> [dir]        Register a skill into a project (default: cwd)
+skills.sh remove <skill> [dir]     Unregister a skill from a project
+skills.sh status [dir]             Show what's registered in a project
+skills.sh init                     Wire Claude Code hooks to this install location
+skills.sh help <skill>             Show full documentation for a skill
 ```
 
 ---
 
-## Adding a new skill
+## Prerequisites
 
-1. Create a `.md` file in `standards/` or `tools/` with YAML frontmatter:
-```markdown
+| Tool | Required | Install |
+|---|---|---|
+| Claude Code / Codex / Pi | Yes — at least one | [claude.ai/code](https://claude.ai/code) |
+| RTK | No — recommended | `brew install rtk` (macOS) · `cargo install rtk` (Linux/WSL) |
+| tk | No — for `ticket` skill only | `brew install wedow/tools/ticket` |
+
 ---
-name: your-skill
-description: One-line description shown in skills.sh list
-category: standards   # or: tools
-tags: [tag1, tag2]
----
 
-# Your Skill Title
-...content...
-```
+## Full setup guide
 
-2. It immediately appears in `skills.sh list` — no registration needed.
-
-3. Update `CATALOG.md`:
-```bash
-cd ~/Developer/AI-Skills
-{ echo "# AI-Skills Catalog"; echo ""; echo "> Auto-generated snapshot. Run \`skills.sh list\` for live output."; echo ""; echo "\`\`\`"; ./skills.sh list; echo "\`\`\`"; } > CATALOG.md
-```
+See [`guides/AI-Agents-Setup.md`](guides/AI-Agents-Setup.md) for the complete walkthrough — prerequisites, per-agent wiring, per-project registration, verification, and day-to-day workflows including the ticket approve pipeline and wrapup quality gate.

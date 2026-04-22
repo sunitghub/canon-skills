@@ -92,7 +92,7 @@ When a step is skipped, Polish states why — so it's clear the step was conside
 **Registering polish in a project:**
 ```bash
 for s in code-simplifier code-reviewer security-review polish; do
-  ~/Developer/AI-Skills/skills.sh add $s /path/to/project
+  <path-to-canon>/skills.sh add $s /path/to/project
 done
 ```
 The `auto-polish-trigger.sh` and `pre-commit-check.sh` hooks check whether polish is registered before firing — they stay silent in projects where it isn't.

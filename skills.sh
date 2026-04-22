@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# skills.sh — AI-Skills catalog and project registration tool
+# skills.sh — canon skill catalog and project registration tool
 #
 # Usage:
 #   skills.sh list                         List all available skills
@@ -33,27 +33,56 @@ find_skill() {
 }
 
 cmd_list() {
-  local output
-  output=$(
-    printf "%-25s %-12s %s\n" "SKILL" "CATEGORY" "DESCRIPTION"
-    printf "%-25s %-12s %s\n" "─────────────────────────" "────────────" "───────────────────────────────────────"
-    for dir in "${SEARCH_DIRS[@]}"; do
-      [ -d "$dir" ] || continue
-      while IFS= read -r f; do
-        name=$(fm_field "$f" name)
-        [ -z "$name" ] && continue
-        summary=$(fm_field "$f" summary)
-        desc="${summary:-$(fm_field "$f" description)}"
-        category=$(fm_field "$f" category)
-        printf "%-25s %-12s %s\n" "$name" "$category" "$desc"
-      done < <(find "$dir" -name "SKILL.md" -o -name "*.md" -type f 2>/dev/null | sort)
-    done
-  )
-  if command -v bat &>/dev/null; then
-    echo "$output" | bat -l md --plain
-  else
-    echo "$output"
-  fi
+  local cols skill_w cat_w indent_w desc_w
+  cols=${COLUMNS:-$(tput cols 2>/dev/null || echo 100)}
+  skill_w=20; cat_w=11
+  indent_w=$(( skill_w + 2 + cat_w + 2 ))
+  desc_w=$(( cols - indent_w ))
+  (( desc_w < 35 )) && desc_w=35
+
+  local bold='\033[1m' dim='\033[2m' cyan='\033[36m' reset='\033[0m'
+  local indent_str
+  indent_str=$(printf '%*s' "$indent_w" '')
+
+  local sep_skill sep_cat sep_desc
+  sep_skill=$(printf '%*s' "$skill_w" '' | tr ' ' '─')
+  sep_cat=$(printf '%*s' "$cat_w" '' | tr ' ' '─')
+  sep_desc=$(printf '%*s' "$desc_w" '' | tr ' ' '─')
+
+  printf "${bold}%-${skill_w}s  %-${cat_w}s  %s${reset}\n" "SKILL" "CATEGORY" "DESCRIPTION"
+  printf "${dim}%s  %s  %s${reset}\n" "$sep_skill" "$sep_cat" "$sep_desc"
+
+  local prev_cat=""
+  for dir in "${SEARCH_DIRS[@]}"; do
+    [ -d "$dir" ] || continue
+    while IFS= read -r f; do
+      local name desc category summary
+      name=$(fm_field "$f" name)
+      [ -z "$name" ] && continue
+      summary=$(fm_field "$f" summary)
+      desc="${summary:-$(fm_field "$f" description)}"
+      category=$(fm_field "$f" category)
+
+      [ "$category" != "$prev_cat" ] && [ -n "$prev_cat" ] && echo ""
+      prev_cat="$category"
+
+      # Word-wrap description; indent continuation lines to align under DESCRIPTION
+      local first rest
+      if (( ${#desc} > desc_w )); then
+        first=$(printf '%s' "$desc" | fold -s -w "$desc_w" | head -1)
+        rest=$(printf '%s' "$desc" | fold -s -w "$desc_w" | tail -n +2)
+      else
+        first="$desc"; rest=""
+      fi
+
+      printf "${cyan}%-${skill_w}s${reset}  ${dim}%-${cat_w}s${reset}  %s\n" \
+        "$name" "$category" "$first"
+      [ -n "$rest" ] && while IFS= read -r line; do
+        printf "%s%s\n" "$indent_str" "$line"
+      done <<< "$rest"
+
+    done < <(find "$dir" -type f -name "*.md" 2>/dev/null | sort)
+  done
 }
 
 cmd_add() {
@@ -105,7 +134,7 @@ cmd_add() {
       {
         echo ""
         echo "$block_begin"
-        echo "## Active AI-Skills"
+        echo "## Active canon skills"
         echo "> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Source: $SKILLS_ROOT"
         echo ""
         echo "| Skill | Category | Source |"
@@ -131,19 +160,21 @@ cmd_add() {
     fi
   fi
 
-  echo ""
-  echo "Done. $desc"
+  if [ -z "$as_dep" ]; then
+    echo ""
+    echo "Done. $desc"
+  fi
 }
 
 cmd_status() {
   local project_dir="${1:-$(pwd)}"
-  echo "AI-Skills registered in: $project_dir"
+  echo "canon skills registered in: $project_dir"
   echo ""
 
   local claude_file="$project_dir/CLAUDE.md"
   if [ -f "$claude_file" ] && grep -qF "$SKILLS_ROOT" "$claude_file" 2>/dev/null; then
     echo "CLAUDE.md (@-imports):"
-    grep "$SKILLS_ROOT" "$claude_file" | sed "s|@$SKILLS_ROOT/|  |"
+    grep -F "$SKILLS_ROOT" "$claude_file" | sed "s|@$SKILLS_ROOT/|  |"
   else
     echo "CLAUDE.md: none"
   fi
@@ -214,6 +245,72 @@ cmd_help() {
   fi
 }
 
+cmd_init() {
+  local settings="$HOME/.claude/settings.json"
+  local scripts="$SKILLS_ROOT/scripts"
+
+  if ! command -v python3 &>/dev/null; then
+    echo "Error: python3 is required for settings.json merging"
+    exit 1
+  fi
+
+  echo "Wiring Claude Code hooks from: $SKILLS_ROOT"
+
+  local hook_output
+  hook_output=$(python3 - "$settings" "$scripts" << 'PYEOF'
+import json, sys, os
+
+settings_path = sys.argv[1]
+scripts_path  = sys.argv[2]
+
+try:
+    with open(settings_path) as f:
+        config = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    config = {}
+
+hooks = config.setdefault("hooks", {})
+
+desired = [
+    ("Stop",             "", f"{scripts_path}/auto-handoff.sh"),
+    ("UserPromptSubmit", "", f"{scripts_path}/handoff-inject.sh"),
+    ("PostToolUse",   "Bash", f"{scripts_path}/auto-polish-trigger.sh"),
+    ("PreToolUse",    "Bash", f"{scripts_path}/pre-commit-check.sh"),
+]
+
+for event, matcher, command in desired:
+    event_list = hooks.setdefault(event, [])
+    entry = next((e for e in event_list if e.get("matcher") == matcher), None)
+    if entry is None:
+        entry = {"matcher": matcher, "hooks": []}
+        event_list.append(entry)
+    entry_hooks = entry.setdefault("hooks", [])
+    if any(os.path.expanduser(h.get("command", "")) == command for h in entry_hooks):
+        print(f"exists\t{event}\t{os.path.basename(command)}")
+    else:
+        entry_hooks.append({"type": "command", "command": command})
+        print(f"added\t{event}\t{os.path.basename(command)}")
+
+os.makedirs(os.path.dirname(settings_path), exist_ok=True)
+with open(settings_path, "w") as f:
+    json.dump(config, f, indent=2)
+    f.write("\n")
+PYEOF
+)
+
+  while IFS=$'\t' read -r status event script; do
+    if [ "$status" = "added" ]; then
+      echo "  [added]  $event → $script"
+    else
+      echo "  [exists] $event → $script"
+    fi
+  done <<< "$hook_output"
+
+  echo ""
+  echo "Done. Register skills in your project with:"
+  echo "  $SKILLS_ROOT/skills.sh add <skill> /path/to/your-project"
+}
+
 cmd_delete() {
   local skill="${1:-}"
   [ -z "$skill" ] && { echo "Usage: skills.sh delete <skill-name>"; exit 1; }
@@ -239,7 +336,7 @@ cmd_delete() {
 
   # Regenerate CATALOG.md
   {
-    echo "# AI-Skills Catalog"
+    echo "# canon Catalog"
     echo ""
     echo "> Auto-generated snapshot. Run \`skills.sh list\` for live output."
     echo ""
@@ -270,15 +367,17 @@ case "$cmd" in
   remove) cmd_remove "$@" ;;
   delete) cmd_delete "$@" ;;
   help)   cmd_help   "$@" ;;
+  init)   cmd_init   "$@" ;;
   *)
-    echo "Usage: skills.sh <list|add|status|remove|delete|help> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|status|remove|delete|help|init> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
     echo "  status [dir]            Show registered skills (default: cwd)"
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
-    echo "  delete <skill>          Permanently remove a skill from AI-Skills"
+    echo "  delete <skill>          Permanently remove a skill from canon"
     echo "  help <skill>            Show full documentation for a skill"
+    echo "  init                    Wire Claude Code hooks for this install location"
     echo "  <skill> --h             Same as: skills.sh help <skill>"
     exit 1
     ;;

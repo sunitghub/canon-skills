@@ -1,4 +1,4 @@
-# AI-Skills Catalog
+# canon Catalog
 
 > Auto-generated snapshot. Run `skills.sh list` for live output.
 

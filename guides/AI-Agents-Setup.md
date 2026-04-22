@@ -9,52 +9,62 @@ Everything a new team member needs to get Claude Code, Codex, and Pi working wit
 A shared library of AI agent skills, tools, standards, and automation scripts. Your projects don't copy from it — they import from it via live `@`-references. When this repo is updated, your projects pick up changes automatically on the next session.
 
 ```
-AI-Skills/          ← this repo (shared library, clone once)
-  skills/           ← polish, code-reviewer, security-review, ...
+canon/              ← this repo (shared library, clone once)
+  skills/           ← wrapup, code-reviewer, security-review, ...
   tools/            ← ticket, handoff
   standards/        ← general, git
-  scripts/          ← hook automation (handoff, polish trigger, pre-commit)
+  scripts/          ← hook automation (handoff, wrapup trigger, pre-commit)
   guides/           ← this file and context-optimization.md
   extensions/pi/    ← Pi lifecycle extensions
 
 your-project/       ← your work repo
-  CLAUDE.md         ← @-imports pointing into AI-Skills
+  CLAUDE.md         ← @-imports pointing into canon
   AGENTS.md         ← skill table for Codex and Pi
   HANDOFF.md        ← session context (auto-managed)
 ```
 
 ---
 
-## Step 1 — Clone AI-Skills to the standard path
+## Step 1 — Clone canon
 
-The standard path matters. All `@`-import references and hook scripts use `~/Developer/AI-Skills`. Cloning elsewhere breaks them.
+Clone the repo anywhere you like. The scripts self-locate at runtime.
 
 ```bash
-mkdir -p ~/Developer
-git clone https://github.com/sunitghub/AI-Skills.git ~/Developer/AI-Skills
+git clone https://github.com/sunitghub/canon.git ~/Developer/canon
+```
+
+Then set a shell variable for the rest of this guide (substitute your actual clone path):
+
+```bash
+export SKILLS=~/Developer/canon
 ```
 
 Verify:
 ```bash
-ls ~/Developer/AI-Skills/skills.sh   # should exist
+ls $SKILLS/skills.sh   # should exist
 ```
 
 ---
 
 ## Step 2 — Install prerequisites
 
-**RTK** — filters verbose CLI output before it reaches the AI's token budget. Required for all agents.
+**RTK** (optional, recommended) — filters verbose CLI output before it hits the AI's token budget. Saves 60–90% of tokens on common operations. Setup detects whether it's installed and wires the hook automatically if so; skills work without it.
 
 ```bash
+# macOS
 brew install rtk
+
+# WSL / Linux
+cargo install rtk
+```
+
+```bash
 rtk --version   # verify
 ```
 
-> If `rtk gain` fails after install, you may have the wrong `rtk` package (name collision on crates.io). Use `brew install rtk` — not `cargo install rtk`.
+> If `rtk gain` fails after install, you may have the wrong package (name collision on crates.io). Use `brew install rtk` — not `cargo install rtk`.
 
-> Installing the binary is enough for now. The agent-specific RTK hook (`rtk init`) is wired up automatically in Step 3 by `init-agent.sh`.
-
-**tk** — git-native task tracker used by the ticket skill and the quality pipeline hooks. Required if using ticket management.
+**tk** (optional) — git-native task tracker. Only needed if you use the `ticket` skill for task management. The `wrapup` quality pipeline works without it.
 
 ```bash
 brew tap wedow/tools
@@ -66,28 +76,34 @@ tk help   # verify
 
 ## Steps 3–5 — Agent setup (automated)
 
-Run the setup script — it handles Claude Code, Codex, and Pi, and is safe to run multiple times:
+**Claude Code only** — run the lightweight init command:
 
 ```bash
-~/Developer/AI-Skills/init-agent.sh
+$SKILLS/skills.sh init
+```
+
+**Claude Code + Codex + Pi** — run the full setup script. It is safe to run multiple times:
+
+```bash
+$SKILLS/init-agent.sh
 ```
 
 It will prompt you to choose an agent (or `all`), back up any existing config files before modifying them (`.bak` extension), and report what was added vs already present.
 
 You can also run non-interactively:
 ```bash
-~/Developer/AI-Skills/init-agent.sh claude   # Claude Code only
-~/Developer/AI-Skills/init-agent.sh codex    # Codex only
-~/Developer/AI-Skills/init-agent.sh pi       # Pi only
-~/Developer/AI-Skills/init-agent.sh all      # all three
+$SKILLS/init-agent.sh claude   # Claude Code only
+$SKILLS/init-agent.sh codex    # Codex only
+$SKILLS/init-agent.sh pi       # Pi only
+$SKILLS/init-agent.sh all      # all three
 ```
 
 **What it sets up per agent:**
 
 | Agent | What gets configured |
 |---|---|
-| Claude Code | RTK native hook (`rtk hook claude`) via `rtk init -g --auto-patch`, plus handoff + quality hooks merged into `~/.claude/settings.json` |
-| Codex | RTK instructions via `rtk init -g --codex` → writes `~/.codex/RTK.md` + `@reference` in `~/.codex/AGENTS.md` |
+| Claude Code | Handoff + quality hooks merged into `~/.claude/settings.json`. RTK hook wired automatically if `rtk` is installed; skipped with a hint if not. |
+| Codex | RTK instructions via `rtk init -g --codex` → writes `~/.codex/RTK.md` + `@reference` in `~/.codex/AGENTS.md` (skipped if RTK absent). |
 | Pi | Copies `extensions/pi/handoff.ts` to `~/.pi/agent/extensions/` |
 
 **Manual fallback (if you prefer to inspect before applying):**
@@ -99,14 +115,14 @@ You can also run non-interactively:
 rtk init -g --auto-patch   # RTK native hook (non-interactive)
 ```
 
-Then merge into `~/.claude/settings.json`:
+Then either run `$SKILLS/skills.sh init` (recommended), or merge manually into `~/.claude/settings.json` (replace `<SKILLS>` with your actual clone path):
 ```json
 {
   "hooks": {
-    "Stop":             [{ "matcher": "", "hooks":     [{ "type": "command", "command": "~/Developer/AI-Skills/scripts/auto-handoff.sh" }] }],
-    "UserPromptSubmit": [{ "matcher": "", "hooks":     [{ "type": "command", "command": "~/Developer/AI-Skills/scripts/handoff-inject.sh" }] }],
-    "PostToolUse":      [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "~/Developer/AI-Skills/scripts/auto-polish-trigger.sh" }] }],
-    "PreToolUse":       [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "~/Developer/AI-Skills/scripts/pre-commit-check.sh" }] }]
+    "Stop":             [{ "matcher": "", "hooks":     [{ "type": "command", "command": "<SKILLS>/scripts/auto-handoff.sh" }] }],
+    "UserPromptSubmit": [{ "matcher": "", "hooks":     [{ "type": "command", "command": "<SKILLS>/scripts/handoff-inject.sh" }] }],
+    "PostToolUse":      [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "<SKILLS>/scripts/auto-polish-trigger.sh" }] }],
+    "PreToolUse":       [{ "matcher": "Bash", "hooks": [{ "type": "command", "command": "<SKILLS>/scripts/pre-commit-check.sh" }] }]
   }
 }
 ```
@@ -125,7 +141,7 @@ rtk init -g --codex --auto-patch
 
 ```bash
 mkdir -p ~/.pi/agent/extensions
-cp ~/Developer/AI-Skills/extensions/pi/handoff.ts ~/.pi/agent/extensions/handoff.ts
+cp $SKILLS/extensions/pi/handoff.ts ~/.pi/agent/extensions/handoff.ts
 # then /reload in Pi
 ```
 </details>
@@ -142,21 +158,21 @@ Run this once per project you want to use skills in.
 cd /path/to/your-project
 
 # Context and task management
-~/Developer/AI-Skills/skills.sh add handoff
-~/Developer/AI-Skills/skills.sh add ticket      # if using tk for task tracking
+$SKILLS/skills.sh add handoff
+$SKILLS/skills.sh add ticket      # if using tk for task tracking
 
 # Coding standards (applied automatically, no invocation needed)
-~/Developer/AI-Skills/skills.sh add general
-~/Developer/AI-Skills/skills.sh add git
+$SKILLS/skills.sh add general
+$SKILLS/skills.sh add git
 
 # Quality pipeline (installs dependencies automatically)
-~/Developer/AI-Skills/skills.sh add polish
+$SKILLS/skills.sh add wrapup
 ```
 
 ### Verify registration
 
 ```bash
-~/Developer/AI-Skills/skills.sh status
+$SKILLS/skills.sh status
 ```
 
 You should see all registered skills listed under both `CLAUDE.md` and `AGENTS.md`.
@@ -171,7 +187,7 @@ Tell Claude or Codex: "Initialize the handoff file" — it creates `HANDOFF.md` 
 
 Run through these to confirm everything is wired up correctly.
 
-**RTK**
+**RTK** (if installed)
 ```bash
 rtk gain        # should show "No tracking data yet" or savings stats (not an error)
 rtk git status  # should run and show compact output
@@ -179,17 +195,17 @@ rtk git status  # should run and show compact output
 
 **Claude Code hooks**
 ```bash
-cat ~/.claude/settings.json   # should contain: rtk hook claude, auto-handoff, handoff-inject, auto-polish-trigger, pre-commit-check
+cat ~/.claude/settings.json   # should contain: auto-handoff, handoff-inject, auto-polish-trigger, pre-commit-check (plus rtk hook if RTK is installed)
 ```
 
-**Codex**
+**Codex** (if RTK installed)
 ```bash
 cat ~/.codex/AGENTS.md   # should contain @RTK.md reference
 ```
 
 **Per-project**
 ```bash
-~/Developer/AI-Skills/skills.sh status   # lists registered skills
+$SKILLS/skills.sh status   # lists registered skills
 ```
 
 ---
@@ -202,12 +218,12 @@ After registering skills, confirm each one is wired up and responding correctly.
 |-------|--------------|-------------------|
 | `general` | `skills.sh status` | Listed under CLAUDE.md @-imports |
 | `git` | `skills.sh status` | Listed under CLAUDE.md @-imports |
-| `ticket` | `tk ls` | Empty list or existing tickets (no error) |
+| `ticket` (optional) | `tk ls` — only if using tk | Empty list or existing tickets (no error) |
 | `handoff` | Tell Claude/Codex: "Initialize the handoff file" | `HANDOFF.md` created in project root |
 | `code-simplifier` | Tell Claude/Codex: "Simplify the changes" | Simplification report scoped to recent changes |
 | `code-reviewer` | Tell Claude/Codex: "Review my changes" | Structured report across seven dimensions |
 | `security-review` | Tell Claude/Codex: "Run a security review" | Findings report or explicit "nothing flagged" |
-| `polish` | Tell Claude/Codex: "Polish my changes" or `/polish` | Runs all three steps with skip reasoning for each |
+| `wrapup` | Tell Claude/Codex: "Wrapup the changes" or `/wrapup` | Runs all three steps with skip reasoning for each |
 | `pdf` | Tell Claude/Codex: "Extract text from [file].pdf" | Extracted content or clear error if no PDF present |
 
 > **Standards skills** (`general`, `git`) have no invocation — they're applied automatically to every code change. Registration in `skills.sh status` is the only verification needed.
@@ -216,7 +232,9 @@ After registering skills, confirm each one is wired up and responding correctly.
 
 ## Day-to-Day Workflows
 
-### Ticketing with `tk`
+### Ticketing with `tk` (optional)
+
+> Skip this section if you don't use `tk` for task management — `wrapup` and all other skills work without it.
 
 `tk` is a git-native task tracker. Tickets are markdown files in `.tickets/` — committed to the repo, visible in git log, and clickable in VS Code.
 
@@ -269,13 +287,11 @@ Say **"approve `<id>`"** (or "ship it", "approve and close") after testing. The 
 1. `tk dep cycle` — aborts if cycles are detected
 2. `tk dep tree <id>` — walks the full tree; closes leaf dependencies first, then works up to the root
 3. `tk close <id>`
-4. Runs `/polish` on all files modified since the ticket was started
-5. Runs `/simplify` on those same files
-6. Runs `/security-review` only if you pass `--security` or explicitly request it
+4. Runs `/wrapup` on all files modified since the ticket was started
 
 You only ever need to approve the root ticket — the agent handles the rest.
 
-Agents are instructed never to call `tk close` directly — always through the approve pipeline so polish and simplify never get skipped.
+Agents are instructed never to call `tk close` directly — always through the approve pipeline so wrapup never gets skipped.
 
 #### Dependency management
 
@@ -294,16 +310,16 @@ If a dependency is still open when you approve, the agent will warn you and ask 
 
 ---
 
-### Polish — Quality Pipeline
+### Wrapup — Quality Pipeline
 
-Polish is the quality gate that runs at the end of every approve. It can also be triggered manually at any time.
+Wrapup is the quality gate that closes out any unit of work. It does not require the ticket system — run it any time you finish a chunk of code.
 
 #### How to trigger
 
 ```
-/polish
+/wrapup
 ```
-Or: "Polish the changes" / "Polish ticket nw-42."
+Or: "Wrapup the changes" / "Wrapup the auth refactor" / "Wrapup ticket nw-42."
 
 #### Pipeline
 
@@ -330,7 +346,7 @@ Each step is skipped if it doesn't apply — the agent states why in one line wh
 #### Final output format
 
 ```
-## Polish Report — <ticket or task>
+## Wrapup Report — <description of work>
 
 ### code-simplifier
 - <what was simplified and where>
@@ -345,9 +361,9 @@ Each step is skipped if it doesn't apply — the agent states why in one line wh
 
 Address criticals before committing. Improvements and nitpicks are at your discretion.
 
-#### Auto-trigger
+#### Auto-trigger (optional, requires ticket skill)
 
-The `PostToolUse` hook (`auto-polish-trigger.sh`) watches for ticket close events and can trigger polish automatically. The approve workflow handles this explicitly — manual `/polish` is mainly for ad-hoc cleanup outside of the ticket flow.
+If you use the `ticket` skill, the `PostToolUse` hook (`auto-polish-trigger.sh`) triggers wrapup automatically when a ticket is closed via the approve workflow. Without tickets, run `/wrapup` manually whenever you want to close out a chunk of work.
 
 ---
 
@@ -356,20 +372,19 @@ The `PostToolUse` hook (`auto-polish-trigger.sh`) watches for ticket close event
 When this repo is updated with improved skills or new scripts:
 
 ```bash
-cd ~/Developer/AI-Skills
-git pull
+cd $SKILLS && git pull
 ```
 
 **That's it for existing skills.** Because your project's `CLAUDE.md` uses live `@`-import references into this repo, Claude Code picks up updated skill content automatically on the next session. Hook scripts update immediately too — they're called by path.
 
 **For newly added skills:** you'll need to opt in explicitly:
 ```bash
-~/Developer/AI-Skills/skills.sh add <new-skill> /path/to/your-project
+$SKILLS/skills.sh add <new-skill> /path/to/your-project
 ```
 
 Check what's new:
 ```bash
-~/Developer/AI-Skills/skills.sh list
+$SKILLS/skills.sh list
 ```
 
 ---

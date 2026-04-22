@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# auto-polish-trigger.sh — Trigger /polish after a ticket is closed.
-# PostToolUse[Bash] hook. Fires when `tk close` completes and polish is
+# auto-polish-trigger.sh — Trigger /wrapup after a ticket is closed.
+# PostToolUse[Bash] hook. Fires when `tk close` completes and wrapup is
 # registered in the current project. Outputs an instruction Claude acts on.
 
 INPUT=$(cat)
@@ -30,12 +30,11 @@ except Exception:
 " 2>/dev/null)
 [ "${EXIT_OK:-yes}" = "yes" ] || exit 0
 
-# Only trigger if polish is registered in this project
-POLISH_PATH=~/Developer/AI-Skills/skills/polish.md
+# Only trigger if wrapup is registered in this project
 CLAUDE_MD="$(pwd)/CLAUDE.md"
 [ -f "$CLAUDE_MD" ] || exit 0
-grep -qF "polish" "$CLAUDE_MD" 2>/dev/null || exit 0
+grep -qF "wrapup" "$CLAUDE_MD" 2>/dev/null || exit 0
 
 echo ""
-echo "[auto-polish] Ticket closed. Run /polish now — simplify, review, and security-check all"
+echo "[auto-wrapup] Ticket closed. Run /wrapup now — simplify, review, and security-check all"
 echo "modified files before committing. Do not skip or defer this step."
