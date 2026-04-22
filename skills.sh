@@ -314,13 +314,16 @@ PYEOF
 cmd_addall() {
   local project_dir="${1:-$(pwd)}"
   local names=()
+  local seen=()
 
   for dir in "${SEARCH_DIRS[@]}"; do
     [ -d "$dir" ] || continue
     while IFS= read -r f; do
-      local name
+      local name already=0
       name=$(fm_field "$f" name)
-      [ -n "$name" ] && names+=("$name")
+      [ -z "$name" ] && continue
+      for s in "${seen[@]+"${seen[@]}"}"; do [ "$s" = "$name" ] && already=1 && break; done
+      [ "$already" -eq 0 ] && names+=("$name") && seen+=("$name")
     done < <(find "$dir" -type f -name "*.md" 2>/dev/null | sort)
   done
 
