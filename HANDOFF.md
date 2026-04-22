@@ -34,6 +34,22 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-04-22 13:11 branch:main -->
+**Modified files:**
+```
+?? temp.txt
+```
+
+**Recent commits:**
+```
+914bff2 chore: auto-update handoff snapshot [2026-04-22 12:52]
+6c1a515 Rename to canon; make RTK/ticket optional; rename polish→wrapup
+02ca216 chore: auto-update handoff snapshot [2026-04-22 10:37]
+56f73a7 chore: auto-update handoff snapshot [2026-04-22 10:36]
+0bf6919 chore: auto-update handoff snapshot [2026-04-22 10:33]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-04-22 12:52 branch:main -->
 **Modified files:**
 ```
@@ -47,39 +63,5 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 56f73a7 chore: auto-update handoff snapshot [2026-04-22 10:36]
 0bf6919 chore: auto-update handoff snapshot [2026-04-22 10:33]
 ff2ce72 chore: auto-update handoff snapshot [2026-04-22 10:09]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-04-22 10:37 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- D README.pdf
- M guides/AI-Agents-Setup.md
- M guides/AI-Agents-Setup.pdf
- M init-agent.sh
- M scripts/auto-polish-trigger.sh
- D scripts/init-polish.sh
- M scripts/pre-commit-check.sh
- M skills.sh
- M skills/code-reviewer.md
- M skills/code-simplifier.md
- D skills/polish.md
- M skills/security-review.md
- M tools/handoff.md
- M tools/ticket.md
-?? .tickets/
-?? scripts/init-wrapup.sh
-?? skills/wrapup.md
-?? temp.txt
-```
-
-**Recent commits:**
-```
-56f73a7 chore: auto-update handoff snapshot [2026-04-22 10:36]
-0bf6919 chore: auto-update handoff snapshot [2026-04-22 10:33]
-ff2ce72 chore: auto-update handoff snapshot [2026-04-22 10:09]
-219f800 chore: auto-update handoff snapshot [2026-04-22 10:00]
-c121cfb chore: auto-update handoff snapshot [2026-04-22 09:53]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
