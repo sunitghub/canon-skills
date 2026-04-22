@@ -241,13 +241,16 @@ Priority: `0` = highest, `4` = lowest. Default is `2`.
 
 #### Standard workflow
 
-| Step | Who | Action |
-|------|-----|--------|
-| 1. Create | You | "Create a ticket to add X" — agent runs `tk create` |
-| 2. Start | Agent | `tk start <id>` before writing any code |
-| 3. Implement | Agent | Works on the ticket; prepends `<id>:` to every commit |
-| 4. Test | You | Review the changes |
-| 5. Approve | You | Say "approve `<id>`" — triggers the full pipeline |
+1. **Create** — Ask the agent: *"Create a ticket to add X."*
+   The agent runs `tk create` and returns the ticket ID.
+
+2. **Implement** — Ask the agent: *"Implement ticket `<id>`."*
+   The agent runs `tk start <id>`, does the work, and prepends `<id>:` to every commit.
+
+3. **Test** — Review the changes yourself.
+
+4. **Approve** — Tell the agent: *"Approve `<id>`."*
+   The agent runs the full pipeline (see below).
 
 #### Approve pipeline
 
