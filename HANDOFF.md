@@ -34,6 +34,40 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-04-22 09:53 branch:main -->
+**Modified files:**
+```
+ M AGENTS.md
+ D README.pdf
+ M guides/AI-Agents-Setup.md
+ M guides/AI-Agents-Setup.pdf
+ M init-agent.sh
+ M scripts/auto-polish-trigger.sh
+ D scripts/init-polish.sh
+ M scripts/pre-commit-check.sh
+ M skills.sh
+ M skills/code-reviewer.md
+ M skills/code-simplifier.md
+ D skills/polish.md
+ M skills/security-review.md
+ M tools/handoff.md
+ M tools/ticket.md
+?? .tickets/
+?? scripts/init-wrapup.sh
+?? skills/wrapup.md
+?? temp.txt
+```
+
+**Recent commits:**
+```
+fe93318 chore: auto-update handoff snapshot [2026-04-22 09:51]
+a8345fc chore: auto-update handoff snapshot [2026-04-22 09:46]
+19cb9fd chore: auto-update handoff snapshot [2026-04-22 09:22]
+3328481 chore: auto-update handoff snapshot [2026-04-22 09:10]
+80c52e2 chore: auto-update handoff snapshot [2026-04-22 08:16]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-04-22 09:51 branch:main -->
 **Modified files:**
 ```
@@ -65,40 +99,5 @@ a8345fc chore: auto-update handoff snapshot [2026-04-22 09:46]
 3328481 chore: auto-update handoff snapshot [2026-04-22 09:10]
 80c52e2 chore: auto-update handoff snapshot [2026-04-22 08:16]
 6fc3e0b Simplify approve: root ID only, agent walks dep tree automatically
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-04-22 09:46 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- M HANDOFF.md
- D README.pdf
- M guides/AI-Agents-Setup.md
- M guides/AI-Agents-Setup.pdf
- M init-agent.sh
- M scripts/auto-polish-trigger.sh
- D scripts/init-polish.sh
- M scripts/pre-commit-check.sh
- M skills.sh
- M skills/code-reviewer.md
- M skills/code-simplifier.md
- D skills/polish.md
- M skills/security-review.md
- M tools/handoff.md
- M tools/ticket.md
-?? .tickets/
-?? scripts/init-wrapup.sh
-?? skills/wrapup.md
-?? temp.txt
-```
-
-**Recent commits:**
-```
-19cb9fd chore: auto-update handoff snapshot [2026-04-22 09:22]
-3328481 chore: auto-update handoff snapshot [2026-04-22 09:10]
-80c52e2 chore: auto-update handoff snapshot [2026-04-22 08:16]
-6fc3e0b Simplify approve: root ID only, agent walks dep tree automatically
-12c883f Add dependency case to ticket workflow steps
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
