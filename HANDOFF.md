@@ -37,6 +37,22 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 <!-- HANDOFF-SNAPSHOT:START 2026-04-23 08:58 branch:main -->
 **Modified files:**
 ```
+?? .gitignore
+```
+
+**Recent commits:**
+```
+7eae16e chore: auto-update handoff snapshot [2026-04-23 08:58]
+26afa00 chore: auto-update handoff snapshot [2026-04-23 08:57]
+e706c05 chore: auto-update handoff snapshot [2026-04-23 08:56]
+715226f chore: auto-update handoff snapshot [2026-04-23 08:53]
+d11c7e9 chore: auto-update handoff snapshot [2026-04-23 08:51]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
+<!-- HANDOFF-SNAPSHOT:START 2026-04-23 08:58 branch:main -->
+**Modified files:**
+```
 ?? skills/shorts-director.md
 ```
 
@@ -47,21 +63,5 @@ e706c05 chore: auto-update handoff snapshot [2026-04-23 08:56]
 715226f chore: auto-update handoff snapshot [2026-04-23 08:53]
 d11c7e9 chore: auto-update handoff snapshot [2026-04-23 08:51]
 c00c24b Fix stale path duplication in cmd_add
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-04-23 08:57 branch:main -->
-**Modified files:**
-```
-?? skills/shorts-director.md
-```
-
-**Recent commits:**
-```
-e706c05 chore: auto-update handoff snapshot [2026-04-23 08:56]
-715226f chore: auto-update handoff snapshot [2026-04-23 08:53]
-d11c7e9 chore: auto-update handoff snapshot [2026-04-23 08:51]
-c00c24b Fix stale path duplication in cmd_add
-cefc304 chore: auto-update handoff snapshot [2026-04-22 15:18]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
