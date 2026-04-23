@@ -34,6 +34,22 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-04-23 08:56 branch:main -->
+**Modified files:**
+```
+?? skills/shorts-director.md
+```
+
+**Recent commits:**
+```
+715226f chore: auto-update handoff snapshot [2026-04-23 08:53]
+d11c7e9 chore: auto-update handoff snapshot [2026-04-23 08:51]
+c00c24b Fix stale path duplication in cmd_add
+cefc304 chore: auto-update handoff snapshot [2026-04-22 15:18]
+32c564a addall: back up config files, fix duplicate dependency output
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-04-23 08:53 branch:main -->
 **Modified files:**
 ```
@@ -47,21 +63,5 @@ c00c24b Fix stale path duplication in cmd_add
 cefc304 chore: auto-update handoff snapshot [2026-04-22 15:18]
 32c564a addall: back up config files, fix duplicate dependency output
 9f6154e Fix addall showing duplicate skills from wrapup dependencies
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-04-23 08:51 branch:main -->
-**Modified files:**
-```
-?? skills/shorts-director.md
-```
-
-**Recent commits:**
-```
-c00c24b Fix stale path duplication in cmd_add
-cefc304 chore: auto-update handoff snapshot [2026-04-22 15:18]
-32c564a addall: back up config files, fix duplicate dependency output
-9f6154e Fix addall showing duplicate skills from wrapup dependencies
-9877f5a Update setup guide with addall, --scan, and init re-run guidance
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
