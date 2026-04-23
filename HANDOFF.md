@@ -34,6 +34,24 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-04-23 09:10 branch:main -->
+**Modified files:**
+```
+?? .tickets/can-11z8.md
+?? .tickets/can-95ob.md
+?? .tickets/can-ygd8.md
+```
+
+**Recent commits:**
+```
+afe15cb fix: run /wrapup before tk close in approve workflow
+50904d6 chore: auto-update handoff snapshot [2026-04-23 09:09]
+093a764 chore: auto-update handoff snapshot [2026-04-23 09:08]
+fd3bda1 Add .gitignore to exclude personal skill shorts-director.md
+1159d11 chore: auto-update handoff snapshot [2026-04-23 08:58]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-04-23 09:09 branch:main -->
 **Modified files:**
 ```
@@ -51,25 +69,5 @@ fd3bda1 Add .gitignore to exclude personal skill shorts-director.md
 1159d11 chore: auto-update handoff snapshot [2026-04-23 08:58]
 7eae16e chore: auto-update handoff snapshot [2026-04-23 08:58]
 26afa00 chore: auto-update handoff snapshot [2026-04-23 08:57]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-04-23 09:08 branch:main -->
-**Modified files:**
-```
- M skills/wrapup.md
- M tools/ticket.md
-?? .tickets/can-11z8.md
-?? .tickets/can-95ob.md
-?? .tickets/can-ygd8.md
-```
-
-**Recent commits:**
-```
-fd3bda1 Add .gitignore to exclude personal skill shorts-director.md
-1159d11 chore: auto-update handoff snapshot [2026-04-23 08:58]
-7eae16e chore: auto-update handoff snapshot [2026-04-23 08:58]
-26afa00 chore: auto-update handoff snapshot [2026-04-23 08:57]
-e706c05 chore: auto-update handoff snapshot [2026-04-23 08:56]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
