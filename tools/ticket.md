@@ -66,8 +66,8 @@ This replaces manually asking to close, clean up, and review — one phrase cove
 
 1. **Pre-flight** — run `tk dep cycle`. Abort if cycles are detected.
 2. **Walk the tree** — run `tk dep tree <id>`. Close all dependencies bottom-up (leaves first, then parents). The user only ever specifies the root — never list deps manually.
-3. **Close ticket** — `tk close <id>`.
-4. **Wrapup** — run `/wrapup` on all files modified since the ticket was started.
+3. **Wrapup** — run `/wrapup` on all files modified since the ticket was started. All code modifications must happen before the ticket closes.
+4. **Close ticket** — `tk close <id>` only after wrapup completes.
 
 ## Agent Workflow
 
