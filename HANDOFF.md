@@ -34,6 +34,24 @@ Dependency order: AS-ynok and AS-wom4 are independent, AS-fpax depends on AS-wom
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-04-24 15:04 branch:main -->
+**Modified files:**
+```
+?? .tickets/can-11z8.md
+?? .tickets/can-95ob.md
+?? .tickets/can-ygd8.md
+```
+
+**Recent commits:**
+```
+47a1b61 chore: auto-update handoff snapshot [2026-04-24 15:03]
+b41b2c4 chore: auto-update handoff snapshot [2026-04-24 15:02]
+17a44b2 chore: auto-update handoff snapshot [2026-04-24 15:01]
+2d46f68 chore: auto-update handoff snapshot [2026-04-23 09:13]
+82f0ee8 chore: auto-update handoff snapshot [2026-04-23 09:10]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-04-24 15:03 branch:main -->
 **Modified files:**
 ```
@@ -49,23 +67,5 @@ b41b2c4 chore: auto-update handoff snapshot [2026-04-24 15:02]
 2d46f68 chore: auto-update handoff snapshot [2026-04-23 09:13]
 82f0ee8 chore: auto-update handoff snapshot [2026-04-23 09:10]
 afe15cb fix: run /wrapup before tk close in approve workflow
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-04-24 15:02 branch:main -->
-**Modified files:**
-```
-?? .tickets/can-11z8.md
-?? .tickets/can-95ob.md
-?? .tickets/can-ygd8.md
-```
-
-**Recent commits:**
-```
-17a44b2 chore: auto-update handoff snapshot [2026-04-24 15:01]
-2d46f68 chore: auto-update handoff snapshot [2026-04-23 09:13]
-82f0ee8 chore: auto-update handoff snapshot [2026-04-23 09:10]
-afe15cb fix: run /wrapup before tk close in approve workflow
-50904d6 chore: auto-update handoff snapshot [2026-04-23 09:09]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
