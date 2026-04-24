@@ -150,7 +150,7 @@ cp $SKILLS/extensions/pi/handoff.ts ~/.pi/agent/extensions/handoff.ts
 
 ---
 
-## Step 4 — Per-project setup
+## Step 6 — Per-project setup
 
 Run this once per project you want to use skills in.
 
