@@ -85,6 +85,19 @@ cmd_list() {
   done
 }
 
+upsert_at_import() {
+  local file="$1" import_line="$2" skill_basename="$3" label="$4"
+  if grep -qF "$import_line" "$file" 2>/dev/null; then
+    echo "  [$label]  already registered"
+  elif grep -qE "^@.+/$skill_basename$" "$file" 2>/dev/null; then
+    sed -i '' "s|^@.*/$skill_basename$|$import_line|" "$file"
+    echo "  [$label]  updated stale @-import path"
+  else
+    echo "$import_line" >> "$file"
+    echo "  [$label]  added @-import"
+  fi
+}
+
 cmd_add() {
   local skill="${1:-}"
   local project_dir="${2:-$(pwd)}"
@@ -117,66 +130,49 @@ cmd_add() {
   [ -n "$as_dep" ] && return 0
   echo "Registering: $name ($category)"
 
-  if [ -z "$as_dep" ]; then
-    local claude_file="$project_dir/CLAUDE.md"
-    if grep -qF "$import_line" "$claude_file" 2>/dev/null; then
-      echo "  [CLAUDE.md]  already registered"
-    else
-      echo "$import_line" >> "$claude_file"
-      echo "  [CLAUDE.md]  added @-import"
-    fi
+  local claude_file="$project_dir/CLAUDE.md"
+  local agents_file="$project_dir/AGENTS.md"
+  local skill_basename
+  skill_basename=$(basename "$skill_file")
+  local block_begin="<!-- AI-SKILLS:BEGIN -->"
+  local block_end="<!-- AI-SKILLS:END -->"
+  local skill_row="| $name | $category | $skill_file |"
 
-    local agents_file="$project_dir/AGENTS.md"
-    local block_begin="<!-- AI-SKILLS:BEGIN -->"
-    local block_end="<!-- AI-SKILLS:END -->"
-    local skill_row="| $name | $category | $skill_file |"
+  upsert_at_import "$claude_file" "$import_line" "$skill_basename" "CLAUDE.md"
 
-    if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then
-      {
-        echo ""
-        echo "$block_begin"
-        echo "## Active canon skills"
-        echo "> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Source: $SKILLS_ROOT"
-        echo ""
-        echo "| Skill | Category | Source |"
-        echo "|-------|----------|--------|"
-        echo "$skill_row"
-        echo "$block_end"
-      } >> "$agents_file"
-      echo "  [AGENTS.md]  created skill block"
-    elif grep -qF "| $name |" "$agents_file"; then
-      if grep -qF "$skill_row" "$agents_file"; then
-        echo "  [AGENTS.md]  already registered"
-      else
-        awk -v name="| $name |" -v row="$skill_row" \
-          'index($0, name) { print row; next } { print }' \
-          "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
-        echo "  [AGENTS.md]  updated stale row path"
-      fi
+  if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then
+    {
+      echo ""
+      echo "$block_begin"
+      echo "## Active canon skills"
+      echo "> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Source: $SKILLS_ROOT"
+      echo ""
+      echo "| Skill | Category | Source |"
+      echo "|-------|----------|--------|"
+      echo "$skill_row"
+      echo "$block_end"
+    } >> "$agents_file"
+    echo "  [AGENTS.md]  created skill block"
+  elif grep -qF "| $name |" "$agents_file"; then
+    if grep -qF "$skill_row" "$agents_file"; then
+      echo "  [AGENTS.md]  already registered"
     else
-      awk -v row="$skill_row" -v end="$block_end" \
-        '$0 == end { print row } { print }' \
+      awk -v name="| $name |" -v row="$skill_row" \
+        'index($0, name) { print row; next } { print }' \
         "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
-      echo "  [AGENTS.md]  added row to skill block"
+      echo "  [AGENTS.md]  updated stale row path"
     fi
-
-    local skill_basename
-    skill_basename=$(basename "$skill_file")
-    if grep -qF "$import_line" "$agents_file" 2>/dev/null; then
-      echo "  [AGENTS.md]  @-import already present"
-    elif grep -qE "^@.+/$skill_basename$" "$agents_file" 2>/dev/null; then
-      sed -i '' "s|^@.*/$skill_basename$|$import_line|" "$agents_file"
-      echo "  [AGENTS.md]  updated stale @-import path"
-    else
-      echo "$import_line" >> "$agents_file"
-      echo "  [AGENTS.md]  added @-import"
-    fi
+  else
+    awk -v row="$skill_row" -v end="$block_end" \
+      '$0 == end { print row } { print }' \
+      "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+    echo "  [AGENTS.md]  added row to skill block"
   fi
 
-  if [ -z "$as_dep" ]; then
-    echo ""
-    echo "Done. $desc"
-  fi
+  upsert_at_import "$agents_file" "$import_line" "$skill_basename" "AGENTS.md"
+
+  echo ""
+  echo "Done. $desc"
 }
 
 cmd_status() {
