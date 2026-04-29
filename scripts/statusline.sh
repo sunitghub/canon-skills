@@ -2,6 +2,33 @@
 # Claude Code statusline: Context % | 5h: % (reset) | 7d: % (reset)
 exec 2>/dev/null
 
+# If run interactively (not piped), offer to install
+if [ -t 0 ]; then
+  DEST="$HOME/.claude/statusline.sh"
+  SETTINGS="$HOME/.claude/settings.json"
+  printf "Install statusline → %s and wire %s? [y/N] " "$DEST" "$SETTINGS"
+  read -r answer
+  if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
+    mkdir -p "$(dirname "$DEST")"
+    cp "${BASH_SOURCE[0]}" "$DEST"
+    chmod +x "$DEST"
+    python3 - "$SETTINGS" <<'PYEOF'
+import json, sys, os
+path = sys.argv[1]
+data = {}
+if os.path.exists(path):
+    with open(path) as f:
+        data = json.load(f)
+data["statusLine"] = {"type": "command", "command": "bash ~/.claude/statusline.sh"}
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+    printf "Done. Restart Claude Code to see the statusline.\n"
+  fi
+  exit 0
+fi
+
 CACHE_DIR="$HOME/.cache/waza-statusline"
 CACHE_FILE="$CACHE_DIR/last.json"
 CACHE_MAX_AGE=21600  # 6 hours: one full rate_limit window
