@@ -18,3 +18,19 @@ Nothing in progress.
 ## Dead Ends
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
+
+<!-- HANDOFF-SNAPSHOT:START 2026-04-28 20:57 branch:main -->
+**Modified files:**
+```
+ M scripts/statusline.sh
+```
+
+**Recent commits:**
+```
+8f01df7 fix(statusline): add colon to Ctx label for consistency
+eb55876 feat: add statusline script and init installer
+cce3aac chore: gitignore CLAUDE.md — machine-specific @-import paths
+167eb7f fix(skills): heal stale @-import paths instead of duplicating
+3069a77 docs: fix step numbering in setup guide, update handoff
+```
+<!-- HANDOFF-SNAPSHOT:END -->
