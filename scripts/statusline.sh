@@ -126,7 +126,7 @@ elif [ "$ctx_pct" -ge 70 ] 2>/dev/null; then
 else
   ctx_color="$GREEN"
 fi
-context_part="${LABEL}Ctx${RESET} ${ctx_color}${ctx_pct}%${RESET}"
+context_part="${LABEL}Ctx:${RESET} ${ctx_color}${ctx_pct}%${RESET}"
 
 # Usage color
 usage_color() {
