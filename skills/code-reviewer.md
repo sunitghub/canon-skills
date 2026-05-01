@@ -3,6 +3,7 @@ name: code-reviewer
 description: Review local changes or a remote PR across correctness, maintainability, security, and test coverage
 category: skills
 tags: [code-review, pull-requests, quality]
+hidden: true
 ---
 
 # Code Reviewer

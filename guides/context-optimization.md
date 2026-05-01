@@ -58,7 +58,7 @@ rtk discover          # commands that slipped through without RTK
 
 ---
 
-## Layer 3 — Quality Automation (Hooks + Polish)
+## Layer 3 — Quality Automation (Hooks + Wrapup)
 
 **What:** A sequence of hooks enforces a quality gate between "task done" and "commit" without requiring any user prompting.
 
@@ -70,32 +70,30 @@ User sends message
 
 Claude runs: git commit
   └─ PreToolUse[Bash] → rtk hook claude        (rewrite for token efficiency)
-                      → pre-commit-check.sh  (remind: close tickets, run /polish)
+                      → pre-commit-check.sh  (remind: close tickets, run /wrapup)
 
 Claude runs: tk close <id>
-  └─ PostToolUse[Bash] → auto-polish-trigger.sh  (instruct Claude: run /polish now)
+  └─ PostToolUse[Bash] → auto-polish-trigger.sh  (instruct Claude: run /wrapup now)
 
-/polish runs
+/wrapup runs
   └─ code-simplifier → code-reviewer → security-review  (skip logic per change scope)
 
 Claude finishes turn
   └─ Stop → auto-handoff.sh  (snapshot git state to HANDOFF.md if changes exist)
 ```
 
-**Polish skip logic:** Not every change needs all three steps. Polish self-directs:
+**Wrapup skip logic:** Not every change needs all three steps. Wrapup self-directs:
 - Skip `code-simplifier` for single-line changes, docs-only, or config-only diffs
 - Skip `code-reviewer` for purely mechanical changes (rename, format, move)
 - Skip `security-review` if no security-sensitive files changed (auth, DB, user input, API, crypto)
 
-When a step is skipped, Polish states why — so it's clear the step was considered, not missed.
+When a step is skipped, Wrapup states why — so it's clear the step was considered, not missed.
 
-**Registering polish in a project:**
+**Registering wrapup in a project:**
 ```bash
-for s in code-simplifier code-reviewer security-review polish; do
-  <path-to-canon>/skills.sh add $s /path/to/project
-done
+$SKILLS/skills.sh add wrapup /path/to/project
 ```
-The `auto-polish-trigger.sh` and `pre-commit-check.sh` hooks check whether polish is registered before firing — they stay silent in projects where it isn't.
+`wrapup` pulls in its full dep stack automatically — `code-simplifier`, `code-reviewer`, `security-review`, `handoff`, and `ticket` — all registered silently without appearing in `skills list`. The `auto-polish-trigger.sh` and `pre-commit-check.sh` hooks check whether wrapup is registered before firing — they stay silent in projects where it isn't.
 
 ---
 
@@ -136,7 +134,7 @@ Output is comparatively small: responses are terse, tool calls are compact JSON.
 Token budget
   ├── RTK compresses CLI output (saves ~95% on covered commands)
   ├── Handoff keeps session context tight (prune to <80 lines)
-  └── Polish catches quality issues before they accumulate in the codebase
+  └── Wrapup catches quality issues before they accumulate in the codebase
 
 Context window
   ├── handoff-inject.sh: ~200–400 tokens once per 4h (net positive — avoids re-explaining)

@@ -32,8 +32,14 @@ Claude Code loads this via `adapters/claude/CLAUDE.md`.
 
 ## Standards
 
-See [standards/general.md](standards/general.md) for coding conventions.
-See [standards/git.md](standards/git.md) for git and commit conventions.
+See [standards/efficiency.md](standards/efficiency.md) for the full agent standards (code quality, security, git conventions, token efficiency).
+
+Key rules:
+- Never introduce security vulnerabilities (OWASP top 10). Never commit secrets.
+- Commits: imperative mood, 50/72 chars, type prefix (`feat`, `fix`, `refactor`...), no self-referential language.
+- Before editing any file, read it first. Grep callers before modifying a function.
+- Don't read `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next` unless asked.
+- Keep CLAUDE.md and AGENTS.md concise — only rules, gotchas, non-obvious conventions.
 
 ## RTK — Token Optimization
 

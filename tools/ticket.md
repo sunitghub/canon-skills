@@ -3,6 +3,7 @@ name: ticket
 description: TK is CLI ticket system for task management. Run `tk help` when you need to use it.
 category: tools
 tags: [project-management, tasks, cli, git]
+hidden: true
 ---
 
 # Ticket — Git-Native Task Tracking

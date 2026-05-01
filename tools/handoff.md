@@ -3,6 +3,7 @@ name: handoff
 description: Session context handoff protocol — keeps Claude and Codex in sync across repos and agents
 category: tools
 tags: [context, memory, handoff, multi-agent]
+hidden: true
 ---
 
 # Handoff — Session Context Protocol

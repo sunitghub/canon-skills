@@ -10,16 +10,16 @@ A shared library of AI agent skills, tools, standards, and automation scripts. Y
 
 ```
 canon/              ← this repo (shared library, clone once)
-  skills/           ← wrapup, code-reviewer, security-review, ...
-  tools/            ← ticket, handoff
-  standards/        ← general, git
+  skills/           ← wrapup, pdf, shorts-director (+ hidden deps: code-reviewer, code-simplifier, security-review)
+  tools/            ← handoff, ticket (hidden deps, pulled in by wrapup)
+  standards/        ← efficiency (coding, git, token-efficiency — one unified file)
   scripts/          ← hook automation (handoff, wrapup trigger, pre-commit)
   guides/           ← this file and context-optimization.md
   extensions/pi/    ← Pi lifecycle extensions
 
 your-project/       ← your work repo
   CLAUDE.md         ← @-imports pointing into canon
-  AGENTS.md         ← skill table for Codex and Pi
+  AGENTS.md         ← skill table + inlined standards for Codex and Pi
   HANDOFF.md        ← session context (auto-managed)
 ```
 
@@ -168,19 +168,16 @@ $SKILLS/skills.sh addall
 ```bash
 cd /path/to/your-project
 
-# Context and task management
-$SKILLS/skills.sh add handoff
-$SKILLS/skills.sh add ticket      # if using tk for task tracking
-
-# Coding standards (applied automatically, no invocation needed)
-$SKILLS/skills.sh add general
-$SKILLS/skills.sh add git
-
-# Quality pipeline (installs dependencies automatically)
+# Full stack — wrapup pulls in code-simplifier, code-reviewer, security-review, handoff, and ticket automatically
 $SKILLS/skills.sh add wrapup
+
+# Optional extras
+$SKILLS/skills.sh add pdf          # PDF read/extract/merge/split
 ```
 
 `addall` is idempotent — safe to re-run if new skills have been added to canon since you last registered.
+
+> **Standards and deps are auto-injected.** Every `skills.sh add` call automatically injects the `efficiency` standard (coding principles, git conventions, token-efficiency rules) — as `@`-imports in `CLAUDE.md` and inline content in `AGENTS.md`. Skill deps like `code-reviewer`, `handoff`, and `ticket` are wired silently without appearing in the catalog.
 
 ### Verify registration
 
@@ -188,11 +185,11 @@ $SKILLS/skills.sh add wrapup
 $SKILLS/skills.sh status          # or: skills.sh --scan /path/to/your-project
 ```
 
-You should see all registered skills listed under both `CLAUDE.md` and `AGENTS.md`.
+This checks registered skills, inline standard freshness, and broken `@`-import paths. It reports issues and tells you exactly what to run to fix them.
 
 ### Initialize HANDOFF.md
 
-Tell Claude or Codex: "Initialize the handoff file" — it creates `HANDOFF.md` in the project root from the template.
+`handoff` is registered automatically as a dep of `wrapup`. To initialize the file, tell Claude or Codex: "Initialize the handoff file" — it creates `HANDOFF.md` in the project root from the template.
 
 ---
 
@@ -229,17 +226,13 @@ After registering skills, confirm each one is wired up and responding correctly.
 
 | Skill | How to verify | Expected response |
 |-------|--------------|-------------------|
-| `general` | `skills.sh status` | Listed under CLAUDE.md @-imports |
-| `git` | `skills.sh status` | Listed under CLAUDE.md @-imports |
-| `ticket` (optional) | `tk ls` — only if using tk | Empty list or existing tickets (no error) |
-| `handoff` | Tell Claude/Codex: "Initialize the handoff file" | `HANDOFF.md` created in project root |
-| `code-simplifier` | Tell Claude/Codex: "Simplify the changes" | Simplification report scoped to recent changes |
-| `code-reviewer` | Tell Claude/Codex: "Review my changes" | Structured report across seven dimensions |
-| `security-review` | Tell Claude/Codex: "Run a security review" | Findings report or explicit "nothing flagged" |
-| `wrapup` | Tell Claude/Codex: "Wrapup the changes" or `/wrapup` | Runs all three steps with skip reasoning for each |
-| `pdf` | Tell Claude/Codex: "Extract text from [file].pdf" | Extracted content or clear error if no PDF present |
+| `efficiency` | `skills.sh status` | Listed under CLAUDE.md @-imports; `[current]` in AGENTS.md standards |
+| `wrapup` | `"Wrapup the changes"` or `/wrapup` | Runs simplifier → reviewer → security-review with skip reasoning |
+| `pdf` | `"Extract text from [file].pdf"` | Extracted content or clear error if no PDF present |
+| `ticket` (optional) | `tk ls` — only if `tk` is installed | Empty list or existing tickets (no error) |
+| `handoff` | `"Initialize the handoff file"` | `HANDOFF.md` created in project root |
 
-> **Standards skills** (`general`, `git`) have no invocation — they're applied automatically to every code change. Registration in `skills.sh status` is the only verification needed.
+> `efficiency` has no invocation — applied automatically to every session. `ticket` and `handoff` are hidden deps of `wrapup`; they don't appear in `skills list` but are registered when wrapup is added.
 
 ---
 
@@ -382,21 +375,38 @@ If you use the `ticket` skill, the `PostToolUse` hook (`auto-polish-trigger.sh`)
 
 ## Staying updated
 
-When this repo is updated with improved skills or new scripts:
+When this repo is updated with improved skills, standards, or scripts:
 
 ```bash
 cd $SKILLS && git pull
 ```
 
-**That's it for existing skills.** Because your project's `CLAUDE.md` uses live `@`-import references into this repo, Claude Code picks up updated skill content automatically on the next session. Hook scripts update immediately too — they're called by path.
+**Hook scripts** update immediately — they're called by path, so the new version runs on the next session.
 
-**For newly added skills:** opt in with `addall` (picks up everything new at once) or individually:
+**Skill content** in `CLAUDE.md` (Claude) is live `@`-import references — Claude picks up changes automatically on the next session.
+
+**Inline standards** in `AGENTS.md` (Codex, Pi) are a static copy and need an explicit refresh to pick up changes:
+
+```bash
+$SKILLS/skills.sh refresh /path/to/your-project
+```
+
+`refresh` re-registers every skill already in the project, replaces any outdated inline standard blocks in `AGENTS.md`, and heals stale `@`-import paths — all in one command.
+
+**For newly added skills** (opt in individually or all at once):
 ```bash
 $SKILLS/skills.sh addall /path/to/your-project        # register any new skills
 $SKILLS/skills.sh add <new-skill> /path/to/your-project  # or just one
 ```
 
-Check what's new:
+**Check for issues before refreshing:**
+```bash
+$SKILLS/skills.sh status /path/to/your-project
+```
+
+Reports stale paths, outdated inline standards, and broken `@`-imports — with a one-line fix suggestion when anything is out of date.
+
+Check what skills are available:
 ```bash
 $SKILLS/skills.sh list
 ```

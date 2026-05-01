@@ -3,8 +3,13 @@ name: wrapup
 description: Run code-simplifier, code-reviewer, and security-review in the right order after completing any unit of work — skips steps that don't apply
 category: skills
 tags: [code-quality, workflow, orchestration, refactoring, security]
-depends: [code-simplifier, code-reviewer, security-review]
+depends: [code-simplifier, code-reviewer, security-review, handoff, ticket]
 ---
+@./code-simplifier.md
+@./code-reviewer.md
+@./security-review.md
+@../tools/handoff.md
+@../tools/ticket.md
 
 # Wrapup — Quality Pipeline
 

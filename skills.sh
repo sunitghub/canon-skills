@@ -59,6 +59,7 @@ cmd_list() {
       local name desc category summary
       name=$(fm_field "$f" name)
       [ -z "$name" ] && continue
+      [ "$(fm_field "$f" hidden)" = "true" ] && continue
       summary=$(fm_field "$f" summary)
       desc="${summary:-$(fm_field "$f" description)}"
       category=$(fm_field "$f" category)
@@ -98,6 +99,7 @@ upsert_at_import() {
   fi
 }
 
+
 cmd_add() {
   local skill="${1:-}"
   local project_dir="${2:-$(pwd)}"
@@ -111,14 +113,15 @@ cmd_add() {
     exit 1
   }
 
-  local name desc category depends
+  local name desc category depends skill_basename
   name=$(fm_field "$skill_file" name)
   desc=$(fm_field "$skill_file" description)
   category=$(fm_field "$skill_file" category)
   depends=$(fm_field "$skill_file" depends)
+  skill_basename=$(basename "$skill_file")
   local import_line="@$skill_file"
 
-  # Resolve dependencies first (as deps — table row only, no @-import)
+  # Resolve dependencies first — register their @-imports silently, no table row
   if [ -n "$depends" ]; then
     local deps
     deps=$(echo "$depends" | tr -d '[]' | tr ',' '\n' | tr -d ' ')
@@ -127,13 +130,25 @@ cmd_add() {
     done <<< "$deps"
   fi
 
+  # Deps are loaded transitively via @-imports inside the parent skill file.
+  # Don't add them to target files — keep CLAUDE.md and AGENTS.md clean.
   [ -n "$as_dep" ] && return 0
   echo "Registering: $name ($category)"
 
+  # Auto-inject all standards into every project that registers any skill.
+  # Both CLAUDE.md and AGENTS.md get @-imports — clean references, no inlining.
+  local _std
+  for _std in "$SKILLS_ROOT/standards/"*.md; do
+    [ -f "$_std" ] || continue
+    local _std_basename _std_import
+    _std_basename=$(basename "$_std")
+    _std_import="@$_std"
+    upsert_at_import "$project_dir/CLAUDE.md" "$_std_import" "$_std_basename" "CLAUDE.md (std)"
+    upsert_at_import "$project_dir/AGENTS.md" "$_std_import" "$_std_basename" "AGENTS.md (std)"
+  done
+
   local claude_file="$project_dir/CLAUDE.md"
   local agents_file="$project_dir/AGENTS.md"
-  local skill_basename
-  skill_basename=$(basename "$skill_file")
   local block_begin="<!-- AI-SKILLS:BEGIN -->"
   local block_end="<!-- AI-SKILLS:END -->"
   local skill_row="| $name | $category | $skill_file |"
@@ -177,27 +192,152 @@ cmd_add() {
 
 cmd_status() {
   local project_dir="${1:-$(pwd)}"
-  echo "canon skills registered in: $project_dir"
-  echo ""
-
   local claude_file="$project_dir/CLAUDE.md"
-  if [ -f "$claude_file" ] && grep -qF "$SKILLS_ROOT" "$claude_file" 2>/dev/null; then
-    echo "CLAUDE.md (@-imports):"
-    grep -F "$SKILLS_ROOT" "$claude_file" | sed "s|@$SKILLS_ROOT/|  |"
+  local agents_file="$project_dir/AGENTS.md"
+  local issues=0
+
+  echo "canon skills in: $project_dir"
+  echo ""
+
+  # ── Registered skills ────────────────────────────────────────────────────
+  if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
+    echo "Skills:"
+    local skill_names=()
+    while IFS= read -r line; do
+      local sname spath
+      sname=$(echo "$line" | awk -F'|' '{gsub(/[[:space:]]/,"",$2); print $2}')
+      spath=$(echo "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}')
+      [ -z "$sname" ] && continue
+      skill_names+=("$sname")
+
+      local tag="ok"
+      [ ! -f "$spath" ] && tag="broken ref" && (( issues++ )) || true
+
+      local canon_file
+      canon_file=$(find_skill "$sname" 2>/dev/null || true)
+      if [ -n "$canon_file" ] && [ "$canon_file" != "$spath" ]; then
+        tag="stale path"
+        (( issues++ )) || true
+      fi
+
+      printf "  %-25s %s\n" "$sname" "[$tag]"
+    done < <(sed -n '/AI-SKILLS:BEGIN/,/AI-SKILLS:END/p' "$agents_file" \
+               | grep "^| " | grep -v "^| Skill")
   else
-    echo "CLAUDE.md: none"
+    echo "Skills: none"
   fi
 
+  # ── @-imports in CLAUDE.md and AGENTS.md ────────────────────────────────
   echo ""
-  local agents_file="$project_dir/AGENTS.md"
-  if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
-    echo "AGENTS.md (skill block):"
-    sed -n '/AI-SKILLS:BEGIN/,/AI-SKILLS:END/p' "$agents_file" \
-      | grep "^| " | grep -v "^| Skill" \
-      | awk -F'|' '{printf "  %-25s %s\n", $2, $3}'
+  for check_file in "$claude_file" "$agents_file"; do
+    local label
+    label=$(basename "$check_file")
+    [ -f "$check_file" ] || continue
+    local broken=()
+    while IFS= read -r imp; do
+      local path="${imp#@}"
+      [ ! -f "$path" ] && broken+=("$imp")
+    done < <(grep "^@" "$check_file" 2>/dev/null || true)
+    if [ ${#broken[@]} -gt 0 ]; then
+      echo "Broken @-imports ($label):"
+      printf '  %s\n' "${broken[@]}"
+      (( issues += ${#broken[@]} )) || true
+      echo ""
+    fi
+  done
+
+  # ── Summary ──────────────────────────────────────────────────────────────
+  echo ""
+  if [ "$issues" -eq 0 ]; then
+    echo "All up to date."
   else
-    echo "AGENTS.md: none"
+    echo "$issues issue(s) found. Run: $(basename "$0") refresh $project_dir"
   fi
+}
+
+cmd_refresh() {
+  local project_dir="${1:-$(pwd)}"
+  local claude_file="$project_dir/CLAUDE.md"
+  local agents_file="$project_dir/AGENTS.md"
+
+  if ! grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
+    echo "No canon skills registered in: $project_dir"
+    echo "Run: $(basename "$0") add <skill> $project_dir"
+    exit 1
+  fi
+
+  # ── Prune stale canon @-imports from CLAUDE.md and AGENTS.md ────────────
+  # Remove any @-import pointing inside SKILLS_ROOT to a file that no longer exists.
+  # Also strip any legacy CANON-STD inline blocks (replaced by @-imports).
+  for prune_file in "$claude_file" "$agents_file"; do
+    [ -f "$prune_file" ] || continue
+    local tmp
+    tmp=$(mktemp)
+    # Pass 1: strip artifact lines, stale @-imports, and hidden-skill @-imports
+    while IFS= read -r line; do
+      [[ "$line" == *"[pruned]"* ]] && continue
+      if [[ "$line" == @"$SKILLS_ROOT"/* ]]; then
+        local path="${line#@}"
+        if [ ! -f "$path" ]; then
+          echo "  [pruned]  stale: $line" >&2
+          continue
+        fi
+        if [ "$(fm_field "$path" hidden)" = "true" ]; then
+          echo "  [pruned]  hidden dep: $line" >&2
+          continue
+        fi
+      fi
+      printf '%s\n' "$line"
+    done < "$prune_file" > "$tmp" && mv "$tmp" "$prune_file"
+    # Pass 2: strip legacy CANON-STD inline blocks
+    if grep -qF "<!-- CANON-STD:" "$prune_file" 2>/dev/null; then
+      tmp=$(mktemp)
+      awk '
+        /<!-- CANON-STD:[^:]+:BEGIN -->/ { skip=1; next }
+        /<!-- CANON-STD:[^:]+:END -->/   { skip=0; next }
+        !skip { print }
+      ' "$prune_file" > "$tmp" && mv "$tmp" "$prune_file"
+      echo "  [pruned]  legacy CANON-STD blocks from $(basename "$prune_file")" >&2
+    fi
+  done
+
+  echo ""
+
+  # ── Purge hidden skills from AI-SKILLS table ─────────────────────────────
+  # Skills that were explicitly registered but are now hidden should be removed.
+  if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
+    local tmp
+    tmp=$(mktemp)
+    while IFS= read -r line; do
+      if [[ "$line" == "| "* ]] && [[ "$line" != "| Skill"* ]]; then
+        local sname spath
+        sname=$(echo "$line" | awk -F'|' '{gsub(/[[:space:]]/,"",$2); print $2}')
+        spath=$(echo "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}')
+        if [ -f "$spath" ] && [ "$(fm_field "$spath" hidden)" = "true" ]; then
+          echo "  [pruned]  hidden skill from table: $sname" >&2
+          continue
+        fi
+      fi
+      printf '%s\n' "$line"
+    done < "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
+  fi
+
+  # ── Re-register all remaining skills ─────────────────────────────────────
+  local skills
+  skills=$(sed -n '/AI-SKILLS:BEGIN/,/AI-SKILLS:END/p' "$agents_file" \
+    | grep "^| " | grep -v "^| Skill" \
+    | awk -F'|' '{gsub(/[[:space:]]/, "", $2); print $2}')
+
+  local count
+  count=$(printf '%s\n' "$skills" | grep -c '.')
+  echo "Refreshing $count skill(s) in: $project_dir"
+  echo ""
+
+  while IFS= read -r skill; do
+    [ -z "$skill" ] && continue
+    (cmd_add "$skill" "$project_dir") || echo "  [warn] '$skill' not found in canon — skipping"
+    echo ""
+  done <<< "$skills"
 }
 
 cmd_remove() {
@@ -439,21 +579,23 @@ case "${1:-}" in
 esac
 
 case "$cmd" in
-  list)   cmd_list   "$@" ;;
-  add)    cmd_add    "$@" ;;
-  addall) cmd_addall "$@" ;;
-  status) cmd_status "$@" ;;
-  remove) cmd_remove "$@" ;;
-  delete) cmd_delete "$@" ;;
-  help)   cmd_help   "$@" ;;
-  init)   cmd_init   "$@" ;;
+  list)    cmd_list    "$@" ;;
+  add)     cmd_add     "$@" ;;
+  addall)  cmd_addall  "$@" ;;
+  refresh) cmd_refresh "$@" ;;
+  status)  cmd_status  "$@" ;;
+  remove)  cmd_remove  "$@" ;;
+  delete)  cmd_delete  "$@" ;;
+  help)    cmd_help    "$@" ;;
+  init)    cmd_init    "$@" ;;
   *)
-    echo "Usage: skills.sh <list|add|addall|status|remove|delete|help|init> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|addall|refresh|status|remove|delete|help|init> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
     echo "  addall [dir]            Register all available skills into a project (default: cwd)"
-    echo "  status [dir]            Show registered skills (default: cwd)"
+    echo "  refresh [dir]           Re-register all skills and update standards (default: cwd)"
+    echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
     echo "  delete <skill>          Permanently remove a skill from canon"
     echo "  help <skill>            Show full documentation for a skill"
