@@ -19,6 +19,31 @@ Nothing in progress.
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:43 branch:main -->
+**Modified files:**
+```
+ M AGENTS.md
+ M Emacs/init.el
+ M adapters/claude/CLAUDE.md
+ M guides/AI-Agents-Setup.md
+ M guides/context-optimization.md
+ M skills.sh
+ M standards/general.md
+ M standards/git.md
+?? .DS_Store
+?? standards/efficiency.md
+```
+
+**Recent commits:**
+```
+27b8349 chore: auto-update handoff snapshot [2026-05-01 09:41]
+b799871 chore: auto-update handoff snapshot [2026-05-01 09:36]
+e745ddb chore: auto-update handoff snapshot [2026-05-01 09:34]
+0050f38 chore: auto-update handoff snapshot [2026-05-01 09:31]
+4ceee25 chore: auto-update handoff snapshot [2026-05-01 09:30]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:41 branch:main -->
 **Modified files:**
 ```
@@ -41,28 +66,5 @@ e745ddb chore: auto-update handoff snapshot [2026-05-01 09:34]
 0050f38 chore: auto-update handoff snapshot [2026-05-01 09:31]
 4ceee25 chore: auto-update handoff snapshot [2026-05-01 09:30]
 9372003 chore: auto-update handoff snapshot [2026-05-01 09:30]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:36 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- M Emacs/init.el
- M adapters/claude/CLAUDE.md
- M guides/AI-Agents-Setup.md
- M guides/context-optimization.md
- M skills.sh
-?? .DS_Store
-?? standards/efficiency.md
-```
-
-**Recent commits:**
-```
-e745ddb chore: auto-update handoff snapshot [2026-05-01 09:34]
-0050f38 chore: auto-update handoff snapshot [2026-05-01 09:31]
-4ceee25 chore: auto-update handoff snapshot [2026-05-01 09:30]
-9372003 chore: auto-update handoff snapshot [2026-05-01 09:30]
-6712cee chore: auto-update handoff snapshot [2026-05-01 09:27]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
