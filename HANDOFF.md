@@ -22,6 +22,22 @@ Nothing in progress.
 <!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:08 branch:main -->
 **Modified files:**
 ```
+?? .DS_Store
+```
+
+**Recent commits:**
+```
+57ae2de feat(emacs): add markdown-mode and visual-line-mode hooks, remove commented keybindings
+7fad0f7 chore: auto-update handoff snapshot [2026-05-01 10:08]
+e3303ea feat(skills): consolidate standards, simplify catalog, add refresh command
+3fc5c42 chore: auto-update handoff snapshot [2026-05-01 10:06]
+3b90cf3 chore: auto-update handoff snapshot [2026-05-01 10:02]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
+<!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:08 branch:main -->
+**Modified files:**
+```
  M Emacs/init.el
 ?? .DS_Store
 ```
@@ -33,36 +49,5 @@ e3303ea feat(skills): consolidate standards, simplify catalog, add refresh comma
 3b90cf3 chore: auto-update handoff snapshot [2026-05-01 10:02]
 ee1848f chore: auto-update handoff snapshot [2026-05-01 09:54]
 aeae908 chore: auto-update handoff snapshot [2026-05-01 09:53]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:06 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- M Emacs/init.el
- M adapters/claude/CLAUDE.md
- M guides/AI-Agents-Setup.md
- M guides/context-optimization.md
- M skills.sh
- M skills/code-reviewer.md
- M skills/code-simplifier.md
- M skills/security-review.md
- M skills/wrapup.md
- D standards/general.md
- D standards/git.md
- M tools/handoff.md
- M tools/ticket.md
-?? .DS_Store
-?? standards/efficiency.md
-```
-
-**Recent commits:**
-```
-3b90cf3 chore: auto-update handoff snapshot [2026-05-01 10:02]
-ee1848f chore: auto-update handoff snapshot [2026-05-01 09:54]
-aeae908 chore: auto-update handoff snapshot [2026-05-01 09:53]
-5b24529 chore: auto-update handoff snapshot [2026-05-01 09:50]
-8b61ae9 chore: auto-update handoff snapshot [2026-05-01 09:43]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
