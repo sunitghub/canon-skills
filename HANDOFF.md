@@ -19,6 +19,22 @@ Nothing in progress.
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:09 branch:main -->
+**Modified files:**
+```
+?? .DS_Store
+```
+
+**Recent commits:**
+```
+aac12a7 chore: auto-update handoff snapshot [2026-05-01 10:08]
+57ae2de feat(emacs): add markdown-mode and visual-line-mode hooks, remove commented keybindings
+7fad0f7 chore: auto-update handoff snapshot [2026-05-01 10:08]
+e3303ea feat(skills): consolidate standards, simplify catalog, add refresh command
+3fc5c42 chore: auto-update handoff snapshot [2026-05-01 10:06]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:08 branch:main -->
 **Modified files:**
 ```
@@ -32,22 +48,5 @@ Nothing in progress.
 e3303ea feat(skills): consolidate standards, simplify catalog, add refresh command
 3fc5c42 chore: auto-update handoff snapshot [2026-05-01 10:06]
 3b90cf3 chore: auto-update handoff snapshot [2026-05-01 10:02]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:08 branch:main -->
-**Modified files:**
-```
- M Emacs/init.el
-?? .DS_Store
-```
-
-**Recent commits:**
-```
-e3303ea feat(skills): consolidate standards, simplify catalog, add refresh command
-3fc5c42 chore: auto-update handoff snapshot [2026-05-01 10:06]
-3b90cf3 chore: auto-update handoff snapshot [2026-05-01 10:02]
-ee1848f chore: auto-update handoff snapshot [2026-05-01 09:54]
-aeae908 chore: auto-update handoff snapshot [2026-05-01 09:53]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
