@@ -32,17 +32,18 @@ Nothing in progress.
 
 **Recent commits:**
 ```
+9372003 chore: auto-update handoff snapshot [2026-05-01 09:30]
 6712cee chore: auto-update handoff snapshot [2026-05-01 09:27]
 4315c6e chore: auto-update handoff snapshot [2026-05-01 09:22]
 63314b3 chore: auto-update handoff snapshot [2026-05-01 09:20]
 00d9163 chore: auto-update handoff snapshot [2026-05-01 09:18]
-15b701d chore: auto-update handoff snapshot [2026-05-01 09:17]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
 
-<!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:27 branch:main -->
+<!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:30 branch:main -->
 **Modified files:**
 ```
+ M AGENTS.md
  M Emacs/init.el
  M adapters/claude/CLAUDE.md
  M skills.sh
@@ -52,10 +53,10 @@ Nothing in progress.
 
 **Recent commits:**
 ```
+6712cee chore: auto-update handoff snapshot [2026-05-01 09:27]
 4315c6e chore: auto-update handoff snapshot [2026-05-01 09:22]
 63314b3 chore: auto-update handoff snapshot [2026-05-01 09:20]
 00d9163 chore: auto-update handoff snapshot [2026-05-01 09:18]
 15b701d chore: auto-update handoff snapshot [2026-05-01 09:17]
-21e5039 Add keybindings and mouse support to Emacs config
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
