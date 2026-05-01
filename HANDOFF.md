@@ -19,6 +19,37 @@ Nothing in progress.
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:50 branch:main -->
+**Modified files:**
+```
+ M AGENTS.md
+ M Emacs/init.el
+ M adapters/claude/CLAUDE.md
+ M guides/AI-Agents-Setup.md
+ M guides/context-optimization.md
+ M skills.sh
+ M skills/code-reviewer.md
+ M skills/code-simplifier.md
+ M skills/security-review.md
+ M skills/wrapup.md
+ D standards/general.md
+ D standards/git.md
+ M tools/handoff.md
+ M tools/ticket.md
+?? .DS_Store
+?? standards/efficiency.md
+```
+
+**Recent commits:**
+```
+8b61ae9 chore: auto-update handoff snapshot [2026-05-01 09:43]
+27b8349 chore: auto-update handoff snapshot [2026-05-01 09:41]
+b799871 chore: auto-update handoff snapshot [2026-05-01 09:36]
+e745ddb chore: auto-update handoff snapshot [2026-05-01 09:34]
+0050f38 chore: auto-update handoff snapshot [2026-05-01 09:31]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:43 branch:main -->
 **Modified files:**
 ```
@@ -41,30 +72,5 @@ b799871 chore: auto-update handoff snapshot [2026-05-01 09:36]
 e745ddb chore: auto-update handoff snapshot [2026-05-01 09:34]
 0050f38 chore: auto-update handoff snapshot [2026-05-01 09:31]
 4ceee25 chore: auto-update handoff snapshot [2026-05-01 09:30]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-01 09:41 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- M Emacs/init.el
- M adapters/claude/CLAUDE.md
- M guides/AI-Agents-Setup.md
- M guides/context-optimization.md
- M skills.sh
- M standards/general.md
- M standards/git.md
-?? .DS_Store
-?? standards/efficiency.md
-```
-
-**Recent commits:**
-```
-b799871 chore: auto-update handoff snapshot [2026-05-01 09:36]
-e745ddb chore: auto-update handoff snapshot [2026-05-01 09:34]
-0050f38 chore: auto-update handoff snapshot [2026-05-01 09:31]
-4ceee25 chore: auto-update handoff snapshot [2026-05-01 09:30]
-9372003 chore: auto-update handoff snapshot [2026-05-01 09:30]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
