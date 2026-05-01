@@ -22,6 +22,11 @@
 (require 'package)
 (add-to-list 'package-archives '("melpa" . "https://melpa.org") t)
 
+(use-package markdown-mode :ensure t)
+
+(add-hook 'text-mode-hook #'visual-line-mode)                                                                             
+(add-hook 'markdown-mode-hook #'visual-line-mode)
+
 (load-theme 'dracula t)
 
 ;; Highlight color
@@ -73,20 +78,6 @@
 
 ;; Comment region
 (global-set-key (kbd "C-c ;") 'comment-or-uncomment-region)
-
-
-;; Bound Ctr-G for esc-esc-esc
-
-;; (global-set-key (kbd "C-g") 'keyboard-escape-quit)
-
-;; (defun smart-quit ()                                                                                                      
-;;     "Abort current action, handling nested states."                                                    
-;;     (interactive)                                                                                                           
-;;     (if (minibufferp)
-;;         (abort-recursive-edit)                                                                                              
-;;       (keyboard-quit)))                                                                                
-
-;; (global-set-key (kbd "C-g") 'smart-quit)
 
 
 ;; format current buffer
