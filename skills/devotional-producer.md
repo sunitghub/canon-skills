@@ -13,6 +13,7 @@ Invoke when the user wants to plan, audit, or check readiness for a devotee anub
 
 **Master trigger** — runs the full content check in one pass:
 - "check [script/video name] for content generation"
+- "check @<filename> for content"
 - "content check" / "check for content"
 
 **Targeted triggers:**
@@ -28,7 +29,7 @@ Invoke when the user wants to plan, audit, or check readiness for a devotee anub
 
 ## Mode 0 — Content Check (Master Mode)
 
-**Trigger:** "check [script name] for content generation" / "content check"
+**Trigger:** "check [script name] for content generation" / "content check" / "check @<filename> for content"
 
 Runs the full sequence in one pass. No further input needed from the user.
 
@@ -38,43 +39,69 @@ Runs the full sequence in one pass. No further input needed from the user.
 ```bash
 render-scene --critic
 ```
-Read both output tables before proceeding.
+Read both output tables before proceeding. Note each scene's Hold and Status.
 
 **Step 2 — For every scene, in order:**
 
-For each scene, do all three sub-steps before moving to the next scene.
+Do all sub-steps for one scene before moving to the next.
 
-**2a. Write or update the `### Critique` section** (Mode 4 rules):
+**2a. Read the scene script:**
+- Read the Hindi narration and any English translation or suggested text in the scene block.
+- Identify which beat(s) from the 8-beat spine this scene covers.
+- List the key visual moments in the script that must have image coverage (e.g. "sadhak walking to cave", "guru listening", "pranam"). These are the content anchors.
+
+**2b. Read and analyze each image prompt:**
+- Read every numbered entry in `#### Images` for this scene.
+- For each entry, note in one phrase what it depicts (e.g. "1a — courtroom wide shot", "3b — guru listening").
+- Cross-check against the content anchors from 2a:
+  - **Gap**: a key script moment has no image covering it → must add a prompt
+  - **Redundant**: three or more consecutive images with the same framing and no new beat → flag (do not delete, just note)
+  - **Off-beat**: image depicts something not in the script for this scene → flag
+- Count total prompted images and compare to `ceil(narration_seconds / 7)` target.
+
+**2c. Write or update the `### Critique` section** (Mode 4 rules), now informed by 2a + 2b:
 - `NOT CRITIQUED` → write a new critique from scratch
-- Existing critique + pacing `❌` or `⚠` → update the critique to address the pacing issue
-- Existing critique + pacing `✓` → leave critique unchanged
+- Existing critique + gap/redundancy found in 2b → update to address it
+- Existing critique + pacing `❌` or `⚠` → update to address the pacing issue
+- Existing critique + pacing `✓` + no content gaps → leave critique unchanged
 
-**2b. Add missing image prompts** if the scene's `#### Images` section has fewer entries than recommended for its word count:
-```
-recommended images = ceil(narration_seconds / 7)
-```
-Write new numbered entries at the end of the `#### Images` block. Follow the prompt style of existing entries in that scene (same art style tag, same reference upload note format). Do not re-generate or duplicate existing prompts.
+**2d. Add missing image prompts** for any content gaps found in 2b, and to reach the `ceil(narration_seconds / 7)` count if still short:
+- Insert new entries at the correct narrative position (not always at the end — place them where the gap is).
+- Use the same prompt style as existing entries in that scene (art style tag, ref upload note format).
+- Do not duplicate existing prompts.
 
-**2c. Note any scenes that are entirely unwritten** (no Hindi text, no images). Do not write the scene — flag it in the summary for the user to write.
+**2e. Note any scenes that are entirely unwritten** (no Hindi text, no images). Do not write the scene — flag it for the user.
 
-**Step 3 — Print a summary:**
+**Step 3 — Update `## Critique State` ToDo:**
+
+After completing Step 2 for all scenes, update the `## Critique State` section at the top of the script file:
+- For each scene in **ToDo**: mark resolved items ✓ or remove them; add newly discovered action items.
+- If all ToDo items for a scene are resolved, move it to **Fixed**.
+- Keep each bullet tight — one line per item.
+
+**Step 4 — Print a summary:**
 
 ```
 ## Content Check — [Script Name]
 
 ### Pacing
-Scene 1: 2.8s ❌ — narration expanded / [action taken]
-Scene 2: 5.5s ⚠ — [action taken]
+Scene 1: 6.8s ✓ — good
+Scene 2: 9.8s ⚠ — +2 prompts added (images 11, 12)
+...
+
+### Content Analysis
+Scene 1: covers beats 1–3 | 13 images | gaps filled: walking (3a), guru listening (3b)
+Scene 2: covers beat 4 | 12 images | no gaps
 ...
 
 ### Critiques
-Scene 1: updated — [one line: what changed]
-Scene 2: written — [one line: beat mapped + main issue]
+Scene 1: updated — pacing resolved, two pending items remain
+Scene 3: written — beat 4 Guru Rules, emotional hook missing
 ...
 
-### Image Prompts
-Scene 3: +2 prompts added (images 7, 8)
-Scene 4: complete — no gaps
+### Image Prompts Added
+Scene 2: +2 (images 11, 12) — clove insert, completed room at dawn
+Scene 4: complete — no gaps found
 ...
 
 ### Not Yet Written
