@@ -11,12 +11,80 @@ Invoke when the user wants to plan, audit, or check readiness for a devotee anub
 
 ## When to Invoke
 
-Trigger on any of:
+**Master trigger** — runs the full content check in one pass:
+- "check [script/video name] for content generation"
+- "content check" / "check for content"
+
+**Targeted triggers:**
 - "audit scene N" / "check scene N" / "how many images do I need?"
 - "production status" / "what's next" / "am I ready to render?"
 - "check my script" / "does my narration fit?"
 - "analyze my render" / "check my video" / "how does this compare?"
 - "audit images" / "what images am I missing?"
+- "critique the script" / "critique scene N" / "update the critique"
+- "is the pacing right" / "check my narration timing"
+
+---
+
+## Mode 0 — Content Check (Master Mode)
+
+**Trigger:** "check [script name] for content generation" / "content check"
+
+Runs the full sequence in one pass. No further input needed from the user.
+
+### Sequence
+
+**Step 1 — Run pacing + beat audit:**
+```bash
+render-scene --critic
+```
+Read both output tables before proceeding.
+
+**Step 2 — For every scene, in order:**
+
+For each scene, do all three sub-steps before moving to the next scene.
+
+**2a. Write or update the `### Critique` section** (Mode 4 rules):
+- `NOT CRITIQUED` → write a new critique from scratch
+- Existing critique + pacing `❌` or `⚠` → update the critique to address the pacing issue
+- Existing critique + pacing `✓` → leave critique unchanged
+
+**2b. Add missing image prompts** if the scene's `#### Images` section has fewer entries than recommended for its word count:
+```
+recommended images = ceil(narration_seconds / 7)
+```
+Write new numbered entries at the end of the `#### Images` block. Follow the prompt style of existing entries in that scene (same art style tag, same reference upload note format). Do not re-generate or duplicate existing prompts.
+
+**2c. Note any scenes that are entirely unwritten** (no Hindi text, no images). Do not write the scene — flag it in the summary for the user to write.
+
+**Step 3 — Print a summary:**
+
+```
+## Content Check — [Script Name]
+
+### Pacing
+Scene 1: 2.8s ❌ — narration expanded / [action taken]
+Scene 2: 5.5s ⚠ — [action taken]
+...
+
+### Critiques
+Scene 1: updated — [one line: what changed]
+Scene 2: written — [one line: beat mapped + main issue]
+...
+
+### Image Prompts
+Scene 3: +2 prompts added (images 7, 8)
+Scene 4: complete — no gaps
+...
+
+### Not Yet Written
+Scene 6, 7, 8 — write these next (vision, resolution, teaching close)
+
+### Next Action
+[One sentence: the single most important thing to do next]
+```
+
+---
 
 ## Content Format — Devotee Anubhav
 
@@ -41,38 +109,37 @@ This format is distinct from folk fiction. The narrative is positioned as testim
 
 ## Process
 
-### Mode 1 — Script Audit
+### Mode 1 — Script Audit (Pacing)
 
-**Trigger:** "audit script" / "check scene N" / "how many images do I need?"
+**Trigger:** "audit script" / "check scene N" / "how many images do I need?" / "is the pacing right?"
 
-**Steps:**
-
-1. Locate the script file. Look for `*.md` files in the current video project folder that contain `## Scene-` sections.
-
-2. For each scene, count Hindi/Hindustani words in the scene's script text block:
+**Step 1 — Run the terminal check (one command, works from any project directory):**
 ```bash
-# Quick word count of a scene block (adjust grep pattern to match scene heading)
-grep -A 20 "## Scene-1:" script.md | wc -w
+render-scene --critic
 ```
 
-3. Apply the narration formula:
-```
-words_in_scene / 85 = minutes of narration
-minutes × 60 = seconds of narration
-seconds / 7 = images needed (round up)
-```
-Target hold: **6–8 seconds per image**. Flag if hold would be <5s (need more images) or >10s (too many images or narration is too slow).
+This prints two tables:
+- **Beat/level table** — critique status per scene (High / Medium / Low / NOT CRITIQUED)
+- **Pacing table** — words, estimated narration, prompted images, generated images, planned hold, status
 
-4. Report per scene:
+**Step 2 — Read the pacing table columns:**
 
-| Scene | Est. Words | Duration at 85 WPM | Recommended Images | Current Images | Status |
-|---|---|---|---|---|---|
-| 1 | N | Xs | N | N | OK / ADD N / REMOVE N |
+| Column | Meaning |
+|---|---|
+| Words | Hindi/Hinglish word count from the scene text (auto-counted) |
+| Narr | Estimated narration at 85 WPM |
+| Prompted | Total image entries in `#### Images` section |
+| Generated | PNG files on disk (`Scene-N-*.png`) |
+| Hold | Narr ÷ Prompted — planned hold per image |
+| Status | ❌ <5s too fast · ⚠ 5–6s below target · ✓ 6–8s good · ⚠ 8–10s slightly slow · ❌ >10s too slow |
 
-5. Sum all scenes for total image count and total video duration estimate.
+**Step 3 — Report the findings.** Use the table output directly. For each flagged scene:
+- Hold too fast (<5s): expand narration OR reduce image count
+- Hold slightly slow (8–10s): add 1–2 images OR trim narration
+- Hold too slow (>10s): add images if scene has more to show, otherwise tighten narration
 
 **Benchmarks:**
-- Hindi devotional narration: **80–90 WPM**
+- Hindi devotional narration: **85 WPM** (80–90 range)
 - Target hold: **6–8s per image**
 - Images per minute of narration: **8–10**
 - 10-minute video: **75–100 unique images**
@@ -179,7 +246,66 @@ EOF
 
 ---
 
-### Mode 4 — Production Status
+### Mode 4 — Script Critique (Write / Update)
+
+**Trigger:** "critique the script" / "critique scene N" / "update the critique" / "write the critique"
+
+**Step 1 — Run terminal check:**
+```bash
+render-scene --critic
+```
+
+**Step 2 — Identify what needs work:**
+- `NOT CRITIQUED` → write a new `### Critique` section
+- `High` → read existing critique; check if issues are still present; update if needed
+- Pacing `❌` or `⚠` → the critique must address the pacing problem and suggest a fix
+
+**Step 3 — For each scene needing work:**
+1. Re-read the scene's Hindi script text and its `#### Images` section
+2. Map it to the 8-beat anubhav spine (numbered list below)
+3. Identify issues: missing beats, weak narration, pacing problems, emotional gaps
+4. Write or replace the `### Critique` block using the standard format
+
+**Critique format** (write exactly this, under each `## Scene-N` block, before the `---` separator):
+
+```markdown
+### Critique
+
+**Story Beat:** <beat name> (Beat N)
+**Level:** High | Medium | Low
+
+- **<Issue label>**: <what is wrong and why it matters for viewer retention>
+- **Fix**: <concrete rewrite suggestion — give the actual Hindi line when possible>
+
+#### English (Suggested)
+
+<Rewritten English narration that resolves the critique issues. Write it as the final narration would sound — a scene-card by scene-card read, not a description of what to write. This is the Hindi adaptation reference.>
+```
+
+**Level guide:**
+- **High** — a structural beat is missing or the scene will lose viewers
+- **Medium** — the scene works but has a meaningful gap (stakes, emotion, timing)
+- **Low** — technically correct; minor polish only
+
+**8-beat anubhav spine:**
+1. Hook — tease the outcome upfront
+2. Devotee + crisis — who, what impossible situation
+3. Guru / practice — what was prescribed and why
+4. Ritual setup — physical preparation, rules, materials
+5. Active sadhana — the nightly/daily practice in detail
+6. The experience — vision, dream, sign, or inexplicable event
+7. Resolution — how the crisis resolved through divine grace
+8. Teaching close — what practice viewers can use, mantra named
+
+**Step 4 — After writing all critiques, re-run:**
+```bash
+render-scene --critic
+```
+Confirm no scenes show `NOT CRITIQUED`. Any pacing `❌` must be addressed in the critique.
+
+---
+
+### Mode 5 — Production Status
 
 **Trigger:** "production status" / "what's next" / "am I ready to render?"
 
@@ -246,6 +372,9 @@ One locked reference image per deity, used across ALL episodes and ALL scenes fe
 
 ### render-scene CLI (symlinked to ~/bin — call from anywhere)
 ```bash
+# Pacing + critique audit — no render, analysis only
+render-scene --critic
+
 # Preview render for a single scene (fast, 720p)
 render-scene --scene 1 --preview
 
@@ -254,53 +383,14 @@ render-scene --scene 1 --narration scene-1-narration.mp3
 
 # Full quality 1080p
 render-scene --scene 1
-
-# Script critique summary — no render, analysis only
-render-scene --critic
 ```
 
-### Script Critique Workflow (`--critic`)
+**`render-scene --critic` outputs:**
+1. Beat/level table — story beat per scene, critique level (High / Medium / Low / NOT CRITIQUED)
+2. Pacing table — words, narration estimate, prompted images, generated images, planned hold, status vs. 6–8s target
+3. Summary line — total words, total narration duration, total images
 
-`render-scene --critic` reads the project's script MD and prints a one-line summary per scene:
-- **Story beat** mapped to the 8-beat anubhav spine
-- **Level**: High / Medium / Low / N/A
-- Flags all High-level scenes that need attention
-
-**What `--critic` cannot do:** It cannot write or update critique content — that requires agent reasoning.
-
-**Full critique workflow (agent + terminal):**
-```
-1. User updates Hindi script
-2. run: render-scene --critic        ← terminal, instant check, no agent needed
-3. Tell agent: "re-critique the script"
-4. Agent re-reads scenes, updates ### Critique sections
-   and #### English (Suggested) blocks in the script MD
-```
-
-**Critique section format** (written by the agent under each `## Scene-N` block):
-```markdown
-### Critique
-
-**Story Beat:** Hook (Beat 1)
-**Level:** High
-
-- **Issue**: ...
-- **Fix**: ...
-
-#### English (Suggested)
-
-[Rewritten English version addressing the critique — use as Hindi adaptation reference]
-```
-
-**8-beat anubhav spine** (reference for beat mapping):
-1. Hook — tease the outcome upfront
-2. Devotee + crisis — who, what impossible situation
-3. Guru / practice — what was prescribed and why
-4. Ritual setup — physical preparation, rules, materials
-5. Active sadhana — the nightly/daily practice in detail
-6. The experience — vision, dream, sign, or inexplicable event
-7. Resolution — how the crisis resolved through divine grace
-8. Teaching close — what practice viewers can use, mantra named
+To write or update the `### Critique` sections in the script MD after running `--critic`, invoke Mode 4 of this skill.
 
 ### Scene Image Count Quick Reference
 | Scene Type | Typical Word Count | At 85 WPM | Recommended Images |

@@ -94,7 +94,56 @@
   (beginning-of-line)                                                                                                     
   (push-mark (line-end-position) t t))                                                                
 
-(global-set-key (kbd "C-c l") 'select-current-line)
+
+(defun copy-between-delimiters (&optional delim)
+  "Copy text between nearest enclosing DELIM chars, leaving region active.
+DELIM defaults to backtick. With prefix arg (C-u), prompts for delimiter."
+  (interactive
+   (list (if current-prefix-arg
+             (read-char "Delimiter: ")
+           ?`)))
+  (let* ((ch (char-to-string delim))
+         beg end)
+    (save-excursion
+      (unless (search-backward ch nil t)
+        (user-error "No opening %s found" ch))
+      (setq beg (1+ (point)))
+      (forward-char 1)
+      (unless (search-forward ch nil t)
+        (user-error "No closing %s found" ch))
+      (setq end (1- (point))))
+    (kill-ring-save beg end)
+    (goto-char beg)
+    (push-mark end t t)
+    (message "Copied %d characters" (- end beg))))
+
+(global-set-key (kbd "C-c l") #'copy-between-delimiters)
+
+(defun copy-current-paragraph ()
+  "Copy the paragraph at point, leaving the paragraph active."
+  (interactive)
+  (let (beg end)
+    (save-excursion
+      (if (re-search-backward "^[ \t]*$" nil t)
+          (forward-line 1)
+        (goto-char (point-min)))
+      (skip-chars-forward " \t\n")
+      (setq beg (point))
+      (if (re-search-forward "^[ \t]*$" nil t)
+          (beginning-of-line)
+        (goto-char (point-max)))
+      (skip-chars-backward " \t\n")
+      (setq end (point)))
+    (when (<= end beg)
+      (user-error "No paragraph found"))
+    (kill-ring-save beg end)
+    (goto-char beg)
+    (push-mark end t t)
+    (activate-mark)
+    (setq deactivate-mark nil)
+    (message "Copied paragraph: %d characters" (- end beg))))
+
+(global-set-key (kbd "C-c L") #'copy-current-paragraph)
 
 
 ;; Comment region
@@ -122,8 +171,13 @@
 
 ;; Auto-revert buffers when files change on disk
 (global-auto-revert-mode 1)
+(setq auto-revert-use-notify nil)                                                                       
+(setq auto-revert-interval 2)
+
 (setq global-auto-revert-non-file-buffers t)
 (setq auto-revert-verbose nil)
+(setq revert-without-query '(".*"))
+
 
 ;; Save on frame close and server kill                                                                                    
 (unless noninteractive
