@@ -1,7 +1,7 @@
 ---
 name: wrapup
 description: Run code-simplifier, code-reviewer, and security-review in the right order after completing any unit of work — skips steps that don't apply
-category: skills
+category: lifecycle
 tags: [code-quality, workflow, orchestration, refactoring, security]
 depends: [code-simplifier, code-reviewer, security-review, handoff, ticket]
 ---

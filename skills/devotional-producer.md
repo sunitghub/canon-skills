@@ -1,7 +1,7 @@
 ---
 name: devotional-producer
 description: Production auditor and planner for devotee anubhav (spiritual experience testimonial) long-form videos. Audits scripts, images, and renders against competitor-derived benchmarks. Works for any Hindustani folk-devotional video following the Scene-N-M.png + scene-script format.
-category: skills
+category: media
 tags: [video-production, devotional, hindi, audit, planning, anubhav]
 ---
 
