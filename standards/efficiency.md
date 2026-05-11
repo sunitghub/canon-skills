@@ -10,11 +10,11 @@ tags: [coding, security, git, efficiency, tokens]
 ## Code
 
 - Prefer editing existing files over creating new ones.
-- Delete dead code — no commented-out blocks, no `_unused` renames.
+- Delete dead code your changes made unused — no commented-out blocks, no `_unused` renames. Don't touch pre-existing dead code unless asked.
 - No feature flags or backwards-compat shims when you can change the code directly.
 - No comments unless the WHY is non-obvious.
-- Never introduce command injection, XSS, SQL injection, or other OWASP top 10 issues.
-- Never commit secrets, credentials, or `.env` files.
+- Don't reformat, rename, or add type hints to adjacent code — fix only what was asked.
+- Never introduce OWASP top 10 vulnerabilities. Never commit secrets, credentials, or `.env` files.
 - Don't add dependencies for problems solvable with existing tools.
 - Write tests at system boundaries. Don't mock what you can integration-test cheaply.
 - A passing test suite verifies code correctness — not feature correctness. Test both.
@@ -40,6 +40,6 @@ Include reasoning only when the fix isn't self-evident. Security and architectur
 - Before editing any file, read it first. Before modifying a function, grep for callers.
 - Reference exact file paths and line numbers — avoid re-reading files already in context.
 - Don't read `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next` unless asked.
-- Use targeted bash commands. Avoid ones that dump large output for a narrow query.
+- Use targeted bash commands — avoid ones that dump large output for a narrow query.
 - Keep CLAUDE.md and AGENTS.md concise — only rules, gotchas, non-obvious conventions.
 - When summarizing or rewriting content: preserve code blocks, inline code, paths, URLs, commands, version numbers, and technical terms exactly.
