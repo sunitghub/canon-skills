@@ -344,6 +344,9 @@ One sentence: what are we working on right now.
 ## Recent Decisions
 - Decision made and WHY (not what — the diff shows what)
 
+## Discoveries
+- Non-obvious facts found through investigation — filter rules, counts, env gotchas, constraints not visible in code
+
 ## Dead Ends
 - What was tried and didn't work, so the next agent doesn't repeat it
 
