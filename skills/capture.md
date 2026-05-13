@@ -1,6 +1,6 @@
 ---
 name: capture
-description: Proactively record non-obvious discoveries to HANDOFF.md and memory — fires automatically mid-session, also invocable as /capture
+description: Proactively record non-obvious discoveries to HANDOFF.md and memory — fires automatically mid-session, also invocable explicitly
 category: skills
 tags: [knowledge-management, handoff, memory]
 ---
@@ -28,9 +28,9 @@ Whenever you discover something non-obvious that would require re-investigation 
 - Standard framework or library behavior
 - Decisions that are trivial and will be captured by the next wrapup
 
-## Explicit Invocation: /capture
+## Explicit Invocation
 
-When the user types `/capture <text>`, or when you want to force-capture something:
+When you want to force-capture something, or the user asks you to record a finding:
 
 1. Append to `HANDOFF.md` under `## Discoveries`. Create the section if absent.
 2. Save a `project` memory.
@@ -40,6 +40,16 @@ Entry format for HANDOFF.md:
 ```
 - **[YYYY-MM-DD]** <what was discovered> — <why it matters or how to apply it>
 ```
+
+**Trigger syntax by agent:**
+
+| Agent | How to trigger explicitly |
+|---|---|
+| Claude Code | `/capture <text>` (slash command) |
+| Codex | "Capture this" / "Record this in discoveries" / "Add this to HANDOFF" |
+| Pi | Same as Codex — natural language |
+
+The automatic behavior is identical across all agents. Only the explicit trigger syntax differs.
 
 ## The Goal
 

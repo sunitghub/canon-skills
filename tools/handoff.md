@@ -365,6 +365,11 @@ One sentence: what are we working on right now.
 - **Keep it short.** This is a handoff note, not a journal. Prune old entries freely.
 - **Current Focus is one sentence max.**
 - **Decisions capture WHY** — the git diff already shows what changed.
+- **Discoveries are written immediately** — not at wrapup. If you find something non-obvious mid-session, write it now. See the `capture` skill.
 - **Always commit before ending a session.** An uncommitted handoff is useless.
 - **No secrets, credentials, or env-specific values** in this file — it's committed to git.
 - **The auto-snapshot section** (added by the Stop hook) is mechanical. Fill in Current Focus and Decisions manually for full context.
+
+## Related Skills
+
+- **`capture`** — automatically records non-obvious discoveries to `## Discoveries` mid-session. Register with `skills.sh add capture`. Explicit trigger: `/capture <text>` in Claude Code, or "capture this" / "record this" in Codex and Pi.
