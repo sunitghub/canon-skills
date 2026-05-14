@@ -11,7 +11,7 @@ A shared library of AI agent skills, tools, standards, and automation scripts. Y
 ```
 canon/              ← this repo (shared library, clone once)
   skills/           ← wrapup, capture, pdf (+ hidden deps: code-reviewer, code-simplifier, security-review)
-  tools/            ← handoff, ticket (hidden deps, pulled in by wrapup)
+  tools/            ← handoff, ticket, tkt.sh (ticket is auto-added with wrapup)
   standards/        ← efficiency (coding, git, token-efficiency — one unified file)
   scripts/          ← hook automation (handoff, wrapup trigger, pre-commit)
   guides/           ← this file and context-optimization.md
@@ -64,13 +64,7 @@ rtk --version   # verify
 
 > If `rtk gain` fails after install, you may have the wrong package (name collision on crates.io). Use `brew install rtk` — not `cargo install rtk`.
 
-**tk** (optional) — git-native task tracker. Only needed if you use the `ticket` skill for task management. The `wrapup` quality pipeline works without it.
-
-```bash
-brew tap wedow/tools
-brew install ticket
-tk help   # verify
-```
+**tkt** — bundled minimal ticket tool, included with canon. No install needed. `skills add wrapup` adds it automatically and offers to put it on your PATH.
 
 ---
 
@@ -231,90 +225,58 @@ After registering skills, confirm each one is wired up and responding correctly.
 | `wrapup` | `"Wrapup the changes"` or `/wrapup` | Runs simplifier → reviewer → security-review with skip reasoning |
 | `capture` | Make a non-obvious discovery mid-session | Agent writes to `## Discoveries` in HANDOFF.md without prompting |
 | `pdf` | `"Extract text from [file].pdf"` | Extracted content or clear error if no PDF present |
-| `ticket` (optional) | `tk ls` — only if `tk` is installed | Empty list or existing tickets (no error) |
+| `ticket` | `tkt ls` | Empty list or existing tickets (no error) |
 | `handoff` | `"Initialize the handoff file"` | `HANDOFF.md` created in project root |
 
-> `efficiency` has no invocation — applied automatically to every session. `ticket` and `handoff` are hidden deps of `wrapup`; they don't appear in `skills list` but are registered when wrapup is added. `capture` fires automatically — no invocation needed.
+> `efficiency` has no invocation — applied automatically to every session. `ticket` is auto-added when wrapup is registered and appears in `skills list`. `handoff` is a hidden dep of `wrapup`. `capture` fires automatically — no invocation needed.
 
 ---
 
 ## Day-to-Day Workflows
 
-### Ticketing with `tk` (optional)
+### Ticketing with `tkt`
 
-> Skip this section if you don't use `tk` for task management — `wrapup` and all other skills work without it.
+`tkt` is a minimal ticket tool bundled with canon. Tickets are markdown files in `.tickets/` — committed to the repo, visible in git log, and clickable in VS Code. No external install needed.
 
-`tk` is a git-native task tracker. Tickets are markdown files in `.tickets/` — committed to the repo, visible in git log, and clickable in VS Code.
-
-**Both Claude and Codex read the same skill file** (`tools/ticket.md`) via `@`-import — one in `CLAUDE.md`, one in `AGENTS.md`. No agent-specific setup needed; skill updates propagate to both on next session start.
+**Both Claude and Codex read the same skill file** (`tools/ticket.md`) via `@`-import — one in `CLAUDE.md`, one in `AGENTS.md`. No agent-specific setup needed.
 
 #### Key commands
 
 ```bash
-tk create "title" [-t bug|feature|task|epic|chore] [-p 0-4] [-d "desc"]
-tk ls                       # open tickets
-tk ls --status=in_progress  # filter by status
-tk show <id>                # full ticket detail
-tk start <id>               # mark in_progress
-tk close <id>               # mark closed (prefer: use approve workflow)
-tk reopen <id>              # reopen a closed ticket
-tk dep <id> <dep-id>        # id depends on dep-id
-tk dep tree <id>            # visualize dependency graph
-tk dep cycle                # detect circular dependencies
+tkt create "title" [-t bug|feature|task|epic|chore] [-p 0-4] [-d "desc"]
+tkt ls                        # list all tickets
+tkt ls --status=in_progress   # filter by status
+tkt show <id>                 # full ticket detail
+tkt start <id>                # mark in_progress
+tkt close <id>                # mark closed (prefer: use approve workflow)
+tkt reopen <id>               # reopen a closed ticket
 ```
 
-Priority: `0` = highest, `4` = lowest. Default is `2`.
+Priority: `0` = highest, `4` = lowest. Default is `2`. IDs are short random strings (e.g. `t-8ms5`).
+
+> Need dependency tracking, tags, or assignees? Install [ticket](https://github.com/wedow/ticket) (`brew install ticket`) — same `.tickets/` format, fully compatible.
 
 #### Standard workflow
 
 1. **Create** — Ask the agent: *"Create a ticket to add X."*
-   The agent runs `tk create` and returns the ticket ID.
+   The agent runs `tkt create` and returns the ticket ID.
 
 2. **Implement** — Ask the agent: *"Implement ticket `<id>`."*
-   The agent runs `tk start <id>`, does the work, and prepends `<id>:` to every commit.
+   The agent runs `tkt start <id>`, does the work, and prepends `<id>:` to every commit.
 
 3. **Test** — Review the changes yourself.
 
 4. **Approve** — Tell the agent: *"Approve `<id>`."*
    The agent runs the full pipeline (see below).
 
-**If during testing you discover a dependency** (something that needs to be done first):
-
-4a. Tell the agent: *"Create a ticket for Y and make it a dependency of `<id>`."*
-    The agent runs `tk create` for Y, then `tk dep <id> <dep-id>` to link them.
-
-4b. Ask the agent to implement the dependency: *"Implement `<dep-id>`."*
-
-4c. Test the dependency work, then just approve the root: *"Approve `<id>`."*
-    The agent walks the full dependency tree, closes leaves first, works up to the root, then runs the pipeline once across all modified files. You never need to track or list the deps yourself.
-
 #### Approve pipeline
 
 Say **"approve `<id>`"** (or "ship it", "approve and close") after testing. The agent runs:
 
-1. `tk dep cycle` — aborts if cycles are detected
-2. `tk dep tree <id>` — walks the full tree; closes leaf dependencies first, then works up to the root
-3. `tk close <id>`
-4. Runs `/wrapup` on all files modified since the ticket was started
+1. `/wrapup` on all files modified since the ticket was started
+2. `tkt close <id>` only after wrapup completes
 
-You only ever need to approve the root ticket — the agent handles the rest.
-
-Agents are instructed never to call `tk close` directly — always through the approve pipeline so wrapup never gets skipped.
-
-#### Dependency management
-
-```bash
-# Mark that ticket nw-05 cannot close until nw-03 is done
-tk dep nw-05 nw-03
-
-# Inspect the tree before approving
-tk dep tree nw-05
-
-# Check for cycles before closing a milestone
-tk dep cycle
-```
-
-If a dependency is still open when you approve, the agent will warn you and ask whether to close the dep first or proceed anyway.
+Agents are instructed never to call `tkt close` directly — always through the approve pipeline so wrapup never gets skipped.
 
 ---
 
