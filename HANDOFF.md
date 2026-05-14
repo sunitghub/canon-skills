@@ -1,7 +1,7 @@
 
 ## Current Focus
 
-All externalize-dependencies tickets closed. Repo now works from any clone path, RTK and tk are both optional.
+Bundled tkt ticket tool shipped; canon repo fully self-contained with no external ticket dependency.
 
 ## In Progress
 
@@ -9,44 +9,15 @@ Nothing in progress.
 
 ## Recent Decisions
 
-- **All AS- tickets closed** — AS-ynok (RTK optional), AS-wom4 (wrapup decoupled from tk), AS-fpax (polish → wrapup rename), AS-8ms5 (epic) all done
-- **TryOuts skills cleaned up** — removed wrapup/handoff/ticket/security-review/pdf; kept general, git, code-reviewer, code-simplifier, handoff (handoff re-added for Claude↔Codex sync)
-- **OpenMontage** — added handoff for Claude↔Codex sync; wrapup already present and self-contained
-- **Guide step numbering fixed** — "Step 4" after "Steps 3–5" corrected to "Step 6"; PDF regenerated
-- **.gitignore updated** — .tickets/ and pbcopy now excluded
+- **tkt bundled in tools/tkt.sh** — replaces `tk` (brew install) with a self-contained bash script; same `.tickets/` format so upgrade to full `tk` is seamless
+- **ticket skill now visible** — removed `hidden: true`; appears in `skills list` and is auto-added when wrapup is registered
+- **skills add wrapup auto-adds ticket** — and prompts to add canon/tools to PATH; skips if ticket already registered
+- **skills refresh condensed** — one line per skill (`[ok]` or `[updated]`), silent on no-change
+- **skills status PATH check** — ticket row shows `(tkt on PATH)` or `(tkt not on PATH)`; "Action needed" block appears at bottom if tkt is missing from PATH
+- **dep tree/cycle dropped** — approve workflow simplified to: wrapup → tkt close
+- **Setup guide updated** — removed brew install instructions, rewrote ticketing section for tkt, PDF regenerated
 
 ## Dead Ends
 
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:09 branch:main -->
-**Modified files:**
-```
-?? .DS_Store
-```
-
-**Recent commits:**
-```
-aac12a7 chore: auto-update handoff snapshot [2026-05-01 10:08]
-57ae2de feat(emacs): add markdown-mode and visual-line-mode hooks, remove commented keybindings
-7fad0f7 chore: auto-update handoff snapshot [2026-05-01 10:08]
-e3303ea feat(skills): consolidate standards, simplify catalog, add refresh command
-3fc5c42 chore: auto-update handoff snapshot [2026-05-01 10:06]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-01 10:08 branch:main -->
-**Modified files:**
-```
-?? .DS_Store
-```
-
-**Recent commits:**
-```
-57ae2de feat(emacs): add markdown-mode and visual-line-mode hooks, remove commented keybindings
-7fad0f7 chore: auto-update handoff snapshot [2026-05-01 10:08]
-e3303ea feat(skills): consolidate standards, simplify catalog, add refresh command
-3fc5c42 chore: auto-update handoff snapshot [2026-05-01 10:06]
-3b90cf3 chore: auto-update handoff snapshot [2026-05-01 10:02]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
+- DateTime-based staleness check for skills refresh — not needed; @-imports are live references, content changes take effect automatically
