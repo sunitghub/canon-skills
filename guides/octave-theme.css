@@ -1,0 +1,209 @@
+/*
+ * Octave reveal.js theme
+ * Extracted from Octave_Overview_031026.pptx
+ *
+ * Primary bg:    #1A1A1F  (near-black navy)
+ * Brand accent:  #F26B43  (orange)
+ * Secondary:     #3E4047  (dark gray)
+ * Muted:         #B2B8C4  (light gray)
+ * Text:          #FFFFFF
+ * Font:          Aptos → Segoe UI → system sans
+ */
+
+/* ── Slide base ──────────────────────────────────────────── */
+.reveal-viewport {
+  background: #1A1A1F;
+}
+
+.reveal .slides section {
+  background: #1A1A1F;
+  color: #FFFFFF;
+  font-family: 'Aptos', 'Segoe UI', 'Inter', system-ui, sans-serif;
+  font-size: 1rem;
+  text-align: left;
+  padding: 2rem 3rem;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* ── Headings ────────────────────────────────────────────── */
+.reveal h1,
+.reveal h2,
+.reveal h3,
+.reveal h4 {
+  font-family: 'Aptos', 'Segoe UI', 'Inter', system-ui, sans-serif;
+  font-weight: 600;
+  color: #FFFFFF;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-bottom: 1rem;
+}
+
+.reveal h1 {
+  font-size: 1.9rem;
+  border-bottom: 3px solid #F26B43;
+  padding-bottom: 0.4rem;
+  margin-bottom: 1.2rem;
+}
+
+.reveal h2 {
+  font-size: 1.2rem;
+  color: #F26B43;
+  margin-top: 1rem;
+  margin-bottom: 0.3rem;
+}
+
+.reveal h3 {
+  font-size: 1rem;
+  color: #B2B8C4;
+  margin-top: 0.8rem;
+  margin-bottom: 0.2rem;
+}
+
+/* ── Body text ───────────────────────────────────────────── */
+.reveal p {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #FFFFFF;
+  margin: 0.4rem 0;
+}
+
+.reveal strong {
+  color: #F26B43;
+  font-weight: 600;
+}
+
+.reveal em {
+  color: #B2B8C4;
+  font-style: italic;
+}
+
+/* ── Lists ───────────────────────────────────────────────── */
+.reveal ul,
+.reveal ol {
+  font-size: 0.9rem;
+  margin-left: 1.2rem;
+  margin-top: 0.3rem;
+}
+
+.reveal li {
+  margin: 0.25rem 0;
+  line-height: 1.4;
+}
+
+/* ── Code blocks ─────────────────────────────────────────── */
+.reveal pre {
+  background: #2A2A30;
+  border-left: 3px solid #F26B43;
+  border-radius: 4px;
+  font-size: 0.65rem !important;
+  padding: 0.8rem 1rem;
+  margin: 0.6rem 0;
+  box-shadow: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.reveal pre code {
+  background: transparent;
+  color: #E7EBF2;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', monospace;
+}
+
+.reveal code {
+  background: #2A2A30;
+  color: #F26B43;
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+/* ── Tables ──────────────────────────────────────────────── */
+.reveal table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin: 0.5rem 0;
+}
+
+.reveal table th {
+  background: #3E4047;
+  color: #FFFFFF;
+  font-weight: 600;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid #4A4A52;
+  text-align: left;
+}
+
+.reveal table td {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #3E4047;
+  color: #E7EBF2;
+  vertical-align: top;
+}
+
+.reveal table tr:nth-child(even) td {
+  background: #222228;
+}
+
+/* ── Blockquote ──────────────────────────────────────────── */
+.reveal blockquote {
+  border-left: 4px solid #F26B43;
+  padding: 0.4rem 0.8rem;
+  background: #222228;
+  border-radius: 0 4px 4px 0;
+  font-style: normal;
+  color: #E7EBF2;
+  font-size: 0.9rem;
+  margin: 0.6rem 0;
+  box-shadow: none;
+  width: auto;
+}
+
+/* ── Links ───────────────────────────────────────────────── */
+.reveal a {
+  color: #F26B43;
+  text-decoration: none;
+}
+
+.reveal a:hover {
+  color: #F59E0B;
+  text-decoration: underline;
+}
+
+/* ── Slide number ────────────────────────────────────────── */
+.reveal .slide-number {
+  background: transparent;
+  color: #3E4047;
+  font-size: 0.7rem;
+}
+
+/* ── Progress bar ────────────────────────────────────────── */
+.reveal .progress {
+  background: #3E4047;
+  height: 3px;
+}
+
+.reveal .progress span {
+  background: #F26B43;
+}
+
+/* ── Controls ────────────────────────────────────────────── */
+.reveal .controls {
+  color: #F26B43;
+}
+
+/* ── Title slide — first section gets centered treatment ─── */
+.reveal .slides section:first-child {
+  display: flex !important;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.reveal .slides section:first-child h1 {
+  font-size: 2.4rem;
+  border-color: #F26B43;
+}

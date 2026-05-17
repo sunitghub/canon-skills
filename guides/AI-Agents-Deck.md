@@ -229,17 +229,15 @@ brew install rtk
 # Render this deck
 
 ```bash
-# Option 1 — pandoc (already installed, no extras needed)
-printf '<style>
-  .reveal pre { font-size: 0.68rem !important; }
-  .reveal pre code { max-height: 340px; overflow-y: auto; }
-  .reveal section { font-size: 0.95rem; }
-</style>' > /tmp/deck-style.html && \
+# Option 1 — pandoc with Octave theme (run from canon root)
+printf '<style>' > /tmp/octave-hdr.html \
+  && cat guides/octave-theme.css >> /tmp/octave-hdr.html \
+  && printf '</style>' >> /tmp/octave-hdr.html && \
 pandoc guides/AI-Agents-Deck.md \
   -t revealjs -s --slide-level=1 \
-  -V theme=white -V transition=slide \
+  -V theme=black -V transition=fade \
   -V width=1280 -V height=720 \
-  -H /tmp/deck-style.html \
+  -H /tmp/octave-hdr.html \
   --metadata title="Canon — AI Agent Skills Library" \
   -o guides/AI-Agents-Deck.html
 
