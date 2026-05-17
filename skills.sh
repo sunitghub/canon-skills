@@ -389,8 +389,9 @@ cmd_refresh() {
 
   echo ""
 
-  # ── Purge hidden skills from AI-SKILLS table ─────────────────────────────
-  # Skills that were explicitly registered but are now hidden should be removed.
+  # ── Purge hidden and standard skills from AI-SKILLS table ───────────────
+  # Hidden skills and standards don't belong in the table — they're either
+  # loaded as deps or auto-injected. Their @-imports are left intact.
   if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
     local tmp
     tmp=$(mktemp)
@@ -401,6 +402,10 @@ cmd_refresh() {
         spath=$(echo "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}')
         if [ -f "$spath" ] && [ "$(fm_field "$spath" hidden)" = "true" ]; then
           echo "  [pruned]  hidden skill from table: $sname" >&2
+          continue
+        fi
+        if [[ "$spath" == */standards/* ]]; then
+          echo "  [pruned]  standard from table: $sname" >&2
           continue
         fi
       fi
