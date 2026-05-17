@@ -94,7 +94,7 @@ The agent:
 2. Creates `.tickets/t-r4t3/blueprint.md` and `acceptance.md`
 3. Reads `DECISIONS.md` — finds: *"Redis chosen for session state"*
 4. Reads `HANDOFF.md` — picks up any open context from the last session
-5. Produces a sprint brief and waits:
+5. Scans the codebase to identify affected files, then produces a sprint brief and waits:
 
 ```
 Sprint t-r4t3 — Add rate limiting to login endpoint
@@ -177,7 +177,9 @@ The agent:
 2. Creates `.tickets/t-a1b2/blueprint.md` and `acceptance.md`
 3. Reads `DECISIONS.md` — file doesn't exist yet, creates it with an empty log table
 4. Reads `HANDOFF.md` — no prior context, starts fresh
-5. Produces a sprint brief and waits:
+5. Produces a sprint brief and waits
+
+There's no existing codebase to analyze, so the brief is a *proposal* — the agent derives file structure and acceptance criteria from the task description and common patterns. The user can redirect anything before approving:
 
 ```
 Sprint t-a1b2 — Build user authentication API
