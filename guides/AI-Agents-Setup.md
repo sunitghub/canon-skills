@@ -74,7 +74,7 @@ $SKILLS/skills.sh status
 
 ---
 
-## A typical developer session
+## Using canon in an existing project
 
 Everything in **bold** is something you type. Everything else is automatic.
 
@@ -92,7 +92,7 @@ The agent:
 
 1. Creates ticket `t-r4t3` and marks it in progress
 2. Creates `.tickets/t-r4t3/blueprint.md` and `acceptance.md`
-3. Reads `DECISIONS.md` — finds: *"Redis chosen for session state"* (creates the file if absent)
+3. Reads `DECISIONS.md` — finds: *"Redis chosen for session state"*
 4. Reads `HANDOFF.md` — picks up any open context from the last session
 5. Produces a sprint brief and waits:
 
@@ -152,6 +152,84 @@ The agent:
 > `auto-handoff` fires — appends a snapshot to `HANDOFF.md`: modified files, recent commits, active tickets.
 
 Next session — or the next agent — reads the file and picks up exactly here.
+
+---
+
+## Using canon in a new project
+
+Everything in **bold** is something you type. Everything else is automatic.
+
+**First session — getting oriented**
+
+You've just run `skills.sh addall` in a new repo. Open Claude Code and initialize the project context:
+
+**You: "Initialize the handoff file"**
+
+The agent creates `HANDOFF.md` from the template — current focus, in-progress work, decisions, discoveries, next steps. All empty for now; it fills in as you work.
+
+**You: "Sprint start — build a user authentication API"**
+
+No prior context exists yet, so the agent works from your description alone.
+
+The agent:
+
+1. Creates ticket `t-a1b2` and marks it in progress
+2. Creates `.tickets/t-a1b2/blueprint.md` and `acceptance.md`
+3. Reads `DECISIONS.md` — file doesn't exist yet, creates it with an empty log table
+4. Reads `HANDOFF.md` — no prior context, starts fresh
+5. Produces a sprint brief and waits:
+
+```
+Sprint t-a1b2 — Build user authentication API
+
+Goal: User registration, login, and token-based session management.
+
+Files to create:
+  auth/models.py      — User model
+  auth/views.py       — register, login, logout endpoints
+  auth/tokens.py      — JWT generation and validation
+  tests/test_auth.py
+
+Acceptance criteria:
+  ✓ POST /register creates a user and returns a token
+  ✓ POST /login returns a token for valid credentials, 401 for invalid
+  ✓ Token expires after 24 hours
+  ✓ Tests pass
+
+No prior decisions found — proceeding with standard patterns.
+
+Ready to proceed?
+```
+
+**You: "Yes, and use postgres for the DB"**
+
+> `capture` fires: appends to `HANDOFF.md` under `## Discoveries`: *"Postgres chosen for auth DB — user-specified."*
+
+The agent writes code. When it hits the DB connection, it notices the default pool size of 10.
+
+> `capture` fires again: *"Postgres pool size defaults to 10 — fine for current load but worth revisiting at scale. See `config/db.py:8`."*
+
+**You: "Sprint complete"**
+
+The agent:
+
+1. **Wrapup pipeline** runs on all new files.
+2. **Acceptance check** — all criteria pass.
+3. **DECISIONS.md** — agent writes its first entry:
+
+   | Date | Decision | Reason |
+   |---|---|---|
+   | 2026-05-17 | JWT for session tokens | Stateless — no session store needed at this scale |
+   | 2026-05-17 | Postgres for auth DB | User specified |
+
+4. **HANDOFF.md** — updated with next steps: *"Wire auth middleware into protected endpoints."*
+5. Ticket closed.
+
+**You close Claude Code.**
+
+> `auto-handoff` fires — snapshots current git state to `HANDOFF.md`.
+
+Next session, the agent reads `HANDOFF.md` and `DECISIONS.md` and picks up from *"Wire auth middleware into protected endpoints"* — as if it never left.
 
 ---
 
