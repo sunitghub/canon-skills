@@ -10,8 +10,8 @@ A shared library of AI agent skills, tools, standards, and automation scripts. Y
 
 ```
 canon/              ← this repo (shared library, clone once)
-  skills/           ← wrapup, capture, pdf (+ hidden deps: code-reviewer, code-simplifier, security-review)
-  tools/            ← handoff, ticket, tkt.sh (ticket is auto-added with wrapup)
+  skills/           ← sprint, wrapup, capture, pdf (+ hidden deps: code-reviewer, code-simplifier, security-review)
+  tools/            ← handoff, ticket, tkt.sh (infrastructure deps — loaded via sprint, not listed in catalog)
   standards/        ← efficiency (coding, git, token-efficiency — one unified file)
   scripts/          ← hook automation (handoff, wrapup trigger, pre-commit)
   guides/           ← this file and context-optimization.md
@@ -64,7 +64,7 @@ rtk --version   # verify
 
 > If `rtk gain` fails after install, you may have the wrong package (name collision on crates.io). Use `brew install rtk` — not `cargo install rtk`.
 
-**tkt** — bundled minimal ticket tool, included with canon. No install needed. `skills add wrapup` adds it automatically and offers to put it on your PATH.
+**tkt** — bundled minimal ticket tool, included with canon. No install needed. `skills add sprint` adds it automatically and offers to put it on your PATH.
 
 ---
 
@@ -162,17 +162,16 @@ $SKILLS/skills.sh addall
 ```bash
 cd /path/to/your-project
 
-# Full stack — wrapup pulls in code-simplifier, code-reviewer, security-review, handoff, and ticket automatically
-$SKILLS/skills.sh add wrapup
+# Full dev workflow — sprint covers planning, quality, and tickets
+$SKILLS/skills.sh add sprint
 
 # Optional extras
-$SKILLS/skills.sh add capture      # mid-session knowledge capture → HANDOFF.md Discoveries
 $SKILLS/skills.sh add pdf          # PDF read/extract/merge/split
 ```
 
 `addall` is idempotent — safe to re-run if new skills have been added to canon since you last registered.
 
-> **Standards and deps are auto-injected.** Every `skills.sh add` call automatically injects the `efficiency` standard (coding principles, git conventions, token-efficiency rules) — as `@`-imports in `CLAUDE.md` and inline content in `AGENTS.md`. Skill deps like `code-reviewer`, `handoff`, and `ticket` are wired silently without appearing in the catalog.
+> **Standards and deps are auto-injected.** Every `skills.sh add` call automatically injects the `efficiency` standard (coding principles, git conventions, token-efficiency rules). Skill deps like `code-reviewer`, `handoff`, and `ticket` are wired silently — not shown in `skills list` or registered explicitly.
 
 ### Verify registration
 
@@ -184,7 +183,7 @@ This checks registered skills, inline standard freshness, and broken `@`-import 
 
 ### Initialize HANDOFF.md
 
-`handoff` is registered automatically as a dep of `wrapup`. To initialize the file, tell Claude or Codex: "Initialize the handoff file" — it creates `HANDOFF.md` in the project root from the template.
+`handoff` is a dep of `sprint` and loaded automatically. To initialize the file, tell Claude or Codex: "Initialize the handoff file" — it creates `HANDOFF.md` in the project root from the template.
 
 ---
 
@@ -221,24 +220,95 @@ After registering skills, confirm each one is wired up and responding correctly.
 
 | Skill | How to verify | Expected response |
 |-------|--------------|-------------------|
-| `efficiency` | `skills.sh status` | Listed under CLAUDE.md @-imports; `[current]` in AGENTS.md standards |
+| `sprint` | `"Start a sprint for X"` | Sprint brief produced — files, acceptance criteria, blockers listed — awaits approval |
+| `efficiency` | `skills.sh status` | Listed under CLAUDE.md @-imports; `[ok]` in status output |
 | `wrapup` | `"Wrapup the changes"` or `/wrapup` | Runs simplifier → reviewer → security-review with skip reasoning |
 | `capture` | Make a non-obvious discovery mid-session | Agent writes to `## Discoveries` in HANDOFF.md without prompting |
 | `pdf` | `"Extract text from [file].pdf"` | Extracted content or clear error if no PDF present |
 | `ticket` | `tkt ls` | Empty list or existing tickets (no error) |
-| `handoff` | `"Initialize the handoff file"` | `HANDOFF.md` created in project root |
 
-> `efficiency` has no invocation — applied automatically to every session. `ticket` is auto-added when wrapup is registered and appears in `skills list`. `handoff` is a hidden dep of `wrapup`. `capture` fires automatically — no invocation needed.
+> `efficiency` applies automatically — no invocation. `capture` fires automatically — no invocation needed. `ticket` and `handoff` are deps of sprint — wired silently, not shown in `skills list`.
 
 ---
 
 ## Day-to-Day Workflows
 
+### How it all fits together
+
+```
+                        CANON DEV LIFECYCLE
+    ┌──────────────┬──────────────────────┬────────────────────┐
+    │   PLAN       │       BUILD          │       SHIP         │
+    │  sprint start│    [write code]      │  sprint complete   │
+    ├──────────────┼──────────────────────┼────────────────────┤
+    │ reads:       │                      │ wrapup:            │
+    │ HANDOFF.md   │  capture (auto)      │  simplify          │
+    │ DECISIONS.md │  fires on discovery  │  → code review     │
+    │ sprint files │  → HANDOFF.md        │  → security        │
+    │              │    ## Discoveries    │                    │
+    │ creates:     │  → project memory    │ acceptance check   │
+    │ blueprint.md │                      │                    │
+    │ acceptance.md│                      │ DECISIONS.md update│
+    │              │                      │                    │
+    │ tkt start    │                      │ tkt close          │
+    │ ↓ awaits     │                      │                    │
+    │   approval   │                      │                    │
+    └──────────────┴──────────────────────┴────────────────────┘
+
+    Automatic (no user action needed):
+      Session start → handoff-inject reads HANDOFF.md into first prompt
+      Mid-session   → capture writes discoveries to HANDOFF.md
+      Session end   → auto-handoff snapshots git state to HANDOFF.md
+
+    Ad-hoc (outside a sprint):
+      /wrapup       → quality check on any code without a sprint
+      /capture <x>  → force-record a discovery the agent missed
+```
+
+---
+
+### Sprint — Full Dev Workflow
+
+Sprint is the primary workflow. Two commands replace the separate tkt, wrapup, and capture invocations.
+
+#### sprint start
+
+Say **"sprint start"**, **"start a sprint for X"**, or **"let's work on X"**. The agent:
+
+1. Creates a ticket (`tkt create`) if none is active, then runs `tkt start <id>`
+2. Creates planning files in `.tickets/<id>/`:
+   - `blueprint.md` — files to inspect, files to create/modify, step-by-step build plan
+   - `acceptance.md` — specific, binary conditions that define "done"
+3. Reads `DECISIONS.md` (durable architecture decisions) and `HANDOFF.md` (current state)
+4. Produces a **sprint brief**: what the sprint accomplishes, files expected to change, acceptance criteria, any constraints — and waits for your approval before writing code
+
+#### sprint complete
+
+Say **"sprint complete"**, **"approve"**, or **"ship it"**. The agent:
+
+1. Runs the **wrapup pipeline** (simplify → review → security) on all modified files
+2. Validates every item in `acceptance.md` — ✓ met, ✗ not met, ? uncertain. Stops if anything fails
+3. Appends any new durable decisions to `DECISIONS.md` (the WHY, not the what)
+4. Updates `HANDOFF.md ## Next Steps`
+5. Closes the ticket: `tkt close <id>`
+
+#### DECISIONS.md
+
+Sprint keeps a `DECISIONS.md` at the repo root — a durable log of non-obvious architectural choices. Separate from `HANDOFF.md` (which is temporal session state). Sprint start reads it; sprint complete writes to it.
+
+```markdown
+# Decisions
+
+| Date | Decision | Reason |
+|---|---|---|
+| 2026-05-17 | Amounts stored as integer cents | Avoid float precision bugs |
+```
+
+---
+
 ### Ticketing with `tkt`
 
-`tkt` is a minimal ticket tool bundled with canon. Tickets are markdown files in `.tickets/` — committed to the repo, visible in git log, and clickable in VS Code. No external install needed.
-
-**Both Claude and Codex read the same skill file** (`tools/ticket.md`) via `@`-import — one in `CLAUDE.md`, one in `AGENTS.md`. No agent-specific setup needed.
+`tkt` is a minimal ticket tool bundled with canon. Tickets are markdown files in `.tickets/` — committed to the repo, visible in git log, and clickable in VS Code. No external install needed. Sprint manages the tkt lifecycle automatically; use `tkt` directly for standalone queries.
 
 #### Key commands
 
@@ -248,7 +318,7 @@ tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
 tkt show <id>                 # full ticket detail
 tkt start <id>                # mark in_progress
-tkt close <id>                # mark closed (prefer: use approve workflow)
+tkt close <id>                # mark closed (prefer: sprint complete)
 tkt reopen <id>               # reopen a closed ticket
 ```
 
@@ -256,33 +326,11 @@ Priority: `0` = highest, `4` = lowest. Default is `2`. IDs are short random stri
 
 > Need dependency tracking, tags, or assignees? Install [ticket](https://github.com/wedow/ticket) (`brew install ticket`) — same `.tickets/` format, fully compatible.
 
-#### Standard workflow
-
-1. **Create** — Ask the agent: *"Create a ticket to add X."*
-   The agent runs `tkt create` and returns the ticket ID.
-
-2. **Implement** — Ask the agent: *"Implement ticket `<id>`."*
-   The agent runs `tkt start <id>`, does the work, and prepends `<id>:` to every commit.
-
-3. **Test** — Review the changes yourself.
-
-4. **Approve** — Tell the agent: *"Approve `<id>`."*
-   The agent runs the full pipeline (see below).
-
-#### Approve pipeline
-
-Say **"approve `<id>`"** (or "ship it", "approve and close") after testing. The agent runs:
-
-1. `/wrapup` on all files modified since the ticket was started
-2. `tkt close <id>` only after wrapup completes
-
-Agents are instructed never to call `tkt close` directly — always through the approve pipeline so wrapup never gets skipped.
-
 ---
 
 ### Knowledge Capture — Mid-Session Discoveries
 
-The `capture` skill ensures non-obvious findings are recorded immediately — not just at wrapup — so they survive context compaction and session switches.
+The `capture` skill ensures non-obvious findings are recorded immediately so they survive context compaction and session switches.
 
 **Automatic** — no action needed. When the agent discovers something non-obvious (filter rules found by comparing data, numerical facts not in code, environment gotchas, architecture decisions with non-obvious WHY), it immediately:
 1. Appends to `HANDOFF.md` under `## Discoveries`
@@ -296,20 +344,16 @@ The `capture` skill ensures non-obvious findings are recorded immediately — no
 | Codex | "Capture this" / "Record this in discoveries" |
 | Pi | Same as Codex — natural language |
 
-The `## Discoveries` section in `HANDOFF.md` is the persistent store. A future agent starting cold reads it to pick up every constraint and decision that required investigation to establish.
-
 ---
 
-### Wrapup — Quality Pipeline
+### Wrapup — Ad-hoc Quality Pipeline
 
-Wrapup is the quality gate that closes out any unit of work. It does not require the ticket system — run it any time you finish a chunk of code.
-
-#### How to trigger
+Wrapup runs automatically inside `sprint complete`. Use it directly for quality checks on code written outside the sprint workflow.
 
 ```
 /wrapup
 ```
-Or: "Wrapup the changes" / "Wrapup the auth refactor" / "Wrapup ticket nw-42."
+Or: "Wrapup the changes" / "Wrapup the auth refactor."
 
 #### Pipeline
 
@@ -325,15 +369,7 @@ Each step is skipped if it doesn't apply — the agent states why in one line wh
 | code-reviewer | Single-line fix with no design implications, or purely mechanical change |
 | security-review | No security-sensitive files changed (auth, DB queries, user input, API endpoints, crypto, session management, file I/O, env/secret access) |
 
-#### What each step produces
-
-**Simplifier** — rewrites recently modified code for clarity without changing behavior: reduces nesting, eliminates redundancy, improves names, removes obvious comments. Scope is limited to files touched in the current session.
-
-**Reviewer** — structured report across seven dimensions: correctness, maintainability, readability, efficiency, security, edge cases, test coverage. Format: Critical → Improvements → Nitpicks → Recommendations.
-
-**Security review** — high-confidence findings only. Traces data flow end-to-end before flagging anything. Reports severity (Critical / High / Medium / Low) with location, pattern, evidence, impact, and fix.
-
-#### Final output format
+#### Output format
 
 ```
 ## Wrapup Report — <description of work>
@@ -350,10 +386,6 @@ Each step is skipped if it doesn't apply — the agent states why in one line wh
 ```
 
 Address criticals before committing. Improvements and nitpicks are at your discretion.
-
-#### Auto-trigger (optional, requires ticket skill)
-
-If you use the `ticket` skill, the `PostToolUse` hook (`auto-polish-trigger.sh`) triggers wrapup automatically when a ticket is closed via the approve workflow. Without tickets, run `/wrapup` manually whenever you want to close out a chunk of work.
 
 ---
 
