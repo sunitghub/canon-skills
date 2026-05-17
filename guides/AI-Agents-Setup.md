@@ -10,9 +10,9 @@ A shared library of AI agent skills, tools, standards, and automation scripts. Y
 
 ```
 canon/              ← this repo (shared library, clone once)
-  skills/           ← sprint, wrapup, capture, pdf (+ hidden deps: code-reviewer, code-simplifier, security-review)
-  tools/            ← handoff, ticket, tkt.sh (infrastructure deps — loaded via sprint, not listed in catalog)
-  standards/        ← efficiency (coding, git, token-efficiency — one unified file)
+  skills/           ← sprint, pdf (catalog); wrapup, capture (deps — loaded via sprint)
+  tools/            ← handoff, ticket, tkt.sh (infrastructure — loaded via sprint, not in catalog)
+  standards/        ← efficiency (auto-injected into every project — not in catalog)
   scripts/          ← hook automation (handoff, wrapup trigger, pre-commit)
   guides/           ← this file and context-optimization.md
   extensions/pi/    ← Pi lifecycle extensions
@@ -220,14 +220,11 @@ After registering skills, confirm each one is wired up and responding correctly.
 
 | Skill | How to verify | Expected response |
 |-------|--------------|-------------------|
-| `sprint` | `"Start a sprint for X"` | Sprint brief produced — files, acceptance criteria, blockers listed — awaits approval |
-| `efficiency` | `skills.sh status` | Listed under CLAUDE.md @-imports; `[ok]` in status output |
-| `wrapup` | `"Wrapup the changes"` or `/wrapup` | Runs simplifier → reviewer → security-review with skip reasoning |
-| `capture` | Make a non-obvious discovery mid-session | Agent writes to `## Discoveries` in HANDOFF.md without prompting |
-| `pdf` | `"Extract text from [file].pdf"` | Extracted content or clear error if no PDF present |
-| `ticket` | `tkt ls` | Empty list or existing tickets (no error) |
+| `sprint` | `"Start a sprint for X"` | Sprint brief produced — files, acceptance criteria, blockers listed — awaits approval before any code |
+| `pdf` | `"Extract text from [file].pdf"` | Extracted content, or a clear error if no PDF is present |
+| `ticket` | `tkt ls` | Empty list or existing tickets — no error |
 
-> `efficiency` applies automatically — no invocation. `capture` fires automatically — no invocation needed. `ticket` and `handoff` are deps of sprint — wired silently, not shown in `skills list`.
+> Everything else is automatic. `efficiency` is injected into every session. `capture` fires mid-session on any non-obvious discovery. `wrapup` runs inside `sprint complete`. `handoff` and `ticket` are deps of sprint — wired silently.
 
 ---
 
@@ -267,34 +264,132 @@ After registering skills, confirm each one is wired up and responding correctly.
 
 ---
 
-### Sprint — Full Dev Workflow
+### A complete session — from idea to shipped
 
-Sprint is the primary workflow. Two commands replace the separate tkt, wrapup, and capture invocations.
+Everything in **bold** is something you type. Everything else happens automatically.
 
-#### sprint start
+---
 
-Say **"sprint start"**, **"start a sprint for X"**, or **"let's work on X"**. The agent:
+**Opening the session**
 
-1. Creates a ticket (`tkt create`) if none is active, then runs `tkt start <id>`
-2. Creates planning files in `.tickets/<id>/`:
-   - `blueprint.md` — files to inspect, files to create/modify, step-by-step build plan
-   - `acceptance.md` — specific, binary conditions that define "done"
-3. Reads `DECISIONS.md` (durable architecture decisions) and `HANDOFF.md` (current state)
-4. Produces a **sprint brief**: what the sprint accomplishes, files expected to change, acceptance criteria, any constraints — and waits for your approval before writing code
+You open Claude Code and type your first message. Before it reaches the agent:
 
-#### sprint complete
+> `handoff-inject` fires — reads `HANDOFF.md` silently into your first prompt (once per 4-hour window).
 
-Say **"sprint complete"**, **"approve"**, or **"ship it"**. The agent:
+The agent wakes up knowing the current project state, prior decisions, and any mid-session discoveries from the last session. You don't have to re-explain context.
 
-1. Runs the **wrapup pipeline** (simplify → review → security) on all modified files
-2. Validates every item in `acceptance.md` — ✓ met, ✗ not met, ? uncertain. Stops if anything fails
-3. Appends any new durable decisions to `DECISIONS.md` (the WHY, not the what)
-4. Updates `HANDOFF.md ## Next Steps`
-5. Closes the ticket: `tkt close <id>`
+---
 
-#### DECISIONS.md
+**You: "Sprint start — add rate limiting to the login endpoint"**
 
-Sprint keeps a `DECISIONS.md` at the repo root — a durable log of non-obvious architectural choices. Separate from `HANDOFF.md` (which is temporal session state). Sprint start reads it; sprint complete writes to it.
+The agent:
+
+1. Runs `tkt create "Add rate limiting to login endpoint"` → ticket `t-r4t3`
+2. Runs `tkt start t-r4t3`
+3. Creates `.tickets/t-r4t3/blueprint.md` and `.tickets/t-r4t3/acceptance.md`
+4. Reads `DECISIONS.md` — finds: *"Redis chosen for session state"*
+5. Reads `HANDOFF.md` — picks up any open blockers or prior context
+6. Produces a sprint brief and waits:
+
+```
+Sprint t-r4t3 — Add rate limiting to login endpoint
+
+Goal: Block brute-force attempts by tracking failed logins per IP in Redis.
+
+Files to modify:
+  auth/views.py       — add rate limit check to login endpoint
+  auth/middleware.py  — new @rate_limit decorator
+
+Files to create:
+  tests/test_rate_limit.py
+
+Acceptance criteria:
+  ✓ Login returns 429 after 5 failed attempts from the same IP
+  ✓ Counter resets after 15 minutes
+  ✓ Rate limit is not bypassable via header manipulation
+  ✓ Tests pass
+
+Constraint from DECISIONS.md: use Redis (already a dependency).
+
+Ready to proceed?
+```
+
+**You: "Yes"**
+
+---
+
+**During the build**
+
+The agent writes code. While reading the Redis client config, it notices the connection pool is set to 5 — which could cause rate limit checks to queue under heavy login load.
+
+> `capture` fires automatically:
+> - Appends to `HANDOFF.md` under `## Discoveries`: *"Redis connection pool capped at 5 — rate limit checks may queue under sustained login load. See `config/redis.py:12`."*
+> - Saves a project memory
+
+You didn't ask for this. It happened because the agent detected a non-obvious constraint.
+
+---
+
+**You: "Sprint complete"**
+
+The agent:
+
+1. **Wrapup pipeline** — runs on all files modified since sprint start:
+   - `code-simplifier` — removes a redundant null check in `middleware.py`, clarifies a variable name
+   - `code-reviewer` — flags a missing test for the header-manipulation bypass criterion
+   - `security-review` — confirms no injection risk in the Redis key construction
+
+2. **Acceptance check** — reviews `acceptance.md`:
+   - ✓ 429 returned after 5 failures
+   - ✓ Counter resets after 15 minutes
+   - ✗ No test for header bypass (flagged by reviewer)
+   - ? Tests pass — uncertain, bypass test missing
+
+   > Stops. Reports: *"Criterion 3 not met — bypass test is missing. Adding it now."*
+   > Writes the test. Re-checks: all ✓.
+
+3. **DECISIONS.md** — appends:
+
+   | Date | Decision | Reason |
+   |---|---|---|
+   | 2026-05-17 | Rate limit key uses first IP from `X-Forwarded-For` | Prevents bypass via appended IPs while preserving proxy compatibility |
+
+4. **HANDOFF.md** — updates `## Next Steps`: *"Consider alerting on repeated 429s — out of scope for this sprint."*
+
+5. Runs `tkt close t-r4t3`
+
+6. Reports: *"Shipped. Rate limiter live on login endpoint. Redis pool cap captured in Discoveries. One decision recorded. Follow-up noted in HANDOFF."*
+
+---
+
+**Closing the session**
+
+You close Claude Code. Before it exits:
+
+> `auto-handoff` fires — appends a snapshot to `HANDOFF.md`: modified files, recent commits, active tickets.
+
+Next session — or next agent — reads the file and picks up exactly where this one left off.
+
+---
+
+### Sprint reference
+
+**sprint start** — triggers: *"sprint start"*, *"start a sprint for X"*, *"let's work on X"*
+
+- Creates or identifies the active ticket → `tkt start <id>`
+- Creates `.tickets/<id>/blueprint.md` and `acceptance.md`
+- Reads `DECISIONS.md` and `HANDOFF.md`
+- Produces a sprint brief and waits for approval before writing any code
+
+**sprint complete** — triggers: *"sprint complete"*, *"approve"*, *"ship it"*
+
+- Runs wrapup (simplify → review → security) on modified files
+- Validates every acceptance criterion — stops if any fail
+- Appends new decisions to `DECISIONS.md`
+- Updates `HANDOFF.md ## Next Steps`
+- Runs `tkt close <id>`
+
+**DECISIONS.md** — repo root, maintained by sprint. Records durable architectural choices with their reasoning. Sprint start reads it; sprint complete writes to it. Separate from `HANDOFF.md` (which is session state, not permanent record).
 
 ```markdown
 # Decisions
@@ -308,84 +403,49 @@ Sprint keeps a `DECISIONS.md` at the repo root — a durable log of non-obvious 
 
 ### Ticketing with `tkt`
 
-`tkt` is a minimal ticket tool bundled with canon. Tickets are markdown files in `.tickets/` — committed to the repo, visible in git log, and clickable in VS Code. No external install needed. Sprint manages the tkt lifecycle automatically; use `tkt` directly for standalone queries.
-
-#### Key commands
+Sprint manages the ticket lifecycle automatically. Use `tkt` directly for queries and status checks.
 
 ```bash
-tkt create "title" [-t bug|feature|task|epic|chore] [-p 0-4] [-d "desc"]
 tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
 tkt show <id>                 # full ticket detail
-tkt start <id>                # mark in_progress
-tkt close <id>                # mark closed (prefer: sprint complete)
 tkt reopen <id>               # reopen a closed ticket
 ```
-
-Priority: `0` = highest, `4` = lowest. Default is `2`. IDs are short random strings (e.g. `t-8ms5`).
 
 > Need dependency tracking, tags, or assignees? Install [ticket](https://github.com/wedow/ticket) (`brew install ticket`) — same `.tickets/` format, fully compatible.
 
 ---
 
-### Knowledge Capture — Mid-Session Discoveries
+### Knowledge capture
 
-The `capture` skill ensures non-obvious findings are recorded immediately so they survive context compaction and session switches.
+Fires automatically — no action needed. When the agent finds something non-obvious mid-session (filter rules, row counts, environment gotchas, constraints not visible in the code), it immediately appends to `HANDOFF.md ## Discoveries` and saves a project memory.
 
-**Automatic** — no action needed. When the agent discovers something non-obvious (filter rules found by comparing data, numerical facts not in code, environment gotchas, architecture decisions with non-obvious WHY), it immediately:
-1. Appends to `HANDOFF.md` under `## Discoveries`
-2. Saves a project memory
-
-**Explicit trigger** — when you want to force-record something the agent missed:
+To force-record something the agent missed:
 
 | Agent | Trigger |
 |---|---|
 | Claude Code | `/capture <text>` |
-| Codex | "Capture this" / "Record this in discoveries" |
-| Pi | Same as Codex — natural language |
+| Codex / Pi | *"Capture this"* / *"Record this in discoveries"* |
 
 ---
 
-### Wrapup — Ad-hoc Quality Pipeline
+### Wrapup — ad-hoc quality check
 
-Wrapup runs automatically inside `sprint complete`. Use it directly for quality checks on code written outside the sprint workflow.
+Runs automatically inside `sprint complete`. Use it directly only for code written outside the sprint workflow.
 
 ```
 /wrapup
 ```
-Or: "Wrapup the changes" / "Wrapup the auth refactor."
 
-#### Pipeline
+Pipeline: `code-simplifier → code-reviewer → security-review`
 
-```
-code-simplifier → code-reviewer → security-review
-```
-
-Each step is skipped if it doesn't apply — the agent states why in one line when skipping.
+Each step skips automatically when it doesn't apply — the agent states why in one line.
 
 | Step | Skipped when |
 |------|-------------|
 | code-simplifier | Single-line change, or docs/config only |
-| code-reviewer | Single-line fix with no design implications, or purely mechanical change |
-| security-review | No security-sensitive files changed (auth, DB queries, user input, API endpoints, crypto, session management, file I/O, env/secret access) |
-
-#### Output format
-
-```
-## Wrapup Report — <description of work>
-
-### code-simplifier
-- <what was simplified and where>
-
-### code-reviewer
-- [Critical] ...
-- [Improvement] ...
-
-### security-review
-- [High] ...
-```
-
-Address criticals before committing. Improvements and nitpicks are at your discretion.
+| code-reviewer | Single-line fix with no design implications |
+| security-review | No auth, DB, user input, API, crypto, or file I/O changed |
 
 ---
 
