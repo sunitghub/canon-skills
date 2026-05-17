@@ -70,8 +70,9 @@ cmd_list() {
   local prev_cat=""
   for dir in "${SEARCH_DIRS[@]}"; do
     [ -d "$dir" ] || continue
-    # tools/ contains dep/infrastructure docs — not user-facing catalog entries
+    # tools/ and standards/ are auto-injected infrastructure — not catalog entries
     [[ "$dir" == */tools ]] && continue
+    [[ "$dir" == */standards ]] && continue
     while IFS= read -r f; do
       local name desc category summary
       name=$(fm_field "$f" name)
@@ -638,8 +639,9 @@ cmd_addall() {
 
   for dir in "${SEARCH_DIRS[@]}"; do
     [ -d "$dir" ] || continue
-    # tools/ contains dep/infrastructure docs — exclude from bulk install
+    # tools/ and standards/ are auto-injected infrastructure — exclude from bulk install
     [[ "$dir" == */tools ]] && continue
+    [[ "$dir" == */standards ]] && continue
     while IFS= read -r f; do
       local name already=0
       name=$(fm_field "$f" name)
