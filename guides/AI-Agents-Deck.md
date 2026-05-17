@@ -20,11 +20,9 @@ style: |
   blockquote { border-left: 4px solid #0069ff; padding-left: 1rem; color: #333; font-style: normal; }
 ---
 
-# Canon — AI Agent Skills Library
+# Canon — AI Agent Skills Library {data-background-image="octave-title-bg.png" data-background-size="70%" data-background-position="bottom right" data-background-opacity="0.9"}
 
-<p class="canon-tagline">the canonical set of skills, tools, and standards for AI-assisted development</p>
-
-<img src="octave-logo.png" class="octave-logo" alt="Octave">
+<p style="font-size:0.85rem; font-style:italic; color:#B2B8C4; margin:0.3rem 0 2rem;">the canonical set of skills, tools, and standards for AI-assisted development</p>
 
 Shared skills and automation for Claude Code, Codex, and Pi
 
