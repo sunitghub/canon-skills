@@ -223,15 +223,18 @@
 }
 
 .octave-logo {
-  height: 56px;
-  margin-bottom: 1.5rem;
+  position: absolute;
+  bottom: 1.8rem;
+  left: 3rem;
+  height: 44px;
+  opacity: 0.85;
 }
 
 .canon-tagline {
   font-size: 0.85rem !important;
   font-style: italic;
   color: #B2B8C4 !important;
-  margin: -0.6rem 0 1.2rem !important;
+  margin: -0.8rem 0 2rem !important;
   letter-spacing: 0.01em;
 }
 

@@ -22,29 +22,13 @@ style: |
 
 # Canon — AI Agent Skills Library
 
-<img src="octave-logo.png" class="octave-logo" alt="Octave">
-
 <p class="canon-tagline">the canonical set of skills, tools, and standards for AI-assisted development</p>
+
+<img src="octave-logo.png" class="octave-logo" alt="Octave">
 
 Shared skills and automation for Claude Code, Codex, and Pi
 
 **Plan → Build → Ship** with minimal effort, maximum continuity
-
----
-
-# The problems we're solving
-
-**Problem 1: Agents start cold every session**
-Re-explaining context for 10 minutes before useful work begins. Worse when switching agents or hitting context limits mid-session.
-
-**Problem 2: Discoveries vanish**
-An agent finds a critical constraint mid-session — connection pool cap, env gotcha, exclusion rule — and it's gone when the context window fills.
-
-**Problem 3: Quality steps get skipped**
-Code ships without simplification, review, or security checks. Or they happen in the wrong order. Or someone forgets.
-
-**Problem 4: Planning is informal**
-No shared definition of "done." Agent writes code for the wrong goal, or you discover scope issues after the work is done.
 
 ---
 
