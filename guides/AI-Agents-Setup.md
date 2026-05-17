@@ -76,6 +76,10 @@ $SKILLS/skills.sh status
 
 ## Using canon in an existing project
 
+This example shows canon in an ongoing project — `DECISIONS.md` and `HANDOFF.md` already exist and have content. That's the state after a few sprints, and it's where the continuity payoff is most visible.
+
+**First sprint on an existing project?** Neither file exists yet — same as a new project. The difference is the codebase is already there to scan. The agent creates both files during that first sprint, and from sprint two onward the example below is what you get.
+
 Everything in **bold** is something you type. Everything else is automatic.
 
 **Opening the session**
@@ -94,7 +98,7 @@ The agent:
 2. Creates `.tickets/t-r4t3/blueprint.md` and `acceptance.md`
 3. Reads `DECISIONS.md` — finds: *"Redis chosen for session state"*
 4. Reads `HANDOFF.md` — picks up any open context from the last session
-5. Scans the codebase to identify affected files, then produces a sprint brief and waits:
+5. Does a targeted scan of affected files (auth/, login-related code, tests), then produces a sprint brief and waits:
 
 ```
 Sprint t-r4t3 — Add rate limiting to login endpoint
