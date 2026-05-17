@@ -55,6 +55,8 @@ cmd_list() {
   local prev_cat=""
   for dir in "${SEARCH_DIRS[@]}"; do
     [ -d "$dir" ] || continue
+    # tools/ contains dep/infrastructure docs — not user-facing catalog entries
+    [[ "$dir" == */tools ]] && continue
     while IFS= read -r f; do
       local name desc category summary
       name=$(fm_field "$f" name)
@@ -212,12 +214,6 @@ cmd_add() {
   echo ""
   echo "Done. $desc"
 
-  if [[ "$name" == "wrapup" ]] && ! grep -qF "| ticket |" "$project_dir/AGENTS.md" 2>/dev/null; then
-    echo ""
-    echo "Adding ticket skill (used in wrapup's approve workflow)..."
-    cmd_add "ticket" "$project_dir"
-  fi
-
   if [[ "$name" == "ticket" ]]; then
     offer_tkt_path
   fi
@@ -269,17 +265,17 @@ cmd_status() {
     echo "Skills: none"
   fi
 
-  # ── wrapup-without-ticket suggestion ─────────────────────────────────────
-  local _has_wrapup=false _has_ticket=false
+  # ── upgrade suggestions ───────────────────────────────────────────────────
+  local _has_wrapup=false _has_sprint=false _has_ticket=false
   for _s in "${skill_names[@]+"${skill_names[@]}"}"; do
     [[ "$_s" == "wrapup" ]] && _has_wrapup=true
+    [[ "$_s" == "sprint" ]] && _has_sprint=true
     [[ "$_s" == "ticket" ]] && _has_ticket=true
   done
-  if $_has_wrapup && ! $_has_ticket; then
+  if $_has_wrapup && ! $_has_sprint; then
     echo ""
-    echo "Tip: wrapup is registered but ticket is not."
-    echo "  tkt enables task tracking used in wrapup's approve workflow."
-    printf "  Add it: %s add ticket %s\n" "$(basename "$0")" "$project_dir"
+    echo "Tip: wrapup + capture are now part of the sprint skill."
+    printf "  Upgrade: %s add sprint %s\n" "$(basename "$0")" "$project_dir"
   fi
 
   # ── @-imports in CLAUDE.md and AGENTS.md ────────────────────────────────
@@ -418,8 +414,24 @@ cmd_refresh() {
     fi
   done <<< "$skills"
 
+  # ── upgrade suggestion ───────────────────────────────────────────────────
+  local _refresh_has_wrapup=false _refresh_has_sprint=false
+  while IFS= read -r line; do
+    local sname
+    sname=$(echo "$line" | awk -F'|' '{gsub(/[[:space:]]/,"",$2); print $2}')
+    [[ "$sname" == "wrapup" ]] && _refresh_has_wrapup=true
+    [[ "$sname" == "sprint" ]] && _refresh_has_sprint=true
+  done < <(sed -n '/AI-SKILLS:BEGIN/,/AI-SKILLS:END/p' "$agents_file" \
+             | grep "^| " | grep -v "^| Skill")
+
   echo ""
   if $any_updated; then echo "Done."; else echo "All up to date."; fi
+
+  if $_refresh_has_wrapup && ! $_refresh_has_sprint; then
+    echo ""
+    echo "Tip: wrapup + capture are now part of the sprint skill."
+    printf "  Upgrade: %s add sprint %s\n" "$(basename "$0")" "$project_dir"
+  fi
 }
 
 cmd_remove() {
@@ -560,10 +572,13 @@ cmd_addall() {
 
   for dir in "${SEARCH_DIRS[@]}"; do
     [ -d "$dir" ] || continue
+    # tools/ contains dep/infrastructure docs — exclude from bulk install
+    [[ "$dir" == */tools ]] && continue
     while IFS= read -r f; do
       local name already=0
       name=$(fm_field "$f" name)
       [ -z "$name" ] && continue
+      [ "$(fm_field "$f" hidden)" = "true" ] && continue
       for s in "${seen[@]+"${seen[@]}"}"; do [ "$s" = "$name" ] && already=1 && break; done
       [ "$already" -eq 0 ] && names+=("$name") && seen+=("$name")
     done < <(find "$dir" -type f -name "*.md" 2>/dev/null | sort)
