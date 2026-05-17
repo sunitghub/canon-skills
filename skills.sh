@@ -52,6 +52,21 @@ cmd_list() {
   printf "${bold}%-${skill_w}s  %-${cat_w}s  %s${reset}\n" "SKILL" "CATEGORY" "DESCRIPTION"
   printf "${dim}%s  %s  %s${reset}\n" "$sep_skill" "$sep_cat" "$sep_desc"
 
+  # Build the set of all dep names across every skill — deps are never catalog entries
+  local all_dep_names=()
+  for dir in "${SEARCH_DIRS[@]}"; do
+    [ -d "$dir" ] || continue
+    while IFS= read -r f; do
+      local dep_str
+      dep_str=$(fm_field "$f" depends)
+      [ -z "$dep_str" ] && continue
+      while IFS= read -r dep; do
+        dep=$(echo "$dep" | tr -d ' ')
+        [ -n "$dep" ] && all_dep_names+=("$dep")
+      done <<< "$(echo "$dep_str" | tr -d '[]' | tr ',' '\n')"
+    done < <(find "$dir" -type f -name "*.md" 2>/dev/null)
+  done
+
   local prev_cat=""
   for dir in "${SEARCH_DIRS[@]}"; do
     [ -d "$dir" ] || continue
@@ -62,6 +77,12 @@ cmd_list() {
       name=$(fm_field "$f" name)
       [ -z "$name" ] && continue
       [ "$(fm_field "$f" hidden)" = "true" ] && continue
+      # Skills that are deps of other skills are not standalone catalog entries
+      local is_dep=0
+      for dep in "${all_dep_names[@]+"${all_dep_names[@]}"}"; do
+        [ "$dep" = "$name" ] && is_dep=1 && break
+      done
+      [ "$is_dep" -eq 1 ] && continue
       summary=$(fm_field "$f" summary)
       desc="${summary:-$(fm_field "$f" description)}"
       category=$(fm_field "$f" category)
