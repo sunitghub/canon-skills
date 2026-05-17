@@ -24,6 +24,8 @@ style: |
 
 <img src="octave-logo.png" class="octave-logo" alt="Octave">
 
+<p class="canon-tagline">the canonical set of skills, tools, and standards for AI-assisted development</p>
+
 Shared skills and automation for Claude Code, Codex, and Pi
 
 **Plan → Build → Ship** with minimal effort, maximum continuity

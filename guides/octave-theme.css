@@ -227,6 +227,14 @@
   margin-bottom: 1.5rem;
 }
 
+.canon-tagline {
+  font-size: 0.85rem !important;
+  font-style: italic;
+  color: #B2B8C4 !important;
+  margin: -0.6rem 0 1.2rem !important;
+  letter-spacing: 0.01em;
+}
+
 /* ── PLAN → BUILD → SHIP flowchart ──────────────────────── */
 .lifecycle-flow {
   display: flex;
