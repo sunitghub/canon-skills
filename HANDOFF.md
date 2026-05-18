@@ -30,15 +30,15 @@ Nothing in progress.
 
 **Recent commits:**
 ```
+2d18e0d chore: auto-update handoff snapshot [2026-05-17 19:06]
 a7bcfb1 chore: auto-update handoff snapshot [2026-05-17 19:04]
 9b688b6 feat: auto-create HANDOFF.md on first sprint start if absent
 2a8f7aa chore: auto-update handoff snapshot [2026-05-17 19:02]
 faaacc6 docs: add summary table of what gets created and by whom after setup
-81a8922 chore: auto-update handoff snapshot [2026-05-17 19:01]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
 
-<!-- HANDOFF-SNAPSHOT:START 2026-05-17 19:04 branch:main -->
+<!-- HANDOFF-SNAPSHOT:START 2026-05-17 19:06 branch:main -->
 **Modified files:**
 ```
  M guides/AI-Agents-Deck.md
@@ -46,10 +46,10 @@ faaacc6 docs: add summary table of what gets created and by whom after setup
 
 **Recent commits:**
 ```
+a7bcfb1 chore: auto-update handoff snapshot [2026-05-17 19:04]
 9b688b6 feat: auto-create HANDOFF.md on first sprint start if absent
 2a8f7aa chore: auto-update handoff snapshot [2026-05-17 19:02]
 faaacc6 docs: add summary table of what gets created and by whom after setup
 81a8922 chore: auto-update handoff snapshot [2026-05-17 19:01]
-75eaa37 chore: auto-update handoff snapshot [2026-05-17 19:00]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
