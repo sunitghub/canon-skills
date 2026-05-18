@@ -189,7 +189,7 @@ git clone https://github.com/sunitghub/canon.git ~/Developer/canon
 
 **2. Run init (once)**
 ```bash
-~/Developer/canon/skills.sh init
+cd ~/Developer/canon && ./skills.sh init
 ```
 
 Configures Claude Code, Codex, and Pi — skips any not installed. Safe to re-run.
