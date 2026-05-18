@@ -61,16 +61,15 @@ Then verify:
 $SKILLS/skills.sh status
 ```
 
-**New project** — tell the agent to create the scaffolding:
+**Existing project only** — `CLAUDE.md` and `AGENTS.md` are extended with `@`-imports, existing content is preserved. If you have prior architectural decisions worth keeping, add them to `DECISIONS.md` manually before the first sprint using the format in the [How it works](#how-it-works) section; sprint will append to it from there.
 
-- *"Initialize the handoff file"* → creates `HANDOFF.md` from template
-- `DECISIONS.md` is created automatically on the first `sprint start` — nothing to do
+Here's what gets created and by whom:
 
-**Existing project** — canon adds to what you have:
-
-- `CLAUDE.md` and `AGENTS.md` are extended with `@`-imports, existing content is preserved
-- `HANDOFF.md` — create it fresh (*"Initialize the handoff file"*) or leave it if one already exists
-- `DECISIONS.md` — if you have existing architectural decisions worth preserving, add them manually using the format in the [How it works](#how-it-works) section below; sprint will append to it from there
+| | New project | Existing project, first sprint | Existing project, ongoing |
+|---|---|---|---|
+| **Codebase** | Agent proposes structure | Agent scans existing code | Agent scans existing code |
+| **DECISIONS.md** | Automatic — first `sprint start` | Automatic — first `sprint start` | Automatic — sprint reads + appends |
+| **HANDOFF.md** | User invokes once: *"Initialize the handoff file"* | User invokes once: *"Initialize the handoff file"* | Automatic — hooks + sprint |
 
 ---
 
