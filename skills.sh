@@ -239,6 +239,26 @@ cmd_add() {
   if [[ "$name" == "ticket" ]]; then
     offer_tkt_path
   fi
+
+  # Remove explicitly-registered skills that are now covered transitively by this one
+  if [ -n "$depends" ]; then
+    local redundant=()
+    while IFS= read -r dep; do
+      dep=$(echo "$dep" | tr -d ' ')
+      [ -z "$dep" ] && continue
+      grep -qF "| $dep |" "$agents_file" 2>/dev/null && redundant+=("$dep")
+    done <<< "$(echo "$depends" | tr -d '[]' | tr ',' '\n')"
+    if [ ${#redundant[@]} -gt 0 ]; then
+      for dep in "${redundant[@]}"; do
+        cmd_remove "$dep" "$project_dir" > /dev/null || true
+      done
+      local dep_list
+      dep_list=$(printf '%s, ' "${redundant[@]}")
+      dep_list="${dep_list%, }"
+      echo ""
+      echo "Removed: ${dep_list} — now included in ${name} transitively."
+    fi
+  fi
 }
 
 cmd_status() {
