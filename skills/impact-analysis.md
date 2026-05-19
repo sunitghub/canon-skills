@@ -18,23 +18,33 @@ Automatically during `sprint start` — not a separate invocation. The output fe
 
 ---
 
+## Silent vs. surfaced
+
+**Always rate all five dimensions.** Never skip the assessment.
+
+**Surface the interrogation and ratings to the user only when at least one dimension is MEDIUM or HIGH.** For all-LOW changes, proceed silently — write the assessment to `blueprint.md` and move on without interrupting the sprint brief.
+
+This keeps low-risk changes friction-free while ensuring nothing bypasses the check. The assessment is always written; it's only shown when it matters.
+
+---
+
 ## Step 1 — Interrogate the request
 
-Before rating anything, ask every question whose answer changes the risk profile. Do not proceed to Step 2 until ambiguities are resolved.
+Rate the five dimensions from context first. If any dimension looks MEDIUM or HIGH, ask the user the questions whose answers would confirm or change that rating. Do not ask questions whose answers can't move the needle.
 
-**Always ask:**
-- Who can trigger this action, and from how many places in the UI or API?
-- What happens if it runs twice? (idempotency)
-- Is there an undo path, or is this permanent?
-- Which other features, tables, or queues read the data this modifies?
-- Does this touch anything that sends messages, emails, or notifications externally?
+**Questions that can change a rating:**
+- Who can trigger this action, and from how many places in the UI or API? *(Trigger paths)*
+- What happens if it runs twice? *(Reversibility, Blast radius)*
+- Is there an undo path, or is this permanent? *(Reversibility)*
+- Which other features, tables, or queues read the data this modifies? *(Cascade risk)*
+- Does this touch anything that sends messages, emails, or notifications externally? *(Audience, Reversibility)*
 
 **Ask only when relevant:**
 - Does this action have a confirmation step — and is that step enforced server-side?
 - Are there scheduled jobs or background workers that could race with this?
 - Does this affect data that other teams or systems depend on?
 
-Surface every ambiguity. If the user can't answer, note it as an open question in `HANDOFF.md` and treat that dimension conservatively (assume higher impact).
+If the user can't answer, note it as an open question in `HANDOFF.md` and treat that dimension conservatively (assume higher impact).
 
 ---
 
