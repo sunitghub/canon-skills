@@ -1,7 +1,7 @@
 ---
 name: sprint
 description: Full dev workflow — plan, build, and ship focused units of work with acceptance-criteria-gated delivery
-summary: Full dev workflow: plan → build → ship. Two commands cover everything.
+summary: plan → build → ship. Interrogates the request, rates impact across five dimensions, generates a test plan, and awaits approval. sprint complete verifies all tests passed before closing.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
 depends: [wrapup, capture, ticket, handoff, impact-analysis]
