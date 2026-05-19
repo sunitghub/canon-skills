@@ -199,6 +199,9 @@ DELIM defaults to backtick. With prefix arg (C-u), prompts for delimiter."
   (add-hook 'kill-emacs-hook #'desktop-save-in-desktop-dir)
   (add-hook 'delete-frame-functions (lambda (_) (desktop-save-in-desktop-dir))))
 
+;; Project-specific utilities
+(load (expand-file-name "om-utils.el" user-emacs-directory))
+
 ;; Switch to last real buffer when emacsclient connects
 (add-hook 'server-after-make-frame-hook                                                                                   
           (lambda ()                                                                                                      
