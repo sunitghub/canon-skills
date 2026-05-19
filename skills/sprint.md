@@ -35,6 +35,8 @@ Sprint is the default workflow for any substantive dev request. Route through `s
 
 When in doubt, use sprint. The approval gate is low friction — it takes one "yes" to proceed.
 
+Sprint isn't code-only — it works equally well for docs, config, and planning file updates. The wrapup pipeline skips steps that don't apply (e.g., simplifier and security-review are both skipped for docs-only changes).
+
 ---
 
 ## sprint start

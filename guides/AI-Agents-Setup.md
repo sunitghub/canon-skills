@@ -322,7 +322,7 @@ Three focused passes, each with a clear job:
 
 **`code-reviewer`** — seven-dimension review: correctness, maintainability, readability, efficiency, security, edge cases, test coverage. Reports as Critical / Improvements / Nitpicks / Recommendations.
 
-**`security-review`** — high-confidence vulnerability scan. Traces data flow end-to-end before flagging anything. Only reports confirmed findings — no noisy pattern-match output.
+**`security-review`** — high-confidence vulnerability scan. Traces data flow end-to-end before flagging anything. Only reports confirmed findings — no noisy pattern-match output. Includes framework-agnostic **Action Endpoint Patterns**: checks that destructive handlers enforce authorization server-side (not just via hidden UI), and that no duplicate form trigger bypasses the guarded path.
 
 Each step has skip logic — states why in one line when it doesn't apply:
 
@@ -352,6 +352,8 @@ Each step has skip logic — states why in one line when it doesn't apply:
 **Trigger phrases:**
 - sprint start: any request to add, fix, update, debug, implement, or build — explicit phrases like *"sprint start"* or *"let's work on X"* also work. Skipped only for questions, explanations, or trivially mechanical one-liners.
 - sprint complete: *"sprint complete"*, *"approve"*, *"ship it"*
+
+> Sprint isn't code-only — it works equally well for docs, config, and planning file updates. The wrapup pipeline skips steps that don't apply (simplifier and security-review are both skipped for docs-only changes).
 
 **Planning files:**
 ```
