@@ -169,6 +169,11 @@ Patterns reviewed and ruled out (briefly, to show coverage).
 ```
 ## Wrapup Report — <description of work>
 
+### Changes
+| File | What changed | Impact | Flags |
+|------|-------------|--------|-------|
+| path/to/file.ext | one-line description | HIGH / MEDIUM / LOW | ✓ clean / ⚠ see below |
+
 ### code-simplifier
 - <what was simplified and where>
 
@@ -179,6 +184,12 @@ Patterns reviewed and ruled out (briefly, to show coverage).
 ### security-review
 - [High] ...
 ```
+
+**Changes table columns:**
+- **File** — relative path
+- **What changed** — one line: what the code now does differently
+- **Impact** — carry forward the rating from `blueprint.md ## Impact Assessment`; use LOW if no sprint context
+- **Flags** — `✓ clean` if no findings; `⚠ critical` / `⚠ improvement` if the pipeline flagged anything for that file
 
 Address criticals before committing. Improvements and nitpicks at your discretion.
 
