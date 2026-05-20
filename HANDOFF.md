@@ -30,15 +30,15 @@ Nothing in progress.
 
 **Recent commits:**
 ```
+caf12cf chore: auto-update handoff snapshot [2026-05-20 14:13]
 8da3a9d chore: auto-update handoff snapshot [2026-05-20 14:12]
 7ae568b chore: auto-update handoff snapshot [2026-05-20 14:09]
 60bd7ba chore: auto-update handoff snapshot [2026-05-20 14:09]
 d90892d chore: auto-update handoff snapshot [2026-05-20 14:08]
-294127d chore: auto-update handoff snapshot [2026-05-20 14:07]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
 
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 14:12 branch:main -->
+<!-- HANDOFF-SNAPSHOT:START 2026-05-20 14:13 branch:main -->
 **Modified files:**
 ```
  M tools/sprint-check/app.html
@@ -46,10 +46,10 @@ d90892d chore: auto-update handoff snapshot [2026-05-20 14:08]
 
 **Recent commits:**
 ```
+8da3a9d chore: auto-update handoff snapshot [2026-05-20 14:12]
 7ae568b chore: auto-update handoff snapshot [2026-05-20 14:09]
 60bd7ba chore: auto-update handoff snapshot [2026-05-20 14:09]
 d90892d chore: auto-update handoff snapshot [2026-05-20 14:08]
 294127d chore: auto-update handoff snapshot [2026-05-20 14:07]
-6cd7181 chore: auto-update handoff snapshot [2026-05-20 14:07]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
