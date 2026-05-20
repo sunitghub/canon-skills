@@ -782,9 +782,31 @@ cmd_addall() {
 
   [ ${#names[@]} -eq 0 ] && { echo "No skills found."; exit 1; }
 
-  echo "Registering ${#names[@]} skill(s) into: $project_dir"
-  echo ""
+  # Collect all dep names so we can skip skills already covered transitively
+  local all_deps=" "
   for name in "${names[@]}"; do
+    local sf deps
+    sf=$(find_skill "$name" 2>/dev/null) || continue
+    deps=$(fm_field "$sf" depends | tr -d '[]' | tr ',' '\n')
+    while IFS= read -r dep; do
+      dep=$(echo "$dep" | tr -d ' ')
+      [ -n "$dep" ] && all_deps="$all_deps$dep "
+    done <<< "$deps"
+  done
+
+  # Only register top-level skills — skip those covered as deps of another skill
+  local top_level=()
+  for name in "${names[@]}"; do
+    if [[ "$all_deps" == *" $name "* ]]; then
+      echo "  skip $name — included transitively by a higher-level skill"
+    else
+      top_level+=("$name")
+    fi
+  done
+
+  echo "Registering ${#top_level[@]} skill(s) into: $project_dir"
+  echo ""
+  for name in "${top_level[@]}"; do
     cmd_add "$name" "$project_dir"
   done
 
