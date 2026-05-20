@@ -343,6 +343,28 @@
     .btn-primary:hover { background: var(--accent); opacity: .85; }
     .modal-empty { color: var(--text-dim); font-style: italic; }
 
+    /* ── Doc type picker ─────────────────────────── */
+    .doc-picker-label {
+      font-size: 12px; color: var(--text-muted); margin-bottom: 12px;
+    }
+    .doc-type-card {
+      display: flex; align-items: center; gap: 12px; width: 100%;
+      padding: 11px 14px; border-radius: var(--radius-sm); margin-bottom: 8px;
+      border: 1px solid var(--border); background: var(--surface-raised);
+      cursor: pointer; text-align: left;
+      transition: border-color .12s, background .12s;
+    }
+    .doc-type-card:hover { border-color: var(--border-hover); background: var(--surface-hover); }
+    .doc-type-card.suggested { border-color: var(--accent); background: var(--accent-dim); }
+    .doc-type-info { flex: 1; }
+    .doc-type-name { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+    .doc-type-hint { font-size: 12px; color: var(--text-muted); line-height: 1.4; }
+    .doc-type-badge {
+      flex-shrink: 0; font-size: 10px; font-weight: 700; letter-spacing: .07em;
+      text-transform: uppercase; padding: 2px 8px; border-radius: 10px;
+      background: var(--accent); color: #fff;
+    }
+
     .modal-footer {
       display: flex; align-items: center; justify-content: space-between;
       padding: 12px 20px; border-top: 1px solid var(--border); flex-shrink: 0;
@@ -369,12 +391,7 @@
     }
     .theme-toggle:hover { background: var(--surface-hover); border-color: var(--border-hover); }
 
-    .kbd-hint { display: flex; gap: 12px; font-size: 13px; color: var(--text-muted); align-items: center; }
-    .kbd-hint kbd {
-      font-size: 12px; padding: 2px 6px; background: var(--surface-raised);
-      border: 1px solid var(--border-hover); border-radius: 4px;
-      font-family: ui-monospace, monospace; color: var(--text);
-    }
+    .kbd-hint { font-size: 12px; color: var(--text-dim); }
 
     /* ── Scrollbars ───────────────────────────── */
     ::-webkit-scrollbar       { width: 4px; height: 4px; }
@@ -470,10 +487,7 @@
     </div>
     <div class="modal-footer">
       <div class="modal-actions" id="m-actions"></div>
-      <div class="kbd-hint" id="m-kbd">
-        <span><kbd>←</kbd> <kbd>→</kbd> move status</span>
-        <span><kbd>esc</kbd> close</span>
-      </div>
+      <div class="kbd-hint" id="m-kbd">← → Esc</div>
     </div>
   </div>
 </div>
@@ -542,6 +556,71 @@ function ago(days) {
 
 const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
 const COL_LIMIT = 5;
+
+const DOC_TYPES = [
+  {
+    name: 'Blueprint',   slug: 'blueprint',
+    hint: 'Plan the approach, scope, and open questions before building.',
+    suggestedFor: ['open', 'in_progress'],
+    template:
+`# Blueprint
+
+## Goal
+What problem does this solve and what does success look like?
+
+## Approach
+How will we implement it? Key design decisions.
+
+## Out of Scope
+What are we explicitly NOT doing?
+
+## Open Questions
+- `,
+  },
+  {
+    name: 'Decisions',   slug: 'decisions',
+    hint: 'Record key choices, trade-offs, and why alternatives were ruled out.',
+    suggestedFor: ['in_progress', 'closed'],
+    template:
+`# Decisions
+
+### [Decision title]
+- **Choice**:
+- **Why**:
+- **Alternatives considered**:
+`,
+  },
+  {
+    name: 'QA',          slug: 'qa',
+    hint: 'Test plan and sign-off checklist before closing.',
+    suggestedFor: ['in_progress', 'closed'],
+    template:
+`# QA
+
+## Test Plan
+- [ ]
+- [ ]
+
+## Edge Cases
+- [ ]
+
+## Sign-off
+- [ ] Tested locally
+`,
+  },
+  {
+    name: 'Notes',       slug: 'notes',
+    hint: 'Freeform scratchpad for research, links, and observations.',
+    suggestedFor: ['open', 'in_progress', 'closed', 'cancelled'],
+    template: '# Notes\n\n',
+  },
+];
+
+function recommendedSlug(status, existingSlugs) {
+  if (status === 'open') return 'blueprint';
+  if (status === 'in_progress') return existingSlugs.includes('blueprint') ? 'decisions' : 'blueprint';
+  return 'decisions';
+}
 const state = { tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set() };
 
 // ── Data layer ───────────────────────────────────────────────────────────
@@ -577,6 +656,10 @@ function setDot(s) {
 
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function titleCase(s) {
+  return String(s ?? '').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function age(iso) {
@@ -769,9 +852,9 @@ function openModal(id) {
     closed: 'var(--col-done)', cancelled: 'var(--col-discarded)',
   }[t.status] || 'var(--text)';
   document.getElementById('m-meta').innerHTML = [
-    { label:'Status',   html:`<span style="color:${statusColor};font-weight:500">${esc(t.status.replace('_',' '))}</span>` },
-    { label:'Type',     val: t.type || 'task' },
-    { label:'Priority', val: `p${t.priority ?? 2}` },
+    { label:'Status',   html:`<span style="color:${statusColor};font-weight:500">${esc(titleCase(t.status.replace('_',' ')))}</span>` },
+    { label:'Type',     val: titleCase(t.type || 'task') },
+    { label:'Priority', val: `P${t.priority ?? 2}` },
     { label:'Age',      val: age(t.created) || '—' },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
 
@@ -853,10 +936,12 @@ function enterEditMode(t) {
 
 function exitEditMode(t) {
   modalState.editMode = false;
+  setText('m-title', t.title);
   renderModalDocs(t);
   renderModalBody(t);
   refreshModalActions(t);
   document.getElementById('m-kbd').style.display = '';
+  renderBoard();
 }
 
 async function saveEdit(t) {
@@ -873,26 +958,77 @@ async function saveEdit(t) {
         body: JSON.stringify({ body: content }),
       });
       t.body = content;
+      const headingMatch = content.match(/^#\s+(.+)$/m);
+      if (headingMatch) t.title = headingMatch[1].trim();
     }
   } catch { /* server unavailable */ }
   exitEditMode(t);
 }
 
 function promptNewDoc(t) {
-  const name = prompt('Doc name (e.g. Blueprint, Decisions):');
-  if (!name || !name.trim()) return;
-  const slug = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  const file = `${t.id}-${slug}.md`;
-  // Create the file via the server then switch to edit it
+  const bodyEl = document.getElementById('m-body');
+  const editEl = document.getElementById('m-edit-area');
+  editEl.style.display = 'none';
+  bodyEl.style.display = '';
+
+  const existingSlugs = (t.docs || []).map(d => d.file.replace(`${t.id}-`, '').replace('.md', ''));
+  const suggested     = recommendedSlug(t.status, existingSlugs);
+  const available     = DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug));
+  const statusLabel   = titleCase(t.status.replace('_', ' '));
+
+  bodyEl.innerHTML = `
+    <div class="doc-picker-label">This ticket is <strong>${esc(statusLabel)}</strong> — choose a doc type to add:</div>
+    ${available.map(dt => `
+      <button class="doc-type-card${dt.slug === suggested ? ' suggested' : ''}" data-slug="${esc(dt.slug)}" data-name="${esc(dt.name)}">
+        <div class="doc-type-info">
+          <div class="doc-type-name">${esc(dt.name)}</div>
+          <div class="doc-type-hint">${esc(dt.hint)}</div>
+        </div>
+        ${dt.slug === suggested ? '<span class="doc-type-badge">Suggested</span>' : ''}
+      </button>`).join('')}
+    ${available.length === 0 ? '<div class="modal-empty">All doc types already created.</div>' : ''}
+  `;
+
+  document.getElementById('m-actions').innerHTML =
+    `<button class="btn" id="act-picker-cancel">Cancel</button>`;
+  document.getElementById('m-kbd').style.display = 'none';
+
+  document.getElementById('act-picker-cancel').addEventListener('click', () => {
+    renderModalBody(t); renderModalDocs(t); refreshModalActions(t);
+    document.getElementById('m-kbd').style.display = '';
+  });
+
+  bodyEl.querySelectorAll('.doc-type-card').forEach(card => {
+    card.addEventListener('click', () => selectDocType(t, card.dataset.slug, card.dataset.name));
+  });
+}
+
+function selectDocType(t, slug, name) {
+  const file     = `${t.id}-${slug}.md`;
+  const template = DOC_TYPES.find(d => d.slug === slug)?.template || `# ${name}\n\n`;
+
   fetch(`/api/doc/${encodeURIComponent(file)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: '' }),
+    body: JSON.stringify({ content: template }),
   }).then(() => {
     t.docs = t.docs || [];
-    t.docs.push({ name: name.trim(), file });
+    if (!t.docs.some(d => d.file === file)) t.docs.push({ name, file });
     modalState.activeDoc = file;
     renderModalDocs(t);
-    enterEditMode(t);
+    // pre-fill textarea with template and enter edit mode
+    const bodyEl = document.getElementById('m-body');
+    const editEl = document.getElementById('m-edit-area');
+    bodyEl.style.display = 'none';
+    editEl.value = template;
+    editEl.style.display = 'block';
+    editEl.focus();
+    modalState.editMode = true;
+    document.getElementById('m-actions').innerHTML =
+      `<button class="btn btn-primary" id="act-save">Save</button>` +
+      `<button class="btn" id="act-cancel">Cancel</button>`;
+    document.getElementById('m-kbd').style.display = 'none';
+    document.getElementById('act-save').addEventListener('click', () => saveEdit(t));
+    document.getElementById('act-cancel').addEventListener('click', () => exitEditMode(t));
   });
 }
 
@@ -907,10 +1043,11 @@ function refreshModalActions(t) {
   const idx = STATUS_ORDER.indexOf(t.status);
   const prev = idx > 0 ? COLUMNS[idx-1].label : null;
   const next = idx < STATUS_ORDER.length-1 ? COLUMNS[idx+1].label : null;
+  const showDiscard = t.status !== 'cancelled' && t.status !== 'closed';
   document.getElementById('m-actions').innerHTML = `
     ${prev ? `<button class="btn" id="act-prev">← ${esc(prev)}</button>` : ''}
     ${next ? `<button class="btn" id="act-next">${esc(next)} →</button>` : ''}
-    ${t.status !== 'cancelled' ? '<button class="btn btn-danger" id="act-discard">Discard ✕</button>' : ''}
+    ${showDiscard ? '<button class="btn btn-danger" id="act-discard">Discard ✕</button>' : ''}
   `;
   document.getElementById('act-prev')?.addEventListener('click', () => moveCard(t, STATUS_ORDER[idx-1]));
   document.getElementById('act-next')?.addEventListener('click', () => moveCard(t, STATUS_ORDER[idx+1]));
