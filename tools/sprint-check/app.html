@@ -137,6 +137,30 @@
       font-size: 11px; font-weight: 700; letter-spacing: .1em;
       text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
     }
+    /* ── Now working on ──────────────────────────── */
+    #s-wip { display: none; }
+    #s-wip.has-items { display: block; }
+    .wip-item {
+      display: flex; align-items: center; gap: 7px;
+      padding: 5px 0; border-bottom: 1px solid var(--border-muted);
+    }
+    .wip-item:last-child { border-bottom: none; }
+    .wip-id {
+      font-family: ui-monospace, "Cascadia Code", monospace;
+      font-size: 11px; color: var(--accent); flex-shrink: 0;
+    }
+    .wip-title {
+      font-size: 12px; color: var(--text); flex: 1;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .wip-copy {
+      flex-shrink: 0; font-size: 10px; padding: 1px 6px; border-radius: 4px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-dim); cursor: pointer; transition: all .1s;
+    }
+    .wip-copy:hover { border-color: var(--accent); color: var(--accent); }
+    .wip-copy.copied { border-color: var(--col-done); color: var(--col-done); }
+
     .branch-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
     .modified-badge {
       font-size: 11px; padding: 1px 6px;
@@ -528,6 +552,11 @@
         <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
       </div>
       <div class="sidebar-content">
+        <div class="sidebar-section" id="s-wip">
+          <div class="sidebar-label">Now Working On</div>
+          <div id="s-wip-items"></div>
+        </div>
+
         <div class="sidebar-section">
           <div class="sidebar-label">Git</div>
           <div class="branch-row">
@@ -882,6 +911,32 @@ function renderHeader() {
 
 function renderSidebar() {
   const { handoff, git, tickets } = state;
+
+  // Now Working On
+  const wip    = tickets.filter(t => t.status === 'in_progress');
+  const wipEl  = document.getElementById('s-wip');
+  const wipItems = document.getElementById('s-wip-items');
+  if (wip.length) {
+    wipEl.classList.add('has-items');
+    wipItems.innerHTML = wip.map(t =>
+      `<div class="wip-item">` +
+        `<span class="wip-id">${esc(t.id)}</span>` +
+        `<span class="wip-title">${esc(t.title)}</span>` +
+        `<button class="wip-copy" data-copy="${esc(t.id)}: " title="Copy commit prefix">copy</button>` +
+      `</div>`
+    ).join('');
+    wipItems.querySelectorAll('.wip-copy').forEach(btn => {
+      btn.addEventListener('click', () => {
+        navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+          btn.textContent = 'done'; btn.classList.add('copied');
+          setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
+        });
+      });
+    });
+  } else {
+    wipEl.classList.remove('has-items');
+  }
+
   setText('s-focus', handoff?.focus || 'No HANDOFF.md Current Focus found.');
 
   const commitsEl = document.getElementById('s-commits');
@@ -1233,6 +1288,24 @@ async function moveCard(t, newStatus) {
   if (modalOpen) closeModal(); else renderBoard();
 }
 
+// ── Semantic ticket matching ──────────────────────────────────────────────
+
+const _STOP = new Set(['a','an','the','and','or','in','on','for','to','of','with','by',
+  'from','is','are','was','were','be','been','as','at','it','its','this','that','into',
+  'via','add','fix','feat','chore','refactor','update','remove','change']);
+
+function tokenize(s) {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/)
+    .filter(w => w.length > 2 && !_STOP.has(w));
+}
+
+function semanticScore(commitText, ticketTitle) {
+  const ctoks = new Set(tokenize(commitText));
+  const ttoks  = tokenize(ticketTitle);
+  const hits   = ttoks.filter(w => ctoks.has(w)).length;
+  return hits / Math.max(ttoks.length, 1);
+}
+
 // ── Commit detail panel ───────────────────────────────────────────────────
 
 async function openCommitPanel(hash) {
@@ -1252,12 +1325,33 @@ async function openCommitPanel(hash) {
     document.getElementById('co-body').textContent    = d.body || '';
 
     const ticketsEl = document.getElementById('co-tickets');
-    const matching  = state.tickets.filter(t => d.related_ticket_ids.includes(t.id));
-    if (matching.length) {
+    const direct    = state.tickets.filter(t => d.related_ticket_ids.includes(t.id));
+
+    let chips, label, note = '';
+    if (direct.length) {
+      chips = direct;
+      label = 'Related tickets';
+    } else {
+      // Semantic backfill: score all tickets against the commit text
+      const commitText = `${d.subject} ${d.body} ${d.files.join(' ')}`;
+      const scored = state.tickets
+        .filter(t => t.status !== 'cancelled')
+        .map(t => ({ t, score: semanticScore(commitText, t.title) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score);
+      chips = scored.map(x => x.t);
+      label = chips.length ? 'Likely related tickets' : 'Active sprint context';
+      note  = chips.length
+        ? `<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">No ticket IDs in commit — matched by keyword.</div>`
+        : `<div style="font-size:11px;color:var(--text-dim);margin-bottom:6px">No ticket IDs in commit. Tip: prefix commits with <code>${state.tickets.find(t=>t.status==='in_progress')?.id ?? 't-xxxx'}: </code></div>`;
+      if (!chips.length) chips = state.tickets.filter(t => t.status === 'open' || t.status === 'in_progress');
+    }
+
+    if (chips.length) {
       ticketsEl.innerHTML =
-        `<div class="commit-section-label">Related tickets</div>` +
+        `<div class="commit-section-label">${label}</div>${note}` +
         `<div class="commit-ticket-chips">` +
-        matching.map(t =>
+        chips.map(t =>
           `<button class="commit-ticket-chip" data-id="${esc(t.id)}">${esc(t.id)} — ${esc(t.title)}</button>`
         ).join('') + `</div>`;
       ticketsEl.querySelectorAll('.commit-ticket-chip').forEach(btn => {
