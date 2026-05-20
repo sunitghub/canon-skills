@@ -31,15 +31,15 @@ Nothing in progress.
 
 **Recent commits:**
 ```
+ee11355 chore: auto-update handoff snapshot [2026-05-20 09:55]
 1e28bda chore: auto-update handoff snapshot [2026-05-20 09:49]
 53f1300 chore: auto-update handoff snapshot [2026-05-20 09:48]
 3baf883 chore: auto-update handoff snapshot [2026-05-20 09:45]
 eaa1b80 chore: auto-update handoff snapshot [2026-05-20 09:40]
-f9078a1 feat: add changes summary table to wrapup final output
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
 
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 09:49 branch:main -->
+<!-- HANDOFF-SNAPSHOT:START 2026-05-20 09:55 branch:main -->
 **Modified files:**
 ```
 ?? tools/sprint-check.sh
@@ -48,10 +48,10 @@ f9078a1 feat: add changes summary table to wrapup final output
 
 **Recent commits:**
 ```
+1e28bda chore: auto-update handoff snapshot [2026-05-20 09:49]
 53f1300 chore: auto-update handoff snapshot [2026-05-20 09:48]
 3baf883 chore: auto-update handoff snapshot [2026-05-20 09:45]
 eaa1b80 chore: auto-update handoff snapshot [2026-05-20 09:40]
 f9078a1 feat: add changes summary table to wrapup final output
-8344b7b feat: silent-pass for all-LOW impact — only surface when risk is present
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
