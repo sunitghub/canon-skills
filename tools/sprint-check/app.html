@@ -139,27 +139,38 @@
     }
     /* ── Now working on ──────────────────────────── */
     #s-wip { display: none; }
-    #s-wip.has-items { display: block; }
+    #s-wip.has-items {
+      display: block;
+      background: var(--accent-dim);
+      border-left: 3px solid var(--accent);
+      border-bottom: 1px solid rgba(124,106,247,0.25);
+    }
+    #s-wip .sidebar-label {
+      color: var(--accent);
+      letter-spacing: .12em;
+    }
     .wip-item {
       display: flex; align-items: center; gap: 7px;
-      padding: 5px 0; border-bottom: 1px solid var(--border-muted);
+      padding: 6px 0; border-bottom: 1px solid rgba(124,106,247,0.15);
+      cursor: pointer; border-radius: var(--radius-sm); transition: background .1s;
     }
+    .wip-item:hover { background: rgba(124,106,247,0.12); }
     .wip-item:last-child { border-bottom: none; }
     .wip-id {
       font-family: ui-monospace, "Cascadia Code", monospace;
-      font-size: 11px; color: var(--accent); flex-shrink: 0;
+      font-size: 11px; font-weight: 700; color: var(--accent); flex-shrink: 0;
     }
     .wip-title {
-      font-size: 12px; color: var(--text); flex: 1;
+      font-size: 12px; font-weight: 600; color: var(--text); flex: 1;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .wip-copy {
-      flex-shrink: 0; font-size: 10px; padding: 1px 6px; border-radius: 4px;
-      border: 1px solid var(--border); background: transparent;
-      color: var(--text-dim); cursor: pointer; transition: all .1s;
+      flex-shrink: 0; font-size: 10px; padding: 2px 7px; border-radius: 4px;
+      border: 1px solid rgba(124,106,247,0.4); background: transparent;
+      color: var(--accent); cursor: pointer; transition: all .15s;
     }
-    .wip-copy:hover { border-color: var(--accent); color: var(--accent); }
-    .wip-copy.copied { border-color: var(--col-done); color: var(--col-done); }
+    .wip-copy:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .wip-copy.copied { border-color: var(--col-done); color: var(--col-done); background: transparent; }
 
     .branch-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
     .modified-badge {
@@ -300,8 +311,24 @@
     .card-top            { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
     .card-id             { font-family: ui-monospace, "Cascadia Code", monospace; font-size: 11px; color: var(--text-muted); }
     .card-title          { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; margin-bottom: 7px; }
-    .card-footer         { display: flex; align-items: center; justify-content: space-between; }
-    .card-age            { font-size: 11px; color: var(--text-muted); }
+    .card-footer         { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; }
+    .card-age            { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .ready-indicator     { display: flex; align-items: center; gap: 4px; cursor: pointer; flex-shrink: 0; }
+    .ready-dot           { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .ready-indicator.ready     .ready-dot { background: var(--col-done); }
+    .ready-indicator.not-ready .ready-dot { background: var(--border-hover); }
+    .ready-label         { font-size: 10px; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+    .ready-indicator.ready     .ready-label { color: var(--col-done); }
+    .ready-indicator.not-ready .ready-label { color: var(--text-muted); }
+    .ready-popover {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 7px 11px;
+      font-size: 11px; color: var(--text); line-height: 1.7;
+      box-shadow: 0 4px 14px rgba(0,0,0,.35);
+      opacity: 0; transition: opacity .15s;
+    }
+    .ready-popover.visible { opacity: 1; }
 
     /* Type badges */
     .type-badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
@@ -919,14 +946,24 @@ function renderSidebar() {
   if (wip.length) {
     wipEl.classList.add('has-items');
     wipItems.innerHTML = wip.map(t =>
-      `<div class="wip-item">` +
+      `<div class="wip-item" data-id="${esc(t.id)}" role="button" tabindex="0" title="Open ticket">` +
         `<span class="wip-id">${esc(t.id)}</span>` +
         `<span class="wip-title">${esc(t.title)}</span>` +
-        `<button class="wip-copy" data-copy="${esc(t.id)}: " title="Copy commit prefix">copy</button>` +
+        `<button class="wip-copy" data-copy="${esc(t.id)}: " title="Copy commit prefix — paste into your git commit message">copy</button>` +
       `</div>`
     ).join('');
+    wipItems.querySelectorAll('.wip-item').forEach(row => {
+      row.addEventListener('click', e => {
+        if (e.target.classList.contains('wip-copy')) return;
+        openModal(row.dataset.id);
+      });
+      row.addEventListener('keydown', e => {
+        if (e.key === 'Enter') row.click();
+      });
+    });
     wipItems.querySelectorAll('.wip-copy').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
         navigator.clipboard.writeText(btn.dataset.copy).then(() => {
           btn.textContent = 'done'; btn.classList.add('copied');
           setTimeout(() => { btn.textContent = 'copy'; btn.classList.remove('copied'); }, 1500);
@@ -976,7 +1013,7 @@ function renderBoard() {
       <div class="column ${esc(col.cls)}">
         <div class="column-header">
           <div class="column-title"><div class="col-indicator"></div>${esc(col.label)}</div>
-          <span class="column-count">${cards.length}</span>
+          ${cards.length > 0 ? `<span class="column-count">${cards.length}</span>` : ''}
         </div>
         <div class="column-body" data-status="${esc(col.status)}">
           ${visible.length
@@ -1002,6 +1039,42 @@ function renderBoard() {
   });
 
   let dragId = null;
+
+  // Ready indicator popover
+  let _popoverTimer = null;
+  let _popover = document.getElementById('ready-popover');
+  if (!_popover) {
+    _popover = document.createElement('div');
+    _popover.id = 'ready-popover';
+    _popover.className = 'ready-popover';
+    document.body.appendChild(_popover);
+  }
+  function showReadyPopover(el, t) {
+    const { ready, hasDesc, hasDocs } = readiness(t);
+    _popover.innerHTML =
+      `<div>${hasDesc ? '✓' : '○'} Description</div>` +
+      `<div>${hasDocs ? '✓' : '○'} Docs (blueprint, decisions…)</div>` +
+      (ready ? '<div style="margin-top:4px;color:var(--col-done)">Good to go</div>'
+             : '<div style="margin-top:4px;color:var(--text-muted)">Add missing items to unblock</div>');
+    const r = el.getBoundingClientRect();
+    _popover.style.left = `${r.left}px`;
+    _popover.style.top  = `${r.top - _popover.offsetHeight - 8}px`;
+    _popover.classList.add('visible');
+    clearTimeout(_popoverTimer);
+    // reposition after paint (height now known)
+    requestAnimationFrame(() => {
+      _popover.style.top = `${r.top - _popover.offsetHeight - 8}px`;
+    });
+    _popoverTimer = setTimeout(() => _popover.classList.remove('visible'), 3000);
+  }
+
+  board.querySelectorAll('.ready-indicator').forEach(el => {
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      const t = state.tickets.find(x => x.id === el.dataset.id);
+      if (t) showReadyPopover(el, t);
+    });
+  });
 
   board.querySelectorAll('.card').forEach(el => {
     el.addEventListener('click', () => openModal(el.dataset.id));
@@ -1038,7 +1111,19 @@ function renderBoard() {
   });
 }
 
+function readiness(t) {
+  const hasDesc = (t.body || '').replace(/^#[^\n]*\n?/, '').trim().length > 0;
+  const hasDocs = (t.docs || []).length > 0;
+  const ready = hasDesc && hasDocs;
+  const label = ready ? 'ready'
+    : (!hasDesc && !hasDocs) ? 'not ready'
+    : !hasDesc ? 'needs desc'
+    : 'needs docs';
+  return { ready, hasDesc, hasDocs, label };
+}
+
 function cardHTML(t) {
+  const { ready, label } = readiness(t);
   return `
     <div class="card${t.id === state.selectedId ? ' focused' : ''}" data-id="${esc(t.id)}" draggable="true">
       <div class="card-top">
@@ -1049,6 +1134,10 @@ function cardHTML(t) {
       <div class="card-footer">
         ${priorityDots(t.priority)}
         <span class="card-age">${esc(age(t.created))}</span>
+        <span class="ready-indicator ${ready ? 'ready' : 'not-ready'}" data-id="${esc(t.id)}">
+          <span class="ready-dot"></span>
+          <span class="ready-label">${label}</span>
+        </span>
       </div>
     </div>`;
 }
@@ -1072,11 +1161,14 @@ function openModal(id) {
     open: 'var(--col-open)', in_progress: 'var(--col-progress)',
     closed: 'var(--col-done)', cancelled: 'var(--col-discarded)',
   }[t.status] || 'var(--text)';
+  const { ready: mReady, label: mReadyLabel } = readiness(t);
+  const mReadyColor = mReady ? 'var(--col-done)' : 'var(--text-muted)';
   document.getElementById('m-meta').innerHTML = [
     { label:'Status',   html:`<span style="color:${statusColor};font-weight:500">${esc(titleCase(t.status.replace('_',' ')))}</span>` },
     { label:'Type',     val: titleCase(t.type || 'task') },
     { label:'Priority', val: `P${t.priority ?? 2}` },
     { label:'Age',      val: age(t.created) || '—' },
+    { label:'Ready',    html:`<span style="color:${mReadyColor};font-weight:600;display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${mReadyColor};display:inline-block;flex-shrink:0"></span>${esc(mReadyLabel)}</span>` },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
 
   renderModalDocs(t);
@@ -1089,7 +1181,8 @@ function openModal(id) {
 function renderModalDocs(t) {
   const docs = t.docs || [];
   const bar = document.getElementById('m-docs');
-  const allTabs = [{ name: 'Description', file: null }, ...docs];
+  // Only show the Description tab when there are other docs to switch between
+  const allTabs = docs.length > 0 ? [{ name: 'Description', file: null }, ...docs] : docs;
 
   bar.innerHTML = allTabs.map(d => {
     const active = d.file === modalState.activeDoc;
@@ -1124,7 +1217,9 @@ function renderModalBody(t) {
       .then(d => { bodyEl.innerHTML = d.content ? md(d.content) : '<span class="modal-empty">Empty doc.</span>'; })
       .catch(() => { bodyEl.innerHTML = '<span class="modal-empty">Could not load doc.</span>'; });
   } else {
-    const body = (t.body || '').trim();
+    let body = (t.body || '').trim();
+    // strip leading H1 if it duplicates the title shown in the modal header
+    body = body.replace(/^#[ \t]+.+(\r?\n|$)/, '').trim();
     bodyEl.innerHTML = body ? md(body) : '<span class="modal-empty">No description.</span>';
   }
 }
@@ -1267,7 +1362,7 @@ function refreshModalActions(t) {
   const next = idx < STATUS_ORDER.length-1 ? COLUMNS[idx+1].label : null;
   const showDiscard = t.status !== 'cancelled' && t.status !== 'closed';
   document.getElementById('m-actions').innerHTML = `
-    ${prev ? `<button class="btn" id="act-prev">← ${esc(prev)}</button>` : ''}
+    ${prev ? `<button class="btn" id="act-prev">← Back</button>` : ''}
     ${next ? `<button class="btn" id="act-next">${esc(next)} →</button>` : ''}
     ${showDiscard ? '<button class="btn btn-danger" id="act-discard">Discard ✕</button>' : ''}
   `;
