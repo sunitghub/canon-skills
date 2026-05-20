@@ -136,15 +136,16 @@ def write_status(ticket_id: str, new_status: str) -> bool:
 class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
-        # quieter logging — suppress asset noise
-        if '/api/' in (args[0] if args else ''):
-            print(f'  {args[0]}', file=sys.stderr)
+        first = str(args[0]) if args else ''
+        if '/api/' in first:
+            print(f'  {first}', file=sys.stderr)
 
     def send_json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode()
         self.send_response(status)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(body))
+        self.send_header('Connection', 'close')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(body)
@@ -157,6 +158,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', len(body))
+        self.send_header('Connection', 'close')
         self.end_headers()
         self.wfile.write(body)
 
