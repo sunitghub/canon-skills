@@ -22,6 +22,27 @@ Nothing in progress.
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 - DateTime-based staleness check for skills refresh — not needed; @-imports are live references, content changes take effect automatically
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-20 11:08 branch:main -->
+**Modified files:**
+```
+ M tools/sprint-check/app.html
+```
+
+**Recent commits:**
+```
+a154394 feat: companion docs tabs + inline edit in ticket modal
+0431250 chore: auto-update handoff snapshot [2026-05-20 10:56]
+53d0c26 feat: drag-drop between columns, sort newest-first, readability fixes
+28dee08 chore: auto-update handoff snapshot [2026-05-20 10:51]
+c6a5f60 chore: auto-update handoff snapshot [2026-05-20 10:49]
+```
+
+**In-progress tickets:**
+```
+t-ialk   [in_progress] - Build sprint-check GUI — kanban app.html + Python server
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-20 10:56 branch:main -->
 **Modified files:**
 ```
@@ -35,21 +56,5 @@ Nothing in progress.
 c6a5f60 chore: auto-update handoff snapshot [2026-05-20 10:49]
 a37eea1 chore: auto-update handoff snapshot [2026-05-20 10:47]
 8d7ee5e chore: auto-update handoff snapshot [2026-05-20 10:45]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 10:51 branch:main -->
-**Modified files:**
-```
- M tools/sprint-check/app.html
-```
-
-**Recent commits:**
-```
-c6a5f60 chore: auto-update handoff snapshot [2026-05-20 10:49]
-a37eea1 chore: auto-update handoff snapshot [2026-05-20 10:47]
-8d7ee5e chore: auto-update handoff snapshot [2026-05-20 10:45]
-9db0259 chore: auto-update handoff snapshot [2026-05-20 10:43]
-7cac319 chore: auto-update handoff snapshot [2026-05-20 10:41]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
