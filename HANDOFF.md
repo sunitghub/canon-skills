@@ -22,6 +22,27 @@ Nothing in progress.
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 - DateTime-based staleness check for skills refresh — not needed; @-imports are live references, content changes take effect automatically
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-20 11:47 branch:main -->
+**Modified files:**
+```
+ M .tickets/AS-ynok.md
+```
+
+**Recent commits:**
+```
+11f05c2 chore: auto-update handoff snapshot [2026-05-20 11:42]
+ff1370c feat: create ticket modal with intelligent type detection
+059ceab chore: auto-update handoff snapshot [2026-05-20 11:25]
+34ef873 chore: auto-update handoff snapshot [2026-05-20 11:23]
+dc17c96 chore: auto-update handoff snapshot [2026-05-20 11:21]
+```
+
+**In-progress tickets:**
+```
+t-ialk   [in_progress] - Build sprint-check GUI — kanban app.html + Python server
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-20 11:42 branch:main -->
 **Modified files:**
 ```
@@ -35,28 +56,6 @@ ff1370c feat: create ticket modal with intelligent type detection
 34ef873 chore: auto-update handoff snapshot [2026-05-20 11:23]
 dc17c96 chore: auto-update handoff snapshot [2026-05-20 11:21]
 a25bdb4 feat: doc type picker with templates replaces prompt()
-```
-
-**In-progress tickets:**
-```
-t-ialk   [in_progress] - Build sprint-check GUI — kanban app.html + Python server
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 11:25 branch:main -->
-**Modified files:**
-```
- M .tickets/AS-ynok.md
- M tools/sprint-check/app.html
-```
-
-**Recent commits:**
-```
-34ef873 chore: auto-update handoff snapshot [2026-05-20 11:23]
-dc17c96 chore: auto-update handoff snapshot [2026-05-20 11:21]
-a25bdb4 feat: doc type picker with templates replaces prompt()
-4ddd337 chore: auto-update handoff snapshot [2026-05-20 11:17]
-ce00183 chore: auto-update handoff snapshot [2026-05-20 11:15]
 ```
 
 **In-progress tickets:**
