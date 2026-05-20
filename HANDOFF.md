@@ -30,27 +30,26 @@ Nothing in progress.
 
 **Recent commits:**
 ```
+1b123a2 chore: auto-update handoff snapshot [2026-05-20 10:14]
+59ea536 feat: register sprint-check skill + polish UI labels
+410bcf6 feat: add sprint-check local kanban dashboard
+a7511de chore: auto-update handoff snapshot [2026-05-20 09:57]
+1a3dff5 chore: auto-update handoff snapshot [2026-05-20 09:56]
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
+<!-- HANDOFF-SNAPSHOT:START 2026-05-20 10:14 branch:main -->
+**Modified files:**
+```
+ M tools/sprint-check/app.html
+```
+
+**Recent commits:**
+```
 59ea536 feat: register sprint-check skill + polish UI labels
 410bcf6 feat: add sprint-check local kanban dashboard
 a7511de chore: auto-update handoff snapshot [2026-05-20 09:57]
 1a3dff5 chore: auto-update handoff snapshot [2026-05-20 09:56]
 337e348 chore: auto-update handoff snapshot [2026-05-20 09:55]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 09:57 branch:main -->
-**Modified files:**
-```
-?? tools/sprint-check.sh
-?? tools/sprint-check/
-```
-
-**Recent commits:**
-```
-1a3dff5 chore: auto-update handoff snapshot [2026-05-20 09:56]
-337e348 chore: auto-update handoff snapshot [2026-05-20 09:55]
-ee11355 chore: auto-update handoff snapshot [2026-05-20 09:55]
-1e28bda chore: auto-update handoff snapshot [2026-05-20 09:49]
-53f1300 chore: auto-update handoff snapshot [2026-05-20 09:48]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
