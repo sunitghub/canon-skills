@@ -22,6 +22,23 @@ Nothing in progress.
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 - DateTime-based staleness check for skills refresh — not needed; @-imports are live references, content changes take effect automatically
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-20 10:28 branch:main -->
+**Modified files:**
+```
+ M tools/sprint-check/app.html
+ M tools/sprint-check/server.py
+```
+
+**Recent commits:**
+```
+86326e3 chore: auto-update handoff snapshot [2026-05-20 10:21]
+09e13bf chore: auto-update handoff snapshot [2026-05-20 10:20]
+74cab33 chore: auto-update handoff snapshot [2026-05-20 10:17]
+8497ed8 chore: auto-update handoff snapshot [2026-05-20 10:17]
+1f87bf7 fix: brighten column count badges for legibility
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-20 10:21 branch:main -->
 **Modified files:**
 ```
@@ -35,21 +52,5 @@ Nothing in progress.
 8497ed8 chore: auto-update handoff snapshot [2026-05-20 10:17]
 1f87bf7 fix: brighten column count badges for legibility
 5bdcdd4 chore: auto-update handoff snapshot [2026-05-20 10:14]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 10:20 branch:main -->
-**Modified files:**
-```
- M tools/sprint-check/app.html
-```
-
-**Recent commits:**
-```
-74cab33 chore: auto-update handoff snapshot [2026-05-20 10:17]
-8497ed8 chore: auto-update handoff snapshot [2026-05-20 10:17]
-1f87bf7 fix: brighten column count badges for legibility
-5bdcdd4 chore: auto-update handoff snapshot [2026-05-20 10:14]
-1b123a2 chore: auto-update handoff snapshot [2026-05-20 10:14]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
