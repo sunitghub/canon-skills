@@ -1,7 +1,7 @@
 
 ## Current Focus
 
-Bundled tkt ticket tool shipped; canon repo fully self-contained with no external ticket dependency.
+README shipped. Canon is ready to publish to npm.
 
 ## In Progress
 
@@ -9,47 +9,24 @@ Nothing in progress.
 
 ## Recent Decisions
 
-- **tkt bundled in tools/tkt.sh** — replaces `tk` (brew install) with a self-contained bash script; same `.tickets/` format so upgrade to full `tk` is seamless
-- **ticket skill now visible** — removed `hidden: true`; appears in `skills list` and is auto-added when wrapup is registered
-- **skills add wrapup auto-adds ticket** — and prompts to add canon/tools to PATH; skips if ticket already registered
-- **skills refresh condensed** — one line per skill (`[ok]` or `[updated]`), silent on no-change
-- **skills status PATH check** — ticket row shows `(tkt on PATH)` or `(tkt not on PATH)`; "Action needed" block appears at bottom if tkt is missing from PATH
-- **dep tree/cycle dropped** — approve workflow simplified to: wrapup → tkt close
-- **Setup guide updated** — removed brew install instructions, rewrote ticketing section for tkt, PDF regenerated
+- **sprint-check symlink fix** — `${BASH_SOURCE[0]}` returned the symlink path (`~/bin/sprint-check`) instead of the real file, so `SCRIPT_DIR` was wrong. Fixed with standard `readlink` loop in `tools/sprint-check.sh`.
+- **README fully rewritten** — hero pitch, sprint-check section with 5 screenshots, contrast table (canon vs agent frameworks), npx install path, live-reference model explanation. Tagline: "Your agents are capable. Canon makes them yours."
+- **Screenshots in `meta/screenshots/`** — board-light.png, board-dark.png, commit-detail.png, new-ticket.png, ticket-completeness.png. All committed to repo.
+- **npm package ready** — `bin/install.js`, `package.json` (name: `canon-skills`), `.npmignore`, and `meta/publishing.md` runbook all in place from prior session.
+
+## Next Steps
+
+1. **Publish to npm** — user needs an npm account (npmjs.com). Then:
+   ```bash
+   npm pack --dry-run /Users/Sunit/Developer/canon   # verify only 3 files
+   npm publish /Users/Sunit/Developer/canon --access public
+   npm info canon-skills   # verify live
+   npx canon-skills@latest  # smoke test
+   ```
+2. **Verify sprint-check symlink fix** works in asterisk project (run `sprint-check` from that project dir).
+3. **After npm publish**: update README install section if any friction found during smoke test.
 
 ## Dead Ends
 
-- Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
-- DateTime-based staleness check for skills refresh — not needed; @-imports are live references, content changes take effect automatically
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 19:11 branch:main -->
-**Modified files:**
-```
- M skills.sh
-```
-
-**Recent commits:**
-```
-c324358 fix: refresh correctly removes @-import from AGENTS.md for pruned deps
-7f57653 fix: refresh also removes stale @-import from AGENTS.md when pruning covered deps
-f1c0624 fix: skills list shows standards; help strips @-imports; update CATALOG.md
-8007062 fix: addall skips skills already covered as transitive deps
-9c32789 feat: pre-fill description with type template on new ticket modal open
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 16:15 branch:main -->
-**Modified files:**
-```
- M tools/sprint-check/app.html
-```
-
-**Recent commits:**
-```
-3015f94 chore: auto-update handoff snapshot [2026-05-20 16:14]
-84b5eec chore: move sprint-check-guide.pdf to guides/
-aded0d1 docs: add sprint-check-guide.pdf
-f8fa89f feat: auto-add canon/tools to PATH on skills add sprint-check; update guide with screenshot
-c8bc9b4 feat: sprint-check UX polish — readiness indicator, WIP click-to-open, modal cleanup
-```
-<!-- HANDOFF-SNAPSHOT:END -->
+- Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
+- Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime.
