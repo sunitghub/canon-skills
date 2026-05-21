@@ -1,0 +1,31 @@
+{
+  "name": "canon-skills",
+  "version": "1.0.0",
+  "description": "Shared skill library for AI coding agents — Claude Code, Codex, Pi. One clone. Every project. No setup.",
+  "bin": {
+    "canon-skills": "./bin/install.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=16"
+  },
+  "keywords": [
+    "claude-code",
+    "ai-agent",
+    "codex",
+    "llm",
+    "skills",
+    "workflow",
+    "sprint",
+    "developer-tools"
+  ],
+  "author": "Sunit",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sunitghub/canon.git"
+  },
+  "homepage": "https://github.com/sunitghub/canon#readme"
+}
