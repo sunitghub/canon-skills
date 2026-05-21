@@ -22,6 +22,22 @@ Nothing in progress.
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime
 - DateTime-based staleness check for skills refresh — not needed; @-imports are live references, content changes take effect automatically
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-20 19:11 branch:main -->
+**Modified files:**
+```
+ M skills.sh
+```
+
+**Recent commits:**
+```
+c324358 fix: refresh correctly removes @-import from AGENTS.md for pruned deps
+7f57653 fix: refresh also removes stale @-import from AGENTS.md when pruning covered deps
+f1c0624 fix: skills list shows standards; help strips @-imports; update CATALOG.md
+8007062 fix: addall skips skills already covered as transitive deps
+9c32789 feat: pre-fill description with type template on new ticket modal open
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-20 16:15 branch:main -->
 **Modified files:**
 ```
@@ -35,21 +51,5 @@ Nothing in progress.
 aded0d1 docs: add sprint-check-guide.pdf
 f8fa89f feat: auto-add canon/tools to PATH on skills add sprint-check; update guide with screenshot
 c8bc9b4 feat: sprint-check UX polish — readiness indicator, WIP click-to-open, modal cleanup
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-20 16:14 branch:main -->
-**Modified files:**
-```
- M tools/sprint-check/app.html
-```
-
-**Recent commits:**
-```
-84b5eec chore: move sprint-check-guide.pdf to guides/
-aded0d1 docs: add sprint-check-guide.pdf
-f8fa89f feat: auto-add canon/tools to PATH on skills add sprint-check; update guide with screenshot
-c8bc9b4 feat: sprint-check UX polish — readiness indicator, WIP click-to-open, modal cleanup
-df39617 chore: auto-update handoff snapshot [2026-05-20 14:22]
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
