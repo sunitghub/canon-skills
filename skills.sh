@@ -233,7 +233,7 @@ cmd_add() {
   echo ""
   echo "Done. $desc"
 
-  if [[ "$name" == "ticket" || "$name" == "sprint-check" ]]; then
+  if [[ "$name" == "ticket" || "$name" == "sprint-check" || "$name" == "sprint" ]]; then
     offer_tkt_path
   fi
 
