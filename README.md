@@ -72,6 +72,12 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 `+ New ticket` opens a form pre-filled with a structured template. Type, priority, goal, and acceptance criteria — then `Create`. The ticket lands in `.tickets/` as a markdown file, immediately visible to your agent.
 
+### Ticket completeness
+
+![Ticket completeness checker](meta/screenshots/ticket-completeness.png)
+
+Hover a ticket card to see what's missing — description, blueprint, decisions. The board surfaces gaps before they block your agent mid-sprint, with a direct prompt to add what's needed.
+
 ---
 
 ## The contrast
