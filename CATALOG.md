@@ -8,6 +8,10 @@ SKILL                 CATEGORY     DESCRIPTION
 efficiency            agent-ops    Coding standards, git conventions, and
                                    token-efficiency rules for AI agents
 
+sprint-check          tools        Local kanban dashboard for the current
+                                   project — reads .tickets/, HANDOFF.md, and
+                                   git log. Zero install beyond the canon repo.
+
 pdf                   utility      Read, extract, merge, split, create, encrypt
                                    and OCR PDF files
 

@@ -70,8 +70,7 @@ cmd_list() {
   local prev_cat=""
   for dir in "${SEARCH_DIRS[@]}"; do
     [ -d "$dir" ] || continue
-    # tools/ are auto-injected infrastructure — not catalog entries
-    [[ "$dir" == */tools ]] && continue
+    # tools/ items that are deps of other skills are filtered below — no blanket skip
     while IFS= read -r f; do
       local name desc category summary
       name=$(fm_field "$f" name)
