@@ -1,7 +1,7 @@
 ---
 name: sprint
 description: Full dev workflow — plan, build, and ship focused units of work with acceptance-criteria-gated delivery
-summary: plan → build → ship. Interrogates the request, rates impact across five dimensions, generates a test plan, and awaits approval. sprint complete verifies all tests passed before closing.
+summary: plan → build → ship. Grills gray areas, rates impact across five dimensions, generates a test plan, and awaits approval. Approved plan persists to plan.md for compaction resilience. sprint complete verifies all tests passed before closing.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
 depends: [wrapup, capture, ticket, handoff, impact-analysis]
@@ -58,7 +58,15 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Active sprint files
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold (used in Step 4 regression tests)
 
-4. **Impact analysis.** Before producing the sprint brief, run the full impact analysis process defined in the impact-analysis skill:
+4. **Grill.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
+
+   - Analyze the request and identify up to 5 gray areas (API shape, data model, UI behavior, error handling approach, integration pattern, scope boundary, etc.)
+   - **If no genuine gray areas exist:** skip silently and proceed to impact analysis.
+   - **If gray areas exist:** present them numbered. For each: state the decision to be made and the tradeoffs. Wait for the user to resolve all of them before proceeding.
+   - Scope guardrail: grill clarifies HOW to implement what is already scoped. It does not add scope or renegotiate what is being built.
+   - Log each resolved gray area under `## Grill` in `blueprint.md`.
+
+5. **Impact analysis.** Before producing the sprint brief, run the full impact analysis process defined in the impact-analysis skill:
    - Interrogate the request — ask every question whose answer changes the risk profile. Do not skip this even if the request seems straightforward.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
    - For every HIGH rating: add the required action to `blueprint.md` and the required test to `acceptance.md ## Test Plan`.
@@ -66,7 +74,7 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Write the `## Impact Assessment` block to `blueprint.md` and `## Test Plan` to `acceptance.md`.
    - If test location is unclear, ask the user before proceeding.
 
-5. **Sprint brief.** After impact analysis, produce:
+6. **Sprint brief.** After impact analysis, produce:
    - What this sprint accomplishes (one sentence)
    - Files expected to be created or modified
    - Impact summary: overall rating + any HIGH dimensions with their required actions called out
@@ -75,7 +83,12 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Any constraints from DECISIONS.md that apply
    - Open questions or blockers still unresolved
 
-6. **Wait for explicit approval.** Do not write application code until the user confirms.
+7. **Wait for explicit approval.** Do not write application code until the user confirms. On approval, write `plan.md` to `.tickets/<id>/` (or `planning/sprints/<slug>/`) with:
+   - Timestamp and ticket ID
+   - Grill resolutions (if any)
+   - Full approved sprint brief (verbatim: objective, files, impact summary, acceptance criteria, test plan)
+
+   `plan.md` is the compaction-resilient record. If context is reset or compacted mid-sprint, re-read `plan.md` before continuing — it is the source of truth for what was approved.
 
 ---
 
@@ -118,8 +131,9 @@ With tkt:
 ```
 .tickets/<id>/
   ticket.md        ← tkt-managed
-  blueprint.md     ← implementation plan
-  acceptance.md    ← definition of done
+  blueprint.md     ← implementation plan (includes Grill resolutions + Impact Assessment)
+  acceptance.md    ← definition of done + test plan
+  plan.md          ← approved sprint brief; written on approval, re-read after compaction
 ```
 
 Without tkt:
@@ -127,6 +141,7 @@ Without tkt:
 planning/sprints/<slug>/
   blueprint.md
   acceptance.md
+  plan.md
 ```
 
 ---
