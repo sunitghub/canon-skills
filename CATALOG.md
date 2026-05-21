@@ -11,9 +11,10 @@ efficiency            agent-ops    Coding standards, git conventions, and
 pdf                   utility      Read, extract, merge, split, create, encrypt
                                    and OCR PDF files
 
-sprint                dev          plan → build → ship. Interrogates the
-                                   request, rates impact across five dimensions,
+sprint                dev          plan → build → ship. Grills gray areas,
+                                   rates impact across five dimensions,
                                    generates a test plan, and awaits approval.
-                                   sprint complete verifies all tests passed
-                                   before closing.
+                                   Approved plan persists to plan.md for
+                                   compaction resilience. sprint complete
+                                   verifies all tests passed before closing.
 ```
