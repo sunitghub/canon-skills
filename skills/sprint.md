@@ -4,12 +4,13 @@ description: Full dev workflow — plan, build, and ship focused units of work w
 summary: plan → build → ship. Grills gray areas, rates impact across five dimensions, generates a test plan, and awaits approval. Approved plan persists to plan.md for compaction resilience. sprint complete verifies all tests passed before closing.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
-depends: [wrapup, capture, ticket, handoff, impact-analysis]
+depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]
 ---
 
 @/Users/Sunit/Developer/canon/skills/wrapup.md
 @/Users/Sunit/Developer/canon/skills/capture.md
 @/Users/Sunit/Developer/canon/skills/impact-analysis.md
+@/Users/Sunit/Developer/canon/skills/orient.md
 
 # Sprint
 
@@ -56,9 +57,11 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - `DECISIONS.md` at repo root — create with empty log table if absent
    - `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
    - Active sprint files
-   - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold (used in Step 4 regression tests)
+   - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold (used in Step 5 regression tests)
 
-4. **Grill.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
+4. **Orient.** Run the orient sub-skill: survey the subsystem around the planned files, trace dependencies, and flag any non-obvious relationships. Appends `## Subsystem Map` to `blueprint.md`. This runs automatically — no user action needed. Findings feed directly into the Grill step.
+
+5. **Grill.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 
    - Analyze the request and identify up to 5 gray areas (API shape, data model, UI behavior, error handling approach, integration pattern, scope boundary, etc.)
    - **If no genuine gray areas exist:** skip silently and proceed to impact analysis.
@@ -66,7 +69,7 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Scope guardrail: grill clarifies HOW to implement what is already scoped. It does not add scope or renegotiate what is being built.
    - Log each resolved gray area under `## Grill` in `blueprint.md`.
 
-5. **Impact analysis.** Before producing the sprint brief, run the full impact analysis process defined in the impact-analysis skill:
+6. **Impact analysis.** Before producing the sprint brief, run the full impact analysis process defined in the impact-analysis skill:
    - Interrogate the request — ask every question whose answer changes the risk profile. Do not skip this even if the request seems straightforward.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
    - For every HIGH rating: add the required action to `blueprint.md` and the required test to `acceptance.md ## Test Plan`.
@@ -74,7 +77,7 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Write the `## Impact Assessment` block to `blueprint.md` and `## Test Plan` to `acceptance.md`.
    - If test location is unclear, ask the user before proceeding.
 
-6. **Sprint brief.** After impact analysis, produce:
+7. **Sprint brief.** After impact analysis, produce:
    - What this sprint accomplishes (one sentence)
    - Files expected to be created or modified
    - Impact summary: overall rating + any HIGH dimensions with their required actions called out
@@ -83,7 +86,7 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Any constraints from DECISIONS.md that apply
    - Open questions or blockers still unresolved
 
-7. **Wait for explicit approval.** Do not write application code until the user confirms. On approval, write `plan.md` to `.tickets/<id>/` (or `planning/sprints/<slug>/`) with:
+8. **Wait for explicit approval.** Do not write application code until the user confirms. On approval, write `plan.md` to `.tickets/<id>/` (or `planning/sprints/<slug>/`) with:
    - Timestamp and ticket ID
    - Grill resolutions (if any)
    - Full approved sprint brief (verbatim: objective, files, impact summary, acceptance criteria, test plan)
@@ -117,11 +120,15 @@ Do not accept the user's claim that work is done. Verify it.
    architectural choices, explicit tradeoffs, out-of-scope calls. One row per decision.
    Write the WHY, not the what. Skip if no new decisions were made.
 
-5. **HANDOFF.md.** Update `## Next Steps` with any follow-up work.
+5. **Conventions.** While context is fresh, check if any convention-level learnings emerged — patterns, naming norms, non-obvious file relationships, gotchas — that would help a future agent working in this area. These are distinct from decisions: a decision is "we chose X"; a convention is "in this codebase, X always lives next to Y" or "never touch Z without also updating W."
+   - If yes: propose the addition (one or two lines) and the target file (`AGENTS.md`, `CLAUDE.md`, or a subdirectory `CLAUDE.md` if one exists). Ask the user to confirm before writing.
+   - If no new conventions emerged: skip silently.
 
-6. **Close.** Run `tkt close <id>` (or mark sprint slug complete).
+6. **HANDOFF.md.** Update `## Next Steps` with any follow-up work.
 
-7. **Report.** One paragraph: what shipped, test results summary, any waived criteria and why, follow-up recorded.
+7. **Close.** Run `tkt close <id>` (or mark sprint slug complete).
+
+8. **Report.** One paragraph: what shipped, test results summary, any waived criteria and why, follow-up recorded.
 
 ---
 

@@ -75,7 +75,7 @@ Click `+ New ticket` in the header. As you type the title, the type (Feature / T
 
 ## Agent Workflow
 
-- Use sprint-check to orient at session start: "open sprint-check and tell me what's in progress"
+- Use sprint-check to get your bearings at session start: "open sprint-check and tell me what's in progress"
 - Agents read sprint-check for context; status changes happen via `tkt` commands
 - The **Now Working On** strip + `copy` button makes it easy to prefix commits with the active ticket ID
 - A green readiness dot signals a ticket has enough context for the agent to act on it without asking for clarification

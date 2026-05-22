@@ -20,7 +20,7 @@ That's it. Your agent now plans before it codes, runs a quality gate before clos
 
 ## Why not just paste instructions into CLAUDE.md?
 
-You can. Most people do — until they have five projects, each with a slightly different copy, all drifting apart. Canon solves this with a **live-reference model**: skills live in one repo and are `@`-imported directly into each project's config. Update once, every project picks it up on the next session start. No copies. No drift.
+You can. Most people do — until they have five projects, each with a slightly different copy, all drifting apart. Canon solves this with a **live-reference model**: skills live in one repo and are `@`-imported directly into each project's config. Update once, every project picks it up on the next session start. No copies. No drift. No tribal knowledge trapped in one engineer's config.
 
 ---
 
@@ -28,7 +28,7 @@ You can. Most people do — until they have five projects, each with a slightly 
 
 | Skill | What it does |
 |---|---|
-| `sprint` | plan → build → ship. Grills gray areas, rates impact, generates a test plan. Approved plans persist to `plan.md` — survives context resets. |
+| `sprint` | plan → build → ship. Maps the subsystem before touching it. Grills gray areas, rates impact, generates a test plan. Approved plans persist to `plan.md` — survives context resets. Captures conventions back to `AGENTS.md` on close. |
 | `wrapup` | Quality pipeline on demand: simplify → review → security, scoped to what you just changed. |
 | `code-reviewer` | Structured review across 7 dimensions: correctness, maintainability, security, edge cases, coverage. |
 | `security-review` | High-confidence vulnerability detection — traces data flow before flagging anything. |
@@ -157,6 +157,8 @@ skills.sh help <skill>             Show full documentation for a skill
 ```
 
 Claude Code reads `CLAUDE.md` at session start. The `@` prefix tells it to load the referenced file in full — which is the live skill from the canon repo. When canon updates, the next session picks up the change automatically. No re-registration.
+
+Configuration is living, not static. Conventions learned during a sprint flow back into `AGENTS.md` on close — the codebase teaches the agent, and the agent remembers.
 
 ---
 

@@ -44,6 +44,8 @@ $SKILLS/skills.sh add sprint
 → ticket created
 → blueprint.md + acceptance.md written
 → DECISIONS.md + HANDOFF.md read
+→ subsystem mapped (orient) — before any edit
+→ gray areas grilled → impact rated
 → sprint brief produced
 → waits for approval before writing any code
 ```
@@ -54,7 +56,9 @@ $SKILLS/skills.sh add sprint
 → wrapup: simplify → review → security
 → each acceptance criterion verified
 → stops and fixes if any criterion fails
-→ DECISIONS.md, HANDOFF.md, ticket closed
+→ DECISIONS.md written
+→ conventions check → AGENTS.md (confirmed before writing)
+→ HANDOFF.md, ticket closed
 ```
 
 ---
@@ -69,7 +73,7 @@ $SKILLS/skills.sh add sprint
   <div class="lifecycle-box ship">SHIP</div>
 </div>
 <div class="lifecycle-desc">
-  <span class="plan-d">tkt · blueprint.md<br>acceptance.md · DECISIONS.md</span>
+  <span class="plan-d">tkt · orient · blueprint.md<br>acceptance.md · DECISIONS.md</span>
   <span class="build-d">capture (auto)<br>efficiency (always on)</span>
   <span class="ship-d">wrapup → simplify<br>→ review → security</span>
 </div>
@@ -81,7 +85,8 @@ sprint start         sprint complete
   blueprint.md         wrapup pipeline
   acceptance.md        acceptance check
   DECISIONS.md read    DECISIONS.md write
-  HANDOFF.md read      HANDOFF.md update
+  HANDOFF.md read      conventions → AGENTS.md
+  orient (subsystem)   HANDOFF.md update
   tkt start            tkt close
 
 Session hooks (automatic):
@@ -165,14 +170,15 @@ Only reports what's confirmed exploitable. No noisy pattern-match output.
 | *hook* | `handoff-inject` reads `HANDOFF.md` silently — agent knows the state |
 | **You** | "Sprint start — add rate limiting to login endpoint" |
 | *agent* | Creates ticket `t-r4t3`, blueprint, acceptance criteria, reads DECISIONS.md |
-| *agent* | Produces sprint brief. Waits. |
+| *orient* | Maps auth/, login code, middleware — flags admin shortcut path as non-obvious caller |
+| *agent* | Grills gray areas. Rates impact. Produces sprint brief. Waits. |
 | **You** | "Yes" |
 | *agent* | Writes code. Reads Redis config. |
 | *capture* | Auto-fires: "Redis pool capped at 5 — rate checks may queue. `config/redis.py:12`" |
 | **You** | "Sprint complete" |
 | *wrapup* | Simplifies middleware. Reviewer flags missing bypass test. |
 | *agent* | Stops. Writes bypass test. All criteria ✓. |
-| *agent* | Appends to DECISIONS.md. Updates HANDOFF.md next steps. Closes ticket. |
+| *agent* | Appends to DECISIONS.md. Proposes convention for AGENTS.md — you confirm. Closes ticket. |
 | **You** | Close Claude Code |
 | *hook* | `auto-handoff` snapshots git state to HANDOFF.md |
 
@@ -217,6 +223,8 @@ brew install rtk   # install before running init so it gets wired automatically
 | Quality steps skipped or out-of-order | `wrapup` runs them automatically, in sequence |
 | Ship without a definition of done | `acceptance.md` gates `sprint complete` |
 | Architectural decisions forgotten | `DECISIONS.md` read at sprint start, written at close |
+| Agent edits blind in unfamiliar code | `orient` maps the subsystem before any file is touched |
+| Conventions trapped in one engineer's head | Sprint close proposes AGENTS.md updates while context is fresh |
 | Agent switches lose context | All agents share the same `HANDOFF.md` |
 
 ---

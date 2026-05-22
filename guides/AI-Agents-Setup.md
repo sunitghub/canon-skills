@@ -99,7 +99,7 @@ The agent:
 2. Creates `.tickets/t-r4t3/blueprint.md` and `acceptance.md`
 3. Reads `DECISIONS.md` — finds: *"Redis chosen for session state"*
 4. Reads `HANDOFF.md` — picks up any open context from the last session
-5. Scans affected files (auth/, login-related code, tests)
+5. Runs **orient** — surveys auth/, login-related code, middleware, and tests. Writes a `## Subsystem Map` to `blueprint.md`: entry points, key interfaces, and a non-obvious note that `login_view` is also called from an admin shortcut path.
 
 **Grill — agent surfaces two gray areas before planning:**
 
@@ -181,6 +181,11 @@ The agent:
 
 3. Appends to `DECISIONS.md`, updates `HANDOFF.md` next steps, closes the ticket.
 
+4. **Conventions check** — proposes one addition to `AGENTS.md`:
+   > *"Rate limit keys must include both IP and username — IP-only doesn't protect accounts from distributed attacks."*
+   
+   **You: "Yes, add it."** Agent writes the line and confirms.
+
 **You close Claude Code.**
 
 > `auto-handoff` fires — appends a snapshot to `HANDOFF.md`: modified files, recent commits, active tickets.
@@ -203,6 +208,7 @@ The agent:
 2. Creates `.tickets/t-a1b2/blueprint.md` and `acceptance.md`
 3. Reads `DECISIONS.md` — file doesn't exist yet, creates it with an empty log table
 4. Reads `HANDOFF.md` — no prior context, starts fresh
+5. Runs **orient** — surveys the repo root. New project, no source yet. Writes a brief confirmation to `blueprint.md`: *"Subsystem Map — new project, no existing structure. File list in blueprint is complete."*
 
 **Grill — agent surfaces three gray areas:**
 
@@ -276,8 +282,9 @@ The agent:
    | 2026-05-17 | JWT for session tokens | Stateless — no session store needed at this scale |
    | 2026-05-17 | Postgres for auth DB | User specified |
 
-4. **HANDOFF.md** — updated with next steps: *"Wire auth middleware into protected endpoints."*
-5. Ticket closed.
+4. **Conventions check** — no new patterns emerged beyond what's already in `AGENTS.md`. Skips silently.
+5. **HANDOFF.md** — updated with next steps: *"Wire auth middleware into protected endpoints."*
+6. Ticket closed.
 
 **You close Claude Code.**
 
@@ -297,8 +304,9 @@ sprint ────────────────────────�
   ├── PLAN
   │     tkt              track work, one ticket per sprint
   │     grill            surface gray areas → lock decisions before planning
+  │     orient           read-only subsystem map → blueprint.md before any edit
   │     impact-analysis  risk rating + test plan before any code
-  │     blueprint.md     files to touch, build plan, Grill log, Impact Assessment
+  │     blueprint.md     files to touch, build plan, Subsystem Map, Grill log, Impact Assessment
   │     acceptance.md    binary definition of done + Test Plan
   │     plan.md          approved brief written on approval — survives compaction
   │     DECISIONS.md     durable architectural decisions (repo root)
@@ -313,6 +321,7 @@ sprint ────────────────────────�
           code-reviewer     seven-dimension logic review
           security-review   high-confidence vulnerability scan
         test verification   all Test Plan items must pass before close
+        conventions         new patterns → AGENTS.md (confirmed before writing)
 
 Session hooks (fire automatically):
   handoff-inject   session start → agent reads HANDOFF.md silently
@@ -421,8 +430,8 @@ Sprint start surfaces these before approval. Sprint complete gates closure on th
 
 | Command | What happens |
 |---|---|
-| `sprint start` | Creates ticket → blueprint → acceptance criteria → reads DECISIONS.md + HANDOFF.md → **grills gray areas** → **impact analysis** → produces sprint brief → **waits for your approval** → writes `plan.md` |
-| `sprint complete` | Runs wrapup → **verifies all tests passed** → validates every acceptance criterion → appends to DECISIONS.md → updates HANDOFF.md → closes ticket |
+| `sprint start` | Creates ticket → blueprint → reads DECISIONS.md + HANDOFF.md → **maps subsystem (orient)** → **grills gray areas** → **impact analysis** → produces sprint brief → **waits for your approval** → writes `plan.md` |
+| `sprint complete` | Runs wrapup → **verifies all tests passed** → validates every acceptance criterion → appends to DECISIONS.md → **conventions check → AGENTS.md** → updates HANDOFF.md → closes ticket |
 
 **Trigger phrases:**
 - sprint start: any request to add, fix, update, debug, implement, or build — explicit phrases like *"sprint start"* or *"let's work on X"* also work. Skipped only for questions, explanations, or trivially mechanical one-liners.
@@ -480,7 +489,7 @@ tkt reopen <id>               # reopen a closed ticket
 
 | Skill | How to verify | Expected response |
 |---|---|---|
-| `sprint` | `"Start a sprint for X"` | Gray areas grilled → impact ratings shown → sprint brief with Impact Assessment and Test Plan → awaits approval → writes `plan.md` |
+| `sprint` | `"Start a sprint for X"` | Subsystem mapped (orient) → gray areas grilled → impact ratings shown → sprint brief with Impact Assessment and Test Plan → awaits approval → writes `plan.md` |
 | `pdf` | `"Extract text from [file].pdf"` | Extracted content, or a clear error |
 | `ticket` | `tkt ls` | Empty list or existing tickets — no error |
 
