@@ -31,6 +31,25 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-21 20:12 branch:main -->
+**Modified files:**
+```
+ M README.md
+ M guides/AI-Agents-Setup.md
+ M skills/sprint.md
+?? skills/orient.md
+```
+
+**Recent commits:**
+```
+7cdd5fb chore: auto-update handoff snapshot [2026-05-21 20:11]
+3f0c756 chore: auto-update handoff snapshot [2026-05-21 20:03]
+4266c32 chore: update handoff — README shipped, npm publish is next step
+e56cab0 docs: add ticket completeness screenshot to README sprint-check section
+aa1d1f3 docs: rewrite README with sprint-check screenshots and live-reference pitch
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-21 20:11 branch:main -->
 **Modified files:**
 ```
@@ -47,23 +66,5 @@ Nothing in progress.
 e56cab0 docs: add ticket completeness screenshot to README sprint-check section
 aa1d1f3 docs: rewrite README with sprint-check screenshots and live-reference pitch
 e6bac4f fix: resolve symlinks in sprint-check.sh so ~/bin symlink works
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-21 20:03 branch:main -->
-**Modified files:**
-```
- M README.md
- M skills/sprint.md
-?? skills/orient.md
-```
-
-**Recent commits:**
-```
-4266c32 chore: update handoff — README shipped, npm publish is next step
-e56cab0 docs: add ticket completeness screenshot to README sprint-check section
-aa1d1f3 docs: rewrite README with sprint-check screenshots and live-reference pitch
-e6bac4f fix: resolve symlinks in sprint-check.sh so ~/bin symlink works
-dd680ce fix: show sprint-check in skills list
 ```
 <!-- HANDOFF-SNAPSHOT:END -->
