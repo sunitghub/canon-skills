@@ -1,7 +1,8 @@
 
 ## Current Focus
 
-README shipped. Canon is ready to publish to npm.
+Codebase wrapup complete across scripts/, skills/, tools/, and adapters/.
+Canon is clean and ready to publish to npm.
 
 ## In Progress
 
@@ -9,10 +10,13 @@ Nothing in progress.
 
 ## Recent Decisions
 
-- **sprint-check symlink fix** — `${BASH_SOURCE[0]}` returned the symlink path (`~/bin/sprint-check`) instead of the real file, so `SCRIPT_DIR` was wrong. Fixed with standard `readlink` loop in `tools/sprint-check.sh`.
-- **README fully rewritten** — hero pitch, sprint-check section with 5 screenshots, contrast table (canon vs agent frameworks), npx install path, live-reference model explanation. Tagline: "Your agents are capable. Canon makes them yours."
-- **Screenshots in `meta/screenshots/`** — board-light.png, board-dark.png, commit-detail.png, new-ticket.png, ticket-completeness.png. All committed to repo.
-- **npm package ready** — `bin/install.js`, `package.json` (name: `canon-skills`), `.npmignore`, and `meta/publishing.md` runbook all in place from prior session.
+- **Full wrapup pass (scripts/)** — fixed 4 bugs: cwd drift in all hook scripts (now use `git rev-parse --show-toplevel`), tkt binary derived from BASH_SOURCE not PATH, `statusline.sh` cache dir renamed from `waza-` to `canon-`, `check-plugins.sh` shell interpolation into Python heredoc fixed.
+- **Full wrapup pass (skills/)** — removed Getting Started sections from hidden skills (−71 lines context overhead), removed ES/TS-specific conventions from code-simplifier, removed legacy polish migration note from wrapup.
+- **Full wrapup pass (tools/)** — `server.py`: moved imports to top level, fixed re.sub backreference injection via lambda, moved Content-Length parse inside try block, added Origin header CSRF guard on POST endpoints.
+- **adapters/ removed** — `adapters/claude/CLAUDE.md` was a shim never wired by `skills.sh init`. Deleted it; updated `~/.claude/CLAUDE.md` to import AGENTS.md and efficiency.md directly.
+- **License audit** — added MIT LICENSE, removed pdf skill (Anthropic proprietary), removed company IP (octave assets, AI-Agents-Deck.md), removed personal-only shorts-director.md.
+- **orient sub-skill + convention capture** — sprint start now maps the subsystem (orient); sprint complete proposes AGENTS.md updates for learnings captured during the sprint.
+- **Pi handoff.ts** — replaced hardcoded `~/Developer/canon` path with `resolveAutoHandoff()` reading `~/.config/canon/install_path`.
 
 ## Next Steps
 
@@ -23,51 +27,9 @@ Nothing in progress.
    npm info canon-skills   # verify live
    npx canon-skills@latest  # smoke test
    ```
-2. **Verify sprint-check symlink fix** works in asterisk project (run `sprint-check` from that project dir).
-3. **After npm publish**: update README install section if any friction found during smoke test.
+2. **After npm publish**: update README install section if any friction found during smoke test.
 
 ## Dead Ends
 
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
-- Config.md for storing install path — not needed; scripts self-locate via BASH_SOURCE at runtime.
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-21 20:18 branch:main -->
-**Modified files:**
-```
- M README.md
- M guides/AI-Agents-Deck.md
- M guides/AI-Agents-Setup.md
- M skills/sprint.md
- M tools/sprint-check.md
-?? skills/orient.md
-```
-
-**Recent commits:**
-```
-57ab14a chore: auto-update handoff snapshot [2026-05-21 20:17]
-59f0960 chore: auto-update handoff snapshot [2026-05-21 20:15]
-fecf8ac chore: auto-update handoff snapshot [2026-05-21 20:14]
-f0a44e6 chore: auto-update handoff snapshot [2026-05-21 20:12]
-7cdd5fb chore: auto-update handoff snapshot [2026-05-21 20:11]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-21 20:17 branch:main -->
-**Modified files:**
-```
- M README.md
- M guides/AI-Agents-Deck.md
- M guides/AI-Agents-Setup.md
- M skills/sprint.md
-?? skills/orient.md
-```
-
-**Recent commits:**
-```
-59f0960 chore: auto-update handoff snapshot [2026-05-21 20:15]
-fecf8ac chore: auto-update handoff snapshot [2026-05-21 20:14]
-f0a44e6 chore: auto-update handoff snapshot [2026-05-21 20:12]
-7cdd5fb chore: auto-update handoff snapshot [2026-05-21 20:11]
-3f0c756 chore: auto-update handoff snapshot [2026-05-21 20:03]
-```
-<!-- HANDOFF-SNAPSHOT:END -->
+- adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
