@@ -33,3 +33,24 @@ Nothing in progress.
 
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
+
+<!-- HANDOFF-SNAPSHOT:START 2026-05-22 09:03 branch:main -->
+**Modified files:**
+```
+ M .gitignore
+```
+
+**Recent commits:**
+```
+fd49b36 chore: update handoff — wrapup complete, npm publish is next step
+defd97d chore: remove adapters/ — skills.sh add handles CLAUDE.md imports directly
+3d3864a fix: harden sprint-check server — imports, re.sub, CSRF guard
+126b12b refactor: wrapup pass on skills/ — trim context overhead
+bc3d529 fix: wrapup findings across scripts/
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
