@@ -3,6 +3,10 @@
 # in-progress tickets and confirm wrapup has been run.
 # PreToolUse[Bash] hook. Outputs context Claude acts on; never blocks.
 
+CANON_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TKT_BIN="$CANON_ROOT/tools/tkt.sh"
+[ -f "$TKT_BIN" ] || TKT_BIN=$(command -v tkt 2>/dev/null || command -v tk 2>/dev/null || true)
+
 INPUT=$(cat)
 CMD=$(echo "$INPUT" | python3 -c "
 import sys, json
@@ -17,11 +21,8 @@ except Exception:
 echo "$CMD" | grep -qE '(^| )(git|rtk git) commit' || exit 0
 
 TICKETS=""
-TKT_CMD=""
-command -v tkt &>/dev/null && TKT_CMD="tkt"
-[ -z "$TKT_CMD" ] && command -v tk &>/dev/null && TKT_CMD="tk"
-if [ -n "$TKT_CMD" ]; then
-  TICKETS=$($TKT_CMD ls --status=in_progress 2>/dev/null | head -5 || true)
+if [ -n "$TKT_BIN" ]; then
+  TICKETS=$("$TKT_BIN" ls --status=in_progress 2>/dev/null | head -5 || true)
 fi
 
 GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0

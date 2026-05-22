@@ -8,6 +8,12 @@ set -euo pipefail
 
 MAX_SNAPSHOTS=2
 
+# Derive tkt path from this canon installation — no PATH dependency.
+# Hooks are registered with absolute paths, so BASH_SOURCE[0] is always the real file.
+CANON_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TKT_BIN="$CANON_ROOT/tools/tkt.sh"
+[ -f "$TKT_BIN" ] || TKT_BIN=$(command -v tkt 2>/dev/null || command -v tk 2>/dev/null || true)
+
 # Must be inside a git repo — anchor HANDOFF.md to the git root, not cwd.
 # cwd can drift when Claude's Bash shell retains a cd from a prior tool call.
 GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
@@ -23,11 +29,8 @@ MODIFIED=$(git status --short 2>/dev/null)
 RECENT_COMMITS=$(git log --oneline -5 2>/dev/null || echo "none")
 
 TICKETS=""
-TKT_CMD=""
-command -v tkt &>/dev/null && TKT_CMD="tkt"
-[ -z "$TKT_CMD" ] && command -v tk &>/dev/null && TKT_CMD="tk"
-if [ -n "$TKT_CMD" ]; then
-  TICKETS=$($TKT_CMD ls --status=in_progress 2>/dev/null | head -10 || true)
+if [ -n "$TKT_BIN" ]; then
+  TICKETS=$("$TKT_BIN" ls --status=in_progress 2>/dev/null | head -10 || true)
 fi
 
 # Build the new snapshot block
@@ -92,7 +95,7 @@ _Auto-created: $TIMESTAMP | Branch: ${BRANCH}_
 <!-- One sentence: what were you working on? Fill this in. -->
 
 ## In Progress
-$([ -n "$TICKETS" ] && echo "$TICKETS" || echo "- (run \`tkt ls --status=in_progress\` to check)")
+$([ -n "$TICKETS" ] && echo "$TICKETS" || echo "- (run \`${TKT_BIN:-tkt} ls --status=in_progress\` to check)")
 
 ## Recent Decisions
 -
