@@ -10,13 +10,14 @@ missing=()
 
 while IFS='|' read -r name path; do
   [[ -d "$path" ]] || missing+=("$name")
-done < <(python3 -c "
+done < <(python3 - "$PLUGINS_JSON" << 'PYEOF'
 import json, sys
-data = json.load(open('$PLUGINS_JSON'))
+data = json.load(open(sys.argv[1]))
 for name, installs in data['plugins'].items():
     for i in installs:
-        print(f'{name}|{i[\"installPath\"]}')
-")
+        print(f'{name}|{i["installPath"]}')
+PYEOF
+)
 
 if [[ ${#missing[@]} -gt 0 ]]; then
   echo "⚠ Missing plugin files (run /plugin install to fix):"

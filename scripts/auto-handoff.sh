@@ -57,8 +57,7 @@ fi
 NEW_SNAPSHOT="${NEW_SNAPSHOT}
 <!-- HANDOFF-SNAPSHOT:END -->"
 
-if [ -f "$HANDOFF" ]; then
-  # Use Python to cleanly manage the LIFO snapshot window
+if [ -f "$HANDOFF" ] && command -v python3 &>/dev/null; then
   python3 - "$HANDOFF" "$MAX_SNAPSHOTS" "$NEW_SNAPSHOT" << 'PYEOF'
 import sys, re
 

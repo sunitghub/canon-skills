@@ -29,7 +29,7 @@ PYEOF
   exit 0
 fi
 
-CACHE_DIR="$HOME/.cache/waza-statusline"
+CACHE_DIR="$HOME/.cache/canon-statusline"
 CACHE_FILE="$CACHE_DIR/last.json"
 CACHE_MAX_AGE=21600  # 6 hours: one full rate_limit window
 

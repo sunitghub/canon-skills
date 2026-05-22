@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # handoff-inject.sh — Inject HANDOFF.md into Claude's context at session start.
 # Called by the Claude Code UserPromptSubmit hook. Fires once per 4-hour window
 # per project — not on every prompt — to keep token overhead minimal.
