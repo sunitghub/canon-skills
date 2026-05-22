@@ -8,10 +8,11 @@ set -euo pipefail
 
 MAX_SNAPSHOTS=2
 
-# Must be inside a git repo
-git rev-parse --git-dir &>/dev/null || exit 0
+# Must be inside a git repo — anchor HANDOFF.md to the git root, not cwd.
+# cwd can drift when Claude's Bash shell retains a cd from a prior tool call.
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
-HANDOFF="$(pwd)/HANDOFF.md"
+HANDOFF="$GIT_ROOT/HANDOFF.md"
 TIMESTAMP=$(date "+%Y-%m-%d %H:%M")
 BRANCH=$(git branch --show-current 2>/dev/null || echo "detached")
 MODIFIED=$(git status --short 2>/dev/null)
@@ -22,8 +23,11 @@ MODIFIED=$(git status --short 2>/dev/null)
 RECENT_COMMITS=$(git log --oneline -5 2>/dev/null || echo "none")
 
 TICKETS=""
-if command -v tk &>/dev/null; then
-  TICKETS=$(tk ls --status=in_progress 2>/dev/null | head -10 || true)
+TKT_CMD=""
+command -v tkt &>/dev/null && TKT_CMD="tkt"
+[ -z "$TKT_CMD" ] && command -v tk &>/dev/null && TKT_CMD="tk"
+if [ -n "$TKT_CMD" ]; then
+  TICKETS=$($TKT_CMD ls --status=in_progress 2>/dev/null | head -10 || true)
 fi
 
 # Build the new snapshot block
@@ -88,7 +92,7 @@ _Auto-created: $TIMESTAMP | Branch: ${BRANCH}_
 <!-- One sentence: what were you working on? Fill this in. -->
 
 ## In Progress
-$([ -n "$TICKETS" ] && echo "$TICKETS" || echo "- (run \`tk ls --status=in_progress\` to check)")
+$([ -n "$TICKETS" ] && echo "$TICKETS" || echo "- (run \`tkt ls --status=in_progress\` to check)")
 
 ## Recent Decisions
 -

@@ -17,11 +17,15 @@ except Exception:
 echo "$CMD" | grep -qE '(^| )(git|rtk git) commit' || exit 0
 
 TICKETS=""
-if command -v tk &>/dev/null; then
-  TICKETS=$(tk ls --status=in_progress 2>/dev/null | head -5 || true)
+TKT_CMD=""
+command -v tkt &>/dev/null && TKT_CMD="tkt"
+[ -z "$TKT_CMD" ] && command -v tk &>/dev/null && TKT_CMD="tk"
+if [ -n "$TKT_CMD" ]; then
+  TICKETS=$($TKT_CMD ls --status=in_progress 2>/dev/null | head -5 || true)
 fi
 
-CLAUDE_MD="$(pwd)/CLAUDE.md"
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+CLAUDE_MD="$GIT_ROOT/CLAUDE.md"
 WRAPUP_REGISTERED=0
 if [ -f "$CLAUDE_MD" ] && grep -qF "wrapup" "$CLAUDE_MD" 2>/dev/null; then
   WRAPUP_REGISTERED=1

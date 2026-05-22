@@ -4,9 +4,11 @@
 # per project — not on every prompt — to keep token overhead minimal.
 # Warns if HANDOFF.md exceeds 80 lines so the user knows to prune.
 
-[ -f "$(pwd)/HANDOFF.md" ] || exit 0
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+HANDOFF_FILE="$GIT_ROOT/HANDOFF.md"
+[ -f "$HANDOFF_FILE" ] || exit 0
 
-PROJ_SLUG=$(basename "$(pwd)" | tr -cd '[:alnum:]-')
+PROJ_SLUG=$(basename "$GIT_ROOT" | tr -cd '[:alnum:]-')
 SESSION_FILE="/tmp/handoff_session_${PROJ_SLUG}"
 STALE_SECONDS=$((60 * 60 * 4))
 MAX_LINES=80
@@ -30,14 +32,18 @@ fi
 if [ "$should_inject" = "1" ]; then
   touch "$SESSION_FILE"
 
-  LINE_COUNT=$(wc -l < "$(pwd)/HANDOFF.md")
+  LINE_COUNT=$(wc -l < "$HANDOFF_FILE")
   if [ "$LINE_COUNT" -gt "$MAX_LINES" ]; then
     echo "[handoff] Warning: HANDOFF.md is ${LINE_COUNT} lines (limit: ${MAX_LINES}). Consider pruning stale entries."
   fi
 
   echo "[handoff] Resuming — context from last session:"
   echo "---"
-  rtk read "$(pwd)/HANDOFF.md"
+  if command -v rtk &>/dev/null; then
+    rtk read "$HANDOFF_FILE"
+  else
+    cat "$HANDOFF_FILE"
+  fi
   echo "---"
   echo "[handoff] Read the above before doing anything else."
 fi

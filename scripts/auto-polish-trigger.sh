@@ -13,8 +13,8 @@ except Exception:
     pass
 " 2>/dev/null)
 
-# Only trigger on ticket close commands (handles rtk-rewritten form too)
-echo "$CMD" | grep -qE '^(rtk )?tk close' || exit 0
+# Only trigger on ticket close commands (handles rtk-rewritten form and tkt/tk variants)
+echo "$CMD" | grep -qE '^(rtk )?(tkt|tk) close' || exit 0
 
 # Only trigger if the command succeeded
 EXIT_OK=$(echo "$INPUT" | python3 -c "
@@ -31,7 +31,8 @@ except Exception:
 [ "${EXIT_OK:-yes}" = "yes" ] || exit 0
 
 # Only trigger if wrapup is registered in this project
-CLAUDE_MD="$(pwd)/CLAUDE.md"
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+CLAUDE_MD="$GIT_ROOT/CLAUDE.md"
 [ -f "$CLAUDE_MD" ] || exit 0
 grep -qF "wrapup" "$CLAUDE_MD" 2>/dev/null || exit 0
 
