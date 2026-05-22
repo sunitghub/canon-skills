@@ -3,10 +3,13 @@
 
 import json
 import os
+import random
 import re
 import socket
+import string
 import subprocess
 import sys
+from datetime import date
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import urlparse
@@ -161,7 +164,7 @@ def write_status(ticket_id: str, new_status: str) -> bool:
     if not path:
         return False
     text = path.read_text(encoding='utf-8', errors='replace')
-    updated = re.sub(r'^(status:\s*)(\S+)$', rf'\g<1>{new_status}', text, flags=re.MULTILINE)
+    updated = re.sub(r'^(status:\s*)(\S+)$', lambda m: m.group(1) + new_status, text, flags=re.MULTILINE)
     if updated == text:
         return False
     path.write_text(updated, encoding='utf-8')
@@ -190,8 +193,6 @@ def read_doc(doc_file: str) -> str | None:
 
 def create_ticket(title: str, type_: str, status: str, priority: int, body: str) -> dict:
     """Create a new ticket file and return its parsed data."""
-    import random, string
-    from datetime import date
     TICKETS_DIR.mkdir(exist_ok=True)
     existing = {f.stem for f in TICKETS_DIR.glob('*.md')}
     chars = string.ascii_lowercase + string.digits
@@ -272,8 +273,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        length = int(self.headers.get('Content-Length', 0))
+        origin = self.headers.get('Origin', '')
+        if origin and not origin.startswith('http://127.0.0.1') and not origin.startswith('http://localhost'):
+            self.send_error(403); return
         try:
+            length = int(self.headers.get('Content-Length', 0))
             payload = json.loads(self.rfile.read(length))
         except Exception:
             self.send_error(400); return
