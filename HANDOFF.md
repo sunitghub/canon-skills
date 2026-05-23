@@ -34,6 +34,32 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-23 18:45 branch:main -->
+**Modified files:**
+```
+ M AGENTS.md
+ M CATALOG.md
+ M standards/efficiency.md
+?? scripts/guard-managed-files.sh
+?? skills/context-check.md
+?? standards/context-findings.md
+```
+
+**Recent commits:**
+```
+1aaebd5 chore: hide sprint-check from skills list
+af7b117 docs: update sprint summary to surface composition and auto-ticketing
+4f75578 docs: show skill composition hierarchy in What's inside table
+2bef4b4 docs: surface session memory and work history in opening narrative
+a4872e8 fix: rename tkt.sh→tkt and sprint-check.sh→sprint-check
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-22 20:29 branch:main -->
 **Modified files:**
 ```
@@ -47,27 +73,6 @@ a0387e5 chore: auto-update handoff snapshot [2026-05-22 20:27]
 15277c2 docs: add creator narrative and footer tagline to README
 25a3108 chore: scrub personal paths and ticket prefix for public release
 ae68e5c docs: trim skills, add agentic design principles to standards
-```
-
-**In-progress tickets:**
-```
-No tickets with status 'in_progress'.
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-22 20:27 branch:main -->
-**Modified files:**
-```
- M README.md
-```
-
-**Recent commits:**
-```
-1bb586c chore: auto-update handoff snapshot [2026-05-22 20:27]
-15277c2 docs: add creator narrative and footer tagline to README
-25a3108 chore: scrub personal paths and ticket prefix for public release
-ae68e5c docs: trim skills, add agentic design principles to standards
-d8a6921 chore: auto-update handoff snapshot [2026-05-22 19:56]
 ```
 
 **In-progress tickets:**
