@@ -14,7 +14,7 @@ npx canon-skills@latest
 $SKILLS/skills.sh add sprint
 ```
 
-That's it. Your agent now plans before it codes, runs a quality gate before closing tickets, and maintains context across session resets.
+That's it. Your agent now plans before it codes, runs a quality gate before closing tickets, and picks up where you left off — every session starts with the full context of what's in progress, what decisions were made, and what was recently shipped.
 
 ---
 
@@ -22,7 +22,7 @@ That's it. Your agent now plans before it codes, runs a quality gate before clos
 
 Most agent repos I tried gave me homework. A vocabulary of slash commands to memorize. An invocation order that wasn't written down anywhere. A setup ritual to repeat on every new project. The overhead of operating the framework started eating into the time I'd saved by using an agent.
 
-I wanted the opposite: define my standards once, have every agent read them automatically, and never think about configuration again. Open a session — your agent already knows how you work.
+I wanted the opposite: define my standards once, have every agent read them automatically, and never think about configuration again. Open a session — your agent already knows how you work, what's in progress, and what decisions were made last week.
 
 The second problem was visibility. As a solo builder, when I'm deep in a session and need to know what's in flight, I don't want to push commits to GitHub just to see a diff, spin up a Jira board, or maintain a project in three browser tabs that requires a remote repo to even exist. I just want to see my work — right now, in the repo, without ceremony.
 
