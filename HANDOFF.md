@@ -34,7 +34,7 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
-<!-- HANDOFF-SNAPSHOT:START 2026-05-22 20:27 branch:main -->
+<!-- HANDOFF-SNAPSHOT:START 2026-05-22 20:29 branch:main -->
 **Modified files:**
 ```
  M README.md
@@ -42,11 +42,11 @@ Nothing in progress.
 
 **Recent commits:**
 ```
+a0387e5 chore: auto-update handoff snapshot [2026-05-22 20:27]
 1bb586c chore: auto-update handoff snapshot [2026-05-22 20:27]
 15277c2 docs: add creator narrative and footer tagline to README
 25a3108 chore: scrub personal paths and ticket prefix for public release
 ae68e5c docs: trim skills, add agentic design principles to standards
-d8a6921 chore: auto-update handoff snapshot [2026-05-22 19:56]
 ```
 
 **In-progress tickets:**
@@ -63,11 +63,11 @@ No tickets with status 'in_progress'.
 
 **Recent commits:**
 ```
+1bb586c chore: auto-update handoff snapshot [2026-05-22 20:27]
 15277c2 docs: add creator narrative and footer tagline to README
 25a3108 chore: scrub personal paths and ticket prefix for public release
 ae68e5c docs: trim skills, add agentic design principles to standards
 d8a6921 chore: auto-update handoff snapshot [2026-05-22 19:56]
-c99d40f chore: auto-update handoff snapshot [2026-05-22 19:52]
 ```
 
 **In-progress tickets:**
