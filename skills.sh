@@ -355,6 +355,11 @@ cmd_status() {
     fi
   fi
 
+  # pre-check sprint-check so issue count is correct before summary prints
+  if $_has_sprint && ! command -v sprint-check &>/dev/null; then
+    (( issues++ )) || true
+  fi
+
   # ── Summary ──────────────────────────────────────────────────────────────
   echo ""
   if [ "$issues" -eq 0 ] && [ "$hook_issues" -eq 0 ]; then
@@ -382,7 +387,6 @@ cmd_status() {
       printf "  %-20s %s\n" "sprint-check" "[ok]  — kanban board ready"
     else
       printf "  %-20s %s\n" "sprint-check" "[not on PATH]  — run: $(basename "$0") refresh to fix"
-      (( issues++ )) || true
     fi
   fi
 
