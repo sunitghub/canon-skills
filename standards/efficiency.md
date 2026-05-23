@@ -52,3 +52,4 @@ Include reasoning only when the fix isn't self-evident. Security and architectur
 - Use targeted bash commands — avoid ones that dump large output for a narrow query.
 - Keep CLAUDE.md and AGENTS.md concise — only rules, gotchas, non-obvious conventions.
 - When summarizing or rewriting content: preserve code blocks, inline code, paths, URLs, commands, version numbers, and technical terms exactly.
+- Run `/context-check` to audit the always-on context budget and log new findings to `standards/context-findings.md`.

@@ -87,6 +87,13 @@ To wire Claude Code hooks after cloning to a new location:
 
 See [CATALOG.md](CATALOG.md) for a static snapshot of all available skills.
 
+## Worktrees (Parallel Agents)
+
+When running multiple Claude Code instances in parallel worktrees:
+- Each worktree uses a long-lived tracking branch (e.g., `claude-code-1/main-1`)
+- After a PR merges, reset the tracking branch: `git reset --hard origin/main`
+- The worktree keeps its identity across sprints — only the work branch changes
+
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
 > Managed by `skills.sh` — use `add`/`remove` to change.

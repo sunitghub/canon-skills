@@ -64,6 +64,19 @@ Apply the code-reviewer skill across all seven dimensions. For security: note co
 
 Apply the security-review skill, including the ast-grep pre-scan.
 
+## Step 4 — Doc Refresh
+
+Review every documentation file touched or referenced during this session and patch anything stale.
+
+Scope (check each that exists):
+- `DECISIONS.md` — any new decisions made this session not yet logged?
+- `HANDOFF.md` — does Next Steps reflect current state?
+- `AGENTS.md` / `CLAUDE.md` — any convention-level learnings to surface? (propose + confirm before writing)
+- `README` — does it document any changed APIs, behaviors, or install steps?
+- Any other `.md` files explicitly opened or modified during the session
+
+For each: one-line patch if stale — don't rewrite, just correct the outdated parts. Skip files where nothing changed.
+
 ---
 
 ## Final Output
@@ -96,4 +109,16 @@ Apply the security-review skill, including the ast-grep pre-scan.
 Address criticals before committing. Improvements and nitpicks at your discretion.
 
 If you ran `/wrapup` directly (not via the approve workflow) and a ticket is in-progress, use the approve workflow to close it — do not call `tkt close` directly.
+
+---
+
+## Commit & Push
+
+Always run this at the end of every wrapup — even if no code changed (docs and config still need committing).
+
+1. List all modified and untracked files (`git status`). Stage only the files relevant to this session's work — never `git add -A`.
+2. Draft a commit message: imperative mood, type prefix, 50-char target. Body if breaking changes or non-obvious reasoning.
+3. Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
+4. On yes: commit, then push to the current branch's remote. Report the pushed ref.
+5. If criticals from the review pipeline are unresolved: warn before asking — do not block, but make the risk explicit.
 
