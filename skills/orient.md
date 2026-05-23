@@ -9,26 +9,16 @@ hidden: true
 
 # Orient
 
-Read-only exploration of the subsystem relevant to the current sprint. Runs before any edits — its job is to map, not modify.
-
 Called automatically by `sprint start` after context documents are read. Do not invoke directly.
-
----
-
-## When to run
-
-Automatically during `sprint start` — not a separate invocation. Runs after DECISIONS.md and HANDOFF.md are read, before the Grill step, so findings are available when surfacing gray areas.
-
----
 
 ## Step 1 — Survey the target area
 
 Read the directory structure and files around the planned changes. Focus on:
 - Entry points: where does execution flow into these files?
 - Interfaces: what do these files export or expose?
-- Adjacent modules: what sits alongside the target files in the same directory?
+- Adjacent modules: what sits alongside the target files?
 
-Limit scope to the relevant subsystem — not the whole repo. If DECISIONS.md contains constraints that affect how to read the subsystem, honor them here.
+Limit scope to the relevant subsystem.
 
 ---
 
@@ -43,9 +33,7 @@ For each file marked for modification in `blueprint.md`:
 
 ## Step 3 — Flag non-obvious relationships
 
-Identify files not in the original plan that are likely affected by the sprint's changes — candidates for the blueprint.md file list. Note them explicitly.
-
-If the codebase has an unconventional structure (generated files mixed with source, monorepo with non-standard layouts, binary assets), note it so sprint can account for it.
+Flag files not in the original plan that are likely affected. Note any unconventional structure (generated files mixed with source, monorepo with non-standard layouts).
 
 ---
 
@@ -85,6 +73,6 @@ If the subsystem is simple and the original blueprint already covers it fully, w
 
 ## Scope rules
 
-- Read only. No edits during orient.
-- Stay in the relevant subsystem. Do not explore unrelated areas of the repo.
-- Orient fills gaps — do not re-describe what the user already explained clearly.
+- Read only. No edits.
+- Stay in the relevant subsystem.
+- Fill gaps — do not re-describe what the user already explained.

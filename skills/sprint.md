@@ -7,15 +7,14 @@ tags: [workflow, planning, quality, tickets, orchestration]
 depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]
 ---
 
-@/Users/Sunit/Developer/canon/skills/wrapup.md
-@/Users/Sunit/Developer/canon/skills/capture.md
-@/Users/Sunit/Developer/canon/skills/impact-analysis.md
-@/Users/Sunit/Developer/canon/skills/orient.md
+@./wrapup.md
+@./capture.md
+@./impact-analysis.md
+@./orient.md
 
 # Sprint
 
-Plan, build, and ship focused units of work with acceptance-criteria-gated delivery.
-This skill embeds tkt, wrapup, and capture — you only need two commands:
+Two commands:
 
 | Command | When |
 |---|---|
@@ -28,16 +27,12 @@ This skill embeds tkt, wrapup, and capture — you only need two commands:
 
 ## Default mode
 
-Sprint is the default workflow for any substantive dev request. Route through `sprint start` automatically when the user asks to add, fix, update, refactor, implement, debug, or build anything — without waiting for the explicit phrase "sprint start".
+Default for any substantive dev request — no need to say "sprint start" explicitly.
 
-**Skip sprint and proceed directly only when:**
-- The request is a question or explanation ("what does X do?", "explain Y")
-- The change is a single line or trivially mechanical (typo, rename, one-word config change)
+**Skip only when:**
+- The request is a question or explanation
+- The change is a single line or trivially mechanical
 - The user explicitly says to skip it ("just fix it", "quick change")
-
-When in doubt, use sprint. The approval gate is low friction — it takes one "yes" to proceed.
-
-Sprint isn't code-only — it works equally well for docs, config, and planning file updates. The wrapup pipeline skips steps that don't apply (e.g., simplifier and security-review are both skipped for docs-only changes).
 
 ---
 
@@ -59,7 +54,7 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Active sprint files
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold (used in Step 5 regression tests)
 
-4. **Orient.** Run the orient sub-skill: survey the subsystem around the planned files, trace dependencies, and flag any non-obvious relationships. Appends `## Subsystem Map` to `blueprint.md`. This runs automatically — no user action needed. Findings feed directly into the Grill step.
+4. **Orient.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Appends `## Subsystem Map` to `blueprint.md`. Findings feed into the Grill step.
 
 5. **Grill.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 
@@ -69,8 +64,8 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Scope guardrail: grill clarifies HOW to implement what is already scoped. It does not add scope or renegotiate what is being built.
    - Log each resolved gray area under `## Grill` in `blueprint.md`.
 
-6. **Impact analysis.** Before producing the sprint brief, run the full impact analysis process defined in the impact-analysis skill:
-   - Interrogate the request — ask every question whose answer changes the risk profile. Do not skip this even if the request seems straightforward.
+6. **Impact analysis.** Run the full impact analysis process defined in the impact-analysis skill:
+   - Interrogate the request — ask every question whose answer changes the risk profile.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
    - For every HIGH rating: add the required action to `blueprint.md` and the required test to `acceptance.md ## Test Plan`.
    - Past sprint carryover: add regression tests for any closed tickets that touched the same files.
@@ -86,12 +81,9 @@ Sprint isn't code-only — it works equally well for docs, config, and planning 
    - Any constraints from DECISIONS.md that apply
    - Open questions or blockers still unresolved
 
-8. **Wait for explicit approval.** Do not write application code until the user confirms. On approval, write `plan.md` to `.tickets/<id>/` (or `planning/sprints/<slug>/`) with:
-   - Timestamp and ticket ID
-   - Grill resolutions (if any)
-   - Full approved sprint brief (verbatim: objective, files, impact summary, acceptance criteria, test plan)
+8. **Wait for explicit approval.** Do not write code until confirmed. On approval, write `plan.md` to `.tickets/<id>/` (or `planning/sprints/<slug>/`) with the timestamp, ticket ID, grill resolutions, and full approved sprint brief verbatim.
 
-   `plan.md` is the compaction-resilient record. If context is reset or compacted mid-sprint, re-read `plan.md` before continuing — it is the source of truth for what was approved.
+   `plan.md` is the compaction-resilient source of truth. Re-read it if context resets mid-sprint.
 
 ---
 

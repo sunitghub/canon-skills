@@ -8,8 +8,6 @@ hidden: true
 
 # Security Review
 
-Systematically identify exploitable security vulnerabilities. Report only high-confidence findings — skip theoretical issues and framework-mitigated patterns.
-
 ## Confidence Threshold
 
 Only report what meets HIGH or MEDIUM confidence:
@@ -22,21 +20,15 @@ Only report what meets HIGH or MEDIUM confidence:
 
 ## Do Not Flag
 
-- Test files (unless explicitly asked)
-- Dead, commented-out, or documentation code
-- Patterns using constants or server-controlled config
-- Code paths requiring prior authentication
-- Django settings, env vars (`os.environ.get()`), framework constants — these are safe by design
+Test files, dead/commented-out code, constants, server-controlled config, code paths requiring prior auth, Django settings / env vars / framework constants.
 
 ## Pre-scan (ast-grep)
-
-Before manual review, check whether `ast-grep` is available:
 
 ```bash
 command -v ast-grep >/dev/null 2>&1 && echo "available" || echo "not installed"
 ```
 
-**If available**, run a structural pattern scan over the changed files to surface confirmed hits before reading code. Use `--json` for structured output:
+If available, run over changed files (`--json` for structured output):
 
 ```bash
 # Injection / unsafe exec
@@ -56,25 +48,21 @@ ast-grep -p 'pickle.loads($DATA)' -l python --json
 ast-grep -p 'yaml.load($DATA)' -l python --json
 ```
 
-Adapt patterns to the languages in the changed files. No project setup needed — these run automatically.
-
-If the project has a `scan-rules/` directory at the repo root (optional, project-specific custom rules), run those too:
+Adapt patterns to the languages in the changed files. If `scan-rules/` exists at repo root:
 
 ```bash
 ast-grep scan --rule scan-rules/ --json 2>/dev/null
 ```
 
-Use ast-grep hits as **starting points for data flow tracing** — a pattern match is not a confirmed vulnerability. Proceed to manual review either way.
-
-**If not available**, skip the pre-scan silently and proceed directly to manual review. Note in the report: `ast-grep not installed — structural pre-scan skipped`.
+Hits are starting points, not confirmed vulnerabilities. If not available, skip silently and note: `ast-grep not installed — structural pre-scan skipped`.
 
 ## Process
 
-1. **Pre-scan** — run ast-grep if available (see above); note any pattern hits.
-2. Trace data flow end-to-end before flagging anything.
+1. Run pre-scan if ast-grep is available.
+2. Trace data flow end-to-end before flagging.
 3. Confirm attacker-controlled input reaches the vulnerable pattern.
-4. Check for validation, sanitization, or framework mitigations along the path.
-5. Only then report — with exploitability evidence, not pattern matches alone.
+4. Check for validation, sanitization, or framework mitigations.
+5. Report only with exploitability evidence.
 
 ## Vulnerability Categories
 
@@ -82,13 +70,11 @@ Injection, XSS, authorization bypass, weak cryptography, unsafe deserialization,
 
 ## Action Endpoint Patterns
 
-Two framework-agnostic patterns to check on every destructive or irreversible action (send email, delete, bulk-update, trigger job, cache flush):
+Check on every destructive or irreversible action (send, delete, bulk-update, job trigger, cache flush):
 
-**1. UI-only access control**
-Hiding or disabling a UI element is not authorization. A hidden button, a conditionally-rendered form, a `display:none` link — none of these prevent a direct request to the underlying endpoint. The server-side handler must enforce access control independently of whether the UI element was rendered. Flag any handler where the only guard is UI-level gating.
+**1. UI-only access control** — hiding a UI element is not authorization. The server-side handler must enforce access control independently of UI state.
 
-**2. Duplicate action triggers**
-The same endpoint can be wired to multiple UI paths — a primary path (with confirmation dialog, role check, audit log) and a secondary one added later as a convenience shortcut that skips those guards. Search the entire view/template layer for all bindings to the same endpoint. More than one path to a destructive action is a red flag unless every path enforces the same controls.
+**2. Duplicate action triggers** — search for all bindings to the same endpoint. More than one path to a destructive action is a red flag unless every path enforces the same controls.
 
 Detection by framework:
 - **HTML forms**: grep for `action="/same-path"` or `method="post"` on multiple forms in the same template
@@ -126,8 +112,8 @@ Detection by framework:
 - **Fix**: concrete remediation
 
 ## Needs Verification
-Issues where input source is unclear — flag for human review.
+Issues where input source is unclear.
 
 ## Out of Scope
-Patterns reviewed and ruled out (briefly, to show coverage).
+Patterns reviewed and ruled out (briefly).
 ```

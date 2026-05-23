@@ -7,11 +7,9 @@ tags: [knowledge-management, handoff, memory]
 
 # Capture — Knowledge Preservation
 
-Ensures non-obvious discoveries are recorded immediately during a session — not just at wrapup — so they survive context compaction, abrupt session ends, and agent switches.
+## Automatic behavior
 
-## Automatic Behavior (no invocation needed)
-
-Whenever you discover something non-obvious that would require re-investigation if lost, immediately do both of the following without waiting for wrapup:
+When you find something non-obvious that would need re-investigation if lost:
 
 1. Append it to `HANDOFF.md` under `## Discoveries` (create the section after `## Recent Decisions` if it doesn't exist)
 2. Save a `project` memory to the project memory store
@@ -28,9 +26,7 @@ Whenever you discover something non-obvious that would require re-investigation 
 - Standard framework or library behavior
 - Decisions that are trivial and will be captured by the next wrapup
 
-## Explicit Invocation
-
-When you want to force-capture something, or the user asks you to record a finding:
+## Explicit invocation
 
 1. Append to `HANDOFF.md` under `## Discoveries`. Create the section if absent.
 2. Save a `project` memory.
@@ -41,16 +37,9 @@ Entry format for HANDOFF.md:
 - **[YYYY-MM-DD]** <what was discovered> — <why it matters or how to apply it>
 ```
 
-**Trigger syntax by agent:**
+**Trigger syntax:**
 
-| Agent | How to trigger explicitly |
+| Agent | How to trigger |
 |---|---|
-| Claude Code | `/capture <text>` (slash command) |
-| Codex | "Capture this" / "Record this in discoveries" / "Add this to HANDOFF" |
-| Pi | Same as Codex — natural language |
-
-The automatic behavior is identical across all agents. Only the explicit trigger syntax differs.
-
-## The Goal
-
-A future agent starting cold should find every non-obvious constraint and decision in `## Discoveries` — without needing to re-run the investigation that produced them.
+| Claude Code | `/capture <text>` |
+| Codex / Pi | "Capture this" / "Record this in discoveries" / "Add this to HANDOFF" |

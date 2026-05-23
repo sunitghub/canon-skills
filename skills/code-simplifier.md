@@ -8,10 +8,6 @@ hidden: true
 
 # Code Simplifier
 
-Simplify and refine code after writing or modifying it. Focus on recently modified code unless told otherwise.
-
-## Rules
-
 **Preserve functionality** — never change what the code does, only how it does it.
 
 **Apply project standards** — follow conventions in CLAUDE.md / AGENTS.md.
@@ -25,19 +21,15 @@ Simplify and refine code after writing or modifying it. Focus on recently modifi
 - No nested ternaries — use `if/else` or `switch` instead
 - Explicit over compact — a clear longer line beats a dense one-liner
 
-**Maintain balance — do not:**
-- Sacrifice readability for fewer lines
-- Create clever solutions that are hard to follow
+**Do not:**
+- Sacrifice readability for brevity or cleverness
 - Merge unrelated concerns into one function
 - Remove abstractions that genuinely aid organization
-- Make code harder to debug or extend
 
 **Scope** — only refine code touched in the current session unless explicitly asked to do more.
 
 ## Process
 
 1. Identify recently modified sections.
-2. Analyze for clarity, consistency, and redundancy.
-3. Apply project standards.
-4. Verify behavior is unchanged.
-5. Note only changes that meaningfully affect understanding.
+2. Apply project standards; verify behavior is unchanged.
+3. Note only changes that meaningfully affect understanding.
