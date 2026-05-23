@@ -89,10 +89,8 @@ See [CATALOG.md](CATALOG.md) for a static snapshot of all available skills.
 
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
-> Managed by `skills.sh` — use `add`/`remove` to change. Source: /Users/Sunit/Developer/canon
+> Managed by `skills.sh` — use `add`/`remove` to change.
 
 | Skill | Category | Source |
 |-------|----------|--------|
-| wrapup | skills | /Users/Sunit/Developer/canon/skills/wrapup.md |
 <!-- AI-SKILLS:END -->
-@/Users/Sunit/Developer/canon/skills/wrapup.md

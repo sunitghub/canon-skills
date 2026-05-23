@@ -81,7 +81,7 @@ npm whoami   # should return your npm username
 ### First-time publish
 
 ```bash
-npm publish /Users/Sunit/Developer/canon --access public
+npm publish <path-to-canon> --access public
 ```
 
 `--access public` is required because the package name is unscoped. Without it, npm defaults to private (paid plan required).
@@ -127,7 +127,7 @@ npx canon-skills@latest
 
 3. **Dry run first** — always verify what will be published:
    ```bash
-   npm pack --dry-run /Users/Sunit/Developer/canon
+   npm pack --dry-run <path-to-canon>
    # confirm only bin/install.js, package.json, README.md are listed
    # confirm package size is small (should be ~3-8KB packed)
    ```
@@ -141,7 +141,7 @@ npx canon-skills@latest
 
 5. **Publish:**
    ```bash
-   npm publish /Users/Sunit/Developer/canon --access public
+   npm publish <path-to-canon> --access public
    ```
 
 6. **Verify:**
@@ -160,7 +160,7 @@ npx canon-skills@latest
 
 **`.npmignore` controls what ships.** The current `.npmignore` excludes everything except `bin/` and `package.json`. If you add a file that should not be public, verify `.npmignore` covers it:
 ```bash
-npm pack --dry-run /Users/Sunit/Developer/canon
+npm pack --dry-run <path-to-canon>
 # review the file list — if you see unexpected files, update .npmignore
 ```
 
@@ -192,10 +192,10 @@ git commit -m "chore: bump installer to vX.X.X"
 git push
 
 # 3. dry run
-npm pack --dry-run /Users/Sunit/Developer/canon
+npm pack --dry-run <path-to-canon>
 
 # 4. publish
-npm publish /Users/Sunit/Developer/canon --access public
+npm publish <path-to-canon> --access public
 
 # 5. verify
 npm info canon-skills version

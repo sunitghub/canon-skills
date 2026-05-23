@@ -185,7 +185,7 @@ a1b2c3d Add OAuth provider config
 d4e5f6a Scaffold token refresh flow
 
 **In-progress tickets:**
-nw-14 Implement OAuth login (in_progress)
+feat-14 Implement OAuth login (in_progress)
 <!-- HANDOFF-SNAPSHOT:END -->
 ```
 
@@ -215,7 +215,7 @@ M auth/middleware.py
 
 `handoff-inject.sh` fires on your first message → injects `HANDOFF.md` silently.
 
-Claude says: "Resuming OAuth work. You were mid-session when context ran out — `auth/middleware.py` was modified but `test_oauth.py` was untracked. Ticket nw-14 in progress. Where do you want to pick up?"
+Claude says: "Resuming OAuth work. You were mid-session when context ran out — `auth/middleware.py` was modified but `test_oauth.py` was untracked. Ticket feat-14 in progress. Where do you want to pick up?"
 
 You say: "Tests." Claude starts immediately, no context re-explaining.
 
