@@ -383,8 +383,13 @@ cmd_status() {
     printf "  %-20s %s\n" "rtk" "[not installed]  — token savings unavailable (brew install rtk)"
   fi
   if $_has_sprint; then
+    local _tools_dir="$SKILLS_ROOT/tools"
+    local _rc_file="$HOME/.zshrc"
+    [[ "${SHELL:-}" == */bash ]] && _rc_file="$HOME/.bashrc"
     if command -v sprint-check &>/dev/null; then
       printf "  %-20s %s\n" "sprint-check" "[ok]  — kanban board ready"
+    elif grep -qF "$_tools_dir" "$_rc_file" 2>/dev/null; then
+      printf "  %-20s %s\n" "sprint-check" "[not on PATH]  — run: source $_rc_file"
     else
       printf "  %-20s %s\n" "sprint-check" "[not on PATH]  — run: $(basename "$0") refresh to fix"
     fi
