@@ -377,17 +377,26 @@ cmd_status() {
   else
     printf "  %-20s %s\n" "rtk" "[not installed]  — token savings unavailable (brew install rtk)"
   fi
+  if $_has_sprint; then
+    if command -v sprint-check &>/dev/null; then
+      printf "  %-20s %s\n" "sprint-check" "[ok]  — kanban board ready"
+    else
+      printf "  %-20s %s\n" "sprint-check" "[not on PATH]  — run: $(basename "$0") refresh to fix"
+      (( issues++ )) || true
+    fi
+  fi
 
-  # ── tkt PATH check (shown last so it's not buried) ───────────────────────
-  if $_has_ticket && ! command -v tkt &>/dev/null; then
+  # ── sprint-check / tkt PATH check ────────────────────────────────────────
+  if ( $_has_sprint || $_has_ticket ) && ! command -v tkt &>/dev/null; then
     local _tools_dir="$SKILLS_ROOT/tools"
     local _rc_file="$HOME/.zshrc"
     [[ "${SHELL:-}" == */bash ]] && _rc_file="$HOME/.bashrc"
     if ! grep -qF "$_tools_dir" "$_rc_file" 2>/dev/null; then
       echo ""
-      echo "Action needed: ticket is registered but tkt is not on your PATH."
+      echo "Action needed: sprint tools (tkt, sprint-check) are not on your PATH."
       printf "  Run: echo 'export PATH=\"\$PATH:%s\"' >> %s\n" "$_tools_dir" "$_rc_file"
       printf "  Then: source %s\n" "$_rc_file"
+      echo "  Or:  $(basename "$0") refresh  — to be prompted interactively"
     fi
   fi
 }
@@ -566,6 +575,10 @@ cmd_refresh() {
     echo ""
     echo "Tip: wrapup + capture are now part of the sprint skill."
     printf "  Upgrade: %s add sprint %s\n" "$(basename "$0")" "$project_dir"
+  fi
+
+  if $_refresh_has_sprint; then
+    offer_tkt_path
   fi
 }
 
