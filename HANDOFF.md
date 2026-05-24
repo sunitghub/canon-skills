@@ -34,6 +34,27 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-23 19:14 branch:main -->
+**Modified files:**
+```
+ M README.md
+```
+
+**Recent commits:**
+```
+24b308c chore: auto-update handoff snapshot [2026-05-23 19:11]
+782175c feat: add context-check skill, guard hook, and wrapup doc-refresh step
+a32a932 chore: auto-update handoff snapshot [2026-05-23 18:50]
+713273c chore: auto-update handoff snapshot [2026-05-23 18:48]
+085c501 chore: auto-update handoff snapshot [2026-05-23 18:45]
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-23 19:11 branch:main -->
 **Modified files:**
 ```
@@ -47,34 +68,6 @@ a32a932 chore: auto-update handoff snapshot [2026-05-23 18:50]
 713273c chore: auto-update handoff snapshot [2026-05-23 18:48]
 085c501 chore: auto-update handoff snapshot [2026-05-23 18:45]
 1aaebd5 chore: hide sprint-check from skills list
-```
-
-**In-progress tickets:**
-```
-No tickets with status 'in_progress'.
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-23 18:50 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- M CATALOG.md
- M README.md
- M skills/wrapup.md
- M standards/efficiency.md
-?? scripts/guard-managed-files.sh
-?? skills/context-check.md
-?? standards/context-findings.md
-```
-
-**Recent commits:**
-```
-713273c chore: auto-update handoff snapshot [2026-05-23 18:48]
-085c501 chore: auto-update handoff snapshot [2026-05-23 18:45]
-1aaebd5 chore: hide sprint-check from skills list
-af7b117 docs: update sprint summary to surface composition and auto-ticketing
-4f75578 docs: show skill composition hierarchy in What's inside table
 ```
 
 **In-progress tickets:**
