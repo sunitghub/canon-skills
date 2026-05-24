@@ -13,6 +13,12 @@
                                    (redundancy, vague rules, dead references). 
                                    Appends findings only on explicit 
                                    confirmation.
+[36mdoc-audit           [0m  [2magent-ops  [0m  Audit user-facing docs for overstated 
+                                   claims, missing prerequisites, absolute 
+                                   statements with exceptions, and scope 
+                                   inflation. Appends findings to 
+                                   standards/doc-findings.md on explicit 
+                                   confirmation.
 
 [36msprint              [0m  [2mdev        [0m  plan → build → ship. Auto-creates a ticket 
                                    on start, closes it on complete. Grills gray 

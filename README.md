@@ -49,6 +49,7 @@ You can. Most people do — until they have five projects, each with a slightly 
 | &nbsp;&nbsp;↳ `handoff` | Session context that survives agent switches, resets, and context window exhaustion. |
 | `efficiency` | Token-efficiency rules for AI agents. Opinionated but battle-tested. |
 | `context-check` | Audit the always-on context budget — imports, active skills, hooks, memory. Appends findings to `standards/context-findings.md` on explicit confirmation. |
+| `doc-audit` | Audit user-facing docs for overstated claims, missing prerequisites, and scope inflation. Appends findings to `standards/doc-findings.md` on explicit confirmation. |
 | `sprint-check` | Local kanban dashboard. Reads `.tickets/`, `HANDOFF.md`, and `git log`. Runs in any browser. |
 
 ---
