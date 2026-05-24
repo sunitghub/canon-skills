@@ -403,7 +403,7 @@ Each step has skip logic — states why in one line when it doesn't apply:
 
 **The problem:** The three quality steps need to run in a specific order with skip logic evaluated at each step. Remembering to do this manually is friction.
 
-**What it does:** `wrapup` runs all three in order, evaluates skip logic automatically, and reports a single structured summary. Inside `sprint complete`, it runs on all files modified since sprint start.
+**What it does:** `wrapup` runs all three in order, evaluates skip logic automatically, reports a single structured summary, then refreshes any stale docs touched in the session (DECISIONS.md, HANDOFF.md, AGENTS.md, README) and always prompts to commit and push. Inside `sprint complete`, it runs on all files modified since sprint start.
 
 **Outside a sprint:** `/wrapup` directly on any code written in the session.
 
@@ -489,10 +489,10 @@ tkt reopen <id>               # reopen a closed ticket
 | Skill | How to verify | Expected response |
 |---|---|---|
 | `sprint` | `"Start a sprint for X"` | Subsystem mapped (orient) → gray areas grilled → impact ratings shown → sprint brief with Impact Assessment and Test Plan → awaits approval → writes `plan.md` |
-| `pdf` | `"Extract text from [file].pdf"` | Extracted content, or a clear error |
 | `ticket` | `tkt ls` | Empty list or existing tickets — no error |
+| `context-check` | `/context-check` | Size + content audit of always-loaded context; findings appended to `standards/context-findings.md` on confirmation |
 
-> Everything else is automatic. `efficiency` is always on. `capture` fires mid-session. `wrapup` + test verification run inside `sprint complete`. `impact-analysis`, `handoff`, and `ticket` are deps of sprint — loaded silently.
+> Everything else is automatic. `efficiency` is always on. `capture` fires mid-session. `wrapup` + test verification run inside `sprint complete`. `impact-analysis`, `handoff`, and `ticket` are deps of sprint — loaded silently. Run `context-check` periodically to audit context budget.
 
 ---
 
