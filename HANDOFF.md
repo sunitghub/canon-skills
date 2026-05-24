@@ -34,6 +34,28 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-23 20:35 branch:main -->
+**Modified files:**
+```
+ M CATALOG.md
+ M skills/context-check.md
+```
+
+**Recent commits:**
+```
+e230026 chore: auto-update handoff snapshot [2026-05-23 20:31]
+575d8be docs: proofread and expand README for public release
+9c84514 chore: auto-update handoff snapshot [2026-05-23 19:14]
+24b308c chore: auto-update handoff snapshot [2026-05-23 19:11]
+782175c feat: add context-check skill, guard hook, and wrapup doc-refresh step
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-23 20:31 branch:main -->
 **Modified files:**
 ```
@@ -48,27 +70,6 @@ Nothing in progress.
 24b308c chore: auto-update handoff snapshot [2026-05-23 19:11]
 782175c feat: add context-check skill, guard hook, and wrapup doc-refresh step
 a32a932 chore: auto-update handoff snapshot [2026-05-23 18:50]
-```
-
-**In-progress tickets:**
-```
-No tickets with status 'in_progress'.
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-23 19:14 branch:main -->
-**Modified files:**
-```
- M README.md
-```
-
-**Recent commits:**
-```
-24b308c chore: auto-update handoff snapshot [2026-05-23 19:11]
-782175c feat: add context-check skill, guard hook, and wrapup doc-refresh step
-a32a932 chore: auto-update handoff snapshot [2026-05-23 18:50]
-713273c chore: auto-update handoff snapshot [2026-05-23 18:48]
-085c501 chore: auto-update handoff snapshot [2026-05-23 18:45]
 ```
 
 **In-progress tickets:**
