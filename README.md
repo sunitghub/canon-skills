@@ -10,8 +10,8 @@ canon is a shared skill library for AI coding agents. Define your standards once
 # Install
 npx canon-skills@latest
 
-# Wire a project
-$SKILLS/skills.sh add sprint
+# Register skills in a project
+~/Developer/canon/skills.sh add sprint
 ```
 
 That's it. Your agent now plans before it codes, runs a quality gate before closing tickets, and picks up where you left off — every session starts with the full context of what's in progress, what decisions were made, and what was recently shipped.
@@ -26,7 +26,9 @@ I wanted the opposite: define my standards once, have every agent read them auto
 
 The second problem was visibility. As a solo builder, when I'm deep in a session and need to know what's in flight, I don't want to push commits to GitHub just to see a diff, spin up a Jira board, or maintain a project in three browser tabs that requires a remote repo to even exist. I just want to see my work — right now, in the repo, without ceremony.
 
-That's sprint-check: a kanban board that reads your `.tickets/` folder and `git log` directly, opens in a browser tab, and requires nothing else — no account, no remote, no commit. The same instinct behind canon: the best tool for a solo developer is one that disappears.
+That's sprint-check: a kanban board that reads your `.tickets/` folder and `git log` directly, opens in a browser tab, and requires nothing else — no account, no remote, no commit. The same instinct behind canon: the best tool for a developer is one that disappears.
+
+If you're on a team, the problems compound. Each engineer maintains their own agent config, each drifting in a different direction. Onboarding a new teammate means handing them a setup guide that's already out of date. When someone discovers a better pattern mid-sprint, it stays in their head or a Slack thread — not in every future session. Canon gives teams a shared source of truth: one repo, one set of standards, one place where what the team has learned actually lives. Update it once, every teammate picks it up on the next session start. No coordination required.
 
 ---
 
@@ -42,7 +44,7 @@ You can. Most people do — until they have five projects, each with a slightly 
 |---|---|
 | `sprint` | plan → build → ship. Creates a ticket automatically on start, closes it on complete — no manual ticketing. Maps the subsystem, grills gray areas, rates impact, generates a test plan. Approved plans persist to `plan.md` — survives context resets. |
 | &nbsp;&nbsp;↳ `wrapup` | Quality pipeline at sprint complete (also runs on demand): simplify → review → security → doc refresh, then always prompts to commit & push. |
-| &nbsp;&nbsp;&nbsp;&nbsp;↳ `code-reviewer` | Structured review across 7 dimensions: correctness, maintainability, security, edge cases, coverage. |
+| &nbsp;&nbsp;&nbsp;&nbsp;↳ `code-reviewer` | Structured review across 7 dimensions: correctness, maintainability, readability, efficiency, security, edge cases, and test coverage. |
 | &nbsp;&nbsp;&nbsp;&nbsp;↳ `security-review` | High-confidence vulnerability detection — traces data flow before flagging anything. |
 | &nbsp;&nbsp;↳ `handoff` | Session context that survives agent switches, resets, and context window exhaustion. |
 | `efficiency` | Token-efficiency rules for AI agents. Opinionated but battle-tested. |
@@ -59,7 +61,7 @@ No server. No account. No SaaS. Just run:
 sprint-check
 ```
 
-It reads your project's `.tickets/` folder and `git log` and opens a local kanban board in your browser. Columns update in real time. Tickets link to commits automatically.
+It reads your project's `.tickets/` folder and `git log` and opens a local kanban board in your browser. Tickets link to commits automatically.
 
 Tickets don't need to be created manually. Every `sprint start` creates one. Every `sprint complete` closes it. Open the board mid-session and your work is already there — no entry, no tagging, no context-switching.
 
@@ -67,7 +69,7 @@ Tickets don't need to be created manually. Every `sprint start` creates one. Eve
 
 ![sprint-check board — light mode](meta/screenshots/board-light.png)
 
-The sidebar shows git state, current focus from `HANDOFF.md`, recent commits, and a ticket summary — everything your agent and you need at a glance.
+The sidebar shows git state, current focus from `HANDOFF.md`, recent commits, and a ticket summary — everything you and your agent need at a glance.
 
 ### Dark mode
 
@@ -102,7 +104,7 @@ Most agent frameworks want you to learn a new abstraction layer. Canon is markdo
 | | canon | typical agent framework |
 |---|---|---|
 | Language | Markdown + bash | Python / TypeScript |
-| Install | `git clone` | `pip install` + config |
+| Install | `npx` or `git clone` | `pip install` + config |
 | Dependencies | None | Many |
 | Agent support | Claude Code, Codex, Pi | Framework-specific |
 | Customization | Edit a `.md` file | Subclass an abstract base |
@@ -133,10 +135,10 @@ git clone https://github.com/sunitghub/canon.git ~/Developer/canon
 ```bash
 cd /path/to/your-project
 
-$SKILLS/skills.sh add sprint        # plan → build → ship workflow
-$SKILLS/skills.sh add wrapup        # quality gate
-$SKILLS/skills.sh add handoff       # session context
-$SKILLS/skills.sh addall            # or register everything at once
+~/Developer/canon/skills.sh add sprint        # plan → build → ship workflow
+~/Developer/canon/skills.sh add wrapup        # quality gate
+~/Developer/canon/skills.sh add handoff       # session context
+~/Developer/canon/skills.sh addall            # or register everything at once
 ```
 
 **3. Start a session**
@@ -183,7 +185,7 @@ Configuration is living, not static. Conventions learned during a sprint flow ba
 |---|---|---|
 | Claude Code / Codex / Pi | Yes — at least one | [claude.ai/code](https://claude.ai/code) |
 | Node.js ≥ 16 | For `npx` install only | [nodejs.org](https://nodejs.org) |
-| RTK | No — recommended | `brew install rtk` |
+| RTK | No — optional | Token-efficiency proxy for CLI output; reduces token spend on verbose commands |
 
 ---
 
