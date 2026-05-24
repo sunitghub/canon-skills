@@ -14,7 +14,14 @@ npx canon-skills@latest
 ~/Developer/canon/skills.sh add sprint
 ```
 
-That's it. Your agent now plans before it codes, runs a quality gate before closing tickets, and picks up where you left off — every session starts with the full context of what's in progress, what decisions were made, and what was recently shipped.
+Two commands cover the full lifecycle:
+
+| | |
+|---|---|
+| `sprint start` | Maps the codebase, surfaces ambiguities, rates risk, writes a plan — waits for your approval before touching any code. |
+| `sprint complete` | Quality pipeline, doc refresh, ticket close, commit & push prompt. Done. |
+
+Everything else — tickets, session context, quality gates, handoff across resets — runs automatically. You don't learn a vocabulary. You describe what you want to build.
 
 ---
 
@@ -39,6 +46,8 @@ You can. Most people do — until they have five projects, each with a slightly 
 ---
 
 ## What's inside
+
+In practice you need two commands. The rest is wired in automatically.
 
 | Skill | What it does |
 |---|---|
