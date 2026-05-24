@@ -109,17 +109,20 @@ Hover a ticket card to see what's missing — description, blueprint, decisions.
 
 ## The contrast
 
-Most agent frameworks want you to learn a new abstraction layer. Canon is markdown files and one bash script.
+Popular agent workflow frameworks define multi-step processes with their own vocabulary — subagent-driven development, RED-GREEN-REFACTOR cycles, YAGNI — and require a separate install for each platform they support. They ask you to learn a system on top of your agent.
 
-| | canon | typical agent framework |
+Canon has two commands.
+
+| | canon | popular frameworks |
 |---|---|---|
-| Language | Markdown + bash | Python / TypeScript |
-| Install | `npx` or `git clone` | `pip install` + config |
-| Dependencies | None | Many |
-| Agent support | Claude Code, Codex, Pi | Framework-specific |
-| Customization | Edit a `.md` file | Subclass an abstract base |
-| Updates | `git pull` | Version bumps + migration |
-| Works offline | Yes | Usually not |
+| Install | One command (`npx canon-skills@latest`) | Separate install per platform |
+| Things to learn | 2 commands | Multi-step workflow + vocabulary terms |
+| Built with | Markdown + bash | Methodology plugins |
+| Dependencies | None | Platform plugin runtime |
+| Updates | `git pull` in one repo | Plugin release per platform |
+| Agent support | Claude Code, Codex, Pi | Broader (Cursor, Gemini, Copilot + more) |
+| State lives in | Your repo (`.tickets/`, `HANDOFF.md`) | Plugin state |
+| Audits itself | Yes (`context-check`, `doc-audit`) | No |
 
 ---
 
