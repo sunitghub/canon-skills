@@ -186,7 +186,6 @@ Configuration is living, not static. Conventions learned during a sprint flow ba
 |---|---|---|
 | Claude Code / Codex / Pi | Yes — at least one | [claude.ai/code](https://claude.ai/code) |
 | Node.js ≥ 16 | For `npx` install only | [nodejs.org](https://nodejs.org) |
-| RTK | No — optional | Token-efficiency proxy for CLI output; reduces token spend on verbose commands |
 
 ---
 
