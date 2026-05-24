@@ -37,6 +37,8 @@ Maintains `standards/doc-findings.md` as a running evidence log — append only 
 
    **Internal consistency** — the same feature described differently across README, guides, and skill files in a way that would confuse a reader. Quote both versions.
 
+   **Personal or private content** — real names, email addresses, usernames, hardcoded home directory paths (`/Users/<name>/`, `/home/<name>/`), internal project names, private ticket prefixes, company-specific references, or anything that would identify the author or their private setup in a public repo. Flag; do not attempt to redact automatically.
+
 5. **Report.** List new findings grouped by check type. Quote the exact claim and explain the issue. If no new findings: say so and stop.
 
 6. **Confirm before writing.** Ask: "Append these to doc-findings.md? (y to confirm)." Do not write without an explicit yes.
