@@ -13,7 +13,7 @@ tags: [coding, security, git, efficiency, tokens]
 - Delete dead code your changes made unused — no commented-out blocks, no `_unused` renames. Don't touch pre-existing dead code unless asked.
 - No feature flags or backwards-compat shims when you can change the code directly.
 - No comments unless the WHY is non-obvious.
-- Don't reformat, rename, or add type hints to adjacent code — fix only what was asked.
+- Don't reformat, rename, or add type hints to adjacent code — fix only what was asked. Out-of-scope issues noticed while working: surface as `NOTICED: <what>` rather than fixing silently or ignoring.
 - Never introduce OWASP top 10 vulnerabilities. Never commit secrets, credentials, or `.env` files.
 - Don't add dependencies for problems solvable with existing tools.
 - Write tests at system boundaries. Don't mock what you can integration-test cheaply.
@@ -55,6 +55,8 @@ Act on these when you see them — don't wait to be told.
 - Tests require excessive setup to run → the dependency structure is the problem, not the tests.
 - Refactor spreading into unrelated areas → cut back to the smallest change that makes the requested edit safe.
 - Error surfaces without context → preserve the diagnostic information at the boundary, don't swallow it.
+- Spec conflicts with existing code → surface it: what each says, the options, and ask — don't silently pick one.
+- Non-trivial decision about to be committed → name what you're asserting and what would falsify it before it stands.
 
 ## Token Efficiency
 
