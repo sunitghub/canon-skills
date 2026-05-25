@@ -34,6 +34,27 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-25 08:56 branch:main -->
+**Modified files:**
+```
+ M README.md
+```
+
+**Recent commits:**
+```
+910b390 docs: rewrite contrast section with real framework analysis
+742caef docs: surface two-command philosophy upfront in README
+1b0957f docs: remove RTK from Prerequisites table in README
+88d0045 docs: add doc-audit to setup guide verification table
+f0a5625 chore: auto-update handoff snapshot [2026-05-23 21:29]
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-23 21:29 branch:main -->
 **Modified files:**
 ```
@@ -47,30 +68,6 @@ e15c03a feat: add doc-audit skill and doc-findings evidence log
 f05a16b docs: correct team propagation claim in README
 fb4374c docs: remove upfront external tool dependencies
 c2381ba docs: clarify plan.md location in README sprint description
-```
-
-**In-progress tickets:**
-```
-No tickets with status 'in_progress'.
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-23 20:37 branch:main -->
-**Modified files:**
-```
- M AGENTS.md
- M CATALOG.md
- M skills/context-check.md
- M standards/context-findings.md
-```
-
-**Recent commits:**
-```
-0cd2d5f chore: auto-update handoff snapshot [2026-05-23 20:35]
-4c5dc52 chore: auto-update handoff snapshot [2026-05-23 20:35]
-e230026 chore: auto-update handoff snapshot [2026-05-23 20:31]
-575d8be docs: proofread and expand README for public release
-9c84514 chore: auto-update handoff snapshot [2026-05-23 19:14]
 ```
 
 **In-progress tickets:**
