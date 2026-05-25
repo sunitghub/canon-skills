@@ -34,6 +34,27 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-25 17:13 branch:main -->
+**Modified files:**
+```
+ M meta/screenshots/board-light.png
+```
+
+**Recent commits:**
+```
+08269ae docs: shorten sprint start node labels to fit diagram width
+a6c3390 docs: improve sprint diagram section formatting
+2a48995 style: split NOTICED rule into its own bullet in efficiency.md
+651ebbb feat: add three agent behaviours from addyosmani/agent-skills
+f32b47c feat: add Triggers section to efficiency.md
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-25 08:59 branch:main -->
 **Modified files:**
 ```
@@ -48,27 +69,6 @@ Nothing in progress.
 742caef docs: surface two-command philosophy upfront in README
 1b0957f docs: remove RTK from Prerequisites table in README
 88d0045 docs: add doc-audit to setup guide verification table
-```
-
-**In-progress tickets:**
-```
-No tickets with status 'in_progress'.
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-25 08:56 branch:main -->
-**Modified files:**
-```
- M README.md
-```
-
-**Recent commits:**
-```
-910b390 docs: rewrite contrast section with real framework analysis
-742caef docs: surface two-command philosophy upfront in README
-1b0957f docs: remove RTK from Prerequisites table in README
-88d0045 docs: add doc-audit to setup guide verification table
-f0a5625 chore: auto-update handoff snapshot [2026-05-23 21:29]
 ```
 
 **In-progress tickets:**
