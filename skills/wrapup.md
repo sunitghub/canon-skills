@@ -3,11 +3,12 @@ name: wrapup
 description: Run code-simplifier, code-reviewer, and security-review in the right order after completing any unit of work — skips steps that don't apply
 category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
-depends: [code-simplifier, code-reviewer, security-review, handoff, ticket]
+depends: [code-simplifier, code-reviewer, security-review, doc-audit, handoff, ticket]
 ---
 @./code-simplifier.md
 @./code-reviewer.md
 @./security-review.md
+@./doc-audit.md
 @../tools/handoff.md
 @../tools/ticket.md
 
@@ -26,13 +27,14 @@ Or: "Wrapup the changes" / "Wrapup the auth refactor" / "Wrapup ticket proj-42."
 ## Pipeline
 
 ```
-code-simplifier → code-reviewer → security-review
+code-simplifier → code-reviewer → security-review → doc-audit
 ```
 
 Each step builds on the last:
 - **Simplify first** — review clean code, not messy code
 - **Review second** — catch logic and design issues on the simplified version
 - **Security last** — focused pass with no style noise in the way
+- **Doc audit** — verify docs match reality before shipping
 
 ## Skip Logic
 
@@ -50,6 +52,9 @@ Before running each step, assess the change and skip if the criteria apply. When
 - No security-sensitive files or patterns changed
 - Security-sensitive means: authentication, authorization, DB queries, user input handling, file I/O, API endpoints, crypto, session management, environment/secret access
 
+### Skip doc-audit if:
+- No user-facing docs changed (README, guides/, skill descriptions)
+
 ---
 
 ## Step 1 — Code Simplifier
@@ -64,7 +69,11 @@ Apply the code-reviewer skill across all seven dimensions. For security: note co
 
 Apply the security-review skill, including the ast-grep pre-scan if available.
 
-## Step 4 — Doc Refresh
+## Step 4 — Doc Audit
+
+Apply the doc-audit skill. Surface findings inline — do not write to `doc-findings.md` without explicit confirmation. Fix any command accuracy issues before committing.
+
+## Step 5 — Doc Refresh
 
 Review every documentation file touched or referenced during this session and patch anything stale.
 

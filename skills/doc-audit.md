@@ -25,7 +25,7 @@ Maintains `standards/doc-findings.md` as a running evidence log — append only 
 
 3. **Read skill descriptions.** For each skill file in `skills/` and `standards/`, extract the `description` and `summary` frontmatter fields. Read the skill body to understand what it actually does.
 
-4. **Run five checks — flag high-confidence issues only, skip borderline cases:**
+4. **Run these checks — flag high-confidence issues only, skip borderline cases:**
 
    **Overstated automation** — phrases like "automatically", "no setup needed", "no coordination required", "just run", "that's it" where a non-obvious step is actually required. Ask: does the reader need to do something that isn't stated here?
 
@@ -36,6 +36,8 @@ Maintains `standards/doc-findings.md` as a running evidence log — append only 
    **Scope inflation** — a skill's `description` or `summary` claims it does something the skill body doesn't do, or cites a count that doesn't match (e.g., "7 dimensions" listing fewer). Compare frontmatter against actual steps.
 
    **Internal consistency** — the same feature described differently across README, guides, and skill files in a way that would confuse a reader. Quote both versions.
+
+   **Command accuracy** — run `skills.sh list` and compare against every skill name referenced in `skills.sh add <skill>` or `skills.sh help <skill>` code blocks in README and guides. Flag any name not returned by `skills.sh list` — these are stale or invented references.
 
    **Personal or private content** — real names, email addresses, usernames, hardcoded home directory paths (`/Users/<name>/`, `/home/<name>/`), internal project names, private ticket prefixes, company-specific references, or anything that would identify the author or their private setup in a public repo. Flag; do not attempt to redact automatically.
 

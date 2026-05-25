@@ -86,7 +86,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    W1[[simplifier]] --> W2[[reviewer]] --> W3[[security]] --> C1[Verify] --> C5[close]
+    W1[[simplifier]] --> W2[[reviewer]] --> W3[[security]] --> W4[[doc-audit]] --> C1[Verify] --> C5[close]
     classDef subskill stroke:#8888dd,stroke-width:2px
     class W1,W2,W3 subskill
 ```
