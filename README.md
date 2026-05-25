@@ -1,5 +1,7 @@
 # canon
 
+*canon /ˈkænən/ — an established rule or principle; the authoritative standard a team agrees to follow.*
+
 > Your agents are capable. Canon makes them yours.
 
 Stop re-explaining your standards on every new project. Stop watching Claude drift back to its defaults mid-session. Stop reconfiguring the same quality checks from scratch.
