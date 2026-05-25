@@ -74,7 +74,7 @@ Two commands drive the full lifecycle. Sub-skills are called in automatically at
 ```mermaid
 flowchart LR
     S1[Ticket] --> S2[Setup] --> S3[Context] --> S4[[orient]] --> S5[Grill] --> S6[[impact-analysis]] --> S7[Brief] --> S9[plan.md]
-    classDef subskill fill:#e8e8f4,stroke:#8888bb
+    classDef subskill stroke:#8888dd,stroke-width:2px
     class S4,S6 subskill
 ```
 
@@ -87,7 +87,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     W1[[code-simplifier]] --> W2[[code-reviewer]] --> W3[[security-review]] --> C1[Verify tests] --> C4[DECISIONS.md] --> C5[tkt close]
-    classDef subskill fill:#e8e8f4,stroke:#8888bb
+    classDef subskill stroke:#8888dd,stroke-width:2px
     class W1,W2,W3 subskill
 ```
 
