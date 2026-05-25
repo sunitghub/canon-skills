@@ -71,19 +71,29 @@ Two commands drive the full lifecycle. Sub-skills are called in automatically at
 flowchart TD
     subgraph START ["sprint start"]
         direction LR
-        S1[Create ticket] --> S2[Setup planning files] --> S3[Read context] --> S4[["orient"]] --> S5[Grill] --> S6[["impact-analysis"]] --> S7[Sprint brief] --> S8{Approved?}
+        S1[Create ticket] --> S2[Setup planning files]
+        S2 --> S3[Read context]
+        S3 --> S4[[orient]]
+        S4 --> S5[Grill]
+        S5 --> S6[[impact-analysis]]
+        S6 --> S7[Sprint brief]
+        S7 --> S8{Approved?}
         S8 -->|yes| S9[Write plan.md]
         S8 -->|iterate| S7
     end
 
     S9 --> BLD([Build])
-    BLD -.->|automatic| CAP[["capture → HANDOFF.md"]]
+    BLD -.->|automatic| CAP[[capture]]
 
     subgraph DONE ["sprint complete"]
         direction LR
-        W1[code-simplifier] --> W2[code-reviewer] --> W3[security-review] --> C1[Verify tests] --> C2{All pass?}
-        C2 -->|yes| C4[Update DECISIONS.md] --> C5[tkt close + report]
-        C2 -->|no| C3[Stop — report failures]
+        W1[code-simplifier] --> W2[code-reviewer]
+        W2 --> W3[security-review]
+        W3 --> C1[Verify tests]
+        C1 --> C2{All pass?}
+        C2 -->|yes| C4[Update DECISIONS.md]
+        C4 --> C5[tkt close]
+        C2 -->|no| C3[Stop]
     end
 
     BLD --> W1
