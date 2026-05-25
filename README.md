@@ -67,42 +67,15 @@ In practice you need two commands. The rest is wired in automatically.
 
 Two commands drive the full lifecycle. Sub-skills are called in automatically at each stage — no manual orchestration.
 
-```mermaid
-flowchart TD
-    subgraph START ["sprint start"]
-        direction LR
-        S1[Create ticket] --> S2[Setup planning files]
-        S2 --> S3[Read context]
-        S3 --> S4[[orient]]
-        S4 --> S5[Grill]
-        S5 --> S6[[impact-analysis]]
-        S6 --> S7[Sprint brief]
-        S7 --> S8{Approved?}
-        S8 -->|yes| S9[Write plan.md]
-        S8 -->|iterate| S7
-    end
+| | |
+|:--|:--|
+| **sprint start** | Create ticket → Setup files → Read context → `orient` → Grill → `impact-analysis` → Sprint brief → `plan.md` |
+| ↓ | |
+| **Build** | `capture` runs automatically → discoveries saved to `HANDOFF.md` |
+| ↓ | |
+| **sprint complete** | `code-simplifier` → `code-reviewer` → `security-review` → Verify tests → Update `DECISIONS.md` → tkt close |
 
-    S9 --> BLD([Build])
-    BLD -.->|automatic| CAP[[capture]]
-
-    subgraph DONE ["sprint complete"]
-        direction LR
-        W1[code-simplifier] --> W2[code-reviewer]
-        W2 --> W3[security-review]
-        W3 --> C1[Verify tests]
-        C1 --> C2{All pass?}
-        C2 -->|yes| C4[Update DECISIONS.md]
-        C4 --> C5[tkt close]
-        C2 -->|no| C3[Stop]
-    end
-
-    BLD --> W1
-
-    classDef subskill fill:#e8e8f4,stroke:#8888bb
-    class S4,S6,CAP,W1,W2,W3 subskill
-```
-
-Sub-skills shown with double borders (`orient`, `impact-analysis`, `capture`, `wrapup` and its children) are loaded from canon automatically — they're not invoked separately.
+Sub-skills in `code` style are loaded from canon automatically — they're not invoked separately.
 
 ---
 
