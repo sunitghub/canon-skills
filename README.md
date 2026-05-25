@@ -68,40 +68,28 @@ In practice you need two commands. The rest is wired in automatically.
 Two commands drive the full lifecycle. Sub-skills are called in automatically at each stage — no manual orchestration.
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph START ["sprint start"]
-        direction TB
-        S1[Create ticket] --> S2[Setup planning files]
-        S2 --> S3[Read context]
-        S3 --> S4[["orient — map subsystem"]]
-        S4 --> S5[Grill — surface gray areas]
-        S5 --> S6[["impact-analysis — rate risk"]]
-        S6 --> S7[Sprint brief]
-        S7 --> S8{Approved?}
-        S8 -->|iterate| S7
+        direction LR
+        S1[Create ticket] --> S2[Setup planning files] --> S3[Read context] --> S4[["orient"]] --> S5[Grill] --> S6[["impact-analysis"]] --> S7[Sprint brief] --> S8{Approved?}
         S8 -->|yes| S9[Write plan.md]
+        S8 -->|iterate| S7
     end
 
     S9 --> BLD([Build])
-    BLD -.->|automatic| CAP[["capture\ndiscoveries → HANDOFF.md"]]
+    BLD -.->|automatic| CAP[["capture → HANDOFF.md"]]
 
     subgraph DONE ["sprint complete"]
-        direction TB
-        subgraph W ["wrapup"]
-            direction LR
-            W1[code-simplifier] --> W2[code-reviewer] --> W3[security-review]
-        end
-        W --> C1[Verify tests]
-        C1 --> C2{All pass?}
+        direction LR
+        W1[code-simplifier] --> W2[code-reviewer] --> W3[security-review] --> C1[Verify tests] --> C2{All pass?}
+        C2 -->|yes| C4[Update DECISIONS.md] --> C5[tkt close + report]
         C2 -->|no| C3[Stop — report failures]
-        C2 -->|yes| C4[Update DECISIONS.md]
-        C4 --> C5[tkt close + report]
     end
 
-    BLD --> W
+    BLD --> W1
 
     classDef subskill fill:#e8e8f4,stroke:#8888bb
-    class S4,S6,CAP,W,W1,W2,W3 subskill
+    class S4,S6,CAP,W1,W2,W3 subskill
 ```
 
 Sub-skills shown with double borders (`orient`, `impact-analysis`, `capture`, `wrapup` and its children) are loaded from canon automatically — they're not invoked separately.
