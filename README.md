@@ -25,7 +25,7 @@ Everything else — tickets, session context, quality gates, handoff across rese
 
 ---
 
-## Why I built canon
+## Why canon
 
 Most agent repos I tried gave me homework. A vocabulary of slash commands to memorize. An invocation order that wasn't written down anywhere. A setup ritual to repeat on every new project. The overhead of operating the framework started eating into the time I'd saved by using an agent.
 
@@ -67,7 +67,7 @@ In practice you need two commands. The rest is wired in automatically.
 
 Two commands drive the full lifecycle. Sub-skills are called in automatically at each stage — no manual orchestration.
 
-**sprint start**
+### sprint start
 
 ```mermaid
 flowchart LR
@@ -76,9 +76,11 @@ flowchart LR
     class S4,S6 subskill
 ```
 
-↓ &nbsp; **Build** &nbsp;·&nbsp; `capture` fires automatically → `HANDOFF.md`
+### ↓ Build
 
-**sprint complete**
+> `capture` fires automatically — discoveries saved to `HANDOFF.md`
+
+### sprint complete
 
 ```mermaid
 flowchart LR
@@ -87,7 +89,7 @@ flowchart LR
     class W1,W2,W3 subskill
 ```
 
-Sub-skills with double borders (`orient`, `impact-analysis`, `capture`, and the wrapup pipeline) are loaded from canon automatically — they're not invoked separately.
+> Double-bordered nodes (`orient`, `impact-analysis`, `capture`, `code-simplifier`, `code-reviewer`, `security-review`) are sub-skills loaded from canon automatically — not invoked separately.
 
 ---
 
