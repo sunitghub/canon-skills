@@ -68,13 +68,14 @@ In practice you need two commands. The rest is wired in automatically.
 Two commands drive the full lifecycle. Sub-skills are called in automatically at each stage — no manual orchestration.
 
 ```mermaid
-flowchart TD
+flowchart LR
     subgraph START ["sprint start"]
+        direction TB
         S1[Create ticket] --> S2[Setup planning files]
-        S2 --> S3[Read context\nDECISIONS.md · HANDOFF.md]
-        S3 --> S4[["orient\nmap subsystem → blueprint.md"]]
-        S4 --> S5["Grill\nsurface gray areas"]
-        S5 --> S6[["impact-analysis\nrate 5 risk dimensions"]]
+        S2 --> S3[Read context]
+        S3 --> S4[["orient — map subsystem"]]
+        S4 --> S5[Grill — surface gray areas]
+        S5 --> S6[["impact-analysis — rate risk"]]
         S6 --> S7[Sprint brief]
         S7 --> S8{Approved?}
         S8 -->|iterate| S7
@@ -82,14 +83,15 @@ flowchart TD
     end
 
     S9 --> BLD([Build])
-    BLD -.->|automatic| CAP[["capture\nnon-obvious discoveries → HANDOFF.md"]]
+    BLD -.->|automatic| CAP[["capture\ndiscoveries → HANDOFF.md"]]
 
     subgraph DONE ["sprint complete"]
+        direction TB
         subgraph W ["wrapup"]
             direction LR
             W1[code-simplifier] --> W2[code-reviewer] --> W3[security-review]
         end
-        W --> C1[Verify tests\nacceptance.md]
+        W --> C1[Verify tests]
         C1 --> C2{All pass?}
         C2 -->|no| C3[Stop — report failures]
         C2 -->|yes| C4[Update DECISIONS.md]
