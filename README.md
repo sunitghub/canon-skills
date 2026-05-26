@@ -158,7 +158,7 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 ![New ticket modal](meta/screenshots/new-ticket.png)
 
-`+ New ticket` opens a form pre-filled with a structured template. Type, priority, goal, and acceptance criteria — then `Create`. The ticket lands in `.tickets/` as a markdown file, immediately visible to your agent.
+`+ New ticket` opens a form pre-filled with a structured template. Type, priority, goal, and acceptance criteria — then `Create`. The ticket lands in `.tickets/<id>/ticket.md`, immediately visible to your agent.
 
 ### Ticket completeness
 

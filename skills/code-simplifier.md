@@ -8,25 +8,25 @@ hidden: true
 
 # Code Simplifier
 
-**Preserve functionality** — never change what the code does, only how it does it.
+Preserve behavior. Change structure only.
 
-**Apply project standards** — follow conventions in CLAUDE.md / AGENTS.md.
+Follow `CLAUDE.md` / `AGENTS.md`.
 
-**Enhance clarity:**
+## Simplify
 - Reduce unnecessary nesting and complexity
 - Eliminate redundant code and abstractions
 - Improve variable and function names
 - Consolidate related logic
 - Remove comments that describe obvious code
 - No nested ternaries — use `if/else` or `switch` instead
-- Explicit over compact — a clear longer line beats a dense one-liner
+- Prefer clear code over compact code
 
-**Do not:**
+## Do Not
 - Sacrifice readability for brevity or cleverness
 - Merge unrelated concerns into one function
 - Remove abstractions that genuinely aid organization
 
-**Scope** — only refine code touched in the current session unless explicitly asked to do more.
+Scope: code touched in the current session unless explicitly asked otherwise.
 
 ## Process
 

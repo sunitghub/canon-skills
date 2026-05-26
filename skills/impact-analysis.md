@@ -1,6 +1,6 @@
 ---
 name: impact-analysis
-description: Pre-build risk assessment — rates audience, reversibility, blast radius, trigger paths, and cascade risk before any code is written
+description: Rate audience, reversibility, blast radius, trigger paths, and cascade risk before coding
 category: dev
 tags: [planning, risk, impact, testing, sprint]
 hidden: true
@@ -8,27 +8,27 @@ hidden: true
 
 # Impact Analysis
 
-Runs automatically in `sprint start`. Writes to `blueprint.md` and `acceptance.md`.
+Runs in `sprint start`. Writes to `blueprint.md` and `acceptance.md`.
 
 **Surface to user only when at least one dimension is MEDIUM or HIGH.** For all-LOW changes, write the assessment silently and proceed.
 
 ## Step 1 — Interrogate the request
 
-Rate the five dimensions from context first. For any MEDIUM or HIGH dimension, ask only questions whose answers can change that rating.
+Rate from context first. For MEDIUM or HIGH dimensions, ask only questions whose answers can change the rating.
 
-**Questions that can change a rating:**
+Useful questions:
 - Who can trigger this action, and from how many places in the UI or API? *(Trigger paths)*
 - What happens if it runs twice? *(Reversibility, Blast radius)*
 - Is there an undo path, or is this permanent? *(Reversibility)*
 - Which other features, tables, or queues read the data this modifies? *(Cascade risk)*
 - Does this touch anything that sends messages, emails, or notifications externally? *(Audience, Reversibility)*
 
-**Ask only when relevant:**
+Ask only when relevant:
 - Does this action have a confirmation step — and is that step enforced server-side?
 - Are there scheduled jobs or background workers that could race with this?
 - Does this affect data that other teams or systems depend on?
 
-If the user can't answer, note it in `HANDOFF.md` and treat that dimension conservatively.
+If unanswered, note it in `HANDOFF.md` and rate conservatively.
 
 ## Step 2 — Rate the five dimensions
 
@@ -40,11 +40,11 @@ If the user can't answer, note it in `HANDOFF.md` and treat that dimension conse
 | **Trigger paths** | Multiple UI paths or API callers reach the same handler | One primary path + one secondary (e.g., direct URL) | Single, clearly bounded entry point |
 | **Cascade risk** | Downstream consumers (jobs, queues, other tables, external APIs) react to this change | One downstream reader exists | No consumers — data is written and read in isolation |
 
-Rate each. Show reasoning in one line per dimension.
+Show one-line reasoning per dimension.
 
 ## Step 3 — Required actions for HIGH ratings
 
-Every HIGH-rated dimension triggers mandatory additions to the sprint:
+Every HIGH rating adds sprint work:
 
 | HIGH dimension | Required action |
 |---|---|
@@ -54,7 +54,7 @@ Every HIGH-rated dimension triggers mandatory additions to the sprint:
 | **Trigger paths** | List every path (form action, API route, background job, CLI) that reaches the handler. Add test: "grep codebase for handler binding — expect exactly N matches." Add server-side auth check to acceptance criteria. |
 | **Cascade risk** | List all downstream consumers. Add test per consumer: "verify consumer handles this change correctly." |
 
-HIGH dimensions without the corresponding action cannot close the sprint.
+HIGH dimensions cannot close without the matching action.
 
 ## Step 4 — Write the impact block
 
@@ -99,8 +99,8 @@ Append to `acceptance.md` under `## Test Plan`:
 **Test location:** <path, or ask the user if unclear>
 ```
 
-If test location is unclear, ask before proceeding.
+Ask before proceeding if test location is unclear.
 
 ## Past sprint carryover
 
-Scan `.tickets/` for closed tickets that modified any files this sprint will touch. For each match: add a regression test to `## Test Plan` confirming prior behavior still holds. Note the source ticket ID.
+Scan `.tickets/` for closed tickets that modified files this sprint will touch. Add one regression test per match and note the source ticket ID.

@@ -41,9 +41,3 @@ Evidence log for documentation accuracy. Run `/doc-audit` to generate new findin
 **Claim:** Prominent callout with `brew install rtk` / `cargo install rtk` as a setup step.
 **Issue:** RTK is optional — presenting it as a setup step implies it's required.
 **Action:** Replaced with "wired automatically if already installed."
-
-### 2026-05-23 — External ticket tool promoted as upgrade path
-**File:** `guides/AI-Agents-Setup.md`
-**Claim:** "Need dependency tracking, tags, or assignees? Install ticket (brew install ticket)"
-**Issue:** Canon has its own tkt tool. Promoting a third-party tool contradicts the zero-external-dependency principle.
-**Action:** Removed.

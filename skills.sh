@@ -178,11 +178,12 @@ cmd_add() {
   [ -n "$as_dep" ] && return 0
   echo "Registering: $name ($category)"
 
-  # Auto-inject all standards into every project that registers any skill.
+  # Auto-inject only the always-on project standard into registered projects.
   # Both CLAUDE.md and AGENTS.md get @-imports — clean references, no inlining.
   local _std
   for _std in "$SKILLS_ROOT/standards/"*.md; do
     [ -f "$_std" ] || continue
+    [ "$(basename "$_std")" = "efficiency.md" ] || continue
     local _std_basename _std_import
     _std_basename=$(basename "$_std")
     _std_import="@$_std"
@@ -433,6 +434,10 @@ cmd_refresh() {
         local path="${line#@}"
         if [ ! -f "$path" ]; then
           echo "  [pruned]  stale: $line" >&2
+          continue
+        fi
+        if [[ "$path" == "$SKILLS_ROOT"/standards/* ]] && [ "$(basename "$path")" != "efficiency.md" ]; then
+          echo "  [pruned]  non-default standard: $line" >&2
           continue
         fi
         if [ "$(fm_field "$path" hidden)" = "true" ]; then

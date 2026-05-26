@@ -1,43 +1,38 @@
 ---
 name: capture
-description: Proactively record non-obvious discoveries to HANDOFF.md and memory — fires automatically mid-session, also invocable explicitly
+description: Record non-obvious discoveries to HANDOFF.md and project memory
 category: dev
 tags: [knowledge-management, handoff, memory]
 ---
 
-# Capture — Knowledge Preservation
+# Capture
 
-## Automatic behavior
+## When to Capture
 
-When you find something non-obvious that would need re-investigation if lost:
-
-1. Append it to `HANDOFF.md` under `## Discoveries` (create the section after `## Recent Decisions` if it doesn't exist)
-2. Save a `project` memory to the project memory store
-
-**What qualifies:**
 - Filter or exclusion rules found by comparing data sets or running experiments
 - Numerical facts not derivable from code (record counts, row limits, offsets)
-- Environment gotchas — args, paths, config file locations, tool behavior differences, build quirks
-- Architecture decisions with non-obvious WHY (especially when alternatives were ruled out)
-- Any constraint or rule that required active investigation to establish and isn't visible in the code
+- Environment gotchas: args, paths, config locations, tool behavior, build quirks
+- Architecture choices with non-obvious reasons
+- Constraints discovered through investigation and not visible in code
 
-**What doesn't qualify:**
+## Do Not Capture
+
 - Things obvious from reading the code
 - Standard framework or library behavior
 - Decisions that are trivial and will be captured by the next wrapup
 
-## Explicit invocation
+## Action
 
 1. Append to `HANDOFF.md` under `## Discoveries`. Create the section if absent.
 2. Save a `project` memory.
-3. Confirm in one line: "Captured: <summary>"
+3. Reply: `Captured: <summary>`
 
 Entry format for HANDOFF.md:
 ```
 - **[YYYY-MM-DD]** <what was discovered> — <why it matters or how to apply it>
 ```
 
-**Trigger syntax:**
+## Triggers
 
 | Agent | How to trigger |
 |---|---|

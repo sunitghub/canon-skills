@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: Run code-simplifier, code-reviewer, and security-review in the right order after completing any unit of work — skips steps that don't apply
+description: Run simplification, review, security review, doc audit, and commit handoff after a unit of work
 category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
 depends: [code-simplifier, code-reviewer, security-review, doc-audit, handoff, ticket]
@@ -12,29 +12,15 @@ depends: [code-simplifier, code-reviewer, security-review, doc-audit, handoff, t
 @../tools/handoff.md
 @../tools/ticket.md
 
-# Wrapup — Quality Pipeline
+# Wrapup
 
-Run this after completing any unit of work — a session, a feature, a bug fix, or a ticket. It executes three steps in sequence, skipping any that don't apply to the current change.
-
-## How to Run
-
-```
-/wrapup
-```
-
-Or: "Wrapup the changes" / "Wrapup the auth refactor" / "Wrapup ticket proj-42."
+Run after a session, feature, bug fix, or ticket. Skip steps that do not apply.
 
 ## Pipeline
 
 ```
 code-simplifier → code-reviewer → security-review → doc-audit
 ```
-
-Each step builds on the last:
-- **Simplify first** — review clean code, not messy code
-- **Review second** — catch logic and design issues on the simplified version
-- **Security last** — focused pass with no style noise in the way
-- **Doc audit** — verify docs match reality before shipping
 
 ## Skip Logic
 
@@ -57,23 +43,13 @@ Before running each step, assess the change and skip if the criteria apply. When
 
 ---
 
-## Step 1 — Code Simplifier
+## Steps
 
-Apply the code-simplifier skill. Scope: only code touched in the current session unless explicitly asked otherwise.
-
-## Step 2 — Code Reviewer
-
-Apply the code-reviewer skill across all seven dimensions. For security: note concerns but defer deep analysis to Step 3.
-
-## Step 3 — Security Review
-
-Apply the security-review skill, including the ast-grep pre-scan if available.
-
-## Step 4 — Doc Audit
-
-Apply the doc-audit skill. Surface findings inline — do not write to `doc-findings.md` without explicit confirmation. Fix any command accuracy issues before committing.
-
-## Step 5 — Doc Refresh
+1. Apply code-simplifier to code touched in this session.
+2. Apply code-reviewer across all seven dimensions; defer deep security analysis to Step 3.
+3. Apply security-review, including ast-grep pre-scan if available.
+4. Apply doc-audit. Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing.
+5. Refresh docs:
 
 Review every documentation file touched or referenced during this session and patch anything stale.
 
@@ -84,7 +60,7 @@ Scope (check each that exists):
 - `README` — does it document any changed APIs, behaviors, or install steps?
 - Any other `.md` files explicitly opened or modified during the session
 
-For each: one-line patch if stale — don't rewrite, just correct the outdated parts. Skip files where nothing changed.
+Patch stale lines only. Skip files where nothing changed.
 
 ---
 
@@ -115,7 +91,7 @@ For each: one-line patch if stale — don't rewrite, just correct the outdated p
 - **Impact** — carry forward the rating from `blueprint.md ## Impact Assessment`; use LOW if no sprint context
 - **Flags** — `✓ clean` if no findings; `⚠ critical` / `⚠ improvement` if the pipeline flagged anything for that file
 
-Address criticals before committing. Improvements and nitpicks at your discretion.
+Address criticals before committing. Improvements and nitpicks are discretionary.
 
 If you ran `/wrapup` directly (not via the approve workflow) and a ticket is in-progress, use the approve workflow to close it — do not call `tkt close` directly.
 
@@ -130,4 +106,3 @@ Always run this at the end of every wrapup — even if no code changed (docs and
 3. Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
 4. On yes: commit, then push to the current branch's remote. Report the pushed ref.
 5. If criticals from the review pipeline are unresolved: warn before asking — do not block, but make the risk explicit.
-

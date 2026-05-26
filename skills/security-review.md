@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: Identify high-confidence, exploitable security vulnerabilities in code — not theoretical issues
+description: Identify high-confidence exploitable vulnerabilities in code
 category: dev
 tags: [security, vulnerabilities, code-review]
 hidden: true
@@ -10,17 +10,17 @@ hidden: true
 
 ## Confidence Threshold
 
-Only report what meets HIGH or MEDIUM confidence:
+Report only HIGH or MEDIUM confidence:
 
 | Level | Criteria | Action |
 |---|---|---|
 | HIGH | Vulnerable pattern + attacker-controlled input confirmed | Report with severity |
 | MEDIUM | Vulnerable pattern, input source unclear | Note as "Needs verification" |
-| LOW | Theoretical or best-practice only | Do not report |
+| LOW | Theoretical or best-practice only | Skip |
 
 ## Do Not Flag
 
-Test files, dead/commented-out code, constants, server-controlled config, code paths requiring prior auth, Django settings / env vars / framework constants.
+Test files, dead/commented code, constants, server-controlled config, code paths requiring prior auth, Django settings, env vars, framework constants.
 
 ## Pre-scan (ast-grep)
 
@@ -28,7 +28,7 @@ Test files, dead/commented-out code, constants, server-controlled config, code p
 command -v ast-grep >/dev/null 2>&1 && echo "available" || echo "not installed"
 ```
 
-If available, run over changed files (`--json` for structured output):
+If available, run over changed files with `--json`:
 
 ```bash
 # Injection / unsafe exec
@@ -54,7 +54,7 @@ Adapt patterns to the languages in the changed files. If `scan-rules/` exists at
 ast-grep scan --rule scan-rules/ --json 2>/dev/null
 ```
 
-Hits are starting points, not confirmed vulnerabilities. If not available, skip silently and note: `ast-grep not installed — structural pre-scan skipped`.
+Hits are leads, not findings. If absent, note: `ast-grep not installed — structural pre-scan skipped`.
 
 ## Process
 
@@ -66,15 +66,15 @@ Hits are starting points, not confirmed vulnerabilities. If not available, skip 
 
 ## Vulnerability Categories
 
-Injection, XSS, authorization bypass, weak cryptography, unsafe deserialization, SSRF, CSRF, file security, broken authentication, business logic flaws, API security, misconfiguration, error handling leaks, sensitive data in logs.
+Injection, XSS, authorization bypass, weak crypto, unsafe deserialization, SSRF, CSRF, file security, broken auth, business logic flaws, API security, misconfiguration, error leaks, sensitive logs.
 
 ## Action Endpoint Patterns
 
-Check on every destructive or irreversible action (send, delete, bulk-update, job trigger, cache flush):
+Check every destructive or irreversible action: send, delete, bulk-update, job trigger, cache flush.
 
-**1. UI-only access control** — hiding a UI element is not authorization. The server-side handler must enforce access control independently of UI state.
+**1. UI-only access control** — server handlers must enforce authorization independently of UI state.
 
-**2. Duplicate action triggers** — search for all bindings to the same endpoint. More than one path to a destructive action is a red flag unless every path enforces the same controls.
+**2. Duplicate action triggers** — find every binding to the same endpoint; each path must enforce the same controls.
 
 Detection by framework:
 - **HTML forms**: grep for `action="/same-path"` or `method="post"` on multiple forms in the same template
@@ -90,7 +90,7 @@ Detection by framework:
 - **Go** — `exec.Command` with user input, unsafe pointer use, goroutine races
 - **Rust** — `unsafe` blocks, FFI boundaries, panics in production paths
 - **Java** — Spring: deserialization, XXE, reflected input in responses
-- **ASP.NET Razor Pages** — apply Action Endpoint Patterns above; additionally check `OnGet` handlers that mutate state (should be `OnPost`)
+- **ASP.NET Razor Pages** — apply endpoint checks; flag mutating `OnGet` handlers
 
 ## Severity Classification
 

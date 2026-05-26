@@ -1,4 +1,6 @@
 .tickets/
+HANDOFF.md
+DECISIONS.md
 pbcopy
 CLAUDE.md
 .DS_Store

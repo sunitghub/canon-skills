@@ -1,7 +1,7 @@
 ---
 name: sprint
-description: Full dev workflow — plan, build, and ship focused units of work with acceptance-criteria-gated delivery
-summary: plan → build → ship. Auto-creates a ticket on start, closes it on complete. Grills gray areas, rates impact, generates a test plan. sprint complete runs the full quality pipeline (simplify → review → security) before closing. Includes wrapup, code-reviewer, security-review, and handoff.
+description: Plan, build, and ship focused work with acceptance-gated delivery
+summary: The sprint CLI creates/starts tickets, tracks active state, scaffolds files, and validates close. The agent maps the subsystem, resolves gray areas, rates impact, builds, tests, and runs wrapup.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
 depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]
@@ -14,14 +14,12 @@ depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]
 
 # Sprint
 
-Two CLI-backed commands:
+CLI-backed commands:
 
 | Command | When |
 |---|---|
 | `sprint start` | Any dev request — automatic unless the change is trivially mechanical |
 | `sprint complete` | When you believe the work is done |
-
-`capture` runs automatically between them — no invocation needed.
 
 The `sprint` CLI owns deterministic workflow state: ticket creation, active
 ticket tracking, sprint file scaffolding, and close validation. The agent owns
@@ -32,7 +30,7 @@ test judgment.
 
 ## Default mode
 
-Default for any substantive dev request — no need to say "sprint start" explicitly.
+Default for substantive dev requests.
 
 **Skip only when:**
 - The request is a question or explanation
@@ -65,9 +63,9 @@ Default for any substantive dev request — no need to say "sprint start" explic
 5. **Grill.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 
    - Analyze the request and identify up to 5 gray areas (API shape, data model, UI behavior, error handling approach, integration pattern, scope boundary, etc.)
-   - **If no genuine gray areas exist:** skip silently and proceed to impact analysis.
+   - If no genuine gray areas exist: skip silently.
    - **If gray areas exist:** present them numbered. For each: state the decision to be made and the tradeoffs. Wait for the user to resolve all of them before proceeding.
-   - Scope guardrail: grill clarifies HOW to implement what is already scoped. It does not add scope or renegotiate what is being built.
+   - Grill clarifies implementation inside the approved scope; it does not add scope.
    - Log each resolved gray area under `## Grill` in `blueprint.md`.
 
 6. **Impact analysis.** Run the full impact analysis process defined in the impact-analysis skill:
@@ -89,7 +87,7 @@ Default for any substantive dev request — no need to say "sprint start" explic
 
 8. **Wait for explicit approval.** Do not write code until confirmed. On approval, write `plan.md` to `.tickets/<id>/` with the timestamp, ticket ID, grill resolutions, and full approved sprint brief verbatim.
 
-   `plan.md` is the compaction-resilient source of truth. Re-read it if context resets mid-sprint.
+   Re-read `plan.md` after compaction or context reset.
 
 ---
 
@@ -97,7 +95,7 @@ Default for any substantive dev request — no need to say "sprint start" explic
 
 **Trigger:** "sprint complete", "complete the sprint", "approve", "ship it", "approve `<id>`"
 
-Do not accept the user's claim that work is done. Verify it.
+Verify before closing.
 
 1. **Wrapup.** Run the pipeline defined above (code-simplifier → code-reviewer →
    security-review) on all files modified since sprint start. Apply skip rules as defined.
@@ -105,7 +103,7 @@ Do not accept the user's claim that work is done. Verify it.
 2. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - ✓ passed | ✗ failed | ? not run
    - If any ✗ or ?: report which tests did not pass. Do not close the ticket. Stop here.
-   - This includes all impact tests and regression tests, not just functional tests.
+   - Include impact and regression tests.
    - Confirm test results are documented in `acceptance.md` (pass/fail per item, date run).
    - Proceed only when all tests are ✓ or explicitly waived by the user with a documented reason.
 
@@ -155,5 +153,4 @@ Repo root. Records durable choices future sprints must respect. Not a session lo
 | 2026-05-17 | Amounts stored as integer cents | Avoid float precision bugs |
 ```
 
-Write a decision when a non-obvious choice is made that would surprise a future agent.
-Never write decisions obvious from reading the code.
+Write non-obvious choices only. Skip decisions obvious from code.

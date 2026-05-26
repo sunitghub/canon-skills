@@ -1,7 +1,7 @@
 ---
 name: orient
-description: Read-only subsystem exploration — maps the codebase around the sprint's target files and writes findings to blueprint.md before any editing begins
-summary: Surveys file structure, entry points, and cross-file dependencies for the sprint's target area. Writes a Subsystem Map to blueprint.md. Called automatically by sprint start — not a separate invocation.
+description: Map the sprint target subsystem before editing
+summary: Read entry points, interfaces, adjacent modules, and dependencies. Write a Subsystem Map to blueprint.md. Called by sprint start.
 category: dev
 tags: [planning, exploration, context, codebase]
 hidden: true
@@ -9,18 +9,16 @@ hidden: true
 
 # Orient
 
-Called automatically by `sprint start` after context documents are read. Do not invoke directly.
+Called by `sprint start` after context documents are read.
 
 ## Step 1 — Survey the target area
 
-Read the directory structure and files around the planned changes. Focus on:
+Read the target area. Focus on:
 - Entry points: where does execution flow into these files?
 - Interfaces: what do these files export or expose?
 - Adjacent modules: what sits alongside the target files?
 
 Limit scope to the relevant subsystem.
-
----
 
 ## Step 2 — Trace dependencies
 
@@ -33,7 +31,7 @@ For each file marked for modification in `blueprint.md`:
 
 ## Step 3 — Flag non-obvious relationships
 
-Flag files not in the original plan that are likely affected. Note any unconventional structure (generated files mixed with source, monorepo with non-standard layouts).
+Flag likely affected files missing from the plan. Note generated files, monorepo layout, or other navigation gotchas.
 
 ---
 
@@ -63,7 +61,7 @@ Append a `## Subsystem Map` section to `blueprint.md`:
 - Ambiguities about the subsystem that could affect implementation (or "None")
 ```
 
-If the subsystem is simple and the original blueprint already covers it fully, write a one-line confirmation instead:
+If the blueprint already covers the subsystem, write:
 
 ```markdown
 ## Subsystem Map — confirmed: original file list is complete, no non-obvious relationships found
@@ -75,4 +73,4 @@ If the subsystem is simple and the original blueprint already covers it fully, w
 
 - Read only. No edits.
 - Stay in the relevant subsystem.
-- Fill gaps — do not re-describe what the user already explained.
+- Fill gaps; do not repeat the user's explanation.

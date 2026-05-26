@@ -38,6 +38,7 @@ Everything except:
 - `Emacs/` — in `.gitignore`
 - `CSVs/` — in `.gitignore`
 - `.tickets/` — local task board, never committed
+- `HANDOFF.md` / `DECISIONS.md` — local session state, not release documentation
 
 ### Branch strategy
 
@@ -55,12 +56,13 @@ All work goes directly to `main`. No separate release branches — canon is a li
 
 ### What the npm package contains
 
-Only 3 files — the installer, not the tool:
+Only the installer package files — not the tool:
 
 ```
 canon-skills@1.0.0
   bin/install.js     ← clones repo + runs skills.sh init
   package.json
+  LICENSE
   README.md          ← included by npm automatically
 ```
 

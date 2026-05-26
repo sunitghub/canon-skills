@@ -1,15 +1,13 @@
 ---
 name: doc-audit
-description: Audit user-facing docs for overstated claims, missing prerequisites, absolute statements with exceptions, and scope inflation. Appends findings to standards/doc-findings.md on explicit confirmation.
+description: Audit user-facing docs for overstated claims, missing prerequisites, absolutes, scope inflation, and stale commands.
 category: agent-ops
 tags: [docs, accuracy, audit, claims]
 ---
 
 # Doc Audit
 
-Audit user-facing documentation for honesty and accuracy. Catches overstated automation, missing prerequisites, absolute claims with real exceptions, and scope inflation before they mislead readers.
-
-Maintains `standards/doc-findings.md` as a running evidence log — append only on explicit confirmation.
+Audit user-facing documentation for accuracy. Append to `standards/doc-findings.md` only after explicit confirmation.
 
 ## Scope
 
@@ -19,31 +17,31 @@ Maintains `standards/doc-findings.md` as a running evidence log — append only 
 
 ## Steps
 
-1. **Known findings.** Read `standards/doc-findings.md`. Note what's already logged — skip re-flagging in step 5.
+1. Read `standards/doc-findings.md`; skip logged issues.
 
-2. **Read docs.** Read `README.md` and every file in `guides/`. Note key claims about features, behavior, and requirements.
+2. Read `README.md` and `guides/*.md`. Note claims about features, behavior, and requirements.
 
-3. **Read skill descriptions.** For each skill file in `skills/` and `standards/`, extract the `description` and `summary` frontmatter fields. Read the skill body to understand what it actually does.
+3. Read `description` and `summary` frontmatter in `skills/*.md` and `standards/*.md`; compare to each skill body.
 
-4. **Run these checks — flag high-confidence issues only, skip borderline cases:**
+4. Run these checks. Flag only high-confidence issues:
 
-   **Overstated automation** — phrases like "automatically", "no setup needed", "no coordination required", "just run", "that's it" where a non-obvious step is actually required. Ask: does the reader need to do something that isn't stated here?
+   **Overstated automation** — phrases like "automatically", "no setup needed", "just run", or "that's it" where a hidden step exists.
 
-   **Missing prerequisites** — a feature described without mentioning a dependency it silently requires (external tool, fork, config, specific file structure). Flag only when the missing prerequisite would surprise a first-time reader.
+   **Missing prerequisites** — required tool, config, fork, or file structure not stated.
 
-   **Absolute claims** — "always", "never", "no X required", "zero", "every", "any" that have common real-world exceptions. Skip theoretical edge cases — flag only likely ones.
+   **Absolute claims** — "always", "never", "zero", "every", "any" with likely exceptions.
 
-   **Scope inflation** — a skill's `description` or `summary` claims it does something the skill body doesn't do, or cites a count that doesn't match (e.g., "7 dimensions" listing fewer). Compare frontmatter against actual steps.
+   **Scope inflation** — frontmatter claims behavior not present in the body, or counts that do not match.
 
-   **Internal consistency** — the same feature described differently across README, guides, and skill files in a way that would confuse a reader. Quote both versions.
+   **Internal consistency** — conflicting descriptions across README, guides, and skill files. Quote both.
 
-   **Command accuracy** — run `skills.sh list` and compare against every skill name referenced in `skills.sh add <skill>` or `skills.sh help <skill>` code blocks in README and guides. Flag any name not returned by `skills.sh list` — these are stale or invented references.
+   **Command accuracy** — run `skills.sh list`; compare to skill names in README/guides command examples.
 
-   **Personal or private content** — real names, email addresses, usernames, hardcoded home directory paths (`/Users/<name>/`, `/home/<name>/`), internal project names, private ticket prefixes, company-specific references, or anything that would identify the author or their private setup in a public repo. Flag; do not attempt to redact automatically.
+   **Private content** — real names, emails, usernames, home paths, private ticket prefixes, company references, secrets. Flag; do not redact automatically.
 
-5. **Report.** List new findings grouped by check type. Quote the exact claim and explain the issue. If no new findings: say so and stop.
+5. Report new findings by check type. Quote the claim and explain the issue. If none: say so and stop.
 
-6. **Confirm before writing.** Ask: "Append these to doc-findings.md? (y to confirm)." Do not write without an explicit yes.
+6. Ask: `Append these to doc-findings.md? (y to confirm)`. Do not write without `y`.
 
 ## doc-findings.md entry format
 
