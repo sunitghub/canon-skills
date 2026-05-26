@@ -6,4 +6,5 @@ CLAUDE.md
 .\#*
 *~
 toPdfViaTempFile*
+guides/*.pdf
 tools/tailscale-check.sh

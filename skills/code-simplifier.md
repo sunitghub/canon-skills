@@ -1,7 +1,7 @@
 ---
 name: code-simplifier
 description: Simplify and refine recently modified code for clarity, consistency, and maintainability without changing behavior
-category: skills
+category: dev
 tags: [refactoring, code-quality, cleanup]
 hidden: true
 ---

@@ -1,7 +1,7 @@
 ---
 name: impact-analysis
 description: Pre-build risk assessment — rates audience, reversibility, blast radius, trigger paths, and cascade risk before any code is written
-category: skills
+category: dev
 tags: [planning, risk, impact, testing, sprint]
 hidden: true
 ---

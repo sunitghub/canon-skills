@@ -1,7 +1,7 @@
 ---
 name: security-review
 description: Identify high-confidence, exploitable security vulnerabilities in code — not theoretical issues
-category: skills
+category: dev
 tags: [security, vulnerabilities, code-review]
 hidden: true
 ---
