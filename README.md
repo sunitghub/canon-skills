@@ -6,7 +6,7 @@ The average person can hold about four items in active working memory. Most agen
 
 > Your agents are capable. Canon makes them yours.
 
-Canon has one workflow comman `sprint`, with `start` and `complete` as lifecycle verbs.
+Canon has one workflow command `sprint`, with `start` and `complete` as lifecycle verbs.
 
 Stop re-explaining your standards on every new project. Stop watching Claude drift back to its defaults mid-session. Stop reconfiguring the same quality checks from scratch. Stop piecing together what's in flight from git log and open tabs.
 
