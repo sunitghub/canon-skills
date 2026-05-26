@@ -26,8 +26,9 @@ Skills are live references, not copies. `skills.sh add sprint` writes one line t
 
 Claude Code resolves it at session start, reading directly from canon. Update canon — every project picks it up on the next `git pull`.
 
-Two commands cover the full lifecycle. They are normal shell commands from
-`canon/tools`, so every supported agent calls the same state machine:
+One workflow command covers the full lifecycle: `sprint`. Its lifecycle actions
+are normal shell commands from `canon/tools`, so every supported agent calls the
+same state machine:
 
 | | |
 |---|---|
@@ -35,8 +36,8 @@ Two commands cover the full lifecycle. They are normal shell commands from
 | `sprint complete` | Validates sprint checklists before close — the agent runs quality pipeline, doc refresh, ticket close, commit & push prompt. Done. |
 
 Everything else — tickets, active sprint state, session context, quality gates,
-handoff across resets — is wired into that lifecycle. You don't learn a
-vocabulary. You describe what you want to build.
+handoff across resets — is wired into that lifecycle. You don't learn a command
+sequence. You describe what you want to build.
 
 ---
 
@@ -62,7 +63,7 @@ You can. Most people do — until they have five projects, each with a slightly 
 
 ## What's inside
 
-In practice you need two commands. The rest is wired in automatically.
+In practice you register one workflow skill: `sprint`. The rest is wired in automatically.
 
 | Skill | What it does | Example |
 |---|---|---|
@@ -80,7 +81,7 @@ In practice you need two commands. The rest is wired in automatically.
 
 ## How sprint works
 
-Two commands drive the full lifecycle. The CLI handles deterministic state; sub-skills are called by the agent at each stage — no manual orchestration.
+One workflow command drives the lifecycle. The CLI handles deterministic state; sub-skills are called by the agent at each stage — no manual orchestration.
 
 ### sprint start
 
@@ -191,14 +192,19 @@ Docs land in `.tickets/<id>/` as markdown files and are read automatically by yo
 
 ## The contrast
 
-Popular agent workflow frameworks define multi-step processes with their own vocabulary — subagent-driven development, RED-GREEN-REFACTOR cycles, YAGNI — and require a separate install for each platform they support. They ask you to learn a system on top of your agent.
+Frameworks like GSD Redux are powerful phase-based systems: initialize, discuss, plan, execute, verify, ship, repeat. That works when you want a full methodology.
 
-Canon has two commands.
+Canon optimizes for the common case: most dev work should not require remembering a command sequence. Register `sprint` once. Then use one workflow command:
+
+- `sprint start` to plan and begin work
+- `sprint complete` to verify, wrap up, and close
+
+The sub-skills still exist — orient, impact analysis, capture, review, security, doc audit — but the user does not invoke them in order. The agent does.
 
 | | canon | popular frameworks |
 |---|---|---|
 | Install | One command (`npx canon-skills@latest`) | Separate install per platform |
-| Things to learn | 2 commands | Multi-step workflow + vocabulary terms |
+| Things to learn | One workflow command: `sprint` | Multi-command phase workflow |
 | Built with | Markdown + bash | Methodology plugins |
 | Dependencies | None | Platform plugin runtime |
 | Updates | `git pull` in one repo | Plugin release per platform |
