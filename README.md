@@ -213,7 +213,7 @@ The sub-skills still exist — orient, impact analysis, capture, review, securit
 | Install | One command (`npx canon-skills@latest`) | Separate install per platform |
 | Things to learn | One workflow command: `sprint` | Multi-command phase workflow |
 | Built with | Markdown + bash | Methodology plugins |
-| Dependencies | None | Platform plugin runtime |
+| External services | None | Often tied to platform/plugin state |
 | Updates | `git pull` in one repo | Plugin release per platform |
 | Agent support | Claude Code, Codex, Pi | Broader (Cursor, Gemini, Copilot + more) |
 | State lives in | Your repo (`.tickets/`, `HANDOFF.md`) | Plugin state |
@@ -262,10 +262,11 @@ Your agent reads the registered skills and follows them — no prompt engineerin
 
 ## How the live-reference model works
 
-`skills.sh add` writes one line into your project's config — not a copy of the skill, a reference:
+`skills.sh add` adds live imports to your project's config — not a copy of the skill, references:
 
 ```
 # CLAUDE.md
+@/Users/you/Developer/canon/standards/efficiency.md
 @/Users/you/Developer/canon/skills/sprint.md
 
 # AGENTS.md
