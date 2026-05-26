@@ -12,7 +12,7 @@ import sys
 from datetime import date
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 # ── Locate project root ───────────────────────────────────────────────────
 
@@ -35,6 +35,20 @@ APP_HTML     = Path(__file__).parent / 'app.html'
 _FRONTMATTER = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL)
 _FIELD       = re.compile(r'^(\w+):\s*(.+)$', re.MULTILINE)
 
+def _doc_name(path: Path) -> str:
+    return path.stem.replace('-', ' ').title()
+
+def _safe_ticket_doc(doc_file: str) -> Path | None:
+    p = Path(doc_file)
+    if p.is_absolute() or '..' in p.parts or p.suffix != '.md':
+        return None
+    target = TICKETS_DIR / p
+    try:
+        target.resolve().relative_to(TICKETS_DIR.resolve())
+    except ValueError:
+        return None
+    return target
+
 def parse_ticket(path: Path) -> dict:
     text = path.read_text(encoding='utf-8', errors='replace')
     fm_match = _FRONTMATTER.match(text)
@@ -53,20 +67,52 @@ def parse_ticket(path: Path) -> dict:
     fields.setdefault('title', title_match.group(1).strip() if title_match else path.stem)
     fields['body'] = body
     fields.setdefault('id', path.stem)
-    # companion docs: {stem}-{docname}.md alongside the ticket
-    stem = path.stem
     docs = []
-    for f in sorted(path.parent.glob(f'{stem}-*.md')):
-        doc_name = f.stem[len(stem)+1:].replace('-', ' ').title()
-        docs.append({'name': doc_name, 'file': f.name})
+    if path.name == 'ticket.md' and path.parent != TICKETS_DIR:
+        ticket_id = fields.get('id') or path.parent.name
+        fields.setdefault('id', ticket_id)
+        fields['layout'] = 'folder'
+        for f in sorted(path.parent.glob('*.md')):
+            if f.name == 'ticket.md':
+                continue
+            docs.append({'name': _doc_name(f), 'file': f'{path.parent.name}/{f.name}'})
+    else:
+        fields['layout'] = 'flat'
+        stem = path.stem
+        for f in sorted(path.parent.glob(f'{stem}-*.md')):
+            doc_name = f.stem[len(stem)+1:].replace('-', ' ').title()
+            docs.append({'name': doc_name, 'file': f.name})
     fields['docs'] = docs
     return fields
 
-def load_tickets() -> list:
+def ticket_paths() -> list[Path]:
     if not TICKETS_DIR.is_dir():
         return []
-    tickets = []
+    paths = []
+    seen: set[str] = set()
+    for ticket in sorted(TICKETS_DIR.glob('*/ticket.md')):
+        paths.append(ticket)
+        seen.add(ticket.parent.name)
     for f in sorted(TICKETS_DIR.glob('*.md')):
+        if f.stem in seen:
+            continue
+        if re.match(r'^.+-(blueprint|acceptance|plan|decisions|qa|notes)$', f.stem):
+            continue
+        paths.append(f)
+    return paths
+
+def legacy_doc_target(doc_file: str) -> Path | None:
+    safe = Path(doc_file).name
+    if not safe.endswith('.md'):
+        return None
+    m = re.match(r'^([A-Za-z]+-[A-Za-z0-9]+)-(.+)\.md$', safe)
+    if m and (TICKETS_DIR / m.group(1) / 'ticket.md').is_file():
+        return TICKETS_DIR / m.group(1) / f'{m.group(2)}.md'
+    return TICKETS_DIR / safe
+
+def load_tickets() -> list:
+    tickets = []
+    for f in ticket_paths():
         try:
             tickets.append(parse_ticket(f))
         except Exception:
@@ -148,16 +194,19 @@ def load_commit(hash_: str) -> dict:
 def _find_ticket_path(ticket_id: str) -> Path | None:
     if not TICKETS_DIR.is_dir():
         return None
-    matches = list(TICKETS_DIR.glob(f'{ticket_id}*.md'))
-    if not matches:
-        for f in TICKETS_DIR.glob('*.md'):
-            try:
-                if parse_ticket(f).get('id') == ticket_id:
-                    return f
-            except Exception:
-                pass
-        return None
-    return matches[0]
+    folder_ticket = TICKETS_DIR / ticket_id / 'ticket.md'
+    if folder_ticket.is_file():
+        return folder_ticket
+    flat_ticket = TICKETS_DIR / f'{ticket_id}.md'
+    if flat_ticket.is_file():
+        return flat_ticket
+    for f in ticket_paths():
+        try:
+            if parse_ticket(f).get('id') == ticket_id:
+                return f
+        except Exception:
+            pass
+    return None
 
 def write_status(ticket_id: str, new_status: str) -> bool:
     path = _find_ticket_path(ticket_id)
@@ -182,19 +231,18 @@ def write_body(ticket_id: str, new_body: str) -> bool:
     return True
 
 def read_doc(doc_file: str) -> str | None:
-    """Read a companion doc file safely (must be a .md file in TICKETS_DIR)."""
-    safe = Path(doc_file).name
-    if not safe.endswith('.md'):
-        return None
-    p = TICKETS_DIR / safe
-    if not p.is_file():
+    """Read a companion doc file safely from TICKETS_DIR."""
+    p = _safe_ticket_doc(doc_file)
+    if p is None or not p.is_file():
+        p = legacy_doc_target(doc_file)
+    if p is None or not p.is_file():
         return None
     return p.read_text(encoding='utf-8', errors='replace')
 
 def create_ticket(title: str, type_: str, status: str, priority: int, body: str) -> dict:
-    """Create a new ticket file and return its parsed data."""
+    """Create a new canonical ticket folder and return its parsed data."""
     TICKETS_DIR.mkdir(exist_ok=True)
-    existing = {f.stem for f in TICKETS_DIR.glob('*.md')}
+    existing = {p.stem for p in ticket_paths()} | {p.name for p in TICKETS_DIR.iterdir() if p.is_dir()}
     chars = string.ascii_lowercase + string.digits
     while True:
         ticket_id = 't-' + ''.join(random.choices(chars, k=4))
@@ -205,16 +253,21 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str)
     fm = (f'---\nid: {ticket_id}\ntitle: {safe_title}\nstatus: {status}\n'
           f'type: {type_}\npriority: {priority}\ncreated: {created}\n---\n')
     full = fm + '\n' + body.strip() + '\n' if body.strip() else fm
-    path = TICKETS_DIR / f'{ticket_id}.md'
+    ticket_dir = TICKETS_DIR / ticket_id
+    ticket_dir.mkdir()
+    path = ticket_dir / 'ticket.md'
     path.write_text(full, encoding='utf-8')
     return parse_ticket(path)
 
 def write_doc(doc_file: str, content: str) -> bool:
-    """Write a companion doc (must be a .md file in TICKETS_DIR)."""
-    safe = Path(doc_file).name
-    if not safe.endswith('.md'):
+    """Write a companion doc under TICKETS_DIR."""
+    p = _safe_ticket_doc(doc_file)
+    if p is None:
+        p = legacy_doc_target(doc_file)
+    if p is None:
         return False
-    (TICKETS_DIR / safe).write_text(content.strip() + '\n', encoding='utf-8')
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content.strip() + '\n', encoding='utf-8')
     return True
 
 # ── HTTP handler ──────────────────────────────────────────────────────────
@@ -264,7 +317,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(load_commit(m.group(1))); return
             m = re.match(r'^/api/doc/(.+)$', path)
             if m:
-                content = read_doc(m.group(1))
+                content = read_doc(unquote(m.group(1)))
                 if content is None:
                     self.send_error(404); return
                 self.send_json({'content': content})
@@ -294,7 +347,7 @@ class Handler(BaseHTTPRequestHandler):
 
         m = re.match(r'^/api/doc/(.+)$', path)
         if m:
-            ok = write_doc(m.group(1), str(payload.get('content', '')))
+            ok = write_doc(unquote(m.group(1)), str(payload.get('content', '')))
             self.send_json({'ok': ok}); return
 
         if path == '/api/tickets':

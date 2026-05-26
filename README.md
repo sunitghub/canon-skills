@@ -26,14 +26,17 @@ Skills are live references, not copies. `skills.sh add sprint` writes one line t
 
 Claude Code resolves it at session start, reading directly from canon. Update canon — every project picks it up on the next `git pull`.
 
-Two commands cover the full lifecycle:
+Two commands cover the full lifecycle. They are normal shell commands from
+`canon/tools`, so every supported agent calls the same state machine:
 
 | | |
 |---|---|
-| `sprint start` | Maps the codebase, surfaces ambiguities, rates risk, writes a plan — waits for your approval before touching any code. |
-| `sprint complete` | Quality pipeline, doc refresh, ticket close, commit & push prompt. Done. |
+| `sprint start` | Creates/starts the ticket, records it as active, scaffolds sprint files — then the agent maps the codebase, surfaces ambiguities, rates risk, writes a plan, and waits for approval before touching code. |
+| `sprint complete` | Validates sprint checklists before close — the agent runs quality pipeline, doc refresh, ticket close, commit & push prompt. Done. |
 
-Everything else — tickets, session context, quality gates, handoff across resets — runs automatically. You don't learn a vocabulary. You describe what you want to build.
+Everything else — tickets, active sprint state, session context, quality gates,
+handoff across resets — is wired into that lifecycle. You don't learn a
+vocabulary. You describe what you want to build.
 
 ---
 
@@ -63,7 +66,7 @@ In practice you need two commands. The rest is wired in automatically.
 
 | Skill | What it does | Example |
 |---|---|---|
-| `sprint` | plan → build → ship. Creates a ticket automatically on start, closes it on complete — no manual ticketing. Maps the subsystem, grills gray areas, rates impact, generates a test plan. Approved plan written to `.tickets/<id>/plan.md` (or `planning/sprints/<slug>/plan.md` without tkt) — survives context resets. | *"sprint start — add OAuth login"* |
+| `sprint` | plan → build → ship. The CLI creates the ticket, tracks the active sprint, scaffolds files, and validates close. The agent maps the subsystem, grills gray areas, rates impact, and generates a test plan. Approved plan written to `.tickets/<id>/plan.md` — survives context resets. | *"sprint start — add OAuth login"* |
 | &nbsp;&nbsp;↳ `wrapup` | Quality pipeline at sprint complete (also runs on demand): simplify → review → security → doc refresh, then always prompts to commit & push. | *"sprint complete"* |
 | &nbsp;&nbsp;&nbsp;&nbsp;↳ `code-reviewer` | Structured review across 7 dimensions: correctness, maintainability, readability, efficiency, security, edge cases, and test coverage. | *"review my changes"* |
 | &nbsp;&nbsp;&nbsp;&nbsp;↳ `security-review` | High-confidence vulnerability detection — traces data flow before flagging anything. | *"security review the auth module"* |
@@ -77,7 +80,7 @@ In practice you need two commands. The rest is wired in automatically.
 
 ## How sprint works
 
-Two commands drive the full lifecycle. Sub-skills are called in automatically at each stage — no manual orchestration.
+Two commands drive the full lifecycle. The CLI handles deterministic state; sub-skills are called by the agent at each stage — no manual orchestration.
 
 ### sprint start
 
@@ -107,9 +110,9 @@ flowchart LR
 
 ## Tickets
 
-Every `sprint start` creates a ticket in `.tickets/<id>/`. Every `sprint complete` closes it. No manual ticketing, no external service, no account.
+Every `sprint start` creates a ticket in `.tickets/<id>/ticket.md` and records it as active in `.tickets/ACTIVE`. Every `sprint complete` closes it after required sprint checklist items are resolved. No manual ticketing, no external service, no account.
 
-A ticket is a folder, not a card — it holds the approved plan, decisions made mid-sprint, and any QA or research notes, all as markdown files. When context resets mid-session, the agent opens the ticket and picks up exactly where it left off.
+A ticket is a folder, not a card — it holds the ticket, approved plan, decisions made mid-sprint, and any QA or research notes, all as markdown files. When context resets mid-session, the agent opens the ticket and picks up exactly where it left off.
 
 Most tools track work in a service you have to open. Canon tracks it in your repo, where your agent already is.
 
@@ -125,7 +128,7 @@ sprint-check
 
 It reads your project's `.tickets/` folder and `git log` and opens a local kanban board in your browser. Tickets link to commits automatically.
 
-Tickets don't need to be created manually. Every `sprint start` creates one. Every `sprint complete` closes it. Open the board mid-session and your work is already there — no entry, no tagging, no context-switching.
+Tickets don't need to be created manually. Every `sprint start` creates one and every `sprint complete` closes it after validation. Open the board mid-session and your work is already there — no entry, no tagging, no context-switching.
 
 ### The board
 
@@ -138,6 +141,12 @@ The sidebar shows git state, current focus from `HANDOFF.md`, recent commits, an
 ![sprint-check board — dark mode](meta/screenshots/board-dark.png)
 
 Toggle between light and dark with the button in the top-right corner.
+
+### Ticket detail
+
+![Ticket detail modal](meta/screenshots/ticket-detail.png)
+
+Click any ticket to see its status, type, priority, readiness, description, and attached docs in one place.
 
 ### Commit intelligence
 

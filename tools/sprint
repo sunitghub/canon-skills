@@ -1,0 +1,242 @@
+#!/usr/bin/env bash
+# sprint — CLI-backed orchestration spine for canon workflows
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TKT_BIN="$SCRIPT_DIR/tkt"
+
+tickets_dir() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    [[ -d "$dir/.tickets" ]] && echo "$dir/.tickets" && return 0
+    [[ -d "$dir/.git" ]] && echo "$dir/.tickets" && return 0
+    dir="$(dirname "$dir")"
+  done
+  echo "$PWD/.tickets"
+}
+
+repo_root() {
+  git rev-parse --show-toplevel 2>/dev/null || pwd
+}
+
+ticket_dir_for() {
+  local id="$1" dir
+  dir="$(tickets_dir)"
+  if [[ -d "$dir/$id" ]]; then
+    echo "$dir/$id"
+  else
+    echo "$dir/$id"
+  fi
+}
+
+ensure_context_files() {
+  local root="$1"
+  if [[ ! -f "$root/DECISIONS.md" ]]; then
+    cat > "$root/DECISIONS.md" <<'EOF'
+# Decisions
+
+| Date | Decision | Reason |
+|---|---|---|
+EOF
+  fi
+
+  if [[ ! -f "$root/HANDOFF.md" ]]; then
+    cat > "$root/HANDOFF.md" <<'EOF'
+# Handoff
+
+## Current Focus
+
+## In Progress
+
+## Recent Decisions
+
+## Discoveries
+
+## Next Steps
+1.
+EOF
+  fi
+}
+
+write_if_missing() {
+  local file="$1" content="$2"
+  [[ -f "$file" ]] && return 0
+  printf "%s\n" "$content" > "$file"
+}
+
+cmd_start() {
+  local title="${1:-}"
+  [[ -z "$title" ]] && { echo "Usage: sprint start \"title\"" >&2; exit 1; }
+
+  local current_output current_rc
+  set +e
+  current_output="$("$TKT_BIN" current 2>&1)"
+  current_rc=$?
+  set -e
+  if [[ "$current_rc" -eq 0 ]]; then
+    echo "Active sprint already exists:"
+    echo "$current_output"
+    echo "Run 'sprint complete' or close/reopen tickets before starting another."
+    exit 1
+  elif [[ "$current_rc" -gt 1 ]]; then
+    echo "$current_output" >&2
+    exit "$current_rc"
+  fi
+
+  local root dir id tdir created
+  root="$(repo_root)"
+  dir="$(tickets_dir)"
+  mkdir -p "$dir"
+
+  id="$("$TKT_BIN" create "$title" -t task -p 2)"
+  "$TKT_BIN" start "$id" >/dev/null
+  tdir="$(ticket_dir_for "$id")"
+  mkdir -p "$tdir"
+  created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  ensure_context_files "$root"
+
+  write_if_missing "$tdir/blueprint.md" "# Blueprint - $title
+
+Ticket: \`$id\`
+Started: $created
+
+## Goal
+
+## Files to Inspect
+
+## Files to Change
+
+## Subsystem Map
+
+## Grill
+
+## Impact Assessment
+
+## Build Plan
+"
+
+  write_if_missing "$tdir/acceptance.md" "# Acceptance - $title
+
+Ticket: \`$id\`
+
+## Criteria
+
+- [ ] Define binary acceptance criteria before implementation.
+
+## Test Plan
+
+- [ ] Define the commands or checks that must pass before sprint complete.
+"
+
+  write_if_missing "$tdir/plan.md" "# Plan - $title
+
+Ticket: \`$id\`
+Started: $created
+
+## Sprint Brief
+
+Pending agent orientation, gray-area resolution, impact analysis, and explicit user approval.
+"
+
+  cat <<EOF
+Sprint started: $id
+Ticket: $tdir/ticket.md
+Blueprint: $tdir/blueprint.md
+Acceptance: $tdir/acceptance.md
+Plan: $tdir/plan.md
+
+Agent next steps:
+1. Read DECISIONS.md, HANDOFF.md, and the sprint files.
+2. Orient on the subsystem and append findings to blueprint.md.
+3. Surface genuine gray areas, then run impact analysis.
+4. Present the sprint brief and wait for explicit approval before code edits.
+EOF
+}
+
+cmd_current() {
+  "$TKT_BIN" current
+}
+
+cmd_status() {
+  local id tdir
+  if ! id="$("$TKT_BIN" current | awk '{ print $1 }')"; then
+    echo "No active sprint."
+    exit 1
+  fi
+  tdir="$(ticket_dir_for "$id")"
+  "$TKT_BIN" show "$id"
+  echo ""
+  echo "Sprint files:"
+  for f in ticket.md blueprint.md acceptance.md plan.md; do
+    if [[ -f "$tdir/$f" ]]; then
+      echo "  [ok]      $tdir/$f"
+    else
+      echo "  [missing] $tdir/$f"
+    fi
+  done
+}
+
+cmd_complete() {
+  local id tdir acceptance missing=0 unchecked=0
+  if ! id="$("$TKT_BIN" current | awk '{ print $1 }')"; then
+    echo "No active sprint."
+    exit 1
+  fi
+
+  tdir="$(ticket_dir_for "$id")"
+  acceptance="$tdir/acceptance.md"
+
+  for f in "$tdir/ticket.md" "$tdir/blueprint.md" "$acceptance" "$tdir/plan.md"; do
+    if [[ ! -f "$f" ]]; then
+      echo "Missing required sprint file: $f"
+      missing=1
+    fi
+  done
+  [[ "$missing" -eq 0 ]] || exit 1
+
+  if grep -q '^- \[ \]' "$acceptance"; then
+    unchecked=1
+  fi
+
+  if [[ "$unchecked" -eq 1 ]]; then
+    echo "Sprint $id is not complete. Unchecked acceptance/test items remain:"
+    grep '^- \[ \]' "$acceptance" || true
+    exit 1
+  fi
+
+  "$TKT_BIN" close "$id"
+  echo "Sprint completed: $id"
+}
+
+cmd_help() {
+  cat <<'EOF'
+sprint — canon workflow spine
+
+Usage:
+  sprint start "title"   Create/start ticket and scaffold sprint files
+  sprint current         Show the active sprint ticket
+  sprint status          Show active ticket and required sprint files
+  sprint complete        Validate acceptance checklist and close ticket
+
+The CLI owns deterministic workflow state. The agent still owns orientation,
+gray-area resolution, impact analysis, implementation, review, and test judgment.
+EOF
+}
+
+main() {
+  local cmd="${1:-help}"
+  shift || true
+
+  case "$cmd" in
+    start) cmd_start "$@" ;;
+    current) cmd_current ;;
+    status) cmd_status ;;
+    complete) cmd_complete ;;
+    help|--help|-h) cmd_help ;;
+    *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
+  esac
+}
+
+main "$@"

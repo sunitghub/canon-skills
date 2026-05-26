@@ -838,6 +838,15 @@ function recommendedSlug(status, existingSlugs) {
   if (status === 'in_progress') return existingSlugs.includes('blueprint') ? 'decisions' : 'blueprint';
   return 'decisions';
 }
+
+function docSlug(t, file) {
+  if (file.includes('/')) return file.split('/').pop().replace('.md', '');
+  return file.replace(`${t.id}-`, '').replace('.md', '');
+}
+
+function docFileFor(t, slug) {
+  return t.layout === 'folder' ? `${t.id}/${slug}.md` : `${t.id}-${slug}.md`;
+}
 const state = { tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set() };
 
 // ── Data layer ───────────────────────────────────────────────────────────
@@ -1287,7 +1296,7 @@ function promptNewDoc(t) {
   editEl.style.display = 'none';
   bodyEl.style.display = '';
 
-  const existingSlugs = (t.docs || []).map(d => d.file.replace(`${t.id}-`, '').replace('.md', ''));
+  const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
   const suggested     = recommendedSlug(t.status, existingSlugs);
   const done = t.status === 'closed' || t.status === 'cancelled';
   const available = DOC_TYPES.filter(dt =>
@@ -1321,7 +1330,7 @@ function promptNewDoc(t) {
 }
 
 function selectDocType(t, slug, name) {
-  const file     = `${t.id}-${slug}.md`;
+  const file     = docFileFor(t, slug);
   const template = DOC_TYPES.find(d => d.slug === slug)?.template || `# ${name}\n\n`;
 
   fetch(`/api/doc/${encodeURIComponent(file)}`, {

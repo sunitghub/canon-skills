@@ -14,7 +14,7 @@ depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]
 
 # Sprint
 
-Two commands:
+Two CLI-backed commands:
 
 | Command | When |
 |---|---|
@@ -22,6 +22,11 @@ Two commands:
 | `sprint complete` | When you believe the work is done |
 
 `capture` runs automatically between them — no invocation needed.
+
+The `sprint` CLI owns deterministic workflow state: ticket creation, active
+ticket tracking, sprint file scaffolding, and close validation. The agent owns
+orientation, gray-area resolution, impact analysis, implementation, review, and
+test judgment.
 
 ---
 
@@ -40,10 +45,11 @@ Default for any substantive dev request — no need to say "sprint start" explic
 
 **Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any request to add, fix, update, debug, implement, or build something that isn't explicitly trivial
 
-1. **Ticket.** If no active ticket: `tkt create "<title>"`. If tkt is not in use, create
-   `planning/sprints/<slug>/` instead. Run `tkt start <id>` (or note the slug as active).
+1. **Ticket and files.** Run `sprint start "<title>"`. It creates/starts the
+   ticket, records it as active, ensures `DECISIONS.md` and `HANDOFF.md` exist,
+   and scaffolds sprint files.
 
-2. **Planning files.** Create in `.tickets/<id>/` (or `planning/sprints/<slug>/` if no tkt):
+2. **Planning files.** Read the files created in `.tickets/<id>/`:
    - `blueprint.md` — files to inspect, files to create/modify, step-by-step build plan
    - `acceptance.md` — specific, binary conditions that define "done"
    - If these already exist: read them and proceed without recreating.
@@ -81,7 +87,7 @@ Default for any substantive dev request — no need to say "sprint start" explic
    - Any constraints from DECISIONS.md that apply
    - Open questions or blockers still unresolved
 
-8. **Wait for explicit approval.** Do not write code until confirmed. On approval, write `plan.md` to `.tickets/<id>/` (or `planning/sprints/<slug>/`) with the timestamp, ticket ID, grill resolutions, and full approved sprint brief verbatim.
+8. **Wait for explicit approval.** Do not write code until confirmed. On approval, write `plan.md` to `.tickets/<id>/` with the timestamp, ticket ID, grill resolutions, and full approved sprint brief verbatim.
 
    `plan.md` is the compaction-resilient source of truth. Re-read it if context resets mid-sprint.
 
@@ -118,7 +124,9 @@ Do not accept the user's claim that work is done. Verify it.
 
 6. **HANDOFF.md.** Update `## Next Steps` with any follow-up work.
 
-7. **Close.** Run `tkt close <id>` (or mark sprint slug complete).
+7. **Close.** Run `sprint complete`. If it refuses because test or acceptance
+   checklist items remain unchecked, report the blockers and do not close the
+   ticket.
 
 8. **Report.** One paragraph: what shipped, test results summary, any waived criteria and why, follow-up recorded.
 
@@ -126,7 +134,7 @@ Do not accept the user's claim that work is done. Verify it.
 
 ## Planning files
 
-With tkt:
+Canonical layout:
 ```
 .tickets/<id>/
   ticket.md        ← tkt-managed
@@ -134,16 +142,6 @@ With tkt:
   acceptance.md    ← definition of done + test plan
   plan.md          ← approved sprint brief; written on approval, re-read after compaction
 ```
-
-Without tkt:
-```
-planning/sprints/<slug>/
-  blueprint.md
-  acceptance.md
-  plan.md
-```
-
----
 
 ## DECISIONS.md
 

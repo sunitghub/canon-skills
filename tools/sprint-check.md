@@ -28,7 +28,9 @@ The board opens in your default browser at `http://127.0.0.1:<port>`. Press `Ctr
 
 ## Board
 
-Four columns map directly to tkt statuses:
+Four columns map directly to `tkt` statuses. New tickets use the canonical
+`.tickets/<id>/ticket.md` folder layout; legacy `.tickets/<id>.md` files remain
+readable.
 
 | Column | tkt status |
 |--------|-----------|
@@ -72,7 +74,7 @@ Click any card to open its detail view:
 
 ## New Ticket
 
-Click `+ New ticket` in the header. As you type the title, the type (Feature / Task / Bug / etc.) is detected automatically. Select type and priority, write a description, and submit — the ticket lands in Open.
+Click `+ New ticket` in the header. As you type the title, the type (Feature / Task / Bug / etc.) is detected automatically. Select type and priority, write a description, and submit — the ticket lands in Open using the canonical folder layout.
 
 ## Agent Workflow
 

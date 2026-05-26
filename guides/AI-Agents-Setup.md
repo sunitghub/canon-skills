@@ -425,8 +425,8 @@ Sprint start surfaces these before approval. Sprint complete gates closure on th
 
 | Command | What happens |
 |---|---|
-| `sprint start` | Creates ticket → blueprint → reads DECISIONS.md + HANDOFF.md → **maps subsystem (orient)** → **grills gray areas** → **impact analysis** → produces sprint brief → **waits for your approval** → writes `plan.md` |
-| `sprint complete` | Runs wrapup → **verifies all tests passed** → validates every acceptance criterion → appends to DECISIONS.md → **conventions check → AGENTS.md** → updates HANDOFF.md → closes ticket |
+| `sprint start` | CLI creates/starts ticket → records `.tickets/ACTIVE` → scaffolds sprint files → agent reads DECISIONS.md + HANDOFF.md → **maps subsystem (orient)** → **grills gray areas** → **impact analysis** → produces sprint brief → **waits for your approval** → writes `plan.md` |
+| `sprint complete` | Agent runs wrapup → **verifies all tests passed** → validates every acceptance criterion → appends to DECISIONS.md → **conventions check → AGENTS.md** → updates HANDOFF.md → CLI validates checklists and closes ticket |
 
 **Trigger phrases:**
 - sprint start: any request to add, fix, update, debug, implement, or build — explicit phrases like *"sprint start"* or *"let's work on X"* also work. Skipped only for questions, explanations, or trivially mechanical one-liners.
@@ -442,6 +442,9 @@ Sprint start surfaces these before approval. Sprint complete gates closure on th
   acceptance.md    ← binary definition of done + Test Plan
   plan.md          ← approved sprint brief; written on approval, re-read after compaction
 ```
+
+The active sprint ID is stored in `.tickets/ACTIVE`. New tickets use the folder
+layout above; older flat `.tickets/<id>.md` tickets remain readable.
 
 **DECISIONS.md** (repo root) — durable log of non-obvious architectural choices. Sprint start reads it; sprint complete writes to it.
 
@@ -469,11 +472,14 @@ $SKILLS/skills.sh refresh                 # re-register + heal stale paths + pru
 
 ### Ticket commands
 
-Sprint manages the full lifecycle automatically. Use `tkt` directly for queries:
+Sprint manages the full lifecycle automatically. Use `sprint` for the active workflow and `tkt` directly for low-level ticket queries:
 
 ```bash
+sprint current                 # active sprint
+sprint status                  # active sprint + required files
 tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
+tkt current                   # active ticket only
 tkt show <id>                 # full ticket detail
 tkt reopen <id>               # reopen a closed ticket
 ```

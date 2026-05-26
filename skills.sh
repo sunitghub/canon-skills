@@ -134,7 +134,7 @@ offer_tkt_path() {
   if echo "$PATH" | tr ':' '\n' | grep -qxF "$tools_dir"; then return 0; fi
 
   echo "" > /dev/tty
-  printf "canon/tools (tkt, sprint-check) is not on your PATH.\n" > /dev/tty
+  printf "canon/tools (sprint, tkt, sprint-check) is not on your PATH.\n" > /dev/tty
   printf "Add %s to PATH in %s? [y/N] " "$tools_dir" "$rc_file" > /dev/tty
   read -r answer </dev/tty
   if [[ "$answer" =~ ^[Yy]$ ]]; then
@@ -355,9 +355,10 @@ cmd_status() {
     fi
   fi
 
-  # pre-check sprint-check so issue count is correct before summary prints
-  if $_has_sprint && ! command -v sprint-check &>/dev/null; then
-    (( issues++ )) || true
+  # pre-check sprint tools so issue count is correct before summary prints
+  if $_has_sprint; then
+    command -v sprint &>/dev/null || (( issues++ )) || true
+    command -v sprint-check &>/dev/null || (( issues++ )) || true
   fi
 
   # ── Summary ──────────────────────────────────────────────────────────────
@@ -375,6 +376,13 @@ cmd_status() {
     [[ "${SHELL:-}" == */bash ]] && _rc_file="$HOME/.bashrc"
     echo ""
     echo "Tools:"
+    if command -v sprint &>/dev/null; then
+      printf "  %-20s %s\n" "sprint" "[ok]  — workflow CLI ready"
+    elif grep -qF "$_tools_dir" "$_rc_file" 2>/dev/null; then
+      printf "  %-20s %s\n" "sprint" "[not on PATH]  — run: source $_rc_file"
+    else
+      printf "  %-20s %s\n" "sprint" "[not on PATH]  — run: $(basename "$0") refresh to fix"
+    fi
     if command -v sprint-check &>/dev/null; then
       printf "  %-20s %s\n" "sprint-check" "[ok]  — kanban board ready"
     elif grep -qF "$_tools_dir" "$_rc_file" 2>/dev/null; then
@@ -384,14 +392,15 @@ cmd_status() {
     fi
   fi
 
-  # ── sprint-check / tkt PATH check ────────────────────────────────────────
-  if ( $_has_sprint || $_has_ticket ) && ! command -v tkt &>/dev/null; then
+  # ── sprint / sprint-check / tkt PATH check ──────────────────────────────
+  if { $_has_sprint && { ! command -v sprint &>/dev/null || ! command -v tkt &>/dev/null || ! command -v sprint-check &>/dev/null; }; } \
+     || { $_has_ticket && ! command -v tkt &>/dev/null; }; then
     local _tools_dir="$SKILLS_ROOT/tools"
     local _rc_file="$HOME/.zshrc"
     [[ "${SHELL:-}" == */bash ]] && _rc_file="$HOME/.bashrc"
     if ! grep -qF "$_tools_dir" "$_rc_file" 2>/dev/null; then
       echo ""
-      echo "Action needed: sprint tools (tkt, sprint-check) are not on your PATH."
+      echo "Action needed: sprint tools (sprint, tkt, sprint-check) are not on your PATH."
       printf "  Run: echo 'export PATH=\"\$PATH:%s\"' >> %s\n" "$_tools_dir" "$_rc_file"
       printf "  Then: source %s\n" "$_rc_file"
       echo "  Or:  $(basename "$0") refresh  — to be prompted interactively"

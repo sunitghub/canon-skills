@@ -8,7 +8,8 @@ tags: [project-management, tasks, cli, git]
 # Ticket — Task Tracking
 
 This project uses `tkt` for task management — a minimal ticket system bundled with canon.
-Tickets are markdown files with YAML frontmatter stored in `.tickets/`.
+New tickets are stored as `.tickets/<id>/ticket.md` with YAML frontmatter.
+Legacy flat `.tickets/<id>.md` tickets remain readable.
 
 ## Getting Started
 
@@ -32,6 +33,7 @@ tkt create "title" [-t bug|feature|task|epic|chore] [-p 0-4] [-d "desc"]
 tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
 tkt start <id>                # mark in_progress
+tkt current                   # show active ticket
 tkt close <id>                # mark closed
 tkt reopen <id>               # reopen
 tkt show <id>                 # show full ticket
@@ -47,7 +49,7 @@ tkt show <id>                 # show full ticket
 ## Agent Workflow
 
 - Before starting work: run `tkt ls` to understand open tasks.
-- **When picking up a task: run `tkt start <id>` before writing any code.** Never skip this — tickets must reflect actual state.
+- **When picking up a task: run `tkt start <id>` before writing any code.** This records `.tickets/ACTIVE` so agents agree on the current task.
 - Prepend the ticket ID to every commit message (e.g. `t-8ms5: add login rate limiter`).
 - **Never run `tkt close <id>` directly.** Always use the approve workflow so wrapup runs consistently.
 - Don't create tickets for trivial 1-line fixes. Use judgment.

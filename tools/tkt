@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # tkt — minimal ticket system bundled with canon
-# Tickets stored as markdown files in .tickets/
+# Tickets are stored in .tickets/<id>/ticket.md. Legacy .tickets/<id>.md
+# files remain readable.
 
 set -euo pipefail
 
@@ -11,9 +12,16 @@ tickets_dir() {
   local dir="$PWD"
   while [[ "$dir" != "/" ]]; do
     [[ -d "$dir/.tickets" ]] && echo "$dir/.tickets" && return 0
+    [[ -d "$dir/.git" ]] && echo "$dir/.tickets" && return 0
     dir="$(dirname "$dir")"
   done
   echo "$PWD/.tickets"
+}
+
+active_file() {
+  local dir
+  dir="$(ensure_tickets_dir)"
+  echo "$dir/ACTIVE"
 }
 
 ensure_tickets_dir() {
@@ -29,6 +37,20 @@ gen_id() {
   echo "t-$suffix"
 }
 
+ticket_files() {
+  local dir="$1"
+  {
+    find "$dir" -mindepth 2 -maxdepth 2 -name "ticket.md" -type f 2>/dev/null
+    find "$dir" -maxdepth 1 -name "*.md" -type f 2>/dev/null \
+      ! -name "*-blueprint.md" \
+      ! -name "*-acceptance.md" \
+      ! -name "*-plan.md" \
+      ! -name "*-decisions.md" \
+      ! -name "*-qa.md" \
+      ! -name "*-notes.md"
+  } | sort
+}
+
 # Find ticket file by partial or full ID match
 find_ticket() {
   local query="$1"
@@ -41,7 +63,7 @@ find_ticket() {
     local file_id
     file_id="$(get_field "$file" id)"
     [[ "$file_id" == *"$query"* ]] && matches+=("$file")
-  done < <(find "$dir" -name "*.md" -type f 2>/dev/null | sort)
+  done < <(ticket_files "$dir")
 
   case ${#matches[@]} in
     0) echo "Error: no ticket matching '$query'" >&2; exit 1 ;;
@@ -68,7 +90,59 @@ set_field() {
 }
 
 get_title() {
-  awk '/^---$/{fm++} fm==2 && /^# /{sub(/^# /,""); print; exit}' "$1"
+  local title
+  title="$(awk '/^---$/{fm++} fm==2 && /^# /{sub(/^# /,""); print; exit}' "$1")"
+  if [[ -n "$title" ]]; then
+    echo "$title"
+  else
+    title="$(get_field "$1" title)"
+    if [[ -n "$title" ]]; then
+      echo "$title"
+    elif [[ "$(basename "$1")" == "ticket.md" ]]; then
+      basename "$(dirname "$1")"
+    else
+      basename "$1" .md
+    fi
+  fi
+}
+
+set_active() {
+  local id="$1" file
+  file="$(active_file)"
+  printf "%s\n" "$id" > "$file"
+}
+
+clear_active_if() {
+  local id="$1" file current
+  file="$(active_file)"
+  [[ -f "$file" ]] || return 0
+  current="$(tr -d '[:space:]' < "$file")"
+  [[ "$current" == "$id" ]] && rm -f "$file"
+}
+
+current_id() {
+  local dir file id matches=()
+  dir="$(tickets_dir)"
+  file="$dir/ACTIVE"
+  if [[ -f "$file" ]]; then
+    id="$(tr -d '[:space:]' < "$file")"
+    if [[ -n "$id" ]] && find_ticket "$id" >/dev/null 2>&1; then
+      echo "$id"
+      return 0
+    fi
+  fi
+
+  [[ -d "$dir" ]] || return 1
+  while IFS= read -r file; do
+    [[ "$(get_field "$file" status)" == "in_progress" ]] || continue
+    matches+=("$(get_field "$file" id)")
+  done < <(ticket_files "$dir")
+
+  case ${#matches[@]} in
+    1) echo "${matches[0]}" ;;
+    0) return 1 ;;
+    *) echo "Error: multiple in-progress tickets; run 'tkt start <id>' to set ACTIVE" >&2; return 2 ;;
+  esac
 }
 
 cmd_create() {
@@ -86,15 +160,17 @@ cmd_create() {
 
   [[ -z "$title" ]] && { echo "Error: title required" >&2; exit 1; }
 
-  local dir id file created
+  local dir id ticket_dir file created
   dir="$(ensure_tickets_dir)"
 
   while true; do
     id="$(gen_id)"
-    file="$dir/$id.md"
-    [[ ! -f "$file" ]] && break
+    ticket_dir="$dir/$id"
+    file="$ticket_dir/ticket.md"
+    [[ ! -e "$ticket_dir" && ! -f "$dir/$id.md" ]] && break
   done
 
+  mkdir -p "$ticket_dir"
   created="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
   {
@@ -118,7 +194,13 @@ cmd_set_status() {
   local file
   file="$(find_ticket "$id")"
   set_field "$file" status "$new_status"
-  printf "%s: %s\n" "$(get_field "$file" id)" "$new_status"
+  id="$(get_field "$file" id)"
+  if [[ "$new_status" == "in_progress" ]]; then
+    set_active "$id"
+  elif [[ "$new_status" == "closed" ]]; then
+    clear_active_if "$id"
+  fi
+  printf "%s: %s\n" "$id" "$new_status"
 }
 
 cmd_ls() {
@@ -147,7 +229,7 @@ cmd_ls() {
     title="$(get_title "$file")"
     printf "%-10s  %-12s  %-8s  p%s  %s\n" "$id" "$status" "$type" "$priority" "$title"
     (( found++ )) || true
-  done < <(find "$dir" -name "*.md" -type f 2>/dev/null | sort)
+  done < <(ticket_files "$dir")
 
   if [[ $found -eq 0 ]]; then
     echo "No tickets${status_filter:+ with status '$status_filter'}."
@@ -173,6 +255,22 @@ cmd_show() {
   fi
 }
 
+cmd_current() {
+  local id rc file
+  set +e
+  id="$(current_id)"
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 1 ]]; then
+    echo "No active ticket."
+    return 1
+  elif [[ "$rc" -ne 0 ]]; then
+    return "$rc"
+  fi
+  file="$(find_ticket "$id")"
+  printf "%s  %s  %s\n" "$id" "$(get_field "$file" status)" "$(get_title "$file")"
+}
+
 cmd_help() {
   cat <<'EOF'
 tkt — minimal ticket system
@@ -184,13 +282,15 @@ Commands:
     -d, --description       Description text
     -t, --type              Type (bug|feature|task|epic|chore) [default: task]
     -p, --priority          Priority 0-4, 0=highest [default: 2]
-  start <id>                Set status to in_progress
-  close <id>                Set status to closed
+  start <id>                Set status to in_progress and mark ACTIVE
+  close <id>                Set status to closed and clear ACTIVE if matched
+  current                   Show active ticket
   reopen <id>               Set status to open
   ls [--status=X]           List tickets (unfiltered by default)
   show <id>                 Display ticket details
 
-Tickets stored as markdown files in .tickets/
+New tickets are stored in .tickets/<id>/ticket.md
+ACTIVE ticket is stored in .tickets/ACTIVE
 Supports partial ID matching (e.g., 'tkt show 8ms' matches 't-8ms5')
 EOF
 }
@@ -203,6 +303,7 @@ main() {
     create)         cmd_create "$@" ;;
     start)          cmd_set_status "${1:-}" in_progress ;;
     close)          cmd_set_status "${1:-}" closed ;;
+    current)        cmd_current ;;
     reopen)         cmd_set_status "${1:-}" open ;;
     ls|list)        cmd_ls "$@" ;;
     show)           cmd_show "$@" ;;
