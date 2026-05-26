@@ -34,6 +34,28 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-26 07:48 branch:main -->
+**Modified files:**
+```
+D  guides/AI-Agents-Setup.pdf
+D  guides/sprint-check-guide.pdf
+```
+
+**Recent commits:**
+```
+7553739 chore: remove tracked PDFs, fix sub-skill categories from 'skills' to 'dev'
+2ff3e21 chore: update copyright year to 2025-2026, remove stale gitignore entries
+03f416d docs: rewrite CATALOG.md — clean markdown, remove ANSI codes, add sub-skills section
+105ce10 docs: add lightweight release checklist
+7e21b44 chore: add version and timestamp to skill-setup-std
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-26 07:37 branch:main -->
 **Modified files:**
 ```
@@ -48,27 +70,6 @@ b8e838b chore: auto-update handoff snapshot [2026-05-26 07:25]
 0e1e8b0 docs: open with working memory hook before etymology line
 aae28c0 docs: remove duplicate CLI table, screenshot is sufficient
 8fdda3e docs: add doc-audit to sprint complete diagram and legend
-```
-
-**In-progress tickets:**
-```
-No tickets with status 'in_progress'.
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-26 07:25 branch:main -->
-**Modified files:**
-```
- M README.md
-```
-
-**Recent commits:**
-```
-0e1e8b0 docs: open with working memory hook before etymology line
-aae28c0 docs: remove duplicate CLI table, screenshot is sufficient
-8fdda3e docs: add doc-audit to sprint complete diagram and legend
-88892b1 feat: wire doc-audit into wrapup pipeline, add command accuracy check
-24604fd docs: fix Quick Start — wrapup and handoff are sub-skills, not separate installs
 ```
 
 **In-progress tickets:**
