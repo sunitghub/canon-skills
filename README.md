@@ -18,6 +18,14 @@ npx canon-skills@latest
 ~/Developer/canon/skills.sh add sprint
 ```
 
+Skills are live references, not copies. `skills.sh add sprint` writes one line to your project's CLAUDE.md:
+
+```
+@~/Developer/canon/skills/sprint.md
+```
+
+Claude Code resolves it at session start, reading directly from canon. Update canon — every project picks it up on the next `git pull`.
+
 Two commands cover the full lifecycle:
 
 | | |
