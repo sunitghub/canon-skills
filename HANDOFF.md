@@ -34,6 +34,28 @@ Nothing in progress.
 - Textual TUI for sprint-check — breaks zero-install guarantee; rejected.
 - adapters/ as a global CLAUDE.md shim — never auto-wired, so removed in favour of direct imports.
 
+<!-- HANDOFF-SNAPSHOT:START 2026-05-26 07:37 branch:main -->
+**Modified files:**
+```
+ M README.md
+?? standards/skill-setup-std.md
+```
+
+**Recent commits:**
+```
+d01c9b8 docs: tighten working memory claim — sessions need more, not burn all
+b8e838b chore: auto-update handoff snapshot [2026-05-26 07:25]
+0e1e8b0 docs: open with working memory hook before etymology line
+aae28c0 docs: remove duplicate CLI table, screenshot is sufficient
+8fdda3e docs: add doc-audit to sprint complete diagram and legend
+```
+
+**In-progress tickets:**
+```
+No tickets with status 'in_progress'.
+```
+<!-- HANDOFF-SNAPSHOT:END -->
+
 <!-- HANDOFF-SNAPSHOT:START 2026-05-26 07:25 branch:main -->
 **Modified files:**
 ```
@@ -47,27 +69,6 @@ aae28c0 docs: remove duplicate CLI table, screenshot is sufficient
 8fdda3e docs: add doc-audit to sprint complete diagram and legend
 88892b1 feat: wire doc-audit into wrapup pipeline, add command accuracy check
 24604fd docs: fix Quick Start — wrapup and handoff are sub-skills, not separate installs
-```
-
-**In-progress tickets:**
-```
-No tickets with status 'in_progress'.
-```
-<!-- HANDOFF-SNAPSHOT:END -->
-
-<!-- HANDOFF-SNAPSHOT:START 2026-05-25 18:11 branch:main -->
-**Modified files:**
-```
- M README.md
-```
-
-**Recent commits:**
-```
-a9815d9 chore: auto-update handoff snapshot [2026-05-25 18:09]
-f916dc4 docs: sync CLI table with actual skills.sh commands
-e3645fa docs: call out skills.sh help as in-terminal skill discovery
-ebfa1e9 docs: add fourth Stop line for ticket context tracking
-4d7f4c9 docs: add Tickets section surfacing local-first differentiator
 ```
 
 **In-progress tickets:**
