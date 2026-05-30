@@ -128,7 +128,7 @@ Most tools track work in a service you have to open. Canon tracks it in your rep
 
 ## sprint-check — the local kanban board
 
-No server. No account. No SaaS. Just run:
+No hosted server. No account. No SaaS. Just run:
 
 ```bash
 sprint-check
@@ -249,6 +249,10 @@ cd /path/to/your-project
 **3. Start a session**
 
 Your agent reads the registered skills and follows them — no prompt engineering, no system prompt editing, no copy-pasting.
+
+**4. Try the Todo walkthrough**
+
+[`examples/todo-app`](examples/todo-app) is a small runnable project that shows the full flow: register `sprint`, start a ticket, inspect the generated sprint files, open `sprint-check`, implement, test, and complete the sprint.
 
 ---
 

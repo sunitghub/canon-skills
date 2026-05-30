@@ -39,17 +39,16 @@ On success, `init` prints the available commands. You're ready to register skill
 
 > **RTK** (optional) — if already installed, `skills.sh init` wires it automatically. No separate setup needed. Without it, canon works fully.
 
-### Step 3 — Register skills in your project
+### Step 3 — Register sprint in your project
 
-The same command works for new and existing projects — `addall` merges into existing config files safely.
+The same command works for new and existing projects — `add sprint` merges into existing config files safely and pulls in the workflow dependencies automatically.
 
 ```bash
 cd /path/to/your-project
-$SKILLS/skills.sh addall        # register all available skills (recommended)
-
-# Or pick individually:
 $SKILLS/skills.sh add sprint    # full dev workflow (includes everything)
 ```
+
+Advanced: `$SKILLS/skills.sh addall` registers every standalone canon skill. Most projects should start with `sprint`.
 
 Then verify:
 ```bash
@@ -465,7 +464,7 @@ layout above; older flat `.tickets/<id>.md` tickets remain readable.
 ```bash
 $SKILLS/skills.sh list                    # show available skills
 $SKILLS/skills.sh add sprint              # register a skill in current project
-$SKILLS/skills.sh addall                  # register all skills (idempotent)
+$SKILLS/skills.sh addall                  # advanced: register all standalone skills
 $SKILLS/skills.sh status                  # check registration + hook health
 $SKILLS/skills.sh refresh                 # re-register + heal stale paths + prune covered deps
 ```
@@ -515,7 +514,7 @@ $SKILLS/skills.sh refresh /path/to/your-project
 
 `refresh` re-registers every skill, replaces outdated standard blocks, heals stale `@`-import paths, and prunes covered deps — all in one command.
 
-**For newly added skills:**
+**For newly added standalone skills:**
 ```bash
 $SKILLS/skills.sh addall /path/to/your-project
 ```

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Canon Todo Example</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel" aria-labelledby="app-title">
+        <div class="header">
+          <div>
+            <p class="eyebrow">Canon example</p>
+            <h1 id="app-title">Todo List</h1>
+          </div>
+          <output id="remaining-count" class="count" aria-live="polite">0 open</output>
+        </div>
+
+        <form id="todo-form" class="form">
+          <label for="todo-input">New task</label>
+          <div class="entry">
+            <input id="todo-input" name="title" type="text" autocomplete="off" required>
+            <button type="submit">Add</button>
+          </div>
+        </form>
+
+        <div class="toolbar" role="group" aria-label="Todo filters">
+          <button type="button" data-filter="all" aria-pressed="true">All</button>
+          <button type="button" data-filter="open" aria-pressed="false">Open</button>
+          <button type="button" data-filter="done" aria-pressed="false">Done</button>
+        </div>
+
+        <ul id="todo-list" class="list" aria-label="Todos"></ul>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

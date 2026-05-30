@@ -14,6 +14,20 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 SERVER="$SCRIPT_DIR/sprint-check-app/server.py"
 
+usage() {
+  cat <<'EOF'
+sprint-check — local kanban dashboard for canon projects
+
+Usage:
+  sprint-check        Open the dashboard for the current project
+  sprint-check --help Show this help
+
+The dashboard reads .tickets/, HANDOFF.md, and git history from the current
+project. It starts a local Python stdlib HTTP server and opens the board in
+your default browser.
+EOF
+}
+
 # ── Port selection ─────────────────────────────────────────────────────────
 
 find_free_port() {
@@ -45,6 +59,20 @@ open_browser() {
 # ── Main ───────────────────────────────────────────────────────────────────
 
 main() {
+  case "${1:-}" in
+    help|--help|-h)
+      usage
+      exit 0
+      ;;
+    "")
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+
   if [[ ! -f "$SERVER" ]]; then
     echo "Error: server.py not found at $SERVER" >&2
     exit 1

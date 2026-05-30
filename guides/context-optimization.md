@@ -72,8 +72,8 @@ Claude runs: git commit
   └─ PreToolUse[Bash] → rtk hook claude        (rewrite for token efficiency)
                       → pre-commit-check.sh  (remind: close tickets, run /wrapup)
 
-Claude runs: tk close <id>
-  └─ PostToolUse[Bash] → auto-polish-trigger.sh  (instruct Claude: run /wrapup now)
+Claude runs: sprint complete
+  └─ sprint validates acceptance and runs wrapup before closing the active ticket
 
 /wrapup runs
   └─ code-simplifier → code-reviewer → security-review  (skip logic per change scope)
@@ -89,11 +89,11 @@ Claude finishes turn
 
 When a step is skipped, Wrapup states why — so it's clear the step was considered, not missed.
 
-**Registering wrapup in a project:**
+**Registering the quality pipeline in a project:**
 ```bash
-$SKILLS/skills.sh add wrapup /path/to/project
+$SKILLS/skills.sh add sprint /path/to/project
 ```
-`wrapup` pulls in its full dep stack automatically — `code-simplifier`, `code-reviewer`, `security-review`, `handoff`, and `ticket` — all registered silently without appearing in `skills list`. The `auto-polish-trigger.sh` and `pre-commit-check.sh` hooks check whether wrapup is registered before firing — they stay silent in projects where it isn't.
+`sprint` includes wrapup and its full dependency stack automatically — `code-simplifier`, `code-reviewer`, `security-review`, `handoff`, and `ticket`. Directly registering `wrapup` is only useful for advanced/manual workflows that intentionally do not use sprint tickets.
 
 ---
 

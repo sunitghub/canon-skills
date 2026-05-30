@@ -60,7 +60,7 @@ console.log(`
 
     cd /path/to/your-project
     ${TARGET}/skills.sh add sprint    # full dev workflow
-    ${TARGET}/skills.sh addall        # everything at once
+    ${TARGET}/skills.sh addall        # advanced: all standalone skills
 
   Or add to your PATH for shorter commands:
 
