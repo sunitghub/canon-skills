@@ -2,7 +2,7 @@
 
 <div align="center">
 
-### One sprint command for AI agents.
+### One Sprint Command for AI Agents.
 
 Local tickets. Agent handoff. Browser board. No SaaS.
 
@@ -47,7 +47,7 @@ Canon keeps AI coding work in your repo instead of your prompt history:
 
 canon is a shared skill library for AI coding agents. Define your standards once. Every project inherits them automatically — Claude Code, Codex, and Pi, all in sync.
 
-## How it works
+## How It Works
 
 The loop is three commands. The agent does the orchestration.
 
@@ -79,7 +79,7 @@ Everything else - active sprint state, session context, quality gates, and hando
 
 ---
 
-## Why canon
+## Why Canon
 
 Most agent repos I tried gave me homework: a vocabulary of commands, an invocation order to remember, and a setup ritual to repeat on every project.
 
@@ -99,13 +99,13 @@ For a team, canon is a shared source of truth. Fork it to your org, have everyon
 
 ---
 
-## Why not just paste instructions into CLAUDE.md?
+## Why Not Just Paste Instructions into CLAUDE.md?
 
 You can. Most people do — until they have five projects, each with a slightly different copy, all drifting apart. Canon solves this with a **live-reference model**: skills live in one repo and are `@`-imported directly into each project's config. Update once, every project picks it up on the next session start. No copies. No drift. No tribal knowledge trapped in one engineer's config.
 
 ---
 
-## What's inside
+## What's Inside
 
 In normal use, register one workflow skill: `sprint`. `skills.sh add sprint`
 also wires the always-on `efficiency` standard. Optional audit skills can be
@@ -125,11 +125,11 @@ registered separately when you want them.
 
 ---
 
-## How sprint works
+## How Sprint Works
 
 One workflow command drives the lifecycle. The CLI handles deterministic state; sub-skills are called by the agent at each stage — no manual orchestration.
 
-### sprint start
+### Sprint Start
 
 ```mermaid
 flowchart LR
@@ -154,7 +154,7 @@ commands the user has to invoke.
 
 > The agent runs `capture` when non-obvious discoveries appear — saved to `HANDOFF.md`
 
-### sprint complete
+### Sprint Complete
 
 ```mermaid
 flowchart LR
@@ -177,7 +177,7 @@ Most tools track work in a service you have to open. Canon tracks it in your rep
 
 ---
 
-## sprint-check — the local kanban board
+## Sprint-Check — The Local Kanban Board
 
 No hosted server. No account. No SaaS. From your project root, run:
 
@@ -191,49 +191,49 @@ Tickets don't need to be created manually. Every `sprint start` creates one acti
 
 The board shows git state, current focus from `HANDOFF.md`, recent commits, ticket status, and sprint docs — everything you and your agent need at a glance.
 
-### Dark mode
+### Dark Mode
 
 ![sprint-check board — dark mode](meta/screenshots/board-dark.png)
 
 Toggle between light and dark with the button in the top-right corner.
 
-### Ticket detail
+### Ticket Detail
 
 ![Ticket detail modal](meta/screenshots/ticket-detail.png)
 
 Click any ticket to see its status, type, priority, readiness, description, and attached docs in one place.
 
-### Edit sprint docs in place
+### Edit Sprint Docs in Place
 
 ![Edit sprint docs in ticket detail](meta/screenshots/ticket-doc-editor.png)
 
 Open a ticket to read or edit its Description, Acceptance, Blueprint, Plan, and notes without leaving the board.
 
-### Commit intelligence
+### Commit Intelligence
 
 ![Commit detail with related ticket](meta/screenshots/commit-detail.png)
 
 Click any commit in the sidebar to see what changed and which ticket it likely belongs to — matched by ticket ID in the commit message or by keyword when no ID is present.
 
-### Create tickets from the board
+### Create Tickets from the Board
 
 ![New ticket modal](meta/screenshots/new-ticket.png)
 
 `+ New ticket` opens a form pre-filled with a structured template. Type, priority, and description — then `Create`. The ticket lands in `.tickets/<id>/ticket.md`, immediately visible to your agent.
 
-### Ticket completeness
+### Ticket Completeness
 
 ![Ticket completeness checker](meta/screenshots/ticket-completeness.png)
 
 Hover a ticket card to see what's missing — usually description or sprint docs. The board surfaces gaps before they block your agent mid-sprint, with a direct prompt to add what's needed.
 
-### Drag to update status
+### Drag to Update Status
 
 ![Drag and drop ticket](meta/screenshots/drag-drop.png)
 
 Drag any ticket card between columns to update its status instantly. No clicks, no dropdowns — the board writes the change back to `.tickets/` immediately.
 
-### Attach docs to a ticket
+### Attach Docs to a Ticket
 
 ![New doc dialog](meta/screenshots/new-doc.png)
 
@@ -252,7 +252,7 @@ Sprint docs land in `.tickets/<id>/` as markdown files and are read automaticall
 
 ---
 
-## The contrast
+## The Contrast
 
 Frameworks like GSD Core are powerful phase-based systems: initialize, discuss, plan, execute, verify, ship, repeat. That works when you want a full methodology.
 
@@ -276,7 +276,7 @@ The sub-skills still exist — orient, impact analysis, capture, review, securit
 
 ---
 
-## Setup details
+## Setup Details
 
 **1. Install**
 
@@ -326,7 +326,7 @@ Your agent reads the registered skills and follows them — no prompt engineerin
 
 ---
 
-## How the live-reference model works
+## How the Live-Reference Model Works
 
 `skills.sh add` adds live imports to your project's config — not a copy of the skill, references:
 
@@ -355,7 +355,7 @@ Configuration is living, not static. When a sprint surfaces a durable convention
 
 ---
 
-## Full setup guide
+## Full Setup Guide
 
 [`guides/AI-Agents-Setup.md`](guides/AI-Agents-Setup.md) — prerequisites, per-agent wiring, project registration, verification, and the full sprint + wrapup workflow.
 
