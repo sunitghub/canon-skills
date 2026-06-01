@@ -1637,6 +1637,41 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
   }
 }
 
+function continuationPrefix(line) {
+  let match = line.match(/^(\s*)-\s+\[[ xX]\]\s+(.*)$/);
+  if (match) return { prefix: `${match[1]}- [ ] `, content: match[2] };
+
+  match = line.match(/^(\s*)-\s+(.*)$/);
+  if (match) return { prefix: `${match[1]}- `, content: match[2] };
+
+  match = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
+  if (match) return { prefix: `${match[1]}${Number(match[2]) + 1}. `, content: match[3] };
+
+  return null;
+}
+
+function handleMarkdownEnter(event, textarea) {
+  if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (textarea.selectionStart !== textarea.selectionEnd) return;
+
+  const cursor = textarea.selectionStart;
+  const value = textarea.value;
+  const lineStart = value.lastIndexOf('\n', cursor - 1) + 1;
+  const lineEndAtCursor = value.slice(lineStart, cursor);
+  const line = lineEndAtCursor;
+  const next = continuationPrefix(line);
+  if (!next) return;
+
+  event.preventDefault();
+  if (next.content.trim()) {
+    textarea.setRangeText(`\n${next.prefix}`, cursor, cursor, 'end');
+  } else {
+    textarea.setRangeText('', lineStart, cursor, 'end');
+    const nextChar = textarea.value[textarea.selectionStart];
+    if (nextChar === '\n') textarea.setRangeText('', textarea.selectionStart, textarea.selectionStart + 1, 'end');
+  }
+}
+
 function ensureTicketLineComment(content) {
   if (!/^Ticket:\s*`[^`]+`/m.test(content)) return content;
   if (content.includes('Keep the Ticket line below unchanged.')) return content;
@@ -1945,6 +1980,12 @@ document.getElementById('c-editor-toolbar').addEventListener('click', e => {
   const button = e.target.closest('[data-insert]');
   if (!button) return;
   insertEditorSnippet(button.dataset.insert, document.getElementById('c-body'));
+});
+document.getElementById('m-edit-area').addEventListener('keydown', e => {
+  handleMarkdownEnter(e, e.currentTarget);
+});
+document.getElementById('c-body').addEventListener('keydown', e => {
+  handleMarkdownEnter(e, e.currentTarget);
 });
 
 // ── Util ──────────────────────────────────────────────────────────────────
