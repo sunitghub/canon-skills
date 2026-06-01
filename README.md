@@ -21,6 +21,7 @@ Install:
 
 ```bash
 npx canon-skills@latest
+cd /path/to/your-project
 ~/Developer/canon/skills.sh add sprint
 ```
 
