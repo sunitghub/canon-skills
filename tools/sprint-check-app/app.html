@@ -1638,8 +1638,8 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
 }
 
 function continuationPrefix(line) {
-  let match = line.match(/^(\s*)-\s+\[[ xX]\]\s+(.*)$/);
-  if (match) return { prefix: `${match[1]}- [ ] `, content: match[2] };
+  let match = line.match(/^(\s*)-\s+\[([ xX])\]\s+(.*)$/);
+  if (match) return { prefix: `${match[1]}- [${match[2]}] `, content: match[3] };
 
   match = line.match(/^(\s*)-\s+(.*)$/);
   if (match) return { prefix: `${match[1]}- `, content: match[2] };
