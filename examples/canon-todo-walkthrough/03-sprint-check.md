@@ -15,6 +15,10 @@ Use this page as a visual checkpoint during the walkthrough:
 4. After tests pass and acceptance is checked, `sprint complete` moves the
    ticket to Done.
 
+The board is for visibility and local ticket edits. Creating a ticket or moving
+a card changes ticket state only; it does not run the `sprint complete`
+pipeline.
+
 The board reads:
 
 - `.tickets/` for sprint state.
@@ -31,6 +35,7 @@ Use it to confirm:
   verified.
 - The sidebar shows current git state.
 - The ticket detail view contains the same sprint files the agent is using.
+- Do not drag the ticket to Done as a substitute for `sprint complete`.
 - Use `Discard ticket` only when the work is abandoned or no longer needed. It
   moves the ticket to the Discarded column instead of Done.
 

@@ -43,7 +43,7 @@ npm test
 
 As criteria pass, have the agent update `.tickets/<id>/acceptance.md` from
 unchecked to checked. Reload `sprint-check` so the ticket shows progress instead
-of jumping straight from not ready to Done.
+of jumping straight from not ready to closeout.
 
 ## Step 4 - Run the App
 

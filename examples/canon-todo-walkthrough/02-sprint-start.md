@@ -30,7 +30,7 @@ is the expected start for a new project.
 
 ## Step 2 - Start the Sprint
 
-Type this in the command line for the sprint agent to run:
+Tell the agent this in chat, or run it from the walkthrough root:
 
 ```bash
 sprint start "Build a simple Todo list"
@@ -149,4 +149,4 @@ Approved:
 ```
 
 Save the doc. The ticket is still In Progress, but it now has the docs needed
-to implement and later mark the sprint Done.
+to implement and later close with `sprint complete`.
