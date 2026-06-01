@@ -374,7 +374,7 @@ One sentence — what are we working on.
 
 **The problem:** Every new session, the agent may drift from project conventions — import style, naming, git commit format — without a reminder.
 
-**What it does:** The `efficiency` standard is injected into every project that has any canon skill registered. Coding principles, git conventions, token-efficiency rules. Never shown in `skills list`, needs no invocation — it just runs.
+**What it does:** The `efficiency` standard is injected into every project that has any canon skill registered. Coding principles, git conventions, token-efficiency rules. It appears in `skills.sh list` because it can be registered directly, but normal projects get it automatically when they add `sprint`.
 
 ### Layer 4 — Code quality
 

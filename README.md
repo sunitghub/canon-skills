@@ -1,24 +1,37 @@
 # canon
 
-The average person can hold about four items in active working memory. Most agent sessions need more than that before you write a line of code.
+<div align="center">
+
+### One sprint command for AI agents.
+
+Local tickets. Agent handoff. Browser board. No SaaS.
+
+Your agent can code. Canon makes the workflow yours.
+
+</div>
+
+```bash
+npx canon-skills@latest
+~/Developer/canon/skills.sh add sprint
+```
+
+![canon install terminal](meta/screenshots/canon-install-terminal.png)
+
+```bash
+sprint start "add OAuth login"
+sprint-check
+sprint complete
+```
+
+Canon keeps AI coding work in your repo instead of your prompt history:
+
+- `sprint` creates local tickets, planning docs, and acceptance-gated close.
+- `sprint-check` opens a browser board from `.tickets/`, `HANDOFF.md`, and `git log`.
+- `efficiency` is wired automatically so every registered project inherits focused editing, tight output, and context-budget rules.
 
 *canon /ˈkænən/ — an established rule or principle; the authoritative standard a team agrees to follow.*
 
-> Your agents are capable. Canon makes them yours.
-
-Canon has one workflow command `sprint`, with `start` and `complete` as lifecycle verbs.
-
-Stop re-explaining your standards on every new project. Stop watching Claude drift back to its defaults mid-session. Stop reconfiguring the same quality checks from scratch. Stop piecing together what's in flight from git log and open tabs.
-
 canon is a shared skill library for AI coding agents. Define your standards once. Every project inherits them automatically — Claude Code, Codex, and Pi, all in sync.
-
-```bash
-# Install
-npx canon-skills@latest
-
-# Register skills in a project
-~/Developer/canon/skills.sh add sprint
-```
 
 Skills are live references, not copies. `skills.sh add sprint` adds live imports to your project's agent config:
 
