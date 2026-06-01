@@ -33,7 +33,7 @@ Canon keeps AI coding work in your repo instead of your prompt history:
 - `sprint-check` opens a browser board from `.tickets/`, `HANDOFF.md`, and `git log`.
 - `efficiency` is wired automatically so every registered project inherits focused editing, tight output, and context-budget rules.
 
-*canon /ˈkænən/ — an established rule or principle; the authoritative standard a team agrees to follow.*
+> canon /ˈkænən/ - the standard your agent follows across projects.
 
 canon is a shared skill library for AI coding agents. Define your standards once. Every project inherits them automatically — Claude Code, Codex, and Pi, all in sync.
 
