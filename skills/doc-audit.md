@@ -37,6 +37,8 @@ Audit user-facing documentation for accuracy. Append to `standards/doc-findings.
 
    **Command accuracy** — run `skills.sh list`; compare to skill names in README/guides command examples.
 
+   **Workflow gate accuracy** — distinguish UI state changes from workflow commands. Board actions such as creating tickets or moving cards update local ticket state only; do not imply they run agent workflows, wrapup, validation, or close pipelines unless the tool actually does.
+
    **Heading style** — user-facing README headings should be Title Case. Keep intentional brand casing, command names, and code-block comments unchanged.
 
    **Private content** — real names, emails, usernames, home paths, private ticket prefixes, company references, secrets. Flag; do not redact automatically.
