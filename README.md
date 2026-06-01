@@ -47,32 +47,55 @@ Canon keeps AI coding work in your repo instead of your prompt history:
 
 canon is a shared skill library for AI coding agents. Define your standards once. Every project inherits them automatically — Claude Code, Codex, and Pi, all in sync.
 
-One workflow command covers the full lifecycle: `sprint`. Its lifecycle actions
-are normal shell commands from `canon/tools`, so every supported agent calls the
-same state machine:
+## How it works
 
-| | |
-|---|---|
-| `sprint start` | Creates/starts the ticket and records it as active — then the agent creates sprint docs, maps the codebase, surfaces ambiguities, rates risk, writes a plan, and waits for approval before touching code. |
-| `sprint complete` | Validates sprint checklists before close — the agent runs quality pipeline, doc refresh, ticket close, commit & push prompt. Done. |
+The loop is three commands. The agent does the orchestration.
 
-Everything else — tickets, active sprint state, session context, quality gates,
-handoff across resets — is wired into that lifecycle. You don't learn a command
-sequence. You describe what you want to build.
+### 1. Start
+
+```bash
+sprint start "add OAuth login"
+```
+
+Creates a local ticket, records it as active, then has the agent define acceptance, map the codebase, surface gray areas, rate risk, and write a plan before source edits.
+
+### 2. Check
+
+```bash
+sprint-check
+```
+
+Opens the local board for `.tickets/`, `HANDOFF.md`, and `git log`. Read or edit ticket docs in the browser without leaving your repo.
+
+### 3. Complete
+
+```bash
+sprint complete
+```
+
+Runs the close path: simplify, review, security, doc audit when docs changed, acceptance validation, ticket close, then commit and push prompt.
+
+Everything else - active sprint state, session context, quality gates, and handoff across resets - is wired into that lifecycle. You describe what you want to build.
 
 ---
 
 ## Why canon
 
-Most agent repos I tried gave me homework. A vocabulary of slash commands to memorize. An invocation order that wasn't written down anywhere. A setup ritual to repeat on every new project. The overhead of operating the framework started eating into the time I'd saved by using an agent.
+Most agent repos I tried gave me homework: a vocabulary of commands, an invocation order to remember, and a setup ritual to repeat on every project.
 
 I wanted the opposite: define my standards once, have every agent read them automatically, and never think about configuration again. Open a session — your agent already knows how you work, what's in progress, and what decisions were made last week.
 
-The second problem was visibility. As a solo builder, when I'm deep in a session and need to know what's in flight, I don't want to push commits to GitHub just to see a diff, spin up a Jira board, or maintain a project in three browser tabs that requires a remote repo to even exist. I just want to see my work — right now, in the repo, without ceremony.
+The second problem was visibility. When I'm deep in a session and need to know what's in flight, I don't want to push commits to GitHub just to see a diff, spin up a Jira board, or maintain a project in three browser tabs. I want to see the work right now, in the repo.
 
 That's sprint-check: a kanban board that reads your `.tickets/` folder and `git log` directly, opens in a browser tab, and requires nothing else — no account, no remote, no commit. The same instinct behind canon: the best tool for a developer is one that disappears.
 
-If you're on a team, the problems compound. Each engineer maintains their own agent config, each drifting in a different direction. Onboarding a new teammate means handing them a setup guide that's already out of date. When someone discovers a better pattern mid-sprint, it stays in their head or a Slack thread — not in every future session. Canon gives teams a shared source of truth: fork it to your org, have everyone clone from there, and there's one place where what the team has learned actually lives. One engineer pushes an update — every teammate picks it up on the next `git pull`. No config drift, no stale copies, no setup guide that's already out of date by the time someone reads it.
+---
+
+## Solo or team
+
+For one developer, canon is a personal standard library. Clone it once, register `sprint` in each project, and every agent session starts with the same workflow, same expectations, and same local ticket state.
+
+For a team, canon is a shared source of truth. Fork it to your org, have everyone clone that fork, and let team conventions live in one repo. One engineer improves a skill or standard; everyone else picks it up on the next `git pull`. No config drift, no stale copies, no setup guide that ages out before the next hire reads it.
 
 ---
 
@@ -231,7 +254,7 @@ Sprint docs land in `.tickets/<id>/` as markdown files and are read automaticall
 
 ## The contrast
 
-Frameworks like GSD Redux are powerful phase-based systems: initialize, discuss, plan, execute, verify, ship, repeat. That works when you want a full methodology.
+Frameworks like GSD Core are powerful phase-based systems: initialize, discuss, plan, execute, verify, ship, repeat. That works when you want a full methodology.
 
 Canon optimizes for the common case: most dev work should not require remembering a command sequence. Register `sprint` once. Then use one workflow command:
 
@@ -253,7 +276,7 @@ The sub-skills still exist — orient, impact analysis, capture, review, securit
 
 ---
 
-## Quick start
+## Setup details
 
 **1. Install**
 
