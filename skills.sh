@@ -646,7 +646,28 @@ cmd_help() {
     exit 1
   }
 
-  # Strip YAML frontmatter and @-import lines, print body
+  local name desc summary category tags depends
+  name=$(fm_field "$skill_file" name)
+  desc=$(fm_field "$skill_file" description)
+  summary=$(fm_field "$skill_file" summary)
+  category=$(fm_field "$skill_file" category)
+  tags=$(fm_field "$skill_file" tags | tr -d '[]' | sed 's/, */  /g')
+  depends=$(fm_field "$skill_file" depends | tr -d '[]' | sed 's/, */  /g')
+
+  local W=60
+  local divider; divider=$(printf '\x1b[2m%*s\x1b[0m\n' "$W" '' | tr ' ' '─')
+
+  printf '\n\x1b[1;96m%s\x1b[0m' "$name"
+  [ -n "$category" ] && printf '  \x1b[2m[%s]\x1b[0m' "$category"
+  printf '\n%s\n' "$divider"
+
+  [ -n "$desc"    ] && printf '\x1b[1m%s\x1b[0m\n'    "$desc"
+  [ -n "$summary" ] && printf '\n\x1b[2m%s\x1b[0m\n'  "$summary"
+  [ -n "$tags"    ] && printf '\n\x1b[2mTags:\x1b[0m    %s\n' "$tags"
+  [ -n "$depends" ] && printf '\x1b[2mDepends:\x1b[0m %s\n'   "$depends"
+
+  printf '\n%s\n\n' "$divider"
+
   local body
   body=$(awk 'BEGIN{fm=0;done=0} /^---$/{if(fm)done=1; fm=1; next} done && /^@/{next} done{print}' "$skill_file")
 
