@@ -70,7 +70,9 @@ You can. Most people do — until they have five projects, each with a slightly 
 
 ## What's inside
 
-In practice you register one workflow skill: `sprint`. The rest is wired in automatically.
+In normal use, register one workflow skill: `sprint`. `skills.sh add sprint`
+also wires the always-on `efficiency` standard. Optional audit skills can be
+registered separately when you want them.
 
 | Skill | What it does | Example |
 |---|---|---|
@@ -79,9 +81,9 @@ In practice you register one workflow skill: `sprint`. The rest is wired in auto
 | &nbsp;&nbsp;&nbsp;&nbsp;↳ `code-reviewer` | Structured review across 7 dimensions: correctness, maintainability, readability, efficiency, security, edge cases, and test coverage. | *"review my changes"* |
 | &nbsp;&nbsp;&nbsp;&nbsp;↳ `security-review` | High-confidence vulnerability detection — traces data flow before flagging anything. | *"security review the auth module"* |
 | &nbsp;&nbsp;↳ `handoff` | Session context that survives agent switches, resets, and context window exhaustion. | *auto-runs on session end* |
-| `efficiency` | Token-efficiency rules for AI agents. Opinionated but battle-tested. | *loaded automatically via `@` import* |
-| `context-check` | Audit the always-on context budget — imports, active skills, hooks, memory. Appends findings to `standards/context-findings.md` on explicit confirmation. | *"check my context budget"* |
-| `doc-audit` | Audit user-facing docs for overstated claims, missing prerequisites, and scope inflation. Appends findings to `standards/doc-findings.md` on explicit confirmation. | *"audit the README"* |
+| `efficiency` | Always-on coding, git, and token-efficiency standard. Added automatically when you register a project. | *loaded automatically via `@` import* |
+| `context-check` | Optional audit for always-on context budget — imports, active skills, hooks, memory. Appends findings to `standards/context-findings.md` on explicit confirmation. | *optional: `skills.sh add context-check`* |
+| &nbsp;&nbsp;↳ `doc-audit` | User-facing docs audit for overstated claims, missing prerequisites, and scope inflation. Runs inside wrapup when docs changed. | *"audit the README"* |
 | `sprint-check` | Local kanban dashboard. Reads `.tickets/`, `HANDOFF.md`, and `git log`. Runs in any browser. | *"show me what's in flight"* |
 
 ---
@@ -258,6 +260,13 @@ git clone https://github.com/sunitghub/canon.git ~/Developer/canon
 cd /path/to/your-project
 
 ~/Developer/canon/skills.sh add sprint        # plan → build → ship (includes wrapup, handoff)
+```
+
+That is the normal install. `efficiency` is added automatically. Add
+`context-check` separately only if you want periodic context-budget audits:
+
+```bash
+~/Developer/canon/skills.sh add context-check
 ```
 
 **3. Start a session**
