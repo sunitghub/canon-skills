@@ -91,7 +91,7 @@ That's sprint-check: a kanban board that reads your `.tickets/` folder and `git 
 
 ---
 
-## Solo or team
+## Solo or Team
 
 For one developer, canon is a personal standard library. Clone it once, register `sprint` in each project, and every agent session starts with the same workflow, same expectations, and same local ticket state.
 
