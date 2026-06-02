@@ -15,7 +15,7 @@ Your agent can code. Canon makes the workflow yours.
 
 </div>
 
-![canon install terminal](meta/screenshots/canon-install-terminal.png)
+![canon sprint-check board](meta/screenshots/canon-board-hero.png)
 
 Install:
 
