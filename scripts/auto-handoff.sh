@@ -108,8 +108,10 @@ ${NEW_SNAPSHOT}
 EOF
 fi
 
-# Commit just HANDOFF.md — gracefully skip if hooks block it or nothing to commit
+# Commit just HANDOFF.md — --only scopes the commit to this path so any files the
+# user already staged are left untouched. Gracefully skip if HANDOFF is gitignored,
+# the commit is blocked, or there is nothing to commit.
 git add "$HANDOFF" 2>/dev/null || true
-git commit -m "chore: auto-update handoff snapshot [$TIMESTAMP]" 2>/dev/null || true
+git commit --only "$HANDOFF" -m "chore: auto-update handoff snapshot [$TIMESTAMP]" 2>/dev/null || true
 
 echo "[handoff] Snapshot saved → HANDOFF.md (FIFO, keeping last ${MAX_SNAPSHOTS})"

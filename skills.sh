@@ -694,7 +694,10 @@ desired = [
     ("UserPromptSubmit","",     f"{scripts_path}/handoff-inject.sh"),
     ("PreToolUse",      "Bash", f"{scripts_path}/pre-commit-check.sh"),
 ]
-stale = {f"{scripts_path}/auto-polish-trigger.sh"}
+stale = {
+    f"{scripts_path}/auto-polish-trigger.sh",
+    f"{scripts_path}/guard-managed-files.sh",
+}
 for event, entries in list(hooks.items()):
     for entry in entries:
         entry["hooks"] = [
@@ -713,6 +716,12 @@ for event, matcher, command in desired:
     else:
         entry_hooks.append({"type": "command", "command": command})
         print(f"added\t{event}\t{os.path.basename(command)}")
+# Prune entries left with no hooks (e.g. after stale removal) and empty events,
+# so dead matchers don't linger in settings.json.
+for event in list(hooks.keys()):
+    hooks[event] = [e for e in hooks[event] if e.get("hooks")]
+    if not hooks[event]:
+        del hooks[event]
 os.makedirs(os.path.dirname(settings_path), exist_ok=True)
 with open(settings_path, "w") as f:
     json.dump(config, f, indent=2)
