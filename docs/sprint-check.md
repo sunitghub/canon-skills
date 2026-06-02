@@ -6,7 +6,7 @@
 sprint-check
 ```
 
-See the [README](../README.md#sprint-check--the-local-kanban-board) for the overview. This page walks through each feature with a screenshot.
+See the [README](../README.md#the-board) for the overview. This page walks through each feature with a screenshot.
 
 ## Dark Mode
 
