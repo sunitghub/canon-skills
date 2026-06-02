@@ -11,3 +11,4 @@ toPdfViaTempFile*
 guides/*.pdf
 tools/tailscale-check.sh
 posts/
+critique/
