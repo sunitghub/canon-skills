@@ -17,6 +17,11 @@ flowchart LR
 Recommended doc order: create `Acceptance` first, then `Blueprint`, then create
 `Plan` only after the approach is approved.
 
+> In normal use the agent drafts these docs from your request — orienting the
+> codebase, grilling gray areas, rating impact — and you review. This
+> walkthrough has you write them by hand so each step is deterministic and
+> reproducible.
+
 ## Step 1 - Open the Empty Board
 
 Type this in the command line from the walkthrough root:

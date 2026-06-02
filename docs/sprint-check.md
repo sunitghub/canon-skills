@@ -6,9 +6,7 @@
 sprint-check
 ```
 
-The board shows git state, current focus from `HANDOFF.md`, recent commits, ticket status, and sprint docs at a glance. Tickets link to commits automatically, and everything writes back to `.tickets/` in your repo.
-
-See the [README](../README.md#sprint-check--the-local-kanban-board) for the overview. This page walks through each feature.
+See the [README](../README.md#sprint-check--the-local-kanban-board) for the overview. This page walks through each feature with a screenshot.
 
 ## Dark Mode
 
