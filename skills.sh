@@ -17,7 +17,13 @@ SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills"
 # Extract a single frontmatter field value from a file
 fm_field() {
   local file="$1" field="$2"
-  awk 'BEGIN{in_fm=0} /^---$/{in_fm=!in_fm; next} in_fm && /^'"$field"': /{sub(/^'"$field"': */,""); print; exit}' "$file"
+  awk -v key="$field" '
+    BEGIN { in_fm=0 }
+    /^---$/ { in_fm=!in_fm; next }
+    in_fm && substr($0, 1, length(key)+1) == key":" {
+      val = substr($0, length(key)+2); sub(/^ +/, "", val); print val; exit
+    }
+  ' "$file"
 }
 
 # Find a skill file by its frontmatter name field
