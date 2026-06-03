@@ -83,7 +83,7 @@ Claude finishes turn
   └─ Stop → auto-handoff.sh  (snapshot git state to HANDOFF.md if changes exist)
 ```
 
-**Wrapup skip logic:** Not every change needs all three steps. Wrapup self-directs:
+**Wrapup skip logic:** Not every change needs every step. Wrapup self-directs:
 - Skip `code-simplifier` for single-line changes, docs-only, or config-only diffs
 - Skip `code-reviewer` for purely mechanical changes (rename, format, move)
 - Skip `security-review` if no security-sensitive files changed (auth, DB, user input, API, crypto)
@@ -94,7 +94,7 @@ When a step is skipped, Wrapup states why — so it's clear the step was conside
 ```bash
 $SKILLS/skills.sh add sprint /path/to/project
 ```
-`sprint` includes wrapup and its full dependency stack automatically — `code-simplifier`, `code-reviewer`, `security-review`, `handoff`, and `ticket`. Directly registering `wrapup` is only useful for advanced/manual workflows that intentionally do not use sprint tickets.
+`sprint` includes wrapup and its full dependency stack automatically — `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, `doc-audit`, `handoff`, and `ticket`. Directly registering `wrapup` is only useful for advanced/manual workflows that intentionally do not use sprint tickets.
 
 ---
 

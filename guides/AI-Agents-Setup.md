@@ -14,11 +14,8 @@ git clone https://github.com/sunitghub/canon.git ~/Developer/canon
 
 ### Step 2 — Run init (once)
 
-```bash
-cd ~/Developer/canon && ./skills.sh init
-```
-
-Or if you prefer it available from anywhere:
+The rest of this guide uses `$SKILLS` to refer to the canon checkout, so define
+it first:
 
 ```bash
 export SKILLS=~/Developer/canon   # add to ~/.zshrc to make permanent
@@ -314,6 +311,8 @@ sprint ────────────────────────�
           code-simplifier   clarity and redundancy pass
           code-reviewer     seven-dimension logic review
           security-review   high-confidence vulnerability scan
+          repo-check        stale refs / catalog drift (when repo surface changed)
+          doc-audit         doc accuracy (when user-facing docs changed)
         test verification   all Test Plan items must pass before close
         conventions         new patterns → AGENTS.md (confirmed before writing)
 
@@ -393,12 +392,14 @@ Each step has skip logic — states why in one line when it doesn't apply:
 | code-simplifier | Single-line change, or docs/config only |
 | code-reviewer | Single-line fix with no design implications |
 | security-review | No auth, DB, user input, API, crypto, or file I/O changed |
+| repo-check | No repo workflow, docs, skills, standards, scripts, or tools changed |
+| doc-audit | No user-facing docs (README, guides/, skill descriptions) changed |
 
 ### Layer 5 — Wrapup
 
-**The problem:** The three quality steps need to run in a specific order with skip logic evaluated at each step. Remembering to do this manually is friction.
+**The problem:** The wrapup steps need to run in a specific order with skip logic evaluated at each step. Remembering to do this manually is friction.
 
-**What it does:** `wrapup` runs all three in order, evaluates skip logic automatically, reports a single structured summary, then refreshes any stale docs touched in the session (DECISIONS.md, HANDOFF.md, AGENTS.md, README) and always prompts to commit and push. Inside `sprint complete`, it runs on all files modified since sprint start.
+**What it does:** `wrapup` runs the full pipeline in order — `code-simplifier` → `code-reviewer` → `security-review` → `repo-check` → `doc-audit` — evaluating skip logic at each step, reports a single structured summary, then refreshes any stale docs touched in the session (DECISIONS.md, HANDOFF.md, AGENTS.md, README) and always prompts to commit and push. Inside `sprint complete`, it runs on all files modified since sprint start.
 
 **Outside a sprint:** `/wrapup` directly on any code written in the session.
 
@@ -429,7 +430,7 @@ Sprint start surfaces these before approval. Sprint complete gates closure on th
 
 **Trigger phrases:**
 - sprint start: any request to add, fix, update, debug, implement, or build — explicit phrases like *"sprint start"* or *"let's work on X"* also work. Skipped only for questions, explanations, or trivially mechanical one-liners.
-- sprint complete: *"sprint complete"*, *"approve"*, *"ship it"*
+- sprint complete: *"sprint complete"*, *"complete the sprint"*, *"ship it"*
 
 > Sprint isn't code-only — it works equally well for docs, config, and planning file updates. The wrapup pipeline skips steps that don't apply (simplifier and security-review are both skipped for docs-only changes).
 
