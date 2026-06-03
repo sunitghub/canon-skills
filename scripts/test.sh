@@ -8,6 +8,7 @@ tests=(
   "$ROOT/tests/tkt.sh"
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/skills-add-sprint.sh"
+  "$ROOT/tests/skills-std.sh"
 )
 
 for test_file in "${tests[@]}"; do

@@ -65,3 +65,9 @@ Evidence log for documentation accuracy. Run `/doc-audit` to generate new findin
 **Claim:** Step 2 main path `cd ~/Developer/canon && ./skills.sh init`; Step 3+ uses `$SKILLS/skills.sh …`.
 **Issue:** Primary setup path never exports `$SKILLS`, so subsequent `$SKILLS/...` commands don't run as written.
 **Action:** Step 2 now defines `export SKILLS=~/Developer/canon` before later steps use it. Fixed in `b480735`.
+
+### 2026-06-03 — CONTRIBUTING claimed CI enforcement that doesn't exist
+**File:** `CONTRIBUTING.md`
+**Claim:** "`skills.sh lint` runs in CI via `npm test`, so non-conforming skills are caught before merge."
+**Issue:** No CI is configured yet (tracked as a future step); the claim overstates automation.
+**Action:** Reworded to "runs as part of `npm test`, so running the suite catches non-conforming skills before they merge." Caught during the wrapup that added the linter.

@@ -1020,6 +1020,78 @@ PYEOF
   echo "CATALOG.md updated."
 }
 
+# ── lint ────────────────────────────────────────────────────────────────────
+
+# Validate every skill in skills/ against skill-setup-std conventions.
+cmd_lint() {
+  local skills_dir="${1:-$SKILLS_ROOT/skills}" errors=0
+  local valid_categories="dev agent-ops ops"
+
+  err() { printf 'skills/%s: %s\n' "$1" "$2"; errors=$((errors + 1)); }
+
+  # Flat location — no skills nested in subdirectories.
+  while IFS= read -r nested; do
+    [ -n "$nested" ] || continue
+    printf '%s: skill must live flat under skills/, not in a subdirectory\n' "${nested#"$SKILLS_ROOT"/}"
+    errors=$((errors + 1))
+  done < <(find "$skills_dir" -mindepth 2 -name '*.md' -type f 2>/dev/null)
+
+  local f base stem name desc category tags deps imp sib dep
+  for f in "$skills_dir"/*.md; do
+    [ -f "$f" ] || continue
+    base=$(basename "$f"); stem="${base%.md}"
+
+    # Naming: lowercase, hyphenated, <= 20 chars.
+    printf '%s' "$stem" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' \
+      || err "$base" "filename must be lowercase and hyphenated"
+    [ "${#stem}" -le 20 ] || err "$base" "name exceeds 20 characters (${#stem})"
+
+    # Required frontmatter.
+    name=$(fm_field "$f" name)
+    desc=$(fm_field "$f" description)
+    category=$(fm_field "$f" category)
+    tags=$(fm_field "$f" tags)
+    [ -n "$name" ]     || err "$base" "missing required field 'name'"
+    [ -n "$desc" ]     || err "$base" "missing required field 'description'"
+    [ -n "$category" ] || err "$base" "missing required field 'category'"
+    { [ -n "$tags" ] && [ "$tags" != "[]" ]; } || err "$base" "missing required field 'tags'"
+
+    # name must match filename.
+    [ -z "$name" ] || [ "$name" = "$stem" ] || err "$base" "name '$name' does not match filename"
+
+    # Category enum.
+    if [ -n "$category" ] && ! printf ' %s ' "$valid_categories" | grep -q " $category "; then
+      err "$base" "category '$category' not in {dev, agent-ops, ops}"
+    fi
+
+    # Imports resolve.
+    while IFS= read -r imp; do
+      [ -n "$imp" ] || continue
+      [ -f "$skills_dir/$imp" ] || err "$base" "import '@$imp' does not resolve"
+    done < <(grep -oE '^@[^[:space:]]+' "$f" | sed 's/^@//')
+
+    # depends graph: sibling imports must be declared; declared deps must resolve.
+    deps=$(resolve_deps "$f")
+    while IFS= read -r sib; do
+      [ -n "$sib" ] || continue
+      printf '%s\n' "$deps" | grep -qx "$sib" \
+        || err "$base" "imports '@./$sib.md' but '$sib' is not in depends"
+    done < <(grep -oE '^@\./[^[:space:]]+\.md' "$f" | sed -E 's#^@\./(.*)\.md#\1#')
+    while IFS= read -r dep; do
+      [ -n "$dep" ] || continue
+      find_skill "$dep" >/dev/null 2>&1 \
+        || err "$base" "depends entry '$dep' does not resolve to a known skill"
+    done < <(printf '%s\n' "$deps")
+  done
+
+  if [ "$errors" -eq 0 ]; then
+    echo "skills lint: clean"
+    return 0
+  fi
+  printf '\n%d issue(s) found.\n' "$errors"
+  return 1
+}
+
 # ── dispatch ────────────────────────────────────────────────────────────────
 
 # Handle: skills.sh --scan [dir]  or  skills.sh [dir] --scan
@@ -1063,10 +1135,11 @@ case "$cmd" in
   remove)  cmd_remove  "$@" ;;
   delete)  cmd_delete  "$@" ;;
   catalog) cmd_catalog "$@" ;;
+  lint)    cmd_lint    "$@" ;;
   help)    cmd_help    "$@" ;;
   init)    cmd_init    "$@" ;;
   *)
-    echo "Usage: skills.sh <list|add|addall|refresh|status|remove|delete|catalog|help|init> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|addall|refresh|status|remove|delete|catalog|lint|help|init> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
@@ -1076,6 +1149,7 @@ case "$cmd" in
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
     echo "  delete <skill>          Permanently remove a skill from canon"
     echo "  catalog                 Regenerate CATALOG.md snapshot"
+    echo "  lint                    Check skills/ against skill-setup-std conventions"
     echo "  help <skill>            Show full documentation for a skill"
     echo "  init                    Wire agent hooks for this install location"
     echo "  <skill> --h             Same as: skills.sh help <skill>"

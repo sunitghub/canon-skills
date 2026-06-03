@@ -31,6 +31,11 @@ documentation, setup, or agent behavior.
 
 3. **Skill graph.** Run `skills.sh list`. Confirm advertised standalone skills
    appear there, and imported sub-skills remain hidden from the user-facing list.
+   When any `skills/*.md` changed, run `skills.sh lint` — it enforces
+   skill-setup-std deterministically (naming, frontmatter, flat location,
+   resolvable imports, depends graph). Advisory beyond the linter: flag skills
+   that violate one-job (an "and then" in the description) or have a vague
+   `description`.
 
 4. **Script surface.** For every script in `scripts/`, confirm it is wired by
    `skills.sh init`, referenced by an extension, or documented as manually run.
