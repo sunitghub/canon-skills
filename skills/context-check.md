@@ -17,7 +17,7 @@ Audit what Claude loads every session. Append to `standards/context-findings.md`
    | File | Lines |
    |------|-------|
 
-3. Run `skills.sh status`; list registered skills and file sizes.
+3. Run `./skills.sh status`; list registered skills and file sizes.
 
 4. Read `~/.claude/settings.json`; list hooks, matchers, and scripts.
 
