@@ -120,7 +120,7 @@ Verify before closing.
    - If yes: propose the addition (one or two lines) and the target file (`AGENTS.md`, `CLAUDE.md`, or a subdirectory `CLAUDE.md` if one exists). Ask the user to confirm before writing.
    - If no new conventions emerged: skip silently.
 
-6. **HANDOFF.md.** Update `## Next Steps` with any follow-up work.
+6. **HANDOFF.md.** Refresh the narrative per the handoff protocol (`../tools/handoff.md`): update `## Current Focus`, `## In Progress`, `## Recent Decisions`, and `## Next Steps` to reflect this sprint. `## Discoveries` is handled by capture mid-build — leave it.
 
 7. **Close.** Run `sprint complete`. If it refuses because checklist items
    remain unchecked, report the blockers and stop.
