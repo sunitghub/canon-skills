@@ -34,21 +34,33 @@ Users pick up changes automatically:
 
 ### What goes to GitHub
 
-Everything except:
-- `Emacs/` — in `.gitignore`
-- `CSVs/` — in `.gitignore`
+Everything except what `.gitignore` excludes:
 - `.tickets/` — local task board, never committed
 - `HANDOFF.md` / `DECISIONS.md` — local session state, not release documentation
+- `posts/` / `critique/` — marketing drafts and internal notes
+- `CLAUDE.md` — generated per-checkout by `skills.sh init`; canon ships `AGENTS.md`, not a committed `CLAUDE.md`
 
 ### Branch strategy
 
-All work goes directly to `main`. No separate release branches — canon is a living library, not a versioned product. If a change is experimental, test locally before pushing.
+No separate release branches — canon is a living library, not a versioned product. While the repo is private, work goes directly to `main` (test locally before pushing). Once the repo is public and the protection ruleset is applied, direct pushes stop and changes land through PRs that pass CI — see `CONTRIBUTING.md`.
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs `npm test` (core suite + `skills.sh lint`) on every push to `main` and every PR targeting it. While the repo is private the check is **advisory** — GitHub branch protection can't enforce it without a public repo or Pro.
 
 ### GitHub repo settings
 
-- **Visibility:** Public (`sunitghub/canon`)
+- **Visibility:** Currently **private**; goes **public** at launch. The npm installer clones over HTTPS with no auth, so `npx canon-skills@latest` only works once the repo is public.
 - **Default branch:** `main`
-- **No branch protection rules** — solo repo, push directly
+- **Branch protection:** Staged as version-controlled config in `.github/rulesets/main-protection.json`, documented in `CONTRIBUTING.md`. Rulesets need a public repo (or Pro); apply it once public, after which all changes go through PRs that pass the `test` check.
+
+### Release model
+
+canon is a **living library tracked at `main`**, not a versioned product. Deliberately:
+
+- **No GitHub Releases.** Users consume `main` live via `git pull` and `@`-import references; pinned whole-repo versions misrepresent how value ships. Skills and standards carry their own `version:` frontmatter where pinning matters.
+- **No auto-publish deployment pipeline.** The npm installer is published rarely and behind OTP/2FA; automating it would require an npm token in GitHub secrets for near-zero benefit. Keep the manual publish flow below.
+- **Optional:** tag the commit when you publish the installer (`git tag vX.Y.Z`, already in the `CONTRIBUTING.md` Release Checklist) for provenance — without a Releases page or a deployment pipeline.
 
 ---
 
