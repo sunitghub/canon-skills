@@ -3,7 +3,7 @@ name: skill-setup-std
 description: Conventions for writing, naming, and composing skills in canon
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.1.0
+version: 1.2.0
 updated: 2026-06-03
 ---
 
@@ -79,6 +79,15 @@ A skill is instructions for an agent, not a manual. Write the smallest body that
 - If a section does not change what the agent does, delete it.
 
 Length is a smell, not a limit: a leaf skill that runs long is usually doing more than one job (see above) or repeating context it should import.
+
+## Update vs. new skill
+
+A nuance to address is first a decision: does it edit an existing skill or become a new one? Apply the one-job test.
+
+- **Edit in place** when the nuance changes *how* a skill already does its single job — a sharper step, a new edge case, a corrected instruction.
+- **New skill** when the nuance is a *distinct* job. If describing the change makes you write "and then," or the skill's `description` would stop being one coherent sentence, split it out.
+
+When in doubt, prefer editing — a new skill earns its place only when it has a coherent standalone job (see "Standalone vs. hidden"). If the file carries `version:` / `updated:` frontmatter (standards do; skills usually do not), bump them in the same edit.
 
 ## Adding a new skill
 

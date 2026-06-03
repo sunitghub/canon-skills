@@ -2,17 +2,37 @@
 
 ## Contributing a Skill
 
-Skills follow [`standards/skill-setup-std.md`](standards/skill-setup-std.md) —
-flat under `skills/`, lowercase-hyphenated filename matching `name:`, required
+Conventions live in [`standards/skill-setup-std.md`](standards/skill-setup-std.md)
+— flat under `skills/`, lowercase-hyphenated filename matching `name:`, required
 frontmatter (`name`, `description`, `category`, `tags`), resolvable `@` imports,
-and a `depends:` list that matches sibling imports.
+and a `depends:` list that matches sibling imports. This section is the
+workflow; defer to the standard for the rules.
 
-Before opening a PR:
+Start with the [Update vs. new skill](standards/skill-setup-std.md#update-vs-new-skill)
+decision: a nuance that changes *how* a skill does its one job is an edit; a
+*distinct* job is a new skill.
+
+### Update an existing skill
+
+1. Edit the skill file in `skills/`. Keep it to one job — if you find yourself
+   adding "and then", it's a new skill, not an edit.
+2. Bump `version:` / `updated:` if the file carries them (standards do; skills
+   usually do not).
+3. Run the [pre-PR checks](#before-opening-a-pr).
+
+### Add a new skill
+
+1. Write the file in `skills/` following the standard's conventions.
+2. If an existing skill imports it, add it to that skill's `depends:` list.
+3. Regenerate the catalog: `./skills.sh catalog`, and commit `CATALOG.md`.
+4. If it's standalone, mention it in `README.md` only if it warrants one.
+5. Run the [pre-PR checks](#before-opening-a-pr).
+
+### Before opening a PR
 
 1. **Lint**: `./skills.sh lint` — deterministic conformance check; must pass.
 2. **Test**: `npm test` — runs the lint plus the core CLI workflow suite.
 3. **Catalog**: `./skills.sh catalog` if you added or renamed a skill; commit `CATALOG.md`.
-4. One skill, one job. If the description needs an "and then", split it.
 
 `skills.sh lint` runs as part of `npm test`, so running the suite catches
 non-conforming skills before they merge.
