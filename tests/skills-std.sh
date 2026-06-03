@@ -16,7 +16,7 @@ trap 'rm -rf "$fixture"' EXIT
 cat > "$fixture/good-skill.md" <<'EOF'
 ---
 name: good-skill
-description: A valid skill
+description: Exercise the linter with a structurally valid skill fixture
 category: dev
 tags: [test]
 ---
@@ -64,6 +64,26 @@ depends: [no-such-skill]
 @./good-skill.md
 EOF
 
+# One-job violation: a leaf skill chains actions with "and then".
+cat > "$fixture/chained.md" <<'EOF'
+---
+name: chained
+description: Map the subsystem and then edit every file it touches
+category: dev
+tags: [x]
+---
+EOF
+
+# Vague: description too short to convey scope.
+cat > "$fixture/terse.md" <<'EOF'
+---
+name: terse
+description: Does things
+category: dev
+tags: [x]
+---
+EOF
+
 out="$(run_fail "$SKILLS" lint "$fixture")"
 assert_contains "$out" "name 'wrong-name' does not match filename"
 assert_contains "$out" "category 'nonsense' not in"
@@ -72,4 +92,6 @@ assert_contains "$out" "missing required field 'tags'"
 assert_contains "$out" "must live flat under skills/"
 assert_contains "$out" "imports '@./good-skill.md' but 'good-skill' is not in depends"
 assert_contains "$out" "depends entry 'no-such-skill' does not resolve"
+assert_contains "$out" "chained.md: description chains actions ('and then')"
+assert_contains "$out" "terse.md: description too short"
 [[ "$out" != *"good-skill.md:"* ]] || fail "valid skill should not be flagged"

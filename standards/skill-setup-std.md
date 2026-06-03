@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Conventions for writing, naming, and composing skills in canon
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.0.0
-updated: 2026-05-26
+version: 1.1.0
+updated: 2026-06-03
 ---
 
 # Skill Setup Standard
@@ -65,9 +65,20 @@ If a skill is useful both ways, make it standalone and let the parent import it.
 
 ## One job
 
-A skill that does two things is two skills waiting to be separated. If you find yourself writing "and then" in the description, split it.
+A skill that does two things is two skills waiting to be separated. If you find yourself writing "and then" in the description, split it. `skills.sh lint` flags an "and then" in a leaf skill's description; orchestrators (skills with a `depends:` list) are exempt because composing children is their job.
 
 Composition is fine — a parent skill imports children and orchestrates them. But each child should be coherent on its own.
+
+## Minimal content
+
+A skill is instructions for an agent, not a manual. Write the smallest body that makes the behavior unambiguous:
+
+- State the job, the steps, and the stop condition. Cut everything else.
+- No restating canon-wide standards — `@`-import them instead of copying.
+- No motivational preamble, no "why this matters" essays, no duplicated examples.
+- If a section does not change what the agent does, delete it.
+
+Length is a smell, not a limit: a leaf skill that runs long is usually doing more than one job (see above) or repeating context it should import.
 
 ## Adding a new skill
 

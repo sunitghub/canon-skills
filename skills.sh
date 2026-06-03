@@ -1082,6 +1082,17 @@ cmd_lint() {
       find_skill "$dep" >/dev/null 2>&1 \
         || err "$base" "depends entry '$dep' does not resolve to a known skill"
     done < <(printf '%s\n' "$deps")
+
+    # One job: a leaf skill chains actions if its description says "and then".
+    # Orchestrators compose children, declared via depends:, and are exempt.
+    if [ -z "$deps" ] && printf '%s' "$desc" | grep -qiE '(^|[^[:alpha:]])and then([^[:alpha:]]|$)'; then
+      err "$base" "description chains actions ('and then') — split into one job, or compose children via depends:"
+    fi
+
+    # Vague description: too short to convey what it does and when to use it.
+    if [ -n "$desc" ] && [ "${#desc}" -lt 20 ]; then
+      err "$base" "description too short (${#desc} chars) — state what it does and when to use it"
+    fi
   done
 
   if [ "$errors" -eq 0 ]; then
