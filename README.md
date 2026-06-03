@@ -13,10 +13,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 </div>
 
-<!-- TODO: replace static board image below with a ~5s demo GIF:
-     drag-to-Done → ticket opens → commit links. Highest-leverage hook;
-     GSD structurally can't show a GUI. Suggested path: meta/board-demo.gif -->
-![sprint-check board](meta/screenshots/board-light.png)
+![sprint-check board — drag a ticket to Done, open it, follow the commit links](meta/board-demo.gif)
 
 ```bash
 npx canon-skills@latest          # installs canon to ~/Developer/canon
