@@ -2,6 +2,9 @@
   "name": "canon-skills",
   "version": "1.0.0",
   "description": "Shared skill library for AI coding agents — Claude Code, Codex, Pi. One clone. Minimal setup.",
+  "scripts": {
+    "test": "./scripts/test.sh"
+  },
   "bin": {
     "canon-skills": "./bin/install.js"
   },

@@ -2,8 +2,8 @@
 
 This folder is a blank workspace for learning canon's sprint flow by building a
 minimal Todo app from scratch. Start here when you want to see ticket creation,
-sprint docs, `sprint-check`, implementation, acceptance updates, and sprint
-completion in one small project.
+agent-drafted sprint docs you review on the board, `sprint-check`,
+implementation, acceptance updates, and sprint completion in one small project.
 
 The folder intentionally starts with docs only. Setup creates the local
 `.tickets/` project marker, `sprint start` creates ticket state, and the

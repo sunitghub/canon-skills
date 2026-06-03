@@ -11,9 +11,9 @@ Use this page as a visual checkpoint. Reload the board at each stage and confirm
 1. Before `sprint start`, the board is empty.
 2. After `sprint start`, the ticket is In Progress and `not ready`, and
    `ticket.md` exists.
-3. `acceptance.md`, `blueprint.md`, and `plan.md` appear as tabs only after you
-   create them with `+ New doc`. Acceptance criteria stay unchecked until the
-   behavior is implemented and verified.
+3. `acceptance.md` and `blueprint.md` appear as tabs once the agent drafts them;
+   `plan.md` appears only after you approve. Acceptance criteria stay unchecked
+   until the behavior is implemented and verified.
 4. After tests pass and acceptance is checked, `sprint complete` moves the
    ticket to Done.
 

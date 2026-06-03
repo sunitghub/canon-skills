@@ -1,7 +1,8 @@
 # 01 - Setup
 
 This folder lives inside the canon source repo, but it is used as its own agent
-project root for the walkthrough.
+project root for the walkthrough. In real use you run these commands from your
+own project directory; here the walkthrough folder doubles as that project.
 
 `skills.sh add sprint` writes `CLAUDE.md` and `AGENTS.md` to the directory you
 run it from. It also ensures a local `.tickets/` folder exists, so `sprint`,

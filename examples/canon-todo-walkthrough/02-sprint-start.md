@@ -1,157 +1,87 @@
 # 02 - Sprint Start
 
-This step shows the planning flow before any app code changes.
+`sprint start` is where the agent plans the work *before* writing any code. You
+describe the outcome; the agent drafts the planning docs and you review them on
+the board.
 
 ```mermaid
 flowchart LR
-    A[Empty board] --> B[sprint start]
-    B --> C[Acceptance]
-    C --> D[Blueprint]
-    D --> E[Approval]
-    E --> F[Plan]
-    F --> G[Implement]
-    G --> H[sprint complete]
-    H --> I[Done]
+    T[Ticket] --> A[Acceptance] --> B[Blueprint] --> O[[orient]]
+    O --> G[Grill] --> I[[impact]] --> AP[Approval] --> P[Plan]
+    classDef subskill stroke:#8888dd,stroke-width:2px
+    class O,I subskill
 ```
 
-Recommended doc order: create `Acceptance` first, then `Blueprint`, then create
-`Plan` only after the approach is approved.
+> The double-bordered steps are sub-skills the agent runs for you: `orient` maps
+> the codebase, `impact` rates risk. You don't invoke them.
 
-> In normal use the agent drafts these docs from your request — orienting the
-> codebase, grilling gray areas, rating impact — and you review. This
-> walkthrough has you write them by hand so each step is deterministic and
-> reproducible.
-
-## Step 1 - Open the Empty Board
-
-Type this in the command line from the walkthrough root:
+## Step 1 - Open the empty board
 
 ```bash
 sprint-check
 ```
 
-The board should show 0 open tickets, 0 active tickets, and empty columns. This
-is the expected start for a new project.
+Zero open, zero active, empty columns — the expected start for a new project.
 
-## Step 2 - Start the Sprint
+## Step 2 - Describe the work
 
-Tell the agent this in chat, or run it from the walkthrough root:
+In your agent session:
 
 ```bash
 sprint start "Build a simple Todo list"
 ```
 
-The command prints the new ticket ID and creates:
+The CLI creates the ticket and active state:
 
 ```text
 .tickets/ACTIVE
-.tickets/<id>/
-  ticket.md
+.tickets/<id>/ticket.md
 DECISIONS.md
 HANDOFF.md
 ```
 
-Reload `sprint-check`. The ticket should appear in In Progress and show
-`not ready`. That is correct: only `ticket.md` exists so far.
+Then the agent takes over: it drafts **Acceptance** (binary done criteria + test
+plan) and **Blueprint** (approach + files), maps the subsystem, and surfaces any
+gray areas as questions.
 
-## Step 3 - Create Acceptance
+Reload `sprint-check`. The ticket is In Progress and `not ready` — only
+`ticket.md` plus the agent's drafts exist so far. Open it to read what the agent
+proposed.
 
-Open the ticket in `sprint-check`, click `+ New doc`, and select `Acceptance`
-when it is suggested.
+> Your agent's wording will differ from the samples below — that's expected. What
+> stays constant: Acceptance is binary and testable, and `plan.md` is written only
+> after you approve.
 
-Keep the ticket comment and `Ticket: \`...\`` line that sprint-check created; it
-should contain the real ticket ID from `.tickets/<id>/ticket.md`. Replace the
-rest of the template with:
+## Step 3 - Review what the agent drafted
+
+The Acceptance the agent produces should read like this:
 
 ```markdown
-# Acceptance
-
-<!-- Keep the Ticket line below unchanged. -->
-Ticket: `<keep the existing id>`
-
 ## Criteria
-The checklist of behavior that must be true before the sprint can close.
-<!-- Add or edit checklist items below. Keep this heading unchanged. -->
-
 - [ ] Users can add a non-empty Todo item.
 - [ ] Blank Todo titles are ignored.
 - [ ] Users can mark a Todo complete and back open.
 - [ ] Todo behavior is covered by tests.
 
 ## Test Plan
-The commands or checks that prove the criteria work.
-<!-- Add or edit test commands below. Keep this heading unchanged. -->
-
 - [ ] `npm test`
 ```
 
-Save the doc. Reload the board and confirm the Acceptance tab exists.
+If a criterion is missing or wrong, tell the agent — don't hand-edit the doc
+silently. The point is that the ticket reflects a shared understanding, not your
+private edits.
 
-## Step 4 - Create Blueprint
+## Step 4 - Answer the grill, then approve
 
-Click `+ New doc` again and select `Blueprint`.
+The agent asks the gray-area questions that change what gets built. For this app,
+for example: *"Should completed Todos be toggleable back to open?"*
 
-Keep the ticket comment and existing `Ticket: \`...\`` line. Replace the rest of
-the template with:
-
-```markdown
-# Blueprint
-
-<!-- Keep the Ticket line below unchanged. -->
-Ticket: `<keep the existing id>`
-
-## Goal
-The outcome this sprint is trying to achieve.
-<!-- Add or edit the goal below. Keep this heading unchanged. -->
-
-Build a dependency-free browser Todo app that supports adding and completing tasks.
-
-## Approach
-The small design choices the agent should use when building.
-<!-- Add or edit approach notes below. Keep this heading unchanged. -->
-
-- Keep Todo state in browser memory for this walkthrough.
-- Create `package.json`, `src/app.js`, `src/index.html`, `src/styles.css`, and
-  `tests/todo.test.mjs`.
-- Add `npm test` and `npm run serve` scripts.
-- Use a checkbox to toggle complete/open.
-- Cover add, blank-title, and toggle behavior with `npm test`.
-```
-
-Save the doc. The ticket now has acceptance criteria and a blueprint. Next,
-approve the approach and create the final Plan doc.
-
-## Step 5 - Approve and Create Plan
-
-Tell the agent this approval in chat:
+Answer in chat:
 
 ```text
-Allow completed Todos to be toggled back open. Approved.
+Yes, allow toggling completed Todos back open. Keep it framework-free. Approved.
 ```
 
-Click `+ New doc` again and select `Plan`.
-
-Keep the ticket comment and existing `Ticket: \`...\`` line. Replace the rest of
-the template with:
-
-```markdown
-# Plan
-
-<!-- Keep the Ticket line below unchanged. -->
-Ticket: `<keep the existing id>`
-
-## Sprint Brief
-The approved sprint brief the agent implements after planning is approved.
-<!-- Add or edit the approved brief below. Keep this heading unchanged. -->
-
-Build a small dependency-free browser Todo app with add, complete/open, Node tests,
-and npm scripts for testing and serving locally.
-
-Approved:
-
-- Completed Todos can be toggled back open.
-- Keep the example framework-free.
-```
-
-Save the doc. The ticket is still In Progress, but it now has the docs needed
-to implement and later close with `sprint complete`.
+On approval the agent writes `plan.md` — the approved brief it implements against.
+The ticket stays In Progress, now with Acceptance, Blueprint, and Plan present and
+ready to build.
