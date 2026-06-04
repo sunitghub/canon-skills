@@ -5,6 +5,8 @@ pbcopy
 CLAUDE.md
 .DS_Store
 __pycache__/
+meta/node_modules/
+meta/.rec/
 \#*\#
 .\#*
 *~

@@ -1,0 +1,12 @@
+{
+  "name": "canon-meta-recorder",
+  "private": true,
+  "type": "module",
+  "description": "Author-only tooling to record canon's demo GIFs. Not shipped to users.",
+  "scripts": {
+    "record": "node record-demo.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

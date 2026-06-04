@@ -37,6 +37,10 @@ That's the whole surface. Your agent does the work; canon keeps it in your repo 
 
 `sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
 
+![Edit a ticket's acceptance doc in place — toolbar for checklists, headings, and code](meta/doc-editing.gif)
+
+*Edit acceptance, plan, and decision docs right on the board — checklists, headings, and code from one toolbar, saved straight to your repo. No switch to an editor.*
+
 Phase-based frameworks give you a multi-command methodology to learn. canon gives you two commands and a board you can see.
 
 **[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
