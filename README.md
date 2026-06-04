@@ -96,6 +96,7 @@ Define your standards once; every project inherits them via `@`-import — Claud
 
 - **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.
 - **[Todo walkthrough →](examples/canon-todo-walkthrough)** — the full flow end to end, from empty board to shipped app.
+- **[All docs, by what you're doing →](docs/README.md)** — learn, set up, reference, why.
 
 ## Contributing
 
