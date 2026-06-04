@@ -15,3 +15,7 @@ Find docs by what you're trying to do.
 ### Understand the Why
 - [Why canon](../README.md#why) — define your standards once; every project inherits them.
 - [How sprint works](sprint-check.md#how-sprint-works) — plan-then-build and the deterministic close gate.
+
+---
+
+Planned and held work: [Roadmap](../ROADMAP.md).
