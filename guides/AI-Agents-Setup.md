@@ -52,6 +52,8 @@ Then verify:
 $SKILLS/skills.sh status
 ```
 
+That is the setup surface. Day to day, work starts with `sprint start "<what>"`, the board opens with `sprint-check`, and finished work closes with `sprint complete`.
+
 Registering any skill also automatically injects the **efficiency standard** into your project — coding principles, git conventions, and token-efficiency rules that apply to every session without any invocation.
 
 **Existing project only** — `CLAUDE.md` and `AGENTS.md` are extended with `@`-imports, existing content is preserved. If you have prior architectural decisions worth keeping, add them to `DECISIONS.md` manually before the first sprint using the format in the [How it works](#how-it-works) section; sprint will append from there. `HANDOFF.md` and `DECISIONS.md` are both created automatically on the first `sprint start` if they don't exist.
@@ -157,7 +159,7 @@ You didn't ask for this. It happened because the agent found a non-obvious const
 
 The agent:
 
-1. **Wrapup pipeline** — runs on all files modified since sprint start:
+1. **Wrapup pipeline** — runs on files modified since sprint start, using skip rules for steps that do not apply:
    - `code-simplifier` — removes a redundant null check, clarifies a variable name
    - `code-reviewer` — flags a missing test for the header-manipulation bypass criterion
    - `security-review` — confirms no injection risk in the Redis key construction
@@ -287,18 +289,19 @@ Next session, the agent reads `HANDOFF.md` and `DECISIONS.md` and picks up from 
 
 ## How it works
 
-`sprint` encapsulates a full dev lifecycle in two commands. Everything underneath runs automatically.
+`sprint` encapsulates a tiered dev lifecycle in two commands. Everything underneath runs automatically when the tier calls for it.
 
 ```
 sprint ──────────────────────────────── planned dev lifecycle
   │
   ├── PLAN
   │     tkt              track work, one ticket per sprint
-  │     grill            surface gray areas → lock decisions before planning
-  │     orient           read-only subsystem map → blueprint.md before any edit
-  │     impact-analysis  risk rating + test plan before any code
+  │     tier             trivial skip / normal / high-risk
   │     acceptance.md    binary definition of done + Test Plan
-  │     blueprint.md     approach, Subsystem Map, Grill log, Impact Assessment
+  │     blueprint.md     approach, constraints, test plan
+  │     orient           high-risk subsystem map → blueprint.md before any edit
+  │     grill            high-risk gray areas → lock decisions before planning
+  │     impact-analysis  high-risk rating + mitigation tests before any code
   │     plan.md          approved brief written on approval — survives compaction
   │     DECISIONS.md     durable architectural decisions (repo root)
   │
@@ -399,7 +402,7 @@ Each step has skip logic — states why in one line when it doesn't apply:
 
 **The problem:** The wrapup steps need to run in a specific order with skip logic evaluated at each step. Remembering to do this manually is friction.
 
-**What it does:** `wrapup` runs the full pipeline in order — `code-simplifier` → `code-reviewer` → `security-review` → `repo-check` → `doc-audit` — evaluating skip logic at each step, reports a single structured summary, then refreshes any stale docs touched in the session (DECISIONS.md, HANDOFF.md, AGENTS.md, README) and always prompts to commit and push. Inside `sprint complete`, it runs on all files modified since sprint start.
+**What it does:** `wrapup` considers the full pipeline in order — `code-simplifier` → `code-reviewer` → `security-review` → `repo-check` → `doc-audit` — evaluating skip logic at each step, reports a single structured summary, then refreshes any stale docs touched in the session (DECISIONS.md, HANDOFF.md, AGENTS.md, README) and always prompts to commit and push. Inside `sprint complete`, it runs proportionally to the sprint tier and files modified since sprint start.
 
 **Outside a sprint:** `/wrapup` directly on any code written in the session.
 
@@ -407,7 +410,7 @@ Each step has skip logic — states why in one line when it doesn't apply:
 
 **The problem:** Changes with broad audience, irreversible effects, or multiple trigger paths cause production incidents that code review alone won't catch — because the risk is structural, not syntactic. A hidden "Email All" button bypassing an auth check looks fine in isolation.
 
-**What it does:** Before any code is written, `impact-analysis` interrogates the request, rates five risk dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk), and generates a mandatory test plan. Every HIGH-rated dimension adds a required test. Sprint complete won't close until all tests are documented as passed.
+**What it does:** For high-risk work, `impact-analysis` runs before code is written: it interrogates the request, rates five risk dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk), and generates a mandatory test plan. Every HIGH-rated dimension adds a required test. Sprint complete won't close until those tests are documented as passed.
 
 | Dimension | What it catches |
 |---|---|
@@ -417,7 +420,7 @@ Each step has skip logic — states why in one line when it doesn't apply:
 | Trigger paths | Multiple UI/API paths to the same handler — duplicate trigger bug class |
 | Cascade risk | Downstream consumers that react to the change |
 
-Sprint start surfaces these before approval. Sprint complete gates closure on the resulting tests.
+Sprint start surfaces these before approval when a high-risk trigger is present. Sprint complete gates closure on the resulting tests.
 
 ### Layer 6 — Sprint (the full lifecycle)
 
@@ -425,11 +428,11 @@ Sprint start surfaces these before approval. Sprint complete gates closure on th
 
 | Command | What happens |
 |---|---|
-| `sprint start` | CLI creates/starts ticket → records `.tickets/ACTIVE` → agent creates sprint docs → reads DECISIONS.md + HANDOFF.md → **maps subsystem (orient)** → **grills gray areas** → **impact analysis** → produces sprint brief → **waits for your approval** → writes `plan.md` |
+| `sprint start` | CLI creates/starts ticket → records `.tickets/ACTIVE` → agent creates sprint docs → reads DECISIONS.md + HANDOFF.md → classifies tier → normal path writes a brief plan, high-risk path **maps subsystem (orient)** → **grills gray areas** → **impact analysis** → produces sprint brief → **waits for your approval** → writes `plan.md` |
 | `sprint complete` | Agent runs wrapup → **verifies all tests passed** → validates every acceptance criterion → appends to DECISIONS.md → **conventions check → AGENTS.md** → updates HANDOFF.md → CLI validates checklists and closes ticket |
 
 **Trigger phrases:**
-- sprint start: any request to add, fix, update, debug, implement, or build — explicit phrases like *"sprint start"* or *"let's work on X"* also work. Skipped only for questions, explanations, or trivially mechanical one-liners.
+- sprint start: normal or high-risk requests to add, fix, update, debug, implement, or build — explicit phrases like *"sprint start"* or *"let's work on X"* also work. Skipped for questions, explanations, or trivially mechanical one-liners.
 - sprint complete: *"sprint complete"*, *"complete the sprint"*, *"ship it"*
 
 > Sprint isn't code-only — it works equally well for docs, config, and planning file updates. The wrapup pipeline skips steps that don't apply (simplifier and security-review are both skipped for docs-only changes).
@@ -439,7 +442,7 @@ Sprint start surfaces these before approval. Sprint complete gates closure on th
 .tickets/<id>/
   ticket.md        ← tkt-managed
   acceptance.md    ← binary definition of done + Test Plan
-  blueprint.md     ← approach, Grill log, Impact Assessment
+  blueprint.md     ← approach; high-risk sprints also include Grill + Impact Assessment
   plan.md          ← approved sprint brief; written on approval, re-read after compaction
 ```
 
@@ -488,12 +491,12 @@ tkt reopen <id>               # reopen a closed ticket
 
 | Skill | How to verify | Expected response |
 |---|---|---|
-| `sprint` | `"Start a sprint for X"` | Subsystem mapped (orient) → gray areas grilled → impact ratings shown → sprint brief with Impact Assessment and Test Plan → awaits approval → writes `plan.md` |
+| `sprint` | `"Start a sprint for X"` | Tier selected → normal brief or high-risk orient/grill/impact path → sprint brief with Test Plan → awaits approval → writes `plan.md` |
 | `ticket` | `tkt ls` | Empty list or existing tickets — no error |
 | `context-check` | `/context-check` | Size + content audit of always-loaded context; findings appended to `standards/context-findings.md` on confirmation |
 | `doc-audit` | `/doc-audit` | Audits README and guides for overstated claims, missing prerequisites, and personal content; findings appended to `standards/doc-findings.md` on confirmation |
 
-> Everything else is automatic. `efficiency` is always on. `capture` fires mid-session. `wrapup` + test verification run inside `sprint complete`. `impact-analysis`, `handoff`, and `ticket` are deps of sprint — loaded silently. Run `context-check` periodically to audit context budget.
+> Everything else is automatic. `efficiency` is always on. `capture` fires mid-session. `wrapup` + test verification run inside `sprint complete`. `impact-analysis`, `handoff`, and `ticket` are deps of sprint — loaded silently, but the high-ceremony path runs only when the tier calls for it. Run `context-check` periodically to audit context budget.
 
 ---
 

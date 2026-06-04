@@ -15,6 +15,8 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 ![sprint-check board — drag a ticket to Done, open it, follow the commit links](meta/board-demo.gif)
 
+One-time setup:
+
 ```bash
 npx canon-skills@latest          # installs canon to ~/.canon
 cd /path/to/your-project
@@ -23,7 +25,7 @@ cd /path/to/your-project
 
 > Installs to `~/.canon` by default — override with `CANON_HOME=<path> npx canon-skills@latest` or `npx canon-skills@latest <path>`.
 
-Then build with two commands and a board:
+Daily workflow:
 
 ```bash
 sprint start "add OAuth login"   # plan the work, create a local ticket
@@ -31,7 +33,7 @@ sprint-check                     # open the board in your browser
 sprint complete                  # review, verify, close
 ```
 
-That's the whole surface. Your agent does the work; canon keeps it in your repo — not your prompt history.
+That's the day-to-day surface. Setup wires the tools once; after that, your agent does the work and canon keeps it in your repo — not your prompt history.
 
 ## The Board
 
@@ -47,7 +49,7 @@ Phase-based frameworks give you a multi-command methodology to learn. canon give
 
 ## The Two Commands
 
-- **`sprint start "<what>"`** — creates a local ticket, then has your agent define acceptance, map the subsystem and its callers, surface gray areas, rate risk across five dimensions, and write a plan before touching source. The plan lives in `.tickets/<id>/` and survives context resets.
+- **`sprint start "<what>"`** — creates a local ticket, has your agent classify the work as normal or high-risk, define acceptance, and write a plan before touching source. Normal changes stay light; high-risk changes add subsystem mapping, gray-area resolution, five-dimension impact analysis, and mitigation tests. The plan lives in `.tickets/<id>/` and survives context resets.
 - **`sprint complete`** — runs the close path: simplify → review → security → repo/doc audit → acceptance check → close → commit & push prompt.
 
 A ticket is a folder, not a card — ticket, acceptance, plan, and decisions, all markdown in your repo. When context resets — or a fresh session starts — the agent reads `HANDOFF.md` (auto-injected at session start) and reopens the ticket folder, and picks up where it left off.
@@ -56,14 +58,15 @@ A ticket is a folder, not a card — ticket, acceptance, plan, and decisions, al
 
 ## How Sprint Works
 
-`sprint start` plans before it builds:
+`sprint start` scales planning to the risk:
 
 ```mermaid
 flowchart LR
-    S1[Ticket] --> S2[Acceptance] --> S3[Blueprint] --> S4[[orient]]
-    S4 --> S5[Grill] --> S6[[impact]] --> S7[Approval] --> S8[Plan]
+    S1[Ticket] --> S2[Tier] --> S3[Acceptance] --> S4[Blueprint]
+    S4 --> N[Normal: brief plan] --> S8[Approval]
+    S4 --> H[High-risk] --> S5[[orient]] --> S6[Grill] --> S7[[impact]] --> S8
     classDef subskill stroke:#8888dd,stroke-width:2px
-    class S4,S6 subskill
+    class S5,S7 subskill
 ```
 
 `sprint complete` gates the close:
@@ -88,6 +91,8 @@ Define your standards once; every project inherits them via `@`-import — Claud
 | Claude Code / Codex / Pi | At least one | running the agent |
 | Node.js ≥ 16 | `npx` install only | install |
 | Python 3 | `sprint-check` + hooks | the board |
+
+Register canon in another project:
 
 ```bash
 ~/.canon/skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)

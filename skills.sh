@@ -123,7 +123,12 @@ upsert_at_import() {
   if grep -qF "$import_line" "$file" 2>/dev/null; then
     : # already registered — silent
   elif grep -qE "^@.+/$skill_basename$" "$file" 2>/dev/null; then
-    sed -i '' "s|^@.*/$skill_basename$|$import_line|" "$file"
+    local tmp
+    tmp=$(mktemp)
+    awk -v import_line="$import_line" -v base="$skill_basename" '
+      index($0, "@") == 1 && $0 ~ "^@.*/" base "$" { print import_line; next }
+      { print }
+    ' "$file" > "$tmp" && mv "$tmp" "$file"
     echo "  [$label]  updated stale @-import path"
   else
     echo "$import_line" >> "$file"

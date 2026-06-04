@@ -18,7 +18,7 @@ CLI-backed commands:
 
 | Command | When |
 |---|---|
-| `sprint start` | Any dev request — automatic unless the change is trivially mechanical |
+| `sprint start` | Any normal or high-risk dev request |
 | `sprint complete` | When you believe the work is done |
 
 The `sprint` CLI owns deterministic workflow state: ticket creation, active
@@ -28,39 +28,72 @@ implementation, review, and test judgment.
 
 ---
 
-## Default mode
+## Workflow tiers
 
-Default for substantive dev requests.
+Choose the lightest tier that still protects the work.
 
-**Skip only when:**
+### Trivial
+
+Use no sprint when:
 - The request is a question or explanation
 - The change is a single line or trivially mechanical
 - The user explicitly says to skip it ("just fix it", "quick change")
+
+Work directly, then report verification.
+
+### Normal
+
+Default for focused, reversible product/docs/code changes that affect a small surface.
+
+Run `sprint start`, create `acceptance.md`, `blueprint.md`, and `plan.md`, then build after approval. Keep the blueprint brief: files, approach, known constraints, and test plan.
+
+Skip full orient, grill, and impact-analysis unless the local code is unclear or a high-risk trigger appears.
+
+### High-risk
+
+Use the full planning pipeline when any condition applies:
+- Security-sensitive behavior changes: auth, authorization, secrets, sessions, crypto, external input, file writes, API endpoints
+- Irreversible or hard-to-reverse operations: deletes, sends, payments, migrations, data rewrites, publishes, deploys
+- Broad audience or shared-state blast radius
+- Multiple UI/API/job trigger paths reach the same behavior
+- Downstream consumers react to the changed data or event
+- The implementation has genuine gray areas that would materially change the design
+
+High-risk sprints run orient, grill, impact-analysis, required mitigation tests, and full wrapup.
 
 ---
 
 ## sprint start
 
-**Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any request to add, fix, update, debug, implement, or build something that isn't explicitly trivial
+**Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any normal/high-risk request to add, fix, update, debug, implement, or build something.
 
 1. **Ticket and context.** Run `sprint start "<title>"`. It creates/starts the
    ticket, records it as active, and ensures `DECISIONS.md` and `HANDOFF.md`
    exist.
 
-2. **Planning files.** Create or update the files in `.tickets/<id>/`:
+2. **Classify tier.** Decide normal vs high-risk using the workflow tiers above.
+
+3. **Planning files.** Create or update the files in `.tickets/<id>/`:
    - `acceptance.md` — specific, binary conditions that define "done"
    - `blueprint.md` — files to inspect, files to create/modify, step-by-step build plan
    - If these already exist: read them and proceed without recreating.
+   - Record the tier and one-line reason in `blueprint.md`.
 
-3. **Context.** Read in order:
+4. **Context.** Read in order:
    - `DECISIONS.md` at repo root — create with empty log table if absent
    - `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
    - Active sprint files
-   - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold (used in Step 5 regression tests)
+   - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold
 
-4. **Orient.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Appends `## Subsystem Map` to `blueprint.md`. Findings feed into the Grill step.
+5. **Normal path.** For normal-tier work:
+   - Inspect the files and callers needed for the requested change.
+   - Add `## Approach` and `## Test Plan` to `blueprint.md`.
+   - Produce the sprint brief from Step 9.
+   - Skip Steps 6-8 unless new findings promote the work to high-risk.
 
-5. **Grill.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
+6. **Orient high-risk work.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Appends `## Subsystem Map` to `blueprint.md`. Findings feed into the Grill step.
+
+7. **Grill high-risk work.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 
    - Analyze the request and identify up to 5 gray areas (API shape, data model, UI behavior, error handling approach, integration pattern, scope boundary, etc.)
    - If no genuine gray areas exist: skip silently.
@@ -68,7 +101,7 @@ Default for substantive dev requests.
    - Grill clarifies implementation inside the approved scope; it does not add scope.
    - Log each resolved gray area under `## Grill` in `blueprint.md`.
 
-6. **Impact analysis.** Run the full impact analysis process defined in the impact-analysis skill:
+8. **Impact analysis for high-risk work.** Run the full impact analysis process defined in the impact-analysis skill:
    - Interrogate the request — ask every question whose answer changes the risk profile.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
    - For every HIGH rating: add the required action to `blueprint.md` and the required test to `acceptance.md ## Test Plan`.
@@ -76,16 +109,17 @@ Default for substantive dev requests.
    - Write the `## Impact Assessment` block to `blueprint.md` and `## Test Plan` to `acceptance.md`.
    - If test location is unclear, ask the user before proceeding.
 
-7. **Sprint brief.** After impact analysis, produce:
+9. **Sprint brief.** Produce:
    - What this sprint accomplishes (one sentence)
+   - Tier: trivial skipped / normal / high-risk, with the reason
    - Files expected to be created or modified
-   - Impact summary: overall rating + any HIGH dimensions with their required actions called out
+   - Impact summary: overall rating + any HIGH dimensions with their required actions called out, or "normal tier — no high-risk triggers found"
    - Acceptance criteria (verbatim from acceptance.md)
    - Test plan (verbatim from acceptance.md ## Test Plan)
    - Any constraints from DECISIONS.md that apply
    - Open questions or blockers still unresolved
 
-8. **Wait for explicit approval.** Do not write code until confirmed. On approval, write `plan.md` to `.tickets/<id>/` with the timestamp, ticket ID, grill resolutions, and full approved sprint brief verbatim.
+10. **Wait for explicit approval.** Do not write code until confirmed. On approval, write `plan.md` to `.tickets/<id>/` with the timestamp, ticket ID, tier, grill resolutions if any, and full approved sprint brief verbatim.
 
    Re-read `plan.md` after compaction or context reset.
 
@@ -135,7 +169,7 @@ Canonical layout:
 ```
 .tickets/<id>/
   ticket.md        ← tkt-managed
-  blueprint.md     ← implementation plan (includes Grill resolutions + Impact Assessment)
+  blueprint.md     ← implementation plan; high-risk sprints also include Grill + Impact Assessment
   acceptance.md    ← definition of done + test plan
   plan.md          ← approved sprint brief; written on approval, re-read after compaction
 ```

@@ -69,15 +69,15 @@ Sprint docs land in `.tickets/<id>/` as markdown files and are read automaticall
 
 ## How Sprint Works
 
-One workflow command drives the lifecycle. The CLI handles deterministic state; sub-skills are called by the agent at each stage — no manual orchestration. The two diagrams on the [README](../README.md#how-sprint-works) show the start and complete flows.
+One workflow command drives the lifecycle. The CLI handles deterministic state; the agent chooses the lightest tier that protects the work — trivial changes skip sprint, normal changes get a brief ticket/acceptance/plan path, and high-risk changes run the full sub-skill pipeline. The two diagrams on the [README](../README.md#how-sprint-works) show the start and complete flows.
 
 Recommended sprint doc order: create `acceptance.md` first to define Done, then `blueprint.md` to capture the approach, then `plan.md` only after the approach is approved. `sprint-check` suggests that order in `+ New doc`.
 
-Only those markdown files are sprint docs the user or agent creates. The double-bordered steps in the diagrams are sub-skills: `orient` reads the codebase and feeds findings into the Blueprint, `impact-analysis` rates risk and feeds the test plan (detailed below), and `capture` writes notable discoveries to `HANDOFF.md` when they appear mid-build. On `sprint complete`, `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, and `doc-audit` run before close. They run as part of the `sprint` workflow; they are not separate docs to create and not commands the user has to invoke.
+Only those markdown files are sprint docs the user or agent creates. The double-bordered steps in the diagrams are sub-skills used when the tier calls for them: `orient` reads the codebase and feeds findings into the Blueprint, `impact-analysis` rates risk and feeds the test plan (detailed below), and `capture` writes notable discoveries to `HANDOFF.md` when they appear mid-build. On `sprint complete`, `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, and `doc-audit` are considered in order, using skip rules for steps that do not apply. They run as part of the `sprint` workflow; they are not separate docs to create and not commands the user has to invoke.
 
 ### Impact Analysis — five dimensions
 
-Before any code is written, `sprint start` rates the change across five risk dimensions and writes the result to the Blueprint:
+For high-risk work, `sprint start` rates the change across five risk dimensions and writes the result to the Blueprint:
 
 | Dimension | Asks |
 |---|---|
@@ -87,6 +87,6 @@ Before any code is written, `sprint start` rates the change across five risk dim
 | **Trigger paths** | How many UI paths, API callers, or jobs reach the same handler? |
 | **Cascade risk** | What downstream consumers — queues, tables, external APIs — react to the change? |
 
-Each dimension is rated HIGH, MEDIUM, or LOW. The ratings aren't advisory: **every HIGH adds required mitigation to the acceptance plan** — a rollback test for permanent operations, a handler-binding grep and server-side auth check for multiple trigger paths, a per-consumer test for cascade risk, an audit-log requirement for broad audience — and the `sprint complete` gate refuses to close while any of those items is still unchecked in `acceptance.md`. The gate checks box state, not the work behind it — the agent verifies each mitigation actually holds before checking it. All-LOW changes record the assessment silently and proceed.
+Each dimension is rated HIGH, MEDIUM, or LOW. The ratings aren't advisory: **every HIGH adds required mitigation to the acceptance plan** — a rollback test for permanent operations, a handler-binding grep and server-side auth check for multiple trigger paths, a per-consumer test for cascade risk, an audit-log requirement for broad audience — and the `sprint complete` gate refuses to close while any of those items is still unchecked in `acceptance.md`. The gate checks box state, not the work behind it — the agent verifies each mitigation actually holds before checking it. Normal-tier changes record that no high-risk trigger was found and proceed with a shorter plan.
 
 **Regression carryover.** `sprint start` also scans `.tickets/` for closed tickets that touched the same files this sprint will modify, and adds one regression test per match. Past work that passed stays passing — the test obligation rides along automatically, so a later change can't silently break behavior an earlier ticket established.
