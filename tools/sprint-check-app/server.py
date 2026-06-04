@@ -274,10 +274,19 @@ def write_doc(doc_file: str, content: str) -> bool:
 
 class Handler(BaseHTTPRequestHandler):
 
+    _ALLOWED_HOSTS = ('127.0.0.1', 'localhost')
+
     def log_message(self, fmt, *args):
         first = str(args[0]) if args else ''
         if '/api/' in first:
             print(f'  {first}', file=sys.stderr)
+
+    def _host_ok(self) -> bool:
+        # Reject requests whose Host is not loopback — closes the DNS-rebinding
+        # path that the 127.0.0.1 bind alone cannot.
+        host = self.headers.get('Host', '')
+        hostname = host.rsplit(':', 1)[0] if host else ''
+        return hostname in self._ALLOWED_HOSTS
 
     def send_json(self, data, status=200):
         body = json.dumps(data, ensure_ascii=False).encode()
@@ -285,7 +294,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(body))
         self.send_header('Connection', 'close')
-        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(body)
 
@@ -302,6 +310,8 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if not self._host_ok():
+            self.send_error(403); return
         path = urlparse(self.path).path.rstrip('/')
         if path in ('', '/'):
             self.send_html(APP_HTML)
@@ -325,6 +335,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404)
 
     def do_POST(self):
+        if not self._host_ok():
+            self.send_error(403); return
         path = urlparse(self.path).path
         origin = self.headers.get('Origin', '')
         if origin and not origin.startswith('http://127.0.0.1') and not origin.startswith('http://localhost'):
@@ -363,10 +375,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404)
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type')
+        if not self._host_ok():
+            self.send_error(403); return
+        self.send_response(204)
+        self.send_header('Content-Length', 0)
         self.end_headers()
 
 # ── Entry point ───────────────────────────────────────────────────────────

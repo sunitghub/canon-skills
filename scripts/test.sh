@@ -10,6 +10,7 @@ tests=(
   "$ROOT/tests/skills-add-sprint.sh"
   "$ROOT/tests/skills-std.sh"
   "$ROOT/tests/install-target.sh"
+  "$ROOT/tests/sprint-check-server.sh"
 )
 
 for test_file in "${tests[@]}"; do
