@@ -16,10 +16,12 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 ![sprint-check board — drag a ticket to Done, open it, follow the commit links](meta/board-demo.gif)
 
 ```bash
-npx canon-skills@latest          # installs canon to ~/Developer/canon
+npx canon-skills@latest          # installs canon to ~/.canon
 cd /path/to/your-project
-~/Developer/canon/skills.sh add sprint
+~/.canon/skills.sh add sprint
 ```
+
+> Installs to `~/.canon` by default — override with `CANON_HOME=<path> npx canon-skills@latest` or `npx canon-skills@latest <path>`.
 
 Then build with two commands and a board:
 
@@ -84,8 +86,8 @@ Define your standards once; every project inherits them via `@`-import — Claud
 | Python 3 | `sprint-check` + hooks | the board |
 
 ```bash
-~/Developer/canon/skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
-~/Developer/canon/skills.sh add context-check   # optional: context-budget audits
+~/.canon/skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
+~/.canon/skills.sh add context-check   # optional: context-budget audits
 ```
 
 - **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.

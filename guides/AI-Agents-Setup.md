@@ -9,7 +9,7 @@ A shared library of AI agent skills, tools, and automation. Your projects import
 ### Step 1 — Clone canon
 
 ```bash
-git clone https://github.com/sunitghub/canon.git ~/Developer/canon
+git clone https://github.com/sunitghub/canon.git ~/.canon
 ```
 
 ### Step 2 — Run init (once)
@@ -18,7 +18,7 @@ The rest of this guide uses `$SKILLS` to refer to the canon checkout, so define
 it first:
 
 ```bash
-export SKILLS=~/Developer/canon   # add to ~/.zshrc to make permanent
+export SKILLS=~/.canon   # add to ~/.zshrc to make permanent
 $SKILLS/skills.sh init
 ```
 

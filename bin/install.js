@@ -2,16 +2,24 @@
 
 'use strict';
 
-const { execSync, spawnSync } = require('child_process');
+const { spawnSync } = require('child_process');
 const os   = require('os');
 const path = require('path');
 const fs   = require('fs');
 
-const REPO   = 'https://github.com/sunitghub/canon.git';
-const TARGET = path.join(os.homedir(), 'Developer', 'canon');
+const REPO = 'https://github.com/sunitghub/canon.git';
 
-function run(cmd, opts = {}) {
-  return spawnSync(cmd, { shell: true, stdio: 'inherit', ...opts });
+function expandTilde(p, home) {
+  if (p === '~') return home;
+  if (p.startsWith('~/') || p.startsWith('~\\')) return path.join(home, p.slice(2));
+  return p;
+}
+
+// Install target precedence: positional arg > CANON_HOME env > ~/.canon
+function resolveTarget({ argv, env, home }) {
+  const arg = argv[2] && !argv[2].startsWith('-') ? argv[2] : undefined;
+  const raw = arg || env.CANON_HOME || path.join(home, '.canon');
+  return path.resolve(expandTilde(raw, home));
 }
 
 function header(msg) {
@@ -30,42 +38,45 @@ const LOGO = `
 ╚██████╗ ██║  ██║██║ ╚████║╚██████╔╝██║ ╚████║
  ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═══╝ ╚═════╝╚═╝  ╚═══╝
 `;
-console.log(`\x1b[96m${LOGO}\x1b[0m`);
 
-header('canon-skills installer');
+function main() {
+  const TARGET = resolveTarget({ argv: process.argv, env: process.env, home: os.homedir() });
 
-// ── Clone or update ───────────────────────────────────────────────────────
+  console.log(`\x1b[96m${LOGO}\x1b[0m`);
+  header('canon-skills installer');
 
-if (fs.existsSync(path.join(TARGET, 'skills.sh'))) {
-  ok(`canon already installed at ${TARGET}`);
-  info('Pulling latest updates…');
-  const r = run(`git -C "${TARGET}" pull --ff-only`);
-  if (r.status !== 0) {
-    warn('git pull failed — your local changes may conflict. Skipping update.');
+  // ── Clone or update ───────────────────────────────────────────────────────
+
+  if (fs.existsSync(path.join(TARGET, 'skills.sh'))) {
+    ok(`canon already installed at ${TARGET}`);
+    info('Pulling latest updates…');
+    const r = spawnSync('git', ['-C', TARGET, 'pull', '--ff-only'], { stdio: 'inherit' });
+    if (r.status !== 0) {
+      warn('git pull failed — your local changes may conflict. Skipping update.');
+    }
+  } else {
+    header(`Cloning canon → ${TARGET}`);
+    fs.mkdirSync(path.dirname(TARGET), { recursive: true });
+    const r = spawnSync('git', ['clone', REPO, TARGET], { stdio: 'inherit' });
+    if (r.status !== 0) {
+      console.error('\n  \x1b[31m✗\x1b[0m  Clone failed. Check your git config and try again.');
+      process.exit(1);
+    }
+    ok('Cloned.');
   }
-} else {
-  header(`Cloning canon → ${TARGET}`);
-  fs.mkdirSync(path.dirname(TARGET), { recursive: true });
-  const r = run(`git clone "${REPO}" "${TARGET}"`);
-  if (r.status !== 0) {
-    console.error('\n  \x1b[31m✗\x1b[0m  Clone failed. Check your git config and try again.');
-    process.exit(1);
+
+  // ── Run init ──────────────────────────────────────────────────────────────
+
+  header('Wiring agent hooks…');
+  const init = spawnSync('bash', [path.join(TARGET, 'skills.sh'), 'init'], { stdio: 'inherit' });
+  if (init.status !== 0) {
+    warn('skills.sh init reported an issue — check output above.');
   }
-  ok('Cloned.');
-}
 
-// ── Run init ──────────────────────────────────────────────────────────────
+  // ── Done ──────────────────────────────────────────────────────────────────
 
-header('Wiring agent hooks…');
-const init = run(`bash "${path.join(TARGET, 'skills.sh')}" init`);
-if (init.status !== 0) {
-  warn('skills.sh init reported an issue — check output above.');
-}
-
-// ── Done ──────────────────────────────────────────────────────────────────
-
-header('Done.');
-console.log(`
+  header('Done.');
+  console.log(`
   Register skills in a project:
 
     cd /path/to/your-project
@@ -79,3 +90,10 @@ console.log(`
 
   Full setup guide: ${TARGET}/guides/AI-Agents-Setup.md
 `);
+}
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = { resolveTarget, expandTilde };
