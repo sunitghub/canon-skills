@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Conventions for writing, naming, and composing skills in canon
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.2.0
-updated: 2026-06-03
+version: 1.3.0
+updated: 2026-06-05
 ---
 
 # Skill Setup Standard
@@ -13,7 +13,7 @@ Rules for adding or modifying skills in canon. Follow these so every skill behav
 
 ## File Location
 
-All skills live flat under `skills/`. No subdirectories. The dependency hierarchy is encoded in frontmatter and `@` imports — not in the folder structure.
+All skills live flat under `skills/`. No subdirectories. The dependency hierarchy is encoded in frontmatter and `@` imports — not in the folder structure. (Note: the Anthropic skills blog recommends folder-based progressive disclosure with `assets/` and sub-files; canon deliberately trades that flexibility for a simpler, grep-friendly flat structure.)
 
 ## Naming
 
@@ -29,11 +29,18 @@ Every skill requires these fields:
 ```yaml
 ---
 name: my-skill
-description: One sentence — what it does and when to use it. Shown in skills.sh list.
+description: One sentence — what it does and when to use it.
 category: dev | agent-ops | ops
 tags: [tag1, tag2]
 ---
 ```
+
+**Write descriptions for models, not just humans.** The `description` field is the primary signal Claude uses to decide when to invoke a skill. Include the action verbs and user intents that should trigger it. Compare:
+
+- Weak: "Handles code quality tasks" — no trigger signal
+- Better: "Review, simplify, and audit code after completing a fix or feature — invoke when work is done and ready to commit"
+
+Standalone skills need this most. Hidden skills (only called by parents) can use a simpler description since a human never selects them directly.
 
 Optional fields:
 
@@ -79,6 +86,33 @@ A skill is instructions for an agent, not a manual. Write the smallest body that
 - If a section does not change what the agent does, delete it.
 
 Length is a smell, not a limit: a leaf skill that runs long is usually doing more than one job (see above) or repeating context it should import.
+
+## Gotchas
+
+Add a `## Gotchas` section to any skill where real usage has revealed failure patterns — edge cases, footguns, or non-obvious constraints that caused problems. This is the highest-signal section a skill can have; keep it growing.
+
+Format: one bullet per gotcha, led by the condition and followed by what to do instead.
+
+```markdown
+## Gotchas
+
+- If `sprint start` reports the wrong ticket ID, `.tickets/` state may be out of sync — run `tkt ls` to inspect before retrying.
+- `sprint complete` refuses if any `- [ ]` remain in `acceptance.md` — check boxes manually or waive with a documented reason.
+```
+
+Start with zero entries and add as problems surface. A skill without gotchas isn't wrong — it just hasn't been used enough yet.
+
+## On-demand hooks
+
+For skills that need to restrict agent behavior (block dangerous commands, lock edits to specific paths), implement the restriction as a hook that is only active while the skill is running — not always-on.
+
+Pattern: the skill registers a `PreToolUse` hook on entry and removes it on exit, or the user invokes the skill explicitly and the hook fires only within that scope.
+
+Examples:
+- A "careful mode" skill that blocks `rm -rf`, `DROP TABLE`, and destructive git commands while active.
+- A "lock" skill that restricts file edits to a specific directory during a sensitive operation.
+
+Document the hook behavior clearly at the top of the skill so users know what is being restricted and for how long.
 
 ## Update vs. new skill
 

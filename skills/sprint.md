@@ -1,7 +1,7 @@
 ---
 name: sprint
-description: Plan, build, and ship focused work with acceptance-gated delivery
-summary: The sprint CLI creates/starts tickets, tracks active state, and validates close. The agent creates sprint docs, maps the subsystem, resolves gray areas, rates impact, builds, tests, and runs wrapup.
+description: Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything
+summary: Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, blueprint, impact analysis), builds and tests, then closes with full wrapup.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
 depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]

@@ -8,8 +8,8 @@ Register these directly into a project with `skills.sh add <name>`.
 
 | Skill | Category | Description |
 |---|---|---|
-| `context-check` | agent-ops | Audit always-on context, hooks, memory, and imported markdown quality. Append findings only on explicit confirmation. |
-| `sprint` | dev | The sprint CLI creates/starts tickets, tracks active state, and validates close. The agent creates sprint docs, maps the subsystem, resolves gray areas, rates impact, builds, tests, and runs wrapup. |
+| `context-check` | agent-ops | Audit always-on context load for bloat, redundancy, and quality — invoke periodically or when context feels heavy |
+| `sprint` | dev | Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, blueprint, impact analysis), builds and tests, then closes with full wrapup. |
 
 ## Standards
 

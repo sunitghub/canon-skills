@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: Run simplification, review, security review, repo/doc audit, and commit handoff after a unit of work
+description: Run quality checks, review, and commit after completing a feature, fix, or session — invoke when work is done and ready to ship
 category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
 depends: [code-simplifier, code-reviewer, security-review, repo-check, doc-audit, handoff, ticket]
