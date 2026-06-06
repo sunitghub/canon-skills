@@ -1,7 +1,7 @@
 ---
 name: orient
 description: Map the sprint target subsystem before editing
-summary: Read entry points, interfaces, adjacent modules, and dependencies. Write a Subsystem Map to blueprint.md. Called by sprint start.
+summary: Read entry points, interfaces, adjacent modules, and dependencies. Write a Subsystem Map to plan.md. Called by sprint start.
 category: dev
 tags: [planning, exploration, context, codebase]
 hidden: true
@@ -22,7 +22,7 @@ Limit scope to the relevant subsystem.
 
 ## Step 2 — Trace dependencies
 
-For each file marked for modification in `blueprint.md`:
+For each file marked for modification in `plan.md`:
 - What does it import?
 - What imports it? (grep for the filename or exported symbols)
 - Any shared types, constants, or schemas it exposes?
@@ -37,7 +37,7 @@ Flag likely affected files missing from the plan. Note generated files, monorepo
 
 ## Step 4 — Write findings
 
-Append a `## Subsystem Map` section to `blueprint.md`:
+Append a `## Subsystem Map` section to `plan.md`:
 
 ```markdown
 ## Subsystem Map
@@ -61,7 +61,7 @@ Append a `## Subsystem Map` section to `blueprint.md`:
 - Ambiguities about the subsystem that could affect implementation (or "None")
 ```
 
-If the blueprint already covers the subsystem, write:
+If plan.md already covers the subsystem, write:
 
 ```markdown
 ## Subsystem Map — confirmed: original file list is complete, no non-obvious relationships found

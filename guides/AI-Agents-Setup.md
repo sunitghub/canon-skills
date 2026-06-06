@@ -89,10 +89,10 @@ The agent wakes up knowing the project state, prior decisions, and any mid-sessi
 The agent:
 
 1. Creates ticket `t-r4t3` and marks it in progress
-2. Creates `.tickets/t-r4t3/acceptance.md` and `blueprint.md` as the sprint docs take shape
+2. Creates `.tickets/t-r4t3/acceptance.md` and `plan.md` as the sprint docs take shape
 3. Reads `DECISIONS.md` — finds: *"Redis chosen for session state"*
 4. Reads `HANDOFF.md` — picks up any open context from the last session
-5. Runs **orient** — surveys auth/, login-related code, middleware, and tests. Writes a `## Subsystem Map` to `blueprint.md`: entry points, key interfaces, and a non-obvious note that `login_view` is also called from an admin shortcut path.
+5. Runs **orient** — surveys auth/, login-related code, middleware, and tests. Writes a `## Subsystem Map` to `plan.md`: entry points, key interfaces, and a non-obvious note that `login_view` is also called from an admin shortcut path.
 
 **Grill — agent surfaces two gray areas before planning:**
 
@@ -115,7 +115,7 @@ Before I plan this, two decisions would materially change the implementation:
 
 **You: "IP + username. Fixed window is fine."**
 
-Agent logs resolutions to `blueprint.md ## Grill` and continues to impact analysis. It then produces the sprint brief:
+Agent logs resolutions to `plan.md ## Grill` and continues to impact analysis. It then produces the sprint brief:
 
 ```
 Sprint t-r4t3 — Add rate limiting to login endpoint
@@ -198,10 +198,10 @@ No prior context exists. The agent works from your description alone.
 The agent:
 
 1. Creates ticket `t-a1b2` and marks it in progress
-2. Creates `.tickets/t-a1b2/acceptance.md` and `blueprint.md` as the sprint docs take shape
+2. Creates `.tickets/t-a1b2/acceptance.md` and `plan.md` as the sprint docs take shape
 3. Reads `DECISIONS.md` — file doesn't exist yet, creates it with an empty log table
 4. Reads `HANDOFF.md` — no prior context, starts fresh
-5. Runs **orient** — surveys the repo root. New project, no source yet. Writes a brief confirmation to `blueprint.md`: *"Subsystem Map — new project, no existing structure. File list in blueprint is complete."*
+5. Runs **orient** — surveys the repo root. New project, no source yet. Writes a brief confirmation to `plan.md`: *"Subsystem Map — new project, no existing structure. File list in plan.md is complete."*
 
 **Grill — agent surfaces three gray areas:**
 
@@ -298,8 +298,7 @@ sprint ────────────────────────�
   │     tkt              track work, one ticket per sprint
   │     tier             trivial skip / normal / high-risk
   │     acceptance.md    binary definition of done + Test Plan
-  │     blueprint.md     approach, constraints, test plan
-  │     orient           high-risk subsystem map → blueprint.md before any edit
+  │     orient           high-risk subsystem map → plan.md before any edit
   │     grill            high-risk gray areas → lock decisions before planning
   │     impact-analysis  high-risk rating + mitigation tests before any code
   │     plan.md          approved brief written on approval — survives compaction
@@ -442,8 +441,7 @@ Sprint start surfaces these before approval when a high-risk trigger is present.
 .tickets/<id>/
   ticket.md        ← tkt-managed
   acceptance.md    ← binary definition of done + Test Plan
-  blueprint.md     ← approach; high-risk sprints also include Grill + Impact Assessment
-  plan.md          ← approved sprint brief; written on approval, re-read after compaction
+  plan.md          ← approach, decisions, grill/impact sections for high-risk; written on approval, re-read after compaction
 ```
 
 The active sprint ID is stored in `.tickets/ACTIVE`. New tickets use the folder

@@ -8,7 +8,7 @@ hidden: true
 
 # Impact Analysis
 
-Runs in `sprint start`. Writes to `blueprint.md` and `acceptance.md`.
+Runs in `sprint start`. Writes to `plan.md` and `acceptance.md`.
 
 **Surface to user only when at least one dimension is MEDIUM or HIGH.** For all-LOW changes, write the assessment silently and proceed.
 
@@ -49,7 +49,7 @@ Every HIGH rating adds sprint work:
 | HIGH dimension | Required action |
 |---|---|
 | **Audience** | Add audit log requirement to acceptance.md. Identify all user roles who can invoke the action. |
-| **Reversibility** | Define rollback procedure in blueprint.md. Add test: "verify rollback restores prior state." |
+| **Reversibility** | Define rollback procedure in plan.md. Add test: "verify rollback restores prior state." |
 | **Blast radius** | Add test: "verify failure in this operation does not corrupt adjacent records or block other users." |
 | **Trigger paths** | List every path (form action, API route, background job, CLI) that reaches the handler. Add test: "grep codebase for handler binding — expect exactly N matches." Add server-side auth check to acceptance criteria. |
 | **Cascade risk** | List all downstream consumers. Add test per consumer: "verify consumer handles this change correctly." |
@@ -58,7 +58,7 @@ HIGH dimensions cannot close without the matching action.
 
 ## Step 4 — Write the impact block
 
-Append to `blueprint.md`:
+Append to `plan.md`:
 
 ```markdown
 ## Impact Assessment

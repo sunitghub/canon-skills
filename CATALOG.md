@@ -9,7 +9,7 @@ Register these directly into a project with `skills.sh add <name>`.
 | Skill | Category | Description |
 |---|---|---|
 | `context-check` | agent-ops | Audit always-on context load for bloat, redundancy, and quality — invoke periodically or when context feels heavy |
-| `sprint` | dev | Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, blueprint, impact analysis), builds and tests, then closes with full wrapup. |
+| `sprint` | dev | Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, impact analysis), builds and tests, then closes with full wrapup. |
 
 ## Standards
 

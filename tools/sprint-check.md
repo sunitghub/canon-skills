@@ -42,8 +42,8 @@ readable.
 | Discarded | `cancelled` |
 
 **Cards** show ticket ID, type badge, title, priority dots, age, and a readiness indicator:
-- `● ready` (green) — has Acceptance, Blueprint, and Plan docs
-- `● needs acceptance` / `● needs blueprint` / `● needs plan` (gray) — the next sprint doc to add
+- `● ready` (green) — has both Acceptance and Plan docs
+- `● needs acceptance` / `● needs plan` (gray) — the next sprint doc to add
 
 Click the readiness indicator for a checklist popover. Click anywhere else on the card to open the full ticket.
 
