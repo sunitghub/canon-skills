@@ -17,6 +17,10 @@ Find docs by what you're trying to do.
 - [Why canon](../README.md#why) — define your standards once; every project inherits them.
 - [How sprint works](sprint-check.md#how-sprint-works) — plan-then-build and the deterministic close gate.
 
+### Maintain
+
+- [Publishing runbook](../guides/publishing.md) — GitHub vs npm channels, when to republish, gotchas.
+
 ---
 
 Planned and held work: [Roadmap](../ROADMAP.md).

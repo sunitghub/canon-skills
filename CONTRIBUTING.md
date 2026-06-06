@@ -63,6 +63,8 @@ pass CI.
 
 ## Release Checklist
 
+Full runbook (npm gotchas, dry-run steps, when to republish vs. just push): **[guides/publishing.md](guides/publishing.md)**.
+
 1. **Bump version** in `package.json` (follow semver: patch for fixes, minor for new skills, major for breaking changes)
 2. **Update** any `standards/*.md` files that changed — bump their `version:` and `updated:` frontmatter
 3. **Run tests**: `npm test`
