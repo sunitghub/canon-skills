@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# pre-commit-check.sh — Before git commit, remind Claude to close any
-# in-progress tickets and confirm wrapup has been run.
-# PreToolUse[Bash] hook. Outputs context Claude acts on; never blocks.
+# pre-commit-check.sh — Before git commit: run the test suite (any repo that
+# provides scripts/test.sh), remind Claude to close in-progress tickets, and
+# confirm wrapup has been run. PreToolUse[Bash] hook. Blocks on test failure.
 
 CANON_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TKT_BIN="$CANON_ROOT/tools/tkt"
@@ -26,13 +26,26 @@ if [ -n "$TKT_BIN" ]; then
 fi
 
 GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+# Run test suite if the project provides one
+TEST_RUNNER="$GIT_ROOT/scripts/test.sh"
+if [[ -x "$TEST_RUNNER" ]]; then
+  echo "[pre-commit] Running test suite..."
+  if ! test_output="$(bash "$TEST_RUNNER" 2>&1)"; then
+    echo "[pre-commit] BLOCKED — test suite failed:"
+    echo "$test_output"
+    exit 1
+  fi
+  echo "[pre-commit] Tests passed."
+fi
+
 CLAUDE_MD="$GIT_ROOT/CLAUDE.md"
 WRAPUP_REGISTERED=0
 if [ -f "$CLAUDE_MD" ] && grep -qF "wrapup" "$CLAUDE_MD" 2>/dev/null; then
   WRAPUP_REGISTERED=1
 fi
 
-# Only output if there's something to check
+# Only output reminders if there's something to check
 [ -n "$TICKETS" ] || [ "$WRAPUP_REGISTERED" = "1" ] || exit 0
 
 echo ""

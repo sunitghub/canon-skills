@@ -24,7 +24,7 @@ Click any ticket to see its status, type, priority, readiness, description, and 
 
 ![Edit sprint docs in ticket detail](../meta/screenshots/ticket-doc-editor.png)
 
-Open a ticket to read or edit its Description, Acceptance, Blueprint, Plan, and notes without leaving the board.
+Open a ticket to read or edit its Description, Acceptance, and Plan without leaving the board.
 
 ## Commit Intelligence
 
@@ -54,16 +54,12 @@ Drag any ticket card between columns to update its status instantly. No clicks, 
 
 ![New doc dialog](../meta/screenshots/new-doc.png)
 
-Click `+ New doc` on any ticket to attach a structured document. The picker guides the normal sprint path — Acceptance → Blueprint → Plan — and keeps companion docs available when they fit:
+Click `+ New doc` on any ticket to attach a structured document. Two docs cover the full sprint:
 
 | Doc | Add when | Use it to |
 |---|---|---|
-| **Acceptance** | Ticket has no Acceptance doc yet | Define binary done criteria and the test plan before implementation |
-| **Blueprint** | Acceptance exists and the ticket is still being planned | Plan approach, scope, and open questions before building |
-| **Plan** | Blueprint exists and the approach is approved | Capture the approved sprint brief before source edits begin |
-| **Decisions** | A choice or trade-off should survive the session | Record choices made, trade-offs, and why alternatives were ruled out — visible to future agents |
-| **QA** | Testing or closeout needs a checklist | Write the test plan and sign-off checklist before closing |
-| **Notes** | Any status | Freeform scratchpad — research, links, observations, anything that doesn't fit the others |
+| **Acceptance** | First | Define done criteria, the test plan, and QA sign-off before implementation |
+| **Plan** | After acceptance | Capture the approach and record decisions as you build — readable by future agents |
 
 Sprint docs land in `.tickets/<id>/` as markdown files and are read automatically by your agent after sprint start. Templates include comments that mark which headings and ticket ID lines should stay unchanged, and the editor toolbar inserts common Markdown such as checkboxes, bullets, numbered items, headings, inline code, and toggle blocks at the cursor.
 
@@ -71,13 +67,13 @@ Sprint docs land in `.tickets/<id>/` as markdown files and are read automaticall
 
 One workflow command drives the lifecycle. The CLI handles deterministic state; the agent chooses the lightest tier that protects the work — trivial changes skip sprint, normal changes get a brief ticket/acceptance/plan path, and high-risk changes run the full sub-skill pipeline. The two diagrams on the [README](../README.md#how-sprint-works) show the start and complete flows.
 
-Recommended sprint doc order: create `acceptance.md` first to define Done, then `blueprint.md` to capture the approach, then `plan.md` only after the approach is approved. `sprint-check` suggests that order in `+ New doc`.
+Recommended order: create `acceptance.md` first to define Done, then `plan.md` to capture the approach and decisions. `sprint-check` suggests that order in `+ New doc`.
 
-Only those markdown files are sprint docs the user or agent creates. The double-bordered steps in the diagrams are sub-skills used when the tier calls for them: `orient` reads the codebase and feeds findings into the Blueprint, `impact-analysis` rates risk and feeds the test plan (detailed below), and `capture` writes notable discoveries to `HANDOFF.md` when they appear mid-build. On `sprint complete`, `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, and `doc-audit` are considered in order, using skip rules for steps that do not apply. They run as part of the `sprint` workflow; they are not separate docs to create and not commands the user has to invoke.
+Only those markdown files are sprint docs the user or agent creates. The double-bordered steps in the diagrams are sub-skills used when the tier calls for them: `orient` reads the codebase and feeds findings into the Plan, `impact-analysis` rates risk and feeds the test plan (detailed below), and `capture` writes notable discoveries to `HANDOFF.md` when they appear mid-build. On `sprint complete`, `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, and `doc-audit` are considered in order, using skip rules for steps that do not apply. They run as part of the `sprint` workflow; they are not separate docs to create and not commands the user has to invoke.
 
 ### Impact Analysis — five dimensions
 
-For high-risk work, `sprint start` rates the change across five risk dimensions and writes the result to the Blueprint:
+For high-risk work, `sprint start` rates the change across five risk dimensions and writes the result to the Plan:
 
 | Dimension | Asks |
 |---|---|

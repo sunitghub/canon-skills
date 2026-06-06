@@ -1,7 +1,7 @@
 ---
 name: sprint
 description: Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything
-summary: Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, blueprint, impact analysis), builds and tests, then closes with full wrapup.
+summary: Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, impact analysis), builds and tests, then closes with full wrapup.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
 depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]
@@ -45,7 +45,7 @@ Work directly, then report verification.
 
 Default for focused, reversible product/docs/code changes that affect a small surface.
 
-Run `sprint start`, create `acceptance.md`, `blueprint.md`, and `plan.md`, then build after approval. Keep the blueprint brief: files, approach, known constraints, and test plan.
+Run `sprint start`, create `acceptance.md` and `plan.md`, then build after approval. Keep plan.md brief: files, approach, known constraints, and test plan.
 
 Skip full orient, grill, and impact-analysis unless the local code is unclear or a high-risk trigger appears.
 
@@ -75,9 +75,9 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 
 3. **Planning files.** Create or update the files in `.tickets/<id>/`:
    - `acceptance.md` — specific, binary conditions that define "done"
-   - `blueprint.md` — files to inspect, files to create/modify, step-by-step build plan
+   - `plan.md` — files to inspect, files to create/modify, step-by-step build plan
    - If these already exist: read them and proceed without recreating.
-   - Record the tier and one-line reason in `blueprint.md`.
+   - Record the tier and one-line reason in `plan.md`.
 
 4. **Context.** Read in order:
    - `DECISIONS.md` at repo root — create with empty log table if absent
@@ -87,11 +87,11 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 
 5. **Normal path.** For normal-tier work:
    - Inspect the files and callers needed for the requested change.
-   - Add `## Approach` and `## Test Plan` to `blueprint.md`.
+   - Add `## Approach` and `## Test Plan` to `plan.md`.
    - Produce the sprint brief from Step 9.
    - Skip Steps 6-8 unless new findings promote the work to high-risk.
 
-6. **Orient high-risk work.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Appends `## Subsystem Map` to `blueprint.md`. Findings feed into the Grill step.
+6. **Orient high-risk work.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Appends `## Subsystem Map` to `plan.md`. Findings feed into the Grill step.
 
 7. **Grill high-risk work.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 
@@ -99,14 +99,14 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - If no genuine gray areas exist: skip silently.
    - **If gray areas exist:** present them numbered. For each: state the decision to be made and the tradeoffs. Wait for the user to resolve all of them before proceeding.
    - Grill clarifies implementation inside the approved scope; it does not add scope.
-   - Log each resolved gray area under `## Grill` in `blueprint.md`.
+   - Log each resolved gray area under `## Grill` in `plan.md`.
 
 8. **Impact analysis for high-risk work.** Run the full impact analysis process defined in the impact-analysis skill:
    - Interrogate the request — ask every question whose answer changes the risk profile.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
-   - For every HIGH rating: add the required action to `blueprint.md` and the required test to `acceptance.md ## Test Plan`.
+   - For every HIGH rating: add the required action to `plan.md` and the required test to `acceptance.md ## Test Plan`.
    - Past sprint carryover: add regression tests for any closed tickets that touched the same files.
-   - Write the `## Impact Assessment` block to `blueprint.md` and `## Test Plan` to `acceptance.md`.
+   - Write the `## Impact Assessment` block to `plan.md` and `## Test Plan` to `acceptance.md`.
    - If test location is unclear, ask the user before proceeding.
 
 9. **Sprint brief.** Produce:
@@ -169,9 +169,8 @@ Canonical layout:
 ```
 .tickets/<id>/
   ticket.md        ← tkt-managed
-  blueprint.md     ← implementation plan; high-risk sprints also include Grill + Impact Assessment
   acceptance.md    ← definition of done + test plan
-  plan.md          ← approved sprint brief; written on approval, re-read after compaction
+  plan.md          ← approach, decisions, grill/impact sections for high-risk; written on approval, re-read after compaction
 ```
 
 ## DECISIONS.md

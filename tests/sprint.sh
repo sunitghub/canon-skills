@@ -21,13 +21,9 @@ second_start_output="$(run_fail "$SPRINT" start "Another sprint")"
 assert_contains "$second_start_output" "Active sprint already exists:"
 
 missing_output="$(run_fail "$SPRINT" complete)"
-assert_contains "$missing_output" "Missing required sprint file: $project/.tickets/$id/blueprint.md"
 assert_contains "$missing_output" "Missing required sprint file: $project/.tickets/$id/acceptance.md"
 assert_contains "$missing_output" "Missing required sprint file: $project/.tickets/$id/plan.md"
 
-cat > ".tickets/$id/blueprint.md" <<'EOF'
-# Blueprint
-EOF
 cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance
 

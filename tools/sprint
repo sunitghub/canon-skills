@@ -97,9 +97,8 @@ Ticket: $tdir/ticket.md
 
 Agent next steps:
 1. Read DECISIONS.md, HANDOFF.md, and ticket.md.
-2. Create acceptance.md with binary done criteria and the test plan.
-3. Create blueprint.md with subsystem findings, gray areas, impact, and build plan.
-4. Present the sprint brief, then write plan.md after explicit approval.
+2. Create acceptance.md with done criteria, test plan, and QA sign-off.
+3. Create plan.md with the approach and decisions after explicit approval.
 EOF
 }
 
@@ -109,15 +108,16 @@ cmd_current() {
 
 cmd_status() {
   local id tdir
-  if ! id="$("$TKT_BIN" current | awk '{ print $1 }')"; then
-    echo "No active sprint."
-    exit 1
-  fi
+  local current_out current_rc
+  set +e; current_out="$("$TKT_BIN" current 2>&1)"; current_rc=$?; set -e
+  if [[ "$current_rc" -gt 1 ]]; then echo "$current_out" >&2; exit "$current_rc"; fi
+  if [[ "$current_rc" -ne 0 ]]; then echo "No active sprint."; exit 1; fi
+  id="$(awk '{print $1}' <<< "$current_out")"
   tdir="$(ticket_dir_for "$id")"
   "$TKT_BIN" show "$id"
   echo ""
   echo "Sprint files:"
-  for f in ticket.md blueprint.md acceptance.md plan.md; do
+  for f in ticket.md acceptance.md plan.md; do
     if [[ -f "$tdir/$f" ]]; then
       echo "  [ok]      $tdir/$f"
     else
@@ -128,15 +128,16 @@ cmd_status() {
 
 cmd_complete() {
   local id tdir acceptance missing=0 unchecked=0
-  if ! id="$("$TKT_BIN" current | awk '{ print $1 }')"; then
-    echo "No active sprint."
-    exit 1
-  fi
+  local current_out current_rc
+  set +e; current_out="$("$TKT_BIN" current 2>&1)"; current_rc=$?; set -e
+  if [[ "$current_rc" -gt 1 ]]; then echo "$current_out" >&2; exit "$current_rc"; fi
+  if [[ "$current_rc" -ne 0 ]]; then echo "No active sprint."; exit 1; fi
+  id="$(awk '{print $1}' <<< "$current_out")"
 
   tdir="$(ticket_dir_for "$id")"
   acceptance="$tdir/acceptance.md"
 
-  for f in "$tdir/ticket.md" "$tdir/blueprint.md" "$acceptance" "$tdir/plan.md"; do
+  for f in "$tdir/ticket.md" "$acceptance" "$tdir/plan.md"; do
     if [[ ! -f "$f" ]]; then
       echo "Missing required sprint file: $f"
       missing=1

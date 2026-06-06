@@ -41,7 +41,7 @@ That's the day-to-day surface. Setup wires the tools once; after that, your agen
 
 ![Edit a ticket's acceptance doc in place — toolbar for checklists, headings, and code](meta/doc-editing.gif)
 
-*Edit acceptance, plan, and decision docs right on the board — checklists, headings, and code from one toolbar, saved straight to your repo. No switch to an editor.*
+*Edit acceptance and plan docs right on the board — checklists, headings, and code from one toolbar, saved straight to your repo. No switch to an editor.*
 
 Phase-based frameworks give you a multi-command methodology to learn. canon gives you two commands and a board you can see.
 
@@ -52,9 +52,32 @@ Phase-based frameworks give you a multi-command methodology to learn. canon give
 - **`sprint start "<what>"`** — creates a local ticket, has your agent classify the work as normal or high-risk, define acceptance, and write a plan before touching source. Normal changes stay light; high-risk changes add subsystem mapping, gray-area resolution, five-dimension impact analysis, and mitigation tests. The plan lives in `.tickets/<id>/` and survives context resets.
 - **`sprint complete`** — runs the close path: simplify → review → security → repo/doc audit → acceptance check → close → commit & push prompt.
 
-A ticket is a folder, not a card — ticket, acceptance, plan, and decisions, all markdown in your repo. When context resets — or a fresh session starts — the agent reads `HANDOFF.md` (auto-injected at session start) and reopens the ticket folder, and picks up where it left off.
+Each sprint produces two docs — no more, no less:
+
+| Doc | Contains |
+|---|---|
+| `acceptance.md` | Done criteria · test plan · QA sign-off |
+| `plan.md` | Approach · decisions made along the way |
+
+Both are plain markdown in `.tickets/<id>/`, committed alongside the code. Both are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread.
 
 **Gated, not vibes.** The CLI owns state: one active sprint at a time, and `sprint complete` refuses to close while any acceptance or test-plan box is still unchecked — a checklist-state check in code, not a judgment call. The CLI gates the boxes; the agent verifies the tests and judges whether criteria are truly met before checking them. The agent owns the judgment — the gate owns the close.
+
+## Code Archaeology
+
+```bash
+tkt why src/auth/middleware.py
+```
+
+Surface every ticket — and every decision — that shaped a file. `tkt why` scans `git log` for ticket IDs in commit messages, then reads each ticket's `plan.md` for decisions made during that sprint. When commits predate ticket IDs, it falls back to keyword matching against ticket titles.
+
+```
+t-34en  [closed]  Harden sprint-check board against cross-origin reads
+  → Dropped CORS; Host allowlist gates every request
+t-91r9  [closed]  Clarify close-gate scope: CLI gates checklist, agent verifies
+```
+
+Your repo accumulates intent, not just history. A new agent — or you, six months later — can ask *why* before touching anything.
 
 ## How Sprint Works
 
@@ -62,7 +85,7 @@ A ticket is a folder, not a card — ticket, acceptance, plan, and decisions, al
 
 ```mermaid
 flowchart LR
-    S1[Ticket] --> S2[Tier] --> S3[Acceptance] --> S4[Blueprint]
+    S1[Ticket] --> S2[Tier] --> S3[Acceptance] --> S4[Plan]
     S4 --> N[Normal: brief plan] --> S8[Approval]
     S4 --> H[High-risk] --> S5[[orient]] --> S6[Grill] --> S7[[impact]] --> S8
     classDef subskill stroke:#8888dd,stroke-width:2px
@@ -83,6 +106,10 @@ Double-bordered nodes are sub-skills the agent runs inside the flow — you don'
 ## Why
 
 Define your standards once; every project inherits them via `@`-import — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. The `efficiency` standard is wired automatically when you register `sprint`.
+
+Every non-trivial change starts with a ticket. Two docs — `acceptance.md` (done criteria + test plan) and `plan.md` (approach + decisions) — live in `.tickets/<id>/` as plain markdown, committed alongside the code. A future agent reading that folder knows *why* something was built and what trade-offs were ruled out, not just what the diff says. Your repo accumulates intent, not just history.
+
+canon enforces its own standards. The test suite runs and blocks before every commit — no advisory reminders, no honor system. What ships is what passed.
 
 ## Setup
 

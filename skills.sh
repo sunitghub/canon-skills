@@ -703,6 +703,7 @@ hooks = config.setdefault("hooks", {})
 desired = [
     ("Stop",            "",     f"{scripts_path}/auto-handoff.sh"),
     ("UserPromptSubmit","",     f"{scripts_path}/handoff-inject.sh"),
+    ("UserPromptSubmit","",     f"{scripts_path}/sprint-inject.sh"),
     ("PreToolUse",      "Bash", f"{scripts_path}/pre-commit-check.sh"),
 ]
 stale = {

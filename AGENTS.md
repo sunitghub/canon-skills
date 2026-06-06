@@ -4,6 +4,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 
 ## Approach
 
+- Non-trivial work requires an open ticket before `sprint start`. Trivial fixes (typo, single-line config) are exempt.
 - Think before coding. Surface tradeoffs, don't hide confusion.
 - Minimum code that solves the problem. Nothing speculative.
 - Touch only what you must. Clean up only your own mess.

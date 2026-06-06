@@ -850,7 +850,7 @@ function detectTicketType(title) {
 const DOC_TYPES = [
   {
     name: 'Acceptance',  slug: 'acceptance',
-    hint: 'Define binary done criteria and the test plan before implementation.',
+    hint: 'Define done criteria, the test plan, and QA sign-off before implementation.',
     suggestedFor: ['open', 'in_progress'],
     template:
 `# Acceptance
@@ -862,63 +862,38 @@ Ticket: \`<id>\`
 The checklist of behavior that must be true before the sprint can close.
 <!-- Add or edit checklist items below. Keep this heading unchanged. -->
 
-- [ ] 
+- [ ]
 
 ## Test Plan
 The commands or checks that prove the criteria work.
 <!-- Add or edit test commands below. Keep this heading unchanged. -->
 
-- [ ] 
+- [ ]
+
+## QA
+Edge cases and sign-off.
+<!-- Add or edit QA items below. Keep this heading unchanged. -->
+
+- [ ] Tested locally
 `,
   },
   {
-    name: 'Blueprint',   slug: 'blueprint',
-    hint: 'Plan the approach, scope, and open questions before building.',
-    suggestedFor: ['open', 'in_progress'],
-    template:
-`# Blueprint
-
-<!-- Keep the Ticket line below unchanged. -->
-Ticket: \`<id>\`
-
-## Goal
-What problem does this solve and what does success look like?
-<!-- Add or edit the goal below. Keep this heading unchanged. -->
-
-## Approach
-How will we implement it? Key design decisions.
-<!-- Add or edit approach notes below. Keep this heading unchanged. -->
-
-## Out of Scope
-What are we explicitly NOT doing?
-<!-- Add or edit out-of-scope notes below. Keep this heading unchanged. -->
-
-## Open Questions
-<!-- Add or edit open questions below. Keep this heading unchanged. -->
-- `,
-  },
-  {
     name: 'Plan',        slug: 'plan',
-    hint: 'Capture the approved sprint brief before source edits begin.',
-    suggestedFor: ['in_progress'],
+    hint: 'Capture the approach and record decisions before source edits begin.',
+    suggestedFor: ['open', 'in_progress'],
     template:
 `# Plan
 
 <!-- Keep the Ticket line below unchanged. -->
 Ticket: \`<id>\`
+<!-- Keep this doc under ~500 words — it is injected at every session start. -->
 
-## Sprint Brief
-The approved sprint brief the agent implements after planning is approved.
-<!-- Add or edit the approved brief below. Keep this heading unchanged. -->
+## Approach
+How will we implement it?
+<!-- Add or edit approach notes below. Keep this heading unchanged. -->
 
-`,
-  },
-  {
-    name: 'Decisions',   slug: 'decisions',
-    hint: 'Record key choices, trade-offs, and why alternatives were ruled out.',
-    suggestedFor: ['in_progress', 'closed'],
-    template:
-`# Decisions
+## Decisions
+<!-- Record choices made during the sprint. Keep this heading unchanged. -->
 
 ### [Decision title]
 - **Choice**:
@@ -926,37 +901,12 @@ The approved sprint brief the agent implements after planning is approved.
 - **Alternatives considered**:
 `,
   },
-  {
-    name: 'QA',          slug: 'qa',
-    hint: 'Test plan and sign-off checklist before closing.',
-    suggestedFor: ['in_progress', 'closed'],
-    template:
-`# QA
-
-## Test Plan
-- [ ]
-- [ ]
-
-## Edge Cases
-- [ ]
-
-## Sign-off
-- [ ] Tested locally
-`,
-  },
-  {
-    name: 'Notes',       slug: 'notes',
-    hint: 'Freeform scratchpad for research, links, and observations.',
-    suggestedFor: ['open', 'in_progress', 'closed', 'cancelled'],
-    template: '# Notes\n\n',
-  },
 ];
 
 function recommendedSlug(status, existingSlugs) {
   if (!existingSlugs.includes('acceptance')) return 'acceptance';
-  if (!existingSlugs.includes('blueprint')) return 'blueprint';
   if (!existingSlugs.includes('plan')) return 'plan';
-  return 'decisions';
+  return null;
 }
 
 function docSlug(t, file) {
@@ -1179,10 +1129,9 @@ function renderBoard() {
     document.body.appendChild(_popover);
   }
   function showReadyPopover(el, t) {
-    const { ready, hasAcceptance, hasBlueprint, hasPlan } = readiness(t);
+    const { ready, hasAcceptance, hasPlan } = readiness(t);
     _popover.innerHTML =
       `<div>${hasAcceptance ? '✓' : '○'} Acceptance</div>` +
-      `<div>${hasBlueprint ? '✓' : '○'} Blueprint</div>` +
       `<div>${hasPlan ? '✓' : '○'} Plan</div>` +
       (ready ? '<div style="margin-top:4px;color:var(--col-done)">Good to go</div>'
              : '<div style="margin-top:4px;color:var(--text-muted)">Add missing items to unblock</div>');
@@ -1244,14 +1193,12 @@ function renderBoard() {
 function readiness(t) {
   const slugs = (t.docs || []).map(d => docSlug(t, d.file));
   const hasAcceptance = slugs.includes('acceptance');
-  const hasBlueprint = slugs.includes('blueprint');
   const hasPlan = slugs.includes('plan');
-  const ready = hasAcceptance && hasBlueprint && hasPlan;
+  const ready = hasAcceptance && hasPlan;
   const label = ready ? 'ready'
     : !hasAcceptance ? 'needs acceptance'
-    : !hasBlueprint ? 'needs blueprint'
     : 'needs plan';
-  return { ready, hasAcceptance, hasBlueprint, hasPlan, label };
+  return { ready, hasAcceptance, hasPlan, label };
 }
 
 function cardHTML(t) {
@@ -1429,11 +1376,7 @@ function normalizeDocTitle(t, content) {
   const slug = docSlug(t, modalState.activeDoc);
   const titleBySlug = {
     acceptance: 'Acceptance',
-    blueprint: 'Blueprint',
     plan: 'Plan',
-    decisions: 'Decisions',
-    qa: 'QA',
-    notes: 'Notes',
   };
   const title = titleBySlug[slug];
   if (!title) return content;
@@ -1454,9 +1397,8 @@ function validateDocStructure(t, content) {
 
   const slug = docSlug(t, modalState.activeDoc);
   const requiredBySlug = {
-    acceptance: ['## Criteria', '## Test Plan'],
-    blueprint: ['## Goal', '## Approach'],
-    plan: ['## Sprint Brief'],
+    acceptance: ['## Criteria', '## Test Plan', '## QA'],
+    plan: ['## Approach', '## Decisions'],
   };
   const required = requiredBySlug[slug] || [];
   const missing = required.filter(h => !content.includes(h));
@@ -1511,16 +1453,9 @@ function validateDocContent(slug, content) {
     if (!hasFilledCheckbox(sectionContent(content, 'Test Plan'))) {
       return 'Add at least one test command or check under ## Test Plan before saving.';
     }
-  } else if (slug === 'blueprint') {
-    if (!hasUsefulSectionText(sectionContent(content, 'Goal'), ['What problem does this solve and what does success look like?'])) {
-      return 'Add a goal under ## Goal before saving.';
-    }
-    if (!hasUsefulSectionText(sectionContent(content, 'Approach'), ['How will we implement it? Key design decisions.'])) {
-      return 'Add approach notes under ## Approach before saving.';
-    }
   } else if (slug === 'plan') {
-    if (!hasUsefulSectionText(sectionContent(content, 'Sprint Brief'))) {
-      return 'Add the approved sprint brief under ## Sprint Brief before saving.';
+    if (!hasUsefulSectionText(sectionContent(content, 'Approach'), ['How will we implement it?'])) {
+      return 'Add approach notes under ## Approach before saving.';
     }
   }
   return '';
@@ -1534,10 +1469,7 @@ function promptNewDoc(t) {
 
   const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
   const suggested     = recommendedSlug(t.status, existingSlugs);
-  const done = t.status === 'closed' || t.status === 'cancelled';
-  const available = DOC_TYPES.filter(dt =>
-    !existingSlugs.includes(dt.slug) && !(done && dt.slug === 'blueprint')
-  );
+  const available = DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug));
   const statusLabel   = titleCase(t.status.replace('_', ' '));
 
   bodyEl.innerHTML = [
@@ -1690,13 +1622,10 @@ function ensureDocGuideComments(t, content) {
   if (slug === 'acceptance') {
     next = ensureHeadingComment(next, 'Criteria', '<!-- Add or edit checklist items below. Keep this heading unchanged. -->');
     next = ensureHeadingComment(next, 'Test Plan', '<!-- Add or edit test commands below. Keep this heading unchanged. -->');
-  } else if (slug === 'blueprint') {
-    next = ensureHeadingComment(next, 'Goal', '<!-- Add or edit the goal below. Keep this heading unchanged. -->');
-    next = ensureHeadingComment(next, 'Approach', '<!-- Add or edit approach notes below. Keep this heading unchanged. -->');
-    next = ensureHeadingComment(next, 'Out of Scope', '<!-- Add or edit out-of-scope notes below. Keep this heading unchanged. -->');
-    next = ensureHeadingComment(next, 'Open Questions', '<!-- Add or edit open questions below. Keep this heading unchanged. -->');
+    next = ensureHeadingComment(next, 'QA', '<!-- Add sign-off items below. Keep this heading unchanged. -->');
   } else if (slug === 'plan') {
-    next = ensureHeadingComment(next, 'Sprint Brief', '<!-- Add or edit the approved brief below. Keep this heading unchanged. -->');
+    next = ensureHeadingComment(next, 'Approach', '<!-- Add or edit approach notes below. Keep this heading unchanged. -->');
+    next = ensureHeadingComment(next, 'Decisions', '<!-- Record choices made during the sprint. Keep this heading unchanged. -->');
   }
   return next;
 }

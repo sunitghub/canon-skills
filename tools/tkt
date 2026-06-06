@@ -271,6 +271,79 @@ cmd_current() {
   printf "%s  %s  %s\n" "$id" "$(get_field "$file" status)" "$(get_title "$file")"
 }
 
+cmd_why() {
+  local target="${1:-}"
+  [[ -z "$target" ]] && { echo "Usage: tkt why <file>" >&2; exit 1; }
+
+  local dir
+  dir="$(tickets_dir)"
+
+  local log_subjects
+  log_subjects="$(git log --follow --format="%s" -- "$target" 2>/dev/null)"
+  if [[ -z "$log_subjects" ]]; then
+    echo "No git history found for: $target"
+    return 0
+  fi
+
+  add_unique_id() { [[ " ${matched_ids[*]} " != *" $1 "* ]] && matched_ids+=("$1") || true; }
+
+  # Primary: extract t-xxxx IDs from commit subjects
+  local -a matched_ids=()
+  local id
+  while IFS= read -r id; do
+    [[ -z "$id" ]] && continue
+    add_unique_id "$id"
+  done < <(echo "$log_subjects" | tr -cs 'a-zA-Z0-9-' '\n' | grep -E '^t-[a-z0-9]{4}$' || true)
+
+  # Keyword fallback: match commit words against ticket titles
+  if [[ ${#matched_ids[@]} -eq 0 && -d "$dir" ]]; then
+    local keywords
+    keywords="$(echo "$log_subjects" \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -oE '[a-z]{5,}' \
+      | grep -vxE 'update|change|refact|clean|minor|patch|revert|merge|commit|sprint|feature|implement' \
+      | sort -u | head -8)"
+    if [[ -n "$keywords" ]]; then
+      while IFS= read -r tfile; do
+        local title kw
+        title="$(get_title "$tfile" | tr '[:upper:]' '[:lower:]')"
+        while IFS= read -r kw; do
+          [[ -z "$kw" ]] && continue
+          if [[ "$title" == *"$kw"* ]]; then
+            local match_id
+            match_id="$(get_field "$tfile" id)"
+            [[ -n "$match_id" ]] && add_unique_id "$match_id"
+            break
+          fi
+        done <<< "$keywords"
+      done < <(ticket_files "$dir")
+    fi
+  fi
+
+  if [[ ${#matched_ids[@]} -eq 0 ]]; then
+    echo "No tickets found for: $target"
+    return 0
+  fi
+
+  for id in "${matched_ids[@]}"; do
+    local tfile
+    tfile="$(find_ticket "$id" 2>/dev/null)" || continue
+    local status title
+    status="$(get_field "$tfile" status)"
+    title="$(get_title "$tfile")"
+    printf "%-10s  %-14s  %s\n" "$id" "[$status]" "$title"
+
+    # One-line excerpt from ## Decisions in plan.md
+    local tdir plan_file decision
+    tdir="$(dirname "$tfile")"
+    plan_file="$tdir/plan.md"
+    if [[ -f "$plan_file" ]]; then
+      decision="$(awk '/^## Decisions/{f=1;next} f && /^### /{sub(/^### /,""); print; exit}' "$plan_file")"
+      [[ -n "$decision" ]] && printf "  → %s\n" "$decision"
+    fi
+  done
+}
+
 cmd_help() {
   cat <<'EOF'
 tkt — minimal ticket system
@@ -288,6 +361,7 @@ Commands:
   reopen <id>               Set status to open
   ls [--status=X]           List tickets (unfiltered by default)
   show <id>                 Display ticket details
+  why <file>                Show tickets whose commits touched a file
 
 New tickets are stored in .tickets/<id>/ticket.md
 ACTIVE ticket is stored in .tickets/ACTIVE
@@ -307,6 +381,7 @@ main() {
     reopen)         cmd_set_status "${1:-}" open ;;
     ls|list)        cmd_ls "$@" ;;
     show)           cmd_show "$@" ;;
+    why)            cmd_why "$@" ;;
     help|--help|-h) cmd_help ;;
     --version|-v)   echo "tkt $VERSION" ;;
     *)              echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
