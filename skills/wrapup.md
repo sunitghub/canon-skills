@@ -26,6 +26,8 @@ code-simplifier → code-reviewer → security-review → repo-check → doc-aud
 
 ## Skip Logic
 
+**Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs and Commit.
+
 Before running each step, assess the change and skip if the criteria apply. When skipping, state why in one line.
 
 ### Skip code-simplifier if:

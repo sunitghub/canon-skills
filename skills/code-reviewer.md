@@ -24,9 +24,9 @@ hidden: true
 ## Seven Dimensions
 
 1. Correctness: behavior matches intent.
-2. Maintainability: structure matches local patterns.
+2. Maintainability: structure matches local patterns. Tag SDLC violations inline: `[DRY]` `[SRP]` `[CoC]`.
 3. Readability: names, comments, and formatting are clear.
-4. Efficiency: no avoidable bottlenecks or waste.
+4. Efficiency: no avoidable bottlenecks or waste. Tag: `[KISS]` `[YAGNI]`.
 5. Security: no unsafe patterns; destructive actions enforce server-side auth and consistent guards.
 6. Edge cases: expected failures and unusual inputs are handled.
 7. Test coverage: meaningful risks are tested.
