@@ -364,7 +364,7 @@ cmd_status() {
 
   # ── Claude Code hook check ───────────────────────────────────────────────
   local hook_issues=0
-  if command -v claude &>/dev/null; then
+  if [ ${#skill_names[@]} -gt 0 ] && command -v claude &>/dev/null; then
     local settings="$HOME/.claude/settings.json"
     if [ ! -f "$settings" ]; then
       hook_issues=3
