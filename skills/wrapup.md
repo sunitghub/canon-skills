@@ -3,14 +3,13 @@ name: wrapup
 description: Run quality checks, review, and commit after completing a feature, fix, or session — invoke when work is done and ready to ship
 category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
-depends: [code-simplifier, code-reviewer, security-review, repo-check, doc-audit, repo-audit, handoff, ticket]
+depends: [code-simplifier, code-reviewer, security-review, repo-check, doc-audit, handoff, ticket]
 ---
 @./code-simplifier.md
 @./code-reviewer.md
 @./security-review.md
 @./repo-check.md
 @./doc-audit.md
-@./repo-audit.md
 @../tools/handoff.md
 @../tools/ticket.md
 
@@ -21,7 +20,7 @@ Run after a session, feature, bug fix, or ticket. Skip steps that do not apply.
 ## Pipeline
 
 ```
-code-simplifier → code-reviewer → security-review → repo-check → doc-audit → repo-audit
+code-simplifier → code-reviewer → security-review → repo-check → doc-audit
 ```
 
 ## Skip Logic
@@ -48,10 +47,6 @@ Before running each step, assess the change and skip if the criteria apply. When
 ### Skip repo-check if:
 - No repo workflow, setup, docs, skills, standards, scripts, or tools changed
 
-### Skip repo-audit if:
-- Change is a single-file doc fix, config tweak, or purely mechanical rename
-- Change touches only test fixtures, examples, or generated files
-- Run it when: `skills/`, `standards/`, `tools/`, `scripts/`, or `guides/` changed; any high-risk sprint; any change that alters the command surface or core workflow
 
 ---
 
@@ -62,8 +57,7 @@ Before running each step, assess the change and skip if the criteria apply. When
 3. Apply security-review, including ast-grep pre-scan if available.
 4. Apply repo-check. Fix stale references, orphan workflow files, and generated catalog drift before committing.
 5. Apply doc-audit. Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing.
-6. Apply repo-audit. If any dimension rates Generic, Contradicted, or Broken — resolve before committing, or log a deferral with justification in `DECISIONS.md`. "Needs Work" findings are discretionary but must be acknowledged.
-7. Refresh docs:
+6. Refresh docs:
 
 Review every documentation file touched or referenced during this session and patch anything stale.
 
