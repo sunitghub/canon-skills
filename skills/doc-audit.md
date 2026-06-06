@@ -21,7 +21,7 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 
 2. Read `README.md` and `guides/*.md`. Note claims about features, behavior, and requirements.
 
-3. Read `description` and `summary` frontmatter in `skills/*.md` and `standards/*.md`; compare to each skill body.
+3. If `skills/` exists, read `description` and `summary` frontmatter in `skills/*.md` and `standards/*.md`; compare to each skill body.
 
 4. Run these checks. Flag only high-confidence issues:
 
