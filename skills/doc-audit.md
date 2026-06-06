@@ -7,17 +7,17 @@ tags: [docs, accuracy, audit, claims]
 
 # Doc Audit
 
-Audit user-facing documentation for accuracy. Append to `standards/doc-findings.md` only after explicit confirmation.
+Audit user-facing documentation for accuracy. Append to `doc-findings.md` (project root) only after explicit confirmation.
 
 ## Scope
 
 - `README.md`
 - `guides/*.md`
-- Skill frontmatter: `description` and `summary` fields across `skills/*.md` and `standards/*.md`
+- Skill frontmatter: `description` and `summary` fields across `skills/*.md` and `standards/*.md` — only if those paths exist in the current project
 
 ## Steps
 
-1. Read `standards/doc-findings.md`; skip logged issues.
+1. Read `doc-findings.md` if it exists; skip logged issues.
 
 2. Read `README.md` and `guides/*.md`. Note claims about features, behavior, and requirements.
 
@@ -37,7 +37,7 @@ Audit user-facing documentation for accuracy. Append to `standards/doc-findings.
 
    **Affected doc coverage** — when code, workflow, UI, command behavior, or screenshots change, search every doc surface that could describe it: README, guides, examples, tool docs, skill docs, standards, and catalog text. Do not stop at the first visible doc.
 
-   **Command accuracy** — run `./skills.sh list`; compare to skill names in README/guides command examples.
+   **Command accuracy** — if `./skills.sh` exists, run `./skills.sh list`; compare to skill names in README/guides command examples.
 
    **Workflow gate accuracy** — distinguish UI state changes from workflow commands. Board actions such as creating tickets or moving cards update local ticket state only; do not imply they run agent workflows, wrapup, validation, or close pipelines unless the tool actually does.
 
@@ -54,7 +54,7 @@ Audit user-facing documentation for accuracy. Append to `standards/doc-findings.
 
 6. Report new findings by check type. Quote the claim and explain the issue. If none: say so and stop.
 
-7. Ask: `Append these to doc-findings.md? (y to confirm)`. Do not write without `y`.
+7. Ask: `Append these to doc-findings.md? (y to confirm)`. Do not write without `y`. Write to `doc-findings.md` at the project root.
 
 ## doc-findings.md entry format
 

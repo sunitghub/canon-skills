@@ -494,7 +494,7 @@ tkt reopen <id>               # reopen a closed ticket
 | `sprint` | `"Start a sprint for X"` | Tier selected → normal brief or high-risk orient/grill/impact path → sprint brief with Test Plan → awaits approval → writes `plan.md` |
 | `ticket` | `tkt ls` | Empty list or existing tickets — no error |
 | `context-check` | `/context-check` | Size + content audit of always-loaded context; findings appended to `context-findings.md` on confirmation |
-| `doc-audit` | `/doc-audit` | Audits README and guides for overstated claims, missing prerequisites, and personal content; findings appended to `standards/doc-findings.md` on confirmation |
+| `doc-audit` | `/doc-audit` | Audits README and guides for overstated claims, missing prerequisites, and personal content; findings appended to `doc-findings.md` on confirmation |
 
 > Everything else is automatic. `efficiency` is always on. `capture` fires mid-session. `wrapup` + test verification run inside `sprint complete`. `impact-analysis`, `handoff`, and `ticket` are deps of sprint — loaded silently, but the high-ceremony path runs only when the tier calls for it. Run `context-check` periodically to audit context budget.
 
