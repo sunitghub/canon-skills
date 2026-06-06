@@ -10,6 +10,5 @@ this file is the public-facing shortlist.
   mockup with the installer's actual output.
 
 ## Planned — post-traction
-- **"How canon works" explainer** — a single concept page (the Diátaxis "Explanation"
-  quadrant): live-reference `@`-imports, the CLI-owned close gate, and local-first state.
-  Built when conceptual depth is actually requested.
+
+- **Windows 11 CI coverage** — add a WSL2 job to `.github/workflows/ci.yml` once the repo goes public; validates the `ss`/python3 port-detection path that `lsof` currently covers on macOS runners.
