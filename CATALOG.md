@@ -9,6 +9,7 @@ Register these directly into a project with `skills.sh add <name>`.
 | Skill | Category | Description |
 |---|---|---|
 | `context-check` | agent-ops | Audit always-on context load for bloat, redundancy, and quality — invoke periodically or when context feels heavy |
+| `repo-audit` | agent-ops | Audit a repo across four dimensions — uniqueness and selling point, philosophy-to-implementation coherence, setup and doc effectiveness, and codebase quality (DRY, KISS, SRP, composition). Invoke when asked to review, assess, or health-check a repo. |
 | `sprint` | dev | Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, impact analysis), builds and tests, then closes with full wrapup. |
 
 ## Standards
