@@ -145,13 +145,13 @@ cmd_complete() {
   done
   [[ "$missing" -eq 0 ]] || exit 1
 
-  if grep -q '^- \[ \]' "$acceptance"; then
+  if grep -qE '^[[:space:]]*[-*] \[ \]' "$acceptance"; then
     unchecked=1
   fi
 
   if [[ "$unchecked" -eq 1 ]]; then
     echo "Sprint $id is not complete. Unchecked acceptance/test items remain:"
-    grep '^- \[ \]' "$acceptance" || true
+    grep -E '^[[:space:]]*[-*] \[ \]' "$acceptance" || true
     exit 1
   fi
 

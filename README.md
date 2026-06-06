@@ -119,6 +119,7 @@ canon enforces its own standards. The test suite runs and blocks before every co
 | Tool | Required | For |
 |---|---|---|
 | Claude Code / Codex / Pi | At least one | running the agent |
+| Git | Yes | clone/update canon |
 | Node.js ≥ 16 | `npx` install only | install |
 | Python 3 | `sprint-check` + hooks | the board |
 

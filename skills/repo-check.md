@@ -1,6 +1,6 @@
 ---
 name: repo-check
-description: Check repo surface files against README intent before wrapup commits
+description: Check repo surface files and sprint-check app usability against README intent before wrapup commits
 category: agent-ops
 tags: [repo-health, workflow, audit, cleanup]
 hidden: true
@@ -44,10 +44,19 @@ documentation, setup, or agent behavior.
 5. **Tool surface.** Confirm `tools/` entries support README flows:
    `sprint`, `sprint-check`, `tkt`, ticket docs, and handoff docs.
 
-6. **Generated docs.** If skills or tool frontmatter changed, run
+6. **sprint-check app experience.** When changes touch `tools/sprint-check`,
+   `tools/sprint-check-app/`, `docs/sprint-check.md`, or README claims about
+   the board, evaluate whether the local web app still supports canon's stated
+   product promise: easy orientation, effective ticket/status review, clear
+   in-place doc editing, and no unnecessary setup. Prefer launching the board
+   and using Playwright or an available browser/screenshot tool to inspect the
+   main flows. If browser automation is unavailable, state that limitation and
+   review the app/server code plus screenshots or docs for obvious UX drift.
+
+7. **Generated docs.** If skills or tool frontmatter changed, run
    `./skills.sh catalog` and include `CATALOG.md` if it changed.
 
-7. **Syntax checks.** Run cheap structural checks for changed executable files:
+8. **Syntax checks.** Run cheap structural checks for changed executable files:
    `bash -n` for shell scripts, `python3 -m py_compile` for Python files.
 
 ## Report
@@ -57,6 +66,7 @@ Report only findings that need action before commit:
 - stale reference
 - command advertised but missing
 - file present without a purpose tied to README intent
+- sprint-check app flow no longer matching README/docs usability claims
 - generated catalog out of date
 - syntax check failure
 

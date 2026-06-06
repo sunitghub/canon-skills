@@ -148,6 +148,14 @@ offer_tkt_path() {
   if grep -qF "$tools_dir" "$rc_file" 2>/dev/null; then return 0; fi
   if echo "$PATH" | tr ':' '\n' | grep -qxF "$tools_dir"; then return 0; fi
 
+  if ! { : <> /dev/tty; } 2>/dev/null; then
+    echo ""
+    echo "canon/tools (sprint, tkt, sprint-check) is not on your PATH."
+    printf "  Add it with: echo 'export PATH=\"\$PATH:%s\"' >> %s\n" "$tools_dir" "$rc_file"
+    printf "  Then run: source %s\n" "$rc_file"
+    return 0
+  fi
+
   echo "" > /dev/tty
   printf "canon/tools (sprint, tkt, sprint-check) is not on your PATH.\n" > /dev/tty
   printf "Add %s to PATH in %s? [y/N] " "$tools_dir" "$rc_file" > /dev/tty

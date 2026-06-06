@@ -28,6 +28,8 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance
 
 - [ ] Required item remains.
+  - [ ] Indented item remains.
+* [ ] Asterisk item remains.
 EOF
 cat > ".tickets/$id/plan.md" <<'EOF'
 # Plan
@@ -36,11 +38,15 @@ EOF
 unchecked_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$unchecked_output" "Unchecked acceptance/test items remain:"
 assert_contains "$unchecked_output" "- [ ] Required item remains."
+assert_contains "$unchecked_output" "  - [ ] Indented item remains."
+assert_contains "$unchecked_output" "* [ ] Asterisk item remains."
 
 cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance
 
 - [x] Required item remains.
+  - [x] Indented item remains.
+* [x] Asterisk item remains.
 EOF
 
 complete_output="$("$SPRINT" complete)"
