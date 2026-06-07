@@ -997,7 +997,7 @@ function priorityDots(p) {
 // Minimal markdown: headers, bold, inline code, bullet lists
 function md(raw) {
   if (!raw) return '';
-  return esc(raw)
+  return esc(raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim())
     .replace(/^# (.+)$/gm,  '<strong style="display:block;font-size:15px;color:var(--text);margin:10px 0 4px">$1</strong>')
     .replace(/^## (.+)$/gm, '<strong style="display:block;font-size:14px;color:var(--text);margin:8px 0 4px">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong style="display:block;color:var(--text);margin:6px 0 3px">$1</strong>')
