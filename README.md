@@ -39,7 +39,30 @@ That's the day-to-day surface. Setup wires the tools once; after that, your agen
 
 `sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
 
-**[Open the interactive demo tour →](docs/index.html)** — same-page screenshot viewer for board, ticket detail, doc editing, and commit context.
+<details open>
+<summary><strong>Demo</strong></summary>
+
+A full, README-linked tour lives in [`docs/index.html`](docs/index.html).
+
+### Screenshots / clips
+
+#### Board
+
+[![Board](meta/screenshots/board-dark.png)](docs/index.html#board)
+
+#### Ticket Detail
+
+[![Ticket detail](meta/screenshots/ticket-detail.png)](docs/index.html#ticket-detail)
+
+#### Doc Editing
+
+[![Doc editing](meta/screenshots/ticket-doc-editor.png)](docs/index.html#doc-editing)
+
+#### Commit Context
+
+[![Commit context](meta/screenshots/commit-detail.png)](docs/index.html#commit-context)
+
+</details>
 
 Phase-based frameworks give you a multi-command methodology to learn. canon gives you two commands and a board you can see.
 
