@@ -597,6 +597,22 @@
       gap: 4px; margin: 2px 0; color: var(--text-body); white-space: normal;
     }
     .doc-bullet-marker { color: var(--text-body); }
+    .doc-check-marker {
+      width: 13px; height: 13px; margin-top: 3px;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid var(--panel-border); border-radius: 3px;
+      color: var(--col-done); font-size: 10px; line-height: 1;
+      background: var(--surface-raised);
+    }
+    .doc-check-marker.open { color: transparent; }
+    .doc-check-open {
+      color: var(--text);
+    }
+    .doc-check-open .doc-check-marker {
+      border-color: var(--col-progress);
+      background: rgba(96, 165, 250, .10);
+      box-shadow: 0 0 0 2px rgba(96, 165, 250, .08);
+    }
     .editor-toolbar {
       display: none; align-items: center; gap: 4px; flex-wrap: wrap;
       margin-bottom: 10px; padding: 8px 9px;
@@ -1375,15 +1391,39 @@ function typeBadge(type) {
   return `<span class="type-badge type-${esc(t)}">${esc(t)}</span>`;
 }
 
-// Minimal markdown: headers, bold, inline code, bullet lists
+function sortChecklistRuns(text) {
+  const lines = text.split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length;) {
+    if (!/^- \[[ xX]\] /.test(lines[i])) {
+      out.push(lines[i]);
+      i++;
+      continue;
+    }
+    const run = [];
+    while (i < lines.length && /^- \[[ xX]\] /.test(lines[i])) {
+      run.push(lines[i]);
+      i++;
+    }
+    out.push(...run.filter(line => /^- \[ \] /.test(line)));
+    out.push(...run.filter(line => !/^- \[ \] /.test(line)));
+  }
+  return out.join('\n');
+}
+
+// Minimal markdown: headers, bold, inline code, checklist items, bullet lists
 function md(raw) {
   if (!raw) return '';
-  return esc(raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim())
+  return sortChecklistRuns(esc(raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim()))
     .replace(/^# (.+)$/gm,  '<strong class="doc-heading-1">$1</strong>')
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
     .replace(/`([^`]+)`/g,  '<code class="doc-code">$1</code>')
+    .replace(/^- \[([ xX])\] (.+)$/gm, (_, checked, text) => {
+      const done = checked.toLowerCase() === 'x';
+      return `<span class="doc-bullet${done ? '' : ' doc-check-open'}"><span class="doc-check-marker${done ? '' : ' open'}">${done ? '✓' : ''}</span><span>${text}</span></span>`;
+    })
     .replace(/^- (.+)$/gm,  '<span class="doc-bullet"><span class="doc-bullet-marker">·</span><span>$1</span></span>');
 }
 
