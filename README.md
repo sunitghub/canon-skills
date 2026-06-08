@@ -13,7 +13,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 </div>
 
-![sprint-check board — local kanban with status-aware cards and repo context](meta/screenshots/sprint-check-board-dark.png)
+[![sprint-check board — local kanban with status-aware cards and repo context](meta/screenshots/sprint-check-board-dark.png)](docs/index.html)
 
 One-time setup:
 
@@ -39,16 +39,7 @@ That's the day-to-day surface. Setup wires the tools once; after that, your agen
 
 `sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
 
-<details>
-<summary>Stage Tour</summary>
-
-| Board | Ticket detail | Doc editing | Commit context |
-|---|---|---|---|
-| ![sprint-check board in dark mode](meta/screenshots/board-dark.png) | ![Ticket detail modal](meta/screenshots/ticket-detail.png) | ![Doc editor in ticket modal](meta/screenshots/ticket-doc-editor.png) | ![Commit detail panel](meta/screenshots/commit-detail.png) |
-
-*A compact tour through the main stages: board, ticket detail, in-place doc editing, and commit context. It stays visual without turning the README into a gallery wall.*
-
-</details>
+**[Open the interactive demo tour →](docs/index.html)** — same-page screenshot viewer for board, ticket detail, doc editing, and commit context.
 
 Phase-based frameworks give you a multi-command methodology to learn. canon gives you two commands and a board you can see.
 

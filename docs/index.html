@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>sprint-check demo tour</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0c0d12;
+      --bg-elev: #131520;
+      --bg-soft: #181a28;
+      --line: #2a2d3e;
+      --line-strong: #424866;
+      --text: #eef0ff;
+      --muted: #aab0cf;
+      --accent: #7c6af7;
+      --accent-soft: rgba(124, 106, 247, .14);
+      --shadow: 0 28px 80px rgba(0, 0, 0, .48);
+      --radius: 8px;
+      --max: 1160px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background:
+      radial-gradient(circle at top left, rgba(124, 106, 247, .10), transparent 22%),
+      radial-gradient(circle at top right, rgba(74, 222, 128, .05), transparent 24%),
+      var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body { line-height: 1.5; }
+    a { color: inherit; }
+    img { display: block; max-width: 100%; }
+
+    .page {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 28px 20px 40px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.4fr .8fr;
+      gap: 20px;
+      align-items: end;
+      padding: 16px 0 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 12px;
+      background: rgba(255,255,255,.02);
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2rem, 5vw, 3.8rem);
+      line-height: 1.02;
+      letter-spacing: -.03em;
+      max-width: 12ch;
+    }
+    .lede {
+      margin: 14px 0 0;
+      max-width: 62ch;
+      color: var(--muted);
+      font-size: 15px;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--bg-elev);
+      text-decoration: none;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 13px;
+      transition: transform .15s ease, border-color .15s ease, background .15s ease;
+    }
+    .button:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+      background: #171a29;
+    }
+    .button.primary {
+      background: var(--accent-soft);
+      border-color: rgba(124, 106, 247, .35);
+    }
+
+    .tour {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 18px;
+      padding-top: 22px;
+    }
+
+    .nav {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      display: grid;
+      gap: 8px;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(19, 21, 32, .82);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+    }
+    .nav a {
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .nav a:hover {
+      color: var(--text);
+      border-color: var(--line);
+      background: rgba(255,255,255,.02);
+    }
+
+    .stages { display: grid; gap: 18px; }
+    .stage {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(16, 17, 26, .85);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .stage header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(255,255,255,.02), transparent);
+    }
+    .stage h2 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -.02em;
+    }
+    .stage p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .shots {
+      display: grid;
+      gap: 12px;
+      padding: 16px 18px 18px;
+    }
+    .shots.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .shots.one { grid-template-columns: minmax(0, 1fr); }
+    .shot {
+      display: block;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+      background: #0a0b11;
+      cursor: zoom-in;
+      text-decoration: none;
+      transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
+    }
+    .shot:hover {
+      transform: translateY(-1px);
+      border-color: var(--line-strong);
+      box-shadow: 0 18px 36px rgba(0, 0, 0, .32);
+    }
+    .shot img {
+      width: 100%;
+      height: auto;
+    }
+    .shot figcaption {
+      padding: 10px 12px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255,255,255,.02);
+    }
+
+    .note {
+      margin: 10px 2px 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    dialog {
+      width: min(96vw, 1280px);
+      max-width: 1280px;
+      border: 1px solid var(--line-strong);
+      border-radius: 10px;
+      background: #090a0f;
+      color: var(--text);
+      box-shadow: 0 40px 120px rgba(0, 0, 0, .75);
+      padding: 0;
+    }
+    dialog::backdrop {
+      background: rgba(0, 0, 0, .76);
+      backdrop-filter: blur(4px);
+    }
+    .viewer {
+      display: grid;
+      grid-template-columns: 1fr;
+    }
+    .viewer-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,.02);
+    }
+    .viewer-title {
+      min-width: 0;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .viewer-close {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: var(--bg-elev);
+      color: var(--text);
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .viewer-body {
+      display: grid;
+      gap: 0;
+      padding: 16px;
+    }
+    .viewer-body img {
+      width: 100%;
+      height: auto;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+    .viewer-caption {
+      margin: 12px 2px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 960px) {
+      .hero, .tour { grid-template-columns: 1fr; }
+      .actions { justify-content: flex-start; }
+      .nav { position: static; }
+    }
+    @media (max-width: 720px) {
+      .page { padding-inline: 14px; }
+      .shots.two { grid-template-columns: 1fr; }
+      h1 { max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <div class="eyebrow">canon sprint-check demo</div>
+        <h1>Stage Tour, on the same page</h1>
+        <p class="lede">Open a stage, click a screenshot, and the viewer expands inline. The README stays short; the proof stays local.</p>
+      </div>
+      <div class="actions">
+        <a class="button primary" href="../README.md">Back to README</a>
+        <a class="button" href="#board">Jump to stages</a>
+      </div>
+    </section>
+
+    <section class="tour" id="top">
+      <nav class="nav" aria-label="Stage navigation">
+        <a href="#board">Board</a>
+        <a href="#ticket-detail">Ticket detail</a>
+        <a href="#doc-editing">Doc editing</a>
+        <a href="#commit-context">Commit context</a>
+      </nav>
+
+      <div class="stages">
+        <article class="stage" id="board">
+          <header>
+            <h2>Board</h2>
+            <p>Start here. The overview shows the status lanes and the current sprint at a glance.</p>
+          </header>
+          <div class="shots two">
+            <figure class="shot" data-src="../meta/screenshots/board-dark.png" data-title="Board, dark mode" data-caption="Dark mode board with status lanes and the current sprint in view.">
+              <img src="../meta/screenshots/board-dark.png" alt="sprint-check board in dark mode">
+              <figcaption>Dark mode</figcaption>
+            </figure>
+            <figure class="shot" data-src="../meta/screenshots/board-light.png" data-title="Board, light mode" data-caption="Light mode board with the same layout for contrast and scanning.">
+              <img src="../meta/screenshots/board-light.png" alt="sprint-check board in light mode">
+              <figcaption>Light mode</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="stage" id="ticket-detail">
+          <header>
+            <h2>Ticket detail</h2>
+            <p>Open a card to inspect status, docs, and related commits in one modal.</p>
+          </header>
+          <div class="shots one">
+            <figure class="shot" data-src="../meta/screenshots/ticket-detail.png" data-title="Ticket detail" data-caption="Ticket detail modal with metadata, docs, and workflow state.">
+              <img src="../meta/screenshots/ticket-detail.png" alt="Ticket detail modal">
+              <figcaption>Ticket detail modal</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="stage" id="doc-editing">
+          <header>
+            <h2>Doc editing</h2>
+            <p>Edit the acceptance or plan doc in place, with the editor controls visible in context.</p>
+          </header>
+          <div class="shots one">
+            <figure class="shot" data-src="../meta/screenshots/ticket-doc-editor.png" data-title="Doc editor" data-caption="Ticket doc editor with checklist, heading, and code controls.">
+              <img src="../meta/screenshots/ticket-doc-editor.png" alt="Doc editor in ticket modal">
+              <figcaption>Doc editor</figcaption>
+            </figure>
+          </div>
+        </article>
+
+        <article class="stage" id="commit-context">
+          <header>
+            <h2>Commit context</h2>
+            <p>Read the commit panel without leaving the ticket or losing the thread.</p>
+          </header>
+          <div class="shots one">
+            <figure class="shot" data-src="../meta/screenshots/commit-detail.png" data-title="Commit detail" data-caption="Commit panel with related ticket links and changed files.">
+              <img src="../meta/screenshots/commit-detail.png" alt="Commit detail panel">
+              <figcaption>Commit detail panel</figcaption>
+            </figure>
+          </div>
+        </article>
+        <p class="note">Click any screenshot to expand it in place. Use Esc or the close button to dismiss the viewer.</p>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="viewer" aria-label="Screenshot viewer">
+    <div class="viewer">
+      <div class="viewer-bar">
+        <div class="viewer-title" id="viewer-title">Screenshot</div>
+        <button class="viewer-close" id="viewer-close" type="button">Close</button>
+      </div>
+      <div class="viewer-body">
+        <img id="viewer-image" src="" alt="">
+        <p class="viewer-caption" id="viewer-caption"></p>
+      </div>
+    </div>
+  </dialog>
+
+  <script>
+    const dialog = document.getElementById('viewer');
+    const viewerImage = document.getElementById('viewer-image');
+    const viewerTitle = document.getElementById('viewer-title');
+    const viewerCaption = document.getElementById('viewer-caption');
+    const viewerClose = document.getElementById('viewer-close');
+
+    function openViewer(target) {
+      const img = target.querySelector('img');
+      viewerImage.src = target.dataset.src;
+      viewerImage.alt = (img && img.alt) || target.dataset.title || 'Screenshot';
+      viewerTitle.textContent = target.dataset.title || 'Screenshot';
+      viewerCaption.textContent = target.dataset.caption || '';
+      if (!dialog.open) dialog.showModal();
+    }
+
+    document.addEventListener('click', (event) => {
+      const shot = event.target.closest('.shot');
+      if (!shot) return;
+      event.preventDefault();
+      openViewer(shot);
+    });
+
+    viewerClose.addEventListener('click', () => dialog.close());
+    dialog.addEventListener('click', (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+  </script>
+</body>
+</html>

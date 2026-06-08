@@ -10,6 +10,7 @@ Find docs by what you're trying to do.
 
 ### Reference
 - [sprint-check feature tour](sprint-check.md) — the board, ticket detail, in-place editing, the lifecycle.
+- [Interactive sprint-check demo tour](index.html) — same-page screenshot viewer for the main stages.
 - [Skill catalog](../CATALOG.md) — every skill, what it does, how it's registered.
 
 ### Understand the Why
