@@ -1785,6 +1785,10 @@ function renderModalBody(t) {
           if (missing.length) {
             warning = `<div class="acceptance-warning">⚠ ${missing.join(' and ')} ${missing.length > 1 ? 'need' : 'needs'} checklist items — sprint complete will block</div>`;
           }
+        } else if (slug === 'plan') {
+          if (!hasUsefulSectionText(sectionContent(d.content, 'Approach'), ['How will we implement it?'])) {
+            warning = '<div class="acceptance-warning">⚠ ## Approach needs real notes — add the minimal plan before building</div>';
+          }
         }
         bodyEl.innerHTML = warning + md(d.content);
       })

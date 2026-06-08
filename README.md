@@ -58,6 +58,10 @@ A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.
 
 <a href="docs/index.html#doc-editing"><img src="meta/screenshots/doc-editing-demo.gif" alt="Doc editing demo clip" width="680"></a>
 
+#### Plan Incomplete
+
+<a href="docs/sprint-check.md#ticket-completeness"><img src="meta/screenshots/plan-incomplete.png" alt="Plan incomplete warning screenshot" width="680"></a>
+
 #### Commit Context
 
 <a href="docs/index.html#commit-context"><img src="meta/screenshots/commit-context-demo.gif" alt="Commit context demo clip" width="680"></a>

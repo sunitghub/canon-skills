@@ -84,6 +84,20 @@ Tune read-mode card spacing, render bullets with explicit marker/content structu
 ### Keep the polish CSS-only where possible
 The complaint is visual hierarchy, not modal behavior.
 `;
+  const placeholderPlan =
+`# Plan
+
+Ticket: \`t-5j3d\`
+
+## Approach
+How will we implement it?
+
+## Decisions
+### [Decision title]
+- **Choice:**
+- **Why:**
+- **Alternatives considered:**
+`;
 
   writeTicket(dir, 't-4e5d', 'in_progress', 'task', 2,
     'Polish sprint-check ticket info card',
@@ -100,6 +114,11 @@ The complaint is visual hierarchy, not modal behavior.
     'Record short clips for board, ticket detail, doc editing, and commit context.',
     acceptance.replaceAll('t-4e5d', 't-9k2a'),
     plan.replaceAll('t-4e5d', 't-9k2a'));
+  writeTicket(dir, 't-5j3d', 'open', 'task', 3,
+    'Add skill usage logging to skills.sh',
+    'Track skill add/refresh usage locally without adding external services.',
+    acceptance.replaceAll('t-4e5d', 't-5j3d'),
+    placeholderPlan);
   writeTicket(dir, 't-1q8p', 'cancelled', 'chore', 3,
     'Prototype hosted dashboard',
     'Dropped in favor of local-first sprint-check.',
@@ -163,6 +182,16 @@ async function main() {
 
     await page.click('#act-cancel');
     await page.waitForSelector('#m-edit-area', { state: 'hidden' });
+    await page.click('#btn-close');
+    await page.waitForFunction(() => !document.getElementById('modal-overlay').classList.contains('open'));
+
+    await page.click('.card[data-id="t-5j3d"]');
+    await page.waitForSelector('#modal-overlay.open');
+    await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+    await page.waitForSelector('.acceptance-warning');
+    await sleep(300);
+    await page.locator('#modal').screenshot({ path: path.join(OUT_DIR, 'plan-incomplete.png') });
+
     await page.click('#btn-close');
     await page.waitForFunction(() => !document.getElementById('modal-overlay').classList.contains('open'));
     await page.click('.commit-item:first-child');
