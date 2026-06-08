@@ -1086,7 +1086,7 @@
 
       <div class="tour-feature">
         <div class="tour-feature-name">Ticket completeness<span>—</span>readiness baked into every card.</div>
-        <div class="tour-feature-desc">Three states — ready (green), acceptance incomplete (red), needs docs (gray). Hover the indicator for a checklist popover. The same rule the <code style="font-size:11px;background:var(--surface-raised);padding:1px 5px;border-radius:3px;color:var(--accent)">sprint complete</code> gate enforces.</div>
+        <div class="tour-feature-desc">Ready, incomplete, and needs-doc states show whether Acceptance has criteria/tests and Plan has real Approach notes. Hover the indicator for a checklist popover so doc problems surface before close.</div>
         <div class="tour-feature-tags">
           <span class="tour-tag">acceptance gate</span>
           <span class="tour-tag">test plan check</span>
@@ -1570,12 +1570,14 @@ function renderBoard() {
     document.body.appendChild(_popover);
   }
   function showReadyPopover(el, t) {
-    const { ready, hasAcceptance, hasPlan, acceptanceIncomplete } = readiness(t);
+    const { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete } = readiness(t);
     const accIcon = !hasAcceptance ? '○' : acceptanceIncomplete ? '⚠' : '✓';
     const accNote = acceptanceIncomplete ? ' — missing criteria or test items' : '';
+    const planIcon = !hasPlan ? '○' : planIncomplete ? '⚠' : '✓';
+    const planNote = planIncomplete ? ' — add real Approach notes' : '';
     _popover.innerHTML =
       `<div>${accIcon} Acceptance${accNote}</div>` +
-      `<div>${hasPlan ? '✓' : '○'} Plan</div>` +
+      `<div>${planIcon} Plan${planNote}</div>` +
       (ready ? '<div style="margin-top:4px;color:var(--col-done)">Good to go</div>'
              : '<div style="margin-top:4px;color:var(--text-muted)">Add missing items to unblock</div>');
     const r = el.getBoundingClientRect();
@@ -1639,16 +1641,18 @@ function readiness(t) {
   const hasPlan = slugs.includes('plan');
   // acceptance_has_items: true=complete, false=exists but missing criteria/test items, null=unknown
   const acceptanceIncomplete = hasAcceptance && t.acceptance_has_items === false;
-  const ready = hasAcceptance && hasPlan && !acceptanceIncomplete;
+  const planIncomplete = hasPlan && t.plan_has_approach === false;
+  const ready = hasAcceptance && hasPlan && !acceptanceIncomplete && !planIncomplete;
   const label = !hasAcceptance ? 'needs acc'
     : acceptanceIncomplete ? 'incomplete'
     : !hasPlan ? 'needs plan'
+    : planIncomplete ? 'plan incomplete'
     : 'ready';
-  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, label };
+  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, label };
 }
 
 function cardHTML(t, idx) {
-  const { ready, label, acceptanceIncomplete } = readiness(t);
+  const { ready, label, acceptanceIncomplete, planIncomplete } = readiness(t);
   const animClass = (idx !== undefined) ? ' animate-in' : '';
   const animStyle = (idx !== undefined) ? ` style="--i:${idx}"` : '';
   const pri = t.priority ?? 2;
@@ -1673,7 +1677,7 @@ function cardHTML(t, idx) {
         </div>
         <div class="card-meta-col">
           <span class="card-meta-label">Status</span>
-          <span class="ready-indicator ${ready ? 'ready' : acceptanceIncomplete ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}">
+          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}">
             <span class="ready-dot"></span>
             <span class="ready-label">${label}</span>
           </span>

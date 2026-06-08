@@ -44,11 +44,12 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 Every card shows a readiness indicator. Three states:
 
-- **● ready** (green) — Acceptance and Plan both present, with real items under `## Criteria` and `## Test Plan`.
+- **● ready** (green) — Acceptance and Plan both present; Acceptance has real items under `## Criteria` and `## Test Plan`, and Plan has real notes under `## Approach`.
 - **● acceptance incomplete** (red) — Acceptance doc exists but one or both required sections have no checklist items. `sprint complete` will block. Opening the Acceptance tab shows an inline warning naming the empty sections.
+- **● plan incomplete** (red) — Plan exists but `## Approach` is empty or still contains the template placeholder. A short real approach is enough; Decisions can stay empty for simple work.
 - **● needs acceptance / needs plan** (gray) — the next doc to add.
 
-Click or hover the indicator for a checklist popover. The same rule the CLI gate enforces is reflected on the card — problems show up while you're working, not when you try to close.
+Click or hover the indicator for a checklist popover. Acceptance readiness mirrors the CLI close gate; Plan readiness is an early board signal so untouched templates show up while you're working.
 
 ## Drag to Update Status
 

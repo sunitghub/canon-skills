@@ -17,6 +17,61 @@ PID=""
 cleanup() { [[ -n "$PID" ]] && kill "$PID" 2>/dev/null || true; rm -rf "$WORK"; }
 trap cleanup EXIT
 mkdir -p "$WORK/.tickets"
+mkdir -p "$WORK/.tickets/t-placeholder" "$WORK/.tickets/t-ready"
+cat > "$WORK/.tickets/t-placeholder/ticket.md" <<'EOF'
+---
+id: t-placeholder
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Placeholder plan
+EOF
+cat > "$WORK/.tickets/t-placeholder/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x] Has criteria
+
+## Test Plan
+- [x] Has tests
+EOF
+cat > "$WORK/.tickets/t-placeholder/plan.md" <<'EOF'
+# Plan
+
+## Approach
+How will we implement it?
+
+## Decisions
+EOF
+cat > "$WORK/.tickets/t-ready/ticket.md" <<'EOF'
+---
+id: t-ready
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Ready plan
+EOF
+cat > "$WORK/.tickets/t-ready/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x] Has criteria
+
+## Test Plan
+- [x] Has tests
+EOF
+cat > "$WORK/.tickets/t-ready/plan.md" <<'EOF'
+# Plan
+
+## Approach
+Use the smallest board-side check that catches untouched templates.
+
+## Decisions
+EOF
 
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
 
@@ -46,5 +101,17 @@ assert_eq "403" "$(code -H 'Host: evil.example.com' "http://127.0.0.1:$PORT/api/
 # no Access-Control-Allow-Origin header on GET
 hdrs="$(curl -s -D - -o /dev/null "http://127.0.0.1:$PORT/api/git")"
 [[ "$hdrs" != *"Access-Control-Allow-Origin"* ]] || fail "ACAO header should be absent"
+
+tickets_json="$(curl -s "http://127.0.0.1:$PORT/api/tickets")"
+python3 - "$tickets_json" <<'PY'
+import json
+import sys
+
+tickets = {t["id"]: t for t in json.loads(sys.argv[1])}
+assert tickets["t-placeholder"]["acceptance_has_items"] is True
+assert tickets["t-placeholder"]["plan_has_approach"] is False
+assert tickets["t-ready"]["acceptance_has_items"] is True
+assert tickets["t-ready"]["plan_has_approach"] is True
+PY
 
 printf 'sprint-check-server: ok\n'
