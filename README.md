@@ -35,6 +35,17 @@ sprint complete                  # review, verify, close
 
 That's the day-to-day surface. Setup wires the tools once; after that, your agent does the work and canon keeps it in your repo — not your prompt history.
 
+Guided walkthrough:
+
+```bash
+~/.canon/scripts/copy-todo-walkthrough.sh ~/Developer/canon-todo-walkthrough
+cd ~/Developer/canon-todo-walkthrough
+~/.canon/skills.sh add sprint
+```
+
+Build the Todo walkthrough in a disposable folder when you want to understand
+canon end to end without adding local sprint state to the canon checkout.
+
 ## The Board
 
 `sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
@@ -190,7 +201,7 @@ Register canon in another project:
 ```
 
 - **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.
-- **[Todo walkthrough →](examples/canon-todo-walkthrough)** — the full flow end to end, from empty board to shipped app.
+- **[Todo walkthrough →](examples/canon-todo-walkthrough)** — copy it to a disposable folder and walk the full flow, from empty board to shipped app.
 - **[All docs, by what you're doing →](docs/README.md)** — learn, set up, reference, why.
 
 ## Contributing

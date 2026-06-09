@@ -11,6 +11,7 @@ tests=(
   "$ROOT/tests/skills-refresh.sh"
   "$ROOT/tests/skills-std.sh"
   "$ROOT/tests/install-target.sh"
+  "$ROOT/tests/copy-todo-walkthrough.sh"
   "$ROOT/tests/sprint-check-server.sh"
 )
 

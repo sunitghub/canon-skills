@@ -4,15 +4,18 @@
 sprint tools on your PATH so the `sprint`, `tkt`, and `sprint-check` commands
 are available. You only do this once per project.
 
-This folder lives inside the canon source repo, but it acts as its own project
-root for the walkthrough. In real use you run these commands from your own
-project directory.
+Recommended: run this walkthrough from a disposable copy, not from the canon
+source checkout:
 
 ```bash
-cd examples/canon-todo-walkthrough
-../../skills.sh add sprint
-../../skills.sh status
+~/.canon/scripts/copy-todo-walkthrough.sh ~/Developer/canon-todo-walkthrough
+cd ~/Developer/canon-todo-walkthrough
+~/.canon/skills.sh add sprint
+~/.canon/skills.sh status
 ```
+
+If you are developing canon itself and running from this source checkout, use
+`../../skills.sh add sprint` from `examples/canon-todo-walkthrough`.
 
 Concretely, this:
 
@@ -30,7 +33,7 @@ memory.
 If the tools are not on PATH yet:
 
 ```bash
-export PATH="$PATH:$(cd ../.. && pwd)/tools"
+export PATH="$PATH:$HOME/.canon/tools"
 ```
 
 This walkthrough starts without app files. The implementation step later will

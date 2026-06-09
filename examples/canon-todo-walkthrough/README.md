@@ -21,6 +21,20 @@ The folder starts with docs only. Setup creates the local `.tickets/` project
 marker, `sprint start` creates ticket state, and the implementation step creates
 the app files.
 
+Recommended: copy the walkthrough out of the canon checkout first, then work in
+the copy so local sprint state and generated Todo app files stay disposable.
+
+```bash
+scripts/copy-todo-walkthrough.sh ~/Developer/canon-todo-walkthrough
+cd ~/Developer/canon-todo-walkthrough
+```
+
+From an installed canon checkout, use:
+
+```bash
+~/.canon/scripts/copy-todo-walkthrough.sh ~/Developer/canon-todo-walkthrough
+```
+
 Canon uses two sprint docs:
 
 | Doc | Purpose |
@@ -52,10 +66,15 @@ as a separate process:
 
 ## Walk The Canon Flow
 
-1. Read [01-setup.md](01-setup.md) — wire the tools.
-2. Start the sprint in [02-sprint-start.md](02-sprint-start.md) — describe the work; the agent plans it.
-3. Use the board checkpoint in [03-sprint-check.md](03-sprint-check.md) — review what the agent drafted.
-4. Build and test with [04-implementation.md](04-implementation.md) — implement and tick off criteria.
-5. Complete the sprint with [05-sprint-complete.md](05-sprint-complete.md) — close with the gate, including the failure case.
+1. Copy the walkthrough and enter the disposable project folder:
+   ```bash
+   ~/.canon/scripts/copy-todo-walkthrough.sh ~/Developer/canon-todo-walkthrough
+   cd ~/Developer/canon-todo-walkthrough
+   ```
+2. Read [01-setup.md](01-setup.md) — wire the tools.
+3. Start the sprint in [02-sprint-start.md](02-sprint-start.md) — describe the work; the agent plans it.
+4. Use the board checkpoint in [03-sprint-check.md](03-sprint-check.md) — review what the agent drafted.
+5. Build and test with [04-implementation.md](04-implementation.md) — implement and tick off criteria.
+6. Complete the sprint with [05-sprint-complete.md](05-sprint-complete.md) — close with the gate, including the failure case.
 
 The finished reference implementation lives in [`../todo-app`](../todo-app).
