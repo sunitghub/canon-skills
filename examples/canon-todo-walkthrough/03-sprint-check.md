@@ -100,6 +100,19 @@ Two important boundaries:
 Use `+ New ticket` when you discover separate follow-up work during the Todo
 walkthrough. Keep the current ticket focused instead of expanding scope.
 
+**Handing a board-created ticket to the agent.** If you spot a bug or follow-up
+and create it directly on the board — filling in the title and description there
+— hand it to the agent with the ticket id:
+
+```text
+sprint start t-xxxx
+```
+
+The agent reads the ticket you created, drafts `acceptance.md` and `plan.md`
+from the details you provided, grills you on any gray areas, and waits for your
+approval before writing any code. The flow is identical to `sprint start "..."`;
+the only difference is the ticket already exists.
+
 ## Sidebar And Commits
 
 The sidebar shows the active sprint, current git branch/state, current focus,
