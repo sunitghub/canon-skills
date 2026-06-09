@@ -94,21 +94,61 @@ npm whoami   # should return your npm username
 
 ### First-time publish
 
+First launch path:
+
+1. **Make the GitHub repo public.**
+
+   The installer clones `https://github.com/sunitghub/canon.git` over
+   unauthenticated HTTPS. Publishing to npm while the repo is private can reserve
+   the package name, but `npx canon-skills@latest` will fail for normal users
+   until the repo is public.
+
+2. **Authenticate npm:**
+
+   ```bash
+   npm login
+   npm whoami
+   ```
+
+3. **Dry run from the canon checkout:**
+
+   ```bash
+   npm pack --dry-run .
+   # confirm only LICENSE, README.md, bin/install.js, and package.json are listed
+   ```
+
+4. **Publish the installer:**
+
+   ```bash
+   npm publish . --access public
+   ```
+
+   `--access public` is required because the package name is unscoped. Without
+   it, npm defaults to private (paid plan required).
+
+5. **Verify npm and the live installer:**
+
+   ```bash
+   npm info canon-skills
+   npm info canon-skills version
+   npx canon-skills@latest
+   ```
+
+6. **Create the first GitHub Release after live npm verification:**
+
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   gh release create v1.0.0 --title "v1.0.0" --notes "First public installer release"
+   ```
+
+The GitHub Releases panel appears after the tag/release step above. For canon,
+Releases track installer publishes, not every skill or docs update.
+
+Legacy shorthand:
+
 ```bash
 npm publish <path-to-canon> --access public
-```
-
-`--access public` is required because the package name is unscoped. Without it, npm defaults to private (paid plan required).
-
-Verify immediately after:
-```bash
-npm info canon-skills
-# should show version 1.0.0, description, etc.
-```
-
-Test the live package:
-```bash
-npx canon-skills@latest
 ```
 
 ### When to republish to npm
