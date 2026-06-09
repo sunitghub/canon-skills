@@ -6,26 +6,90 @@ Type this in the command line from the walkthrough root:
 sprint-check
 ```
 
-Use this page as a visual checkpoint. Reload the board at each stage and confirm:
+Use the board as the shared checkpoint between developer, agent, and reviewer.
+It reads local files only: `.tickets/` for sprint state, `HANDOFF.md` for current
+focus, and `git log` for recent commits. Nothing here requires an account or a
+remote service.
+
+## Board States To Check
+
+Reload the board at each stage and confirm:
 
 1. Before `sprint start`, the board is empty.
-2. After `sprint start`, the ticket is In Progress and `not ready`, and
-   `ticket.md` exists.
-3. `acceptance.md` and `blueprint.md` appear as tabs once the agent drafts them;
-   `plan.md` appears only after you approve. Acceptance criteria stay unchecked
-   until the behavior is implemented and verified.
-4. After tests pass and acceptance is checked, `sprint complete` moves the
-   ticket to Done.
+2. After `sprint start`, the ticket is In Progress and not ready.
+3. `acceptance.md` and `plan.md` appear as tabs once they exist. Acceptance
+   criteria stay unchecked until the behavior is implemented and verified.
+4. After tests pass and acceptance is checked, `sprint complete` moves the ticket
+   to Done.
 
-The board reads `.tickets/` for sprint state, `HANDOFF.md` for current focus,
-and `git log` for recent commits. The detail view shows the same sprint files
-the agent is using, and the sidebar shows current git state.
+## Readiness Indicators
 
-Two things the board does **not** do:
+Every card has a readiness label:
 
-- Moving a card changes ticket state only — it does not run the
-  `sprint complete` pipeline, so never drag a ticket to Done as a substitute.
+- `needs acc` — add `acceptance.md`.
+- `needs plan` — add `plan.md`.
+- `incomplete` — Acceptance exists, but `## Criteria` or `## Test Plan` has no
+  checklist items.
+- `plan incomplete` — Plan exists, but `## Approach` is empty or still contains
+  the template placeholder.
+- `ready` — Acceptance and Plan exist with useful content.
+
+Click or hover the readiness label to see the popover. These warnings are early
+signals; `sprint complete` still performs the final gate.
+
+## Ticket Detail And Inline Docs
+
+Click the Todo ticket. The detail modal shows:
+
+- Status, type, priority, age, and readiness.
+- The ticket description.
+- The two sprint docs: `Acceptance` and `Plan`.
+- An `Edit` button for changing the active doc in place.
+
+Use inline editing for small corrections, such as tightening a criterion or
+checking off a verified test. The editor keeps required headings and the ticket
+line intact. If both sprint docs already exist, `+ New doc` is hidden because
+Canon's sprint flow uses only Acceptance and Plan.
+
+Closed or discarded tickets are read-only. You can still inspect their docs, but
+you cannot edit them without reopening or creating new work.
+
+## Search
+
+Use the search box above the columns to find tickets by title, id, status, type,
+priority, description, doc names, or readiness labels.
+
+Try:
+
+```text
+plan incomplete
+```
+
+A ticket whose Plan still contains placeholder approach text should remain
+visible. Clear the search or press `Esc` to restore the full board. Matching
+tickets stay in their original lanes so status context is not lost.
+
+## Status And Workflow Actions
+
+Dragging a card between columns updates the ticket's status in `.tickets/`.
+This is useful for ordinary state changes, but it is not a replacement for the
+close command.
+
+Two important boundaries:
+
+- Moving a card to Done changes ticket state only; it does not run the
+  `sprint complete` pipeline.
 - `Discard ticket` is for abandoned or no-longer-needed work; it moves the
-  ticket to the Discarded column, not Done.
+  ticket to Discarded, not Done.
 
-Stop it with `Ctrl+C` in the terminal.
+Use `+ New ticket` when you discover separate follow-up work during the Todo
+walkthrough. Keep the current ticket focused instead of expanding scope.
+
+## Sidebar And Commits
+
+The sidebar shows the active sprint, current git branch/state, current focus,
+recent commits, and ticket counts. After you commit implementation work, click a
+recent commit to inspect changed files and ticket association. Commit messages
+that include the ticket id are easiest for the board to connect.
+
+Stop the board with `Ctrl+C` in the terminal.

@@ -7,7 +7,8 @@ the steps and understand what each tool does and why.
 **What you'll see:**
 - A ticket created with a single command; the board shows it instantly.
 - The agent drafts the "done criteria" and test plan for you to review, not the other way around.
-- The board flags incomplete acceptance docs before you try to close — so missing criteria can't slip through.
+- The board flags incomplete Acceptance or Plan docs before you try to close or build from a placeholder.
+- Ticket search, readiness indicators, inline doc editing, status changes, git state, and commit context in `sprint-check`.
 - Closing the sprint is gated: the CLI checks the board's criteria and test plan are both filled and ticked.
 
 A developer runs the terminal commands. A product manager reads the board and
@@ -16,6 +17,13 @@ reviews the acceptance criteria the agent drafts. Both roles are shown.
 The folder starts with docs only. Setup creates the local `.tickets/` project
 marker, `sprint start` creates ticket state, and the implementation step creates
 the app files.
+
+Canon uses two sprint docs:
+
+| Doc | Purpose |
+|---|---|
+| `acceptance.md` | Done criteria, test plan, and QA sign-off |
+| `plan.md` | Approach and decisions |
 
 ## Walk The Canon Flow
 

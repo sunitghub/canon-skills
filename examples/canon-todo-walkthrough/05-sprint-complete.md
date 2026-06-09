@@ -9,6 +9,10 @@ refuse to proceed until the doc is fixed.
 Before closing, `.tickets/<id>/acceptance.md` must have:
 - At least one checked item under `## Criteria`
 - At least one checked item under `## Test Plan`
+- No unchecked items under `## Criteria` or `## Test Plan`
+
+`.tickets/<id>/plan.md` should also have real notes under `## Approach`, not the
+template placeholder.
 
 Open the ticket on the board and check every item as it passes tests.
 
@@ -37,9 +41,12 @@ Sprint t-xxxx is not complete. Unchecked acceptance/test items remain:
 
 Fix: run `npm test`, confirm it passes, then have the agent check that item.
 
-The board's readiness indicator also reflects this: a card that shows
-`acceptance incomplete` has the same problem the close gate will catch — it's an
-early warning you can act on before running `sprint complete`.
+The board's readiness indicator also reflects this:
+
+- `incomplete` means Acceptance has missing checklist structure.
+- `plan incomplete` means Plan still has an empty or placeholder approach.
+
+These are early warnings you can act on before running `sprint complete`.
 
 ## Step 3 - Complete the Sprint
 
@@ -66,4 +73,9 @@ Sprint completed: t-xxxx
 ## Step 4 - Verify Done
 
 Reload `sprint-check`. The Todo ticket should now appear in Done, with the same
-Acceptance, Blueprint, and Plan tabs still available in the detail view.
+Acceptance and Plan tabs still available in the detail view. The ticket is
+read-only in the modal because closed work should not be edited in place.
+
+Use the search box to find the closed ticket by title or id. Then clear the
+search and click the latest commit in the sidebar to confirm the final commit is
+visible and connected to the ticket.
