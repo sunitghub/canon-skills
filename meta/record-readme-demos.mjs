@@ -95,6 +95,20 @@ Use a lightweight local board and record short clips from real UI flows.
 ### Keep clips local
 Store generated GIFs with the screenshots so README links remain stable.
 `;
+  const placeholderPlan =
+`# Plan
+
+Ticket: \`t-5j3d\`
+
+## Approach
+How will we implement it?
+
+## Decisions
+### [Decision title]
+- **Choice:**
+- **Why:**
+- **Alternatives considered:**
+`;
 
   writeTicket(dir, 't-2510', 'in_progress', 'task', 2,
     'Build interactive README-linked demo tour',
@@ -111,6 +125,11 @@ Store generated GIFs with the screenshots so README links remain stable.
     'Refresh the static screenshots used by the tour.',
     acceptanceReady.replaceAll('t-2510', 't-7m4b'),
     planReady.replaceAll('t-2510', 't-7m4b'));
+  writeTicket(dir, 't-5j3d', 'open', 'task', 3,
+    'Add skill usage logging to skills.sh',
+    'Track skill add/refresh usage locally without adding external services.',
+    acceptanceReady.replaceAll('t-2510', 't-5j3d'),
+    placeholderPlan);
   writeTicket(dir, 't-1q8p', 'cancelled', 'chore', 3,
     'Prototype hosted dashboard',
     'Dropped in favor of local-first sprint-check.',
@@ -210,6 +229,14 @@ async function main() {
       await sleep(850);
       await page.hover('.card[data-id="t-9k2a"]');
       await sleep(650);
+      return page.locator('#app').boundingBox();
+    })]);
+
+    clips.push(['ticket-search-demo', await withPage(port, 'ticket-search-demo', async (page) => {
+      await page.click('#board-search');
+      await sleep(250);
+      await page.keyboard.type('plan incomplete', { delay: 55 });
+      await sleep(900);
       return page.locator('#app').boundingBox();
     })]);
 

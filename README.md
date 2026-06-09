@@ -50,6 +50,10 @@ A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.
 
 <a href="docs/index.html#board"><img src="meta/screenshots/board-demo.gif" alt="Board demo clip" width="680"></a>
 
+#### Ticket Search
+
+<a href="docs/index.html#board"><img src="meta/screenshots/ticket-search-demo.gif" alt="Ticket search demo clip" width="680"></a>
+
 #### Ticket Detail
 
 <a href="docs/index.html#ticket-detail"><img src="meta/screenshots/ticket-detail-demo.gif" alt="Ticket detail demo clip" width="680"></a>
