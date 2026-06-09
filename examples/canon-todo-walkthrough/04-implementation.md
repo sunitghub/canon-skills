@@ -43,7 +43,47 @@ Type this in the command line after the agent creates `package.json`:
 npm test
 ```
 
-## Step 3 - Update Acceptance
+This is where Layer 2, knowledge capture, matters. Add one deliberate capture so
+the walkthrough shows how canon preserves a useful discovery outside the chat
+transcript. Tell the agent:
+
+```text
+Capture this: the Todo app is served from src/ and tests exercise src/app.js directly, so keep browser behavior and testable logic separated unless a later ticket changes the structure.
+```
+
+The agent records that kind of discovery in `HANDOFF.md ## Discoveries`, where a
+future session can recover it. Do not add another sprint doc; useful discoveries
+feed the handoff context.
+
+## Step 3 - Exit And Come Back
+
+Simulate the thing canon is built for: losing the current chat context.
+
+1. Tell the agent to wrap up the partial state:
+
+```text
+Pause here and update HANDOFF.md with current focus, in-progress files, the captured discovery, and next steps.
+```
+
+2. End the agent session.
+3. Start a fresh agent session in `examples/canon-todo-walkthrough`.
+4. Ask:
+
+```text
+Open sprint-check and resume the Todo sprint from HANDOFF.md.
+```
+
+Expected result: the agent should know the active ticket, what was built, what
+still needs testing, and the captured `src/` structure discovery without you
+re-explaining the sprint. `sprint-check` should show the same Current Focus in
+the sidebar.
+
+If the board already has older tickets, the returning agent should use them as
+bounded context: active and open tickets first, then only recent or file-related
+closed tickets. The goal is "enough state to continue," not replaying the whole
+project history.
+
+## Step 4 - Update Acceptance
 
 As criteria pass, have the agent update `.tickets/<id>/acceptance.md` from
 unchecked to checked. Reload `sprint-check` so the ticket shows progress instead
@@ -53,7 +93,7 @@ the board's inline editor or let the agent edit the markdown file.
 Do not check an item just because code was written. Check it only after the
 behavior or command has been verified.
 
-## Step 4 - Run the App
+## Step 5 - Run the App
 
 Type this in the command line:
 
@@ -67,7 +107,7 @@ The important canon habit is that tests come from `.tickets/<id>/acceptance.md`,
 not from memory. If scope changes, update the ticket before treating the work as
 done.
 
-## Step 5 - Commit With The Ticket Id
+## Step 6 - Commit With The Ticket Id
 
 After tests pass, commit the Todo app with the ticket id in the message:
 

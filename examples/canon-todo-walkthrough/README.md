@@ -8,6 +8,9 @@ the steps and understand what each tool does and why.
 - A ticket created with a single command; the board shows it instantly.
 - The agent drafts the "done criteria" and test plan for you to review, not the other way around.
 - The board flags incomplete Acceptance or Plan docs before you try to close or build from a placeholder.
+- Session continuity through `HANDOFF.md`, including a stop-and-resume checkpoint.
+- A user-triggered capture for a Todo-specific discovery found while building.
+- A high-impact "delete all" variant caught before code, where risk ratings become required tests before close.
 - Ticket search, readiness indicators, inline doc editing, status changes, git state, and commit context in `sprint-check`.
 - Closing the sprint is gated: the CLI checks the board's criteria and test plan are both filled and ticked.
 
@@ -24,6 +27,11 @@ Canon uses two sprint docs:
 |---|---|
 | `acceptance.md` | Done criteria, test plan, and QA sign-off |
 | `plan.md` | Approach and decisions |
+
+Other canon layers feed those docs or the local board instead of creating extra
+files to manage: session continuity uses `HANDOFF.md`, durable decisions use
+`DECISIONS.md`, capture records discoveries, and high-risk impact analysis adds
+mandatory tests to Acceptance.
 
 ## Walk The Canon Flow
 

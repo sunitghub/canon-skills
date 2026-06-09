@@ -22,6 +22,11 @@ Concretely, this:
 - Offers to put the canon `tools` directory on PATH so `sprint`, `tkt`, and
   `sprint-check` are available as commands.
 
+The first `sprint start` will also create `HANDOFF.md` and `DECISIONS.md` if
+they do not exist. That is canon's session-continuity layer: a new agent reads
+the same local context instead of asking you to reconstruct the sprint from
+memory.
+
 If the tools are not on PATH yet:
 
 ```bash

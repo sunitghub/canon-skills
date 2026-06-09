@@ -59,10 +59,18 @@ Sprint complete
 The agent should:
 
 - Verify each item in `.tickets/<id>/acceptance.md`.
+- Run the wrapup path proportionally: simplifier/review/security/doc checks run
+  only when they apply.
 - Confirm the test command passed.
 - Update `DECISIONS.md` only for durable non-obvious decisions.
 - Update `HANDOFF.md` with follow-up work.
 - Run `sprint complete` to close the active ticket.
+
+For this Todo sprint, impact analysis should have stayed light because there is
+no broad audience, irreversible operation, shared-state blast radius, duplicate
+trigger path, or downstream cascade. If any of those were HIGH, their mitigation
+tests would already be in Acceptance, and closeout would not proceed until they
+were checked.
 
 Expected output when all items are checked:
 

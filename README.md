@@ -76,6 +76,25 @@ Phase-based frameworks give you a multi-command methodology to learn. canon give
 
 **[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
 
+## What Makes canon Different
+
+Most agent frameworks tell the model what process to follow. canon gives the
+process local memory, visible state, and hard gates.
+
+- **Session continuity.** `HANDOFF.md`, the active ticket, open tickets, and a
+  small set of recent or file-related closed tickets give a returning agent
+  enough context to resume without replaying the whole project history.
+- **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
+  capture records it in `HANDOFF.md ## Discoveries` immediately, before context
+  compaction or a session break can lose it.
+- **Risk-aware planning.** Simple work stays light. High-impact work runs impact
+  analysis before code, and every HIGH risk becomes a required Acceptance test.
+- **Visible workflow.** `sprint-check` turns the repo-local state into a board:
+  readiness, search, inline docs, current focus, git status, and commit context
+  are inspectable by developers and reviewers.
+- **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
+  Plan items are unchecked. The agent still owns judgment; canon owns the gate.
+
 ## The Two Commands
 
 **`sprint start "<what>"`** — Make your agent plan before it codes.

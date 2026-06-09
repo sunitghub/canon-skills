@@ -15,7 +15,7 @@ flowchart LR
 Steps in plain English:
 - **Acceptance** — the agent writes the checklist of "done" criteria and test commands.
 - **Orient** *(runs automatically)* — the agent reads the codebase to understand what already exists.
-- **Grill** — the agent asks you the questions that change what gets built (see Step 4 below).
+- **Grill** — the agent asks you the questions that change what gets built (see Step 5 below).
 - **Impact** *(runs automatically)* — the agent rates the risk of the change.
 - **Approval** — you say "approved" and the agent locks in the plan.
 - **Plan** — the final brief the agent implements against; only written after your approval.
@@ -44,9 +44,12 @@ DECISIONS.md
 HANDOFF.md
 ```
 
-Then the agent takes over: it drafts **Acceptance** (done criteria + test plan)
-reads the codebase, and surfaces gray-area questions. After approval, it writes
-**Plan** (approach + decisions).
+Then the agent takes over: it drafts **Acceptance** (done criteria + test plan),
+reads the codebase, and surfaces gray-area questions. It also classifies the
+risk tier. A small local Todo app is normal-tier work, so the plan stays brief;
+a high-risk variant like "bulk delete every user's tasks" would trigger impact
+analysis before approval, and any HIGH risk would add mandatory mitigation tests
+to Acceptance. After approval, the agent writes **Plan** (approach + decisions).
 
 Reload `sprint-check`. The ticket is In Progress and `not ready` — only
 `ticket.md` plus any drafted sprint docs exist so far. Open it to read what the
@@ -78,7 +81,39 @@ that acceptance reflects a shared agreement.
 If the board shows `incomplete` on the card, it means the agent left an
 Acceptance section empty. Tell the agent to fill it before you approve.
 
-## Step 4 - Answer the grill, then approve
+For this Todo sprint, the test plan is intentionally small. That is the point of
+canon's impact layer: low-risk work stays light, while irreversible, broad, or
+multi-trigger work earns extra tests before code starts.
+
+## Step 4 - Try a high-impact variant
+
+Before approval, deliberately ask about a riskier version:
+
+```text
+What if this Todo app also has a Delete all todos button with no undo?
+```
+
+The agent should catch the impact before code is written. Even in a local demo,
+that request changes the risk profile: **Reversibility** is HIGH because the
+action destroys user-entered state, and **Trigger paths** may become relevant if
+the same delete handler is reachable from multiple controls.
+
+The agent should respond by adding mitigations to Acceptance, such as:
+
+```markdown
+- [ ] Delete-all requires explicit confirmation.
+- [ ] Delete-all can be cancelled without changing the list.
+- [ ] No alternate trigger path bypasses the confirmation.
+```
+
+For the walkthrough, reject the risky variant and keep the original simple Todo
+scope:
+
+```text
+Good catch. Do not add delete-all in this sprint. Keep the original scope.
+```
+
+## Step 5 - Answer the grill, then approve
 
 After drafting, the agent asks the questions that change what gets built. These
 are the things that have no right answer without your input — for example:

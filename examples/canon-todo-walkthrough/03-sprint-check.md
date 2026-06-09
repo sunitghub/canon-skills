@@ -11,6 +11,16 @@ It reads local files only: `.tickets/` for sprint state, `HANDOFF.md` for curren
 focus, and `git log` for recent commits. Nothing here requires an account or a
 remote service.
 
+This is where Layer 1 becomes visible. `HANDOFF.md` gives the board its Current
+Focus, so a reviewer or fresh agent can see what is underway before reading the
+whole ticket.
+
+If the project already has tickets, they add useful context without replacing
+`HANDOFF.md`. On resume, start with the active ticket, open tickets, and the
+sidebar focus. Read closed tickets only when they are recent, related to the same
+files, or linked from commits you are about to touch. That keeps continuity
+useful without spending the whole context window on old work.
+
 ## Board States To Check
 
 Reload the board at each stage and confirm:
@@ -91,5 +101,9 @@ The sidebar shows the active sprint, current git branch/state, current focus,
 recent commits, and ticket counts. After you commit implementation work, click a
 recent commit to inspect changed files and ticket association. Commit messages
 that include the ticket id are easiest for the board to connect.
+
+If the session ends midway through the Todo app, `HANDOFF.md` should say what is
+in progress and what to do next. Reloading `sprint-check` after a fresh session
+should show that continuity in the sidebar.
 
 Stop the board with `Ctrl+C` in the terminal.
