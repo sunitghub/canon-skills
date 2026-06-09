@@ -93,9 +93,9 @@ Each sprint produces two docs — no more, no less:
 | `acceptance.md` | Done criteria · test plan · QA sign-off |
 | `plan.md` | Approach · decisions made along the way |
 
-Both are plain markdown in `.tickets/<id>/`, committed alongside the code. Both are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread.
+Both are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
 
-**Gated, not vibes.** The CLI owns state: one active sprint at a time, and `sprint complete` refuses to close while any acceptance or test-plan box is still unchecked — a checklist-state check in code, not a judgment call. The CLI gates the boxes; the agent verifies the tests and judges whether criteria are truly met before checking them. The agent owns the judgment — the gate owns the close. The board surfaces the same check early: cards flag `acceptance incomplete` in red when criteria or test-plan sections have no real items, and opening the doc shows an inline warning — so problems show up while you're still working, not as a close-time surprise.
+**Gated, not vibes.** The CLI owns state: one active sprint at a time, and `sprint complete` refuses to close while any acceptance or test-plan box is still unchecked — a checklist-state check in code, not a judgment call. The CLI gates the boxes; the agent verifies the tests and judges whether criteria are truly met before checking them. The agent owns the judgment — the gate owns the close. The board surfaces the same check early: cards flag `incomplete` in red when criteria or test-plan sections have no real items, and opening the doc shows an inline warning — so problems show up while you're still working, not as a close-time surprise.
 
 ## Code Archaeology
 
@@ -139,7 +139,7 @@ Double-bordered nodes are sub-skills the agent runs inside the flow — you don'
 
 Define your standards once; every project inherits them via `@`-import — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. The `efficiency` standard is wired automatically when you register `sprint`. **[How this works →](docs/how-it-works.md)**
 
-Every non-trivial change starts with a ticket. Two docs — `acceptance.md` (done criteria + test plan) and `plan.md` (approach + decisions) — live in `.tickets/<id>/` as plain markdown, committed alongside the code. A future agent reading that folder knows *why* something was built and what trade-offs were ruled out, not just what the diff says. Your repo accumulates intent, not just history.
+Every non-trivial change starts with a ticket. Two docs — `acceptance.md` (done criteria + test plan) and `plan.md` (approach + decisions) — live in `.tickets/<id>/` as plain markdown. A future agent reading that folder knows *why* something was built and what trade-offs were ruled out, not just what the diff says. Your repo accumulates intent, not just history.
 
 canon enforces its own standards. The test suite runs and blocks before every commit — no advisory reminders, no honor system. What ships is what passed.
 

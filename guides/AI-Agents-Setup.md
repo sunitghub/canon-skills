@@ -333,7 +333,7 @@ Session hooks (fire automatically):
 
 **The problem:** AI agents start cold. Every new session — or context window exhaustion mid-session — means re-explaining where things stand.
 
-**What it does:** `HANDOFF.md` lives in your project root and versions alongside your code — the `auto-handoff` hook commits it for you (skipped automatically if you gitignore it). Two hooks automate its lifecycle:
+**What it does:** `HANDOFF.md` lives in your project root as repo-local markdown. If your project tracks it, the `auto-handoff` hook can commit it for you; if you gitignore it, the hook skips committing it. Two hooks automate its lifecycle:
 
 - **`handoff-inject`** (session start) — injects `HANDOFF.md` into your first prompt, once per 4-hour window. The agent wakes up knowing where things stand without you saying a word.
 - **`auto-handoff`** (session end) — appends a timestamped snapshot: modified files, recent commits, active tickets. Safety net when context runs out mid-session.

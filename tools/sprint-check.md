@@ -43,10 +43,16 @@ readable.
 
 **Cards** show ticket ID, type badge, title, priority dots, age, and a readiness indicator:
 - `● ready` (green) — Acceptance and Plan both present and complete
-- `● acceptance incomplete` (gray) — acceptance.md exists but is missing checklist items under ## Criteria or ## Test Plan; `sprint complete` will block
-- `● needs acceptance` / `● needs plan` (gray) — the next sprint doc to add
+- `● incomplete` (red) — acceptance.md exists but is missing checklist items under ## Criteria or ## Test Plan; `sprint complete` will block
+- `● plan incomplete` (red) — plan.md exists but ## Approach is empty or still placeholder text
+- `● needs acc` / `● needs plan` (gray) — the next sprint doc to add
 
 Click the readiness indicator for a checklist popover. Click anywhere else on the card to open the full ticket.
+
+**Search** above the columns filters tickets by title, id, status, type, priority,
+description, sprint doc names, and readiness labels such as `plan incomplete`.
+Matches stay in their original columns. Press `Esc` or clear the field to show
+the full board again.
 
 **Moving tickets:**
 - Drag and drop between columns
@@ -71,9 +77,11 @@ Click any card to open its detail view:
 
 - **Meta row** — Status, Type, Priority, Age, Ready indicator
 - **Tabs** — Description tab appears only when companion docs exist; otherwise body is shown directly
-- **Docs** — Acceptance, Blueprint, Plan, Decisions, QA, Notes, or any custom doc as tabs; click `+ New doc` to create one with a template
+- **Docs** — Acceptance and Plan as tabs; click `+ New doc` only while one of those docs is missing
 - **Edit** — inline edit for the ticket body or any doc; Save / Cancel
 - **Footer** — `← Back`, `Forward →`, `Discard ticket ×`; keyboard hints bottom-right
+
+Closed and discarded tickets are read-only in the modal.
 
 ## Sprint Docs
 
@@ -83,13 +91,15 @@ After `sprint start`, the ticket appears In Progress and not ready because only
 | Doc | Use it to |
 |-----|-----------|
 | Acceptance | Define binary done criteria and the test plan |
-| Blueprint | Capture the approach before implementation |
-| Plan | Record the approved sprint brief before source edits |
+| Plan | Capture the approach and decisions before source edits |
 
 Templates include comments for the lines and headings users should keep
 unchanged. In edit mode, the toolbar inserts common Markdown at the cursor:
 checkboxes, checked items, bullets, numbered items, headings, inline code, and
 toggle blocks.
+
+Once both Acceptance and Plan exist, `+ New doc` is hidden. Canon's sprint flow
+does not use extra board-created sprint docs.
 
 `orient`, `impact-analysis`, `capture`, and wrapup checks are sub-skills run by
 the agent during the sprint lifecycle. They are not `+ New doc` types. When they

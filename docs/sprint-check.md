@@ -20,11 +20,19 @@ Toggle between light and dark with the button in the top-right corner.
 
 Click any ticket to see its status, type, priority, readiness, description, and attached docs in one place.
 
+Closed and discarded tickets open read-only. Their sprint docs remain inspectable, but edit controls are hidden until the work is reopened or a new ticket is created.
+
 ## Edit Sprint Docs in Place
 
 ![Edit sprint docs in ticket detail](../meta/screenshots/ticket-doc-editor.png)
 
 Open a ticket to read or edit its Description, Acceptance, and Plan without leaving the board.
+
+## Ticket Search
+
+![sprint-check board — searchable local kanban](../meta/screenshots/sprint-check-board-dark.png)
+
+Use the search box above the columns to find tickets by title, id, status, type, priority, description, doc names, or readiness labels such as `plan incomplete`. Matching tickets stay in their original lanes so status context is preserved. Press `Esc` or clear the field to restore the full board.
 
 ## Commit Intelligence
 
@@ -42,12 +50,12 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 ![Ticket completeness checker](../meta/screenshots/ticket-completeness.png)
 
-Every card shows a readiness indicator. Three states:
+Every card shows a readiness indicator:
 
 - **● ready** (green) — Acceptance and Plan both present; Acceptance has real items under `## Criteria` and `## Test Plan`, and Plan has real notes under `## Approach`.
-- **● acceptance incomplete** (red) — Acceptance doc exists but one or both required sections have no checklist items. `sprint complete` will block. Opening the Acceptance tab shows an inline warning naming the empty sections.
+- **● incomplete** (red) — Acceptance doc exists but one or both required sections have no checklist items. `sprint complete` will block. Opening the Acceptance tab shows an inline warning naming the empty sections.
 - **● plan incomplete** (red) — Plan exists but `## Approach` is empty or still contains the template placeholder. A short real approach is enough; Decisions can stay empty for simple work.
-- **● needs acceptance / needs plan** (gray) — the next doc to add.
+- **● needs acc / needs plan** (gray) — the next doc to add.
 
 Click or hover the indicator for a checklist popover. Acceptance readiness mirrors the CLI close gate; Plan readiness is an early board signal so untouched templates show up while you're working.
 
@@ -69,6 +77,8 @@ Click `+ New doc` on any ticket to attach a structured document. Two docs cover 
 | **Plan** | After acceptance | Capture the approach and record decisions as you build — readable by future agents |
 
 Sprint docs land in `.tickets/<id>/` as markdown files and are read automatically by your agent after sprint start. Templates include comments that mark which headings and ticket ID lines should stay unchanged, and the editor toolbar inserts common Markdown such as checkboxes, bullets, numbered items, headings, inline code, and toggle blocks at the cursor.
+
+Once both Acceptance and Plan exist, `+ New doc` is hidden. Other workflow outputs are handled by the agent or by repo-local context files; they are not extra sprint docs to create from the board.
 
 ## How Sprint Works
 

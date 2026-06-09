@@ -27,7 +27,9 @@ Overhead shows up only where the risk justifies it, so the process stays proport
 
 ## Local-first state
 
-A ticket is a folder in your repo (`.tickets/<id>/`), not a card in someone's cloud. Choices land in `DECISIONS.md`, cross-session context in `HANDOFF.md` — all markdown, all versioned alongside your code. No account, no remote, no SaaS. Because the state is just files, it survives context resets and fresh sessions: the agent re-reads the ticket folder and `HANDOFF.md` and resumes where it left off, and `sprint-check` simply renders those same files as a local board.
+A ticket is a folder in your repo (`.tickets/<id>/`), not a card in someone's cloud. Each sprint has two docs: `acceptance.md` for done criteria and tests, and `plan.md` for approach and decisions. Durable choices can land in `DECISIONS.md`; cross-session context lives in `HANDOFF.md`. All of it is markdown on disk, with no account, no remote, and no SaaS.
+
+Because the state is just files, it survives context resets and fresh sessions: the agent re-reads the ticket folder and `HANDOFF.md` and resumes where it left off, and `sprint-check` renders those same files as a local board. Projects can choose whether to track that local workflow state in git; canon itself keeps `.tickets/`, `HANDOFF.md`, and `DECISIONS.md` ignored so release docs stay separate from working state.
 
 ## Why this shape
 
