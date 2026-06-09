@@ -78,22 +78,27 @@ Phase-based frameworks give you a multi-command methodology to learn. canon give
 
 ## What Makes canon Different
 
-Most agent frameworks tell the model what process to follow. canon gives the
-process local memory, visible state, and hard gates.
+Most teams adopting agentic workflows hit the same problems: unclear autonomy,
+lost context, invisible decisions, weak review gates, and hard-to-debug agent
+actions. canon keeps the surface small by turning those concerns into repo-local
+mechanics:
 
-- **Session continuity.** `HANDOFF.md`, the active ticket, open tickets, and a
-  small set of recent or file-related closed tickets give a returning agent
-  enough context to resume without replaying the whole project history.
-- **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
-  capture records it in `HANDOFF.md ## Discoveries` immediately, before context
-  compaction or a session break can lose it.
-- **Risk-aware planning.** Simple work stays light. High-impact work runs impact
-  analysis before code, and every HIGH risk becomes a required Acceptance test.
-- **Visible workflow.** `sprint-check` turns the repo-local state into a board:
-  readiness, search, inline docs, current focus, git status, and commit context
-  are inspectable by developers and reviewers.
-- **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
-  Plan items are unchecked. The agent still owns judgment; canon owns the gate.
+1. **Session continuity.** `HANDOFF.md`, the active ticket, open tickets, and a
+   small set of recent or file-related closed tickets give a returning agent
+   enough context to resume without replaying the whole project history.
+2. **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
+   capture records it in `HANDOFF.md ## Discoveries` immediately, before context
+   compaction or a session break can lose it.
+3. **Risk-aware planning.** Simple work stays light. High-impact work runs impact
+   analysis before code, and every HIGH risk becomes a required Acceptance test.
+4. **Visible workflow.** `sprint-check` turns the repo-local state into a board:
+   readiness, search, inline docs, current focus, git status, and commit context
+   are inspectable by developers and reviewers.
+5. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
+   Plan items are unchecked. The agent still owns judgment; canon owns the gate.
+
+These map to common agentic-coding guidance: guardrails, human review,
+observability, right context, and feedback loops.
 
 ## The Two Commands
 
@@ -118,16 +123,19 @@ Both are plain markdown in `.tickets/<id>/` and are injected into the agent's co
 
 ## Code Archaeology
 
-**`tkt why <file>`** — Ask why this file was built this way.
+**Why mode** — Ask why this file was built this way.
 
-Scans `git log` for ticket IDs in commit messages, then reads each ticket's `plan.md` for decisions made during that sprint. When commits predate ticket IDs, it falls back to keyword matching against ticket titles.
+Switch the `sprint-check` query control from `Search` to `Why`, enter a
+project-relative file path, and the board shows the tickets and Plan decisions
+behind that file without leaving the kanban view. Keyboard shortcut:
+`why:path/to/file`.
 
 <a href="docs/sprint-check.md#ticket-search"><img src="meta/screenshots/why-mode-demo.gif" alt="sprint-check Why mode showing file-history context inline" width="680"></a>
 
-Prefer the board when you want to explore visually: switch the `sprint-check`
-query control from `Search` to `Why`, enter a project-relative file path, and it
-shows the same ticket/decision context inline without leaving the kanban view.
-Keyboard shortcut: type `why:path/to/file`.
+CLI path: `tkt why <file>` scans `git log` for ticket IDs in commit messages,
+then reads each ticket's `plan.md` for decisions made during that sprint. When
+commits predate ticket IDs, it falls back to keyword matching against ticket
+titles.
 
 Your repo accumulates intent, not just history. A new agent — or you, six months later — can ask *why* before touching anything.
 
