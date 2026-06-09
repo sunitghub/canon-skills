@@ -12,7 +12,7 @@ import sys
 from datetime import date
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 # ── Locate project root ───────────────────────────────────────────────────
 
@@ -237,6 +237,111 @@ def load_commit(hash_: str) -> dict:
         'files': file_list, 'related_ticket_ids': sorted(related),
     }
 
+def _ticket_by_id(ticket_id: str) -> tuple[Path, dict] | None:
+    for path in ticket_paths():
+        try:
+            ticket = parse_ticket(path)
+        except Exception:
+            continue
+        if ticket.get('id') == ticket_id:
+            return path, ticket
+    return None
+
+def _known_ticket_ids() -> set[str]:
+    ids = set()
+    for path in ticket_paths():
+        try:
+            ticket_id = str(parse_ticket(path).get('id', ''))
+        except Exception:
+            continue
+        if ticket_id:
+            ids.add(ticket_id)
+    return ids
+
+def _plan_decision(ticket_path: Path) -> str:
+    plan = ticket_path.parent / 'plan.md' if ticket_path.name == 'ticket.md' else ticket_path.with_name(f'{ticket_path.stem}-plan.md')
+    if not plan.is_file():
+        return ''
+    text = plan.read_text(encoding='utf-8', errors='replace')
+    m = re.search(r'^##\s+Decisions\s*$([\s\S]*)', text, re.MULTILINE)
+    if not m:
+        return ''
+    for line in m.group(1).splitlines():
+        line = line.strip()
+        if line.startswith('### '):
+            return line[4:].strip()
+    return ''
+
+def load_why(file_: str) -> dict:
+    target = file_.strip()
+    if not target:
+        return {'file': '', 'results': [], 'message': 'Enter a file path.'}
+
+    p = Path(target)
+    if p.is_absolute() or '..' in p.parts:
+        return {'file': target, 'results': [], 'message': 'Use a project-relative file path.'}
+
+    cwd = PROJECT_ROOT
+    log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', target], cwd)
+    if not log_subjects:
+        return {'file': target, 'results': [], 'message': f'No git history found for {target}.'}
+
+    matched_ids: list[str] = []
+    def add_unique(ticket_id: str):
+        if ticket_id not in matched_ids:
+            matched_ids.append(ticket_id)
+
+    known_ids = _known_ticket_ids()
+    for ticket_id in re.findall(r'\b[a-zA-Z]+-[a-z0-9]{3,}\b', log_subjects):
+        if ticket_id in known_ids:
+            add_unique(ticket_id)
+
+    if not matched_ids:
+        stop = {
+            'update','change','changed','refact','clean','minor','patch','revert',
+            'merge','commit','sprint','feature','implement','style','docs','chore',
+            'ticket','tickets',
+        }
+        words = {
+            word for word in re.findall(r'[a-z]{4,}', log_subjects.lower())
+            if word not in stop
+        }
+        scored = []
+        if words:
+            for path in ticket_paths():
+                try:
+                    ticket = parse_ticket(path)
+                except Exception:
+                    continue
+                title_words = {
+                    word for word in re.findall(r'[a-z]{4,}', str(ticket.get('title', '')).lower())
+                    if word not in stop
+                }
+                hits = len(words & title_words)
+                if hits:
+                    scored.append((hits / max(len(title_words), 1), str(ticket.get('id', ''))))
+        for _, ticket_id in sorted(scored, reverse=True)[:5]:
+            add_unique(ticket_id)
+
+    results = []
+    for ticket_id in matched_ids:
+        found = _ticket_by_id(ticket_id)
+        if not found:
+            continue
+        path, ticket = found
+        results.append({
+            'id': ticket.get('id', ticket_id),
+            'status': ticket.get('status', ''),
+            'title': ticket.get('title', ''),
+            'decision': _plan_decision(path),
+        })
+
+    return {
+        'file': target,
+        'results': results,
+        'message': '' if results else f'No tickets found for {target}.',
+    }
+
 # ── Status write ──────────────────────────────────────────────────────────
 
 def _find_ticket_path(ticket_id: str) -> Path | None:
@@ -376,7 +481,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if not self._host_ok():
             self.send_error(403); return
-        path = urlparse(self.path).path.rstrip('/')
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip('/')
         if path in ('', '/'):
             self.send_html(APP_HTML)
         elif re.match(r'^/meta/screenshots/[a-zA-Z0-9_-]+\.(png|gif|jpg|jpeg|webp)$', path):
@@ -388,6 +494,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(load_handoff())
         elif path == '/api/git':
             self.send_json(load_git())
+        elif path == '/api/why':
+            file_ = parse_qs(parsed.query).get('file', [''])[0]
+            self.send_json(load_why(file_))
         else:
             m = re.match(r'^/api/commit/([0-9a-f]{4,40})$', path)
             if m:

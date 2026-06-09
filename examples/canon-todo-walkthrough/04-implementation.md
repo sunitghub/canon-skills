@@ -118,3 +118,13 @@ git commit -m "t-xxxx feat: build todo list"
 
 Reload `sprint-check` and click the commit in the sidebar. The commit panel
 should show the changed files and connect the commit back to the ticket.
+
+Now try the same history from the search surface:
+
+1. Switch the board query mode from `Search` to `Why`.
+2. Enter `src/app.js`.
+3. Confirm the board shows the Todo ticket and any Plan decision excerpt that
+   explains why that file exists.
+
+This is the visual version of `tkt why src/app.js`: same archaeology goal, but
+kept inside the sprint-check workflow.

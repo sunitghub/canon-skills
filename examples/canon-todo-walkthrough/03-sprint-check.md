@@ -79,6 +79,11 @@ A ticket whose Plan still contains placeholder approach text should remain
 visible. Clear the search or press `Esc` to restore the full board. Matching
 tickets stay in their original lanes so status context is not lost.
 
+Switch the mode from `Search` to `Why` when you want code archaeology instead of
+ticket filtering. Enter a file path, and sprint-check shows the tickets and Plan
+decisions that explain commits touching that file. You can also type
+`why:path/to/file` in the input.
+
 ## Status And Workflow Actions
 
 Dragging a card between columns updates the ticket's status in `.tickets/`.

@@ -54,6 +54,10 @@ description, sprint doc names, and readiness labels such as `plan incomplete`.
 Matches stay in their original columns. Press `Esc` or clear the field to show
 the full board again.
 
+Switch the mode from `Search` to `Why` to enter a project-relative file path and
+show the tickets and Plan decisions behind that file's git history. The shortcut
+syntax `why:path/to/file` switches modes from the keyboard.
+
 **Moving tickets:**
 - Drag and drop between columns
 - Or open the ticket and use `← Back` / `Forward →` buttons

@@ -34,6 +34,11 @@ Open a ticket to read or edit its Description, Acceptance, and Plan without leav
 
 Use the search box above the columns to find tickets by title, id, status, type, priority, description, doc names, or readiness labels such as `plan incomplete`. Matching tickets stay in their original lanes so status context is preserved. Press `Esc` or clear the field to restore the full board.
 
+Switch the segmented control from `Search` to `Why` to ask why a file exists or
+changed. Enter a project-relative file path and sprint-check scans git history,
+matches tickets, and shows Plan decision excerpts above the board. You can also
+type `why:path/to/file` as a shortcut.
+
 ## Commit Intelligence
 
 ![Commit detail with related ticket](../meta/screenshots/commit-detail.png)

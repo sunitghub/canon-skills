@@ -290,6 +290,21 @@
       display: flex; align-items: center; gap: 10px;
       padding: 12px 14px 0; flex-shrink: 0;
     }
+    .search-mode {
+      height: 36px; display: inline-flex; align-items: center;
+      padding: 3px; gap: 2px; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--surface);
+    }
+    .search-mode-btn {
+      height: 28px; padding: 0 10px; border: 0; border-radius: 6px;
+      background: transparent; color: var(--text-muted);
+      font: inherit; font-size: 12px; font-weight: 700;
+      cursor: pointer;
+    }
+    .search-mode-btn:hover { color: var(--text); background: var(--surface-hover); }
+    .search-mode-btn.active {
+      color: var(--accent); background: var(--accent-dim);
+    }
     .board-search {
       width: min(360px, 100%);
       display: flex; align-items: center; gap: 8px;
@@ -338,6 +353,34 @@
       display: none;
     }
     .board-empty-search.visible { display: block; }
+    .why-results {
+      margin: 12px 14px 0; display: none;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--surface); overflow: hidden; flex-shrink: 0;
+    }
+    .why-results.visible { display: block; }
+    .why-results-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 12px; border-bottom: 1px solid var(--border);
+    }
+    .why-title {
+      color: var(--text); font-size: 13px; font-weight: 700;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .why-subtitle { color: var(--text-muted); font-size: 11px; flex-shrink: 0; }
+    .why-result-list { display: flex; flex-direction: column; }
+    .why-result {
+      border: 0; border-bottom: 1px solid var(--border);
+      background: transparent; color: var(--text); text-align: left;
+      padding: 10px 12px; cursor: pointer;
+    }
+    .why-result:last-child { border-bottom: 0; }
+    .why-result:hover { background: var(--surface-hover); }
+    .why-result-main { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+    .why-result-id { color: var(--accent); font-family: var(--mono); font-size: 12px; }
+    .why-result-status { color: var(--text-muted); font-size: 11px; text-transform: uppercase; }
+    .why-result-decision { margin-top: 6px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+    .why-result-empty { padding: 12px; color: var(--text-muted); font-size: 13px; }
     .column {
       display: flex; flex-direction: column;
       min-width: 210px; flex: 1; max-width: 320px;
@@ -651,9 +694,14 @@
     .doc-check-marker {
       width: 13px; height: 13px; margin-top: 3px;
       display: inline-flex; align-items: center; justify-content: center;
-      border: 1px solid var(--panel-border); border-radius: 3px;
-      color: var(--col-done); font-size: 10px; line-height: 1;
-      background: var(--surface-raised);
+      border: 1px solid var(--col-done); border-radius: 3px;
+      color: var(--col-done); font-size: 10px; line-height: 1; font-weight: 800;
+      background: rgba(74, 222, 128, .12);
+    }
+    html[data-theme="light"] .doc-check-marker {
+      color: #15803d;
+      border-color: rgba(22, 163, 74, .55);
+      background: rgba(22, 163, 74, .12);
     }
     .doc-check-marker.open { color: transparent; }
     .doc-check-open {
@@ -998,6 +1046,10 @@
     <div id="sidebar-resize"></div>
     <section id="board-wrap" aria-label="Ticket board">
       <div class="board-tools">
+        <div class="search-mode" role="group" aria-label="Board query mode">
+          <button class="search-mode-btn active" id="search-mode-search" type="button" data-mode="search">Search</button>
+          <button class="search-mode-btn" id="search-mode-why" type="button" data-mode="why" title="Find tickets and decisions that explain a file's history">Why</button>
+        </div>
         <label class="board-search" id="board-search-shell">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="board-search" type="search" placeholder="Search tickets..." autocomplete="off" spellcheck="false">
@@ -1005,6 +1057,7 @@
         </label>
         <div class="search-count" id="board-search-count"></div>
       </div>
+      <div class="why-results" id="why-results"></div>
       <div id="board"></div>
       <div class="board-empty-search" id="board-empty-search"></div>
     </section>
@@ -1411,7 +1464,10 @@ function availableDocTypes(t) {
   return DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug));
 }
 
-const state = { tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(), boardFirstRender: true, query: '' };
+const state = {
+  tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(),
+  boardFirstRender: true, query: '', queryMode: 'search', why: null,
+};
 
 // ── Data layer ───────────────────────────────────────────────────────────
 
@@ -1491,6 +1547,7 @@ function primarySearchText(t) {
 
 function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
+  if (state.queryMode !== 'search') return true;
   if (!q) return true;
   const primary = primarySearchText(t);
   const readinessQueries = new Set(['ready', 'incomplete', 'acceptance incomplete', 'plan incomplete', 'needs plan', 'needs acc']);
@@ -1499,6 +1556,12 @@ function ticketMatchesQuery(t) {
   const terms = q.split(/\s+/);
   if (terms.length > 1) return terms.every(term => primary.includes(term));
   return searchableText(t).includes(q);
+}
+
+function whyQueryFromInput(value) {
+  const raw = String(value ?? '').trim();
+  const prefixed = raw.match(/^why(?::|\s+)(.+)$/i);
+  return (prefixed ? prefixed[1] : raw).trim();
 }
 
 function age(iso) {
@@ -1645,12 +1708,63 @@ function renderSidebar() {
   }).join('');
 }
 
+function renderWhyResults() {
+  const el = document.getElementById('why-results');
+  if (!el) return;
+  const q = whyQueryFromInput(state.query);
+  const visible = state.queryMode === 'why' && Boolean(q);
+  el.classList.toggle('visible', visible);
+  if (!visible) {
+    el.innerHTML = '';
+    return;
+  }
+
+  const why = state.why;
+  const file = esc(q);
+  if (why?.loading) {
+    el.innerHTML =
+      `<div class="why-results-head"><div class="why-title">Code archaeology: ${file}</div>` +
+      `<div class="why-subtitle">loading</div></div>`;
+    return;
+  }
+  if (why?.error) {
+    el.innerHTML =
+      `<div class="why-results-head"><div class="why-title">Code archaeology: ${file}</div></div>` +
+      `<div class="why-result-empty">${esc(why.error)}</div>`;
+    return;
+  }
+
+  const results = why?.file === q ? (why.results || []) : [];
+  const message = why?.file === q ? why.message : '';
+  el.innerHTML =
+    `<div class="why-results-head">` +
+      `<div class="why-title">Code archaeology: ${file}</div>` +
+      `<div class="why-subtitle">${results.length ? `${results.length} ticket${results.length === 1 ? '' : 's'}` : 'why mode'}</div>` +
+    `</div>` +
+    (results.length
+      ? `<div class="why-result-list">` + results.map(r =>
+          `<button class="why-result" type="button" data-id="${esc(r.id)}">` +
+            `<div class="why-result-main">` +
+              `<span class="why-result-id">${esc(r.id)}</span>` +
+              `<span class="why-result-status">${esc(r.status)}</span>` +
+              `<span>${esc(r.title)}</span>` +
+            `</div>` +
+            (r.decision ? `<div class="why-result-decision">→ ${esc(r.decision)}</div>` : '') +
+          `</button>`
+        ).join('') + `</div>`
+      : `<div class="why-result-empty">${esc(message || 'No tickets found for this file.')}</div>`);
+  el.querySelectorAll('.why-result').forEach(btn => {
+    btn.addEventListener('click', () => openModal(btn.dataset.id));
+  });
+}
+
 function renderBoard() {
   const board = document.getElementById('board');
-  const query = normalizeSearch(state.query);
+  const query = state.queryMode === 'search' ? normalizeSearch(state.query) : '';
   const tickets = state.tickets.filter(ticketMatchesQuery);
   const countEl = document.getElementById('board-search-count');
   const emptyEl = document.getElementById('board-empty-search');
+  renderWhyResults();
   if (countEl) {
     countEl.textContent = query ? `${tickets.length} of ${state.tickets.length}` : '';
   }
@@ -2741,12 +2855,61 @@ function setText(id, val) {
   const input = document.getElementById('board-search');
   const clear = document.getElementById('board-search-clear');
   const shell = document.getElementById('board-search-shell');
+  const modeButtons = document.querySelectorAll('.search-mode-btn');
   if (!input || !clear || !shell) return;
+  let whyTimer = null;
+  let whyRequest = 0;
+
+  function setMode(mode) {
+    state.queryMode = mode;
+    modeButtons.forEach(btn => {
+      const active = btn.dataset.mode === mode;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    input.placeholder = mode === 'why' ? 'Why was this file built this way?' : 'Search tickets...';
+    input.setAttribute('aria-label', mode === 'why' ? 'Find ticket history for a file' : 'Search tickets');
+    renderBoard();
+  }
+
+  async function runWhy(value) {
+    const file = whyQueryFromInput(value);
+    clearTimeout(whyTimer);
+    if (state.queryMode !== 'why' || !file) {
+      state.why = null;
+      renderBoard();
+      return;
+    }
+    const requestId = ++whyRequest;
+    state.why = { file, loading: true, results: [], message: '' };
+    renderBoard();
+    try {
+      const data = await fetch(`/api/why?file=${encodeURIComponent(file)}`).then(r => r.json());
+      if (requestId !== whyRequest) return;
+      state.why = data;
+    } catch {
+      if (requestId !== whyRequest) return;
+      state.why = { file, error: 'Could not load file history.', results: [] };
+    }
+    renderBoard();
+  }
+
+  function scheduleWhy(value) {
+    clearTimeout(whyTimer);
+    whyTimer = setTimeout(() => runWhy(value), 250);
+  }
 
   function apply(value) {
+    const shortcut = String(value).match(/^why(?::|\s+)(.+)$/i);
+    if (shortcut) {
+      setMode('why');
+      value = shortcut[1];
+    }
     state.query = value;
     input.value = value;
     shell.classList.toggle('has-query', Boolean(value.trim()));
+    if (state.queryMode === 'why') scheduleWhy(value);
+    else state.why = null;
     renderBoard();
   }
 
@@ -2757,10 +2920,20 @@ function setText(id, val) {
       apply('');
     }
   });
+  modeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      setMode(btn.dataset.mode);
+      if (state.queryMode === 'why') scheduleWhy(input.value);
+      else state.why = null;
+      renderBoard();
+      input.focus();
+    });
+  });
   clear.addEventListener('click', () => {
     apply('');
     input.focus();
   });
+  setMode('search');
 })();
 
 // ── Tour panel ────────────────────────────────────────────────────────────
