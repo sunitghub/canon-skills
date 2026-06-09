@@ -13,7 +13,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 </div>
 
-[![sprint-check board — local kanban with status-aware cards and repo context](meta/screenshots/sprint-check-board-dark.png)](docs/index.html)
+[![sprint-check board — searchable local kanban with status-aware cards and repo context](meta/screenshots/sprint-check-board-dark.png)](docs/index.html)
 
 One-time setup:
 

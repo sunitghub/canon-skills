@@ -282,11 +282,62 @@
     .summary-icon { width: 14px; height: 14px; flex-shrink: 0; }
 
     /* ── Board ────────────────────────────────── */
+    #board-wrap {
+      flex: 1; min-width: 0; overflow: hidden;
+      display: flex; flex-direction: column; background: var(--bg);
+    }
+    .board-tools {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px 0; flex-shrink: 0;
+    }
+    .board-search {
+      width: min(360px, 100%);
+      display: flex; align-items: center; gap: 8px;
+      padding: 0 11px; height: 36px;
+      border: 1px solid var(--border); border-radius: 8px;
+      background: var(--surface); color: var(--text-muted);
+      transition: border-color .12s, box-shadow .12s, background .12s;
+    }
+    .board-search:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+      background: var(--surface-raised);
+    }
+    .board-search svg {
+      width: 15px; height: 15px; flex-shrink: 0;
+      stroke: currentColor; fill: none; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .board-search input {
+      width: 100%; min-width: 0; border: 0; outline: 0;
+      background: transparent; color: var(--text);
+      font: inherit; font-size: 13px;
+    }
+    .board-search input::placeholder { color: var(--text-muted); }
+    .search-clear {
+      border: 0; background: transparent; color: var(--text-muted);
+      cursor: pointer; padding: 2px; font-size: 15px; line-height: 1;
+      display: none;
+    }
+    .board-search.has-query .search-clear { display: block; }
+    .search-clear:hover { color: var(--text); }
+    .search-count {
+      font-size: 12px; color: var(--text-muted);
+      white-space: nowrap;
+    }
     #board {
       display: flex; overflow-x: auto; overflow-y: hidden;
-      padding: 14px; gap: 10px; background: var(--bg);
-      align-items: flex-start;
+      padding: 12px 14px 14px; gap: 10px;
+      align-items: flex-start; flex: 1; min-height: 0;
     }
+    .board-empty-search {
+      margin: 0 14px 14px;
+      padding: 14px 16px; border: 1px dashed var(--border-hover);
+      border-radius: var(--radius); color: var(--text-muted);
+      background: var(--surface); font-size: 13px;
+      display: none;
+    }
+    .board-empty-search.visible { display: block; }
     .column {
       display: flex; flex-direction: column;
       min-width: 210px; flex: 1; max-width: 320px;
@@ -725,11 +776,21 @@
     .theme-toggle {
       width: 28px; height: 28px; border-radius: 6px;
       border: 1px solid var(--border); background: var(--surface-raised);
-      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center;
       font-size: 14px; transition: background .1s, border-color .1s;
       flex-shrink: 0; line-height: 1;
     }
     .theme-toggle:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+    .tour-toggle {
+      color: var(--accent);
+      border-color: rgba(124, 106, 247, .42);
+      background: var(--accent-dim);
+    }
+    .tour-toggle:hover {
+      color: #fff;
+      border-color: var(--accent);
+      background: var(--accent);
+    }
 
     .kbd-hint { font-size: 12px; color: var(--text-dim); }
 
@@ -873,7 +934,7 @@
         </div>
       </div>
       <button class="create-btn" id="btn-create">+ New ticket</button>
-      <button class="theme-toggle" id="tour-btn" title="Feature tour" style="font-size:13px;font-weight:700;letter-spacing:-.5px">?</button>
+      <button class="theme-toggle tour-toggle" id="tour-btn" title="Feature tour" aria-label="Feature tour" style="font-size:13px;font-weight:700;letter-spacing:-.5px">?</button>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">🌙</button>
     </div>
   </header>
@@ -935,7 +996,18 @@
     </aside>
 
     <div id="sidebar-resize"></div>
-    <div id="board"></div>
+    <section id="board-wrap" aria-label="Ticket board">
+      <div class="board-tools">
+        <label class="board-search" id="board-search-shell">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="board-search" type="search" placeholder="Search tickets..." autocomplete="off" spellcheck="false">
+          <button class="search-clear" id="board-search-clear" type="button" aria-label="Clear search">×</button>
+        </label>
+        <div class="search-count" id="board-search-count"></div>
+      </div>
+      <div id="board"></div>
+      <div class="board-empty-search" id="board-empty-search"></div>
+    </section>
   </div>
 </div>
 
@@ -1333,7 +1405,13 @@ function docSlug(t, file) {
 function docFileFor(t, slug) {
   return t.layout === 'folder' ? `${t.id}/${slug}.md` : `${t.id}-${slug}.md`;
 }
-const state = { tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(), boardFirstRender: true };
+
+function availableDocTypes(t) {
+  const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
+  return DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug));
+}
+
+const state = { tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(), boardFirstRender: true, query: '' };
 
 // ── Data layer ───────────────────────────────────────────────────────────
 
@@ -1372,6 +1450,55 @@ function esc(s) {
 
 function titleCase(s) {
   return String(s ?? '').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function normalizeSearch(s) {
+  return String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function searchableText(t) {
+  const r = readiness(t);
+  return normalizeSearch([
+    t.id,
+    t.title,
+    t.status,
+    t.type,
+    `p${t.priority ?? 2}`,
+    t.body,
+    r.label,
+    r.ready ? 'ready' : '',
+    r.acceptanceIncomplete ? 'acceptance incomplete incomplete' : '',
+    r.planIncomplete ? 'plan incomplete incomplete' : '',
+    ...(t.docs || []).flatMap(d => [d.name, docSlug(t, d.file)]),
+  ].join(' '));
+}
+
+function primarySearchText(t) {
+  const r = readiness(t);
+  return normalizeSearch([
+    t.id,
+    t.title,
+    t.status,
+    t.type,
+    `p${t.priority ?? 2}`,
+    t.body,
+    r.label,
+    r.ready ? 'ready' : '',
+    r.acceptanceIncomplete ? 'acceptance incomplete incomplete' : '',
+    r.planIncomplete ? 'plan incomplete incomplete' : '',
+  ].join(' '));
+}
+
+function ticketMatchesQuery(t) {
+  const q = normalizeSearch(state.query);
+  if (!q) return true;
+  const primary = primarySearchText(t);
+  const readinessQueries = new Set(['ready', 'incomplete', 'acceptance incomplete', 'plan incomplete', 'needs plan', 'needs acc']);
+  if (readinessQueries.has(q)) return primary.includes(q);
+  if (primary.includes(q)) return true;
+  const terms = q.split(/\s+/);
+  if (terms.length > 1) return terms.every(term => primary.includes(term));
+  return searchableText(t).includes(q);
 }
 
 function age(iso) {
@@ -1520,8 +1647,19 @@ function renderSidebar() {
 
 function renderBoard() {
   const board = document.getElementById('board');
+  const query = normalizeSearch(state.query);
+  const tickets = state.tickets.filter(ticketMatchesQuery);
+  const countEl = document.getElementById('board-search-count');
+  const emptyEl = document.getElementById('board-empty-search');
+  if (countEl) {
+    countEl.textContent = query ? `${tickets.length} of ${state.tickets.length}` : '';
+  }
+  if (emptyEl) {
+    emptyEl.classList.toggle('visible', Boolean(query) && tickets.length === 0);
+    emptyEl.textContent = `No tickets match “${state.query}”.`;
+  }
   board.innerHTML = COLUMNS.map(col => {
-    const cards = state.tickets
+    const cards = tickets
       .filter(t => t.status === col.status)
       .sort((a, b) => (b.created || '').localeCompare(a.created || ''));
     const limited = COLLAPSE_STATUSES.has(col.status) && !state.expandedCols.has(col.status);
@@ -1734,13 +1872,14 @@ function renderModalDocs(t) {
 
   const locked = t.status === 'closed' || t.status === 'cancelled';
   const pickingDoc = modalState.pickingDoc;
+  const canAddDoc = availableDocTypes(t).length > 0;
 
   bar.innerHTML = allTabs.map(d => {
     const active = d.file === modalState.activeDoc;
     return `<button class="doc-tab${active ? ' active' : ''}" data-file="${d.file ?? ''}">${esc(d.name)}</button>`;
   }).join('') +
   (!locked
-    ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${modalState.editMode || pickingDoc ? ' disabled' : ''}>+ New doc</button>` +
+    ? (canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${modalState.editMode || pickingDoc ? ' disabled' : ''}>+ New doc</button>` : '') +
       (pickingDoc ? '' : `<button class="doc-edit-btn" id="btn-edit-doc"${modalState.editMode ? ' disabled' : ''}>${modalState.editMode ? 'Editing' : 'Edit'}</button>`)
     : `<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span>`
   );
@@ -1972,7 +2111,7 @@ function promptNewDoc(t) {
 
   const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
   const suggested     = recommendedSlug(t.status, existingSlugs);
-  const available = DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug));
+  const available = availableDocTypes(t);
   let selectedSlug = available.some(dt => dt.slug === suggested) ? suggested : (available[0]?.slug || '');
   const statusLabel   = titleCase(t.status.replace('_', ' '));
 
@@ -2594,6 +2733,34 @@ function setText(id, val) {
   });
 
   applyState(false);
+})();
+
+// ── Board search ─────────────────────────────────────────────────────────
+
+(function initBoardSearch() {
+  const input = document.getElementById('board-search');
+  const clear = document.getElementById('board-search-clear');
+  const shell = document.getElementById('board-search-shell');
+  if (!input || !clear || !shell) return;
+
+  function apply(value) {
+    state.query = value;
+    input.value = value;
+    shell.classList.toggle('has-query', Boolean(value.trim()));
+    renderBoard();
+  }
+
+  input.addEventListener('input', () => apply(input.value));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && input.value) {
+      e.stopPropagation();
+      apply('');
+    }
+  });
+  clear.addEventListener('click', () => {
+    apply('');
+    input.focus();
+  });
 })();
 
 // ── Tour panel ────────────────────────────────────────────────────────────
