@@ -104,6 +104,17 @@ The agent should respond by adding mitigations to Acceptance, such as:
 - [ ] Delete-all requires explicit confirmation.
 - [ ] Delete-all can be cancelled without changing the list.
 - [ ] No alternate trigger path bypasses the confirmation.
+- [ ] Human approval recorded for HIGH-impact change before implementation.
+```
+
+It should also record the approval boundary in `plan.md`, not in a new doc:
+
+```markdown
+### Human checkpoint
+- Required: yes
+- Decision needed: whether delete-all is in scope and what autonomy is allowed
+- Human resolution: rejected for this sprint; keep original Todo scope
+- Approved autonomy: implement only the approved simple Todo list and run tests
 ```
 
 For the walkthrough, reject the risky variant and keep the original simple Todo
@@ -112,6 +123,10 @@ scope:
 ```text
 Good catch. Do not add delete-all in this sprint. Keep the original scope.
 ```
+
+This is the human-in-the-loop moment. The agent can analyze and propose
+mitigations, but it does not get autonomous permission to add an irreversible
+operation just because it can generate the code.
 
 ## Step 5 - Answer the grill, then approve
 

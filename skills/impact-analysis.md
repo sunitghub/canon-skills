@@ -56,7 +56,27 @@ Every HIGH rating adds sprint work:
 
 HIGH dimensions cannot close without the matching action.
 
-## Step 4 — Write the impact block
+## Step 4 — Human checkpoint
+
+Require a human checkpoint when any condition applies:
+- Any impact dimension is HIGH
+- The change deletes, sends, migrates, publishes, deploys, charges, or modifies external/shared state
+- Rollback is unclear
+- Test location is unclear
+- The agent cannot prove the old/new behavior boundary
+
+Record the checkpoint in `plan.md`:
+- Decision needed: <specific approval or boundary>
+- Human resolution: <approved / rejected / narrowed scope / deferred>
+- Approved autonomy: plan only / implement only / implement + run tests / no autonomous execution
+
+For HIGH-impact work that needs explicit human approval, add this item to `acceptance.md ## Test Plan`:
+
+```markdown
+- [ ] Human approval recorded for HIGH-impact change before implementation
+```
+
+## Step 5 — Write the impact block
 
 Append to `plan.md`:
 
@@ -78,6 +98,12 @@ Append to `plan.md`:
 
 ### Open questions
 - <unresolved ambiguities, or "None">
+
+### Human checkpoint
+- Required: yes / no
+- Decision needed: <specific approval or boundary, or "None">
+- Human resolution: <approved / rejected / narrowed scope / deferred, or "None">
+- Approved autonomy: plan only / implement only / implement + run tests / no autonomous execution / not applicable
 ```
 
 Append to `acceptance.md` under `## Test Plan`:

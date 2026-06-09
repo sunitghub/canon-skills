@@ -70,7 +70,8 @@ For this Todo sprint, impact analysis should have stayed light because there is
 no broad audience, irreversible operation, shared-state blast radius, duplicate
 trigger path, or downstream cascade. If any of those were HIGH, their mitigation
 tests would already be in Acceptance, and closeout would not proceed until they
-were checked.
+were checked. If HIGH-impact approval was required, the human checkpoint item
+would be checked through the same gate.
 
 Expected output when all items are checked:
 

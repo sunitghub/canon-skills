@@ -99,7 +99,7 @@ process local memory, visible state, and hard gates.
 
 **`sprint start "<what>"`** — Make your agent plan before it codes.
 
-Creates a ticket, defines acceptance criteria, and writes the plan before touching source. Normal changes stay light; high-risk changes add subsystem mapping, gray-area resolution, five-dimension impact analysis, and adversarial review. The plan lives in `.tickets/<id>/` and survives context resets.
+Creates a ticket, defines acceptance criteria, and writes the plan before touching source. Normal changes stay light; high-risk changes add subsystem mapping, gray-area resolution, five-dimension impact analysis, any required human checkpoint, and adversarial review. The plan lives in `.tickets/<id>/` and survives context resets.
 
 **`sprint complete`** — Block the merge until every box is checked.
 

@@ -105,6 +105,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Interrogate the request — ask every question whose answer changes the risk profile.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
    - For every HIGH rating: add the required action to `plan.md` and the required test to `acceptance.md ## Test Plan`.
+   - If the impact-analysis human checkpoint triggers, resolve it before implementation, record the outcome in `plan.md`, and add the required approval checkbox to `acceptance.md ## Test Plan` when HIGH-impact approval is required.
    - Past sprint carryover: add regression tests for any closed tickets that touched the same files.
    - Write the `## Impact Assessment` block to `plan.md` and `## Test Plan` to `acceptance.md`.
    - If test location is unclear, ask the user before proceeding.
@@ -114,6 +115,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Tier: trivial skipped / normal / high-risk, with the reason
    - Files expected to be created or modified
    - Impact summary: overall rating + any HIGH dimensions with their required actions called out, or "normal tier — no high-risk triggers found"
+   - Human checkpoint: required/not required; if required, the decision and approved autonomy
    - Acceptance criteria (verbatim from acceptance.md)
    - Test plan (verbatim from acceptance.md ## Test Plan)
    - Any constraints from DECISIONS.md that apply

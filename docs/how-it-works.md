@@ -21,7 +21,7 @@ A one-line rename and a payment-writing endpoint shouldn't carry the same ceremo
 
 - **Trivial** changes skip the sprint entirely.
 - **Normal** changes get a ticket, acceptance criteria, and a brief plan.
-- **High-risk** changes earn more — subsystem mapping, gray-area resolution, a five-dimension impact rating, and mitigation tests the close gate then enforces.
+- **High-risk** changes earn more — subsystem mapping, gray-area resolution, a five-dimension impact rating, any required human checkpoint, and mitigation tests the close gate then enforces.
 
 Overhead shows up only where the risk justifies it, so the process stays proportional instead of uniform.
 

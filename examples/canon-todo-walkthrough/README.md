@@ -10,7 +10,7 @@ the steps and understand what each tool does and why.
 - The board flags incomplete Acceptance or Plan docs before you try to close or build from a placeholder.
 - Session continuity through `HANDOFF.md`, including a stop-and-resume checkpoint.
 - A user-triggered capture for a Todo-specific discovery found while building.
-- A high-impact "delete all" variant caught before code, where risk ratings become required tests before close.
+- A high-impact "delete all" variant caught before code, where risk ratings become required tests and a human checkpoint before close.
 - Ticket search, readiness indicators, inline doc editing, status changes, git state, and commit context in `sprint-check`.
 - Closing the sprint is gated: the CLI checks the board's criteria and test plan are both filled and ticked.
 
@@ -31,7 +31,24 @@ Canon uses two sprint docs:
 Other canon layers feed those docs or the local board instead of creating extra
 files to manage: session continuity uses `HANDOFF.md`, durable decisions use
 `DECISIONS.md`, capture records discoveries, and high-risk impact analysis adds
-mandatory tests to Acceptance.
+mandatory tests and any required human checkpoint to the two sprint docs.
+
+## Agentic Coding Concerns Covered
+
+IBM's [agentic coding guidance](https://www.ibm.com/think/topics/agentic-coding)
+calls out practical concerns such as guardrails, human-in-the-loop review,
+observability, clear context, feedback, and treating AI-generated code as a
+reviewed first draft. This walkthrough shows those in the app flow rather than
+as a separate process:
+
+| Concern | Where it shows up |
+|---|---|
+| Guardrails | `sprint start` classifies risk before code; `sprint complete` refuses unchecked criteria or tests. |
+| Human-in-the-loop | Step 2's delete-all variant requires approval scope before implementation. |
+| Observability | `sprint-check` exposes ticket state, docs, git status, commits, and readiness. |
+| Right context | `HANDOFF.md`, `DECISIONS.md`, and the active ticket survive fresh sessions. |
+| Feedback | The reviewer corrects criteria, answers grill questions, and rejects risky scope in chat. |
+| Review and tests | Acceptance and Test Plan checkboxes must be verified before close. |
 
 ## Walk The Canon Flow
 

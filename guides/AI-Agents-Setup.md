@@ -425,7 +425,7 @@ Each step has skip logic — states why in one line when it doesn't apply:
 | Trigger paths | Multiple UI/API paths to the same handler — duplicate trigger bug class |
 | Cascade risk | Downstream consumers that react to the change |
 
-Sprint start surfaces these before approval when a high-risk trigger is present. Sprint complete gates closure on the resulting tests.
+Sprint start surfaces these before approval when a high-risk trigger is present. Impact analysis also records any required human checkpoint in `plan.md` and adds an approval test item to `acceptance.md` when HIGH-impact work needs explicit approval. Sprint complete gates closure on the resulting tests.
 
 ### Layer 6 — Sprint (the full lifecycle)
 
