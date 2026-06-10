@@ -55,7 +55,7 @@ Reload `sprint-check`. The ticket is In Progress and `not ready` — only
 `ticket.md` plus any drafted sprint docs exist so far. Open it to read what the
 agent proposed.
 
-![sprint-check board after sprint start](sprint-start-board.png)
+![sprint-check board after sprint start](../assets/sprint-start-board.png)
 
 > Your agent's wording will differ from the samples below — that's expected. What
 > stays constant: Acceptance is binary and testable, and `plan.md` is written only
@@ -65,11 +65,11 @@ agent proposed.
 
 Click on the ticket card to open it. You'll see the **Description** tab selected by default:
 
-![Ticket open on Description tab](ticket-description-tab.png)
+![Ticket open on Description tab](../assets/ticket-description-tab.png)
 
 Click **Acceptance** to see the done criteria and test plan the agent drafted:
 
-![Ticket open on Acceptance tab](ticket-acceptance-tab.png)
+![Ticket open on Acceptance tab](../assets/ticket-acceptance-tab.png)
 
 Click the **×** in the top-right corner to close the ticket and return to the board.
 
@@ -152,7 +152,7 @@ operation just because it can generate the code.
 
 The agent should confirm the rejection, record the checkpoint in `plan.md`, and surface its remaining question:
 
-![Agent response after rejecting delete-all](agent-reject-deleteall.png)
+![Agent response after rejecting delete-all](../assets/agent-reject-deleteall.png)
 
 ## Step 5 - Answer the grill, then approve
 
@@ -172,8 +172,8 @@ ready to build.
 
 Reload `sprint-check`. The card status should now show **READY** — all artifacts (Acceptance + Plan) are in place:
 
-![Board showing ticket READY status](board-ready.png)
+![Board showing ticket READY status](../assets/board-ready.png)
 
 Click the card, then click **Plan** to see the approved brief the agent will implement against:
 
-![Ticket open on Plan tab](ticket-plan-tab.png)
+![Ticket open on Plan tab](../assets/ticket-plan-tab.png)

@@ -57,10 +57,10 @@ as a separate process:
    ~/.canon/scripts/copy-todo-walkthrough.sh <path_to_dest_folder>
    cd <path_to_dest_folder>
    ```
-2. Read [01-setup.md](01-setup.md) — wire the tools.
-3. Start the sprint in [02-sprint-start.md](02-sprint-start.md) — describe the work; the agent plans it.
-4. Use the board checkpoint in [03-sprint-check.md](03-sprint-check.md) — review what the agent drafted.
-5. Build and test with [04-implementation.md](04-implementation.md) — implement and tick off criteria.
-6. Complete the sprint with [05-sprint-complete.md](05-sprint-complete.md) — close with the gate, including the failure case.
+2. Read [01-setup.md](steps/01-setup.md) — wire the tools.
+3. Start the sprint in [02-sprint-start.md](steps/02-sprint-start.md) — describe the work; the agent plans it.
+4. Use the board checkpoint in [03-sprint-check.md](steps/03-sprint-check.md) — review what the agent drafted.
+5. Build and test with [04-implementation.md](steps/04-implementation.md) — implement and tick off criteria.
+6. Complete the sprint with [05-sprint-complete.md](steps/05-sprint-complete.md) — close with the gate, including the failure case.
 
 The finished reference implementation lives in [`../todo-app`](../todo-app).

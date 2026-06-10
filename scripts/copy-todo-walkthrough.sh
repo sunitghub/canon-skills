@@ -90,6 +90,6 @@ Copied Todo walkthrough to:
 
 Next steps:
   cd "$TARGET"
-  "$ROOT/skills.sh" add sprint
+  skills.sh add sprint
   sprint-check
 EOF

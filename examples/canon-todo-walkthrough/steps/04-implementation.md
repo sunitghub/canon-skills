@@ -58,11 +58,11 @@ feed the handoff context.
 After tests pass, the agent produces a build summary confirming what shipped, all
 acceptance criteria met, and the human-in-the-loop checkpoint recorded:
 
-![Agent build-and-verify summary](agent-built-verified.png)
+![Agent build-and-verify summary](../assets/agent-built-verified.png)
 
 The agent will then ask whether to proceed to `sprint complete`:
 
-![Agent asking to proceed to sprint complete](agent-ask-sprint-complete.png)
+![Agent asking to proceed to sprint complete](../assets/agent-ask-sprint-complete.png)
 
 **Say not yet.** There are walkthrough steps remaining before closeout. Reply:
 
@@ -76,11 +76,11 @@ Before moving on, run the app to confirm it works in the browser:
 npm run serve
 ```
 
-![npm run serve terminal output](serve-terminal.png)
+![npm run serve terminal output](../assets/serve-terminal.png)
 
 Then open `http://127.0.0.1:4173`:
 
-![Todo app running in browser](todo-app-browser.png)
+![Todo app running in browser](../assets/todo-app-browser.png)
 
 The important canon habit is that tests come from `.tickets/<id>/acceptance.md`,
 not from memory. If scope changes, update the ticket before treating the work as
@@ -102,7 +102,7 @@ Pause here and update HANDOFF.md with current focus, in-progress files, the capt
    cat HANDOFF.md
    ```
 
-   ![HANDOFF.md showing Discoveries and Next Steps](handoff-discoveries.png)
+   ![HANDOFF.md showing Discoveries and Next Steps](../assets/handoff-discoveries.png)
 
 2. End the agent session.
 3. Start a fresh agent session in `examples/canon-todo-walkthrough`.

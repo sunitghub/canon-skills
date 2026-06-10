@@ -82,7 +82,7 @@ def parse_ticket(path: Path) -> dict:
                 except ValueError: pass
             fields[key] = val
         body = text[fm_match.end():].strip()
-    title_match = re.search(r'^#\s+(.+)$', body, re.MULTILINE)
+    title_match = re.search(r'^#{1,6}\s+(.+)$', body, re.MULTILINE)
     fields.setdefault('title', title_match.group(1).strip() if title_match else path.stem)
     fields['body'] = body
     fields.setdefault('id', path.stem)

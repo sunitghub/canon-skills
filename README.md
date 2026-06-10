@@ -23,7 +23,7 @@ curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install
 # CANON_HOME=/path/to/dir bash <(curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh)
 
 cd /path/to/your-project
-~/.canon/skills.sh add sprint
+skills.sh add sprint
 ```
 
 > The curl installer installs to `~/.canon` by default. To use a custom path, pass `CANON_HOME` to `bash`: `CANON_HOME=/path bash <(curl -fsSL ...)`.
@@ -31,7 +31,7 @@ cd /path/to/your-project
 To remove canon-managed agent hooks before deleting the install folder:
 
 ```bash
-~/.canon/skills.sh uninstall
+skills.sh uninstall
 rm -rf ~/.canon
 ```
 
@@ -50,7 +50,7 @@ Guided walkthrough:
 ```bash
 ~/.canon/scripts/copy-todo-walkthrough.sh <dest_folder_path>
 cd <dest_folder_path>
-~/.canon/skills.sh add sprint
+skills.sh add sprint
 ```
 
 Build the Todo walkthrough in a disposable folder when you want to understand
@@ -211,8 +211,8 @@ canon enforces its own standards. The test suite runs and blocks before every co
 Register canon in another project:
 
 ```bash
-~/.canon/skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
-~/.canon/skills.sh add context-check   # optional: context-budget audits
+skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
+skills.sh add context-check   # optional: context-budget audits
 ```
 
 - **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.

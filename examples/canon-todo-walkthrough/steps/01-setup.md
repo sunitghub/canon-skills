@@ -13,19 +13,19 @@ source checkout as stated earlier:
 cd <path_to_dest_folder>
 
 # Check the folder status. It should report 'Skills: none'
-~/.canon/skills.sh status
+skills.sh status
 
 # List the skills available
-~/.canon/skills.sh list
+skills.sh list
 
 # Add the sprint skill to the project 
-~/.canon/skills.sh add sprint
+skills.sh add sprint
 
-~/.canon/skills.sh status
+skills.sh status
 ```
 
 If you are developing canon itself and running from this source checkout, use
-`../../skills.sh add sprint` from `examples/canon-todo-walkthrough`.
+`../../tools/skills.sh add sprint` from `examples/canon-todo-walkthrough/steps`.
 
 Concretely, this:
 

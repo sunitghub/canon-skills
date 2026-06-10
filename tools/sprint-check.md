@@ -16,7 +16,7 @@ A browser-based kanban board that reads the current project's tickets, HANDOFF.m
 
 **Step 1 — Register sprint** (adds `canon/tools` to your PATH if needed):
 ```bash
-<path-to-canon>/skills.sh add sprint /path/to/your/project
+skills.sh add sprint /path/to/your/project
 ```
 
 `sprint-check` is a bundled tool used by the sprint workflow; it does not need separate registration in normal projects.

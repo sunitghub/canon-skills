@@ -40,7 +40,7 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 
    **Affected doc coverage** — when code, workflow, UI, command behavior, or screenshots change, search every doc surface that could describe it: README, guides, examples, tool docs, skill docs, standards, and catalog text. Do not stop at the first visible doc.
 
-   **Command accuracy** — if `./skills.sh` exists, run `./skills.sh list`; compare to skill names in README/guides command examples.
+   **Command accuracy** — if `./tools/skills.sh` exists, run `./tools/skills.sh list`; compare to skill names in README/guides command examples.
 
    **Workflow gate accuracy** — distinguish UI state changes from workflow commands. Board actions such as creating tickets or moving cards update local ticket state only; do not imply they run agent workflows, wrapup, validation, or close pipelines unless the tool actually does.
 

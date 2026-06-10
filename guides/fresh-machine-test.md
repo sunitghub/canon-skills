@@ -52,7 +52,7 @@ Expected output: `Cloning canon → ~/.canon`, `Wiring agent hooks…`, then a `
 
 ```bash
 git clone https://github.com/sunitghub/canon-skills.git ~/.canon
-~/.canon/skills.sh init
+skills.sh init
 ```
 
 Use 3b when you want to verify a branch before publishing. All paths should produce the same result.
@@ -60,8 +60,8 @@ Use 3b when you want to verify a branch before publishing. All paths should prod
 **Verify install:**
 
 ```bash
-ls ~/.canon/skills.sh          # file exists
-~/.canon/skills.sh list        # prints skill catalog
+ls ~/.canon/tools/skills.sh   # file exists
+skills.sh list                # prints skill catalog
 ```
 
 ---
@@ -88,8 +88,8 @@ Create a throwaway project and verify the CLI at a project level.
 ```bash
 mkdir ~/test-project && cd ~/test-project
 git init
-~/.canon/skills.sh add sprint
-~/.canon/skills.sh status
+skills.sh add sprint
+skills.sh status
 ```
 
 Expected from `status`: all registered skills show `[ok]`, hooks listed as active.
@@ -197,7 +197,7 @@ Same as the Linux path — run these inside the WSL2 terminal:
 curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
 
 # or from a specific branch
-# git clone https://github.com/sunitghub/canon-skills.git ~/.canon && ~/.canon/skills.sh init
+# git clone https://github.com/sunitghub/canon-skills.git ~/.canon && ~/.canon/tools/skills.sh init
 ```
 
 ### Test suite
@@ -241,7 +241,7 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 
 | Check | Pass when |
 |---|---|
-| Install (3a) | `curl` prints `Done.`, `~/.canon/skills.sh list` works |
+| Install (3a) | `curl` prints `Done.`, `skills.sh list` works |
 | Test suite (4) | `npm test` ends `All tests passed.` |
 | Project wiring (5) | `skills.sh status` shows all `[ok]` |
 | Sprint gate (5) | `sprint complete` blocks on missing files and unchecked items |

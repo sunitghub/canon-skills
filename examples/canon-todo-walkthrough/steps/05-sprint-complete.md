@@ -18,7 +18,7 @@ Open the ticket on the board and check every item as it passes tests.
 
 Before running `sprint complete`, open the ticket on the board and confirm all Acceptance items are checked — criteria, test plan, and QA sign-off:
 
-![Ticket showing fully checked Acceptance](ticket-acceptance-complete.png)
+![Ticket showing fully checked Acceptance](../assets/ticket-acceptance-complete.png)
 
 ## Step 2 - See the gate in action (try it early)
 
@@ -72,7 +72,7 @@ The agent should:
 
 Each gate in the wrapup pipeline either runs or is skipped based on what changed:
 
-![Wrapup pipeline gates before close](wrapup-pipeline.png)
+![Wrapup pipeline gates before close](../assets/wrapup-pipeline.png)
 
 After wrapup, the agent appends a `## Wrapup Gates` section to `acceptance.md`
 recording every gate's outcome. For this Todo sprint it should look like:
@@ -113,7 +113,7 @@ read-only in the modal because closed work should not be edited in place.
 
 Open the Acceptance tab to confirm the Wrapup Gates section is present at the bottom:
 
-![Acceptance tab showing wrapup gates on closed ticket](acceptance-wrapup-gates.png)
+![Acceptance tab showing wrapup gates on closed ticket](../assets/acceptance-wrapup-gates.png)
 
 Use the search box to find the closed ticket by title or id. Then clear the
 search and click the latest commit in the sidebar to confirm the final commit is

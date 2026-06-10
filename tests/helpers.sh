@@ -6,7 +6,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TOOLS_DIR="$ROOT/tools"
 TKT="$TOOLS_DIR/tkt"
 SPRINT="$TOOLS_DIR/sprint"
-SKILLS="$ROOT/skills.sh"
+SKILLS="$ROOT/tools/skills.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2

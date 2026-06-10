@@ -15,7 +15,7 @@ Legacy flat `.tickets/<id>.md` tickets remain readable.
 
 **Step 1 — Register this skill in your project:**
 ```bash
-<path-to-canon>/skills.sh add ticket /path/to/your/project
+skills.sh add ticket /path/to/your/project
 ```
 
 The add command will offer to add `<canon>/tools` to your PATH so `tkt` is available everywhere.

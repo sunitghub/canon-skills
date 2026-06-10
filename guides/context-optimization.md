@@ -92,7 +92,7 @@ When a step is skipped, Wrapup states why — so it's clear the step was conside
 
 **Registering the quality pipeline in a project:**
 ```bash
-$SKILLS/skills.sh add sprint /path/to/project
+skills.sh add sprint /path/to/project
 ```
 `sprint` includes wrapup and its full dependency stack automatically — `code-simplifier`, `code-reviewer`, `security-review`, `repo-check`, `doc-audit`, `handoff`, and `ticket`. Directly registering `wrapup` is only useful for advanced/manual workflows that intentionally do not use sprint tickets.
 

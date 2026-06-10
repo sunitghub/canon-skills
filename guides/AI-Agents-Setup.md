@@ -20,12 +20,10 @@ git clone https://github.com/sunitghub/canon-skills.git ~/.canon
 
 ### Step 2 — Run init (once)
 
-The rest of this guide uses `$SKILLS` to refer to the canon checkout, so define
-it first:
+Run `skills.sh init` to configure installed agents:
 
 ```bash
-export SKILLS=~/.canon   # add to ~/.zshrc to make permanent
-$SKILLS/skills.sh init
+skills.sh init
 ```
 
 This configures all installed agents in one shot:
@@ -48,14 +46,14 @@ The same command works for new and existing projects — `add sprint` merges int
 
 ```bash
 cd /path/to/your-project
-$SKILLS/skills.sh add sprint    # full dev workflow (includes everything)
+skills.sh add sprint    # full dev workflow (includes everything)
 ```
 
-Advanced: `$SKILLS/skills.sh addall` registers every standalone canon skill. Most projects should start with `sprint`.
+Advanced: `skills.sh addall` registers every standalone canon skill. Most projects should start with `sprint`.
 
 Then verify:
 ```bash
-$SKILLS/skills.sh status
+skills.sh status
 ```
 
 That is the setup surface. Day to day, work starts with `sprint start "<what>"`, the board opens with `sprint-check`, and finished work closes with `sprint complete`.
@@ -67,7 +65,7 @@ Registering any skill also automatically injects the **efficiency standard** int
 Before deleting the canon install folder, remove canon-managed agent hooks:
 
 ```bash
-~/.canon/skills.sh uninstall
+skills.sh uninstall
 rm -rf ~/.canon
 ```
 
@@ -488,11 +486,11 @@ layout above; older flat `.tickets/<id>.md` tickets remain readable.
 ### Skills commands
 
 ```bash
-$SKILLS/skills.sh list                    # show available skills
-$SKILLS/skills.sh add sprint              # register a skill in current project
-$SKILLS/skills.sh addall                  # advanced: register all standalone skills
-$SKILLS/skills.sh status                  # check registration + hook health
-$SKILLS/skills.sh refresh                 # re-register + heal stale paths + prune covered deps
+skills.sh list                    # show available skills
+skills.sh add sprint              # register a skill in current project
+skills.sh addall                  # advanced: register all standalone skills
+skills.sh status                  # check registration + hook health
+skills.sh refresh                 # re-register + heal stale paths + prune covered deps
 ```
 
 ### Ticket commands
@@ -535,17 +533,17 @@ cd $SKILLS && git pull
 **Inline standards** in `AGENTS.md` (Codex, Pi) are a static copy — refresh explicitly:
 
 ```bash
-$SKILLS/skills.sh refresh /path/to/your-project
+skills.sh refresh /path/to/your-project
 ```
 
 `refresh` re-registers every skill, replaces outdated standard blocks, heals stale `@`-import paths, and prunes covered deps — all in one command.
 
 **For newly added standalone skills:**
 ```bash
-$SKILLS/skills.sh addall /path/to/your-project
+skills.sh addall /path/to/your-project
 ```
 
 **Check for issues first:**
 ```bash
-$SKILLS/skills.sh status /path/to/your-project
+skills.sh status /path/to/your-project
 ```

@@ -24,15 +24,15 @@ decision: a nuance that changes *how* a skill does its one job is an edit; a
 
 1. Write the file in `skills/` following the standard's conventions.
 2. If an existing skill imports it, add it to that skill's `depends:` list.
-3. Regenerate the catalog: `./skills.sh catalog`, and commit `CATALOG.md`.
+3. Regenerate the catalog: `./tools/skills.sh catalog`, and commit `CATALOG.md`.
 4. If it's standalone, mention it in `README.md` only if it warrants one.
 5. Run the [pre-PR checks](#before-opening-a-pr).
 
 ### Before opening a PR
 
-1. **Lint**: `./skills.sh lint` — deterministic conformance check; must pass.
+1. **Lint**: `./tools/skills.sh lint` — deterministic conformance check; must pass.
 2. **Test**: `npm test` — runs the lint plus the core CLI workflow suite.
-3. **Catalog**: `./skills.sh catalog` if you added or renamed a skill; commit `CATALOG.md`.
+3. **Catalog**: `./tools/skills.sh catalog` if you added or renamed a skill; commit `CATALOG.md`.
 
 `skills.sh lint` runs as part of `npm test`, so running the suite catches
 non-conforming skills before they merge.

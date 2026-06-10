@@ -11,7 +11,7 @@ set -euo pipefail
 
 SCRIPT="${BASH_SOURCE[0]}"
 while [ -L "$SCRIPT" ]; do SCRIPT="$(readlink "$SCRIPT")"; done
-SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")" && pwd)"
+SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
 SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
 
 # Extract a single frontmatter field value from a file
@@ -419,7 +419,7 @@ cmd_status() {
       echo "Claude hooks: [ok]"
     else
       echo "Claude hooks: [not configured] ($hook_issues missing)"
-      echo "  Run: $SKILLS_ROOT/skills.sh init"
+      echo "  Run: skills.sh init"
     fi
   fi
 
@@ -989,16 +989,16 @@ cmd_init() {
   echo ""
   echo "Next — register skills in your projects:"
   echo ""
-  printf "  %s\n    %s\n" "$SKILLS_ROOT/skills.sh add sprint [dir]" "Full dev lifecycle (plan → build → ship)"
-  printf "  %s\n    %s\n" "$SKILLS_ROOT/skills.sh addall [dir]"     "All available skills (recommended)"
-  printf "  %s\n    %s\n" "$SKILLS_ROOT/skills.sh status [dir]"     "Check registration and hook health"
-  printf "  %s\n    %s\n" "$SKILLS_ROOT/skills.sh refresh [dir]"    "Re-register + heal stale paths"
-  printf "  %s\n    %s\n" "$SKILLS_ROOT/skills.sh list"             "Browse all available skills"
+  printf "  %s\n    %s\n" "skills.sh add sprint [dir]" "Full dev lifecycle (plan → build → ship)"
+  printf "  %s\n    %s\n" "skills.sh addall [dir]"     "All available skills (recommended)"
+  printf "  %s\n    %s\n" "skills.sh status [dir]"     "Check registration and hook health"
+  printf "  %s\n    %s\n" "skills.sh refresh [dir]"    "Re-register + heal stale paths"
+  printf "  %s\n    %s\n" "skills.sh list"             "Browse all available skills"
   echo ""
   echo "Default project dir is cwd — or pass a path explicitly."
   echo ""
   echo "Before deleting this install, remove canon hooks with:"
-  echo "  $SKILLS_ROOT/skills.sh uninstall"
+  echo "  skills.sh uninstall"
 }
 
 cmd_uninstall() {
