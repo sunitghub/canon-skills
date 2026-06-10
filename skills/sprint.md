@@ -184,7 +184,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - If yes: propose the addition (one or two lines) and the target file (`AGENTS.md`, `CLAUDE.md`, or a subdirectory `CLAUDE.md` if one exists). Ask the user to confirm before writing.
    - If no new conventions emerged: skip silently.
 
-7. **HANDOFF.md.** Refresh the narrative per the handoff protocol (`../tools/handoff.md`): update `## Current Focus`, `## In Progress`, `## Recent Decisions`, and `## Next Steps` to reflect this sprint. `## Discoveries` is handled by capture mid-build — leave it.
+7. **HANDOFF.md.** Refresh the narrative per the handoff protocol (`../tools/handoff.md`): update `## Current Focus`, `## In Progress`, and `## Next Steps` to reflect this sprint. `## Discoveries` is handled by capture mid-build — leave it. Decisions belong in `DECISIONS.md`, not here.
 
 8. **Close.** Run `sprint complete`. If it refuses because checklist items
    remain unchecked, report the blockers and stop.

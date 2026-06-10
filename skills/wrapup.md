@@ -63,7 +63,7 @@ Review every documentation file touched or referenced during this session and pa
 
 Scope (check each that exists):
 - `DECISIONS.md` — any new decisions made this session not yet logged?
-- `HANDOFF.md` — refresh the narrative per the handoff protocol (`../tools/handoff.md`): Current Focus, In Progress, Recent Decisions, and Next Steps. `## Discoveries` is owned by capture — leave it.
+- `HANDOFF.md` — refresh the narrative per the handoff protocol (`../tools/handoff.md`): Current Focus, In Progress, and Next Steps. `## Discoveries` is owned by capture — leave it. Decisions belong in `DECISIONS.md`, not here.
 - `AGENTS.md` / `CLAUDE.md` — any convention-level learnings to surface? (propose + confirm before writing)
 - `README` — does it document any changed APIs, behaviors, or install steps?
 - Any other `.md` files explicitly opened or modified during the session

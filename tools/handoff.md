@@ -35,9 +35,6 @@ One sentence.
 ## In Progress
 - Ticket or file path — current state
 
-## Recent Decisions
-- Decision - why it matters
-
 ## Discoveries
 - **YYYY-MM-DD** Discovery - how to apply it
 
@@ -46,7 +43,8 @@ One sentence.
 ```
 
 Keep it short. Prefer bullets that help the next agent act. Do not duplicate
-the git diff, ticket body, or obvious code facts.
+the git diff, ticket body, or obvious code facts. Decisions belong in
+`DECISIONS.md` — do not restate them here.
 
 ## Automation
 

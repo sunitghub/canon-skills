@@ -95,9 +95,6 @@ _Auto-created: $TIMESTAMP | Branch: ${BRANCH}_
 ## In Progress
 $([ -n "$TICKETS" ] && echo "$TICKETS" || echo "- (run \`${TKT_BIN:-tkt} ls --status=in_progress\` to check)")
 
-## Recent Decisions
--
-
 ## Dead Ends
 -
 
