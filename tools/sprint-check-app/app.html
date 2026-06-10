@@ -2346,7 +2346,8 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
     after = '</summary>\n\n</details>';
   }
 
-  textarea.setRangeText(before + selected + after, start, end, 'end');
+  textarea.setSelectionRange(start, end);
+  document.execCommand('insertText', false, before + selected + after);
   if (!selected && after) {
     cursorOffset = start + before.length;
     textarea.setSelectionRange(cursorOffset, cursorOffset);
@@ -2380,11 +2381,17 @@ function handleMarkdownEnter(event, textarea) {
 
   event.preventDefault();
   if (next.content.trim()) {
-    textarea.setRangeText(`\n${next.prefix}`, cursor, cursor, 'end');
+    textarea.setSelectionRange(cursor, cursor);
+    document.execCommand('insertText', false, `\n${next.prefix}`);
   } else {
-    textarea.setRangeText('', lineStart, cursor, 'end');
+    textarea.setSelectionRange(lineStart, cursor);
+    document.execCommand('insertText', false, '');
     const nextChar = textarea.value[textarea.selectionStart];
-    if (nextChar === '\n') textarea.setRangeText('', textarea.selectionStart, textarea.selectionStart + 1, 'end');
+    if (nextChar === '\n') {
+      const pos = textarea.selectionStart;
+      textarea.setSelectionRange(pos, pos + 1);
+      document.execCommand('insertText', false, '');
+    }
   }
 }
 
