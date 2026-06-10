@@ -681,6 +681,15 @@
     .doc-heading-1 { font-size: 17px; margin: 0 0 6px; }
     .doc-heading-2 { font-size: 14px; margin: 12px 0 3px; }
     .doc-heading-3 { font-size: 13px; margin: 9px 0 2px; }
+    .section-jumps {
+      display: flex; flex-wrap: wrap; gap: 4px 10px;
+      padding: 0 0 10px; margin-bottom: 10px;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .section-jump-link {
+      font-size: 11px; color: var(--accent); text-decoration: none; opacity: 0.7;
+    }
+    .section-jump-link:hover { opacity: 1; text-decoration: underline; }
     .doc-code {
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 11px; background: var(--surface-raised);
@@ -2017,6 +2026,25 @@ function renderModalDocs(t) {
   }
 }
 
+function injectSectionJumps(container) {
+  const headings = Array.from(container.querySelectorAll('.doc-heading-2'));
+  if (headings.length < 2) return;
+  headings.forEach(h => {
+    const slug = h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    h.id = 'section-' + slug;
+  });
+  const bar = document.createElement('div');
+  bar.className = 'section-jumps';
+  bar.innerHTML = headings.map(h => `<a class="section-jump-link" href="#" data-target="${esc(h.id)}">${esc(h.textContent.trim())}</a>`).join('');
+  bar.querySelectorAll('.section-jump-link').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      container.querySelector('#' + a.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  container.prepend(bar);
+}
+
 function renderModalBody(t) {
   const bodyEl  = document.getElementById('m-body');
   const editEl  = document.getElementById('m-edit-area');
@@ -2045,6 +2073,7 @@ function renderModalBody(t) {
           }
         }
         bodyEl.innerHTML = warning + md(d.content);
+        injectSectionJumps(bodyEl);
       })
       .catch(() => { bodyEl.innerHTML = '<span class="modal-empty">Could not load doc.</span>'; });
   } else {
@@ -2052,6 +2081,7 @@ function renderModalBody(t) {
     // strip leading H1 if it duplicates the title shown in the modal header
     body = body.replace(/^#[ \t]+.+(\r?\n|$)/, '').trim();
     bodyEl.innerHTML = body ? md(body) : '<span class="modal-empty">No description.</span>';
+    if (body) injectSectionJumps(bodyEl);
   }
 }
 
