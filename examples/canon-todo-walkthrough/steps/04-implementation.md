@@ -112,6 +112,10 @@ Pause here and update HANDOFF.md with current focus, in-progress files, the capt
 Open sprint-check and tell me where the Todo sprint left off. Don't proceed yet — I want to review the state first.
 ```
 
+---
+
+**Next → [05-sprint-complete.md](05-sprint-complete.md)**
+
 Expected result: the agent should know the active ticket, what was built, what
 still needs testing, and the captured `src/` structure discovery without you
 re-explaining the sprint. `sprint-check` should show the same Current Focus in

@@ -125,3 +125,7 @@ in progress and what to do next. Reloading `sprint-check` after a fresh session
 should show that continuity in the sidebar.
 
 Stop the board with `Ctrl+C` in the terminal.
+
+---
+
+**Next → [04-implementation.md](04-implementation.md)**

@@ -52,15 +52,26 @@ as a separate process:
 
 ## Walk The Canon Flow
 
-1. Copy the walkthrough files into a destination folder by running this script:
-   ```bash
-   ~/.canon/scripts/copy-todo-walkthrough.sh <path_to_dest_folder>
-   cd <path_to_dest_folder>
-   ```
-2. Read [01-setup.md](steps/01-setup.md) — wire the tools.
-3. Start the sprint in [02-sprint-start.md](steps/02-sprint-start.md) — describe the work; the agent plans it.
-4. Use the board checkpoint in [03-sprint-check.md](steps/03-sprint-check.md) — review what the agent drafted.
-5. Build and test with [04-implementation.md](steps/04-implementation.md) — implement and tick off criteria.
-6. Complete the sprint with [05-sprint-complete.md](steps/05-sprint-complete.md) — close with the gate, including the failure case.
+**1. Copy and wire**
+
+```bash
+~/.canon/scripts/copy-todo-walkthrough.sh <path_to_dest_folder>
+cd <path_to_dest_folder>
+skills.sh add sprint   # creates .tickets/, writes CLAUDE.md + AGENTS.md, offers PATH setup
+```
+
+`skills.sh add sprint` is the only setup step. It wires the project once — `sprint start`,
+`sprint-check`, and `tkt` are then available as commands. The folder starts with docs only;
+the implementation step later creates `package.json`, `src/`, and `tests/`.
+
+> **For product managers:** Ask your developer to run the commands above, then open the board
+> with `sprint-check`. Everything else in the walkthrough is visible there.
+
+**2–6. Follow the steps in order:**
+
+2. [02-sprint-start.md](steps/02-sprint-start.md) — describe the work; the agent plans it.
+3. [03-sprint-check.md](steps/03-sprint-check.md) — review what the agent drafted on the board.
+4. [04-implementation.md](steps/04-implementation.md) — build and tick off criteria.
+5. [05-sprint-complete.md](steps/05-sprint-complete.md) — close with the gate, including the failure case.
 
 The finished reference implementation lives in [`../todo-app`](../todo-app).

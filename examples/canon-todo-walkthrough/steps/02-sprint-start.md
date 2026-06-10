@@ -177,3 +177,7 @@ Reload `sprint-check`. The card status should now show **READY** — all artifac
 Click the card, then click **Plan** to see the approved brief the agent will implement against:
 
 ![Ticket open on Plan tab](../assets/ticket-plan-tab.png)
+
+---
+
+**Next → [03-sprint-check.md](03-sprint-check.md)**
