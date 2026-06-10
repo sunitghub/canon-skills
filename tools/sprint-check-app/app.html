@@ -1637,15 +1637,21 @@ function sortChecklistRuns(text) {
 // Minimal markdown: headers, bold, inline code, checklist items, bullet lists
 function md(raw) {
   if (!raw) return '';
-  return sortChecklistRuns(esc(raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim()))
+  // Pre-stamp each checkbox line with its source position using a null-byte
+  // marker that survives esc() and sortChecklistRuns(), so the rendered index
+  // matches the source file regardless of sort order.
+  let srcIdx = 0;
+  const stamped = raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim()
+    .replace(/^(- \[[ xX]\] )/gm, m => m + `\x00${srcIdx++}\x00`);
+  return sortChecklistRuns(esc(stamped))
     .replace(/^# (.+)$/gm,  '<strong class="doc-heading-1">$1</strong>')
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
     .replace(/`([^`]+)`/g,  '<code class="doc-code">$1</code>')
-    .replace(/^- \[([ xX])\] (.+)$/gm, (_, checked, text) => {
+    .replace(/^- \[([ xX])\] \x00(\d+)\x00(.+)$/gm, (_, checked, si, text) => {
       const done = checked.toLowerCase() === 'x';
-      return `<span class="doc-bullet${done ? '' : ' doc-check-open'}"><span class="doc-check-marker${done ? '' : ' open'}">${done ? '✓' : ''}</span><span>${text}</span></span>`;
+      return `<span class="doc-bullet${done ? '' : ' doc-check-open'}" data-src-idx="${si}"><span class="doc-check-marker${done ? '' : ' open'}">${done ? '✓' : ''}</span><span>${text}</span></span>`;
     })
     .replace(/^- (.+)$/gm,  '<span class="doc-bullet"><span class="doc-bullet-marker">·</span><span>$1</span></span>');
 }
@@ -2693,19 +2699,18 @@ makePanelDraggable('commit-panel');
 function tagCheckboxes(el) {
   const t = state.tickets.find(tk => tk.id === state.selectedId);
   const locked = !t || t.status === 'closed' || t.status === 'cancelled';
-  let idx = 0;
-  el.querySelectorAll('.doc-bullet').forEach(bullet => {
-    if (bullet.querySelector('.doc-check-marker')) {
-      if (!locked) {
-        bullet.dataset.checkIdx = idx++;
-      } else {
-        delete bullet.dataset.checkIdx;
-      }
+  let count = 0;
+  el.querySelectorAll('.doc-bullet[data-src-idx]').forEach(bullet => {
+    if (!locked) {
+      // Promote the source index to data-check-idx so the click handler finds it
+      bullet.dataset.checkIdx = bullet.dataset.srcIdx;
+      count++;
+    } else {
+      delete bullet.dataset.checkIdx;
     }
   });
-  // Show tip only for editable tickets with checkboxes
   const tip = document.getElementById('m-check-tip');
-  if (tip) tip.classList.toggle('visible', idx > 0 && !modalState.editMode && !locked);
+  if (tip) tip.classList.toggle('visible', count > 0 && !modalState.editMode && !locked);
 }
 
 async function toggleCheckbox(docFile, checkIdx) {
