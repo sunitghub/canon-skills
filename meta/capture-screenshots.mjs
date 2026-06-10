@@ -125,6 +125,48 @@ How will we implement it?
     null,
     null);
 
+  const closedAcceptance =
+`# Acceptance
+
+Ticket: \`t-9b3d\`
+
+## Criteria
+- [x] Todo items can be added via the input field.
+- [x] Items can be toggled complete/incomplete.
+- [x] Empty title submissions are rejected.
+
+## Test Plan
+
+### Functional tests
+- [x] \`npm test\` — covers add, blank-title rejection, and complete/open toggle (5/5 pass, 2026-06-09).
+
+### Impact tests
+- [x] None — no HIGH-rated dimensions.
+
+### Regression tests
+- [x] None — greenfield; no prior tickets touched these files.
+
+### Test location
+- [x] \`tests/todo.test.mjs\`
+
+## QA Sign-off
+- [x] All criteria verified by running the app and tests (5/5 pass, 2026-06-09).
+
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| simplifier | skipped | clean minimal code, no simplification opportunities |
+| reviewer | skipped | no design implications in greenfield app |
+| security | skipped | no security-sensitive patterns (no auth, DB, user input handling, or API endpoints) |
+| repo-check | skipped | no repo surface changed |
+| doc-audit | skipped | no user-facing docs changed |
+`;
+  writeTicket(dir, 't-9b3d', 'closed', 'task', 2,
+    'Build a simple ToDo list',
+    'Build a minimal client-side ToDo app as the canon walkthrough example.',
+    closedAcceptance,
+    null);
+
   run('git', ['init'], dir);
   run('git', ['config', 'user.name', 'Canon Demo'], dir);
   run('git', ['config', 'user.email', 'demo@canon.local'], dir);
@@ -191,6 +233,15 @@ async function main() {
     await page.waitForSelector('.acceptance-warning');
     await sleep(300);
     await page.locator('#modal').screenshot({ path: path.join(OUT_DIR, 'plan-incomplete.png') });
+
+    await page.click('#btn-close');
+    await page.waitForFunction(() => !document.getElementById('modal-overlay').classList.contains('open'));
+
+    await page.click('.card[data-id="t-9b3d"]');
+    await page.waitForSelector('#modal-overlay.open');
+    await page.locator('.doc-tab', { hasText: 'Acceptance' }).click();
+    await sleep(400);
+    await page.locator('#modal').screenshot({ path: path.join(OUT_DIR, 'acceptance-closed-dark.png') });
 
     await page.click('#btn-close');
     await page.waitForFunction(() => !document.getElementById('modal-overlay').classList.contains('open'));
