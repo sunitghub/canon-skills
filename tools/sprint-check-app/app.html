@@ -667,6 +667,18 @@
       background: var(--accent-dim); border-color: var(--accent);
       color: var(--accent); opacity: 1; cursor: default;
     }
+    .doc-save-btn {
+      margin-left: auto; padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer;
+      transition: opacity .1s;
+    }
+    .doc-save-btn:hover { opacity: .85; }
+    .doc-cancel-btn {
+      padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-muted); cursor: pointer; transition: background .1s, color .1s;
+    }
+    .doc-cancel-btn:hover { background: var(--surface-hover); color: var(--text); }
     .doc-tab-new:disabled { opacity: .45; cursor: not-allowed; }
     .doc-locked-badge {
       margin-left: auto; font-size: 11px; color: var(--text-body);
@@ -2033,7 +2045,9 @@ function renderModalDocs(t) {
   }).join('') +
   (!locked
     ? (canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${modalState.editMode || pickingDoc ? ' disabled' : ''}>+ New doc</button>` : '') +
-      (pickingDoc ? '' : `<button class="doc-edit-btn" id="btn-edit-doc"${modalState.editMode ? ' disabled' : ''}>${modalState.editMode ? 'Editing' : 'Edit'}</button>`)
+      (pickingDoc ? '' : modalState.editMode
+        ? `<button class="doc-save-btn" id="btn-save-top">Save</button><button class="doc-cancel-btn" id="btn-cancel-top">Cancel</button>`
+        : `<button class="doc-edit-btn" id="btn-edit-doc">Edit</button>`)
     : `<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span>`
   );
 
@@ -2052,6 +2066,8 @@ function renderModalDocs(t) {
   if (!locked) {
     document.getElementById('btn-new-doc')?.addEventListener('click', () => promptNewDoc(t));
     document.getElementById('btn-edit-doc')?.addEventListener('click', () => enterEditMode(t));
+    document.getElementById('btn-save-top')?.addEventListener('click', () => saveEdit(t));
+    document.getElementById('btn-cancel-top')?.addEventListener('click', () => exitEditMode(t));
   }
 
   // Re-inject the persistent check tip (innerHTML wipe removes it)
