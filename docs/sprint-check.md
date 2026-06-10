@@ -26,7 +26,7 @@ Closed and discarded tickets open read-only. Their sprint docs remain inspectabl
 
 ![Edit sprint docs in ticket detail](../meta/screenshots/ticket-doc-editor.png)
 
-Open a ticket to read or edit its Description, Acceptance, and Plan without leaving the board.
+Open a ticket to read or edit its Description, Acceptance, and Plan without leaving the board. Docs with two or more `##` sections show a sticky jump bar at the top — click any heading to scroll straight to it.
 
 ## Ticket Search
 
