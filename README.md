@@ -54,6 +54,31 @@ cd <dest_folder_path>
 Build the Todo walkthrough in a disposable folder when you want to understand
 canon end to end without adding local sprint state to the canon checkout.
 
+## What Makes canon Different
+
+Most teams adopting agentic workflows hit the same problems: unclear autonomy,
+lost context, invisible decisions, weak review gates, and hard-to-debug agent
+actions. canon keeps the surface small by turning those concerns into repo-local
+mechanics:
+
+1. **Session continuity.** `HANDOFF.md`, the active ticket, open tickets, and a
+   small set of recent or file-related closed tickets give a returning agent
+   enough context to resume without replaying the whole project history.
+2. **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
+   capture records it in `HANDOFF.md ## Discoveries` immediately, before context
+   compaction or a session break can lose it.
+3. **Risk-aware planning.** Simple work stays light. High-impact work runs impact
+   analysis before code, and every HIGH risk becomes a required Acceptance test.
+4. **Queryable intent.** Every sprint records decisions, acceptance criteria, and
+   rejected alternatives in `.tickets/<id>/` as plain markdown. The board's search
+   and Why mode make that record queryable without touching `git log` — ask why a
+   file was built the way it was and get the plan and decisions behind it directly.
+5. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
+   Plan items are unchecked. The agent still owns judgment; canon owns the gate.
+
+These map to common agentic-coding guidance: guardrails, human review,
+observability, right context, and feedback loops.
+
 ## The Board
 
 `sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
@@ -98,31 +123,6 @@ A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.
 Phase-based frameworks give you a multi-command methodology to learn. canon gives you two commands and a board you can see.
 
 **[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
-
-## What Makes canon Different
-
-Most teams adopting agentic workflows hit the same problems: unclear autonomy,
-lost context, invisible decisions, weak review gates, and hard-to-debug agent
-actions. canon keeps the surface small by turning those concerns into repo-local
-mechanics:
-
-1. **Session continuity.** `HANDOFF.md`, the active ticket, open tickets, and a
-   small set of recent or file-related closed tickets give a returning agent
-   enough context to resume without replaying the whole project history.
-2. **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
-   capture records it in `HANDOFF.md ## Discoveries` immediately, before context
-   compaction or a session break can lose it.
-3. **Risk-aware planning.** Simple work stays light. High-impact work runs impact
-   analysis before code, and every HIGH risk becomes a required Acceptance test.
-4. **Queryable intent.** Every sprint records decisions, acceptance criteria, and
-   rejected alternatives in `.tickets/<id>/` as plain markdown. The board's search
-   and Why mode make that record queryable without touching `git log` — ask why a
-   file was built the way it was and get the plan and decisions behind it directly.
-5. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
-   Plan items are unchecked. The agent still owns judgment; canon owns the gate.
-
-These map to common agentic-coding guidance: guardrails, human review,
-observability, right context, and feedback loops.
 
 ## The Two Commands
 
