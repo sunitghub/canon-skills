@@ -18,12 +18,17 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 One-time setup:
 
 ```bash
-npx canon-skills@latest          # installs canon to ~/.canon
+# with Node.js (npx)
+npx canon-skills@latest
+
+# without Node.js (curl|bash)
+curl -fsSL https://raw.githubusercontent.com/sunitghub/canon/main/install.sh | bash
+
 cd /path/to/your-project
 ~/.canon/skills.sh add sprint
 ```
 
-> Installs to `~/.canon` by default — override with `CANON_HOME=<path> npx canon-skills@latest` or `npx canon-skills@latest <path>`.
+> Installs to `~/.canon` by default — override with `CANON_HOME=<path>` or a positional argument.
 
 Daily workflow:
 
@@ -192,7 +197,7 @@ canon enforces its own standards. The test suite runs and blocks before every co
 |---|---|---|
 | Claude Code / Codex / Pi | At least one | running the agent |
 | Git | Yes | clone/update canon |
-| Node.js ≥ 16 | `npx` install only | install |
+| Node.js ≥ 16 | `npx` install only | install via `npx` (not needed for `curl\|bash` install) |
 | Python 3 | `sprint-check` + hooks | the board |
 
 **Windows 11:** canon's CLI tools are bash scripts — run them inside WSL2 (Ubuntu). See **[fresh-machine-test.md → Windows 11](guides/fresh-machine-test.md#windows-11-wsl2)** for the full setup path.
