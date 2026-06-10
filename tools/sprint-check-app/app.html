@@ -682,12 +682,14 @@
     .doc-heading-2 { font-size: 14px; margin: 12px 0 3px; }
     .doc-heading-3 { font-size: 13px; margin: 9px 0 2px; }
     .section-jumps {
+      position: sticky; top: 0; z-index: 1;
       display: flex; flex-wrap: wrap; gap: 4px 10px;
-      padding: 0 0 10px; margin-bottom: 10px;
+      padding: 10px 0; margin-bottom: 4px;
+      background: var(--surface-raised);
       border-bottom: 1px solid var(--panel-border);
     }
     .section-jump-link {
-      font-size: 11px; color: var(--accent); text-decoration: none; opacity: 0.7;
+      font-size: 11px; color: var(--accent); text-decoration: none; opacity: 0.9;
     }
     .section-jump-link:hover { opacity: 1; text-decoration: underline; }
     .doc-code {
@@ -2042,7 +2044,8 @@ function injectSectionJumps(container) {
       container.querySelector('#' + a.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
-  container.prepend(bar);
+  // Insert before the content box so sticky works within the scroll container (.modal-body)
+  container.parentNode.insertBefore(bar, container);
 }
 
 function renderModalBody(t) {
@@ -2051,6 +2054,7 @@ function renderModalBody(t) {
   document.getElementById('m-editor-toolbar').classList.remove('open');
   editEl.style.display = 'none';
   bodyEl.style.display = '';
+  bodyEl.parentNode.querySelectorAll('.section-jumps').forEach(el => el.remove());
 
   if (modalState.activeDoc) {
     bodyEl.innerHTML = '<span class="modal-empty">Loading…</span>';
