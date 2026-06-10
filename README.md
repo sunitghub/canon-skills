@@ -83,7 +83,7 @@ observability, right context, and feedback loops.
 
 `sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
 
-<details open>
+<details>
 <summary><strong>Demo</strong></summary>
 
 A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.html`](docs/index.html).
