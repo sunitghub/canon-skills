@@ -25,8 +25,23 @@ These are decoupled. GitHub is the source of truth. npm is just the discovery an
 # make your changes, then:
 git add <files>
 git commit -m "feat: description"
-git push
+git push          # → sunitghub/canon (private dev)
+git push public   # → sunitghub/canon-skills (public install target)
 ```
+
+**Both pushes are required.** `canon-skills` is what `install.sh` clones —
+users never see `canon`. The `public` remote is pre-configured:
+```bash
+git remote -v   # should show: public → https://github.com/sunitghub/canon-skills.git
+```
+
+**Until `t-bb89` (pre-public cleanup) closes:** do NOT `git push public` —
+`canon-skills` will be replaced with a clean tree at launch, not incrementally
+updated. The dual-push workflow activates at launch.
+
+**Long-term:** replace the manual dual-push with a GitHub repo mirror
+(Settings → Repository → Mirror repository on `sunitghub/canon`). Tracked in
+`t-4989`. After the mirror is live, `git push public` is no longer needed.
 
 Users pick up changes automatically:
 - **Existing installs** — next time they rerun the curl installer, it does `git pull`
