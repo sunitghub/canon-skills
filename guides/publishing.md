@@ -50,7 +50,10 @@ No separate release branches — canon is a living library, not a versioned prod
 
 ### GitHub repo settings
 
-- **Visibility:** Currently **private**; goes **public** at launch. The npm installer clones over HTTPS with no auth, so `npx canon-skills@latest` only works once the repo is public.
+- **Visibility:** The development repo is private. Do not flip it public unless
+  its full git history has been audited and intentionally approved for public
+  exposure. The first public launch should use a clean public source created
+  from the current release tree, not the private development history.
 - **Default branch:** `main`
 - **Branch protection:** Staged as version-controlled config in `.github/rulesets/main-protection.json`, documented in `CONTRIBUTING.md`. Rulesets need a public repo (or Pro); apply it once public, after which all changes go through PRs that pass the `test` check.
 
@@ -92,16 +95,53 @@ npm login
 npm whoami   # should return your npm username
 ```
 
+### Public source preparation
+
+The npm installer clones the GitHub repo over unauthenticated HTTPS. That source
+must be public, but it does not have to expose the private development history.
+
+Preferred launch path:
+
+1. **Keep this development repo private.**
+2. **Create a clean public repo from the release tree only.** Use `git archive`
+   or an equivalent fresh checkout so the public repo starts with a new initial
+   commit and no historical `.tickets/`, `HANDOFF.md`, `DECISIONS.md`,
+   `CLAUDE.md`, removed assets, PDFs, or internal notes.
+3. **Use the public repo URL in both installers** before publishing:
+   `install.sh` and `bin/install.js` must point at the same public clone URL.
+4. **Verify the public source before npm publish:**
+
+   ```bash
+   git clone <public-repo-url> /tmp/canon-public-check
+   cd /tmp/canon-public-check
+   git log --oneline --all
+   git log --all --name-only --pretty=format: | sort -u \
+     | rg -i '(^|/)(\.tickets|HANDOFF\.md|DECISIONS\.md|CLAUDE\.md)|octave|AI-Agents-Deck|skills/pdf|\.pdf$'
+   rg -n --hidden --glob '!.git/**' -i \
+     '(api[_-]?key|secret|token|password|credential|private key|/Users/|octave|AI-Agents-Deck|skills/pdf)' .
+   npm pack --dry-run .
+   ```
+
+   The expected result is a short public-only history, no private workflow or
+   removed internal files, and an npm package containing only `LICENSE`,
+   `README.md`, `bin/install.js`, and `package.json`.
+
+Only use a history rewrite of the development repo if you explicitly accept the
+force-push impact on every clone and remote integration. A clean public repo is
+safer for launch because old private objects were never pushed there.
+
+Tracked cleanup issue: https://github.com/sunitghub/canon/issues/1
+
 ### First-time publish
 
 First launch path:
 
-1. **Make the GitHub repo public.**
+1. **Prepare and verify the clean public source.**
 
-   The installer clones `https://github.com/sunitghub/canon.git` over
-   unauthenticated HTTPS. Publishing to npm while the repo is private can reserve
-   the package name, but `npx canon-skills@latest` will fail for normal users
-   until the repo is public.
+   The installer clones over unauthenticated HTTPS. Publishing to npm while the
+   installer target is private can reserve the package name, but
+   `npx canon-skills@latest` will fail for normal users until the installer
+   target is public.
 
 2. **Authenticate npm:**
 

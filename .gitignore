@@ -7,6 +7,7 @@ CLAUDE.md
 __pycache__/
 meta/node_modules/
 meta/.rec/
+meta/.rec-readme/
 \#*\#
 .\#*
 *~
