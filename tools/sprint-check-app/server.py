@@ -85,11 +85,11 @@ def parse_ticket(path: Path) -> dict:
     title_match = re.search(r'^#{1,6}\s+(.+)$', body, re.MULTILINE)
     fields.setdefault('title', title_match.group(1).strip() if title_match else path.stem)
     fields['body'] = body
-    fields.setdefault('id', path.stem)
     docs = []
     if path.name == 'ticket.md' and path.parent != TICKETS_DIR:
         ticket_id = fields.get('id') or path.parent.name
-        fields.setdefault('id', ticket_id)
+        fields['id'] = ticket_id
+        fields.setdefault('status', 'open')
         fields['layout'] = 'folder'
         for f in sorted(path.parent.glob('*.md')):
             if f.name == 'ticket.md':
@@ -121,6 +121,8 @@ def parse_ticket(path: Path) -> dict:
             except Exception:
                 pass
     else:
+        fields.setdefault('id', path.stem)
+        fields.setdefault('status', 'open')
         fields['layout'] = 'flat'
         stem = path.stem
         for f in sorted(path.parent.glob(f'{stem}-*.md')):

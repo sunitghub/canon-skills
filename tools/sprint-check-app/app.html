@@ -583,6 +583,14 @@
     }
     #modal-overlay.open #modal { transform: translate(var(--drag-x, 0px), var(--drag-y, 0px)) scale(1); }
     #modal.dragging-panel { transition: none; }
+    #modal { position: relative; }
+    .modal-side-drag {
+      position: absolute; top: 0; bottom: 0; width: 10px; z-index: 10;
+      cursor: grab;
+    }
+    .modal-side-drag.drag-left  { left: 0;  border-radius: 10px 0 0 10px; }
+    .modal-side-drag.drag-right { right: 0; border-radius: 0 10px 10px 0; }
+    .modal-side-drag.dragging   { cursor: grabbing; }
 
     .modal-header {
       display: flex; align-items: center; gap: 12px;
@@ -1078,6 +1086,8 @@
 <!-- Modal -->
 <div id="modal-overlay">
   <div id="modal">
+    <div class="modal-side-drag drag-left"></div>
+    <div class="modal-side-drag drag-right"></div>
     <div class="modal-header">
       <span class="modal-id" id="m-id"></span>
       <span id="m-type"></span>
@@ -2604,46 +2614,54 @@ function makePanelDraggable(panelId) {
   const header = panel?.querySelector('.modal-header');
   if (!panel || !header) return;
 
+  const sideHandles = [...(panel.querySelectorAll('.modal-side-drag') || [])];
+  const handles = [header, ...sideHandles];
+
   let dragging = false;
+  let activeHandle = null;
   let startX = 0;
   let startY = 0;
   let baseX = 0;
   let baseY = 0;
 
-  header.addEventListener('pointerdown', e => {
-    if (e.target.closest('button, a, input, textarea, select')) return;
-    dragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    baseX = Number(panel.dataset.dragX || 0);
-    baseY = Number(panel.dataset.dragY || 0);
-    header.classList.add('dragging');
-    panel.classList.add('dragging-panel');
-    document.body.style.userSelect = 'none';
-    header.setPointerCapture(e.pointerId);
+  handles.forEach(handle => {
+    handle.addEventListener('pointerdown', e => {
+      if (e.target.closest('button, a, input, textarea, select')) return;
+      dragging = true;
+      activeHandle = handle;
+      startX = e.clientX;
+      startY = e.clientY;
+      baseX = Number(panel.dataset.dragX || 0);
+      baseY = Number(panel.dataset.dragY || 0);
+      handle.classList.add('dragging');
+      panel.classList.add('dragging-panel');
+      document.body.style.userSelect = 'none';
+      handle.setPointerCapture(e.pointerId);
+    });
+
+    handle.addEventListener('pointermove', e => {
+      if (!dragging) return;
+      const nextX = baseX + e.clientX - startX;
+      const nextY = baseY + e.clientY - startY;
+      panel.dataset.dragX = String(nextX);
+      panel.dataset.dragY = String(nextY);
+      panel.style.setProperty('--drag-x', `${nextX}px`);
+      panel.style.setProperty('--drag-y', `${nextY}px`);
+    });
+
+    const stopDrag = e => {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+      panel.classList.remove('dragging-panel');
+      document.body.style.userSelect = '';
+      activeHandle = null;
+      try { handle.releasePointerCapture(e.pointerId); } catch {}
+    };
+
+    handle.addEventListener('pointerup', stopDrag);
+    handle.addEventListener('pointercancel', stopDrag);
   });
-
-  header.addEventListener('pointermove', e => {
-    if (!dragging) return;
-    const nextX = baseX + e.clientX - startX;
-    const nextY = baseY + e.clientY - startY;
-    panel.dataset.dragX = String(nextX);
-    panel.dataset.dragY = String(nextY);
-    panel.style.setProperty('--drag-x', `${nextX}px`);
-    panel.style.setProperty('--drag-y', `${nextY}px`);
-  });
-
-  const stopDrag = e => {
-    if (!dragging) return;
-    dragging = false;
-    header.classList.remove('dragging');
-    panel.classList.remove('dragging-panel');
-    document.body.style.userSelect = '';
-    try { header.releasePointerCapture(e.pointerId); } catch {}
-  };
-
-  header.addEventListener('pointerup', stopDrag);
-  header.addEventListener('pointercancel', stopDrag);
 }
 
 makePanelDraggable('modal');
