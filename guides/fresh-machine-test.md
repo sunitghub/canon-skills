@@ -41,12 +41,16 @@ Install these before running anything canon-related.
 ### 3a — Published path (what real users hit)
 
 ```bash
+# with Node.js
 npx canon-skills@latest
+
+# without Node.js (curl|bash)
+curl -fsSL https://raw.githubusercontent.com/sunitghub/canon/main/install.sh | bash
 ```
 
-This clones from the npm-published artifact to `~/.canon`. Validates the public release, not your current working tree.
+Both clone to `~/.canon` and run `skills.sh init`. The curl path validates the Node-free install; the npx path validates the npm-published artifact. Test whichever matches the user profile you're validating — or both.
 
-Expected output: the canon logo, `Cloned.`, `Wiring agent hooks…`, then a `Done.` block with next steps.
+Expected output: `Cloning canon → ~/.canon`, `Wiring agent hooks…`, then a `Done.` block with next steps.
 
 ### 3b — Current branch (validates your pending changes)
 
@@ -55,7 +59,7 @@ git clone https://github.com/sunitghub/canon.git ~/.canon
 ~/.canon/skills.sh init
 ```
 
-Use 3b when you want to verify a branch before publishing. Both paths should produce the same result.
+Use 3b when you want to verify a branch before publishing. All paths should produce the same result.
 
 **Verify install:**
 
@@ -77,7 +81,7 @@ npm test
 
 Expected: each of the seven test files prints `ok`, ending with `All tests passed.`
 
-The suite covers: ticket lifecycle, sprint start/complete gate logic, `skills.sh add/refresh/status`, install-target resolution, and the sprint-check server.
+The suite covers: ticket lifecycle, sprint start/complete gate logic, `skills.sh add/refresh/status`, install-target resolution (both Node and bash paths), and the sprint-check server.
 
 ---
 
@@ -194,8 +198,14 @@ Without `wslu`, sprint-check prints the URL instead of opening it automatically.
 Same as the Linux path — run these inside the WSL2 terminal:
 
 ```bash
+# with Node.js (requires nvm setup above)
 npx canon-skills@latest
-# or: git clone https://github.com/sunitghub/canon.git ~/.canon && ~/.canon/skills.sh init
+
+# without Node.js
+curl -fsSL https://raw.githubusercontent.com/sunitghub/canon/main/install.sh | bash
+
+# or from a specific branch
+# git clone https://github.com/sunitghub/canon.git ~/.canon && ~/.canon/skills.sh init
 ```
 
 ### Test suite
