@@ -1566,7 +1566,8 @@ function whyQueryFromInput(value) {
 
 function age(iso) {
   if (!iso) return '';
-  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
+  const date = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
+  const m = Math.floor((Date.now() - date) / 60000);
   if (m < 2)   return 'just now';
   if (m < 60)  return `${m}m ago`;
   const h = Math.floor(m / 60);
