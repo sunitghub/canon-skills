@@ -39,6 +39,21 @@ tkt reopen <id>               # reopen
 tkt show <id>                 # show full ticket
 ```
 
+## Sprint Artifacts
+
+Canonical layout for a sprint ticket:
+
+| File | Written by | Purpose |
+|---|---|---|
+| `ticket.md` | `sprint start` / `tkt` | Frontmatter + description |
+| `acceptance.md` | agent at sprint start | Done criteria + test plan |
+| `plan.md` | agent at sprint start | Approach + decisions |
+| `summary.md` | agent at sprint complete | Plan-vs-actual table + close prose |
+
+`summary.md` appears as a **Summary** tab on the board — read-only once the
+ticket is closed. It is the permanent record of what was delivered versus what
+was planned.
+
 ## Closing Sprint Work
 
 Use `sprint complete` for sprint work. It validates required sprint files and

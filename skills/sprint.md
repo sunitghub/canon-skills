@@ -189,17 +189,23 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 8. **Close.** Run `sprint complete`. If it refuses because checklist items
    remain unchecked, report the blockers and stop.
 
-9. **Report.** Produce a plan-vs-actual table, then a one-paragraph summary.
+9. **Report.** Write `.tickets/<id>/summary.md` with the plan-vs-actual table and
+   a one-paragraph summary. Also output both in chat.
 
-   Table — one row per acceptance criterion from `acceptance.md`:
+   File format:
+   ```markdown
+   # Summary
 
    | Acceptance item | Status | Notes |
    |---|---|---|
-   | `<criterion verbatim>` | delivered / waived / deferred / partial | reason if not delivered |
+   | <criterion verbatim> | delivered / waived / deferred / partial | reason if not delivered |
 
-   Then one paragraph: what shipped, test results summary, any waived or deferred items and why, follow-up recorded.
+   <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded>
+   ```
 
-   Deviations must appear in the table — do not bury them in prose.
+   One row per acceptance criterion from `acceptance.md`. Deviations must appear
+   in the table — do not bury them in prose. The file appears as a **Summary** tab
+   on the ticket board alongside Acceptance and Plan.
 
 ---
 
