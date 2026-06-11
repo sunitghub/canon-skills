@@ -77,16 +77,21 @@ mechanics:
    file was built the way it was and get the plan and decisions behind it directly.
 5. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
    Plan items are unchecked. The agent still owns judgment; canon owns the gate.
+6. **Delivery receipt.** When a sprint closes, the agent writes a Summary tab on
+   the ticket: one row per acceptance criterion showing whether it was delivered,
+   waived, deferred, or partial. Deviations can't be buried in prose. Most tools
+   show you what the agent *did* — canon records what it *promised* and whether
+   it delivered.
 
 These map to common agentic-coding guidance: guardrails, human review,
-observability, right context, and feedback loops.
+observability, right context, feedback loops, and accountability.
 
 ## The Board
 
 `sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
 
 <details>
-<summary><strong>Demo</strong></summary>
+<summary><strong>Demo</strong> <sub>— click to expand</sub></summary>
 
 A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.html`](docs/index.html).
 
@@ -124,7 +129,7 @@ A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.
 
 <img src="meta/screenshots/summary-tab-dark.png" alt="Closed ticket Summary tab showing plan-vs-actual table with delivered/waived/deferred status per criterion" width="680">
 
-Most AI tools show you what the agent *did*. The Summary tab shows what it *promised* — every acceptance criterion, its outcome, and why anything deviated. Permanently on the ticket, not buried in chat history.
+Every acceptance criterion, its outcome, and any deviations — permanently on the ticket.
 
 </details>
 
