@@ -207,7 +207,7 @@ Double-bordered nodes are sub-skills the agent runs inside the flow — you don'
 
 Define your standards once; every project inherits them via `@`-import — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. The `efficiency` standard is wired automatically when you register `sprint`. **[How this works →](docs/how-it-works.md)**
 
-Every non-trivial change starts with a ticket. Two docs — `acceptance.md` (done criteria + test plan) and `plan.md` (approach + decisions) — live in `.tickets/<id>/` as plain markdown. A future agent reading that folder knows *why* something was built and what trade-offs were ruled out, not just what the diff says. Your repo accumulates intent, not just history.
+Every non-trivial change starts with a ticket. Three docs — `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), and `summary.md` (plan-vs-actual at close) — live in `.tickets/<id>/` as plain markdown. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 
 canon enforces its own standards. The test suite runs and blocks before every commit — no advisory reminders, no honor system. What ships is what passed.
 
