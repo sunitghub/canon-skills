@@ -120,6 +120,12 @@ A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.
 
 <img src="meta/screenshots/acceptance-closed-dark.png" alt="Closed ticket Acceptance tab showing criteria, test plan, QA sign-off, and wrapup gates" width="680">
 
+#### Sprint Summary — Plan vs. Actual
+
+<img src="meta/screenshots/summary-tab-dark.png" alt="Closed ticket Summary tab showing plan-vs-actual table with delivered/waived/deferred status per criterion" width="680">
+
+Most AI tools show you what the agent *did*. The Summary tab shows what it *promised* — every acceptance criterion, its outcome, and why anything deviated. Permanently on the ticket, not buried in chat history.
+
 </details>
 
 Phase-based frameworks give you a multi-command methodology to learn. canon gives you two commands and a board you can see.
@@ -136,14 +142,17 @@ Creates a ticket, defines acceptance criteria, and writes the plan before touchi
 
 Runs the close path: simplify → review → security → repo/doc audit → acceptance check → close. Refuses to proceed while any acceptance or test-plan item is unchecked. The CLI gates the state; the agent verifies the tests and judges whether criteria are met.
 
-Each sprint produces two docs — no more, no less:
+When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
-| Doc | Contains |
-|---|---|
-| `acceptance.md` | Done criteria · test plan · QA sign-off |
-| `plan.md` | Approach · decisions made along the way |
+Each sprint produces three docs:
 
-Both are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
+| Doc | Written | Contains |
+|---|---|---|
+| `acceptance.md` | sprint start | Done criteria · test plan · QA sign-off |
+| `plan.md` | sprint start | Approach · decisions made along the way |
+| `summary.md` | sprint complete | Plan-vs-actual table · close prose |
+
+All three are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
 
 **Gated, not vibes.** The CLI owns state: one active sprint at a time, and `sprint complete` refuses to close while any acceptance or test-plan box is still unchecked — a checklist-state check in code, not a judgment call. The CLI gates the boxes; the agent verifies the tests and judges whether criteria are truly met before checking them. The agent owns the judgment — the gate owns the close. The board surfaces the same check early: cards flag `incomplete` in red when criteria or test-plan sections have no real items, and opening the doc shows an inline warning — so problems show up while you're still working, not as a close-time surprise.
 
