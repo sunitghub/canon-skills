@@ -104,6 +104,16 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Grill clarifies implementation inside the approved scope; it does not add scope.
    - Log each resolved gray area under `## Grill` in `plan.md`.
 
+   **Pre-mortem.** Once the approach is chosen (gray areas resolved or none found),
+   run a pre-mortem on the chosen path:
+
+   > "List what would have to be true for this approach to go badly, ranked by likelihood."
+
+   This is not a re-evaluation of the choice — it's failure-path construction on
+   the approved direction. Present findings concisely. If any finding would
+   materially change the approach, surface it to the user before proceeding.
+   Log the pre-mortem under `## Pre-mortem` in `plan.md`.
+
 8. **Impact analysis for high-risk work.** Run the full impact analysis process defined in the impact-analysis skill:
    - Interrogate the request — ask every question whose answer changes the risk profile.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
