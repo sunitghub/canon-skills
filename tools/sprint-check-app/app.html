@@ -726,6 +726,11 @@
     .doc-heading-1 { font-size: 17px; margin: 0 0 6px; }
     .doc-heading-2 { font-size: 14px; margin: 12px 0 3px; }
     .doc-heading-3 { font-size: 13px; margin: 9px 0 2px; }
+    .doc-table { border-collapse: collapse; width: 100%; margin: 10px 0; }
+    .doc-table th, .doc-table td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; vertical-align: top; }
+    .doc-table th { background: var(--surface-raised); color: var(--text); font-weight: 600; font-size: 12px; }
+    .doc-table td { color: var(--text-body); font-size: 12px; line-height: 1.5; }
+    .doc-table tr:hover td { background: var(--surface-hover); }
     .section-jumps {
       position: sticky; top: 0; z-index: 1;
       display: flex; flex-wrap: wrap; gap: 4px 10px;
@@ -1695,7 +1700,19 @@ function md(raw) {
       const done = checked.toLowerCase() === 'x';
       return `<span class="doc-bullet${done ? '' : ' doc-check-open'}" data-src-idx="${si}"><span class="doc-check-marker${done ? '' : ' open'}">${done ? '✓' : ''}</span><span>${text}</span></span>`;
     })
-    .replace(/^- (.+)$/gm,  '<span class="doc-bullet"><span class="doc-bullet-marker">·</span><span>$1</span></span>');
+    .replace(/^- (.+)$/gm,  '<span class="doc-bullet"><span class="doc-bullet-marker">·</span><span>$1</span></span>')
+    .replace(/((?:\|[^\n]+(?:\n|$))+)/g, block => {
+      const rows = block.trim().split('\n').filter(r => r.trim());
+      if (rows.length < 2) return block;
+      const [headerRow, sepRow, ...bodyRows] = rows;
+      if (!/^\|[\s|:-]+\|$/.test(sepRow?.trim() || '')) return block;
+      const cells = row => row.trim().split('|').slice(1, -1).map(c => c.trim());
+      const thead = '<thead><tr>' + cells(headerRow).map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+      const tbody = bodyRows.length
+        ? '<tbody>' + bodyRows.map(r => '<tr>' + cells(r).map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>'
+        : '';
+      return `<table class="doc-table">${thead}${tbody}</table>`;
+    });
 }
 
 // ── Render ────────────────────────────────────────────────────────────────
