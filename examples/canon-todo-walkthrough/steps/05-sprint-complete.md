@@ -92,6 +92,24 @@ Open the ticket's Acceptance tab on the board after close to confirm the section
 is there. This makes `acceptance.md` the complete record: what was tested *and*
 what quality gates ran.
 
+After the wrapup gates, the agent produces a **plan-vs-actual table** — one row
+per acceptance criterion — before writing the prose summary:
+
+```markdown
+| Acceptance item | Status | Notes |
+|---|---|---|
+| App renders a list of todos | delivered | — |
+| Add todo via input + button | delivered | — |
+| Delete individual todo | delivered | — |
+| npm test passes | delivered | — |
+```
+
+`Status` is one of: `delivered`, `waived`, `deferred`, or `partial`.
+Anything other than `delivered` must have a reason in Notes — the agent cannot
+leave a deviation in prose and skip the table. This means you can scan the table
+to confirm the spec was fully met, or immediately see what changed and why,
+without reading the whole summary paragraph.
+
 For this Todo sprint, impact analysis should have stayed light because there is
 no broad audience, irreversible operation, shared-state blast radius, duplicate
 trigger path, or downstream cascade. If any of those were HIGH, their mitigation

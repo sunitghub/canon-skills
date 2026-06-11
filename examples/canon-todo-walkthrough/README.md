@@ -13,6 +13,7 @@ the steps and understand what each tool does and why.
 - A high-impact "delete all" variant caught before code, where risk ratings become required tests and a human checkpoint before close.
 - Ticket search, readiness indicators, inline doc editing, status changes, git state, and commit context in `sprint-check`.
 - Closing the sprint is gated: the CLI checks the board's criteria and test plan are both filled and ticked.
+- A plan-vs-actual table at close makes deviations explicit — every criterion shows `delivered`, `waived`, `deferred`, or `partial` with a reason.
 
 A developer runs the terminal commands. A product manager reads the board and
 reviews the acceptance criteria the agent drafts. Both roles are shown.
@@ -48,7 +49,7 @@ as a separate process:
 | Observability | `sprint-check` exposes ticket state, docs, git status, commits, and readiness. |
 | Right context | `HANDOFF.md`, `DECISIONS.md`, and the active ticket survive fresh sessions. |
 | Feedback | The reviewer corrects criteria, answers grill questions, and rejects risky scope in chat. |
-| Review and tests | Acceptance and Test Plan checkboxes must be verified before close. |
+| Review and tests | Acceptance and Test Plan checkboxes must be verified before close. Plan-vs-actual table at close surfaces any deviation from the original spec. |
 
 ## Walk The Canon Flow
 
