@@ -1,0 +1,29 @@
+{
+  "name": "canon-reel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Remotion composition for canon TikTok/YouTube promo reel",
+  "scripts": {
+    "dev": "npx remotion studio",
+    "render:9x16": "npx remotion render --composition=CanonReel9x16 --output=out/canon-reel-9x16.mp4 --gl=angle",
+    "render:16x9": "npx remotion render --composition=CanonReel16x9 --output=out/canon-reel-16x9.mp4 --gl=angle",
+    "render": "npm run render:9x16 && npm run render:16x9"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.448",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "remotion": "4.0.448"
+  },
+  "devDependencies": {
+    "@types/react": "18.3.1",
+    "@types/react-dom": "18.3.1",
+    "typescript": "5.4.5"
+  },
+  "remotion": {
+    "entryPoint": "./src/index.ts"
+  },
+  "allowScripts": {
+    "esbuild@0.25.0": true
+  }
+}
