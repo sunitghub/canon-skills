@@ -347,8 +347,34 @@ cmd_status() {
   echo "canon skills in: $project_dir"
   echo ""
 
+  # ── Pre-collect skill names and flags ────────────────────────────────────
+  local skill_names=() _has_wrapup=false _has_sprint=false _has_ticket=false
+  if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
+    while IFS= read -r line; do
+      local pre_name
+      pre_name=$(skill_row_name "$line")
+      [ -z "$pre_name" ] && continue
+      skill_names+=("$pre_name")
+      [[ "$pre_name" == "wrapup" ]] && _has_wrapup=true
+      [[ "$pre_name" == "sprint" ]] && _has_sprint=true
+      [[ "$pre_name" == "ticket" ]] && _has_ticket=true
+    done < <(registered_skill_rows "$agents_file")
+  fi
+
+  # ── Compute hook_issues early so upgrade tip can reference it ─────────────
+  local hook_issues=0
+  if [ ${#skill_names[@]} -gt 0 ] && command -v claude &>/dev/null; then
+    local settings="$project_dir/.claude/settings.json"
+    if [ ! -f "$settings" ]; then
+      hook_issues=3
+    else
+      for hook_script in auto-handoff.sh handoff-inject.sh pre-commit-check.sh; do
+        grep -qF "$hook_script" "$settings" 2>/dev/null || (( hook_issues++ )) || true
+      done
+    fi
+  fi
+
   # ── Registered skills ────────────────────────────────────────────────────
-  local skill_names=()
   if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
     echo "Skills:"
     while IFS= read -r line; do
@@ -356,7 +382,6 @@ cmd_status() {
       sname=$(skill_row_name "$line")
       spath=$(skill_row_path "$line")
       [ -z "$sname" ] && continue
-      skill_names+=("$sname")
 
       local tag="ok"
       [ ! -f "$spath" ] && tag="broken ref" && (( issues++ )) || true
@@ -366,6 +391,10 @@ cmd_status() {
       if [ -n "$canon_file" ] && [ "$canon_file" != "$spath" ]; then
         tag="stale path"
         (( issues++ )) || true
+      fi
+
+      if [[ "$sname" == "wrapup" ]] && ! $_has_sprint && [ "$tag" = "ok" ]; then
+        tag="upgrade available → sprint"
       fi
 
       local suffix=""
@@ -383,17 +412,17 @@ cmd_status() {
     echo "Skills: none"
   fi
 
-  # ── upgrade suggestions ───────────────────────────────────────────────────
-  local _has_wrapup=false _has_sprint=false _has_ticket=false
-  for _s in "${skill_names[@]+"${skill_names[@]}"}"; do
-    [[ "$_s" == "wrapup" ]] && _has_wrapup=true
-    [[ "$_s" == "sprint" ]] && _has_sprint=true
-    [[ "$_s" == "ticket" ]] && _has_ticket=true
-  done
+  # ── Upgrade tip (merged with hook fix when both apply) ────────────────────
+  local _upgrade_fix_shown=false
   if $_has_wrapup && ! $_has_sprint; then
     echo ""
-    echo "Tip: wrapup + capture are now part of the sprint skill."
-    printf "  Upgrade: %s add sprint %s\n" "$(basename "$0")" "$project_dir"
+    if [ "$hook_issues" -gt 0 ]; then
+      printf "Fix both: %s add sprint %s\n" "$(basename "$0")" "$project_dir"
+      _upgrade_fix_shown=true
+    else
+      echo "Tip: wrapup + capture are now part of the sprint skill."
+      printf "  Upgrade: %s add sprint %s\n" "$(basename "$0")" "$project_dir"
+    fi
   fi
 
   # ── @-imports in CLAUDE.md and AGENTS.md ────────────────────────────────
@@ -416,22 +445,15 @@ cmd_status() {
   done
 
   # ── Claude Code hook check ───────────────────────────────────────────────
-  local hook_issues=0
   if [ ${#skill_names[@]} -gt 0 ] && command -v claude &>/dev/null; then
-    local settings="$project_dir/.claude/settings.json"
-    if [ ! -f "$settings" ]; then
-      hook_issues=3
-    else
-      for hook_script in auto-handoff.sh handoff-inject.sh pre-commit-check.sh; do
-        grep -qF "$hook_script" "$settings" 2>/dev/null || (( hook_issues++ )) || true
-      done
-    fi
     echo ""
     if [ "$hook_issues" -eq 0 ]; then
       echo "Claude hooks: [ok]"
     else
       echo "Claude hooks: [not configured] ($hook_issues missing)"
-      echo "  Run: skills.sh add <skill> $project_dir"
+      if ! $_upgrade_fix_shown; then
+        printf "  Run: %s add <skill> %s\n" "$(basename "$0")" "$project_dir"
+      fi
     fi
   fi
 
@@ -447,7 +469,9 @@ cmd_status() {
     echo "All up to date."
   else
     [ "$issues" -gt 0 ] && echo "$issues issue(s) found. Run: $(basename "$0") refresh $project_dir"
-    [ "$hook_issues" -gt 0 ] && echo "Agent hooks not wired. Run: $SKILLS_ROOT/skills.sh init"
+    if [ "$hook_issues" -gt 0 ] && ! $_upgrade_fix_shown; then
+      printf "Agent hooks not wired. Run: %s add <skill> %s\n" "$(basename "$0")" "$project_dir"
+    fi
   fi
 
   if $_has_sprint; then
