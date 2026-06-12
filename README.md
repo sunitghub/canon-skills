@@ -26,8 +26,6 @@ cd /path/to/your-project
 skills.sh add sprint
 ```
 
-> The curl installer installs to `~/.canon` by default. To use a custom path, pass `CANON_HOME` to `bash`: `CANON_HOME=/path bash <(curl -fsSL ...)`.
-
 To remove canon-managed agent hooks before deleting the install folder:
 
 ```bash
@@ -166,7 +164,7 @@ Each sprint produces three docs:
 
 All three are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
 
-**Gated, not vibes.** The CLI owns state: one active sprint at a time, and `sprint complete` refuses to close while any acceptance or test-plan box is still unchecked — a checklist-state check in code, not a judgment call. The CLI gates the boxes; the agent verifies the tests and judges whether criteria are truly met before checking them. The agent owns the judgment — the gate owns the close. The board surfaces the same check early: cards flag `incomplete` in red when criteria or test-plan sections have no real items, and opening the doc shows an inline warning — so problems show up while you're still working, not as a close-time surprise.
+**Gated, not vibes.** The CLI owns state. `sprint complete` refuses to close while any acceptance or test-plan box is unchecked, `summary.md` is missing, or the `## Wrapup Gates` record is absent. The board surfaces the same checks early — cards flag `incomplete` in red before close-time.
 
 ## Code Archaeology
 
@@ -188,29 +186,23 @@ titles.
 
 ## How Sprint Works
 
-`sprint start` scales planning to the risk:
-
 ```mermaid
 flowchart LR
-    S1[Ticket] --> S2[Tier] --> S3[Acceptance] --> S4[Plan]
-    S4 --> N[Normal: brief plan] --> S8[Approval]
-    S4 --> H[High-risk] --> S5[[orient]] --> S6[Grill] --> S7[[impact]] --> S8
-    classDef subskill stroke:#8888dd,stroke-width:2px
-    class S5,S7 subskill
+    P["Plan\nticket · acceptance · plan.md"]
+    B["Build\ncode · commits"]
+    W["Wrapup\nsimplify · review · security"]
+    C["Close\nsprint complete"]
+    D["Board\nsprint-check"]
+
+    P -->|"GATE\nuser approves"| B
+    B -->|"GATE\ntests pass"| W
+    W -->|"GATE\nall ✓ · wrapup gates\nsummary.md"| C
+    C --> D
 ```
 
-`sprint complete` gates the close:
+High-risk sprints add orient, grill, and impact analysis between Plan and Build. Double-bordered nodes are sub-skills the agent runs — you don't invoke them. **[Full lifecycle →](docs/sprint-check.md#how-sprint-works)**
 
-```mermaid
-flowchart LR
-    W1[[simplifier]] --> W2[[reviewer]] --> W3[[security]] --> W4[[repo-check]] --> W5[[doc-audit]] --> C6[close]
-    classDef subskill stroke:#8888dd,stroke-width:2px
-    class W1,W2,W3,W4,W5 subskill
-```
-
-Double-bordered nodes are sub-skills the agent runs inside the flow — you don't invoke them. **[Full lifecycle →](docs/sprint-check.md#how-sprint-works)**
-
-## Why
+## Why canon
 
 Define your standards once; every project inherits them via `@`-import — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. The `efficiency` standard is wired automatically when you register `sprint`. **[How this works →](docs/how-it-works.md)**
 
