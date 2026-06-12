@@ -27,6 +27,18 @@ assert_grep "## Test Plan" ".tickets/$id/acceptance.md"
 second_start_output="$(run_fail "$SPRINT" start "Another sprint")"
 assert_contains "$second_start_output" "Active sprint already exists:"
 
+# summary.md gate — must block before any other check
+missing_summary_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$missing_summary_output" "Missing required sprint file"
+assert_contains "$missing_summary_output" "summary.md"
+
+cat > ".tickets/$id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+
 # Overwrite with content missing required sections — section-aware gate should block
 cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance
@@ -52,6 +64,11 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 
 ## Test Plan
 - [ ] npm test
+
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| simplifier | skipped | test-only change |
 EOF
 
 unchecked_output="$(run_fail "$SPRINT" complete)"
@@ -60,6 +77,21 @@ assert_contains "$unchecked_output" "- [ ] Required item remains."
 assert_contains "$unchecked_output" "  - [ ] Indented item remains."
 assert_contains "$unchecked_output" "* [ ] Asterisk item remains."
 
+# All items checked but no Wrapup Gates section — new gate should block
+cat > ".tickets/$id/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x] Required item remains.
+
+## Test Plan
+- [x] npm test
+EOF
+
+missing_wrapup_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$missing_wrapup_output" "missing ## Wrapup Gates section"
+
+# All gates satisfied — sprint complete should succeed
 cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance
 
@@ -70,6 +102,11 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 
 ## Test Plan
 - [x] npm test
+
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| simplifier | skipped | test-only change |
 EOF
 
 complete_output="$("$SPRINT" complete)"
