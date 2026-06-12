@@ -46,8 +46,8 @@ write_if_missing() {
 }
 
 cmd_start() {
-  local title="${1:-}"
-  [[ -z "$title" ]] && { echo "Usage: sprint start \"title\"" >&2; exit 1; }
+  local arg="${1:-}"
+  [[ -z "$arg" ]] && { echo "Usage: sprint start \"title\" | sprint start <ticket-id>" >&2; exit 1; }
 
   local current_output current_rc
   set +e
@@ -69,7 +69,14 @@ cmd_start() {
   dir="$(tickets_dir)"
   mkdir -p "$dir"
 
-  id="$("$TKT_BIN" create "$title" -t task -p 2)"
+  # Resolve arg as an existing ticket ID; fall back to creating a new ticket.
+  local resolved_id
+  resolved_id="$("$TKT_BIN" show "$arg" 2>/dev/null | awk '/^ID:/{print $2}' || true)"
+  if [[ -n "$resolved_id" ]]; then
+    id="$resolved_id"
+  else
+    id="$("$TKT_BIN" create "$arg" -t task -p 2)"
+  fi
   "$TKT_BIN" start "$id" >/dev/null
   tdir="$(ticket_dir_for "$id")"
   mkdir -p "$tdir"
@@ -206,10 +213,11 @@ cmd_help() {
 sprint — canon workflow spine
 
 Usage:
-  sprint start "title"   Create/start ticket and context files
-  sprint current         Show the active sprint ticket
-  sprint status          Show active ticket and required sprint files
-  sprint complete        Validate acceptance checklist and close ticket
+  sprint start "title"      Create a new ticket and start the sprint
+  sprint start <ticket-id>  Start the sprint on an existing ticket (no new ticket created)
+  sprint current            Show the active sprint ticket
+  sprint status             Show active ticket and required sprint files
+  sprint complete           Validate acceptance checklist and close ticket
 
 The CLI owns deterministic workflow state. The agent still owns orientation,
 gray-area resolution, impact analysis, implementation, review, and test judgment.
