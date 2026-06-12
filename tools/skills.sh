@@ -985,7 +985,7 @@ cmd_init() {
   echo "Next — register skills in your projects:"
   echo ""
   printf "  %s\n    %s\n" "skills.sh add sprint [dir]" "Full dev lifecycle (plan → build → ship)"
-  printf "  %s\n    %s\n" "skills.sh addall [dir]"     "All available skills (recommended)"
+  printf "  %s\n    %s\n" "skills.sh addall [dir]"     "All available skills (start with sprint for most projects)"
   printf "  %s\n    %s\n" "skills.sh status [dir]"     "Check registration and hook health"
   printf "  %s\n    %s\n" "skills.sh refresh [dir]"    "Re-register + heal stale paths"
   printf "  %s\n    %s\n" "skills.sh list"             "Browse all available skills"
@@ -1234,26 +1234,25 @@ case "$cmd" in
   check)   cmd_check   "$@" ;;
   help)    cmd_help    "$@" ;;
   init)    cmd_init    "$@" ;;
-  uninstall|remove-canon) cmd_uninstall "$@" ;;
+  uninstall) cmd_uninstall "$@" ;;
   catalog|lint|delete)
     echo "Error: '$cmd' is a contributor command — use canon-dev.sh instead."
     echo "  canon-dev.sh $cmd $*"
     exit 1
     ;;
   *)
-    echo "Usage: skills.sh <list|add|addall|refresh|status|check|remove|help|init|uninstall> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|addall|refresh|status|check [dir]|remove|help|init|uninstall> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
     echo "  addall [dir]            Register all available skills into a project (default: cwd)"
     echo "  refresh [dir]           Re-register all skills and update standards (default: cwd)"
     echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
-    echo "  check                   Probe external tool dependencies in hooks and config"
+    echo "  check [dir]             Probe dependencies in project .claude/settings.json (default: cwd)"
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
     echo "  help <skill>            Show full documentation for a skill"
-    echo "  init                    Wire agent hooks for this install location"
+    echo "  init                    Set up this canon install: wire project hooks, migrate stale global hooks, install Pi extension, record install path"
     echo "  uninstall               Remove canon hooks/config for this install"
-    echo "  remove-canon            Alias for uninstall"
     echo "  <skill> --h             Same as: skills.sh help <skill>"
     echo "  --scan [dir]            Show skills registered in a project (default: cwd)"
     echo ""
