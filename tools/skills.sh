@@ -365,13 +365,11 @@ cmd_status() {
   local hook_issues=0
   if [ ${#skill_names[@]} -gt 0 ] && command -v claude &>/dev/null; then
     local settings="$project_dir/.claude/settings.json"
-    if [ ! -f "$settings" ]; then
-      hook_issues=3
-    else
-      for hook_script in auto-handoff.sh handoff-inject.sh pre-commit-check.sh; do
-        grep -qF "$hook_script" "$settings" 2>/dev/null || (( hook_issues++ )) || true
-      done
-    fi
+    for hook_script in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh; do
+      if ! grep -qF "$hook_script" "$settings" 2>/dev/null || [ ! -f "$SKILLS_ROOT/scripts/$hook_script" ]; then
+        (( hook_issues++ )) || true
+      fi
+    done
   fi
 
   # ── Registered skills ────────────────────────────────────────────────────
@@ -447,13 +445,19 @@ cmd_status() {
   # ── Claude Code hook check ───────────────────────────────────────────────
   if [ ${#skill_names[@]} -gt 0 ] && command -v claude &>/dev/null; then
     echo ""
-    if [ "$hook_issues" -eq 0 ]; then
-      echo "Claude hooks: [ok]"
-    else
-      echo "Claude hooks: [not configured] ($hook_issues missing)"
-      if ! $_upgrade_fix_shown; then
-        printf "  Run: %s add <skill> %s\n" "$(basename "$0")" "$project_dir"
+    echo "Claude hooks:"
+    local settings="$project_dir/.claude/settings.json"
+    for _hook in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh; do
+      local _tag
+      if grep -qF "$_hook" "$settings" 2>/dev/null && [ -f "$SKILLS_ROOT/scripts/$_hook" ]; then
+        _tag="ok"
+      else
+        _tag="not wired"
       fi
+      printf "  %-25s [%s]\n" "$_hook" "$_tag"
+    done
+    if [ "$hook_issues" -gt 0 ] && ! $_upgrade_fix_shown; then
+      printf "  Run: %s add <skill> %s\n" "$(basename "$0")" "$project_dir"
     fi
   fi
 
@@ -1123,97 +1127,6 @@ cmd_addall() {
   fi
 }
 
-# ── check ───────────────────────────────────────────────────────────────────
-
-cmd_check() {
-  local project_dir="${1:-$(pwd)}"
-  local settings="$project_dir/.claude/settings.json"
-
-  echo "canon check — probing external tool dependencies"
-  echo "settings: $settings"
-  echo ""
-
-  if [ ! -f "$settings" ]; then
-    echo "$settings not found — no hooks to check"
-    return 0
-  fi
-
-  if ! command -v python3 &>/dev/null; then
-    echo "python3 required for settings.json parsing"
-    return 1
-  fi
-
-  local py_out
-  py_out=$(python3 - "$settings" <<'PYEOF'
-import json, sys
-try:
-    with open(sys.argv[1]) as f:
-        config = json.load(f)
-except Exception as e:
-    print(f"error: {e}", file=sys.stderr); sys.exit(1)
-for event, entries in config.get("hooks", {}).items():
-    for entry in entries:
-        matcher = entry.get("matcher", "")
-        for hook in entry.get("hooks", []):
-            cmd = hook.get("command", "")
-            if cmd:
-                print(f"hook|{event}|{matcher}|{cmd}")
-sl_cmd = config.get("statusLine", {}).get("command", "")
-if sl_cmd:
-    print(f"statusLine|||{sl_cmd}")
-PYEOF
-) || { echo "Failed to parse $settings"; return 1; }
-
-  # Builtins always present — skip them
-  local skip_bins=" bash sh zsh python3 node echo true false cat grep awk sed find ls pwd "
-  local checked=" " issues=0
-
-  while IFS='|' read -r source event matcher command; do
-    [ -z "$command" ] && continue
-    local binary="${command%% *}"
-    binary="${binary/#\~/$HOME}"
-
-    [[ "$checked" == *" ${binary} "* ]] && continue
-    checked="${checked}${binary} "
-
-    local stem="${binary##*/}"
-    [[ "$skip_bins" == *" $stem "* ]] && continue
-
-    local location
-    if [ "$source" = "hook" ]; then
-      location="hooks.${event} (matcher: ${matcher:-any})"
-    else
-      location="statusLine"
-    fi
-
-    local is_path=0 present=1
-    [[ "$binary" == /* || "$binary" == "$HOME"* ]] && is_path=1 || true
-    if (( is_path )); then
-      [ -f "$binary" ] || present=0
-    else
-      command -v "$binary" &>/dev/null || present=0
-    fi
-
-    if (( present )); then
-      printf "  ok       %s\n" "$stem"
-    else
-      printf "  MISSING  %s\n" "$stem"
-      (( is_path )) && printf "    path:     %s\n" "$binary"
-      printf "    location: %s in %s\n" "$location" "$settings"
-      issues=$(( issues + 1 ))
-    fi
-  done <<< "$py_out"
-
-  echo ""
-  if [ "$issues" -eq 0 ]; then
-    echo "All dependencies present."
-    return 0
-  else
-    echo "$issues missing. Remove the referencing hook(s) from $settings"
-    return 1
-  fi
-}
-
 # ── dispatch ────────────────────────────────────────────────────────────────
 
 # Handle: skills.sh --scan [dir]  or  skills.sh [dir] --scan
@@ -1255,7 +1168,6 @@ case "$cmd" in
   refresh) cmd_refresh "$@" ;;
   status)  cmd_status  "$@" ;;
   remove)  cmd_remove  "$@" ;;
-  check)   cmd_check   "$@" ;;
   help)    cmd_help    "$@" ;;
   init)    cmd_init    "$@" ;;
   uninstall) cmd_uninstall "$@" ;;
@@ -1272,8 +1184,6 @@ case "$cmd" in
     echo "  addall [dir]            Register all available skills into a project (default: cwd)"
     echo "  refresh [dir]           Prune stale @-imports and sync standards (default: cwd)"
     echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
-    echo "  check [dir]             Verify external tools wired in .claude/settings.json"
-    echo "                          exist and are executable (default: cwd)"
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
     echo "  help <skill>            Show full documentation for a skill (alias: <skill> --h)"
     echo "  init                    Set up this canon install: wire project hooks,"
