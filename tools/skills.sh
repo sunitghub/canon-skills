@@ -62,6 +62,43 @@ skill_row_path() {
   awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}' <<< "$1"
 }
 
+# skills_table_upsert <agents_file> <skill_name> <skill_row>
+# Creates the AI-SKILLS block if absent; updates a stale row or inserts a new one.
+skills_table_upsert() {
+  local agents_file="$1" name="$2" skill_row="$3"
+  local block_begin="<!-- AI-SKILLS:BEGIN -->"
+  local block_end="<!-- AI-SKILLS:END -->"
+
+  if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then
+    {
+      echo ""
+      echo "$block_begin"
+      echo "## Active canon skills"
+      echo "> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Source: $SKILLS_ROOT"
+      echo ""
+      echo "| Skill | Category | Source |"
+      echo "|-------|----------|--------|"
+      echo "$skill_row"
+      echo "$block_end"
+    } >> "$agents_file"
+    echo "  [AGENTS.md]  created skill block"
+  elif grep -qF "| $name |" "$agents_file"; then
+    if grep -qF "$skill_row" "$agents_file"; then
+      : # already registered — silent
+    else
+      awk -v name="| $name |" -v row="$skill_row" \
+        'index($0, name) { print row; next } { print }' \
+        "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+      echo "  [AGENTS.md]  updated stale row path"
+    fi
+  else
+    awk -v row="$skill_row" -v end="$block_end" \
+      '$0 == end { print row } { print }' \
+      "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+    echo "  [AGENTS.md]  added row to skill block"
+  fi
+}
+
 registered_skill_names() {
   local agents_file="$1" line name
   while IFS= read -r line; do
@@ -262,41 +299,10 @@ cmd_add() {
 
   local claude_file="$project_dir/CLAUDE.md"
   local agents_file="$project_dir/AGENTS.md"
-  local block_begin="<!-- AI-SKILLS:BEGIN -->"
-  local block_end="<!-- AI-SKILLS:END -->"
   local skill_row="| $name | $category | $skill_file |"
 
   upsert_at_import "$claude_file" "$import_line" "$skill_basename" "CLAUDE.md"
-
-  if [ ! -f "$agents_file" ] || ! grep -qF "$block_begin" "$agents_file"; then
-    {
-      echo ""
-      echo "$block_begin"
-      echo "## Active canon skills"
-      echo "> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Source: $SKILLS_ROOT"
-      echo ""
-      echo "| Skill | Category | Source |"
-      echo "|-------|----------|--------|"
-      echo "$skill_row"
-      echo "$block_end"
-    } >> "$agents_file"
-    echo "  [AGENTS.md]  created skill block"
-  elif grep -qF "| $name |" "$agents_file"; then
-    if grep -qF "$skill_row" "$agents_file"; then
-      : # already registered — silent
-    else
-      awk -v name="| $name |" -v row="$skill_row" \
-        'index($0, name) { print row; next } { print }' \
-        "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
-      echo "  [AGENTS.md]  updated stale row path"
-    fi
-  else
-    awk -v row="$skill_row" -v end="$block_end" \
-      '$0 == end { print row } { print }' \
-      "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
-    echo "  [AGENTS.md]  added row to skill block"
-  fi
-
+  skills_table_upsert "$agents_file" "$name" "$skill_row"
   upsert_at_import "$agents_file" "$import_line" "$skill_basename" "AGENTS.md"
 
   echo ""
@@ -540,8 +546,8 @@ cmd_refresh() {
     while IFS= read -r line; do
       if [[ "$line" == "| "* ]] && [[ "$line" != "| Skill"* ]]; then
         local sname spath
-        sname=$(echo "$line" | awk -F'|' '{gsub(/[[:space:]]/,"",$2); print $2}')
-        spath=$(echo "$line" | awk -F'|' '{gsub(/^[[:space:]]+|[[:space:]]+$/,"",$4); print $4}')
+        sname=$(skill_row_name "$line")
+        spath=$(skill_row_path "$line")
         if [ -f "$spath" ] && [ "$(fm_field "$spath" hidden)" = "true" ]; then
           echo "  [pruned]  hidden skill from table: $sname" >&2
           continue
