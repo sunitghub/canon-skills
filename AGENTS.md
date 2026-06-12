@@ -34,26 +34,6 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 
 See [standards/efficiency.md](standards/efficiency.md) for the full agent standards (code quality, security, git conventions, token efficiency).
 
-## RTK — Token Optimization
-
-RTK (Rust Token Killer) filters verbose CLI output before it hits the token budget.
-Claude Code rewrites commands automatically via a `PreToolUse` hook — no action needed.
-Codex does not have an equivalent hook: use the `rtk` prefix explicitly.
-
-```bash
-rtk git status          # git status
-rtk git log --oneline   # git log --oneline
-rtk gh api ...          # gh api ...
-rtk grep pattern file   # grep pattern file
-rtk find . -name "..."  # find . -name "..."
-rtk ls -la              # ls -la
-rtk read file           # cat file
-rtk brew install pkg    # brew install pkg
-rtk cargo test          # cargo test
-```
-
-When in doubt: `rtk <any-command>`. If RTK has no rule for it, the command passes through unchanged.
-
 ## Skill Discovery & Registration
 
 The `skills.sh` script lives in `tools/`. After install, `tools/` is on PATH so you can invoke it directly.
