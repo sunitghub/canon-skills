@@ -122,6 +122,10 @@ EOF
 
   ensure_context_files "$root"
 
+  if [[ ! -x "$root/scripts/test.sh" ]]; then
+    echo "[sprint] WARNING: no scripts/test.sh found — test gate will not run at commit."
+  fi
+
   cat <<EOF
 Sprint started: $id
 Ticket: $tdir/ticket.md
@@ -193,6 +197,12 @@ cmd_complete() {
     missing=1
   fi
   [[ "$missing" -eq 0 ]] || exit 1
+
+  if ! grep -q "^## Wrapup Gates" "$acceptance"; then
+    echo "Sprint $id cannot close: acceptance.md is missing ## Wrapup Gates section."
+    echo "Run wrapup before closing."
+    exit 1
+  fi
 
   if grep -qE '^[[:space:]]*[-*] \[ \]' "$acceptance"; then
     unchecked=1

@@ -170,7 +170,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    Use `ran` or `skipped`. Always include a reason — even for gates that ran,
    note what they checked. This makes the acceptance record complete: what was
-   tested and what quality gates ran.
+   tested and what quality gates ran. **`sprint complete` will block without this section.**
 
 2. **Adversarial review (HIGH-risk only).** If the sprint tier is HIGH-risk,
    run the code-review output through a second model for genuine adversarial
