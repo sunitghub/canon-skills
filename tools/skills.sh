@@ -5,6 +5,7 @@
 #   skills.sh list                         List all available skills
 #   skills.sh add <skill> [project-dir]    Register a skill into a project
 #   skills.sh status [project-dir]         Show registered skills in a project
+#   skills.sh check                        Probe external tool dependencies
 #   skills.sh remove <skill> [project-dir] Unregister a skill from a project
 
 set -euo pipefail
@@ -1227,6 +1228,100 @@ PYEOF
   echo "CATALOG.md updated."
 }
 
+# ── check ───────────────────────────────────────────────────────────────────
+
+cmd_check() {
+  local settings="$HOME/.claude/settings.json"
+
+  echo "canon check — probing external tool dependencies"
+  echo ""
+
+  if [ ! -f "$settings" ]; then
+    echo "~/.claude/settings.json not found — no hooks to check"
+    return 0
+  fi
+
+  if ! command -v python3 &>/dev/null; then
+    echo "python3 required for settings.json parsing"
+    return 1
+  fi
+
+  local py_out
+  py_out=$(python3 - "$settings" <<'PYEOF'
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        config = json.load(f)
+except Exception as e:
+    print(f"error: {e}", file=sys.stderr); sys.exit(1)
+for event, entries in config.get("hooks", {}).items():
+    for entry in entries:
+        matcher = entry.get("matcher", "")
+        for hook in entry.get("hooks", []):
+            cmd = hook.get("command", "")
+            if cmd:
+                print(f"hook|{event}|{matcher}|{cmd}")
+sl_cmd = config.get("statusLine", {}).get("command", "")
+if sl_cmd:
+    print(f"statusLine|||{sl_cmd}")
+PYEOF
+) || { echo "Failed to parse ~/.claude/settings.json"; return 1; }
+
+  # Builtins always present — skip them
+  local skip_bins=" bash sh zsh python3 node echo true false cat grep awk sed find ls pwd "
+  local checked=" " issues=0
+
+  while IFS='|' read -r source event matcher command; do
+    [ -z "$command" ] && continue
+    local binary="${command%% *}"
+    binary="${binary/#\~/$HOME}"
+
+    # Deduplicate by binary path
+    [[ "$checked" == *" ${binary} "* ]] && continue
+    checked="${checked}${binary} "
+
+    local stem; stem=$(basename "$binary")
+    [[ "$skip_bins" == *" $stem "* ]] && continue
+
+    local location
+    if [ "$source" = "hook" ]; then
+      location="hooks.${event} (matcher: ${matcher:-any})"
+    else
+      location="statusLine"
+    fi
+
+    if [[ "$binary" == /* ]] || [[ "$binary" == "$HOME"* ]]; then
+      # Absolute path — check file existence
+      if [ -f "$binary" ]; then
+        printf "  ok       %s\n" "$(basename "$binary")"
+      else
+        printf "  MISSING  %s\n" "$(basename "$binary")"
+        printf "    path:     %s\n" "$binary"
+        printf "    location: %s in ~/.claude/settings.json\n" "$location"
+        (( issues++ )) || true
+      fi
+    else
+      # External binary — check with which
+      if command -v "$binary" &>/dev/null; then
+        printf "  ok       %s\n" "$binary"
+      else
+        printf "  MISSING  %s\n" "$binary"
+        printf "    location: %s in ~/.claude/settings.json\n" "$location"
+        (( issues++ )) || true
+      fi
+    fi
+  done <<< "$py_out"
+
+  echo ""
+  if [ "$issues" -eq 0 ]; then
+    echo "All dependencies present."
+    return 0
+  else
+    echo "$issues missing. Remove the referencing hook(s) from ~/.claude/settings.json"
+    return 1
+  fi
+}
+
 # ── lint ────────────────────────────────────────────────────────────────────
 
 # Validate every skill in skills/ against skill-setup-std conventions.
@@ -1353,18 +1448,20 @@ case "$cmd" in
   remove)  cmd_remove  "$@" ;;
   delete)  cmd_delete  "$@" ;;
   catalog) cmd_catalog "$@" ;;
+  check)   cmd_check   "$@" ;;
   lint)    cmd_lint    "$@" ;;
   help)    cmd_help    "$@" ;;
   init)    cmd_init    "$@" ;;
   uninstall|remove-canon) cmd_uninstall "$@" ;;
   *)
-    echo "Usage: skills.sh <list|add|addall|refresh|status|remove|delete|catalog|lint|help|init|uninstall> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|addall|refresh|status|check|remove|delete|catalog|lint|help|init|uninstall> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
     echo "  addall [dir]            Register all available skills into a project (default: cwd)"
     echo "  refresh [dir]           Re-register all skills and update standards (default: cwd)"
     echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
+    echo "  check                   Probe external tool dependencies in hooks and config"
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
     echo "  delete <skill>          Permanently remove a skill from canon"
     echo "  catalog                 Regenerate CATALOG.md snapshot"
