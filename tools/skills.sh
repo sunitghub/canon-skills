@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# skills.sh — canon skill catalog and project registration tool
+# skills.sh — skill registration and install lifecycle for canon projects
 #
 # Usage:
 #   skills.sh list                         List all available skills
@@ -7,6 +7,8 @@
 #   skills.sh status [project-dir]         Show registered skills in a project
 #   skills.sh check                        Probe external tool dependencies
 #   skills.sh remove <skill> [project-dir] Unregister a skill from a project
+#
+# Contributor commands (catalog/lint/delete): see canon-dev.sh
 
 set -euo pipefail
 
@@ -1088,131 +1090,6 @@ cmd_addall() {
   fi
 }
 
-cmd_delete() {
-  local skill="${1:-}"
-  [ -z "$skill" ] && { echo "Usage: skills.sh delete <skill-name>"; exit 1; }
-
-  local skill_file
-  skill_file=$(find_skill "$skill") || {
-    echo "Error: skill '$skill' not found. Run 'skills.sh list' to see available skills."
-    exit 1
-  }
-
-  # For skills/ dir entries, remove the whole directory; otherwise just the file
-  local skill_dir
-  skill_dir=$(dirname "$skill_file")
-  local rel_dir="${skill_dir#$SKILLS_ROOT/}"
-
-  if [[ "$rel_dir" == skills/* ]]; then
-    echo "Deleting skill directory: $rel_dir"
-    rm -rf "$skill_dir"
-  else
-    echo "Deleting skill file: ${skill_file#$SKILLS_ROOT/}"
-    rm "$skill_file"
-  fi
-
-  # Regenerate CATALOG.md through the structured generator
-  cmd_catalog >/dev/null
-
-  echo ""
-  echo "Deleted: $skill"
-  echo "CATALOG.md updated."
-  echo "Note: any projects with this skill registered will have a dangling reference — run 'skills.sh remove $skill' in those projects."
-}
-
-cmd_catalog() {
-  python3 - "$SKILLS_ROOT" <<'PYEOF'
-import pathlib, re, sys
-
-root = pathlib.Path(sys.argv[1])
-dirs = [root / "standards", root / "tools", root / "skills"]
-
-def fm(path):
-    text = path.read_text(errors="replace")
-    m = re.match(r"---\n(.*?)\n---", text, re.S)
-    data = {}
-    if not m:
-        return data
-    for line in m.group(1).splitlines():
-        if ":" in line:
-            k, v = line.split(":", 1)
-            data[k.strip()] = v.strip()
-    return data
-
-items = []
-for d in dirs:
-    if not d.exists():
-        continue
-    for p in sorted(d.glob("*.md")):
-        data = fm(p)
-        if data.get("name"):
-            data["path"] = p
-            items.append(data)
-
-deps = {}
-for item in items:
-    for dep in item.get("depends", "").strip("[]").split(","):
-        dep = dep.strip()
-        if dep:
-            deps.setdefault(dep, []).append(item["name"])
-
-def is_standard(item):
-    return item["path"].parent.name == "standards"
-
-standards  = [i for i in items if is_standard(i) and i.get("hidden") != "true"]
-standalone = [
-    i for i in items
-    if not is_standard(i) and i.get("hidden") != "true" and i["name"] not in deps
-]
-subskills = [i for i in items if not is_standard(i) and i["name"] in deps]
-
-lines = [
-    "# canon Catalog",
-    "",
-    "> Static snapshot - run `skills.sh list` for live output.",
-    "",
-    "## Standalone Skills",
-    "",
-    "Register these directly into a project with `skills.sh add <name>`.",
-    "",
-    "| Skill | Category | Description |",
-    "|---|---|---|",
-]
-for item in standalone:
-    desc = item.get("summary") or item.get("description", "")
-    lines.append(f"| `{item['name']}` | {item.get('category', '')} | {desc} |")
-
-lines += [
-    "",
-    "## Standards",
-    "",
-    "Auto-injected / contributor reference — not registered directly.",
-    "",
-    "| Standard | Category | Description |",
-    "|---|---|---|",
-]
-for item in standards:
-    desc = item.get("summary") or item.get("description", "")
-    lines.append(f"| `{item['name']}` | {item.get('category', '')} | {desc} |")
-
-lines += [
-    "",
-    "## Sub-skills",
-    "",
-    "Imported automatically by the skills above. Do not register directly.",
-    "",
-    "| Skill | Imported by |",
-    "|---|---|",
-]
-for item in subskills:
-    imported_by = ", ".join(sorted(deps.get(item["name"], []))) or "-"
-    lines.append(f"| `{item['name']}` | {imported_by} |")
-
-(root / "CATALOG.md").write_text("\n".join(lines) + "\n")
-PYEOF
-  echo "CATALOG.md updated."
-}
-
 # ── check ───────────────────────────────────────────────────────────────────
 
 cmd_check() {
@@ -1302,89 +1179,6 @@ PYEOF
   fi
 }
 
-# ── lint ────────────────────────────────────────────────────────────────────
-
-# Validate every skill in skills/ against skill-setup-std conventions.
-cmd_lint() {
-  local skills_dir="${1:-$SKILLS_ROOT/skills}" errors=0
-  local valid_categories="dev agent-ops ops"
-
-  err() { printf 'skills/%s: %s\n' "$1" "$2"; errors=$((errors + 1)); }
-
-  # Flat location — no skills nested in subdirectories.
-  while IFS= read -r nested; do
-    [ -n "$nested" ] || continue
-    printf '%s: skill must live flat under skills/, not in a subdirectory\n' "${nested#"$SKILLS_ROOT"/}"
-    errors=$((errors + 1))
-  done < <(find "$skills_dir" -mindepth 2 -name '*.md' -type f 2>/dev/null)
-
-  local f base stem name desc category tags deps imp sib dep
-  for f in "$skills_dir"/*.md; do
-    [ -f "$f" ] || continue
-    base=$(basename "$f"); stem="${base%.md}"
-
-    # Naming: lowercase, hyphenated, <= 20 chars.
-    printf '%s' "$stem" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' \
-      || err "$base" "filename must be lowercase and hyphenated"
-    [ "${#stem}" -le 20 ] || err "$base" "name exceeds 20 characters (${#stem})"
-
-    # Required frontmatter.
-    name=$(fm_field "$f" name)
-    desc=$(fm_field "$f" description)
-    category=$(fm_field "$f" category)
-    tags=$(fm_field "$f" tags)
-    [ -n "$name" ]     || err "$base" "missing required field 'name'"
-    [ -n "$desc" ]     || err "$base" "missing required field 'description'"
-    [ -n "$category" ] || err "$base" "missing required field 'category'"
-    { [ -n "$tags" ] && [ "$tags" != "[]" ]; } || err "$base" "missing required field 'tags'"
-
-    # name must match filename.
-    [ -z "$name" ] || [ "$name" = "$stem" ] || err "$base" "name '$name' does not match filename"
-
-    # Category enum.
-    if [ -n "$category" ] && ! printf ' %s ' "$valid_categories" | grep -q " $category "; then
-      err "$base" "category '$category' not in {dev, agent-ops, ops}"
-    fi
-
-    # Imports resolve.
-    while IFS= read -r imp; do
-      [ -n "$imp" ] || continue
-      [ -f "$skills_dir/$imp" ] || err "$base" "import '@$imp' does not resolve"
-    done < <(grep -oE '^@[^[:space:]]+' "$f" | sed 's/^@//')
-
-    # depends graph: sibling imports must be declared; declared deps must resolve.
-    deps=$(resolve_deps "$f")
-    while IFS= read -r sib; do
-      [ -n "$sib" ] || continue
-      printf '%s\n' "$deps" | grep -qx "$sib" \
-        || err "$base" "imports '@./$sib.md' but '$sib' is not in depends"
-    done < <(grep -oE '^@\./[^[:space:]]+\.md' "$f" | sed -E 's#^@\./(.*)\.md#\1#')
-    while IFS= read -r dep; do
-      [ -n "$dep" ] || continue
-      find_skill "$dep" >/dev/null 2>&1 \
-        || err "$base" "depends entry '$dep' does not resolve to a known skill"
-    done < <(printf '%s\n' "$deps")
-
-    # One job: a leaf skill chains actions if its description says "and then".
-    # Orchestrators compose children, declared via depends:, and are exempt.
-    if [ -z "$deps" ] && printf '%s' "$desc" | grep -qiE '(^|[^[:alpha:]])and then([^[:alpha:]]|$)'; then
-      err "$base" "description chains actions ('and then') — split into one job, or compose children via depends:"
-    fi
-
-    # Vague description: too short to convey what it does and when to use it.
-    if [ -n "$desc" ] && [ "${#desc}" -lt 20 ]; then
-      err "$base" "description too short (${#desc} chars) — state what it does and when to use it"
-    fi
-  done
-
-  if [ "$errors" -eq 0 ]; then
-    echo "skills lint: clean"
-    return 0
-  fi
-  printf '\n%d issue(s) found.\n' "$errors"
-  return 1
-}
-
 # ── dispatch ────────────────────────────────────────────────────────────────
 
 # Handle: skills.sh --scan [dir]  or  skills.sh [dir] --scan
@@ -1426,15 +1220,17 @@ case "$cmd" in
   refresh) cmd_refresh "$@" ;;
   status)  cmd_status  "$@" ;;
   remove)  cmd_remove  "$@" ;;
-  delete)  cmd_delete  "$@" ;;
-  catalog) cmd_catalog "$@" ;;
   check)   cmd_check   "$@" ;;
-  lint)    cmd_lint    "$@" ;;
   help)    cmd_help    "$@" ;;
   init)    cmd_init    "$@" ;;
   uninstall|remove-canon) cmd_uninstall "$@" ;;
+  catalog|lint|delete)
+    echo "Error: '$cmd' is a contributor command — use canon-dev.sh instead."
+    echo "  canon-dev.sh $cmd $*"
+    exit 1
+    ;;
   *)
-    echo "Usage: skills.sh <list|add|addall|refresh|status|check|remove|delete|catalog|lint|help|init|uninstall> [skill] [project-dir]"
+    echo "Usage: skills.sh <list|add|addall|refresh|status|check|remove|help|init|uninstall> [skill] [project-dir]"
     echo ""
     echo "  list                    Show all available skills"
     echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
@@ -1443,15 +1239,14 @@ case "$cmd" in
     echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
     echo "  check                   Probe external tool dependencies in hooks and config"
     echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
-    echo "  delete <skill>          Permanently remove a skill from canon"
-    echo "  catalog                 Regenerate CATALOG.md snapshot"
-    echo "  lint                    Check skills/ against skill-setup-std conventions"
     echo "  help <skill>            Show full documentation for a skill"
     echo "  init                    Wire agent hooks for this install location"
     echo "  uninstall               Remove canon hooks/config for this install"
     echo "  remove-canon            Alias for uninstall"
     echo "  <skill> --h             Same as: skills.sh help <skill>"
     echo "  --scan [dir]            Show skills registered in a project (default: cwd)"
+    echo ""
+    echo "Contributor commands (canon repo only): canon-dev.sh catalog|lint|delete"
     exit 1
     ;;
 esac

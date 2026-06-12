@@ -7,6 +7,7 @@ TOOLS_DIR="$ROOT/tools"
 TKT="$TOOLS_DIR/tkt"
 SPRINT="$TOOLS_DIR/sprint"
 SKILLS="$ROOT/tools/skills.sh"
+CANON_DEV="$ROOT/tools/canon-dev.sh"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2

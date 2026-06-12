@@ -5,7 +5,7 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 # The real skills/ must always lint clean.
-clean_output="$("$SKILLS" lint)"
+clean_output="$("$CANON_DEV" lint)"
 assert_contains "$clean_output" "skills lint: clean"
 
 # Fixtures with known violations must be caught.
@@ -84,7 +84,7 @@ tags: [x]
 ---
 EOF
 
-out="$(run_fail "$SKILLS" lint "$fixture")"
+out="$(run_fail "$CANON_DEV" lint "$fixture")"
 assert_contains "$out" "name 'wrong-name' does not match filename"
 assert_contains "$out" "category 'nonsense' not in"
 assert_contains "$out" "missing required field 'description'"
