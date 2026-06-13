@@ -41,7 +41,7 @@ cat > "$WORK/.tickets/t-placeholder/plan.md" <<'EOF'
 # Plan
 
 ## Approach
-How will we implement it?
+<!-- Describe how you will implement this. Keep this heading unchanged. -->
 
 ## Decisions
 EOF

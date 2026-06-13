@@ -242,6 +242,8 @@ Canonical layout:
   ticket.md        ← tkt-managed
   acceptance.md    ← definition of done + test plan
   plan.md          ← approach, decisions, grill/impact sections for high-risk; written on approval, re-read after compaction
+  research.md      ← optional; high-risk and brownfield sprints only; objective truth compression
+  summary.md       ← plan-vs-actual table; written at sprint complete
 ```
 
 ## DECISIONS.md

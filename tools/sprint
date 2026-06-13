@@ -140,36 +140,6 @@ Agent next steps:
 EOF
 }
 
-write_research_if_missing() {
-  local id="$1" tdir="$2"
-  local rfile="$tdir/research.md"
-  [[ -f "$rfile" ]] && return 0
-  cat > "$rfile" <<EOF
-# Research
-
-Ticket: \`$id\`
-
-## Objective
-One sentence: what system behavior was researched.
-
-## Relevant Files
-| File | Why relevant | Evidence |
-|---|---|---|
-
-## System Model
--
-
-## Constraints
--
-
-## Unknowns
-- None
-
-## Not In Scope
--
-EOF
-}
-
 cmd_current() {
   "$TKT_BIN" current
 }

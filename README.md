@@ -147,15 +147,16 @@ Runs the close path: simplify → review → security → repo/doc audit → acc
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
-Each sprint produces three docs:
+Each sprint produces up to four docs:
 
 | Doc | Written | Contains |
 |---|---|---|
 | `acceptance.md` | sprint start | Done criteria · test plan · QA sign-off |
 | `plan.md` | sprint start | Approach · decisions made along the way |
+| `research.md` | high-risk / brownfield | Objective truth: relevant files, system model, constraints, unknowns (optional) |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
-All three are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
+All are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
 
 **Gated, not vibes.** The CLI owns state. `sprint complete` refuses to close while any acceptance or test-plan box is unchecked, `summary.md` is missing, or the `## Wrapup Gates` record is absent. The board surfaces the same checks early — cards flag `incomplete` in red before close-time.
 
@@ -199,7 +200,7 @@ High-risk sprints add orient, grill, and impact analysis between Plan and Build.
 
 Define your standards once; every project inherits them via `@`-import — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. The `efficiency` standard is wired automatically when you register `sprint`. **[How this works →](docs/how-it-works.md)**
 
-Every non-trivial change starts with a ticket. Three docs — `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), and `summary.md` (plan-vs-actual at close) — live in `.tickets/<id>/` as plain markdown. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
+Every non-trivial change starts with a ticket. Three required docs — `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), and `summary.md` (plan-vs-actual at close) — live in `.tickets/<id>/` as plain markdown. High-risk and brownfield sprints add an optional `research.md`: objective compression of what the system does before any plan is written. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 
 canon enforces its own standards. The test suite runs and blocks before every commit — no advisory reminders, no honor system. What ships is what passed.
 

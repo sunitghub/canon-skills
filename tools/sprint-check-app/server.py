@@ -115,8 +115,7 @@ def parse_ticket(path: Path) -> dict:
             try:
                 plan_text = plan_path.read_text(encoding='utf-8', errors='replace')
                 fields['plan_has_approach'] = _useful_text(
-                    _section(plan_text, 'Approach'),
-                    ('How will we implement it?',)
+                    _section(plan_text, 'Approach')
                 )
             except Exception:
                 pass
