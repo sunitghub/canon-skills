@@ -801,6 +801,11 @@ cmd_init() {
 cmd_uninstall() {
   echo "canon uninstall — removing agent hooks for: $SKILLS_ROOT"
   echo ""
+  echo "NOTE: This removes agent hooks only (Claude Code, Codex, Pi)."
+  echo "It does NOT remove @-imports from project CLAUDE.md / AGENTS.md files."
+  echo "Clean up each project first:"
+  echo "  cd <project-dir> && skills.sh remove <skill>"
+  echo ""
 
   local any_fail=0
 

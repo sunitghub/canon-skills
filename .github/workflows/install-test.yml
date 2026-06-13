@@ -1,0 +1,105 @@
+name: Install Test
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - install.sh
+      - tools/**
+      - scripts/**
+      - skills/**
+  workflow_dispatch:
+
+jobs:
+  # ── Job 1: local-sim ───────────────────────────────────────────────────────
+  # Runs on every push. Checks out this branch, installs it as if it were
+  # a fresh clone, and verifies all tools work.
+  local-sim:
+    name: Install sim (local branch)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: canon-checkout
+
+      - name: Configure git
+        run: |
+          git config --global user.email ci@canon.test
+          git config --global user.name "Canon CI"
+
+      - name: Simulate install (use checkout as CANON_HOME)
+        run: |
+          mkdir -p ~/.canon
+          cp -r canon-checkout/. ~/.canon/
+          # skills.sh init wires Claude Code project hooks; no-TTY path just prints PATH hint
+          bash ~/.canon/tools/skills.sh init
+
+      - name: Add tools to PATH
+        run: echo "$HOME/.canon/tools" >> $GITHUB_PATH
+
+      - name: Verify tools on PATH
+        run: |
+          which skills.sh
+          which sprint
+          which sprint-check
+          which tkt
+
+      - name: skills.sh status (canon root)
+        run: skills.sh status ~/.canon
+
+      - name: Add sprint to a fresh project
+        run: |
+          mkdir /tmp/canon-test
+          cd /tmp/canon-test
+          git init -q
+          skills.sh add sprint .
+          skills.sh status .
+
+      - name: tkt smoke test
+        run: |
+          cd /tmp/canon-test
+          tkt create "smoke test ticket" --status=open
+          tkt ls
+
+  # ── Job 2: fresh-install ──────────────────────────────────────────────────
+  # Runs on workflow_dispatch only. Tests the real curl|bash from canon-skills.
+  # Push to public first: git push public
+  fresh-install:
+    name: Fresh install (curl | bash from canon-skills)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Configure git
+        run: |
+          git config --global user.email ci@canon.test
+          git config --global user.name "Canon CI"
+
+      - name: Run curl install
+        run: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash
+
+      - name: Add tools to PATH
+        run: echo "$HOME/.canon/tools" >> $GITHUB_PATH
+
+      - name: Verify tools on PATH
+        run: |
+          which skills.sh
+          which sprint
+          which sprint-check
+          which tkt
+
+      - name: skills.sh status
+        run: skills.sh status
+
+      - name: Add sprint to a fresh project
+        run: |
+          mkdir /tmp/canon-test
+          cd /tmp/canon-test
+          git init -q
+          skills.sh add sprint .
+          skills.sh status .
+
+      - name: tkt smoke test
+        run: |
+          cd /tmp/canon-test
+          tkt create "fresh install smoke test" --status=open
+          tkt ls
