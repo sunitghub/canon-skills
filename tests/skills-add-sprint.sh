@@ -49,3 +49,15 @@ assert_count 1 "| sprint | dev | $ROOT/skills/sprint.md |" "$project/AGENTS.md"
 
 status_output="$("$SKILLS" status "$project")"
 assert_contains "$status_output" "sprint                    [ok]"
+
+# Project should be registered in the project registry
+projects_file="$tmp_home/.config/canon/projects"
+assert_file_exists "$projects_file"
+assert_count 1 "$project" "$projects_file"
+
+# Re-add must not duplicate the entry
+"$SKILLS" add sprint "$project" >/dev/null
+assert_count 1 "$project" "$projects_file"
+
+printf 'skills-add-sprint: ok
+'

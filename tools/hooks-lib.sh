@@ -213,17 +213,22 @@ _uninstall_pi() {
 
 _uninstall_install_path() {
   local config="$HOME/.config/canon/install_path"
+  local projects="$HOME/.config/canon/projects"
   if [ ! -f "$config" ]; then
     echo "  [skip]  ~/.config/canon/install_path not found"
-    return 0
-  fi
-  local installed
-  installed="$(cat "$config")"
-  if [ "$installed" = "$SKILLS_ROOT" ]; then
-    rm -f "$config"
-    rmdir "$HOME/.config/canon" 2>/dev/null || true
-    echo "  [removed]  install_path"
   else
-    echo "  [warn]  install_path points at $installed; expected $SKILLS_ROOT"
+    local installed
+    installed="$(cat "$config")"
+    if [ "$installed" = "$SKILLS_ROOT" ]; then
+      rm -f "$config"
+      echo "  [removed]  install_path"
+    else
+      echo "  [warn]  install_path points at $installed; expected $SKILLS_ROOT"
+    fi
   fi
+  if [ -f "$projects" ]; then
+    rm -f "$projects"
+    echo "  [removed]  projects"
+  fi
+  rmdir "$HOME/.config/canon" 2>/dev/null || true
 }

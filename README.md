@@ -26,7 +26,7 @@ cd /path/to/your-project
 skills.sh add sprint
 ```
 
-To remove canon-managed agent hooks before deleting the install folder:
+To uninstall — cleans up agent hooks and removes canon @-imports from all registered projects:
 
 ```bash
 skills.sh uninstall

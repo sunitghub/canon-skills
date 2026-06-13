@@ -19,6 +19,25 @@ SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
 # shellcheck source=tools/hooks-lib.sh
 source "$(dirname "$SCRIPT")/hooks-lib.sh"
 SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
+PROJECTS_FILE="$HOME/.config/canon/projects"
+
+register_project() {
+  local project_dir
+  project_dir="$(cd "$1" 2>/dev/null && pwd)" || return 0
+  [[ "$project_dir" == "$SKILLS_ROOT" ]] && return 0
+  mkdir -p "$(dirname "$PROJECTS_FILE")"
+  grep -qxF "$project_dir" "$PROJECTS_FILE" 2>/dev/null || echo "$project_dir" >> "$PROJECTS_FILE"
+}
+
+deregister_project() {
+  local project_dir
+  project_dir="$(cd "$1" 2>/dev/null && pwd)" || return 0
+  [ -f "$PROJECTS_FILE" ] || return 0
+  local tmp
+  tmp=$(mktemp)
+  grep -vxF "$project_dir" "$PROJECTS_FILE" > "$tmp" && mv "$tmp" "$PROJECTS_FILE"
+  [ -s "$PROJECTS_FILE" ] || rm -f "$PROJECTS_FILE"
+}
 
 # Extract a single frontmatter field value from a file
 fm_field() {
@@ -339,6 +358,8 @@ cmd_add() {
       echo "Removed: ${dep_list} — now included in ${name} transitively."
     fi
   fi
+
+  register_project "$project_dir"
 }
 
 cmd_status() {
@@ -719,6 +740,11 @@ cmd_remove() {
   fi
 
   echo "Unregistered: $skill"
+
+  # Deregister from project registry when no canon skills remain
+  if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ]; then
+    deregister_project "$project_dir"
+  fi
 }
 
 cmd_help() {
@@ -801,14 +827,41 @@ cmd_init() {
 cmd_uninstall() {
   echo "canon uninstall — removing agent hooks for: $SKILLS_ROOT"
   echo ""
-  echo "NOTE: This removes agent hooks only (Claude Code, Codex, Pi)."
-  echo "It does NOT remove @-imports from project CLAUDE.md / AGENTS.md files."
-  echo "Clean up each project first:"
-  echo "  cd <project-dir> && skills.sh remove <skill>"
-  echo ""
 
   local any_fail=0
 
+  echo "Registered projects:"
+  if [ ! -f "$PROJECTS_FILE" ] || [ ! -s "$PROJECTS_FILE" ]; then
+    echo "  [skip]  no registered projects"
+  else
+    local proj
+    while IFS= read -r proj; do
+      printf '  %s\n' "$proj"
+    done < "$PROJECTS_FILE"
+    echo ""
+    while IFS= read -r proj; do
+      if [ ! -d "$proj" ]; then
+        echo "  [skip]  not found: $proj"
+        continue
+      fi
+      for f in "$proj/CLAUDE.md" "$proj/AGENTS.md"; do
+        [ -f "$f" ] || continue
+        grep -qF "@$SKILLS_ROOT/" "$f" 2>/dev/null || continue
+        grep -vF "@$SKILLS_ROOT/" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+      done
+      if [ -f "$proj/AGENTS.md" ] && grep -qF "AI-SKILLS:BEGIN" "$proj/AGENTS.md" 2>/dev/null; then
+        awk '
+          /<!-- AI-SKILLS:BEGIN -->/ { skip=1; next }
+          /<!-- AI-SKILLS:END -->/   { skip=0; next }
+          !skip                       { print }
+        ' "$proj/AGENTS.md" > "$proj/AGENTS.md.tmp" && mv "$proj/AGENTS.md.tmp" "$proj/AGENTS.md"
+      fi
+      _uninstall_claude "$proj/.claude/settings.json" 2>&1 | sed 's/^/  /' || true
+      echo "  [cleaned]  $proj"
+    done < "$PROJECTS_FILE"
+  fi
+
+  echo ""
   echo "Claude Code (canon project hooks):"
   _uninstall_claude "$SKILLS_ROOT/.claude/settings.json" || any_fail=1
 
