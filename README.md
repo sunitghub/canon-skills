@@ -182,7 +182,7 @@ titles.
 
 ```mermaid
 flowchart LR
-    P["Plan\nticket · acceptance · plan.md"]
+    P["Plan\nticket · acceptance · plan.md\nresearch.md (high-risk)"]
     B["Build\ncode · commits"]
     W["Wrapup\nsimplify · review · security"]
     C["Close\nsprint complete"]
