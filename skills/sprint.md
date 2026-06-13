@@ -4,13 +4,14 @@ description: Start, plan, and ship a focused change — invoke when asked to add
 summary: Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, impact analysis), builds and tests, then closes with full wrapup.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
-depends: [wrapup, capture, ticket, handoff, impact-analysis, orient]
+depends: [wrapup, capture, ticket, handoff, impact-analysis, orient, ticket-layout]
 ---
 
 @./wrapup.md
 @./capture.md
 @./impact-analysis.md
 @./orient.md
+@./ticket-layout.md
 
 # Sprint
 
@@ -78,6 +79,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan
    - `research.md` — high-risk and brownfield sprints only; objective compression of truth (see Research below)
    - If these already exist: read them and proceed without recreating.
+   - See `ticket-layout` skill for the canonical field contract, doc lifecycle, and board rendering rules.
    - Record the tier and one-line reason in `plan.md`.
 
 4. **Context.** Read in order:
