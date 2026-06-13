@@ -56,7 +56,12 @@ fi
 printf 'Wiring agent hooks...\n'
 bash "$TARGET/tools/skills.sh" init
 
+RC_FILE="$HOME/.bashrc"
+[[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
+
 printf '\nDone.\n\n'
+printf '  Activate in this session:\n\n'
+printf '    source %s\n\n' "$RC_FILE"
 printf '  Example walkthrough:\n\n'
 printf '    %s/scripts/copy-todo-walkthrough.sh /tmp/canon-todo\n' "$TARGET"
 printf '    cd /tmp/canon-todo\n'
