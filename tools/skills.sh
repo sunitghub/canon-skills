@@ -809,6 +809,8 @@ cmd_init() {
     echo "Setup finished with errors — check items marked [fail] above."
   fi
 
+  offer_tkt_path
+
   echo ""
   echo "Next — register skills in your projects:"
   echo ""
