@@ -76,6 +76,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 3. **Planning files.** Create or update the files in `.tickets/<id>/`:
    - `acceptance.md` — specific, binary conditions that define "done"
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan
+   - `research.md` — high-risk and brownfield sprints only; objective compression of truth (see Research below)
    - If these already exist: read them and proceed without recreating.
    - Record the tier and one-line reason in `plan.md`.
 
@@ -94,7 +95,11 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Produce the sprint brief from Step 9.
    - Skip Steps 6-8 unless new findings promote the work to high-risk.
 
-6. **Orient high-risk work.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Appends `## Subsystem Map` to `plan.md`. Findings feed into the Grill step.
+6. **Research high-risk work.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Writes findings to `.tickets/<id>/research.md` (Objective, Relevant Files, System Model, Constraints, Unknowns, Not In Scope). Findings feed into the Grill step.
+
+   After research is complete, pause and present a brief summary: what was found, key constraints, and open unknowns. Ask the user to review before proceeding to Plan. This is the highest-leverage review checkpoint — a bad research premise produces a bad plan.
+
+   `research.md` is optional for normal-tier work. For lightweight brownfield changes, add a `## Research Notes` section to `plan.md` instead.
 
 7. **Grill high-risk work.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 

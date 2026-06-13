@@ -37,35 +37,39 @@ Flag likely affected files missing from the plan. Note generated files, monorepo
 
 ## Step 4 — Write findings
 
-Append a `## Subsystem Map` section to `plan.md`:
+Write findings to `.tickets/<id>/research.md`. If it does not exist, create it
+with the structure below. If it already exists, update the relevant sections.
 
 ```markdown
-## Subsystem Map
+# Research
 
-### Entry points
-- `file:line` — one-line description of how execution reaches the target area
+Ticket: `<id>`
 
-### Key interfaces
-- `file` — what it exports and who depends on it
+## Objective
+One sentence: what system behavior was researched.
 
-### Adjacent modules
-- `file` — one-line description (include only if relevant to the sprint)
+## Relevant Files
+| File | Why relevant | Evidence |
+|---|---|---|
+| `path/file.ext:42` | Entry point for X | Function Y calls Z |
 
-### Non-obvious relationships
-- `file` — why it may be affected despite not being in the original plan
+## System Model
+- Fact about how the subsystem works.
+- Fact about data flow or control flow.
 
-### Structural notes
-- Any non-obvious conventions, generated files, or layout quirks that affect navigation or editing
+## Constraints
+- Non-obvious constraint and its source.
 
-### Open questions
-- Ambiguities about the subsystem that could affect implementation (or "None")
+## Unknowns
+- Question that must be resolved before planning, or "None".
+
+## Not In Scope
+- Relevant-looking files intentionally excluded and why.
 ```
 
-If plan.md already covers the subsystem, write:
-
-```markdown
-## Subsystem Map — confirmed: original file list is complete, no non-obvious relationships found
-```
+If the subsystem is already fully described in `plan.md` and no new files or
+relationships were discovered, note this in `research.md ## System Model` and
+keep the entry brief.
 
 ---
 

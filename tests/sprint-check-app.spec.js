@@ -19,17 +19,41 @@ test.describe('board modal', () => {
   });
 
   test('first doc tab is active on open (ticket with docs)', async ({ page }) => {
-    await page.goto(BASE);
-    await page.waitForLoadState('networkidle');
+    const title = `Doc tab active test ${Date.now()}`;
+    let createdId = '';
 
-    // Use the in-progress sprint ticket which always has acceptance + plan docs
-    const inProgressCard = page.locator('.card[data-id="t-f41d"]');
-    await inProgressCard.click();
-    await page.waitForSelector('#m-docs .doc-tab.active', { timeout: 5000 });
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
 
-    const activeTab = page.locator('#m-docs .doc-tab.active').first();
-    await expect(activeTab).toBeVisible();
-    await expect(page.locator('#m-body')).not.toBeEmpty();
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+
+      // Write acceptance.md so the ticket has at least one doc
+      const ticketDir = path.join(process.cwd(), '.tickets', createdId);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), `# Acceptance\nTicket: \`${createdId}\`\n## Criteria\n- [ ] Done\n`);
+
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('.card', { hasText: title }).click();
+      await page.waitForSelector('#m-docs .doc-tab.active', { timeout: 5000 });
+
+      const activeTab = page.locator('#m-docs .doc-tab.active').first();
+      await expect(activeTab).toBeVisible();
+      await expect(page.locator('#m-body')).not.toBeEmpty();
+    } finally {
+      if (createdId) {
+        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+      }
+    }
   });
 
   test('"No description." placeholder is gone', async ({ page }) => {
@@ -83,5 +107,74 @@ test.describe('board modal', () => {
     const textarea = page.locator('#create-modal textarea');
     const placeholder = await textarea.getAttribute('placeholder');
     expect(placeholder).not.toMatch(/^Description$/i);
+  });
+
+  test('Research doc type available in + button and shows tab when present', async ({ page }) => {
+    const title = `Research tab test ${Date.now()}`;
+    let createdId = '';
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      // Create ticket with acceptance + plan + research docs
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+
+      // Write research.md directly so the board can pick it up
+      const ticketDir = path.join(process.cwd(), '.tickets', createdId);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'research.md'), [
+        '# Research',
+        `Ticket: \`${createdId}\``,
+        '## Objective',
+        'Test that the board renders a Research tab.',
+      ].join('\n'));
+
+      // Reload so the board picks up the new file
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('.card', { hasText: title }).click();
+      await expect(page.locator('#m-docs .doc-tab', { hasText: 'Research' })).toBeVisible();
+    } finally {
+      if (createdId) {
+        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+      }
+    }
+  });
+
+  test('+ button offers Research doc type', async ({ page }) => {
+    const title = `Research plus button test ${Date.now()}`;
+    let createdId = '';
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      await card.click();
+
+      // Open the + doc menu and confirm Research is listed
+      await page.locator('#btn-new-doc').click();
+      await expect(page.locator('#m-body .doc-type-card[data-slug="research"]')).toBeVisible();
+    } finally {
+      if (createdId) {
+        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+      }
+    }
   });
 });
