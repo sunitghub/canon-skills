@@ -116,6 +116,9 @@ Ticket: \`$id\`
 ## Approach
 <!-- Describe how you will implement this. Keep this heading unchanged. -->
 
+## Files
+<!-- List files to create or modify. -->
+
 ## Decisions
 <!-- Record non-obvious tradeoffs and why. Keep this heading unchanged. -->
 EOF
@@ -206,6 +209,20 @@ _gate_no_unchecked() {
   fi
 }
 
+_gate_plan_content() {
+  local id="$1" plan="$2"
+  # Extract ## Approach section, strip HTML comments and blank lines
+  local content
+  content="$(_acceptance_section "Approach" "$plan" \
+    | sed 's/<!--[^>]*-->//g' \
+    | sed '/^[[:space:]]*$/d')"
+  if [[ -z "$content" ]]; then
+    echo "Sprint $id cannot close: plan.md ## Approach has no content."
+    echo "Describe the implementation approach in plan.md, then re-run."
+    return 1
+  fi
+}
+
 cmd_complete() {
   local id tdir acceptance
   local current_out current_rc
@@ -217,10 +234,11 @@ cmd_complete() {
   tdir="$(ticket_dir_for "$id")"
   acceptance="$tdir/acceptance.md"
 
-  _gate_sprint_files        "$id" "$tdir" "$acceptance" || exit 1
-  _gate_acceptance_sections "$id" "$acceptance"         || exit 1
-  _gate_wrapup_gates        "$id" "$acceptance"         || exit 1
-  _gate_no_unchecked        "$id" "$acceptance"         || exit 1
+  _gate_sprint_files        "$id" "$tdir" "$acceptance"  || exit 1
+  _gate_acceptance_sections "$id" "$acceptance"          || exit 1
+  _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
+  _gate_no_unchecked        "$id" "$acceptance"          || exit 1
+  _gate_plan_content        "$id" "$tdir/plan.md"        || exit 1
 
   "$TKT_BIN" close "$id"
   echo "Sprint completed: $id"

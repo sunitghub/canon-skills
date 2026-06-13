@@ -91,6 +91,38 @@ EOF
 missing_wrapup_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_wrapup_output" "missing ## Wrapup Gates section"
 
+# Plan content gate — placeholder Approach should block even when acceptance is satisfied
+cat > ".tickets/$id/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x] Required item remains.
+
+## Test Plan
+- [x] npm test
+
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| simplifier | skipped | test-only change |
+EOF
+
+# plan.md still has no Approach content from earlier override
+placeholder_plan_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$placeholder_plan_output" "plan.md ## Approach has no content"
+
+# Add real Approach content — gate should pass
+cat > ".tickets/$id/plan.md" <<'EOF'
+# Plan
+
+## Approach
+Add _gate_plan_content to tools/sprint and two tests.
+
+## Files
+- tools/sprint
+- tests/sprint.sh
+EOF
+
 # All gates satisfied — sprint complete should succeed
 cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance
