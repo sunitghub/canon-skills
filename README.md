@@ -36,11 +36,12 @@ rm -rf ~/.canon
 Daily workflow:
 
 > `sprint start` and `sprint-check` require `~/.canon/tools` on your PATH. The curl installer wires this automatically; `skills.sh add` will offer to add it if it's missing.
+> Run these from the project root. In practice, ask your AI agent to run `sprint start` and `sprint complete` after it has `cd`'d into that repo; run `sprint-check` when you want the local board.
 
 ```bash
-sprint start "add OAuth login"   # plan the work, create a local ticket
-sprint-check                     # open the board in your browser
-sprint complete                  # review, verify, close
+sprint start "add OAuth login"   # agent: plan the work, create a local ticket
+sprint-check                     # you/agent: open the board in your browser
+sprint complete                  # agent: review, verify, close
 ```
 
 That's the day-to-day surface. Setup wires the tools once; after that, your agent does the work and canon keeps it in your repo — not your prompt history.
