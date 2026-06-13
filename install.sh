@@ -60,10 +60,8 @@ RC_FILE="$HOME/.bashrc"
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 
 printf '\nDone.\n\n'
-printf '  Activate in this session:\n\n'
-printf '    source %s\n\n' "$RC_FILE"
-printf '  Example walkthrough:\n\n'
-printf '    %s/scripts/copy-todo-walkthrough.sh /tmp/canon-todo\n' "$TARGET"
-printf '    cd /tmp/canon-todo\n'
-printf '    skills.sh add sprint\n\n'
-printf '  Full setup guide: %s/guides/AI-Agents-Setup.md\n\n' "$TARGET"
+bash "$TARGET/tools/skills.sh" --help 2>/dev/null || true
+printf '\n  ──────────────────────────────────────────────────\n'
+printf '  Run:  source %s\n' "$RC_FILE"
+printf '  to add skills.sh, sprint, tkt, sprint-check to your PATH.\n'
+printf '  ──────────────────────────────────────────────────\n\n'
