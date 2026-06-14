@@ -5,13 +5,13 @@ category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
 depends: [code-simplifier, code-reviewer, security-review, repo-check, doc-audit, handoff, ticket]
 ---
-@./code-simplifier.md
-@./code-reviewer.md
-@./security-review.md
-@./repo-check.md
-@./doc-audit.md
-@../tools/handoff.md
-@../tools/ticket.md
+@../internal/code-simplifier.md
+@../internal/code-reviewer.md
+@../internal/security-review.md
+@../internal/repo-check.md
+@../doc-audit/SKILL.md
+@../../tools/handoff.md
+@../../tools/ticket.md
 
 # Wrapup
 

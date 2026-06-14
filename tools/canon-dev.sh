@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT="${BASH_SOURCE[0]}"
 while [ -L "$SCRIPT" ]; do SCRIPT="$(readlink "$SCRIPT")"; done
 SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
-SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
+SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills/internal" "$SKILLS_ROOT/skills")
 # shellcheck source=tools/skill-lib.sh
 source "$(dirname "$SCRIPT")/skill-lib.sh"
 
@@ -114,70 +114,76 @@ cmd_lint() {
 
   err() { printf 'skills/%s: %s\n' "$1" "$2"; errors=$((errors + 1)); }
 
-  # Flat location — no skills nested in subdirectories.
-  while IFS= read -r nested; do
-    [ -n "$nested" ] || continue
-    printf '%s: skill must live flat under skills/, not in a subdirectory\n' "${nested#"$SKILLS_ROOT"/}"
+  # Directory format — public skills must live in <name>/SKILL.md, not as flat files.
+  while IFS= read -r flat; do
+    [ -n "$flat" ] || continue
+    printf '%s: skill must be in directory format (<name>/SKILL.md), not a flat file\n' "${flat#"$SKILLS_ROOT"/}"
     errors=$((errors + 1))
-  done < <(find "$skills_dir" -mindepth 2 -name '*.md' -type f 2>/dev/null)
+  done < <(find "$skills_dir" -maxdepth 1 -name '*.md' -type f 2>/dev/null)
 
-  local f base stem name desc category tags deps imp sib dep
-  for f in "$skills_dir"/*.md; do
+  local f slug name desc category tags deps imp sib dep
+  while IFS= read -r f; do
     [ -f "$f" ] || continue
-    base=$(basename "$f"); stem="${base%.md}"
+    slug=$(basename "$(dirname "$f")")
 
     # Naming: lowercase, hyphenated, <= 20 chars.
-    printf '%s' "$stem" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' \
-      || err "$base" "filename must be lowercase and hyphenated"
-    [ "${#stem}" -le 20 ] || err "$base" "name exceeds 20 characters (${#stem})"
+    printf '%s' "$slug" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$' \
+      || err "$slug/SKILL.md" "directory name must be lowercase and hyphenated"
+    [ "${#slug}" -le 20 ] || err "$slug/SKILL.md" "name exceeds 20 characters (${#slug})"
 
     # Required frontmatter.
     name=$(fm_field "$f" name)
     desc=$(fm_field "$f" description)
     category=$(fm_field "$f" category)
     tags=$(fm_field "$f" tags)
-    [ -n "$name" ]     || err "$base" "missing required field 'name'"
-    [ -n "$desc" ]     || err "$base" "missing required field 'description'"
-    [ -n "$category" ] || err "$base" "missing required field 'category'"
-    { [ -n "$tags" ] && [ "$tags" != "[]" ]; } || err "$base" "missing required field 'tags'"
+    [ -n "$name" ]     || err "$slug/SKILL.md" "missing required field 'name'"
+    [ -n "$desc" ]     || err "$slug/SKILL.md" "missing required field 'description'"
+    [ -n "$category" ] || err "$slug/SKILL.md" "missing required field 'category'"
+    { [ -n "$tags" ] && [ "$tags" != "[]" ]; } || err "$slug/SKILL.md" "missing required field 'tags'"
 
-    # name must match filename.
-    [ -z "$name" ] || [ "$name" = "$stem" ] || err "$base" "name '$name' does not match filename"
+    # name must match directory name.
+    [ -z "$name" ] || [ "$name" = "$slug" ] || err "$slug/SKILL.md" "name '$name' does not match directory name"
 
     # Category enum.
     if [ -n "$category" ] && ! printf ' %s ' "$valid_categories" | grep -q " $category "; then
-      err "$base" "category '$category' not in {dev, agent-ops, ops}"
+      err "$slug/SKILL.md" "category '$category' not in {dev, agent-ops, ops}"
     fi
 
-    # Imports resolve.
+    # Imports resolve — paths are relative to the skill file's directory.
+    local skill_dir
+    skill_dir=$(dirname "$f")
     while IFS= read -r imp; do
       [ -n "$imp" ] || continue
-      [ -f "$skills_dir/$imp" ] || err "$base" "import '@$imp' does not resolve"
+      [ -f "$skill_dir/$imp" ] || err "$slug/SKILL.md" "import '@$imp' does not resolve"
     done < <(grep -oE '^@[^[:space:]]+' "$f" | sed 's/^@//')
 
     # depends graph: sibling imports must be declared; declared deps must resolve.
+    # Handles both flat (@./name.md) and directory (@./name/SKILL.md) formats.
     deps=$(resolve_deps "$f")
     while IFS= read -r sib; do
       [ -n "$sib" ] || continue
       printf '%s\n' "$deps" | grep -qx "$sib" \
-        || err "$base" "imports '@./$sib.md' but '$sib' is not in depends"
-    done < <(grep -oE '^@\./[^[:space:]]+\.md' "$f" | sed -E 's#^@\./(.*)\.md#\1#')
+        || err "$slug/SKILL.md" "imports '$sib' but '$sib' is not in depends"
+    done < <(
+      grep -oE '^@\.\./[a-z0-9-]+/SKILL\.md' "$f" | sed -E 's#^@\.\./([a-z0-9-]+)/SKILL\.md#\1#'
+      grep -oE '^@\.\./internal/[a-z0-9-]+\.md' "$f" | sed -E 's#^@\.\./internal/([a-z0-9-]+)\.md#\1#'
+    )
     while IFS= read -r dep; do
       [ -n "$dep" ] || continue
       find_skill "$dep" >/dev/null 2>&1 \
-        || err "$base" "depends entry '$dep' does not resolve to a known skill"
+        || err "$slug/SKILL.md" "depends entry '$dep' does not resolve to a known skill"
     done < <(printf '%s\n' "$deps")
 
     # One job: a leaf skill chains actions if its description says "and then".
     if [ -z "$deps" ] && printf '%s' "$desc" | grep -qiE '(^|[^[:alpha:]])and then([^[:alpha:]]|$)'; then
-      err "$base" "description chains actions ('and then') — split into one job, or compose children via depends:"
+      err "$slug/SKILL.md" "description chains actions ('and then') — split into one job, or compose children via depends:"
     fi
 
     # Vague description: too short to convey what it does and when to use it.
     if [ -n "$desc" ] && [ "${#desc}" -lt 20 ]; then
-      err "$base" "description too short (${#desc} chars) — state what it does and when to use it"
+      err "$slug/SKILL.md" "description too short (${#desc} chars) — state what it does and when to use it"
     fi
-  done
+  done < <(find "$skills_dir" -mindepth 2 -name 'SKILL.md' -type f 2>/dev/null)
 
   if [ "$errors" -eq 0 ]; then
     echo "skills lint: clean"

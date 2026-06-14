@@ -106,13 +106,13 @@ trap 'rm -rf "$home" "$ROOT/.claude/settings.json" "$canon_project" "$stale_impo
 
 cat > "$canon_project/CLAUDE.md" <<EOF
 @$ROOT/standards/efficiency.md
-@$ROOT/skills/sprint.md
+@$ROOT/skills/sprint/SKILL.md
 User content preserved.
 EOF
 
 cat > "$canon_project/AGENTS.md" <<EOF
 @$ROOT/standards/efficiency.md
-@$ROOT/skills/sprint.md
+@$ROOT/skills/sprint/SKILL.md
 
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
@@ -120,21 +120,21 @@ cat > "$canon_project/AGENTS.md" <<EOF
 
 | Skill | Category | Source |
 |-------|----------|--------|
-| sprint | dev | $ROOT/skills/sprint.md |
+| sprint | dev | $ROOT/skills/sprint/SKILL.md |
 <!-- AI-SKILLS:END -->
 User AGENTS content preserved.
 EOF
 
 cat > "$stale_import_project/CLAUDE.md" <<'EOF'
 @/old/canon/standards/efficiency.md
-@/old/canon/skills/sprint.md
+@/old/canon/skills/sprint/SKILL.md
 @/user/notes/project.md
 Stale CLAUDE content preserved.
 EOF
 
 cat > "$stale_import_project/AGENTS.md" <<EOF
 @/old/canon/standards/efficiency.md
-@/old/canon/skills/sprint.md
+@/old/canon/skills/sprint/SKILL.md
 @/user/notes/project.md
 
 <!-- AI-SKILLS:BEGIN -->
@@ -143,7 +143,7 @@ cat > "$stale_import_project/AGENTS.md" <<EOF
 
 | Skill | Category | Source |
 |-------|----------|--------|
-| sprint | dev | /old/canon/skills/sprint.md |
+| sprint | dev | /old/canon/skills/sprint/SKILL.md |
 <!-- AI-SKILLS:END -->
 Stale AGENTS content preserved.
 EOF
@@ -195,11 +195,11 @@ assert_count 1 "User AGENTS content preserved." "$canon_project/AGENTS.md"
 
 # Registered project with stale canon import paths: canon imports stripped, unrelated imports preserved
 assert_count 0 "@/old/canon/standards/efficiency.md" "$stale_import_project/CLAUDE.md"
-assert_count 0 "@/old/canon/skills/sprint.md" "$stale_import_project/CLAUDE.md"
+assert_count 0 "@/old/canon/skills/sprint/SKILL.md" "$stale_import_project/CLAUDE.md"
 assert_count 1 "@/user/notes/project.md" "$stale_import_project/CLAUDE.md"
 assert_count 1 "Stale CLAUDE content preserved." "$stale_import_project/CLAUDE.md"
 assert_count 0 "@/old/canon/standards/efficiency.md" "$stale_import_project/AGENTS.md"
-assert_count 0 "@/old/canon/skills/sprint.md" "$stale_import_project/AGENTS.md"
+assert_count 0 "@/old/canon/skills/sprint/SKILL.md" "$stale_import_project/AGENTS.md"
 assert_count 0 "AI-SKILLS:BEGIN" "$stale_import_project/AGENTS.md"
 assert_count 1 "@/user/notes/project.md" "$stale_import_project/AGENTS.md"
 assert_count 1 "Stale AGENTS content preserved." "$stale_import_project/AGENTS.md"

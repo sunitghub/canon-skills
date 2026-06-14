@@ -19,9 +19,22 @@ find_skill() {
     [ -d "$dir" ] || continue
     while IFS= read -r f; do
       [ "$(fm_field "$f" name)" = "$name" ] && echo "$f" && return 0
-    done < <(find "$dir" -name "*.md" -type f 2>/dev/null)
+    done < <(
+      find "$dir" -mindepth 2 -name "SKILL.md" -type f 2>/dev/null
+      find "$dir" -maxdepth 1 -name "*.md" -type f 2>/dev/null
+    )
   done
   return 1
+}
+
+skill_slug() {
+  local f="$1" base
+  base=$(basename "$f")
+  if [ "$base" = "SKILL.md" ]; then
+    basename "$(dirname "$f")"
+  else
+    echo "${base%.md}"
+  fi
 }
 
 resolve_deps() {

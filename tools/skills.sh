@@ -18,7 +18,7 @@ SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
 
 # shellcheck source=tools/hooks-lib.sh
 source "$(dirname "$SCRIPT")/hooks-lib.sh"
-SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
+SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills/internal" "$SKILLS_ROOT/skills")
 # shellcheck source=tools/skill-lib.sh
 source "$(dirname "$SCRIPT")/skill-lib.sh"
 PROJECTS_FILE="$HOME/.config/canon/projects"
@@ -142,7 +142,7 @@ cmd_list() {
       while IFS= read -r dep; do
         [ -n "$dep" ] && all_dep_names+=("$dep")
       done < <(resolve_deps "$f")
-    done < <(find "$dir" -type f -name "*.md" 2>/dev/null)
+    done < <({ find "$dir" -mindepth 2 -name "SKILL.md" -type f; find "$dir" -maxdepth 1 -name "*.md" -type f; } 2>/dev/null)
   done
 
   local prev_cat=""
@@ -182,7 +182,7 @@ cmd_list() {
         printf "%s%s\n" "$indent_str" "$line"
       done <<< "$rest"
 
-    done < <(find "$dir" -type f -name "*.md" 2>/dev/null | sort)
+    done < <({ find "$dir" -mindepth 2 -name "SKILL.md" -type f; find "$dir" -maxdepth 1 -name "*.md" -type f; } 2>/dev/null | sort)
   done
   echo ""
   printf "${dim}To uninstall: skills.sh uninstall && rm -rf ~/.canon${reset}\n"
@@ -192,11 +192,11 @@ upsert_at_import() {
   local file="$1" import_line="$2" skill_basename="$3" label="$4"
   if grep -qF "$import_line" "$file" 2>/dev/null; then
     : # already registered — silent
-  elif grep -qE "^@.+/$skill_basename$" "$file" 2>/dev/null; then
+  elif grep -qE "^@.+/($skill_basename$|$skill_basename\.md$|$skill_basename/SKILL\.md$)" "$file" 2>/dev/null; then
     local tmp
     tmp=$(mktemp)
     awk -v import_line="$import_line" -v base="$skill_basename" '
-      index($0, "@") == 1 && $0 ~ "^@.*/" base "$" { print import_line; next }
+      index($0, "@") == 1 && ($0 ~ "^@.*/" base "$" || $0 ~ "^@.*/" base "\\.md$" || $0 ~ "^@.*/" base "/SKILL\\.md$") { print import_line; next }
       { print }
     ' "$file" > "$tmp" && mv "$tmp" "$file"
     echo "  [$label]  updated stale @-import path"
@@ -254,8 +254,12 @@ is_canon_project_import_line() {
     */standards/efficiency.md)
       return 0
       ;;
-    */skills/*.md)
-      [ -f "$SKILLS_ROOT/skills/$base" ] && return 0
+    */skills/*/SKILL.md)
+      local slug; slug=$(basename "$(dirname "$import_path")")
+      [ -f "$SKILLS_ROOT/skills/$slug/SKILL.md" ] && return 0
+      ;;
+    */skills/internal/*.md)
+      [ -f "$SKILLS_ROOT/skills/internal/$base" ] && return 0
       ;;
     */tools/*.md)
       [ -f "$SKILLS_ROOT/tools/$base" ] && return 0
@@ -293,7 +297,7 @@ cmd_add() {
   desc=$(fm_field "$skill_file" description)
   category=$(fm_field "$skill_file" category)
   depends=$(fm_field "$skill_file" depends)
-  skill_basename=$(basename "$skill_file")
+  skill_basename=$(skill_slug "$skill_file")
   local import_line="@$skill_file"
 
   # Hidden skills are internal-only — block direct registration
@@ -924,7 +928,7 @@ cmd_addall() {
       [ "$(fm_field "$f" hidden)" = "true" ] && continue
       for s in "${seen[@]+"${seen[@]}"}"; do [ "$s" = "$name" ] && already=1 && break; done
       [ "$already" -eq 0 ] && names+=("$name") && seen+=("$name")
-    done < <(find "$dir" -type f -name "*.md" 2>/dev/null | sort)
+    done < <({ find "$dir" -mindepth 2 -name "SKILL.md" -type f; find "$dir" -maxdepth 1 -name "*.md" -type f; } 2>/dev/null | sort)
   done
 
   [ ${#names[@]} -eq 0 ] && { echo "No skills found."; exit 1; }

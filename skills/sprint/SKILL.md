@@ -7,12 +7,12 @@ tags: [workflow, planning, quality, tickets, orchestration]
 depends: [wrapup, capture, ticket, handoff, impact-analysis, orient, ticket-layout, eval]
 ---
 
-@./wrapup.md
-@./capture.md
-@./impact-analysis.md
-@./orient.md
-@./eval.md
-@../standards/ticket-layout.md
+@../wrapup/SKILL.md
+@../capture/SKILL.md
+@../internal/impact-analysis.md
+@../internal/orient.md
+@../internal/eval.md
+@../../standards/ticket-layout.md
 
 # Sprint
 
