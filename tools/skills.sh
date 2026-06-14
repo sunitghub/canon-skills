@@ -188,8 +188,7 @@ cmd_list() {
         [ "$dep" = "$name" ] && is_dep=1 && break
       done
       [ "$is_dep" -eq 1 ] && continue
-      summary=$(fm_field "$f" summary)
-      desc="${summary:-$(fm_field "$f" description)}"
+      desc=$(fm_field "$f" description)
       category=$(fm_field "$f" category)
 
       [ "$category" != "$prev_cat" ] && [ -n "$prev_cat" ] && echo ""

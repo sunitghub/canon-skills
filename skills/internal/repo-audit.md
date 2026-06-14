@@ -22,8 +22,6 @@ Read these in order, stop when you have enough to answer each dimension:
 
 Do not read everything. Read until you can answer the questions for each dimension.
 
----
-
 ## Dimension 1 — Uniqueness and Selling Point
 
 **Goal**: Determine whether the repo has a clear, genuine differentiator — and whether it lands for the target user.
@@ -37,8 +35,6 @@ Questions to answer:
 - Would the target user read this and say "finally" — or "so what"?
 
 **Rate**: Distinct / Murky / Generic
-
----
 
 ## Dimension 2 — Philosophy-to-Implementation Coherence
 
@@ -55,8 +51,6 @@ Look for: philosophy stated but not implemented, implementation that outgrew its
 
 **Rate**: Strong / Drifting / Contradicted
 
----
-
 ## Dimension 3 — Setup and Doc Effectiveness
 
 **Goal**: "Can a newcomer get from zero to working using these docs?" Focus on the user journey, not per-claim accuracy. (Per-claim accuracy → `doc-audit`.)
@@ -71,8 +65,6 @@ Questions to answer:
 - When step N fails, is there a recovery path — or does the guide end there?
 
 **Rate**: Clear / Gaps / Broken
-
----
 
 ## Dimension 4 — Codebase Quality
 
@@ -98,8 +90,6 @@ Questions to answer:
 - Is the separation of concerns clean, or do concerns bleed into each other?
 
 **Rate**: Clean / Acceptable / Needs Work
-
----
 
 ## Report Format
 
