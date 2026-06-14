@@ -4,13 +4,14 @@ description: Start, plan, and ship a focused change — invoke when asked to add
 summary: Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, impact analysis), builds and tests, then closes with full wrapup.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
-depends: [wrapup, capture, ticket, handoff, impact-analysis, orient, ticket-layout]
+depends: [wrapup, capture, ticket, handoff, impact-analysis, orient, ticket-layout, eval]
 ---
 
 @./wrapup.md
 @./capture.md
 @./impact-analysis.md
 @./orient.md
+@./eval.md
 @../standards/ticket-layout.md
 
 # Sprint
@@ -181,13 +182,19 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    note what they checked. This makes the acceptance record complete: what was
    tested and what quality gates ran. **`sprint complete` will block without this section.**
 
-2. **Adversarial review (HIGH-risk only).** If the sprint tier is HIGH-risk,
-   run the code-review output through a second model for genuine adversarial
-   coverage — same-model review has a blind-spot problem. Paste the diff or
-   key changed files into a different model (e.g. GPT-4o if you're on Claude,
-   or `claude` if you're on Codex) and ask: "What could go wrong here that the
-   author might have missed?" Surface any new findings to the user before
-   proceeding. Skip for normal and trivial tiers.
+2. **Evaluator review (normal+ tier).** Skip for trivial tier. For normal and
+   high-risk sprints, invoke the evaluator via the Agent tool with a clean
+   context — the evaluator has no implementation history and grades the work
+   adversarially against `acceptance.md`.
+
+   Invoke the eval skill as a subagent:
+   - Pass the ticket ID and the list of files modified since sprint start
+     (run `git diff --name-only HEAD~1` or track files modified during the sprint)
+   - The subagent reads `acceptance.md`, `plan.md`, and each changed file fresh
+   - It returns a structured pass/fail table per acceptance criterion and test plan item
+
+   Surface any `fail` or `partial` findings to the user before proceeding. Do
+   not advance to step 3 if the evaluator verdict is `fail`.
 
 3. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - ✓ passed | ✗ failed | ? not run
