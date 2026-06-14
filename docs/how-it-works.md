@@ -4,7 +4,7 @@ canon's whole design follows from one idea: **your agent forgets between session
 
 ## Live references, not copies
 
-Your standards, skills, and workflow live in one place — the canon checkout — and your projects point at it with `@`-imports instead of copying it in. Update canon once and every project picks up the change on its next session: no per-project copies, no drift, no re-setup ritual. The same imports load natively in Claude Code, Codex, and Pi, so a single definition keeps every agent in sync.
+Your standards, skills, and workflow live in one place — the canon checkout — and your projects point at it via symlinks (`.claude/skills → ~/.canon/skills`, `.agents/skills → ~/.canon/skills`) instead of copying it in. Update canon once and every project picks up the change on its next session: no per-project copies, no drift, no re-setup ritual. The same symlinked directory is read natively by Claude Code, Codex, and Pi, so a single definition keeps every agent in sync.
 
 ## The CLI owns state; the agent owns judgment
 

@@ -34,7 +34,7 @@ If the installer prompts to add `~/.canon/tools` to PATH, answer `y`, then run
 the printed `source ~/.zshrc` or `source ~/.bashrc` command before using bare
 `skills.sh`, `sprint`, or `sprint-check`.
 
-To uninstall — cleans up agent hooks and removes canon @-imports from all registered projects:
+To uninstall — cleans up agent hooks and removes canon skill symlinks from all registered projects:
 
 ```bash
 skills.sh uninstall
@@ -136,13 +136,13 @@ A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.
 
 <a href="docs/sprint-check.md#ticket-completeness"><img src="meta/screenshots/plan-incomplete.png" alt="Plan incomplete warning screenshot" width="680"></a>
 
-#### Commit Context
+#### Eval Report
 
-<a href="docs/index.html#commit-context"><img src="meta/screenshots/commit-context-demo.gif" alt="Commit context demo clip" width="680"></a>
+<img src="meta/screenshots/Eval.jpg" alt="Eval Report tab — criterion-by-criterion pass/fail with file:line evidence from a fresh evaluator agent" width="680">
 
-#### Completed Sprint Acceptance
+#### Acceptance & Wrapup Gates
 
-<img src="meta/screenshots/acceptance-closed-dark.png" alt="Closed ticket Acceptance tab showing criteria, test plan, QA sign-off, and wrapup gates" width="680">
+<img src="meta/screenshots/Acceptancs-Wrapup.jpg" alt="Acceptance tab showing all criteria checked, test plan, QA sign-off, and Wrapup Gates table" width="680">
 
 #### Sprint Summary — Plan vs. Actual
 
@@ -229,7 +229,7 @@ High-risk sprints add orient (with parallel subagents when multiple subsystems a
 
 ## Why canon
 
-Define your standards once; every project inherits them via `@`-import — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. The `efficiency` standard is wired automatically when you register `sprint`. **[How this works →](docs/how-it-works.md)**
+Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/how-it-works.md)**
 
 Every non-trivial change starts with a ticket. Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). High-risk and brownfield sprints add `research.md`: objective compression of what the system does before any plan is written. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 

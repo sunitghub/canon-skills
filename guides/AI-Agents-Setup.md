@@ -79,7 +79,7 @@ If the install folder was already deleted, re-clone canon to the same path and
 run uninstall, or manually remove stale commands that point at the deleted
 folder from `~/.claude/settings.json`.
 
-**Existing project only** — `CLAUDE.md` and `AGENTS.md` are extended with `@`-imports, existing content is preserved. If you have prior architectural decisions worth keeping, add them to `DECISIONS.md` manually before the first sprint using the format in the [How it works](#how-it-works) section; sprint will append from there. `HANDOFF.md` and `DECISIONS.md` are both created automatically on the first `sprint start` if they don't exist.
+**Existing project only** — skill symlinks (`.claude/skills`, `.agents/skills`) and the AI-SKILLS table in `AGENTS.md` are added; existing file content is preserved. If you have prior architectural decisions worth keeping, add them to `DECISIONS.md` manually before the first sprint using the format in the [How it works](#how-it-works) section; sprint will append from there. `HANDOFF.md` and `DECISIONS.md` are both created automatically on the first `sprint start` if they don't exist.
 
 Here's what gets created and by whom:
 
@@ -535,15 +535,15 @@ cd $SKILLS && git pull
 
 **Hook scripts** update immediately — called by path, so the new version runs on the next session.
 
-**Skill content** in `CLAUDE.md` is live `@`-import references — Claude picks up changes automatically on the next session.
+**Skill content** is delivered via symlinks (`.claude/skills → ~/.canon/skills`, `.agents/skills → ~/.canon/skills`) — Claude Code, Codex, and Pi pick up changes automatically on the next session because the symlink target updates in place.
 
-**Inline standards** in `AGENTS.md` (Codex, Pi) are a static copy — refresh explicitly:
+**To repair symlinks or update the AI-SKILLS table after a canon upgrade:**
 
 ```bash
 skills.sh refresh /path/to/your-project
 ```
 
-`refresh` re-registers every skill, replaces outdated standard blocks, heals stale `@`-import paths, and prunes covered deps — all in one command.
+`refresh` re-registers every skill, repairs symlinks, prunes legacy `@`-imports from pre-symlink installs, and removes covered deps — all in one command.
 
 **For newly added standalone skills:**
 ```bash
