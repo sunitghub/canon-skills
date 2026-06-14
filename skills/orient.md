@@ -73,6 +73,52 @@ keep the entry brief.
 
 ---
 
+## Parallel Research
+
+Use when `plan.md` identifies **2 or more independent subsystems** — subsystems whose exploration results don't depend on each other (e.g. auth layer, API endpoints, and job queue can be traced simultaneously; a model and its migration cannot).
+
+**Trigger:** count the distinct subsystems in `plan.md ## Files`. If ≥ 2 have no shared entry points, use parallel research.
+
+**How to run:**
+
+Spawn one Explore subagent per subsystem in a single message (parallel). Each subagent receives:
+- The subsystem name
+- Its known entry point(s) from `plan.md`
+- Instruction: survey entry points, trace imports and callers, flag non-obvious relationships, list every relevant file with a `file:line` citation. Read only.
+
+Each subagent writes its findings to `.tickets/<id>/research-<subsystem>.md`.
+
+**Valid completion — content, not existence:**
+
+A partial file is valid only if it contains at least one `file:line` citation under `## Relevant Files`, OR the exact line:
+
+```
+no relevant files found for <subsystem>
+```
+
+File existence alone is not a completion signal — a subagent can create an empty or stub file without doing any work. The sentinel line must be written explicitly; it cannot appear by accident.
+
+**After all subagents complete:**
+
+1. Read each `.tickets/<id>/research-<subsystem>.md`.
+2. For each partial file that is missing or invalid (exists but has no `file:line` and no sentinel): add an entry to `research.md ## Unknowns` — `"<subsystem>: subagent did not produce valid output"`.
+3. Synthesize valid partials into a single `research.md` following the Step 4 structure.
+4. Delete the per-subsystem partial files.
+
+**Failure modes:**
+
+| Condition | Action |
+|---|---|
+| Partial file missing (timeout / error) | Log in `## Unknowns`; proceed with remaining subsystems |
+| Partial file invalid (no file:line, no sentinel) | Treat same as missing |
+| Sentinel present ("no relevant files found") | Accept as valid; note in `## System Model` |
+| All partials missing or invalid | Fall back to single-threaded Steps 1–4; note fallback in `## Unknowns` |
+| Some valid, some not | Synthesize valid; surface gaps at the research review checkpoint |
+
+Gaps in `## Unknowns` surface naturally at the `sprint start` research review checkpoint — no new gate needed.
+
+---
+
 ## Scope rules
 
 - Read only. No edits.
@@ -84,6 +130,4 @@ keep the entry brief.
 - Every important claim must reference a file path or line number.
 - List excluded near-miss files and why they were ruled out — this prevents
   future re-reading of the same candidates.
-- If the agent supports subagents, delegate file location and dependency tracing
-  to subagents. The only durable output is the Subsystem Map in `plan.md`;
-  subagent transcripts are disposable.
+- Subagent transcripts are disposable. The only durable output is `research.md`.
