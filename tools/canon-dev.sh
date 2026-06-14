@@ -38,7 +38,7 @@ items = []
 for d in dirs:
     if not d.exists():
         continue
-    for p in sorted(d.glob("*.md")):
+    for p in sorted(set(d.glob("*.md")) | set(d.glob("*/*.md"))):
         data = fm(p)
         if data.get("name"):
             data["path"] = p

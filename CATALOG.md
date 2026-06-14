@@ -27,15 +27,15 @@ Imported automatically by the skills above. Do not register directly.
 
 | Skill | Imported by |
 |---|---|
+| `handoff` | sprint, wrapup |
+| `ticket` | sprint, wrapup |
 | `capture` | sprint |
+| `doc-audit` | wrapup |
 | `code-reviewer` | wrapup |
 | `code-simplifier` | wrapup |
-| `doc-audit` | wrapup |
 | `eval` | sprint |
-| `handoff` | sprint, wrapup |
 | `impact-analysis` | sprint |
 | `orient` | sprint |
 | `repo-check` | wrapup |
 | `security-review` | wrapup |
-| `ticket` | sprint, wrapup |
 | `wrapup` | sprint |
