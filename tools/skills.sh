@@ -37,7 +37,8 @@ deregister_project() {
   [ -f "$PROJECTS_FILE" ] || return 0
   local tmp
   tmp=$(mktemp)
-  grep -vxF "$project_dir" "$PROJECTS_FILE" > "$tmp" && mv "$tmp" "$PROJECTS_FILE"
+  grep -vxF "$project_dir" "$PROJECTS_FILE" > "$tmp" || true
+  mv "$tmp" "$PROJECTS_FILE"
   [ -s "$PROJECTS_FILE" ] || rm -f "$PROJECTS_FILE"
 }
 

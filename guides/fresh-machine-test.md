@@ -45,7 +45,7 @@ curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install
 
 This clones to `~/.canon` and runs `skills.sh init`. Use the curl path to validate the public installer.
 
-Expected output: `Cloning canon → ~/.canon`, `Wiring agent hooks…`, then a `Done.` block with next steps.
+Expected output: `Cloning canon → ~/.canon`, `Wiring agent hooks…`, then a `Done.` block with next steps. If prompted to add canon tools to PATH, answer `y`, then run the printed `source ~/.zshrc` or `source ~/.bashrc` command before using bare `skills.sh`, `sprint`, or `sprint-check`.
 
 ### 3b — Current branch (validates your pending changes)
 
@@ -60,7 +60,7 @@ Use 3b when you want to verify a branch before publishing. All paths should prod
 
 ```bash
 ls ~/.canon/tools/skills.sh   # file exists
-skills.sh list                # prints skill catalog
+~/.canon/tools/skills.sh list # prints skill catalog before PATH is active
 ```
 
 ---
@@ -87,7 +87,9 @@ Create a throwaway project and verify the CLI at a project level.
 ```bash
 mkdir ~/test-project && cd ~/test-project
 git init
-skills.sh add sprint
+~/.canon/tools/skills.sh add sprint
+# Run the source command printed by the installer, for example:
+# source ~/.zshrc  # or source ~/.bashrc
 skills.sh status
 ```
 
@@ -197,6 +199,10 @@ curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install
 # or from a specific branch
 # git clone https://github.com/sunitghub/canon-skills.git ~/.canon && ~/.canon/tools/skills.sh init
 ```
+
+If prompted to add canon tools to PATH, answer `y`, then run the printed
+`source ~/.bashrc` command before using bare `skills.sh`, `sprint`, or
+`sprint-check`.
 
 ### Test suite
 

@@ -178,12 +178,12 @@ _gate_sprint_files() {
 
 _gate_acceptance_sections() {
   local id="$1" acceptance="$2" missing=0
-  if ! _acceptance_section "Criteria" "$acceptance" | grep -qE '^[[:space:]]*[-*] \[[ xX]\]'; then
+  if ! _acceptance_section "Criteria" "$acceptance" | grep -qE '^[[:space:]]*[-*] \[[ xX]\][[:space:]]+\S'; then
     echo "Sprint $id cannot close: acceptance.md ## Criteria has no checklist items."
     echo "Add done criteria to acceptance.md, then re-run."
     missing=1
   fi
-  if ! _acceptance_section "Test Plan" "$acceptance" | grep -qE '^[[:space:]]*[-*] \[[ xX]\]'; then
+  if ! _acceptance_section "Test Plan" "$acceptance" | grep -qE '^[[:space:]]*[-*] \[[ xX]\][[:space:]]+\S'; then
     echo "Sprint $id cannot close: acceptance.md ## Test Plan has no checklist items."
     echo "Add test commands to acceptance.md, then re-run."
     missing=1

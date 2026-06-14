@@ -53,6 +53,21 @@ missing_sections_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_sections_output" "acceptance.md ## Criteria has no checklist items"
 assert_contains "$missing_sections_output" "acceptance.md ## Test Plan has no checklist items"
 
+# Bare checked placeholders do not count as meaningful checklist items
+cat > ".tickets/$id/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x]
+
+## Test Plan
+- [x]
+EOF
+
+bare_placeholder_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$bare_placeholder_output" "acceptance.md ## Criteria has no checklist items"
+assert_contains "$bare_placeholder_output" "acceptance.md ## Test Plan has no checklist items"
+
 # Acceptance has proper sections but items are unchecked — existing unchecked gate
 cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance

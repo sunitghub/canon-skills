@@ -27,8 +27,12 @@ curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install
 # CANON_HOME=/path/to/dir bash <(curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh)
 
 cd /path/to/your-project
-skills.sh add sprint
+~/.canon/tools/skills.sh add sprint
 ```
+
+If the installer prompts to add `~/.canon/tools` to PATH, answer `y`, then run
+the printed `source ~/.zshrc` or `source ~/.bashrc` command before using bare
+`skills.sh`, `sprint`, or `sprint-check`.
 
 To uninstall — cleans up agent hooks and removes canon @-imports from all registered projects:
 
@@ -39,7 +43,7 @@ rm -rf ~/.canon
 
 Daily workflow:
 
-> `sprint start` and `sprint-check` require `~/.canon/tools` on your PATH. The curl installer wires this automatically; `skills.sh add` will offer to add it if it's missing.
+> `sprint start` and `sprint-check` require `~/.canon/tools` on your PATH. The installer and `skills.sh add` can add it to your shell rc file, then you need to run the printed `source ...` command or open a new shell.
 > Run these from the project root. In practice, ask your AI agent to run `sprint start` and `sprint complete` after it has `cd`'d into that repo; run `sprint-check` when you want the local board.
 
 ```bash
@@ -55,7 +59,7 @@ Guided walkthrough:
 ```bash
 ~/.canon/scripts/copy-todo-walkthrough.sh <dest_folder_path>
 cd <dest_folder_path>
-skills.sh add sprint
+~/.canon/tools/skills.sh add sprint
 ```
 
 Build the Todo walkthrough in a disposable folder when you want to understand
@@ -79,7 +83,9 @@ Most agent tools tell you what the agent did. canon records what it promised —
    implementation choices it never saw. Each acceptance criterion gets a pass,
    fail, or partial verdict with a file:line cite. A fail blocks close.
 
-   *The three above enforce that what ships matches what was promised. The five below keep context sharp and decisions auditable across sessions.*
+   *The CLI enforces state and close gates; the agent and evaluator judge whether
+   the work behind those gates is true. The board surfaces problems early.*
+   *The three above protect what ships against what was promised. The five below keep context sharp and decisions auditable across sessions.*
 
 4. **Parallel subsystem research.** When a high-risk sprint touches two or more
    independent subsystems, orient spawns one Explore subagent per subsystem
@@ -179,6 +185,10 @@ All are plain markdown in `.tickets/<id>/` and are injected into the agent's con
 
 **Gated, not vibes.** The CLI owns state. `sprint complete` refuses to close while any acceptance or test-plan box is unchecked, `summary.md` is missing, or the `## Wrapup Gates` record is absent. The board surfaces the same checks early — cards flag `incomplete` in red before close-time.
 
+Layering is intentional: `sprint complete` is CLI-enforced; planning, audits,
+test judgment, and clean-context evaluation are agent-required; `sprint-check`
+is board-surfaced visibility while the work is still in progress.
+
 ## Code Archaeology
 
 **Why mode** — Ask why this file was built this way.
@@ -241,8 +251,8 @@ Gates don't make agents smarter. They make certain failures impossible — and t
 Register canon in another project:
 
 ```bash
-skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
-skills.sh add context-check   # optional: context-budget audits
+~/.canon/tools/skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
+~/.canon/tools/skills.sh add context-check   # optional: context-budget audits
 ```
 
 - **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.

@@ -68,7 +68,7 @@ function main() {
   // ── Run init ──────────────────────────────────────────────────────────────
 
   header('Wiring agent hooks…');
-  const init = spawnSync('bash', [path.join(TARGET, 'skills.sh'), 'init'], { stdio: 'inherit' });
+  const init = spawnSync('bash', [path.join(TARGET, 'tools', 'skills.sh'), 'init'], { stdio: 'inherit' });
   if (init.status !== 0) {
     warn('skills.sh init reported an issue — check output above.');
   }
@@ -81,7 +81,7 @@ function main() {
 
     ${TARGET}/scripts/copy-todo-walkthrough.sh /tmp/canon-todo
     cd /tmp/canon-todo
-    ${TARGET}/skills.sh add sprint
+    ${TARGET}/tools/skills.sh add sprint
 
   Full setup guide: ${TARGET}/guides/AI-Agents-Setup.md
 `);

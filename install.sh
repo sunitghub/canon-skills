@@ -67,5 +67,5 @@ printf '  to add skills.sh, sprint, tkt, sprint-check to your PATH.\n'
 printf '\n'
 printf '  Try the Todo walkthrough:\n'
 printf '    %s/scripts/copy-todo-walkthrough.sh /tmp/canon-todo\n' "$TARGET"
-printf '    cd /tmp/canon-todo && skills.sh add sprint\n'
+printf '    cd /tmp/canon-todo && %s/tools/skills.sh add sprint\n' "$TARGET"
 printf '  ──────────────────────────────────────────────────\n\n'

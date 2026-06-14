@@ -23,7 +23,7 @@ git clone https://github.com/sunitghub/canon-skills.git ~/.canon
 Run `skills.sh init` to configure installed agents:
 
 ```bash
-skills.sh init
+~/.canon/tools/skills.sh init
 ```
 
 This configures all installed agents in one shot:
@@ -43,8 +43,12 @@ The same command works for new and existing projects — `add sprint` merges int
 
 ```bash
 cd /path/to/your-project
-skills.sh add sprint    # full dev workflow (includes everything)
+~/.canon/tools/skills.sh add sprint    # full dev workflow (includes everything)
 ```
+
+If `skills.sh add` prompts to add canon tools to PATH, answer `y`, then run the
+printed `source ~/.zshrc` or `source ~/.bashrc` command before using bare
+`skills.sh`, `sprint`, or `sprint-check`.
 
 Advanced: `skills.sh addall` registers every standalone canon skill. Most projects should start with `sprint`.
 

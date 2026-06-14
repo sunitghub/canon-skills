@@ -60,11 +60,11 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 Every card shows a readiness indicator:
 
 - **● ready** (green) — Acceptance and Plan both present; Acceptance has real items under `## Criteria` and `## Test Plan`, and Plan has real notes under `## Approach`.
-- **● incomplete** (red) — Acceptance doc exists but one or both required sections have no checklist items. `sprint complete` will block. Opening the Acceptance tab shows an inline warning naming the empty sections.
-- **● plan incomplete** (red) — Plan exists but `## Approach` is empty or still contains the template placeholder. A short real approach is enough; Decisions can stay empty for simple work.
+- **● incomplete** (red) — Acceptance doc exists but one or both required sections have no checklist items. This mirrors a CLI-enforced `sprint complete` close gate. Opening the Acceptance tab shows an inline warning naming the empty sections.
+- **● plan incomplete** (red) — Plan exists but `## Approach` is empty or still contains the template placeholder. This is board-surfaced early warning; the CLI also blocks close if `## Approach` has no real content. A short real approach is enough; Decisions can stay empty for simple work.
 - **● needs acc / needs plan** (gray) — the next doc to add.
 
-Click or hover the indicator for a checklist popover. Acceptance readiness mirrors the CLI close gate; Plan readiness is an early board signal so untouched templates show up while you're working.
+Click or hover the indicator for a checklist popover. Acceptance readiness mirrors the CLI close gate; Plan readiness is an early board signal so untouched templates show up while you're working. The board never judges whether a checked item is true — that remains agent-required verification and evaluator review.
 
 ## Drag to Update Status
 
@@ -90,6 +90,12 @@ Once both Acceptance and Plan exist, `+ New doc` is hidden. Other workflow outpu
 ## How Sprint Works
 
 One workflow command drives the lifecycle. The CLI handles deterministic state; the agent chooses the lightest tier that protects the work — trivial changes skip sprint, normal changes get a brief ticket/acceptance/plan path, and high-risk changes run the full sub-skill pipeline. The two diagrams on the [README](../README.md#how-sprint-works) show the start and complete flows.
+
+Enforcement layers:
+
+- **CLI-enforced:** ticket state, one active sprint, required sprint files, required checklist items, unchecked boxes, `summary.md`, `## Wrapup Gates`, plan Approach content, and eval verdict presence.
+- **Agent-required:** tier classification, orientation, gray-area resolution, impact analysis, wrapup review/audit steps, test judgment, acceptance judgment, and invoking clean-context eval.
+- **Board-surfaced:** readiness indicators, inline warnings, ticket docs, commit/ticket context, and early visibility before the close gate runs.
 
 Recommended order: create `acceptance.md` first to define Done, then `plan.md` to capture the approach and decisions. `sprint-check` suggests that order in `+ New doc`.
 
