@@ -16,7 +16,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 [![sprint-check board — searchable local kanban with status-aware cards and repo context](meta/screenshots/sprint-check-board-dark.png)](docs/index.html)
 
-*An agent workflow harness.*
+<div align="center"><em>An agent workflow harness.</em></div>
 
 One-time setup:
 
