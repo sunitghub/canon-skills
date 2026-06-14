@@ -180,8 +180,10 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    ```
 
    Use `ran` or `skipped`. Always include a reason — even for gates that ran,
-   note what they checked. This makes the acceptance record complete: what was
-   tested and what quality gates ran. **`sprint complete` will block without this section.**
+   note what evidence they checked. Avoid bare "ran"; use phrases like
+   `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69` or
+   `npm test passed 2026-06-13`. This makes the acceptance record complete:
+   what was tested and what quality gates ran. **`sprint complete` will block without this section.**
 
 2. **Evaluator review (normal+ tier).** Skip for trivial tier. For normal and
    high-risk sprints, invoke the evaluator via the Agent tool with a clean
@@ -203,12 +205,14 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - ✓ passed | ✗ failed | ? not run
    - If any ✗ or ?: report which tests did not pass. Do not close the ticket. Stop here.
    - Include impact and regression tests.
-   - Confirm test results are documented in `acceptance.md` (pass/fail per item, date run).
+   - Classify required evidence for each item. Load-bearing test/tool evidence must fail closed when unavailable; preferred evidence may degrade with disclosure; decorative evidence can be dropped. Cached evidence counts only when source, timestamp/version, freshness window, and why that freshness is acceptable are stated.
+   - Confirm test results are documented in `acceptance.md` (pass/fail per item, date run, and the evidence checked).
    - Proceed only when all tests are ✓ or explicitly waived by the user with a documented reason.
 
 4. **Acceptance check.** Review each item in `acceptance.md`:
    - ✓ met | ✗ not met | ? uncertain
    - If any ✗: report what is missing. Do not close the ticket. Stop here.
+   - Do not mark an item met from weak evidence: empty or stale output, no stated search scope, vague prose, uninspected generated output, or citations that do not point to changed or directly relevant files.
    - Proceed only when all criteria are ✓ or explicitly waived by the user.
 
 5. **DECISIONS.md.** Append any durable decisions made during this sprint — non-obvious

@@ -24,17 +24,23 @@ You will receive:
 
 2. **Read changed files.** Read each file in the changed-files list. Do not read files not on that list. Your job is to evaluate what shipped, not to re-research the codebase.
 
-3. **Grade criteria.** For each item under `## Criteria` in `acceptance.md`:
+3. **Classify evidence role.** For each criterion or test-plan item, decide what evidence is load-bearing for this request:
+   - **required / load-bearing** — the sprint cannot honestly pass without it. If unavailable or weak, fail closed: `fail`, `partial`, or `not-run`; do not infer.
+   - **preferred** — useful corroboration, but not required to prove the item. If unavailable, disclose the gap in Evidence/Notes and continue only if required evidence is still strong.
+   - **decorative** — optional context or polish. If unavailable, drop it; do not let it influence the verdict.
+   - **cached** — valid only when source, timestamp/version, freshness window, and why that window is acceptable are stated. Otherwise it is weak evidence.
+
+4. **Grade criteria.** For each item under `## Criteria` in `acceptance.md`:
    - **pass** — evidence confirms the criterion is met; cite `file:line`
    - **fail** — criterion is not met or contradicted by the code; cite what you found
    - **partial** — partially met; describe what is and isn't there
 
-4. **Grade test plan.** For each item under `## Test Plan`:
+5. **Grade test plan.** For each item under `## Test Plan`:
    - **pass** — the test or check is implemented and would catch the failure it targets
    - **not-run** — cannot determine from static reading alone; flag for human verification
    - **fail** — test is missing, wrong, or wouldn't catch the targeted failure
 
-5. **Write the report.** Write the evaluation to `.tickets/<id>/eval-report.md`:
+6. **Write the report.** Write the evaluation to `.tickets/<id>/eval-report.md`:
 
 ```markdown
 # Eval Report
@@ -70,6 +76,19 @@ Return the verdict line in your response to the caller.
 Be appropriately skeptical. A criterion is **pass** only when you can point to the code that satisfies it. "Looks like it should work" is not evidence. If you cannot find the implementation, it is **fail** until proven otherwise.
 
 Do not penalize for things outside the acceptance criteria. Scope is what `acceptance.md` says — nothing more.
+
+## Weak Evidence
+
+Do not assign `pass` when the only support is weak evidence:
+- Empty, truncated, stale, or ambiguous tool output
+- A search with no stated scope when scope matters
+- A cached value without source, timestamp/version, freshness window, and why that freshness is acceptable
+- Vague prose such as "looks good", "seems covered", or "probably works"
+- A citation that does not point to a changed or directly relevant file
+- Generated output that was not inspected
+- A runtime test/check that would be required but was not run
+
+Tool health is not the contract. The relevant question is whether the missing or weak evidence is load-bearing for this specific sprint. If load-bearing evidence is unavailable, fail closed and say what evidence is missing.
 
 ## Gotchas
 
