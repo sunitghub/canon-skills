@@ -69,15 +69,20 @@ Most agent tools tell you what the agent did. canon records what it promised —
    Plan items are unchecked, `summary.md` is missing, or the Wrapup Gates record
    is absent. Gates don't make agents smarter — they make certain failures
    impossible.
-3. **Session continuity.** `HANDOFF.md`, the active ticket, and a small set of
+3. **Adversarial close review.** Before a sprint closes, a fresh agent — with no
+   implementation history — grades the actual code against `acceptance.md`. The
+   evaluator starts from a clean context window, so it can't be biased by the
+   implementation choices it never saw. Each acceptance criterion gets a pass,
+   fail, or partial verdict with a file:line cite. A fail blocks close.
+4. **Session continuity.** `HANDOFF.md`, the active ticket, and a small set of
    related closed tickets give a returning agent enough context to resume without
    replaying the whole project history.
-4. **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
+5. **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
    capture records it in `HANDOFF.md ## Discoveries` immediately — before context
    compaction or a session break can lose it.
-5. **Risk-aware planning.** Simple work stays light. High-impact work runs impact
+6. **Risk-aware planning.** Simple work stays light. High-impact work runs impact
    analysis before code, and every HIGH risk becomes a required Acceptance test.
-6. **Queryable intent.** Every sprint records decisions, acceptance criteria, and
+7. **Queryable intent.** Every sprint records decisions, acceptance criteria, and
    rejected alternatives as plain markdown. Ask why a file was built the way it
    was — the board surfaces the plan and decisions behind it without touching
    `git log`.
@@ -144,7 +149,7 @@ Creates a ticket, defines acceptance criteria, and writes the plan before touchi
 
 **`sprint complete`** — Block the merge until every box is checked.
 
-Runs the close path: simplify → review → security → repo/doc audit → acceptance check → close. Refuses to proceed while any acceptance or test-plan item is unchecked. The CLI gates the state; the agent verifies the tests and judges whether criteria are met.
+Runs the close path: simplify → review → security → repo/doc audit → **evaluator** → acceptance check → close. The evaluator is a fresh agent — no implementation history — that grades each acceptance criterion against the actual code from a clean context window. A fail or partial verdict blocks close. The CLI gates the state; the evaluator and agent verify the work.
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
@@ -186,12 +191,14 @@ flowchart LR
     P["Plan\nticket · acceptance · plan.md\nresearch.md (high-risk)"]
     B["Build\ncode · commits"]
     W["Wrapup\nsimplify · review · security"]
+    E[["Evaluate\nclean-context · adversarial\npass/fail per criterion"]]
     C["Close\nsprint complete"]
     D["Board\nsprint-check"]
 
     P -->|"GATE\nuser approves"| B
     B -->|"GATE\ntests pass"| W
-    W -->|"GATE\nall ✓ · wrapup gates\nsummary.md"| C
+    W --> E
+    E -->|"GATE\nall ✓ · eval verdict\nsummary.md"| C
     C --> D
 ```
 
