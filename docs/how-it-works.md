@@ -12,8 +12,9 @@ canon splits the work along a hard line:
 
 - **The CLI is a deterministic state machine.** It enforces what shouldn't depend on a model's mood — one active sprint at a time, and a `sprint complete` that refuses to close while any acceptance or test-plan box is still unchecked. These are checks in code, not judgment calls.
 - **The agent supplies the judgment.** Orientation, resolving gray areas, rating impact, verifying that tests actually pass, deciding a criterion is truly met — the parts that need reasoning.
+- **The evaluator supplies adversarial judgment.** At close time, a fresh agent with no implementation history reads `acceptance.md` and the changed files and grades each criterion from a clean context window. Same reasoning capability as the generator — but without 170k tokens of "I wrote this, so it must be right" bias. Its report lands in `.tickets/<id>/eval-report.md`; a fail blocks close.
 
-The gate checks the boxes; the agent is trusted to check a box only when the work behind it holds. Determinism where correctness is mechanical, judgment where it isn't — and neither pretends to be the other.
+The gate checks the boxes; the agent is trusted to check a box only when the work behind it holds; the evaluator is trusted to catch what the agent missed. Determinism where correctness is mechanical, independent judgment where it isn't.
 
 ## Planning scales to the risk
 
