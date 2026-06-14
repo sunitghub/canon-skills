@@ -165,7 +165,7 @@ Compared to common alternatives:
 
 Creates a ticket, defines acceptance criteria, and writes the plan before touching source. Normal changes stay light; high-risk changes add parallel subsystem mapping (one agent per independent subsystem, run concurrently), gray-area resolution, five-dimension impact analysis, any required human checkpoint, and adversarial review. The plan lives in `.tickets/<id>/` and survives context resets.
 
-**`sprint complete`** — Block the merge until every box is checked.
+**`sprint complete`** — Block close until every box is checked.
 
 Runs the close path: simplify → review → security → repo/doc audit → **evaluator** → acceptance check → close. The evaluator is a fresh agent — no implementation history — that grades each acceptance criterion against the actual code from a clean context window. A fail or partial verdict blocks close. The CLI gates the state; the evaluator and agent verify the work.
 
@@ -233,7 +233,7 @@ Define your standards once; every project inherits them via `@`-import — Claud
 
 Every non-trivial change starts with a ticket. Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). High-risk and brownfield sprints add `research.md`: objective compression of what the system does before any plan is written. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 
-canon enforces its own standards. The test suite runs and blocks before every commit — no advisory reminders, no honor system. What ships is what passed.
+canon enforces its own standards. Where Claude Code hooks are wired, the test suite runs and blocks before commit — no advisory reminders, no honor system. What ships is what passed.
 
 Gates don't make agents smarter. They make certain failures impossible — and turn the ones that remain into data.
 
