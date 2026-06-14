@@ -151,6 +151,11 @@ EOF
 # One stale entry pointing to a non-existent path
 stale_path="/tmp/canon-uninstall-test-nonexistent-$$"
 
+# Seed skill symlinks in canon_project (as if `skills.sh add` had run)
+mkdir -p "$canon_project/.claude" "$canon_project/.agents"
+ln -sfn "$ROOT/skills" "$canon_project/.claude/skills"
+ln -sfn "$ROOT/skills" "$canon_project/.agents/skills"
+
 {
   printf '%s\n' "$canon_project"
   printf '%s\n' "$stale_import_project"
@@ -184,6 +189,10 @@ assert_count 1 "Keep this user content." "$home/.codex/AGENTS.md"
 [[ ! -f "$home/.pi/agent/extensions/handoff.ts" ]] || fail "expected Pi extension to be removed"
 [[ ! -f "$home/.config/canon/install_path" ]] || fail "expected install_path to be removed"
 [[ ! -f "$home/.config/canon/projects" ]] || fail "expected projects file to be removed"
+
+# Skill symlinks removed from registered project
+[[ ! -L "$canon_project/.claude/skills" ]] || fail "expected .claude/skills symlink removed after uninstall"
+[[ ! -L "$canon_project/.agents/skills" ]] || fail "expected .agents/skills symlink removed after uninstall"
 
 # Registered project: @-imports stripped, AI-SKILLS block removed, user content preserved
 assert_count 0 "@$ROOT/" "$canon_project/CLAUDE.md"

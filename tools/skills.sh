@@ -42,6 +42,34 @@ deregister_project() {
   [ -s "$PROJECTS_FILE" ] || rm -f "$PROJECTS_FILE"
 }
 
+upsert_skills_symlinks() {
+  local project_dir="$1" target="$SKILLS_ROOT/skills"
+  local link
+  for link in "$project_dir/.claude/skills" "$project_dir/.agents/skills"; do
+    mkdir -p "$(dirname "$link")"
+    if [ -L "$link" ]; then
+      [ "$(readlink "$link")" = "$target" ] && continue
+      ln -sfn "$target" "$link"
+      echo "  [symlink]  updated: $link"
+    elif [ -d "$link" ]; then
+      echo "  [skip]  $link is a real directory — not overwriting"
+    else
+      ln -sfn "$target" "$link"
+      echo "  [symlink]  created: $link"
+    fi
+  done
+}
+
+remove_skills_symlinks() {
+  local project_dir="$1" target="$SKILLS_ROOT/skills"
+  local link
+  for link in "$project_dir/.claude/skills" "$project_dir/.agents/skills"; do
+    if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
+      rm "$link"
+    fi
+  done
+}
+
 # Extract a single frontmatter field value from a file
 registered_skill_rows() {
   local agents_file="$1"
@@ -188,25 +216,6 @@ cmd_list() {
   printf "${dim}To uninstall: skills.sh uninstall && rm -rf ~/.canon${reset}\n"
 }
 
-upsert_at_import() {
-  local file="$1" import_line="$2" skill_basename="$3" label="$4"
-  if grep -qF "$import_line" "$file" 2>/dev/null; then
-    : # already registered — silent
-  elif grep -qE "^@.+/($skill_basename$|$skill_basename\.md$|$skill_basename/SKILL\.md$)" "$file" 2>/dev/null; then
-    local tmp
-    tmp=$(mktemp)
-    awk -v import_line="$import_line" -v base="$skill_basename" '
-      index($0, "@") == 1 && ($0 ~ "^@.*/" base "$" || $0 ~ "^@.*/" base "\\.md$" || $0 ~ "^@.*/" base "/SKILL\\.md$") { print import_line; next }
-      { print }
-    ' "$file" > "$tmp" && mv "$tmp" "$file"
-    echo "  [$label]  updated stale @-import path"
-  else
-    echo "$import_line" >> "$file"
-    echo "  [$label]  added @-import"
-  fi
-}
-
-
 offer_tkt_path() {
   local tools_dir="$SKILLS_ROOT/tools"
 
@@ -292,13 +301,11 @@ cmd_add() {
     exit 1
   }
 
-  local name desc category depends skill_basename
+  local name desc category depends
   name=$(fm_field "$skill_file" name)
   desc=$(fm_field "$skill_file" description)
   category=$(fm_field "$skill_file" category)
   depends=$(fm_field "$skill_file" depends)
-  skill_basename=$(skill_slug "$skill_file")
-  local import_line="@$skill_file"
 
   # Hidden skills are internal-only — block direct registration
   if [ -z "$as_dep" ] && [ "$(fm_field "$skill_file" hidden)" = "true" ]; then
@@ -307,36 +314,18 @@ cmd_add() {
     exit 1
   fi
 
-  # Resolve dependencies first — register their @-imports silently, no table row
+  # Resolve dependencies first (no-op for table — deps load via symlink discovery)
   while IFS= read -r dep; do
     [ -n "$dep" ] && cmd_add "$dep" "$project_dir" "dep"
   done < <(resolve_deps "$skill_file")
 
-  # Deps are loaded transitively via @-imports inside the parent skill file.
-  # Don't add them to target files — keep CLAUDE.md and AGENTS.md clean.
   [ -n "$as_dep" ] && return 0
   echo "Registering: $name ($category)"
 
-  # Auto-inject only the always-on project standard into registered projects.
-  # Both CLAUDE.md and AGENTS.md get @-imports — clean references, no inlining.
-  local _std
-  for _std in "$SKILLS_ROOT/standards/"*.md; do
-    [ -f "$_std" ] || continue
-    [ "$(basename "$_std")" = "efficiency.md" ] || continue
-    local _std_basename _std_import
-    _std_basename=$(basename "$_std")
-    _std_import="@$_std"
-    upsert_at_import "$project_dir/CLAUDE.md" "$_std_import" "$_std_basename" "CLAUDE.md (std)"
-    upsert_at_import "$project_dir/AGENTS.md" "$_std_import" "$_std_basename" "AGENTS.md (std)"
-  done
-
-  local claude_file="$project_dir/CLAUDE.md"
   local agents_file="$project_dir/AGENTS.md"
   local skill_row="| $name | $category | $skill_file |"
 
-  upsert_at_import "$claude_file" "$import_line" "$skill_basename" "CLAUDE.md"
   skills_table_upsert "$agents_file" "$name" "$skill_row"
-  upsert_at_import "$agents_file" "$import_line" "$skill_basename" "AGENTS.md"
   _init_claude "$project_dir/.claude/settings.json" 2>/dev/null | grep -E '^\s+\[added\]' || true
 
   echo ""
@@ -369,6 +358,7 @@ cmd_add() {
   fi
 
   register_project "$project_dir"
+  upsert_skills_symlinks "$project_dir"
 }
 
 cmd_status() {
@@ -570,19 +560,8 @@ cmd_refresh() {
     while IFS= read -r line; do
       [[ "$line" == *"[pruned]"* ]] && continue
       if [[ "$line" == @"$SKILLS_ROOT"/* ]]; then
-        local path="${line#@}"
-        if [ ! -f "$path" ]; then
-          echo "  [pruned]  stale: $line" >&2
-          continue
-        fi
-        if [[ "$path" == "$SKILLS_ROOT"/standards/* ]] && [ "$(basename "$path")" != "efficiency.md" ]; then
-          echo "  [pruned]  non-default standard: $line" >&2
-          continue
-        fi
-        if [ "$(fm_field "$path" hidden)" = "true" ]; then
-          echo "  [pruned]  hidden dep: $line" >&2
-          continue
-        fi
+        echo "  [pruned]  legacy @-import: $line" >&2
+        continue
       fi
       printf '%s\n' "$line"
     done < "$prune_file" > "$tmp" && mv "$tmp" "$prune_file"
@@ -635,19 +614,6 @@ cmd_refresh() {
   done < <(covered_deps_for_skills <<< "$skills_in_table")
 
   if [ ${#covered_deps[@]} -gt 0 ]; then
-    # Pre-compute file paths for each covered dep so we can filter @-imports inline
-    local covered_dep_files=" "
-    for dep in "${covered_deps[@]}"; do
-      local dep_file
-      dep_file=$(find_skill "$dep" 2>/dev/null) || true
-      if [ -n "$dep_file" ]; then
-        covered_dep_files="$covered_dep_files$dep_file "
-        # Remove from CLAUDE.md now (not read in the loop below)
-        grep -vF "@$dep_file" "$claude_file" > "$claude_file.tmp" \
-          && mv "$claude_file.tmp" "$claude_file" || true
-      fi
-    done
-
     local tmp
     tmp=$(mktemp)
     while IFS= read -r line; do
@@ -662,10 +628,6 @@ cmd_refresh() {
           fi
         done
         [ -z "$sname" ] && continue
-      elif [[ "$line" == @"$SKILLS_ROOT"/* ]]; then
-        # Filter out @-imports for covered deps in the same pass
-        local import_path="${line#@}"
-        [[ "$covered_dep_files" == *" $import_path "* ]] && continue
       fi
       printf '%s\n' "$line"
     done < "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
@@ -730,22 +692,11 @@ cmd_remove() {
     exit 1
   }
 
-  local import_line="@$skill_file"
-
-  # Remove from CLAUDE.md
-  local claude_file="$project_dir/CLAUDE.md"
-  if [ -f "$claude_file" ] && grep -qF "$import_line" "$claude_file"; then
-    grep -vF "$import_line" "$claude_file" > "$claude_file.tmp" && mv "$claude_file.tmp" "$claude_file"
-    echo "  [CLAUDE.md]  removed"
-  fi
-
-  # Remove row and @-import from AGENTS.md
+  # Remove table row from AGENTS.md
   local agents_file="$project_dir/AGENTS.md"
-  if [ -f "$agents_file" ]; then
-    if grep -qF "| $skill |" "$agents_file" || grep -qF "$import_line" "$agents_file"; then
-      grep -vF "| $skill |" "$agents_file" | grep -vF "$import_line" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
-      echo "  [AGENTS.md]  removed"
-    fi
+  if [ -f "$agents_file" ] && grep -qF "| $skill |" "$agents_file"; then
+    grep -vF "| $skill |" "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+    echo "  [AGENTS.md]  removed"
   fi
 
   echo "Unregistered: $skill"
@@ -753,6 +704,7 @@ cmd_remove() {
   # Deregister from project registry when no canon skills remain
   if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ]; then
     deregister_project "$project_dir"
+    remove_skills_symlinks "$project_dir"
   fi
 }
 
@@ -865,6 +817,7 @@ cmd_uninstall() {
           !skip                       { print }
         ' "$proj/AGENTS.md" > "$proj/AGENTS.md.tmp" && mv "$proj/AGENTS.md.tmp" "$proj/AGENTS.md"
       fi
+      remove_skills_symlinks "$proj"
       _uninstall_claude "$proj/.claude/settings.json" 2>&1 | sed 's/^/  /' || true
       echo "  [cleaned]  $proj"
     done < "$PROJECTS_FILE"
