@@ -60,7 +60,7 @@ Evaluated: <ISO date>
 
 ## Verdict
 
-pass | fail — <one sentence>
+pass: <one sentence> — OR — fail: <one sentence>
 ```
 
 Return the verdict line in your response to the caller.

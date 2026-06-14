@@ -160,6 +160,7 @@ Each sprint produces up to four docs:
 | `acceptance.md` | sprint start | Done criteria · test plan · QA sign-off |
 | `plan.md` | sprint start | Approach · decisions made along the way |
 | `research.md` | high-risk / brownfield | Objective truth: relevant files, system model, constraints, unknowns (optional) |
+| `eval-report.md` | sprint complete (normal+) | Adversarial criterion grades · pass/fail with file:line evidence |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
 All are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.

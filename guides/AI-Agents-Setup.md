@@ -464,6 +464,9 @@ Sprint start surfaces these before approval when a high-risk trigger is present.
   ticket.md        ← tkt-managed
   acceptance.md    ← binary definition of done + Test Plan
   plan.md          ← approach, decisions, grill/impact sections for high-risk; written on approval, re-read after compaction
+  research.md      ← high-risk/brownfield only; objective truth: files, system model, constraints, unknowns
+  eval-report.md   ← sprint complete (normal+ tier); adversarial criterion grades with file:line evidence
+  summary.md       ← sprint complete; plan-vs-actual table + close prose
 ```
 
 The active sprint ID is stored in `.tickets/ACTIVE`. New tickets use the folder
