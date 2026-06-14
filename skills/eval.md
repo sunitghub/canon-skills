@@ -34,27 +34,36 @@ You will receive:
    - **not-run** — cannot determine from static reading alone; flag for human verification
    - **fail** — test is missing, wrong, or wouldn't catch the targeted failure
 
-5. **Output the report.** Write a structured evaluation:
+5. **Write the report.** Write the evaluation to `.tickets/<id>/eval-report.md`:
 
-```
-## Evaluation — <ticket-id>
+```markdown
+# Eval Report
+
+Ticket: `<id>`
+Evaluated: <ISO date>
+
+## Criteria
 
 | Criterion | Status | Evidence |
 |---|---|---|
 | <criterion verbatim> | pass / fail / partial | file:line or description |
 
-| Test Plan Item | Status | Notes |
+## Test Plan
+
+| Item | Status | Notes |
 |---|---|---|
 | <item verbatim> | pass / not-run / fail | file:line or description |
 
-### Findings
+## Findings
 
-<If all pass: "No findings." Otherwise: numbered list of fail/partial items with specific, actionable description of what is missing or wrong.>
+<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong.>
 
-### Verdict
+## Verdict
 
 pass | fail — <one sentence>
 ```
+
+Return the verdict line in your response to the caller.
 
 ## Disposition
 

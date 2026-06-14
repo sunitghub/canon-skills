@@ -176,6 +176,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    | security | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
+   | eval | ran | pass — eval-report.md written |
    ```
 
    Use `ran` or `skipped`. Always include a reason — even for gates that ran,
@@ -191,10 +192,11 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - Pass the ticket ID and the list of files modified since sprint start
      (run `git diff --name-only HEAD~1` or track files modified during the sprint)
    - The subagent reads `acceptance.md`, `plan.md`, and each changed file fresh
-   - It returns a structured pass/fail table per acceptance criterion and test plan item
+   - It writes its report to `.tickets/<id>/eval-report.md` and returns the verdict line
 
-   Surface any `fail` or `partial` findings to the user before proceeding. Do
-   not advance to step 3 if the evaluator verdict is `fail`.
+   Read `.tickets/<id>/eval-report.md` after the subagent completes. Surface any
+   `fail` or `partial` findings to the user before proceeding. Do not advance to
+   step 3 if the evaluator verdict is `fail`.
 
 3. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - ✓ passed | ✗ failed | ? not run
