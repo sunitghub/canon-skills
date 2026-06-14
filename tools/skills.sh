@@ -19,6 +19,8 @@ SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
 # shellcheck source=tools/hooks-lib.sh
 source "$(dirname "$SCRIPT")/hooks-lib.sh"
 SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
+# shellcheck source=tools/skill-lib.sh
+source "$(dirname "$SCRIPT")/skill-lib.sh"
 PROJECTS_FILE="$HOME/.config/canon/projects"
 
 register_project() {
@@ -40,37 +42,6 @@ deregister_project() {
 }
 
 # Extract a single frontmatter field value from a file
-fm_field() {
-  local file="$1" field="$2"
-  awk -v key="$field" '
-    BEGIN { in_fm=0 }
-    /^---$/ { in_fm=!in_fm; next }
-    in_fm && substr($0, 1, length(key)+1) == key":" {
-      val = substr($0, length(key)+2); sub(/^ +/, "", val); print val; exit
-    }
-  ' "$file"
-}
-
-# Find a skill file by its frontmatter name field
-find_skill() {
-  local name="$1"
-  for dir in "${SEARCH_DIRS[@]}"; do
-    [ -d "$dir" ] || continue
-    while IFS= read -r f; do
-      [ "$(fm_field "$f" name)" = "$name" ] && echo "$f" && return 0
-    done < <(find "$dir" -name "*.md" -type f 2>/dev/null)
-  done
-  return 1
-}
-
-# Emit a skill file's declared dependency names, one per line.
-resolve_deps() {
-  local file="$1" dep_str
-  dep_str=$(fm_field "$file" depends)
-  [ -z "$dep_str" ] && return 0
-  echo "$dep_str" | tr -d '[]' | tr ',' '\n' | tr -d ' ' | grep -v '^$' || true
-}
-
 registered_skill_rows() {
   local agents_file="$1"
   [ -f "$agents_file" ] || return 0
