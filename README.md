@@ -74,6 +74,9 @@ Most agent tools tell you what the agent did. canon records what it promised —
    evaluator starts from a clean context window, so it can't be biased by the
    implementation choices it never saw. Each acceptance criterion gets a pass,
    fail, or partial verdict with a file:line cite. A fail blocks close.
+
+   *The three above enforce that what ships matches what was promised. The four below keep context sharp and decisions auditable across sessions.*
+
 4. **Session continuity.** `HANDOFF.md`, the active ticket, and a small set of
    related closed tickets give a returning agent enough context to resume without
    replaying the whole project history.

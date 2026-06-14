@@ -450,7 +450,7 @@ Sprint start surfaces these before approval when a high-risk trigger is present.
 | Command | What happens |
 |---|---|
 | `sprint start` | CLI creates/starts ticket → records `.tickets/ACTIVE` → agent creates sprint docs → reads DECISIONS.md + HANDOFF.md → classifies tier → normal path writes a brief plan, high-risk path **maps subsystem (orient)** → **grills gray areas** → **impact analysis** → produces sprint brief → **waits for your approval** → writes `plan.md` |
-| `sprint complete` | Agent runs wrapup → **evaluator** (fresh agent, clean context, pass/fail per criterion → `eval-report.md`) → **verifies all tests passed** → validates every acceptance criterion → appends to DECISIONS.md → **conventions check → AGENTS.md** → updates HANDOFF.md → CLI validates checklists and closes ticket |
+| `sprint complete` | Agent runs wrapup →<br>**evaluator** (fresh agent, clean context, pass/fail per criterion → `eval-report.md`) →<br>**verifies all tests passed** → validates every acceptance criterion →<br>appends to DECISIONS.md → **conventions check → AGENTS.md** →<br>updates HANDOFF.md → CLI validates checklists and closes ticket |
 
 **Trigger phrases:**
 - sprint start: normal or high-risk requests to add, fix, update, debug, implement, or build — explicit phrases like *"sprint start"* or *"let's work on X"* also work. Skipped for questions, explanations, or trivially mechanical one-liners.
