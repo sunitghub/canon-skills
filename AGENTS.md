@@ -84,4 +84,5 @@ When running multiple Claude Code instances in parallel worktrees:
 
 | Skill | Category | Source |
 |-------|----------|--------|
+| sprint | dev | /Users/sunitjoshi/Developer/canon/skills/sprint/SKILL.md |
 <!-- AI-SKILLS:END -->
