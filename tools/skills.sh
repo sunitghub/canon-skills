@@ -18,7 +18,7 @@ SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
 
 # shellcheck source=tools/hooks-lib.sh
 source "$(dirname "$SCRIPT")/hooks-lib.sh"
-SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills/internal" "$SKILLS_ROOT/skills")
+SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
 # shellcheck source=tools/skill-lib.sh
 source "$(dirname "$SCRIPT")/skill-lib.sh"
 PROJECTS_FILE="$HOME/.config/canon/projects"
@@ -265,9 +265,6 @@ is_canon_project_import_line() {
     */skills/*/SKILL.md)
       local slug; slug=$(basename "$(dirname "$import_path")")
       [ -f "$SKILLS_ROOT/skills/$slug/SKILL.md" ] && return 0
-      ;;
-    */skills/internal/*.md)
-      [ -f "$SKILLS_ROOT/skills/internal/$base" ] && return 0
       ;;
     */tools/*.md)
       [ -f "$SKILLS_ROOT/tools/$base" ] && return 0

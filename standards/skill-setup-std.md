@@ -1,6 +1,6 @@
 ---
 name: skill-setup-std
-description: Validate skill files against canon standards — invoke when adding a new skill or auditing existing ones
+description: Validates skill files against canon standards. Use when adding a new skill or auditing existing ones.
 category: agent-ops
 tags: [skills, contributors, conventions]
 version: 1.4.0
@@ -20,17 +20,17 @@ Run `./tools/canon-dev.sh lint` to validate all skills against these conventions
 Skills follow a two-tier layout under `skills/`:
 
 - **Standalone skills**: `skills/<name>/SKILL.md` — one directory per skill.
-- **Internal/hidden skills**: `skills/internal/<name>.md` — flat files inside `skills/internal/`.
+- **Hidden/internal skills**: `skills/<name>/SKILL.md` with `hidden: true` — same directory structure as standalone skills; may include `reference/` or `gates/` subdirectories for sub-skill files.
 
-Standards, tools, and other non-skill files remain flat in their own top-level directories (`standards/`, `tools/`). The dependency hierarchy is encoded in frontmatter and `@` imports, not in deeper folder nesting.
+Standards, tools, and other non-skill files remain flat in their own top-level directories (`standards/`, `tools/`). Sub-skill content for a hidden skill belongs in a subdirectory of that skill (e.g. `skills/sprint/reference/`, `skills/wrapup/gates/`).
 
 ## Naming
 
 - Lowercase, hyphenated directory name: `skills/sprint/`, `skills/context-check/`
 - Use a prefix to signal a skill family: `sprint/`, `sprint-check/`
 - Max ~20 characters — the directory name appears in `skills.sh list` output
-- The `name:` frontmatter field must match the directory name (for `SKILL.md`) or the filename without `.md` (for internal flat files)
-- The skill file is always named `SKILL.md` for standalone skills
+- The `name:` frontmatter field must match the directory name
+- The skill file is always named `SKILL.md`
 
 ## Frontmatter
 
@@ -65,7 +65,7 @@ Optional fields:
 Load sub-skills on demand rather than at invocation time. At the step that first needs a dependency, add an explicit instruction:
 
 ```
-Read `skills/internal/orient.md`, then run the orient protocol: ...
+Read `skills/sprint/reference/orient.md`, then run the orient protocol: ...
 ```
 
 This keeps the always-on context budget proportional — a trivial sprint doesn't pay for wrapup, orient, or impact-analysis.
@@ -135,7 +135,7 @@ When in doubt, prefer editing — a new skill earns its place only when it has a
 
 ## Adding a new skill
 
-1. Create a directory `skills/<name>/` and write the skill as `skills/<name>/SKILL.md`; for internal skills, write directly to `skills/internal/<name>.md`
+1. Create a directory `skills/<name>/` and write the skill as `skills/<name>/SKILL.md`; add `hidden: true` if it is only invoked by other skills
 2. Run `skills.sh list` to confirm it appears with the right name and description
 3. Update `CATALOG.md` by running `skills.sh catalog` (or manually if the script doesn't support it)
 4. If the skill is imported by an existing skill, add it to that skill's `depends:` list

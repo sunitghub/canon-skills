@@ -1,6 +1,6 @@
 ---
 name: sprint
-description: Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything
+description: Manages the sprint workflow for focused changes. Use when asked to add, fix, update, implement, debug, or build anything.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
 depends: []
@@ -86,7 +86,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Produce the sprint brief from Step 9.
    - Skip Steps 6-8 unless new findings promote the work to high-risk.
 
-6. **Research high-risk work.** Read `skills/internal/orient.md`, then run the orient protocol: survey the subsystem, trace dependencies, flag non-obvious relationships. Writes findings to `.tickets/<id>/research.md` (Objective, Relevant Files, System Model, Constraints, Unknowns, Not In Scope). Findings feed into the Grill step.
+6. **Research high-risk work.** Read `skills/sprint/reference/orient.md`, then run the orient protocol: survey the subsystem, trace dependencies, flag non-obvious relationships. Writes findings to `.tickets/<id>/research.md` (Objective, Relevant Files, System Model, Constraints, Unknowns, Not In Scope). Findings feed into the Grill step.
 
    After research is complete, pause and present a brief summary: what was found, key constraints, and open unknowns. Ask the user to review before proceeding to Plan. This is the highest-leverage review checkpoint — a bad research premise produces a bad plan.
 
@@ -110,7 +110,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    materially change the approach, surface it to the user before proceeding.
    Log the pre-mortem under `## Pre-mortem` in `plan.md`.
 
-8. **Impact analysis for high-risk work.** Read `skills/internal/impact-analysis.md`, then run the full impact analysis process:
+8. **Impact analysis for high-risk work.** Read `skills/sprint/reference/impact-analysis.md`, then run the full impact analysis process:
    - Interrogate the request — ask every question whose answer changes the risk profile.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
    - For every HIGH rating: add the required action to `plan.md` and the required test to `acceptance.md ## Test Plan`.
@@ -177,7 +177,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    adversarially against `acceptance.md`.
 
    Invoke an Agent subagent with a clean context. The prompt must instruct it to:
-   - Read `skills/internal/eval.md` and follow the eval protocol
+   - Read `skills/sprint/reference/eval.md` and follow the eval protocol
    - Ticket ID and changed files: `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
      (captures the full sprint range across multiple commits; assumes `origin/main` as base)
    - Read `acceptance.md`, `plan.md`, and each changed file fresh

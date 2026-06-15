@@ -79,7 +79,7 @@ Check every destructive or irreversible action: send, delete, bulk-update, job t
 Detection by framework:
 - **HTML forms**: grep for `action="/same-path"` or `method="post"` on multiple forms in the same template
 - **ASP.NET Razor Pages**: grep `.cshtml` for `asp-page-handler="X"` and `action="?handler=X"`
-- **Django**: grep templates for `action="{% url 'view-name' %}"` across all included partials
+- **Django**: grep templates for `action="{% url 'view-name' %}"` across all included templates
 - **React/fetch**: grep for all `fetch`/`axios` calls to the same URL — a hook called from two components
 - **Express**: grep route registrations for duplicate `router.post('/path', ...)`
 

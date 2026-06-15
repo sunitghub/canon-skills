@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT="${BASH_SOURCE[0]}"
 while [ -L "$SCRIPT" ]; do SCRIPT="$(readlink "$SCRIPT")"; done
 SKILLS_ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
-SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills/internal" "$SKILLS_ROOT/skills")
+SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")
 # shellcheck source=tools/skill-lib.sh
 source "$(dirname "$SCRIPT")/skill-lib.sh"
 
@@ -166,7 +166,6 @@ cmd_lint() {
         || err "$slug/SKILL.md" "imports '$sib' but '$sib' is not in depends"
     done < <(
       grep -oE '^@\.\./[a-z0-9-]+/SKILL\.md' "$f" | sed -E 's#^@\.\./([a-z0-9-]+)/SKILL\.md#\1#'
-      grep -oE '^@\.\./internal/[a-z0-9-]+\.md' "$f" | sed -E 's#^@\.\./internal/([a-z0-9-]+)\.md#\1#'
     )
     while IFS= read -r dep; do
       [ -n "$dep" ] || continue

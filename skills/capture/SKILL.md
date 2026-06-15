@@ -1,6 +1,6 @@
 ---
 name: capture
-description: Record a non-obvious discovery, constraint, or gotcha to HANDOFF.md — invoke when something surprising is found mid-sprint
+description: Records non-obvious discoveries, constraints, and gotchas to HANDOFF.md. Use when something surprising is found mid-sprint.
 category: dev
 tags: [knowledge-management, handoff, memory]
 ---

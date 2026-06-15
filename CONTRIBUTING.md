@@ -3,7 +3,7 @@
 ## Contributing a Skill
 
 Conventions live in [`standards/skill-setup-std.md`](standards/skill-setup-std.md)
-— standalone skills in `skills/<name>/SKILL.md`, internal skills in `skills/internal/<name>.md`, required
+— standalone skills in `skills/<name>/SKILL.md`, hidden skills as `skills/<name>/SKILL.md` with `hidden: true`, required
 frontmatter (`name`, `description`, `category`, `tags`), resolvable `@` imports,
 and a `depends:` list that matches sibling imports. This section is the
 workflow; defer to the standard for the rules.
@@ -14,7 +14,7 @@ decision: a nuance that changes *how* a skill does its one job is an edit; a
 
 ### Update an existing skill
 
-1. Edit `skills/<name>/SKILL.md` (or `skills/internal/<name>.md` for hidden skills). Keep it to one job — if you find yourself
+1. Edit `skills/<name>/SKILL.md`. Keep it to one job — if you find yourself
    adding "and then", it's a new skill, not an edit.
 2. Bump `version:` / `updated:` if the file carries them (standards do; skills
    usually do not).
@@ -22,7 +22,7 @@ decision: a nuance that changes *how* a skill does its one job is an edit; a
 
 ### Add a new skill
 
-1. Create `skills/<name>/SKILL.md` (standalone) or `skills/internal/<name>.md` (hidden) following the standard's conventions.
+1. Create `skills/<name>/SKILL.md` following the standard's conventions. Add `hidden: true` frontmatter if the skill is only invoked by other skills.
 2. If an existing skill imports it, add it to that skill's `depends:` list.
 3. Regenerate the catalog: `./tools/canon-dev.sh catalog`, and commit `CATALOG.md`.
 4. If it's standalone, mention it in `README.md` only if it warrants one.
