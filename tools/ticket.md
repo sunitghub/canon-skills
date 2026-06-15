@@ -11,21 +11,6 @@ This project uses `tkt` for task management — a minimal ticket system bundled 
 New tickets are stored as `.tickets/<id>/ticket.md` with YAML frontmatter.
 Legacy flat `.tickets/<id>.md` tickets remain readable.
 
-## Getting Started
-
-**Step 1 — Register this skill in your project:**
-```bash
-skills.sh add ticket /path/to/your/project
-```
-
-The add command will offer to add `<canon>/tools` to your PATH so `tkt` is available everywhere.
-
-**Step 2 — Use it:**
-- **Claude**: "Create a ticket for the login bug" or "Show me open tickets" — Claude runs `tkt` commands automatically.
-- **Codex**: Same natural language — Codex reads the skill from `AGENTS.md` and uses `tkt`.
-
-No slash command needed. Just describe what you want to track.
-
 ## Key Commands
 
 ```bash
