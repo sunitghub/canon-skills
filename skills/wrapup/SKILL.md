@@ -3,15 +3,8 @@ name: wrapup
 description: Run quality checks, review, and commit after completing a feature, fix, or session — invoke when work is done and ready to ship
 category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
-depends: [code-simplifier, code-reviewer, security-review, repo-check, doc-audit, handoff, ticket]
+depends: []
 ---
-@../internal/code-simplifier.md
-@../internal/code-reviewer.md
-@../internal/security-review.md
-@../internal/repo-check.md
-@../doc-audit/SKILL.md
-@../../tools/handoff.md
-@../../tools/ticket.md
 
 # Wrapup
 
@@ -51,18 +44,18 @@ Before running each step, assess the change and skip if the criteria apply. When
 
 ## Steps
 
-1. Apply code-simplifier to code touched in this session.
-2. Apply code-reviewer across all seven dimensions; defer deep security analysis to Step 3.
-3. Apply security-review, including ast-grep pre-scan if available.
-4. Apply repo-check. Fix stale references, orphan workflow files, and generated catalog drift before committing.
-5. Apply doc-audit. Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing.
-6. Refresh docs:
+1. Read `skills/internal/code-simplifier.md`, then apply the simplifier to code touched in this session.
+2. Read `skills/internal/code-reviewer.md`, then apply the reviewer across all seven dimensions; defer deep security analysis to Step 3.
+3. Read `skills/internal/security-review.md`, then apply the security review, including ast-grep pre-scan if available.
+4. Read `skills/internal/repo-check.md`, then apply the repo check. Fix stale references, orphan workflow files, and generated catalog drift before committing.
+5. Read `skills/doc-audit/SKILL.md`, then apply the doc audit. Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing.
+6. Read `tools/handoff.md`, then refresh docs:
 
 Review every documentation file touched or referenced during this session and patch anything stale.
 
 Scope (check each that exists):
 - `DECISIONS.md` — any new decisions made this session not yet logged?
-- `HANDOFF.md` — refresh the narrative per the handoff protocol (`../tools/handoff.md`): Current Focus, In Progress, and Next Steps. `## Discoveries` is owned by capture — leave it. Decisions belong in `DECISIONS.md`, not here.
+- `HANDOFF.md` — refresh the narrative per the handoff protocol: Current Focus, In Progress, and Next Steps. `## Discoveries` is owned by capture — leave it. Decisions belong in `DECISIONS.md`, not here.
 - `AGENTS.md` / `CLAUDE.md` — any convention-level learnings to surface? (propose + confirm before writing)
 - `README` — does it document any changed APIs, behaviors, or install steps?
 - Any other `.md` files explicitly opened or modified during the session
