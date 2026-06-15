@@ -3,15 +3,13 @@ name: sprint
 description: Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
-depends: [wrapup, capture, ticket, handoff, impact-analysis, orient, ticket-layout, eval]
+depends: [capture, ticket, handoff, ticket-layout]
 ---
 
-@../wrapup/SKILL.md
 @../capture/SKILL.md
-@../internal/impact-analysis.md
-@../internal/orient.md
-@../internal/eval.md
 @../../standards/ticket-layout.md
+@../../tools/handoff.md
+@../../tools/ticket.md
 
 # Sprint
 
@@ -93,7 +91,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Produce the sprint brief from Step 9.
    - Skip Steps 6-8 unless new findings promote the work to high-risk.
 
-6. **Research high-risk work.** Run the orient sub-skill: survey the subsystem, trace dependencies, flag non-obvious relationships. Writes findings to `.tickets/<id>/research.md` (Objective, Relevant Files, System Model, Constraints, Unknowns, Not In Scope). Findings feed into the Grill step.
+6. **Research high-risk work.** Read `skills/internal/orient.md`, then run the orient protocol: survey the subsystem, trace dependencies, flag non-obvious relationships. Writes findings to `.tickets/<id>/research.md` (Objective, Relevant Files, System Model, Constraints, Unknowns, Not In Scope). Findings feed into the Grill step.
 
    After research is complete, pause and present a brief summary: what was found, key constraints, and open unknowns. Ask the user to review before proceeding to Plan. This is the highest-leverage review checkpoint — a bad research premise produces a bad plan.
 
@@ -117,7 +115,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    materially change the approach, surface it to the user before proceeding.
    Log the pre-mortem under `## Pre-mortem` in `plan.md`.
 
-8. **Impact analysis for high-risk work.** Run the full impact analysis process defined in the impact-analysis skill:
+8. **Impact analysis for high-risk work.** Read `skills/internal/impact-analysis.md`, then run the full impact analysis process:
    - Interrogate the request — ask every question whose answer changes the risk profile.
    - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
    - For every HIGH rating: add the required action to `plan.md` and the required test to `acceptance.md ## Test Plan`.
@@ -156,8 +154,8 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 
 Wait for explicit confirmation. Do not proceed if the trigger came from a broad instruction like "resume", "continue", or "finish" without the user specifically approving closeout. The cost of an unwanted close is high; the cost of asking is zero.
 
-1. **Wrapup.** Run the wrapup pipeline on files modified since sprint start.
-   Apply skip rules from `wrapup.md`. After assessing each gate, append a
+1. **Wrapup.** Read `skills/wrapup/SKILL.md` and the sub-skill files listed in its `@` imports, then run the wrapup pipeline on files modified since sprint start.
+   After assessing each gate, append a
    `## Wrapup Gates` section to `acceptance.md` recording every gate's outcome:
 
    ```markdown
@@ -183,12 +181,12 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    context — the evaluator has no implementation history and grades the work
    adversarially against `acceptance.md`.
 
-   Invoke the eval skill as a subagent:
-   - Pass the ticket ID and the list of files modified since sprint start:
-     `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
+   Invoke an Agent subagent with a clean context. The prompt must instruct it to:
+   - Read `skills/internal/eval.md` and follow the eval protocol
+   - Ticket ID and changed files: `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
      (captures the full sprint range across multiple commits; assumes `origin/main` as base)
-   - The subagent reads `acceptance.md`, `plan.md`, and each changed file fresh
-   - It writes its report to `.tickets/<id>/eval-report.md` and returns the verdict line
+   - Read `acceptance.md`, `plan.md`, and each changed file fresh
+   - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes. Surface any
    `fail` or `partial` findings to the user before proceeding. Do not advance to
