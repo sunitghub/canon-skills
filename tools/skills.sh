@@ -831,10 +831,6 @@ cmd_uninstall() {
   _uninstall_claude "$HOME/.claude/settings.json" || any_fail=1
 
   echo ""
-  echo "Codex:"
-  _uninstall_codex || any_fail=1
-
-  echo ""
   echo "Pi:"
   _uninstall_pi || any_fail=1
 

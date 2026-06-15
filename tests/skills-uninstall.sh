@@ -9,7 +9,7 @@ home="$(mktemp -d)"
 # Clean up both the temp home AND any project-local settings written to $ROOT
 trap 'rm -rf "$home" "$ROOT/.claude/settings.json"' EXIT
 
-mkdir -p "$home/.claude" "$home/.codex" "$home/.pi/agent/extensions" "$home/.config/canon"
+mkdir -p "$home/.claude" "$home/.pi/agent/extensions" "$home/.config/canon"
 
 # Hooks now live in <SKILLS_ROOT>/.claude/settings.json (project-local).
 # Seed it with the 4 canon hooks so uninstall has something to remove.
@@ -83,13 +83,6 @@ cat > "$home/.claude/settings.json" <<EOF
 }
 EOF
 
-cat > "$home/.codex/AGENTS.md" <<EOF
-# Codex
-
-@$home/.codex/RTK.md
-
-Keep this user content.
-EOF
 
 cat > "$home/.pi/agent/extensions/handoff.ts" <<'EOF'
 const configPath = join(homedir(), ".config", "canon", "install_path");
@@ -165,7 +158,6 @@ ln -sfn "$ROOT/skills" "$canon_project/.agents/skills"
 output="$(HOME="$home" "$SKILLS" uninstall)"
 assert_contains "$output" "[removed]  4 Claude hook(s)"   # from project-local settings
 assert_contains "$output" "[removed]  1 Claude hook(s)"   # stale global migration
-assert_contains "$output" "[removed]  Codex RTK import"
 assert_contains "$output" "[removed]  Pi handoff extension"
 assert_contains "$output" "[removed]  install_path"
 assert_contains "$output" "[removed]  projects"
@@ -184,8 +176,6 @@ assert_count 0 "$ROOT/scripts/auto-handoff.sh" "$home/.claude/settings.json"
 assert_count 1 "/usr/local/bin/user-stop"       "$home/.claude/settings.json"
 assert_count 1 '"theme": "dark"'                "$home/.claude/settings.json"
 
-assert_count 0 "@$home/.codex/RTK.md" "$home/.codex/AGENTS.md"
-assert_count 1 "Keep this user content." "$home/.codex/AGENTS.md"
 [[ ! -f "$home/.pi/agent/extensions/handoff.ts" ]] || fail "expected Pi extension to be removed"
 [[ ! -f "$home/.config/canon/install_path" ]] || fail "expected install_path to be removed"
 [[ ! -f "$home/.config/canon/projects" ]] || fail "expected projects file to be removed"
@@ -216,7 +206,6 @@ assert_count 1 "Stale AGENTS content preserved." "$stale_import_project/AGENTS.m
 again="$(HOME="$home" "$SKILLS" uninstall)"
 assert_contains "$again" "[skip]  no registered projects"
 assert_contains "$again" "[ok]     no canon Claude hooks found"
-assert_contains "$again" "[ok]     no canon Codex import found"
 assert_contains "$again" "[skip]  Pi handoff extension not found"
 assert_contains "$again" "[skip]  ~/.config/canon/install_path not found"
 

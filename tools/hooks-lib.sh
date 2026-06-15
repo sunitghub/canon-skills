@@ -182,21 +182,6 @@ PYEOF
   fi
 }
 
-_uninstall_codex() {
-  local agents="$HOME/.codex/AGENTS.md"
-  local rtk_ref="@${HOME}/.codex/RTK.md"
-  if [ ! -f "$agents" ]; then
-    echo "  [skip]  ~/.codex/AGENTS.md not found"
-    return 0
-  fi
-  if grep -Fxq "$rtk_ref" "$agents"; then
-    grep -Fxv "$rtk_ref" "$agents" > "${agents}.tmp" && mv "${agents}.tmp" "$agents"
-    echo "  [removed]  Codex RTK import"
-  else
-    echo "  [ok]     no canon Codex import found"
-  fi
-}
-
 _uninstall_pi() {
   local ext_dst="$HOME/.pi/agent/extensions/handoff.ts"
   if [ ! -f "$ext_dst" ]; then

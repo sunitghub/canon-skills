@@ -53,21 +53,20 @@ Optional fields:
 | Field | When to use |
 |---|---|
 | `summary:` | Longer description for CATALOG.md when `description:` is too short to convey scope |
-| `depends: [skill-a, skill-b]` | List skills this one imports — keeps the dependency graph queryable |
+| `depends: [skill-a, skill-b]` | Informational dependency list — queryable by `skills.sh lint`; not an injection mechanism |
 | `hidden: true` | Skill is only invoked by other skills, never registered directly by a user |
 
-## Imports
+## Loading dependencies
 
-Declare `@` imports at the top of the file, immediately after the frontmatter block. One per line. Use relative paths that reflect the actual directory structure.
+Load sub-skills on demand rather than at invocation time. At the step that first needs a dependency, add an explicit instruction:
 
 ```
-@../wrapup/SKILL.md
-@../capture/SKILL.md
-@../internal/impact-analysis.md
-@../../standards/ticket-layout.md
+Read `skills/internal/orient.md`, then run the orient protocol: ...
 ```
 
-The import order matters — Claude reads them top to bottom. Put broader context (standards, tools) before narrow behavior.
+This keeps the always-on context budget proportional — a trivial sprint doesn't pay for wrapup, orient, or impact-analysis.
+
+`@` imports (formerly declared after frontmatter) are retired. Do not add new `@` lines to skill files.
 
 ## Standalone vs. hidden
 
