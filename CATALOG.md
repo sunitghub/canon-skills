@@ -8,8 +8,13 @@ Register these directly into a project with `skills.sh add <name>`.
 
 | Skill | Category | Description |
 |---|---|---|
+| `handoff` | tools | Session context handoff protocol using repo-local HANDOFF.md |
+| `ticket` | tools | Bundled minimal ticket system (tkt) for creating, tracking, and closing tasks. Used by sprint and sprint-check. |
+| `capture` | dev | Record a non-obvious discovery, constraint, or gotcha to HANDOFF.md — invoke when something surprising is found mid-sprint |
 | `context-check` | agent-ops | Audit always-on context load for bloat, redundancy, and quality — invoke periodically or when context feels heavy |
-| `sprint` | dev | Invoke when asked to add, fix, update, implement, debug, or build anything. Creates the ticket, runs planning (acceptance, impact analysis), builds and tests, then closes with full wrapup. |
+| `doc-audit` | agent-ops | Audit user-facing docs for overstated claims, missing prerequisites, absolutes, scope inflation, and stale commands. |
+| `sprint` | dev | Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything |
+| `wrapup` | dev | Run quality checks, review, and commit after completing a feature, fix, or session — invoke when work is done and ready to ship |
 
 ## Standards
 
@@ -27,15 +32,3 @@ Imported automatically by the skills above. Do not register directly.
 
 | Skill | Imported by |
 |---|---|
-| `handoff` | sprint, wrapup |
-| `ticket` | sprint, wrapup |
-| `capture` | sprint |
-| `doc-audit` | wrapup |
-| `code-reviewer` | wrapup |
-| `code-simplifier` | wrapup |
-| `eval` | sprint |
-| `impact-analysis` | sprint |
-| `orient` | sprint |
-| `repo-check` | wrapup |
-| `security-review` | wrapup |
-| `wrapup` | sprint |

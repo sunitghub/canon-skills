@@ -3,13 +3,8 @@ name: sprint
 description: Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
-depends: [capture, ticket, handoff, ticket-layout]
+depends: []
 ---
-
-@../capture/SKILL.md
-@../../standards/ticket-layout.md
-@../../tools/handoff.md
-@../../tools/ticket.md
 
 # Sprint
 
@@ -62,7 +57,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 
 **Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any normal/high-risk request to add, fix, update, debug, implement, or build something.
 
-1. **Ticket and context.** Run `sprint start "<title>"`. It creates/starts the
+1. **Ticket and context.** Read `tools/ticket.md`, then run `sprint start "<title>"`. It creates/starts the
    ticket, records it as active, and ensures `DECISIONS.md` and `HANDOFF.md`
    exist.
 
@@ -73,7 +68,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan
    - `research.md` — high-risk and brownfield sprints only; objective compression of truth (see Research below)
    - If these already exist: read them and proceed without recreating.
-   - See `ticket-layout` skill for the canonical field contract, doc lifecycle, and board rendering rules.
+   - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
    - Record the tier and one-line reason in `plan.md`.
 
 4. **Context.** Read in order:
@@ -81,7 +76,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
      actively scan every entry: identify any that constrain or conflict with this sprint's
      request. A conflict is not a passive note — it must be surfaced in the brief and
      resolved by the user before any implementation proceeds.
-   - `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
+   - Read `tools/handoff.md`, then: `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
    - Active sprint files
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold
 
