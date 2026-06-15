@@ -16,12 +16,10 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 
 ## Code Quality
 
-- No comments unless the WHY is non-obvious (hidden constraint, subtle invariant, workaround).
 - No error handling for scenarios that can't happen. Trust internal guarantees.
 - Only validate at system boundaries (user input, external APIs).
 - No speculative abstractions. Three similar lines beats a premature helper.
 - No half-finished implementations.
-- No backwards-compatibility shims for removed code.
 
 ## Output Style
 
@@ -34,32 +32,6 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 
 See [standards/efficiency.md](standards/efficiency.md) for the full agent standards (code quality, security, git conventions, token efficiency).
 
-## Skill Discovery & Registration
-
-The `skills.sh` script lives in `tools/`. After install, `tools/` is on PATH so you can invoke it directly.
-
-To see all available skills:
-```bash
-skills.sh list
-```
-
-To register a skill into the current project:
-```bash
-skills.sh add <skill-name>
-skills.sh add <skill-name> /path/to/project
-```
-
-To check what's registered in a project:
-```bash
-skills.sh status
-```
-
-To wire Claude Code hooks after cloning to a new location:
-```bash
-skills.sh init
-```
-
-See [CATALOG.md](CATALOG.md) for a static snapshot of all available skills.
 
 ## Testing the Board UI
 
