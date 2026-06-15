@@ -3,6 +3,7 @@ name: doc-audit
 description: Audit user-facing docs for overstated claims, missing prerequisites, absolutes, scope inflation, and stale commands.
 category: agent-ops
 tags: [docs, accuracy, audit, claims]
+hidden: true
 ---
 
 # Doc Audit

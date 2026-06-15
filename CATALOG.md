@@ -9,7 +9,6 @@ Register these directly into a project with `skills.sh add <name>`.
 | Skill | Category | Description |
 |---|---|---|
 | `capture` | dev | Record a non-obvious discovery, constraint, or gotcha to HANDOFF.md — invoke when something surprising is found mid-sprint |
-| `doc-audit` | agent-ops | Audit user-facing docs for overstated claims, missing prerequisites, absolutes, scope inflation, and stale commands. |
 | `sprint` | dev | Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything |
 
 ## Standards
