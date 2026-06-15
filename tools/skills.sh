@@ -313,6 +313,24 @@ cmd_add() {
     exit 1
   fi
 
+  # Inject-style skills: write @-import to project files instead of symlink/table
+  if [ "$(fm_field "$skill_file" inject)" = "true" ]; then
+    local inject_line="@$skill_file"
+    echo "Registering: $name ($category)"
+    for f in "$project_dir/CLAUDE.md" "$project_dir/AGENTS.md"; do
+      if grep -qxF "$inject_line" "$f" 2>/dev/null; then
+        echo "  [$(basename "$f")]  already present"
+      else
+        echo "$inject_line" >> "$f"
+        echo "  [$(basename "$f")]  added @-import"
+      fi
+    done
+    register_project "$project_dir"
+    echo ""
+    echo "Done. $desc"
+    return 0
+  fi
+
   # Resolve dependencies first (no-op for table — deps load via symlink discovery)
   while IFS= read -r dep; do
     [ -n "$dep" ] && cmd_add "$dep" "$project_dir" "dep"
@@ -690,6 +708,27 @@ cmd_remove() {
     echo "Error: skill '$skill' not found."
     exit 1
   }
+
+  # Inject-style skills: strip @-import from project files
+  if [ "$(fm_field "$skill_file" inject)" = "true" ]; then
+    local inject_line="@$skill_file"
+    local claude_file="$project_dir/CLAUDE.md"
+    local agents_file="$project_dir/AGENTS.md"
+    for f in "$claude_file" "$agents_file"; do
+      [ -f "$f" ] || continue
+      if grep -qxF "$inject_line" "$f"; then
+        awk -v p="$inject_line" '$0 != p' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+        echo "  [$(basename "$f")]  removed @-import"
+      fi
+    done
+    echo "Unregistered: $skill"
+    if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ] && \
+       ! grep -qF "$SKILLS_ROOT" "$claude_file" 2>/dev/null && \
+       ! grep -qF "$SKILLS_ROOT" "$agents_file" 2>/dev/null; then
+      deregister_project "$project_dir"
+    fi
+    return 0
+  fi
 
   # Remove table row from AGENTS.md
   local agents_file="$project_dir/AGENTS.md"

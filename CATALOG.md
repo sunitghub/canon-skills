@@ -17,6 +17,7 @@ Auto-injected / contributor reference — not registered directly.
 
 | Standard | Category | Description |
 |---|---|---|
+| `efficiency` | agent-ops | Coding standards, git conventions, and token-efficiency rules for AI agents |
 | `skill-setup-std` | agent-ops | Validate skill files against canon standards — invoke when adding a new skill or auditing existing ones |
 
 ## Sub-skills

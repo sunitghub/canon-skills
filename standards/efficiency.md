@@ -3,7 +3,7 @@ name: efficiency
 description: Coding standards, git conventions, and token-efficiency rules for AI agents
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
-hidden: true
+inject: true
 version: 1.0.0
 updated: 2026-06-03
 ---
