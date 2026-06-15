@@ -1,16 +1,19 @@
 ---
 name: skill-setup-std
-description: Conventions for writing, naming, and composing skills in canon
+description: Validate skill files against canon standards — invoke when adding a new skill or auditing existing ones
 category: agent-ops
 tags: [skills, contributors, conventions]
-hidden: true
 version: 1.4.0
-updated: 2026-06-14
+updated: 2026-06-15
 ---
 
 # Skill Setup Standard
 
 Rules for adding or modifying skills in canon. Follow these so every skill behaves predictably and the import graph stays clean.
+
+## Validation
+
+Run `./tools/canon-dev.sh lint` to validate all skills against these conventions. Fix any reported violations before committing. The linter checks: required frontmatter fields, `hidden` flag consistency, resolvable `depends` entries, and description quality.
 
 ## File Location
 

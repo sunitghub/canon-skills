@@ -12,7 +12,6 @@ Register these directly into a project with `skills.sh add <name>`.
 | `context-check` | agent-ops | Audit always-on context load for bloat, redundancy, and quality — invoke periodically or when context feels heavy |
 | `doc-audit` | agent-ops | Audit user-facing docs for overstated claims, missing prerequisites, absolutes, scope inflation, and stale commands. |
 | `sprint` | dev | Start, plan, and ship a focused change — invoke when asked to add, fix, update, implement, debug, or build anything |
-| `wrapup` | dev | Run quality checks, review, and commit after completing a feature, fix, or session — invoke when work is done and ready to ship |
 
 ## Standards
 
@@ -20,6 +19,7 @@ Auto-injected / contributor reference — not registered directly.
 
 | Standard | Category | Description |
 |---|---|---|
+| `skill-setup-std` | agent-ops | Validate skill files against canon standards — invoke when adding a new skill or auditing existing ones |
 
 ## Sub-skills
 

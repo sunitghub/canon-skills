@@ -3,6 +3,7 @@ name: wrapup
 description: Run quality checks, review, and commit after completing a feature, fix, or session — invoke when work is done and ready to ship
 category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
+hidden: true
 depends: []
 ---
 
