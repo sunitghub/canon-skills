@@ -11,8 +11,6 @@ updated: 2026-06-13
 
 Internal reference. Defines the canonical structure for all canon tickets. Update this skill whenever ticket layout, frontmatter fields, doc lifecycle, or board rendering rules change.
 
----
-
 ## Folder Structure
 
 ```
@@ -27,8 +25,6 @@ Internal reference. Defines the canonical structure for all canon tickets. Updat
 ```
 
 The `.tickets/<id>/` layout is **canonical** (folder layout). The legacy flat layout (`.tickets/<id>.md`) is read by the board and server for backwards compatibility but never written by new tooling.
-
----
 
 ## Frontmatter Contract
 
@@ -69,8 +65,6 @@ Board labels: Open → In Progress → Done → Discarded (`cancelled` is the st
 
 **priority:** `0` (critical) · `1` (high) · `2` (normal) · `3` (low) · `4` (someday)
 
----
-
 ## Sprint Doc Lifecycle
 
 Sprint docs are created by the agent inside `.tickets/<id>/`. They are not managed by `tkt`.
@@ -83,8 +77,6 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
 **Doc-less tickets** — tickets with no sprint docs are valid (e.g. backlog items, tasks that don't need a sprint). The board renders the ticket body in the modal instead of doc tabs.
-
----
 
 ## Board Rendering Rules
 
@@ -105,14 +97,9 @@ The board (`sprint-check-app`) derives all rendering from the ticket JSON produc
 
 **Hidden docs** — `ticket.md` is excluded from the docs tab list. The board never renders it as a tab.
 
----
-
 ## Read/Write Rules
 
 - `tkt` owns `ticket.md` — fields are written only via `tkt create`, `tkt start`, `tkt close`, `tkt reopen`. Agents must not edit `ticket.md` frontmatter directly.
 - Sprint docs are agent-owned — the agent creates and edits `acceptance.md`, `plan.md`, `research.md`, `summary.md`.
 - Closed tickets — `sprint complete` runs `tkt close`, which sets `status: closed` and removes `ACTIVE`. Sprint docs become read-only on the board. The agent must not reopen a ticket after close without explicit user instruction.
 - ACTIVE file — `.tickets/ACTIVE` contains exactly one ticket ID when a sprint is in progress. `tkt start` writes it; `tkt close` removes it. Only one sprint may be active at a time.
-
----
-
