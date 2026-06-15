@@ -3,6 +3,7 @@ name: repo-audit
 description: Audit a repo across four dimensions — uniqueness and selling point, philosophy-to-implementation coherence, setup and doc effectiveness, and codebase quality (DRY, KISS, SRP, composition). Invoke when asked to review, assess, or health-check a repo.
 category: agent-ops
 tags: [audit, analysis, sdlc, docs, philosophy]
+hidden: true
 ---
 
 # Repo Audit
