@@ -289,6 +289,33 @@ strip_canon_project_imports() {
   done < "$file" > "$tmp" && mv "$tmp" "$file"
 }
 
+_post_register_prompts() {
+  local name="$1" project_dir="$2"
+  [[ "$name" == "ticket" || "$name" == "sprint-check" || "$name" == "sprint" ]] || return 0
+  [[ "$name" == "sprint" ]] && ensure_sprint_project_marker "$project_dir"
+  offer_tkt_path
+}
+
+_prune_redundant_deps() {
+  local skill_file="$1" project_dir="$2" name="$3"
+  local depends; depends=$(fm_field "$skill_file" depends)
+  [ -z "$depends" ] && return 0
+  local agents_file="$project_dir/AGENTS.md"
+  local redundant=()
+  while IFS= read -r dep; do
+    [ -z "$dep" ] && continue
+    grep -qF "| $dep |" "$agents_file" 2>/dev/null && redundant+=("$dep")
+  done < <(resolve_deps "$skill_file")
+  [ ${#redundant[@]} -eq 0 ] && return 0
+  for dep in "${redundant[@]}"; do
+    cmd_remove "$dep" "$project_dir" > /dev/null || true
+  done
+  local dep_list
+  dep_list=$(printf '%s, ' "${redundant[@]}")
+  echo ""
+  echo "Removed: ${dep_list%, } — now included in ${name} transitively."
+}
+
 cmd_add() {
   local skill="${1:-}"
   local project_dir="${2:-$(pwd)}"
@@ -302,11 +329,10 @@ cmd_add() {
     exit 1
   }
 
-  local name desc category depends
+  local name desc category
   name=$(fm_field "$skill_file" name)
   desc=$(fm_field "$skill_file" description)
   category=$(fm_field "$skill_file" category)
-  depends=$(fm_field "$skill_file" depends)
 
   # Hidden skills are internal-only — block direct registration
   if [ -z "$as_dep" ] && [ "$(fm_field "$skill_file" hidden)" = "true" ]; then
@@ -350,31 +376,8 @@ cmd_add() {
   echo ""
   echo "Done. $desc"
 
-  if [[ "$name" == "ticket" || "$name" == "sprint-check" || "$name" == "sprint" ]]; then
-    if [[ "$name" == "sprint" ]]; then
-      ensure_sprint_project_marker "$project_dir"
-    fi
-    offer_tkt_path
-  fi
-
-  # Remove explicitly-registered skills that are now covered transitively by this one
-  if [ -n "$depends" ]; then
-    local redundant=()
-    while IFS= read -r dep; do
-      [ -z "$dep" ] && continue
-      grep -qF "| $dep |" "$agents_file" 2>/dev/null && redundant+=("$dep")
-    done < <(resolve_deps "$skill_file")
-    if [ ${#redundant[@]} -gt 0 ]; then
-      for dep in "${redundant[@]}"; do
-        cmd_remove "$dep" "$project_dir" > /dev/null || true
-      done
-      local dep_list
-      dep_list=$(printf '%s, ' "${redundant[@]}")
-      dep_list="${dep_list%, }"
-      echo ""
-      echo "Removed: ${dep_list} — now included in ${name} transitively."
-    fi
-  fi
+  _post_register_prompts "$name" "$project_dir"
+  _prune_redundant_deps "$skill_file" "$project_dir" "$name"
 
   register_project "$project_dir"
   upsert_skills_symlinks "$project_dir"
