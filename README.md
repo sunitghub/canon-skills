@@ -261,7 +261,7 @@ Register canon in another project:
 
 ## Contributing
 
-Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**.
+Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. For the full skill authoring lifecycle (lint → eval → register), see **[guides/skill-authoring.md](guides/skill-authoring.md)**.
 
 ---
 
