@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Validates skill files against canon standards. Use when adding a new skill or auditing existing ones.
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.6.0
-updated: 2026-06-15
+version: 1.7.0
+updated: 2026-06-16
 ---
 
 # Skill Setup Standard
@@ -280,6 +280,42 @@ A nuance to address is first a decision: does it edit an existing skill or becom
 
 When in doubt, prefer editing — a new skill earns its place only when it has a coherent standalone job (see "Standalone vs. hidden"). If the file carries `version:` / `updated:` frontmatter (standards do; skills usually do not), bump them in the same edit.
 
+## Testing
+
+Every skill should ship with at least two execution eval test cases. These live in `skills/<name>/evals/evals.json` and are run via the `skill-eval` skill.
+
+**Format:**
+
+```json
+{
+  "skill_name": "my-skill",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "The user prompt that should trigger the skill's behavior",
+      "expected_output": "Human-readable description of what a correct response looks like",
+      "expectations": [
+        "The response includes X",
+        "The skill performed step Y",
+        "Output format matches Z"
+      ]
+    }
+  ]
+}
+```
+
+**Running evals:**
+
+```bash
+/skill-eval <name>
+```
+
+This spawns an executor subagent (fresh context, skill content injected) and a grader subagent per eval case, then reports pass/fail per expectation.
+
+**What to test:** Cover the happy path and one non-obvious edge case — a prompt the skill might mishandle or where the scope boundary is ambiguous. Expectations should be specific and verifiable from the executor's output, not vague ("handles it correctly").
+
+**Out of scope:** Trigger eval (whether the skill fires for the right description) and benchmark/improve modes. For those, see [skill-creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md).
+
 ## Adding a new skill
 
 1. Create a directory `skills/<name>/` and write the skill as `skills/<name>/SKILL.md`; add `hidden: true` if it is only invoked by other skills
@@ -287,3 +323,4 @@ When in doubt, prefer editing — a new skill earns its place only when it has a
 3. Update `CATALOG.md` by running `skills.sh catalog` (or manually if the script doesn't support it)
 4. If the skill is imported by an existing skill, add it to that skill's `depends:` list
 5. If it's standalone, document it in README.md if it warrants a mention
+6. Write at least 2 eval test cases in `skills/<name>/evals/evals.json` and run `/skill-eval <name>` to verify
