@@ -355,7 +355,7 @@ Add an optional `case_type` field to each eval to document coverage:
 
 `case_type` is optional and author-facing — `skill-eval` does not filter by it. Its value is coverage awareness: if all your evals are `control`, you probably have blind spots.
 
-**What to test:** Expectations should be specific and verifiable from the executor's output, not vague ("handles it correctly").
+**What to test:** Expectations should be explicit, binary, numbered criteria — assertions the grader can verify unambiguously from the executor's output. Write them as observable facts: "writes to HANDOFF.md", "does not print to stdout", "includes the ticket ID in the first line". Avoid prose that requires interpretation ("handles it correctly", "responds appropriately").
 
 **Out of scope:** Trigger eval (whether the skill fires for the right description) and benchmark/improve modes. For those, see [skill-creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md).
 

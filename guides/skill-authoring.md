@@ -34,6 +34,8 @@ If lint fails, fix structure before writing evals — a malformed skill may pass
 
 If eval fails, fix the skill body, not the expectations (unless the expectation itself was wrong).
 
+**Improving an existing skill:** Run evals first to record a baseline pass rate. Make the edit. Re-run. Keep the change only if the pass rate holds or improves — if it regresses, revert and try a narrower edit.
+
 ## Coverage checklist
 
 Each eval set should cover at least three of these case types (add `case_type` to each eval for visibility):
