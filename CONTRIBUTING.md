@@ -26,7 +26,8 @@ decision: a nuance that changes *how* a skill does its one job is an edit; a
 2. If an existing skill imports it, add it to that skill's `depends:` list.
 3. Regenerate the catalog: `./tools/canon-dev.sh catalog`, and commit `CATALOG.md`.
 4. If it's standalone, mention it in `README.md` only if it warrants one.
-5. Run the [pre-PR checks](#before-opening-a-pr).
+5. Write at least 2 eval test cases in `skills/<name>/evals/evals.json` and run `/skill-eval <name>` to verify. See [guides/skill-authoring.md](guides/skill-authoring.md) for the format and coverage checklist.
+6. Run the [pre-PR checks](#before-opening-a-pr).
 
 ### Before opening a PR
 
