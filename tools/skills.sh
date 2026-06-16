@@ -784,6 +784,24 @@ cmd_help() {
   printf '\n%s\n\n' "$divider"
 }
 
+_print_usage() {
+  echo "Usage: skills.sh <command> [skill] [project-dir]"
+  echo ""
+  echo "  list                    Show all available skills"
+  echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
+  echo "  addall [dir]            Register all available skills into a project (default: cwd)"
+  echo "  refresh [dir]           Prune stale @-imports and sync standards (default: cwd)"
+  echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
+  echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
+  echo "  help <skill>            Show full documentation for a skill (alias: <skill> --h)"
+  echo "  init                    Set up this canon install: wire project hooks,"
+  echo "                          migrate stale global hooks, install Pi extension,"
+  echo "                          record install path"
+  echo "  uninstall               Remove canon hooks/config for this install"
+  echo ""
+  echo "Contributor commands (canon repo only): canon-dev.sh catalog|lint|delete"
+}
+
 cmd_init() {
   echo "canon init — wiring agent hooks from: $SKILLS_ROOT"
   echo ""
@@ -816,15 +834,7 @@ cmd_init() {
   offer_tkt_path
 
   echo ""
-  echo "Next — register skills in your projects:"
-  echo ""
-  printf "  %s\n    %s\n" "skills.sh add sprint [dir]" "Full dev lifecycle (plan → build → ship)"
-  printf "  %s\n    %s\n" "skills.sh addall [dir]"     "All available skills (start with sprint for most projects)"
-  printf "  %s\n    %s\n" "skills.sh status [dir]"     "Check registration and hook health"
-  printf "  %s\n    %s\n" "skills.sh refresh [dir]"    "Re-register + heal stale paths"
-  printf "  %s\n    %s\n" "skills.sh list"             "Browse all available skills"
-  echo ""
-  echo "Default project dir is cwd — or pass a path explicitly."
+  _print_usage
   echo ""
   echo "Before deleting this install, remove canon hooks with:"
   echo "  skills.sh uninstall"
@@ -1010,21 +1020,7 @@ case "$cmd" in
     exit 1
     ;;
   *)
-    echo "Usage: skills.sh <command> [skill] [project-dir]"
-    echo ""
-    echo "  list                    Show all available skills"
-    echo "  add <skill> [dir]       Register a skill into a project (default: cwd)"
-    echo "  addall [dir]            Register all available skills into a project (default: cwd)"
-    echo "  refresh [dir]           Prune stale @-imports and sync standards (default: cwd)"
-    echo "  status [dir]            Show registered skills and detect issues (default: cwd)"
-    echo "  remove <skill> [dir]    Unregister a skill from a project (default: cwd)"
-    echo "  help <skill>            Show full documentation for a skill (alias: <skill> --h)"
-    echo "  init                    Set up this canon install: wire project hooks,"
-    echo "                          migrate stale global hooks, install Pi extension,"
-    echo "                          record install path"
-    echo "  uninstall               Remove canon hooks/config for this install"
-    echo ""
-    echo "Contributor commands (canon repo only): canon-dev.sh catalog|lint|delete"
+    _print_usage
     exit 1
     ;;
 esac
