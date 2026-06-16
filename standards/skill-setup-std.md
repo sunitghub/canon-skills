@@ -312,7 +312,50 @@ Every skill should ship with at least two execution eval test cases. These live 
 
 This spawns an executor subagent (fresh context, skill content injected) and a grader subagent per eval case, then reports pass/fail per expectation.
 
-**What to test:** Cover the happy path and one non-obvious edge case — a prompt the skill might mishandle or where the scope boundary is ambiguous. Expectations should be specific and verifiable from the executor's output, not vague ("handles it correctly").
+**Coverage — case types:** Aim to cover at least three of these five types across your eval set:
+
+| Case type | What it tests |
+|---|---|
+| `control` | Happy path — basic correct behavior |
+| `edge` | Capability boundary — unusual input the skill may mishandle |
+| `compliance` | Does the skill follow its own rules and constraints? |
+| `boundary` | Does it know when NOT to handle something (escalate, decline, stop)? |
+| `over-caution` | Does it avoid refusing or hedging when it shouldn't? |
+
+Add an optional `case_type` field to each eval to document coverage:
+
+```json
+{
+  "skill_name": "my-skill",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "The user prompt that should trigger the skill's behavior",
+      "expected_output": "Human-readable description of what a correct response looks like",
+      "expectations": [
+        "The response includes X",
+        "The skill performed step Y",
+        "Output format matches Z"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "boundary",
+      "prompt": "A prompt that should cause the skill to decline or escalate",
+      "expected_output": "Skill declines and explains why, or routes to the right handler",
+      "expectations": [
+        "Did not attempt to handle the request directly",
+        "Provided a reason or next step"
+      ]
+    }
+  ]
+}
+```
+
+`case_type` is optional and author-facing — `skill-eval` does not filter by it. Its value is coverage awareness: if all your evals are `control`, you probably have blind spots.
+
+**What to test:** Expectations should be specific and verifiable from the executor's output, not vague ("handles it correctly").
 
 **Out of scope:** Trigger eval (whether the skill fires for the right description) and benchmark/improve modes. For those, see [skill-creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md).
 
