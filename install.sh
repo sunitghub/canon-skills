@@ -60,11 +60,7 @@ RC_FILE="$HOME/.bashrc"
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 
 printf '\nDone.\n\n'
-bash "$TARGET/tools/skills.sh" --help 2>/dev/null || true
-printf '\n  ──────────────────────────────────────────────────\n'
-printf '  Run:  source %s\n' "$RC_FILE"
-printf '  to add skills.sh, sprint, tkt, sprint-check to your PATH.\n'
-printf '\n'
+printf '  ──────────────────────────────────────────────────\n'
 printf '  Try the Todo walkthrough:\n'
 printf '    %s/scripts/copy-todo-walkthrough.sh /tmp/canon-todo\n' "$TARGET"
 printf '    cd /tmp/canon-todo && %s/tools/skills.sh add sprint\n' "$TARGET"
