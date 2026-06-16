@@ -1,0 +1,59 @@
+{
+  "skill_name": "check-offline",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "check-offline: Check this file for offline readiness.\n\n```html\n<!DOCTYPE html>\n<html>\n<head><title>Demo</title></head>\n<body>\n  <link rel=\"stylesheet\" href=\"style.css\">\n  <script src=\"app.js\"></script>\n</body>\n</html>\n```",
+      "expected_output": "Confirms the prototype is offline-ready. No external dependencies flagged.",
+      "expectations": [
+        "Reports offline-ready or no external dependencies detected",
+        "Does not flag style.css or app.js as remote dependencies"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "compliance",
+      "prompt": "check-offline: Check this file for offline readiness.\n\n```html\n<!DOCTYPE html>\n<html>\n<head>\n  <script src=\"https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.0/babel.min.js\"></script>\n  <link rel=\"stylesheet\" href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css\">\n  <link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n</head>\n<body><h1>Demo</h1></body>\n</html>\n```",
+      "expected_output": "Flags all three remote dependencies (Babel CDN script, Bootstrap CDN stylesheet, Google Fonts preconnect) and suggests downloading them locally or inlining.",
+      "expectations": [
+        "Flags the Babel CDN script tag as a remote dependency",
+        "Flags the Bootstrap CDN stylesheet as a remote dependency",
+        "Flags the Google Fonts preconnect link as a remote dependency",
+        "Suggests a fix such as downloading locally or inlining"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "boundary",
+      "prompt": "check-offline: Check this file for offline readiness.\n\n```html\n<!DOCTYPE html>\n<html>\n<head><title>Demo</title></head>\n<body>\n<!-- old cdn: <script src=\"https://cdn.example.com/old-lib.js\"></script> -->\n<script src=\"lib.js\"></script>\n</body>\n</html>\n```",
+      "expected_output": "Reports offline-ready. The commented-out CDN URL is not flagged.",
+      "expectations": [
+        "Does not flag the CDN URL inside the HTML comment",
+        "Reports the file as offline-ready or no active external dependencies found"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "over-caution",
+      "prompt": "check-offline: Check this file for offline readiness.\n\n```html\n<!DOCTYPE html>\n<html>\n<body>\n  <img src=\"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQI12NgAAIABQAABjE+ibYAAAAASUVORK5CYII=\">\n  <script>const LABEL = \"https://example.com/api\";</script>\n</body>\n</html>\n```",
+      "expected_output": "Reports offline-ready. Does not flag the data URI or the URL string literal in JS (it is not inside a fetch or XHR call).",
+      "expectations": [
+        "Does not flag the data: URI image as a remote dependency",
+        "Does not flag the URL string literal in the script block as a remote dependency",
+        "Reports the file as offline-ready"
+      ]
+    },
+    {
+      "id": 5,
+      "case_type": "compliance",
+      "prompt": "check-offline: Check this file for offline readiness.\n\n```html\n<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');\n  </style>\n</head>\n<body><p style=\"font-family: Inter\">Hello</p></body>\n</html>\n```",
+      "expected_output": "Flags the Google Fonts @import inside the <style> block as a remote dependency.",
+      "expectations": [
+        "Flags the @import url() inside the style block as a remote dependency",
+        "Identifies it as a Google Fonts reference",
+        "Suggests downloading the font files locally or using a system font fallback"
+      ]
+    }
+  ]
+}

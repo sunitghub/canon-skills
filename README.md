@@ -257,6 +257,7 @@ Register canon in another project:
 
 - **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.
 - **[Todo walkthrough →](examples/canon-todo-walkthrough)** — copy it to a disposable folder and walk the full flow, from empty board to shipped app.
+- **[check-offline skill example →](examples/check-offline)** — a worked skill + evals example: scans HTML prototypes for CDN dependencies that break offline.
 - **[All docs, by what you're doing →](docs/README.md)** — learn, set up, reference, why.
 
 ## Contributing
