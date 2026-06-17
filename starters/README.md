@@ -12,6 +12,8 @@ Copy-paste scaffolding for new agent projects. Drop these into a new repo and ad
 | `skills/my-skill/SKILL.md` | Skill anatomy template with all required sections |
 | `skills/my-skill/evals/evals.json` | Eval scaffold with all four case types |
 
+These are a one-time copy — the starting point for a new project. Once you run `skills.sh add sprint`, canon's live-reference model takes over and your skills stay in sync with `~/.canon` without further copying.
+
 ## Quick start
 
 1. Copy the files you need into your new project root

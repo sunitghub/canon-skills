@@ -5,6 +5,10 @@ Find docs by what you're trying to do.
 ### Learn by Doing
 - [Todo walkthrough](../examples/canon-todo-walkthrough) — copy it to a disposable folder, then walk from empty board to shipped app, including high-impact human checkpoint handling.
 
+### Start a New Agent Project
+- [Agent Playbook](agent-playbook.md) — portable, language-agnostic principles: agent design, eval methodology, sprint workflow, prompt patterns, and common failure modes.
+- [Starters](../starters/) — copy-paste scaffolding (CLAUDE.md, AGENTS.md, standards, skill template, evals scaffold) for Python, TypeScript, or any stack.
+
 ### Set Up
 - [AI Agents Setup](../guides/AI-Agents-Setup.md) — per-agent wiring, the live-reference model, verification.
 - [Skill authoring](../guides/skill-authoring.md) — lint → eval → register lifecycle for writing and testing skills.

@@ -14,7 +14,7 @@
 
 | Skill | Category | Source |
 |-------|----------|--------|
-| sprint | dev | ~/.canon/skills/sprint/SKILL.md |
+| sprint | dev | ~/.canon/skills/sprint/SKILL.md |  <!-- replace with your actual canon install path -->
 
 ## Workflow
 
