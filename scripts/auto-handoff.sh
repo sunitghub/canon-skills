@@ -55,6 +55,8 @@ ${TICKETS}
 fi
 
 NEW_SNAPSHOT="${NEW_SNAPSHOT}
+
+**Convention check:** Did this session introduce any patterns, naming norms, or gotchas worth adding to \`AGENTS.md\`? If yes, propose the addition before ending.
 <!-- HANDOFF-SNAPSHOT:END -->"
 
 if [ -f "$HANDOFF" ] && command -v python3 &>/dev/null; then

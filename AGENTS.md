@@ -19,16 +19,6 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 See [standards/efficiency.md](standards/efficiency.md) for the full agent standards (code quality, security, git conventions, token efficiency).
 
 
-## Testing the Board UI
-
-Any change to `tools/sprint-check-app/app.html` requires Playwright verification — not just grep-based tests.
-
-- Run: `npm run test:ui` (requires sprint-check server on port 8423)
-- Start server: `python3 tools/sprint-check-app/server.py`
-- Test file: `tests/sprint-check-app.spec.js`
-- Ticket card selector: `.card`; create button: `#btn-create`
-- `npm test` (bash suite) covers non-UI regressions; both must pass before `sprint complete`
-
 ## Worktrees (Parallel Agents)
 
 When running multiple Claude Code instances in parallel worktrees:
