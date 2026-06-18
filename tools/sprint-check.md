@@ -117,7 +117,7 @@ confirmation first.
 
 ## New Ticket
 
-Click `+ New ticket` in the header. As you type the title, the type (Feature / Task / Bug / etc.) is detected automatically. Select type and priority, write a description, and submit — the ticket lands in Open using the canonical folder layout.
+Click `+ New` in the header. As you type the title, the type (Feature / Task / Bug / etc.) is detected automatically. Select type and priority, write a description, and submit — the ticket lands in Open using the canonical folder layout.
 
 ## Agent Workflow
 
