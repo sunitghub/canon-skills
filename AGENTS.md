@@ -14,20 +14,6 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - Be concise in output, thorough in reasoning.
 - Test before declaring done.
 
-## Code Quality
-
-- No error handling for scenarios that can't happen. Trust internal guarantees.
-- Only validate at system boundaries (user input, external APIs).
-- No speculative abstractions. Three similar lines beats a premature helper.
-- No half-finished implementations.
-
-## Output Style
-
-- No sycophantic openers or closing fluff.
-- Short responses by default. Expand only when the task requires it.
-- Reference code as `file_path:line_number` when applicable.
-- No emoji unless explicitly requested.
-
 ## Standards
 
 See [standards/efficiency.md](standards/efficiency.md) for the full agent standards (code quality, security, git conventions, token efficiency).

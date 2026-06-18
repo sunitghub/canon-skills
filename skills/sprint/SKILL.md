@@ -86,11 +86,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Produce the sprint brief from Step 9.
    - Skip Steps 6-8 unless new findings promote the work to high-risk.
 
-6. **Research high-risk work.** Read `skills/sprint/reference/orient.md`, then run the orient protocol: survey the subsystem, trace dependencies, flag non-obvious relationships. Writes findings to `.tickets/<id>/research.md` (Objective, Relevant Files, System Model, Constraints, Unknowns, Not In Scope). Findings feed into the Grill step.
-
-   After research is complete, pause and present a brief summary: what was found, key constraints, and open unknowns. Ask the user to review before proceeding to Plan. This is the highest-leverage review checkpoint — a bad research premise produces a bad plan.
-
-   `research.md` is optional for normal-tier work. For lightweight brownfield changes, add a `## Research Notes` section to `plan.md` instead.
+6. **Research high-risk work.** Read `skills/sprint/reference/orient.md` and follow the orient protocol. Writes findings to `.tickets/<id>/research.md`. After research is complete, pause and present a brief summary — what was found, key constraints, open unknowns — and ask the user to review before proceeding to Plan. (`research.md` is optional for normal-tier; use a `## Research Notes` section in `plan.md` instead.)
 
 7. **Grill high-risk work.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 
@@ -110,14 +106,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    materially change the approach, surface it to the user before proceeding.
    Log the pre-mortem under `## Pre-mortem` in `plan.md`.
 
-8. **Impact analysis for high-risk work.** Read `skills/sprint/reference/impact-analysis.md`, then run the full impact analysis process:
-   - Interrogate the request — ask every question whose answer changes the risk profile.
-   - Rate all five dimensions (Audience, Reversibility, Blast radius, Trigger paths, Cascade risk).
-   - For every HIGH rating: add the required action to `plan.md` and the required test to `acceptance.md ## Test Plan`.
-   - If the impact-analysis human checkpoint triggers, resolve it before implementation, record the outcome in `plan.md`, and add the required approval checkbox to `acceptance.md ## Test Plan` when HIGH-impact approval is required.
-   - Past sprint carryover: add regression tests for any closed tickets that touched the same files.
-   - Write the `## Impact Assessment` block to `plan.md` and `## Test Plan` to `acceptance.md`.
-   - If test location is unclear, ask the user before proceeding.
+8. **Impact analysis for high-risk work.** Read `skills/sprint/reference/impact-analysis.md` and run the full impact analysis process. Writes `## Impact Assessment` to `plan.md` and required mitigation tests to `acceptance.md ## Test Plan`. Resolve any human checkpoint before implementation.
 
 9. **Sprint brief.** Produce:
    - What this sprint accomplishes (one sentence)
