@@ -1187,6 +1187,9 @@
         <button class="editor-tool" type="button" data-insert="heading" title="Heading" aria-label="Add heading">
           <span class="tool-text">H2</span>
         </button>
+        <button class="editor-tool" type="button" data-insert="bold" title="Bold" aria-label="Bold">
+          <span class="tool-text" style="font-weight:700">B</span>
+        </button>
         <span class="toolbar-sep"></span>
         <button class="editor-tool" type="button" data-insert="code" title="Inline code" aria-label="Add inline code">
           <svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"></path><path d="m8 6-6 6 6 6"></path></svg>
@@ -1258,6 +1261,9 @@
         <span class="toolbar-sep"></span>
         <button class="editor-tool" type="button" data-insert="heading" title="Heading" aria-label="Add heading">
           <span class="tool-text">H2</span>
+        </button>
+        <button class="editor-tool" type="button" data-insert="bold" title="Bold" aria-label="Bold">
+          <span class="tool-text" style="font-weight:700">B</span>
         </button>
         <span class="toolbar-sep"></span>
         <button class="editor-tool" type="button" data-insert="code" title="Inline code" aria-label="Add inline code">
@@ -2553,6 +2559,9 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
   } else if (kind === 'toggle') {
     before = linePrefixForTextarea(textarea, '<details>\n<summary>');
     after = '</summary>\n\n</details>';
+  } else if (kind === 'bold') {
+    before = '**';
+    after = '**';
   }
 
   textarea.setSelectionRange(start, end);
@@ -2569,6 +2578,9 @@ function continuationPrefix(line) {
 
   match = line.match(/^(\s*)-\s+(.*)$/);
   if (match) return { prefix: `${match[1]}- `, content: match[2] };
+
+  match = line.match(/^(\s*)\*\*(\d+)\.\s+(.*)$/);
+  if (match) return { prefix: `${match[1]}**${Number(match[2]) + 1}. `, content: match[3] };
 
   match = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
   if (match) return { prefix: `${match[1]}${Number(match[2]) + 1}. `, content: match[3] };
