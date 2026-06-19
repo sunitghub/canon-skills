@@ -838,6 +838,7 @@
       transition: border-color .1s, box-shadow .1s;
     }
     .modal-edit-area:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    .editor-kb-hint { font-size: 11px; color: var(--text-dim); padding: 3px 2px 0; opacity: .7; }
     .btn-primary {
       background: var(--accent); border-color: var(--accent); color: #fff;
     }
@@ -1195,6 +1196,7 @@
         </button>
       </div>
       <textarea id="m-edit-area" class="modal-edit-area" style="display:none" spellcheck="false"></textarea>
+      <div class="editor-kb-hint" id="m-kb-hint" style="display:none">Shift+↵ plain newline &nbsp;·&nbsp; ↵↵ exit list</div>
     </div>
     <div class="modal-footer">
       <div class="modal-actions" id="m-actions"></div>
@@ -1749,6 +1751,7 @@ function md(raw) {
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
+    .replace(/^\*\*([^*\n][^\n]*)$/gm,'<strong style="color:var(--text)">$1</strong>')
     .replace(/`([^`]+)`/g,  '<code class="doc-code">$1</code>')
     .replace(/^- \[([ xX])\] \x00(\d+)\x00(.+)$/gm, (_, checked, si, text) => {
       const done = checked.toLowerCase() === 'x';
@@ -2278,6 +2281,7 @@ function enterEditMode(t) {
   bodyEl.parentNode.querySelectorAll('.section-jumps').forEach(el => el.remove());
   document.getElementById('m-editor-toolbar').classList.add('open');
   editEl.style.display = 'block';
+  document.getElementById('m-kb-hint').style.display = '';
   editEl.focus();
 
   document.getElementById('m-actions').innerHTML =
@@ -2293,6 +2297,7 @@ function exitEditMode(t) {
   modalState.editMode = false;
   document.getElementById('m-docs').classList.remove('editing');
   document.getElementById('m-editor-toolbar').classList.remove('open');
+  document.getElementById('m-kb-hint').style.display = 'none';
   setText('m-title', t.title);
   renderModalDocs(t);
   renderModalBody(t);
