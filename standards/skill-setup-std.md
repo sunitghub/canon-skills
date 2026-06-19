@@ -322,7 +322,7 @@ When in doubt, prefer editing — a new skill earns its place only when it has a
 
 **Test with the models you plan to use.** Skills tuned for Opus may be too sparse for Haiku. If you need cross-model compatibility, verify with each model. Haiku needs more explicit guidance; Opus benefits from leaner content that doesn't over-explain.
 
-Every skill should ship with at least two execution eval test cases. These live in `skills/<name>/evals/evals.json` and are run via the `skill-eval` skill.
+Every skill should ship with at least three execution eval test cases. These live in `skills/<name>/evals/evals.json` and are run via the `skill-eval` skill.
 
 **Format:**
 
@@ -406,7 +406,7 @@ Add an optional `case_type` field to each eval to document coverage:
 3. Update `CATALOG.md` by running `skills.sh catalog` (or manually if the script doesn't support it)
 4. If the skill is imported by an existing skill, add it to that skill's `depends:` list
 5. If it's standalone, document it in README.md if it warrants a mention
-6. Write at least 2 eval test cases in `skills/<name>/evals/evals.json` and run `/skill-eval <name>` to verify
+6. Write at least 3 eval test cases in `skills/<name>/evals/evals.json` and run `/skill-eval <name>` to verify
 
 ## Pre-ship checklist
 
@@ -430,6 +430,6 @@ Before registering or sharing a skill:
 - [ ] Any `disallowed-tools` or hooks restrictions are documented at the top
 
 **Testing**
-- [ ] At least 2 eval cases covering ≥3 case types
+- [ ] At least 3 eval cases covering ≥3 case types
 - [ ] Evals pass via `/skill-eval <name>`
 - [ ] Tested with actual usage, not just the happy path

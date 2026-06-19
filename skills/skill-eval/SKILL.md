@@ -17,14 +17,18 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
 
 ## Steps
 
-0. **Structural check.** Analyse the SKILL.md body (all lines after the closing `---` of the frontmatter):
+0. **Structural check.** Analyse the SKILL.md body (all lines after the closing `---` of the frontmatter) and the eval case count:
 
-   - Count total body lines. If ≤ 100 → output `pass — body within threshold (N lines)` and continue.
-   - If > 100: identify every `##` section and its line span. If 2+ sections each exceed 30 lines → output `candidate for ref/split — body N lines; sections <name> (X lines), <name> (Y lines) exceed 30-line threshold`.
+   **Body size:**
+   - Count total body lines. If ≤ 300 → output `pass — body within threshold (N lines)` and continue.
+   - If > 300: identify every `##` section and its line span. If 2+ sections each exceed 30 lines → output `candidate for ref/split — body N lines; sections <name> (X lines), <name> (Y lines) exceed 30-line threshold`.
 
-   Output this under `### Structural check` in the eval report, before any case results. This check is advisory — it does not block execution evals.
+   **Eval coverage:**
+   - Read `skills/$ARGUMENTS/evals/evals.json` and count the entries in the `evals` array. If count ≥ 3 → output `pass — N eval cases`. If count < 3 → output `too few evals — N case(s); minimum is 3`.
 
-   *Thresholds: 100-line body, 30-line section. Calibrated so a small skill like `capture` (41 lines) passes clean and a large monolithic skill like a pre-split sprint SKILL.md (240 lines, two large sections) is flagged.*
+   Output both sub-checks under `### Structural check` in the eval report, before any case results. Both checks are advisory — they do not block execution evals.
+
+   *Thresholds: 300-line body (advisory; hard limit per standard is 500), 30-line section, 3 minimum eval cases.*
 
 1. **Read the skill.** Read `skills/$ARGUMENTS/SKILL.md` and `skills/$ARGUMENTS/evals/evals.json`. If either is missing, report the gap and stop — a missing `evals.json` is itself a finding.
 
@@ -42,9 +46,9 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
    - For each expectation: grade `pass`, `fail`, or `partial` with a one-line evidence citation
    - Return: pass count, total, and per-expectation breakdown
 
-3. **Aggregate.** After all cases complete, output:
-   - Per-case: id, prompt summary, verdict, any failed expectations with evidence
-   - Overall: `<n>/<total> expectations passed` and `pass` or `fail` verdict
+3. **Aggregate and report.** After all cases complete:
+   - Output the eval report inline (see Output format below).
+   - Write the same report to `skills/$ARGUMENTS/skill-eval-result.md`, replacing any prior contents. The file is always written — even if execution evals were skipped due to a missing `evals.json`.
 
 ## Output format
 
@@ -53,9 +57,12 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
 Run: <ISO date>
 
 ### Structural check
-pass — body within threshold (N lines)
--or-
-candidate for ref/split — body N lines; sections <name> (X lines), <name> (Y lines) exceed 30-line threshold
+Body: pass — body within threshold (N lines)
+      -or-
+      candidate for ref/split — body N lines; sections <name> (X lines), <name> (Y lines) exceed 30-line threshold
+Evals: pass — N eval cases
+       -or-
+       too few evals — N case(s); minimum is 3
 
 ### Case <id>: <prompt, truncated to 60 chars>
 - "<expectation>" → pass | fail | partial
@@ -64,7 +71,14 @@ candidate for ref/split — body N lines; sections <name> (X lines), <name> (Y l
 ### Summary
 <n>/<total> expectations passed
 Verdict: pass | fail
+
+### Issues
+| Issue | Details | Reason |
+|---|---|---|
+| <issue title> | <specific finding> | <why it matters> |
 ```
+
+Populate the Issues table with any `candidate for ref/split`, `too few evals`, failed expectations, or missing files. Leave the table empty (header only) if no issues were found.
 
 ## Gotchas
 
