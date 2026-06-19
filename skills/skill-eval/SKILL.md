@@ -30,7 +30,19 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
 
    *Thresholds: 300-line body (advisory; hard limit per standard is 500), 30-line section, 3 minimum eval cases.*
 
-1. **Read the skill.** Read `skills/$ARGUMENTS/SKILL.md` and `skills/$ARGUMENTS/evals/evals.json`. If either is missing, report the gap and stop — a missing `evals.json` is itself a finding.
+1. **Read the skill.** Read `skills/$ARGUMENTS/SKILL.md`. If missing, report the gap and stop.
+
+   Read `skills/$ARGUMENTS/evals/evals.json`.
+
+   - **If present:** proceed to Step 2 (executor+grader path).
+   - **If missing:** run the fallback evaluator (Step 1b) instead of stopping, then skip to Step 3.
+
+1b. **Fallback evaluator (no evals.json).** Spawn a fresh Agent subagent with a clean context. The prompt must:
+   - Include the skill's `SKILL.md` content verbatim under "Active skill:"
+   - Instruct it to: (a) read the skill and identify 2–3 realistic user scenarios the skill is designed to handle, (b) execute each scenario as if in a fresh session with the skill active — reporting steps taken and output produced, (c) grade whether the skill's instructions were clear and complete enough to guide correct behaviour: `pass`, `partial`, or `fail` with a one-line reason per scenario
+   - Ask it to recommend which scenarios should be formalised as `evals.json` cases
+
+   Output fallback results under `### Fallback eval (no evals.json)` in the report, before `### Summary`. Then proceed to Step 3.
 
 2. **For each eval case**, run two subagents in sequence:
 
@@ -68,9 +80,15 @@ Evals: pass — N eval cases
 - "<expectation>" → pass | fail | partial
   Evidence: <one line>
 
+### Fallback eval (no evals.json)
+Scenario <n>: <description>
+Verdict: pass | partial | fail — <one-line reason>
+...
+Recommended evals: <scenario descriptions to formalise as evals.json cases>
+
 ### Summary
 <n>/<total> expectations passed
-Verdict: pass | fail
+Verdict: pass | fail | incomplete (fallback path — no authored evals)
 
 ### Issues
 | Issue | Details | Reason |
@@ -84,4 +102,4 @@ Populate the Issues table with any `candidate for ref/split`, `too few evals`, f
 
 - The executor runs in a clean context with only the skill content injected — it has no access to the repo. Expectations like "appended to HANDOFF.md" can only be graded `pass` if the executor explicitly describes taking that action. Grade conservatively; `partial` beats an unsupported `pass`.
 - Skills with heavy CLI dependencies (e.g., sprint, which calls `./tools/sprint`) cannot be fully executed in a subagent — the executor will simulate the steps. This is still useful for catching missing steps, wrong output format, or logic errors. Note the limitation in findings when it applies.
-- If `evals.json` has no test cases, report it as a finding and stop.
+- If `evals.json` exists but has zero test cases, report it as a finding and stop — the fallback evaluator only fires when the file is entirely absent, not when it exists but is empty.
