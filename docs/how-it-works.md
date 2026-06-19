@@ -32,7 +32,7 @@ A ticket is a folder in your repo (`.tickets/<id>/`), not a card in someone's cl
 
 Because the state is just files, it survives context resets and fresh sessions: the agent re-reads the ticket folder and `HANDOFF.md` and resumes where it left off, and `sprint-check` renders those same files as a local board. Projects can choose whether to track that local workflow state in git; canon itself keeps `.tickets/`, `HANDOFF.md`, and `DECISIONS.md` ignored so release docs stay separate from working state.
 
-Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). High-risk and brownfield sprints add `research.md` before planning. All are plain markdown in `.tickets/<id>/`.
+See [README → The Two Commands](../README.md#the-two-commands) for the full sprint doc breakdown.
 
 ## Why this shape
 
