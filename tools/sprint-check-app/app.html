@@ -1522,6 +1522,11 @@ Edge cases and sign-off.
 Ticket: \`<id>\`
 <!-- Keep this doc under ~500 words — it is injected at every session start. -->
 
+## Sign-off
+<!-- Check this box before implementation begins. Add notes on any conditions. -->
+
+- [ ] Plan approved — proceed to implementation
+
 ## Approach
 How will we implement it?
 <!-- Add or edit approach notes below. Keep this heading unchanged. -->
@@ -2350,7 +2355,7 @@ function validateDocStructure(t, content) {
   const slug = docSlug(t, modalState.activeDoc);
   const requiredBySlug = {
     acceptance: ['## Criteria', '## Test Plan', '## QA'],
-    plan: ['## Approach', '## Decisions'],
+    plan: ['## Sign-off', '## Approach', '## Decisions'],
   };
   const required = requiredBySlug[slug] || [];
   const missing = required.filter(h => !content.includes(h));

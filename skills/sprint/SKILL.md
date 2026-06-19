@@ -123,7 +123,7 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
    - Test plan (verbatim from acceptance.md ## Test Plan)
    - Open questions or blockers still unresolved
 
-10. **Wait for explicit approval.** Do not write code until confirmed. On approval, write `plan.md` to `.tickets/<id>/` with the timestamp, ticket ID, tier, grill resolutions if any, and full approved sprint brief verbatim.
+10. **Wait for explicit approval.** Do not write code until confirmed. On approval, check the `- [ ] Plan approved` box in `plan.md ## Sign-off` — this is the durable approval record and `sprint complete` will gate on it. Write `plan.md` to `.tickets/<id>/` with the timestamp, ticket ID, tier, grill resolutions if any, and full approved sprint brief verbatim.
 
    Re-read `plan.md` after compaction or context reset.
 

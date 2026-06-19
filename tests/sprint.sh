@@ -20,6 +20,7 @@ assert_eq "$id" "$(tr -d '[:space:]' < .tickets/ACTIVE)"
 # sprint start now scaffolds both docs with required headings
 assert_file_exists ".tickets/$id/acceptance.md"
 assert_file_exists ".tickets/$id/plan.md"
+assert_grep "## Sign-off" ".tickets/$id/plan.md"
 assert_grep "## Approach" ".tickets/$id/plan.md"
 assert_grep "## Criteria" ".tickets/$id/acceptance.md"
 assert_grep "## Test Plan" ".tickets/$id/acceptance.md"
@@ -204,12 +205,48 @@ EOF
 placeholder_plan_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$placeholder_plan_output" "plan.md ## Approach has no content"
 
-# Add real Approach content — gate should pass
+# Add real Approach content without Sign-off — sign-off gate should block
 cat > ".tickets/$id/plan.md" <<'EOF'
 # Plan
 
 ## Approach
-Add _gate_plan_content to tools/sprint and two tests.
+Add _gate_plan_signoff to tools/sprint.
+
+## Files
+- tools/sprint
+EOF
+
+missing_signoff_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$missing_signoff_output" "plan.md is missing ## Sign-off section"
+
+# Sign-off section present but unchecked — gate should block
+cat > ".tickets/$id/plan.md" <<'EOF'
+# Plan
+
+## Sign-off
+
+- [ ] Plan approved — proceed to implementation
+
+## Approach
+Add _gate_plan_signoff to tools/sprint.
+
+## Files
+- tools/sprint
+EOF
+
+unchecked_signoff_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$unchecked_signoff_output" "## Sign-off has unchecked items"
+
+# Sign-off checked — gate passes, eval gate fires next
+cat > ".tickets/$id/plan.md" <<'EOF'
+# Plan
+
+## Sign-off
+
+- [x] Plan approved — proceed to implementation
+
+## Approach
+Add _gate_plan_signoff to tools/sprint and tests.
 
 ## Files
 - tools/sprint

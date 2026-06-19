@@ -113,6 +113,11 @@ EOF
 Ticket: \`$id\`
 <!-- Keep this doc under ~500 words — it is injected at every session start. -->
 
+## Sign-off
+<!-- Check this box before implementation begins. Add notes on any conditions. -->
+
+- [ ] Plan approved — proceed to implementation
+
 ## Approach
 <!-- Describe how you will implement this. Keep this heading unchanged. -->
 
@@ -233,6 +238,29 @@ _gate_no_unchecked() {
   fi
 }
 
+_gate_plan_signoff() {
+  local id="$1" plan="$2"
+  # Trivial-tier sprints skip the sign-off gate
+  if grep -qiE 'tier[[:space:]]*:?[[:space:]]*\*{0,2}trivial' "$plan" 2>/dev/null; then
+    return 0
+  fi
+  if ! grep -q "^## Sign-off" "$plan"; then
+    echo "Sprint $id cannot close: plan.md is missing ## Sign-off section."
+    echo "Add the Sign-off section and check the approval box before closing."
+    return 1
+  fi
+  if _acceptance_section "Sign-off" "$plan" | grep -qE '^[[:space:]]*[-*] \[ \]'; then
+    echo "Sprint $id cannot close: plan.md ## Sign-off has unchecked items."
+    echo "Check the approval box in plan.md before closing."
+    return 1
+  fi
+  if ! _acceptance_section "Sign-off" "$plan" | grep -qE '^[[:space:]]*[-*] \[[xX]\]'; then
+    echo "Sprint $id cannot close: plan.md ## Sign-off has no checked approval."
+    echo "Check the approval box in plan.md before closing."
+    return 1
+  fi
+}
+
 _gate_plan_content() {
   local id="$1" plan="$2"
   # Extract ## Approach section, strip HTML comments and blank lines
@@ -282,6 +310,7 @@ cmd_complete() {
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
   _gate_no_unchecked        "$id" "$acceptance"          || exit 1
   _gate_plan_content        "$id" "$tdir/plan.md"        || exit 1
+  _gate_plan_signoff        "$id" "$tdir/plan.md"        || exit 1
   _gate_eval_report         "$id" "$tdir"                || exit 1
 
   "$TKT_BIN" close "$id"
