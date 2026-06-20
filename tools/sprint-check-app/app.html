@@ -2160,7 +2160,12 @@ function renderModalDocs(t) {
   const pickingDoc = modalState.pickingDoc;
   const canAddDoc = availableDocTypes(t).length > 0;
 
-  bar.innerHTML = docs.map(d => {
+  const descActive = modalState.activeDoc === null;
+  const descTab = docs.length > 0
+    ? `<button class="doc-tab${descActive ? ' active' : ''}" data-file="">Description</button>`
+    : '';
+
+  bar.innerHTML = descTab + docs.map(d => {
     const active = d.file === modalState.activeDoc;
     return `<button class="doc-tab${active ? ' active' : ''}" data-file="${d.file ?? ''}">${esc(d.name)}</button>`;
   }).join('') +
