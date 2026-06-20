@@ -738,9 +738,9 @@
     .doc-heading-2 { font-size: 14px; margin: 12px 0 3px; }
     .doc-heading-3 { font-size: 13px; margin: 9px 0 2px; }
     .doc-table-wrap { overflow-x: auto; margin: 10px 0; }
-    .doc-table { border-collapse: collapse; width: 100%; }
-    .doc-table th, .doc-table td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; vertical-align: top; overflow-wrap: break-word; word-break: break-word; }
-    .doc-table th { background: var(--surface-raised); color: var(--text); font-weight: 600; font-size: 12px; }
+    .doc-table { border-collapse: collapse; min-width: 100%; }
+    .doc-table th, .doc-table td { border: 1px solid var(--border); padding: 5px 10px; text-align: left; vertical-align: top; }
+    .doc-table th { background: var(--surface-raised); color: var(--text); font-weight: 600; font-size: 12px; white-space: nowrap; }
     .doc-table td { color: var(--text-body); font-size: 12px; line-height: 1.5; }
     .doc-table tr:hover td { background: var(--surface-hover); }
     .section-jumps {
