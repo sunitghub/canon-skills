@@ -11,6 +11,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - Define success criteria before starting. Verify when done.
 - Read existing files before writing code.
 - If multiple interpretations exist, present them — don't pick silently.
+- Never end a turn after only stating what you are about to do; if a sentence describes a next action, perform it in the same turn.
 - Be concise in output, thorough in reasoning.
 - Test before declaring done.
 

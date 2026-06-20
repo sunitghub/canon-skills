@@ -20,6 +20,13 @@ ticket tracking, context file creation, and close validation. The agent owns
 sprint doc creation, orientation, gray-area resolution, impact analysis,
 implementation, review, and test judgment.
 
+## Dispatch purposes
+
+Tag every sub-agent dispatch in sprint flows with exactly one purpose:
+- `implement` — build or modify the approved sprint scope.
+- `review` — independently evaluate completed work, risks, or acceptance evidence.
+- `explore` — read and map a subsystem before implementation decisions.
+
 ## Workflow tiers
 
 Choose the lightest tier that still protects the work.
