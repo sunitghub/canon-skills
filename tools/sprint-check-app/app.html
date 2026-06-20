@@ -1759,7 +1759,7 @@ function md(raw) {
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
     .replace(/^\*\*([^*\n][^\n]*)$/gm,'<strong style="color:var(--text)">$1</strong>')
-    .replace(/`([^`]+)`/g,  '<code class="doc-code">$1</code>')
+    .replace(/`([^`\n]+)`/g, '<code class="doc-code">$1</code>')
     .replace(/^- \[([ xX])\] \x00(\d+)\x00(.+)$/gm, (_, checked, si, text) => {
       const done = checked.toLowerCase() === 'x';
       return `<span class="doc-bullet${done ? '' : ' doc-check-open'}" data-src-idx="${si}"><span class="doc-check-marker${done ? '' : ' open'}">${done ? '✓' : ''}</span><span>${text}</span></span>`;
