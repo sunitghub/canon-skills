@@ -22,43 +22,16 @@ Report only HIGH or MEDIUM confidence:
 
 Test files, dead/commented code, constants, server-controlled config, code paths requiring prior auth, Django settings, env vars, framework constants.
 
-## Pre-scan (ast-grep)
+## Optional Scanner Evidence
 
-```bash
-command -v ast-grep >/dev/null 2>&1 && echo "available" || echo "not installed"
-```
-
-If available, run over changed files with `--json`:
-
-```bash
-# Injection / unsafe exec
-ast-grep -p '$F($$$ARGS, shell=True)' -l python --json
-ast-grep -p 'exec.Command($CMD, $$$)' -l go --json
-
-# Unvalidated input in queries
-ast-grep -p 'f"$$$SELECT$$$WHERE$$$"' -l python --json
-ast-grep -p '`$$$SELECT$$$${$VAR}$$$`' -l javascript --json
-
-# Unsafe eval / innerHTML
-ast-grep -p 'eval($INPUT)' -l javascript --json
-ast-grep -p '$EL.innerHTML = $VAL' -l javascript --json
-
-# Unsafe deserialization
-ast-grep -p 'pickle.loads($DATA)' -l python --json
-ast-grep -p 'yaml.load($DATA)' -l python --json
-```
-
-Adapt patterns to the languages in the changed files. If `scan-rules/` exists at repo root:
-
-```bash
-ast-grep scan --rule scan-rules/ --json 2>/dev/null
-```
-
-Hits are leads, not findings. If absent, note: `ast-grep not installed — structural pre-scan skipped`.
+If the repo already provides a scanner or rule set, run it when it is relevant to
+the changed files. Scanner hits are leads, not findings; trace exploitability
+before reporting. If no scanner is available, note `optional scanner unavailable`
+and continue with manual review. Scanner absence is not a skipped security gate.
 
 ## Process
 
-1. Run pre-scan if ast-grep is available.
+1. Use available scanner output as leads when relevant; otherwise proceed manually.
 2. Trace data flow end-to-end before flagging.
 3. Confirm attacker-controlled input reaches the vulnerable pattern.
 4. Check for validation, sanitization, or framework mitigations.
