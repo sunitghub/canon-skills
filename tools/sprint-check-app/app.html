@@ -1770,7 +1770,11 @@ function md(raw) {
       if (rows.length < 2) return block;
       const [headerRow, sepRow, ...bodyRows] = rows;
       if (!/^\|[\s|:-]+\|$/.test(sepRow?.trim() || '')) return block;
-      const cells = row => row.trim().split(/(?<!\\)\|/).slice(1, -1).map(c => c.trim().replace(/\\\|/g, '|'));
+      const cells = row => {
+        const safe = row.replace(/<code[^>]*>[^<]*<\/code>/g, m => m.replace(/\|/g, '\x00'));
+        return safe.trim().split(/(?<!\\)\|/).slice(1, -1)
+          .map(c => c.trim().replace(/\x00/g, '|').replace(/\\\|/g, '|'));
+      };
       const thead = '<thead><tr>' + cells(headerRow).map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
       const tbody = bodyRows.length
         ? '<tbody>' + bodyRows.map(r => '<tr>' + cells(r).map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>'
