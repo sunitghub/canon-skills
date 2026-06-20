@@ -49,12 +49,13 @@ documentation, setup, or agent behavior.
 
 6. **sprint-check app experience.** When changes touch `tools/sprint-check`,
    `tools/sprint-check-app/`, `docs/sprint-check.md`, or README claims about
-   the board, evaluate whether the local web app still supports canon's stated
-   product promise: easy orientation, effective ticket/status review, clear
-   in-place doc editing, and no unnecessary setup. Prefer launching the board
-   and using Playwright or an available browser/screenshot tool to inspect the
-   main flows. If browser automation is unavailable, state that limitation and
-   review the app/server code plus screenshots or docs for obvious UX drift.
+   the board, **visual verification is required — `open` alone does not count.**
+   Run `/verify` or use Playwright (`npm run test:ui`) to inspect the affected
+   flows in a real browser. Specifically: open a ticket that exercises the
+   changed surface (tables, modals, tabs, etc.) and confirm the layout renders
+   correctly. If Playwright is unavailable, take a screenshot and inspect it
+   before declaring the gate passed. Declaring done without visual confirmation
+   is a gate failure.
 
 7. **Generated docs.** If skills or tool frontmatter changed, run
    `./tools/skills.sh catalog` and include `CATALOG.md` if it changed.
