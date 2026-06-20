@@ -4,6 +4,7 @@ description: Generates Marp slide decks from canon knowledge. Use when asked to 
 category: ops
 tags: [slides, marp, presentations, knowledge]
 argument-hint: "[topic] [--theme canon|octave]"
+hidden: true
 ---
 
 # canon-slides
