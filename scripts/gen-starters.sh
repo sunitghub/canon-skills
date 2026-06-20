@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# gen-starters.sh — sync starters/standards/efficiency.md from standards/efficiency.md
-# Run after editing standards/efficiency.md to keep the starters copy in sync.
-# To add more synced files: add a cp line below and a matching grep in pre-commit-check.sh.
+# gen-starters.sh — sync flat-copy files from their source into starters/
+# To add a new sync pair: append a "src:dst" entry to SYNC_PAIRS below.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SRC="$REPO_ROOT/standards/efficiency.md"
-DST="$REPO_ROOT/starters/standards/efficiency.md"
+# source:destination pairs (paths relative to REPO_ROOT)
+SYNC_PAIRS=(
+  "standards/efficiency.md:starters/standards/efficiency.md"
+)
 
-cp "$SRC" "$DST"
-echo "starters/standards/efficiency.md updated from standards/efficiency.md"
+for pair in "${SYNC_PAIRS[@]}"; do
+  src="${pair%%:*}"
+  dst="${pair##*:}"
+  cp "$REPO_ROOT/$src" "$REPO_ROOT/$dst"
+  echo "starters: $dst synced from $src"
+done

@@ -3,10 +3,14 @@
 ## Approach
 
 - Non-trivial work requires a ticket before starting. Trivial fixes (typo, single-line config) are exempt.
-- Read existing files before writing code.
+- Think before coding. Surface tradeoffs, don't hide confusion.
 - Minimum code that solves the problem. Nothing speculative.
+- Touch only what you must. Clean up only your own mess.
 - Define success criteria before starting. Verify when done.
-- If multiple interpretations exist, surface them — don't pick silently.
+- Read existing files before writing code.
+- If multiple interpretations exist, present them — don't pick silently.
+- Be concise in output, thorough in reasoning.
+- Test before declaring done.
 
 ## Active skills
 

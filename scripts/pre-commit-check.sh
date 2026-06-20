@@ -73,13 +73,21 @@ if [ -n "$ACTIVE_ID" ]; then
 fi
 
 # ── Starters sync ────────────────────────────────────────────────────────────
-# If standards/efficiency.md is staged, auto-sync starters/ and re-stage.
-if git diff --cached --name-only 2>/dev/null | grep -q "^standards/efficiency\.md$"; then
+# If any sync-source file is staged, run gen-starters and re-stage all dst files.
+# Sync pairs are defined in scripts/gen-starters.sh (SYNC_PAIRS array).
+_staged_files=$(git diff --cached --name-only 2>/dev/null)
+_sync_sources=$(grep -A20 'SYNC_PAIRS=(' "$GIT_ROOT/scripts/gen-starters.sh" 2>/dev/null \
+  | grep '".*:.*"' | sed 's/.*"\(.*\):.*/\1/' | tr -d ' ')
+_needs_sync=0
+for _src in $_sync_sources; do
+  echo "$_staged_files" | grep -qF "$_src" && _needs_sync=1 && break
+done
+if [[ "$_needs_sync" == 1 ]]; then
   GEN="$GIT_ROOT/scripts/gen-starters.sh"
   if [[ -x "$GEN" ]]; then
-    (cd "$GIT_ROOT" && bash "$GEN" >/dev/null)
-    git add "$GIT_ROOT/starters/standards/efficiency.md"
-    echo "[pre-commit] starters/standards/efficiency.md synced from standards/efficiency.md"
+    (cd "$GIT_ROOT" && bash "$GEN")
+    git add "$GIT_ROOT/starters/"
+    echo "[pre-commit] starters/ synced"
   fi
 fi
 

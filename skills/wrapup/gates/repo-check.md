@@ -28,9 +28,9 @@ documentation, setup, or agent behavior.
 
 2. **Reference consistency.** Search changed docs and workflow files for stale
    paths, removed commands, removed scripts, or old lifecycle names.
-   When `standards/efficiency.md` changes, run
-   `diff standards/efficiency.md starters/standards/efficiency.md`. Any output
-   is drift — fix by running `scripts/gen-starters.sh` before committing.
+   Always run `scripts/gen-starters.sh` (idempotent), then check
+   `git diff --name-only starters/` — any output is drift that must be staged
+   before committing.
 
 3. **Skill graph.** Run `./tools/skills.sh list`. Confirm advertised standalone skills
    appear there, and imported sub-skills remain hidden from the user-facing list.

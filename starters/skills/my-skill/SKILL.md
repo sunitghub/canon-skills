@@ -3,8 +3,10 @@ name: my-skill
 description: One sentence — what this skill does and when to invoke it. Shown in skill lists and used by the harness to decide relevance.
 category: dev
 tags: [keyword, keyword]
-depends: []
-inject: false
+# Visibility options (pick one if needed, omit for default standalone):
+#   hidden: true                    — internal sub-skill, never user-invoked
+#   user-invocable: false           — hidden from / menu; Claude can still load it
+#   disable-model-invocation: true  — user-invokable only; Claude won't auto-load
 ---
 
 # My Skill
