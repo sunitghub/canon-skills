@@ -21,6 +21,13 @@ description: Exercise the linter with a structurally valid skill fixture
 category: dev
 tags: [test]
 ---
+
+```css
+@keyframes fadeUp {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+```
 EOF
 
 # name does not match directory name + unknown category.

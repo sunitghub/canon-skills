@@ -155,7 +155,7 @@ cmd_lint() {
     while IFS= read -r imp; do
       [ -n "$imp" ] || continue
       [ -f "$skill_dir/$imp" ] || err "$slug/SKILL.md" "import '@$imp' does not resolve"
-    done < <(grep -oE '^@[^[:space:]]+' "$f" | sed 's/^@//')
+    done < <(grep -oE '^@(\./|\.\./|/)[^[:space:]]+' "$f" | sed 's/^@//')
 
     # depends graph: sibling imports must be declared; declared deps must resolve.
     # Handles both flat (@./name.md) and directory (@./name/SKILL.md) formats.
