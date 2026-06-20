@@ -228,6 +228,27 @@ An agent asked to review code doesn't need write access. An agent asked to gener
 
 ---
 
+## Harness Architecture
+
+A common framing: *extract deterministic actions as rule-based code helpers for token efficiency; when you've exhausted rule-based possibilities, move to the system prompt.* This is a useful starting point but stops short of describing a mature harness.
+
+The problem with "exhaustion" framing is that it treats the prompt layer as a fallback — what you reach for when code runs out. In practice, both layers are first-class and should be designed simultaneously. The decision isn't "have we run out of rules?" — it's "which layer handles this more reliably?"
+
+**Three principles for a well-architected harness:**
+
+**1. Partition by reliability, not exhaustion.**
+Code owns what is structurally verifiable — does this file exist, does this checkbox have content, does the verdict line start with `pass:`. Prompts own what requires judgment — is this plan coherent, does this finding have evidence, is this change high-risk. Assign upfront; don't arrive at the prompt layer by elimination.
+
+**2. Gates beat instructions.**
+Anything the agent should never skip belongs in the deterministic layer. A CLI gate that blocks close without a verified file is more reliable than any instruction telling the agent to write one. Instructions set intent; gates enforce it. If a step keeps getting skipped, that's a harness problem, not a prompt problem.
+
+**3. The prompt layer has its own efficiency architecture.**
+The split between code and prompt is the first partitioning decision. Within the prompt layer, a second decision applies: what is always loaded vs. loaded on demand. Always-on context is a fixed cost paid every turn regardless of the task. On-demand loading makes that cost proportional — a simple task doesn't pay for the context a complex one needs. A harness that nails the code/prompt split but ignores this will still accumulate bloat as skills grow.
+
+The corrected framing: **design the layers simultaneously. Assign work to whichever layer handles it more reliably. Within the prompt layer, keep the always-on surface minimal and load judgment-heavy instructions only when the step needs them.**
+
+---
+
 ## Common Failure Modes
 
 **Hallucinating implementation details.** The agent validates that a feature *should* work based on the spec, not that it *does* work based on the code. Fix: ground validation in the actual files.
