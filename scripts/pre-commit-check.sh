@@ -76,8 +76,9 @@ fi
 # If any sync-source file is staged, run gen-starters and re-stage all dst files.
 # Sync pairs are defined in scripts/gen-starters.sh (SYNC_PAIRS array).
 _staged_files=$(git diff --cached --name-only 2>/dev/null)
-_sync_sources=$(grep -A20 'SYNC_PAIRS=(' "$GIT_ROOT/scripts/gen-starters.sh" 2>/dev/null \
-  | grep '".*:.*"' | sed 's/.*"\(.*\):.*/\1/' | tr -d ' ')
+_sync_sources=$(awk '/SYNC_PAIRS=\(/{f=1;next} /^\)/{f=0} f' \
+  "$GIT_ROOT/scripts/gen-starters.sh" 2>/dev/null \
+  | grep -oE '"[^"]+"' | tr -d '"' | cut -d: -f1)
 _needs_sync=0
 for _src in $_sync_sources; do
   echo "$_staged_files" | grep -qF "$_src" && _needs_sync=1 && break
