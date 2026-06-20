@@ -4,7 +4,8 @@
   "description": "Shared skill library for AI coding agents — Claude Code, Codex, Pi. One clone. Minimal setup.",
   "scripts": {
     "test": "./scripts/test.sh",
-    "test:ui": "playwright test tests/sprint-check-app.spec.js"
+    "test:ui": "playwright test tests/sprint-check-app.spec.js",
+    "slides": "./scripts/render-slides.sh"
   },
   "bin": {
     "canon-skills": "./bin/install.js"

@@ -57,7 +57,7 @@ section {
   color: var(--gray-1);
   font-family: var(--font-sans);
   font-size: 28px;
-  padding: 52px 72px 64px;
+  padding: 36px 72px 64px;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
@@ -87,7 +87,7 @@ section::after {
   content: attr(data-marpit-pagination) ' / ' attr(data-marpit-pagination-total);
   position: absolute;
   bottom: 16px;
-  left: 48px;
+  right: 48px;
 }
 
 h1 {
