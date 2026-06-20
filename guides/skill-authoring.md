@@ -24,6 +24,7 @@ Write SKILL.md
 canon-dev.sh lint          ← skill-setup-std: structure valid?
       ↓
 Write evals/evals.json     ← at least 3 evals: control + at least 2 other case types
+                           ← living document: add real failures before closing the sprint that fixes them
       ↓
 /skill-eval <name>         ← skill-eval: behavior correct?
       ↓

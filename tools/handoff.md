@@ -25,6 +25,19 @@ resume without re-explaining the work.
 - A non-obvious discovery should survive the session
 - Follow-up work remains after wrapup
 
+## When to Prune
+
+HANDOFF.md is working memory, not a changelog. Prune entries that no longer
+help the next agent act:
+
+- **Current Focus** — retire entries older than ~2 sprints with no active work;
+  condense into a single context sentence if still relevant
+- **In Progress** — remove tickets that have been closed or stalled for weeks
+  without movement
+- **Discoveries** — drop entries the next agent can derive from reading the code
+
+When in doubt: if an entry wouldn't change how the next session starts, cut it.
+
 ## Format
 
 ```markdown

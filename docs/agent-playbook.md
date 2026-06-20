@@ -247,6 +247,13 @@ The split between code and prompt is the first partitioning decision. Within the
 
 The corrected framing: **design the layers simultaneously. Assign work to whichever layer handles it more reliably. Within the prompt layer, keep the always-on surface minimal and load judgment-heavy instructions only when the step needs them.**
 
+**Two evaluation layers.** A mature harness evaluates at two levels that the three principles above don't fully distinguish:
+
+- **Exact / deterministic** — CLI gates: checklist validation, file existence checks, `^pass:` anchored verdict parsing. These fail closed on structural gaps (missing summary, empty acceptance items, no verdict line). Fast, cheap, composable.
+- **Subjective / LLM-judge** — an evaluator subagent launched with clean context and a grading rubric. It catches what structure cannot verify: fabricated evidence that satisfies a checkbox, a plan that is internally consistent but wrong, a security finding with no supporting file path.
+
+Both layers are necessary. Exact gates enforce structure reliably; the subagent catches quality failures that pass structural checks. Treating only one as "real" evaluation misses half the failure surface.
+
 ---
 
 ## Common Failure Modes
