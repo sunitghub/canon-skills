@@ -20,7 +20,7 @@ Each stage has a distinct goal, a tool that owns it, and a clear boundary with t
 
 **Goal:** Catch the failure before a user reports it.
 
-**Tool:** Eval dashboard with automated alerting. Set thresholds on your key metrics (accuracy, refusal rate, latency, tool-call error rate). When a metric drops below threshold, the alert fires — not after a user complaint arrives, not after a human happens to check.
+**Tool:** Eval dashboard with automated alerting. Set thresholds on your key metrics (accuracy, refusal rate, latency, tool-call error rate). When a metric drops below threshold, the alert fires — not after a user complaint arrives, not after a human happens to check. (Requires the eval dashboard prerequisite — see [Prerequisites](#prerequisites) below.)
 
 **What it is NOT:** Reactive monitoring. If you only know something broke because a user told you, your detection layer is absent.
 
@@ -48,7 +48,7 @@ Each stage has a distinct goal, a tool that owns it, and a clear boundary with t
 
 **Goal:** Resolve the root cause correctly.
 
-**Tool:** Test case library. Write a targeted fix and add a new test case covering this exact failure before shipping. The fix goes through your normal promotion process (test → staging → production) — not a direct prod push. If the incident exposed a gap in your eval suite, that gap must be closed as part of the fix, not as a follow-up that gets deprioritised.
+**Tool:** Test case library. Write a targeted fix and add a new test case covering this exact failure before shipping. The fix goes through your normal promotion process (test → staging → production) — not an unreviewed direct prod push. If the incident exposed a gap in your eval suite, that gap must be closed as part of the fix, not as a follow-up that gets deprioritised.
 
 **What it is NOT:** Reverting and calling it done. The revert was containment; the fix adds a test case and ships a real correction.
 
