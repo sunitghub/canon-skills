@@ -67,21 +67,21 @@ canon end to end without adding local sprint state to the canon checkout.
 
 ## What Makes canon Different
 
-Most agent tools tell you what the agent did. canon records what it promised — and whether it delivered.
+The agent that wrote the code is the worst possible reviewer of that code. canon enforces a structural separation that most tools skip.
 
-1. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual
-   table: one row per acceptance criterion, showing whether it was delivered,
-   waived, deferred, or partial. Deviations can't be buried in prose. The
-   **Summary** tab on the board makes this permanent and queryable.
-2. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
-   Plan items are unchecked, `summary.md` is missing, or the Wrapup Gates record
-   is absent. Gates don't make agents smarter — they make certain failures
-   impossible.
-3. **Adversarial close review.** Before a sprint closes, a fresh agent — with no
+1. **Adversarial close review.** Before a sprint closes, a fresh agent — with no
    implementation history — grades the actual code against `acceptance.md`. The
    evaluator starts from a clean context window, so it can't be biased by the
    implementation choices it never saw. Each acceptance criterion gets a pass,
    fail, or partial verdict with a file:line cite. A fail blocks close.
+2. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual
+   table: one row per acceptance criterion, showing whether it was delivered,
+   waived, deferred, or partial. Deviations can't be buried in prose. The
+   **Summary** tab on the board makes this permanent and queryable.
+3. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
+   Plan items are unchecked, `summary.md` is missing, or the Wrapup Gates record
+   is absent. Gates don't make agents smarter — they make certain failures
+   impossible.
 
    *The CLI enforces state and close gates; the agent and evaluator judge whether
    the work behind those gates is true. The board surfaces problems early.*

@@ -8,11 +8,11 @@ A shared library of AI agent skills, tools, and automation. Your projects import
 
 > **Windows 11:** canon's CLI tools require WSL2 (Ubuntu). Run all commands below inside the WSL2 terminal. See [fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11-wsl2) for the full setup path.
 
-### Step 1 — Clone canon
+### Step 1 — Install canon
 
-For normal use, prefer the README's `curl|bash` installer; it installs canon
-to `~/.canon` for you. Clone manually when developing canon itself, testing an
-unpublished branch, or recovering without a supported installer:
+For normal use, install via the one-line installer in the [README](https://github.com/sunitghub/canon-skills#canon). It handles the clone and places canon at `~/.canon`.
+
+**Manual clone** (developing canon itself, testing an unpublished branch, or recovering without a supported installer):
 
 ```bash
 git clone https://github.com/sunitghub/canon-skills.git ~/.canon
