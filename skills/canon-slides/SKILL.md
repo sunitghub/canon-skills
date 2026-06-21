@@ -203,14 +203,30 @@ For "big number + caption" hook slides specifically: use `display:flex; flex-dir
 </div>
 ```
 
-*Diagrams (context window, stacks, timelines).* The diagram column must be at least `width:260px` — narrow columns look decorative, not informative. Box labels at `font-size:0.72em`, numbers/token counts at `font-size:1em; font-weight:800`. The "smart zone" box uses `flex:1` so it fills available height. Bottom reserved-area boxes show the number left-aligned in bold and the label right-aligned:
+*Diagrams (context window, stacks, timelines).* The diagram column must be at least `width:260px` — narrow columns look decorative, not informative. Box labels at `font-size:0.72em`, numbers/token counts at `font-size:1em; font-weight:800`. The "smart zone" box uses `flex:1` so it fills available height. Bottom reserved-area boxes show the number left-aligned in bold and the label right-aligned. Use `justify-content:space-between` when the number and label are on opposite sides; use `margin-left:8px` when they sit adjacent (otherwise Marp collapses them together with no gap):
 ```html
+<!-- number left, label right (space-between) -->
 <div style="padding:11px 16px; border-radius:4px; display:flex; justify-content:space-between; align-items:center;
   background:rgba(244,102,0,0.22); border:1px solid #F46600;">
-  <span style="font-size:1em; font-weight:800; color:#F46600;">23k</span>
-  <span style="font-size:0.68em; color:#F46600;">auto-compact</span>
+  <span style="font-size:1em; font-weight:800; color:#F46600;">~33k</span>
+  <span style="font-size:0.68em; color:#F46600;">compaction reserve</span>
+</div>
+
+<!-- number + label adjacent (use margin-left, not space-between) -->
+<div style="padding:11px 16px; border-radius:4px; display:flex; align-items:center;
+  background:rgba(244,102,0,0.22); border:1px solid #F46600;">
+  <span style="font-size:1em; font-weight:800; color:#F46600;">~33k</span>
+  <span style="font-size:0.68em; color:#F46600; margin-left:8px;">compaction reserve</span>
 </div>
 ```
+
+**Claude Code context window constants** (use these numbers in any context-management diagram):
+- Total window: **200k** tokens
+- Output reserve: **32k** (deduct from total → 168k input budget)
+- Compaction reserve: **~33k** (triggers at ~167k / 83% of window)
+- System prompt baseline: **~14k** (system instructions + built-in tool definitions, no CLAUDE.md)
+- MCP schema cost: **5–10k per server** (loads every session whether called or not)
+- Cache reads: save cost (10% of base price) but **still consume window space**
 
 *SVG arrows in pipelines.* Use inline SVG for colored arrows — never plain text `→` or `↓` for diagrams that need visual weight:
 ```html
