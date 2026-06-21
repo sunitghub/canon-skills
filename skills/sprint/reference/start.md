@@ -10,13 +10,14 @@
 
 3. **Planning files.** Create or update the files in `.tickets/<id>/`:
    - `acceptance.md` — specific, binary conditions that define "done"
-   - `plan.md` — files to inspect, files to create/modify, step-by-step build plan
+   - `plan.md` — files to inspect, files to create/modify, step-by-step build plan. For `type: bug` tickets, use `starters/bug-plan.md` as the skeleton — it structures the plan around the five incident stages (Detect/Diagnose/Contain/Fix/Prevent).
    - `research.md` — high-risk and brownfield sprints only; objective compression of truth (see Research below)
    - If these already exist: read them and proceed without recreating.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
    - Record the tier and one-line reason in `plan.md`.
 
 4. **Context.** Read in order:
+   - For `type: bug` tickets: grep `bugs/patterns.md` for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes.
    - `DECISIONS.md` at repo root — create with empty log table if absent. After reading,
      actively scan every entry: identify any that constrain or conflict with this sprint's
      request. A conflict is not a passive note — it must be surfaced in the brief and
