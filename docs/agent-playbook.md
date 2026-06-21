@@ -30,7 +30,7 @@ Everything below follows from that. An agent that reviews the PR diff instead of
 
 **Fail loudly.** Surface ambiguity rather than guessing silently. An agent that picks one interpretation of an ambiguous instruction and doesn't say so is worse than one that stops and asks.
 
-**Solve with one agent before building a multi-agent pipeline.** Multi-agent complexity compounds failure modes. Every additional agent is another surface that can misinterpret, hallucinate, or silently drop information. Only reach for orchestration when a single agent genuinely can't do the job.
+**Solve with one agent before building a multi-agent pipeline.** Multi-agent complexity compounds failure modes. Every additional agent is another surface that can misinterpret, hallucinate, or silently drop information. Only reach for orchestration when a single agent genuinely can't do the job. When you do parallelize, restrict it to non-conflicting work: codebase exploration, API research, documentation reads, and validation reviews. Implementation runs serially — each agent inherits the full codebase state from the last via git, and correctness compounds across that chain. Parallelising writes causes conflicts, duplicate work, and token burn with no correctness gain.
 
 ---
 
@@ -200,7 +200,7 @@ Choose the lightest tier that still protects the work:
   acceptance.md    ← done criteria (binary, checkable) + test plan
   plan.md          ← files to touch, approach, decisions, tier reason
   eval-report.md   ← adversarial grader output at close
-  summary.md       ← plan-vs-actual table at close
+  summary.md       ← plan-vs-actual table at close; what was left undone; commands run + exit codes
 ```
 
 ### Acceptance criteria rules
@@ -276,6 +276,8 @@ Anything the agent should never skip belongs in the deterministic layer. A CLI g
 The split between code and prompt is the first partitioning decision. Within the prompt layer, a second decision applies: what is always loaded vs. loaded on demand. Always-on context is a fixed cost paid every turn regardless of the task. On-demand loading makes that cost proportional — a simple task doesn't pay for the context a complex one needs. A harness that nails the code/prompt split but ignores this will still accumulate bloat as skills grow.
 
 The corrected framing: **design the layers simultaneously. Assign work to whichever layer handles it more reliably. Within the prompt layer, keep the always-on surface minimal and load judgment-heavy instructions only when the step needs them.**
+
+**The harness ensures discipline. The models provide intelligence.** The deterministic layer cannot judge quality — it enforces structure. The agent cannot be trusted to enforce structure on itself — it will skip steps under pressure. Neither alone is sufficient; the split is the design.
 
 **Three evaluation layers.** A mature harness evaluates at three levels:
 
