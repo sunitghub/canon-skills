@@ -243,6 +243,18 @@ Never use `<linearGradient>` inside `<defs>` — Marp's parser breaks on `<stop>
 </div>
 ```
 
+*Cards with a level badge (L1 / L2 / L3, numbered, lettered).* Never use a fixed `width:Xpx` column for a badge that also has a sublabel (`Deterministic`, `Behavioural`, etc.) — at Marp's scaled font size the text overflows into adjacent columns. Put the sublabel inline with the title instead:
+```html
+<div style="font-size:1.6em; font-weight:800; color:#00FFFF; flex-shrink:0; min-width:36px; text-align:center;">L1</div>
+<div style="flex:1;">
+  <div style="display:flex; align-items:baseline; gap:10px; margin-bottom:4px;">
+    <span style="font-size:0.85em; font-weight:700; color:#00FFFF;">Title</span>
+    <span style="font-size:0.6em; color:#6F7480; text-transform:uppercase; letter-spacing:0.06em;">Sublabel</span>
+  </div>
+  <div style="font-size:0.78em; color:#B2B8C4; line-height:1.5;">Description</div>
+</div>
+```
+
 *Weak-evidence / checklist rows.* Each item in its own box (not a bare `<li>`):
 ```html
 <div class="card c1" style="display:flex; gap:14px; align-items:center; padding:13px 18px;
