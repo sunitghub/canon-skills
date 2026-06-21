@@ -17,7 +17,7 @@ This repo addresses all three with two mechanisms at different layers.
 
 | Hook | Script | Fires when | What it does |
 |---|---|---|---|
-| `Stop` | `auto-handoff.sh` | Claude finishes a turn with uncommitted changes | Appends a timestamped git-state snapshot to `HANDOFF.md`, commits it |
+| `Stop` | `auto-handoff.sh` | Claude finishes a turn with uncommitted changes | Appends a timestamped git-state snapshot to `HANDOFF.md`, commits it if `HANDOFF.md` is tracked by git |
 | `UserPromptSubmit` | `handoff-inject.sh` | First message of each session (4h window) | Injects `HANDOFF.md` into Claude's context |
 
 **FIFO snapshot window:** The Stop hook appends the newest snapshot and keeps only the last 2, so the next agent can see current state and prior state without `HANDOFF.md` growing indefinitely.

@@ -530,7 +530,7 @@ tkt reopen <id>               # reopen a closed ticket
 ## Staying updated
 
 ```bash
-cd $SKILLS && git pull
+cd ~/.canon && git pull
 ```
 
 **Hook scripts** update immediately — called by path, so the new version runs on the next session.

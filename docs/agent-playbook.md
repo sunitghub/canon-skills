@@ -34,6 +34,36 @@ Everything below follows from that. An agent that reviews the PR diff instead of
 
 ---
 
+## Multi-Agent Orchestration Patterns
+
+When a single agent genuinely can't do the job, these are the three patterns worth knowing. Each has a distinct trigger condition and a failure mode that trips teams who don't expect it.
+
+### Orchestrator-Worker
+
+**When:** Complex workflows with distinct subtasks that can be delegated — data gathering, code generation, review, summarisation — each requiring different context or tools.
+
+**How:** One coordinator agent breaks the task down and dispatches specialist worker agents. Results bubble back to the orchestrator for synthesis.
+
+**Failure mode:** The orchestrator becomes a bottleneck as task volume grows. Workers operate blind to each other's context — if they need to coordinate mid-task, the pattern breaks.
+
+### Choreography
+
+**When:** Independent subtasks where latency matters and each step can proceed without a central coordinator — parallel document processing, fan-out search, event-driven pipelines.
+
+**How:** Multiple agents subscribe to events from a shared message bus. Each agent reacts to its event type and produces its own output independently.
+
+**Failure mode:** Observability must be solid from day one. Without distributed tracing across agents, a silent failure in one subscriber is invisible. Things get messy fast.
+
+### Human-in-the-Loop
+
+**When:** Regulated environments, high-stakes decisions, or cases where the confidence threshold for autonomous action is genuinely uncertain.
+
+**How:** The agent handles queries up to a confidence threshold and routes above it to a human reviewer.
+
+**Failure mode:** Threshold calibration is hard and consequential in both directions. Too high: humans never see anything, defeating the purpose of the gate. Too low: humans are flooded, defeating the purpose of the agent. Calibrate with real data — don't guess.
+
+---
+
 ## Skill Anatomy
 
 A skill is a markdown document that tells an agent what to do when triggered. It is not code — it is structured context.
@@ -247,12 +277,13 @@ The split between code and prompt is the first partitioning decision. Within the
 
 The corrected framing: **design the layers simultaneously. Assign work to whichever layer handles it more reliably. Within the prompt layer, keep the always-on surface minimal and load judgment-heavy instructions only when the step needs them.**
 
-**Two evaluation layers.** A mature harness evaluates at two levels that the three principles above don't fully distinguish:
+**Three evaluation layers.** A mature harness evaluates at three levels:
 
-- **Exact / deterministic** — CLI gates: checklist validation, file existence checks, `^pass:` anchored verdict parsing. These fail closed on structural gaps (missing summary, empty acceptance items, no verdict line). Fast, cheap, composable.
-- **Subjective / LLM-judge** — an evaluator subagent launched with clean context and a grading rubric. It catches what structure cannot verify: fabricated evidence that satisfies a checkbox, a plan that is internally consistent but wrong, a security finding with no supporting file path.
+- **L1 — Deterministic**: CLI gates and rule-based checks. Format validation, PII detection (NER + regex), output length bounds, file existence checks, `^pass:` anchored verdict parsing. Fail closed on structural gaps. Fast, cheap, run first.
+- **L2 — Semantic**: An evaluator subagent launched with clean context and a grading rubric. Correctness, groundedness, safety. Catches what structure cannot verify: fabricated evidence that satisfies a checkbox, a plan that is internally consistent but wrong, a security finding with no supporting file path. Non-determinism fix: run each test case 3× and flag variance above threshold rather than accepting a single pass.
+- **L3 — Behavioural**: Did the agent call the right tools in the right order? Did it escalate when confidence was low? Did it stay within scope? Requires replaying full agent runs — expensive at scale. Budget for L3 coverage early; retrofitting it after you have hundreds of test cases is the wrong order.
 
-Both layers are necessary. Exact gates enforce structure reliably; the subagent catches quality failures that pass structural checks. Treating only one as "real" evaluation misses half the failure surface.
+All three layers are necessary and complementary. L1 enforces structure reliably. L2 catches quality failures that pass structural checks. L3 catches orchestration failures that semantic grading can't see. Treating any one as "real" evaluation misses the others' failure surface.
 
 ---
 
