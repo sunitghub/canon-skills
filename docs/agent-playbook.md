@@ -180,7 +180,7 @@ These apply when an agent checks whether work is done, whether a requirement is 
 
 ## Sprint Workflow
 
-A sprint is a focused unit of work with a defined start state, done criteria, and close gate.
+A sprint is a focused unit of work with a defined start state, done criteria, and close gate. The close gate is canon's **governance layer** — the structural enforcement that keeps the harness in production. Evaluation, observability, and structured handoffs only hold if something prevents shipping without them. The close gate is that something. Each layer depends on the one before it: skip evaluation and you can't diagnose failures; skip observability and you can't contain them; skip governance and the discipline erodes under deadline pressure.
 
 ### Tiers
 

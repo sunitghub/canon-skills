@@ -17,6 +17,7 @@ What triggered this? (metric drop, test failure, automated alert — not a user 
 
 Root cause: data problem, prompt problem, or model drift?
 Where did correct → wrong? (file:line or pipeline stage)
+Active skill version: (run `git rev-parse --short HEAD` — anchors rollback and root-cause to a specific commit)
 
 ## Contain
 
