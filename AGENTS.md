@@ -16,7 +16,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 
 ## Standards
 
-See [standards/efficiency.md](standards/efficiency.md) for the full agent standards (code quality, security, git conventions, token efficiency).
+See `standards/efficiency.md` for the full agent standards (code quality, security, git conventions, token efficiency).
 
 
 <!-- AI-SKILLS:BEGIN -->
