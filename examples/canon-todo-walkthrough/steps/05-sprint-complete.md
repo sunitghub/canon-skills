@@ -15,6 +15,9 @@ Before closing, `.tickets/<id>/acceptance.md` must have:
 - `## Sign-off` with a checked `- [x] Plan approved` box
 - Real notes under `## Approach`, not the template placeholder
 
+`acceptance.md` must also have:
+- A `## Wrapup Gates` section with at least one `ran` row (written by the agent during wrapup)
+
 Open the ticket on the board and check every item as it passes tests.
 
 Before running `sprint complete`, open the ticket on the board and confirm all Acceptance items are checked — criteria, test plan, and QA sign-off:
@@ -45,6 +48,29 @@ Sprint t-xxxx is not complete. Unchecked acceptance/test items remain:
 ```
 
 Fix: run `npm test`, confirm it passes, then have the agent check that item.
+
+**If `plan.md ## Approach` is still a template placeholder:**
+
+```
+$ sprint complete
+Sprint t-xxxx cannot close: plan.md ## Approach has no content.
+Describe the implementation approach in plan.md, then re-run.
+```
+
+Fix: open the Plan tab on the board (or edit `.tickets/<id>/plan.md` directly)
+and replace the placeholder with actual notes on what was built and why.
+
+**If the `## Wrapup Gates` section is missing from `acceptance.md`:**
+
+```
+$ sprint complete
+Sprint t-xxxx cannot close: acceptance.md is missing ## Wrapup Gates section.
+Run wrapup before closing.
+```
+
+Fix: tell the agent to run wrapup. It will execute the gate pipeline and append
+the `## Wrapup Gates` table to `acceptance.md`. Only then will `sprint complete`
+proceed. This ensures closeout cannot happen without the quality gates on record.
 
 The board's readiness indicator also reflects this:
 
