@@ -48,6 +48,14 @@ For `skill-authoring`, read:
 - `guides/skill-authoring.md`
 - `skills/skill-eval/SKILL.md` (the evals and testing section)
 
+**2b. Check for applicable partials.** Before writing slides, read `skills/canon-slides/partials/` and list available partials. If a partial fits the deck's topic or audience, read it and insert it verbatim at the appropriate position — do not rewrite or inline its content by hand.
+
+| Partial | When to include |
+|---|---|
+| `worthwhile-harness.md` | Any intro or pitch deck where the audience needs to understand what a harness must do before seeing canon specifically. Insert after the problem slide, before the canon overview. |
+
+Marp has no native include syntax. The DRY contract is: **edit partials, not decks**. If a slide in a deck was sourced from a partial, add a HTML comment above it: `<!-- partial: worthwhile-harness.md -->`. Future edits go to the partial; the deck is regenerated.
+
 **3. Write `posts/slides/<topic>.md`.** Create the file with this header:
 
 ```markdown
@@ -309,23 +317,26 @@ Then rerun: npx @marp-team/marp-cli posts/slides/<topic>.md --theme skills/canon
 - Path to the HTML: `posts/slides/<topic>.html`
 - How to open: `open posts/slides/<topic>.html` (macOS) or just open it in any browser
 
-## Octave theme — logo slot
+## Octave theme — baked-in brand frame
 
-`themes/octave.css` has a `--logo-url` variable. To add your logo once you have an SVG/PNG:
+`themes/octave.css` includes the Octave Pulse brand frame by default:
+- top-right `Octave-White-Logo.png` mark
+- bottom-right `OctavePulse_SitePage_Banner1-large.png` pulse background art
+- dark overlay tuned for readability
+- bottom rainbow accent bar
 
-```css
-/* In themes/octave.css, replace: */
---logo-url: none;
-/* With: */
---logo-url: url('/path/to/octave-logo.svg');
-```
+Do not add per-deck `section { background: ... }` or logo CSS for Octave decks unless the user explicitly asks for a one-off override. The theme is the source of truth.
 
-Or pass it per-render:
-```bash
-npx @marp-team/marp-cli slides/<topic>.md --theme themes/octave.css \
-  --css "section { --logo-url: url('/abs/path/to/logo.svg'); }" \
-  -o slides/<topic>.html
-```
+The default asset references are relative to `posts/slides/<topic>.html`, so the assets must live in `posts/slides/`:
+- `posts/slides/Octave-White-Logo.png`
+- `posts/slides/OctavePulse_SitePage_Banner1-large.png`
+
+Override only through theme variables in `themes/octave.css`:
+- `--logo-url`
+- `--background-art-url`
+- `--background-art-size`
+- `--background-art-position`
+- `--background-overlay`
 
 ## Reserved zone — page counter
 
