@@ -8,7 +8,7 @@ Copy-paste scaffolding for new agent projects. Drop these into a new repo and ad
 |---|---|
 | `CLAUDE.md` | Agent instructions template — conventions, key files, gotchas |
 | `AGENTS.md` | Active skills table + approach rules |
-| `standards/efficiency.md` | Code quality, git conventions, agent design rules (set `inject: true`) |
+| `standards/efficiency.md` | Code quality, git conventions, token efficiency rules (set `inject: true`) |
 | `skills/my-skill/SKILL.md` | Skill anatomy template with all required sections |
 | `skills/my-skill/evals/evals.json` | Eval scaffold with all four case types |
 
