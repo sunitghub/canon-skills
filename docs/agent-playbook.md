@@ -314,7 +314,7 @@ project/
   CLAUDE.md          ← agent instructions (conventions, gotchas, non-obvious rules)
   AGENTS.md          ← active skills table + workflow notes
   standards/
-    efficiency.md    ← code quality, git conventions, agent design rules
+    efficiency.md    ← code quality, git conventions, token efficiency rules
   skills/
     my-skill/
       SKILL.md
