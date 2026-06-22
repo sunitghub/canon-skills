@@ -4,9 +4,14 @@ description: Identify high-confidence exploitable vulnerabilities in code
 category: dev
 tags: [security, vulnerabilities, code-review]
 hidden: true
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Read, Glob, Grep, LS
 ---
 
 # Security Review
+
+## Scope
+
+Run `git diff --merge-base origin/HEAD --name-only` to identify changed files. Analyze only those files — do not scan the full codebase.
 
 ## Confidence Threshold
 
@@ -21,6 +26,17 @@ Report only HIGH or MEDIUM confidence:
 ## Do Not Flag
 
 Test files, dead/commented code, constants, server-controlled config, code paths requiring prior auth, Django settings, env vars, framework constants.
+
+Additionally exclude:
+- Denial of Service, rate limiting, or resource exhaustion issues
+- Environment variables and CLI flags — treat as trusted; attackers generally cannot modify them
+- Regex injection or regex DoS
+- React/Angular XSS — these frameworks are safe by default; only flag if using `dangerouslySetInnerHTML`, `bypassSecurityTrustHtml`, or equivalent unsafe methods
+- Command injection in shell scripts — only flag with a concrete, specific attack path for untrusted input
+- Log spoofing or logging un-sanitized user input to logs
+- Missing audit logs
+- Lack of hardening measures — flag concrete vulnerabilities only, not absent best practices
+- Vulnerabilities only in `*.ipynb` notebooks unless there is a concrete attack path for untrusted input
 
 ## Optional Scanner Evidence
 
