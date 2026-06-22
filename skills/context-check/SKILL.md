@@ -13,15 +13,17 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 
 1. Read `context-findings.md` if it exists; skip logged issues.
 
-2. **Global artifacts** — read `~/.claude/CLAUDE.md`. For each `@` import, count lines and produce a size table:
+2. **Global artifacts** — check `~/.claude/CLAUDE.md`. If it is absent, say so and continue. If present, read it. For each `@` import, count lines and produce a size table:
    | File | Lines | Issues |
    |------|-------|--------|
 
+   Treat line counts as a cheap proxy for context weight, not exact token counts.
+
 3. Run `skills.sh status` if `skills.sh` is on PATH; otherwise try `./tools/skills.sh status` if that file exists. List registered skills and file sizes. If neither is available, skip.
 
-4. Read `~/.claude/settings.json`; list hooks, matchers, and scripts.
+4. Check `~/.claude/settings.json`. If it is absent, say so and continue. If present, read it and list hooks, matchers, and scripts.
 
-5. List `~/.claude/projects/*/memory/`; report file count and total size.
+5. Find the current repo's Claude project memory first, if present, then summarize other `~/.claude/projects/*/memory/` directories. If no memory paths exist, say so and continue. Report file count and total size; use line counts or bytes as a proxy, not exact tokens.
 
 6. **Project artifacts** — check the following in the current working directory. For each: report lines if present, or "not present" if absent.
    - `.claude/settings.json`
@@ -34,14 +36,14 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 
    If none exist, state "No project-level .claude/ artifacts found."
 
-7. Flag size issues where line count > 30 and less than half is usually relevant, or a section is one-time/rarely needed.
+7. Flag size issues where line count > 30 and less than half is usually relevant, or a section is one-time/rarely needed. Include the evidence: file, line count, and a short reason the content is usually irrelevant or rarely needed.
 
 8. Read each imported file plus repo `AGENTS.md`, and each present project artifact from Step 6. Flag only high-confidence issues:
 
    - **Cross-file redundancy** — the same rule or constraint appears in two or more files, verbatim or near-verbatim. Quote both occurrences.
-   - **Obvious statements** — rules a capable model already follows.
-   - **Vague non-actionable rules** — instructions with no specific compliance path.
-   - **Dead references** — paths, tools, or commands that no longer exist. Verify before flagging.
+   - **Obvious statements** — rules a capable model already follows. Quote the statement and explain why it adds little control.
+   - **Vague non-actionable rules** — instructions with no specific compliance path. Quote the rule and explain what is not enforceable.
+   - **Dead references** — paths, tools, or commands that no longer exist. Verify before flagging and name the failed check.
 
 9. Report in two labeled sections:
 
@@ -49,7 +51,7 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 
    **### Project** — size table from Step 6, content findings for project-level files.
 
-   In each size table, set the **Issues** column to `Y` if any finding was flagged for that file, `—` if none. For each file assessed in Steps 7–8, explicitly state either the issue found or "no relevance concern" — do not silently skip files that passed. If no content findings exist in a section: say so and stop.
+   In each size table, set the **Issues** column to `Y` if any finding was flagged for that file, `—` if none. For each file assessed in Steps 7–8, explicitly state either the issue found or "no relevance concern" — do not silently skip files that passed. If one section has no findings, say so and continue to the next section. If no findings exist anywhere, stop before the write prompt.
 
 10. If findings exist, ask: `Append these to context-findings.md? (y to confirm)`. Do not write without `y`. Write to `context-findings.md` at the project root.
 
@@ -62,4 +64,4 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 **Action:** what was done (or "Open — no action yet")
 ```
 
-Keep entries concise. When the file exceeds 60 lines, archive (delete) entries older than 6 months before appending.
+Keep entries concise. When the file exceeds 60 lines, move entries older than 6 months to `context-findings.archive.md` before appending. Do not delete historical entries outright.

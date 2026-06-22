@@ -5,9 +5,10 @@
       "id": 1,
       "case_type": "control",
       "prompt": "Run a context check. Assume ~/.claude/CLAUDE.md has two @-imports: AGENTS.md (80 lines) and standards/efficiency.md (120 lines). skills.sh status shows two registered skills: sprint (450 lines) and wrapup (90 lines). No context-findings.md exists yet.",
-      "expected_output": "The skill produces a size table listing each import file and its line count, lists the registered skills and sizes, then flags any files where more than half the content is rarely relevant. It does not write to context-findings.md without asking.",
+      "expected_output": "The skill produces a size table listing each import file and its line count, states that line counts are a proxy rather than exact token counts, lists the registered skills and sizes, then flags any files where more than half the content is rarely relevant. It does not write to context-findings.md without asking.",
       "expectations": [
         "Produces a size table with file names and line counts",
+        "States that line counts are a proxy for context weight, not exact token counts",
         "Lists registered skills and their sizes",
         "Flags high-line-count files where less than half is usually relevant",
         "Asks for confirmation before writing to context-findings.md"
@@ -39,12 +40,15 @@
     {
       "id": 4,
       "case_type": "edge",
-      "prompt": "Run a context check. skills.sh is not on PATH and ./tools/skills.sh does not exist. No context-findings.md exists.",
-      "expected_output": "The skill skips the skills.sh step with an explicit note, continues with the remaining steps (CLAUDE.md imports, settings.json, memory files), and completes normally.",
+      "prompt": "Run a context check. skills.sh is not on PATH and ./tools/skills.sh does not exist. ~/.claude/CLAUDE.md is absent. ~/.claude/settings.json is absent. No ~/.claude/projects/*/memory/ paths exist. No context-findings.md exists.",
+      "expected_output": "The skill skips the skills.sh step with an explicit note, explicitly reports that ~/.claude/CLAUDE.md, ~/.claude/settings.json, and memory paths are absent, continues with the project artifact checks, and completes normally.",
       "expectations": [
         "Skips skills.sh check and explicitly notes it is unavailable",
+        "Reports missing ~/.claude/CLAUDE.md without stopping",
+        "Reports missing ~/.claude/settings.json without stopping",
+        "Reports missing memory paths without stopping",
         "Continues with remaining audit steps",
-        "Does not error or stop because skills.sh is missing"
+        "Does not error or stop because optional global artifacts are missing"
       ]
     },
     {
@@ -57,6 +61,29 @@
         "Explicitly states no relevance concern (or equivalent) for standards/git.md",
         "Does not silently omit the per-file verdict for clean files",
         "Does not write to or prompt about context-findings.md"
+      ]
+    },
+    {
+      "id": 6,
+      "case_type": "compliance",
+      "prompt": "Run a context check. context-findings.md is 75 lines long and contains one finding dated 2025-10-01 plus one finding dated 2026-06-10. You find one new issue and the user confirms appending with 'y'.",
+      "expected_output": "The skill moves the entry older than 6 months to context-findings.archive.md before appending the new finding. It preserves the 2026-06-10 finding in context-findings.md and does not delete historical entries outright.",
+      "expectations": [
+        "Archives entries older than 6 months into context-findings.archive.md",
+        "Does not delete historical entries outright",
+        "Keeps newer findings in context-findings.md",
+        "Appends only after the user confirms with y"
+      ]
+    },
+    {
+      "id": 7,
+      "case_type": "compliance",
+      "prompt": "Run a context check. An imported file is 90 lines. The file includes a one-time onboarding section used only during project setup. No context-findings.md exists.",
+      "expected_output": "The skill flags the imported file only if it gives evidence: the file name, the 90-line count, and a short reason that the onboarding section is one-time or rarely needed in always-on context. It asks before writing.",
+      "expectations": [
+        "Includes file name and line count as evidence for the size finding",
+        "Explains why the flagged content is rarely needed or one-time",
+        "Asks for confirmation before writing to context-findings.md"
       ]
     }
   ]
