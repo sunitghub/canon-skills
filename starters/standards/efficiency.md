@@ -36,6 +36,7 @@ Include reasoning only when the fix isn't self-evident. Security and architectur
 - Type prefix: `feat`, `fix`, `refactor`, `perf`, `docs`, `test`, `chore`, `build`, `ci`, `style`, `revert`.
 - Focus on WHY. No self-referential language ("This commit...", first-person pronouns).
 - For prompt changes: log the intent — what failure or behaviour the prompt was meant to fix — not just what changed. Version tracking without intent makes regression diagnosis across multiple versions a day of archaeology.
+- For any sprint-backed change: include the ticket ID in the commit body (`Closes: t-xxxx`). The ticket holds the full reasoning, constraints, and acceptance criteria that the commit message can only summarise.
 - Add body for breaking changes, non-obvious reasoning, or migration instructions.
 - Branches: `feat/short-description`, `fix/short-description`. Never force-push main/master.
 - PRs: one concern per PR, title under 70 chars, body with summary bullets + test plan.

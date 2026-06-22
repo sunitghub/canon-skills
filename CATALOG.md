@@ -19,6 +19,7 @@ Auto-injected / contributor reference — not registered directly.
 
 | Standard | Category | Description |
 |---|---|---|
+| `agent-design` | agent-ops | Agent design principles for projects building LLM-powered software — own your prompts, context, control flow, and state. Add with skills.sh add agent-design. |
 | `efficiency` | agent-ops | Coding standards, git conventions, and token-efficiency rules for AI agents |
 | `skill-setup-std` | agent-ops | Validates skill files against canon standards. Use when adding a new skill or auditing existing ones. |
 
