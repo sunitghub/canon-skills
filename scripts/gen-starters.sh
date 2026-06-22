@@ -10,6 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # source:destination pairs (paths relative to REPO_ROOT)
 SYNC_PAIRS=(
   "standards/efficiency.md:starters/standards/efficiency.md"
+  "standards/agent-design.md:starters/standards/agent-design.md"
 )
 
 for pair in "${SYNC_PAIRS[@]}"; do

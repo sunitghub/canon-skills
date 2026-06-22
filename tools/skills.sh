@@ -264,7 +264,7 @@ is_canon_project_import_line() {
 
   base="$(basename "$import_path")"
   case "$import_path" in
-    */standards/efficiency.md)
+    */standards/*.md)
       return 0
       ;;
     */skills/*/SKILL.md)
