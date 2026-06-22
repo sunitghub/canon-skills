@@ -17,8 +17,6 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
    | File | Lines | Issues |
    |------|-------|--------|
 
-   Treat line counts as a cheap proxy for context weight, not exact token counts.
-
 3. Run `skills.sh status` if `skills.sh` is on PATH; otherwise try `./tools/skills.sh status` if that file exists. List registered skills and file sizes. If neither is available, skip.
 
 4. Check `~/.claude/settings.json`. If it is absent, say so and continue. If present, read it and list hooks, matchers, and scripts.
@@ -50,6 +48,8 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
    **### Global** — size table from Steps 2–5, content findings for global files.
 
    **### Project** — size table from Step 6, content findings for project-level files.
+
+   Note below each size table: "Line counts are a proxy for context weight, not exact token counts."
 
    In each size table, set the **Issues** column to `Y` if any finding was flagged for that file, `—` if none. For each file assessed in Steps 7–8, explicitly state either the issue found or "no relevance concern" — do not silently skip files that passed. If one section has no findings, say so and continue to the next section. If no findings exist anywhere, stop before the write prompt.
 
