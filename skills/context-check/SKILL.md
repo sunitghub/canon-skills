@@ -13,9 +13,9 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 
 1. Read `context-findings.md` if it exists; skip logged issues.
 
-2. Read `~/.claude/CLAUDE.md`. For each `@` import, count lines and produce:
-   | File | Lines |
-   |------|-------|
+2. **Global artifacts** — read `~/.claude/CLAUDE.md`. For each `@` import, count lines and produce a size table:
+   | File | Lines | Issues |
+   |------|-------|--------|
 
 3. Run `skills.sh status` if `skills.sh` is on PATH; otherwise try `./tools/skills.sh status` if that file exists. List registered skills and file sizes. If neither is available, skip.
 
@@ -23,20 +23,35 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 
 5. List `~/.claude/projects/*/memory/`; report file count and total size.
 
-6. Flag size issues where line count > 30 and less than half is usually relevant, or a section is one-time/rarely needed.
+6. **Project artifacts** — check the following in the current working directory. For each: report lines if present, or "not present" if absent.
+   - `.claude/settings.json`
+   - `.claude/settings.local.json`
+   - `CLAUDE.md` (project root)
 
-7. Read each imported file plus repo `AGENTS.md`. Flag only high-confidence issues:
+   Produce a project-level size table (omit rows for absent files):
+   | File | Lines | Issues |
+   |------|-------|--------|
+
+   If none exist, state "No project-level .claude/ artifacts found."
+
+7. Flag size issues where line count > 30 and less than half is usually relevant, or a section is one-time/rarely needed.
+
+8. Read each imported file plus repo `AGENTS.md`, and each present project artifact from Step 6. Flag only high-confidence issues:
 
    - **Cross-file redundancy** — the same rule or constraint appears in two or more files, verbatim or near-verbatim. Quote both occurrences.
    - **Obvious statements** — rules a capable model already follows.
    - **Vague non-actionable rules** — instructions with no specific compliance path.
    - **Dead references** — paths, tools, or commands that no longer exist. Verify before flagging.
 
-   Report content findings separately from size findings.
+9. Report in two labeled sections:
 
-8. Report the size table, then content findings. For each file assessed in Step 6, explicitly state either the issue found or "no relevance concern" — do not silently skip files that passed. If no content findings exist: say so and stop.
+   **### Global** — size table from Steps 2–5, content findings for global files.
 
-9. If findings exist, ask: `Append these to context-findings.md? (y to confirm)`. Do not write without `y`. Write to `context-findings.md` at the project root.
+   **### Project** — size table from Step 6, content findings for project-level files.
+
+   In each size table, set the **Issues** column to `Y` if any finding was flagged for that file, `—` if none. For each file assessed in Steps 7–8, explicitly state either the issue found or "no relevance concern" — do not silently skip files that passed. If no content findings exist in a section: say so and stop.
+
+10. If findings exist, ask: `Append these to context-findings.md? (y to confirm)`. Do not write without `y`. Write to `context-findings.md` at the project root.
 
 ## context-findings.md entry format
 
