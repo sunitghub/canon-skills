@@ -41,16 +41,6 @@ Include reasoning only when the fix isn't self-evident. Security and architectur
 - PRs: one concern per PR, title under 70 chars, body with summary bullets + test plan.
 - Never stage with `git add -A` — pick specific files.
 
-## Agent Design
-
-- One skill, one job. A skill that does two things is two skills waiting to be separated.
-- Compose agents from tools + context + prompts — not inheritance hierarchies.
-- Request only the tools the current task needs. Bloated tool schemas degrade reasoning.
-- Prefer reversible actions. Confirm before irreversible ones (send, delete, publish, deploy).
-- Fail loudly — surface ambiguity rather than guessing silently.
-- Solve with one agent before building a multi-agent pipeline. Complexity compounds failure.
-- Requirements define intent; code defines reality. The gap between them is where hallucination lives.
-
 ## Triggers
 
 Act on these when you see them — don't wait to be told.
