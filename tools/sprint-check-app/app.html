@@ -1807,6 +1807,7 @@ function render() {
 function renderHeader() {
   const { git, tickets } = state;
   setText('h-project',  git?.project || 'project');
+  document.getElementById('h-project').title = git?.root || '';
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
   setText('h-open',     tickets.filter(t => t.status === 'open').length);

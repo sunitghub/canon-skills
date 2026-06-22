@@ -209,7 +209,7 @@ def load_git() -> dict:
             log.append({'hash': parts[0], 'message': parts[1]})
             if len(log) == 8:
                 break
-    return {'branch': branch, 'project': project, 'modified': modified, 'log': log}
+    return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log}
 
 # ── Commit detail ─────────────────────────────────────────────────────────
 
