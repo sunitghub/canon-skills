@@ -42,17 +42,24 @@
   /* Primary accent used throughout — swap to any brand accent color */
   --accent:        var(--aqua);
 
-  --logo-url: none;
+  --logo-url: url("./Octave-White-Logo.png");
+  --background-art-url: url("./OctavePulse_SitePage_Banner1-large.png");
+  --background-art-size: 210% auto;
+  --background-art-position: bottom right;
+  --background-overlay:
+    linear-gradient(180deg, rgba(26,26,31,0.7) 0%, rgba(26,26,31,0.78) 42%, rgba(26,26,31,0.82) 100%);
 
   --font-sans: 'Inter', 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
 }
 
 section {
-  /* Accent bar baked into background — frees both pseudo-elements */
+  /* Accent bar + Octave pulse art baked into background — frees both pseudo-elements */
   background:
     linear-gradient(90deg, var(--aqua) 0%, var(--harlequin) 25%, var(--yellow) 50%, var(--blaze-orange) 75%, var(--pink) 100%)
     bottom / 100% 3px no-repeat,
+    var(--background-overlay) center / cover no-repeat,
+    var(--background-art-url) var(--background-art-position) / var(--background-art-size) no-repeat,
     var(--octave-black);
   color: var(--gray-1);
   font-family: var(--font-sans);
@@ -70,12 +77,13 @@ section::before {
   position: absolute;
   top: 24px;
   right: 48px;
-  width: 120px;
-  height: 36px;
+  width: 150px;
+  height: 58px;
   background-image: var(--logo-url);
   background-size: contain;
   background-repeat: no-repeat;
   background-position: right center;
+  opacity: 0.82;
   pointer-events: none;
 }
 
