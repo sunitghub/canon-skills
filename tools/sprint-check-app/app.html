@@ -512,12 +512,14 @@
     .ready-indicator     { display: flex; align-items: center; gap: 3px; cursor: pointer; min-width: 0; }
     .ready-dot           { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .ready-indicator.ready     .ready-dot { background: var(--col-done); }
-    .ready-indicator.not-ready .ready-dot { background: var(--border-hover); }
+    .ready-indicator.not-ready .ready-dot { background: #f59e0b; }
     .ready-indicator.incomplete .ready-dot { background: var(--col-discarded); opacity: .85; }
     .ready-label         { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
     .ready-indicator.ready      .ready-label { color: var(--col-done); }
-    .ready-indicator.not-ready  .ready-label { color: var(--text-dim); }
+    .ready-indicator.not-ready  .ready-label { color: #f59e0b; }
     .ready-indicator.incomplete .ready-label { color: var(--col-discarded); opacity: .75; font-weight: 500; }
+    html[data-theme="light"] .ready-indicator.not-ready .ready-dot  { background: #d97706; }
+    html[data-theme="light"] .ready-indicator.not-ready .ready-label { color: #d97706; }
     .ready-popover {
       position: fixed; z-index: 9999; pointer-events: none;
       background: var(--surface-raised); border: 1px solid var(--border);
@@ -855,6 +857,20 @@
       font-size: 12px;
     }
 
+    /* ── Drop gate toast ────────────────────────── */
+    #drop-toast {
+      font-size: 12px; padding: 4px 12px;
+      border: 1px solid transparent; border-radius: 20px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .2s;
+      white-space: nowrap;
+    }
+    #drop-toast.warn  { border-color: rgba(251,191,36,.35); color: #fbbf24; background: rgba(251,191,36,.07); }
+    #drop-toast.block { border-color: rgba(248,113,113,.35); color: var(--col-discarded); background: rgba(248,113,113,.07); }
+    #drop-toast.show  { opacity: 1; }
+    html[data-theme="light"] #drop-toast.warn  { border-color: #d97706; color: #92400e; background: #fef3c7; }
+    html[data-theme="light"] #drop-toast.block { border-color: #dc2626; color: #7f1d1d; background: #fee2e2; }
+
     /* ── Doc type picker ─────────────────────────── */
     .doc-picker-label { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
     .doc-type-card {
@@ -1160,6 +1176,7 @@
           <button class="search-clear" id="board-search-clear" type="button" aria-label="Clear search">×</button>
         </label>
         <div class="search-count" id="board-search-count"></div>
+        <div id="drop-toast"></div>
       </div>
       <div class="why-results" id="why-results"></div>
       <div id="board"></div>
@@ -2073,9 +2090,28 @@ function renderBoard() {
       if (!dragId) return;
       const newStatus = col.dataset.status;
       const t = state.tickets.find(t => t.id === dragId);
-      if (t && t.status !== newStatus) moveCard(t, newStatus);
+      if (!t || t.status === newStatus) return;
+      const { hasAcceptance, acceptanceIncomplete } = readiness(t);
+      if (newStatus === 'closed' && acceptanceIncomplete) {
+        showToast('⚠ Acceptance has unchecked items — mark all complete before closing', 'block');
+        return;
+      }
+      if (newStatus === 'in_progress' && !hasAcceptance) {
+        showToast('⚠ No acceptance criteria defined yet', 'warn');
+      }
+      moveCard(t, newStatus);
     });
   });
+}
+
+let _toastTimer = null;
+function showToast(msg, type = 'warn') {
+  const el = document.getElementById('drop-toast');
+  if (!el) return;
+  clearTimeout(_toastTimer);
+  el.textContent = msg;
+  el.className = type + ' show';
+  _toastTimer = setTimeout(() => { el.classList.remove('show'); }, 3000);
 }
 
 function readiness(t) {
