@@ -39,6 +39,9 @@ If PowerShell blocks the script, run this once and retry:
 Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 ```
 
+The installer does not copy files anywhere. It uses the extracted `canon` folder
+in place and adds that folder's `tools` directory to your user PATH.
+
 Close and reopen the VS Code terminal after install so PATH refreshes.
 
 Verify:
@@ -72,7 +75,7 @@ Windows PowerShell:
 ```powershell
 $dest = "$HOME\canon-todo-walkthrough"
 Remove-Item -Recurse -Force $dest -ErrorAction SilentlyContinue
-Copy-Item -Recurse "$HOME\.canon\examples\canon-todo-walkthrough" $dest
+Copy-Item -Recurse ".\examples\canon-todo-walkthrough" $dest
 cd $dest
 skills add sprint
 ```
@@ -80,7 +83,7 @@ skills add sprint
 macOS / Linux / Git Bash:
 
 ```bash
-~/.canon/scripts/copy-todo-walkthrough.sh ~/canon-todo-walkthrough
+./scripts/copy-todo-walkthrough.sh ~/canon-todo-walkthrough
 cd ~/canon-todo-walkthrough
 skills.sh add sprint
 ```
@@ -114,16 +117,16 @@ steps/05-sprint-complete.md
 
 ## Todo Reference App
 
-The finished reference app is installed at:
+The finished reference app is included in the extracted canon folder at:
 
 ```text
-~/.canon/examples/todo-app
+examples/todo-app
 ```
 
 Windows PowerShell:
 
 ```powershell
-cd "$HOME\.canon\examples\todo-app"
+cd "<path-to-extracted-canon>\examples\todo-app"
 npm test
 npm run serve
 ```
@@ -131,7 +134,7 @@ npm run serve
 macOS / Linux:
 
 ```bash
-cd ~/.canon/examples/todo-app
+cd <path-to-extracted-canon>/examples/todo-app
 npm test
 npm run serve
 ```
@@ -140,7 +143,8 @@ Open `http://127.0.0.1:4173`. The server uses Node, not Python.
 
 ## Installed Contents
 
-Everything installs to `~/.canon` or `%USERPROFILE%\.canon`.
+The zip is used in place. `install.ps1` only adds the extracted folder's `tools`
+directory to PATH.
 
 | Path | Purpose |
 |---|---|

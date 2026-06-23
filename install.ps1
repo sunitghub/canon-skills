@@ -1,20 +1,18 @@
 # Canon Workshop Installer for Windows (PowerShell)
-# Usage: .\install.ps1 [-Target "C:\path\to\dir"]
+# Usage: .\install.ps1
 
-param(
-  [string]$Target = (Join-Path $HOME ".canon")
-)
+$CanonRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ToolsPath = Join-Path $CanonRoot "tools"
 
-Write-Host "Installing canon to $Target..."
-
-if (-not (Test-Path $Target)) {
-  New-Item -ItemType Directory -Force -Path $Target | Out-Null
+if (-not (Test-Path $ToolsPath)) {
+  Write-Error "tools folder not found at $ToolsPath. Run this from the extracted canon folder."
+  exit 1
 }
 
-$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-Copy-Item -Recurse -Force (Join-Path $ScriptDir "*") $Target
+Write-Host "Using canon from:"
+Write-Host "  $CanonRoot"
+Write-Host ""
 
-$ToolsPath = Join-Path $Target "tools"
 $CurrentPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
 if (($CurrentPath -split ';') -notcontains $ToolsPath) {
   $env:PATH = "$CurrentPath;$ToolsPath"
@@ -22,15 +20,20 @@ if (($CurrentPath -split ';') -notcontains $ToolsPath) {
 
 $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 if (($UserPath -split ';') -notcontains $ToolsPath) {
-  [Environment]::SetEnvironmentVariable("PATH", "$UserPath;$ToolsPath", "User")
+  $nextUserPath = if ([string]::IsNullOrWhiteSpace($UserPath)) { $ToolsPath } else { "$UserPath;$ToolsPath" }
+  [Environment]::SetEnvironmentVariable("PATH", $nextUserPath, "User")
 }
 
-Write-Host ""
-Write-Host "Done. Added canon tools to your user PATH:"
+Write-Host "Done. Added this workshop tools folder to your user PATH:"
 Write-Host "  $ToolsPath"
 Write-Host ""
-Write-Host "Open a new VS Code terminal, then start a sprint board from any project:"
-Write-Host "  sprint-check"
+Write-Host "Close and reopen the VS Code terminal, then verify:"
+Write-Host "  tkt ls"
+Write-Host "  sprint-check --help"
 Write-Host ""
 Write-Host "For the Todo walkthrough:"
-Write-Host "  Copy-Item -Recurse `"$Target\examples\canon-todo-walkthrough`" `"$HOME\canon-todo-walkthrough`""
+Write-Host "  `$dest = `"$HOME\canon-todo-walkthrough`""
+Write-Host "  Remove-Item -Recurse -Force `$dest -ErrorAction SilentlyContinue"
+Write-Host "  Copy-Item -Recurse `"$CanonRoot\examples\canon-todo-walkthrough`" `$dest"
+Write-Host "  cd `$dest"
+Write-Host "  skills add sprint"

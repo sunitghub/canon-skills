@@ -69,7 +69,7 @@ Windows 11 / VS Code PowerShell:
 ```powershell
 $dest = "$HOME\canon-todo-walkthrough"
 Remove-Item -Recurse -Force $dest -ErrorAction SilentlyContinue
-Copy-Item -Recurse "$HOME\.canon\examples\canon-todo-walkthrough" $dest
+Copy-Item -Recurse ".\examples\canon-todo-walkthrough" $dest
 cd $dest
 skills add sprint   # runs tools\skills.cmd, which invokes Git Bash
 ```
@@ -79,7 +79,8 @@ once — `sprint start`, `sprint-check`, and `tkt` are then available as command
 The folder starts with docs only; the implementation step later creates
 `package.json`, `scripts/`, `src/`, and `tests/`.
 
-For Windows workshops, use the VS Code terminal after running `install.ps1`.
+For Windows workshops, run `install.ps1` from the extracted canon folder first,
+then use the VS Code terminal from that same folder for the copy command above.
 The workshop path requires Git for Windows, but not WSL or Python.
 
 > **For product managers:** Ask your developer to run the commands above, then open the board
@@ -93,4 +94,4 @@ The workshop path requires Git for Windows, but not WSL or Python.
 5. [05-sprint-complete.md](steps/05-sprint-complete.md) — close with the gate, including the failure case.
 
 The finished reference implementation is included in the workshop zip at
-`~/.canon/examples/todo-app`.
+`examples/todo-app`.
