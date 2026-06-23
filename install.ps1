@@ -14,12 +14,23 @@ if (-not (Test-Path $Target)) {
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 Copy-Item -Recurse -Force (Join-Path $ScriptDir "*") $Target
 
+$ToolsPath = Join-Path $Target "tools"
+$CurrentPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+if (($CurrentPath -split ';') -notcontains $ToolsPath) {
+  $env:PATH = "$CurrentPath;$ToolsPath"
+}
+
+$UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+if (($UserPath -split ';') -notcontains $ToolsPath) {
+  [Environment]::SetEnvironmentVariable("PATH", "$UserPath;$ToolsPath", "User")
+}
+
 Write-Host ""
-Write-Host "Done. To use canon tools from any terminal, add to your PATH:"
-Write-Host "  `$env:PATH += `";$Target\tools`""
+Write-Host "Done. Added canon tools to your user PATH:"
+Write-Host "  $ToolsPath"
 Write-Host ""
-Write-Host "To make it permanent, add that line to your PowerShell profile:"
-Write-Host "  notepad `$PROFILE"
-Write-Host ""
-Write-Host "Then start a sprint board from any project:"
+Write-Host "Open a new VS Code terminal, then start a sprint board from any project:"
 Write-Host "  sprint-check"
+Write-Host ""
+Write-Host "For the Todo walkthrough:"
+Write-Host "  Copy-Item -Recurse `"$Target\examples\canon-todo-walkthrough`" `"$HOME\canon-todo-walkthrough`""

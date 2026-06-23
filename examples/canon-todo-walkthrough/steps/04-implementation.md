@@ -6,6 +6,8 @@ For this walkthrough, the agent should create this small project layout:
 
 ```text
 package.json
+scripts/
+  serve.mjs
 src/
   index.html
   styles.css
@@ -21,7 +23,7 @@ tests/
   "type": "module",
   "scripts": {
     "test": "node --test tests/*.test.mjs",
-    "serve": "python3 -m http.server 4173 -d src"
+    "serve": "node scripts/serve.mjs"
   }
 }
 ```
@@ -48,7 +50,7 @@ the walkthrough shows how canon preserves a useful discovery outside the chat
 transcript. Tell the agent:
 
 ```text
-Capture this: the Todo app is served from src/ and tests exercise src/app.js directly, so keep browser behavior and testable logic separated unless a later ticket changes the structure.
+Capture this: the Todo app is served from src/ by a tiny Node static server and tests exercise src/app.js directly, so keep browser behavior and testable logic separated unless a later ticket changes the structure.
 ```
 
 The agent records that kind of discovery in `HANDOFF.md ## Discoveries`, where a
@@ -75,6 +77,9 @@ Before moving on, run the app to confirm it works in the browser:
 ```bash
 npm run serve
 ```
+
+The serve command uses Node, not Python, so the Windows workshop path stays
+compatible with VS Code on Windows without WSL.
 
 ![npm run serve terminal output](../assets/serve-terminal.png)
 

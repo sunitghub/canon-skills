@@ -12,7 +12,8 @@ echo "Installing canon to $TARGET..."
 mkdir -p "$TARGET"
 cp -r "$SCRIPT_DIR/." "$TARGET/"
 chmod +x "$TARGET/tools/tkt" "$TARGET/tools/sprint" \
-         "$TARGET/tools/sprint-check" 2>/dev/null || true
+         "$TARGET/tools/sprint-check" "$TARGET/tools/skills.sh" \
+         "$TARGET/scripts/copy-todo-walkthrough.sh" 2>/dev/null || true
 
 echo ""
 echo "Done. Add canon tools to your PATH:"

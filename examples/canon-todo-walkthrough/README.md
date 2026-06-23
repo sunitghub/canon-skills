@@ -56,15 +56,31 @@ as a separate process:
 
 **1. Copy and wire**
 
+macOS / Linux / Git Bash:
+
 ```bash
 ~/.canon/scripts/copy-todo-walkthrough.sh <path_to_dest_folder>
 cd <path_to_dest_folder>
 skills.sh add sprint   # creates .tickets/, writes CLAUDE.md + AGENTS.md, offers PATH setup
 ```
 
-`skills.sh add sprint` is the only setup step. It wires the project once — `sprint start`,
-`sprint-check`, and `tkt` are then available as commands. The folder starts with docs only;
-the implementation step later creates `package.json`, `src/`, and `tests/`.
+Windows 11 / VS Code PowerShell:
+
+```powershell
+$dest = "$HOME\canon-todo-walkthrough"
+Remove-Item -Recurse -Force $dest -ErrorAction SilentlyContinue
+Copy-Item -Recurse "$HOME\.canon\examples\canon-todo-walkthrough" $dest
+cd $dest
+skills add sprint   # runs tools\skills.cmd, which invokes Git Bash
+```
+
+The skills setup command is the only project-wiring step. It wires the project
+once — `sprint start`, `sprint-check`, and `tkt` are then available as commands.
+The folder starts with docs only; the implementation step later creates
+`package.json`, `scripts/`, `src/`, and `tests/`.
+
+For Windows workshops, use the VS Code terminal after running `install.ps1`.
+The workshop path requires Git for Windows, but not WSL or Python.
 
 > **For product managers:** Ask your developer to run the commands above, then open the board
 > with `sprint-check`. Everything else in the walkthrough is visible there.
@@ -76,4 +92,5 @@ the implementation step later creates `package.json`, `src/`, and `tests/`.
 4. [04-implementation.md](steps/04-implementation.md) — build and tick off criteria.
 5. [05-sprint-complete.md](steps/05-sprint-complete.md) — close with the gate, including the failure case.
 
-The finished reference implementation lives in [`../todo-app`](../todo-app).
+The finished reference implementation is included in the workshop zip at
+`~/.canon/examples/todo-app`.

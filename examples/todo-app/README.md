@@ -6,6 +6,7 @@ add a Todo, mark it complete, and verify the behavior with tests.
 
 ```text
 examples/todo-app/
+  scripts/       tiny Node static server for local browser testing
   src/           browser app source
   tests/         Node test coverage for Todo behavior
 ```
@@ -16,7 +17,7 @@ The app has no runtime dependencies. Tests use Node's built-in test runner.
 
 ```bash
 npm test
-python3 -m http.server 4173 -d src
+npm run serve
 ```
 
 Open `http://127.0.0.1:4173`.
