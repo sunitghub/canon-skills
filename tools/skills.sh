@@ -831,6 +831,10 @@ cmd_init() {
     echo "Setup finished with errors — check items marked [fail] above."
   fi
 
+  echo ""
+  echo "Git hooks:"
+  bash "$SKILLS_ROOT/scripts/install-hooks.sh" || any_fail=1
+
   offer_tkt_path
 
   echo ""
