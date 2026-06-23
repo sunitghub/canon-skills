@@ -97,6 +97,7 @@ def parse_ticket(path: Path) -> dict:
             docs.append({'name': _doc_name(f), 'file': f'{path.parent.name}/{f.name}'})
         # Check acceptance completeness: Criteria and Test Plan each need ≥1 checkbox item
         fields['acceptance_has_items'] = None
+        fields['acceptance_unchecked'] = None
         acc_path = path.parent / 'acceptance.md'
         if acc_path.is_file():
             try:
@@ -107,6 +108,9 @@ def parse_ticket(path: Path) -> dict:
                     bool(_cb.search(_section(acc_text, 'Criteria'))) and
                     bool(_cb.search(_section(acc_text, 'Test Plan')))
                 )
+                # True if any unchecked items exist (blocks drag-to-done)
+                _unchecked = re.compile(r'^\s*[-*]\s+\[ \]\s+\S', re.MULTILINE)
+                fields['acceptance_unchecked'] = bool(_unchecked.search(acc_text))
             except Exception:
                 pass
         fields['plan_has_approach'] = None

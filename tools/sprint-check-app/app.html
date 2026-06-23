@@ -2091,8 +2091,8 @@ function renderBoard() {
       const newStatus = col.dataset.status;
       const t = state.tickets.find(t => t.id === dragId);
       if (!t || t.status === newStatus) return;
-      const { hasAcceptance, acceptanceIncomplete } = readiness(t);
-      if (newStatus === 'closed' && acceptanceIncomplete) {
+      const { hasAcceptance } = readiness(t);
+      if (newStatus === 'closed' && t.acceptance_unchecked) {
         showToast('⚠ Acceptance has unchecked items — mark all complete before closing', 'block');
         return;
       }
