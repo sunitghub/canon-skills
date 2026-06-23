@@ -80,8 +80,9 @@ The folder starts with docs only; the implementation step later creates
 `package.json`, `scripts/`, `src/`, and `tests/`.
 
 For Windows workshops, run `install.ps1` from the extracted canon folder first,
-then use the VS Code terminal from that same folder for the copy command above.
-The workshop path requires Git for Windows, but not WSL or Python.
+then fully quit and reopen VS Code so the updated PATH is available before
+running the copy command above. The workshop path requires Git for Windows, but
+not WSL or Python.
 
 > **For product managers:** Ask your developer to run the commands above, then open the board
 > with `sprint-check`. Everything else in the walkthrough is visible there.
