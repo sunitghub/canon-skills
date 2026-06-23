@@ -6,16 +6,17 @@ const path = require('path');
 const BASE = 'http://localhost:8423';
 
 test.describe('board modal', () => {
-  test('no Description tab on any ticket', async ({ page }) => {
+  test('Description tab appears on tickets with docs, absent on doc-less tickets', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
 
+    // First card (newest open ticket) has docs — Description tab should appear
     const firstCard = page.locator('.card').first();
     await firstCard.click();
     await page.waitForSelector('#m-docs', { timeout: 5000 });
-
-    const tabLabels = await page.locator('#m-docs .doc-tab').allTextContents();
-    expect(tabLabels.map(t => t.trim())).not.toContain('Description');
+    const withDocsTabs = await page.locator('#m-docs .doc-tab').allTextContents();
+    expect(withDocsTabs.map(t => t.trim())).toContain('Description');
+    await page.keyboard.press('Escape');
   });
 
   test('first doc tab is active on open (ticket with docs)', async ({ page }) => {
