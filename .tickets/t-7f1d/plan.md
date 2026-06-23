@@ -27,6 +27,7 @@ Build on `t-8060`, which already created `dist/canon-workshop.zip`, `install.ps1
 9. Change the Windows workshop installer to in-place mode: add the extracted folder's `tools` directory to PATH without copying files into `%USERPROFILE%\.canon`.
 10. Update the workshop README and installer output so Windows commands reference the extracted canon folder, not a second `.canon` copy.
 11. Fix Windows `.cmd` shims so `skills`, `tkt`, and `sprint` prefer Git for Windows Bash over WSL `bash.exe`; Windows may have WSL's `bash.exe` on PATH even when no distro is installed.
+12. Include `tools/ticket-root.sh` in the workshop zip because `tools/tkt` and `tools/sprint` source it at startup.
 
 Perspective check:
 - User: VS Code users expect `sprint`, `tkt`, and `sprint-check` to work from the integrated terminal/agent shell after install.
@@ -44,6 +45,7 @@ Perspective check:
 - `tools/skills.sh`
 - `tools/skill-lib.sh`
 - `tools/hooks-lib.sh`
+- `tools/ticket-root.sh`
 - `scripts/copy-todo-walkthrough.sh`
 - `examples/canon-todo-walkthrough/`
 - `examples/todo-app/`
