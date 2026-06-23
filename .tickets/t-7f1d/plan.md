@@ -26,6 +26,7 @@ Build on `t-8060`, which already created `dist/canon-workshop.zip`, `install.ps1
 8. Update the walkthrough README and implementation step with a Windows 11 / VS Code path that avoids WSL and Python.
 9. Change the Windows workshop installer to in-place mode: add the extracted folder's `tools` directory to PATH without copying files into `%USERPROFILE%\.canon`.
 10. Update the workshop README and installer output so Windows commands reference the extracted canon folder, not a second `.canon` copy.
+11. Fix Windows `.cmd` shims so `skills`, `tkt`, and `sprint` prefer Git for Windows Bash over WSL `bash.exe`; Windows may have WSL's `bash.exe` on PATH even when no distro is installed.
 
 Perspective check:
 - User: VS Code users expect `sprint`, `tkt`, and `sprint-check` to work from the integrated terminal/agent shell after install.
@@ -59,6 +60,7 @@ Perspective check:
 - Require Git for Windows if needed; explicitly do not require WSL or a user-installed Python on Windows.
 - Treat Go as a workshop binary path for `sprint-check`, not as a full rewrite of `tkt` and `sprint` in this sprint.
 - For the workshop zip, prefer in-place install over copying to `.canon`; users already extracted a complete canon folder, and a second copy makes PATH and walkthrough paths confusing.
+- On Windows, never rely on bare `bash.exe` resolution first. WSL can satisfy `where bash.exe` but fail with "Windows Subsystem for Linux has no installed distributions." Git for Windows Bash is the required shell for workshop command shims.
 
 Applicable `DECISIONS.md` constraints:
 - 2026-06-10 delivery priority: zip/pkg-like delivery can conflict with the living-library model; this is acceptable only as a workshop artifact, not the default long-term product update model.
