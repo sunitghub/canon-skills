@@ -45,7 +45,7 @@ readable.
 - `● ready` (green) — Acceptance and Plan both present and complete
 - `● incomplete` (red) — acceptance.md exists but is missing checklist items under ## Criteria or ## Test Plan; `sprint complete` will block
 - `● plan incomplete` (red) — plan.md exists but ## Approach is empty or still placeholder text
-- `● needs acc` / `● needs plan` (gray) — the next sprint doc to add
+- `● needs acc` / `● needs plan` (amber) — the next sprint doc to add
 
 Click the readiness indicator for a checklist popover. Click anywhere else on the card to open the full ticket.
 
