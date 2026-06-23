@@ -42,7 +42,15 @@ Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
 The installer does not copy files anywhere. It uses the extracted `canon` folder
 in place and adds that folder's `tools` directory to your user PATH.
 
-Close and reopen the VS Code terminal after install so PATH refreshes.
+Fully quit and reopen VS Code after install so it reloads the updated Windows
+user PATH. Opening a new terminal inside an already-running VS Code window may
+still use the old process environment.
+
+For the current terminal only, this also works:
+
+```powershell
+$env:Path += ";$(Join-Path (Get-Location) 'tools')"
+```
 
 Verify:
 
@@ -160,7 +168,9 @@ directory to PATH.
 
 ## Troubleshooting
 
-- `tkt` or `sprint-check` not found: close and reopen the VS Code terminal.
+- `tkt` or `sprint-check` not found: fully quit and reopen VS Code. If you need
+  the current terminal to work immediately, run
+  `$env:Path += ";$(Join-Path (Get-Location) 'tools')"`.
 - `skills add sprint` says Git Bash is missing: reinstall Git for Windows and
   make sure `bash.exe` is available, or use the default Git installer settings.
 - PowerShell blocks `install.ps1`: run
