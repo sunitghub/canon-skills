@@ -17,7 +17,18 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
    | File | Lines | Issues |
    |------|-------|--------|
 
-3. Run `skills.sh status` if `skills.sh` is on PATH; otherwise try `./tools/skills.sh status` if that file exists. List registered skills and file sizes. If neither is available, skip.
+3. Check `.claude/skills/` in the current working directory.
+
+   If the directory doesn't exist, note "No `.claude/skills/` directory found" and continue.
+
+   If it exists:
+   - Run `./tools/skills.sh status` if that file exists, otherwise `skills.sh status` if on PATH. This gives the full registered-skill list.
+   - Run `find .claude/skills -maxdepth 1 -mindepth 1 -type l 2>/dev/null` to identify symlinked (canon-managed) skill directories.
+   - Run `find .claude/skills -maxdepth 1 -mindepth 1 \! -type l -type d 2>/dev/null` to identify project-local skill directories.
+
+   Report two sub-lists:
+   - **Canon-managed** (symlinks): name and symlink target only. Do not audit content — these are installed from an external source and not part of the project's own context footprint.
+   - **Project-local** (non-symlinks): name and file size. Include in the content audit at step 8.
 
 4. Check `~/.claude/settings.json`. If it is absent, say so and continue. If present, read it and list hooks, matchers, and scripts.
 
@@ -36,7 +47,7 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 
 7. Flag size issues where line count > 30 and less than half is usually relevant, or a section is one-time/rarely needed. Include the evidence: file, line count, and a short reason the content is usually irrelevant or rarely needed.
 
-8. Read each imported file plus repo `AGENTS.md`, and each present project artifact from Step 6. Flag only high-confidence issues:
+8. Read each imported file plus repo `AGENTS.md`, and each present project artifact from Step 6. Skip canon-managed skills identified in Step 3 (symlinked skill dirs or @-imports that resolve to a canon install path such as `~/.canon/`, `~/.claude/skills/`, or any path containing `/canon/skills/`). Flag only high-confidence issues in project-owned files:
 
    - **Cross-file redundancy** — the same rule or constraint appears in two or more files, verbatim or near-verbatim. Quote both occurrences.
    - **Obvious statements** — rules a capable model already follows. Quote the statement and explain why it adds little control.
