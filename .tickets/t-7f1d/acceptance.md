@@ -17,8 +17,8 @@ The checklist of behavior that must be true before the sprint can close.
 - [x] `dist/canon-workshop.zip` includes `examples/canon-todo-walkthrough` and `examples/todo-app`.
 - [x] The workshop zip includes enough setup tooling for the walkthrough, including `skills.sh`, `skills.cmd`, helper libs, and the copy script.
 - [x] The Todo walkthrough has a Windows 11 / VS Code setup path that does not require WSL or Python.
-- [x] Windows `install.ps1` treats the extracted canon folder as the workshop install and adds that folder's `tools` directory to PATH without copying to `%USERPROFILE%\.canon`.
-- [x] `dist/README.md` uses paths relative to the extracted canon folder for Windows workshop setup and walkthrough copying.
+- [x] Windows `install.ps1` treats the extracted canon folder as the workshop install and adds that exact folder's `tools` directory to PATH, e.g. `C:\Users\<user>\Documents\canon\tools`, without copying to `%USERPROFILE%\.canon`.
+- [x] `dist/README.md` uses paths relative to the extracted canon folder for Windows workshop setup and walkthrough copying, e.g. `.\examples\canon-todo-walkthrough`, not `$HOME\.canon\examples\...`.
 
 ## Test Plan
 The commands or checks that prove the criteria work.
@@ -32,7 +32,8 @@ The commands or checks that prove the criteria work.
 - [x] Inspect `unzip -l dist/canon-workshop.zip` and verify walkthrough/reference app files are present.
 - [x] Run `npm test` and `npm run serve` in `examples/todo-app`.
 - [x] Grep the walkthrough/reference app for stale Python-only or missing-script setup instructions.
-- [x] Inspect `install.ps1` output and README commands to confirm they no longer point Windows users at `%USERPROFILE%\.canon`.
+- [x] Inspect `install.ps1` output and README commands to confirm Windows users are pointed at the extracted folder's `tools` path, not `%USERPROFILE%\.canon\tools`.
+- [x] Grep `dist/README.md`, `install.ps1`, and the Windows walkthrough setup for stale Windows `$HOME\.canon` paths.
 - [x] Regenerate `dist/canon-workshop.zip` and verify the embedded `canon/README.md` and `canon/install.ps1` match the in-place flow.
 
 ## QA
