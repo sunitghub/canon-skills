@@ -9,7 +9,7 @@
 2. **Classify tier.** Decide normal vs high-risk using the workflow tiers in `skills/sprint/SKILL.md`.
 
 3. **Planning files.** Create or update the files in `.tickets/<id>/`:
-   - `acceptance.md` — specific, binary conditions that define "done"
+   - `acceptance.md` — specific, binary conditions that define "done". For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan. For `type: bug` tickets, use `starters/bug-plan.md` as the skeleton — it structures the plan around the five incident stages (Detect/Diagnose/Contain/Fix/Prevent).
    - `research.md` — high-risk and brownfield sprints only; objective compression of truth (see Research below)
    - If these already exist: read them and proceed without recreating.
