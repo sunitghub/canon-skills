@@ -21,6 +21,7 @@ The checklist of behavior that must be true before the sprint can close.
 - [x] `dist/README.md` uses paths relative to the extracted canon folder for Windows workshop setup and walkthrough copying, e.g. `.\examples\canon-todo-walkthrough`, not `$HOME\.canon\examples\...`.
 - [x] Windows command shims prefer Git for Windows Bash and do not invoke WSL `bash.exe` when WSL is installed but has no distro.
 - [x] `skills list` is routed through Git for Windows Bash from VS Code PowerShell, avoiding WSL `bash.exe`.
+- [x] `dist/canon-workshop.zip` includes `tools/ticket-root.sh`, required by both `tools/tkt` and `tools/sprint`.
 
 ## Test Plan
 The commands or checks that prove the criteria work.
@@ -39,6 +40,7 @@ The commands or checks that prove the criteria work.
 - [x] Regenerate `dist/canon-workshop.zip` and verify the embedded `canon/README.md` and `canon/install.ps1` match the in-place flow.
 - [x] Inspect `.cmd` shims and confirm they search `%ProgramFiles%\Git\...` and `%LocalAppData%\Programs\Git\...` before PATH `bash.exe`.
 - [x] Regenerate `dist/canon-workshop.zip` and verify embedded `.cmd` shims contain the Git-for-Windows-first Bash lookup.
+- [x] Inspect `unzip -l dist/canon-workshop.zip` and verify `canon/tools/ticket-root.sh` is present.
 
 ## QA
 <!-- Add sign-off items below. Keep this heading unchanged. -->
