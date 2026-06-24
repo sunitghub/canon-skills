@@ -31,7 +31,7 @@ You will receive:
    - **cached** — valid only when source, timestamp/version, freshness window, and why that window is acceptable are stated. Otherwise it is weak evidence.
 
 4. **Grade criteria.** For each item under `## Criteria` in `acceptance.md`:
-   - **pass** — evidence confirms the criterion is met; cite `file:line`
+   - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable.
    - **fail** — criterion is not met or contradicted by the code; cite what you found
    - **partial** — partially met; describe what is and isn't there
 
@@ -52,7 +52,7 @@ Evaluated: <ISO date>
 
 | Criterion | Status | Evidence |
 |---|---|---|
-| <criterion verbatim> | pass / fail / partial | file:line or description |
+| <criterion verbatim> | pass / fail / partial | `file:line — \`quoted text\`` or description |
 
 ## Test Plan
 
@@ -73,7 +73,7 @@ Return the verdict line in your response to the caller.
 
 ## Disposition
 
-Be appropriately skeptical. A criterion is **pass** only when you can point to the code that satisfies it. "Looks like it should work" is not evidence. If you cannot find the implementation, it is **fail** until proven otherwise.
+Be appropriately skeptical. A criterion is **pass** only when you can point to the code that satisfies it, with the quoted line text to prove it. "Looks like it should work" is not evidence. If you cannot find the implementation, it is **fail** until proven otherwise. A fabricated citation — where you state a line number but the text at that line does not match what you claim — is treated as **fail**, not pass.
 
 Do not penalize for things outside the acceptance criteria. Scope is what `acceptance.md` says — nothing more.
 
@@ -84,6 +84,7 @@ Do not assign `pass` when the only support is weak evidence:
 - A search with no stated scope when scope matters
 - A cached value without source, timestamp/version, freshness window, and why that freshness is acceptable
 - Vague prose such as "looks good", "seems covered", or "probably works"
+- A `file:line` citation without the quoted line content — a line number is unfalsifiable if the text at that line is not shown
 - A citation that does not point to a changed or directly relevant file
 - Generated output that was not inspected
 - A runtime test/check that would be required but was not run
