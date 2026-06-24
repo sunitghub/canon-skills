@@ -46,7 +46,7 @@ One sentence: what system behavior was researched.
 ## Relevant Files
 | File | Why relevant | Evidence |
 |---|---|---|
-| `path/file.ext:42` | Entry point for X | Function Y calls Z |
+| `path/file.ext:42 — \`quoted text\`` | Entry point for X | Function Y calls Z |
 
 ## System Model
 - Fact about how the subsystem works.
@@ -77,13 +77,13 @@ Use when `plan.md` identifies **2 or more independent subsystems** — subsystem
 Spawn one Explore subagent per subsystem in a single message (parallel). Each subagent receives:
 - The subsystem name
 - Its known entry point(s) from `plan.md`
-- Instruction: survey entry points, trace imports and callers, flag non-obvious relationships, list every relevant file with a `file:line` citation. Read only.
+- Instruction: survey entry points, trace imports and callers, flag non-obvious relationships, list every relevant file with a `file:line — \`quoted text\`` citation. Read only.
 
 Each subagent writes its findings to `.tickets/<id>/research-<subsystem>.md`.
 
 **Valid completion — content, not existence:**
 
-A partial file is valid only if it contains at least one `file:line` citation under `## Relevant Files`, OR a sentinel line in this exact form:
+A partial file is valid only if it contains at least one `file:line — \`quoted text\`` citation under `## Relevant Files`, OR a sentinel line in this exact form:
 
 ```
 no relevant files found for <subsystem> — searched: <comma-separated paths or globs examined>
@@ -105,7 +105,7 @@ File existence alone is not a completion signal — a subagent can create an emp
 | Condition | Action |
 |---|---|
 | Partial file missing (timeout / error) | Log in `## Unknowns`; proceed with remaining subsystems |
-| Partial file invalid (no file:line, no sentinel) | Treat same as missing |
+| Partial file invalid (no `file:line — \`quoted text\``, no sentinel) | Treat same as missing |
 | Sentinel present with `searched:` clause | Accept as valid; note in `## System Model` |
 | Sentinel present but missing `searched:` clause | Treat as invalid — same as missing |
 | All partials missing or invalid | Fall back to single-threaded Steps 1–4; note fallback in `## Unknowns` |
@@ -121,7 +121,7 @@ Gaps in `## Unknowns` surface naturally at the `sprint start` research review ch
 - Research is compression of truth. Do not decide how to implement here.
   Record only what the system does, which files matter, what constraints exist,
   and what remains unknown. Opinions and approach belong in the Plan step.
-- Every important claim must reference a file path or line number.
+- Every important claim must reference a file path or line number with the quoted line text — `file:line — \`quoted text\``. A line number without the quoted content is unfalsifiable.
 - List excluded near-miss files and why they were ruled out — this prevents
   future re-reading of the same candidates.
 - Subagent transcripts are disposable. The only durable output is `research.md`.

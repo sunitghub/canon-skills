@@ -94,7 +94,7 @@ Detection by framework:
 ## Findings
 
 ### [SEVERITY] Title
-- **Location**: file:line
+- **Location**: `file:line — \`quoted vulnerable snippet\`` — the exact line(s) containing the pattern
 - **Pattern**: what the vulnerable code does
 - **Evidence**: why attacker input reaches it
 - **Impact**: what an attacker can do
