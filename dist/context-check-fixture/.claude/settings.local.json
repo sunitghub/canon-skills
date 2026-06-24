@@ -1,0 +1,28 @@
+{
+  "mcpServers": {
+    "local-postgres": {
+      "command": "docker",
+      "args": ["exec", "-i", "dataflow-postgres", "psql", "-U", "dataflow"],
+      "env": {
+        "PGPASSWORD": "placeholder-password-do-not-use"
+      }
+    },
+    "one-off-migration-helper": {
+      "command": "node",
+      "args": ["./scripts/migration-helper-mcp.js", "--project", "dataflow"]
+    }
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '[local hook] remember to update the deployment notes'"
+          }
+        ]
+      }
+    ]
+  }
+}

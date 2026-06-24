@@ -2,6 +2,7 @@
 
 @./docs/setup-guide.md
 @./docs/api-reference.md
+@./docs/legacy-runbook.md
 
 ## Overview
 
@@ -83,3 +84,9 @@ Keep the layers separate. Don't mix ingestion logic with storage logic.
 - Merging to main triggers an automatic deploy to staging.
 - Production deploys require manual approval in GitHub Actions.
 - Monitor the deploy in the #deployments Slack channel.
+
+## Support Rotation
+
+- Check the dashboard first.
+- Be helpful and thorough.
+- Use good judgment.
