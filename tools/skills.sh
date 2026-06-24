@@ -599,6 +599,22 @@ cmd_refresh() {
     fi
   done
 
+  # ── Deduplicate @-imports: remove from CLAUDE.md anything already in AGENTS.md ──
+  if [ -f "$claude_file" ] && [ -f "$agents_file" ]; then
+    local agents_imports tmp
+    agents_imports=$(grep "^@" "$agents_file" 2>/dev/null || true)
+    if [ -n "$agents_imports" ]; then
+      tmp=$(mktemp)
+      while IFS= read -r line; do
+        if [[ "$line" == @* ]] && grep -qxF "$line" <<< "$agents_imports"; then
+          echo "  [pruned]  duplicate @-import in CLAUDE.md: $line" >&2
+        else
+          printf '%s\n' "$line"
+        fi
+      done < "$claude_file" > "$tmp" && mv "$tmp" "$claude_file"
+    fi
+  fi
+
   echo ""
 
   # ── Purge hidden and standard skills from AI-SKILLS table ───────────────
