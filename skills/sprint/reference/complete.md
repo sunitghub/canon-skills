@@ -30,12 +30,17 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    `npm test passed 2026-06-13`. This makes the acceptance record complete:
    what was tested and what quality gates ran. **`sprint complete` will block without this section.**
 
-2. **Evaluator review (normal+ tier).** Skip for trivial tier. For normal and
-   high-risk sprints, always spawn a freshly invoked Agent subagent for the
-   evaluator review. The user's explicit request to use or complete the sprint
-   workflow is explicit authorization to delegate this review to a subagent.
-   The evaluator receives a clean context — it has no implementation history
-   and grades the work adversarially against `acceptance.md`.
+2. **Evaluator review (normal+ tier).** Skip for trivial tier only. For normal
+   and high-risk sprints, always spawn a freshly invoked Agent subagent for the
+   evaluator review. Once the user has confirmed sprint close, do not ask for
+   separate approval to spawn the evaluator subagent — the close confirmation is
+   authorization for this mandatory gate.
+
+   The evaluator must receive a fresh context with no implementation history and
+   grade the work adversarially against `acceptance.md`. Same-context review,
+   self-review, or "reviewed directly because delegation needs approval" is not
+   an acceptable substitute for normal/high-risk sprints. If the runtime cannot
+   spawn the evaluator subagent, stop closeout and report the blocker.
 
    Invoke a fresh Agent subagent with a clean context. The prompt must instruct it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
