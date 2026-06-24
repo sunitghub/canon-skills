@@ -46,6 +46,18 @@
         "Does not grade it pass without explicit executor evidence",
         "Cites absence of evidence in the evidence line"
       ]
+    },
+    {
+      "id": 5,
+      "case_type": "self-check",
+      "prompt": "Run skill-eval for the 'skill-eval' skill itself. The file skills/skill-eval/evals/evals.json exists and has authored cases.",
+      "expected_output": "The skill checks its own evals/evals.json file, reports the authored eval count in the structural check, and proceeds through the normal executor+grader path instead of the fallback creation prompt.",
+      "expectations": [
+        "Checks skills/skill-eval/evals/evals.json during eval coverage",
+        "Reports a passing eval count for the existing authored cases",
+        "Proceeds to the normal executor+grader path",
+        "Does not show the fallback write prompt when its own eval file exists"
+      ]
     }
   ]
 }
