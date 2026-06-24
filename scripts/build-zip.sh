@@ -61,8 +61,18 @@ rm -rf "$CANON_DIR/tools/sprint-check-app/__pycache__"
 rm -rf "$CANON_DIR/examples/todo-app/node_modules"
 find "$STAGE" \( -name "*.pyc" -o -name ".DS_Store" \) -delete 2>/dev/null || true
 
-# ── Zip ─────────────────────────────────────────────────────────────────────
+# ── Zip: canon-workshop ─────────────────────────────────────────────────────
 rm -f "$ZIP_OUT"
 (cd "$STAGE" && zip -r "$ZIP_OUT" "canon" --quiet)
-
 echo "dist: canon-workshop.zip updated ($(du -sh "$ZIP_OUT" | cut -f1))"
+
+# ── Zip: skill distributions ─────────────────────────────────────────────────
+for SKILL_NAME in context-check skill-export; do
+  SKILL_ZIP="$DIST_DIR/${SKILL_NAME}.zip"
+  rm -f "$SKILL_ZIP"
+  (cd "$REPO_ROOT/skills" && zip -r "$SKILL_ZIP" "$SKILL_NAME" --quiet \
+    --exclude "${SKILL_NAME}/.DS_Store" \
+    --exclude "${SKILL_NAME}/**/.DS_Store" \
+    --exclude "${SKILL_NAME}/**/*.pyc")
+  echo "dist: ${SKILL_NAME}.zip updated ($(du -sh "$SKILL_ZIP" | cut -f1))"
+done
