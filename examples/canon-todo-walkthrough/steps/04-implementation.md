@@ -145,6 +145,36 @@ the board's inline editor or let the agent edit the markdown file.
 Do not check an item just because code was written. Check it only after the
 behavior or command has been verified.
 
+### Add a late criterion to drive a bug fix
+
+Acceptance criteria can be added mid-sprint — they are the living definition of
+done. Use this to catch a real edge case the original implementation likely missed.
+
+In the sprint-check inline editor, find this criterion:
+
+```
+[ ] Whitespace-only todo titles (e.g. spaces or "  ") are rejected — no item is added
+```
+
+Also remove the duplicate below it (`[ ] Blank or whitespace-only Todo titles are ignored...`) — it says the same thing less precisely.
+
+Then tell the agent:
+
+```text
+Verify all unchecked acceptance criteria and fix anything that fails.
+```
+
+The agent will inspect the guard condition in `index.html`, find that
+`input.value === ""` passes whitespace through, fix it to use `.trim()`, and
+check off the criterion. No Node or server required — this is a source fix
+verified by code inspection.
+
+This demonstrates two habits canon enforces:
+- A late-added criterion is as binding as an original one — the sprint cannot
+  close while it is unchecked
+- The agent verifies behavior, not just code — it runs the case rather than
+  assuming `.trim()` is present
+
 ## Step 5 - Commit With The Ticket Id
 
 After tests pass, commit the Todo app with the ticket id in the message:
