@@ -301,7 +301,8 @@ npx @marp-team/marp-cli posts/slides/<topic>.md \
   --theme skills/canon-slides/themes/<theme>.css \
   -o posts/slides/<topic>.html \
   --allow-local-files \
-  --html
+  --html \
+  --bespoke.transition=false
 ```
 
 Where `<theme>` is `canon` or `octave`. Omitting `--html` silently strips all `<div>` styling and the slides render as plain text.
@@ -309,7 +310,7 @@ Where `<theme>` is `canon` or `octave`. Omitting `--html` silently strips all `<
 If `npx` is not available or marp-cli fails, stop and tell the user:
 ```
 marp-cli not found. Install with: npm install -g @marp-team/marp-cli
-Then rerun: npx @marp-team/marp-cli posts/slides/<topic>.md --theme skills/canon-slides/themes/<theme>.css -o posts/slides/<topic>.html --html
+Then rerun: npx @marp-team/marp-cli posts/slides/<topic>.md --theme skills/canon-slides/themes/<theme>.css -o posts/slides/<topic>.html --html --bespoke.transition=false
 ```
 
 **5. Report output.** On success, tell the user:
@@ -349,6 +350,7 @@ The page counter is in the bottom padding area (below the 604 px content zone), 
 ## Gotchas
 
 - **Never embed images as base64 data URIs in slide HTML.** Large base64 `src` values cause GPU compositing artifacts: the browser caches the first slide's compositor layer and bleeds it through every subsequent slide. The first slide appears ghosted behind all others. Always use file references (`<img src="./filename.png">`) and place images in `posts/slides/` alongside the HTML. The `--allow-local-files` flag is already required for the theme, so local image refs work without extra flags.
+- **Disable browser transitions for deck HTML.** Marp's bespoke template keeps slides as stacked SVGs and browser compositing can leave inactive slides visually cached. Render with `--bespoke.transition=false`; the repo render script also injects CSS that uses `display:none` for inactive slides in normal presentation views.
 - **No blank lines inside HTML blocks.** Marp's markdown parser (markdown-it) exits HTML-block mode at the first blank line. Any content after a blank line inside a `<div>` structure is re-parsed as markdown — so a 4-space-indented `<div>` after a blank line becomes a code block displaying raw HTML source. Rule: once you open a `<div>`, write all child tags continuously with no blank lines between them until the outermost closing `</div>`. Use a single blank line only between top-level slide elements (markdown headings, paragraphs, and top-level HTML blocks).
 - **Never use SVG `<defs>` or `<linearGradient>` inside slide HTML.** Marp's parser breaks on `<stop style="...">` tags inside `<defs>`, rendering all subsequent HTML in that slide as raw source code in a code block. Use a single solid stroke color for SVG arrows instead — gradients are not worth the parse failure.
 - **`--html` is not optional.** Omitting it from the marp-cli command silently strips all `<div>` and `<style>` blocks — slides render as plain unstyled text even though `html: true` is in the frontmatter. Always pass both.
