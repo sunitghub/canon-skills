@@ -6,6 +6,38 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SLIDES_DIR="$ROOT/posts/slides"
 THEME="$ROOT/skills/canon-slides/themes/octave.css"
 
+harden_html() {
+  local out="$1"
+  node - "$out" <<'NODE'
+const fs = require('fs');
+
+const file = process.argv[2];
+const marker = 'canon-slide-render-hardening';
+const style = `<style id="${marker}">
+@media screen {
+  body[data-bespoke-view=""] svg.bespoke-marp-slide:not(.bespoke-marp-active),
+  body[data-bespoke-view="next"] svg.bespoke-marp-slide:not(.bespoke-marp-active) {
+    display: none !important;
+  }
+
+  body[data-bespoke-view=""] svg.bespoke-marp-slide.bespoke-marp-active,
+  body[data-bespoke-view="next"] svg.bespoke-marp-slide.bespoke-marp-active {
+    display: block !important;
+  }
+}
+</style>`;
+
+let html = fs.readFileSync(file, 'utf8');
+if (!html.includes(`id="${marker}"`)) {
+  if (!html.includes('</head>')) {
+    throw new Error(`Cannot harden ${file}: missing </head>`);
+  }
+  html = html.replace('</head>', `${style}</head>`);
+  fs.writeFileSync(file, html);
+}
+NODE
+}
+
 render() {
   local topic="$1"
   local src="$SLIDES_DIR/${topic}.md"
@@ -19,7 +51,9 @@ render() {
     --theme "$THEME" \
     -o "$out" \
     --allow-local-files \
-    --html
+    --html \
+    --bespoke.transition=false
+  harden_html "$out"
   echo "    => $out"
 }
 
