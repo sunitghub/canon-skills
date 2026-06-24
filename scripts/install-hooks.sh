@@ -23,6 +23,12 @@ if [ "$LAST_MSG" = "chore: update dist zips" ]; then
 fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Skip rebuild if no source files changed (e.g. dist-only or unrelated commits)
+if ! git -C "$REPO_ROOT" diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qv "^dist/"; then
+  exit 0
+fi
+
 bash "$REPO_ROOT/scripts/build-zip.sh"
 
 CHANGED=()
