@@ -12,17 +12,31 @@ if [ ! -d "$HOOKS_DIR" ]; then
   exit 0
 fi
 
-# ── pre-push: regenerate workshop zip and commit if changed ──────────────────
-PRE_PUSH="$HOOKS_DIR/pre-push"
-cat > "$PRE_PUSH" << 'HOOK'
+# ── post-commit: regenerate dist zips and commit if changed ──────────────────
+POST_COMMIT="$HOOKS_DIR/post-commit"
+cat > "$POST_COMMIT" << 'HOOK'
 #!/usr/bin/env bash
+# Prevent recursive execution when the zip-update commit itself triggers this hook
+LAST_MSG=$(git log -1 --pretty=%s)
+if [ "$LAST_MSG" = "chore: update dist zips" ]; then
+  exit 0
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 bash "$REPO_ROOT/scripts/build-zip.sh"
-if ! git -C "$REPO_ROOT" diff --quiet -- dist/canon-workshop.zip 2>/dev/null; then
-  git -C "$REPO_ROOT" add dist/canon-workshop.zip
-  git -C "$REPO_ROOT" commit -m "chore: update workshop zip"
-  echo "[pre-push] workshop zip updated and committed"
+
+CHANGED=()
+for ZIP in dist/canon-workshop.zip dist/context-check.zip dist/skill-export.zip; do
+  if ! git -C "$REPO_ROOT" diff --quiet -- "$ZIP" 2>/dev/null; then
+    CHANGED+=("$ZIP")
+  fi
+done
+
+if [ ${#CHANGED[@]} -gt 0 ]; then
+  git -C "$REPO_ROOT" add "${CHANGED[@]}"
+  git -C "$REPO_ROOT" commit -m "chore: update dist zips"
+  echo "[post-commit] dist zips updated and committed: ${CHANGED[*]}"
 fi
 HOOK
-chmod +x "$PRE_PUSH"
-echo "  [ok]    pre-push hook installed → $PRE_PUSH"
+chmod +x "$POST_COMMIT"
+echo "  [ok]    post-commit hook installed → $POST_COMMIT"
