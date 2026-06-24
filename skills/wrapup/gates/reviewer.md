@@ -28,7 +28,7 @@ Ordered from highest to lowest leverage. Findings at the top of the list must be
 1. **Mental alignment:** does the diff match the approved `plan.md` and `acceptance.md`? Flag scope drift or plan deviation before anything else.
 2. **Correct solution:** does it solve the right problem, not just a nearby one?
 3. **Design fit:** structure matches local architecture and patterns. Tag violations inline: `[DRY]` `[SRP]` `[CoC]`.
-4. **Bugs and edge cases:** expected failures and unusual inputs are handled; no off-by-one, null deref, or swallowed errors.
+4. **Bugs and edge cases:** expected failures and unusual inputs are handled; no off-by-one, null deref, or swallowed errors. For input validation claims, cite the exact guard condition (`file:line`) — finding a pattern (e.g. `.trim()`) elsewhere in the file is not evidence the guard uses it.
 5. **Test coverage:** meaningful risks are tested; tests exercise behavior, not implementation details.
 6. **Security:** no unsafe patterns; destructive actions enforce server-side auth and consistent guards.
 7. **Efficiency:** no avoidable bottlenecks or waste. Tag: `[KISS]` `[YAGNI]`.
