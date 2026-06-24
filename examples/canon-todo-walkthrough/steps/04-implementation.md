@@ -50,7 +50,7 @@ the walkthrough shows how canon preserves a useful discovery outside the chat
 transcript. Tell the agent:
 
 ```text
-Capture this: the Todo app is served from src/ by a tiny Node static server and tests exercise src/app.js directly, so keep browser behavior and testable logic separated unless a later ticket changes the structure.
+Capture this: the Todo app lives in a single index.html file — markup, styles, and logic together — so there is no separate app.js to import in tests; test behavior through the DOM or extract logic into a module only if a later ticket calls for it.
 ```
 
 The agent records that kind of discovery in `HANDOFF.md ## Discoveries`, where a
@@ -122,7 +122,7 @@ Open sprint-check and tell me where the Todo sprint left off. Don't proceed yet 
 **Next → [05-sprint-complete.md](05-sprint-complete.md)**
 
 Expected result: the agent should know the active ticket, what was built, what
-still needs testing, and the captured `src/` structure discovery without you
+still needs testing, and the captured `index.html` structure discovery without you
 re-explaining the sprint. `sprint-check` should show the same Current Focus in
 the sidebar.
 
@@ -160,7 +160,7 @@ should show the changed files and connect the commit back to the ticket.
 Now try the same history from the search surface:
 
 1. Switch the board query mode from `Search` to `Why`.
-2. Enter `src/app.js`.
+2. Enter `index.html`.
 3. Confirm the board shows the Todo ticket and any Plan decision excerpt that
    explains why that file exists.
 
