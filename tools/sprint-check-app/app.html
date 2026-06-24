@@ -745,6 +745,10 @@
     .doc-table th { background: var(--surface-raised); color: var(--text); font-weight: 600; font-size: 12px; white-space: nowrap; }
     .doc-table td { color: var(--text-body); font-size: 12px; line-height: 1.5; overflow-wrap: break-word; }
     .doc-table tr:hover td { background: var(--surface-hover); }
+    .doc-table td.status-pass    { color: #16a34a; font-weight: 600; }
+    .doc-table td.status-fail    { color: #dc2626; font-weight: 600; }
+    .doc-table td.status-partial { color: #d97706; font-weight: 600; }
+    .doc-table td.status-not-run { color: var(--text-muted); }
     .section-jumps {
       position: sticky; top: 0; z-index: 1;
       display: flex; flex-wrap: wrap; gap: 4px 10px;
@@ -1806,8 +1810,12 @@ function md(raw) {
           .map(c => c.trim().replace(/\x00/g, '|').replace(/\\\|/g, '|'));
       };
       const thead = '<thead><tr>' + cells(headerRow).map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
+      const STATUS_CLASSES = { pass: 'status-pass', fail: 'status-fail', partial: 'status-partial', 'not-run': 'status-not-run' };
       const tbody = bodyRows.length
-        ? '<tbody>' + bodyRows.map(r => '<tr>' + cells(r).map(c => `<td>${c}</td>`).join('') + '</tr>').join('') + '</tbody>'
+        ? '<tbody>' + bodyRows.map(r => '<tr>' + cells(r).map(c => {
+            const cls = STATUS_CLASSES[c.trim().toLowerCase()];
+            return `<td${cls ? ` class="${cls}"` : ''}>${c}</td>`;
+          }).join('') + '</tr>').join('') + '</tbody>'
         : '';
       return `<div class="doc-table-wrap"><table class="doc-table">${thead}${tbody}</table></div>`;
     });
