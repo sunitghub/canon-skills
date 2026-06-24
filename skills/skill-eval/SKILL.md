@@ -47,7 +47,19 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
    - Instruct it to: (a) read the skill and identify 2–3 realistic user scenarios the skill is designed to handle, (b) execute each scenario as if in a fresh session with the skill active — reporting steps taken and output produced, (c) grade whether the skill's instructions were clear and complete enough to guide correct behaviour: `pass`, `partial`, or `fail` with a one-line reason per scenario
    - Ask it to recommend which scenarios should be formalised as `evals.json` cases
 
-   Output fallback results under `### Fallback eval (no evals.json)` in the report, before `### Summary`. Then proceed to Step 3.
+   Output fallback results under `### Fallback eval (no evals.json)` in the report, before `### Summary`.
+
+   **Write offer.** After outputting the fallback results, present the recommended scenarios to the user and ask:
+
+   > "Write these as `skills/$ARGUMENTS/evals/evals.json`? (yes/no)"
+
+   - **Yes:** write `skills/$ARGUMENTS/evals/evals.json`. Each recommended scenario becomes one eval case with the fields:
+     - `id`: kebab-case slug of the scenario name
+     - `prompt`: the scenario as a concrete user-facing prompt string
+     - `expected_output`: one sentence describing correct behaviour
+     - `expectations`: array of 2–3 specific, assertable strings the grader can verify
+     Confirm the file was written, then proceed to Step 3.
+   - **No:** stop. Do not write anything. Do not proceed to Step 3.
 
 2. **For each eval case**, run two subagents in sequence:
 
