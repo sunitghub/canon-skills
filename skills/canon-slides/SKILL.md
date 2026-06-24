@@ -148,30 +148,30 @@ Quick reference:
 | Flow/pipeline | `display:flex; flex-direction:column; align-items:center; flex:1; min-height:0` |
 | Title / hook (no h2) | `display:flex; flex-direction:column; justify-content:center; flex:1; min-height:0` |
 
-**Orphan check — no elements outside the height container.** After writing each slide, verify that every visible element (blockquotes, captions, footnotes, closing remarks) lives *inside* the `height:80%` wrapper — not after the closing `</div>`. Elements placed after the wrapper render wherever remaining space allows, typically a tiny strip near the bottom. The pattern to avoid:
+**Orphan check — no elements outside the flex container.** After writing each slide, verify that every visible element (blockquotes, captions, footnotes, closing remarks) lives *inside* the `flex:1; min-height:0` body container — not after the closing `</div>`. Elements placed after the container render wherever remaining space allows, typically a tiny strip near the bottom. The pattern to avoid:
 
 ```html
-<!-- ✗ Wrong: caption is orphaned outside the height container -->
-<div style="height:80%; display:flex; ...">
+<!-- ✗ Wrong: caption is orphaned outside the body container -->
+<div style="flex:1; min-height:0; display:flex; ...">
   <div>big content</div>
 </div>
 <div style="font-size:0.85em; color:#6F7480;">caption here</div>
 
 <!-- ✓ Right: caption inside, full layout owned by one container -->
-<div style="height:82%; display:flex; flex-direction:column; justify-content:center; gap:28px;">
+<div style="display:flex; flex-direction:column; justify-content:center; flex:1; min-height:0; gap:28px;">
   <div>big content</div>
   <div style="font-size:0.85em; color:#6F7480; text-align:center;">caption here</div>
 </div>
 ```
 
-For "big number + caption" hook slides specifically: use `display:flex; flex-direction:column; justify-content:center; align-items:center; height:82%; gap:28px` with both the number and its caption as direct children — this keeps them vertically centred together as a unit.
+For "big number + caption" hook slides specifically: use `display:flex; flex-direction:column; justify-content:center; align-items:center; flex:1; min-height:0; gap:28px` with both the number and its caption as direct children — this keeps them vertically centred together as a unit.
 
 **Slide structure** — target 15–20 slides for a 20–30 min talk (~90 s/slide):
 
 - **Title slide** — never use bare `# Heading` + paragraph for the title slide. It renders top-left with huge empty space below. Use a full-height centered HTML layout instead:
 
 ```html
-<div style="display:flex; flex-direction:column; justify-content:center; height:88%; gap:24px;">
+<div style="display:flex; flex-direction:column; justify-content:center; flex:1; min-height:0; gap:24px;">
 <div style="display:flex; flex-direction:column; gap:16px;">
 <div style="font-size:3.2em; font-weight:900; line-height:1.1; color:#FFFFFF; letter-spacing:-0.02em;">Deck Title Here</div>
 <div style="width:72px; height:4px; background:linear-gradient(90deg,#00FFFF,#4FFF00); border-radius:2px;"></div>
@@ -348,6 +348,7 @@ The page counter is in the bottom padding area (below the 604 px content zone), 
 
 ## Gotchas
 
+- **Never embed images as base64 data URIs in slide HTML.** Large base64 `src` values cause GPU compositing artifacts: the browser caches the first slide's compositor layer and bleeds it through every subsequent slide. The first slide appears ghosted behind all others. Always use file references (`<img src="./filename.png">`) and place images in `posts/slides/` alongside the HTML. The `--allow-local-files` flag is already required for the theme, so local image refs work without extra flags.
 - **No blank lines inside HTML blocks.** Marp's markdown parser (markdown-it) exits HTML-block mode at the first blank line. Any content after a blank line inside a `<div>` structure is re-parsed as markdown — so a 4-space-indented `<div>` after a blank line becomes a code block displaying raw HTML source. Rule: once you open a `<div>`, write all child tags continuously with no blank lines between them until the outermost closing `</div>`. Use a single blank line only between top-level slide elements (markdown headings, paragraphs, and top-level HTML blocks).
 - **Never use SVG `<defs>` or `<linearGradient>` inside slide HTML.** Marp's parser breaks on `<stop style="...">` tags inside `<defs>`, rendering all subsequent HTML in that slide as raw source code in a code block. Use a single solid stroke color for SVG arrows instead — gradients are not worth the parse failure.
 - **`--html` is not optional.** Omitting it from the marp-cli command silently strips all `<div>` and `<style>` blocks — slides render as plain unstyled text even though `html: true` is in the frontmatter. Always pass both.
