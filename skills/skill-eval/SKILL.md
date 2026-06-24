@@ -29,7 +29,9 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
    - If > threshold: identify every `##` section and its line span. If 2+ sections each exceed 30 lines → output `candidate for ref/split — body N lines (threshold: T — always-on|standalone); sections <name> (X lines), <name> (Y lines) exceed 30-line threshold`.
 
    **Eval coverage:**
-   - Read `skills/$ARGUMENTS/evals/evals.json` and count the entries in the `evals` array. If count ≥ 3 → output `pass — N eval cases`. If count < 3 → output `too few evals — N case(s); minimum is 3`.
+   - Check whether `skills/$ARGUMENTS/evals/evals.json` exists. This applies to every named target skill, including `skill-eval` itself when running `skill-eval skill-eval`.
+   - If missing → output `missing evals — skills/$ARGUMENTS/evals/evals.json not found; fallback creation prompt required`.
+   - If present → read it and count the entries in the `evals` array. If count ≥ 3 → output `pass — N eval cases`. If count < 3 → output `too few evals — N case(s); minimum is 3`.
 
    Output both sub-checks under `### Structural check` in the eval report, before any case results. Both checks are advisory — they do not block execution evals.
 
@@ -37,10 +39,10 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
 
 1. **Read the skill.** Read `skills/$ARGUMENTS/SKILL.md`. If missing, report the gap and stop.
 
-   Read `skills/$ARGUMENTS/evals/evals.json`.
+   Check for `skills/$ARGUMENTS/evals/evals.json`.
 
    - **If present:** proceed to Step 2 (executor+grader path).
-   - **If missing:** run the fallback evaluator (Step 1b) instead of stopping, then skip to Step 3.
+   - **If missing:** run the fallback evaluator (Step 1b) instead of normal eval cases.
 
 1b. **Fallback evaluator (no evals.json).** Spawn a fresh Agent subagent with a clean context. The prompt must:
    - Include the skill's `SKILL.md` content verbatim under "Active skill:"
@@ -58,7 +60,7 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
      - `prompt`: the scenario as a concrete user-facing prompt string
      - `expected_output`: one sentence describing correct behaviour
      - `expectations`: array of 2–3 specific, assertable strings the grader can verify
-     Confirm the file was written, then proceed to Step 3.
+     Confirm the file was written, then read the new file and proceed to Step 2.
    - **No:** stop. Do not write anything. Do not proceed to Step 3.
 
 2. **For each eval case**, run two subagents in sequence:
@@ -92,6 +94,8 @@ Body: pass — body within threshold (N lines; threshold: T — always-on | stan
 Evals: pass — N eval cases
        -or-
        too few evals — N case(s); minimum is 3
+       -or-
+       missing evals — skills/<skill-name>/evals/evals.json not found; fallback creation prompt required
 
 ### Case <id>: <prompt, truncated to 60 chars>
 - "<expectation>" → pass | fail | partial
