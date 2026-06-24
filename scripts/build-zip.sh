@@ -66,6 +66,17 @@ rm -f "$ZIP_OUT"
 (cd "$STAGE" && zip -r "$ZIP_OUT" "canon" --quiet)
 echo "dist: canon-workshop.zip updated ($(du -sh "$ZIP_OUT" | cut -f1))"
 
+# ── Zip: slides (HTML + PNG only, flat layout) ───────────────────────────────
+SLIDES_ZIP="$DIST_DIR/slides.zip"
+rm -f "$SLIDES_ZIP"
+SLIDES_STAGE="$(mktemp -d)"
+SLIDES_DIR="$SLIDES_STAGE/slides"
+mkdir -p "$SLIDES_DIR"
+find "$REPO_ROOT/posts/slides" \( -name "*.html" -o -name "*.png" \) -exec cp {} "$SLIDES_DIR/" \;
+(cd "$SLIDES_STAGE" && zip -r "$SLIDES_ZIP" "slides" --quiet)
+rm -rf "$SLIDES_STAGE"
+echo "dist: slides.zip updated ($(du -sh "$SLIDES_ZIP" | cut -f1))"
+
 # ── Zip: skill distributions ─────────────────────────────────────────────────
 for SKILL_NAME in context-check skill-export; do
   SKILL_ZIP="$DIST_DIR/${SKILL_NAME}.zip"
