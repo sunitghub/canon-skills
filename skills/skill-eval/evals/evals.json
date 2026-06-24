@@ -17,11 +17,12 @@
       "id": 2,
       "case_type": "boundary",
       "prompt": "Run skill-eval for the 'my-skill' skill. SKILL.md exists but skills/my-skill/evals/evals.json does not exist.",
-      "expected_output": "The skill reports that evals.json is missing as a finding and stops. It does not attempt to fabricate or skip past the missing file.",
+      "expected_output": "The skill runs the fallback evaluator, reports recommended scenarios, asks whether to write them as skills/my-skill/evals/evals.json, and stops if the user says no.",
       "expectations": [
-        "Reports that evals/evals.json is missing",
-        "Treats the missing file as a finding",
-        "Stops without running any eval cases"
+        "Runs the fallback evaluator instead of normal eval cases",
+        "Reports recommended scenarios to formalize as evals.json cases",
+        "Asks whether to write skills/my-skill/evals/evals.json",
+        "Stops without proceeding to Step 3 when the user says no"
       ]
     },
     {
