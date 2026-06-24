@@ -1262,6 +1262,10 @@
   <div id="create-modal">
     <div class="modal-header">
       <div class="modal-title">New Ticket</div>
+      <div style="margin-left:auto; display:flex; gap:8px; align-items:center;">
+        <button class="doc-save-btn" style="margin-left:0" id="c-submit">Create →</button>
+        <button class="doc-cancel-btn" id="c-cancel">Cancel</button>
+      </div>
       <button class="modal-close" id="create-close">✕</button>
     </div>
     <div class="create-body">
@@ -1307,10 +1311,6 @@
       <textarea id="c-body" class="modal-edit-area create-textarea" placeholder="Notes (optional)" spellcheck="false"></textarea>
     </div>
     <div class="modal-footer">
-      <div class="modal-actions">
-        <button class="btn btn-primary" id="c-submit">Create →</button>
-        <button class="btn" id="c-cancel">Cancel</button>
-      </div>
       <div class="kbd-hint" id="c-queue"></div>
     </div>
     <div class="modal-resize-handle" title="Resize dialog" aria-label="Resize dialog"></div>
@@ -2350,13 +2350,8 @@ function enterEditMode(t) {
   document.getElementById('m-kb-hint').style.display = '';
   editEl.focus();
 
-  document.getElementById('m-actions').innerHTML =
-    `<button class="btn btn-primary" id="act-save">Save</button>` +
-    `<button class="btn" id="act-cancel">Cancel</button>`;
+  document.getElementById('m-actions').innerHTML = '';
   document.getElementById('m-kbd').style.display = 'none';
-
-  document.getElementById('act-save').addEventListener('click', () => saveEdit(t));
-  document.getElementById('act-cancel').addEventListener('click', () => exitEditMode(t));
 }
 
 function exitEditMode(t) {
@@ -2578,12 +2573,8 @@ function selectDocType(t, slug, name) {
     editEl.style.display = 'block';
     editEl.focus();
     modalState.editMode = true;
-    document.getElementById('m-actions').innerHTML =
-      `<button class="btn btn-primary" id="act-save">Save</button>` +
-      `<button class="btn" id="act-cancel">Cancel</button>`;
+    document.getElementById('m-actions').innerHTML = '';
     document.getElementById('m-kbd').style.display = 'none';
-    document.getElementById('act-save').addEventListener('click', () => saveEdit(t));
-    document.getElementById('act-cancel').addEventListener('click', () => exitEditMode(t));
   });
 }
 
