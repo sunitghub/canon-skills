@@ -522,6 +522,8 @@ tkt reopen <id>               # reopen a closed ticket
 | `ticket` | `tkt ls` | Empty list or existing tickets — no error |
 | `context-check` | `/context-check` | Size + content audit of always-loaded context; findings appended to `context-findings.md` on confirmation |
 | `doc-audit` | `/doc-audit` | Audits README and guides for overstated claims, missing prerequisites, and personal content; findings appended to `doc-findings.md` on confirmation |
+| `output-validator` | `/output-validator` | Two-phase report validation: pre-generation spec + post-generation checks (number reconciliation, exception surfacing, headline accuracy). Run before delivering any report or summary. |
+| `skill-export` | `skill-export <name>` | Exports a flat skill as paste-ready text for claude.ai Project instructions or system prompts. Rejects skills with sub-skills. |
 
 > Everything else is automatic. `efficiency` is always on. `capture` fires mid-session. `wrapup` + test verification run inside `sprint complete`. `impact-analysis`, `handoff`, and `ticket` are deps of sprint — loaded silently, but the high-ceremony path runs only when the tier calls for it. Run `context-check` periodically to audit context budget.
 

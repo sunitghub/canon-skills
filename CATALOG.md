@@ -10,7 +10,9 @@ Register these directly into a project with `skills.sh add <name>`.
 |---|---|---|
 | `capture` | dev | Records non-obvious discoveries, constraints, and gotchas to HANDOFF.md. Use when something surprising is found mid-sprint. |
 | `context-check` | agent-ops | Audits always-on context load for bloat, redundancy, and quality. Use when context feels heavy or periodically to keep the always-on budget lean. |
+| `output-validator` | agent-ops | Validates agent-generated reports and summaries before delivery. Catches generator-evaluator collapse — where the AI summarizes data without checking if the summary is true. Run before delivering any report, status update, or data summary. |
 | `skill-eval` | dev | Runs execution evals for a named skill against test cases in evals/evals.json. Use when you want to verify a skill produces correct output for known prompts, check skill quality after edits, or confirm a new skill works before registering it. |
+| `skill-export` | agent-ops | Exports any flat canon skill as a clean, paste-ready prompt for use in claude.ai Project instructions, system prompts, or other LLM systems. Invoke as skill-export <skill-name>. Rejects skills with sub-skills. |
 | `sprint` | dev | Manages the sprint workflow for focused changes. Use when asked to add, fix, update, implement, debug, or build anything. |
 
 ## Standards
