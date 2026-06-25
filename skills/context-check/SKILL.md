@@ -7,7 +7,7 @@ tags: [context, tokens, efficiency, audit]
 
 # Context Check
 
-Audit what Claude loads every session. Append to `context-findings.md` (project root) only after explicit confirmation.
+Audit what Claude loads every session. Writes `context-check-report.md` at the project root after explicit confirmation.
 
 ## Steps
 
@@ -64,15 +64,11 @@ Audit what Claude loads every session. Append to `context-findings.md` (project 
 
    In each size table, set the **Issues** column to `Y` if any finding was flagged for that file, `—` if none. For each file assessed in Steps 7–8, explicitly state either the issue found or "no relevance concern" — do not silently skip files that passed. If one section has no findings, say so and continue to the next section. If no findings exist anywhere, stop before the write prompt.
 
-10. If findings exist, ask: `Append these to context-findings.md? (y to confirm)`. Do not write without `y`. Write to `context-findings.md` at the project root.
+10. Ask: `Write context-check-report.md report? (y to confirm)`. Do not write without `y`. On confirmation, write `context-check-report.md` at the project root as a markdown table:
 
-## context-findings.md entry format
+   ```
+   | File | Status | Details |
+   |------|--------|---------|
+   ```
 
-```
-### YYYY-MM-DD — Short title
-**File:** path
-**Issue:** what was found
-**Action:** what was done (or "Open — no action yet")
-```
-
-Keep entries concise. When the file exceeds 60 lines, move entries older than 6 months to `context-findings.archive.md` before appending. Do not delete historical entries outright.
+   One row per audited file. **Status** must be exactly one of: `clean`, `issues found`, `not present`, `skipped`. Use `skipped` for canon-managed files that are not audited. **Details** is a one-line summary of the finding or reason, or `—` if none. Overwrite if the file already exists — this is a point-in-time snapshot, not a log.
