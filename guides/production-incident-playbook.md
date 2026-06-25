@@ -14,51 +14,51 @@ When an AI agent misbehaves in production — wrong outputs, regression in accur
 
 ## The Five Stages
 
-Each stage has a distinct goal, a tool that owns it, and a clear boundary with the next stage. Do not collapse stages — containment is not a fix.
+Each stage has a distinct goal, a tool that owns it, and a clear boundary with the next stage. Do not collapse stages — isolation is not a resolution.
 
-### 1. Detect
+### 1. Surface
 
 **Goal:** Catch the failure before a user reports it.
 
-**Tool:** Eval dashboard with automated alerting. Set thresholds on your key metrics (accuracy, refusal rate, latency, tool-call error rate). When a metric drops below threshold, the alert fires — not after a user complaint arrives, not after a human happens to check. (Requires the eval dashboard prerequisite — see [Prerequisites](#prerequisites) below.)
+**Tool:** Signal monitor with automated alerting. Set thresholds on your key metrics (accuracy, refusal rate, latency, tool-call error rate). When a metric drops below threshold, the alert fires — not after a user complaint arrives, not after a human happens to check. (Requires the signal monitor prerequisite — see [Prerequisites](#prerequisites) below.)
 
-**What it is NOT:** Reactive monitoring. If you only know something broke because a user told you, your detection layer is absent.
+**What it is NOT:** Reactive monitoring. If you only know something broke because a user told you, your signal layer is absent.
 
-### 2. Diagnose
+### 2. Trace
 
 **Goal:** Determine the root cause category — data problem, prompt problem, or model drift.
 
-**Tool:** Distributed tracing. Pull traces for the failing conversations. Find where the output went from correct to wrong. A trace that captures intent classification, tool calls, retrieved context, reasoning chain, and guardrail checks in one view makes root cause obvious. Without traces, diagnosis is guesswork.
+**Tool:** Conversation tracer. Pull traces for the failing conversations. Find where the output went from correct to wrong. A tracer that captures intent classification, tool calls, retrieved context, reasoning chain, and guardrail checks in one view makes root cause obvious. Without it, investigation is guesswork.
 
 **Key question:** Is this a data problem (stale knowledge base, missing context), a prompt problem (behaviour changed when you didn't intend it to), or a model drift problem (new model version behaving differently)?
 
 **What it is NOT:** Asking users to describe what went wrong.
 
-### 3. Contain
+### 3. Isolate
 
-**Goal:** Reduce blast radius before fixing anything.
+**Goal:** Reduce blast radius before resolving anything.
 
-**Tool:** Prompt versioning with rollback. Route affected query types to human reviewers. Roll back to the last known-good prompt version if the failure is prompt-related.
+**Tool:** Prompt rollback. Route affected query types to human reviewers. Revert to the last known-good prompt version if the failure is prompt-related.
 
-**Critical constraint:** Containment is not a fix. Rolling back a prompt stops the bleeding — it does not address the root cause. Do not close the incident at this stage.
+**Critical constraint:** Isolation is not a resolution. Rolling back a prompt stops the bleeding — it does not address the root cause. Do not close the incident at this stage.
 
-**What it is NOT:** A hotfix pushed at 3am. Containment buys time for a proper fix.
+**What it is NOT:** A hotfix pushed at 3am. Isolation buys time for a proper resolution.
 
-### 4. Fix
+### 4. Resolve
 
-**Goal:** Resolve the root cause correctly.
+**Goal:** Fix the root cause correctly.
 
-**Tool:** Test case library. Write a targeted fix and add a new test case covering this exact failure before shipping. The fix goes through your normal promotion process (test → staging → production) — not an unreviewed direct prod push. If the incident exposed a gap in your eval suite, that gap must be closed as part of the fix, not as a follow-up that gets deprioritised.
+**Tool:** Failure registry. Write a targeted fix and add a new entry covering this exact failure before shipping. The fix goes through your normal promotion process (test → staging → production) — not an unreviewed direct prod push. If the incident exposed a gap in your eval suite, that gap must be closed as part of the resolution, not as a follow-up that gets deprioritised.
 
-**What it is NOT:** Reverting and calling it done. The revert was containment; the fix adds a test case and ships a real correction.
+**What it is NOT:** Reverting and calling it done. The revert was isolation; resolution adds a test case and ships a real correction.
 
-### 5. Prevent
+### 5. Harden
 
 **Goal:** Make the eval suite better so this class of failure is caught earlier next time.
 
-**Tool:** Eval suite expansion. Run a retrospective: what eval coverage would have caught this before it reached production? Add those cases. The suite grows with every incident — this is compounding defence, not overhead.
+**Tool:** Coverage retrospective. Ask: what eval coverage would have caught this before it reached production? Add those cases. The suite grows with every incident — this is compounding defence, not overhead.
 
-**The principle:** Every incident makes your eval suite better. A system that started with 20 test cases and never has incidents isn't safer — it's less observable. Teams that treat incidents as suite expansion events end up with coverage that money can't buy: real failures, anonymised, with pass/fail criteria written by people who know what broke.
+**The principle:** Every incident makes your eval suite stronger. A system that started with 20 test cases and never has incidents isn't safer — it's less observable. Teams that treat incidents as suite expansion events end up with coverage that money can't buy: real failures, anonymised, with pass/fail criteria written by people who know what broke.
 
 ---
 
@@ -66,11 +66,11 @@ Each stage has a distinct goal, a tool that owns it, and a clear boundary with t
 
 | Stage | Tool | What it does | What it is NOT |
 |---|---|---|---|
-| Detect | Eval dashboard | Automated alert when metric drops | Waiting for user reports |
-| Diagnose | Distributed tracing | Find where correct → wrong | Guessing from logs |
-| Contain | Prompt versioning + rollback | Reduce blast radius | The fix |
-| Fix | Test case library + promotion | Targeted fix + new test case | A 3am hotfix |
-| Prevent | Eval suite expansion | Close the coverage gap | Optional follow-up |
+| Surface | Signal monitor | Automated alert when metric drops | Waiting for user reports |
+| Trace | Conversation tracer | Find where correct → wrong | Guessing from logs |
+| Isolate | Prompt rollback | Reduce blast radius | The resolution |
+| Resolve | Failure registry + promotion | Targeted fix + new failure entry | A 3am hotfix |
+| Harden | Coverage retrospective | Close the coverage gap | Optional follow-up |
 
 ---
 
@@ -78,7 +78,7 @@ Each stage has a distinct goal, a tool that owns it, and a clear boundary with t
 
 This playbook only works if you have:
 
-1. **Numeric success metrics defined before launch** — you can't detect a drop if you don't have a baseline threshold.
-2. **Distributed tracing wired at build time** — traces can't be retrofitted easily; they need to be part of the original instrumentation.
-3. **Prompt versioning with rollback capability** — knowing which version is live is not enough; you need to be able to revert in minutes.
-4. **A test case library with an owner** — a library with no owner drifts silently. Assign a human. Put test case review in the sprint.
+1. **Numeric success metrics defined before launch** — you can't surface a drop if you don't have a baseline threshold.
+2. **Conversation tracer wired at build time** — tracing can't be retrofitted easily; it needs to be part of the original instrumentation.
+3. **Prompt rollback capability** — knowing which version is live is not enough; you need to be able to revert in minutes.
+4. **A failure registry with an owner** — a registry with no owner drifts silently. Assign a human. Put registry review in the sprint.

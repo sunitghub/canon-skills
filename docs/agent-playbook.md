@@ -157,6 +157,12 @@ Run evals with two subagents in clean contexts:
 
 The key is **clean context on both sides**. An evaluator that saw the implementation will be biased toward the implementation's framing — it will find ways to call things passing that aren't. A fresh context grades what actually happened.
 
+### Black-box evals: test the real behaviour
+
+Evals must exercise the skill end-to-end — prompt in, output out — not import internal functions or mock the steps the skill would take. The goal is to verify what the agent actually does when given the prompt, not what a unit test asserts individual pieces do.
+
+Practical constraint: if passing an eval requires the grader to know how the skill is implemented internally, the eval is testing the wrong thing. Grade outputs, not mechanisms.
+
 ### G-Eval criteria (for LLM-as-judge)
 
 When writing grading criteria for LLM judges, make each criterion:
@@ -286,6 +292,30 @@ The corrected framing: **design the layers simultaneously. Assign work to whiche
 - **L3 — Behavioural**: Did the agent call the right tools in the right order? Did it escalate when confidence was low? Did it stay within scope? Requires replaying full agent runs — expensive at scale. Budget for L3 coverage early; retrofitting it after you have hundreds of test cases is the wrong order.
 
 All three layers are necessary and complementary. L1 enforces structure reliably. L2 catches quality failures that pass structural checks. L3 catches orchestration failures that semantic grading can't see. Treating any one as "real" evaluation misses the others' failure surface.
+
+---
+
+## Governance
+
+Governance isn't what stops you shipping. Lack of it is what pulls you back — a model upgrade that breaks evals silently, a prompt change with no rollback path, a decision made in sprint 3 that nobody remembers in sprint 12.
+
+**Decision traceability.** Every sprint records its acceptance criteria, approach, and rejected alternatives in plain markdown under `.tickets/<id>/`. `DECISIONS.md` holds durable architectural choices with the WHY, not just the what. The board's Why mode surfaces the ticket and decisions behind any file without touching `git log`. If you can't show why the agent was built to behave a certain way, you can't defend that behaviour — or change it safely.
+
+**Input sanitisation.** PII and unsafe inputs must be caught before they reach the model — not after. Wire NER + regex filters at the system boundary as part of your L1 deterministic layer. Catching 47 PII patterns in test cases before any user touches the system is a success story; catching them in production logs is not. This is instrumentation work, not an afterthought — retrofitting it after launch is significantly harder than building it in.
+
+**Skill promotion.** A prompt change is a deployment. Every skill edit should go through the same gate as code: run `skill-eval` against `evals.json`, check for regressions, verify the changed expectations still pass before the new version ships. A skill with no evals has no promotion process — it self-attests by definition, which is exactly what the evaluator gate exists to prevent.
+
+Not all skill changes carry the same risk — classify the edit before promoting:
+
+| Severity | What changed | Gate |
+|---|---|---|
+| Minor | Typo, wording, formatting — expected behaviour unchanged | Evals pass → ship without human review |
+| Moderate | Procedure or step changed — behaviour may shift | Update evals to match new bar, human confirms intent |
+| Major | New capability, new trigger, or renamed skill | New evals required before ship; block until proven |
+
+When in doubt, promote to the next severity tier. A false moderate costs one review; a false minor that ships a behaviour change costs an incident retrospective.
+
+**Model migration.** A new model version is not backwards-compatible until proven otherwise. When you bump the model, re-run the full eval suite before routing production traffic. Treat behaviour drift as a breaking change — not a warning worth investigating later. The suite that grew from your incident retrospectives is your migration test harness; that's the compounding return on building it.
 
 ---
 
