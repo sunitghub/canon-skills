@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "./scripts/handoff-inject.sh"}, {"type": "command", "command": "./scripts/sprint-inject.sh"}]}],
+    "PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "./scripts/pre-commit-check.sh"}]}],
+    "Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "./scripts/auto-handoff.sh"}]}]
+  }
+}
