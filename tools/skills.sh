@@ -43,7 +43,7 @@ deregister_project() {
 }
 
 upsert_skills_symlinks() {
-  local project_dir="$1" target="$SKILLS_ROOT/skills"
+  local project_dir="$1" skill_file="${2:-}" target="$SKILLS_ROOT/skills"
   local link
   for link in "$project_dir/.claude/skills" "$project_dir/.agents/skills"; do
     mkdir -p "$(dirname "$link")"
@@ -52,7 +52,17 @@ upsert_skills_symlinks() {
       ln -sfn "$target" "$link"
       echo "  [symlink]  updated: $link"
     elif [ -d "$link" ]; then
-      echo "  [skip]  $link is a real directory — not overwriting"
+      # Real directory (project has local skills) — create per-skill entry instead
+      if [ -n "$skill_file" ]; then
+        local skill_name
+        skill_name=$(basename "$(dirname "$skill_file")")
+        local skill_dir="$link/$skill_name"
+        if [ ! -e "$skill_dir" ]; then
+          mkdir -p "$skill_dir"
+          ln -sfn "$skill_file" "$skill_dir/SKILL.md"
+          echo "  [skill-dir]  created: $skill_dir"
+        fi
+      fi
     else
       ln -sfn "$target" "$link"
       echo "  [symlink]  created: $link"
@@ -61,11 +71,21 @@ upsert_skills_symlinks() {
 }
 
 remove_skills_symlinks() {
-  local project_dir="$1" target="$SKILLS_ROOT/skills"
+  local project_dir="$1" skill_file="${2:-}" target="$SKILLS_ROOT/skills"
   local link
   for link in "$project_dir/.claude/skills" "$project_dir/.agents/skills"; do
     if [ -L "$link" ] && [ "$(readlink "$link")" = "$target" ]; then
       rm "$link"
+    elif [ -d "$link" ] && [ -n "$skill_file" ]; then
+      # Real directory — remove per-skill entry if it was canon-managed
+      local skill_name
+      skill_name=$(basename "$(dirname "$skill_file")")
+      local skill_dir="$link/$skill_name"
+      if [ -d "$skill_dir" ] && [ -L "$skill_dir/SKILL.md" ] && \
+         [ "$(readlink "$skill_dir/SKILL.md")" = "$skill_file" ]; then
+        rm -rf "$skill_dir"
+        echo "  [skill-dir]  removed: $skill_dir"
+      fi
     fi
   done
 }
@@ -380,7 +400,7 @@ cmd_add() {
   _prune_redundant_deps "$skill_file" "$project_dir" "$name"
 
   register_project "$project_dir"
-  upsert_skills_symlinks "$project_dir"
+  upsert_skills_symlinks "$project_dir" "$skill_file"
 }
 
 cmd_status() {
@@ -759,6 +779,8 @@ cmd_remove() {
   fi
 
   echo "Unregistered: $skill"
+
+  remove_skills_symlinks "$project_dir" "$skill_file"
 
   # Deregister from project registry when no canon skills remain
   if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ]; then
