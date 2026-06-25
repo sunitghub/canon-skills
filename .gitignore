@@ -15,7 +15,6 @@ posts/
 critique/
 context-findings.md
 doc-findings.md
-.claude/settings.json
 # Local skill symlinks created by `skills.sh add` — per-developer, not shared config.
 # .claude/settings.json IS tracked (canonical project-local hook config for all contributors).
 .claude/skills
