@@ -31,15 +31,6 @@
             "command": "echo '[hook] bash tool used'"
           }
         ]
-      },
-      {
-        "matcher": "Read|Grep|Glob",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "npm test -- --runInBand"
-          }
-        ]
       }
     ],
     "PreToolUse": [
