@@ -197,7 +197,7 @@ test.describe('board modal', () => {
       await expect(card).toBeVisible();
       createdId = await card.getAttribute('data-id') || '';
 
-      // Drag or directly set status to closed via API
+      // Move to closed via API
       await page.evaluate(async (id) => {
         await fetch(`/api/ticket/${id}/status`, {
           method: 'POST',
@@ -208,17 +208,29 @@ test.describe('board modal', () => {
       await page.reload();
       await page.waitForLoadState('networkidle');
 
-      // Archive button should appear on hover in the Done column
-      const doneCard = page.locator('.col-done .card', { hasText: title });
-      await expect(doneCard).toBeVisible();
+      // Search by ID to surface the card (Done column is capped at 5 visible cards)
+      await page.locator('#board-search').fill(createdId);
+      await page.waitForTimeout(200);
+
+      // Archive button should appear on hover
+      const doneCard = page.locator('.col-done .card[data-id="' + createdId + '"]');
+      await expect(doneCard).toBeVisible({ timeout: 8000 });
       await doneCard.hover();
       const archiveBtn = doneCard.locator('.card-archive');
       await expect(archiveBtn).toBeVisible();
       await archiveBtn.click();
+
+      // Confirmation toast should appear — click Confirm to proceed
+      const toast = page.locator('#drop-toast');
+      await expect(toast).toContainText('Archive ticket');
+      await expect(toast).toContainText('Click to confirm');
+      await toast.locator('.toast-confirm').click();
       await page.waitForLoadState('networkidle');
 
-      // Card should no longer appear in Done column
-      await expect(page.locator('.col-done .card', { hasText: title })).not.toBeVisible();
+      // Clear search — card should no longer appear in Done column
+      await page.locator('#board-search').fill('');
+      await page.waitForTimeout(200);
+      await expect(page.locator('.col-done .card[data-id="' + createdId + '"]')).not.toBeVisible();
 
       // Header archived count should appear
       await expect(page.locator('#h-archived-stat')).toBeVisible();
