@@ -20,8 +20,11 @@ assert_grep 'padding: 12px;' "$APP"
 assert_grep 'min-height: 0;' "$APP"
 assert_grep '<div class="kbd-hint" id="m-kbd">Esc</div>' "$APP"
 
-if grep -qE "act-prev|act-next|ArrowLeft|ArrowRight|← → Esc" "$APP"; then
-  fail "ticket modal should not expose arrow-key or Back/Done status movement"
+if grep -qE "act-prev|act-next|← → Esc" "$APP"; then
+  fail "ticket modal should not expose Back/Done status column movement"
+fi
+if grep -qE "ArrowLeft|ArrowRight" "$APP"; then
+  fail "modal keydown handler should not bind ArrowLeft/ArrowRight (use explicit nav buttons instead)"
 fi
 
 printf 'sprint-check-app: ok\n'
