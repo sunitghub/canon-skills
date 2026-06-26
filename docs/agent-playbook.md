@@ -377,7 +377,7 @@ project/
   HANDOFF.md         ← current session state
 ```
 
-See `canon/starters/` for copy-paste templates for each file.
+See `docs/setup.md` for install steps and the skill lifecycle.
 
 The `standards/efficiency.md` file should be marked `inject: true` (or equivalent in your harness) so it's always in context without being explicitly invoked.
 
