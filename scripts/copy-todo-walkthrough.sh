@@ -60,9 +60,22 @@ mkdir -p "$target_parent"
 target_parent="$(cd "$target_parent" && pwd)"
 TARGET="$target_parent/$target_name"
 
-if [[ "$TARGET" == "/" || "$TARGET" == "$ROOT" || "$TARGET" == "$SOURCE" ]]; then
+# Safety check on the raw resolved target (before copy-into-dir logic)
+BLOCKED_DIRS=("$HOME" "/" "/tmp" "/var" "/usr" "/etc" "/bin" "/sbin")
+for blocked in "${BLOCKED_DIRS[@]}"; do
+  if [[ "$TARGET" == "$blocked" ]]; then
+    echo "Refusing unsafe target: $TARGET" >&2
+    exit 1
+  fi
+done
+if [[ "$TARGET" == "$ROOT" || "$TARGET" == "$SOURCE" ]]; then
   echo "Refusing unsafe target: $TARGET" >&2
   exit 1
+fi
+
+# If the target is an existing directory, copy INTO it (cp -R semantics)
+if [[ -d "$TARGET" ]]; then
+  TARGET="$TARGET/$(basename "$SOURCE")"
 fi
 
 if [[ -e "$TARGET" ]]; then
