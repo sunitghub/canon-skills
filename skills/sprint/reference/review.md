@@ -53,7 +53,7 @@ YES
 
    If there are findings, change `YES` to `NO`.
 
-   Return the verdict line (`YES` or `NO`) in your response to the caller.
+   Return the verdict line (`YES` or `NO`) in your response to the caller. When the caller records this in the Wrapup Gates table, the Reason must be prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
 ## Disposition
 

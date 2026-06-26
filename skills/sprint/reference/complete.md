@@ -17,11 +17,11 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    | Gate | Status | Reason |
    |------|--------|--------|
    | simplifier | skipped | docs-only change |
-   | reviewer | ran | YES |
+   | reviewer | ran | verdict: YES |
    | security | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
-   | eval | ran | pass — eval-report.md written |
+   | eval | ran | verdict: pass — eval-report.md written |
    ```
 
    Use `ran` or `skipped`. Always include a reason — even for gates that ran,
@@ -39,7 +39,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - Ticket ID and changed files: `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
-   Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the verdict line as the reason.
+   Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
 2. **Evaluator review (normal+ tier).** Skip for trivial tier only. For normal
    and high-risk sprints, always spawn a freshly invoked Agent subagent for the
@@ -62,7 +62,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes. Surface any
    `fail` or `partial` findings to the user before proceeding. Do not advance to
-   step 3 if the evaluator verdict is `fail`.
+   step 3 if the evaluator verdict is `fail`. Record the eval outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
 3. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - ✓ passed | ✗ failed | ? not run
