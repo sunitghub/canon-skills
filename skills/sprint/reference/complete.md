@@ -30,6 +30,18 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    `npm test passed 2026-06-13`. This makes the acceptance record complete:
    what was tested and what quality gates ran. **`sprint complete` will block without this section.**
 
+   **Reviewer gate (normal+ tier).** Skip for trivial tier only. For normal and high-risk sprints,
+   always spawn a freshly invoked Agent subagent for the reviewer. The close confirmation is
+   authorization — do not ask for separate approval. Same-context review is not acceptable.
+
+   The reviewer has no implementation history. Invoke with a clean context. The prompt must instruct it to:
+   - Read each changed file (use the same changed-files list as the evaluator)
+   - Check for: scope creep beyond `plan.md`, dead code introduced, unnecessary complexity, standards violations (`standards/efficiency.md`)
+   - Write findings to `.tickets/<id>/review-notes.md` with format: `file:line — <issue>` per finding, then a one-line verdict: `clean` or `findings: <N>`
+   - Return the verdict line
+
+   The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the verdict line as the reason.
+
 2. **Evaluator review (normal+ tier).** Skip for trivial tier only. For normal
    and high-risk sprints, always spawn a freshly invoked Agent subagent for the
    evaluator review. Once the user has confirmed sprint close, do not ask for
