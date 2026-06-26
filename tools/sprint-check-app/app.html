@@ -687,8 +687,18 @@
       color: var(--text-muted); cursor: pointer; transition: color .1s, border-color .1s;
     }
     .doc-tab-new:hover { color: var(--text); border-color: var(--accent); }
+    .doc-tab-right {
+      margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+    }
+    .doc-nav-btn {
+      padding: 3px 8px; border-radius: 999px; font-size: 13px; font-weight: 700; line-height: 1;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--text-muted); cursor: pointer; transition: background .1s, color .1s, border-color .1s;
+    }
+    .doc-nav-btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); border-color: var(--border-hover); }
+    .doc-nav-btn:disabled { opacity: .3; cursor: default; }
     .doc-edit-btn {
-      margin-left: auto; padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
       border: 1px solid var(--border); background: transparent;
       color: var(--text-muted); cursor: pointer; transition: background .1s, color .1s;
     }
@@ -698,7 +708,7 @@
       color: var(--accent); opacity: 1; cursor: default;
     }
     .doc-save-btn {
-      margin-left: auto; padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
       border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer;
       transition: opacity .1s;
     }
@@ -711,7 +721,7 @@
     .doc-cancel-btn:hover { background: var(--surface-hover); color: var(--text); }
     .doc-tab-new:disabled { opacity: .45; cursor: not-allowed; }
     .doc-locked-badge {
-      margin-left: auto; font-size: 11px; color: var(--text-body);
+      font-size: 11px; color: var(--text-body);
       display: flex; align-items: center; gap: 5px;
       padding: 4px 10px; border: 1px solid var(--panel-border); border-radius: 20px;
       background: var(--surface-raised);
@@ -2247,6 +2257,15 @@ function openModal(id) {
 
 const HIDDEN_DOC_SLUGS = new Set(['blueprint']);
 
+function navigateTicket(dir) {
+  if (modalState.editMode) return;
+  const ids = state.tickets.map(t => t.id);
+  const idx = ids.indexOf(state.selectedId);
+  const nextId = ids[idx + dir];
+  if (!nextId) return;
+  openModal(nextId);
+}
+
 function renderModalDocs(t) {
   const docs = (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file)));
   const bar = document.getElementById('m-docs');
@@ -2259,17 +2278,21 @@ function renderModalDocs(t) {
     ? `<button class="doc-tab${descActive ? ' active' : ''}" data-file="">Description</button>`
     : '';
 
+  const ticketIds = state.tickets.map(tk => tk.id);
+  const ticketIdx = ticketIds.indexOf(t.id);
+  const navPrev = `<button class="doc-nav-btn" id="btn-ticket-prev" title="Previous ticket"${ticketIdx <= 0 ? ' disabled' : ''}>‹</button>`;
+  const navNext = `<button class="doc-nav-btn" id="btn-ticket-next" title="Next ticket"${ticketIdx >= ticketIds.length - 1 ? ' disabled' : ''}>›</button>`;
+
+  const rightControls = modalState.editMode
+    ? `<div class="doc-tab-right">${navPrev}${navNext}<button class="doc-save-btn" id="btn-save-top">Save</button><button class="doc-cancel-btn" id="btn-cancel-top">Cancel</button></div>`
+    : locked
+      ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
+      : `<div class="doc-tab-right">${navPrev}${navNext}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<button class="doc-edit-btn" id="btn-edit-doc">Edit</button></div>`;
+
   bar.innerHTML = descTab + docs.map(d => {
     const active = d.file === modalState.activeDoc;
     return `<button class="doc-tab${active ? ' active' : ''}" data-file="${d.file ?? ''}">${esc(d.name)}</button>`;
-  }).join('') +
-  (!locked
-    ? (canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${modalState.editMode || pickingDoc ? ' disabled' : ''}>+ New doc</button>` : '') +
-      (pickingDoc ? '' : modalState.editMode
-        ? `<button class="doc-save-btn" id="btn-save-top">Save</button><button class="doc-cancel-btn" id="btn-cancel-top">Cancel</button>`
-        : `<button class="doc-edit-btn" id="btn-edit-doc">Edit</button>`)
-    : `<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span>`
-  );
+  }).join('') + rightControls;
 
   bar.querySelectorAll('.doc-tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -2283,12 +2306,13 @@ function renderModalDocs(t) {
     });
   });
 
-  if (!locked) {
-    document.getElementById('btn-new-doc')?.addEventListener('click', () => promptNewDoc(t));
-    document.getElementById('btn-edit-doc')?.addEventListener('click', () => enterEditMode(t));
-    document.getElementById('btn-save-top')?.addEventListener('click', () => saveEdit(t));
-    document.getElementById('btn-cancel-top')?.addEventListener('click', () => exitEditMode(t));
-  }
+  document.getElementById('btn-ticket-prev')?.addEventListener('click', () => navigateTicket(-1));
+  document.getElementById('btn-ticket-next')?.addEventListener('click', () => navigateTicket(1));
+
+  document.getElementById('btn-new-doc')?.addEventListener('click', () => promptNewDoc(t));
+  document.getElementById('btn-edit-doc')?.addEventListener('click', () => enterEditMode(t));
+  document.getElementById('btn-save-top')?.addEventListener('click', () => saveEdit(t));
+  document.getElementById('btn-cancel-top')?.addEventListener('click', () => exitEditMode(t));
 
   // Re-inject the persistent check tip (innerHTML wipe removes it)
   const tip = document.createElement('span');
@@ -3182,6 +3206,7 @@ document.addEventListener('keydown', e => {
     }
     return;
   }
+
 });
 
 document.getElementById('modal-overlay').addEventListener('click', e => {
