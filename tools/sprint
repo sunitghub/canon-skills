@@ -287,6 +287,11 @@ _gate_eval_report() {
     echo "Run the evaluator (eval skill) before closing, or confirm trivial tier in plan.md."
     return 1
   fi
+  if ! grep -qE '^evaluator-run-id:[[:space:]]+\S' "$report"; then
+    echo "Sprint $id cannot close: eval-report.md is missing evaluator-run-id field."
+    echo "Ensure the evaluator subagent wrote the run-id before grading."
+    return 1
+  fi
   if ! grep -qE '^pass:' "$report"; then
     echo "Sprint $id cannot close: eval-report.md verdict is not pass."
     grep -E '^(pass|fail):' "$report" | head -1 || echo "(no verdict line found)"
