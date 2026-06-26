@@ -293,6 +293,8 @@ The corrected framing: **design the layers simultaneously. Assign work to whiche
 
 All three layers are necessary and complementary. L1 enforces structure reliably. L2 catches quality failures that pass structural checks. L3 catches orchestration failures that semantic grading can't see. Treating any one as "real" evaluation misses the others' failure surface.
 
+**Compaction vs context reset.** When a session's context window fills, there are two responses. Compaction summarises earlier turns in place — the same agent continues on a shortened history. It preserves continuity but does not resolve context anxiety: the agent retains its sense of how long the session has been running and will still exhibit premature wrap-up behaviour. A context reset clears the window entirely and starts a fresh agent with a structured handoff artifact carrying state, completed work, and next steps. The fresh agent has no accumulated sense of session length — context anxiety cannot carry over. Use compaction for routine length management during stable phases. Use a context reset at phase boundaries, after a behavioural failure that compaction would not fix, or when the handoff artifact already exists and is complete enough to reconstruct session state reliably. Canon treats sprint phase boundaries as natural reset points for this reason. For the required fields and a copyable template, see `tools/handoff.md` § Context Reset Handoff.
+
 ---
 
 ## Governance
@@ -332,6 +334,8 @@ When in doubt, promote to the next severity tier. A false moderate costs one rev
 **One agent, too many jobs.** The agent is asked to plan, implement, test, review, and document in one shot. Context collapses; later steps lose fidelity. Fix: split into focused agents with explicit handoffs.
 
 **Silent failure.** The agent encounters ambiguity and picks one interpretation without disclosing it. The user discovers the wrong choice was made after it's been built. Fix: fail loudly — surface the ambiguity and ask.
+
+**Context anxiety.** As the context window fills, the agent begins wrapping up work prematurely — declaring tasks done, skipping planned steps, or summarising instead of executing — before it actually runs out of space. Distinct from coherence degradation (where attention quality silently drops); context anxiety is a behavioral change the agent initiates, often triggered by its own estimate of remaining capacity. Compaction alone does not fix it — the agent retains its sense of how long the session has been running. Fix: context reset — clear the window entirely and start a fresh agent with a structured handoff artifact that carries state and next steps.
 
 ---
 
