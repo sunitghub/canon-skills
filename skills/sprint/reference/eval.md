@@ -18,9 +18,19 @@ You will receive:
 - Ticket ID (e.g. `t-d53d`)
 - List of changed files (relative paths)
 
+## Tools
+
+Use Read and Bash only. Do not use Edit, Write, Agent, or any other tool.
+
 ## Steps
 
-1. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These are your ground truth — what was promised, what approach was approved.
+1. **Write run-id.** Before reading anything, write a single line to `.tickets/<id>/eval-report.md` (creating the file if absent):
+   ```
+   evaluator-run-id: <epoch-seconds>-<RANDOM>
+   ```
+   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to a fresh subagent invocation.
+
+2. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These are your ground truth — what was promised, what approach was approved.
 
 2. **Read changed files.** Read each file in the changed-files list. Do not read files not on that list. Your job is to evaluate what shipped, not to re-research the codebase.
 

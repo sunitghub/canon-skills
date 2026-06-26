@@ -279,15 +279,26 @@ assert_contains "$missing_eval_output" "eval-report.md is missing"
 # eval-report.md with non-pass verdict should block
 cat > ".tickets/$id/eval-report.md" <<'EOF'
 # Eval Report
+evaluator-run-id: 1000000000-12345
 ## Verdict
 fail: criterion 1 not met
 EOF
 fail_eval_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$fail_eval_output" "eval-report.md verdict is not pass"
 
-# eval-report.md with pass: verdict — gate should pass
+# eval-report.md missing evaluator-run-id should block
 cat > ".tickets/$id/eval-report.md" <<'EOF'
 # Eval Report
+## Verdict
+pass: all criteria met
+EOF
+missing_runid_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$missing_runid_output" "missing evaluator-run-id"
+
+# eval-report.md with pass: verdict and run-id — gate should pass
+cat > ".tickets/$id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-99999
 ## Criteria
 | Criterion | Status | Evidence |
 |---|---|---|
