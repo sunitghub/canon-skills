@@ -120,7 +120,7 @@ tkt why .
 
 Expected: reports no sprint history found (empty project, expected).
 
-See the [skill verification table](AI-Agents-Setup.md#skill-verification) for expected responses per skill.
+See the [skill verification table](setup.md#skill-verification) for expected responses per skill.
 
 ---
 
