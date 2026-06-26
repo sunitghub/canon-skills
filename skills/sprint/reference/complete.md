@@ -17,7 +17,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    | Gate | Status | Reason |
    |------|--------|--------|
    | simplifier | skipped | docs-only change |
-   | reviewer | ran | — |
+   | reviewer | ran | YES |
    | security | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
@@ -35,12 +35,11 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    authorization — do not ask for separate approval. Same-context review is not acceptable.
 
    The reviewer has no implementation history. Invoke with a clean context. The prompt must instruct it to:
-   - Read each changed file (use the same changed-files list as the evaluator)
-   - Check for: scope creep beyond `plan.md`, dead code introduced, unnecessary complexity, standards violations (`standards/efficiency.md`)
-   - Write findings to `.tickets/<id>/review-notes.md` with format: `file:line — <issue>` per finding, then a one-line verdict: `clean` or `findings: <N>`
-   - Return the verdict line
+   - Read `skills/sprint/reference/review.md` and follow the review protocol
+   - Ticket ID and changed files: `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
+   - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
-   The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the verdict line as the reason.
+   Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the verdict line as the reason.
 
 2. **Evaluator review (normal+ tier).** Skip for trivial tier only. For normal
    and high-risk sprints, always spawn a freshly invoked Agent subagent for the
