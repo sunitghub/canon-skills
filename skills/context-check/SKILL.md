@@ -23,12 +23,12 @@ Audit what Claude loads every session. Writes `context-check-report.md` at the p
 
    If it exists:
    - Run `./tools/skills.sh status` if that file exists, otherwise `skills.sh status` if on PATH. This gives the full registered-skill list.
-   - Run `find .claude/skills -maxdepth 1 -mindepth 1 -type l 2>/dev/null` to identify symlinked (canon-managed) skill directories.
-   - Run `find .claude/skills -maxdepth 1 -mindepth 1 \! -type l -type d 2>/dev/null` to identify project-local skill directories.
+   - Run `find .claude/skills -maxdepth 1 -mindepth 1 -type l 2>/dev/null` to identify whole-dir symlinks (canon-managed, classic model).
+   - Run `find .claude/skills -maxdepth 1 -mindepth 1 \! -type l -type d 2>/dev/null` to identify real subdirectories. For each, run `readlink .claude/skills/<name>/SKILL.md 2>/dev/null` — if the target contains `/canon/skills/` or `/.canon/skills/`, it is canon-managed (per-skill model); otherwise it is project-local.
 
    Report two sub-lists:
-   - **Canon-managed** (symlinks): name and symlink target only. Do not audit content — these are installed from an external source and not part of the project's own context footprint.
-   - **Project-local** (non-symlinks): name and file size. Include in the content audit at step 8.
+   - **Canon-managed** (whole-dir symlinks, or real dirs whose SKILL.md symlinks to a canon path): name and symlink target only. Do not audit content — these are installed from an external source and not part of the project's own context footprint.
+   - **Project-local** (real dirs with no canon SKILL.md symlink): name and file size. Include in the content audit at step 8.
 
 4. Check `~/.claude/settings.json`. If it is absent, say so and continue. If present, read it and list hooks, matchers, and scripts.
 
