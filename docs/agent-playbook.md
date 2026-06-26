@@ -8,6 +8,8 @@ updated: 2026-06-16
 
 Distilled from building and iterating on canon. Language-agnostic — applies whether you're writing agents in Python, TypeScript, shell, or anything else.
 
+Three constraints, held together: **minimal** (two commands and a board, not a methodology to learn), **durable** (work outlives any session because it lives in your repo), **portable** (one definition, every agent, no lock-in). Every design choice below trades cleverness for one of those three.
+
 ---
 
 ## The One Idea
@@ -109,6 +111,22 @@ Non-obvious constraints, failure modes, or edge cases.
 - **Steps that reference the actual files.** "Read `tools/handoff.md`, then..." beats "review the handoff state."
 - **Concrete output format.** A skill that produces unstructured prose is hard to grade and hard to compose.
 - **Gotchas section.** This is where hard-won knowledge lives. If something surprised you during development, it belongs here.
+
+### Skill lifecycle
+
+```
+Write SKILL.md
+      ↓
+./tools/canon-dev.sh lint     ← structure valid? (frontmatter, one-job, progressive disclosure)
+      ↓
+Write evals/evals.json        ← ≥3 cases: control + at least 2 other case types
+      ↓
+/skill-eval <name>            ← behavior correct? (executor + grader subagents, fresh context)
+      ↓
+skills.sh add <name>          ← register for use
+```
+
+Fix lint failures before writing evals. If evals fail, fix the skill, not the expectations (unless the expectation was wrong). For existing skills: run evals first to record a baseline, then edit, then re-run — revert if pass rate drops.
 
 ---
 

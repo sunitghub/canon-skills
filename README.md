@@ -229,7 +229,7 @@ High-risk sprints add orient (with parallel subagents when multiple subsystems a
 
 ## Why canon
 
-Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/how-it-works.md)**
+Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/setup.md)**
 
 Every non-trivial change starts with a ticket. Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). High-risk and brownfield sprints add `research.md`: objective compression of what the system does before any plan is written. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 
@@ -246,7 +246,7 @@ Gates don't make agents smarter. They make certain failures impossible — and t
 | Bash | Yes | curl installer |
 | Python 3 | `sprint-check` + hooks | the board |
 
-**Windows 11:** canon's CLI tools are bash scripts — run them inside WSL2 (Ubuntu). See **[fresh-machine-test.md → Windows 11](guides/fresh-machine-test.md#windows-11-wsl2)** for the full setup path.
+**Windows 11:** canon's CLI tools are bash scripts — run them inside WSL2 (Ubuntu). See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11-wsl2)** for the full setup path.
 
 Register canon in another project:
 
@@ -255,15 +255,14 @@ Register canon in another project:
 ~/.canon/tools/skills.sh add context-check   # optional: context-budget audits
 ```
 
-- **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.
-- **[Production incident playbook →](guides/production-incident-playbook.md)** — Detect → Diagnose → Contain → Fix → Prevent. The five-stage protocol for when an AI agent misbehaves in production.
+- **[Full setup guide →](docs/setup.md)** — install, hook wiring, skill lifecycle, reference commands.
+- **[Production incident playbook →](docs/production-incident-playbook.md)** — Detect → Diagnose → Contain → Fix → Prevent. The five-stage protocol for when an AI agent misbehaves in production.
 - **[Todo walkthrough →](examples/canon-todo-walkthrough)** — copy it to a disposable folder and walk the full flow, from empty board to shipped app.
 - **[check-offline skill example →](examples/check-offline)** — a worked skill + evals example: scans HTML prototypes for CDN dependencies that break offline.
-- **[All docs, by what you're doing →](docs/README.md)** — learn, set up, reference, why.
 
 ## Contributing
 
-Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. For the full skill authoring lifecycle (lint → eval → register), see **[guides/skill-authoring.md](guides/skill-authoring.md)**.
+Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. For the full skill authoring lifecycle (lint → eval → register), see **[docs/agent-playbook.md → Skill lifecycle](docs/agent-playbook.md#skill-lifecycle)**.
 
 ---
 
