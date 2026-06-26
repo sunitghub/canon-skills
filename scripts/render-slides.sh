@@ -41,7 +41,8 @@ NODE
 render() {
   local topic="$1"
   local src="$SLIDES_DIR/${topic}.md"
-  local out="$SLIDES_DIR/${topic}.html"
+  local html_out="$SLIDES_DIR/${topic}.html"
+  local pptx_out="$SLIDES_DIR/${topic}.pptx"
   if [[ ! -f "$src" ]]; then
     echo "Error: $src not found" >&2
     exit 1
@@ -49,12 +50,20 @@ render() {
   echo "==> Rendering $topic"
   npx @marp-team/marp-cli "$src" \
     --theme "$THEME" \
-    -o "$out" \
+    -o "$html_out" \
     --allow-local-files \
     --html \
     --bespoke.transition=false
-  harden_html "$out"
-  echo "    => $out"
+  harden_html "$html_out"
+  echo "    => $html_out"
+
+  npx @marp-team/marp-cli "$src" \
+    --theme "$THEME" \
+    -o "$pptx_out" \
+    --allow-local-files \
+    --html \
+    --pptx
+  echo "    => $pptx_out"
 }
 
 TOPIC="${1:-}"

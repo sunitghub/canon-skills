@@ -5,27 +5,29 @@
       "id": 1,
       "case_type": "control",
       "prompt": "Generate a slide deck on context management using the canon-slides skill. Use the canon theme.",
-      "expected_output": "The skill reads the source files (standards/efficiency.md, skills/context-check/SKILL.md, skills/sprint/SKILL.md), writes slides/context-management.md with valid Marp frontmatter (marp: true, theme: canon), includes slide separators (---), and provides the render command using themes/canon.css.",
+      "expected_output": "The skill reads the source files (standards/efficiency.md, skills/context-check/SKILL.md, skills/sprint/SKILL.md), writes slides/context-management.md with valid Marp frontmatter (marp: true, theme: canon), includes slide separators (---), and provides render instructions that create both HTML and PPTX using themes/canon.css.",
       "expectations": [
         "Reads at least two of the three source files: standards/efficiency.md, skills/context-check/SKILL.md, skills/sprint/SKILL.md",
         "Writes slides/context-management.md",
         "Output file contains 'marp: true' in frontmatter",
         "Output file contains 'theme: canon' in frontmatter",
         "Output file contains at least 5 slide separators (---) beyond the frontmatter delimiters",
-        "Provides the npx @marp-team/marp-cli render command with --theme skills/canon-slides/themes/canon.css"
+        "Provides render instructions with --theme skills/canon-slides/themes/canon.css or npm run slides",
+        "Reports both posts/slides/context-management.html and posts/slides/context-management.pptx outputs"
       ]
     },
     {
       "id": 2,
       "case_type": "control",
       "prompt": "Create a presentation on the evaluator pattern using canon-slides with the octave theme.",
-      "expected_output": "The skill reads evaluator-related source files (skills/sprint/reference/eval.md, skills/skill-eval/SKILL.md, DECISIONS.md), writes slides/evaluator-pattern.md with octave theme frontmatter, and provides the render command referencing themes/octave.css.",
+      "expected_output": "The skill reads evaluator-related source files (skills/sprint/reference/eval.md, skills/skill-eval/SKILL.md, DECISIONS.md), writes slides/evaluator-pattern.md with octave theme frontmatter, and provides render instructions that create HTML and PPTX with themes/octave.css.",
       "expectations": [
         "Reads skills/sprint/reference/eval.md or skills/skill-eval/SKILL.md",
         "Writes slides/evaluator-pattern.md",
         "Output file contains 'theme: octave' in frontmatter",
         "Deck covers generator-evaluator separation or clean context concept",
-        "Provides the render command with --theme skills/canon-slides/themes/octave.css"
+        "Provides render instructions with --theme skills/canon-slides/themes/octave.css or npm run slides",
+        "Reports both HTML and PPTX output paths"
       ]
     },
     {
@@ -43,25 +45,25 @@
       "id": 4,
       "case_type": "compliance",
       "prompt": "Build the skill-authoring slide deck with the canon theme.",
-      "expected_output": "The skill reads standards/skill-setup-std.md and guides/skill-authoring.md, structures the deck with the required outline sections (title, problem, core pattern, canon implementation, gotchas, summary), and the render command includes --allow-local-files.",
+      "expected_output": "The skill reads standards/skill-setup-std.md and guides/skill-authoring.md, structures the deck with the required outline sections (title, problem, core pattern, canon implementation, gotchas, summary), and render instructions include --allow-local-files or the repo render script.",
       "expectations": [
         "Reads standards/skill-setup-std.md or guides/skill-authoring.md",
         "Writes slides/skill-authoring.md",
         "Deck includes a title slide and a summary/takeaways slide",
-        "Render command includes --allow-local-files flag",
-        "Render command references skills/canon-slides/themes/canon.css"
+        "Render instructions include --allow-local-files or npm run slides",
+        "Render instructions reference skills/canon-slides/themes/canon.css or npm run slides"
       ]
     },
     {
       "id": 5,
       "case_type": "edge",
       "prompt": "Generate the context-management deck but npx is not available on this machine.",
-      "expected_output": "The skill generates slides/context-management.md successfully, attempts the render command, detects the failure, and gives the user a manual install instruction for marp-cli without crashing or leaving the task incomplete.",
+      "expected_output": "The skill generates slides/context-management.md successfully, attempts to render, detects the failure, and gives the user a manual install instruction for marp-cli without crashing or leaving the task incomplete.",
       "expectations": [
         "Still writes slides/context-management.md with valid Marp content",
         "Informs the user that marp-cli is not available",
         "Provides the install command: npm install -g @marp-team/marp-cli",
-        "Provides the manual render command the user can run themselves"
+        "Provides npm run slides or a manual render command the user can run themselves"
       ]
     }
   ]

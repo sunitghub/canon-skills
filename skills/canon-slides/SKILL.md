@@ -1,6 +1,6 @@
 ---
 name: canon-slides
-description: Generates Marp slide decks from canon knowledge. Use when asked to create slides, build a presentation, or generate a deck on a canon topic (context management, evaluator pattern, or skill authoring). Renders to HTML — opens in any browser with no Office dependency.
+description: Generates Marp slide decks from canon knowledge. Use when asked to create slides, build a presentation, or generate a deck on a canon topic (context management, evaluator pattern, or skill authoring). Renders to HTML and PPTX for browser viewing and SharePoint/PowerPoint distribution.
 category: ops
 tags: [slides, marp, presentations, knowledge]
 argument-hint: "[topic] [--theme canon|octave]"
@@ -9,7 +9,7 @@ hidden: true
 
 # canon-slides
 
-Generates a Marp slide deck from canon source files and renders it to HTML.
+Generates a Marp slide deck from canon source files and renders it to HTML and PPTX.
 
 ## Usage
 
@@ -294,7 +294,19 @@ Guidelines for slide copy:
 - Prefer concrete examples over abstract principles.
 - Marp slide separator is `---` on its own line. Do not skip it between slides.
 
-**4. Render to HTML.** Run this exact command — `--html` is mandatory:
+**4. Render to HTML and PPTX.** Prefer the repo render script:
+
+```bash
+npm run slides -- <topic>
+```
+
+It writes both:
+- `posts/slides/<topic>.html`
+- `posts/slides/<topic>.pptx`
+
+The HTML render keeps Marp's interactive deck behavior and repo-specific hardening. The PPTX render is for SharePoint/PowerPoint distribution.
+
+If you must run Marp manually, the HTML command is:
 
 ```bash
 npx @marp-team/marp-cli posts/slides/<topic>.md \
@@ -307,16 +319,29 @@ npx @marp-team/marp-cli posts/slides/<topic>.md \
 
 Where `<theme>` is `canon` or `octave`. Omitting `--html` silently strips all `<div>` styling and the slides render as plain text.
 
+The manual PPTX command is:
+
+```bash
+npx @marp-team/marp-cli posts/slides/<topic>.md \
+  --theme skills/canon-slides/themes/<theme>.css \
+  -o posts/slides/<topic>.pptx \
+  --allow-local-files \
+  --html \
+  --pptx
+```
+
 If `npx` is not available or marp-cli fails, stop and tell the user:
 ```
 marp-cli not found. Install with: npm install -g @marp-team/marp-cli
-Then rerun: npx @marp-team/marp-cli posts/slides/<topic>.md --theme skills/canon-slides/themes/<theme>.css -o posts/slides/<topic>.html --html --bespoke.transition=false
+Then rerun: npm run slides -- <topic>
 ```
 
 **5. Report output.** On success, tell the user:
 - Path to the `.md` source: `posts/slides/<topic>.md`
 - Path to the HTML: `posts/slides/<topic>.html`
-- How to open: `open posts/slides/<topic>.html` (macOS) or just open it in any browser
+- Path to the PPTX: `posts/slides/<topic>.pptx`
+- How to open HTML locally: `open posts/slides/<topic>.html` (macOS) or just open it in any browser
+- How to use PPTX: upload `posts/slides/<topic>.pptx` to SharePoint or open it in PowerPoint
 
 ## Octave theme — baked-in brand frame
 
