@@ -72,26 +72,6 @@ if [ -n "$ACTIVE_ID" ]; then
   fi
 fi
 
-# ── Starters sync ────────────────────────────────────────────────────────────
-# If any sync-source file is staged, run gen-starters and re-stage all dst files.
-# Sync pairs are defined in scripts/gen-starters.sh (SYNC_PAIRS array).
-_staged_files=$(git diff --cached --name-only 2>/dev/null)
-_sync_sources=$(awk '/SYNC_PAIRS=\(/{f=1;next} /^\)/{f=0} f' \
-  "$GIT_ROOT/scripts/gen-starters.sh" 2>/dev/null \
-  | grep -oE '"[^"]+"' | tr -d '"' | cut -d: -f1)
-_needs_sync=0
-for _src in $_sync_sources; do
-  echo "$_staged_files" | grep -qF "$_src" && _needs_sync=1 && break
-done
-if [[ "$_needs_sync" == 1 ]]; then
-  GEN="$GIT_ROOT/scripts/gen-starters.sh"
-  if [[ -x "$GEN" ]]; then
-    (cd "$GIT_ROOT" && bash "$GEN")
-    git add "$GIT_ROOT/starters/"
-    echo "[pre-commit] starters/ synced"
-  fi
-fi
-
 # ── Test suite ───────────────────────────────────────────────────────────────
 TEST_RUNNER="$GIT_ROOT/scripts/test.sh"
 if [[ -x "$TEST_RUNNER" ]]; then
