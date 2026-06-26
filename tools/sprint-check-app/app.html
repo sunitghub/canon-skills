@@ -860,6 +860,14 @@
       color: var(--col-discarded);
       font-size: 12px;
     }
+    .eval-run-id {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.25);
+      border-radius: 6px; padding: 5px 10px; margin-bottom: 14px;
+      font-size: 11px; color: #16a34a; font-family: monospace;
+    }
+    html[data-theme="light"] .eval-run-id { background: #f0fdf4; border-color: #86efac; color: #15803d; }
+    .eval-run-id-label { font-family: inherit; font-weight: 600; color: var(--text-muted); margin-right: 2px; }
 
     /* ── Drop gate toast ────────────────────────── */
     #drop-toast {
@@ -2347,6 +2355,14 @@ function renderModalBody(t) {
         } else if (slug === 'plan') {
           if (!hasUsefulSectionText(sectionContent(d.content, 'Approach'), ['How will we implement it?'])) {
             warning = '<div class="acceptance-warning">⚠ ## Approach needs real notes — add the minimal plan before building</div>';
+          }
+        } else if (slug === 'eval-report') {
+          const runIdMatch = d.content.match(/^evaluator-run-id:\s*(\S+)/m);
+          if (runIdMatch) {
+            warning = `<div class="eval-run-id"><span class="eval-run-id-label">evaluator-run-id</span>${esc(runIdMatch[1])}</div>`;
+            d.content = d.content.replace(/^evaluator-run-id:[^\n]*\n?/m, '');
+          } else {
+            warning = '<div class="acceptance-warning">⚠ evaluator-run-id missing — sprint complete will block</div>';
           }
         }
         bodyEl.innerHTML = warning + md(d.content);
