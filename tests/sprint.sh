@@ -295,7 +295,12 @@ EOF
 missing_runid_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_runid_output" "missing evaluator-run-id"
 
-# eval-report.md with pass: verdict and run-id — gate should pass
+# JSONL present, no matching entry within ±60 min → should block
+# run-id epoch = 1000000000 (2001-09-09T01:46:40Z); entry is 2h before = out of window
+mkdir -p .claude
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-08T23:46:40Z","session_id":"s1","agent_id":"agent-old","agent_type":"general-purpose","transcript_path":"/tmp/old.jsonl"}
+EOF
 cat > ".tickets/$id/eval-report.md" <<'EOF'
 # Eval Report
 evaluator-run-id: 1000000000-99999
@@ -306,9 +311,53 @@ evaluator-run-id: 1000000000-99999
 ## Verdict
 pass: all criteria met
 EOF
+jsonl_nomatch_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$jsonl_nomatch_output" "no matching subagent entry"
 
+# JSONL present, matching entry within ±60 min → should pass
+# entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real","agent_type":"general-purpose","transcript_path":"/tmp/eval.jsonl"}
+EOF
+match_output="$("$SPRINT" complete 2>&1 || true)"
+[[ "$match_output" == *"no matching subagent entry"* ]] && fail "matching JSONL entry should not block close: $match_output"
+# Sprint closed — start a fresh one to test JSONL-absent success path
+
+fresh_start_output="$("$SPRINT" start "JSONL absent path test")"
+fresh_id="$(printf '%s\n' "$fresh_start_output" | awk '/Sprint started:/ { print $3 }')"
+cat > ".tickets/$fresh_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+cat > ".tickets/$fresh_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] item
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | pass |
+EOF
+cat > ".tickets/$fresh_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+cat > ".tickets/$fresh_id/eval-report.md" <<'EOF'
+evaluator-run-id: 1000000000-absent-test
+## Verdict
+pass: all criteria met
+EOF
+rm -f .claude/subagent-runs.jsonl
 complete_output="$("$SPRINT" complete)"
-assert_contains "$complete_output" "Sprint completed: $id"
+assert_contains "$complete_output" "Sprint completed: $fresh_id"
+assert_grep "^status: closed$" ".tickets/$fresh_id/ticket.md"
 assert_grep "^status: closed$" ".tickets/$id/ticket.md"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after sprint complete"
 

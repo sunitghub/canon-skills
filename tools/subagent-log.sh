@@ -22,3 +22,8 @@ SESSION_ID="$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin
 TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 printf '{"ts":"%s","session_id":"%s","agent_id":"%s","agent_type":"%s","transcript_path":"%s"}\n' \
   "$TS" "$SESSION_ID" "$AGENT_ID" "$AGENT_TYPE" "$TRANSCRIPT" >> "$LOG"
+
+# Prune to last 500 lines (~75KB cap)
+if [[ "$(wc -l < "$LOG")" -gt 500 ]]; then
+  tail -n 500 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+fi
