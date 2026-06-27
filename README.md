@@ -189,7 +189,7 @@ titles.
 flowchart LR
     P["Plan\nticket · acceptance · plan.md\nresearch.md (high-risk)"]
     B["Build\ncode · commits"]
-    W["Wrapup\nsimplify · review · security"]
+    W["Wrapup\nsimplify · review · security\nrepo-check · doc-audit"]
     E[["Evaluate\nclean-context · adversarial\npass/fail per criterion"]]
     C["Close\nsprint complete"]
     D["Board\nsprint-check"]
