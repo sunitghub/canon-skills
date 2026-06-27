@@ -57,6 +57,7 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
 
    - **Yes:** write `skills/$ARGUMENTS/evals/evals.json`. Each recommended scenario becomes one eval case with the fields:
      - `id`: kebab-case slug of the scenario name
+     - `case_type`: test technique — `control` (happy path), `compliance` (must-follow rule), `boundary` (edge of valid input), `edge` (unusual but valid), `over-caution` (should not refuse), `self-check` (skill evaluates itself)
      - `prompt`: the scenario as a concrete user-facing prompt string
      - `expected_output`: one sentence describing correct behaviour
      - `expectations`: array of 2–3 specific, assertable strings the grader can verify
