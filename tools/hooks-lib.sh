@@ -26,11 +26,13 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     config = {}
 hooks = config.setdefault("hooks", {})
+tools_path = os.path.join(os.path.dirname(scripts_path), "tools")
 desired = [
     ("Stop",            "",     f"{scripts_path}/auto-handoff.sh"),
     ("UserPromptSubmit","",     f"{scripts_path}/handoff-inject.sh"),
     ("UserPromptSubmit","",     f"{scripts_path}/sprint-inject.sh"),
     ("PreToolUse",      "Bash", f"{scripts_path}/pre-commit-check.sh"),
+    ("SubagentStop",    "",     f"{tools_path}/subagent-log.sh"),
 ]
 stale = {
     f"{scripts_path}/auto-polish-trigger.sh",
@@ -49,7 +51,9 @@ for event, matcher, command in desired:
         entry = {"matcher": matcher, "hooks": []}
         event_list.append(entry)
     entry_hooks = entry.setdefault("hooks", [])
-    if any(os.path.expanduser(h.get("command", "")) == command for h in entry_hooks):
+    def _basename(c):
+        return os.path.basename(os.path.expanduser(c.strip()).split()[-1])
+    if any(_basename(h.get("command", "")) == _basename(command) for h in entry_hooks):
         print(f"exists\t{event}\t{os.path.basename(command)}")
     else:
         entry_hooks.append({"type": "command", "command": command})
@@ -117,6 +121,7 @@ import json, os, sys
 settings_path = sys.argv[1]
 skills_root = os.path.realpath(sys.argv[2])
 scripts_path = os.path.join(skills_root, "scripts")
+tools_path = os.path.join(skills_root, "tools")
 commands = {
     os.path.realpath(os.path.join(scripts_path, name))
     for name in (
@@ -127,7 +132,7 @@ commands = {
         "auto-polish-trigger.sh",
         "guard-managed-files.sh",
     )
-}
+} | {os.path.realpath(os.path.join(tools_path, "subagent-log.sh"))}
 try:
     with open(settings_path) as f:
         config = json.load(f)
@@ -148,7 +153,9 @@ for event in list(hooks.keys()):
         entry_hooks = entry.get("hooks", []) if isinstance(entry, dict) else []
         kept_hooks = []
         for hook in entry_hooks:
-            command = os.path.realpath(os.path.expanduser(hook.get("command", "")))
+            raw = hook.get("command", "").strip()
+            cmd = raw.split()[-1] if raw else ""
+            command = os.path.realpath(os.path.expanduser(cmd))
             if command in commands:
                 removed += 1
             else:
