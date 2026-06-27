@@ -75,7 +75,7 @@ Canonical layout:
 .tickets/<id>/
   ticket.md        ← tkt-managed; never edit status directly — valid values: open, in_progress, closed, cancelled
   acceptance.md    ← definition of done + test plan
-  plan.md          ← approach, decisions, grill/impact sections for high-risk; written on approval, re-read after compaction
+  plan.md          ← approach, decisions, grill/impact sections for high-risk; skeleton created at sprint start, sign-off block added on approval, re-read after compaction
   research.md      ← optional; high-risk and brownfield sprints only; objective truth compression
   summary.md       ← plan-vs-actual table; written at sprint complete
 ```
