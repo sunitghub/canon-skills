@@ -23,4 +23,11 @@ for test_file in "${tests[@]}"; do
   bash "$test_file"
 done
 
+if command -v go >/dev/null 2>&1; then
+  printf '==> %s\n' "tools/sprint-check-go"
+  (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go)
+else
+  printf '==> %s\n' "tools/sprint-check-go skipped (go absent)"
+fi
+
 printf '\nAll tests passed.\n'
