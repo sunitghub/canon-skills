@@ -2259,7 +2259,8 @@ const HIDDEN_DOC_SLUGS = new Set(['blueprint']);
 
 function navigateTicket(dir) {
   if (modalState.editMode) return;
-  const ids = state.tickets.map(t => t.id);
+  const cur = state.tickets.find(t => t.id === state.selectedId);
+  const ids = state.tickets.filter(t => t.status === cur?.status).map(t => t.id);
   const idx = ids.indexOf(state.selectedId);
   const nextId = ids[idx + dir];
   if (!nextId) return;
@@ -2278,7 +2279,7 @@ function renderModalDocs(t) {
     ? `<button class="doc-tab${descActive ? ' active' : ''}" data-file="">Description</button>`
     : '';
 
-  const ticketIds = state.tickets.map(tk => tk.id);
+  const ticketIds = state.tickets.filter(tk => tk.status === t.status).map(tk => tk.id);
   const ticketIdx = ticketIds.indexOf(t.id);
   const navPrev = `<button class="doc-nav-btn" id="btn-ticket-prev" title="Previous ticket"${ticketIdx <= 0 ? ' disabled' : ''}>‹</button>`;
   const navNext = `<button class="doc-nav-btn" id="btn-ticket-next" title="Next ticket"${ticketIdx >= ticketIds.length - 1 ? ' disabled' : ''}>›</button>`;
