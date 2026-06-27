@@ -1,0 +1,12 @@
+{
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          { "type": "command", "command": "bash tools/subagent-log.sh" }
+        ]
+      }
+    ]
+  }
+}
