@@ -52,7 +52,8 @@ for event, matcher, command in desired:
         event_list.append(entry)
     entry_hooks = entry.setdefault("hooks", [])
     def _basename(c):
-        return os.path.basename(os.path.expanduser(c.strip()).split()[-1])
+        parts = os.path.expanduser(c.strip()).split()
+        return os.path.basename(parts[-1]) if parts else ""
     if any(_basename(h.get("command", "")) == _basename(command) for h in entry_hooks):
         print(f"exists\t{event}\t{os.path.basename(command)}")
     else:
