@@ -59,13 +59,14 @@ func main() {
 		port++
 	}
 
+	cwd := mustGetwd()
+	projectRoot = findProjectRoot(envOr("SPRINT_CHECK_ROOT", cwd))
 	exe, _ := os.Executable()
 	toolsDir := filepath.Dir(exe)
 	if strings.HasSuffix(filepath.ToSlash(toolsDir), "/sprint-check-bin") {
 		toolsDir = filepath.Dir(toolsDir)
 	}
-	appHTML = filepath.Join(toolsDir, "sprint-check-app", "app.html")
-	projectRoot = findProjectRoot(envOr("SPRINT_CHECK_ROOT", mustGetwd()))
+	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	ticketsDir = filepath.Join(projectRoot, ".tickets")
 	handoffFile = filepath.Join(projectRoot, "HANDOFF.md")
 
@@ -78,10 +79,12 @@ func main() {
 	fmt.Fprintf(os.Stderr, "sprint-check  %s  (project: %s)\n", url, filepath.Base(projectRoot))
 	fmt.Fprintf(os.Stderr, "tickets: %s\n", ticketsDir)
 
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		openBrowser(url)
-	}()
+	if os.Getenv("SPRINT_CHECK_NO_BROWSER") != "1" {
+		go func() {
+			time.Sleep(400 * time.Millisecond)
+			openBrowser(url)
+		}()
+	}
 
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
@@ -756,6 +759,22 @@ func hostOK(host string) bool {
 		h, _, _ = net.SplitHostPort(host)
 	}
 	return h == "127.0.0.1" || h == "localhost"
+}
+
+func resolveAppHTML(toolsDir, root string, extraRoots ...string) string {
+	candidates := []string{
+		filepath.Join(toolsDir, "sprint-check-app", "app.html"),
+		filepath.Join(root, "tools", "sprint-check-app", "app.html"),
+	}
+	for _, extraRoot := range extraRoots {
+		candidates = append(candidates, filepath.Join(extraRoot, "tools", "sprint-check-app", "app.html"))
+	}
+	for _, candidate := range candidates {
+		if exists(candidate) {
+			return candidate
+		}
+	}
+	return candidates[0]
 }
 
 func serveFile(w http.ResponseWriter, path, contentType string) {

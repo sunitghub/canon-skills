@@ -2797,6 +2797,8 @@ async function moveCard(t, newStatus) {
     });
   } catch { /* server unavailable — update local state only */ }
   t.status = newStatus;
+  renderHeader();
+  renderSidebar();
   const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
   if (modalOpen) closeModal(); else renderBoard();
 }

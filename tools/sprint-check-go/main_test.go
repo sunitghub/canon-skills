@@ -223,3 +223,42 @@ func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 		t.Fatalf("priority = %v, want 2", created["priority"])
 	}
 }
+
+func TestResolveAppHTMLFallsBackToProjectRoot(t *testing.T) {
+	root := t.TempDir()
+	toolsDir := filepath.Join(t.TempDir(), "go-build-cache")
+	appPath := filepath.Join(root, "tools", "sprint-check-app", "app.html")
+	writeFile(t, appPath, "<!doctype html>\n")
+
+	got := resolveAppHTML(toolsDir, root)
+	if got != appPath {
+		t.Fatalf("resolveAppHTML = %q, want %q", got, appPath)
+	}
+}
+
+func TestResolveAppHTMLPrefersExecutableToolsDir(t *testing.T) {
+	root := t.TempDir()
+	toolsDir := filepath.Join(t.TempDir(), "tools")
+	exeApp := filepath.Join(toolsDir, "sprint-check-app", "app.html")
+	rootApp := filepath.Join(root, "tools", "sprint-check-app", "app.html")
+	writeFile(t, exeApp, "exe app\n")
+	writeFile(t, rootApp, "root app\n")
+
+	got := resolveAppHTML(toolsDir, root)
+	if got != exeApp {
+		t.Fatalf("resolveAppHTML = %q, want %q", got, exeApp)
+	}
+}
+
+func TestResolveAppHTMLFallsBackToSourceWorkingDir(t *testing.T) {
+	projectRoot := t.TempDir()
+	sourceRoot := t.TempDir()
+	toolsDir := filepath.Join(t.TempDir(), "go-build-cache")
+	appPath := filepath.Join(sourceRoot, "tools", "sprint-check-app", "app.html")
+	writeFile(t, appPath, "<!doctype html>\n")
+
+	got := resolveAppHTML(toolsDir, projectRoot, sourceRoot)
+	if got != appPath {
+		t.Fatalf("resolveAppHTML = %q, want %q", got, appPath)
+	}
+}
