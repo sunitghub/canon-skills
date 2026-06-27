@@ -19,7 +19,7 @@
    - Record the tier and one-line reason in `plan.md`.
 
 5. **Context.** Read in order:
-   - For `type: bug` tickets: grep `bugs/patterns.md` for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes. (Skip if absent — the file grows from closed bug sprints; create it from `starters/` if starting fresh.)
+   - For `type: bug` tickets: grep the repo's bug-pattern log, if present, for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes.
    - `DECISIONS.md` at repo root — create with empty log table if absent. After reading,
      actively scan every entry: identify any that constrain or conflict with this sprint's
      request. A conflict is not a passive note — it must be surfaced in the brief and
