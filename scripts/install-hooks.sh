@@ -32,7 +32,7 @@ fi
 bash "$REPO_ROOT/scripts/build-zip.sh"
 
 CHANGED=()
-for ZIP in dist/canon-workshop.zip dist/context-check.zip dist/skill-export.zip dist/slides.zip; do
+for ZIP in dist/slides.zip dist/context-check-fixture.zip; do
   if ! git -C "$REPO_ROOT" diff --quiet -- "$ZIP" 2>/dev/null; then
     CHANGED+=("$ZIP")
   fi
