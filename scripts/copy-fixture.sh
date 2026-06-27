@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
-# copy-fixture — copy dist/context-check-fixture to a dest folder
+# copy-fixture — copy dist/context-check-fixture.zip to a dest folder
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE="$ROOT/dist/context-check-fixture"
+SOURCE_ZIP="$ROOT/dist/context-check-fixture.zip"
 CANON_REPO="$(cd "$ROOT" && pwd)"
 FORCE=0
 TARGET=""
+STAGE=""
+cleanup() { [[ -n "$STAGE" ]] && rm -rf "$STAGE"; }
+trap cleanup EXIT
 
 usage() {
   cat <<'EOF'
@@ -68,7 +71,7 @@ mkdir -p "$target_parent"
 target_parent="$(cd "$target_parent" && pwd)"
 TARGET="$target_parent/$target_name"
 
-if [[ "$TARGET" == "/" || "$TARGET" == "$ROOT" || "$TARGET" == "$SOURCE" || "$TARGET" == "$CANON_REPO" ]]; then
+if [[ "$TARGET" == "/" || "$TARGET" == "$ROOT" || "$TARGET" == "$SOURCE_ZIP" || "$TARGET" == "$CANON_REPO" ]]; then
   echo "Refusing unsafe target: $TARGET" >&2
   exit 1
 fi
@@ -88,7 +91,19 @@ if [[ -e "$TARGET" ]]; then
   rm -rf "$TARGET"
 fi
 
-cp -R "$SOURCE" "$TARGET"
+if [[ ! -f "$SOURCE_ZIP" ]]; then
+  echo "Error: fixture zip not found: $SOURCE_ZIP" >&2
+  echo "Run scripts/build-zip.sh first." >&2
+  exit 1
+fi
+if ! command -v unzip >/dev/null 2>&1; then
+  echo "Error: unzip is required to extract $SOURCE_ZIP" >&2
+  exit 1
+fi
+
+STAGE="$(mktemp -d)"
+unzip -q "$SOURCE_ZIP" -d "$STAGE"
+cp -R "$STAGE/context-check-fixture" "$TARGET"
 
 rm -rf \
   "$TARGET/.git" \
