@@ -28,7 +28,7 @@ documentation, setup, or agent behavior.
 
 2. **Reference consistency.** Search changed docs and workflow files for stale
    paths, removed commands, removed scripts, or old lifecycle names.
-   Always run `scripts/gen-starters.sh` (idempotent), then check
+   If `scripts/gen-starters.sh` exists, run it (idempotent), then check
    `git diff --name-only starters/` — any output is drift that must be staged
    before committing.
 
