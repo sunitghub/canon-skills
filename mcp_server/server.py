@@ -8,7 +8,7 @@ from typing import List, Dict, Any
 from mcp.server.fastmcp import FastMCP
 from mcp_server.utils.models import Ticket
 from mcp_server.utils.project_context import find_project_root
-from mcp_server.utils.parsers import get_sprint_board as parse_sprint_board
+from mcp_server.utils.parsers import get_sprint_board as parse_sprint_board, create_sprint_ticket, update_ticket_status, add_acceptance_criterion
 
 # Initialize FastMCP server
 app = FastMCP("canon-mcp-server")
@@ -26,6 +26,39 @@ def hello_world() -> str:
 def get_sprint_board() -> List[Dict[str, Any]]:
     """Get the current sprint board including tickets and handoff context."""
     return parse_sprint_board(PROJECT_ROOT)
+
+
+@app.tool()
+def create_sprint_ticket(description: str, priority: str) -> Dict[str, Any]:
+    """Create a new sprint ticket with acceptance criteria and test plan templates."""
+    result = create_sprint_ticket(
+        tickets_dir=PROJECT_ROOT / ".tickets",
+        description=description,
+        priority=priority,
+    )
+    return result
+
+
+@app.tool()
+def update_ticket_status(ticket_id: str, new_status: str) -> Dict[str, Any]:
+    """Update the status field of an existing ticket's frontmatter."""
+    result = update_ticket_status(
+        tickets_dir=PROJECT_ROOT / ".tickets",
+        ticket_id=ticket_id,
+        new_status=new_status,
+    )
+    return result
+
+
+@app.tool()
+def add_acceptance_criterion(ticket_id: str, criterion: str) -> Dict[str, Any]:
+    """Add an acceptance criterion to an existing ticket."""
+    result = add_acceptance_criterion(
+        tickets_dir=PROJECT_ROOT / ".tickets",
+        ticket_id=ticket_id,
+        criterion=criterion,
+    )
+    return result
 
 
 @app.tool()
