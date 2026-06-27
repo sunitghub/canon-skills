@@ -26,6 +26,7 @@ cp -r "$REPO_ROOT/tools/sprint-check-app"      "$CANON_DIR/tools/sprint-check-ap
 cp    "$REPO_ROOT/tools/tkt"                    "$CANON_DIR/tools/tkt"
 cp    "$REPO_ROOT/tools/sprint"                 "$CANON_DIR/tools/sprint"
 cp    "$REPO_ROOT/tools/sprint-check"           "$CANON_DIR/tools/sprint-check"
+cp    "$REPO_ROOT/tools/sprint-check-win"       "$CANON_DIR/tools/sprint-check-win"
 cp    "$REPO_ROOT/tools/skills.sh"              "$CANON_DIR/tools/skills.sh"
 cp    "$REPO_ROOT/tools/ticket-root.sh"         "$CANON_DIR/tools/ticket-root.sh"
 cp    "$REPO_ROOT/tools/skill-lib.sh"           "$CANON_DIR/tools/skill-lib.sh"
@@ -33,6 +34,7 @@ cp    "$REPO_ROOT/tools/hooks-lib.sh"           "$CANON_DIR/tools/hooks-lib.sh"
 cp    "$REPO_ROOT/tools/tkt.cmd"                "$CANON_DIR/tools/tkt.cmd"
 cp    "$REPO_ROOT/tools/sprint.cmd"             "$CANON_DIR/tools/sprint.cmd"
 cp    "$REPO_ROOT/tools/sprint-check.cmd"       "$CANON_DIR/tools/sprint-check.cmd"
+cp    "$REPO_ROOT/tools/sprint-check-win.cmd"   "$CANON_DIR/tools/sprint-check-win.cmd"
 cp    "$REPO_ROOT/tools/skills.cmd"             "$CANON_DIR/tools/skills.cmd"
 cp    "$REPO_ROOT/standards/efficiency.md"      "$CANON_DIR/standards/efficiency.md"
 cp    "$REPO_ROOT/standards/agent-design.md"    "$CANON_DIR/standards/agent-design.md"
@@ -40,11 +42,11 @@ cp    "$REPO_ROOT/AGENTS.md"                    "$CANON_DIR/AGENTS.md"
 
 if command -v go >/dev/null 2>&1; then
   (cd "$REPO_ROOT" && GO111MODULE=off GOOS=windows GOARCH=amd64 \
-    go build -o "$CANON_DIR/tools/sprint-check.exe" ./tools/sprint-check-go)
-elif [[ -f "$ZIP_OUT" ]] && unzip -p "$ZIP_OUT" canon/tools/sprint-check.exe > "$CANON_DIR/tools/sprint-check.exe" 2>/dev/null; then
-  echo "warning: go not found; reused sprint-check.exe from existing $ZIP_OUT" >&2
+    go build -o "$CANON_DIR/tools/sprint-check-win.exe" ./tools/sprint-check-go)
+elif [[ -f "$ZIP_OUT" ]] && unzip -p "$ZIP_OUT" canon/tools/sprint-check-win.exe > "$CANON_DIR/tools/sprint-check-win.exe" 2>/dev/null; then
+  echo "warning: go not found; reused sprint-check-win.exe from existing $ZIP_OUT" >&2
 else
-  echo "Error: go is required to build tools/sprint-check.exe" >&2
+  echo "Error: go is required to build tools/sprint-check-win.exe" >&2
   exit 1
 fi
 

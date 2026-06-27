@@ -41,6 +41,14 @@ type docInfo struct {
 type ticket map[string]any
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "help", "--help", "-h":
+			usage()
+			return
+		}
+	}
+
 	port := 8423
 	if len(os.Args) > 1 {
 		if p, err := strconv.Atoi(os.Args[1]); err == nil {
@@ -79,6 +87,19 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func usage() {
+	fmt.Println(`sprint-check-win — local kanban dashboard for canon projects
+
+Usage:
+  sprint-check-win        Open the dashboard for the current project
+  sprint-check-win <port> Open the dashboard on a specific port
+  sprint-check-win --help Show this help
+
+The dashboard reads .tickets/, HANDOFF.md, and git history from the current
+project. It starts a local Go HTTP server and opens the board in your default
+browser.`)
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
