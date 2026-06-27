@@ -6,8 +6,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
 home="$(mktemp -d)"
-# Clean up both the temp home AND any project-local settings written to $ROOT
-trap 'rm -rf "$home" "$ROOT/.claude/settings.json"' EXIT
+# Restore the committed settings.json after the test overwrites it with a fixture.
+trap 'rm -rf "$home"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true' EXIT
 
 mkdir -p "$home/.claude" "$home/.pi/agent/extensions" "$home/.config/canon"
 
@@ -95,7 +95,7 @@ printf '%s\n' "$ROOT" > "$home/.config/canon/install_path"
 # One valid project with canon @-imports and AI-SKILLS block
 canon_project="$(mktemp -d)"
 stale_import_project="$(mktemp -d)"
-trap 'rm -rf "$home" "$ROOT/.claude/settings.json" "$canon_project" "$stale_import_project"' EXIT
+trap 'rm -rf "$home" "$canon_project" "$stale_import_project"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true' EXIT
 
 cat > "$canon_project/CLAUDE.md" <<EOF
 @$ROOT/standards/efficiency.md
