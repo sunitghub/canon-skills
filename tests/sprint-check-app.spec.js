@@ -3,7 +3,8 @@ const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
-const BASE = 'http://localhost:8423';
+const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
+const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 
 test.describe('board modal', () => {
   test('Description tab appears on tickets with docs, absent on doc-less tickets', async ({ page }) => {
@@ -37,7 +38,7 @@ test.describe('board modal', () => {
       createdId = await card.getAttribute('data-id') || '';
 
       // Write acceptance.md so the ticket has at least one doc
-      const ticketDir = path.join(process.cwd(), '.tickets', createdId);
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', createdId);
       fs.mkdirSync(ticketDir, { recursive: true });
       fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), `# Acceptance\nTicket: \`${createdId}\`\n## Criteria\n- [ ] Done\n`);
 
@@ -52,7 +53,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-body')).not.toBeEmpty();
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
       }
     }
   });
@@ -93,7 +94,7 @@ test.describe('board modal', () => {
       await expect(page.locator('.section-jump-link', { hasText: 'Context' })).toBeVisible();
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
       }
     }
   });
@@ -129,7 +130,7 @@ test.describe('board modal', () => {
       createdId = await card.getAttribute('data-id') || '';
 
       // Write research.md directly so the board can pick it up
-      const ticketDir = path.join(process.cwd(), '.tickets', createdId);
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', createdId);
       fs.mkdirSync(ticketDir, { recursive: true });
       fs.writeFileSync(path.join(ticketDir, 'research.md'), [
         '# Research',
@@ -146,7 +147,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-docs .doc-tab', { hasText: 'Research' })).toBeVisible();
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
       }
     }
   });
@@ -174,38 +175,32 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-body .doc-type-card[data-slug="research"]')).toBeVisible();
     } finally {
       if (createdId) {
-        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
       }
     }
   });
 
   test('archive button: Done card can be archived; archived ticket appears in search but not board columns', async ({ page }) => {
     const title = `Archive test ${Date.now()}`;
-    let createdId = '';
+    const createdId = `t-arch-${Date.now()}`;
 
     try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', createdId);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${createdId}`,
+        'status: closed',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-01T00:00:00Z',
+        '---',
+        '',
+        `# ${title}`,
+        '',
+      ].join('\n'));
+
       await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-
-      // Create a ticket and move it to Done (closed)
-      await page.locator('#btn-create').click();
-      await page.waitForSelector('#create-modal', { timeout: 3000 });
-      await page.locator('#c-title').fill(title);
-      await page.locator('#c-submit').click();
-
-      const card = page.locator('.card', { hasText: title });
-      await expect(card).toBeVisible();
-      createdId = await card.getAttribute('data-id') || '';
-
-      // Move to closed via API
-      await page.evaluate(async (id) => {
-        await fetch(`/api/ticket/${id}/status`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'closed' }),
-        });
-      }, createdId);
-      await page.reload();
       await page.waitForLoadState('networkidle');
 
       // Search by ID to surface the card (Done column is capped at 5 visible cards)
@@ -240,8 +235,67 @@ test.describe('board modal', () => {
       await page.waitForTimeout(300);
       await expect(page.locator('#board-search-count')).toContainText('1');
     } finally {
-      if (createdId) {
-        fs.rmSync(path.join(process.cwd(), '.tickets', createdId), { recursive: true, force: true });
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
+  test('modal next and previous stay in the same status lane sorted by newest first', async ({ page }) => {
+    const stamp = Date.now();
+    const tickets = [
+      { id: `t-nav-old-${stamp}`, title: `Nav old ${stamp}`, status: 'closed', created: '2026-01-01T00:00:00Z' },
+      { id: `t-nav-mid-${stamp}`, title: `Nav mid ${stamp}`, status: 'closed', created: '2026-02-01T00:00:00Z' },
+      { id: `t-nav-new-${stamp}`, title: `Nav new ${stamp}`, status: 'closed', created: '2026-03-01T00:00:00Z' },
+      { id: `t-nav-open-${stamp}`, title: `Nav open ${stamp}`, status: 'open', created: '2026-04-01T00:00:00Z' },
+    ];
+
+    try {
+      for (const ticket of tickets) {
+        const ticketDir = path.join(PROJECT_ROOT, '.tickets', ticket.id);
+        fs.mkdirSync(ticketDir, { recursive: true });
+        fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+          '---',
+          `id: ${ticket.id}`,
+          `status: ${ticket.status}`,
+          'type: task',
+          'priority: 2',
+          `created: ${ticket.created}`,
+          '---',
+          '',
+          `# ${ticket.title}`,
+          '',
+        ].join('\n'));
+        fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
+          '# Acceptance',
+          '',
+          '## Criteria',
+          '- [x] Done',
+          '',
+          '## Test Plan',
+          '- [x] Tested',
+          '',
+        ].join('\n'));
+      }
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(`Nav mid ${stamp}`);
+      await page.locator(`.col-done .card[data-id="t-nav-mid-${stamp}"]`).click();
+      await expect(page.locator('#m-title')).toHaveText(`Nav mid ${stamp}`);
+
+      await page.locator('#btn-ticket-prev').click();
+      await expect(page.locator('#m-title')).toHaveText(`Nav new ${stamp}`);
+
+      await page.locator('#btn-ticket-next').click();
+      await expect(page.locator('#m-title')).toHaveText(`Nav mid ${stamp}`);
+
+      await page.locator('#btn-ticket-next').click();
+      await expect(page.locator('#m-title')).toHaveText(`Nav old ${stamp}`);
+
+      await expect(page.locator('#m-title')).not.toHaveText(`Nav open ${stamp}`);
+    } finally {
+      for (const ticket of tickets) {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', ticket.id), { recursive: true, force: true });
       }
     }
   });
