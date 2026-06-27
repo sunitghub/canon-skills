@@ -57,12 +57,12 @@ Verify:
 ```powershell
 tkt ls
 sprint --help
-sprint-check --help
+sprint-check-win --help
 skills list
 ```
 
-Expected: all four commands run from PowerShell. `sprint-check` uses the bundled
-Windows `sprint-check.exe`; it should not ask for Python.
+Expected: all four commands run from PowerShell. `sprint-check-win` uses the
+bundled Windows `sprint-check-win.exe`; it should not ask for Python.
 
 ## Install On macOS / Linux
 
@@ -99,7 +99,7 @@ skills.sh add sprint
 Then open the board:
 
 ```powershell
-sprint-check
+sprint-check-win
 ```
 
 Stop the board with `Ctrl+C` in the terminal.
@@ -110,7 +110,7 @@ From the walkthrough folder:
 
 ```powershell
 sprint start "Build a simple Todo list"
-sprint-check
+sprint-check-win
 ```
 
 Then follow:
@@ -160,7 +160,8 @@ directory to PATH.
 | `tools/sprint` + `tools/sprint.cmd` | Sprint CLI |
 | `tools/skills.sh` + `tools/skills.cmd` | Project wiring CLI |
 | `tools/sprint-check` | macOS/Linux board launcher |
-| `tools/sprint-check.exe` | Windows board server, no Python required |
+| `tools/sprint-check-win` + `tools/sprint-check-win.cmd` | Go board launcher |
+| `tools/sprint-check-win.exe` | Windows board server, no Python required |
 | `examples/canon-todo-walkthrough/` | Workshop walkthrough |
 | `examples/todo-app/` | Finished Todo reference implementation |
 | `skills/` | Canon skills |
@@ -168,7 +169,7 @@ directory to PATH.
 
 ## Troubleshooting
 
-- `tkt` or `sprint-check` not found: fully quit and reopen VS Code. If you need
+- `tkt` or `sprint-check-win` not found: fully quit and reopen VS Code. If you need
   the current terminal to work immediately, run
   `$env:Path += ";$(Join-Path (Get-Location) 'tools')"`.
 - `skills add sprint` says Git Bash is missing: reinstall Git for Windows and
