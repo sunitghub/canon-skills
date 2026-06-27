@@ -43,6 +43,9 @@ cp    "$REPO_ROOT/AGENTS.md"                    "$CANON_DIR/AGENTS.md"
 if command -v go >/dev/null 2>&1; then
   (cd "$REPO_ROOT" && GO111MODULE=off GOOS=windows GOARCH=amd64 \
     go build -o "$CANON_DIR/tools/sprint-check-win.exe" ./tools/sprint-check-go)
+elif [[ -f "$REPO_ROOT/tools/sprint-check-win.exe" ]]; then
+  cp "$REPO_ROOT/tools/sprint-check-win.exe" "$CANON_DIR/tools/sprint-check-win.exe"
+  echo "warning: go not found; reused checked-in tools/sprint-check-win.exe" >&2
 elif [[ -f "$ZIP_OUT" ]] && unzip -p "$ZIP_OUT" canon/tools/sprint-check-win.exe > "$CANON_DIR/tools/sprint-check-win.exe" 2>/dev/null; then
   echo "warning: go not found; reused sprint-check-win.exe from existing $ZIP_OUT" >&2
 else
