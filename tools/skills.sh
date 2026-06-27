@@ -361,18 +361,17 @@ cmd_add() {
     exit 1
   fi
 
-  # Inject-style skills: write @-import to project files instead of symlink/table
+  # Inject-style skills: write @-import to AGENTS.md only (not CLAUDE.md — avoid leakage)
   if [ "$(fm_field "$skill_file" inject)" = "true" ]; then
     local inject_line="@$skill_file"
+    local inject_target="$project_dir/AGENTS.md"
     echo "Registering: $name ($category)"
-    for f in "$project_dir/CLAUDE.md" "$project_dir/AGENTS.md"; do
-      if grep -qxF "$inject_line" "$f" 2>/dev/null; then
-        echo "  [$(basename "$f")]  already present"
-      else
-        echo "$inject_line" >> "$f"
-        echo "  [$(basename "$f")]  added @-import"
-      fi
-    done
+    if grep -qxF "$inject_line" "$inject_target" 2>/dev/null; then
+      echo "  [AGENTS.md]  already present"
+    else
+      echo "$inject_line" >> "$inject_target"
+      echo "  [AGENTS.md]  added @-import"
+    fi
     register_project "$project_dir"
     echo ""
     echo "Done. $desc"
@@ -443,8 +442,10 @@ cmd_status() {
   fi
 
   # ── Registered skills ────────────────────────────────────────────────────
+  local _printed_skills_header=false
   if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
     echo "Skills:"
+    _printed_skills_header=true
     while IFS= read -r line; do
       local sname spath
       sname=$(skill_row_name "$line")
@@ -476,7 +477,24 @@ cmd_status() {
 
       printf "  %-25s %s%s\n" "$sname" "[$tag]" "$suffix"
     done < <(registered_skill_rows "$agents_file")
-  else
+  fi
+
+  # Also show inject-style @-imports (sit outside the AI-SKILLS block)
+  if [ -f "$agents_file" ]; then
+    while IFS= read -r imp; do
+      local ipath="${imp#@}"
+      local iname; iname=$(basename "$ipath" .md)
+      local itag="ok"
+      [ ! -f "$ipath" ] && itag="broken ref" && (( issues++ )) || true
+      if ! $_printed_skills_header; then
+        echo "Skills:"
+        _printed_skills_header=true
+      fi
+      printf "  %-25s %s\n" "$iname" "[$itag]"
+    done < <(awk '/AI-SKILLS:BEGIN/{skip=1} /AI-SKILLS:END/{skip=0; next} !skip && /^@/' "$agents_file" 2>/dev/null || true)
+  fi
+
+  if ! $_printed_skills_header; then
     echo "Skills: none"
   fi
 
