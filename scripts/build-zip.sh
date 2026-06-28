@@ -38,3 +38,13 @@ else
   echo "Error: fixture dir not found: $FIXTURE_DIR" >&2
   exit 1
 fi
+
+# ── Binary: sprint-check-win.exe (Windows board server) ─────────────────────
+if command -v go >/dev/null 2>&1; then
+  GOOS=windows GOARCH=amd64 go build \
+    -o "$REPO_ROOT/tools/sprint-check-win.exe" \
+    "$REPO_ROOT/tools/sprint-check-go/main.go"
+  echo "dist: sprint-check-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/sprint-check-win.exe" | cut -f1))"
+else
+  echo "dist: sprint-check-win.exe skipped (go absent)"
+fi
