@@ -8,13 +8,27 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/chightow/canon-skills/internal/parsers"
 )
 
+var mu sync.Mutex
+
+var winReserved = []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
+
 func validTicketID(id string) error {
 	if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, "/\\") {
 		return errors.New("invalid ticket ID")
+	}
+	cleaned := filepath.Clean(id)
+	if cleaned != id {
+		return errors.New("invalid ticket ID")
+	}
+	for _, r := range winReserved {
+		if strings.EqualFold(id, r) {
+			return errors.New("invalid ticket ID")
+		}
 	}
 	return nil
 }
@@ -28,6 +42,8 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 	if err := validTicketID(ticketID); err != nil {
 		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s'", ticketID)}
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	acceptanceFile := filepath.Join(ticketsDir, ticketID, "acceptance.md")
 	content, err := os.ReadFile(acceptanceFile)
 	if err != nil {
@@ -98,6 +114,11 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 }
 
 func CreateSprintTicket(ticketsDir, description, priority string) map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
+	if err := os.MkdirAll(ticketsDir, 0755); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to create tickets directory: %v", err)}
+	}
 	var ticketID string
 	for i := 0; i < 10; i++ {
 		b := make([]byte, 4)
@@ -106,7 +127,7 @@ func CreateSprintTicket(ticketsDir, description, priority string) map[string]any
 		}
 		id := fmt.Sprintf("t-%x", b)
 		ticketDir := filepath.Join(ticketsDir, id)
-		if err := os.MkdirAll(ticketDir, 0755); err == nil {
+		if err := os.Mkdir(ticketDir, 0755); err == nil {
 			ticketID = id
 			break
 		}
@@ -148,6 +169,8 @@ func UpdateTicketStatus(ticketsDir, ticketID, newStatus string) map[string]any {
 	if !ValidStatuses[newStatus] {
 		return map[string]any{"error": fmt.Sprintf("Invalid status '%s'. Must be one of: open, in_progress, closed, cancelled, archived", newStatus)}
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	ticketFile := filepath.Join(ticketsDir, ticketID, "ticket.md")
 	content, err := os.ReadFile(ticketFile)
 	if err != nil {
@@ -168,6 +191,8 @@ func UpdateTicketStatus(ticketsDir, ticketID, newStatus string) map[string]any {
 }
 
 func GetTicket(ticketsDir, ticketID string) map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
 	ticketDir := filepath.Join(ticketsDir, ticketID)
 	if _, err := os.Stat(ticketDir); os.IsNotExist(err) {
 		return map[string]any{"error": fmt.Sprintf("Ticket '%s' not found at %s", ticketID, ticketDir)}
@@ -193,6 +218,8 @@ func GetTicket(ticketsDir, ticketID string) map[string]any {
 }
 
 func UpdateTicketBody(ticketsDir, ticketID, body string) map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
 	ticketFile := filepath.Join(ticketsDir, ticketID, "ticket.md")
 	content, err := os.ReadFile(ticketFile)
 	if err != nil {
@@ -209,11 +236,15 @@ func UpdateTicketBody(ticketsDir, ticketID, body string) map[string]any {
 	} else {
 		newContent = body
 	}
-	os.WriteFile(ticketFile, []byte(newContent), 0644)
+	if err := os.WriteFile(ticketFile, []byte(newContent), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write ticket.md: %v", err)}
+	}
 	return map[string]any{"ticket_id": ticketID, "status": "ok"}
 }
 
 func ReadDoc(ticketsDir, ticketID, docName string) map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
 	docName = strings.ToLower(docName)
 	validDocs := map[string]bool{"acceptance.md": true, "plan.md": true, "test_plan.md": true, "summary.md": true}
 	if !validDocs[docName] {
@@ -228,6 +259,8 @@ func ReadDoc(ticketsDir, ticketID, docName string) map[string]any {
 }
 
 func WriteDoc(ticketsDir, ticketID, docName, content string) map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
 	docName = strings.ToLower(docName)
 	validDocs := map[string]bool{"acceptance.md": true, "plan.md": true, "test_plan.md": true, "summary.md": true}
 	if !validDocs[docName] {

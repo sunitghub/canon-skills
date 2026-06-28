@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/chightow/canon-skills/internal/commands"
@@ -14,12 +15,14 @@ import (
 	"github.com/chightow/canon-skills/internal/parsers"
 )
 
+var mu sync.Mutex
+
 func GetSprintBoard(projectRoot string) map[string]any {
 	ticketsDir := filepath.Join(projectRoot, ".tickets")
-	tickets := parsers.ParseTickets(ticketsDir)
+	tickets, _ := parsers.ParseTickets(ticketsDir)
 	handoff := parsers.ParseHandoff(filepath.Join(projectRoot, "HANDOFF.md"))
 
-	var ticketList []map[string]any
+	var ticketList []any
 	for _, t := range tickets {
 		planPath := filepath.Join(ticketsDir, t.ID, "plan.md")
 		ticketList = append(ticketList, map[string]any{
@@ -34,7 +37,7 @@ func GetSprintBoard(projectRoot string) map[string]any {
 		})
 	}
 	if ticketList == nil {
-		ticketList = []map[string]any{}
+		ticketList = []any{}
 	}
 
 	return map[string]any{
@@ -53,20 +56,21 @@ func LogSubagentRun(projectRoot, agentID, agentType, sessionID string) map[strin
 		"agent_type":      agentType,
 		"transcript_path": "",
 	}
-	for _, rel := range parsers.AgentRunLogPaths {
-		logFile := filepath.Join(projectRoot, rel)
-		os.MkdirAll(filepath.Dir(logFile), 0755)
-		f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			continue
-		}
-		json.NewEncoder(f).Encode(entry)
-		f.Close()
+	rel := parsers.AgentRunLogPaths[0]
+	logFile := filepath.Join(projectRoot, rel)
+	os.MkdirAll(filepath.Dir(logFile), 0755)
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return map[string]any{"error": fmt.Sprintf("cannot open log: %v", err)}
 	}
+	defer f.Close()
+	json.NewEncoder(f).Encode(entry)
 	return map[string]any{"status": "ok", "entry": entry}
 }
 
 func StartSprint(projectRoot, title, ticketID, priority string) map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
 	ticketsDir := filepath.Join(projectRoot, ".tickets")
 
 	var tid string
@@ -112,10 +116,12 @@ func StartSprint(projectRoot, title, ticketID, priority string) map[string]any {
 }
 
 func CloseSprint(projectRoot string) map[string]any {
+	mu.Lock()
+	defer mu.Unlock()
 	ticketsDir := filepath.Join(projectRoot, ".tickets")
 	handoffPath := filepath.Join(projectRoot, "HANDOFF.md")
 
-	tickets := parsers.ParseTickets(ticketsDir)
+	tickets, _ := parsers.ParseTickets(ticketsDir)
 
 	if len(tickets) == 0 {
 		return map[string]any{"status": "error", "message": "No tickets found. Nothing to close."}
@@ -154,7 +160,6 @@ func CloseSprint(projectRoot string) map[string]any {
 			continue
 		}
 		tdir := filepath.Join(ticketsDir, t.ID)
-		planPath := filepath.Join(tdir, "plan.md")
 		reportPath := filepath.Join(tdir, "eval-report.md")
 
 		reportContent, err := os.ReadFile(reportPath)
@@ -233,8 +238,13 @@ func CloseSprint(projectRoot string) map[string]any {
 
 	summarySection := fmt.Sprintf("\n\n%s\n%s\n", summaryHeading, receiptContent)
 	newHandoff := strings.TrimRight(handoffContent, " \t\r\n") + summarySection
-	if err := os.WriteFile(handoffPath, []byte(newHandoff), 0644); err != nil {
+	tmpPath := handoffPath + ".tmp"
+	if err := os.WriteFile(tmpPath, []byte(newHandoff), 0644); err != nil {
 		return map[string]any{"status": "error", "message": fmt.Sprintf("Failed to write HANDOFF.md: %v", err)}
+	}
+	if err := os.Rename(tmpPath, handoffPath); err != nil {
+		os.Remove(tmpPath)
+		return map[string]any{"status": "error", "message": fmt.Sprintf("Failed to atomically write HANDOFF.md: %v", err)}
 	}
 
 	return map[string]any{

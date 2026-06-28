@@ -51,14 +51,14 @@ func TestParseTicketsEmptyDir(t *testing.T) {
 	dir := t.TempDir()
 	d := filepath.Join(dir, ".tickets")
 	os.MkdirAll(d, 0755)
-	tickets := ParseTickets(d)
+	tickets, _ := ParseTickets(d)
 	if len(tickets) != 0 {
 		t.Fatalf("expected 0, got %d", len(tickets))
 	}
 }
 
 func TestParseTicketsNonexistentDir(t *testing.T) {
-	tickets := ParseTickets(filepath.Join(t.TempDir(), "nope"))
+	tickets, _ := ParseTickets(filepath.Join(t.TempDir(), "nope"))
 	if len(tickets) != 0 {
 		t.Fatalf("expected 0, got %d", len(tickets))
 	}
@@ -71,7 +71,7 @@ func TestParseTicketsParses(t *testing.T) {
 	writeFile(t, filepath.Join(dir, "TKT-0002", "ticket.md"),
 		"---\nid: TKT-0002\ntitle: Add tests\nstatus: closed\npriority: medium\n---\n\n## Description\nWrite unit tests.\n")
 
-	tickets := ParseTickets(dir)
+	tickets, _ := ParseTickets(dir)
 	if len(tickets) != 2 {
 		t.Fatalf("expected 2, got %d", len(tickets))
 	}
@@ -109,7 +109,7 @@ func TestParseTicketsNoFrontmatter(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, filepath.Join(dir, "TKT-X", "ticket.md"),
 		"TKT-X\n## Description\nSomething\n")
-	tickets := ParseTickets(dir)
+	tickets, _ := ParseTickets(dir)
 	if len(tickets) != 1 {
 		t.Fatalf("expected 1, got %d", len(tickets))
 	}
@@ -202,7 +202,7 @@ func TestParsePlanApprovedNoFile(t *testing.T) {
 func TestParsePlanApprovedTrue(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "plan.md")
-	os.WriteFile(p, []byte("---\nid: TKT-1\n---\n\n# Plan\n\n## Approach\nDo it.\n\n## Sign-off\n\n- [x] Approved\n"), 0644)
+	os.WriteFile(p, []byte("---\nid: TKT-1\n---\n\n# Plan\n\n## Approach\nDo it.\n\n## Sign-off\n\n- [x] Plan approved\n"), 0644)
 	if !ParsePlanApproved(p) {
 		t.Fatal("expected true")
 	}

@@ -19,11 +19,11 @@ var AgentRunLogPaths = []string{
 	".opencode/subagent-runs.jsonl",
 }
 
-func ParseTickets(ticketsDir string) []models.Ticket {
-	var tickets []models.Ticket
+func ParseTickets(ticketsDir string) (tickets []models.Ticket, warnings []string) {
 	entries, err := os.ReadDir(ticketsDir)
 	if err != nil {
-		return tickets
+		warnings = append(warnings, fmt.Sprintf("failed to read tickets dir: %v", err))
+		return
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -32,6 +32,7 @@ func ParseTickets(ticketsDir string) []models.Ticket {
 		ticketFile := filepath.Join(ticketsDir, entry.Name(), "ticket.md")
 		content, err := os.ReadFile(ticketFile)
 		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("cannot read %s: %v", ticketFile, err))
 			continue
 		}
 		data := ParseFrontmatterRaw(string(content))
@@ -55,7 +56,7 @@ func ParseTickets(ticketsDir string) []models.Ticket {
 			Priority:           data["priority"],
 		})
 	}
-	return tickets
+	return
 }
 
 func ParseHandoff(handoffPath string) models.Handoff {
@@ -97,39 +98,44 @@ func ParsePlanDecision(planPath string) string {
 
 func CheckSubagentRun(projectRoot string, runEpoch int64) bool {
 	for _, rel := range AgentRunLogPaths {
-		jsonlPath := filepath.Join(projectRoot, rel)
-		f, err := os.Open(jsonlPath)
+		if checkFile(projectRoot, rel, runEpoch) {
+			return true
+		}
+	}
+	return false
+}
+
+func checkFile(root, rel string, runEpoch int64) bool {
+	f, err := os.Open(filepath.Join(root, rel))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			continue
+		}
+		ts, ok := entry["ts"].(string)
+		if !ok || ts == "" {
+			continue
+		}
+		entryEpoch, err := parseTimestamp(ts)
 		if err != nil {
 			continue
 		}
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" {
-				continue
-			}
-			var entry map[string]any
-			if err := json.Unmarshal([]byte(line), &entry); err != nil {
-				continue
-			}
-			ts, ok := entry["ts"].(string)
-			if !ok || ts == "" {
-				continue
-			}
-			entryEpoch, err := parseTimestamp(ts)
-			if err != nil {
-				continue
-			}
-			diff := entryEpoch - runEpoch
-			if diff < 0 {
-				diff = -diff
-			}
-			if diff <= 600 {
-				f.Close()
-				return true
-			}
+		diff := entryEpoch - runEpoch
+		if diff < 0 {
+			diff = -diff
 		}
-		f.Close()
+		if diff <= 600 {
+			return true
+		}
 	}
 	return false
 }
@@ -145,7 +151,16 @@ func ParseFrontmatterRaw(content string) map[string]string {
 	for _, line := range strings.Split(body, "\n") {
 		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
-			data[strings.TrimSpace(strings.ToLower(parts[0]))] = strings.TrimSpace(parts[1])
+			key := strings.TrimSpace(strings.ToLower(parts[0]))
+			val := strings.TrimSpace(parts[1])
+			if len(val) >= 2 && val[0] == '"' {
+				if idx := strings.LastIndex(val, `"`); idx > 0 {
+					val = val[1:idx]
+				} else {
+					val = val[1:]
+				}
+			}
+			data[key] = val
 		}
 	}
 	return data

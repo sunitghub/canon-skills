@@ -1,6 +1,7 @@
 package sprint
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -80,12 +81,12 @@ func TestGetSprintBoardWithTickets(t *testing.T) {
 		"# Decisions\n\n| Date | Decision | Reason |\n|---|---|---|\n")
 
 	result := GetSprintBoard(dir)
-	tickets := result["tickets"].([]map[string]any)
+	tickets := result["tickets"].([]any)
 	if len(tickets) != 1 {
 		t.Fatalf("expected 1 ticket, got %d", len(tickets))
 	}
-	if tickets[0]["id"] != "TKT-0001" {
-		t.Fatalf("expected TKT-0001, got %s", tickets[0]["id"])
+	if tickets[0].(map[string]any)["id"] != "TKT-0001" {
+		t.Fatalf("expected TKT-0001, got %s", tickets[0].(map[string]any)["id"])
 	}
 }
 
@@ -265,30 +266,35 @@ func TestCloseSprintDuplicateSummaryGuard(t *testing.T) {
 
 // ── LogSubagentRun ──
 
-func TestLogSubagentRunWritesToAllPaths(t *testing.T) {
+func TestLogSubagentRunWritesToSinglePath(t *testing.T) {
 	dir := t.TempDir()
 	result := LogSubagentRun(dir, "eval-run-1", "evaluator", "sess-1")
 	if result["status"] != "ok" {
 		t.Fatalf("expected ok, got %v", result)
 	}
-	for _, rel := range parsers.AgentRunLogPaths {
+	rel := parsers.AgentRunLogPaths[0]
+	p := filepath.Join(dir, rel)
+	content, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("missing: %s", rel)
+	}
+	var entry map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(string(content))), &entry); err != nil {
+		t.Fatalf("invalid JSON in %s: %v", rel, err)
+	}
+	if entry["agent_id"] != "eval-run-1" {
+		t.Fatalf("expected eval-run-1, got %s", entry["agent_id"])
+	}
+	if entry["agent_type"] != "evaluator" {
+		t.Fatalf("expected evaluator, got %s", entry["agent_type"])
+	}
+	if entry["session_id"] != "sess-1" {
+		t.Fatalf("expected sess-1, got %s", entry["session_id"])
+	}
+	for _, rel := range parsers.AgentRunLogPaths[1:] {
 		p := filepath.Join(dir, rel)
-		content, err := os.ReadFile(p)
-		if err != nil {
-			t.Fatalf("missing: %s", rel)
-		}
-		var entry map[string]any
-		if err := json.Unmarshal([]byte(strings.TrimSpace(string(content))), &entry); err != nil {
-			t.Fatalf("invalid JSON in %s: %v", rel, err)
-		}
-		if entry["agent_id"] != "eval-run-1" {
-			t.Fatalf("expected eval-run-1, got %s", entry["agent_id"])
-		}
-		if entry["agent_type"] != "evaluator" {
-			t.Fatalf("expected evaluator, got %s", entry["agent_type"])
-		}
-		if entry["session_id"] != "sess-1" {
-			t.Fatalf("expected sess-1, got %s", entry["session_id"])
+		if _, err := os.Stat(p); err == nil {
+			t.Fatalf("unexpected file at: %s", rel)
 		}
 	}
 }

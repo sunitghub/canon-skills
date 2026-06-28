@@ -158,7 +158,7 @@ func autoLogEvalRuns() {
 		}
 		m := re.FindStringSubmatch(string(content))
 		if len(m) > 1 {
-			sprint.LogSubagentRun(getProjectRoot(), m[1], "agent", "")
+			sprint.LogSubagentRun(getProjectRoot(), m[1], "evaluator", "")
 		}
 	}
 }
