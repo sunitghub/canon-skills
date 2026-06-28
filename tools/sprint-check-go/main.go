@@ -225,7 +225,7 @@ func parseTicket(path string) (ticket, error) {
 					continue
 				}
 			}
-			t[match[1]] = strings.TrimSpace(match[2])
+			t[match[1]] = unquoteYAMLScalar(strings.TrimSpace(match[2]))
 		}
 		body = strings.TrimSpace(text[m[1]:])
 	}
@@ -675,6 +675,13 @@ func usefulText(text string) bool {
 
 func sectionHasCheckedItem(text, heading string) bool {
 	return regexp.MustCompile(`(?m)^\s*[-*]\s+\[[xX]\]\s+\S`).MatchString(section(text, heading))
+}
+
+func unquoteYAMLScalar(value string) string {
+	if len(value) >= 2 && value[0] == value[len(value)-1] && (value[0] == '"' || value[0] == '\'') {
+		return value[1 : len(value)-1]
+	}
+	return value
 }
 
 func planDecision(ticketPath string) string {

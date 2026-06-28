@@ -72,6 +72,11 @@ def _section_has_checked_item(text: str, heading: str) -> bool:
     section = _section(text, heading)
     return bool(re.search(r'^\s*[-*]\s+\[[xX]\]\s+\S', section, re.MULTILINE))
 
+def _unquote_yaml_scalar(value: str) -> str:
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+        return value[1:-1]
+    return value
+
 def parse_ticket(path: Path) -> dict:
     text = path.read_text(encoding='utf-8', errors='replace')
     fm_match = _FRONTMATTER.match(text)
@@ -84,6 +89,8 @@ def parse_ticket(path: Path) -> dict:
             if key == 'priority':
                 try: val = int(val)
                 except ValueError: pass
+            elif isinstance(val, str):
+                val = _unquote_yaml_scalar(val)
             fields[key] = val
         body = text[fm_match.end():].strip()
     title_match = re.search(r'^#{1,6}\s+(.+)$', body, re.MULTILINE)
