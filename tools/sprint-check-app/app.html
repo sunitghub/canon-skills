@@ -487,6 +487,14 @@
       font-size: 10px; font-weight: 700; letter-spacing: .06em;
       color: var(--text-muted); position: relative; z-index: 1;
     }
+    .card-id-copy {
+      margin-left: 4px; flex-shrink: 0; font-size: 9px; padding: 1px 5px;
+      border-radius: 3px; border: 1px solid transparent; background: transparent;
+      color: var(--text); cursor: pointer; transition: all .12s;
+      position: relative; z-index: 1; line-height: 1.4;
+    }
+    .card-id-copy:hover { border-color: var(--border); color: var(--text-muted); background: var(--surface-hover); }
+    .card-id-copy.copied { border-color: var(--col-done); color: var(--col-done); }
 
     /* Card body — title zone */
     .card-body { padding: 10px 11px 8px; }
@@ -2068,6 +2076,20 @@ function renderBoard() {
     });
   });
 
+  board.querySelectorAll('.card-id-copy').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+        btn.textContent = 'done';
+        btn.classList.add('copied');
+        setTimeout(() => {
+        btn.textContent = 'copy ticket number';
+        btn.classList.remove('copied');
+      }, 1200);
+      });
+    });
+  });
+
   board.querySelectorAll('.card').forEach(el => {
     el.addEventListener('click', () => openModal(el.dataset.id));
 
@@ -2148,6 +2170,7 @@ function cardHTML(t, idx) {
     <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true"${animStyle}>
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
+        <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket number">copy ticket number</button>
         ${typeBadge(t.type)}
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
       </div>

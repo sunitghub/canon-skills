@@ -78,12 +78,16 @@ open_browser() {
 # ── Main ───────────────────────────────────────────────────────────────────
 
 main() {
+  PORT=""
   case "${1:-}" in
     help|--help|-h)
       usage
       exit 0
       ;;
     "")
+      ;;
+    [0-9]*)
+      PORT="$1"
       ;;
     *)
       echo "Unknown argument: $1" >&2
@@ -97,7 +101,9 @@ main() {
     exit 1
   fi
 
-  PORT="$(find_free_port 8423)"
+  if [[ -z "$PORT" ]]; then
+    PORT="$(find_free_port 8423)"
+  fi
   URL="http://127.0.0.1:$PORT"
 
   # Export project root for the server

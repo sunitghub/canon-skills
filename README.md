@@ -248,12 +248,30 @@ Gates don't make agents smarter. They make certain failures impossible — and t
 
 **Windows 11:** canon's CLI tools are bash scripts — run them inside WSL2 (Ubuntu). See **[fresh-machine-test.md → Windows 11](guides/fresh-machine-test.md#windows-11-wsl2)** for the full setup path.
 
-Register canon in another project:
+Register canon in another project (standard install):
 
 ```bash
 ~/.canon/tools/skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
 ~/.canon/tools/skills.sh add context-check   # optional: context-budget audits
 ```
+
+Register canon as a git submodule:
+
+```bash
+# Add the submodule
+git submodule add https://github.com/sunitghub/canon-skills.git
+git submodule update --init
+
+# Wire canon into the parent project (from parent root)
+bash canon-skills/scripts/submodule-setup.sh
+
+# Register a skill
+bash canon-skills/tools/skills.sh add sprint
+```
+
+The submodule setup script (`scripts/submodule-setup.sh`) adds canon's MCP server + agent hooks to the parent project's `opencode.json`, `.vscode/mcp.json`, and `.claude/settings.json`, and references canon's `AGENTS.md`. You can run it at any time to refresh the wiring.
+
+**Why submodule over clone?** A submodule pins canon to a specific commit in your parent repo. Everyone on the project gets the same version. Updates are explicit (`git submodule update --remote`). For solo or small-team use, the standard `curl|bash` install to `~/.canon` is simpler.
 
 - **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.
 - **[Production incident playbook →](guides/production-incident-playbook.md)** — Detect → Diagnose → Contain → Fix → Prevent. The five-stage protocol for when an AI agent misbehaves in production.

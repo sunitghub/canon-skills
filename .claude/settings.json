@@ -1,4 +1,11 @@
 {
+  "mcpServers": {
+    "canon-mcp-server": {
+      "command": "python",
+      "args": ["mcp-launcher.py"],
+      "env": {}
+    }
+  },
   "hooks": {
     "Stop": [
       {
@@ -6,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/sunitjoshi/Developer/canon/scripts/auto-handoff.sh"
+            "command": "bash scripts/auto-handoff.sh"
           }
         ]
       }
@@ -17,11 +24,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/sunitjoshi/Developer/canon/scripts/handoff-inject.sh"
+            "command": "bash scripts/handoff-inject.sh"
           },
           {
             "type": "command",
-            "command": "/Users/sunitjoshi/Developer/canon/scripts/sprint-inject.sh"
+            "command": "bash scripts/sprint-inject.sh"
           }
         ]
       }
@@ -32,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/sunitjoshi/Developer/canon/scripts/pre-commit-check.sh"
+            "command": "bash scripts/pre-commit-check.sh"
           }
         ]
       }
