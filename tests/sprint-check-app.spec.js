@@ -212,7 +212,7 @@ test.describe('board modal', () => {
       await page.locator('#m-edit-area').fill([
         '# Acceptance',
         '',
-        `Ticket: \`${id}\``,
+        `Ticket: ${id}`,
         '',
         '## Criteria',
         '- [ ] Updated criterion',
