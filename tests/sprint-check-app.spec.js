@@ -40,7 +40,7 @@ test.describe('board modal', () => {
         '',
       ].join('\n'));
 
-      await page.goto(BASE);
+      await page.goto(`${BASE}?debug=1`);
       await page.waitForLoadState('networkidle');
 
       const card = page.locator(`.col-progress .card[data-id="${id}"]`);
@@ -48,6 +48,7 @@ test.describe('board modal', () => {
       await card.click();
       await expect(page.locator('#m-id')).toHaveText(id);
       await expect(page.locator('#m-title')).toHaveText(title);
+      await expect.poll(() => page.evaluate(() => window.__sprintCheckOpenModalCount || 0)).toBe(1);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }

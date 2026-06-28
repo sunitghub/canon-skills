@@ -42,7 +42,8 @@ Every card has a readiness label:
   checklist items.
 - `plan incomplete` — Plan exists, but `## Approach` is empty or still contains
   the template placeholder.
-- `ready` — Acceptance and Plan exist with useful content.
+- `ready` — Acceptance and Plan exist with useful content, and
+  `plan.md ## Sign-off` has a checked approval item.
 
 Click or hover the readiness label to see the popover. These warnings are early
 signals; `sprint complete` still performs the final gate.

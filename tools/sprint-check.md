@@ -42,12 +42,12 @@ readable.
 | Discarded | `cancelled` |
 
 **Cards** show ticket ID, type badge, title, priority dots, age, and a readiness indicator:
-- `● ready` (green) — Acceptance and Plan both present and complete
+- `● ready` (green) — Acceptance and Plan both present and complete, with `plan.md ## Sign-off` checked
 - `● incomplete` (red) — acceptance.md exists but is missing checklist items under ## Criteria or ## Test Plan; `sprint complete` will block
 - `● plan incomplete` (red) — plan.md exists but ## Approach is empty or still placeholder text
-- `● needs acc` / `● needs plan` (amber) — the next sprint doc to add
+- `● needs acc` / `● needs plan` / `● needs signoff` (amber) — the next sprint doc or approval item to add
 
-Click the readiness indicator for a checklist popover. Click anywhere else on the card to open the full ticket.
+Click or hover the readiness indicator for a checklist popover. Click anywhere else on the card to open the full ticket.
 
 **Search** above the columns filters tickets by title, id, status, type, priority,
 description, sprint doc names, and readiness labels such as `plan incomplete`.
@@ -124,11 +124,12 @@ Click `+ New` in the header. As you type the title, the type (Feature / Task / B
 - Use sprint-check to get your bearings at session start: "open sprint-check and tell me what's in progress"
 - Agents read sprint-check for context; status changes happen via `tkt` commands
 - The **Now Working On** strip + `copy` button makes it easy to prefix commits with the active ticket ID
-- A green readiness dot signals a ticket has enough context for the agent to act on it without asking for clarification
+- A green readiness dot signals a ticket has acceptance criteria, a plan, and checked plan sign-off for the agent to act on without asking for clarification
 
 ## Notes
 
 - Refreshes automatically every 8 seconds
 - Dark/light mode toggle in the header — preference persisted in localStorage
-- Runs on macOS, Linux, and WSL — Python 3 stdlib only, no pip required
+- `sprint-check` runs on macOS, Linux, and WSL with Python 3 stdlib only, no pip required
+- `sprint-check-win` runs the Go server for Windows/Git Bash users
 - Port defaults to 8423, increments automatically if busy

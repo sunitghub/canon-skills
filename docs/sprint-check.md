@@ -59,12 +59,12 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 Every card shows a readiness indicator:
 
-- **● ready** (green) — Acceptance and Plan both present; Acceptance has real items under `## Criteria` and `## Test Plan`, and Plan has real notes under `## Approach`.
+- **● ready** (green) — Acceptance and Plan both present; Acceptance has real items under `## Criteria` and `## Test Plan`, Plan has real notes under `## Approach`, and `plan.md ## Sign-off` has a checked approval item.
 - **● incomplete** (red) — Acceptance doc exists but one or both required sections have no checklist items. This mirrors a CLI-enforced `sprint complete` close gate. Opening the Acceptance tab shows an inline warning naming the empty sections.
 - **● plan incomplete** (red) — Plan exists but `## Approach` is empty or still contains the template placeholder. This is board-surfaced early warning; the CLI also blocks close if `## Approach` has no real content. A short real approach is enough; Decisions can stay empty for simple work.
-- **● needs acc / needs plan** (amber) — the next doc to add.
+- **● needs acc / needs plan / needs signoff** (amber) — the next doc or approval item to add.
 
-Click or hover the indicator for a checklist popover. Acceptance readiness mirrors the CLI close gate; Plan readiness is an early board signal so untouched templates show up while you're working. The board never judges whether a checked item is true — that remains agent-required verification and evaluator review.
+Click or hover the indicator for a checklist popover. Acceptance and Sign-off readiness mirror CLI close gates; Plan readiness is an early board signal so untouched templates show up while you're working. The board never judges whether a checked item is true — that remains agent-required verification and evaluator review.
 
 ## Drag to Update Status
 
