@@ -76,7 +76,7 @@ func ParsePlanApproved(planPath string) bool {
 		return false
 	}
 	signoff := getSection(string(content), "Sign-off")
-	re := regexp.MustCompile(`^\s*[-*]\s+\[[xX]\]\s+\S`)
+	re := regexp.MustCompile(`(?mi)^\s*[-*]\s+\[[xX]\]\s+Plan approved`)
 	return re.MatchString(signoff)
 }
 
@@ -102,7 +102,6 @@ func CheckSubagentRun(projectRoot string, runEpoch int64) bool {
 		if err != nil {
 			continue
 		}
-		defer f.Close()
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
@@ -125,10 +124,12 @@ func CheckSubagentRun(projectRoot string, runEpoch int64) bool {
 			if diff < 0 {
 				diff = -diff
 			}
-			if diff <= 3600 {
+			if diff <= 600 {
+				f.Close()
 				return true
 			}
 		}
+		f.Close()
 	}
 	return false
 }

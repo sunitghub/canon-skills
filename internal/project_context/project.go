@@ -10,7 +10,7 @@ func FindProjectRoot(start string) string {
 	if err != nil {
 		return start
 	}
-	for {
+	for depth := 0; depth < 50; depth++ {
 		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
 			return d
 		}
@@ -23,4 +23,5 @@ func FindProjectRoot(start string) string {
 		}
 		d = parent
 	}
+	return start
 }

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -16,13 +17,26 @@ import (
 	"github.com/chightow/canon-skills/internal/sprint"
 )
 
-var projectRoot string
+var (
+	projectRoot     string
+	projectRootOnce sync.Once
+)
 
-func init() {
-	projectRoot = project_context.FindProjectRoot(".")
+func getProjectRoot() string {
+	projectRootOnce.Do(func() {
+		projectRoot = project_context.FindProjectRoot(".")
+	})
+	return projectRoot
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "PANIC: %v\n", r)
+			os.Exit(2)
+		}
+	}()
+
 	s := server.NewMCPServer("canon-mcp-server", "1.0.0",
 		server.WithResourceCapabilities(true, true),
 		server.WithLogging(),
@@ -55,7 +69,7 @@ func main() {
 func handleTicket(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	action := req.GetString("action", "")
 	ticketID := req.GetString("ticket_id", "")
-	ticketsDir := filepath.Join(projectRoot, ".tickets")
+	ticketsDir := filepath.Join(getProjectRoot(), ".tickets")
 
 	switch action {
 	case "get":
@@ -112,14 +126,14 @@ func handleSprint(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 		if title != "" && ticketID != "" {
 			return jsonResult(errMap("Provide title or ticket_id, not both.")), nil
 		}
-		return jsonResult(sprint.StartSprint(projectRoot, title, ticketID, priority)), nil
+		return jsonResult(sprint.StartSprint(getProjectRoot(), title, ticketID, priority)), nil
 
 	case "board":
-		return jsonResult(sprint.GetSprintBoard(projectRoot)), nil
+		return jsonResult(sprint.GetSprintBoard(getProjectRoot())), nil
 
 	case "close":
 		autoLogEvalRuns()
-		return jsonResult(sprint.CloseSprint(projectRoot)), nil
+		return jsonResult(sprint.CloseSprint(getProjectRoot())), nil
 
 	default:
 		return jsonResult(errMap(fmt.Sprintf("Unknown action: %s", action))), nil
@@ -127,7 +141,7 @@ func handleSprint(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 }
 
 func autoLogEvalRuns() {
-	ticketsDir := filepath.Join(projectRoot, ".tickets")
+	ticketsDir := filepath.Join(getProjectRoot(), ".tickets")
 	entries, err := os.ReadDir(ticketsDir)
 	if err != nil {
 		return
@@ -144,7 +158,7 @@ func autoLogEvalRuns() {
 		}
 		m := re.FindStringSubmatch(string(content))
 		if len(m) > 1 {
-			sprint.LogSubagentRun(projectRoot, m[1], "agent", "")
+			sprint.LogSubagentRun(getProjectRoot(), m[1], "agent", "")
 		}
 	}
 }

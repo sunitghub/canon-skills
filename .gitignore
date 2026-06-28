@@ -29,3 +29,5 @@ test-results/
 # Go MCP server binary
 /mcp-server.exe
 /mcp-server
+cmd/mcp-server/mcp-server.exe
+cmd/mcp-server/mcp-server

@@ -1,7 +1,7 @@
 package sprint
 
 import (
-	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,14 +43,7 @@ func seedSubagentLog(t *testing.T, root string, runEpoch int64) {
 }
 
 func itoa(i int64) string {
-	return strings.TrimSpace(strings.Replace(
-		strings.Replace(
-			json.Number(strings.TrimSpace(func() string {
-				b, _ := json.Marshal(i)
-				return string(b)
-			}())).String(), "\"", "", -1,
-		), "\n", "", -1,
-	))
+	return fmt.Sprintf("%d", i)
 }
 
 // ── GetSprintBoard ──

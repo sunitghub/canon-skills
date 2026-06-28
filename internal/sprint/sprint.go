@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chightow/canon-skills/internal/commands"
+	"github.com/chightow/canon-skills/internal/models"
 	"github.com/chightow/canon-skills/internal/parsers"
 )
 
@@ -114,15 +115,27 @@ func CloseSprint(projectRoot string) map[string]any {
 	ticketsDir := filepath.Join(projectRoot, ".tickets")
 	handoffPath := filepath.Join(projectRoot, "HANDOFF.md")
 
-	terminalStatuses := map[string]bool{"closed": true, "cancelled": true, "archived": true}
 	tickets := parsers.ParseTickets(ticketsDir)
 
 	if len(tickets) == 0 {
 		return map[string]any{"status": "error", "message": "No tickets found. Nothing to close."}
 	}
 
-	var incomplete []string
+	trivialRe := regexp.MustCompile(`(?i)tier\s*:?\s*\*{0,2}trivial`)
+
+	var nonTrivial []models.Ticket
 	for _, t := range tickets {
+		planPath := filepath.Join(ticketsDir, t.ID, "plan.md")
+		planContent, err := os.ReadFile(planPath)
+		if err == nil && trivialRe.Match(planContent) {
+			continue
+		}
+		nonTrivial = append(nonTrivial, t)
+	}
+
+	terminalStatuses := map[string]bool{"closed": true, "cancelled": true, "archived": true}
+	var incomplete []string
+	for _, t := range nonTrivial {
 		if !terminalStatuses[strings.ToLower(t.Status)] {
 			incomplete = append(incomplete, t.ID)
 		}
@@ -134,22 +147,15 @@ func CloseSprint(projectRoot string) map[string]any {
 		}
 	}
 
-	trivialRe := regexp.MustCompile(`(?i)tier\s*:?\s*\*{0,2}trivial`)
 	verdictPassRe := regexp.MustCompile(`(?m)^pass:`)
 
-	for _, t := range tickets {
+	for _, t := range nonTrivial {
 		if strings.ToLower(t.Status) != "closed" {
 			continue
 		}
 		tdir := filepath.Join(ticketsDir, t.ID)
 		planPath := filepath.Join(tdir, "plan.md")
 		reportPath := filepath.Join(tdir, "eval-report.md")
-
-		if planContent, err := os.ReadFile(planPath); err == nil {
-			if trivialRe.Match(planContent) {
-				continue
-			}
-		}
 
 		reportContent, err := os.ReadFile(reportPath)
 		if err != nil {
@@ -164,26 +170,30 @@ func CloseSprint(projectRoot string) map[string]any {
 		if runIDMatch == nil {
 			return map[string]any{
 				"status":  "error",
-				"message": fmt.Sprintf("Ticket %s cannot close: eval-report.md is missing evaluator-run-id field. Ensure the evaluator subagent wrote the run-id before grading.", t.ID),
+				"message": fmt.Sprintf("Ticket %s cannot close: eval-report.md is missing evaluator-run-id field.", t.ID),
 			}
 		}
 
 		runID := runIDMatch[1]
-		runParts := strings.SplitN(runID, "-", 2)
-		runEpochStr := ""
-		if len(runParts) > 0 {
-			runEpochStr = runParts[0]
+		runIDParts := strings.SplitN(runID, "-", 3)
+		if len(runIDParts) < 2 {
+			return map[string]any{
+				"status":  "error",
+				"message": fmt.Sprintf("Ticket %s cannot close: evaluator-run-id '%s' format is invalid. Expected <epoch>-<counter>.", t.ID, runID),
+			}
 		}
-		if runEpochStr != "" {
-			var runEpoch int64
-			if _, err := fmt.Sscanf(runEpochStr, "%d", &runEpoch); err == nil {
-				matched := parsers.CheckSubagentRun(projectRoot, runEpoch)
-				if !matched {
-					return map[string]any{
-						"status":  "error",
-						"message": fmt.Sprintf("Ticket %s cannot close: evaluator-run-id '%s' has no matching subagent entry in .canon/.claude/.opencode subagent-runs.jsonl (±60 min window). The eval must be run as a real subagent invocation — inline writes are not accepted.", t.ID, runID),
-					}
-				}
+		var runEpoch int64
+		if _, err := fmt.Sscanf(runIDParts[0], "%d", &runEpoch); err != nil {
+			return map[string]any{
+				"status":  "error",
+				"message": fmt.Sprintf("Ticket %s cannot close: evaluator-run-id '%s' has non-numeric epoch.", t.ID, runID),
+			}
+		}
+		matched := parsers.CheckSubagentRun(projectRoot, runEpoch)
+		if !matched {
+			return map[string]any{
+				"status":  "error",
+				"message": fmt.Sprintf("Ticket %s cannot close: evaluator-run-id '%s' has no matching subagent entry in .canon/.claude/.opencode subagent-runs.jsonl (±10 min window).", t.ID, runID),
 			}
 		}
 
@@ -223,7 +233,9 @@ func CloseSprint(projectRoot string) map[string]any {
 
 	summarySection := fmt.Sprintf("\n\n%s\n%s\n", summaryHeading, receiptContent)
 	newHandoff := strings.TrimRight(handoffContent, " \t\r\n") + summarySection
-	os.WriteFile(handoffPath, []byte(newHandoff), 0644)
+	if err := os.WriteFile(handoffPath, []byte(newHandoff), 0644); err != nil {
+		return map[string]any{"status": "error", "message": fmt.Sprintf("Failed to write HANDOFF.md: %v", err)}
+	}
 
 	return map[string]any{
 		"status":  "ok",

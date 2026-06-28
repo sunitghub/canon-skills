@@ -2,6 +2,7 @@ package commands
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,12 +12,22 @@ import (
 	"github.com/chightow/canon-skills/internal/parsers"
 )
 
+func validTicketID(id string) error {
+	if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, "/\\") {
+		return errors.New("invalid ticket ID")
+	}
+	return nil
+}
+
 var ValidStatuses = map[string]bool{
 	"open": true, "in_progress": true, "closed": true,
 	"cancelled": true, "archived": true,
 }
 
 func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[string]any {
+	if err := validTicketID(ticketID); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s'", ticketID)}
+	}
 	acceptanceFile := filepath.Join(ticketsDir, ticketID, "acceptance.md")
 	content, err := os.ReadFile(acceptanceFile)
 	if err != nil {
@@ -27,7 +38,9 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 	headingIdx := strings.Index(string(content), acceptanceHeading)
 	if headingIdx == -1 {
 		newContent := fmt.Sprintf("%s\n- [ ] %s\n", acceptanceHeading, criterionText)
-		os.WriteFile(acceptanceFile, []byte(newContent), 0644)
+		if err := os.WriteFile(acceptanceFile, []byte(newContent), 0644); err != nil {
+			return map[string]any{"error": fmt.Sprintf("Failed to write acceptance.md: %v", err)}
+		}
 		return map[string]any{"ticket_id": ticketID, "criterion": criterionText, "status": "ok"}
 	}
 
@@ -35,7 +48,9 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 	listSection := strings.TrimSpace(string(content)[listStart:])
 	if listSection == "" {
 		newContent := strings.TrimRight(string(content), " \t\r\n") + fmt.Sprintf("\n- [ ] %s\n", criterionText)
-		os.WriteFile(acceptanceFile, []byte(newContent), 0644)
+		if err := os.WriteFile(acceptanceFile, []byte(newContent), 0644); err != nil {
+			return map[string]any{"error": fmt.Sprintf("Failed to write acceptance.md: %v", err)}
+		}
 		return map[string]any{"ticket_id": ticketID, "criterion": criterionText, "status": "ok"}
 	}
 
@@ -76,7 +91,9 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 	} else {
 		newContent = base + fmt.Sprintf("\n- [ ] %s\n", criterionText)
 	}
-	os.WriteFile(acceptanceFile, []byte(newContent), 0644)
+	if err := os.WriteFile(acceptanceFile, []byte(newContent), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write acceptance.md: %v", err)}
+	}
 	return map[string]any{"ticket_id": ticketID, "criterion": criterionText, "status": "ok"}
 }
 
@@ -84,7 +101,9 @@ func CreateSprintTicket(ticketsDir, description, priority string) map[string]any
 	var ticketID string
 	for i := 0; i < 10; i++ {
 		b := make([]byte, 4)
-		rand.Read(b)
+		if _, err := rand.Read(b); err != nil {
+			return map[string]any{"error": fmt.Sprintf("Failed to generate random ticket ID: %v", err)}
+		}
 		id := fmt.Sprintf("t-%x", b)
 		ticketDir := filepath.Join(ticketsDir, id)
 		if err := os.MkdirAll(ticketDir, 0755); err == nil {
@@ -108,13 +127,19 @@ func CreateSprintTicket(ticketsDir, description, priority string) map[string]any
 	safeTitle := yamlEscape(title)
 
 	ticketFile := filepath.Join(ticketsDir, ticketID, "ticket.md")
-	os.WriteFile(ticketFile, []byte(fmt.Sprintf(
+	if err := os.WriteFile(ticketFile, []byte(fmt.Sprintf(
 		"---\nid: %s\ntitle: \"%s\"\nstatus: open\npriority: %s\n---\n\n## Description\n%s\n\n## Acceptance Criteria\n",
 		ticketID, safeTitle, priority, description,
-	)), 0644)
+	)), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write ticket.md: %v", err)}
+	}
 
-	os.WriteFile(filepath.Join(ticketsDir, ticketID, "acceptance.md"), []byte("## Acceptance Criteria\n"), 0644)
-	os.WriteFile(filepath.Join(ticketsDir, ticketID, "test_plan.md"), []byte("## Test Plan\n"), 0644)
+	if err := os.WriteFile(filepath.Join(ticketsDir, ticketID, "acceptance.md"), []byte("## Acceptance Criteria\n"), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write acceptance.md: %v", err)}
+	}
+	if err := os.WriteFile(filepath.Join(ticketsDir, ticketID, "test_plan.md"), []byte("## Test Plan\n"), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write test_plan.md: %v", err)}
+	}
 
 	return map[string]any{"ticket_id": ticketID, "status": "ok"}
 }
@@ -128,9 +153,17 @@ func UpdateTicketStatus(ticketsDir, ticketID, newStatus string) map[string]any {
 	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("Ticket %s not found", ticketID)}
 	}
-	re := regexp.MustCompile(`(?m)^status:.*$`)
-	newContent := re.ReplaceAllString(string(content), "status: "+newStatus)
-	os.WriteFile(ticketFile, []byte(newContent), 0644)
+	fmRe := regexp.MustCompile(`(?s)^(---\n.*?\n---)\n?(.*)$`)
+	m := fmRe.FindStringSubmatch(string(content))
+	if m == nil {
+		return map[string]any{"error": "ticket.md has no frontmatter"}
+	}
+	statusRe := regexp.MustCompile(`(?m)^status:.*$`)
+	newFrontmatter := statusRe.ReplaceAllString(m[1], "status: "+newStatus)
+	newContent := newFrontmatter + "\n\n" + strings.TrimLeft(m[2], "\n")
+	if err := os.WriteFile(ticketFile, []byte(newContent), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write ticket.md: %v", err)}
+	}
 	return map[string]any{"ticket_id": ticketID, "new_status": newStatus, "status": "ok"}
 }
 
@@ -205,8 +238,12 @@ func WriteDoc(ticketsDir, ticketID, docName, content string) map[string]any {
 		return map[string]any{"error": fmt.Sprintf("Ticket %s not found", ticketID)}
 	}
 	docPath := filepath.Join(ticketDir, docName)
-	os.MkdirAll(filepath.Dir(docPath), 0755)
-	os.WriteFile(docPath, []byte(content), 0644)
+	if err := os.MkdirAll(filepath.Dir(docPath), 0755); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to create directory: %v", err)}
+	}
+	if err := os.WriteFile(docPath, []byte(content), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write %s: %v", docName, err)}
+	}
 	return map[string]any{"ticket_id": ticketID, "doc_name": docName, "status": "ok"}
 }
 
