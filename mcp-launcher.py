@@ -24,8 +24,9 @@ def _find_python() -> str:
                 return str(c)
     for name in ("python3", "python"):
         try:
-            subprocess.run([name, "-c", ""], capture_output=True)
-            return name
+            result = subprocess.run([name, "-c", ""], capture_output=True)
+            if result.returncode == 0:
+                return name
         except FileNotFoundError:
             continue
     print("Error: Python not found. Ensure a .venv or system Python is available.", file=sys.stderr)

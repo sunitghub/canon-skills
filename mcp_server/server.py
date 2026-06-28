@@ -6,29 +6,28 @@ import time
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional
 
 from mcp.server.fastmcp import FastMCP
-from mcp_server.utils.models import Ticket
 from mcp_server.utils.project_context import find_project_root
-import mcp_server.utils.parsers as _parsers
-
-from mcp_server.utils.parsers import (
-    get_sprint_board as parse_sprint_board,
+from mcp_server.utils.commands import (
+    add_acceptance_criterion as parse_add_acceptance_criterion,
     create_sprint_ticket as parse_create_sprint_ticket,
     update_ticket_status as parse_update_ticket_status,
-    add_acceptance_criterion as parse_add_acceptance_criterion,
-    list_skills as parse_list_skills,
-    get_ticket as parse_get_ticket,
-    start_sprint as parse_start_sprint,
     update_ticket_body as parse_update_ticket_body,
     read_doc as parse_read_doc,
     write_doc as parse_write_doc,
+    list_skills as parse_list_skills,
+    get_ticket as parse_get_ticket,
     git_info as parse_git_info,
+)
+from mcp_server.utils.sprint import (
+    get_sprint_board as parse_sprint_board,
+    start_sprint as parse_start_sprint,
+    close_sprint as parse_close_sprint,
     log_subagent_run as parse_log_subagent_run,
 )
 
-# Initialize FastMCP server
 app = FastMCP("canon-mcp-server")
 
 PROJECT_ROOT = find_project_root(Path(__file__).parent.parent.resolve())
@@ -73,23 +72,21 @@ def get_sprint_board() -> Dict[str, Any]:
 @app.tool()
 def create_sprint_ticket(description: str, priority: str) -> Dict[str, Any]:
     """Create a new sprint ticket with acceptance criteria and test plan templates."""
-    result = parse_create_sprint_ticket(
+    return parse_create_sprint_ticket(
         tickets_dir=PROJECT_ROOT / ".tickets",
         description=description,
         priority=priority,
     )
-    return result
 
 
 @app.tool()
 def update_ticket_status(ticket_id: str, new_status: str) -> Dict[str, Any]:
     """Update the status field of an existing ticket's frontmatter."""
-    result = parse_update_ticket_status(
+    return parse_update_ticket_status(
         tickets_dir=PROJECT_ROOT / ".tickets",
         ticket_id=ticket_id,
         new_status=new_status,
     )
-    return result
 
 
 @app.tool()
@@ -105,12 +102,11 @@ def update_ticket_body(ticket_id: str, body: str) -> Dict[str, Any]:
 @app.tool()
 def add_acceptance_criterion(ticket_id: str, criterion: str) -> Dict[str, Any]:
     """Add an acceptance criterion to an existing ticket."""
-    result = parse_add_acceptance_criterion(
+    return parse_add_acceptance_criterion(
         tickets_dir=PROJECT_ROOT / ".tickets",
         ticket_id=ticket_id,
         criterion_text=criterion,
     )
-    return result
 
 
 @app.tool()
@@ -137,7 +133,7 @@ def close_sprint() -> Dict[str, Any]:
     Validates mechanical close gates, generates a delivery receipt, 
     and updates HANDOFF.md with the final summary.
     """
-    return _parsers.close_sprint(PROJECT_ROOT)
+    return parse_close_sprint(PROJECT_ROOT)
 
 
 @app.tool()
@@ -252,7 +248,6 @@ def open_dashboard() -> str:
         return f"Failed to launch dashboard: {e}"
 
 
-# Auto-start dashboard server when MCP server starts (headless, no browser)
 _port = _dashboard_port()
 if _port is None:
     try:
