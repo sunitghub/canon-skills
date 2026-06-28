@@ -53,6 +53,60 @@ test.describe('board modal', () => {
     }
   });
 
+  test('hovering the ready indicator shows the readiness popover', async ({ page }) => {
+    const id = `t-ready-pop-${Date.now()}`;
+    const title = `Ready popover ${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        `# ${title}`,
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
+        '# Acceptance',
+        '',
+        '## Criteria',
+        '- [x] Ready',
+        '',
+        '## Test Plan',
+        '- [x] Tested',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Approach',
+        'Use the existing board readiness popover.',
+        '',
+        '## Sign-off',
+        '- [x] Plan approved',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id);
+      const indicator = page.locator(`.card[data-id="${id}"] .ready-indicator`);
+      await expect(indicator).toBeVisible();
+      await indicator.hover();
+      await expect(page.locator('#ready-popover')).toBeVisible();
+      await expect(page.locator('#ready-popover')).toContainText('Signed off');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('first doc tab is active on open (ticket with docs)', async ({ page }) => {
     const title = `Doc tab active test ${Date.now()}`;
     let createdId = '';
@@ -240,10 +294,12 @@ test.describe('board modal', () => {
       await page.locator('#board-search').fill(createdId);
       await page.waitForTimeout(200);
 
-      // Archive button should appear on hover
+      // Archive button should appear even when the hover starts over the card type badge.
       const doneCard = page.locator('.col-done .card[data-id="' + createdId + '"]');
       await expect(doneCard).toBeVisible({ timeout: 8000 });
-      await doneCard.hover();
+      const badgeBox = await doneCard.locator('.type-badge').boundingBox();
+      expect(badgeBox).not.toBeNull();
+      await page.mouse.move(badgeBox.x + badgeBox.width / 2, badgeBox.y + badgeBox.height / 2);
       const archiveBtn = doneCard.locator('.card-archive');
       await expect(archiveBtn).toBeVisible();
       await archiveBtn.click();
