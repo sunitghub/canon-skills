@@ -7,7 +7,7 @@ import time
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List
 
 from mcp.server.fastmcp import FastMCP
 from mcp_server.utils.project_context import find_project_root
@@ -50,7 +50,7 @@ atexit.register(_cleanup_dashboard)
 
 
 @app.tool()
-def list_skills(skill_name: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+def list_skills(skill_name: Optional[str] = None) -> Dict[str, Any]:
     """Inventory all canon skills from the skills/ directory.
     
     If skill_name is provided, returns the full content of that skill's SKILL.md.
@@ -243,41 +243,41 @@ def _open_browser(url: str) -> None:
     """Open a URL in the default browser using platform-specific commands."""
     if sys.platform == "win32":
         try:
-            subprocess.Popen(["cmd.exe", "/c", "start", url])
+            subprocess.run(["cmd.exe", "/c", "start", url], check=True)
             return
-        except FileNotFoundError:
+        except (FileNotFoundError, subprocess.CalledProcessError):
             pass
     elif sys.platform == "darwin":
         try:
-            subprocess.Popen(["open", url])
+            subprocess.run(["open", url], check=True)
             return
-        except FileNotFoundError:
+        except (FileNotFoundError, subprocess.CalledProcessError):
             pass
     elif sys.platform == "linux":
         for cmd in ["xdg-open", "wslview"]:
             try:
-                subprocess.Popen([cmd, url])
+                subprocess.run([cmd, url], check=True)
                 return
-            except FileNotFoundError:
+            except (FileNotFoundError, subprocess.CalledProcessError):
                 continue
     print(f"Open in your browser: {url}", file=sys.stderr)
 
 
 @app.tool()
-def open_dashboard() -> str:
+def open_dashboard() -> Dict[str, Any]:
     """Launch the local kanban dashboard web UI."""
     try:
         port = _dashboard_port()
         if port is None:
             port = _find_free_port()
             if not _start_dashboard(port):
-                return f"Dashboard failed to start on port {port}"
+                return {"error": f"Dashboard failed to start on port {port}"}
         url = f"http://127.0.0.1:{port}"
         _open_browser(url)
-        return f"Dashboard launched on {url}"
+        return {"status": "ok", "url": url}
     except Exception as e:
         print(f"Failed to launch dashboard: {e}", file=sys.stderr)
-        return f"Failed to launch dashboard: {e}"
+        return {"error": f"Failed to launch dashboard: {e}"}
 
 
 if __name__ == "__main__":

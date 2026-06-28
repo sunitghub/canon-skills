@@ -2,7 +2,7 @@ import os
 import re
 import subprocess
 from pathlib import Path
-from typing import List, Dict, Any, Union
+from typing import List, Dict, Any
 
 from .parsers import _get_section, _parse_plan_approved, _parse_plan_decision
 
@@ -127,7 +127,7 @@ def update_ticket_status(
         return {"error": f"Ticket {ticket_id} not found"}
 
     content = ticket_file.read_text(encoding='utf-8')
-    new_content = re.sub(r'^status:.*$', f'status: {new_status}', content, flags=re.MULTILINE)
+    new_content = re.sub(r'^status:.*$', f'status: {new_status}', content, count=1, flags=re.MULTILINE)
     ticket_file.write_text(new_content, encoding='utf-8')
 
     return {
@@ -137,7 +137,7 @@ def update_ticket_status(
     }
 
 
-def list_skills(skills_dir: Path, skill_name: str = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
+def list_skills(skills_dir: Path, skill_name: str = None) -> Dict[str, Any]:
     if not skills_dir.exists():
         return {"error": f"Skills directory not found: {skills_dir}"}
 
@@ -146,7 +146,7 @@ def list_skills(skills_dir: Path, skill_name: str = None) -> Union[List[Dict[str
         if not skill_path.exists():
             return {"error": f"Skill '{skill_name}' not found at {skill_path}"}
         content = skill_path.read_text(encoding='utf-8')
-        return {"name": skill_name, "content": content}
+        return {"status": "ok", "name": skill_name, "content": content}
 
     results: List[Dict[str, Any]] = []
     for entry in sorted(skills_dir.iterdir()):
@@ -178,7 +178,7 @@ def list_skills(skills_dir: Path, skill_name: str = None) -> Union[List[Dict[str
             "path": str(skill_file),
         })
 
-    return results
+    return {"status": "ok", "skills": results}
 
 
 def get_ticket(tickets_dir: Path, ticket_id: str) -> Dict[str, Any]:
