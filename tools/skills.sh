@@ -428,7 +428,7 @@ cmd_status() {
   # ── Compute hook status once — used by upgrade tip and display ──────────────
   local hook_issues=0
   local _hook_names=() _hook_tags=()
-  if [ ${#skill_names[@]} -gt 0 ] && command -v claude &>/dev/null; then
+  if [ ${#skill_names[@]} -gt 0 ]; then
     local _hs="$project_dir/.claude/settings.json"
     for _h in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh; do
       _hook_names+=("$_h")
