@@ -19,6 +19,7 @@ doc-findings.md
 # .claude/settings.json IS tracked (canonical project-local hook config for all contributors).
 .claude/skills
 .claude/subagent-runs.jsonl
+.canon/subagent-runs.jsonl
 .agents/
 
 node_modules/
