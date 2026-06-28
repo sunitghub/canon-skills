@@ -43,11 +43,12 @@ cmd_list() {
     [ -d "$dir" ] || continue
     while IFS= read -r f; do
       local name category
-      [ -z "$(fm_field "$f" name)" ] && continue
+      name=$(fm_field "$f" name)
+      [ -z "$name" ] && continue
       [ "$(fm_field "$f" hidden)" = "true" ] && continue
       local is_dep=0
       for dep in "${all_dep_names[@]+"${all_dep_names[@]}"}"; do
-        [ "$dep" = "$(fm_field "$f" name)" ] && is_dep=1 && break
+        [ "$dep" = "$name" ] && is_dep=1 && break
       done
       [ "$is_dep" -eq 1 ] && continue
       category=$(fm_field "$f" category)

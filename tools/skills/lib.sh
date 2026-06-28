@@ -6,18 +6,25 @@ set -euo pipefail
 # We assume this script is sourced by tools/skills.sh or other sub-scripts in tools/skills/
 # and that the caller has set up the appropriate paths.
 
-# shellcheck source=tools/hooks-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/../hooks-lib.sh"
-# shellcheck source=tools/skill-lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/../skill-lib.sh"
+# Guard: only source each lib once (skills.sh -> lib.sh -> commands.sh -> lib.sh chain)
+if ! declare -F _init_claude &>/dev/null; then
+  # shellcheck source=tools/hooks-lib.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/../hooks-lib.sh"
+fi
+if ! declare -F find_skill &>/dev/null; then
+  # shellcheck source=tools/skill-lib.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/../skill-lib.sh"
+fi
 
 # If sourced from tools/skills.sh, BASH_SOURCE[0] is tools/skills.sh
 # If sourced from tools/skills/lib.sh, BASH_SOURCE[0] is tools/skills/lib.sh
 # We want SKILLS_ROOT to be the root of the repo.
 
 if [ -z "${SKILLS_ROOT:-}" ]; then
-    # lib.sh is at tools/skills/lib.sh, so ../.. is the repo root
-    SKILLS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    _skills_lib_self="${BASH_SOURCE[0]}"
+    while [ -L "$_skills_lib_self" ]; do _skills_lib_self="$(readlink "$_skills_lib_self")"; done
+    SKILLS_ROOT="$(cd "$(dirname "$_skills_lib_self")/../.." && pwd)"
+    unset _skills_lib_self
 fi
 
 SEARCH_DIRS=("$SKILLS_ROOT/standards" "$SKILLS_ROOT/tools" "$SKILLS_ROOT/skills")

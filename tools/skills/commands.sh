@@ -176,8 +176,10 @@ cmd_status() {
   fi
 
   # ── Registered skills ────────────────────────────────────────────────────
+  local _printed_skills_header=false
   if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
     echo "Skills:"
+    _printed_skills_header=true
     while IFS= read -r line; do
       local sname spath
       sname=$(skill_row_name "$line")
@@ -209,7 +211,24 @@ cmd_status() {
 
       printf "  %-25s %s%s\n" "$sname" "[$tag]" "$suffix"
     done < <(registered_skill_rows "$agents_file")
-  else
+  fi
+
+  # Also show inject-style @-imports (sit outside the AI-SKILLS block)
+  if [ -f "$agents_file" ]; then
+    while IFS= read -r imp; do
+      local ipath="${imp#@}"
+      local iname; iname=$(basename "$ipath" .md)
+      local itag="ok"
+      [ ! -f "$ipath" ] && itag="broken ref" && (( issues++ )) || true
+      if ! $_printed_skills_header; then
+        echo "Skills:"
+        _printed_skills_header=true
+      fi
+      printf "  %-25s %s\n" "$iname" "[$itag]"
+    done < <(awk '/AI-SKILLS:BEGIN/{skip=1} /AI-SKILLS:END/{skip=0; next} !skip && /^@/' "$agents_file" 2>/dev/null || true)
+  fi
+
+  if ! $_printed_skills_header; then
     echo "Skills: none"
   fi
 
@@ -511,7 +530,7 @@ cmd_help() {
   local skill_file
   skill_file=$(find_skill "$skill") || {
     echo "Error: skill '$skill' not found. Run 'skills.sh list' to see available skills."
-    exit 1;
+    exit 1
   }
 
   local name desc summary category tags depends
@@ -554,7 +573,6 @@ _print_usage() {
   echo ""
   echo "Contributor commands (canon repo only): canon-dev.sh catalog|lint|delete"
 }
-
 
 cmd_init() {
   echo "canon init — wiring agent hooks from: $SKILLS_ROOT"
