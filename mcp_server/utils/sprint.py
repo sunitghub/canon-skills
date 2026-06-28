@@ -48,11 +48,11 @@ def log_subagent_run(
         "agent_type": agent_type,
         "transcript_path": "",
     }
-    log_dir = project_root / ".canon"
-    log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / "subagent-runs.jsonl"
-    with open(log_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
+    for rel in AGENT_RUN_LOG_PATHS:
+        log_file = project_root / rel
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
     return {"status": "ok", "entry": entry}
 
 
@@ -96,7 +96,7 @@ def start_sprint(project_root: Path, title: str, ticket_id: str = None, priority
     return {
         "ticket_id": tid,
         "ticket_dir": str(tdir),
-        "status": "started",
+        "status": "ok",
         "message": f"Sprint started: {tid}",
     }
 
@@ -107,6 +107,13 @@ def close_sprint(project_root: Path) -> Dict[str, Any]:
 
     terminal_statuses = {"closed", "cancelled", "archived"}
     tickets = parse_tickets(tickets_dir)
+
+    if not tickets:
+        return {
+            "status": "error",
+            "message": "No tickets found. Nothing to close."
+        }
+
     incomplete_tickets = [
         t.id for t in tickets
         if t.status.lower() not in terminal_statuses
@@ -200,7 +207,7 @@ def close_sprint(project_root: Path) -> Dict[str, Any]:
     handoff_path.write_text(new_handoff_content, encoding='utf-8')
 
     return {
-        "status": "success",
+        "status": "ok",
         "message": "Sprint closed successfully and HANDOFF.md updated.",
         "receipt": receipt_content
     }
