@@ -107,6 +107,61 @@ test.describe('board modal', () => {
     }
   });
 
+  test('plan approach without sign-off is not ready', async ({ page }) => {
+    const id = `t-needs-signoff-${Date.now()}`;
+    const title = `Needs signoff ${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        `# ${title}`,
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
+        '# Acceptance',
+        '',
+        '## Criteria',
+        '- [x] Ready',
+        '',
+        '## Test Plan',
+        '- [x] Tested',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        '- [ ] Plan approved',
+        '',
+        '## Approach',
+        'Use the existing board readiness popover.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id);
+      const indicator = page.locator(`.card[data-id="${id}"] .ready-indicator`);
+      await expect(indicator).toContainText('needs signoff');
+      await expect(indicator).not.toContainText('ready');
+      await indicator.hover();
+      await expect(page.locator('#ready-popover')).toContainText('Sign-off');
+      await expect(page.locator('#ready-popover')).not.toContainText('Signed off');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('first doc tab is active on open (ticket with docs)', async ({ page }) => {
     const title = `Doc tab active test ${Date.now()}`;
     let createdId = '';

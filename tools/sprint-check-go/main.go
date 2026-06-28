@@ -265,8 +265,11 @@ func parseTicket(path string) (ticket, error) {
 			t["acceptance_unchecked"] = unchecked.MatchString(accText)
 		}
 		t["plan_has_approach"] = nil
+		t["plan_approved"] = nil
 		if plan, err := os.ReadFile(filepath.Join(filepath.Dir(path), "plan.md")); err == nil {
-			t["plan_has_approach"] = usefulText(section(string(plan), "Approach"))
+			planText := string(plan)
+			t["plan_has_approach"] = usefulText(section(planText, "Approach"))
+			t["plan_approved"] = sectionHasCheckedItem(planText, "Sign-off")
 		}
 	} else {
 		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
@@ -668,6 +671,10 @@ func usefulText(text string) bool {
 		}
 	}
 	return false
+}
+
+func sectionHasCheckedItem(text, heading string) bool {
+	return regexp.MustCompile(`(?m)^\s*[-*]\s+\[[xX]\]\s+\S`).MatchString(section(text, heading))
 }
 
 func planDecision(ticketPath string) string {
