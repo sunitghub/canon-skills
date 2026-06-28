@@ -184,8 +184,6 @@ test.describe('board modal', () => {
       fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
         '# Acceptance',
         '',
-        `Ticket: \`${id}\``,
-        '',
         '## Criteria',
         '- [ ] Existing criterion',
         '',
@@ -212,8 +210,6 @@ test.describe('board modal', () => {
       await page.locator('#m-edit-area').fill([
         '# Acceptance',
         '',
-        `Ticket: ${id}`,
-        '',
         '## Criteria',
         '- [ ] Updated criterion',
         '',
@@ -231,6 +227,7 @@ test.describe('board modal', () => {
       await page.locator('#btn-save-top').click();
       await expect(page.locator('#m-edit-area')).toBeHidden();
       await expect(page.locator('#m-body')).toContainText('Updated criterion');
+      expect(fs.readFileSync(path.join(ticketDir, 'acceptance.md'), 'utf8')).toContain(`Ticket: \`${id}\``);
     } finally {
       fs.rmSync(ticketDir, { recursive: true, force: true });
     }
