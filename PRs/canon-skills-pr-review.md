@@ -8,20 +8,36 @@ _sunitghub/canon-skills — reviewed 2026-06-28_
 | #2 | feat: implement MCP server foundation with sprint management tools | Cross-IDE / Accessibility | Python FastMCP server exposing 13+ sprint management tools. Motivation is legitimate: accessibility for small/local models and non-Claude-Code IDEs (opencode, VS Code). But the implementation conflicts with canon's existing Go direction (`tools/sprint-check-go` exists specifically to drop Python). Duplicates bash script logic with no delegation. Ticket ID format likely wrong (`TICKET-NNNN` vs canon's `t-<letters><digits>` — digit-leading IDs silently ignored by `tkt`). Plans files (`plans/`) committed as deliverables. No tests. 13 tools vs the 7 actually needed for the stated use case. The sprint-check port arg change (8 lines) is the only clean piece. | No as-is. Merge port arg only (`tools/sprint-check`). If MCP access is pursued, correct path is a Node.js layer on existing `sprint-check-app` (already Node, cross-platform, no new language) exposing 7 tools: `get_sprint_board`, `list_skills`, `get_ticket`, `create_sprint_ticket`, `update_ticket_status`, `add_acceptance_criterion`, `open_dashboard`. Validate with MLX local model before building. | 2026-06-28T13:40:50Z |
 | #1 | MCP Path | Meta | Kitchen-sink PR combining MCP server, skills.sh refactor, submodule setup, IDE configs, and sprint polish in one diff. Correctly closed by author and split into PRs #2, #3, #4. Notable: included the skills.sh refactor that became PR #4, and the same stale `.tickets/` deletions now in PR #3. | N/A — closed. Findings absorbed into PRs #2–4 above. | 2026-06-28T13:13:28Z |
 
-## What to merge now
+## What was merged (2026-06-28)
 
-Only one change is unambiguously clean and consistent with canon's direction:
-
-- **`tools/sprint-check` port arg** (8 lines from PR #2) — lets MCP server or any caller specify the dashboard port directly.
-- **`tools/sprint-check-app/app.html` copy button** (from PR #3) — small, self-contained UI improvement, no dependencies.
+- **`tools/sprint-check` port arg** (from PR #2) — merged. ✓
+- **`tools/sprint-check-app/app.html` copy button** (from PR #3) — merged with hover lift + clipboard error guard. ✓
+- **`tools/sprint-check-win.exe`** — rebuilt against updated `app.html`. ✓
+- **README + docs/setup.md** — Windows setup path documented. ✓
 
 Everything else needs scoping, splitting, or a direction decision on MCP.
 
 ## Windows users and the MCP scope
 
-`tools/sprint-check-win` (pre-built `.exe`) + the board UI already covers the core ticket management workflow for local Windows users — no MCP, no Python, no IDE integration required. Users can fire the board, create tickets, and track sprint state entirely through the GUI.
+The confirmed Windows workflow requires no WSL, no Python, no extra runtimes:
 
-This narrows the real MCP use case to one specific scenario: **an agent running inside an IDE (opencode, VS Code + Copilot, Cursor) that needs programmatic access to sprint state**. A human Windows user managing their own tickets doesn't need the MCP server at all — `sprint-check-win.exe` is a zero-dependency Go binary (no Python, no Node, no runtime) that opens the board directly and supports ticket creation via the UI.
+1. Install [Git for Windows](https://git-scm.com/download/win)
+2. `git clone` from Git Bash — clone/pull stays in Git Bash
+3. Run `install.ps1` from PowerShell — adds `tools/` to user PATH
+4. `sprint-check-win` from any PowerShell prompt opens the board; create and manage tickets via the UI
+5. `skills.sh`, `tkt`, `sprint` run from Git Bash for agent-driven workflows
+
+`sprint-check-win.exe` is a pre-built Go binary — it reads `app.html` at runtime from the repo, so `git pull` in Git Bash is all that's needed to pick up board updates. **No Python, no Node, no WSL.**
+
+This narrows the real MCP use case to one specific scenario: **an agent running inside an IDE (opencode, VS Code + Copilot, Cursor) that needs programmatic access to sprint state**. A human Windows user managing their own tickets doesn't need MCP at all.
+
+## Go server — no Python dependency on Windows
+
+`tools/sprint-check-go/main.go` compiles to `sprint-check-win.exe` and reads `app.html` from the filesystem at runtime (`os.ReadFile`). This means:
+- No Python required on Windows — the Go binary replaces `python3 server.py` entirely
+- Board updates land via `git pull`; no rebuild needed for UI-only changes
+- The binary is cross-compiled: `GOOS=windows GOARCH=amd64 go build -o tools/sprint-check-win.exe tools/sprint-check-go/main.go`
+- Open ticket `t-c5d4`: add this rebuild step to `scripts/build-zip.sh` so the post-commit hook keeps the exe in sync automatically
 
 ## Open question
 
