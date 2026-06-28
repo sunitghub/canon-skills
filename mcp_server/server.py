@@ -1,3 +1,4 @@
+import atexit
 import os
 import socket
 import subprocess
@@ -31,6 +32,21 @@ from mcp_server.utils.sprint import (
 app = FastMCP("canon-mcp-server")
 
 PROJECT_ROOT = find_project_root(Path(__file__).parent.parent.resolve())
+
+_dashboard_proc: Optional[subprocess.Popen] = None
+
+
+def _cleanup_dashboard() -> None:
+    global _dashboard_proc
+    if _dashboard_proc is not None and _dashboard_proc.poll() is None:
+        _dashboard_proc.terminate()
+        try:
+            _dashboard_proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            _dashboard_proc.kill()
+
+
+atexit.register(_cleanup_dashboard)
 
 
 @app.tool()
@@ -182,6 +198,7 @@ def _start_dashboard(port: int) -> bool:
     """Launch sprint-check server on the given port as a background process.
     Returns True once the dashboard is confirmed responding.
     """
+    global _dashboard_proc
     env = {**os.environ, "SPRINT_CHECK_ROOT": str(PROJECT_ROOT)}
 
     if sys.platform == "win32":
@@ -193,7 +210,7 @@ def _start_dashboard(port: int) -> bool:
         cmd = ["bash", str(script_path), str(port)]
         creationflags = 0
 
-    proc = subprocess.Popen(
+    _dashboard_proc = subprocess.Popen(
         cmd,
         cwd=str(PROJECT_ROOT),
         env=env,
@@ -201,7 +218,8 @@ def _start_dashboard(port: int) -> bool:
     )
 
     time.sleep(0.5)
-    if proc.poll() is not None:
+    if _dashboard_proc.poll() is not None:
+        _dashboard_proc = None
         return False
 
     # Wait up to 3s for the dashboard to start responding
@@ -217,6 +235,7 @@ def _start_dashboard(port: int) -> bool:
         except Exception:
             pass
         time.sleep(0.3)
+    _dashboard_proc = None
     return False
 
 

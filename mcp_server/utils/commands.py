@@ -102,7 +102,7 @@ def create_sprint_ticket(
     }
 
 
-VALID_STATUSES = {"open", "in_progress", "closed", "cancelled", "archived"}
+VALID_STATUSES = frozenset({"open", "in_progress", "closed", "cancelled", "archived"})
 
 
 def update_ticket_status(
@@ -205,6 +205,9 @@ def update_ticket_body(
         return {"error": f"Ticket {ticket_id} not found"}
 
     content = ticket_file.read_text(encoding='utf-8')
+    if not body.strip():
+        return {"error": "Ticket body cannot be empty"}
+
     frontmatter_match = re.search(r'^(---\n.*?\n---)\n?', content, re.DOTALL)
     if frontmatter_match:
         new_content = frontmatter_match.group(1) + "\n\n" + body.lstrip("\n")

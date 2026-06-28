@@ -5,6 +5,12 @@ from pathlib import Path
 from typing import List, Dict, Any
 from .models import Ticket
 
+
+def _parse_timestamp(ts: str) -> int:
+    """Parse ISO 8601 timestamp to epoch int. Handles Z suffix and fractional seconds."""
+    normalized = ts.replace("Z", "+00:00", 1) if ts.endswith("Z") else ts
+    return int(datetime.fromisoformat(normalized).timestamp())
+
 def parse_tickets(tickets_dir: Path) -> List[Ticket]:
     tickets = []
     if not tickets_dir.exists():
@@ -124,11 +130,8 @@ def _check_subagent_run(project_root: Path, run_epoch: int) -> bool:
                         ts = d.get('ts', '')
                         if not ts:
                             continue
-                        ts_normalized = ts.replace("Z", "+0000") if ts.endswith("Z") else ts
-                        entry_epoch = int(datetime.strptime(
-                            ts_normalized, '%Y-%m-%dT%H:%M:%S%z'
-                        ).timestamp())
-                        if abs(entry_epoch - run_epoch) <= 3600:
+                        entry_epoch = _parse_timestamp(ts)
+                        if abs(entry_epoch - run_epoch) <= 300:
                             return True
                     except Exception:
                         pass

@@ -186,8 +186,15 @@ def close_sprint(project_root: Path) -> Dict[str, Any]:
 
     handoff_content = handoff_path.read_text(encoding='utf-8')
     sprint_id = tickets[0].id if tickets else "N/A"
-    summary_section = f"\n\n## Sprint Summary ({sprint_id})\n{receipt_content}\n"
+    summary_heading = f"## Sprint Summary ({sprint_id})"
 
+    if summary_heading in handoff_content:
+        return {
+            "status": "error",
+            "message": f"Sprint {sprint_id} already has a summary in HANDOFF.md. Remove the existing section first if you need to re-close.",
+        }
+
+    summary_section = f"\n\n{summary_heading}\n{receipt_content}\n"
     new_handoff_content = handoff_content.rstrip() + summary_section
     handoff_path.write_text(new_handoff_content, encoding='utf-8')
 
