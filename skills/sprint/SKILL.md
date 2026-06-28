@@ -35,8 +35,14 @@ Choose the lightest tier that still protects the work.
 
 Use no sprint when:
 - The request is a question or explanation
-- The change is a single line or trivially mechanical
+- The change is a single line or trivially mechanical (e.g. rename, typo fix, config tweak)
 - The user explicitly says to skip it ("just fix it", "quick change")
+
+**Not trivial** — use normal tier when the change:
+- Adds a new file (test, script, config, doc)
+- Wires into test or build infrastructure
+- Modifies a hook, pipeline, or post-commit script
+- Touches more than one file with coordinated intent
 
 Work directly, then report verification.
 
