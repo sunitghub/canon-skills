@@ -67,6 +67,9 @@ EOF
 cat > "$WORK/.tickets/t-ready/plan.md" <<'EOF'
 # Plan
 
+## Sign-off
+- [x] Plan approved
+
 ## Approach
 Use the smallest board-side check that catches untouched templates.
 
@@ -121,8 +124,10 @@ import sys
 tickets = {t["id"]: t for t in json.loads(sys.argv[1])}
 assert tickets["t-placeholder"]["acceptance_has_items"] is True
 assert tickets["t-placeholder"]["plan_has_approach"] is False
+assert tickets["t-placeholder"]["plan_approved"] is False
 assert tickets["t-ready"]["acceptance_has_items"] is True
 assert tickets["t-ready"]["plan_has_approach"] is True
+assert tickets["t-ready"]["plan_approved"] is True
 # archived ticket excluded from default response
 assert "t-archived" not in tickets, "archived ticket must not appear in default /api/tickets"
 PY
