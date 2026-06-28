@@ -34,7 +34,7 @@ cd /path/to/your-project
 
 If prompted to add canon tools to PATH, answer `y`, then run the printed `source ~/.zshrc` or `source ~/.bashrc`. Verify with `skills.sh status`.
 
-`add sprint` pulls in the full workflow dependency stack automatically. Most projects need nothing else. `skills.sh addall` registers every standalone skill.
+`add sprint` pulls in the full workflow dependency stack automatically. Most projects need nothing else. Add optional skills individually when a project needs them.
 
 **Uninstall**
 
@@ -83,7 +83,6 @@ Run evals before editing an existing skill to record a baseline pass rate. Keep 
 ```bash
 skills.sh list                    # show available skills
 skills.sh add sprint              # register a skill in current project
-skills.sh addall                  # register all standalone skills
 skills.sh status                  # check registration + hook health
 skills.sh refresh                 # re-register, repair symlinks, prune legacy imports
 ```
