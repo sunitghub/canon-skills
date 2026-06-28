@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,6 +41,14 @@ type docInfo struct {
 type ticket map[string]any
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "help", "--help", "-h":
+			usage()
+			return
+		}
+	}
+
 	port := 8423
 	if len(os.Args) > 1 {
 		if p, err := strconv.Atoi(os.Args[1]); err == nil {
@@ -52,13 +59,14 @@ func main() {
 		port++
 	}
 
+	cwd := mustGetwd()
+	projectRoot = findProjectRoot(envOr("SPRINT_CHECK_ROOT", cwd))
 	exe, _ := os.Executable()
 	toolsDir := filepath.Dir(exe)
 	if strings.HasSuffix(filepath.ToSlash(toolsDir), "/sprint-check-bin") {
 		toolsDir = filepath.Dir(toolsDir)
 	}
-	appHTML = filepath.Join(toolsDir, "sprint-check-app", "app.html")
-	projectRoot = findProjectRoot(envOr("SPRINT_CHECK_ROOT", mustGetwd()))
+	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	ticketsDir = filepath.Join(projectRoot, ".tickets")
 	handoffFile = filepath.Join(projectRoot, "HANDOFF.md")
 
@@ -71,15 +79,30 @@ func main() {
 	fmt.Fprintf(os.Stderr, "sprint-check  %s  (project: %s)\n", url, filepath.Base(projectRoot))
 	fmt.Fprintf(os.Stderr, "tickets: %s\n", ticketsDir)
 
-	go func() {
-		time.Sleep(400 * time.Millisecond)
-		openBrowser(url)
-	}()
+	if os.Getenv("SPRINT_CHECK_NO_BROWSER") != "1" {
+		go func() {
+			time.Sleep(400 * time.Millisecond)
+			openBrowser(url)
+		}()
+	}
 
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
+
+func usage() {
+	fmt.Println(`sprint-check-win — local kanban dashboard for canon projects
+
+Usage:
+  sprint-check-win        Open the dashboard for the current project
+  sprint-check-win <port> Open the dashboard on a specific port
+  sprint-check-win --help Show this help
+
+The dashboard reads .tickets/, HANDOFF.md, and git history from the current
+project. It starts a local Go HTTP server and opens the board in your default
+browser.`)
 }
 
 func handle(w http.ResponseWriter, r *http.Request) {
@@ -109,7 +132,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		serveFile(w, appHTML, "text/html; charset=utf-8")
 	case "/api/tickets":
 		tickets := loadTickets()
-		if r.URL.RawQuery != "all=1" {
+		if !queryHasAll(r.URL.RawQuery) {
 			filtered := make([]ticket, 0, len(tickets))
 			for _, t := range tickets {
 				if fmt.Sprint(t["status"]) != "archived" {
@@ -173,7 +196,13 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/api/tickets" {
-		sendJSON(w, createTicket(fmt.Sprint(payload["title"]), fmt.Sprint(payload["type"]), fmt.Sprint(payload["status"]), intValue(payload["priority"], 2), fmt.Sprint(payload["body"])))
+		sendJSON(w, createTicket(
+			stringValue(payload, "title", "Untitled"),
+			stringValue(payload, "type", "task"),
+			stringValue(payload, "status", "open"),
+			intValue(payload["priority"], 2),
+			stringValue(payload, "body", ""),
+		))
 		return
 	}
 	http.NotFound(w, r)
@@ -196,7 +225,7 @@ func parseTicket(path string) (ticket, error) {
 					continue
 				}
 			}
-			t[match[1]] = strings.TrimSpace(match[2])
+			t[match[1]] = unquoteYAMLScalar(strings.TrimSpace(match[2]))
 		}
 		body = strings.TrimSpace(text[m[1]:])
 	}
@@ -236,8 +265,11 @@ func parseTicket(path string) (ticket, error) {
 			t["acceptance_unchecked"] = unchecked.MatchString(accText)
 		}
 		t["plan_has_approach"] = nil
+		t["plan_approved"] = nil
 		if plan, err := os.ReadFile(filepath.Join(filepath.Dir(path), "plan.md")); err == nil {
-			t["plan_has_approach"] = usefulText(section(string(plan), "Approach"))
+			planText := string(plan)
+			t["plan_has_approach"] = usefulText(section(planText, "Approach"))
+			t["plan_approved"] = sectionHasCheckedItem(planText, "Sign-off")
 		}
 	} else {
 		stem := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
@@ -394,11 +426,13 @@ func loadWhy(file string) map[string]any {
 	}
 	known := map[string]bool{}
 	byID := map[string]ticket{}
+	byPath := map[string]string{}
 	for _, p := range ticketPaths() {
 		if t, err := parseTicket(p); err == nil {
 			id := fmt.Sprint(t["id"])
 			known[id] = true
 			byID[id] = t
+			byPath[id] = p
 		}
 	}
 	ids := []string{}
@@ -409,10 +443,55 @@ func loadWhy(file string) map[string]any {
 			seen[m] = true
 		}
 	}
+	if len(ids) == 0 {
+		stop := map[string]bool{
+			"update": true, "change": true, "changed": true, "refact": true,
+			"clean": true, "minor": true, "patch": true, "revert": true,
+			"merge": true, "commit": true, "sprint": true, "feature": true,
+			"implement": true, "style": true, "docs": true, "chore": true,
+			"ticket": true, "tickets": true,
+		}
+		words := keywordSet(subjects, stop)
+		type score struct {
+			value float64
+			id    string
+		}
+		var scored []score
+		if len(words) > 0 {
+			for id, t := range byID {
+				titleWords := keywordSet(fmt.Sprint(t["title"]), stop)
+				hits := 0
+				for word := range words {
+					if titleWords[word] {
+						hits++
+					}
+				}
+				if hits > 0 {
+					denom := len(titleWords)
+					if denom == 0 {
+						denom = 1
+					}
+					scored = append(scored, score{value: float64(hits) / float64(denom), id: id})
+				}
+			}
+		}
+		sort.Slice(scored, func(i, j int) bool {
+			if scored[i].value == scored[j].value {
+				return scored[i].id > scored[j].id
+			}
+			return scored[i].value > scored[j].value
+		})
+		for i, item := range scored {
+			if i == 5 {
+				break
+			}
+			ids = append(ids, item.id)
+		}
+	}
 	results := []map[string]any{}
 	for _, id := range ids {
 		t := byID[id]
-		results = append(results, map[string]any{"id": id, "status": t["status"], "title": t["title"], "decision": ""})
+		results = append(results, map[string]any{"id": id, "status": t["status"], "title": t["title"], "decision": planDecision(byPath[id])})
 	}
 	msg := ""
 	if len(results) == 0 {
@@ -439,7 +518,11 @@ func writeBody(id, body string) bool {
 func writeDoc(docFile, content string) bool {
 	p, ok := safeTicketDoc(docFile)
 	if !ok {
-		return false
+		var legacyOK bool
+		p, legacyOK = legacyDocTarget(docFile)
+		if !legacyOK {
+			return false
+		}
 	}
 	if err := os.MkdirAll(filepath.Dir(p), 0755); err != nil {
 		return false
@@ -449,12 +532,31 @@ func writeDoc(docFile, content string) bool {
 
 func createTicket(title, typ, status string, priority int, body string) ticket {
 	os.MkdirAll(ticketsDir, 0755)
-	id := "t-" + randomHex(2)
+	existing := map[string]bool{}
+	for _, p := range ticketPaths() {
+		stem := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
+		existing[stem] = true
+		if filepath.Base(p) == "ticket.md" {
+			existing[filepath.Base(filepath.Dir(p))] = true
+		}
+	}
+	if entries, err := os.ReadDir(ticketsDir); err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				existing[entry.Name()] = true
+			}
+		}
+	}
+	id := "t-" + randomID(4)
 	for {
-		if _, err := os.Stat(filepath.Join(ticketsDir, id)); os.IsNotExist(err) {
+		if !existing[id] {
 			break
 		}
-		id = "t-" + randomHex(2)
+		id = "t-" + randomID(4)
+	}
+	title = strings.TrimSpace(strings.ReplaceAll(title, "\n", " "))
+	if title == "" || title == "<nil>" {
+		title = "Untitled"
 	}
 	if typ == "" || typ == "<nil>" {
 		typ = "task"
@@ -504,8 +606,12 @@ func findTicketPath(id string) string {
 
 func readDoc(docFile string) (string, bool) {
 	p, ok := safeTicketDoc(docFile)
-	if !ok {
-		return "", false
+	if !ok || !exists(p) {
+		if legacy, legacyOK := legacyDocTarget(docFile); legacyOK {
+			p = legacy
+		} else {
+			return "", false
+		}
 	}
 	raw, err := os.ReadFile(p)
 	return string(raw), err == nil
@@ -522,6 +628,20 @@ func safeTicketDoc(docFile string) (string, bool) {
 		return "", false
 	}
 	return p, true
+}
+
+func legacyDocTarget(docFile string) (string, bool) {
+	safe := filepath.Base(filepath.FromSlash(docFile))
+	if filepath.Ext(safe) != ".md" {
+		return "", false
+	}
+	if m := regexp.MustCompile(`^([A-Za-z]+-[A-Za-z0-9]+)-(.+)\.md$`).FindStringSubmatch(safe); m != nil {
+		folderTicket := filepath.Join(ticketsDir, m[1], "ticket.md")
+		if exists(folderTicket) {
+			return filepath.Join(ticketsDir, m[1], m[2]+".md"), true
+		}
+	}
+	return filepath.Join(ticketsDir, safe), true
 }
 
 func section(text, heading string) string {
@@ -551,6 +671,55 @@ func usefulText(text string) bool {
 		}
 	}
 	return false
+}
+
+func sectionHasCheckedItem(text, heading string) bool {
+	return regexp.MustCompile(`(?m)^\s*[-*]\s+\[[xX]\]\s+\S`).MatchString(section(text, heading))
+}
+
+func unquoteYAMLScalar(value string) string {
+	if len(value) >= 2 && value[0] == value[len(value)-1] && (value[0] == '"' || value[0] == '\'') {
+		return value[1 : len(value)-1]
+	}
+	return value
+}
+
+func planDecision(ticketPath string) string {
+	if ticketPath == "" {
+		return ""
+	}
+	planPath := ""
+	if filepath.Base(ticketPath) == "ticket.md" {
+		planPath = filepath.Join(filepath.Dir(ticketPath), "plan.md")
+	} else {
+		stem := strings.TrimSuffix(filepath.Base(ticketPath), filepath.Ext(ticketPath))
+		planPath = filepath.Join(filepath.Dir(ticketPath), stem+"-plan.md")
+	}
+	raw, err := os.ReadFile(planPath)
+	if err != nil {
+		return ""
+	}
+	m := regexp.MustCompile(`(?ms)^##\s+Decisions\s*$([\s\S]*)`).FindStringSubmatch(string(raw))
+	if m == nil {
+		return ""
+	}
+	for _, line := range strings.Split(m[1], "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "### ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "### "))
+		}
+	}
+	return ""
+}
+
+func keywordSet(text string, stop map[string]bool) map[string]bool {
+	words := map[string]bool{}
+	for _, word := range regexp.MustCompile(`[a-z]{4,}`).FindAllString(strings.ToLower(text), -1) {
+		if !stop[word] {
+			words[word] = true
+		}
+	}
+	return words
 }
 
 func findProjectRoot(start string) string {
@@ -604,6 +773,22 @@ func hostOK(host string) bool {
 		h, _, _ = net.SplitHostPort(host)
 	}
 	return h == "127.0.0.1" || h == "localhost"
+}
+
+func resolveAppHTML(toolsDir, root string, extraRoots ...string) string {
+	candidates := []string{
+		filepath.Join(toolsDir, "sprint-check-app", "app.html"),
+		filepath.Join(root, "tools", "sprint-check-app", "app.html"),
+	}
+	for _, extraRoot := range extraRoots {
+		candidates = append(candidates, filepath.Join(extraRoot, "tools", "sprint-check-app", "app.html"))
+	}
+	for _, candidate := range candidates {
+		if exists(candidate) {
+			return candidate
+		}
+	}
+	return candidates[0]
 }
 
 func serveFile(w http.ResponseWriter, path, contentType string) {
@@ -676,12 +861,36 @@ func intValue(v any, fallback int) int {
 	return fallback
 }
 
-func randomHex(n int) string {
+func stringValue(payload map[string]any, key, fallback string) string {
+	v, ok := payload[key]
+	if !ok || v == nil {
+		return fallback
+	}
+	s := fmt.Sprint(v)
+	if s == "" || s == "<nil>" {
+		return fallback
+	}
+	return s
+}
+
+func queryHasAll(rawQuery string) bool {
+	return strings.Contains(rawQuery, "all=1")
+}
+
+func randomID(n int) string {
+	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("%04x", time.Now().UnixNano()%65536)
+		fallback := fmt.Sprintf("%x", time.Now().UnixNano())
+		if len(fallback) >= n {
+			return fallback[:n]
+		}
+		return fallback
 	}
-	return hex.EncodeToString(b)
+	for i := range b {
+		b[i] = chars[int(b[i])%len(chars)]
+	}
+	return string(b)
 }
 
 func unescape(s string) string {

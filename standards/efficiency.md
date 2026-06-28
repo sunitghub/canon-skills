@@ -57,7 +57,7 @@ Act on these when you see them — don't wait to be told.
 - Spec conflicts with existing code → surface it: what each says, the options, and ask — don't silently pick one.
 - Non-trivial decision about to be committed → name what you're asserting and what would falsify it before it stands.
 - Competitor or adjacent-tool analysis changes how canon should operate → capture it in a skill, standard, guide, or tool behavior before wrapup.
-- A workaround, rendering quirk, or undocumented constraint discovered while fixing → stage it in `HANDOFF.md ## Discoveries` immediately; wrapup routes it to its permanent home (SKILL.md gotcha, `standards/`, DECISIONS.md, or `bugs/patterns.md`).
+- A workaround, rendering quirk, or undocumented constraint discovered while fixing → stage it in `HANDOFF.md ## Discoveries` immediately; wrapup routes it to its permanent home (SKILL.md gotcha, `standards/`, DECISIONS.md, or the repo's bug-pattern log if one exists).
 
 ## Token Efficiency
 

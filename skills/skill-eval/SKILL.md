@@ -57,9 +57,11 @@ Trigger eval (whether the skill fires for the right queries) and benchmark/impro
 
    - **Yes:** write `skills/$ARGUMENTS/evals/evals.json`. Each recommended scenario becomes one eval case with the fields:
      - `id`: kebab-case slug of the scenario name
+     - `case_type`: test technique — `control` (happy path), `compliance` (must-follow rule), `boundary` (edge of valid input), `edge` (unusual but valid), `over-caution` (should not refuse), `self-check` (skill evaluates itself)
      - `prompt`: the scenario as a concrete user-facing prompt string
      - `expected_output`: one sentence describing correct behaviour
      - `expectations`: array of 2–3 specific, assertable strings the grader can verify
+     - `type` *(optional)*: `capability` (can it do this new thing?) or `regression` (can it still do the old things?)
      Confirm the file was written, then read the new file and proceed to Step 2.
    - **No:** stop. Do not write anything. Do not proceed to Step 3.
 
@@ -124,3 +126,4 @@ Populate the Issues table with any `candidate for ref/split`, `too few evals`, f
 - The executor runs in a clean context with only the skill content injected — it has no access to the repo. Expectations like "appended to HANDOFF.md" can only be graded `pass` if the executor explicitly describes taking that action. Grade conservatively; `partial` beats an unsupported `pass`.
 - Skills with heavy CLI dependencies (e.g., sprint, which calls `./tools/sprint`) cannot be fully executed in a subagent — the executor will simulate the steps. This is still useful for catching missing steps, wrong output format, or logic errors. Note the limitation in findings when it applies.
 - If `evals.json` exists but has zero test cases, report it as a finding and stop — the fallback evaluator only fires when the file is entirely absent, not when it exists but is empty.
+- Write expectations to assert *outcomes and intent*, not specific phrasing. A grader matching literal wording will false-fail a creative-but-correct executor response. Prefer "executor describes writing the file to the correct path" over "executor outputs the string 'Writing to HANDOFF.md'".

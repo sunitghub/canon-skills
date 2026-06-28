@@ -1,45 +1,59 @@
 # How canon Works
 
-canon's whole design follows from one idea: **your agent forgets between sessions; your repo shouldn't.** Everything below is a consequence of taking that seriously.
+canon is a local-first agent workflow harness. No SaaS, no cloud state — everything lives in your repo.
 
-## Live references, not copies
+## The CLI/Agent Split
 
-Your standards, skills, and workflow live in one place — the canon checkout — and your projects point at it via symlinks (`.claude/skills → ~/.canon/skills`, `.agents/skills → ~/.canon/skills`) instead of copying it in. Update canon once and every project picks up the change on its next session: no per-project copies, no drift, no re-setup ritual. The same symlinked directory is read natively by Claude Code, Codex, and Pi, so a single definition keeps every agent in sync.
+canon separates what a CLI can do deterministically from what an agent must judge:
 
-## The CLI owns state; the agent owns judgment
+| Layer | Owner | Does |
+|---|---|---|
+| State | CLI (`sprint`, `tkt`) | Creates tickets, tracks active sprint, enforces close gates |
+| Judgment | Agent | Plans work, interprets acceptance criteria, decides what passes |
+| Visibility | Board (`sprint-check`) | Reads `.tickets/` and `git log`, surfaces everything locally |
 
-canon splits the work along a hard line:
+Gates enforce structure; agents enforce meaning. Neither can substitute for the other.
 
-- **The CLI is a deterministic state machine.** It enforces what shouldn't depend on a model's mood — one active sprint at a time, and a `sprint complete` that refuses to close while any acceptance or test-plan box is still unchecked. These are checks in code, not judgment calls.
-- **The agent supplies the judgment.** Orientation, resolving gray areas, rating impact, verifying that tests actually pass, deciding a criterion is truly met — the parts that need reasoning.
-- **The evaluator supplies adversarial judgment.** At close time, a fresh agent with no implementation history reads `acceptance.md`, `plan.md`, and the changed files, then grades each criterion from a clean context window. Same reasoning capability as the generator — but without 170k tokens of "I wrote this, so it must be right" bias. Its report lands in `.tickets/<id>/eval-report.md`; a fail blocks close.
+## Live References, Not Copies
 
-The gate checks the boxes; the agent is trusted to check a box only when the work behind it holds; the evaluator is trusted to catch what the agent missed. Determinism where correctness is mechanical, independent judgment where it isn't.
+Skills are symlinked from `~/.canon/skills/` into each project's `.claude/skills/` (Claude Code) and `.agents/skills/` (Codex/Pi). Update the canon repo once — every project picks it up on the next session. No copies, no drift.
 
-## Planning scales to the risk
+Standards (`standards/efficiency.md`, etc.) are injected via `@`-imports in `AGENTS.md`. Same live-reference model.
 
-A one-line rename and a payment-writing endpoint shouldn't carry the same ceremony, so `sprint start` first classifies the work and the agent takes the lightest tier that still protects it:
+## Tiered Planning
 
-- **Trivial** changes skip the sprint entirely.
-- **Normal** changes get a ticket, acceptance criteria, and a brief plan.
-- **High-risk** changes earn more — subsystem mapping, gray-area resolution, a five-dimension impact rating, any required human checkpoint, and mitigation tests the close gate then enforces.
+Simple work stays light. canon chooses the lightest tier that still protects the work:
 
-Overhead shows up only where the risk justifies it, so the process stays proportional instead of uniform.
+| Tier | When | What runs |
+|---|---|---|
+| **Trivial** | Single line, question, mechanical change | Work directly |
+| **Normal** | Focused, reversible change | ticket + acceptance + plan → build → wrapup + eval |
+| **High-risk** | Security, irreversible ops, broad blast radius | Full pipeline: orient (parallel) + grill + impact analysis + required mitigation tests |
 
-## Local-first state
+## Generator-Evaluator Separation
 
-A ticket is a folder in your repo (`.tickets/<id>/`), not a card in someone's cloud. Each sprint produces up to five docs in that folder — acceptance criteria and test plan, approach and decisions, optional research notes (high-risk/brownfield), adversarial eval report (normal+ tier), and plan-vs-actual summary at close. Durable choices can land in `DECISIONS.md`; cross-session context lives in `HANDOFF.md`. All of it is markdown on disk, with no account, no remote, and no SaaS.
+The agent that wrote the code is the worst possible reviewer of that code. canon enforces separation structurally:
 
-Because the state is just files, it survives context resets and fresh sessions: the agent re-reads the ticket folder and `HANDOFF.md` and resumes where it left off, and `sprint-check` renders those same files as a local board. Projects can choose whether to track that local workflow state in git; canon itself keeps `.tickets/`, `HANDOFF.md`, and `DECISIONS.md` ignored so release docs stay separate from working state.
+1. `sprint complete` spawns a **fresh subagent** — Read and Bash only, no implementation history — to grade each acceptance criterion against the actual code.
+2. The evaluator writes a machine-generated `evaluator-run-id` before grading; a `SubagentStop` hook logs the real `agent_id` to `.claude/subagent-runs.jsonl`, making the field auditable.
+3. The CLI blocks close if the field is absent, the verdict is `fail`, or any acceptance box is unchecked.
 
-See [README → The Two Commands](../README.md#the-two-commands) for the full sprint doc breakdown.
+Same-context review reintroduces self-evaluation bias. The protocol fails closed when fresh-context evaluation is unavailable.
 
-## Why this shape
+## Session Continuity
 
-Three constraints, held together:
+`HANDOFF.md`, the active ticket, and recent closed tickets are injected at session start via hooks. A context reset or fresh session never loses the thread — the plan, decisions, and acceptance bar are in `.tickets/<id>/`, not the chat history.
 
-- **Minimal** — two commands and a board, not a methodology to learn.
-- **Durable** — the work outlives any single session because it lives in your repo.
-- **Portable** — one definition, every agent, no lock-in.
+## The Close Path
 
-Every choice above trades cleverness for one of those three. That's canon.
+```
+sprint complete
+  └── Wrapup: simplify → review → security → repo-check → doc-audit
+  └── Reviewer (fresh subagent, normal+ tier)
+  └── Evaluator (fresh subagent, normal+ tier) — adversarial, blocks on fail
+  └── Acceptance check — CLI blocks on unchecked items
+  └── summary.md — plan-vs-actual table, one row per criterion
+  └── tkt close
+```
+
+Gates don't make agents smarter. They make certain failures impossible — and turn the ones that remain into data.

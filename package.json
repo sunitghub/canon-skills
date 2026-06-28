@@ -5,6 +5,7 @@
   "scripts": {
     "test": "./scripts/test.sh",
     "test:ui": "playwright test tests/sprint-check-app.spec.js",
+    "test:ui:go": "./tests/sprint-check-go-ui.sh",
     "slides": "./scripts/render-slides.sh"
   },
   "bin": {

@@ -287,6 +287,47 @@ _gate_eval_report() {
     echo "Run the evaluator (eval skill) before closing, or confirm trivial tier in plan.md."
     return 1
   fi
+  if ! grep -qE '^evaluator-run-id:[[:space:]]+\S' "$report"; then
+    echo "Sprint $id cannot close: eval-report.md is missing evaluator-run-id field."
+    echo "Ensure the evaluator subagent wrote the run-id before grading."
+    return 1
+  fi
+  local run_id run_epoch jsonl
+  run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | head -1 | sed 's/^evaluator-run-id:[[:space:]]*//')"
+  run_epoch="$(echo "$run_id" | cut -d'-' -f1)"
+  jsonl="$(project_root)/.claude/subagent-runs.jsonl"
+  if [[ -f "$jsonl" && "$run_epoch" =~ ^[0-9]+$ ]]; then
+    local matched
+    matched="$(python3 - "$jsonl" "$run_epoch" <<'PYEOF'
+import sys, json, datetime
+log_path, run_epoch = sys.argv[1], int(sys.argv[2])
+matched = False
+try:
+    with open(log_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line: continue
+            try:
+                d = json.loads(line)
+                ts = d.get('ts', '')
+                if not ts: continue
+                entry_epoch = int(datetime.datetime.strptime(ts, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp())
+                if abs(entry_epoch - run_epoch) <= 3600:
+                    matched = True
+                    break
+            except Exception:
+                pass
+except Exception:
+    pass
+print('1' if matched else '0')
+PYEOF
+)"
+    if [[ "$matched" != "1" ]]; then
+      echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no matching subagent entry in .claude/subagent-runs.jsonl (±60 min window)."
+      echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
+      return 1
+    fi
+  fi
   if ! grep -qE '^pass:' "$report"; then
     echo "Sprint $id cannot close: eval-report.md verdict is not pass."
     grep -E '^(pass|fail):' "$report" | head -1 || echo "(no verdict line found)"

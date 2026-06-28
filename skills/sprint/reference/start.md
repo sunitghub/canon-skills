@@ -10,7 +10,7 @@
 
 3. **Classify tier.** Decide normal vs high-risk using the workflow tiers in `skills/sprint/SKILL.md`.
 
-4. **Planning files.** Create or update the files in `.tickets/<id>/`:
+4. **Planning files.** Create or update the files in `.tickets/<id>/` **now** — these are planning artifacts required before the brief. The approval gate in step 11 blocks code, not planning file creation.
    - `acceptance.md` — specific, binary conditions that define "done". For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan. For `type: bug` tickets, use `starters/bug-plan.md` as the skeleton — it structures the plan around the five incident stages (Detect/Diagnose/Contain/Fix/Prevent).
    - `research.md` — high-risk and brownfield sprints only; objective compression of truth (see Research below)
@@ -19,7 +19,7 @@
    - Record the tier and one-line reason in `plan.md`.
 
 5. **Context.** Read in order:
-   - For `type: bug` tickets: grep `bugs/patterns.md` for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes. (Skip if absent — the file grows from closed bug sprints; create it from `starters/` if starting fresh.)
+   - For `type: bug` tickets: grep the repo's bug-pattern log, if present, for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes.
    - `DECISIONS.md` at repo root — create with empty log table if absent. After reading,
      actively scan every entry: identify any that constrain or conflict with this sprint's
      request. A conflict is not a passive note — it must be surfaced in the brief and
@@ -71,7 +71,7 @@
    - Test plan (verbatim from acceptance.md ## Test Plan)
    - Open questions or blockers still unresolved
 
-11. **Wait for explicit approval.** Do not write code until confirmed. On approval, fill in the risk summary line in `plan.md ## Sign-off` (`Tier: <tier> | Risk: <blast radius / key risks, one line>` — use tier classification for normal, impact analysis findings for high-risk), then check the `- [ ] Plan approved` box. This is the durable approval record; `sprint complete` gates on it. Write `plan.md` to `.tickets/<id>/` with the timestamp, ticket ID, tier, grill resolutions if any, and full approved sprint brief verbatim.
+11. **Wait for explicit approval.** Do not write code until confirmed. On approval, update `plan.md` — fill in the risk summary line in `## Sign-off` (`Tier: <tier> | Risk: <blast radius / key risks, one line>` — use tier classification for normal, impact analysis findings for high-risk), check the `- [ ] Plan approved` box, and add any grill resolutions. This is the durable approval record; `sprint complete` gates on it. (`plan.md` was created in step 4 — this step finalizes it, it does not create it.)
 
     Re-read `plan.md` after compaction or context reset.
 

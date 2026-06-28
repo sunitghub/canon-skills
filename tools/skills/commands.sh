@@ -93,18 +93,17 @@ cmd_add() {
     exit 1
   fi
 
-  # Inject-style skills: write @-import to project files instead of symlink/table
+  # Inject-style skills: write @-import to AGENTS.md only (not CLAUDE.md — avoid leakage)
   if [ "$(fm_field "$skill_file" inject)" = "true" ]; then
     local inject_line="@$skill_file"
+    local inject_target="$project_dir/AGENTS.md"
     echo "Registering: $name ($category)"
-    for f in "$project_dir/CLAUDE.md" "$project_dir/AGENTS.md"; do
-      if grep -qxF "$inject_line" "$f" 2>/dev/null; then
-        echo "  [$(basename "$f")]  already present"
-      else
-        echo "$inject_line" >> "$f"
-        echo "  [$(basename "$f")]  added @-import"
-      fi
-    done
+    if grep -qxF "$inject_line" "$inject_target" 2>/dev/null; then
+      echo "  [AGENTS.md]  already present"
+    else
+      echo "$inject_line" >> "$inject_target"
+      echo "  [AGENTS.md]  added @-import"
+    fi
     register_project "$project_dir"
     echo ""
     echo "Done. $desc"
@@ -161,11 +160,13 @@ cmd_status() {
   # ── Compute hook status once — used for upgrade tip and display ──────────────
   local hook_issues=0
   local _hook_names=() _hook_tags=()
-  if [ ${#skill_names[@]} -gt 0 ] && command -v claude &>/dev/null; then
+  if [ ${#skill_names[@]} -gt 0 ]; then
     local _hs="$project_dir/.claude/settings.json"
-    for _h in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh; do
+    for _h in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh subagent-log.sh; do
       _hook_names+=("$_h")
-      if grep -qF "$_h" "$_hs" 2>/dev/null && [ -f "$SKILLS_ROOT/scripts/$_h" ]; then
+      local _hook_path="$SKILLS_ROOT/scripts/$_h"
+      [[ "$_h" == "subagent-log.sh" ]] && _hook_path="$SKILLS_ROOT/tools/$_h"
+      if grep -qF "$_h" "$_hs" 2>/dev/null && [ -f "$_hook_path" ]; then
         _hook_tags+=("ok")
       else
         _hook_tags+=("not wired")

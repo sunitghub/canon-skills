@@ -7,14 +7,15 @@
     }
   },
   "hooks": {
-    "Stop": [
+    "SubagentStop": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
             "command": "bash scripts/auto-handoff.sh"
-          }
+          },
+          { "type": "command", "command": "bash tools/subagent-log.sh" }
         ]
       }
     ],

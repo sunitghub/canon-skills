@@ -18,8 +18,6 @@ source "$(dirname "$SCRIPT")/skills/display.sh"
 # shellcheck source=tools/skills/commands.sh
 source "$(dirname "$SCRIPT")/skills/commands.sh"
 
-# ── dispatch ────────────────────────────────────────────────
-
 # Handle: skills.sh --scan [dir]  or  skills.sh [dir] --scan
 _scan_dir=""
 _remaining_args=()

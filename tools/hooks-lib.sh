@@ -5,77 +5,48 @@
 _init_claude() {
   local settings="$1"
   local scripts="$SKILLS_ROOT/scripts"
+  local tools="$SKILLS_ROOT/tools"
 
-  if ! command -v claude &>/dev/null; then
-    echo "  [skip]  claude not installed"
-    return 0
-  fi
-  if ! command -v python3 &>/dev/null; then
-    echo "  [fail]  python3 required for settings.json merge"
-    return 1
+  mkdir -p "$(dirname "$settings")"
+
+  # Capture current state before overwriting (for [added] vs [ok] reporting)
+  local _had_handoff=0 _had_inject=0 _had_sprint=0 _had_precommit=0 _had_subagent=0
+  if [[ -f "$settings" ]]; then
+    grep -qF "auto-handoff.sh"     "$settings" 2>/dev/null && _had_handoff=1   || true
+    grep -qF "handoff-inject.sh"   "$settings" 2>/dev/null && _had_inject=1    || true
+    grep -qF "sprint-inject.sh"    "$settings" 2>/dev/null && _had_sprint=1    || true
+    grep -qF "pre-commit-check.sh" "$settings" 2>/dev/null && _had_precommit=1 || true
+    grep -qF "subagent-log.sh"     "$settings" 2>/dev/null && _had_subagent=1  || true
   fi
 
-  local py_script
-  py_script=$(cat << 'PYEOF'
-import json, sys, os
-settings_path = sys.argv[1]
-scripts_path  = sys.argv[2]
-try:
-    with open(settings_path) as f:
-        config = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
-    config = {}
-hooks = config.setdefault("hooks", {})
-desired = [
-    ("Stop",            "",     f"{scripts_path}/auto-handoff.sh"),
-    ("UserPromptSubmit","",     f"{scripts_path}/handoff-inject.sh"),
-    ("UserPromptSubmit","",     f"{scripts_path}/sprint-inject.sh"),
-    ("PreToolUse",      "Bash", f"{scripts_path}/pre-commit-check.sh"),
-]
-stale = {
-    f"{scripts_path}/auto-polish-trigger.sh",
-    f"{scripts_path}/guard-managed-files.sh",
+  # Write the complete hooks file (project settings.json is canon-owned — hooks only)
+  cat > "$settings" << EOF
+{
+  "hooks": {
+    "Stop": [
+      {"matcher": "", "hooks": [{"type": "command", "command": "$scripts/auto-handoff.sh"}]}
+    ],
+    "UserPromptSubmit": [
+      {"matcher": "", "hooks": [
+        {"type": "command", "command": "$scripts/handoff-inject.sh"},
+        {"type": "command", "command": "$scripts/sprint-inject.sh"}
+      ]}
+    ],
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "$scripts/pre-commit-check.sh"}]}
+    ],
+    "SubagentStop": [
+      {"matcher": "", "hooks": [{"type": "command", "command": "$tools/subagent-log.sh"}]}
+    ]
+  }
 }
-for event, entries in list(hooks.items()):
-    for entry in entries:
-        entry["hooks"] = [
-            h for h in entry.get("hooks", [])
-            if os.path.expanduser(h.get("command", "")) not in stale
-        ]
-for event, matcher, command in desired:
-    event_list = hooks.setdefault(event, [])
-    entry = next((e for e in event_list if e.get("matcher") == matcher), None)
-    if entry is None:
-        entry = {"matcher": matcher, "hooks": []}
-        event_list.append(entry)
-    entry_hooks = entry.setdefault("hooks", [])
-    if any(os.path.expanduser(h.get("command", "")) == command for h in entry_hooks):
-        print(f"exists\t{event}\t{os.path.basename(command)}")
-    else:
-        entry_hooks.append({"type": "command", "command": command})
-        print(f"added\t{event}\t{os.path.basename(command)}")
-# Prune entries left with no hooks and empty events so dead matchers don't linger.
-for event in list(hooks.keys()):
-    hooks[event] = [e for e in hooks[event] if e.get("hooks")]
-    if not hooks[event]:
-        del hooks[event]
-os.makedirs(os.path.dirname(settings_path), exist_ok=True)
-with open(settings_path, "w") as f:
-    json.dump(config, f, indent=2)
-    f.write("\n")
-PYEOF
-)
+EOF
 
-  local hook_output added=0
-  hook_output=$(python3 - "$settings" "$scripts" <<< "$py_script")
-  while IFS=$'\t' read -r status event script; do
-    if [ "$status" = "added" ]; then
-      echo "  [added]  $event → $script"
-      (( added++ )) || true
-    else
-      echo "  [ok]     $event → $script"
-    fi
-  done <<< "$hook_output"
+  (( _had_handoff ))  && echo "  [ok]     Stop → auto-handoff.sh"           || echo "  [added]  Stop → auto-handoff.sh"
+  (( _had_inject ))   && echo "  [ok]     UserPromptSubmit → handoff-inject.sh" || echo "  [added]  UserPromptSubmit → handoff-inject.sh"
+  (( _had_sprint ))   && echo "  [ok]     UserPromptSubmit → sprint-inject.sh"  || echo "  [added]  UserPromptSubmit → sprint-inject.sh"
+  (( _had_precommit )) && echo "  [ok]     PreToolUse → pre-commit-check.sh"    || echo "  [added]  PreToolUse → pre-commit-check.sh"
+  (( _had_subagent )) && echo "  [ok]     SubagentStop → subagent-log.sh"       || echo "  [added]  SubagentStop → subagent-log.sh"
 }
 
 _init_pi() {
@@ -106,80 +77,80 @@ _uninstall_claude() {
     echo "  [skip]  $settings not found"
     return 0
   fi
-  if ! command -v python3 &>/dev/null; then
-    echo "  [fail]  python3 required for settings.json cleanup"
-    return 1
-  fi
 
-  local py_script
-  py_script=$(cat << 'PYEOF'
-import json, os, sys
-settings_path = sys.argv[1]
-skills_root = os.path.realpath(sys.argv[2])
-scripts_path = os.path.join(skills_root, "scripts")
-commands = {
-    os.path.realpath(os.path.join(scripts_path, name))
-    for name in (
-        "auto-handoff.sh",
-        "handoff-inject.sh",
-        "sprint-inject.sh",
-        "pre-commit-check.sh",
-        "auto-polish-trigger.sh",
-        "guard-managed-files.sh",
-    )
-}
-try:
-    with open(settings_path) as f:
-        config = json.load(f)
-except json.JSONDecodeError:
-    print("invalid")
-    sys.exit(0)
-hooks = config.get("hooks")
-if not isinstance(hooks, dict):
-    print("removed\t0")
-    sys.exit(0)
-removed = 0
-for event in list(hooks.keys()):
-    entries = hooks.get(event)
-    if not isinstance(entries, list):
-        continue
-    kept_entries = []
-    for entry in entries:
-        entry_hooks = entry.get("hooks", []) if isinstance(entry, dict) else []
-        kept_hooks = []
-        for hook in entry_hooks:
-            command = os.path.realpath(os.path.expanduser(hook.get("command", "")))
-            if command in commands:
-                removed += 1
-            else:
-                kept_hooks.append(hook)
-        if kept_hooks:
-            entry["hooks"] = kept_hooks
-            kept_entries.append(entry)
-    if kept_entries:
-        hooks[event] = kept_entries
-    else:
-        del hooks[event]
-if not hooks:
-    config.pop("hooks", None)
-with open(settings_path, "w") as f:
-    json.dump(config, f, indent=2)
-    f.write("\n")
-print(f"removed\t{removed}")
-PYEOF
-)
+  local _canon_scripts=(auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh subagent-log.sh auto-polish-trigger.sh guard-managed-files.sh)
+  local removed=0
+  for _n in "${_canon_scripts[@]}"; do
+    local c
+    c=$(grep -cF "$_n" "$settings" 2>/dev/null) || c=0
+    removed=$(( removed + c ))
+  done
 
-  local result status count
-  result=$(python3 - "$settings" "$SKILLS_ROOT" <<< "$py_script")
-  status="${result%%$'\t'*}"
-  count="${result#*$'\t'}"
-  if [ "$status" = "invalid" ]; then
-    echo "  [warn]  $settings is invalid JSON; skipped"
-  elif [ "${count:-0}" -gt 0 ]; then
-    echo "  [removed]  $count Claude hook(s)"
-  else
+  if [ "$removed" -eq 0 ]; then
     echo "  [ok]     no canon Claude hooks found"
+    return 0
   fi
+
+  local compact_tmp="${settings}.canon-compact"
+  cp "$settings" "$compact_tmp"
+  for _n in "${_canon_scripts[@]}"; do
+    sed -E "s/\\{[^{}]*\\\"type\\\"[[:space:]]*:[[:space:]]*\\\"command\\\"[^{}]*\\\"command\\\"[[:space:]]*:[[:space:]]*\\\"[^\\\"]*${_n}\\\"[^{}]*\\}[[:space:]]*,?//g" "$compact_tmp" > "${compact_tmp}.next"
+    mv "${compact_tmp}.next" "$compact_tmp"
+  done
+  sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$compact_tmp" > "${compact_tmp}.next"
+  mv "${compact_tmp}.next" "$compact_tmp"
+
+  local tmp="${settings}.canon-tmp"
+  awk '
+    function push(line) { out[++n] = line }
+    function flush_buffer(   i) {
+      if (!drop) {
+        for (i = 1; i <= blen; i++) push(buf[i])
+      }
+      blen = 0
+      drop = 0
+      capture = 0
+    }
+    function canon_line(line) {
+      return line ~ /(auto-handoff|handoff-inject|sprint-inject|pre-commit-check|subagent-log|auto-polish-trigger|guard-managed-files)\.sh/
+    }
+    {
+      if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && $0 ~ /"command"[[:space:]]*:/) {
+        if (!canon_line($0)) push($0)
+        next
+      }
+      if (capture) {
+        buf[++blen] = $0
+        if (canon_line($0)) drop = 1
+        if ($0 ~ /^[[:space:]]*}[,]?[[:space:]]*$/) flush_buffer()
+        next
+      }
+      if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && n > 0) {
+        capture = 1
+        blen = 0
+        buf[++blen] = out[n]
+        n--
+        buf[++blen] = $0
+        next
+      }
+      push($0)
+    }
+    END {
+      if (capture) flush_buffer()
+      for (i = 1; i <= n; i++) {
+        if (out[i] ~ /^[[:space:]]*[]}][][,]?[[:space:]]*$/ && i > 1) {
+          sub(/,[[:space:]]*$/, "", out[i - 1])
+        }
+      }
+      for (i = 1; i <= n; i++) print out[i]
+    }
+  ' "$compact_tmp" > "$tmp"
+  sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$tmp" > "${tmp}.next"
+  mv "${tmp}.next" "$tmp"
+  mv "$tmp" "$settings"
+  rm -f "$compact_tmp"
+
+  echo "  [removed]  $removed Claude hook(s)"
 }
 
 _uninstall_pi() {

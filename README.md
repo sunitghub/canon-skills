@@ -69,41 +69,17 @@ canon end to end without adding local sprint state to the canon checkout.
 
 The agent that wrote the code is the worst possible reviewer of that code. canon enforces a structural separation that most tools skip.
 
-1. **Adversarial close review.** Before a sprint closes, a fresh agent — with no
-   implementation history — grades the actual code against `acceptance.md`. The
-   evaluator starts from a clean context window, so it can't be biased by the
-   implementation choices it never saw. Each acceptance criterion gets a pass,
-   fail, or partial verdict with a file:line cite. A fail blocks close.
-2. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual
-   table: one row per acceptance criterion, showing whether it was delivered,
-   waived, deferred, or partial. Deviations can't be buried in prose. The
-   **Summary** tab on the board makes this permanent and queryable.
-3. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test
-   Plan items are unchecked, `summary.md` is missing, or the Wrapup Gates record
-   is absent. Gates don't make agents smarter — they make certain failures
-   impossible.
+1. **Adversarial close review.** Before a sprint closes, a fresh subagent — restricted to Read and Bash, with no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` as its first action; a `SubagentStop` hook logs the real `agent_id` to `.claude/subagent-runs.jsonl`, making the field auditable rather than self-reported. Each criterion gets a pass, fail, or partial verdict with a `file:line` cite. A fail blocks close.
+2. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual table — one row per acceptance criterion, showing whether it was delivered, waived, deferred, or partial. Deviations can't be buried in prose. The **Summary** tab on the board makes this permanent and queryable.
+3. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test Plan items are unchecked, `summary.md` is missing, the Wrapup Gates record is absent, or the evaluator run-id field is missing. Gates don't make agents smarter — they make certain failures impossible.
 
-   *The CLI enforces state and close gates; the agent and evaluator judge whether
-   the work behind those gates is true. The board surfaces problems early.*
-   *The three above protect what ships against what was promised. The five below keep context sharp and decisions auditable across sessions.*
+   *The CLI enforces state and close gates; the agent and evaluator judge whether the work behind those gates is true. The board surfaces problems early.*
 
-4. **Parallel subsystem research.** When a high-risk sprint touches two or more
-   independent subsystems, orient spawns one Explore subagent per subsystem
-   concurrently — each traces entry points, callers, and constraints in its
-   own context window — then synthesizes results into a single `research.md`.
-   Wall-clock research time scales with the largest subsystem, not the total.
-5. **Session continuity.** `HANDOFF.md`, the active ticket, and a small set of
-   related closed tickets give a returning agent enough context to resume without
-   replaying the whole project history.
-6. **Knowledge capture.** When the agent finds a non-obvious constraint mid-build,
-   capture records it in `HANDOFF.md ## Discoveries` immediately — before context
-   compaction or a session break can lose it.
-7. **Risk-aware planning.** Simple work stays light. High-impact work runs impact
-   analysis before code, and every HIGH risk becomes a required Acceptance test.
-8. **Queryable intent.** Every sprint records decisions, acceptance criteria, and
-   rejected alternatives as plain markdown. Ask why a file was built the way it
-   was — the board surfaces the plan and decisions behind it without touching
-   `git log`.
+4. **Parallel subsystem research.** High-risk sprints spawn one Explore subagent per independent subsystem concurrently — wall-clock research time scales with the largest subsystem, not the total.
+5. **Session continuity.** `HANDOFF.md`, the active ticket, and recent closed tickets give a returning agent enough context to resume without replaying project history.
+6. **Knowledge capture.** Non-obvious constraints found mid-build go to `HANDOFF.md ## Discoveries` immediately — before compaction or a session break can lose them.
+7. **Risk-aware planning.** Simple work stays light. High-impact work runs impact analysis before code; every HIGH risk becomes a required Acceptance test.
+8. **Queryable intent.** Every sprint records decisions, acceptance criteria, and rejected alternatives as plain markdown — the board surfaces the plan behind a file without touching `git log`.
 
 ## The Board
 
@@ -167,7 +143,7 @@ Creates a ticket, defines acceptance criteria, and writes the plan before touchi
 
 **`sprint complete`** — Block close until every box is checked.
 
-Runs the close path: simplify → review → security → repo/doc audit → **evaluator** → acceptance check → close. The evaluator is a fresh agent — no implementation history — that grades each acceptance criterion against the actual code from a clean context window. A fail or partial verdict blocks close. The CLI gates the state; the evaluator and agent verify the work.
+Runs the close path: simplify → review → security → repo/doc audit → **evaluator** → acceptance check → close. The evaluator is a fresh subagent — Read and Bash tools only, no implementation history — that grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` before grading; the CLI blocks close if the field is absent. A fail or partial verdict also blocks close.
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
@@ -213,7 +189,7 @@ titles.
 flowchart LR
     P["Plan\nticket · acceptance · plan.md\nresearch.md (high-risk)"]
     B["Build\ncode · commits"]
-    W["Wrapup\nsimplify · review · security"]
+    W["Wrapup\nsimplify · review · security\nrepo-check · doc-audit"]
     E[["Evaluate\nclean-context · adversarial\npass/fail per criterion"]]
     C["Close\nsprint complete"]
     D["Board\nsprint-check"]
@@ -229,7 +205,7 @@ High-risk sprints add orient (with parallel subagents when multiple subsystems a
 
 ## Why canon
 
-Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/how-it-works.md)**
+Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/setup.md)**
 
 Every non-trivial change starts with a ticket. Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). High-risk and brownfield sprints add `research.md`: objective compression of what the system does before any plan is written. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 
@@ -246,7 +222,7 @@ Gates don't make agents smarter. They make certain failures impossible — and t
 | Bash | Yes | curl installer |
 | Python 3 | `sprint-check` + hooks | the board |
 
-**Windows 11:** canon's CLI tools are bash scripts — run them inside WSL2 (Ubuntu). See **[fresh-machine-test.md → Windows 11](guides/fresh-machine-test.md#windows-11-wsl2)** for the full setup path.
+**Windows 11:** canon's CLI tools are bash scripts — run them inside WSL2 (Ubuntu). See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11-wsl2)** for the full setup path.
 
 Register canon in another project (standard install):
 
@@ -273,15 +249,14 @@ The submodule setup script (`scripts/submodule-setup.sh`) adds canon's MCP serve
 
 **Why submodule over clone?** A submodule pins canon to a specific commit in your parent repo. Everyone on the project gets the same version. Updates are explicit (`git submodule update --remote`). For solo or small-team use, the standard `curl|bash` install to `~/.canon` is simpler.
 
-- **[Full setup guide →](guides/AI-Agents-Setup.md)** — per-agent wiring, the live-reference model, verification.
-- **[Production incident playbook →](guides/production-incident-playbook.md)** — Detect → Diagnose → Contain → Fix → Prevent. The five-stage protocol for when an AI agent misbehaves in production.
+- **[Full setup guide →](docs/setup.md)** — install, hook wiring, skill lifecycle, reference commands.
+- **[Production incident playbook →](docs/production-incident-playbook.md)** — Detect → Diagnose → Contain → Fix → Prevent. The five-stage protocol for when an AI agent misbehaves in production.
 - **[Todo walkthrough →](examples/canon-todo-walkthrough)** — copy it to a disposable folder and walk the full flow, from empty board to shipped app.
 - **[check-offline skill example →](examples/check-offline)** — a worked skill + evals example: scans HTML prototypes for CDN dependencies that break offline.
-- **[All docs, by what you're doing →](docs/README.md)** — learn, set up, reference, why.
 
 ## Contributing
 
-Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. For the full skill authoring lifecycle (lint → eval → register), see **[guides/skill-authoring.md](guides/skill-authoring.md)**.
+Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. For the full skill authoring lifecycle (lint → eval → register), see **[docs/agent-playbook.md → Skill lifecycle](docs/agent-playbook.md#skill-lifecycle)**.
 
 ---
 

@@ -17,11 +17,11 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    | Gate | Status | Reason |
    |------|--------|--------|
    | simplifier | skipped | docs-only change |
-   | reviewer | ran | — |
+   | reviewer | ran | verdict: YES |
    | security | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
-   | eval | ran | pass — eval-report.md written |
+   | eval | ran | verdict: pass — eval-report.md written |
    ```
 
    Use `ran` or `skipped`. Always include a reason — even for gates that ran,
@@ -29,6 +29,19 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69` or
    `npm test passed 2026-06-13`. This makes the acceptance record complete:
    what was tested and what quality gates ran. **`sprint complete` will block without this section.**
+
+   **Reviewer gate (normal+ tier).** Skip for trivial tier only. For normal and high-risk sprints,
+   always spawn a freshly invoked Agent subagent for the reviewer. The close confirmation is
+   authorization — do not ask for separate approval. Same-context review is not acceptable.
+
+   The reviewer has no implementation history. Invoke with a clean context. The prompt must instruct it to:
+   - Read `skills/sprint/reference/review.md` and follow the review protocol
+   - Ticket ID and changed files: `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
+   - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
+
+   Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
+
+   **Close the reviewer subagent handle after reading its verdict.** Completed subagents still occupy thread slots — closing before step 2 prevents thread-limit blocks if the evaluator needs a rerun.
 
 2. **Evaluator review (normal+ tier).** Skip for trivial tier only. For normal
    and high-risk sprints, always spawn a freshly invoked Agent subagent for the
@@ -49,9 +62,9 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - Read `acceptance.md`, `plan.md`, and each changed file fresh
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
-   Read `.tickets/<id>/eval-report.md` after the subagent completes. Surface any
+   Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading.** Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
    `fail` or `partial` findings to the user before proceeding. Do not advance to
-   step 3 if the evaluator verdict is `fail`.
+   step 3 if the evaluator verdict is `fail`. Record the eval outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
 3. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - ✓ passed | ✗ failed | ? not run
