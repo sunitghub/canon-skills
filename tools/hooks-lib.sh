@@ -6,10 +6,6 @@ _init_claude() {
   local settings="$1"
   local scripts="$SKILLS_ROOT/scripts"
 
-  if ! command -v claude &>/dev/null; then
-    echo "  [skip]  claude not installed"
-    return 0
-  fi
   if ! command -v python3 &>/dev/null; then
     echo "  [fail]  python3 required for settings.json merge"
     return 1
