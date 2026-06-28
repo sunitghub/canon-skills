@@ -2059,7 +2059,7 @@ function renderBoard() {
     _popover.innerHTML =
       `<div>${accIcon} Acceptance${accNote}</div>` +
       `<div>${planIcon} Plan${planNote}</div>` +
-      (ready ? '<div style="margin-top:4px;color:var(--col-done)">Good to go</div>'
+      (ready ? '<div style="margin-top:4px;color:var(--col-done)">Signed off</div>'
              : '<div style="margin-top:4px;color:var(--text-muted)">Add missing items to unblock</div>');
     const r = el.getBoundingClientRect();
     _popover.style.left = `${r.left}px`;
