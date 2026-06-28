@@ -1519,6 +1519,10 @@ function ago(days) {
 
 const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
 const COL_LIMIT = 5;
+const DEBUG = new URLSearchParams(location.search).has('debug');
+function debugLog(...args) {
+  if (DEBUG) console.log('[sprint-check]', ...args);
+}
 
 // ── Ticket creation ───────────────────────────────────────────────────────
 
@@ -2051,14 +2055,18 @@ function renderBoard() {
     document.body.appendChild(_popover);
   }
   function showReadyPopover(el, t) {
-    const { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete } = readiness(t);
+    const { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, planApproved } = readiness(t);
     const accIcon = !hasAcceptance ? '○' : acceptanceIncomplete ? '⚠' : '✓';
     const accNote = acceptanceIncomplete ? ' — missing criteria or test items' : '';
-    const planIcon = !hasPlan ? '○' : planIncomplete ? '⚠' : '✓';
+    const planIcon = !hasPlan ? '○' : (planIncomplete || !planApproved) ? '⚠' : '✓';
     const planNote = planIncomplete ? ' — add real Approach notes' : '';
+    const signoffIcon = planApproved ? '✓' : '○';
+    const signoffNote = hasPlan && !planApproved ? ' — check Plan approved' : '';
+    debugLog('ready popover', t.id, { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, planApproved });
     _popover.innerHTML =
       `<div>${accIcon} Acceptance${accNote}</div>` +
       `<div>${planIcon} Plan${planNote}</div>` +
+      `<div>${signoffIcon} Sign-off${signoffNote}</div>` +
       (ready ? '<div style="margin-top:4px;color:var(--col-done)">Signed off</div>'
              : '<div style="margin-top:4px;color:var(--text-muted)">Add missing items to unblock</div>');
     const r = el.getBoundingClientRect();
@@ -2074,15 +2082,17 @@ function renderBoard() {
   }
 
   board.querySelectorAll('.ready-indicator').forEach(el => {
-    const show = () => {
+    const show = eventName => {
+      debugLog('ready trigger', eventName, el.dataset.id);
       const t = findTicketById(el.dataset.id);
       if (t) showReadyPopover(el, t);
     };
-    el.addEventListener('pointerenter', show);
-    el.addEventListener('focus', show);
+    el.addEventListener('pointerenter', () => show('pointerenter'));
+    el.addEventListener('mouseenter', () => show('mouseenter'));
+    el.addEventListener('focus', () => show('focus'));
     el.addEventListener('click', e => {
       e.stopPropagation();
-      show();
+      show('click');
     });
   });
 
@@ -2206,13 +2216,15 @@ function readiness(t) {
   // acceptance_has_items: true=complete, false=exists but missing criteria/test items, null=unknown
   const acceptanceIncomplete = hasAcceptance && t.acceptance_has_items === false;
   const planIncomplete = hasPlan && t.plan_has_approach === false;
-  const ready = hasAcceptance && hasPlan && !acceptanceIncomplete && !planIncomplete;
+  const planApproved = hasPlan && t.plan_approved === true;
+  const ready = hasAcceptance && hasPlan && !acceptanceIncomplete && !planIncomplete && planApproved;
   const label = !hasAcceptance ? 'needs acc'
     : acceptanceIncomplete ? 'incomplete'
     : !hasPlan ? 'needs plan'
     : planIncomplete ? 'plan incomplete'
+    : !planApproved ? 'needs signoff'
     : 'ready';
-  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, label };
+  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, planApproved, label };
 }
 
 function cardHTML(t, idx) {
@@ -2242,7 +2254,7 @@ function cardHTML(t, idx) {
         </div>
         <div class="card-meta-col">
           <span class="card-meta-label">Status</span>
-          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}">
+          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}" title="${ready ? 'Signed off' : 'Readiness details'}">
             <span class="ready-dot"></span>
             <span class="ready-label">${label}</span>
           </span>

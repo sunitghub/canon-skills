@@ -63,6 +63,9 @@ created: 2026-06-08T00:00:00Z
 `)
 	writeFile(t, filepath.Join(ticketsDir, "t-ready", "plan.md"), `# Plan
 
+## Sign-off
+- [x] Plan approved
+
 ## Approach
 Use the smallest board-side check.
 `)
@@ -95,6 +98,9 @@ created: 2026-01-01T00:00:00Z
 	}
 	if ready["plan_has_approach"] != true {
 		t.Fatalf("plan_has_approach = %v, want true", ready["plan_has_approach"])
+	}
+	if ready["plan_approved"] != true {
+		t.Fatalf("plan_approved = %v, want true", ready["plan_approved"])
 	}
 	if !queryHasAll("page=1&all=1") {
 		t.Fatal("queryHasAll should accept all=1 among other query params")
