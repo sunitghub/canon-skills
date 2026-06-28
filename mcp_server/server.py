@@ -252,7 +252,7 @@ def open_dashboard() -> str:
         return f"Failed to launch dashboard: {e}"
 
 
-# Auto-start dashboard server when MCP server starts
+# Auto-start dashboard server when MCP server starts (headless, no browser)
 _port = _dashboard_port()
 if _port is None:
     try:
@@ -260,7 +260,6 @@ if _port is None:
         if _start_dashboard(_port):
             url = f"http://127.0.0.1:{_port}"
             print(f"sprint-check started on {url}", file=sys.stderr)
-            _open_browser(url)
         else:
             print(f"sprint-check dashboard failed to start on port {_port}", file=sys.stderr)
     except Exception as e:

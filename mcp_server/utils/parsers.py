@@ -213,7 +213,8 @@ def log_subagent_run(
     log_dir = project_root / ".canon"
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "subagent-runs.jsonl"
-    log_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+    with open(log_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
     return {"status": "ok", "entry": entry}
 
 

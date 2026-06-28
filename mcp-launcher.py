@@ -3,6 +3,7 @@
 Finds the project's .venv Python and runs mcp_server.server.
 """
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -34,7 +35,8 @@ def _find_python() -> str:
 def main():
     python = _find_python()
     cmd = [python, "-m", "mcp_server.server"] + sys.argv[1:]
-    sys.exit(subprocess.call(cmd, cwd=str(ROOT)))
+    os.chdir(str(ROOT))
+    os.execv(python, cmd)
 
 
 if __name__ == "__main__":
