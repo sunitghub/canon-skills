@@ -22,6 +22,54 @@ func writeFile(t *testing.T, path, content string) {
 
 // ── AddAcceptanceCriterion ──
 
+func TestValidTicketIDRejectsTraversal(t *testing.T) {
+	for _, bad := range []string{"", "..", ".", "../etc", "..\\windows", "a/b", "a\\b", ".hidden", "/abs", "CON", "nul.txt"} {
+		if err := validTicketID(bad); err == nil {
+			t.Fatalf("expected reject for %q", bad)
+		}
+	}
+}
+
+func TestValidTicketIDAcceptsStandard(t *testing.T) {
+	for _, good := range []string{"TKT-1", "TKT-0001", "TKT-X", "NONEXIST", "TKT_2"} {
+		if err := validTicketID(good); err != nil {
+			t.Fatalf("expected accept for %q: %v", good, err)
+		}
+	}
+}
+
+func TestPathTraversalRejectedAllCommands(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		name string
+		fn   func() map[string]any
+	}{
+		{"GetTicket", func() map[string]any { return GetTicket(dir, "..") }},
+		{"UpdateTicketStatus", func() map[string]any { return UpdateTicketStatus(dir, "..", "closed") }},
+		{"UpdateTicketBody", func() map[string]any { return UpdateTicketBody(dir, "..", "x") }},
+		{"ReadDoc", func() map[string]any { return ReadDoc(dir, "..", "acceptance.md") }},
+		{"WriteDoc", func() map[string]any { return WriteDoc(dir, "..", "acceptance.md", "x") }},
+		{"AddAcceptanceCriterion", func() map[string]any { return AddAcceptanceCriterion(dir, "..", "x") }},
+	}
+	for _, c := range cases {
+		if _, ok := c.fn()["error"]; !ok {
+			t.Fatalf("%s: expected error for '..' ticket id", c.name)
+		}
+	}
+}
+
+func TestCreateSprintTicketSequentialID(t *testing.T) {
+	dir := t.TempDir()
+	r1 := CreateSprintTicket(dir, "First ticket", "medium")
+	if r1["ticket_id"] != "TKT-0001" {
+		t.Fatalf("expected TKT-0001, got %v", r1["ticket_id"])
+	}
+	r2 := CreateSprintTicket(dir, "Second ticket", "medium")
+	if r2["ticket_id"] != "TKT-0002" {
+		t.Fatalf("expected TKT-0002, got %v", r2["ticket_id"])
+	}
+}
+
 func TestAddAcceptanceCriterionFileNotFound(t *testing.T) {
 	result := AddAcceptanceCriterion(t.TempDir(), "TKT-1", "criterion")
 	if _, ok := result["error"]; !ok {

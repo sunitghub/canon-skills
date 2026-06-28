@@ -6,16 +6,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"runtime/debug"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"github.com/chightow/canon-skills/internal/commands"
-	"github.com/chightow/canon-skills/internal/project_context"
-	"github.com/chightow/canon-skills/internal/sprint"
+	"github.com/sunitghub/canon-skills/internal/commands"
+	"github.com/sunitghub/canon-skills/internal/project_context"
+	"github.com/sunitghub/canon-skills/internal/sprint"
 )
 
 var (
@@ -55,7 +54,7 @@ func main() {
 	), handleTicket)
 
 	s.AddTool(mcp.NewTool("sprint",
-		mcp.WithDescription(`Manage sprints. Actions: start, board, close. Hint: sprint(close) automatically logs all evaluator runs found in eval-report.md.`),
+		mcp.WithDescription(`Manage sprints. Actions: start, board, close. sprint(close) verifies that every non-trivial ticket has a passing eval-report.md and a corresponding subagent-run entry in .canon/.claude/.opencode/subagent-runs.jsonl.`),
 		mcp.WithString("action", mcp.Required(), mcp.Description("Action: start, board, close")),
 		mcp.WithString("title", mcp.Description("Title for new sprint ticket")),
 		mcp.WithString("ticket_id", mcp.Description("Existing ticket ID to resume")),
@@ -134,34 +133,10 @@ func handleSprint(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 		return jsonResult(sprint.GetSprintBoard(getProjectRoot())), nil
 
 	case "close":
-		autoLogEvalRuns()
 		return jsonResult(sprint.CloseSprint(getProjectRoot())), nil
 
 	default:
 		return jsonResult(errMap(fmt.Sprintf("Unknown action: %s", action))), nil
-	}
-}
-
-func autoLogEvalRuns() {
-	ticketsDir := filepath.Join(getProjectRoot(), ".tickets")
-	entries, err := os.ReadDir(ticketsDir)
-	if err != nil {
-		return
-	}
-	re := regexp.MustCompile(`(?m)^evaluator-run-id:\s+(\S+)`)
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		reportPath := filepath.Join(ticketsDir, entry.Name(), "eval-report.md")
-		content, err := os.ReadFile(reportPath)
-		if err != nil {
-			continue
-		}
-		m := re.FindStringSubmatch(string(content))
-		if len(m) > 1 {
-			sprint.LogSubagentRun(getProjectRoot(), m[1], "evaluator", "")
-		}
 	}
 }
 

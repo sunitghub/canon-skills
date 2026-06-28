@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chightow/canon-skills/internal/models"
+	"github.com/sunitghub/canon-skills/internal/models"
 )
 
 var AgentRunLogPaths = []string{

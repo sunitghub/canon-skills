@@ -1,25 +1,54 @@
 package commands
 
 import (
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 
-	"github.com/chightow/canon-skills/internal/parsers"
+	"github.com/sunitghub/canon-skills/internal/parsers"
 )
+
+// ticketIDRe matches the sequential TKT-NNNN format.
+var ticketIDRe = regexp.MustCompile(`^TKT-(\d+)$`)
+
+// nextTicketID scans the tickets directory and returns the next sequential
+// ticket number. Returns 1 when the directory is empty or missing.
+func nextTicketID(ticketsDir string) uint64 {
+	entries, err := os.ReadDir(ticketsDir)
+	if err != nil {
+		return 1
+	}
+	var maxN uint64
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if m := ticketIDRe.FindStringSubmatch(e.Name()); m != nil {
+			if n, err := strconv.ParseUint(m[1], 10, 64); err == nil && n > maxN {
+				maxN = n
+			}
+		}
+	}
+	return maxN + 1
+}
 
 var mu sync.Mutex
 
 var winReserved = []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"}
 
+var validTicketIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
 func validTicketID(id string) error {
-	if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, "/\\") {
-		return errors.New("invalid ticket ID")
+	if id == "" {
+		return errors.New("invalid ticket ID: empty")
+	}
+	if strings.Contains(id, "..") || strings.ContainsAny(id, "/\\") {
+		return errors.New("invalid ticket ID: illegal characters")
 	}
 	cleaned := filepath.Clean(id)
 	if cleaned != id {
@@ -27,8 +56,18 @@ func validTicketID(id string) error {
 	}
 	for _, r := range winReserved {
 		if strings.EqualFold(id, r) {
-			return errors.New("invalid ticket ID")
+			return errors.New("invalid ticket ID: reserved name")
 		}
+	}
+	if !validTicketIDRe.MatchString(id) {
+		return errors.New("invalid ticket ID: must match ^[A-Za-z0-9][A-Za-z0-9_-]*$")
+	}
+	return nil
+}
+
+func validateTicketID(ticketID string) map[string]any {
+	if err := validTicketID(ticketID); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
 	}
 	return nil
 }
@@ -40,7 +79,7 @@ var ValidStatuses = map[string]bool{
 
 func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[string]any {
 	if err := validTicketID(ticketID); err != nil {
-		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s'", ticketID)}
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -134,20 +173,17 @@ func CreateSprintTicket(ticketsDir, description, priority string) map[string]any
 		return map[string]any{"error": fmt.Sprintf("Failed to create tickets directory: %v", err)}
 	}
 	var ticketID string
-	for i := 0; i < 10; i++ {
-		b := make([]byte, 8)
-		if _, err := rand.Read(b); err != nil {
-			return map[string]any{"error": fmt.Sprintf("Failed to generate random ticket ID: %v", err)}
-		}
-		id := fmt.Sprintf("t-%x", b)
-		ticketDir := filepath.Join(ticketsDir, id)
+	nextID := nextTicketID(ticketsDir)
+	for i := 0; i < 100; i++ {
+		candidate := fmt.Sprintf("TKT-%04d", nextID+uint64(i))
+		ticketDir := filepath.Join(ticketsDir, candidate)
 		if err := os.Mkdir(ticketDir, 0755); err == nil {
-			ticketID = id
+			ticketID = candidate
 			break
 		}
 	}
 	if ticketID == "" {
-		return map[string]any{"error": "Failed to generate unique ticket ID after 10 attempts"}
+		return map[string]any{"error": "Failed to generate unique ticket ID after 100 attempts"}
 	}
 
 	title := description
@@ -180,6 +216,9 @@ func CreateSprintTicket(ticketsDir, description, priority string) map[string]any
 }
 
 func UpdateTicketStatus(ticketsDir, ticketID, newStatus string) map[string]any {
+	if err := validTicketID(ticketID); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
+	}
 	if !ValidStatuses[newStatus] {
 		return map[string]any{"error": fmt.Sprintf("Invalid status '%s'. Must be one of: open, in_progress, closed, cancelled, archived", newStatus)}
 	}
@@ -205,6 +244,9 @@ func UpdateTicketStatus(ticketsDir, ticketID, newStatus string) map[string]any {
 }
 
 func GetTicket(ticketsDir, ticketID string) map[string]any {
+	if err := validTicketID(ticketID); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	ticketDir := filepath.Join(ticketsDir, ticketID)
@@ -232,6 +274,9 @@ func GetTicket(ticketsDir, ticketID string) map[string]any {
 }
 
 func UpdateTicketBody(ticketsDir, ticketID, body string) map[string]any {
+	if err := validTicketID(ticketID); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	ticketFile := filepath.Join(ticketsDir, ticketID, "ticket.md")
@@ -257,6 +302,9 @@ func UpdateTicketBody(ticketsDir, ticketID, body string) map[string]any {
 }
 
 func ReadDoc(ticketsDir, ticketID, docName string) map[string]any {
+	if err := validTicketID(ticketID); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	docName = strings.ToLower(docName)
@@ -273,6 +321,9 @@ func ReadDoc(ticketsDir, ticketID, docName string) map[string]any {
 }
 
 func WriteDoc(ticketsDir, ticketID, docName, content string) map[string]any {
+	if err := validTicketID(ticketID); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	docName = strings.ToLower(docName)

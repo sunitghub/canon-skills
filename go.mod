@@ -1,4 +1,4 @@
-module github.com/chightow/canon-skills
+module github.com/sunitghub/canon-skills
 
 go 1.25.5
 

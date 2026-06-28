@@ -86,13 +86,14 @@ main() {
       ;;
     "")
       ;;
-    [0-9]*)
-      PORT="$1"
-      ;;
     *)
-      echo "Unknown argument: $1" >&2
-      usage >&2
-      exit 1
+      if [[ "$1" =~ ^[0-9]+$ ]]; then
+        PORT="$1"
+      else
+        echo "Unknown argument: $1" >&2
+        usage >&2
+        exit 2
+      fi
       ;;
   esac
 

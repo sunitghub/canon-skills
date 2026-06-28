@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chightow/canon-skills/internal/parsers"
+	"github.com/sunitghub/canon-skills/internal/parsers"
 )
 
 func writeFile(t *testing.T, path, content string) {
@@ -258,6 +258,99 @@ func TestCloseSprintDuplicateSummaryGuard(t *testing.T) {
 	result := CloseSprint(dir)
 	if result["status"] != "error" {
 		t.Fatalf("expected error, got %v", result["status"])
+	}
+}
+
+// ── Trivial tier (S2): frontmatter only ──
+
+func TestCloseSprintTrivialTierInFrontmatterAllowed(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+	ticketsDir := filepath.Join(dir, ".tickets")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "ticket.md"),
+		"---\nid: TKT-1\ntitle: TKT-1\nstatus: closed\n---\n")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "plan.md"),
+		"---\ntier: trivial\n---\n\n# Plan\n\nNo eval needed.\n")
+	writeFile(t, filepath.Join(dir, "HANDOFF.md"), "# Handoff\n")
+	result := CloseSprint(dir)
+	if result["status"] != "ok" {
+		t.Fatalf("expected ok for trivial-tier ticket, got %v", result)
+	}
+}
+
+func TestCloseSprintTrivialTierInBodyRejected(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+	ticketsDir := filepath.Join(dir, ".tickets")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "ticket.md"),
+		"---\nid: TKT-1\ntitle: TKT-1\nstatus: closed\n---\n")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "plan.md"),
+		"---\n---\n\n# Plan\n\nThis is tier: trivial mentioned casually.\n")
+	writeFile(t, filepath.Join(dir, "HANDOFF.md"), "# Handoff\n")
+	result := CloseSprint(dir)
+	if result["status"] != "error" {
+		t.Fatalf("expected error when tier only in body, got %v", result)
+	}
+}
+
+// ── Cancelled/archived gate (S1) ──
+
+func TestCloseSprintCancelledNonTrivialRequiresEvalReport(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+	ticketsDir := filepath.Join(dir, ".tickets")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "ticket.md"),
+		"---\nid: TKT-1\ntitle: TKT-1\nstatus: cancelled\n---\n")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "plan.md"),
+		"---\n---\n\n# Plan\n")
+	writeFile(t, filepath.Join(dir, "HANDOFF.md"), "# Handoff\n")
+	result := CloseSprint(dir)
+	if result["status"] != "error" {
+		t.Fatalf("expected error for cancelled non-trivial ticket without eval-report, got %v", result)
+	}
+}
+
+func TestCloseSprintArchivedTrivialTierAllowed(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+	ticketsDir := filepath.Join(dir, ".tickets")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "ticket.md"),
+		"---\nid: TKT-1\ntitle: TKT-1\nstatus: archived\n---\n")
+	writeFile(t, filepath.Join(ticketsDir, "TKT-1", "plan.md"),
+		"---\ntier: trivial\n---\n\n# Plan\n")
+	writeFile(t, filepath.Join(dir, "HANDOFF.md"), "# Handoff\n")
+	result := CloseSprint(dir)
+	if result["status"] != "ok" {
+		t.Fatalf("expected ok for archived trivial-tier ticket, got %v", result)
+	}
+}
+
+// ── Deterministic sprint ID fallback (B4) ──
+
+func TestCloseSprintDeterministicFallbackNoActive(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
+	ticketsDir := filepath.Join(dir, ".tickets")
+	os.MkdirAll(ticketsDir, 0755)
+	// Seed three cancellable-trivial tickets in a non-sorted entry order.
+	for _, id := range []string{"TKT-0010", "TKT-0003", "TKT-0007"} {
+		writeFile(t, filepath.Join(ticketsDir, id, "ticket.md"),
+			fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: closed\n---\n", id, id))
+		writeFile(t, filepath.Join(ticketsDir, id, "plan.md"),
+			"---\ntier: trivial\n---\n\n# Plan\n")
+		writeFile(t, filepath.Join(ticketsDir, id, "eval-report.md"),
+			"pass: ok\n")
+		os.Remove(filepath.Join(ticketsDir, "ACTIVE"))
+	}
+	writeFile(t, filepath.Join(dir, "HANDOFF.md"), "# Handoff\n")
+	result := CloseSprint(dir)
+	if result["status"] != "ok" {
+		t.Fatalf("expected ok, got %v", result)
+	}
+	handoff, _ := os.ReadFile(filepath.Join(dir, "HANDOFF.md"))
+	body := string(handoff)
+	if !strings.Contains(body, "Sprint Summary (TKT-0003)") {
+		t.Fatalf("expected deterministic fallback ID TKT-0003, got: %s", body)
 	}
 }
 

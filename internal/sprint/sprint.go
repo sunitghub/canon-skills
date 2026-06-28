@@ -6,14 +6,29 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/chightow/canon-skills/internal/commands"
-	"github.com/chightow/canon-skills/internal/models"
-	"github.com/chightow/canon-skills/internal/parsers"
+	"github.com/sunitghub/canon-skills/internal/commands"
+	"github.com/sunitghub/canon-skills/internal/models"
+	"github.com/sunitghub/canon-skills/internal/parsers"
 )
+
+// trivialTierRe matches a frontmatter field `tier: trivial` (case-insensitive).
+// It is matched only inside the plan.md frontmatter block, never inside the body.
+var trivialTierRe = regexp.MustCompile(`(?im)^\s*tier\s*:\s*"?trivial"?\s*$`)
+
+// hasFrontmatter reports whether content begins with a YAML frontmatter fence.
+func hasFrontmatter(content string) (string, bool) {
+	re := regexp.MustCompile(`(?s)^---\r?\n(.*?)\r?\n---`)
+	m := re.FindStringSubmatch(content)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
 
 var mu sync.Mutex
 
@@ -108,10 +123,10 @@ func StartSprint(projectRoot, title, ticketID, priority string) map[string]any {
 	os.WriteFile(filepath.Join(ticketsDir, "ACTIVE"), []byte(tid+"\n"), 0644)
 
 	return map[string]any{
-		"ticket_id":   tid,
-		"ticket_dir":  tdir,
-		"status":      "ok",
-		"message":     fmt.Sprintf("Sprint started: %s", tid),
+		"ticket_id":  tid,
+		"ticket_dir": tdir,
+		"status":     "ok",
+		"message":    fmt.Sprintf("Sprint started: %s", tid),
 	}
 }
 
@@ -136,14 +151,17 @@ func CloseSprint(projectRoot string) map[string]any {
 		return map[string]any{"status": "error", "message": "No tickets found. Nothing to close."}
 	}
 
-	trivialRe := regexp.MustCompile(`(?i)tier\s*:?\s*\*{0,2}trivial`)
+	// Sort by ID for deterministic fallback selection when ACTIVE is missing.
+	sort.Slice(tickets, func(i, j int) bool { return tickets[i].ID < tickets[j].ID })
 
 	var nonTrivial []models.Ticket
 	for _, t := range tickets {
 		planPath := filepath.Join(ticketsDir, t.ID, "plan.md")
 		planContent, err := os.ReadFile(planPath)
-		if err == nil && trivialRe.Match(planContent) {
-			continue
+		if err == nil {
+			if fm, ok := hasFrontmatter(string(planContent)); ok && trivialTierRe.MatchString(fm) {
+				continue
+			}
 		}
 		nonTrivial = append(nonTrivial, t)
 	}
@@ -162,12 +180,9 @@ func CloseSprint(projectRoot string) map[string]any {
 		}
 	}
 
-	verdictPassRe := regexp.MustCompile(`(?m)^pass:`)
+	verdictPassRe := regexp.MustCompile(`(?m)^pass:\s*\S`)
 
 	for _, t := range nonTrivial {
-		if strings.ToLower(t.Status) != "closed" {
-			continue
-		}
 		tdir := filepath.Join(ticketsDir, t.ID)
 		reportPath := filepath.Join(tdir, "eval-report.md")
 
@@ -175,7 +190,7 @@ func CloseSprint(projectRoot string) map[string]any {
 		if err != nil {
 			return map[string]any{
 				"status":  "error",
-				"message": fmt.Sprintf("Ticket %s cannot close: eval-report.md is missing. Run the evaluator (eval skill) before closing, or confirm trivial tier in plan.md.", t.ID),
+				"message": fmt.Sprintf("Ticket %s cannot close: eval-report.md is missing. Run the evaluator (eval skill) before closing, or mark the ticket as trivial via 'tier: trivial' in plan.md frontmatter.", t.ID),
 			}
 		}
 
@@ -238,7 +253,20 @@ func CloseSprint(projectRoot string) map[string]any {
 
 	sprintID := readActiveSprintID(ticketsDir)
 	if sprintID == "" {
-		sprintID = tickets[0].ID
+		// Pick the smallest non-trivial terminal ID for deterministic fallback.
+		fallback := ""
+		for _, t := range nonTrivial {
+			if !terminalStatuses[strings.ToLower(t.Status)] {
+				continue
+			}
+			if fallback == "" || t.ID < fallback {
+				fallback = t.ID
+			}
+		}
+		if fallback == "" {
+			fallback = tickets[0].ID
+		}
+		sprintID = fallback
 	}
 	summaryHeading := fmt.Sprintf("## Sprint Summary (%s)", sprintID)
 	if strings.Contains(handoffContent, summaryHeading) {
