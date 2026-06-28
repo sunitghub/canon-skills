@@ -37,7 +37,8 @@ def main():
     python = _find_python()
     cmd = [python, "-m", "mcp_server.server"] + sys.argv[1:]
     os.chdir(str(ROOT))
-    os.execv(python, cmd)
+    result = subprocess.call(cmd)
+    sys.exit(result)
 
 
 if __name__ == "__main__":

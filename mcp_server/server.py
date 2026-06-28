@@ -51,16 +51,17 @@ def get_ticket(ticket_id: str) -> Dict[str, Any]:
 
 
 @app.tool()
-def start_sprint(title: str = None, ticket_id: str = None) -> Dict[str, Any]:
+def start_sprint(title: str = None, ticket_id: str = None, priority: str = "medium") -> Dict[str, Any]:
     """
     Start a sprint: create a ticket with plan.md and ensure DECISIONS.md and HANDOFF.md exist.
     Provide either a title (creates new ticket) or an existing ticket_id.
+    When creating a new ticket, priority defaults to "medium".
     """
     if not title and not ticket_id:
         return {"error": "Provide either a title (to create a new ticket) or an existing ticket_id."}
     if title and ticket_id:
         return {"error": "Provide either a title or a ticket_id, not both."}
-    return parse_start_sprint(PROJECT_ROOT, title or "", ticket_id)
+    return parse_start_sprint(PROJECT_ROOT, title or "", ticket_id, priority)
 
 
 @app.tool()
@@ -192,12 +193,16 @@ def _start_dashboard(port: int) -> bool:
         cmd = ["bash", str(script_path), str(port)]
         creationflags = 0
 
-    subprocess.Popen(
+    proc = subprocess.Popen(
         cmd,
         cwd=str(PROJECT_ROOT),
         env=env,
         creationflags=creationflags,
     )
+
+    time.sleep(0.5)
+    if proc.poll() is not None:
+        return False
 
     # Wait up to 3s for the dashboard to start responding
     for _ in range(10):
@@ -218,7 +223,7 @@ def _start_dashboard(port: int) -> bool:
 def _open_browser(url: str) -> None:
     """Open a URL in the default browser using platform-specific commands."""
     if sys.platform == "win32":
-        subprocess.Popen(["powershell.exe", "/c", f"start '{url}'"])
+        subprocess.Popen(["cmd.exe", "/c", "start", url])
     elif sys.platform == "darwin":
         subprocess.Popen(["open", url])
     elif sys.platform == "linux":
@@ -248,17 +253,16 @@ def open_dashboard() -> str:
         return f"Failed to launch dashboard: {e}"
 
 
-_port = _dashboard_port()
-if _port is None:
-    try:
-        _port = _find_free_port()
-        if _start_dashboard(_port):
-            url = f"http://127.0.0.1:{_port}"
-            print(f"sprint-check started on {url}", file=sys.stderr)
-        else:
-            print(f"sprint-check dashboard failed to start on port {_port}", file=sys.stderr)
-    except Exception as e:
-        print(f"sprint-check auto-start skipped: {e}", file=sys.stderr)
-
 if __name__ == "__main__":
+    _port = _dashboard_port()
+    if _port is None:
+        try:
+            _port = _find_free_port()
+            if _start_dashboard(_port):
+                url = f"http://127.0.0.1:{_port}"
+                print(f"sprint-check started on {url}", file=sys.stderr)
+            else:
+                print(f"sprint-check dashboard failed to start on port {_port}", file=sys.stderr)
+        except Exception as e:
+            print(f"sprint-check auto-start skipped: {e}", file=sys.stderr)
     app.run()

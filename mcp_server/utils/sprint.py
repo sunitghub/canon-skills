@@ -55,7 +55,7 @@ def log_subagent_run(
     return {"status": "ok", "entry": entry}
 
 
-def start_sprint(project_root: Path, title: str, ticket_id: str = None) -> Dict[str, Any]:
+def start_sprint(project_root: Path, title: str, ticket_id: str = None, priority: str = "medium") -> Dict[str, Any]:
     tickets_dir = project_root / ".tickets"
 
     if ticket_id:
@@ -64,7 +64,7 @@ def start_sprint(project_root: Path, title: str, ticket_id: str = None) -> Dict[
             return {"error": f"Ticket '{ticket_id}' not found"}
         tid = ticket_id
     else:
-        result = create_sprint_ticket(tickets_dir, title, "medium")
+        result = create_sprint_ticket(tickets_dir, title, priority)
         if "error" in result:
             return result
         tid = result["ticket_id"]
