@@ -166,26 +166,26 @@ func TestParseHandoffNoTasksSection(t *testing.T) {
 	}
 }
 
-// ── extractSection (via getSection) ──
+// ── extractSection ──
 
-func TestGetSectionFound(t *testing.T) {
+func TestExtractSectionFound(t *testing.T) {
 	content := "## Sign-off\n\n- [x] Approved\n"
-	got := getSection(content, "Sign-off")
+	got := extractSection(content, "Sign-off")
 	if got != "- [x] Approved" {
 		t.Fatalf("expected '- [x] Approved', got '%s'", got)
 	}
 }
 
-func TestGetSectionMissing(t *testing.T) {
-	got := getSection("## Other\n\nstuff\n", "Sign-off")
+func TestExtractSectionMissing(t *testing.T) {
+	got := extractSection("## Other\n\nstuff\n", "Sign-off")
 	if got != "" {
 		t.Fatalf("expected empty, got '%s'", got)
 	}
 }
 
-func TestGetSectionAtEnd(t *testing.T) {
+func TestExtractSectionAtEnd(t *testing.T) {
 	content := "# Doc\n\n## Last Section\n\nfinal content\n"
-	got := getSection(content, "Last Section")
+	got := extractSection(content, "Last Section")
 	if got != "final content" {
 		t.Fatalf("expected 'final content', got '%s'", got)
 	}

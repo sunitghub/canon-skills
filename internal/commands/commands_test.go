@@ -78,6 +78,26 @@ func TestAddAcceptanceCriterionBlankLinesBetweenItems(t *testing.T) {
 	}
 }
 
+func TestAddAcceptanceCriterionInsertsAfterListNotEndOfFile(t *testing.T) {
+	dir := t.TempDir()
+	d := mkTicket(t, dir, "TKT-1")
+	writeFile(t, filepath.Join(d, "acceptance.md"), "## Acceptance Criteria\n- [ ] Item 1\n\n## Notes\nThis should not be after the list.\n")
+	AddAcceptanceCriterion(dir, "TKT-1", "Item 2")
+	content, _ := os.ReadFile(filepath.Join(d, "acceptance.md"))
+	body := string(content)
+	item2Idx := strings.Index(body, "Item 2")
+	notesIdx := strings.Index(body, "## Notes")
+	if item2Idx < 0 {
+		t.Fatal("Item 2 not found")
+	}
+	if notesIdx < 0 {
+		t.Fatal("## Notes not found")
+	}
+	if item2Idx > notesIdx {
+		t.Fatal("Item 2 was inserted after ## Notes -- expected before it")
+	}
+}
+
 func TestAddAcceptanceCriterionEmptyListSection(t *testing.T) {
 	dir := t.TempDir()
 	d := mkTicket(t, dir, "TKT-1")

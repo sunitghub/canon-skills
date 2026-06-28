@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chightow/canon-skills/internal/parsers"
 )
@@ -35,7 +36,8 @@ func fmtEvalReport(epoch int64) string {
 
 func seedSubagentLog(t *testing.T, root string, runEpoch int64) {
 	t.Helper()
-	entry := `{"ts":"2024-01-15T10:30:00Z","agent_id":"` + itoa(runEpoch) + `-0001"}`
+	ts := time.Unix(runEpoch, 0).UTC().Format("2006-01-02T15:04:05Z")
+	entry := `{"ts":"` + ts + `","agent_id":"` + itoa(runEpoch) + `-0001"}`
 	for _, rel := range parsers.AgentRunLogPaths {
 		p := filepath.Join(root, rel)
 		os.MkdirAll(filepath.Dir(p), 0755)
@@ -54,16 +56,11 @@ func TestGetSprintBoardEmpty(t *testing.T) {
 	os.MkdirAll(filepath.Join(dir, ".tickets"), 0755)
 	os.MkdirAll(filepath.Join(dir, ".git"), 0755)
 	result := GetSprintBoard(dir)
-	tickets, ok := result["tickets"].([]map[string]any)
+	tickets, ok := result["tickets"].([]any)
 	if !ok {
-		tickets2, ok2 := result["tickets"].([]any)
-		if !ok2 {
-			t.Fatal("expected tickets to be a slice")
-		}
-		if len(tickets2) != 0 {
-			t.Fatalf("expected 0 tickets, got %d", len(tickets2))
-		}
-	} else if len(tickets) != 0 {
+		t.Fatal("expected tickets to be a []any")
+	}
+	if len(tickets) != 0 {
 		t.Fatalf("expected 0 tickets, got %d", len(tickets))
 	}
 }

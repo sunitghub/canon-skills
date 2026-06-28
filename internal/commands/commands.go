@@ -49,9 +49,10 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("acceptance.md not found for ticket %s", ticketID)}
 	}
+	body := string(content)
 
 	acceptanceHeading := "## Acceptance Criteria"
-	headingIdx := strings.Index(string(content), acceptanceHeading)
+	headingIdx := strings.Index(body, acceptanceHeading)
 	if headingIdx == -1 {
 		newContent := fmt.Sprintf("%s\n- [ ] %s\n", acceptanceHeading, criterionText)
 		if err := os.WriteFile(acceptanceFile, []byte(newContent), 0644); err != nil {
@@ -60,29 +61,29 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 		return map[string]any{"ticket_id": ticketID, "criterion": criterionText, "status": "ok"}
 	}
 
-	listStart := headingIdx + len(acceptanceHeading)
-	listSection := strings.TrimSpace(string(content)[listStart:])
-	if listSection == "" {
-		newContent := strings.TrimRight(string(content), " \t\r\n") + fmt.Sprintf("\n- [ ] %s\n", criterionText)
-		if err := os.WriteFile(acceptanceFile, []byte(newContent), 0644); err != nil {
-			return map[string]any{"error": fmt.Sprintf("Failed to write acceptance.md: %v", err)}
-		}
-		return map[string]any{"ticket_id": ticketID, "criterion": criterionText, "status": "ok"}
+	sectionStart := headingIdx + len(acceptanceHeading)
+	after := body[sectionStart:]
+	nextHeadingIdx := strings.Index(after, "\n## ")
+	sectionEnd := len(body)
+	if nextHeadingIdx >= 0 {
+		sectionEnd = sectionStart + nextHeadingIdx
 	}
+	section := body[sectionStart:sectionEnd]
 
-	lines := strings.Split(listSection, "\n")
-	listStartIdx := 0
-	for listStartIdx < len(lines) && strings.TrimSpace(lines[listStartIdx]) == "" {
-		listStartIdx++
+	lines := strings.Split(section, "\n")
+	lineStart := 0
+	for lineStart < len(lines) && strings.TrimSpace(lines[lineStart]) == "" {
+		lineStart++
 	}
 
 	lastNum := 0
 	isNumbered := false
 	foundExisting := false
-	numRe := regexp.MustCompile(`^(\d+)\.\s*`)
-	bulletRe := regexp.MustCompile(`^[-*]\s*`)
+	lastItemLineIdx := -1
+	numRe := regexp.MustCompile(`^(\d+)\.\s`)
+	bulletRe := regexp.MustCompile(`^[-*]\s`)
 
-	for i := listStartIdx; i < len(lines); i++ {
+	for i := lineStart; i < len(lines); i++ {
 		stripped := strings.TrimSpace(lines[i])
 		if stripped == "" {
 			continue
@@ -91,22 +92,35 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 			isNumbered = true
 			fmt.Sscanf(m[1], "%d", &lastNum)
 			foundExisting = true
+			lastItemLineIdx = i
 		} else if bulletRe.MatchString(stripped) {
 			foundExisting = true
+			lastItemLineIdx = i
 		} else {
 			break
 		}
 	}
 
-	base := strings.TrimRight(string(content), " \t\r\n")
-	var newContent string
+	var newItem string
 	if !foundExisting {
-		newContent = base + fmt.Sprintf("\n- [ ] %s\n", criterionText)
+		newItem = fmt.Sprintf("\n- [ ] %s", criterionText)
 	} else if isNumbered {
-		newContent = base + fmt.Sprintf("\n%d. [ ] %s\n", lastNum+1, criterionText)
+		newItem = fmt.Sprintf("\n%d. [ ] %s", lastNum+1, criterionText)
 	} else {
-		newContent = base + fmt.Sprintf("\n- [ ] %s\n", criterionText)
+		newItem = fmt.Sprintf("\n- [ ] %s", criterionText)
 	}
+
+	var insertOffset int
+	if lastItemLineIdx >= 0 {
+		sectionPrefix := strings.Join(lines[:lastItemLineIdx+1], "\n")
+		insertOffset = sectionStart + len(sectionPrefix)
+	} else {
+		insertOffset = sectionStart
+	}
+
+	before := body[:insertOffset]
+	afterPart := body[insertOffset:]
+	newContent := before + newItem + afterPart
 	if err := os.WriteFile(acceptanceFile, []byte(newContent), 0644); err != nil {
 		return map[string]any{"error": fmt.Sprintf("Failed to write acceptance.md: %v", err)}
 	}
@@ -121,7 +135,7 @@ func CreateSprintTicket(ticketsDir, description, priority string) map[string]any
 	}
 	var ticketID string
 	for i := 0; i < 10; i++ {
-		b := make([]byte, 4)
+		b := make([]byte, 8)
 		if _, err := rand.Read(b); err != nil {
 			return map[string]any{"error": fmt.Sprintf("Failed to generate random ticket ID: %v", err)}
 		}

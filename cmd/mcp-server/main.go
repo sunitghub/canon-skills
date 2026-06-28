@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -33,6 +34,7 @@ func main() {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Fprintf(os.Stderr, "PANIC: %v\n", r)
+			debug.PrintStack()
 			os.Exit(2)
 		}
 	}()

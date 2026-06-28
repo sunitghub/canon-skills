@@ -76,7 +76,7 @@ func ParsePlanApproved(planPath string) bool {
 	if err != nil {
 		return false
 	}
-	signoff := getSection(string(content), "Sign-off")
+	signoff := extractSection(string(content), "Sign-off")
 	re := regexp.MustCompile(`(?mi)^\s*[-*]\s+\[[xX]\]\s+Plan approved`)
 	return re.MatchString(signoff)
 }
@@ -86,7 +86,7 @@ func ParsePlanDecision(planPath string) string {
 	if err != nil {
 		return ""
 	}
-	decisions := getSection(string(content), "Decisions")
+	decisions := extractSection(string(content), "Decisions")
 	for _, line := range strings.Split(decisions, "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "### ") {
@@ -182,10 +182,6 @@ func extractSection(content, heading string) string {
 		return strings.TrimSpace(after)
 	}
 	return strings.TrimSpace(after[:nextLoc[0]])
-}
-
-func getSection(content string, heading string) string {
-	return extractSection(content, heading)
 }
 
 func extractTasks(content string) []string {

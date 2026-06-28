@@ -115,6 +115,15 @@ func StartSprint(projectRoot, title, ticketID, priority string) map[string]any {
 	}
 }
 
+func readActiveSprintID(ticketsDir string) string {
+	activePath := filepath.Join(ticketsDir, "ACTIVE")
+	content, err := os.ReadFile(activePath)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(content))
+}
+
 func CloseSprint(projectRoot string) map[string]any {
 	mu.Lock()
 	defer mu.Unlock()
@@ -227,7 +236,10 @@ func CloseSprint(projectRoot string) map[string]any {
 	}
 	handoffContent := string(handoffBytes)
 
-	sprintID := tickets[0].ID
+	sprintID := readActiveSprintID(ticketsDir)
+	if sprintID == "" {
+		sprintID = tickets[0].ID
+	}
 	summaryHeading := fmt.Sprintf("## Sprint Summary (%s)", sprintID)
 	if strings.Contains(handoffContent, summaryHeading) {
 		return map[string]any{
