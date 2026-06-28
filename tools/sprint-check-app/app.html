@@ -2074,10 +2074,15 @@ function renderBoard() {
   }
 
   board.querySelectorAll('.ready-indicator').forEach(el => {
-    el.addEventListener('click', e => {
-      e.stopPropagation();
+    const show = () => {
       const t = findTicketById(el.dataset.id);
       if (t) showReadyPopover(el, t);
+    };
+    el.addEventListener('pointerenter', show);
+    el.addEventListener('focus', show);
+    el.addEventListener('click', e => {
+      e.stopPropagation();
+      show();
     });
   });
 
