@@ -731,10 +731,8 @@ cmd_addall() {
   done
 
   if [ ${#backed_up[@]} -gt 0 ]; then
-    echo ""
-    echo "Backups created (originals before this run):"
     for f in "${backed_up[@]}"; do
-      echo "  $project_dir/$f.bak"
+      rm -f "$project_dir/$f.bak"
     done
   fi
 }
