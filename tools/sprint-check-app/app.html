@@ -2095,15 +2095,7 @@ function renderBoard() {
     if (!el || cardPointerOpen) return;
     cardPointerOpen = true;
     const id = cardTicketId(el);
-    debugBoard('openCard', id);
-    try {
-      debugBoard('openCard before openModal', { id, ticketCount: state.tickets.length, selectedId: state.selectedId });
-      openModal(id);
-      debugBoard('openCard after openModal', id);
-    } catch (err) {
-      console.error('[sprint-check] openCard error', err);
-      throw err;
-    }
+    openModal(id);
     queueMicrotask(() => { cardPointerOpen = false; });
   }
 
@@ -2112,7 +2104,6 @@ function renderBoard() {
       if (e.button !== 0) return;
       if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
       if (el.classList.contains('dragging')) return;
-      debugBoard('pointerup', cardTicketId(el), { target: e.target?.className || e.target?.tagName, pointerType: e.pointerType });
       openCard(el);
     });
 
@@ -2120,7 +2111,6 @@ function renderBoard() {
       if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
       if (cardPointerOpen) return;
       const id = cardTicketId(el);
-      debugBoard('click', id, { target: e.target?.className || e.target?.tagName });
       openModal(id);
     });
 
@@ -2129,20 +2119,17 @@ function renderBoard() {
       if (e.target !== el) return;
       e.preventDefault();
       const id = cardTicketId(el);
-      debugBoard('keydown', id, { key: e.key });
       openModal(id);
     });
 
     el.addEventListener('dragstart', e => {
       const id = cardTicketId(el);
-      debugBoard('dragstart', id);
       dragId = id;
       e.dataTransfer.setData('text/plain', dragId); // required by Safari to activate drag
       e.dataTransfer.effectAllowed = 'move';
       requestAnimationFrame(() => el.classList.add('dragging'));
     });
     el.addEventListener('dragend', () => {
-      debugBoard('dragend', cardTicketId(el));
       el.classList.remove('dragging');
       dragId = null;
     });
@@ -2280,10 +2267,8 @@ function findTicketById(id) {
 const modalState = { editMode: false, activeDoc: null };
 
 function openModal(id) {
-  debugBoard('openModal enter', { id, ticketCount: state.tickets.length, selectedId: state.selectedId });
   const t = findTicketById(id);
   if (!t) return;
-  debugBoard('openModal', id, { status: t.status, title: t.title });
   state.selectedId = id;
   modalState.editMode = false;
   const docs = (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file)));
@@ -2318,12 +2303,6 @@ function openModal(id) {
 }
 
 const HIDDEN_DOC_SLUGS = new Set(['blueprint']);
-const DEBUG_BOARD = /(?:^|[?&])debug(?:=1|=true)?(?:&|$)/i.test(location.search)
-  || localStorage.getItem('sprint-check-debug') === '1';
-
-function debugBoard(...args) {
-  if (DEBUG_BOARD) console.log('[sprint-check]', ...args);
-}
 
 function navigateTicket(dir) {
   if (modalState.editMode) return;
