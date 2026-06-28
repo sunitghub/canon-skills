@@ -220,7 +220,7 @@ Gates don't make agents smarter. They make certain failures impossible — and t
 | Claude Code / Codex / Pi | At least one | running the agent |
 | Git | Yes | clone/update canon |
 | Bash | Yes | CLI tools (`sprint`, `tkt`, `skills.sh`) |
-| Python 3 | `sprint-check` on macOS/Linux | the board (not needed on Windows) |
+| Python 3 | `sprint-check` on macOS/Linux | the board — Windows uses the Go binary, no Python needed |
 
 **Windows 11 — no WSL required:** install [Git for Windows](https://git-scm.com/download/win), then:
 1. Run `install.ps1` once from PowerShell — adds `tools/` to your user PATH.
