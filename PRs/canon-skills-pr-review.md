@@ -3,42 +3,44 @@ _sunitghub/canon-skills — reviewed 2026-06-28_
 
 | PR | Title | Area | Findings | Verdict | Opened |
 |----|-------|------|----------|---------|--------|
-| #4 | refactor(skills): extract sub-modules from monolithic skills.sh | Tooling | Billed as a refactor but introduces new features alongside the module split. The split itself (`lib.sh`, `agents.sh`, `display.sh`, `project.sh`, `commands.sh`) is structurally clean — guard pattern prevents re-sourcing, `BASH_SOURCE[0]` paths are correct. However: (1) `inject: true` flag is already implemented in canon's `skills.sh` (lines 364–373) and used by `standards/efficiency.md` — not new; (2) `hidden: true` flag blocks direct skill registration and is coupled to PR #3 marking `sprint/SKILL.md` as hidden — purpose unclear since sprint is a top-level user-facing skill; (3) `addall` bulk-registers every skill — against canon's deliberate, scoped registration model; (4) `cmd_status` hook display checks for `auto-handoff.sh`, `handoff-inject.sh`, `sprint-inject.sh`, `pre-commit-check.sh`, `subagent-log.sh` — all five exist in canon's `scripts/` directory and confirmed [ok] on a real Windows machine (PowerShell + Git Bash). PRs #3 and #4 are coupled: `hidden: true` in #4 only makes sense alongside the sprint SKILL.md change in #3. No tests. | Partially worth merging. Module split + hook status display are proven working including on Windows. Drop `addall`. Clarify purpose of `hidden: true` on sprint SKILL.md before merging #3. `inject: true` needs no work — already shipped in canon. | 2026-06-28T13:41:20Z |
-| #3 | feat: add submodule setup, IDE config, and sprint workflow polish | DX / Setup / Sprint | Nine distinct changes bundled. **Good:** `app.html` copy-ticket-ID button is clean and self-contained; `README.md` submodule docs are useful; absolute path in `AGENTS.md` AI-SKILLS table fixed to relative. **Bad:** `.tickets/t-7f1d/` stale files deleted — local working state that should never be committed to canon-skills. `.claude/settings.json` adds MCP server config + three new hooks (`auto-handoff.sh`, `handoff-inject.sh`, `sprint-inject.sh`, `pre-commit-check.sh`) — scripts exist in canon's `scripts/` directory, but wiring them into canon-skills' own `.claude/settings.json` affects all users of the repo, not just the project using canon as a submodule. `skills/sprint/SKILL.md` and `complete.md` changes add MCP delegation notes that are premature pending PR #2. `submodule-setup.sh` (275 lines) is a significant standalone feature bundled into a polish PR. | No as-is. Split: (1) merge `app.html` copy button alone; (2) `submodule-setup.sh` as its own scoped PR; (3) hold MCP-dependent changes until PR #2 decision; (4) drop `.tickets/` deletions entirely. | 2026-06-28T13:41:07Z |
-| #2 | feat: implement MCP server foundation with sprint management tools | Cross-IDE / Accessibility | Python FastMCP server exposing 13+ sprint management tools. Motivation is legitimate: accessibility for small/local models and non-Claude-Code IDEs (opencode, VS Code). But the implementation conflicts with canon's existing Go direction (`tools/sprint-check-go` exists specifically to drop Python). Duplicates bash script logic with no delegation. Ticket ID format likely wrong (`TICKET-NNNN` vs canon's `t-<letters><digits>` — digit-leading IDs silently ignored by `tkt`). Plans files (`plans/`) committed as deliverables. No tests. 13 tools vs the 7 actually needed for the stated use case. The sprint-check port arg change (8 lines) is the only clean piece. | No as-is. Merge port arg only (`tools/sprint-check`). If MCP access is pursued, correct path is a Node.js layer on existing `sprint-check-app` (already Node, cross-platform, no new language) exposing 7 tools: `get_sprint_board`, `list_skills`, `get_ticket`, `create_sprint_ticket`, `update_ticket_status`, `add_acceptance_criterion`, `open_dashboard`. Validate with MLX local model before building. | 2026-06-28T13:40:50Z |
-| #1 | MCP Path | Meta | Kitchen-sink PR combining MCP server, skills.sh refactor, submodule setup, IDE configs, and sprint polish in one diff. Correctly closed by author and split into PRs #2, #3, #4. Notable: included the skills.sh refactor that became PR #4, and the same stale `.tickets/` deletions now in PR #3. | N/A — closed. Findings absorbed into PRs #2–4 above. | 2026-06-28T13:13:28Z |
+| #4 | refactor(skills): extract sub-modules from monolithic skills.sh | Tooling | Current diff is a scoped `tools/skills.sh` split into `tools/skills/{lib,project,agents,display,commands}.sh`. I compared it against `public/main` and smoke-tested `bash -n`, `skills.sh list`, `add`, `refresh`, `remove`, `help`, and `status` in a detached worktree; sampled behavior held. `hidden: true` and `inject: true` are not new to this PR's current diff. `addall` is also carried forward from `public/main`, but product direction is now explicitly against `addall`, so the refactor branch should remove the command instead of preserving it in the split. | Recommend Fix Y with required edit — merge the module split only after dropping `addall` from usage, dispatch, and `commands.sh`; no ticket created until user confirms Y. | 06/28/2026 08:41 AM |
+| #3 | feat: add submodule setup, IDE config, and sprint workflow polish | DX / Docs | Current diff is only `.vscode/tasks.json`, `AGENTS.md`, and `README.md`; the earlier setup script, hook settings, app copy button, sprint skill edits, and stale ticket deletions are no longer present. The docs now reference `scripts/submodule-setup.sh`, `cmd/mcp-server`, `.vscode/mcp.json`, `opencode.json`, and named MCP tools, but none of those files exist in this PR. `AGENTS.md` also tells agents to prefer MCP tools that are not available on this branch and do not match PR #2's current aggregate `ticket`/`sprint` tool surface. | Recommend Fix N — docs/tasks overstate unavailable MCP and submodule setup; land only after the referenced setup/MCP files exist or trim the claims to current functionality. | 06/28/2026 08:41 AM |
+| #2 | feat: implement MCP server foundation with sprint management tools | MCP | Current diff is a Go MCP server with aggregate `ticket` and `sprint` tools, plus parser/command/sprint packages and tests; this is materially different from the older Python summary in the PR body. Direction is better than the earlier Python approach, but a clean `go test ./...` fails until `go mod tidy` rewrites `go.mod`, and the implementation creates `TKT-0001` style tickets instead of canon's existing `t-xxxx` IDs. It also duplicates ticket/sprint behavior instead of delegating to `tkt`/`sprint`, so it risks drifting from the CLIs and board semantics; after `go mod tidy`, tests pass in the detached worktree. | Recommend Fix N — keep the `tools/sprint-check <port>` change only; revisit MCP as an optional addon configuration, not default canon wiring, after aligning IDs, delegating to existing commands or shared code, tidying `go.mod`, and updating the declared tool surface. | 06/28/2026 08:40 AM |
+| #1 | MCP Path | Meta | Kitchen-sink PR combining MCP server, skills.sh refactor, submodule setup, IDE configs, and sprint polish in one diff. Correctly closed by author and split into PRs #2, #3, #4. Current open PRs have since changed materially, so this row is retained only as historical context. | N/A — closed. Findings superseded by current PRs #2-4 above. | 06/28/2026 08:13 AM |
 
-## What was merged (2026-06-28)
+## Review Notes
 
-- **`tools/sprint-check` port arg** (from PR #2) — merged. ✓
-- **`tools/sprint-check-app/app.html` copy button** (from PR #3) — merged with hover lift + clipboard error guard. ✓
-- **`tools/sprint-check-win.exe`** — rebuilt against updated `app.html`. ✓
-- **README + docs/setup.md** — Windows setup path documented. ✓
+- **PR #2 verification:** `go test ./...` failed from a clean detached worktree with `go: updates to go.mod needed`; after `go mod tidy`, it changed `go.mod` from `go 1.23.0` to `go 1.25.5`, and tests passed.
+- **PR #3 verification:** `scripts/submodule-setup.sh`, `cmd/mcp-server/main.go`, `.vscode/mcp.json`, and `opencode.json` are absent from the PR worktree despite being referenced by the docs.
+- **PR #4 verification:** `bash -n` passed for all split scripts; smoke checks for `list`, `add`, `refresh`, `remove`, `help`, and `status` passed in a detached worktree. `addall` was not smoke-tested because the direction is to remove it.
 
-Everything else needs scoping, splitting, or a direction decision on MCP.
+## Pending Decisions
 
-## Windows users and the MCP scope
+The skill requires explicit Fix Y/N decisions before creating tickets or posting PR comments.
 
-The confirmed Windows workflow requires no WSL, no Python, no extra runtimes:
+Recommended decisions:
 
-1. Install [Git for Windows](https://git-scm.com/download/win)
-2. `git clone` from Git Bash — clone/pull stays in Git Bash
-3. Run `install.ps1` from PowerShell — adds `tools/` to user PATH
-4. `sprint-check-win` from any PowerShell prompt opens the board; create and manage tickets via the UI
-5. `skills.sh`, `tkt`, `sprint` run from Git Bash for agent-driven workflows
+- `#4`: Fix Y, but only after removing `addall`
+- `#3`: Fix N
+- `#2`: Fix N
 
-`sprint-check-win.exe` is a pre-built Go binary — it reads `app.html` at runtime from the repo, so `git pull` in Git Bash is all that's needed to pick up board updates. **No Python, no Node, no WSL.**
+No tickets were created and no PR comments were posted in this pass.
 
-This narrows the real MCP use case to one specific scenario: **an agent running inside an IDE (opencode, VS Code + Copilot, Cursor) that needs programmatic access to sprint state**. A human Windows user managing their own tickets doesn't need MCP at all.
+## What was already merged outside these PRs
 
-## Go server — no Python dependency on Windows
+- **`tools/sprint-check` port arg** (from PR #2 scope) — merged.
+- **`tools/sprint-check-app/app.html` copy button** (from PR #3 scope) — merged with hover lift + clipboard error guard.
+- **`tools/sprint-check-win.exe`** — rebuilt against updated `app.html`.
+- **README + docs/setup.md** — Windows setup path documented.
 
-`tools/sprint-check-go/main.go` compiles to `sprint-check-win.exe` and reads `app.html` from the filesystem at runtime (`os.ReadFile`). This means:
-- No Python required on Windows — the Go binary replaces `python3 server.py` entirely
-- Board updates land via `git pull`; no rebuild needed for UI-only changes
-- The binary is cross-compiled: `GOOS=windows GOARCH=amd64 go build -o tools/sprint-check-win.exe tools/sprint-check-go/main.go`
-- Open ticket `t-c5d4`: add this rebuild step to `scripts/build-zip.sh` so the post-commit hook keeps the exe in sync automatically
+## MCP Scope
 
-## Open question
+The confirmed Windows workflow requires no WSL, no Python, and no MCP for human ticket management:
 
-If MCP support moves forward, validate the minimal 7-tool surface with an MLX local model via `mlx_lm.server` + opencode before building. The core hypothesis — that `get_sprint_board` + basic write tools are sufficient for a small model to manage tickets without understanding the file system — should be tested before investing in implementation.
+1. Install Git for Windows.
+2. Clone/pull from Git Bash.
+3. Run `install.ps1` from PowerShell.
+4. Use `sprint-check-win` from PowerShell to manage tickets through the board.
+5. Use `skills.sh`, `tkt`, and `sprint` from Git Bash for agent-driven workflows.
+
+This keeps the real MCP use case narrow: agents inside IDEs that need programmatic sprint access. MCP should be an optional addon configuration for users who want it, not part of the default canon install or baseline project instructions. Validate that use case with the smallest useful tool surface before expanding implementation.
