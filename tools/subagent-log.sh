@@ -12,10 +12,11 @@ mkdir -p "$(dirname "$LOG")"
 
 # Hook payload arrives on stdin as JSON
 INPUT="$(cat)"
-AGENT_ID="$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('agent_id',''))" 2>/dev/null || true)"
-AGENT_TYPE="$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('agent_type',''))" 2>/dev/null || true)"
-TRANSCRIPT="$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('transcript_path',''))" 2>/dev/null || true)"
-SESSION_ID="$(echo "$INPUT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('session_id',''))" 2>/dev/null || true)"
+_json_str() { printf '%s' "$2" | grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" | sed 's/.*:[[:space:]]*"\([^"]*\)"/\1/' | head -1; }
+AGENT_ID="$(_json_str agent_id "$INPUT")"
+AGENT_TYPE="$(_json_str agent_type "$INPUT")"
+TRANSCRIPT="$(_json_str transcript_path "$INPUT")"
+SESSION_ID="$(_json_str session_id "$INPUT")"
 
 [[ -z "$AGENT_ID" ]] && exit 0
 
