@@ -20,6 +20,39 @@ test.describe('board modal', () => {
     await page.keyboard.press('Escape');
   });
 
+  test('clicking an in-progress card opens the ticket modal', async ({ page }) => {
+    const id = `t-click-${Date.now()}`;
+    const title = `Click open ${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        `# ${title}`,
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      const card = page.locator(`.col-progress .card[data-id="${id}"]`);
+      await expect(card).toBeVisible();
+      await card.click();
+      await expect(page.locator('#m-id')).toHaveText(id);
+      await expect(page.locator('#m-title')).toHaveText(title);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('first doc tab is active on open (ticket with docs)', async ({ page }) => {
     const title = `Doc tab active test ${Date.now()}`;
     let createdId = '';
