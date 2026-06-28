@@ -726,11 +726,12 @@ cmd_addall() {
 
   echo "Registering ${#top_level[@]} skill(s) into: $project_dir"
   echo ""
+  local ok=true
   for name in "${top_level[@]}"; do
-    cmd_add "$name" "$project_dir"
+    cmd_add "$name" "$project_dir" || ok=false
   done
 
-  if [ ${#backed_up[@]} -gt 0 ]; then
+  if $ok && [ ${#backed_up[@]} -gt 0 ]; then
     for f in "${backed_up[@]}"; do
       rm -f "$project_dir/$f.bak"
     done
