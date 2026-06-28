@@ -34,7 +34,7 @@ PROJECT_ROOT = find_project_root(Path(__file__).parent.parent.resolve())
 
 
 @app.tool()
-def list_skills(skill_name: str = None) -> Any:
+def list_skills(skill_name: Optional[str] = None) -> Any:
     """Inventory all canon skills from the skills/ directory.
     
     If skill_name is provided, returns the full content of that skill's SKILL.md.
@@ -51,7 +51,7 @@ def get_ticket(ticket_id: str) -> Dict[str, Any]:
 
 
 @app.tool()
-def start_sprint(title: str = None, ticket_id: str = None, priority: str = "medium") -> Dict[str, Any]:
+def start_sprint(title: Optional[str] = None, ticket_id: Optional[str] = None, priority: str = "medium") -> Dict[str, Any]:
     """
     Start a sprint: create a ticket with plan.md and ensure DECISIONS.md and HANDOFF.md exist.
     Provide either a title (creates new ticket) or an existing ticket_id.

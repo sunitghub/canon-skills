@@ -29,12 +29,12 @@ def parse_tickets(tickets_dir: Path) -> List[Ticket]:
                         data['id'] = first_line.strip()
 
                 acceptance_criteria = ""
-                body_match = re.search(r'^## Acceptance Criteria\n(.*?)(?=\n\n##|$)', content, re.DOTALL)
+                body_match = re.search(r'^## Acceptance Criteria\n(.*?)(?=\n##|$)', content, re.DOTALL)
                 if body_match:
                     acceptance_criteria = body_match.group(1).strip()
 
                 description = ""
-                desc_match = re.search(r'^## Description\n(.*?)(?=\n\n##|$)', content, re.DOTALL)
+                desc_match = re.search(r'^## Description\n(.*?)(?=\n##|$)', content, re.DOTALL)
                 if desc_match:
                     description = desc_match.group(1).strip()
 

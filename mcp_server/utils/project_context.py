@@ -15,6 +15,6 @@ def find_project_root(start: Path) -> Path:
         if (d / '.git').exists():
             return d
         if (d / '.tickets').exists():
-            return d.parent  # .tickets is a subdirectory, project root is its parent
+            return d
         d = d.parent
     return start.resolve()

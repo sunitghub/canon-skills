@@ -82,10 +82,11 @@ def create_sprint_ticket(
     ticket_dir.mkdir(parents=True, exist_ok=True)
 
     title = description if len(description) <= 50 else description[:47] + "..."
+    safe_title = title.replace("\\", "\\\\").replace("\"", "\\\"")
 
     ticket_file = ticket_dir / "ticket.md"
     ticket_file.write_text(
-        f"---\nid: {ticket_id}\ntitle: {title}\nstatus: open\npriority: {priority}\n---\n\n## Description\n{description}\n\n## Acceptance Criteria\n",
+        f"---\nid: {ticket_id}\ntitle: \"{safe_title}\"\nstatus: open\npriority: {priority}\n---\n\n## Description\n{description}\n\n## Acceptance Criteria\n",
         encoding='utf-8'
     )
 
@@ -163,8 +164,8 @@ def list_skills(skills_dir: Path, skill_name: str = None) -> Union[List[Dict[str
         is_hidden = data.get("hidden", "false") == "true"
         if is_hidden:
             continue
-        raw_tags = data.get("tags", "").strip("[]").replace(", ", ",")
-        raw_deps = data.get("depends", "").strip("[]").replace(", ", ",")
+        raw_tags = _parse_yaml_list(data.get("tags", ""))
+        raw_deps = _parse_yaml_list(data.get("depends", ""))
         results.append({
             "name": data.get("name", entry.name),
             "description": data.get("description", ""),
@@ -267,6 +268,12 @@ def write_doc(
         "doc_name": doc_name,
         "status": "ok",
     }
+
+
+def _parse_yaml_list(raw: str) -> str:
+    if raw.startswith("[") and raw.endswith("]"):
+        return raw[1:-1].replace(", ", ",")
+    return raw
 
 
 def git_info(project_root: Path) -> Dict[str, Any]:
