@@ -2076,7 +2076,7 @@ function renderBoard() {
   board.querySelectorAll('.ready-indicator').forEach(el => {
     el.addEventListener('click', e => {
       e.stopPropagation();
-      const t = state.tickets.find(x => x.id === el.dataset.id);
+      const t = findTicketById(el.dataset.id);
       if (t) showReadyPopover(el, t);
     });
   });
@@ -2084,19 +2084,12 @@ function renderBoard() {
   board.querySelectorAll('.card-archive').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      const t = state.tickets.find(x => x.id === btn.dataset.id);
+      const t = findTicketById(btn.dataset.id);
       if (t) showConfirmToast('Archive ticket ' + esc(t.id) + '. Click to confirm!', () => moveCard(t, 'archived'));
     });
   });
 
   let cardPointerOpen = false;
-
-  function cardTicketId(el) {
-    const attr = el?.getAttribute('data-id') || el?.dataset?.id || '';
-    if (attr) return attr;
-    const label = el?.querySelector('.card-id')?.textContent?.trim() || '';
-    return label.replace(/^"|"$/g, '');
-  }
 
   function openCard(el) {
     if (!el || cardPointerOpen) return;
@@ -2169,7 +2162,7 @@ function renderBoard() {
       col.classList.remove('drag-over');
       if (!dragId) return;
       const newStatus = col.dataset.status;
-      const t = state.tickets.find(t => t.id === dragId);
+      const t = findTicketById(dragId);
       if (!t || t.status === newStatus) return;
       const { hasAcceptance } = readiness(t);
       if (newStatus === 'closed' && t.acceptance_unchecked) {
@@ -2266,13 +2259,29 @@ function cardHTML(t, idx) {
     </div>`;
 }
 
+function cardTicketId(el) {
+  const attr = el?.getAttribute('data-id') || el?.dataset?.id || '';
+  if (attr) return attr;
+  const label = el?.querySelector('.card-id')?.textContent?.trim() || '';
+  return label.replace(/^"|"$/g, '');
+}
+
+function normalizeTicketId(id) {
+  return String(id ?? '').trim().replace(/^"+|"+$/g, '');
+}
+
+function findTicketById(id) {
+  const want = normalizeTicketId(id);
+  return state.tickets.find(t => normalizeTicketId(t.id) === want);
+}
+
 // ── Modal ─────────────────────────────────────────────────────────────────
 
 const modalState = { editMode: false, activeDoc: null };
 
 function openModal(id) {
   debugBoard('openModal enter', { id, ticketCount: state.tickets.length, selectedId: state.selectedId });
-  const t = state.tickets.find(t => t.id === id);
+  const t = findTicketById(id);
   if (!t) return;
   debugBoard('openModal', id, { status: t.status, title: t.title });
   state.selectedId = id;
