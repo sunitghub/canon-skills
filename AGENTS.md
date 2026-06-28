@@ -30,7 +30,7 @@ See `standards/efficiency.md` for the full agent standards (code quality, securi
 
 ## Go MCP server (cmd/mcp-server/)
 
-Experimental Go port of the Python MCP server. Kept alongside Python during transition.
+Experimental Go port of the Python MCP server.
 
 Build: `go build -o mcp-server.exe ./cmd/mcp-server/`
 Run: `mcp-server.exe` (stdio MCP protocol)
