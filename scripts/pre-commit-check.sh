@@ -8,17 +8,13 @@ TKT_BIN="$CANON_ROOT/tools/tkt"
 [ -f "$TKT_BIN" ] || TKT_BIN=$(command -v tkt 2>/dev/null || command -v tk 2>/dev/null || true)
 
 INPUT=$(cat)
-CMD=$(echo "$INPUT" | python3 -c "
-import sys, json
-try:
-    d = json.load(sys.stdin)
-    print(d.get('tool_input', {}).get('command', ''))
-except Exception:
-    pass
-" 2>/dev/null)
+CMD=$(printf '%s' "$INPUT" \
+  | sed -nE 's/.*"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' \
+  | head -1 \
+  | sed 's/\\"/"/g; s/\\\\/\\/g')
 
 # Only fire on git commit commands
-echo "$CMD" | grep -qE '(^| )git commit' || exit 0
+echo "$CMD" | grep -qE '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)' || exit 0
 
 GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
@@ -83,6 +79,26 @@ if [[ -x "$TEST_RUNNER" ]]; then
   fi
   echo "[pre-commit] Tests passed."
 fi
+
+# ── Windows .cmd wrapper coverage check (advisory) ──────────────────────────
+while IFS= read -r f; do
+  [[ "$f" == tools/* ]] || continue
+  base="${f#tools/}"
+  # Only check .sh files or extensionless files (skip .cmd, .json, etc.)
+  if [[ "$base" == *.sh ]]; then
+    name="${base%.sh}"
+  elif [[ "$base" != *.* ]]; then
+    name="$base"
+  else
+    continue
+  fi
+  if [[ ! -f "$GIT_ROOT/tools/${name}.cmd" ]]; then
+    echo ""
+    echo "[pre-commit] NOTICE: $f staged without tools/${name}.cmd"
+    echo "  Windows users need a .cmd wrapper. Generate one:"
+    echo "    $CANON_ROOT/scripts/gen-cmd-wrapper.sh $name"
+  fi
+done < <(git diff --cached --name-only --diff-filter=A 2>/dev/null)
 
 # ── Wrapup and ticket reminders ──────────────────────────────────────────────
 CLAUDE_MD="$GIT_ROOT/CLAUDE.md"
