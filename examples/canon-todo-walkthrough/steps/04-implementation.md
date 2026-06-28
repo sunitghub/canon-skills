@@ -35,7 +35,8 @@ Todo, ignore blank titles, and toggle complete/open.
 
 Keep `sprint-check` open while the agent works. The ticket stays In Progress;
 the readiness label should be `ready` once Acceptance and Plan both have useful
-content, even before the unchecked acceptance items are done.
+content and `plan.md ## Sign-off` has a checked approval item, even before the
+unchecked acceptance items are done.
 
 ## Step 2 - Run the Test Plan
 

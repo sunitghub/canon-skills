@@ -2123,7 +2123,7 @@ function renderBoard() {
     cardPointerOpen = true;
     const id = cardTicketId(el);
     openModal(id);
-    queueMicrotask(() => { cardPointerOpen = false; });
+    setTimeout(() => { cardPointerOpen = false; }, 0);
   }
 
   board.querySelectorAll('.card').forEach(el => {
@@ -2298,6 +2298,7 @@ const modalState = { editMode: false, activeDoc: null };
 function openModal(id) {
   const t = findTicketById(id);
   if (!t) return;
+  if (DEBUG) window.__sprintCheckOpenModalCount = (window.__sprintCheckOpenModalCount || 0) + 1;
   state.selectedId = id;
   modalState.editMode = false;
   const docs = (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file)));
