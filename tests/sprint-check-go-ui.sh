@@ -44,7 +44,7 @@ assert_contains "$html" "btn-ticket-next"
   cd "$ROOT"
   SPRINT_CHECK_BASE="http://127.0.0.1:$PORT" \
   SPRINT_CHECK_TEST_ROOT="$WORK" \
-    npx playwright test tests/sprint-check-app.spec.js --grep "clicking an in-progress card|hovering the ready indicator|plan approach without sign-off|archive button|modal next"
+    npx playwright test tests/sprint-check-app.spec.js --grep "clicking an in-progress card|hovering the ready indicator|plan approach without sign-off|editing docs works for quoted numeric ticket ids|archive button|modal next"
 )
 
 printf 'sprint-check-go-ui: ok\n'

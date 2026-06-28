@@ -162,6 +162,80 @@ test.describe('board modal', () => {
     }
   });
 
+  test('editing docs works for quoted numeric ticket ids', async ({ page }) => {
+    const id = '001';
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+
+    try {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: "${id}"`,
+        'status: in_progress',
+        'type: feature',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Quoted numeric ID',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
+        '# Acceptance',
+        '',
+        `Ticket: \`${id}\``,
+        '',
+        '## Criteria',
+        '- [ ] Existing criterion',
+        '',
+        '## Test Plan',
+        '- [ ] Existing test',
+        '',
+        '## QA',
+        '- [ ] Existing QA',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#m-title')).toHaveText('Quoted numeric ID');
+      await page.locator('.doc-tab', { hasText: 'Acceptance' }).click();
+      await expect(page.locator('.doc-tab.active')).toHaveText('Acceptance');
+      await expect(page.locator('#btn-edit-doc')).toBeVisible();
+      await page.locator('#btn-edit-doc').click();
+      await expect(page.locator('#m-edit-area')).toBeVisible();
+      await expect(page.locator('#m-edit-area')).toHaveValue(/Existing criterion/);
+      await page.locator('#m-edit-area').fill([
+        '# Acceptance',
+        '',
+        `Ticket: \`${id}\``,
+        '',
+        '## Criteria',
+        '- [ ] Updated criterion',
+        '',
+        '## Test Plan',
+        '- [ ] Existing test',
+        '',
+        '## QA',
+        '- [ ] Existing QA',
+        '',
+      ].join('\n'));
+
+      page.on('dialog', dialog => {
+        throw new Error(`unexpected dialog: ${dialog.message()}`);
+      });
+      await page.locator('#btn-save-top').click();
+      await expect(page.locator('#m-edit-area')).toBeHidden();
+      await expect(page.locator('#m-body')).toContainText('Updated criterion');
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
+
   test('first doc tab is active on open (ticket with docs)', async ({ page }) => {
     const title = `Doc tab active test ${Date.now()}`;
     let createdId = '';
