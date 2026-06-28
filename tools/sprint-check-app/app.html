@@ -2089,8 +2089,35 @@ function renderBoard() {
     });
   });
 
+  let cardPointerOpen = false;
+
+  function openCard(el) {
+    if (!el || cardPointerOpen) return;
+    cardPointerOpen = true;
+    openModal(el.dataset.id);
+    queueMicrotask(() => { cardPointerOpen = false; });
+  }
+
   board.querySelectorAll('.card').forEach(el => {
-    el.addEventListener('click', () => openModal(el.dataset.id));
+    el.addEventListener('pointerup', e => {
+      if (e.button !== 0) return;
+      if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
+      if (el.classList.contains('dragging')) return;
+      openCard(el);
+    });
+
+    el.addEventListener('click', e => {
+      if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
+      if (cardPointerOpen) return;
+      openModal(el.dataset.id);
+    });
+
+    el.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      if (e.target !== el) return;
+      e.preventDefault();
+      openModal(el.dataset.id);
+    });
 
     el.addEventListener('dragstart', e => {
       dragId = el.dataset.id;
@@ -2186,7 +2213,7 @@ function cardHTML(t, idx) {
   const pri = t.priority ?? 2;
   const priLabel = ['P0 critical','P1 high','P2 normal','P3 low','P4 backlog'][pri] ?? `P${pri}`;
   return `
-    <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true"${animStyle}>
+    <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
         ${typeBadge(t.type)}
