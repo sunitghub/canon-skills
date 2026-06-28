@@ -62,8 +62,11 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - Read `acceptance.md`, `plan.md`, and each changed file fresh
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
-   Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading.** Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
-   `fail` or `partial` findings to the user before proceeding. Do not advance to
+   Read `.tickets/<id>/eval-report.md` after the subagent completes. Extract the `evaluator-run-id` from the first line. **Close the evaluator subagent handle immediately after reading.** Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks.
+
+   **Log the evaluator run.** Call the `log_subagent_run` MCP tool with `agent_id=<evaluator-run-id>` and `agent_type=evaluator`. This writes to `.canon/subagent-runs.jsonl` — the IDE-agnostic audit trail that `close_sprint` validates. Works across Claude Code, opencode, and VSCode without SubagentStop hooks.
+
+   Surface any `fail` or `partial` findings to the user before proceeding. Do not advance to
    step 3 if the evaluator verdict is `fail`. Record the eval outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
 3. **Test verification.** Review each item in `acceptance.md ## Test Plan`:

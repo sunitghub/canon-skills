@@ -25,6 +25,7 @@ from mcp_server.utils.parsers import (
     read_doc as parse_read_doc,
     write_doc as parse_write_doc,
     git_info as parse_git_info,
+    log_subagent_run as parse_log_subagent_run,
 )
 
 # Initialize FastMCP server
@@ -137,6 +138,22 @@ def close_sprint() -> Dict[str, Any]:
     and updates HANDOFF.md with the final summary.
     """
     return _parsers.close_sprint(PROJECT_ROOT)
+
+
+@app.tool()
+def log_subagent_run(agent_id: str, agent_type: str = "agent", session_id: str = "") -> Dict[str, Any]:
+    """Log a subagent run to the shared audit trail (.canon/subagent-runs.jsonl).
+
+    Called by sprint complete protocol after the evaluator subagent finishes.
+    Makes the evaluator audit trail work across all IDEs (Claude Code, opencode,
+    VSCode) instead of relying on IDE-specific SubagentStop hooks.
+    
+    Args:
+        agent_id: The evaluator-run-id from eval-report.md (e.g. "1719000000-12345")
+        agent_type: Type of subagent (default: "agent")
+        session_id: Optional session identifier
+    """
+    return parse_log_subagent_run(PROJECT_ROOT, agent_id, agent_type, session_id)
 
 
 def _dashboard_port() -> Optional[int]:

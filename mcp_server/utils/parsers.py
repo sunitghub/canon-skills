@@ -182,28 +182,67 @@ def _parse_plan_decision(plan_path: Path) -> str:
     return ""
 
 
-def _check_subagent_run(jsonl_path: Path, run_epoch: int) -> bool:
-    """Cross-check a run epoch against subagent-runs.jsonl within ±60 min window."""
-    try:
-        with open(jsonl_path) as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    d = json.loads(line)
-                    ts = d.get('ts', '')
-                    if not ts:
+AGENT_RUN_LOG_PATHS = [
+    ".canon/subagent-runs.jsonl",
+    ".claude/subagent-runs.jsonl",
+    ".opencode/subagent-runs.jsonl",
+    ".vscode/subagent-runs.jsonl",
+]
+
+
+def log_subagent_run(
+    project_root: Path,
+    agent_id: str,
+    agent_type: str = "agent",
+    session_id: str = "",
+) -> Dict[str, Any]:
+    """Log a subagent run to .canon/subagent-runs.jsonl (shared canonical path).
+
+    Called by sprint complete protocol after the evaluator subagent finishes,
+    making the audit trail IDE-agnostic. Also written by Claude Code's
+    SubagentStop hook (subagent-log.sh) for backward compat.
+    """
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    entry = {
+        "ts": ts,
+        "session_id": session_id,
+        "agent_id": agent_id,
+        "agent_type": agent_type,
+        "transcript_path": "",
+    }
+    log_dir = project_root / ".canon"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / "subagent-runs.jsonl"
+    log_file.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+    return {"status": "ok", "entry": entry}
+
+
+def _check_subagent_run(project_root: Path, run_epoch: int) -> bool:
+    """Cross-check a run epoch against subagent-runs.jsonl across all IDE log paths (±60 min window)."""
+    for rel in AGENT_RUN_LOG_PATHS:
+        jsonl_path = project_root / rel
+        if not jsonl_path.exists():
+            continue
+        try:
+            with open(jsonl_path) as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
                         continue
-                    entry_epoch = int(datetime.strptime(
-                        ts, '%Y-%m-%dT%H:%M:%SZ'
-                    ).replace(tzinfo=timezone.utc).timestamp())
-                    if abs(entry_epoch - run_epoch) <= 3600:
-                        return True
-                except Exception:
-                    pass
-    except Exception:
-        pass
+                    try:
+                        d = json.loads(line)
+                        ts = d.get('ts', '')
+                        if not ts:
+                            continue
+                        entry_epoch = int(datetime.strptime(
+                            ts, '%Y-%m-%dT%H:%M:%SZ'
+                        ).replace(tzinfo=timezone.utc).timestamp())
+                        if abs(entry_epoch - run_epoch) <= 3600:
+                            return True
+                    except Exception:
+                        pass
+        except Exception:
+            pass
     return False
 
 
@@ -589,19 +628,19 @@ def close_sprint(project_root: Path) -> Dict[str, Any]:
         
         run_id = run_id_match.group(1)
         
-        # Cross-check against .claude/subagent-runs.jsonl
+        # Cross-check against subagent-runs.jsonl across all IDE log paths
         run_parts = run_id.split('-', 1)
         run_epoch = run_parts[0] if run_parts else ""
-        jsonl_path = project_root / ".claude" / "subagent-runs.jsonl"
         
-        if jsonl_path.exists() and run_epoch.isdigit():
-            matched = _check_subagent_run(jsonl_path, int(run_epoch))
+        if run_epoch.isdigit():
+            matched = _check_subagent_run(project_root, int(run_epoch))
             if not matched:
+                paths = " or ".join(AGENT_RUN_LOG_PATHS)
                 return {
                     "status": "error",
                     "message": (
                         f"Ticket {t.id} cannot close: evaluator-run-id '{run_id}' has no "
-                        f"matching subagent entry in .claude/subagent-runs.jsonl (±60 min window). "
+                        f"matching subagent entry in {paths} (±60 min window). "
                         f"The eval must be run as a real subagent invocation — inline writes are not accepted."
                     )
                 }
