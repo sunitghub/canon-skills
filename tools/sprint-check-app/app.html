@@ -1710,6 +1710,13 @@ function displayTicketId(t) {
   return String(t?.id ?? '').replace(/^(['"])(.*)\1$/, '$2');
 }
 
+function normalizeTicketLineId(value) {
+  return String(value ?? '')
+    .trim()
+    .replace(/^`(.*)`$/, '$1')
+    .replace(/^(['"])(.*)\1$/, '$2');
+}
+
 function titleCase(s) {
   return String(s ?? '').replace(/\b\w/g, c => c.toUpperCase());
 }
@@ -2559,7 +2566,9 @@ function validateDocStructure(t, content) {
   if (!modalState.activeDoc) return '';
 
   const expectedTicket = `Ticket: \`${displayTicketId(t)}\``;
-  if (!content.includes(expectedTicket)) {
+  const ticketLine = content.match(/^Ticket:\s*(.+?)\s*$/m);
+  const actualTicketId = ticketLine ? normalizeTicketLineId(ticketLine[1]) : '';
+  if (actualTicketId !== displayTicketId(t)) {
     return `Keep the ticket line unchanged: ${expectedTicket}`;
   }
 
