@@ -38,12 +38,12 @@ def parse_tickets(tickets_dir: Path) -> List[Ticket]:
                         data['id'] = first_line.strip()
 
                 acceptance_criteria = ""
-                body_match = re.search(r'^## Acceptance Criteria\n(.*?)(?=\n##|$)', content, re.DOTALL)
+                body_match = re.search(r'^## Acceptance Criteria\n(.*?)(?=\n##|$)', content, re.DOTALL | re.MULTILINE)
                 if body_match:
                     acceptance_criteria = body_match.group(1).strip()
 
                 description = ""
-                desc_match = re.search(r'^## Description\n(.*?)(?=\n##|$)', content, re.DOTALL)
+                desc_match = re.search(r'^## Description\n(.*?)(?=\n##|$)', content, re.DOTALL | re.MULTILINE)
                 if desc_match:
                     description = desc_match.group(1).strip()
 
@@ -83,7 +83,7 @@ def parse_handoff(handoff_path: Path) -> Dict[str, Any]:
 
 def _get_section(content: str, heading: str) -> str:
     pattern = re.compile(
-        r'^##\s+' + re.escape(heading) + r'\s*$(.*?)(?=^##|\Z)',
+        r'^##\s+' + re.escape(heading) + r'\s*$(.*?)(?=^##(?!#)|\Z)',
         re.MULTILINE | re.DOTALL
     )
     m = pattern.search(content)
