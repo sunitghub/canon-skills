@@ -45,6 +45,21 @@ assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENT
 status_output="$("$SKILLS" status "$project")"
 assert_contains "$status_output" "sprint                    [ok]"
 
+"$SKILLS" add context-check "$project" >/dev/null
+assert_count 1 "| context-check | agent-ops | $ROOT/skills/context-check/SKILL.md |" "$project/AGENTS.md"
+"$SKILLS" remove context-check "$project" >/dev/null
+assert_count 0 "| context-check | agent-ops | $ROOT/skills/context-check/SKILL.md |" "$project/AGENTS.md"
+assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENTS.md"
+[[ -L "$project/.claude/skills" ]] || fail "expected shared .claude/skills symlink to remain while sprint is registered"
+[[ -L "$project/.agents/skills" ]] || fail "expected shared .agents/skills symlink to remain while sprint is registered"
+
+set +e
+addall_output="$("$SKILLS" addall "$project" 2>&1)"
+addall_rc=$?
+set -e
+[[ "$addall_rc" -ne 0 ]] || fail "expected addall to fail"
+assert_contains "$addall_output" "Usage: skills.sh <command> [skill] [project-dir]"
+
 # Project registered in registry
 projects_file="$tmp_home/.config/canon/projects"
 assert_file_exists "$projects_file"
