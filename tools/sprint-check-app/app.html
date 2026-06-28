@@ -1653,11 +1653,12 @@ function recommendedSlug(status, existingSlugs) {
 
 function docSlug(t, file) {
   if (file.includes('/')) return file.split('/').pop().replace('.md', '');
-  return file.replace(`${t.id}-`, '').replace('.md', '');
+  return file.replace(`${displayTicketId(t)}-`, '').replace('.md', '');
 }
 
 function docFileFor(t, slug) {
-  return t.layout === 'folder' ? `${t.id}/${slug}.md` : `${t.id}-${slug}.md`;
+  const id = displayTicketId(t);
+  return t.layout === 'folder' ? `${id}/${slug}.md` : `${id}-${slug}.md`;
 }
 
 function availableDocTypes(t) {
@@ -1703,6 +1704,10 @@ function setDot(s) {
 
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function displayTicketId(t) {
+  return String(t?.id ?? '').replace(/^(['"])(.*)\1$/, '$2');
 }
 
 function titleCase(s) {
@@ -2553,7 +2558,7 @@ function normalizeDocTitle(t, content) {
 function validateDocStructure(t, content) {
   if (!modalState.activeDoc) return '';
 
-  const expectedTicket = `Ticket: \`${t.id}\``;
+  const expectedTicket = `Ticket: \`${displayTicketId(t)}\``;
   if (!content.includes(expectedTicket)) {
     return `Keep the ticket line unchanged: ${expectedTicket}`;
   }
