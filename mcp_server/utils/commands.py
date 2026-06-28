@@ -43,7 +43,7 @@ def add_acceptance_criterion(
 
     last_num = 0
     is_numbered = False
-    last_item_line = -1
+    found_existing_items = False
 
     for i in range(list_start_idx, len(lines)):
         stripped = lines[i].strip()
@@ -53,13 +53,13 @@ def add_acceptance_criterion(
         if numbered_match:
             is_numbered = True
             last_num = int(numbered_match.group(1))
-            last_item_line = i
+            found_existing_items = True
         elif re.match(r'^[-*]\s*', stripped):
-            last_item_line = i
+            found_existing_items = True
         else:
             break
 
-    if last_item_line == -1:
+    if not found_existing_items:
         new_content = content.rstrip() + f"\n- [ ] {criterion_text}\n"
     elif is_numbered:
         new_num = last_num + 1
@@ -228,7 +228,7 @@ def read_doc(
     doc_name: str,
 ) -> Dict[str, Any]:
     valid_docs = {"acceptance.md", "plan.md", "test_plan.md", "summary.md"}
-    if doc_name not in valid_docs:
+    if doc_name.lower() not in valid_docs:
         return {
             "error": (
                 f"Invalid doc_name '{doc_name}'. "
@@ -255,7 +255,7 @@ def write_doc(
     content: str,
 ) -> Dict[str, Any]:
     valid_docs = {"acceptance.md", "plan.md", "test_plan.md", "summary.md"}
-    if doc_name not in valid_docs:
+    if doc_name.lower() not in valid_docs:
         return {
             "error": (
                 f"Invalid doc_name '{doc_name}'. "

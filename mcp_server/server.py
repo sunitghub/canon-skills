@@ -254,7 +254,7 @@ def _open_browser(url: str) -> None:
         except FileNotFoundError:
             pass
     elif sys.platform == "linux":
-        for cmd in ["xdg-open", "wslview", "open"]:
+        for cmd in ["xdg-open", "wslview"]:
             try:
                 subprocess.Popen([cmd, url])
                 return
@@ -281,15 +281,17 @@ def open_dashboard() -> str:
 
 
 if __name__ == "__main__":
-    _port = _dashboard_port()
-    if _port is None:
-        try:
+    try:
+        _port = _dashboard_port()
+        if _port is None:
             _port = _find_free_port()
             if _start_dashboard(_port):
                 url = f"http://127.0.0.1:{_port}"
                 print(f"sprint-check started on {url}", file=sys.stderr)
             else:
                 print(f"sprint-check dashboard failed to start on port {_port}", file=sys.stderr)
-        except Exception as e:
-            print(f"sprint-check auto-start skipped: {e}", file=sys.stderr)
+    except RuntimeError:
+        print("sprint-check auto-start skipped: no free port available", file=sys.stderr)
+    except Exception as e:
+        print(f"sprint-check auto-start skipped: {e}", file=sys.stderr)
     app.run()

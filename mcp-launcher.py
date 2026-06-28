@@ -4,6 +4,7 @@ Finds the project's .venv Python and runs mcp_server.server.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -23,12 +24,9 @@ def _find_python() -> str:
             if c.is_file():
                 return str(c)
     for name in ("python3", "python"):
-        try:
-            result = subprocess.run([name, "-c", ""])
-            if result.returncode == 0:
-                return name
-        except FileNotFoundError:
-            continue
+        found = shutil.which(name)
+        if found:
+            return found
     print("Error: Python not found. Ensure a .venv or system Python is available.", file=sys.stderr)
     sys.exit(1)
 

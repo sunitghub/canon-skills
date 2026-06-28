@@ -1,9 +1,12 @@
 import json
+import logging
 import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
 from .models import Ticket
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_timestamp(ts: str) -> int:
@@ -131,10 +134,12 @@ def _check_subagent_run(project_root: Path, run_epoch: int) -> bool:
                         if not ts:
                             continue
                         entry_epoch = _parse_timestamp(ts)
-                        if abs(entry_epoch - run_epoch) <= 300:
+                        if abs(entry_epoch - run_epoch) <= 3600:
                             return True
-                    except Exception:
+                    except Exception as exc:
+                        logger.warning("Failed to parse entry in %s: %s", jsonl_path, exc)
                         pass
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to read %s: %s", jsonl_path, exc)
             pass
     return False
