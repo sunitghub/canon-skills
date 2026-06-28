@@ -73,7 +73,7 @@ def parse_handoff(handoff_path: Path) -> Dict[str, Any]:
 
 def _get_section(content: str, heading: str) -> str:
     pattern = re.compile(
-        r'^##\s+' + re.escape(heading) + r'\s*$(.*?)(?=^##\s|\Z)',
+        r'^##\s+' + re.escape(heading) + r'\s*$(.*?)(?=^##|\Z)',
         re.MULTILINE | re.DOTALL
     )
     m = pattern.search(content)
@@ -124,9 +124,10 @@ def _check_subagent_run(project_root: Path, run_epoch: int) -> bool:
                         ts = d.get('ts', '')
                         if not ts:
                             continue
+                        ts_normalized = ts.replace("Z", "+0000") if ts.endswith("Z") else ts
                         entry_epoch = int(datetime.strptime(
-                            ts, '%Y-%m-%dT%H:%M:%SZ'
-                        ).replace(tzinfo=timezone.utc).timestamp())
+                            ts_normalized, '%Y-%m-%dT%H:%M:%S%z'
+                        ).timestamp())
                         if abs(entry_epoch - run_epoch) <= 3600:
                             return True
                     except Exception:

@@ -6,7 +6,7 @@ import time
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Union
 
 from mcp.server.fastmcp import FastMCP
 from mcp_server.utils.project_context import find_project_root
@@ -34,7 +34,7 @@ PROJECT_ROOT = find_project_root(Path(__file__).parent.parent.resolve())
 
 
 @app.tool()
-def list_skills(skill_name: Optional[str] = None) -> Any:
+def list_skills(skill_name: Optional[str] = None) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
     """Inventory all canon skills from the skills/ directory.
     
     If skill_name is provided, returns the full content of that skill's SKILL.md.
@@ -223,9 +223,17 @@ def _start_dashboard(port: int) -> bool:
 def _open_browser(url: str) -> None:
     """Open a URL in the default browser using platform-specific commands."""
     if sys.platform == "win32":
-        subprocess.Popen(["cmd.exe", "/c", "start", url])
+        try:
+            subprocess.Popen(["cmd.exe", "/c", "start", url])
+            return
+        except FileNotFoundError:
+            pass
     elif sys.platform == "darwin":
-        subprocess.Popen(["open", url])
+        try:
+            subprocess.Popen(["open", url])
+            return
+        except FileNotFoundError:
+            pass
     elif sys.platform == "linux":
         for cmd in ["xdg-open", "wslview", "open"]:
             try:
@@ -233,7 +241,7 @@ def _open_browser(url: str) -> None:
                 return
             except FileNotFoundError:
                 continue
-        print(f"Open in your browser: {url}", file=sys.stderr)
+    print(f"Open in your browser: {url}", file=sys.stderr)
 
 
 @app.tool()

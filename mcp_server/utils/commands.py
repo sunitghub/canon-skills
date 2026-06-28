@@ -272,7 +272,9 @@ def write_doc(
 
 def _parse_yaml_list(raw: str) -> str:
     if raw.startswith("[") and raw.endswith("]"):
-        return raw[1:-1].replace(", ", ",")
+        inner = raw[1:-1]
+        parts = [p.strip() for p in inner.split(",")]
+        return ",".join(parts)
     return raw
 
 
