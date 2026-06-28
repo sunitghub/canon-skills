@@ -1,5 +1,0 @@
-{
-  "terminal.integrated.env.windows": {
-    "PATH": "${env:PATH};${env:ProgramFiles}\\Git\\bin;${env:ProgramFiles(x86)}\\Git\\bin;${env:LOCALAPPDATA}\\Programs\\Git\\bin"
-  }
-}

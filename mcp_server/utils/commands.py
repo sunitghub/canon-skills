@@ -82,7 +82,7 @@ def create_sprint_ticket(
     priority: str,
 ) -> Dict[str, Any]:
     for _ in range(10):
-        ticket_id = f"TKT-{os.urandom(4).hex().upper()}"
+        ticket_id = f"t-{os.urandom(4).hex()}"
         ticket_dir = tickets_dir / ticket_id
         try:
             ticket_dir.mkdir(parents=True, exist_ok=False)
