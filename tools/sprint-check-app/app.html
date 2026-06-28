@@ -2095,7 +2095,14 @@ function renderBoard() {
     if (!el || cardPointerOpen) return;
     cardPointerOpen = true;
     debugBoard('openCard', el.dataset.id);
-    openModal(el.dataset.id);
+    try {
+      debugBoard('openCard before openModal', { id: el.dataset.id, ticketCount: state.tickets.length, selectedId: state.selectedId });
+      openModal(el.dataset.id);
+      debugBoard('openCard after openModal', el.dataset.id);
+    } catch (err) {
+      console.error('[sprint-check] openCard error', err);
+      throw err;
+    }
     queueMicrotask(() => { cardPointerOpen = false; });
   }
 
@@ -2253,6 +2260,7 @@ function cardHTML(t, idx) {
 const modalState = { editMode: false, activeDoc: null };
 
 function openModal(id) {
+  debugBoard('openModal enter', { id, ticketCount: state.tickets.length, selectedId: state.selectedId });
   const t = state.tickets.find(t => t.id === id);
   if (!t) return;
   debugBoard('openModal', id, { status: t.status, title: t.title });
