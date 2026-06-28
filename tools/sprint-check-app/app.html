@@ -2091,14 +2091,22 @@ function renderBoard() {
 
   let cardPointerOpen = false;
 
+  function cardTicketId(el) {
+    const attr = el?.getAttribute('data-id') || el?.dataset?.id || '';
+    if (attr) return attr;
+    const label = el?.querySelector('.card-id')?.textContent?.trim() || '';
+    return label.replace(/^"|"$/g, '');
+  }
+
   function openCard(el) {
     if (!el || cardPointerOpen) return;
     cardPointerOpen = true;
-    debugBoard('openCard', el.dataset.id);
+    const id = cardTicketId(el);
+    debugBoard('openCard', id);
     try {
-      debugBoard('openCard before openModal', { id: el.dataset.id, ticketCount: state.tickets.length, selectedId: state.selectedId });
-      openModal(el.dataset.id);
-      debugBoard('openCard after openModal', el.dataset.id);
+      debugBoard('openCard before openModal', { id, ticketCount: state.tickets.length, selectedId: state.selectedId });
+      openModal(id);
+      debugBoard('openCard after openModal', id);
     } catch (err) {
       console.error('[sprint-check] openCard error', err);
       throw err;
@@ -2111,34 +2119,37 @@ function renderBoard() {
       if (e.button !== 0) return;
       if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
       if (el.classList.contains('dragging')) return;
-      debugBoard('pointerup', el.dataset.id, { target: e.target?.className || e.target?.tagName, pointerType: e.pointerType });
+      debugBoard('pointerup', cardTicketId(el), { target: e.target?.className || e.target?.tagName, pointerType: e.pointerType });
       openCard(el);
     });
 
     el.addEventListener('click', e => {
       if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
       if (cardPointerOpen) return;
-      debugBoard('click', el.dataset.id, { target: e.target?.className || e.target?.tagName });
-      openModal(el.dataset.id);
+      const id = cardTicketId(el);
+      debugBoard('click', id, { target: e.target?.className || e.target?.tagName });
+      openModal(id);
     });
 
     el.addEventListener('keydown', e => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       if (e.target !== el) return;
       e.preventDefault();
-      debugBoard('keydown', el.dataset.id, { key: e.key });
-      openModal(el.dataset.id);
+      const id = cardTicketId(el);
+      debugBoard('keydown', id, { key: e.key });
+      openModal(id);
     });
 
     el.addEventListener('dragstart', e => {
-      debugBoard('dragstart', el.dataset.id);
-      dragId = el.dataset.id;
+      const id = cardTicketId(el);
+      debugBoard('dragstart', id);
+      dragId = id;
       e.dataTransfer.setData('text/plain', dragId); // required by Safari to activate drag
       e.dataTransfer.effectAllowed = 'move';
       requestAnimationFrame(() => el.classList.add('dragging'));
     });
     el.addEventListener('dragend', () => {
-      debugBoard('dragend', el.dataset.id);
+      debugBoard('dragend', cardTicketId(el));
       el.classList.remove('dragging');
       dragId = null;
     });
