@@ -1,6 +1,11 @@
 # Canon Setup
 
-> **Windows 11:** canon's CLI tools require WSL2 (Ubuntu). Run all commands below inside the WSL2 terminal. See [fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11-wsl2) for the full setup path.
+> **Windows 11 — no WSL required:** install [Git for Windows](https://git-scm.com/download/win), then:
+> 1. Run `install.ps1` once from PowerShell — adds `tools/` to your user PATH.
+> 2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
+> 3. Use **PowerShell** for everything else: `sprint-check-win` opens the board; create and manage tickets through the UI.
+>
+> For agent-driven workflows (`sprint`, `tkt`, `skills.sh`), run those commands from Git Bash. WSL2 also works — see [fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11-wsl2).
 
 ## Install
 
