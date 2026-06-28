@@ -34,5 +34,6 @@ Experimental Go port of the Python MCP server. Kept alongside Python during tran
 
 Build: `go build -o mcp-server.exe ./cmd/mcp-server/`
 Run: `mcp-server.exe` (stdio MCP protocol)
+Test: `go test ./internal/...` (72 tests)
 
 Same 2 core tools as Python: ticket, sprint. (git_info/list_skills dropped — agent can use shell/git directly.)

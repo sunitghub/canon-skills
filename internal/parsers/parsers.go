@@ -35,6 +35,14 @@ func ParseTickets(ticketsDir string) []models.Ticket {
 			continue
 		}
 		data := ParseFrontmatterRaw(string(content))
+		if data["id"] == "" {
+			body := strings.ReplaceAll(string(content), "\r", "")
+			firstLine := strings.SplitN(strings.TrimSpace(body), "\n", 2)[0]
+			if firstLine != "" {
+				data["id"] = firstLine
+				data["title"] = firstLine
+			}
+		}
 		acceptance := extractSection(string(content), "Acceptance Criteria")
 		description := extractSection(string(content), "Description")
 
