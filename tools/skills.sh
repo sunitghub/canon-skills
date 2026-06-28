@@ -430,9 +430,11 @@ cmd_status() {
   local _hook_names=() _hook_tags=()
   if [ ${#skill_names[@]} -gt 0 ]; then
     local _hs="$project_dir/.claude/settings.json"
-    for _h in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh; do
+    for _h in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh subagent-log.sh; do
       _hook_names+=("$_h")
-      if grep -qF "$_h" "$_hs" 2>/dev/null && [ -f "$SKILLS_ROOT/scripts/$_h" ]; then
+      local _hook_path="$SKILLS_ROOT/scripts/$_h"
+      [[ "$_h" == "subagent-log.sh" ]] && _hook_path="$SKILLS_ROOT/tools/$_h"
+      if grep -qF "$_h" "$_hs" 2>/dev/null && [ -f "$_hook_path" ]; then
         _hook_tags+=("ok")
       else
         _hook_tags+=("not wired")
