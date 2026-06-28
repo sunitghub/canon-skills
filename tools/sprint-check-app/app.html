@@ -487,6 +487,16 @@
       font-size: 10px; font-weight: 700; letter-spacing: .06em;
       color: var(--text-muted); position: relative; z-index: 1;
     }
+    .card-id-copy {
+      margin-left: 4px; flex-shrink: 0; font-size: 9px; padding: 1px 5px;
+      border-radius: 3px; border: 1px solid transparent; background: transparent;
+      color: var(--text-muted); cursor: pointer; transition: all .15s;
+      position: relative; z-index: 1; line-height: 1.4;
+      font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+    }
+    .card-id-copy:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-hover); transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.18); }
+    .card-id-copy:active { transform: translateY(0); box-shadow: none; }
+    .card-id-copy.copied { border-color: var(--col-done); color: var(--col-done); }
 
     /* Card body — title zone */
     .card-body { padding: 10px 11px 8px; }
@@ -2116,6 +2126,20 @@ function renderBoard() {
     });
   });
 
+  board.querySelectorAll('.card-id-copy').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(btn.dataset.copy).then(() => {
+        btn.textContent = 'Done';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy';
+          btn.classList.remove('copied');
+        }, 1200);
+      }).catch(() => {});
+    });
+  });
+
   let cardPointerOpen = false;
 
   function openCard(el) {
@@ -2249,6 +2273,7 @@ function cardHTML(t, idx) {
     <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
+        <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
       </div>

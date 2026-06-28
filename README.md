@@ -219,10 +219,15 @@ Gates don't make agents smarter. They make certain failures impossible — and t
 |---|---|---|
 | Claude Code / Codex / Pi | At least one | running the agent |
 | Git | Yes | clone/update canon |
-| Bash | Yes | curl installer |
-| Python 3 | `sprint-check` + hooks | the board |
+| Bash | Yes | CLI tools (`sprint`, `tkt`, `skills.sh`) |
+| Python 3 | `sprint-check` on macOS/Linux | the board (not needed on Windows) |
 
-**Windows 11:** canon's CLI tools are bash scripts — run them inside WSL2 (Ubuntu). See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11-wsl2)** for the full setup path.
+**Windows 11 — no WSL required:** install [Git for Windows](https://git-scm.com/download/win), then:
+1. Run `install.ps1` once from PowerShell — adds `tools/` to your user PATH.
+2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
+3. Use **PowerShell** (or any terminal) for everything else: `sprint-check-win` opens the board, tickets can be created and managed through the UI.
+
+For agent-driven workflows (`sprint`, `tkt`, `skills.sh`) run those from Git Bash. See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11-wsl2)** for the full setup.
 
 Register canon in another project:
 
