@@ -127,6 +127,10 @@ func handleSprint(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 		if title != "" && ticketID != "" {
 			return jsonResult(errMap("Provide title or ticket_id, not both.")), nil
 		}
+		validPriorities := map[string]bool{"low": true, "medium": true, "high": true}
+		if !validPriorities[priority] {
+			return jsonResult(errMap("Priority must be low, medium, or high")), nil
+		}
 		return jsonResult(sprint.StartSprint(getProjectRoot(), title, ticketID, priority)), nil
 
 	case "board":

@@ -43,6 +43,9 @@ var winReserved = []string{"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "
 
 var validTicketIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
 
+var frontmatterRe = regexp.MustCompile(`(?s)^(---\r?\n.*?\r?\n---)\r?\n?(.*)$`)
+var statusLineRe = regexp.MustCompile(`(?m)^status:.*$`)
+
 func validTicketID(id string) error {
 	if id == "" {
 		return errors.New("invalid ticket ID: empty")
@@ -61,13 +64,6 @@ func validTicketID(id string) error {
 	}
 	if !validTicketIDRe.MatchString(id) {
 		return errors.New("invalid ticket ID: must match ^[A-Za-z0-9][A-Za-z0-9_-]*$")
-	}
-	return nil
-}
-
-func validateTicketID(ticketID string) map[string]any {
-	if err := validTicketID(ticketID); err != nil {
-		return map[string]any{"error": fmt.Sprintf("Invalid ticket ID '%s': %v", ticketID, err)}
 	}
 	return nil
 }
@@ -129,7 +125,7 @@ func AddAcceptanceCriterion(ticketsDir, ticketID, criterionText string) map[stri
 		}
 		if m := numRe.FindStringSubmatch(stripped); m != nil {
 			isNumbered = true
-			fmt.Sscanf(m[1], "%d", &lastNum)
+			lastNum, _ = strconv.Atoi(m[1])
 			foundExisting = true
 			lastItemLineIdx = i
 		} else if bulletRe.MatchString(stripped) {
@@ -229,13 +225,11 @@ func UpdateTicketStatus(ticketsDir, ticketID, newStatus string) map[string]any {
 	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("Ticket %s not found", ticketID)}
 	}
-	fmRe := regexp.MustCompile(`(?s)^(---\r?\n.*?\r?\n---)\r?\n?(.*)$`)
-	m := fmRe.FindStringSubmatch(string(content))
+	m := frontmatterRe.FindStringSubmatch(string(content))
 	if m == nil {
 		return map[string]any{"error": "ticket.md has no frontmatter"}
 	}
-	statusRe := regexp.MustCompile(`(?m)^status:.*$`)
-	newFrontmatter := statusRe.ReplaceAllString(m[1], "status: "+newStatus)
+	newFrontmatter := statusLineRe.ReplaceAllString(m[1], "status: "+newStatus)
 	newContent := newFrontmatter + "\n\n" + strings.TrimLeft(m[2], "\n")
 	if err := os.WriteFile(ticketFile, []byte(newContent), 0644); err != nil {
 		return map[string]any{"error": fmt.Sprintf("Failed to write ticket.md: %v", err)}

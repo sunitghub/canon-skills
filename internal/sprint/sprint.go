@@ -20,6 +20,10 @@ import (
 // It is matched only inside the plan.md frontmatter block, never inside the body.
 var trivialTierRe = regexp.MustCompile(`(?im)^\s*tier\s*:\s*"?trivial"?\s*$`)
 
+var verdictPassRe = regexp.MustCompile(`(?m)^pass:\s*\S`)
+var runIDRe = regexp.MustCompile(`(?m)^evaluator-run-id:\s+(\S+)`)
+var verdictLineRe = regexp.MustCompile(`(?m)^(pass|fail):`)
+
 // hasFrontmatter reports whether content begins with a YAML frontmatter fence.
 func hasFrontmatter(content string) (string, bool) {
 	re := regexp.MustCompile(`(?s)^---\r?\n(.*?)\r?\n---`)
@@ -77,7 +81,9 @@ func LogSubagentRun(projectRoot, agentID, agentType, sessionID string) map[strin
 	}
 	rel := parsers.AgentRunLogPaths[0]
 	logFile := filepath.Join(projectRoot, rel)
-	os.MkdirAll(filepath.Dir(logFile), 0755)
+	if err := os.MkdirAll(filepath.Dir(logFile), 0755); err != nil {
+		return map[string]any{"error": fmt.Sprintf("cannot create log dir: %v", err)}
+	}
 	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return map[string]any{"error": fmt.Sprintf("cannot open log: %v", err)}
@@ -97,8 +103,8 @@ func StartSprint(projectRoot, title, ticketID, priority string) map[string]any {
 	var tid string
 	if ticketID != "" {
 		tdir := filepath.Join(ticketsDir, ticketID)
-		if _, err := os.Stat(tdir); os.IsNotExist(err) {
-			return map[string]any{"error": fmt.Sprintf("Ticket '%s' not found", ticketID)}
+		if _, err := os.Stat(tdir); err != nil {
+			return map[string]any{"error": fmt.Sprintf("Cannot access ticket '%s': %v", ticketID, err)}
 		}
 		tid = ticketID
 	} else {
@@ -112,9 +118,11 @@ func StartSprint(projectRoot, title, ticketID, priority string) map[string]any {
 	tdir := filepath.Join(ticketsDir, tid)
 	planFile := filepath.Join(tdir, "plan.md")
 	if _, err := os.Stat(planFile); os.IsNotExist(err) {
-		os.WriteFile(planFile, []byte(
+		if err := os.WriteFile(planFile, []byte(
 			fmt.Sprintf("---\nid: %s\n---\n\n# Plan\n\nTicket: `%s`\n\n## Sign-off\n\n- [ ] Plan approved — proceed to implementation\n\n## Approach\n\n\n## Files\n\n\n## Decisions\n\n", tid, tid),
-		), 0644)
+		), 0644); err != nil {
+			return map[string]any{"error": fmt.Sprintf("Failed to write plan.md: %v", err)}
+		}
 	}
 
 	for _, pair := range [][2]string{
@@ -122,11 +130,15 @@ func StartSprint(projectRoot, title, ticketID, priority string) map[string]any {
 		{filepath.Join(projectRoot, "HANDOFF.md"), "# Handoff\n\n## Current Focus\n\n## In Progress\n\n## Discoveries\n\n## Next Steps\n\n1. \n"},
 	} {
 		if _, err := os.Stat(pair[0]); os.IsNotExist(err) {
-			os.WriteFile(pair[0], []byte(pair[1]), 0644)
+			if err := os.WriteFile(pair[0], []byte(pair[1]), 0644); err != nil {
+				return map[string]any{"error": fmt.Sprintf("Failed to write %s: %v", pair[0], err)}
+			}
 		}
 	}
 
-	os.WriteFile(filepath.Join(ticketsDir, "ACTIVE"), []byte(tid+"\n"), 0644)
+	if err := os.WriteFile(filepath.Join(ticketsDir, "ACTIVE"), []byte(tid+"\n"), 0644); err != nil {
+		return map[string]any{"error": fmt.Sprintf("Failed to write ACTIVE file: %v", err)}
+	}
 
 	return map[string]any{
 		"ticket_id":  tid,
@@ -186,8 +198,6 @@ func CloseSprint(projectRoot string) map[string]any {
 		}
 	}
 
-	verdictPassRe := regexp.MustCompile(`(?m)^pass:\s*\S`)
-
 	for _, t := range nonTrivial {
 		tdir := filepath.Join(ticketsDir, t.ID)
 		reportPath := filepath.Join(tdir, "eval-report.md")
@@ -200,7 +210,6 @@ func CloseSprint(projectRoot string) map[string]any {
 			}
 		}
 
-		runIDRe := regexp.MustCompile(`(?m)^evaluator-run-id:\s+(\S+)`)
 		runIDMatch := runIDRe.FindStringSubmatch(string(reportContent))
 		if runIDMatch == nil {
 			return map[string]any{
@@ -234,7 +243,7 @@ func CloseSprint(projectRoot string) map[string]any {
 
 		if !verdictPassRe.Match(reportContent) {
 			verdictLine := "(no verdict line found)"
-			if m := regexp.MustCompile(`(?m)^(pass|fail):`).FindString(string(reportContent)); m != "" {
+			if m := verdictLineRe.FindString(string(reportContent)); m != "" {
 				verdictLine = m
 			}
 			return map[string]any{
@@ -247,7 +256,7 @@ func CloseSprint(projectRoot string) map[string]any {
 	var receiptLines []string
 	receiptLines = append(receiptLines, "## Delivery Receipt", "| Ticket ID | Status | Title |", "| --- | --- | --- |")
 	for _, t := range tickets {
-		receiptLines = append(receiptLines, fmt.Sprintf("| %s | %s | %s |", t.ID, t.Status, t.Title))
+		receiptLines = append(receiptLines, fmt.Sprintf("| %s | %s | %s |", t.ID, t.Status, strings.ReplaceAll(t.Title, "|", "\\|")))
 	}
 	receiptContent := strings.Join(receiptLines, "\n")
 
