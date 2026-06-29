@@ -27,3 +27,13 @@ See `standards/efficiency.md` for the full agent standards (code quality, securi
 |-------|----------|--------|
 | sprint | dev | /Users/sunitjoshi/Developer/canon/skills/sprint/SKILL.md |
 <!-- AI-SKILLS:END -->
+
+## Go MCP server (cmd/mcp-server/)
+
+Experimental Go port of the Python MCP server.
+
+Build: `go build -o mcp-server.exe ./cmd/mcp-server/`
+Run: `mcp-server.exe` (stdio MCP protocol)
+Test: `go test ./internal/...`
+
+Same 2 core tools as Python: ticket, sprint. (git_info/list_skills dropped — agent can use shell/git directly.)

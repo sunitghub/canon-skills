@@ -19,8 +19,16 @@ doc-findings.md
 # .claude/settings.json IS tracked (canonical project-local hook config for all contributors).
 .claude/skills
 .claude/subagent-runs.jsonl
+.canon/subagent-runs.jsonl
+.opencode/subagent-runs.jsonl
 .agents/
 
 node_modules/
 package-lock.json
 test-results/
+
+# Go MCP server binary
+/mcp-server.exe
+/mcp-server
+cmd/mcp-server/mcp-server.exe
+cmd/mcp-server/mcp-server
