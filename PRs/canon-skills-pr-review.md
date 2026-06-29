@@ -1,18 +1,18 @@
 # canon-skills PR Review
-_sunitghub/canon-skills — reviewed 2026-06-28_
+_sunitghub/canon-skills — reviewed 29/06/2026_
 
-| PR | Title | Area | Findings | Verdict | Opened |
-|----|-------|------|----------|---------|--------|
-| #4 | refactor(skills): extract sub-modules from monolithic skills.sh | Tooling | Current diff is a scoped `tools/skills.sh` split into `tools/skills/{lib,project,agents,display,commands}.sh`. I compared it against `public/main` and smoke-tested `bash -n`, `skills.sh list`, `add`, `refresh`, `remove`, `help`, and `status` in a detached worktree; sampled behavior held. `hidden: true` and `inject: true` are not new to this PR's current diff. `addall` is also carried forward from `public/main`, but product direction is now explicitly against `addall`, so the refactor branch should remove the command instead of preserving it in the split. | Recommend Fix Y with required edit — merge the module split only after dropping `addall` from usage, dispatch, and `commands.sh`; no ticket created until user confirms Y. | 06/28/2026 08:41 AM |
-| #3 | feat: add submodule setup, IDE config, and sprint workflow polish | DX / Docs | Current diff is only `.vscode/tasks.json`, `AGENTS.md`, and `README.md`; the earlier setup script, hook settings, app copy button, sprint skill edits, and stale ticket deletions are no longer present. The docs now reference `scripts/submodule-setup.sh`, `cmd/mcp-server`, `.vscode/mcp.json`, `opencode.json`, and named MCP tools, but none of those files exist in this PR. `AGENTS.md` also tells agents to prefer MCP tools that are not available on this branch and do not match PR #2's current aggregate `ticket`/`sprint` tool surface. | Recommend Fix N — docs/tasks overstate unavailable MCP and submodule setup; land only after the referenced setup/MCP files exist or trim the claims to current functionality. | 06/28/2026 08:41 AM |
-| #2 | feat: implement MCP server foundation with sprint management tools | MCP | Current diff is a Go MCP server with aggregate `ticket` and `sprint` tools, plus parser/command/sprint packages and tests; this is materially different from the older Python summary in the PR body. Direction is better than the earlier Python approach, but a clean `go test ./...` fails until `go mod tidy` rewrites `go.mod`, and the implementation creates `TKT-0001` style tickets instead of canon's existing `t-xxxx` IDs. It also duplicates ticket/sprint behavior instead of delegating to `tkt`/`sprint`, so it risks drifting from the CLIs and board semantics; after `go mod tidy`, tests pass in the detached worktree. | Recommend Fix N — keep the `tools/sprint-check <port>` change only; revisit MCP as an optional addon configuration, not default canon wiring, after aligning IDs, delegating to existing commands or shared code, tidying `go.mod`, and updating the declared tool surface. | 06/28/2026 08:40 AM |
-| #1 | MCP Path | Meta | Kitchen-sink PR combining MCP server, skills.sh refactor, submodule setup, IDE configs, and sprint polish in one diff. Correctly closed by author and split into PRs #2, #3, #4. Current open PRs have since changed materially, so this row is retained only as historical context. | N/A — closed. Findings superseded by current PRs #2-4 above. | 06/28/2026 08:13 AM |
+| PR | Title | Area | Findings | Verdict | Opened | Reviewed |
+|----|-------|------|----------|---------|--------|----------|
+| #4 | refactor(skills): extract sub-modules from monolithic skills.sh | Tooling | The intended module split has already landed on `main` outside this PR, with `addall` removed. The open PR branch is now stale: its diff still includes `cmd_addall`, usage text for `addall`, and the older per-skill removal behavior that can delete shared skill symlinks too early. Merging it now would reintroduce behavior canon deliberately removed. | Recommend Fix N — superseded by `main`; close this PR rather than merging a stale refactor branch. | 28/06/2026 | 29/06/2026 |
+| #3 | feat: add submodule setup, IDE config, and sprint workflow polish | DX / Docs | Current diff is `.vscode/tasks.json`, `AGENTS.md`, and `README.md`. The docs still reference `scripts/submodule-setup.sh`, `.vscode/mcp.json`, `opencode.json`, and named MCP tools that are not in this PR; `AGENTS.md` also makes MCP a baseline project instruction instead of an optional addon. The VS Code tasks are harmless on their own, but they are bundled with docs that overstate unlanded setup and MCP wiring. | Recommend Fix N — split out any useful IDE tasks; keep MCP/submodule instructions out until the addon config actually exists. | 28/06/2026 | 29/06/2026 |
+| #2 | feat: implement MCP server foundation with sprint management tools | MCP | Current diff is now a Go MCP server with two aggregate tools, `ticket` and `sprint`, plus parser/command/sprint packages and tests; it no longer matches the older Python-heavy PR body. The implementation is much more focused than the original branch, but it still lands MCP as first-class repo surface by adding `cmd/mcp-server`, Go module files, `.gitignore` entries, and baseline `AGENTS.md` instructions. It also recreates ticket/sprint behavior separately from `tkt`, `sprint`, and the existing `t-xxxx` ticket convention, so the risk is semantic drift unless MCP is deliberately packaged as an addon with a narrower contract. | Recommend Fix N — keep MCP as an optional addon configuration, not default canon wiring; reopen as a smaller addon PR that either delegates to existing CLIs or proves parity with them. | 28/06/2026 | 29/06/2026 |
+| #1 | MCP Path | Meta | Kitchen-sink PR combining MCP server, skills.sh refactor, submodule setup, IDE configs, and sprint polish in one diff. Correctly closed by author and split into PRs #2, #3, #4. Current open PRs have since changed materially, so this row is retained only as historical context. | N/A — closed. Findings superseded by current PRs #2-4 above. | 28/06/2026 | 29/06/2026 |
 
 ## Review Notes
 
-- **PR #2 verification:** `go test ./...` failed from a clean detached worktree with `go: updates to go.mod needed`; after `go mod tidy`, it changed `go.mod` from `go 1.23.0` to `go 1.25.5`, and tests passed.
-- **PR #3 verification:** `scripts/submodule-setup.sh`, `cmd/mcp-server/main.go`, `.vscode/mcp.json`, and `opencode.json` are absent from the PR worktree despite being referenced by the docs.
-- **PR #4 verification:** `bash -n` passed for all split scripts; smoke checks for `list`, `add`, `refresh`, `remove`, `help`, and `status` passed in a detached worktree. `addall` was not smoke-tested because the direction is to remove it.
+- **PR #4 verification:** Desired split already exists on `main`; the PR branch still contains `cmd_addall` and `addall` usage text, so it is now a regression candidate rather than an implementation candidate.
+- **PR #3 verification:** `scripts/submodule-setup.sh`, `.vscode/mcp.json`, and `opencode.json` are absent from the PR diff despite being referenced by the docs.
+- **PR #2 verification:** Current PR metadata shows a Go-only server with `cmd/mcp-server`, `go.mod`, `go.sum`, internal packages, and tests. No test run was performed in this pass; review focused on architecture and diff scope.
 
 ## Pending Decisions
 
@@ -20,7 +20,7 @@ The skill requires explicit Fix Y/N decisions before creating tickets or posting
 
 Recommended decisions:
 
-- `#4`: Fix Y, but only after removing `addall`
+- `#4`: Fix N
 - `#3`: Fix N
 - `#2`: Fix N
 
@@ -32,6 +32,7 @@ No tickets were created and no PR comments were posted in this pass.
 - **`tools/sprint-check-app/app.html` copy button** (from PR #3 scope) — merged with hover lift + clipboard error guard.
 - **`tools/sprint-check-win.exe`** — rebuilt against updated `app.html`.
 - **README + docs/setup.md** — Windows setup path documented.
+- **`tools/skills.sh` module split without `addall`** (from PR #4 scope) — merged via `t-1c4b`.
 
 ## MCP Scope
 
