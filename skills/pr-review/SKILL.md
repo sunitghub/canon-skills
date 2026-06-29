@@ -58,8 +58,8 @@ Wait for the user to confirm Y/N per PR. Accept any clear format ("Y on #2, N on
 `| PR | Title | Area | Findings | Verdict | Opened | Reviewed |`
 
 **Date format:**
-- `Opened`: PR `createdAt` converted to Central time and formatted as `DD/MM/YYYY`.
-- `Reviewed`: date this review pass updated the row, formatted as `DD/MM/YYYY`.
+- `Opened`: PR `createdAt` converted to Central time and formatted as `MM/DD/YYYY`.
+- `Reviewed`: date this review pass updated the row, formatted as `MM/DD/YYYY`.
 
 - **Existing entry (PR number already in table):** update the row in place — replace Findings, Verdict, and Reviewed with the current analysis/date. Preserve Opened unless it is missing or in an older format; normalize old Opened values to `DD/MM/YYYY`. Do not add a new row.
 - **New entry:** insert a new row at the top of the table (below the header), above existing rows. Set Verdict to `Merge` (Fix=Y) or `No` (Fix=N), Opened from `createdAt`, and Reviewed to today's review date.
