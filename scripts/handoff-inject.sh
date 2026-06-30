@@ -5,7 +5,8 @@ set -euo pipefail
 # per project — not on every prompt — to keep token overhead minimal.
 # Warns if HANDOFF.md exceeds 80 lines so the user knows to prune.
 
-GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+GIT_ROOT="${GIT_ROOT:-$(pwd)}"
 HANDOFF_FILE="$GIT_ROOT/HANDOFF.md"
 [ -f "$HANDOFF_FILE" ] || exit 0
 
