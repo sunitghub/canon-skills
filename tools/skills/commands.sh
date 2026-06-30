@@ -606,8 +606,6 @@ cmd_init() {
   offer_tkt_path
 
   echo ""
-  _print_usage
-  echo ""
   echo "Before deleting this install, remove canon hooks with:"
   echo "  skills.sh uninstall"
 }
