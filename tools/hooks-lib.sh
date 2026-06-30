@@ -24,19 +24,19 @@ _init_claude() {
 {
   "hooks": {
     "Stop": [
-      {"matcher": "", "hooks": [{"type": "command", "command": "$scripts/auto-handoff.sh"}]}
+      {"matcher": "", "hooks": [{"type": "command", "command": "bash $scripts/auto-handoff.sh"}]}
     ],
     "UserPromptSubmit": [
       {"matcher": "", "hooks": [
-        {"type": "command", "command": "$scripts/handoff-inject.sh"},
-        {"type": "command", "command": "$scripts/sprint-inject.sh"}
+        {"type": "command", "command": "bash $scripts/handoff-inject.sh"},
+        {"type": "command", "command": "bash $scripts/sprint-inject.sh"}
       ]}
     ],
     "PreToolUse": [
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "$scripts/pre-commit-check.sh"}]}
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $scripts/pre-commit-check.sh"}]}
     ],
     "SubagentStop": [
-      {"matcher": "", "hooks": [{"type": "command", "command": "$tools/subagent-log.sh"}]}
+      {"matcher": "", "hooks": [{"type": "command", "command": "bash $tools/subagent-log.sh"}]}
     ]
   }
 }
