@@ -35,12 +35,7 @@ Write-Host "Done. Added this workshop tools folder to your user PATH:"
 Write-Host "  $ToolsPath"
 Write-Host ""
 
-Write-Host "Wiring Claude Code hooks..."
-& "$ToolsPath\skills.cmd" init
-Write-Host ""
-
-Write-Host "Fully quit and reopen VS Code, then verify:"
-Write-Host "  skills status"
+Write-Host "Fully quit and reopen VS Code, then from your project folder run:"
 Write-Host "  skills add sprint"
 Write-Host ""
 Write-Host "For this terminal only, you can also run:"
