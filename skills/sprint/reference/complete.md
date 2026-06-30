@@ -57,9 +57,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    Invoke a fresh Agent subagent with a clean context. The prompt must instruct it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
-   - Ticket ID and changed files: `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
-     (captures the full sprint range across multiple commits; assumes `origin/main` as base)
-   - Read `acceptance.md`, `plan.md`, and each changed file fresh
+   - Ticket ID only — the evaluator derives its own changed-files list via `git merge-base`; do not pass a file list
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading.** Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
