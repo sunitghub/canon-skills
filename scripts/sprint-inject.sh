@@ -8,8 +8,13 @@ set -euo pipefail
 GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TKT="${CANON_HOME:-$SCRIPT_DIR/..}/tools/tkt"
-[ -x "$TKT" ] || exit 0
+if command -v tkt &>/dev/null; then
+  TKT="tkt"
+elif [ -x "${CANON_HOME:-$SCRIPT_DIR/..}/tools/tkt" ]; then
+  TKT="${CANON_HOME:-$SCRIPT_DIR/..}/tools/tkt"
+else
+  exit 0
+fi
 
 PROJ_SLUG=$(basename "$GIT_ROOT" | tr -cd '[:alnum:]-')
 SESSION_FILE="/tmp/sprint_inject_session_${PROJ_SLUG}"
