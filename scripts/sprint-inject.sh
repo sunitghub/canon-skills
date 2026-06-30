@@ -5,7 +5,8 @@ set -euo pipefail
 # per project when a sprint is active. No-op when no sprint is running.
 # Warns if plan.md exceeds 80 lines so the user knows to keep it tight.
 
-GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+GIT_ROOT="${GIT_ROOT:-$(pwd)}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if command -v tkt &>/dev/null; then
