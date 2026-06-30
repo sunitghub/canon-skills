@@ -25,6 +25,12 @@ if (($UserPath -split ';') -notcontains $ToolsPath) {
   [Environment]::SetEnvironmentVariable("PATH", $nextUserPath, "User")
 }
 
+if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
+  Write-Warning "bash not found on PATH. Install Git for Windows from https://git-scm.com/download/win"
+  Write-Warning "Claude Code hooks (sprint-inject, pre-commit-check) require bash to run."
+  Write-Host ""
+}
+
 Write-Host "Done. Added this workshop tools folder to your user PATH:"
 Write-Host "  $ToolsPath"
 Write-Host ""
