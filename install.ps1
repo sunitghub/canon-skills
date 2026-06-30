@@ -34,9 +34,14 @@ if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
 Write-Host "Done. Added this workshop tools folder to your user PATH:"
 Write-Host "  $ToolsPath"
 Write-Host ""
+
+Write-Host "Wiring Claude Code hooks..."
+& "$ToolsPath\skills.cmd" init
+Write-Host ""
+
 Write-Host "Fully quit and reopen VS Code, then verify:"
-Write-Host "  tkt ls"
-Write-Host "  sprint-check-win --help"
+Write-Host "  skills status"
+Write-Host "  skills add sprint"
 Write-Host ""
 Write-Host "For this terminal only, you can also run:"
 Write-Host "  `$env:Path += `";$ToolsPath`""
