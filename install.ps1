@@ -6,6 +6,7 @@ $ToolsPath = Join-Path $CanonRoot "tools"
 
 if (-not (Test-Path $ToolsPath)) {
   Write-Error "tools folder not found at $ToolsPath. Run this from the extracted canon folder."
+  Read-Host "Press Enter to close"
   exit 1
 }
 
@@ -40,3 +41,4 @@ Write-Host "  Remove-Item -Recurse -Force `$dest -ErrorAction SilentlyContinue"
 Write-Host "  Copy-Item -Recurse `"$CanonRoot\examples\canon-todo-walkthrough`" `$dest"
 Write-Host "  cd `$dest"
 Write-Host "  skills add sprint"
+Read-Host "Press Enter to close"
