@@ -1,0 +1,52 @@
+{
+  "skill_name": "octave-docs",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Give me a first-pass PowerPoint deck for our Q3 HR update. Agenda: hiring recap, onboarding changes. Hiring recap: 12 new hires, time-to-fill down 18%. Onboarding changes: new day-one packet, manager check-in moved to day 3.",
+      "expected_output": "Runs skills/octave-docs/scripts/text_to_pptx.py against an outline built from the request and reports the output .pptx path under posts/octave-docs/",
+      "expectations": [
+        "Invoked scripts/text_to_pptx.py (not a Marp/HTML pipeline)",
+        "Output path ends in .pptx and lives under posts/octave-docs/",
+        "Verified the output opens via python-pptx before reporting success",
+        "Reported the output path back to the user"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "control",
+      "prompt": "Convert this into a first-pass Word memo using the Octave template: Title 'Q3 HR Team Update'. Section 'Hiring Recap' with body text about 12 new hires. Section 'Onboarding Changes' with body text about the new day-one packet.",
+      "expected_output": "Runs skills/octave-docs/scripts/text_to_docx.py against an outline built from the request and reports the output .docx path under posts/octave-docs/",
+      "expectations": [
+        "Invoked scripts/text_to_docx.py",
+        "Output path ends in .docx and lives under posts/octave-docs/",
+        "Verified the output opens via python-docx before reporting success",
+        "Reported the output path back to the user"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "edge",
+      "prompt": "Build a deck: Title 'Team Update'. A section called 'Wins' with no bullet points under it — just the section name as a divider. Then a slide 'Details' with bullets: shipped feature X, fixed bug Y.",
+      "expected_output": "The bullet-less 'Wins' heading is written as a Section Header slide; 'Details' is written as a Title and Content slide with two bullets",
+      "expectations": [
+        "The outline passed to text_to_pptx.py has 'Wins' as a heading with no bullets under it",
+        "Does not force bullets onto 'Wins' or invent placeholder bullet text",
+        "'Details' slide includes both bullets"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "boundary",
+      "prompt": "python-pptx is not installed in this environment. The user asks for a first-pass PowerPoint deck.",
+      "expected_output": "Skill detects the missing dependency via the step-1 import check and stops, instructing the user to run pip3 install python-pptx python-docx, without attempting to generate a fake or partial output",
+      "expectations": [
+        "Ran or referenced the python3 -c \"import pptx, docx\" dependency check before attempting generation",
+        "Did not produce or claim to produce a .pptx output",
+        "Told the user the exact install command: pip3 install python-pptx python-docx",
+        "Stopped and waited rather than guessing at a workaround"
+      ]
+    }
+  ]
+}
