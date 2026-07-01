@@ -16,27 +16,9 @@ The **Code tab** is a different product (it's Claude Code with a GUI). It also s
 need Python and `pip3 install python-pptx python-docx` installed on your machine. This
 guide's Step 3 (no Python needed) only applies to the Chat tab flow below.
 
-## Step 1: Check you have the right plan
 
-Custom Skills with code execution require a Pro, Max, Team, or Enterprise plan. If you're
-not sure which plan you're on, check Settings → Plan in the Desktop app.
 
-## Step 2: Get the skill file
-
-You need `octave-docs-skill.zip`. Either:
-
-- **Someone already sent it to you** — save it somewhere you can find it (Desktop,
-  Downloads), then skip to Step 3.
-- **You have access to the canon repo** and need to build it yourself:
-  ```bash
-  ./scripts/build-zip.sh
-  ```
-  This produces `dist/octave-docs-skill.zip`, containing only what the Skill needs to
-  run: `SKILL.md`, the two conversion scripts, and the Octave `.potx`/`.dotx` template
-  files. Canon's internal quality-check files (`evals/`, `skill-eval-result.md`) are left
-  out on purpose — they're not needed to run the skill.
-
-## Step 3: No Python install needed
+## Step 1: No Python install needed
 
 Unlike running this on your own computer, Claude's Chat-tab sandbox already has the two
 libraries this skill needs (`python-pptx`, `python-docx`) pre-installed. You will not be
@@ -44,27 +26,36 @@ asked to install anything — if the skill ever does ask you to run `pip3 instal
 that means it's running through the Code tab instead of Chat, and you should re-check
 Step 1 of this guide.
 
-## Step 4: Upload the skill
+## Step 2: Upload the skill
 
 1. In the Claude Desktop app, make sure you're on the **Chat** tab.
 2. Open **Settings → Customize → Skills**.
 3. Click **+ → Create skill → Upload a skill**.
-4. Choose the `octave-docs-skill.zip` file from Step 2.
+4. Choose the `octave-docs-skill.zip` file.
 5. Once it uploads, toggle the skill **on**.
 
 Custom Skills are private to your account — if a colleague also wants this, they need to
 upload it themselves; there's no way to push it to their account for them.
 
-## Step 5: Try it
+## Step 3: Try it
+
+The skill doesn't read from a file or URL on its own — it only works from the outline
+text you give it in the conversation. If you just name your topics without real content
+("agenda: hiring recap, roadmap"), Claude will ask you to fill in what actually happened
+in each section rather than invent business facts. For a one-shot result, give it the
+real content up front.
 
 Start a **new** conversation (in the Chat tab) and ask something like:
 
-> Give me a first-pass PowerPoint deck for our Q3 update. Agenda: hiring recap, roadmap
-> for next quarter.
+> Give me a first-pass PowerPoint deck for our Q3 update.
+> Agenda: hiring recap, roadmap for next quarter.
+> Hiring recap: 12 new hires this quarter, time-to-fill down 18%.
+> Roadmap: launching the new onboarding flow in Q4, hiring 3 more engineers.
 
 Claude should recognize this matches the skill, read its instructions, and hand you back
 a `.pptx` file built from the real Octave template — not a generic deck. Ask for a memo
-the same way ("give me a first-pass Word memo about...") to get a `.docx` instead.
+the same way ("give me a first-pass Word memo about..., with these details: ...") to get
+a `.docx` instead.
 
 If Claude doesn't seem to use the skill, check that it's toggled on in Settings →
 Customize → Skills, and that you started a new conversation after uploading it.
