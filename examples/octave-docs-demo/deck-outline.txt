@@ -1,0 +1,15 @@
+# Context Hygiene
+## Why 200K Tokens Isn't What It Seems
+- About 7% of the window is gone before you type a word: system instructions ~6k, CLAUDE.md ~3k, tools ~5k
+- The remaining ~168k is the "smart zone" — it shrinks every turn as history accumulates
+- 55k is reserved up front: 23k for auto-compact, 32k for output
+## The Compounding Tax
+- Turn 1 costs about 2k tokens, mostly system prompt
+- By turn 10, each call costs around 18k tokens — the agent re-reads all prior work every time
+- Past 50k tokens: attention degrades, the model silently drifts from earlier details, and context anxiety sets in
+## Five Rules For Context Hygiene
+- Keep output tight from the first turn — verbose output today taxes every future turn
+- Load skills on demand, not at session start
+- Reference the source instead of repeating content already in context
+- Keep tools loaded only when the task needs them
+- Measure before optimizing — audit what's loaded before guessing what's bloated

@@ -80,6 +80,9 @@ python3 -c "import docx; docx.Document('<output.docx>')"
 **5. Report the output path** and remind the user this is a first pass — brand review
 before external distribution is still on them.
 
+See `examples/octave-docs-demo/` for a worked example: distilling an existing Marp deck
+(`posts/slides/context-management.md`) into a short outline and generating both formats.
+
 ## Gotchas
 
 - Both Octave templates ship as `.potx`/`.dotx` (template content type), which

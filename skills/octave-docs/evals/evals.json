@@ -47,6 +47,18 @@
         "Told the user the exact install command: pip3 install python-pptx python-docx",
         "Stopped and waited rather than guessing at a workaround"
       ]
+    },
+    {
+      "id": 5,
+      "case_type": "compliance",
+      "prompt": "I have an existing Marp slide deck (posts/slides/context-management.md) with slides like this one, full of inline HTML/CSS:\n\n## But here's what loads before you type a word\n<div style=\"display:flex; align-items:stretch; ...\">\n<div>System Instructions ~6k</div><div>CLAUDE.md ~3k</div><div>Claude Builtin Tools ~3k</div><div>MCP Tools ~2k</div>\n<div>~168k \"the smart zone\" — shrinks every turn with history</div>\n<div>reserved for auto-compact 23k</div><div>reserved for output 32k</div>\n</div>\n\n---\n\n## Five rules for context hygiene\n<div class=\"card\">1. Keep it tight from the first turn — verbose output today is a tax on every future turn</div>\n<div class=\"card\">2. Always-on vs on-demand — load sub-skills at the step that needs them, not at session start</div>\n<div class=\"card\">3. Reference, don't repeat — point to the source instead of echoing content already in context</div>\n<div class=\"card\">4. Keep tools on demand — don't load tools or skills \"just in case\"</div>\n<div class=\"card\">5. Measure before optimizing — audit what is loaded before guessing what's bloated</div>\n\nCan you give me a short first-pass Octave PowerPoint version of this — just the core numbers and the five rules, 3-4 slides is fine.",
+      "expected_output": "Distills the HTML content into octave-docs's plain #/##/- outline grammar (not an attempt to preserve or replicate the HTML/CSS layout) and runs text_to_pptx.py against it",
+      "expectations": [
+        "The constructed outline uses plain #/##/- lines, with no HTML tags or inline styles carried over from the source",
+        "The five rules appear as plain bullets under one heading, not as five separate slides",
+        "Does not claim the output will visually replicate the original Marp deck's custom card/hero layouts",
+        "Invoked scripts/text_to_pptx.py, not canon-slides/Marp"
+      ]
     }
   ]
 }
