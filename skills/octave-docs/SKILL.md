@@ -16,6 +16,9 @@ For canon-topic decks (context management, evaluator pattern, skill authoring), 
 `canon-slides` instead — that skill covers a different pipeline (Marp/HTML/CSS) for a
 different audience.
 
+To install this skill in Claude Desktop or claude.ai instead of the canon repo, see
+`references/claude-desktop-setup.md`.
+
 ## Usage
 
 ```
@@ -56,14 +59,16 @@ Body paragraph text.
 Another body paragraph.
 ```
 
-**3. Write the outline** to a temp file, then run the matching script:
+**3. Write the outline** to a temp file, then run the matching script. Output goes to
+`posts/octave-docs/<name>.pptx` (create the directory if it doesn't exist) when working
+inside the canon repo; in a standalone environment with no `posts/` convention (e.g. a
+Claude Desktop/claude.ai Skill upload — see `references/claude-desktop-setup.md`), write
+to the current working directory instead.
 
 ```bash
-python3 skills/octave-docs/scripts/text_to_pptx.py <outline.txt> posts/octave-docs/<name>.pptx
-python3 skills/octave-docs/scripts/text_to_docx.py <outline.txt> posts/octave-docs/<name>.docx
+python3 skills/octave-docs/scripts/text_to_pptx.py <outline.txt> <output.pptx>
+python3 skills/octave-docs/scripts/text_to_docx.py <outline.txt> <output.docx>
 ```
-
-Create `posts/octave-docs/` if it doesn't exist.
 
 **4. Verify the output** opens cleanly before reporting success:
 
