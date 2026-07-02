@@ -5,9 +5,10 @@ first pass. Source: `posts/slides/context-management.md` — a 13-slide Marp dec
 heavy inline HTML/CSS (card grids, custom hero layouts).
 
 `octave-docs` can't consume that file directly — it only understands a plain
-`#`/`##`/`-` outline, mapped onto three real PowerPoint layouts (Title Slide, Section
-Header, Title and Content). This demo distills the Marp deck's core content down to
-that grammar: a 4-slide deck (title + 3 sections) and a matching 3-section memo.
+`#`/`##`/`-`/`|` outline, mapped onto four real PowerPoint layouts (Title Slide, Section
+Header, Title and Content, Title and Table). This demo distills the Marp deck's core
+content down to that grammar: a 4-slide deck (title + 3 sections, including one real
+table for the token-budget numbers) and a matching 3-section memo.
 
 This is necessarily lossy. Marp's custom visuals — the "200,000 tokens" big-number hero
 slide, the token-budget card stack, the phase-pipeline diagram — have no equivalent in

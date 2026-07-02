@@ -1,8 +1,11 @@
 # Context Hygiene
 ## Why 200K Tokens Isn't What It Seems
-- About 7% of the window is gone before you type a word: system instructions ~6k, CLAUDE.md ~3k, tools ~5k
-- The remaining ~168k is the "smart zone" — it shrinks every turn as history accumulates
-- 55k is reserved up front: 23k for auto-compact, 32k for output
+| Line Item | Tokens |
+| System Instructions | ~6k |
+| CLAUDE.md | ~3k |
+| Tools | ~5k |
+| Reserved for auto-compact | 23k |
+| Reserved for output | 32k |
 ## The Compounding Tax
 - Turn 1 costs about 2k tokens, mostly system prompt
 - By turn 10, each call costs around 18k tokens — the agent re-reads all prior work every time

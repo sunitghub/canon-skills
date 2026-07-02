@@ -47,9 +47,14 @@ For a deck (`pptx`):
 ## Slide Title
 - bullet one
 - bullet two
+## Table Slide
+| Header One | Header Two |
+| row one col a | row one col b |
 ```
-A `##` heading with no bullets under it becomes a **Section Header** slide; a `##`
-heading with bullets becomes a **Title and Content** slide.
+A `##` heading with no bullets or table rows under it becomes a **Section Header** slide;
+one with bullets becomes a **Title and Content** slide; one with `|`-delimited rows
+becomes a **Title and Table** slide (first row is the header row). Don't mix bullets and
+table rows under the same heading — pick one per section.
 
 For a memo (`docx`):
 ```
@@ -102,3 +107,10 @@ See `examples/octave-docs-demo/` for a worked example: distilling an existing Ma
 - Only the memo template is wired up. `Octave_Master-Editorial_A4_v8.dotx` (a longer
   report/style-guide template with cover pages and a TOC) exists in `assets/Word/` but has
   no script path yet — it's a heavier document shape than "first pass," out of scope here.
+- The **Title and Table** layout has no table *placeholder* in the POTX — its own example
+  slide adds the table as a free-floating shape at a fixed position/size. `text_to_pptx.py`
+  replicates that exact position (`TABLE_POSITION`/`TABLE_SIZE`), and manually sets the
+  table's `tableStyleId` to Octave's registered brand style via raw XML, since python-pptx
+  has no public API for applying a specific registered table style. The table is always
+  sized to that fixed region regardless of row/column count — a very large table can
+  overflow it; this is first-pass scope, not dynamic layout.

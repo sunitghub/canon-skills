@@ -59,6 +59,17 @@
         "Does not claim the output will visually replicate the original Marp deck's custom card/hero layouts",
         "Invoked scripts/text_to_pptx.py, not canon-slides/Marp"
       ]
+    },
+    {
+      "id": 6,
+      "case_type": "control",
+      "prompt": "Give me a first-pass deck slide showing our token budget as a table, not bullets: Title 'Token Budget'. One slide with a table: columns Item and Tokens. Rows: System Instructions/6k, CLAUDE.md/3k, Reserved for output/32k.",
+      "expected_output": "Constructs an outline using the | table syntax under one heading and runs text_to_pptx.py, producing a Title and Table slide rather than a bulleted Title and Content slide",
+      "expectations": [
+        "The constructed outline uses '|'-delimited rows under the heading, with the header row (Item, Tokens) as the first row",
+        "Does not fall back to '-' bullets for this numeric/tabular content",
+        "Reports the resulting slide as a table, not a bulleted list"
+      ]
     }
   ]
 }
