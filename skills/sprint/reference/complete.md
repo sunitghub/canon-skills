@@ -41,6 +41,13 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
+   **Log the subagent run.** Immediately after the reviewer subagent completes, run
+   `tools/subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type reviewer`
+   from the project root. This feeds the same `.claude/subagent-runs.jsonl` audit trail the
+   evaluator gate (step 2) checks — required now that no `SubagentStop` hook does this
+   automatically. Do not skip even though the reviewer itself is advisory; the log entry's
+   timestamp is what makes the evaluator's anti-gaming check meaningful.
+
    **Close the reviewer subagent handle after reading its verdict.** Completed subagents still occupy thread slots — closing before step 2 prevents thread-limit blocks if the evaluator needs a rerun.
 
 2. **Evaluator review (normal+ tier).** Skip for trivial tier only. For normal
@@ -59,6 +66,14 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
    - Ticket ID only — the evaluator derives its own changed-files list via `git merge-base`; do not pass a file list
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
+
+   **Log the subagent run.** Immediately after the evaluator subagent completes, run
+   `tools/subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type evaluator`
+   from the project root, before reading `eval-report.md`. `tools/sprint complete`'s close
+   gate (`_gate_eval_report`) hard-fails if `.claude/subagent-runs.jsonl` exists but has no
+   entry within ±60 minutes of the `evaluator-run-id` the evaluator wrote — this CLI call is
+   what satisfies that check now that no hook does it automatically. Skipping it risks a
+   confusing close-time failure on an otherwise-passing sprint.
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading.** Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
    `fail` or `partial` findings to the user before proceeding. Do not advance to

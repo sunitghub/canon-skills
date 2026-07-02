@@ -1,20 +1,5 @@
-#!/usr/bin/env bash
-# pre-commit-check.sh — Before git commit: run the test suite (any repo that
-# provides scripts/test.sh), remind Claude to close in-progress tickets, and
-# confirm wrapup has been run. PreToolUse[Bash] hook. Blocks on test failure.
-
-CANON_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TKT_BIN="$CANON_ROOT/tools/tkt"
 [ -f "$TKT_BIN" ] || TKT_BIN=$(command -v tkt 2>/dev/null || command -v tk 2>/dev/null || true)
-
-INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" \
-  | sed -nE 's/.*"command"[[:space:]]*:[[:space:]]*"(([^"\\]|\\.)*)".*/\1/p' \
-  | head -1 \
-  | sed 's/\\"/"/g; s/\\\\/\\/g')
-
-# Only fire on git commit commands
-echo "$CMD" | grep -qE '(^|[[:space:]])git[[:space:]]+commit([[:space:]]|$)' || exit 0
 
 GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
