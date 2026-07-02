@@ -13,7 +13,7 @@
 4. **Planning files.** Create or update the files in `.tickets/<id>/` **now** — these are planning artifacts required before the brief. The approval gate in step 11 blocks code, not planning file creation.
    - `acceptance.md` — specific, binary conditions that define "done". For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan. For `type: bug` tickets, use `starters/bug-plan.md` as the skeleton — it structures the plan around the five incident stages (Detect/Diagnose/Contain/Fix/Prevent).
-   - `research.md` — high-risk and brownfield sprints only; objective compression of truth (see Research below)
+   - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below)
    - If these already exist: read them and proceed without recreating.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
    - Record the tier and one-line reason in `plan.md`.
@@ -30,12 +30,13 @@
 
 6. **Normal path.** For normal-tier work:
    - Inspect the files and callers needed for the requested change.
+   - Write a brief `research.md` — a few bullets of findings and constraints — before drafting `## Approach`. Keep it short; this is not the full orient protocol. This matters even when planning stays in the same session: if a future dispatch or fresh-session handoff runs the planning step, it should read this curated file, not the raw exploration transcript.
    - Add `## Approach` and `## Test Plan` to `plan.md`.
    - **Perspective check.** Before drafting the brief, ask one challenge question from each lens: (a) *user* — will the behavior change match what they expect? (b) *security* — does this touch auth, input validation, or trust boundaries? (c) *architect* — does this add surface that canon's minimalism principle would resist? Surface any concern in the brief.
    - Produce the sprint brief from Step 10.
    - Skip Steps 7-9 unless new findings promote the work to high-risk.
 
-7. **Research high-risk work.** Read `skills/sprint/reference/orient.md` and follow the orient protocol. Writes findings to `.tickets/<id>/research.md`. After research is complete, pause and present a brief summary — what was found, key constraints, open unknowns — and ask the user to review before proceeding to Plan. (`research.md` is optional for normal-tier; use a `## Research Notes` section in `plan.md` instead.)
+7. **Research high-risk work.** Read `skills/sprint/reference/orient.md` and follow the orient protocol. Writes findings to `.tickets/<id>/research.md`. After research is complete, pause and present a brief summary — what was found, key constraints, open unknowns — and ask the user to review before proceeding to Plan. (Normal-tier writes the same file, just brief — per step 6 — instead of running the full orient protocol. Either way, a planning step reads curated findings from `research.md`, not the raw exploration transcript.)
 
 8. **Grill high-risk work.** Surface implementation gray areas — decisions that could reasonably go several ways and would materially change what gets built.
 

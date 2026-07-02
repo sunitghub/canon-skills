@@ -82,7 +82,7 @@ Canonical layout:
   ticket.md        ← tkt-managed; never edit status directly — valid values: open, in_progress, closed, cancelled
   acceptance.md    ← definition of done + test plan
   plan.md          ← approach, decisions, grill/impact sections for high-risk; skeleton created at sprint start, sign-off block added on approval, re-read after compaction
-  research.md      ← optional; high-risk and brownfield sprints only; objective truth compression
+  research.md      ← objective truth compression, written before ## Approach; brief bullets for normal-tier, full orient protocol for high-risk/brownfield
   summary.md       ← plan-vs-actual table; written at sprint complete
 ```
 
