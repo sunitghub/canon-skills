@@ -70,16 +70,17 @@ canon end to end without adding local sprint state to the canon checkout.
 The agent that wrote the code is the worst possible reviewer of that code. canon enforces a structural separation that most tools skip.
 
 1. **Adversarial close review.** Before a sprint closes, a fresh subagent — restricted to Read and Bash, with no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` as its first action; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `tools/subagent-log.sh` right after, making the field auditable rather than self-reported. Each criterion gets a pass, fail, or partial verdict with a `file:line` cite. A fail blocks close.
-2. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual table — one row per acceptance criterion, showing whether it was delivered, waived, deferred, or partial. Deviations can't be buried in prose. The **Summary** tab on the board makes this permanent and queryable.
-3. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test Plan items are unchecked, `summary.md` is missing, the Wrapup Gates record is absent, or the evaluator run-id field is missing. Gates don't make agents smarter — they make certain failures impossible.
+2. **Proportional review cost.** The close-review gates stay mandatory and independent, but not always full-price: a structural check on changed file paths — never the agent's own risk judgment — runs the adversarial reviewer and evaluator on a cheaper model when every changed file is low-risk (docs, skill/standards reference files, no security-sensitive markers). An explicit ask to keep full-tier review always overrides the classification.
+3. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual table — one row per acceptance criterion, showing whether it was delivered, waived, deferred, or partial. Deviations can't be buried in prose. The **Summary** tab on the board makes this permanent and queryable.
+4. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test Plan items are unchecked, `summary.md` is missing, the Wrapup Gates record is absent, or the evaluator run-id field is missing. Gates don't make agents smarter — they make certain failures impossible.
 
    *The CLI enforces state and close gates; the agent and evaluator judge whether the work behind those gates is true. The board surfaces problems early.*
 
-4. **Parallel subsystem research.** High-risk sprints spawn one Explore subagent per independent subsystem concurrently — wall-clock research time scales with the largest subsystem, not the total.
-5. **Session continuity.** `HANDOFF.md`, the active ticket, and recent closed tickets give a returning agent enough context to resume without replaying project history.
-6. **Knowledge capture.** Non-obvious constraints found mid-build go to `HANDOFF.md ## Discoveries` immediately — before compaction or a session break can lose them.
-7. **Risk-aware planning.** Simple work stays light. High-impact work runs impact analysis before code; every HIGH risk becomes a required Acceptance test.
-8. **Queryable intent.** Every sprint records decisions, acceptance criteria, and rejected alternatives as plain markdown — the board surfaces the plan behind a file without touching `git log`.
+5. **Parallel subsystem research.** High-risk sprints spawn one Explore subagent per independent subsystem concurrently — wall-clock research time scales with the largest subsystem, not the total.
+6. **Session continuity.** `HANDOFF.md`, the active ticket, and recent closed tickets give a returning agent enough context to resume without replaying project history.
+7. **Knowledge capture.** Non-obvious constraints found mid-build go to `HANDOFF.md ## Discoveries` immediately — before compaction or a session break can lose them.
+8. **Risk-aware planning.** Simple work stays light. High-impact work runs impact analysis before code; every HIGH risk becomes a required Acceptance test.
+9. **Queryable intent.** Every sprint records decisions, acceptance criteria, and rejected alternatives as plain markdown — the board surfaces the plan behind a file without touching `git log`.
 
 ## The Board
 
