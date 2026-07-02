@@ -12,6 +12,7 @@ toPdfViaTempFile*
 guides/*.pdf
 tools/tailscale-check.sh
 posts/
+octave/
 critique/
 context-findings.md
 doc-findings.md

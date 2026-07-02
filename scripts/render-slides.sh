@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SLIDES_DIR="$ROOT/posts/slides"
-THEME="$ROOT/skills/canon-slides/themes/octave.css"
+THEME="$ROOT/skills/canon-slides/themes/canon.css"
 
 harden_html() {
   local out="$1"
