@@ -80,7 +80,7 @@ Principles to apply (map to what's present, skip what isn't applicable):
 | **KISS** (Keep It Simple) | Scripts are as simple as they could be; no abstractions that could be a one-liner |
 | **YAGNI** (You Ain't Gonna Need It) | No unused flags, config options, or features not yet needed |
 | **Composition over commands** | Complex operations built from smaller composable units, not monolithic multi-step scripts |
-| **CoC** (Convention over Configuration) | Conventions established and followed; explicit config only where necessary |
+| **CoC** (Convention over Configuration) | Conventions established and followed; explicit config only where necessary. For canon-managed content markers in shared files (`AGENTS.md`, `HANDOFF.md`, etc.): new markers should follow `<!-- canon:<name>:BEGIN/END -->` (see `standards/skill-setup-std.md`); flag any new ad-hoc marker naming that doesn't follow it. `AI-SKILLS`/`MODEL-TIERS` are documented exceptions predating the convention — not a violation. |
 | **Separation of concerns** | Config vs. logic, data vs. behavior, CLI vs. agent, state vs. judgment — each in its place |
 | **Context efficiency** (AI-native repos) | Always-loaded files are lean; skills have tight activation; no content duplication across imports. In skill files specifically: no `summary:` frontmatter field when `description:` already covers it; no `---` horizontal rules (visual noise in injected context); no step that duplicates another step's outcome |
 

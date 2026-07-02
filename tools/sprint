@@ -27,6 +27,7 @@ EOF
     cat > "$root/HANDOFF.md" <<'EOF'
 # Handoff
 
+<!-- canon:handoff:BEGIN -->
 ## Current Focus
 
 ## In Progress
@@ -35,6 +36,8 @@ EOF
 
 ## Next Steps
 1.
+
+<!-- canon:handoff:END -->
 EOF
   fi
 }

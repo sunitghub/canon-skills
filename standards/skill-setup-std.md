@@ -298,6 +298,37 @@ This keeps the hook scoped to the skill's lifecycle rather than always-on.
 
 Document any restrictions clearly at the top of the skill so users know what is being restricted and for how long.
 
+## Canon-managed content markers
+
+When a canon tool writes managed content into a file that may also carry the user's own
+content (`AGENTS.md`, `HANDOFF.md`, or similar), wrap only the canon-managed portion in an
+HTML comment marker pair:
+
+```markdown
+<!-- canon:<name>:BEGIN -->
+...canon-managed content...
+<!-- canon:<name>:END -->
+```
+
+Rules:
+- `<name>` is lowercase, one short word identifying the block (`canon:handoff`, `canon:skills`).
+- Leave at least one blank line between the preceding heading/prose and the `BEGIN` marker, and
+  at least one blank line between the last content line and the `END` marker — keeps the block
+  visually separated from surrounding content on either side.
+- Any tool that reads, checks, or prunes this content (size checks, idempotency checks, cleanup)
+  must scope its operation to *only* the lines between the markers. Never read, count toward a
+  threshold, or edit anything outside them — that's the user's own content.
+- Idempotency and cleanup logic should key off the exact marker string (`grep -qF`/`awk` range
+  match), not on guessing the block's content.
+
+**Two pre-existing exceptions, not retrofitted:** `AI-SKILLS:BEGIN`/`:END` and
+`MODEL-TIERS:BEGIN`/`:END` predate this convention and use a different naming style (uppercase,
+no `canon:` prefix). They are deliberately left as-is — renaming them would silently break
+detection logic in every consumer project that already has the old marker string committed in
+their `AGENTS.md`. New canon-managed blocks use the `canon:<name>:BEGIN/END` convention above.
+A third, now-deprecated pattern (`CANON-STD:<name>:BEGIN/END`) is actively stripped as legacy
+cruft by `skills.sh refresh` — do not reintroduce that naming style either.
+
 ## MCP tool references
 
 If a skill invokes MCP tools, always use fully qualified names (`ServerName:tool_name`) to avoid "tool not found" errors when multiple MCP servers are loaded:
