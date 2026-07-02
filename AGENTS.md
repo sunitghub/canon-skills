@@ -18,6 +18,18 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 
 See `standards/efficiency.md` for the full agent standards (code quality, security, git conventions, token efficiency).
 
+<!-- MODEL-TIERS:BEGIN -->
+## Model Tiers
+
+Match model to sprint dispatch purpose (see `skills/sprint/SKILL.md`'s `## Dispatch purposes` for what each purpose covers):
+
+- `explore` → Haiku — read-only, bounded search/mapping, no judgment calls.
+- `plan creation` → Fable or Opus — needs design judgment before scope locks in.
+- `implement` → Haiku/Sonnet — execution inside an approved plan.
+- `review` / `grill` → Opus — adversarial, judgment-heavy work a weaker model would rubber-stamp.
+
+**Advisor graceful-degradation:** if the session has the `advisor` tool configured with Sonnet+Opus, `implement` can stay Haiku/Sonnet — Opus-level judgment is already reachable via `advisor()`. Otherwise, bump `implement` to Opus for high-risk sprints (no advisor safety net).
+<!-- MODEL-TIERS:END -->
 
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
