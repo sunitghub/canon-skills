@@ -175,16 +175,21 @@ assert_contains "$output" "[skip]  not found: $stale_path"
 assert_contains "$output" "[cleaned]  $canon_project"
 assert_contains "$output" "[cleaned]  $stale_import_project"
 
-# Project-local settings: all canon hooks gone
+# Project-local settings: all canon hooks gone, and fully pruned (no empty
+# "hooks": [] / matcher skeletons left — the fixture had only canon hooks and
+# no other top-level keys, so the whole file should collapse to {}).
 assert_count 0 "$ROOT/scripts/auto-handoff.sh"    "$ROOT/.claude/settings.json"
 assert_count 0 "$ROOT/scripts/handoff-inject.sh"  "$ROOT/.claude/settings.json"
 assert_count 0 "$ROOT/scripts/sprint-inject.sh"   "$ROOT/.claude/settings.json"
 assert_count 0 "$ROOT/scripts/pre-commit-check.sh" "$ROOT/.claude/settings.json"
+assert_eq "{}" "$(python3 -c "import json; print(json.dumps(json.load(open('$ROOT/.claude/settings.json'))))")"
 
-# Global settings: canon hook gone, unrelated content preserved
+# Global settings: canon hook gone, unrelated content preserved. The Stop
+# event still has one real (non-canon) entry, so pruning must NOT drop it.
 assert_count 0 "$ROOT/scripts/auto-handoff.sh" "$home/.claude/settings.json"
 assert_count 1 "/usr/local/bin/user-stop"       "$home/.claude/settings.json"
 assert_count 1 '"theme": "dark"'                "$home/.claude/settings.json"
+assert_count 1 '"Stop"'                         "$home/.claude/settings.json"
 
 [[ ! -f "$ROOT/.git/hooks/pre-commit" ]] || fail "expected canon-managed pre-commit hook to be removed from \$ROOT"
 

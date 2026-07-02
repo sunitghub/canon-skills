@@ -173,6 +173,36 @@ _uninstall_claude() {
   mv "$tmp" "$settings"
   rm -f "$compact_tmp"
 
+  # Prune leftover empty structures the text-based removal above can create
+  # (empty matcher["hooks"] arrays, empty event-type arrays, an empty "hooks"
+  # object) — JSON-aware so it can't corrupt unrelated keys. python3 is
+  # already a hard dependency elsewhere in this codebase (tools/sprint's
+  # eval-gate timestamp matching), not a new one introduced here.
+  python3 - "$settings" << 'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+with open(path) as f:
+    data = json.load(f)
+
+hooks = data.get("hooks")
+if isinstance(hooks, dict):
+    for event, entries in list(hooks.items()):
+        if not isinstance(entries, list):
+            continue
+        kept = [e for e in entries if not (isinstance(e, dict) and isinstance(e.get("hooks"), list) and len(e["hooks"]) == 0)]
+        if kept:
+            hooks[event] = kept
+        else:
+            del hooks[event]
+    if not hooks:
+        del data["hooks"]
+
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+
   echo "  [removed]  $removed Claude hook(s)"
 }
 
