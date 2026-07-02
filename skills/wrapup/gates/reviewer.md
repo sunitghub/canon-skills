@@ -17,7 +17,7 @@ hidden: true
 
 1. Determine target: local diff or remote PR.
 2. For PRs, checkout and read description plus linked tickets.
-3. Review all seven dimensions.
+3. Review all eight dimensions.
 4. Report only actionable findings.
 5. For PRs, return to the previous/default branch.
 

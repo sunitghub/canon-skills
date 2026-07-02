@@ -29,6 +29,8 @@ Match model to sprint dispatch purpose (see `skills/sprint/SKILL.md`'s `## Dispa
 - `review` / `grill` → Opus — adversarial, judgment-heavy work a weaker model would rubber-stamp.
 
 **Advisor graceful-degradation:** if the session has the `advisor` tool configured with Sonnet+Opus, `implement` can stay Haiku/Sonnet — Opus-level judgment is already reachable via `advisor()`. Otherwise, bump `implement` to Opus for high-risk sprints (no advisor safety net).
+
+**Exception — sprint close gates:** the `review`-purpose dispatches at sprint close (reviewer, evaluator) follow `skills/sprint/reference/complete.md`'s own model-tier rule instead of the `review → Opus` default above: Opus/session-model unless a structural, file-path-only check finds every changed file low-risk (docs/skill-reference/standards, no security-sensitive markers), in which case they run on Haiku. This is a mechanical downgrade, never the dispatching agent's own risk judgment, and an explicit user request for full-tier review always overrides it. See `complete.md`'s "Model tier for gates" section for the exact rule.
 <!-- MODEL-TIERS:END -->
 
 <!-- AI-SKILLS:BEGIN -->

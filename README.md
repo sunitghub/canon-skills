@@ -70,7 +70,7 @@ canon end to end without adding local sprint state to the canon checkout.
 The agent that wrote the code is the worst possible reviewer of that code. canon enforces a structural separation that most tools skip.
 
 1. **Adversarial close review.** Before a sprint closes, a fresh subagent — restricted to Read and Bash, with no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` as its first action; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `tools/subagent-log.sh` right after, making the field auditable rather than self-reported. Each criterion gets a pass, fail, or partial verdict with a `file:line` cite. A fail blocks close.
-2. **Proportional review cost.** The close-review gates stay mandatory and independent, but not always full-price: a structural check on changed file paths — never the agent's own risk judgment — runs the adversarial reviewer and evaluator on a cheaper model when every changed file is low-risk (docs, skill/standards reference files, no security-sensitive markers). An explicit ask to keep full-tier review always overrides the classification. The **Wrapup Gates** table on the Acceptance tab records which model ran each gate.
+2. **Proportional review cost.** The close-review gates stay mandatory and independent, but not always full-price: a structural check on changed file paths — never the agent's own risk judgment — runs the advisory reviewer and the binding adversarial evaluator on a cheaper model when every changed file is low-risk (docs, skill/standards reference files, no security-sensitive markers). An explicit ask to keep full-tier review always overrides the classification. The **Wrapup Gates** table on the Acceptance tab records which model ran each gate.
 3. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual table — one row per acceptance criterion, showing whether it was delivered, waived, deferred, or partial. Deviations can't be buried in prose. The **Summary** tab on the board makes this permanent and queryable.
 4. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test Plan items are unchecked, `summary.md` is missing, the Wrapup Gates record is absent, or the evaluator run-id field is missing. Gates don't make agents smarter — they make certain failures impossible.
 
@@ -154,7 +154,7 @@ Each sprint produces up to five docs:
 |---|---|---|
 | `acceptance.md` | sprint start | Done criteria · test plan · QA sign-off |
 | `plan.md` | sprint start | Approach · decisions made along the way |
-| `research.md` | high-risk / brownfield | Objective truth: relevant files, system model, constraints, unknowns (optional) |
+| `research.md` | sprint start | Objective truth: relevant files, system model, constraints, unknowns — brief for normal tier, full orient protocol for high-risk/brownfield |
 | `eval-report.md` | sprint complete (normal+) | Adversarial criterion grades · pass/fail with file:line evidence |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
@@ -188,7 +188,7 @@ titles.
 
 ```mermaid
 flowchart LR
-    P["Plan\nticket · acceptance · plan.md\nresearch.md (high-risk)"]
+    P["Plan\nticket · acceptance · plan.md\nresearch.md"]
     B["Build\ncode · commits"]
     W["Wrapup\nsimplify · review · security\nrepo-check · doc-audit"]
     E[["Evaluate\nclean-context · adversarial\npass/fail per criterion"]]
@@ -208,7 +208,7 @@ High-risk sprints add orient (with parallel subagents when multiple subsystems a
 
 Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/setup.md)**
 
-Every non-trivial change starts with a ticket. Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). High-risk and brownfield sprints add `research.md`: objective compression of what the system does before any plan is written. A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
+Every non-trivial change starts with a ticket. Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `research.md` (objective compression of what the system does before any plan is written — brief for normal tier, full orient protocol for high-risk/brownfield), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 
 canon enforces its own standards. Where Claude Code hooks are wired, the test suite runs and blocks before commit — no advisory reminders, no honor system. What ships is what passed.
 

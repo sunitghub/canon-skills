@@ -17,6 +17,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    | Gate | Status | Reason |
    |------|--------|--------|
    | simplifier | skipped | docs-only change |
+   | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
    | reviewer | ran | verdict: YES (model: haiku) |
    | security | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
@@ -24,7 +25,12 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    | eval | ran | verdict: pass — eval-report.md written (model: haiku) |
    ```
 
-   For the reviewer and evaluator rows specifically, always suffix the reason with `(model: <model>)` —
+   `code-reviewer` and `reviewer` are two distinct gates, not one — `code-reviewer` is wrapup's own
+   in-context 8-dimension check (`skills/wrapup/gates/reviewer.md`, run inline, no verdict, findings
+   only); `reviewer` is the fresh-subagent advisory gate below (`skills/sprint/reference/review.md`,
+   YES/NO verdict). Both get their own row; do not collapse them into one.
+
+   For the `reviewer` and `eval` rows specifically, always suffix the reason with `(model: <model>)` —
    `haiku` when the model-tier check above matched low-risk, otherwise the session's default model
    name. This is the record of which tier actually ran, not just that the gate ran.
 
@@ -34,29 +40,39 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    `npm test passed 2026-06-13`. This makes the acceptance record complete:
    what was tested and what quality gates ran. **`sprint complete` will block without this section.**
 
-   **Model tier for gates.** Before dispatching the reviewer or evaluator below, compute changed
-   files via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` (the same command the
-   reviewer prompt uses). Classify low-risk only if every changed path matches an allowlist —
-   `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `standards/**/*.md`, or a
-   root-level `*.md` — AND no path name contains a security-sensitive marker (`auth`, `secret`,
-   `session`, `crypto`, `token`, `credential`). Allowlist, not denylist: an unrecognized path type
-   defaults to normal cost, never to cheap. If low-risk, pass `model: "haiku"` on both the reviewer
-   and evaluator `Agent` calls; otherwise omit the `model` param on both (today's behavior —
-   inherits the session model). Run the check once; both gates use the same verdict. This is
-   file-path pattern matching only — never let the dispatching agent's own judgment about the
-   change's riskiness substitute for it or override it downward. High-risk-tier sprints are
-   unaffected — the check only ever adds a cheap-model option, it never removes the mandatory
-   dispatch itself. **User override:** if the user has explicitly asked to keep gates on the
-   full/session model for this sprint, that always wins over an automatic low-risk match.
+   **Model tier for gates.** This is the documented exception to `AGENTS.md`'s `## Model Tiers`
+   `review → Opus` default, scoped only to the two close-gate dispatches below. Before dispatching
+   the reviewer or evaluator, compute changed files via
+   `git diff --name-only $(git merge-base HEAD origin/main) HEAD` (the same command the reviewer
+   prompt uses). If that command returns an empty list (e.g. `origin/main` missing, detached HEAD),
+   treat it as normal cost, never low-risk — an empty list is not evidence of low risk, it means the
+   check couldn't run. Otherwise, classify low-risk only if every changed path matches an
+   allowlist — `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`,
+   `standards/**/*.md`, or a root-level `*.md` — AND no path name contains a security-sensitive
+   marker (`auth`, `secret`, `session`, `crypto`, `token`, `credential`). Allowlist, not denylist:
+   an unrecognized path type defaults to normal cost, never to cheap. If low-risk, pass
+   `model: "haiku"` on both the reviewer and evaluator `Agent` calls; otherwise omit the `model`
+   param on both (today's behavior — inherits the session model). Run the check once; both gates
+   use the same verdict. This is file-path pattern matching only — never let the dispatching
+   agent's own judgment about the change's riskiness substitute for it or override it downward.
+   High-risk-tier sprints are unaffected — the check only ever adds a cheap-model option, it never
+   removes the mandatory dispatch itself. **User override:** if the user has explicitly asked to
+   keep gates on the full/session model for this sprint, that always wins over an automatic
+   low-risk match.
 
-   **Reviewer gate (normal+ tier).** Skip for trivial tier only. For normal and high-risk sprints,
+   **Reviewer gate (normal+ tier).** Skip for trivial tier only — meaning `plan.md`'s `## Sign-off`
+   line reads `tier: trivial`. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers
+   never let genuinely trivial work start a sprint at all), but a sprint can be *downgraded* to
+   trivial mid-flight if grill or impact analysis reveals the real change is a one-liner with no
+   coordinated multi-file intent — write `tier: trivial` and a one-line reason in `## Sign-off` if
+   that happens. Absent that explicit downgrade, this gate is mandatory. For normal and high-risk sprints,
    always spawn a freshly invoked Agent subagent for the reviewer. The close confirmation is
    authorization — do not ask for separate approval. Same-context review is not acceptable.
 
    The reviewer has no implementation history. Invoke with a clean context, per the model-tier
    check above. The prompt must instruct it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
-   - Ticket ID and changed files: `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
+   - Ticket ID only — the reviewer derives its own changed-files list via `git merge-base`, same as the evaluator; do not pass a file list
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
@@ -70,7 +86,8 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    **Close the reviewer subagent handle after reading its verdict.** Completed subagents still occupy thread slots — closing before step 2 prevents thread-limit blocks if the evaluator needs a rerun.
 
-2. **Evaluator review (normal+ tier).** Skip for trivial tier only. For normal
+2. **Evaluator review (normal+ tier).** Skip for trivial tier only, same `tier: trivial` downgrade
+   condition as the reviewer gate above. For normal
    and high-risk sprints, always spawn a freshly invoked Agent subagent for the
    evaluator review. Once the user has confirmed sprint close, do not ask for
    separate approval to spawn the evaluator subagent — the close confirmation is
@@ -96,8 +113,10 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    confusing close-time failure on an otherwise-passing sprint.
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading.** Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
-   `fail` or `partial` findings to the user before proceeding. Do not advance to
-   step 3 if the evaluator verdict is `fail`. Record the eval outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
+   `fail` findings to the user before proceeding — this includes any report where individual
+   criteria/test-plan items graded `partial`, since `eval.md` requires the verdict line to be
+   `fail:` whenever a partial exists (there is no separate non-blocking `partial:` verdict). Do not
+   advance to step 3 if the evaluator verdict is `fail`. Record the eval outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
 3. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - ✓ passed | ✗ failed | ? not run

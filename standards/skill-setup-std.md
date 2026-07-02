@@ -86,7 +86,7 @@ Optional fields:
 | `paths` | Glob patterns; skill only auto-activates when Claude is working with matching files. Useful for monorepo domain skills |
 | `shell` | Shell for `` !`command` `` blocks: `bash` (default) or `powershell` |
 | `summary:` | Longer description for CATALOG.md when `description:` is too short to convey scope |
-| `depends: [skill-a, skill-b]` | Informational dependency list — queryable by `skills.sh lint`; not an injection mechanism |
+| `depends: [skill-a, skill-b]` | Informational dependency list — queryable by `canon-dev.sh lint`; not an injection mechanism |
 | `hidden: true` | **Canon-linter-only convention** — see Standalone vs. hidden below |
 
 ## Degrees of freedom
@@ -196,11 +196,11 @@ If a skill is useful both ways, make it standalone and let the parent import it.
 | Block Claude auto-load, user can still invoke | `disable-model-invocation: true` | Description removed from context; user invokes with `/name` |
 | Block both (internal sub-skill) | both fields | Hidden everywhere |
 
-`hidden: true` in canon frontmatter signals intent to `skills.sh lint` — the linter checks consistency but the platform ignores the field. For new skills, prefer the explicit platform fields when you need runtime enforcement.
+`hidden: true` in canon frontmatter signals intent to `canon-dev.sh lint` — the linter checks consistency but the platform ignores the field. For new skills, prefer the explicit platform fields when you need runtime enforcement.
 
 ## One job
 
-A skill that does two things is two skills waiting to be separated. If you find yourself writing "and then" in the description, split it. `skills.sh lint` flags an "and then" in a leaf skill's description; orchestrators (skills with a `depends:` list) are exempt because composing children is their job.
+A skill that does two things is two skills waiting to be separated. If you find yourself writing "and then" in the description, split it. `canon-dev.sh lint` flags an "and then" in a leaf skill's description; orchestrators (skills with a `depends:` list) are exempt because composing children is their job.
 
 Composition is fine — a parent skill imports children and orchestrates them. But each child should be coherent on its own.
 
@@ -434,7 +434,7 @@ Add an optional `case_type` field to each eval to document coverage:
 
 1. Create a directory `skills/<name>/` and write the skill as `skills/<name>/SKILL.md`; add `hidden: true` if it is only invoked by other skills
 2. Run `skills.sh list` to confirm it appears with the right name and description
-3. Update `CATALOG.md` by running `skills.sh catalog` (or manually if the script doesn't support it)
+3. Update `CATALOG.md` by running `canon-dev.sh catalog`
 4. If the skill is imported by an existing skill, add it to that skill's `depends:` list
 5. If it's standalone, document it in README.md if it warrants a mention
 6. Write at least 3 eval test cases in `skills/<name>/evals/evals.json` and run `/skill-eval <name>` to verify

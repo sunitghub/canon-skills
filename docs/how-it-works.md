@@ -27,7 +27,7 @@ Simple work stays light. canon chooses the lightest tier that still protects the
 | Tier | When | What runs |
 |---|---|---|
 | **Trivial** | Single line, question, mechanical change | Work directly |
-| **Normal** | Focused, reversible change | ticket + acceptance + plan → build → wrapup + eval |
+| **Normal** | Focused, reversible change | ticket + acceptance + plan + brief research → build → wrapup + eval |
 | **High-risk** | Security, irreversible ops, broad blast radius | Full pipeline: orient (parallel) + grill + impact analysis + required mitigation tests |
 
 ## Generator-Evaluator Separation
@@ -49,8 +49,8 @@ Same-context review reintroduces self-evaluation bias. The protocol fails closed
 ```
 sprint complete
   └── Wrapup: simplify → review → security → repo-check → doc-audit
-  └── Reviewer (fresh subagent, normal+ tier)
-  └── Evaluator (fresh subagent, normal+ tier) — adversarial, blocks on fail
+  └── Reviewer (fresh subagent, normal+ tier — cheaper model if changed files are structurally low-risk)
+  └── Evaluator (fresh subagent, normal+ tier) — adversarial, blocks on fail (same cheaper-model rule)
   └── Acceptance check — CLI blocks on unchecked items
   └── summary.md — plan-vs-actual table, one row per criterion
   └── tkt close

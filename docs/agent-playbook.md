@@ -213,8 +213,8 @@ Choose the lightest tier that still protects the work:
 | Tier | When | Overhead |
 |---|---|---|
 | **Trivial** | Single-line fix, rename, typo | No sprint — work directly |
-| **Normal** | Focused reversible change | Ticket + `acceptance.md` + `plan.md` |
-| **High-risk** | Auth, payments, migrations, broad blast radius | Full: orient, impact analysis, research, human checkpoint |
+| **Normal** | Focused reversible change | Ticket + `acceptance.md` + `plan.md` + brief `research.md` |
+| **High-risk** | Auth, payments, migrations, broad blast radius | Full: orient, impact analysis, full `research.md`, human checkpoint |
 
 ### Sprint files
 
@@ -223,6 +223,7 @@ Choose the lightest tier that still protects the work:
   ticket.md        ← created by CLI
   acceptance.md    ← done criteria (binary, checkable) + test plan
   plan.md          ← files to touch, approach, decisions, tier reason
+  research.md      ← objective truth compression before ## Approach; brief for normal, full orient for high-risk
   eval-report.md   ← adversarial grader output at close
   summary.md       ← plan-vs-actual table at close; what was left undone; commands run + exit codes
 ```

@@ -1,6 +1,6 @@
 ---
 name: wrapup
-description: Runs quality checks, code review, and cleanup after a feature or session. Use when work is done and ready to ship.
+description: Internal close-pipeline invoked by sprint complete — quality checks, code review, cleanup. Not for direct use; a normal/high-risk sprint's own "sprint complete" step calls this automatically.
 category: dev
 tags: [code-quality, workflow, orchestration, refactoring, security]
 hidden: true
@@ -47,7 +47,7 @@ Before running each step, assess the change and skip if the criteria apply. When
 ## Steps
 
 1. Read `skills/wrapup/gates/simplifier.md`, then apply the simplifier to code touched in this session.
-2. Read `skills/wrapup/gates/reviewer.md`, then apply the reviewer across all seven dimensions; defer deep security analysis to Step 3.
+2. Read `skills/wrapup/gates/reviewer.md`, then apply the reviewer across all eight dimensions; defer deep security analysis to Step 3.
 3. Read `skills/wrapup/gates/security-review.md`, then apply the security review. Optional scanners can inform the review, but their absence does not skip the gate.
 4. Read `skills/wrapup/gates/repo-check.md`, then apply the repo check. Fix stale references, orphan workflow files, and generated catalog drift before committing.
 5. Read `skills/doc-audit/SKILL.md`, then apply the doc audit. Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing.

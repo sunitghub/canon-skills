@@ -28,13 +28,10 @@ documentation, setup, or agent behavior.
 
 2. **Reference consistency.** Search changed docs and workflow files for stale
    paths, removed commands, removed scripts, or old lifecycle names.
-   If `scripts/gen-starters.sh` exists, run it (idempotent), then check
-   `git diff --name-only starters/` — any output is drift that must be staged
-   before committing.
 
 3. **Skill graph.** Run `./tools/skills.sh list`. Confirm advertised standalone skills
    appear there, and imported sub-skills remain hidden from the user-facing list.
-   When any `skills/*.md` changed, run `./tools/skills.sh lint` — it enforces
+   When any `skills/*.md` changed, run `./tools/canon-dev.sh lint` — it enforces
    skill-setup-std deterministically (naming, frontmatter, flat location,
    resolvable imports, depends graph). Advisory beyond the linter: flag skills
    that violate one-job (an "and then" in the description) or have a vague
@@ -58,7 +55,7 @@ documentation, setup, or agent behavior.
    is a gate failure.
 
 7. **Generated docs.** If skills or tool frontmatter changed, run
-   `./tools/skills.sh catalog` and include `CATALOG.md` if it changed.
+   `./tools/canon-dev.sh catalog` and include `CATALOG.md` if it changed.
 
 8. **Syntax checks.** Run cheap structural checks for changed executable files:
    `bash -n` for shell scripts, `python3 -m py_compile` for Python files.
