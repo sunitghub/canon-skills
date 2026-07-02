@@ -24,19 +24,27 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Skip rebuild if no source files changed (e.g. dist-only or unrelated commits)
-if ! git -C "$REPO_ROOT" diff --name-only HEAD~1 HEAD 2>/dev/null | grep -qv "^dist/"; then
+# Build artifacts build-zip.sh may touch. Watched generically below (git status,
+# not a hardcoded per-file list) so a new artifact never needs a second edit here.
+ARTIFACT_PATHS=(dist/ tools/sprint-check-win.exe)
+
+# Skip rebuild if the prior commit only touched build artifacts (e.g. this hook's
+# own commit, or an artifact-only commit) -- nothing upstream could have changed.
+if ! git -C "$REPO_ROOT" diff --name-only HEAD~1 HEAD 2>/dev/null \
+     | grep -qvE "^(dist/|tools/sprint-check-win\.exe$)"; then
   exit 0
 fi
 
 bash "$REPO_ROOT/scripts/build-zip.sh"
 
 CHANGED=()
-for ZIP in dist/slides.zip dist/context-check-fixture.zip; do
-  if ! git -C "$REPO_ROOT" diff --quiet -- "$ZIP" 2>/dev/null; then
-    CHANGED+=("$ZIP")
-  fi
-done
+while IFS= read -r f; do
+  [ -n "$f" ] && CHANGED+=("$f")
+done < <(
+  { git -C "$REPO_ROOT" diff --name-only -- "${ARTIFACT_PATHS[@]}"
+    git -C "$REPO_ROOT" ls-files --others --exclude-standard -- "${ARTIFACT_PATHS[@]}"
+  } | sort -u
+)
 
 if [ ${#CHANGED[@]} -gt 0 ]; then
   git -C "$REPO_ROOT" add "${CHANGED[@]}"
