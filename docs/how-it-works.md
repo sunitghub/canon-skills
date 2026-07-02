@@ -35,7 +35,7 @@ Simple work stays light. canon chooses the lightest tier that still protects the
 The agent that wrote the code is the worst possible reviewer of that code. canon enforces separation structurally:
 
 1. `sprint complete` spawns a **fresh subagent** — Read and Bash only, no implementation history — to grade each acceptance criterion against the actual code.
-2. The evaluator writes a machine-generated `evaluator-run-id` before grading; a `SubagentStop` hook logs the real `agent_id` to `.claude/subagent-runs.jsonl`, making the field auditable.
+2. The evaluator writes a machine-generated `evaluator-run-id` before grading; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `tools/subagent-log.sh` right after the subagent completes, making the field auditable.
 3. The CLI blocks close if the field is absent, the verdict is `fail`, or any acceptance box is unchecked.
 
 Same-context review reintroduces self-evaluation bias. The protocol fails closed when fresh-context evaluation is unavailable.

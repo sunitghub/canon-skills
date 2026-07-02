@@ -4,49 +4,72 @@
 
 _init_claude() {
   local settings="$1"
-  local scripts="$SKILLS_ROOT/scripts"
-  local tools="$SKILLS_ROOT/tools"
+  # canon no longer installs any Claude Code hooks (Stop/UserPromptSubmit/PreToolUse/
+  # SubagentStop) — those guardrails moved to a git-native pre-commit hook
+  # (_init_git_precommit) and an explicit CLI step (tools/subagent-log.sh), so this
+  # settings.json is never written destructively. This call is migration-only: it
+  # removes any of the 5 legacy hook entries left by an older canon install, via
+  # _uninstall_claude's existing surgical-removal logic, and touches nothing else
+  # in the file.
+  if [[ ! -f "$settings" ]]; then
+    echo "  [ok]     no Claude Code hooks needed"
+    return 0
+  fi
+  _uninstall_claude "$settings"
+}
 
-  mkdir -p "$(dirname "$settings")"
+_init_git_precommit() {
+  local project_dir="$1"
+  local hooks_dir="$project_dir/.git/hooks"
+  local hook="$hooks_dir/pre-commit"
+  local marker="# canon-managed-pre-commit-hook"
+  local template="$SKILLS_ROOT/scripts/pre-commit-hook-template.sh"
 
-  # Capture current state before overwriting (for [added] vs [ok] reporting)
-  local _had_handoff=0 _had_inject=0 _had_sprint=0 _had_precommit=0 _had_subagent=0
-  if [[ -f "$settings" ]]; then
-    grep -qF "auto-handoff.sh"     "$settings" 2>/dev/null && _had_handoff=1   || true
-    grep -qF "handoff-inject.sh"   "$settings" 2>/dev/null && _had_inject=1    || true
-    grep -qF "sprint-inject.sh"    "$settings" 2>/dev/null && _had_sprint=1    || true
-    grep -qF "pre-commit-check.sh" "$settings" 2>/dev/null && _had_precommit=1 || true
-    grep -qF "subagent-log.sh"     "$settings" 2>/dev/null && _had_subagent=1  || true
+  if [[ ! -d "$hooks_dir" ]]; then
+    echo "  [skip]  $hook not found (not a git repo?)"
+    return 0
   fi
 
-  # Write the complete hooks file (project settings.json is canon-owned — hooks only)
-  cat > "$settings" << EOF
-{
-  "hooks": {
-    "Stop": [
-      {"matcher": "", "hooks": [{"type": "command", "command": "bash $scripts/auto-handoff.sh"}]}
-    ],
-    "UserPromptSubmit": [
-      {"matcher": "", "hooks": [
-        {"type": "command", "command": "bash $scripts/handoff-inject.sh"},
-        {"type": "command", "command": "bash $scripts/sprint-inject.sh"}
-      ]}
-    ],
-    "PreToolUse": [
-      {"matcher": "Bash", "hooks": [{"type": "command", "command": "bash $scripts/pre-commit-check.sh"}]}
-    ],
-    "SubagentStop": [
-      {"matcher": "", "hooks": [{"type": "command", "command": "bash $tools/subagent-log.sh"}]}
-    ]
-  }
-}
-EOF
+  if [[ ! -f "$template" ]]; then
+    echo "  [fail]  template not found: $template"
+    return 1
+  fi
 
-  (( _had_handoff ))  && echo "  [ok]     Stop → auto-handoff.sh"           || echo "  [added]  Stop → auto-handoff.sh"
-  (( _had_inject ))   && echo "  [ok]     UserPromptSubmit → handoff-inject.sh" || echo "  [added]  UserPromptSubmit → handoff-inject.sh"
-  (( _had_sprint ))   && echo "  [ok]     UserPromptSubmit → sprint-inject.sh"  || echo "  [added]  UserPromptSubmit → sprint-inject.sh"
-  (( _had_precommit )) && echo "  [ok]     PreToolUse → pre-commit-check.sh"    || echo "  [added]  PreToolUse → pre-commit-check.sh"
-  (( _had_subagent )) && echo "  [ok]     SubagentStop → subagent-log.sh"       || echo "  [added]  SubagentStop → subagent-log.sh"
+  if [[ -f "$hook" ]] && ! grep -qF "$marker" "$hook" 2>/dev/null; then
+    echo "  [fail]  $hook already exists and is not canon-managed."
+    echo "          Refusing to overwrite an existing pre-commit hook. To get canon's"
+    echo "          checks (ticket-close guard, high-risk sign-off gate, test suite,"
+    echo "          wrapup reminder), merge the contents of $template into your hook"
+    echo "          by hand, or move your existing hook aside and re-run."
+    return 1
+  fi
+
+  {
+    echo "#!/usr/bin/env bash"
+    echo "$marker"
+    echo "# Installed by skills.sh add/init — re-run to update, do not hand-edit."
+    echo "CANON_ROOT=\"$SKILLS_ROOT\""
+    cat "$template"
+  } > "$hook"
+  chmod +x "$hook"
+  echo "  [ok]     .git/hooks/pre-commit installed"
+}
+
+_uninstall_git_precommit() {
+  local project_dir="$1"
+  local hook="$project_dir/.git/hooks/pre-commit"
+  local marker="# canon-managed-pre-commit-hook"
+
+  if [[ ! -f "$hook" ]]; then
+    echo "  [skip]  $hook not found"
+    return 0
+  fi
+  if ! grep -qF "$marker" "$hook" 2>/dev/null; then
+    echo "  [warn]  $hook did not look canon-managed; skipped"
+    return 0
+  fi
+  rm -f "$hook"
+  echo "  [removed]  .git/hooks/pre-commit"
 }
 
 _init_pi() {

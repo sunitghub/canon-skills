@@ -66,6 +66,7 @@ _post_register_prompts() {
   local name="$1" project_dir="$2"
   [[ "$name" == "ticket" || "$name" == "sprint-check" || "$name" == "sprint" ]] || return 0
   [[ "$name" == "sprint" ]] && ensure_sprint_project_marker "$project_dir"
+  _init_git_precommit "$project_dir"
   offer_tkt_path
 }
 
@@ -143,12 +144,12 @@ cmd_add() {
   local skill_row="| $name | $category | $skill_file |"
 
   skills_table_upsert "$agents_file" "$name" "$skill_row"
-  _init_claude "$project_dir/.claude/settings.json" 2>/dev/null | grep -E '^\s+\[added\]' || true
+  _init_claude "$project_dir/.claude/settings.json" 2>/dev/null || true
 
   echo ""
   echo "Done. $desc"
 
-  _post_register_prompts "$name" "$project_dir"
+  _post_register_prompts "$name" "$project_dir" || true
   _prune_redundant_deps "$skill_file" "$project_dir" "$name"
 
   register_project "$project_dir"
@@ -179,21 +180,22 @@ cmd_status() {
   fi
 
   # ── Compute hook status once — used for upgrade tip and display ──────────────
+  # canon installs no Claude Code hooks (settings.json) anymore — only a git-native
+  # pre-commit hook for sprint/ticket projects. Anything legacy in settings.json is
+  # migrated away by `add`/`init`, not reported here as an "issue."
   local hook_issues=0
   local _hook_names=() _hook_tags=()
-  if [ ${#skill_names[@]} -gt 0 ]; then
-    local _hs="$project_dir/.claude/settings.json"
-    for _h in auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh subagent-log.sh; do
-      _hook_names+=("$_h")
-      local _hook_path="$SKILLS_ROOT/scripts/$_h"
-      [[ "$_h" == "subagent-log.sh" ]] && _hook_path="$SKILLS_ROOT/tools/$_h"
-      if grep -qF "$_h" "$_hs" 2>/dev/null && [ -f "$_hook_path" ]; then
-        _hook_tags+=("ok")
-      else
-        _hook_tags+=("not wired")
-        (( hook_issues++ )) || true
-      fi
-    done
+  if $_has_sprint || $_has_ticket; then
+    _hook_names+=("pre-commit (git)")
+    local _pc_hook="$project_dir/.git/hooks/pre-commit"
+    if [ -f "$_pc_hook" ] && grep -qF "canon-managed-pre-commit-hook" "$_pc_hook" 2>/dev/null; then
+      _hook_tags+=("ok")
+    elif [ ! -d "$project_dir/.git/hooks" ]; then
+      _hook_tags+=("skipped — not a git repo")
+    else
+      _hook_tags+=("not wired")
+      (( hook_issues++ )) || true
+    fi
   fi
 
   # ── Registered skills ────────────────────────────────────────────────────
@@ -624,6 +626,7 @@ cmd_init() {
   echo ""
   echo "Git hooks:"
   bash "$SKILLS_ROOT/scripts/install-hooks.sh" || any_fail=1
+  _init_git_precommit "$SKILLS_ROOT" || any_fail=1
 
   offer_tkt_path
 
@@ -664,6 +667,7 @@ cmd_uninstall() {
       fi
       remove_skills_symlinks "$proj"
       _uninstall_claude "$proj/.claude/settings.json" 2>&1 | sed 's/^/  /' || true
+      _uninstall_git_precommit "$proj" 2>&1 | sed 's/^/  /' || true
       echo "  [cleaned]  $proj"
     done < "$PROJECTS_FILE"
   fi
@@ -671,6 +675,7 @@ cmd_uninstall() {
   echo ""
   echo "Claude Code (canon project hooks):"
   _uninstall_claude "$SKILLS_ROOT/.claude/settings.json" || any_fail=1
+  _uninstall_git_precommit "$SKILLS_ROOT" || any_fail=1
 
   echo ""
   echo "Claude Code (stale global hooks):"

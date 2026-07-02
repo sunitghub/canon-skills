@@ -6,8 +6,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
 home="$(mktemp -d)"
-# Restore the committed settings.json after the test overwrites it with a fixture.
-trap 'rm -rf "$home"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true' EXIT
+# Restore the committed settings.json after the test overwrites it with a fixture;
+# .git/hooks/pre-commit is untracked runtime state, just remove it.
+trap 'rm -rf "$home"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true; rm -f "$ROOT/.git/hooks/pre-commit"' EXIT
 
 mkdir -p "$home/.claude" "$home/.pi/agent/extensions" "$home/.config/canon"
 
@@ -83,6 +84,14 @@ cat > "$home/.claude/settings.json" <<EOF
 }
 EOF
 
+# Seed a canon-managed pre-commit hook in $ROOT to verify uninstall removes it.
+mkdir -p "$ROOT/.git/hooks"
+cat > "$ROOT/.git/hooks/pre-commit" <<'EOF'
+#!/usr/bin/env bash
+# canon-managed-pre-commit-hook
+echo "canon pre-commit"
+EOF
+chmod +x "$ROOT/.git/hooks/pre-commit"
 
 cat > "$home/.pi/agent/extensions/handoff.ts" <<'EOF'
 const configPath = join(homedir(), ".config", "canon", "install_path");
@@ -158,6 +167,7 @@ ln -sfn "$ROOT/skills" "$canon_project/.agents/skills"
 output="$(HOME="$home" "$SKILLS" uninstall)"
 assert_contains "$output" "[removed]  4 Claude hook(s)"   # from project-local settings
 assert_contains "$output" "[removed]  1 Claude hook(s)"   # stale global migration
+assert_contains "$output" "[removed]  .git/hooks/pre-commit"
 assert_contains "$output" "[removed]  Pi handoff extension"
 assert_contains "$output" "[removed]  install_path"
 assert_contains "$output" "[removed]  projects"
@@ -175,6 +185,8 @@ assert_count 0 "$ROOT/scripts/pre-commit-check.sh" "$ROOT/.claude/settings.json"
 assert_count 0 "$ROOT/scripts/auto-handoff.sh" "$home/.claude/settings.json"
 assert_count 1 "/usr/local/bin/user-stop"       "$home/.claude/settings.json"
 assert_count 1 '"theme": "dark"'                "$home/.claude/settings.json"
+
+[[ ! -f "$ROOT/.git/hooks/pre-commit" ]] || fail "expected canon-managed pre-commit hook to be removed from \$ROOT"
 
 [[ ! -f "$home/.pi/agent/extensions/handoff.ts" ]] || fail "expected Pi extension to be removed"
 [[ ! -f "$home/.config/canon/install_path" ]] || fail "expected install_path to be removed"
@@ -206,6 +218,7 @@ assert_count 1 "Stale AGENTS content preserved." "$stale_import_project/AGENTS.m
 again="$(HOME="$home" "$SKILLS" uninstall)"
 assert_contains "$again" "[skip]  no registered projects"
 assert_contains "$again" "[ok]     no canon Claude hooks found"
+assert_contains "$again" "[skip]  $ROOT/.git/hooks/pre-commit not found"
 assert_contains "$again" "[skip]  Pi handoff extension not found"
 assert_contains "$again" "[skip]  ~/.config/canon/install_path not found"
 

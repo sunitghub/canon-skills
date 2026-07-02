@@ -11,6 +11,8 @@ tests=(
   "$ROOT/tests/skills-model-tiers-note.sh"
   "$ROOT/tests/skills-refresh.sh"
   "$ROOT/tests/skills-uninstall.sh"
+  "$ROOT/tests/git-precommit-hook.sh"
+  "$ROOT/tests/subagent-log-cli.sh"
   "$ROOT/tests/skills-std.sh"
   "$ROOT/tests/install-target.sh"
   "$ROOT/tests/install-sh.sh"
