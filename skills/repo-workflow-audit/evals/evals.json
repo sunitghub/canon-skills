@@ -1,0 +1,51 @@
+{
+  "skill_name": "repo-workflow-audit",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Run a repo-workflow-audit on a fictional skill family at skills/deploy/**. Here is its content:\n\n`skills/deploy/SKILL.md`:\n```\n---\nname: deploy\ndescription: Deploys the app.\n---\n# Deploy\nRun `skills/deploy/reference/steps.md` for the six-step deploy process.\n```\n\n`skills/deploy/reference/steps.md`:\n```\n# Deploy Steps\n1. Build. Run `scripts/build-legacy.sh` (this script was deleted last sprint).\n2. Test. Run `npm test`.\n3. Push image.\n4. Migrate DB.\n5. Health check.\n```\n\nNote steps.md says 'six-step' but only lists 5, and step 1 references a deleted script.",
+      "expected_output": "Dispatches four independent checks (pipeline gates, adversarial review, cross-doc consistency, stale-reference sweep), surfaces the 'six-step' vs. 5-listed-steps miscount and the deleted-script reference as findings, compiles them into one list, and presents to the user before applying any fix.",
+      "expectations": [
+        "Describes running all four dispatches (pipeline gates, adversarial review, cross-doc consistency, stale-reference sweep) independently",
+        "Flags the six-step claim vs. 5 actual listed steps as a finding",
+        "Flags the reference to the deleted scripts/build-legacy.sh as a stale reference",
+        "Presents compiled findings to the user before making any fix",
+        "Does not silently edit skills/deploy files without presenting findings first"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "compliance",
+      "prompt": "Run a repo-workflow-audit with no target specified.",
+      "expected_output": "The skill defaults the target scope to skills/sprint/** and skills/wrapup/**, per its documented default, rather than asking the user to specify or refusing to run.",
+      "expectations": [
+        "States or uses skills/sprint/** and skills/wrapup/** as the default target when none is given",
+        "Does not block or refuse to proceed for lack of an explicit target",
+        "Still describes running all four dispatches against the defaulted target"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "boundary",
+      "prompt": "During a repo-workflow-audit, one dispatch finds that a doc instructs running a command that no longer exists. Should you fix it immediately without asking?",
+      "expected_output": "The skill reports the finding as part of the compiled list and presents it to the user before applying any fix — it does not auto-fix, even for a clear-cut, low-risk finding.",
+      "expectations": [
+        "States findings must be compiled and presented to the user before any fix is applied",
+        "Does not describe fixing the stale-command finding automatically without user direction",
+        "Frames fixing as a separate, explicit step scoped by the user"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "edge",
+      "prompt": "Run a repo-workflow-audit on skills/sprint/**. The target's own close-gate docs (skills/sprint/reference/complete.md) contain a rule that lets sprint's own reviewer/evaluator run on a cheaper model for low-risk changes. Should the audit's own 4 dispatches use that same cheap-model rule on themselves?",
+      "expected_output": "No — the skill explicitly overrides any cheap-model shortcut the target's own gates might apply to themselves and runs all four dispatches on the strongest available model, since this audit is deliberately high-scrutiny.",
+      "expectations": [
+        "States the audit does not apply the target's own cheap-model/blast-radius shortcut to itself",
+        "States all four dispatches run on the strongest available model",
+        "Explains this is because the audit is deliberately high-scrutiny work"
+      ]
+    }
+  ]
+}
