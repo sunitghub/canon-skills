@@ -3,18 +3,18 @@
 **Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any normal/high-risk request to add, fix, update, debug, implement, or build something.
 
 1. **Ticket and context.** Read `tools/ticket.md`, then run `sprint start "<title>"`. It creates/starts the
-   ticket, records it as active, and ensures `DECISIONS.md` and `HANDOFF.md`
-   exist.
+   ticket, records it as active, ensures `DECISIONS.md` and `HANDOFF.md` exist, and seeds
+   `acceptance.md`/`plan.md` skeletons (see Planning Files below) if they don't already exist.
 
-2. **Skill check.** Run `skills list` (or `skills.sh cmd_list`) and ask: does an existing skill already cover this work? If yes, use it — don't reinvent. If no skill covers it and the work is reusable across projects, note it as a candidate for a new skill in `plan.md`. Building a new skill follows the same sprint flow as any other work.
+2. **Skill check.** Run `./tools/skills.sh list` and ask: does an existing skill already cover this work? If yes, use it — don't reinvent. If no skill covers it and the work is reusable across projects, note it as a candidate for a new skill in `plan.md`. Building a new skill follows the same sprint flow as any other work.
 
 3. **Classify tier.** Decide normal vs high-risk using the workflow tiers in `skills/sprint/SKILL.md`.
 
-4. **Planning files.** Create or update the files in `.tickets/<id>/` **now** — these are planning artifacts required before the brief. The approval gate in step 11 blocks code, not planning file creation.
-   - `acceptance.md` — specific, binary conditions that define "done". For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution.
-   - `plan.md` — files to inspect, files to create/modify, step-by-step build plan. For `type: bug` tickets, use `starters/bug-plan.md` as the skeleton — it structures the plan around the five incident stages (Detect/Diagnose/Contain/Fix/Prevent).
+4. **Planning files.** Both files were already seeded by step 1 (skeleton `## Criteria`/`## Test Plan`/`## QA` in `acceptance.md`, skeleton `## Sign-off`/`## Approach`/`## Files`/`## Decisions` in `plan.md`) — fill them in now, before the brief. The approval gate in step 11 blocks code, not planning file content.
+   - `acceptance.md` — specific, binary conditions that define "done" under `## Criteria` and `## Test Plan`. For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution. `## QA`'s "Tested locally" box also blocks close if left unchecked — check it once you've actually verified the change, not before.
+   - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Detect/Diagnose/Contain/Fix/Prevent).
    - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below)
-   - If these already exist: read them and proceed without recreating.
+   - If these already exist with real content (not just the skeleton): read them and proceed without recreating.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
    - Record the tier and one-line reason in `plan.md`.
 

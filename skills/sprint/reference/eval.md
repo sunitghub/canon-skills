@@ -84,6 +84,8 @@ Evaluated: <ISO date>
 pass: <one sentence> — OR — fail: <one sentence>
 ```
 
+The verdict line is binary — there is no `partial:` line. If any criterion or test-plan item graded `partial` in the tables above, the verdict line must be `fail:`, summarizing what's partial; `pass:` requires every criterion and test-plan item to be `pass`. This is what makes the close gate (which only accepts `^pass:`) fail closed on partial work instead of silently letting it through.
+
 Return the verdict line in your response to the caller.
 
 ## Disposition

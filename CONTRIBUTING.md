@@ -31,19 +31,19 @@ decision: a nuance that changes *how* a skill does its one job is an edit; a
 
 ### Before opening a PR
 
-1. **Lint**: `./tools/skills.sh lint` — deterministic conformance check; must pass.
+1. **Lint**: `./tools/canon-dev.sh lint` — deterministic conformance check; must pass.
 2. **Test**: `npm test` — runs the lint plus the core CLI workflow suite.
 3. **Catalog**: `./tools/canon-dev.sh catalog` if you added or renamed a skill; commit `CATALOG.md`.
 
 `standards/efficiency.md` is the canonical efficiency standard — it's always-on in any project that has canon registered.
 
-`skills.sh lint` runs as part of `npm test`, so running the suite catches
+`canon-dev.sh lint` runs as part of `npm test`, so running the suite catches
 non-conforming skills before they merge.
 
 ## Continuous Integration
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs `npm test` (the
-core suite plus `skills.sh lint`) on every pull request to `main` and every
+core suite plus `canon-dev.sh lint`) on every pull request to `main` and every
 push to `main`.
 
 While the repository is **private**, this check is **advisory** — GitHub branch

@@ -11,7 +11,7 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git s
 
 ## Scope
 
-Run `git diff --merge-base origin/HEAD --name-only` to identify changed files. Analyze only those files — do not scan the full codebase.
+Run `git diff --name-only $(git merge-base HEAD origin/main) HEAD` to identify changed files — the same base ref every other close gate uses. Analyze only those files — do not scan the full codebase. If `origin/main` does not exist (no remote, detached HEAD), fall back to reviewing only the files listed in `.tickets/<id>/plan.md ## Files`.
 
 ## Confidence Threshold
 
