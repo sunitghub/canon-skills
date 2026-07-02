@@ -109,101 +109,117 @@ _uninstall_claude() {
     removed=$(( removed + c ))
   done
 
-  if [ "$removed" -eq 0 ]; then
-    echo "  [ok]     no canon Claude hooks found"
-    return 0
+  if [ "$removed" -gt 0 ]; then
+    local compact_tmp="${settings}.canon-compact"
+    cp "$settings" "$compact_tmp"
+    for _n in "${_canon_scripts[@]}"; do
+      sed -E "s/\\{[^{}]*\\\"type\\\"[[:space:]]*:[[:space:]]*\\\"command\\\"[^{}]*\\\"command\\\"[[:space:]]*:[[:space:]]*\\\"[^\\\"]*${_n}\\\"[^{}]*\\}[[:space:]]*,?//g" "$compact_tmp" > "${compact_tmp}.next"
+      mv "${compact_tmp}.next" "$compact_tmp"
+    done
+    sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$compact_tmp" > "${compact_tmp}.next"
+    mv "${compact_tmp}.next" "$compact_tmp"
+
+    local tmp="${settings}.canon-tmp"
+    awk '
+      function push(line) { out[++n] = line }
+      function flush_buffer(   i) {
+        if (!drop) {
+          for (i = 1; i <= blen; i++) push(buf[i])
+        }
+        blen = 0
+        drop = 0
+        capture = 0
+      }
+      function canon_line(line) {
+        return line ~ /(auto-handoff|handoff-inject|sprint-inject|pre-commit-check|subagent-log|auto-polish-trigger|guard-managed-files)\.sh/
+      }
+      {
+        if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && $0 ~ /"command"[[:space:]]*:/) {
+          if (!canon_line($0)) push($0)
+          next
+        }
+        if (capture) {
+          buf[++blen] = $0
+          if (canon_line($0)) drop = 1
+          if ($0 ~ /^[[:space:]]*}[,]?[[:space:]]*$/) flush_buffer()
+          next
+        }
+        if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && n > 0) {
+          capture = 1
+          blen = 0
+          buf[++blen] = out[n]
+          n--
+          buf[++blen] = $0
+          next
+        }
+        push($0)
+      }
+      END {
+        if (capture) flush_buffer()
+        for (i = 1; i <= n; i++) {
+          if (out[i] ~ /^[[:space:]]*[]}][][,]?[[:space:]]*$/ && i > 1) {
+            sub(/,[[:space:]]*$/, "", out[i - 1])
+          }
+        }
+        for (i = 1; i <= n; i++) print out[i]
+      }
+    ' "$compact_tmp" > "$tmp"
+    sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$tmp" > "${tmp}.next"
+    mv "${tmp}.next" "$tmp"
+    mv "$tmp" "$settings"
+    rm -f "$compact_tmp"
   fi
 
-  local compact_tmp="${settings}.canon-compact"
-  cp "$settings" "$compact_tmp"
-  for _n in "${_canon_scripts[@]}"; do
-    sed -E "s/\\{[^{}]*\\\"type\\\"[[:space:]]*:[[:space:]]*\\\"command\\\"[^{}]*\\\"command\\\"[[:space:]]*:[[:space:]]*\\\"[^\\\"]*${_n}\\\"[^{}]*\\}[[:space:]]*,?//g" "$compact_tmp" > "${compact_tmp}.next"
-    mv "${compact_tmp}.next" "$compact_tmp"
-  done
-  sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$compact_tmp" > "${compact_tmp}.next"
-  mv "${compact_tmp}.next" "$compact_tmp"
-
-  local tmp="${settings}.canon-tmp"
-  awk '
-    function push(line) { out[++n] = line }
-    function flush_buffer(   i) {
-      if (!drop) {
-        for (i = 1; i <= blen; i++) push(buf[i])
-      }
-      blen = 0
-      drop = 0
-      capture = 0
-    }
-    function canon_line(line) {
-      return line ~ /(auto-handoff|handoff-inject|sprint-inject|pre-commit-check|subagent-log|auto-polish-trigger|guard-managed-files)\.sh/
-    }
-    {
-      if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && $0 ~ /"command"[[:space:]]*:/) {
-        if (!canon_line($0)) push($0)
-        next
-      }
-      if (capture) {
-        buf[++blen] = $0
-        if (canon_line($0)) drop = 1
-        if ($0 ~ /^[[:space:]]*}[,]?[[:space:]]*$/) flush_buffer()
-        next
-      }
-      if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && n > 0) {
-        capture = 1
-        blen = 0
-        buf[++blen] = out[n]
-        n--
-        buf[++blen] = $0
-        next
-      }
-      push($0)
-    }
-    END {
-      if (capture) flush_buffer()
-      for (i = 1; i <= n; i++) {
-        if (out[i] ~ /^[[:space:]]*[]}][][,]?[[:space:]]*$/ && i > 1) {
-          sub(/,[[:space:]]*$/, "", out[i - 1])
-        }
-      }
-      for (i = 1; i <= n; i++) print out[i]
-    }
-  ' "$compact_tmp" > "$tmp"
-  sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$tmp" > "${tmp}.next"
-  mv "${tmp}.next" "$tmp"
-  mv "$tmp" "$settings"
-  rm -f "$compact_tmp"
-
-  # Prune leftover empty structures the text-based removal above can create
-  # (empty matcher["hooks"] arrays, empty event-type arrays, an empty "hooks"
-  # object) — JSON-aware so it can't corrupt unrelated keys. python3 is
-  # already a hard dependency elsewhere in this codebase (tools/sprint's
-  # eval-gate timestamp matching), not a new one introduced here.
-  python3 - "$settings" << 'PYEOF'
+  # Prune leftover empty structures (empty matcher["hooks"] arrays, empty
+  # event-type arrays, an empty "hooks" object) — JSON-aware so it can't
+  # corrupt unrelated keys. Runs every time, not just when the text-based
+  # removal above found something this run: a file left with an empty
+  # skeleton from an *older* canon version (before this pruning existed)
+  # has nothing left for the removal step to find, but still needs cleanup.
+  # python3 is already a hard dependency elsewhere in this codebase
+  # (tools/sprint's eval-gate timestamp matching), not a new one here.
+  local pruned
+  pruned="$(python3 - "$settings" << 'PYEOF'
 import json, sys
 
 path = sys.argv[1]
 with open(path) as f:
     data = json.load(f)
 
+changed = False
 hooks = data.get("hooks")
 if isinstance(hooks, dict):
     for event, entries in list(hooks.items()):
         if not isinstance(entries, list):
             continue
         kept = [e for e in entries if not (isinstance(e, dict) and isinstance(e.get("hooks"), list) and len(e["hooks"]) == 0)]
+        if len(kept) != len(entries):
+            changed = True
         if kept:
             hooks[event] = kept
         else:
             del hooks[event]
+            changed = True
     if not hooks:
         del data["hooks"]
+        changed = True
 
-with open(path, "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
+if changed:
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2)
+        f.write("\n")
+
+print("1" if changed else "0")
 PYEOF
+)"
 
-  echo "  [removed]  $removed Claude hook(s)"
+  if [ "$removed" -gt 0 ]; then
+    echo "  [removed]  $removed Claude hook(s)"
+  elif [ "$pruned" = "1" ]; then
+    echo "  [cleaned]  removed leftover empty hook skeleton"
+  else
+    echo "  [ok]     no canon Claude hooks found"
+  fi
 }
 
 _uninstall_pi() {
