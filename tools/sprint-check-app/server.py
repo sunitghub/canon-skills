@@ -379,6 +379,18 @@ def _find_ticket_path(ticket_id: str) -> Path | None:
             pass
     return None
 
+def _update_active(canonical_id: str, new_status: str) -> None:
+    """Mirrors tkt's set_active/clear_active_if: in_progress claims ACTIVE,
+    any other status clears it if this ticket currently holds it."""
+    active_file = TICKETS_DIR / 'ACTIVE'
+    if new_status == 'in_progress':
+        active_file.write_text(canonical_id + '\n', encoding='utf-8')
+        return
+    if active_file.is_file():
+        current = active_file.read_text(encoding='utf-8', errors='replace').strip()
+        if current == canonical_id:
+            active_file.unlink()
+
 def write_status(ticket_id: str, new_status: str) -> bool:
     path = _find_ticket_path(ticket_id)
     if not path:
@@ -388,6 +400,8 @@ def write_status(ticket_id: str, new_status: str) -> bool:
     if updated == text:
         return False
     path.write_text(updated, encoding='utf-8')
+    canonical_id = parse_ticket(path).get('id', ticket_id)
+    _update_active(canonical_id, new_status)
     return True
 
 def write_body(ticket_id: str, new_body: str) -> bool:

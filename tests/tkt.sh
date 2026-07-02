@@ -37,6 +37,13 @@ assert_contains "$close_output" "$second_id: closed"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after closing active ticket"
 assert_grep "^status: closed$" ".tickets/$second_id/ticket.md"
 
+"$TKT" start "$id" >/dev/null
+assert_eq "$id" "$(tr -d '[:space:]' < .tickets/ACTIVE)"
+reopen_output="$("$TKT" reopen "$id")"
+assert_contains "$reopen_output" "$id: open"
+[[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after reopening the active ticket"
+assert_grep "^status: open$" ".tickets/$id/ticket.md"
+
 missing_output="$(run_fail "$TKT" show does-not-exist)"
 assert_contains "$missing_output" "Error: no ticket matching 'does-not-exist'"
 
