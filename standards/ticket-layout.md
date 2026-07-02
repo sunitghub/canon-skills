@@ -21,7 +21,7 @@ Internal reference. Defines the canonical structure for all canon tickets. Updat
     ticket.md               ← frontmatter + body (tkt-managed)
     acceptance.md           ← sprint doc (agent-created)
     plan.md                 ← sprint doc (agent-created)
-    research.md             ← sprint doc (optional; agent-created for high-risk)
+    research.md             ← sprint doc (agent-created; brief for normal-tier, full orient protocol for high-risk)
     summary.md              ← sprint doc (agent-created at close)
 ```
 
@@ -74,7 +74,7 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 |---|---|---|---|
 | `acceptance.md` | `sprint start` | yes — `## Criteria` and `## Test Plan` each need ≥1 checklist item; `## Wrapup Gates` must exist | Definition of done, test plan, wrapup gate record |
 | `plan.md` | `sprint start` | yes — `## Approach` must have non-placeholder content | Approach, files, decisions; read after compaction |
-| `research.md` | High-risk / brownfield orient | no — optional | Objective truth compression: relevant files, system model, constraints, unknowns |
+| `research.md` | `sprint start` step 6 (normal, brief) or step 7 (high-risk/brownfield, full orient) | no — sprint doesn't gate on it, but expected before `## Approach` is drafted | Objective truth compression: relevant files, system model, constraints, unknowns |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
 **Doc-less tickets** — tickets with no sprint docs are valid (e.g. backlog items, tasks that don't need a sprint). The board renders the ticket body in the modal instead of doc tabs.
