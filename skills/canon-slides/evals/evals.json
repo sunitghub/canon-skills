@@ -19,14 +19,14 @@
     {
       "id": 2,
       "case_type": "control",
-      "prompt": "Create a presentation on the evaluator pattern using canon-slides with the octave theme.",
-      "expected_output": "The skill reads evaluator-related source files (skills/sprint/reference/eval.md, skills/skill-eval/SKILL.md, DECISIONS.md), writes slides/evaluator-pattern.md with octave theme frontmatter, and provides render instructions that create HTML and PPTX with themes/octave.css.",
+      "prompt": "Create a presentation on the evaluator pattern using canon-slides.",
+      "expected_output": "The skill reads evaluator-related source files (skills/sprint/reference/eval.md, skills/skill-eval/SKILL.md, DECISIONS.md), writes slides/evaluator-pattern.md with canon theme frontmatter, and provides render instructions that create HTML and PPTX with themes/canon.css.",
       "expectations": [
         "Reads skills/sprint/reference/eval.md or skills/skill-eval/SKILL.md",
         "Writes slides/evaluator-pattern.md",
-        "Output file contains 'theme: octave' in frontmatter",
+        "Output file contains 'theme: canon' in frontmatter",
         "Deck covers generator-evaluator separation or clean context concept",
-        "Provides render instructions with --theme skills/canon-slides/themes/octave.css or npm run slides",
+        "Provides render instructions with --theme skills/canon-slides/themes/canon.css or npm run slides",
         "Reports both HTML and PPTX output paths"
       ]
     },

@@ -3,7 +3,7 @@ name: canon-slides
 description: Generates Marp slide decks from canon knowledge. Use when asked to create slides, build a presentation, or generate a deck on a canon topic (context management, evaluator pattern, or skill authoring). Renders to HTML and PPTX for browser viewing and SharePoint/PowerPoint distribution.
 category: ops
 tags: [slides, marp, presentations, knowledge]
-argument-hint: "[topic] [--theme canon|octave]"
+argument-hint: "[topic]"
 hidden: true
 ---
 
@@ -14,7 +14,7 @@ Generates a Marp slide deck from canon source files and renders it to HTML and P
 ## Usage
 
 ```
-/canon-slides <topic> [--theme canon|octave]
+/canon-slides <topic>
 ```
 
 **Topics:**
@@ -25,11 +25,9 @@ Generates a Marp slide deck from canon source files and renders it to HTML and P
 | `evaluator-pattern` | Generator-evaluator separation, clean context eval, avoiding self-grading |
 | `skill-authoring` | Skill structure, description quality, eval coverage, gotchas pattern |
 
-Default theme: `canon`. Pass `--theme octave` for Octave brand styling.
-
 ## Steps
 
-**1. Parse arguments.** Extract topic slug and theme from `$ARGUMENTS`. If the topic is not one of the three above, stop and list the valid options.
+**1. Parse arguments.** Extract the topic slug from `$ARGUMENTS`. If the topic is not one of the three above, stop and list the valid options.
 
 **2. Read source files for the topic.**
 
@@ -67,7 +65,7 @@ html: true
 ---
 ```
 
-Replace `canon` with `octave` when `--theme octave` is passed. `html: true` is required — without it, all `<div>` styling is stripped by Marp.
+`html: true` is required — without it, all `<div>` styling is stripped by Marp.
 
 Immediately after the frontmatter, add a global animation block (before the title slide):
 
@@ -188,7 +186,7 @@ For "big number + caption" hook slides specifically: use `display:flex; flex-dir
 - **Summary** — one slide, 3–5 bullet takeaways
 - **Q&A / Try it** — one slide with a concrete next action
 
-**Visual design rules (learned from Octave AI Happy Hour decks):**
+**Visual design rules (learned from real-world conference decks):**
 
 *Bullet lists → card grids.* Never use bare `<ul>` for key points. Use a card grid instead:
 ```html
@@ -310,20 +308,20 @@ If you must run Marp manually, the HTML command is:
 
 ```bash
 npx @marp-team/marp-cli posts/slides/<topic>.md \
-  --theme skills/canon-slides/themes/<theme>.css \
+  --theme skills/canon-slides/themes/canon.css \
   -o posts/slides/<topic>.html \
   --allow-local-files \
   --html \
   --bespoke.transition=false
 ```
 
-Where `<theme>` is `canon` or `octave`. Omitting `--html` silently strips all `<div>` styling and the slides render as plain text.
+Omitting `--html` silently strips all `<div>` styling and the slides render as plain text.
 
 The manual PPTX command is:
 
 ```bash
 npx @marp-team/marp-cli posts/slides/<topic>.md \
-  --theme skills/canon-slides/themes/<theme>.css \
+  --theme skills/canon-slides/themes/canon.css \
   -o posts/slides/<topic>.pptx \
   --allow-local-files \
   --html \
@@ -342,27 +340,6 @@ Then rerun: npm run slides -- <topic>
 - Path to the PPTX: `posts/slides/<topic>.pptx`
 - How to open HTML locally: `open posts/slides/<topic>.html` (macOS) or just open it in any browser
 - How to use PPTX: upload `posts/slides/<topic>.pptx` to SharePoint or open it in PowerPoint
-
-## Octave theme — baked-in brand frame
-
-`themes/octave.css` includes the Octave Pulse brand frame by default:
-- top-right `Octave-White-Logo.png` mark
-- bottom-right `OctavePulse_SitePage_Banner1-large.png` pulse background art
-- dark overlay tuned for readability
-- bottom rainbow accent bar
-
-Do not add per-deck `section { background: ... }` or logo CSS for Octave decks unless the user explicitly asks for a one-off override. The theme is the source of truth.
-
-The default asset references are relative to `posts/slides/<topic>.html`, so the assets must live in `posts/slides/`:
-- `posts/slides/Octave-White-Logo.png`
-- `posts/slides/OctavePulse_SitePage_Banner1-large.png`
-
-Override only through theme variables in `themes/octave.css`:
-- `--logo-url`
-- `--background-art-url`
-- `--background-art-size`
-- `--background-art-position`
-- `--background-overlay`
 
 ## Reserved zone — page counter
 
