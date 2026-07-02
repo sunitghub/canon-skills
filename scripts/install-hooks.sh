@@ -30,8 +30,11 @@ ARTIFACT_PATHS=(dist/ tools/sprint-check-win.exe)
 
 # Skip rebuild if the prior commit only touched build artifacts (e.g. this hook's
 # own commit, or an artifact-only commit) -- nothing upstream could have changed.
-if ! git -C "$REPO_ROOT" diff --name-only HEAD~1 HEAD 2>/dev/null \
-     | grep -qvE "^(dist/|tools/sprint-check-win\.exe$)"; then
+EXCLUDES=()
+for p in "${ARTIFACT_PATHS[@]}"; do
+  EXCLUDES+=(":(exclude)$p")
+done
+if [ -z "$(git -C "$REPO_ROOT" diff --name-only HEAD~1 HEAD -- . "${EXCLUDES[@]}" 2>/dev/null)" ]; then
   exit 0
 fi
 
