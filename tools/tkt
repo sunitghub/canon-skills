@@ -189,7 +189,7 @@ cmd_set_status() {
   id="$(get_field "$file" id)"
   if [[ "$new_status" == "in_progress" ]]; then
     set_active "$id"
-  elif [[ "$new_status" == "closed" ]]; then
+  else
     clear_active_if "$id"
   fi
   printf "%s: %s\n" "$id" "$new_status"

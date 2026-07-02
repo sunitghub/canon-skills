@@ -143,4 +143,13 @@ assert "t-archived" in tickets, "archived ticket must appear in /api/tickets?all
 assert tickets["t-archived"]["status"] == "archived"
 PY
 
+# status transition to in_progress claims ACTIVE; moving away from it (e.g. to open) clears it
+curl -s -X POST "http://127.0.0.1:$PORT/api/ticket/t-placeholder/status" \
+  -H 'Content-Type: application/json' -d '{"status":"in_progress"}' >/dev/null
+[[ "$(cat "$WORK/.tickets/ACTIVE" 2>/dev/null)" == "t-placeholder" ]] || fail "ACTIVE not set after status -> in_progress"
+
+curl -s -X POST "http://127.0.0.1:$PORT/api/ticket/t-placeholder/status" \
+  -H 'Content-Type: application/json' -d '{"status":"open"}' >/dev/null
+[[ ! -f "$WORK/.tickets/ACTIVE" ]] || fail "ACTIVE not cleared after status -> open"
+
 printf 'sprint-check-server: ok\n'

@@ -501,9 +501,39 @@ func loadWhy(file string) map[string]any {
 }
 
 func writeStatus(id, status string) bool {
-	return replaceTicket(id, func(text string) string {
+	ok := replaceTicket(id, func(text string) string {
 		return regexp.MustCompile(`(?m)^(status:\s*)(\S+)$`).ReplaceAllString(text, "${1}"+status)
 	})
+	if ok {
+		updateActive(canonicalTicketID(id), status)
+	}
+	return ok
+}
+
+func canonicalTicketID(id string) string {
+	if p := findTicketPath(id); p != "" {
+		if t, err := parseTicket(p); err == nil {
+			if canonical, ok := t["id"]; ok {
+				return fmt.Sprint(canonical)
+			}
+		}
+	}
+	return id
+}
+
+// updateActive mirrors tkt's set_active/clear_active_if: in_progress claims
+// ACTIVE, any other status clears it if this ticket currently holds it.
+func updateActive(canonicalID, status string) {
+	activePath := filepath.Join(ticketsDir, "ACTIVE")
+	if status == "in_progress" {
+		os.WriteFile(activePath, []byte(canonicalID+"\n"), 0644)
+		return
+	}
+	if raw, err := os.ReadFile(activePath); err == nil {
+		if strings.TrimSpace(string(raw)) == canonicalID {
+			os.Remove(activePath)
+		}
+	}
 }
 
 func writeBody(id, body string) bool {

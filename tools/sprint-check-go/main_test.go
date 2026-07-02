@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -227,6 +228,31 @@ func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 	}
 	if created["priority"] != 2 {
 		t.Fatalf("priority = %v, want 2", created["priority"])
+	}
+}
+
+func TestWriteStatusUpdatesActive(t *testing.T) {
+	setupTestProject(t)
+	created := createTicket("Active test", "task", "open", 2, "")
+	id := created["id"].(string)
+
+	if !writeStatus(id, "in_progress") {
+		t.Fatal("writeStatus(in_progress) returned false")
+	}
+	activePath := filepath.Join(ticketsDir, "ACTIVE")
+	raw, err := os.ReadFile(activePath)
+	if err != nil {
+		t.Fatalf("ACTIVE not written: %v", err)
+	}
+	if got := strings.TrimSpace(string(raw)); got != id {
+		t.Fatalf("ACTIVE = %q, want %q", got, id)
+	}
+
+	if !writeStatus(id, "open") {
+		t.Fatal("writeStatus(open) returned false")
+	}
+	if _, err := os.Stat(activePath); !os.IsNotExist(err) {
+		t.Fatalf("expected ACTIVE to be cleared after status -> open, err = %v", err)
 	}
 }
 
