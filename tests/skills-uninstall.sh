@@ -227,4 +227,28 @@ assert_contains "$again" "[skip]  $ROOT/.git/hooks/pre-commit not found"
 assert_contains "$again" "[skip]  Pi handoff extension not found"
 assert_contains "$again" "[skip]  ~/.config/canon/install_path not found"
 
+# ── Stale empty skeleton, zero fresh canon-script strings to match (t-79f6) ──
+# Reproduces a settings.json left over from a version before the pruning pass
+# existed: canon hook *commands* already stripped, but empty "hooks": []
+# skeletons remain. `removed` should be 0 this run (nothing left to match),
+# but pruning must still run and report [cleaned], not [ok].
+skeleton_project="$(make_project)"
+trap 'rm -rf "$home" "$canon_project" "$stale_import_project" "$skeleton_project"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true; rm -f "$ROOT/.git/hooks/pre-commit"' EXIT
+mkdir -p "$skeleton_project/.claude"
+cat > "$skeleton_project/.claude/settings.json" <<'EOF'
+{
+  "hooks": {
+    "Stop": [
+      {"matcher": "", "hooks": []}
+    ],
+    "PreToolUse": [
+      {"matcher": "Bash", "hooks": []}
+    ]
+  }
+}
+EOF
+skeleton_output="$("$SKILLS" add sprint "$skeleton_project")"
+assert_contains "$skeleton_output" "[cleaned]  removed leftover empty hook skeleton"
+assert_eq "{}" "$(python3 -c "import json; print(json.dumps(json.load(open('$skeleton_project/.claude/settings.json'))))")"
+
 printf 'skills-uninstall: ok\n'
