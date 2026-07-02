@@ -8,6 +8,7 @@ tests=(
   "$ROOT/tests/tkt.sh"
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/skills-add-sprint.sh"
+  "$ROOT/tests/skills-model-tiers-note.sh"
   "$ROOT/tests/skills-refresh.sh"
   "$ROOT/tests/skills-uninstall.sh"
   "$ROOT/tests/skills-std.sh"

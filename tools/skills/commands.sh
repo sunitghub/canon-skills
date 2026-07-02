@@ -35,6 +35,27 @@ offer_tkt_path() {
   fi
 }
 
+offer_model_tiers_note() {
+  local project_dir="$1"
+  local target="$project_dir/AGENTS.md"
+  local source_agents="$SKILLS_ROOT/AGENTS.md"
+  if grep -qF "<!-- MODEL-TIERS:BEGIN -->" "$target" 2>/dev/null; then
+    return 0
+  fi
+  if ! { : <> /dev/tty; } 2>/dev/null; then
+    return 0
+  fi
+  printf "Update AGENTS.md with model-per-task note? [y/N] " > /dev/tty
+  read -r answer </dev/tty
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    {
+      echo ""
+      awk '/<!-- MODEL-TIERS:BEGIN -->/{flag=1} flag; /<!-- MODEL-TIERS:END -->/{flag=0}' "$source_agents"
+    } >> "$target"
+    echo "AGENTS.md updated with model-per-task note." > /dev/tty
+  fi
+}
+
 ensure_sprint_project_marker() {
   local project_dir="$1"
   mkdir -p "$project_dir/.tickets"
@@ -106,6 +127,7 @@ cmd_add() {
     register_project "$project_dir"
     echo ""
     echo "Done. $desc"
+    [ "$name" = "efficiency" ] && offer_model_tiers_note "$project_dir"
     return 0
   fi
 
