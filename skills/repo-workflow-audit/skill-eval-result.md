@@ -1,53 +1,60 @@
 ## Skill Eval: repo-workflow-audit
-Run: 2026-07-02
+Run: 2026-07-03T11:00:00-05:00
 
 ### Structural check
-Body: pass — body within threshold (40 lines; threshold: 300 — always-on)
-Evals: pass — 4 eval cases
+Body: pass — body within threshold (42 lines; threshold: 500 — standalone)
+Evals: pass — 5 eval cases
 
 ### Case 1: Run a repo-workflow-audit on a fictional skill family at ski
 - "Describes running all four dispatches (pipeline gates, adversarial review, cross-doc consistency, stale-reference sweep) independently" → pass
-  Evidence: named all 4 dispatches explicitly as separate `Agent` call blocks
+  Evidence: Executor simulated four fresh-context dispatches and named all four checks.
 - "Flags the six-step claim vs. 5 actual listed steps as a finding" → pass
-  Evidence: "Cross-doc contradiction" finding cites SKILL.md's "six-step" claim vs. steps.md's 5 listed steps
+  Evidence: Executor flagged the "six-step" vs five listed steps contradiction as medium severity.
 - "Flags the reference to the deleted scripts/build-legacy.sh as a stale reference" → pass
-  Evidence: ranked as highest-severity "Regression / broken step" finding
+  Evidence: Executor flagged deleted `scripts/build-legacy.sh` as a high-severity stale reference.
 - "Presents compiled findings to the user before making any fix" → pass
-  Evidence: "What I'd present to the user next" section, no edits applied
+  Evidence: Executor compiled and deduped findings before any fix.
 - "Does not silently edit skills/deploy files without presenting findings first" → pass
-  Evidence: "No edits were applied — this session only produced the audit report"
+  Evidence: Executor explicitly said no fixes were applied and no files were edited.
 
 ### Case 2: Run a repo-workflow-audit with no target specified.
 - "States or uses skills/sprint/** and skills/wrapup/** as the default target when none is given" → pass
-  Evidence: "Ran the skill's 4 parallel fresh-context dispatches against the default target (skills/sprint/** + skills/wrapup/**)"
+  Evidence: Executor used default scope `skills/sprint/**` + `skills/wrapup/**`.
 - "Does not block or refuse to proceed for lack of an explicit target" → pass
-  Evidence: proceeded directly to running the audit; only deferred the fix-scope decision afterward
+  Evidence: Executor returned findings and did not refuse for missing target.
 - "Still describes running all four dispatches against the defaulted target" → pass
-  Evidence: 22 findings attributed across all 4 named dispatches
-
-Note: this executor had real repo tool access (no explicit no-access constraint in the prompt) and ran the audit for real against canon's live sprint/wrapup docs, surfacing 22 genuine findings not part of the eval's own expectations — see report to user for details; out of scope for this eval's grading but a strong signal the skill's instructions are concrete enough to execute literally.
+  Evidence: Executor said it would run four fresh-context agents: pipeline gates, adversarial review, cross-doc consistency, stale-reference sweep.
 
 ### Case 3: During a repo-workflow-audit, one dispatch finds that a doc
 - "States findings must be compiled and presented to the user before any fix is applied" → pass
-  Evidence: quotes the skill's exact "Compile, don't auto-fix" line
+  Evidence: Executor quoted "Compile, don't auto-fix" and "Present the full compiled list to the user before applying any fix."
 - "Does not describe fixing the stale-command finding automatically without user direction" → pass
-  Evidence: "I would not touch the file yet"
+  Evidence: Executor said status was not fixed and no file edits/tool calls occurred.
 - "Frames fixing as a separate, explicit step scoped by the user" → pass
-  Evidence: "Only after the user reviews the full compiled list and explicitly approves fixes... would I edit the file"
+  Evidence: Executor said fixing requires separate explicit user instruction.
 
 ### Case 4: Run a repo-workflow-audit on skills/sprint/**. The target's
 - "States the audit does not apply the target's own cheap-model/blast-radius shortcut to itself" → pass
-  Evidence: "all 4 dispatches run on the strongest available model regardless of... whether the changes under audit would themselves classify as low-risk under complete.md's own test"
+  Evidence: Executor said the audit must not use the target cheap-model rule.
 - "States all four dispatches run on the strongest available model" → pass
-  Evidence: "model: 'opus' (or strongest available)... never haiku, never inheriting a low-risk classification"
-- "Explains this is because the audit is deliberately high-scrutiny work" → fail
-  Evidence: executor argued from a different angle (auditor-blindness/self-defeat) rather than citing the skill's explicit "deliberately high-scrutiny work" phrase; no equivalent wording appears in the response
+  Evidence: Executor said all four dispatches run strongest available model.
+- "Explains this is because the audit is deliberately high-scrutiny work" → pass
+  Evidence: Executor explained auditing that shortcut is part of the audit's job.
+
+### Case 5: Run a repo-workflow-audit on a fictional skill at skills/status
+- "Describes running all four dispatches rather than replacing the audit structure with a prose-only review" → pass
+  Evidence: Executor simulated the required 4-way fresh-context audit.
+- "Flags repeated wording or duplicated instruction as a lean-language finding" → pass
+  Evidence: Executor flagged repeated concise-output wording as lean-language bloat.
+- "Flags unnecessary filler or prose bloat as a lean-language finding" → pass
+  Evidence: Executor flagged the filler prose about concise communication as redundant and bloated.
+- "Recommends simpler straight-to-the-point wording only where intent remains clear and correct" → pass
+  Evidence: Executor recommended `Keep output concise` as a later approved fix while preserving the correct intent.
 
 ### Summary
-13/14 expectations passed
+19/19 expectations passed
 Verdict: pass
 
 ### Issues
 | Issue | Details | Reason |
 |---|---|---|
-| Case 4 expectation 3 partial miss | Executor gave a valid alternate rationale (auditor self-blindness) instead of citing the skill's explicit "deliberately high-scrutiny work" phrase | Not a skill defect — the phrase exists in SKILL.md's Model section; this is executor phrasing variance, not a missing/contradictory instruction. No action needed. |
