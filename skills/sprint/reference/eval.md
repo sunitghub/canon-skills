@@ -19,11 +19,11 @@ You will receive:
 
 ## Tools
 
-Use Read and Bash only. Do not use Edit, Write, Agent, or any other tool.
+Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool.
 
 ## Steps
 
-1. **Write run-id.** Before reading anything, write a single line to `.tickets/<id>/eval-report.md` (creating the file if absent):
+1. **Save run-id.** Before reading anything, save a single line via Bash to `.tickets/<id>/eval-report.md` (creating the file if absent):
    ```
    evaluator-run-id: <epoch-seconds>-<RANDOM>
    ```
@@ -55,7 +55,7 @@ Use Read and Bash only. Do not use Edit, Write, Agent, or any other tool.
    - **not-run** — cannot determine from static reading alone; flag for human verification
    - **fail** — test is missing, wrong, or wouldn't catch the targeted failure
 
-8. **Write the report.** Write the evaluation to `.tickets/<id>/eval-report.md`:
+8. **Save the report.** Save the evaluation via Bash to `.tickets/<id>/eval-report.md`:
 
 ```markdown
 # Eval Report

@@ -21,7 +21,7 @@ See `standards/efficiency.md` for the full agent standards (code quality, securi
 <!-- MODEL-TIERS:BEGIN -->
 ## Model Tiers
 
-Match model to sprint dispatch purpose (see `skills/sprint/SKILL.md`'s `## Dispatch purposes` for what each purpose covers):
+Match model to the sprint work being done. `explore`, `implement`, and `review` are sub-agent dispatch purposes tagged per `skills/sprint/SKILL.md`'s `## Dispatch purposes`; `plan creation` and `grill` are sprint steps that typically run inline in the main session, not separate dispatches — the model choice below still applies to whichever session/dispatch is doing that work.
 
 - `explore` → Haiku — read-only, bounded search/mapping, no judgment calls.
 - `plan creation` → Fable or Opus — needs design judgment before scope locks in.

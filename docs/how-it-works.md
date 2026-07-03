@@ -42,7 +42,7 @@ Same-context review reintroduces self-evaluation bias. The protocol fails closed
 
 ## Session Continuity
 
-`HANDOFF.md`, the active ticket, and recent closed tickets are injected at session start via hooks. A context reset or fresh session never loses the thread — the plan, decisions, and acceptance bar are in `.tickets/<id>/`, not the chat history.
+`HANDOFF.md`, the active ticket, and recent closed tickets are read explicitly by `sprint start`'s context step — canon installs zero Claude Code hooks. A context reset or fresh session never loses the thread — the plan, decisions, and acceptance bar are in `.tickets/<id>/`, not the chat history.
 
 ## The Close Path
 

@@ -68,11 +68,11 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 
 ## sprint start
 
-Read `skills/sprint/reference/start.md` for the full protocol (steps 1-10).
+Read `skills/sprint/reference/start.md` for the full protocol (steps 1-11).
 
 ## sprint complete
 
-Read `skills/sprint/reference/complete.md` for the full protocol (trigger, confirmation, steps 1-8).
+Read `skills/sprint/reference/complete.md` for the full protocol (trigger, confirmation, steps 1-9).
 
 ## Planning files
 
