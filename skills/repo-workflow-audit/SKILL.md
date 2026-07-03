@@ -3,9 +3,12 @@ name: repo-workflow-audit
 description: Runs a fresh-context, 4-way parallel audit of a canon workflow's own skill/reference docs against themselves — pipeline gates, adversarial review, cross-doc consistency, stale-reference sweep. Use when asked to deep-scan, audit, or health-check the sprint/wrapup workflow docs (or another skill's own protocol files) for internal contradictions, staleness, or drift — not for auditing a whole repo's product code (use repo-audit for that).
 category: agent-ops
 tags: [audit, workflow, sprint, self-audit, quality]
+hidden: true
 ---
 
 # Repo Workflow Audit
+
+Internal — not for direct/public invocation. Called by the maintainer when auditing canon's own workflow docs.
 
 Audits a canon workflow's own skill/reference docs against themselves — distinct from `repo-audit`, which rates any repo's general health (uniqueness, philosophy coherence, docs, codebase quality) via a single agent. This skill is self-referential: it checks whether canon's *own* workflow machinery (sprint, wrapup, or another skill family) is internally consistent, current, and free of the contradictions that narrowly-scoped per-ticket reviewers wouldn't catch.
 
