@@ -4,8 +4,9 @@
  * On session_start: injects HANDOFF.md into the conversation if it exists
  * in the project root (once per session, not on every turn).
  *
- * On agent_end: runs auto-handoff.sh to save a git-state snapshot to
- * HANDOFF.md when the working tree has uncommitted changes.
+ * HANDOFF.md itself is refreshed by sprint's own protocol (sprint start's
+ * context-read step, wrapup's explicit refresh) — this extension only reads
+ * it, it does not write it.
  *
  * Install:
  *   Global:  copy to ~/.pi/agent/extensions/handoff.ts
@@ -13,25 +14,9 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { execFileSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 
-function resolveAutoHandoff(): string | null {
-  // skills.sh init writes the canon install path here
-  const configPath = join(homedir(), ".config", "canon", "install_path");
-  if (existsSync(configPath)) {
-    const canonRoot = readFileSync(configPath, "utf-8").trim();
-    const script = join(canonRoot, "scripts", "auto-handoff.sh");
-    if (existsSync(script)) return script;
-  }
-  // Fallback for the common default install location
-  const fallback = join(homedir(), "Developer", "canon", "scripts", "auto-handoff.sh");
-  return existsSync(fallback) ? fallback : null;
-}
-
-const AUTO_HANDOFF_SCRIPT = resolveAutoHandoff();
 const MAX_LINES = 80;
 
 export default function (pi: ExtensionAPI) {
@@ -65,19 +50,5 @@ export default function (pi: ExtensionAPI) {
     const prefix = `[handoff] Resuming — context from last session:\n---\n${content}\n---\n[handoff] Read the above before doing anything else.\n\n`;
 
     return { ...event, text: prefix + (event.text ?? "") };
-  });
-
-  // On agent end: snapshot git state into HANDOFF.md
-  pi.on("agent_end", async (_, ctx) => {
-    if (!AUTO_HANDOFF_SCRIPT) return;
-
-    try {
-      execFileSync("bash", [AUTO_HANDOFF_SCRIPT], {
-        cwd: ctx.cwd,
-        stdio: "pipe",
-      });
-    } catch {
-      // Silently skip — clean tree, not a git repo, or commit blocked
-    }
   });
 }

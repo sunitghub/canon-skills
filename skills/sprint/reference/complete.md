@@ -16,10 +16,10 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    ## Wrapup Gates
    | Gate | Status | Reason |
    |------|--------|--------|
-   | simplifier | skipped | docs-only change |
+   | code-simplifier | skipped | docs-only change |
    | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
    | reviewer | ran | verdict: YES (model: haiku) |
-   | security | skipped | no security-sensitive patterns |
+   | security-review | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
    | eval | ran | verdict: pass — eval-report.md written (model: haiku) |
@@ -31,7 +31,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    YES/NO verdict). Both get their own row; do not collapse them into one.
 
    For the `reviewer` and `eval` rows specifically, always suffix the reason with `(model: <model>)` —
-   `haiku` when the model-tier check above matched low-risk, otherwise the session's default model
+   `haiku` when the model-tier check below matched low-risk, otherwise the session's default model
    name. This is the record of which tier actually ran, not just that the gate ran.
 
    Use `ran` or `skipped`. Always include a reason — even for gates that ran,
@@ -51,10 +51,9 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    `standards/**/*.md`, or a root-level `*.md` — AND no path name contains a security-sensitive
    marker (`auth`, `secret`, `session`, `crypto`, `token`, `credential`) — a deliberately narrow
    path-name substring list, not the broader semantic "security-sensitive" definitions used
-   elsewhere (`SKILL.md`'s high-risk trigger list, `security-review.md`'s skip-logic list). This
-   list only ever needs to catch obvious cases in a path name; the allowlist-not-denylist rule
-   already covers anything it misses by defaulting to normal cost. Allowlist, not denylist:
-   an unrecognized path type defaults to normal cost, never to cheap. If low-risk, pass
+   elsewhere (`SKILL.md`'s high-risk trigger list, `security-review.md`'s skip-logic list).
+   Allowlist, not denylist: an unrecognized path type always defaults to normal cost, never to
+   cheap — this one rule covers every case the narrow marker list doesn't catch. If low-risk, pass
    `model: "haiku"` on both the reviewer and evaluator `Agent` calls; otherwise omit the `model`
    param on both (today's behavior — inherits the session model). Run the check once; both gates
    use the same low-risk/normal-cost classification (their actual verdicts — YES/NO for reviewer,
@@ -66,19 +65,29 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    keep gates on the full/session model for this sprint, that always wins over an automatic
    low-risk match.
 
+   **Shared gate mechanics (reviewer + evaluator).** Both gates below share three rules, stated
+   once here: (a) the close confirmation is authorization to spawn either subagent — never ask for
+   separate approval; (b) both subagents derive their own changed-files list via `git merge-base`
+   — never pass a file list to either; (c) close each subagent's handle (`TaskStop`) immediately
+   after reading its verdict — completed handles still occupy thread slots, and closing the
+   reviewer's before step 2 avoids a thread-limit block if the evaluator needs a rerun.
+
    **Reviewer gate (normal+ tier).** Skip for trivial tier only — meaning `plan.md`'s `## Sign-off`
    line reads `tier: trivial`. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers
    never let genuinely trivial work start a sprint at all), but a sprint can be *downgraded* to
    trivial mid-flight if grill or impact analysis reveals the real change is a one-liner with no
    coordinated multi-file intent — write `tier: trivial` and a one-line reason in `## Sign-off` if
-   that happens. Absent that explicit downgrade, this gate is mandatory. For normal and high-risk sprints,
-   always spawn a freshly invoked Agent subagent for the reviewer. The close confirmation is
-   authorization — do not ask for separate approval. Same-context review is not acceptable.
+   that happens. **This downgrade can never apply to any of `SKILL.md`'s four categorical
+   not-trivial triggers** (new file, test/build-infrastructure wiring, hook/pipeline/post-commit
+   script change, or coordinated multi-file intent) — those stay normal/high-risk regardless of
+   how small the diff looks, so `AGENTS.md`'s "eval is mandatory" for those cases can never be
+   bypassed by this escape valve. Absent an explicit, in-bounds downgrade, this gate is mandatory.
+   For normal and high-risk sprints, always spawn a freshly invoked Agent subagent for the
+   reviewer. Same-context review is not acceptable.
 
    The reviewer has no implementation history. Invoke with a clean context, per the model-tier
-   check above. The prompt must instruct it to:
+   check above and the shared gate mechanics above. The prompt must instruct it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
-   - Ticket ID only — the reviewer derives its own changed-files list via `git merge-base`, same as the evaluator; do not pass a file list
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
@@ -90,14 +99,11 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    automatically. Do not skip even though the reviewer itself is advisory; the log entry's
    timestamp is what makes the evaluator's anti-gaming check meaningful.
 
-   **Close the reviewer subagent handle after reading its verdict** — use `TaskStop` on its agent/task ID if the harness's `Agent` tool exposes one (a normal completed run may already be done and require no action; this matters if it's still occupying a slot, e.g. mid-rerun). Completed subagents still occupy thread slots — closing before step 2 prevents thread-limit blocks if the evaluator needs a rerun.
-
-2. **Evaluator review (normal+ tier).** Skip for trivial tier only, same `tier: trivial` downgrade
-   condition as the reviewer gate above. For normal
-   and high-risk sprints, always spawn a freshly invoked Agent subagent for the
-   evaluator review. Once the user has confirmed sprint close, do not ask for
-   separate approval to spawn the evaluator subagent — the close confirmation is
-   authorization for this mandatory gate.
+2. **Evaluator review (normal+ tier).** Same `tier: trivial` downgrade condition and exclusion as
+   the reviewer gate above (skip only if `plan.md`'s `## Sign-off` line reads `tier: trivial`, which
+   can never apply to `SKILL.md`'s four categorical not-trivial triggers). For normal and high-risk
+   sprints, always spawn a freshly invoked Agent subagent for the evaluator review, per the shared
+   gate mechanics above.
 
    The evaluator must receive a fresh context with no implementation history and
    grade the work adversarially against `acceptance.md`. Same-context review,
@@ -107,7 +113,6 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    Invoke a fresh Agent subagent with a clean context, per the model-tier check above. The prompt must instruct it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
-   - Ticket ID only — the evaluator derives its own changed-files list via `git merge-base`; do not pass a file list
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
    **Log the subagent run.** Immediately after the evaluator subagent completes, run
@@ -118,7 +123,8 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    what satisfies that check now that no hook does it automatically. Skipping it risks a
    confusing close-time failure on an otherwise-passing sprint.
 
-   Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading** — same `TaskStop` mechanism as the reviewer gate above. Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
+   Read `.tickets/<id>/eval-report.md` after the subagent completes and close its handle per the
+   shared gate mechanics above. Surface any
    `fail` findings to the user before proceeding — this includes any report where individual
    criteria/test-plan items graded `partial`, since `eval.md` requires the verdict line to be
    `fail:` whenever a partial exists (there is no separate non-blocking `partial:` verdict). Do not
@@ -132,7 +138,9 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - Confirm test results are documented in `acceptance.md` (pass/fail per item, date run, and the evidence checked).
    - Proceed only when all tests are ✓ or explicitly waived by the user with a documented reason.
 
-4. **Acceptance check.** Review each item in `acceptance.md`:
+4. **Acceptance check.** Review each item in `acceptance.md`, including `## QA`'s "Tested
+   locally" checkbox — the evaluator does not grade QA (see `eval.md`'s Gotchas); this step is
+   where a human confirms it reflects real verification, not just a checked box:
    - ✓ met | ✗ not met | ? uncertain
    - If any ✗: report what is missing. Do not close the ticket. Stop here.
    - Do not mark an item met from weak evidence: empty or stale output, no stated search scope, vague prose, uninspected generated output, or citations that do not point to changed or directly relevant files.
@@ -169,13 +177,15 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    missing or checklist items remain unchecked, report the blockers and stop.
 
 9. **Commit & Push.** Always run this at the end, once close succeeds — even if no code changed
-   (docs and config still need committing). This runs here, not inside wrapup's own pipeline
-   (step 1), because `DECISIONS.md`/`HANDOFF.md`/`summary.md` are written by steps 5-7, after
-   wrapup finishes — committing any earlier would miss them.
+   (docs and config still need committing). This step owns Commit & Push — wrapup's own pipeline
+   (step 1) never commits, because `DECISIONS.md`/`HANDOFF.md`/`summary.md` are written by steps
+   5-7, after wrapup finishes; committing any earlier would miss them.
    - List all modified and untracked files (`git status`). Stage only the files relevant to this
      session's work — never `git add -A`.
-   - Draft a commit message: imperative mood, type prefix, 50-char target. Body if breaking
-     changes or non-obvious reasoning.
+   - Draft a commit message per `standards/efficiency.md`'s Git conventions: imperative mood,
+     type prefix, 50-char target / 72-char hard limit, no trailing period. Every sprint-backed
+     commit includes `Closes: t-xxxx` in the body — this step always has the ticket ID in hand.
+     Add more body for breaking changes or non-obvious reasoning.
    - Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
    - On yes: commit, then push to the current branch's remote. Report the pushed ref.
    - If criticals from the review pipeline are unresolved: warn before asking — do not block, but

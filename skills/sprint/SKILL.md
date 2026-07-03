@@ -1,6 +1,6 @@
 ---
 name: sprint
-description: Manages the sprint workflow for focused changes. Use when asked to add, fix, update, implement, debug, or build anything.
+description: Manages the sprint workflow for focused changes. Use when asked to add, fix, update, implement, debug, or build — see Workflow tiers below for what's out of scope.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
 depends: []
@@ -43,6 +43,8 @@ Use no sprint when:
 - Wires into test or build infrastructure
 - Modifies a hook, pipeline, or post-commit script
 - Touches more than one file with coordinated intent
+
+None of these four triggers can be downgraded to trivial mid-sprint — `complete.md`'s and `start.md`'s downgrade rule explicitly excludes them (see `skills/sprint/reference/complete.md`'s Reviewer/Evaluator gate section).
 
 Work directly, then report verification.
 

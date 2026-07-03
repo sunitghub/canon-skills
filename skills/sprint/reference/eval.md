@@ -1,6 +1,6 @@
 ---
 name: eval
-description: Evaluate completed sprint work against acceptance criteria from a clean context — grade each criterion pass/fail with file:line evidence; called by sprint at close time
+description: Evaluate completed sprint work against acceptance criteria from a clean context — grade each criterion pass/fail/partial with file:line evidence; called by sprint at close time
 category: dev
 tags: [quality, review, orchestration, sprint]
 hidden: true
@@ -111,5 +111,6 @@ Tool health is not the contract. The relevant question is whether the missing or
 ## Gotchas
 
 - If `acceptance.md` has no items under `## Criteria` or `## Test Plan`, report that as a fail — the ticket was closed with an incomplete acceptance doc.
+- `## QA`'s "Tested locally" checkbox is not yours to grade — it is the implementing agent's own attestation, checked once the change has actually been run, and verified separately by the human at `sprint complete`'s step 4 (Acceptance check). Do not fail or pass a report based on that checkbox's state.
 - Do not read files outside the changed-files list — you may pull in pre-existing code and misattribute it to this sprint.
 - `partial` is not a soft pass. Sprint complete must surface partials to the user the same as fails.

@@ -72,7 +72,7 @@ The agent that wrote the code is the worst possible reviewer of that code. canon
 1. **Adversarial close review.** Before a sprint closes, a fresh subagent — restricted to Read and Bash, with no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` as its first action; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `tools/subagent-log.sh` right after, making the field auditable rather than self-reported. Each criterion gets a pass, fail, or partial verdict with a `file:line` cite. A fail blocks close.
 2. **Proportional review cost.** The close-review gates stay mandatory and independent, but not always full-price: a structural check on changed file paths — never the agent's own risk judgment — runs the advisory reviewer and the binding adversarial evaluator on a cheaper model when every changed file is low-risk (docs, skill/standards reference files, no security-sensitive markers). An explicit ask to keep full-tier review always overrides the classification. The **Wrapup Gates** table on the Acceptance tab records which model ran each gate.
 3. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual table — one row per acceptance criterion, showing whether it was delivered, waived, deferred, or partial. Deviations can't be buried in prose. The **Summary** tab on the board makes this permanent and queryable.
-4. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test Plan items are unchecked, `summary.md` is missing, the Wrapup Gates record is absent, or the evaluator run-id field is missing. Gates don't make agents smarter — they make certain failures impossible.
+4. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test Plan items are unchecked, `summary.md` is missing, the Wrapup Gates record is absent, the evaluator run-id field is missing, or the eval verdict isn't `pass` (a `fail` or `partial` verdict blocks close the same way). Gates don't make agents smarter — they make certain failures impossible.
 
    *The CLI enforces state and close gates; the agent and evaluator judge whether the work behind those gates is true. The board surfaces problems early.*
 
@@ -144,7 +144,7 @@ Creates a ticket, defines acceptance criteria, and writes the plan before touchi
 
 **`sprint complete`** — Block close until every box is checked.
 
-Runs the close path: simplify → review → security → repo/doc audit → **evaluator** → acceptance check → close. The evaluator is a fresh subagent — Read and Bash tools only, no implementation history — that grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` before grading; the CLI blocks close if the field is absent. A fail or partial verdict also blocks close.
+Runs the close path: simplify → code-review → security → repo/doc audit → **reviewer** (fresh subagent, advisory) → **evaluator** (fresh subagent, binding) → acceptance check → close. The evaluator — Read and Bash tools only, no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` before grading; the CLI blocks close if the field is absent or the verdict isn't `pass`. A fail or partial verdict also blocks close.
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
@@ -190,8 +190,8 @@ titles.
 flowchart LR
     P["Plan\nticket · acceptance · plan.md\nresearch.md"]
     B["Build\ncode · commits"]
-    W["Wrapup\nsimplify · review · security\nrepo-check · doc-audit"]
-    E[["Evaluate\nclean-context · adversarial\npass/fail per criterion"]]
+    W["Wrapup\nsimplify · code-review · security\nrepo-check · doc-audit"]
+    E[["Evaluate\nreviewer (advisory) · evaluator (binding)\nclean-context · adversarial\npass/fail per criterion"]]
     C["Close\nsprint complete"]
     D["Board\nsprint-check"]
 

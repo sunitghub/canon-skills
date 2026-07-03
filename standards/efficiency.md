@@ -5,7 +5,7 @@ category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
 version: 1.0.0
-updated: 2026-06-03
+updated: 2026-07-03
 ---
 
 # Agent Standards
@@ -25,7 +25,7 @@ updated: 2026-06-03
 
 ## Code Review Feedback
 
-Format: `L<line>: <problem>. <fix>.` — no hedging, no preamble, no restating what the code does.
+Format: `file:line — <problem>. <fix>.` — no hedging, no preamble, no restating what the code does.
 Include reasoning only when the fix isn't self-evident. Security and architectural issues warrant full explanation.
 - Ground review in base code, not the PR diff. The diff biases toward the PR's own framing; the base code is what actually exists.
 - Scope review to areas relevant to the change. No frontend comments on backend-only features, no unrelated surface coverage.
@@ -65,7 +65,7 @@ Act on these when you see them — don't wait to be told.
 
 ## Token Efficiency
 
-- 98%+ of token spend is re-reading prior conversation history, not generating responses. Every verbose output compounds across all future turns — keep it tight.
+- Most token spend is re-reading prior conversation history, not generating responses. Every verbose output compounds across all future turns — keep it tight.
 - Before proposing a plan, catalog what already exists: related files, similar patterns, prior implementations. Name what's reusable before writing new code.
 - Before editing any file, read it first. Before modifying a function, grep for callers.
 - Reference exact file paths and line numbers — avoid re-reading files already in context.

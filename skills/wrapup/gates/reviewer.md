@@ -10,12 +10,13 @@ hidden: true
 
 ## Scope
 
-- Local changes: staged and unstaged diffs
-- Remote PR: PR number or URL; checkout with `gh pr checkout`
+- Inline (wrapup's own step 2 invocation): code touched in the current session, from working memory — no git command, no checkout. This is how `wrapup/SKILL.md` runs this gate.
+- Local changes (other callers): staged and unstaged diffs
+- Remote PR (other callers, e.g. pr-review-style use): PR number or URL; checkout with `gh pr checkout`
 
 ## Process
 
-1. Determine target: local diff or remote PR.
+1. Determine target: inline session memory, local diff, or remote PR.
 2. For PRs, checkout and read description plus linked tickets.
 3. Review all eight dimensions.
 4. Report only actionable findings.

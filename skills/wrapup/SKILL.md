@@ -18,14 +18,14 @@ Run after a session, feature, bug fix, or ticket. Skip steps that do not apply.
 code-simplifier → code-reviewer → security-review → repo-check → doc-audit → refresh docs
 ```
 
-Commit & Push is not part of this pipeline — it's `sprint complete`'s own final step (after
-DECISIONS.md/summary.md are written), not something wrapup does itself.
+Commit & Push belongs to `sprint complete`'s own step 9, not this pipeline — see
+`skills/sprint/reference/complete.md`.
 
-`simplifier` and `code-reviewer` run inline in the same session that did the work, so they scope to "code touched this session" from working memory — no git command needed, since the agent already knows what it changed. `security-review` runs the same way but derives its scope from git (`git diff --name-only $(git merge-base HEAD origin/main) HEAD`) because it needs an exact, auditable file list rather than memory. `reviewer`/`evaluator` (the separate fresh-subagent gates in `skills/sprint/reference/complete.md`, not this pipeline) always derive from git — they have no session memory to draw on at all.
+`code-simplifier` and `code-reviewer` run inline in the same session that did the work, so they scope to "code touched this session" from working memory — no git command needed, since the agent already knows what it changed. `security-review` runs the same way but derives its scope from git (`git diff --name-only $(git merge-base HEAD origin/main) HEAD`) because it needs an exact, auditable file list rather than memory. `reviewer`/`evaluator` (the separate fresh-subagent gates in `skills/sprint/reference/complete.md`, not this pipeline) always derive from git — they have no session memory to draw on at all.
 
 ## Skip Logic
 
-**Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs (Commit & Push is not wrapup's own step — see the note above). This global clause overrides every per-gate skip criteria below — e.g. a single-line rename inside `tools/` skips `repo-check` via this clause even though `repo-check`'s own per-gate criteria ("no ... tools ... changed") wouldn't otherwise justify skipping it, since `tools/` did change.
+**Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs (Commit & Push is not part of this pipeline — see above). This global clause overrides every per-gate skip criteria below — e.g. a single-line rename inside `tools/` skips `repo-check` via this clause even though `repo-check`'s own per-gate criteria ("no ... tools ... changed") wouldn't otherwise justify skipping it, since `tools/` did change.
 
 Before running each step, assess the change and skip if the criteria apply. When skipping, state why in one line — and state which clause justified it (the global trivial-change override, or the gate's own per-gate criteria) when the two could otherwise seem to conflict.
 
@@ -45,14 +45,14 @@ Before running each step, assess the change and skip if the criteria apply. When
 - No repo workflow, setup, docs, skills, standards, scripts, or tools changed
 
 ### Skip doc-audit if:
-- No user-facing docs changed (README, guides/, skill descriptions)
+- No user-facing docs changed — matches `doc-audit/SKILL.md`'s own scope: README, `guides/`, `examples/**/*.md`, `docs/*.md`, `tools/*.md`, or skill descriptions
 
 
 
 ## Steps
 
 1. Read `skills/wrapup/gates/simplifier.md`, then apply the simplifier to code touched in this session.
-2. Read `skills/wrapup/gates/reviewer.md`, then apply the reviewer across all eight dimensions; defer deep security analysis to Step 3.
+2. Read `skills/wrapup/gates/reviewer.md`, then apply the code-reviewer across all eight dimensions; defer deep security analysis to Step 3.
 3. Read `skills/wrapup/gates/security-review.md`, then apply the security review. Optional scanners can inform the review, but their absence does not skip the gate.
 4. Read `skills/wrapup/gates/repo-check.md`, then apply the repo check. Fix stale references, orphan workflow files, and generated catalog drift before committing.
 5. Read `skills/doc-audit/SKILL.md`, then apply the doc audit. Do not write to `doc-findings.md` without explicit confirmation. Fix command accuracy issues before committing.
@@ -80,7 +80,5 @@ Report only what matters:
 
 Address criticals before committing. Improvements are discretionary.
 
-Committing and closing the ticket happen after this pipeline finishes, as later steps of whatever
-called wrapup (e.g. `skills/sprint/reference/complete.md`'s own Commit & Push step) — not here.
-`.tickets/` is gitignored, and `DECISIONS.md`/`HANDOFF.md`/`summary.md` are written by steps that
-run after wrapup, so committing at the end of wrapup itself would miss them.
+Committing and closing the ticket happen after this pipeline finishes, in whatever called wrapup
+(e.g. `skills/sprint/reference/complete.md`'s own step 9) — not here; see the pipeline note above.
