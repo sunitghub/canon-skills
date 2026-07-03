@@ -15,14 +15,19 @@ Run after a session, feature, bug fix, or ticket. Skip steps that do not apply.
 ## Pipeline
 
 ```
-code-simplifier → code-reviewer → security-review → repo-check → doc-audit
+code-simplifier → code-reviewer → security-review → repo-check → doc-audit → refresh docs
 ```
+
+Commit & Push is not part of this pipeline — it's `sprint complete`'s own final step (after
+DECISIONS.md/summary.md are written), not something wrapup does itself.
+
+`simplifier` and `code-reviewer` run inline in the same session that did the work, so they scope to "code touched this session" from working memory — no git command needed, since the agent already knows what it changed. `security-review` runs the same way but derives its scope from git (`git diff --name-only $(git merge-base HEAD origin/main) HEAD`) because it needs an exact, auditable file list rather than memory. `reviewer`/`evaluator` (the separate fresh-subagent gates in `skills/sprint/reference/complete.md`, not this pipeline) always derive from git — they have no session memory to draw on at all.
 
 ## Skip Logic
 
-**Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs and Commit.
+**Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs (Commit & Push is not wrapup's own step — see the note above). This global clause overrides every per-gate skip criteria below — e.g. a single-line rename inside `tools/` skips `repo-check` via this clause even though `repo-check`'s own per-gate criteria ("no ... tools ... changed") wouldn't otherwise justify skipping it, since `tools/` did change.
 
-Before running each step, assess the change and skip if the criteria apply. When skipping, state why in one line.
+Before running each step, assess the change and skip if the criteria apply. When skipping, state why in one line — and state which clause justified it (the global trivial-change override, or the gate's own per-gate criteria) when the two could otherwise seem to conflict.
 
 ### Skip code-simplifier if:
 - Change is a single line or a trivial rename
@@ -34,13 +39,13 @@ Before running each step, assess the change and skip if the criteria apply. When
 
 ### Skip security-review if:
 - No security-sensitive files or patterns changed
-- Security-sensitive means: authentication, authorization, DB queries, user input handling, file I/O, API endpoints, crypto, session management, environment/secret access
-
-### Skip doc-audit if:
-- No user-facing docs changed (README, guides/, skill descriptions)
+- Security-sensitive means: authentication, authorization, DB queries, externally-facing/untrusted input handling (web forms, API payloads, network requests — not trusted local CLI args a single developer runs against their own machine), file I/O, API endpoints, crypto, session management, environment/secret access
 
 ### Skip repo-check if:
 - No repo workflow, setup, docs, skills, standards, scripts, or tools changed
+
+### Skip doc-audit if:
+- No user-facing docs changed (README, guides/, skill descriptions)
 
 
 
@@ -75,14 +80,7 @@ Report only what matters:
 
 Address criticals before committing. Improvements are discretionary.
 
-If a ticket is in progress, close it with `sprint complete`, not `tkt close`.
-
-## Commit & Push
-
-Always run this at the end of every wrapup — even if no code changed (docs and config still need committing).
-
-1. List all modified and untracked files (`git status`). Stage only the files relevant to this session's work — never `git add -A`.
-2. Draft a commit message: imperative mood, type prefix, 50-char target. Body if breaking changes or non-obvious reasoning.
-3. Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
-4. On yes: commit, then push to the current branch's remote. Report the pushed ref.
-5. If criticals from the review pipeline are unresolved: warn before asking — do not block, but make the risk explicit.
+Committing and closing the ticket happen after this pipeline finishes, as later steps of whatever
+called wrapup (e.g. `skills/sprint/reference/complete.md`'s own Commit & Push step) — not here.
+`.tickets/` is gitignored, and `DECISIONS.md`/`HANDOFF.md`/`summary.md` are written by steps that
+run after wrapup, so committing at the end of wrapup itself would miss them.

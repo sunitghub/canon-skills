@@ -19,7 +19,7 @@ You will receive:
 
 ## Tools
 
-Use Read and Bash only. Do not use Edit, Write, Agent, or any other tool.
+Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool.
 
 ## Steps
 
@@ -39,7 +39,7 @@ Use Read and Bash only. Do not use Edit, Write, Agent, or any other tool.
    - **Unnecessary complexity** — abstractions, layers, or indirection added without a clear reason
    - **Standards violations** — anything that conflicts with `standards/efficiency.md` (no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code)
 
-5. **Write findings.** Write to `.tickets/<id>/review-notes.md`:
+5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md`:
 
 ```markdown
 # Review Notes

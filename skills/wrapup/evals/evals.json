@@ -5,19 +5,19 @@
       "id": 1,
       "case_type": "control",
       "prompt": "Run wrapup after adding a new feature: a 40-line function in tools/sprint that validates ticket IDs. README.md was also updated to document the new behavior.",
-      "expected_output": "The skill runs simplifier, reviewer, and doc-audit (since README changed). Security-review is skipped (no security-sensitive patterns). repo-check runs because tools/ changed. The pipeline produces findings for each gate that ran, followed by the commit prompt.",
+      "expected_output": "The skill runs simplifier, reviewer, and doc-audit (since README changed). Security-review is skipped (no security-sensitive patterns). repo-check runs because tools/ changed. The pipeline produces findings for each gate that ran, then refreshes docs. Committing is not wrapup's own step \u2014 that happens later, in sprint complete.",
       "expectations": [
         "Runs or describes running code-simplifier on the changed function",
         "Runs or describes running code-reviewer",
         "Runs or describes running doc-audit because README.md changed",
         "Asks for confirmation before writing to doc-findings.md",
-        "Ends with a staged-files and commit message prompt asking 'Commit and push? (y to proceed)'"
+        "Ends the pipeline with a refresh-docs step, not a commit prompt of its own"
       ]
     },
     {
       "id": 2,
       "case_type": "compliance",
-      "prompt": "Run wrapup. The session only changed README.md — a single sentence was reworded. No code was modified.",
+      "prompt": "Run wrapup. The session only changed README.md \u2014 a single sentence was reworded. No code was modified.",
       "expected_output": "The skill skips code-simplifier and code-reviewer (doc-only change), skips security-review, skips repo-check (no workflow/tools/skills changed), and runs doc-audit. It explains the skip reason for each skipped gate.",
       "expectations": [
         "Skips code-simplifier with a stated reason",
@@ -41,11 +41,11 @@
       "id": 4,
       "case_type": "edge",
       "prompt": "Run wrapup after a single-line fix: a typo corrected in a variable name inside tools/sprint. No docs or skills changed.",
-      "expected_output": "The skill applies trivial-change skip logic: skips simplifier (single-line), skips reviewer (single-line fix, no design implications), skips doc-audit (no user-facing docs changed), skips repo-check (tools changed but only a trivial rename). Ends with commit and push prompt.",
+      "expected_output": "The skill applies trivial-change skip logic: skips simplifier (single-line), skips reviewer (single-line fix, no design implications), skips doc-audit (no user-facing docs changed), skips repo-check (tools changed but only a trivial rename). Runs the refresh-docs step; does not end with its own commit prompt \u2014 that's sprint complete's step, not wrapup's.",
       "expectations": [
         "Skips code-simplifier citing single-line/trivial change",
         "Skips code-reviewer citing single-line fix with no design implications",
-        "Ends with commit and push prompt"
+        "Does not end with wrapup's own commit-and-push prompt \u2014 commit happens later, in sprint complete"
       ]
     }
   ]

@@ -49,11 +49,17 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    check couldn't run. Otherwise, classify low-risk only if every changed path matches an
    allowlist — `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`,
    `standards/**/*.md`, or a root-level `*.md` — AND no path name contains a security-sensitive
-   marker (`auth`, `secret`, `session`, `crypto`, `token`, `credential`). Allowlist, not denylist:
+   marker (`auth`, `secret`, `session`, `crypto`, `token`, `credential`) — a deliberately narrow
+   path-name substring list, not the broader semantic "security-sensitive" definitions used
+   elsewhere (`SKILL.md`'s high-risk trigger list, `security-review.md`'s skip-logic list). This
+   list only ever needs to catch obvious cases in a path name; the allowlist-not-denylist rule
+   already covers anything it misses by defaulting to normal cost. Allowlist, not denylist:
    an unrecognized path type defaults to normal cost, never to cheap. If low-risk, pass
    `model: "haiku"` on both the reviewer and evaluator `Agent` calls; otherwise omit the `model`
    param on both (today's behavior — inherits the session model). Run the check once; both gates
-   use the same verdict. This is file-path pattern matching only — never let the dispatching
+   use the same low-risk/normal-cost classification (their actual verdicts — YES/NO for reviewer,
+   pass/fail for evaluator — remain separate and unrelated to this model-tier check). This is
+   file-path pattern matching only — never let the dispatching
    agent's own judgment about the change's riskiness substitute for it or override it downward.
    High-risk-tier sprints are unaffected — the check only ever adds a cheap-model option, it never
    removes the mandatory dispatch itself. **User override:** if the user has explicitly asked to
@@ -84,7 +90,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    automatically. Do not skip even though the reviewer itself is advisory; the log entry's
    timestamp is what makes the evaluator's anti-gaming check meaningful.
 
-   **Close the reviewer subagent handle after reading its verdict.** Completed subagents still occupy thread slots — closing before step 2 prevents thread-limit blocks if the evaluator needs a rerun.
+   **Close the reviewer subagent handle after reading its verdict** — use `TaskStop` on its agent/task ID if the harness's `Agent` tool exposes one (a normal completed run may already be done and require no action; this matters if it's still occupying a slot, e.g. mid-rerun). Completed subagents still occupy thread slots — closing before step 2 prevents thread-limit blocks if the evaluator needs a rerun.
 
 2. **Evaluator review (normal+ tier).** Skip for trivial tier only, same `tier: trivial` downgrade
    condition as the reviewer gate above. For normal
@@ -112,14 +118,14 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    what satisfies that check now that no hook does it automatically. Skipping it risks a
    confusing close-time failure on an otherwise-passing sprint.
 
-   Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading.** Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
+   Read `.tickets/<id>/eval-report.md` after the subagent completes. **Close the evaluator subagent handle immediately after reading** — same `TaskStop` mechanism as the reviewer gate above. Completed handles still occupy thread slots — closing before any rerun prevents thread-limit blocks. Surface any
    `fail` findings to the user before proceeding — this includes any report where individual
    criteria/test-plan items graded `partial`, since `eval.md` requires the verdict line to be
    `fail:` whenever a partial exists (there is no separate non-blocking `partial:` verdict). Do not
    advance to step 3 if the evaluator verdict is `fail`. Record the eval outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
 3. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
-   - ✓ passed | ✗ failed | ? not run
+   - ✓ passed | ✗ failed | ? not run (maps to `eval.md`'s `pass` / `fail` / `not-run` — same three states, different notation since this step is a human-facing recap, not the evaluator's own report format)
    - If any ✗ or ?: report which tests did not pass. Do not close the ticket. Stop here.
    - Include impact and regression tests.
    - Classify required evidence for each item. Load-bearing test/tool evidence must fail closed when unavailable; preferred evidence may degrade with disclosure; decorative evidence can be dropped. Cached evidence counts only when source, timestamp/version, freshness window, and why that freshness is acceptable are stated.
@@ -161,3 +167,16 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
 8. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses because a required file is
    missing or checklist items remain unchecked, report the blockers and stop.
+
+9. **Commit & Push.** Always run this at the end, once close succeeds — even if no code changed
+   (docs and config still need committing). This runs here, not inside wrapup's own pipeline
+   (step 1), because `DECISIONS.md`/`HANDOFF.md`/`summary.md` are written by steps 5-7, after
+   wrapup finishes — committing any earlier would miss them.
+   - List all modified and untracked files (`git status`). Stage only the files relevant to this
+     session's work — never `git add -A`.
+   - Draft a commit message: imperative mood, type prefix, 50-char target. Body if breaking
+     changes or non-obvious reasoning.
+   - Show the staged files and commit message. Ask: **"Commit and push? (y to proceed)"**
+   - On yes: commit, then push to the current branch's remote. Report the pushed ref.
+   - If criticals from the review pipeline are unresolved: warn before asking — do not block, but
+     make the risk explicit.

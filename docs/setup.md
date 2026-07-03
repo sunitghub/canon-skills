@@ -23,7 +23,7 @@ git clone https://github.com/sunitghub/canon-skills.git ~/.canon
 ~/.canon/tools/skills.sh init
 ```
 
-Wires handoff + quality hooks into `~/.claude/settings.json` (Claude Code) and copies the Pi handoff extension when Pi is installed. Re-run if you move the canon folder.
+Installs a git-native `.git/hooks/pre-commit` (enforcement: ticket-direct-close block, high-risk Sign-off gate, test suite, wrapup reminder) and copies the Pi handoff extension when Pi is installed. Canon installs zero Claude Code hooks in `.claude/settings.json` — `HANDOFF.md` is read explicitly by sprint's `sprint start` step and refreshed explicitly by `wrapup`'s doc-refresh step, not injected by a hook. Re-run if you move the canon folder.
 
 **Step 3 — Register sprint in your project**
 
@@ -43,18 +43,14 @@ skills.sh uninstall
 rm -rf ~/.canon
 ```
 
-Removes canon hook entries from `~/.claude/settings.json`, the Pi handoff extension, and `~/.config/canon/install_path`. If the install folder was already deleted, re-clone to the same path before running uninstall.
+Removes the git-native `.git/hooks/pre-commit` entry it installed, the Pi handoff extension, and `~/.config/canon/install_path`. If the install folder was already deleted, re-clone to the same path before running uninstall.
 
-## Session hooks
+## Session continuity
 
-Two hooks fire automatically — no invocation needed:
-
-| Hook | Fires when | What it does |
-|------|------------|--------------|
-| `handoff-inject` | First message of a session (4h window) | Injects `HANDOFF.md` into context — agent wakes up knowing project state |
-| `auto-handoff` | Session end, when uncommitted changes exist | Appends timestamped git-state snapshot to `HANDOFF.md` |
-
-Keep `HANDOFF.md` under 80 lines. Prune stale entries freely — git history preserves everything.
+No hooks fire automatically for this — canon installs zero Claude Code hooks. `sprint start`'s
+context step explicitly reads `HANDOFF.md` at the start of a sprint; `wrapup`'s doc-refresh step
+explicitly updates it at close. Keep `HANDOFF.md` under 80 lines (checked at close time). Prune
+stale entries freely — git history preserves everything.
 
 ## Skill lifecycle
 

@@ -145,11 +145,12 @@ This is the only step that validates the agent layer: hooks firing, `sprint star
 
 Follow [examples/canon-todo-walkthrough/](../examples/canon-todo-walkthrough/README.md) end to end in your test project. Key things to confirm:
 
-- `handoff-inject` fires on session start (HANDOFF.md appears in first prompt silently)
-- `sprint start "..."` triggers tier selection, acceptance criteria, and a sprint brief before any code
+- `sprint start "..."` explicitly reads `HANDOFF.md` as its own context step (no hook — canon
+  installs zero Claude Code hooks), then triggers tier selection, acceptance criteria, and a
+  sprint brief before any code
 - `capture` appends a discovery mid-sprint without prompting
 - `sprint complete` blocks on unchecked acceptance items, then closes cleanly once all pass
-- `auto-handoff` updates HANDOFF.md on session end
+- `wrapup`'s doc-refresh step explicitly updates `HANDOFF.md` at close (no hook)
 
 ---
 
@@ -250,6 +251,6 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 | Project wiring (5) | `skills.sh status` shows all `[ok]` |
 | Sprint gate (5) | `sprint complete` blocks on missing files and unchecked items |
 | Board (6) | Browser opens (or `curl` confirms server responds) |
-| Agent walkthrough (7) | All hooks fire; sprint complete closes with all criteria checked |
+| Agent walkthrough (7) | Sprint's own explicit context/refresh steps run (no hooks needed); sprint complete closes with all criteria checked |
 
 Any failing check is a regression or a hidden dependency on your dev box.
