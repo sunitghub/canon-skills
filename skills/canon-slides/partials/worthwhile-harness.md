@@ -6,7 +6,7 @@
 <div class="step s1" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:8px; padding:14px 16px; background:rgba(0,255,255,0.07); border-radius:10px; border:1px solid rgba(0,255,255,0.25);">
 <div style="font-size:0.62em; text-transform:uppercase; letter-spacing:0.09em; color:#00FFFF; font-weight:600;">Wrapup pipeline · advisory</div>
 <div style="font-size:0.78em; font-weight:700; color:#FFFFFF; line-height:1.3;">Gates run, findings surface</div>
-<div style="font-size:0.68em; color:#B2B8C4; line-height:1.4; margin-top:2px;">Reviewer, security, doc-audit each record <code>ran</code> or <code>skipped</code> — no <code>fail</code> status exists. A <strong style="color:#F46600;">NO</strong> finding goes in the Reason column and surfaces to you. Pipeline continues.</div>
+<div style="font-size:0.68em; color:#B2B8C4; line-height:1.4; margin-top:2px;">Code-reviewer, security-review, doc-audit each record <code>ran</code> or <code>skipped</code> — no <code>fail</code> status exists. A <strong style="color:#F46600;">NO</strong> finding goes in the Reason column and surfaces to you. Pipeline continues.</div>
 </div>
 <div style="display:flex; align-items:center; padding:0 8px; flex-shrink:0;">
 <svg width="22" height="22" viewBox="0 0 22 22"><path d="M3 11 L17 11 M12 6 L17 11 L12 16" stroke="#4FFF00" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
