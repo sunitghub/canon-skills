@@ -27,7 +27,7 @@ Simple work stays light. canon chooses the lightest tier that still protects the
 | Tier | When | What runs |
 |---|---|---|
 | **Trivial** | Single line, question, mechanical change | Work directly |
-| **Normal** | Focused, reversible change | ticket + acceptance + plan + brief research → build → wrapup + eval |
+| **Normal** | Focused, reversible change | ticket + acceptance + plan + brief research → build → wrapup + reviewer + evaluator |
 | **High-risk** | Security, irreversible ops, broad blast radius | Full pipeline: orient (parallel) + grill + impact analysis + required mitigation tests |
 
 ## Generator-Evaluator Separation
@@ -36,7 +36,7 @@ The agent that wrote the code is the worst possible reviewer of that code. canon
 
 1. `sprint complete` spawns a **fresh subagent** — Read and Bash only, no implementation history — to grade each acceptance criterion against the actual code.
 2. The evaluator writes a machine-generated `evaluator-run-id` before grading; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `tools/subagent-log.sh` right after the subagent completes, making the field auditable.
-3. The CLI blocks close if the field is absent, the verdict is `fail`, or any acceptance box is unchecked.
+3. The CLI blocks close if the field is absent, the verdict isn't `pass` (a `fail` or `partial` verdict both block), or any acceptance box is unchecked.
 
 Same-context review reintroduces self-evaluation bias. The protocol fails closed when fresh-context evaluation is unavailable.
 
@@ -48,7 +48,7 @@ Same-context review reintroduces self-evaluation bias. The protocol fails closed
 
 ```
 sprint complete
-  └── Wrapup: simplify → review → security → repo-check → doc-audit
+  └── Wrapup: simplify → code-review → security → repo-check → doc-audit
   └── Reviewer (fresh subagent, normal+ tier — cheaper model if changed files are structurally low-risk)
   └── Evaluator (fresh subagent, normal+ tier) — adversarial, blocks on fail (same cheaper-model rule)
   └── Acceptance check — CLI blocks on unchecked items

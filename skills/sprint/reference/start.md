@@ -31,7 +31,7 @@
 6. **Normal path.** For normal-tier work:
    - Inspect the files and callers needed for the requested change.
    - Write a brief `research.md` — a few bullets of findings and constraints — before drafting `## Approach`. Keep it short; this is not the full orient protocol. This matters even when planning stays in the same session: if a future dispatch or fresh-session handoff runs the planning step, it should read this curated file, not the raw exploration transcript.
-   - Add `## Approach` to `plan.md` and `## Test Plan` to `acceptance.md` (not `plan.md` — `plan.md`'s skeleton has no Test Plan heading, and every grading step reads/grades it from `acceptance.md`).
+   - Fill in `## Approach` in `plan.md` and `## Test Plan` in `acceptance.md` (not `plan.md` — `plan.md`'s skeleton has no Test Plan heading, and every grading step reads/grades it from `acceptance.md`). Both headings already exist from step 1's skeleton — this is filling them in, not creating them.
    - **Perspective check.** Before drafting the brief, ask one challenge question from each lens: (a) *user* — will the behavior change match what they expect? (b) *security* — does this touch auth, input validation, or trust boundaries? (c) *architect* — does this add surface that canon's minimalism principle would resist? Surface any concern in the brief.
    - Produce the sprint brief from Step 10.
    - Skip Steps 7-9 unless new findings promote the work to high-risk.
@@ -72,7 +72,7 @@
    - Test plan (verbatim from acceptance.md ## Test Plan)
    - Open questions or blockers still unresolved
 
-11. **Wait for explicit approval.** Do not write code until confirmed. On approval, update `plan.md` — fill in the risk summary line in `## Sign-off` (`Tier: <tier> | Risk: <blast radius / key risks, one line>` — use tier classification for normal, impact analysis findings for high-risk), check the `- [ ] Plan approved` box, and add any grill resolutions. This is the durable approval record; `sprint complete` gates on it. (`plan.md` was created in step 4 — this step finalizes it, it does not create it.) If a normal/high-risk sprint turns out mid-flight to be genuinely trivial (grill or impact analysis reveals a one-liner with no coordinated multi-file intent), the `## Sign-off` line can instead read `Tier: trivial | Risk: <reason>` — see `skills/sprint/reference/complete.md`'s reviewer/evaluator gates for what that downgrade skips.
+11. **Wait for explicit approval.** Do not write code until confirmed. On approval, update `plan.md` — fill in the risk summary line in `## Sign-off` (`Tier: <tier> | Risk: <blast radius / key risks, one line>` — use tier classification for normal, impact analysis findings for high-risk), check the `- [ ] Plan approved` box, and add any grill resolutions. This is the durable approval record; `sprint complete` gates on it. (`plan.md` was created in step 4 — this step finalizes it, it does not create it.) If a normal/high-risk sprint turns out mid-flight to be genuinely trivial (grill or impact analysis reveals a one-liner with no coordinated multi-file intent, and the change is not one of `SKILL.md`'s four categorical not-trivial triggers — new file, test/build-infrastructure wiring, hook/pipeline/post-commit script change, or coordinated multi-file intent), the `## Sign-off` line can instead read `Tier: trivial | Risk: <reason>` — see `skills/sprint/reference/complete.md`'s reviewer/evaluator gates for what that downgrade skips.
 
     Re-read `plan.md` after compaction or context reset.
 

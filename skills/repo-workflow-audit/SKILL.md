@@ -18,7 +18,7 @@ Triggers: "audit the sprint workflow", "deep-scan the close pipeline", "check th
 
 ## Target scope
 
-Default target: `skills/sprint/**` + `skills/wrapup/**` (the pair this pattern was built for, in `t-6487`). If the user names a different skill or doc set, use that instead — the pattern generalizes to any skill family with reference/gate sub-files.
+Default target: `skills/sprint/**` + `skills/wrapup/**` (the pair this pattern was built for, in `t-6487`) + `standards/efficiency.md` (the coding-standards doc underlying wrapup's own gates). If the user names a different skill or doc set, use that instead — the pattern generalizes to any skill family with reference/gate sub-files.
 
 ## Model
 

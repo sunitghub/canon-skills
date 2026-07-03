@@ -8,6 +8,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - Think before coding. Surface tradeoffs, don't hide confusion.
 - Minimum code that solves the problem. Nothing speculative.
 - Touch only what you must. Clean up only your own mess.
+- When dispatching a research/reporting-only subagent that has full tool access (e.g. `general-purpose`), explicitly instruct it not to edit or write any file. Default tool access includes Edit/Write — omitting this instruction risks unauthorized side effects on files it was only meant to read.
 - Define success criteria before starting. Verify when done.
 - If multiple interpretations exist, present them — don't pick silently.
 - Never end a turn after only stating what you are about to do; if a sentence describes a next action, perform it in the same turn.
