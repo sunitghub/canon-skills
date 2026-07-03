@@ -163,6 +163,64 @@ test.describe('board modal', () => {
     }
   });
 
+  test('unchecked QA box blocks ready even with filled Criteria and Test Plan', async ({ page }) => {
+    const id = `t-unchecked-qa-${Date.now()}`;
+    const title = `Unchecked QA ${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-07-02T00:00:00Z',
+        '---',
+        '',
+        `# ${title}`,
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
+        '# Acceptance',
+        '',
+        '## Criteria',
+        '- [x] Ready',
+        '',
+        '## Test Plan',
+        '- [x] Tested',
+        '',
+        '## QA',
+        '- [ ] Tested locally',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Use the existing board readiness popover.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id);
+      const indicator = page.locator(`.card[data-id="${id}"] .ready-indicator`);
+      await expect(indicator).toContainText('unchecked items');
+      await expect(indicator).not.toContainText('ready');
+      await indicator.hover();
+      await expect(page.locator('#ready-popover')).toContainText('unchecked item remains');
+      await expect(page.locator('#ready-popover')).not.toContainText('Signed off');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('editing docs works for quoted numeric ticket ids', async ({ page }) => {
     const id = '001';
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);

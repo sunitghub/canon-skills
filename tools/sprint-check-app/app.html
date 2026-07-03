@@ -1747,6 +1747,7 @@ function searchableText(t) {
     r.label,
     r.ready ? 'ready' : '',
     r.acceptanceIncomplete ? 'acceptance incomplete incomplete' : '',
+    r.acceptanceUnchecked ? 'unchecked items incomplete' : '',
     r.planIncomplete ? 'plan incomplete incomplete' : '',
     ...(t.docs || []).flatMap(d => [d.name, docSlug(t, d.file)]),
   ].join(' '));
@@ -1764,6 +1765,7 @@ function primarySearchText(t) {
     r.label,
     r.ready ? 'ready' : '',
     r.acceptanceIncomplete ? 'acceptance incomplete incomplete' : '',
+    r.acceptanceUnchecked ? 'unchecked items incomplete' : '',
     r.planIncomplete ? 'plan incomplete incomplete' : '',
   ].join(' '));
 }
@@ -1773,7 +1775,7 @@ function ticketMatchesQuery(t) {
   if (state.queryMode !== 'search') return true;
   if (!q) return true;
   const primary = primarySearchText(t);
-  const readinessQueries = new Set(['ready', 'incomplete', 'acceptance incomplete', 'plan incomplete', 'needs plan', 'needs acc']);
+  const readinessQueries = new Set(['ready', 'incomplete', 'acceptance incomplete', 'plan incomplete', 'needs plan', 'needs acc', 'unchecked items']);
   if (readinessQueries.has(q)) return primary.includes(q);
   if (primary.includes(q)) return true;
   const terms = q.split(/\s+/);
@@ -2077,14 +2079,16 @@ function renderBoard() {
     document.body.appendChild(_popover);
   }
   function showReadyPopover(el, t) {
-    const { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, planApproved } = readiness(t);
-    const accIcon = !hasAcceptance ? '○' : acceptanceIncomplete ? '⚠' : '✓';
-    const accNote = acceptanceIncomplete ? ' — missing criteria or test items' : '';
+    const { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved } = readiness(t);
+    const accIcon = !hasAcceptance ? '○' : (acceptanceIncomplete || acceptanceUnchecked) ? '⚠' : '✓';
+    const accNote = acceptanceIncomplete ? ' — missing criteria or test items'
+      : acceptanceUnchecked ? ' — unchecked item remains (check Criteria, Test Plan, and QA)'
+      : '';
     const planIcon = !hasPlan ? '○' : (planIncomplete || !planApproved) ? '⚠' : '✓';
     const planNote = planIncomplete ? ' — add real Approach notes' : '';
     const signoffIcon = planApproved ? '✓' : '○';
     const signoffNote = hasPlan && !planApproved ? ' — check Plan approved' : '';
-    debugLog('ready popover', t.id, { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, planApproved });
+    debugLog('ready popover', t.id, { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved });
     _popover.innerHTML =
       `<div>${accIcon} Acceptance${accNote}</div>` +
       `<div>${planIcon} Plan${planNote}</div>` +
@@ -2251,20 +2255,23 @@ function readiness(t) {
   const hasPlan = slugs.includes('plan');
   // acceptance_has_items: true=complete, false=exists but missing criteria/test items, null=unknown
   const acceptanceIncomplete = hasAcceptance && t.acceptance_has_items === false;
+  // acceptance_unchecked: true if any box anywhere in acceptance.md (including ## QA) is unchecked
+  const acceptanceUnchecked = hasAcceptance && t.acceptance_unchecked === true;
   const planIncomplete = hasPlan && t.plan_has_approach === false;
   const planApproved = hasPlan && t.plan_approved === true;
-  const ready = hasAcceptance && hasPlan && !acceptanceIncomplete && !planIncomplete && planApproved;
+  const ready = hasAcceptance && hasPlan && !acceptanceIncomplete && !acceptanceUnchecked && !planIncomplete && planApproved;
   const label = !hasAcceptance ? 'needs acc'
     : acceptanceIncomplete ? 'incomplete'
+    : acceptanceUnchecked ? 'unchecked items'
     : !hasPlan ? 'needs plan'
     : planIncomplete ? 'plan incomplete'
     : !planApproved ? 'needs signoff'
     : 'ready';
-  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, planIncomplete, planApproved, label };
+  return { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved, label };
 }
 
 function cardHTML(t, idx) {
-  const { ready, label, acceptanceIncomplete, planIncomplete } = readiness(t);
+  const { ready, label, acceptanceIncomplete, acceptanceUnchecked, planIncomplete } = readiness(t);
   const animClass = (idx !== undefined) ? ' animate-in' : '';
   const animStyle = (idx !== undefined) ? ` style="--i:${idx}"` : '';
   const pri = t.priority ?? 2;
@@ -2291,7 +2298,7 @@ function cardHTML(t, idx) {
         </div>
         <div class="card-meta-col">
           <span class="card-meta-label">Status</span>
-          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}" title="${ready ? 'Signed off' : 'Readiness details'}">
+          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || acceptanceUnchecked || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}" title="${ready ? 'Signed off' : 'Readiness details'}">
             <span class="ready-dot"></span>
             <span class="ready-label">${label}</span>
           </span>
@@ -2482,6 +2489,8 @@ function renderModalBody(t) {
           if (!hasFilledCheckbox(sectionContent(d.content, 'Test Plan'))) missing.push('## Test Plan');
           if (missing.length) {
             warning = `<div class="acceptance-warning">⚠ ${missing.join(' and ')} ${missing.length > 1 ? 'need' : 'needs'} checklist items — sprint complete will block</div>`;
+          } else if (hasUncheckedBox(d.content)) {
+            warning = `<div class="acceptance-warning">⚠ An unchecked item remains (Criteria, Test Plan, or QA) — sprint complete will block</div>`;
           }
         } else if (slug === 'plan') {
           if (!hasUsefulSectionText(sectionContent(d.content, 'Approach'), ['How will we implement it?'])) {
@@ -2652,6 +2661,10 @@ function withoutGuidance(text) {
 
 function hasFilledCheckbox(text) {
   return /^- \[[ xX]\]\s+\S/m.test(withoutGuidance(text));
+}
+
+function hasUncheckedBox(text) {
+  return /^\s*[-*]\s+\[ \]\s+\S/m.test(withoutGuidance(text));
 }
 
 function hasUsefulSectionText(text, placeholders = []) {
