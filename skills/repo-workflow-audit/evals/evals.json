@@ -46,6 +46,18 @@
         "States all four dispatches run on the strongest available model",
         "Explains this is because the audit is deliberately high-scrutiny work"
       ]
+    },
+    {
+      "id": 5,
+      "case_type": "compliance",
+      "prompt": "Run a repo-workflow-audit on a fictional skill at skills/status/SKILL.md. Its instructions repeat the same idea in three places: 'always produce concise output', 'keep responses concise', and 'avoid verbose responses'; it also has a paragraph of filler explaining that concise communication is good because users like concise communication. The intent is correct but the wording is bloated.",
+      "expected_output": "The audit still runs the four dispatches and the adversarial review includes a lean-language finding that flags the repeated concise-output instructions and filler prose, recommending simpler wording while preserving the intended behavior.",
+      "expectations": [
+        "Describes running all four dispatches rather than replacing the audit structure with a prose-only review",
+        "Flags repeated wording or duplicated instruction as a lean-language finding",
+        "Flags unnecessary filler or prose bloat as a lean-language finding",
+        "Recommends simpler straight-to-the-point wording only where intent remains clear and correct"
+      ]
     }
   ]
 }
