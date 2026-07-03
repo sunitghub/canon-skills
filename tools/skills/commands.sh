@@ -56,6 +56,41 @@ offer_model_tiers_note() {
   fi
 }
 
+offer_remove_model_tiers_note() {
+  local project_dir="$1"
+  local target="$project_dir/AGENTS.md"
+  if ! grep -qF "<!-- MODEL-TIERS:BEGIN -->" "$target" 2>/dev/null; then
+    return 0
+  fi
+  if ! { : <> /dev/tty; } 2>/dev/null; then
+    return 0
+  fi
+  printf "Remove model-per-task note from AGENTS.md? [y/N] " > /dev/tty
+  read -r answer </dev/tty
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    # offer_model_tiers_note always inserts its separator blank line BEFORE
+    # BEGIN (never after END) — removal must undo exactly that, via one line
+    # of lookback, and must never touch whatever follows END (that blank or
+    # content belongs to the next block, not this one).
+    awk '
+      {
+        if (/<!-- MODEL-TIERS:BEGIN -->/) {
+          if (have) { if (held != "") print held; have = 0 }
+          flag = 1
+          next
+        }
+        if (flag == 1 && /<!-- MODEL-TIERS:END -->/) { flag = 0; next }
+        if (flag == 1) { next }
+        if (have) print held
+        have = 1
+        held = $0
+      }
+      END { if (have) print held }
+    ' "$target" > "$target.tmp" && mv "$target.tmp" "$target"
+    echo "AGENTS.md model-per-task note removed." > /dev/tty
+  fi
+}
+
 ensure_sprint_project_marker() {
   local project_dir="$1"
   mkdir -p "$project_dir/.tickets"
@@ -521,6 +556,7 @@ cmd_remove() {
         echo "  [$(basename "$f")]  removed @-import"
       fi
     done
+    [ "$skill" = "efficiency" ] && offer_remove_model_tiers_note "$project_dir"
     echo "Unregistered: $skill"
     if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ] && \
        ! grep -qF "$SKILLS_ROOT" "$claude_file" 2>/dev/null && \
