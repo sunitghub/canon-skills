@@ -59,7 +59,8 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 Every card shows a readiness indicator:
 
-- **● ready** (green) — Acceptance and Plan both present; Acceptance has real items under `## Criteria` and `## Test Plan`, Plan has real notes under `## Approach`, and `plan.md ## Sign-off` has a checked approval item. Note: readiness does not currently check `## QA`'s "Tested locally" box — a ticket can show ready here while the CLI's close gate still blocks on an unchecked QA item.
+- **● ready** (green) — Acceptance and Plan both present; Acceptance has real items under `## Criteria` and `## Test Plan` with no unchecked box anywhere in `acceptance.md` (including `## QA`'s "Tested locally"), Plan has real notes under `## Approach`, and `plan.md ## Sign-off` has a checked approval item.
+- **● unchecked items** (red) — Acceptance has real items under `## Criteria`/`## Test Plan`, but at least one box anywhere in the doc (including `## QA`) is still unchecked. This mirrors the CLI's `_gate_no_unchecked` close gate exactly.
 - **● incomplete** (red) — Acceptance doc exists but the `## Criteria` or `## Test Plan` section has no checklist items. This mirrors a CLI-enforced `sprint complete` close gate. Opening the Acceptance tab shows an inline warning naming the empty sections.
 - **● plan incomplete** (red) — Plan exists but `## Approach` is empty or still contains the template placeholder. This is board-surfaced early warning; the CLI also blocks close if `## Approach` has no real content. A short real approach is enough; Decisions can stay empty for simple work.
 - **● needs acc / needs plan / needs signoff** (amber) — the next doc or approval item to add.
