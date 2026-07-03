@@ -88,6 +88,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    The reviewer has no implementation history. Invoke with a clean context, per the model-tier
    check above and the shared gate mechanics above. The prompt must instruct it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
+   - Record in its report the model designation you dispatched it with (`haiku` if the model-tier check above classified this low-risk, otherwise the session's default model name) — the same value used in the Wrapup Gates table's `(model: <model>)` suffix
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
@@ -113,6 +114,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    Invoke a fresh Agent subagent with a clean context, per the model-tier check above. The prompt must instruct it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
+   - Record in its report the model designation you dispatched it with (`haiku` if the model-tier check above classified this low-risk, otherwise the session's default model name) — the same value used in the Wrapup Gates table's `(model: <model>)` suffix
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
    **Log the subagent run.** Immediately after the evaluator subagent completes, run
