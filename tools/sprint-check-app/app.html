@@ -1358,7 +1358,7 @@
     <div class="tour-header">
       <div>
         <div class="tour-title">sprint-check</div>
-        <div class="tour-subtitle">local kanban · no server · no account</div>
+        <div class="tour-subtitle">local kanban · no hosted server · no account</div>
       </div>
       <button class="modal-close" id="tour-close">✕</button>
     </div>
@@ -1378,21 +1378,21 @@
 
       <div class="tour-feature">
         <div class="tour-feature-name">Ticket completeness<span>—</span>readiness baked into every card.</div>
-        <div class="tour-feature-desc">Ready, incomplete, and needs-doc states show whether Acceptance has criteria/tests and Plan has real Approach notes. Hover the indicator for a checklist popover so doc problems surface before close.</div>
+        <div class="tour-feature-desc">Ready, unchecked, incomplete, needs-doc, and needs-signoff states show whether Acceptance has Criteria/Test Plan items, no unchecked boxes including <code>## QA</code>, Plan has real <code>## Approach</code> notes, and Plan <code>## Sign-off</code> is checked.</div>
         <div class="tour-feature-tags">
           <span class="tour-tag">acceptance gate</span>
-          <span class="tour-tag">test plan check</span>
+          <span class="tour-tag">QA + sign-off</span>
           <span class="tour-tag">inline warnings</span>
         </div>
       </div>
 
       <div class="tour-feature">
-        <div class="tour-feature-name">Sprint docs<span>—</span>Acceptance and Plan attached to tickets, edited inline.</div>
-        <div class="tour-feature-desc">Open any ticket → click a doc tab to read or edit. Templates guide the format. The editor toolbar inserts checkboxes, bullets, headings, and code at the cursor.</div>
+        <div class="tour-feature-name">Sprint docs<span>—</span>board-created Acceptance and Plan, plus workflow artifacts.</div>
+        <div class="tour-feature-desc">Create and edit <code>acceptance.md</code> and <code>plan.md</code> from the board. The agent also writes <code>research.md</code>, <code>eval-report.md</code>, <code>summary.md</code>, and <code>## Wrapup Gates</code> during the sprint flow.</div>
         <div class="tour-feature-tags">
           <span class="tour-tag">acceptance.md</span>
           <span class="tour-tag">plan.md</span>
-          <span class="tour-tag">in-browser editor</span>
+          <span class="tour-tag">workflow artifacts</span>
         </div>
       </div>
 
@@ -1432,7 +1432,7 @@
         <div class="tour-demo-body">
           <img class="tour-screenshot" src="/meta/screenshots/ticket-detail.png" alt="Ticket detail modal" loading="lazy">
           <img class="tour-screenshot" src="/meta/screenshots/ticket-doc-editor.png" alt="Doc editor in ticket modal" loading="lazy">
-          <p class="tour-caption">Click any card to open the detail modal. Switch doc tabs to read or edit Acceptance and Plan without leaving the board.</p>
+          <p class="tour-caption">Click any card to open the detail modal. Switch doc tabs to read or edit board docs without leaving the board; agent-written workflow docs appear as extra tabs when present.</p>
         </div>
       </details>
 
@@ -1440,7 +1440,7 @@
         <summary>Ticket completeness</summary>
         <div class="tour-demo-body">
           <img class="tour-screenshot" src="/meta/screenshots/ticket-completeness.png" alt="Ticket completeness states" loading="lazy">
-          <p class="tour-caption">Every card shows its readiness state. Red means the Acceptance doc is missing required checklist items — <code style="font-size:11px;background:var(--surface-raised);padding:1px 5px;border-radius:3px;color:var(--accent)">sprint complete</code> will block until fixed.</p>
+          <p class="tour-caption">Every card shows its readiness state. Red means Acceptance is incomplete or has unchecked boxes; amber means the next doc or Plan Sign-off is missing before close.</p>
         </div>
       </details>
 

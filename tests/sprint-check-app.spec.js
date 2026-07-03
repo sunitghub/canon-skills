@@ -7,6 +7,25 @@ const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 
 test.describe('board modal', () => {
+  test('feature tour copy reflects current sprint gates', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('#tour-btn').click();
+
+    const tour = page.locator('#tour-panel');
+    await expect(tour).toBeVisible();
+    await expect(tour).toContainText('no hosted server');
+    await expect(tour).not.toContainText('no server · no account');
+    await expect(tour).toContainText('no unchecked boxes including ## QA');
+    await expect(tour).toContainText('Plan ## Sign-off is checked');
+    await expect(tour).toContainText('board-created Acceptance and Plan');
+    await expect(tour).toContainText('research.md');
+    await expect(tour).toContainText('eval-report.md');
+    await expect(tour).toContainText('summary.md');
+    await expect(tour).toContainText('## Wrapup Gates');
+  });
+
   test('Description tab appears on tickets with docs, absent on doc-less tickets', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
