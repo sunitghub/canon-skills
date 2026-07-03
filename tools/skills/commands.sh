@@ -27,8 +27,8 @@ offer_tkt_path() {
   fi
   echo "" > /dev/tty
   printf "canon/tools (sprint, tkt, sprint-check) is not on your PATH.\n" > /dev/tty
-  printf "Add %s to PATH in %s? [y/N] " "$tools_dir" "$rc_file" > /dev/tty
-  read -r answer </dev/tty
+  printf "Add %s to PATH in %s? [y/N] (auto-skips in 15s) " "$tools_dir" "$rc_file" > /dev/tty
+  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     printf '\n# canon tools\nexport PATH="$PATH:%s"\n' "$tools_dir" >> "$rc_file"
     echo "  Added. Run: source $rc_file" > /dev/tty
@@ -45,8 +45,8 @@ offer_model_tiers_note() {
   if ! { : <> /dev/tty; } 2>/dev/null; then
     return 0
   fi
-  printf "Update AGENTS.md with model-per-task note? [y/N] " > /dev/tty
-  read -r answer </dev/tty
+  printf "Update AGENTS.md with model-per-task note? [y/N] (auto-skips in 15s) " > /dev/tty
+  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     {
       echo ""
@@ -65,8 +65,8 @@ offer_remove_model_tiers_note() {
   if ! { : <> /dev/tty; } 2>/dev/null; then
     return 0
   fi
-  printf "Remove model-per-task note from AGENTS.md? [y/N] " > /dev/tty
-  read -r answer </dev/tty
+  printf "Remove model-per-task note from AGENTS.md? [y/N] (auto-skips in 15s) " > /dev/tty
+  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     # offer_model_tiers_note always inserts its separator blank line BEFORE
     # BEGIN (never after END) — removal must undo exactly that, via one line
