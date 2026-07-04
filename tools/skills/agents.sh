@@ -41,3 +41,28 @@ skills_table_upsert() {
   fi
 }
 
+# Strip the whole AI-SKILLS block (plus its leading separator blank line) once
+# its last data row is gone, so add/remove round-trips back to the original file.
+skills_table_prune_if_empty() {
+  local agents_file="$1"
+  [ -f "$agents_file" ] || return 0
+  grep -qF "<!-- AI-SKILLS:BEGIN -->" "$agents_file" 2>/dev/null || return 0
+  [ -n "$(registered_skill_rows "$agents_file")" ] && return 0
+  awk '
+    {
+      if (/<!-- AI-SKILLS:BEGIN -->/) {
+        if (have) { if (held != "") print held; have = 0 }
+        flag = 1
+        next
+      }
+      if (flag == 1 && /<!-- AI-SKILLS:END -->/) { flag = 0; next }
+      if (flag == 1) { next }
+      if (have) print held
+      have = 1
+      held = $0
+    }
+    END { if (have) print held }
+  ' "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+  echo "  [AGENTS.md]  removed empty skill block"
+}
+

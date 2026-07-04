@@ -149,7 +149,8 @@ cmd_add() {
     exit 1
   fi
 
-  # Inject-style skills: write @-import to AGENTS.md only (not CLAUDE.md — avoid leakage)
+  # Inject-style skills: write @-import to AGENTS.md (for context injection) AND a
+  # table row (for table-only discovery) — both point at the same file.
   if [ "$(fm_field "$skill_file" inject)" = "true" ]; then
     local inject_line="@$skill_file"
     local inject_target="$project_dir/AGENTS.md"
@@ -160,6 +161,7 @@ cmd_add() {
       echo "$inject_line" >> "$inject_target"
       echo "  [AGENTS.md]  added @-import"
     fi
+    skills_table_upsert "$inject_target" "$name" "| $name | $category | $skill_file |"
     register_project "$project_dir"
     echo ""
     echo "Done. $desc"
@@ -269,21 +271,6 @@ cmd_status() {
 
       printf "  %-25s %s%s\n" "$sname" "[$tag]" "$suffix"
     done < <(registered_skill_rows "$agents_file")
-  fi
-
-  # Also show inject-style @-imports (sit outside the AI-SKILLS block)
-  if [ -f "$agents_file" ]; then
-    while IFS= read -r imp; do
-      local ipath="${imp#@}"
-      local iname; iname=$(basename "$ipath" .md)
-      local itag="ok"
-      [ ! -f "$ipath" ] && itag="broken ref" && (( issues++ )) || true
-      if ! $_printed_skills_header; then
-        echo "Skills:"
-        _printed_skills_header=true
-      fi
-      printf "  %-25s %s\n" "$iname" "[$itag]"
-    done < <(awk '/AI-SKILLS:BEGIN/{skip=1} /AI-SKILLS:END/{skip=0; next} !skip && /^@/' "$agents_file" 2>/dev/null || true)
   fi
 
   if ! $_printed_skills_header; then
@@ -452,10 +439,6 @@ cmd_refresh() {
           echo "  [pruned]  hidden skill from table: $sname" >&2
           continue
         fi
-        if [[ "$spath" == */standards/* ]]; then
-          echo "  [pruned]  standard from table: $sname" >&2
-          continue
-        fi
       fi
       printf '%s\n' "$line"
     done < "$agents_file" > "$tmp" && mv "$tmp" "$agents_file"
@@ -556,6 +539,11 @@ cmd_remove() {
         echo "  [$(basename "$f")]  removed @-import"
       fi
     done
+    if [ -f "$agents_file" ] && grep -qF "| $skill |" "$agents_file"; then
+      grep -vF "| $skill |" "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
+      echo "  [AGENTS.md]  removed table row"
+      skills_table_prune_if_empty "$agents_file"
+    fi
     [ "$skill" = "efficiency" ] && offer_remove_model_tiers_note "$project_dir"
     echo "Unregistered: $skill"
     if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ] && \
@@ -570,6 +558,7 @@ cmd_remove() {
   if [ -f "$agents_file" ] && grep -qF "| $skill |" "$agents_file"; then
     grep -vF "| $skill |" "$agents_file" > "$agents_file.tmp" && mv "$agents_file.tmp" "$agents_file"
     echo "  [AGENTS.md]  removed"
+    skills_table_prune_if_empty "$agents_file"
   fi
 
   echo "Unregistered: $skill"
