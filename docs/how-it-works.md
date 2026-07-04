@@ -18,7 +18,7 @@ Gates enforce structure; agents enforce meaning. Neither can substitute for the 
 
 Skills are symlinked from `~/.canon/skills/` into each project's `.claude/skills/` (Claude Code) and `.agents/skills/` (Codex/Pi). Update the canon repo once — every project picks it up on the next session. No copies, no drift.
 
-Standards (`standards/efficiency.md`, etc.) are injected via `@`-imports in `AGENTS.md`. Same live-reference model.
+Standards (`standards/efficiency.md`, etc.) are injected via `@`-imports in `AGENTS.md`, and also listed as a row in its `AI-SKILLS` table so a table-only reader still sees them. Same live-reference model.
 
 ## Tiered Planning
 

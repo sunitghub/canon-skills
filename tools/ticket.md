@@ -20,7 +20,7 @@ tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
 tkt start <id>                # mark in_progress
 tkt current                   # show active ticket
-tkt close <id> [--no-sprint]  # mark closed (refuses without --no-sprint if the ticket has sprint docs or was never started via sprint)
+tkt close <id> [--no-sprint]  # mark closed (refuses without --no-sprint — directs to sprint complete if sprint docs exist, or to sprint start/--no-sprint otherwise)
 tkt archive <id>              # mark archived (hidden from board, searchable)
 tkt reopen <id>               # reopen
 tkt show <id>                 # show full ticket
@@ -55,7 +55,7 @@ without completing it, close via the explicit `tkt close <id> --no-sprint`.
 
 - Before starting work: run `tkt ls` to understand open tasks.
 - **When picking up a task: run `tkt start <id>` before writing any code.** This records `.tickets/ACTIVE` so agents agree on the current task.
-- Prepend the ticket ID to every commit message (e.g. `t-8ms5: add login rate limiter`).
+- Include the ticket ID in every commit body (e.g. `Closes: t-8ms5`) per `standards/efficiency.md`'s Git conventions — type-prefixed subject, not a bare ticket-ID prefix.
 - **Do not run `tkt close <id>` for sprint work.** Use `sprint complete` so
   validation runs consistently.
 - Don't create tickets for trivial 1-line fixes. Use judgment.
@@ -63,7 +63,7 @@ without completing it, close via the explicit `tkt close <id> --no-sprint`.
 
 ## Notes
 
-- Ticket IDs appear in git log (e.g. `t-8ms5: add login rate limiter`).
+- Ticket IDs appear in git log via the commit body's `Closes: t-xxxx` line.
 - Priority: 0 = highest, 4 = lowest. Default is 2.
 - `tkt` is bundled with canon in `tools/tkt` — no external install needed.
 - Legacy flat `.tickets/<id>.md` tickets are kept readable for compatibility with older canon projects and simple external tooling. New canon tickets use `.tickets/<id>/ticket.md`.
