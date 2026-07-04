@@ -16,8 +16,10 @@ _create_dir_link() {
   local target="$1" link="$2"
   if _is_windows; then
     # mklink /J fails if a junction already exists — remove before recreating
-    [ -d "$link" ] && cmd.exe /c rmdir "$(cygpath -w "$link")" > /dev/null 2>&1 || true
-    cmd.exe /c mklink /J "$(cygpath -w "$link")" "$(cygpath -w "$target")" > /dev/null
+    # MSYS_NO_PATHCONV: without it, Git Bash mangles the /c flag into a Windows
+    # path, so cmd.exe opens interactively instead of running the command.
+    [ -d "$link" ] && MSYS_NO_PATHCONV=1 cmd.exe /c rmdir "$(cygpath -w "$link")" > /dev/null 2>&1 || true
+    MSYS_NO_PATHCONV=1 cmd.exe /c mklink /J "$(cygpath -w "$link")" "$(cygpath -w "$target")" > /dev/null
   else
     ln -sfn "$target" "$link"
   fi
@@ -52,7 +54,7 @@ _is_dir_link() {
 _remove_dir_link() {
   local link="$1"
   if _is_windows; then
-    cmd.exe /c rmdir "$(cygpath -w "$link")" > /dev/null 2>&1
+    MSYS_NO_PATHCONV=1 cmd.exe /c rmdir "$(cygpath -w "$link")" > /dev/null 2>&1
   else
     rm "$link"
   fi
