@@ -55,7 +55,7 @@ and continue with manual review. Scanner absence is not a skipped security gate.
 
 ## Vulnerability Categories
 
-Injection, XSS, authorization bypass, weak crypto, unsafe deserialization, SSRF, CSRF, file security, broken auth, business logic flaws, API security, misconfiguration, error leaks, sensitive logs.
+Injection, XSS, authorization bypass, weak crypto, unsafe deserialization, SSRF, CSRF, file security, broken auth, business logic flaws, API security, misconfiguration, error leaks, sensitive logs, agent/MCP security (permission scope, tool over-provisioning, MCP server config exposure), secrets (hardcoded credentials, API keys, tokens).
 
 ## Action Endpoint Patterns
 
