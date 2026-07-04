@@ -80,5 +80,5 @@ Report only what matters:
 
 Address criticals before committing. Improvements are discretionary.
 
-Committing and closing the ticket happen after this pipeline finishes, in whatever called wrapup
-(e.g. `skills/sprint/reference/complete.md`'s own step 9) — not here; see the pipeline note above.
+Committing and closing the ticket are the caller's job, not this pipeline's — see the Pipeline
+note above.

@@ -31,7 +31,7 @@ documentation, setup, or agent behavior.
 
 3. **Skill graph.** Run `./tools/skills.sh list`. Confirm advertised standalone skills
    appear there, and imported sub-skills remain hidden from the user-facing list.
-   When any `skills/*.md` changed, run `./tools/canon-dev.sh lint` — it enforces
+   When any `skills/**/SKILL.md` changed, run `./tools/canon-dev.sh lint` — it enforces
    skill-setup-std deterministically (naming, frontmatter, flat location,
    resolvable imports, depends graph). Advisory beyond the linter: flag skills
    that violate one-job (an "and then" in the description) or have a vague

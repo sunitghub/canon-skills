@@ -30,7 +30,7 @@
 
 6. **Normal path.** For normal-tier work:
    - Inspect the files and callers needed for the requested change.
-   - Write a brief `research.md` — a few bullets of findings and constraints — before drafting `## Approach`. Keep it short; this is not the full orient protocol. This matters even when planning stays in the same session: if a future dispatch or fresh-session handoff runs the planning step, it should read this curated file, not the raw exploration transcript.
+   - Write a brief `research.md` — a few bullets of findings and constraints — before drafting `## Approach`. Keep it short; this is not the full orient protocol (see step 7 for why this file matters even when planning stays in the same session).
    - Fill in `## Approach` in `plan.md` and `## Test Plan` in `acceptance.md` (not `plan.md` — `plan.md`'s skeleton has no Test Plan heading, and every grading step reads/grades it from `acceptance.md`). Both headings already exist from step 1's skeleton — this is filling them in, not creating them.
    - **Perspective check.** Before drafting the brief, ask one challenge question from each lens: (a) *user* — will the behavior change match what they expect? (b) *security* — does this touch auth, input validation, or trust boundaries? (c) *architect* — does this add surface that canon's minimalism principle would resist? Surface any concern in the brief.
    - Produce the sprint brief from Step 10.

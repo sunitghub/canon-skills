@@ -48,7 +48,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    treat it as normal cost, never low-risk — an empty list is not evidence of low risk, it means the
    check couldn't run. Otherwise, classify low-risk only if every changed path matches an
    allowlist — `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`,
-   `standards/**/*.md`, or a root-level `*.md` — AND no path name contains a security-sensitive
+   `skills/**/gates/*.md`, `standards/**/*.md`, or a root-level `*.md` — AND no path name contains a security-sensitive
    marker (`auth`, `secret`, `session`, `crypto`, `token`, `credential`) — a deliberately narrow
    path-name substring list, not the broader semantic "security-sensitive" definitions used
    elsewhere (`SKILL.md`'s high-risk trigger list, `security-review.md`'s skip-logic list).
@@ -65,18 +65,22 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    keep gates on the full/session model for this sprint, that always wins over an automatic
    low-risk match.
 
-   **Shared gate mechanics (reviewer + evaluator).** Both gates below share three rules, stated
+   **Shared gate mechanics (reviewer + evaluator).** Both gates below share four rules, stated
    once here: (a) the close confirmation is authorization to spawn either subagent — never ask for
    separate approval; (b) both subagents derive their own changed-files list via `git merge-base`
    — never pass a file list to either; (c) close each subagent's handle (`TaskStop`) immediately
    after reading its verdict — completed handles still occupy thread slots, and closing the
-   reviewer's before step 2 avoids a thread-limit block if the evaluator needs a rerun.
+   reviewer's before step 2 avoids a thread-limit block if the evaluator needs a rerun; (d) each
+   subagent must record in its report the model designation it was dispatched with — exactly
+   `haiku` if the model-tier check above classified this low-risk, otherwise the exact session
+   model id (e.g. `claude-sonnet-5`), never a paraphrase — the same value used in the Wrapup Gates
+   table's `(model: <model>)` suffix.
 
    **Reviewer gate (normal+ tier).** Skip for trivial tier only — meaning `plan.md`'s `## Sign-off`
-   line reads `tier: trivial`. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers
+   line reads `Tier: trivial`. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers
    never let genuinely trivial work start a sprint at all), but a sprint can be *downgraded* to
    trivial mid-flight if grill or impact analysis reveals the real change is a one-liner with no
-   coordinated multi-file intent — write `tier: trivial` and a one-line reason in `## Sign-off` if
+   coordinated multi-file intent — write `Tier: trivial` and a one-line reason in `## Sign-off` if
    that happens. **This downgrade can never apply to any of `SKILL.md`'s four categorical
    not-trivial triggers** (new file, test/build-infrastructure wiring, hook/pipeline/post-commit
    script change, or coordinated multi-file intent) — those stay normal/high-risk regardless of
@@ -88,7 +92,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    The reviewer has no implementation history. Invoke with a clean context, per the model-tier
    check above and the shared gate mechanics above. The prompt must instruct it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
-   - Record in its report the model designation you dispatched it with — exactly `haiku` if the model-tier check above classified this low-risk, otherwise the exact session model id (e.g. `claude-sonnet-5`), never a paraphrase — the same value used in the Wrapup Gates table's `(model: <model>)` suffix
+   - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
@@ -100,8 +104,8 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    automatically. Do not skip even though the reviewer itself is advisory; the log entry's
    timestamp is what makes the evaluator's anti-gaming check meaningful.
 
-2. **Evaluator review (normal+ tier).** Same `tier: trivial` downgrade condition and exclusion as
-   the reviewer gate above (skip only if `plan.md`'s `## Sign-off` line reads `tier: trivial`, which
+2. **Evaluator review (normal+ tier).** Same `Tier: trivial` downgrade condition and exclusion as
+   the reviewer gate above (skip only if `plan.md`'s `## Sign-off` line reads `Tier: trivial`, which
    can never apply to `SKILL.md`'s four categorical not-trivial triggers). For normal and high-risk
    sprints, always spawn a freshly invoked Agent subagent for the evaluator review, per the shared
    gate mechanics above.
@@ -114,7 +118,7 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
 
    Invoke a fresh Agent subagent with a clean context, per the model-tier check above. The prompt must instruct it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
-   - Record in its report the model designation you dispatched it with — exactly `haiku` if the model-tier check above classified this low-risk, otherwise the exact session model id (e.g. `claude-sonnet-5`), never a paraphrase — the same value used in the Wrapup Gates table's `(model: <model>)` suffix
+   - Record its model designation per the shared gate mechanics above
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
    **Log the subagent run.** Immediately after the evaluator subagent completes, run
