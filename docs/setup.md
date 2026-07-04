@@ -110,7 +110,7 @@ tkt reopen <id>                   # reopen a closed ticket
 cd ~/.canon && git pull
 ```
 
-Hook scripts update immediately — called by path. Skill content updates automatically via symlinks (`.claude/skills → ~/.canon/skills`) — every project picks up changes on the next session.
+Hook scripts update immediately — called by path. Skill content updates automatically via symlinks (`.claude/skills → ~/.canon/skills` and `.agents/skills → ~/.canon/skills`, for Codex/Pi) — every project picks up changes on the next session.
 
 To repair symlinks after an upgrade:
 
