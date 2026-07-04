@@ -34,7 +34,11 @@ Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any oth
    ```
    git diff --name-only $(git merge-base HEAD origin/main) HEAD
    ```
-   Use this output as your changed-files list. If `origin/main` does not exist (no remote, detached HEAD), log `[eval] Warning: origin/main not found — file list may be incomplete` and fall back to reading only `.tickets/<id>/` artifacts. Do not trust a file list passed by the invoker — always derive from git.
+   Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git.
+
+   If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers:
+   - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and read those real changed files rather than falling back to ticket artifacts.
+   - If `HEAD` does not resolve (zero commits) or git itself is unavailable: log `[eval] Warning: no git baseline available (no commits or not a git repository) — reading entire working tree` and treat every file currently in the working tree as the changed-file set (excluding `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`).
 
 3. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These are your ground truth — what was promised, what approach was approved.
 
