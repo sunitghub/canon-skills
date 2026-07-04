@@ -32,10 +32,29 @@ second_id="$("$TKT" create "Second ticket")"
 assert_eq "$second_id" "$(tr -d '[:space:]' < .tickets/ACTIVE)"
 assert_grep "^status: in_progress$" ".tickets/$second_id/ticket.md"
 
-close_output="$("$TKT" close "$second_id")"
+no_flag_output="$(run_fail "$TKT" close "$second_id")"
+assert_contains "$no_flag_output" "has no sprint docs"
+assert_contains "$no_flag_output" "--no-sprint"
+assert_grep "^status: in_progress$" ".tickets/$second_id/ticket.md"
+
+close_output="$("$TKT" close "$second_id" --no-sprint)"
 assert_contains "$close_output" "$second_id: closed"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after closing active ticket"
 assert_grep "^status: closed$" ".tickets/$second_id/ticket.md"
+
+# A ticket with sprint docs refuses close without --no-sprint, pointing to sprint complete
+sprint_id="$("$TKT" create "Ticket with sprint docs")"
+mkdir -p ".tickets/$sprint_id"
+: > ".tickets/$sprint_id/acceptance.md"
+: > ".tickets/$sprint_id/plan.md"
+sprint_docs_output="$(run_fail "$TKT" close "$sprint_id")"
+assert_contains "$sprint_docs_output" "has sprint docs"
+assert_contains "$sprint_docs_output" "sprint complete"
+assert_grep "^status: open$" ".tickets/$sprint_id/ticket.md"
+
+force_close_output="$("$TKT" close "$sprint_id" --no-sprint)"
+assert_contains "$force_close_output" "$sprint_id: closed"
+assert_grep "^status: closed$" ".tickets/$sprint_id/ticket.md"
 
 "$TKT" start "$id" >/dev/null
 assert_eq "$id" "$(tr -d '[:space:]' < .tickets/ACTIVE)"

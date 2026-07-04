@@ -357,7 +357,7 @@ cmd_complete() {
   _gate_plan_signoff        "$id" "$tdir/plan.md"        || exit 1
   _gate_eval_report         "$id" "$tdir"                || exit 1
 
-  "$TKT_BIN" close "$id"
+  TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   echo "Sprint completed: $id"
 }
 

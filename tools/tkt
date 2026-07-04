@@ -195,6 +195,42 @@ cmd_set_status() {
   printf "%s: %s\n" "$id" "$new_status"
 }
 
+cmd_close() {
+  local id="" no_sprint=false
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --no-sprint) no_sprint=true; shift ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *)  [[ -z "$id" ]] && id="$1"; shift ;;
+    esac
+  done
+
+  [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
+
+  local file
+  file="$(find_ticket "$id")"
+  id="$(get_field "$file" id)"
+
+  if [[ "${TKT_SPRINT_GATE_PASSED:-}" != "1" && "$no_sprint" != true ]]; then
+    local tdir
+    tdir="$(tickets_dir)/$id"
+    if [[ -f "$tdir/acceptance.md" || -f "$tdir/plan.md" ]]; then
+      echo "Error: $id has sprint docs in $tdir." >&2
+      echo "Close it with 'sprint complete', which validates acceptance criteria and plan sign-off first." >&2
+      echo "To force-close without those checks, run: tkt close $id --no-sprint" >&2
+      exit 1
+    else
+      echo "Error: $id has no sprint docs." >&2
+      echo "If this needs review, run 'sprint start $id' first." >&2
+      echo "If this is a genuine doc-less/backlog ticket, run: tkt close $id --no-sprint" >&2
+      exit 1
+    fi
+  fi
+
+  cmd_set_status "$id" closed
+}
+
 cmd_ls() {
   local status_filter=""
 
@@ -349,7 +385,10 @@ Commands:
     -t, --type              Type (bug|feature|task|epic|chore) [default: task]
     -p, --priority          Priority 0-4, 0=highest [default: 2]
   start <id>                Set status to in_progress and mark ACTIVE
-  close <id>                Set status to closed and clear ACTIVE if matched
+  close <id> [--no-sprint]  Set status to closed and clear ACTIVE if matched.
+                            Refuses by default — use 'sprint complete' if the
+                            ticket has sprint docs, or pass --no-sprint to
+                            force-close a doc-less/backlog ticket directly.
   archive <id>              Set status to archived (hidden from board columns, searchable)
   current                   Show active ticket
   reopen <id>               Set status to open
@@ -370,7 +409,7 @@ main() {
   case "$cmd" in
     create)         cmd_create "$@" ;;
     start)          cmd_set_status "${1:-}" in_progress ;;
-    close)          cmd_set_status "${1:-}" closed ;;
+    close)          cmd_close "$@" ;;
     archive)        cmd_set_status "${1:-}" archived ;;
     current)        cmd_current ;;
     reopen)         cmd_set_status "${1:-}" open ;;

@@ -369,7 +369,7 @@ mkdir -p nested/deeper
   [[ -f "../../.tickets/$nested_id/ticket.md" ]] || fail "expected nested sprint to use project .tickets"
 )
 # Clean up ACTIVE left by the nested sprint (it wasn't completed in the subshell)
-[[ -f .tickets/ACTIVE ]] && "$TKT" close "$(cat .tickets/ACTIVE)" >/dev/null
+[[ -f .tickets/ACTIVE ]] && "$TKT" close "$(cat .tickets/ACTIVE)" --no-sprint >/dev/null
 
 # sprint start <existing-id> works the existing ticket directly — no child created
 existing_id="$("$TKT" create "pre-existing backlog ticket" -t task -p 3)"
@@ -381,7 +381,7 @@ assert_file_exists ".tickets/$existing_id/plan.md"
 assert_file_exists ".tickets/$existing_id/acceptance.md"
 [[ "$ticket_count_after" -eq "$ticket_count_before" ]] || fail "sprint start <id> must not create a new ticket (before: $ticket_count_before, after: $ticket_count_after)"
 assert_grep "^status: in_progress$" ".tickets/$existing_id/ticket.md"
-"$TKT" close "$existing_id" >/dev/null   # clear ACTIVE without needing acceptance sign-off
+"$TKT" close "$existing_id" --no-sprint >/dev/null   # clear ACTIVE without needing acceptance sign-off
 
 # partial ID resolution
 partial_ticket_id="$("$TKT" create "partial id test ticket" -t task -p 3)"
@@ -389,4 +389,4 @@ partial="${partial_ticket_id#t-}"
 partial="${partial:0:3}"
 partial_output="$("$SPRINT" start "$partial")"
 assert_contains "$partial_output" "Sprint started: $partial_ticket_id"
-"$TKT" close "$partial_ticket_id" >/dev/null
+"$TKT" close "$partial_ticket_id" --no-sprint >/dev/null
