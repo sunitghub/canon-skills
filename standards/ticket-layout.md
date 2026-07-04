@@ -77,7 +77,7 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | `research.md` | `sprint start` step 6 (normal, brief) or step 7 (high-risk/brownfield, full orient) | no — sprint doesn't gate on it, but expected before `## Approach` is drafted | Objective truth compression: relevant files, system model, constraints, unknowns |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
-**Doc-less tickets** — tickets with no sprint docs are valid (e.g. backlog items, tasks that don't need a sprint). The board renders the ticket body in the modal instead of doc tabs.
+**Doc-less tickets** — tickets with no sprint docs are valid (e.g. backlog items, tasks that don't need a sprint), but closing one requires an explicit `tkt close <id> --no-sprint` — there is no silent default. The board renders the ticket body in the modal instead of doc tabs.
 
 ## Board Rendering Rules
 
@@ -102,5 +102,5 @@ The board (`sprint-check-app`) derives all rendering from the ticket JSON produc
 
 - `tkt` owns `ticket.md` — fields are written only via `tkt create`, `tkt start`, `tkt close`, `tkt reopen`. Agents must not edit `ticket.md` frontmatter directly.
 - Sprint docs are agent-owned — the agent creates and edits `acceptance.md`, `plan.md`, `research.md`, `summary.md`.
-- Closed tickets — `sprint complete` runs `tkt close`, which sets `status: closed` and removes `ACTIVE`. Sprint docs become read-only on the board. The agent must not reopen a ticket after close without explicit user instruction.
+- Closed tickets — `sprint complete` runs `tkt close` internally (its own gates already passed). A bare `tkt close <id>` refuses unless `--no-sprint` is passed: it errors toward `sprint complete` if sprint docs exist, or toward `sprint start`/`--no-sprint` if they don't. This sets `status: closed` and removes `ACTIVE`. Sprint docs become read-only on the board. The agent must not reopen a ticket after close without explicit user instruction.
 - ACTIVE file — `.tickets/ACTIVE` contains exactly one ticket ID when a sprint is in progress. `tkt start` writes it; `tkt close` removes it. Only one sprint may be active at a time.

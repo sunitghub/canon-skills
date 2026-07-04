@@ -20,7 +20,7 @@ tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
 tkt start <id>                # mark in_progress
 tkt current                   # show active ticket
-tkt close <id>                # mark closed
+tkt close <id> [--no-sprint]  # mark closed (refuses without --no-sprint if the ticket has sprint docs or was never started via sprint)
 tkt archive <id>              # mark archived (hidden from board, searchable)
 tkt reopen <id>               # reopen
 tkt show <id>                 # show full ticket
@@ -45,6 +45,11 @@ was planned.
 
 Use `sprint complete` for sprint work. It validates required sprint files and
 acceptance checkboxes before closing the active ticket.
+
+`tkt close <id>` on its own refuses to close: it directs you to `sprint complete`
+if the ticket has sprint docs, or to `sprint start`/`--no-sprint` if it doesn't.
+Genuinely doc-less/backlog tickets, or a sprint being deliberately abandoned
+without completing it, close via the explicit `tkt close <id> --no-sprint`.
 
 ## Agent Workflow
 
