@@ -74,7 +74,7 @@ Read `skills/sprint/reference/start.md` for the full protocol (steps 1-11).
 
 ## sprint complete
 
-Read `skills/sprint/reference/complete.md` for the full protocol (trigger, confirmation, steps 1-9).
+Read `skills/sprint/reference/complete.md` for the full protocol (trigger, confirmation, steps 1-10).
 
 ## Planning files
 
@@ -82,7 +82,7 @@ Canonical layout:
 ```
 .tickets/<id>/
   ticket.md        ← tkt-managed; never edit status directly — valid values: open, in_progress, closed, cancelled
-  acceptance.md    ← definition of done + test plan + ## QA (Tested locally); all three sections, including the QA checkbox, are created empty at sprint start and block close if left unchecked
+  acceptance.md    ← definition of done + test plan + ## QA (Tested locally); all three sections are seeded at sprint start with an unchecked box, which blocks close if left unchecked
   plan.md          ← approach, decisions, grill/impact sections for high-risk; ## Sign-off skeleton (with an unchecked approval box) is created at sprint start, filled in and checked on approval, re-read after compaction
   research.md      ← objective truth compression, written before ## Approach; brief bullets for normal-tier, full orient protocol for high-risk/brownfield
   summary.md       ← plan-vs-actual table; written at sprint complete

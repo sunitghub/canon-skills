@@ -212,7 +212,7 @@ Choose the lightest tier that still protects the work:
 
 | Tier | When | Overhead |
 |---|---|---|
-| **Trivial** | Single-line fix, rename, typo | No sprint — work directly |
+| **Trivial** | Single-line fix, rename, typo (never a new file, test/build wiring, hook/pipeline edit, or coordinated multi-file intent) | No sprint — work directly |
 | **Normal** | Focused reversible change | Ticket + `acceptance.md` + `plan.md` + brief `research.md` |
 | **High-risk** | Auth, payments, migrations, broad blast radius | Full: orient, impact analysis, full `research.md`, human checkpoint |
 

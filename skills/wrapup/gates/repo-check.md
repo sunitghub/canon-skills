@@ -58,7 +58,9 @@ documentation, setup, or agent behavior.
    `./tools/canon-dev.sh catalog` and include `CATALOG.md` if it changed.
 
 8. **Syntax checks.** Run cheap structural checks for changed executable files:
-   `bash -n` for shell scripts, `python3 -m py_compile` for Python files.
+   `bash -n` for shell scripts. For Python files, run `python3 -m py_compile` only if `command -v python3`
+   succeeds — some target machines (e.g. Windows without a real Python install, per `t-f04f`) have no
+   working `python3`; report the check as skipped with that reason rather than failing the gate.
 
 ## Report
 

@@ -18,10 +18,11 @@
       "id": 2,
       "case_type": "compliance",
       "prompt": "Run wrapup. The session only changed README.md \u2014 a single sentence was reworded. No code was modified.",
-      "expected_output": "The skill skips code-simplifier and code-reviewer (doc-only change), skips security-review, skips repo-check (no workflow/tools/skills changed), and runs doc-audit. It explains the skip reason for each skipped gate.",
+      "expected_output": "The skill skips code-simplifier and code-reviewer (doc-only change) and skips security-review, but runs repo-check (README is an in-scope trigger per repo-check's own scope) and runs doc-audit. It explains the skip reason for each skipped gate.",
       "expectations": [
         "Skips code-simplifier with a stated reason",
         "Skips code-reviewer with a stated reason",
+        "Runs or describes running repo-check because README changed",
         "Runs or describes running doc-audit",
         "States a skip reason for each skipped gate, not just silently omits them"
       ]
