@@ -8,7 +8,7 @@
 
 Wait for explicit confirmation. Do not proceed if the trigger came from a broad instruction like "resume", "continue", or "finish" without the user specifically approving closeout. The cost of an unwanted close is high; the cost of asking is zero.
 
-1. **Wrapup.** Read `skills/wrapup/SKILL.md`, then run the wrapup pipeline on files modified since sprint start.
+1. **Wrapup.** Read `skills/wrapup/SKILL.md`, then run the wrapup pipeline on files modified since sprint start. Note: `wrapup`'s memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session" — if the sprint spans multiple sessions, files from earlier sessions won't be re-checked by those two gates. The git-derived gates (reviewer, security-review, evaluator) are unaffected since they diff against `origin/main`, covering the full sprint regardless of session boundaries.
    After assessing each gate, append a
    `## Wrapup Gates` section to `acceptance.md` recording every gate's outcome:
 
@@ -44,9 +44,12 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    `review → Opus` default, scoped only to the two close-gate dispatches below. Before dispatching
    the reviewer or evaluator, compute changed files via
    `git diff --name-only $(git merge-base HEAD origin/main) HEAD` (the same command the reviewer
-   prompt uses). If that command returns an empty list (e.g. `origin/main` missing, detached HEAD),
-   treat it as normal cost, never low-risk — an empty list is not evidence of low risk, it means the
-   check couldn't run. Otherwise, classify low-risk only if every changed path matches an
+   prompt uses). Check `git merge-base HEAD origin/main`'s exit status directly — if it fails
+   (`origin/main` missing, detached HEAD, or no git baseline at all), treat it as normal cost, never
+   low-risk. Don't infer this from an empty diff-output list: a failed `merge-base` substitution can
+   still leave the outer `git diff` command running against a different, non-empty baseline, so an
+   empty list is neither guaranteed nor evidence of low risk either way — only the exit status is
+   reliable. Otherwise, classify low-risk only if every changed path matches an
    allowlist — `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`,
    `skills/**/gates/*.md`, `standards/**/*.md`, or a root-level `*.md` — AND no path name contains a security-sensitive
    marker (`auth`, `secret`, `session`, `crypto`, `token`, `credential`) — a deliberately narrow
@@ -77,7 +80,9 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    table's `(model: <model>)` suffix.
 
    **Reviewer gate (normal+ tier).** Skip for trivial tier only — meaning `plan.md`'s `## Sign-off`
-   line reads `Tier: trivial`. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers
+   section contains `Tier: trivial` (the gate scopes its check to that section only, so the phrase
+   appearing elsewhere in `plan.md` — e.g. prose discussing the decision — never triggers the skip).
+   A sprint always starts as normal or high-risk (`SKILL.md`'s tiers
    never let genuinely trivial work start a sprint at all), but a sprint can be *downgraded* to
    trivial mid-flight if grill or impact analysis reveals the real change is a one-liner with no
    coordinated multi-file intent — write `Tier: trivial` and a one-line reason in `## Sign-off` if
@@ -105,8 +110,8 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    timestamp is what makes the evaluator's anti-gaming check meaningful.
 
 2. **Evaluator review (normal+ tier).** Same `Tier: trivial` downgrade condition and exclusion as
-   the reviewer gate above (skip only if `plan.md`'s `## Sign-off` line reads `Tier: trivial`, which
-   can never apply to `SKILL.md`'s four categorical not-trivial triggers). For normal and high-risk
+   the reviewer gate above (skip only if `plan.md`'s `## Sign-off` section contains `Tier: trivial`,
+   which can never apply to `SKILL.md`'s four categorical not-trivial triggers). For normal and high-risk
    sprints, always spawn a freshly invoked Agent subagent for the evaluator review, per the shared
    gate mechanics above.
 

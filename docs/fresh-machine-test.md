@@ -141,7 +141,7 @@ On headless Linux, the URL is printed instead of auto-opened. `curl -s http://12
 
 **Requires:** Claude Code installed and authenticated (`claude login`).
 
-This is the only step that validates the agent layer: hooks firing, `sprint start` producing a real brief, `sprint complete` running the wrapup pipeline. The CLI suite above validates none of this.
+This is the only step that validates the agent layer: `sprint start` producing a real brief, `sprint complete` running the wrapup pipeline, and the git-native pre-commit hook blocking before commit. The CLI suite above validates none of this.
 
 Follow [examples/canon-todo-walkthrough/](../examples/canon-todo-walkthrough/README.md) end to end in your test project. Key things to confirm:
 
