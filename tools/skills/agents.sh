@@ -41,6 +41,38 @@ skills_table_upsert() {
   fi
 }
 
+# Claude Code reads CLAUDE.md natively, not AGENTS.md — without this bridge,
+# a project that only ever runs `skills.sh add` gets a fully-populated
+# AGENTS.md that Claude Code itself never loads. Creating a missing CLAUDE.md
+# is silent (mirrors AGENTS.md's own auto-create); appending to an existing
+# one prompts first, since that file may carry real hand-authored content.
+ensure_claude_bridge() {
+  local project_dir="$1"
+  local claude_file="$project_dir/CLAUDE.md"
+  local import_line="@AGENTS.md"
+
+  if [ ! -f "$claude_file" ]; then
+    echo "$import_line" > "$claude_file"
+    echo "  [CLAUDE.md]  created with @AGENTS.md import"
+    return 0
+  fi
+
+  if grep -qxF "$import_line" "$claude_file"; then
+    return 0
+  fi
+
+  if ! { : <> /dev/tty; } 2>/dev/null; then
+    echo "  [CLAUDE.md]  exists without @AGENTS.md — Claude Code won't see canon skill instructions until you add it: echo '$import_line' >> $claude_file"
+    return 0
+  fi
+  printf "CLAUDE.md exists but doesn't import AGENTS.md — Claude Code won't see canon skills otherwise. Add '@AGENTS.md'? [y/N] (auto-skips in 15s) " > /dev/tty
+  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
+  if [[ "$answer" =~ ^[Yy]$ ]]; then
+    { echo ""; echo "$import_line"; } >> "$claude_file"
+    echo "  [CLAUDE.md]  added @AGENTS.md import" > /dev/tty
+  fi
+}
+
 # Strip the whole AI-SKILLS block (plus its leading separator blank line) once
 # its last data row is gone, so add/remove round-trips back to the original file.
 skills_table_prune_if_empty() {

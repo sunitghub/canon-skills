@@ -162,6 +162,7 @@ cmd_add() {
       echo "  [AGENTS.md]  added @-import"
     fi
     skills_table_upsert "$inject_target" "$name" "| $name | $category | $skill_file |"
+    ensure_claude_bridge "$project_dir"
     register_project "$project_dir"
     echo ""
     echo "Done. $desc"
@@ -181,6 +182,7 @@ cmd_add() {
   local skill_row="| $name | $category | $skill_file |"
 
   skills_table_upsert "$agents_file" "$name" "$skill_row"
+  ensure_claude_bridge "$project_dir"
   _init_claude "$project_dir/.claude/settings.json" 2>/dev/null || true
 
   echo ""

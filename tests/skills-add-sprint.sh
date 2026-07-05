@@ -94,4 +94,63 @@ assert_count 1 "$second_project" "$projects_file"
 "$SKILLS" remove sprint "$second_project" >/dev/null
 [[ ! -f "$projects_file" ]] || fail "expected missing project registry to remain absent"
 
+# --- CLAUDE.md <-> AGENTS.md bridge (ensure_claude_bridge) ---
+
+# Fresh project, no CLAUDE.md at all: add creates it with @AGENTS.md.
+bridge_project="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project"' EXIT
+"$SKILLS" add sprint "$bridge_project" >/dev/null
+assert_file_exists "$bridge_project/CLAUDE.md"
+assert_eq "@AGENTS.md" "$(cat "$bridge_project/CLAUDE.md")"
+
+# Re-add is idempotent — no duplicate import, file unchanged.
+"$SKILLS" add sprint "$bridge_project" >/dev/null
+assert_count 1 "@AGENTS.md" "$bridge_project/CLAUDE.md"
+
+# Existing CLAUDE.md that already has @AGENTS.md: byte-identical after add.
+bridge_project2="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2"' EXIT
+printf '@AGENTS.md\n' > "$bridge_project2/CLAUDE.md"
+before_hash="$(md5sum "$bridge_project2/CLAUDE.md" | cut -d' ' -f1)"
+"$SKILLS" add sprint "$bridge_project2" >/dev/null
+after_hash="$(md5sum "$bridge_project2/CLAUDE.md" | cut -d' ' -f1)"
+assert_eq "$before_hash" "$after_hash"
+
+# Non-interactive (test harness has no tty): existing CLAUDE.md without
+# @AGENTS.md must be left untouched, no hang.
+bridge_project3="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3"' EXIT
+printf '# Custom instructions\n' > "$bridge_project3/CLAUDE.md"
+"$SKILLS" add sprint "$bridge_project3" >/dev/null
+assert_eq "$(printf '# Custom instructions\n')" "$(cat "$bridge_project3/CLAUDE.md")"
+
+# Real interactive add (simulated tty via python3's pty.fork): answering y appends the import.
+run_with_tty() {
+  python3 - "$1" "$2" <<'PYEOF'
+import os, pty, sys, time
+
+cmd, answer = sys.argv[1], sys.argv[2]
+pid, master = pty.fork()
+if pid == 0:
+    os.execvp("/bin/bash", ["/bin/bash", "-c", cmd])
+else:
+    time.sleep(0.5)
+    os.write(master, (answer + "\n").encode())
+    try:
+        while True:
+            if not os.read(master, 4096):
+                break
+    except OSError:
+        pass
+    os.waitpid(pid, 0)
+PYEOF
+}
+
+bridge_project4="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4"' EXIT
+printf '# Custom instructions\n' > "$bridge_project4/CLAUDE.md"
+run_with_tty "'$SKILLS' add sprint '$bridge_project4'" "y"
+assert_count 1 "@AGENTS.md" "$bridge_project4/CLAUDE.md"
+assert_contains "$(cat "$bridge_project4/CLAUDE.md")" "# Custom instructions"
+
 printf 'skills-add-sprint: ok\n'
