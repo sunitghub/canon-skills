@@ -120,3 +120,4 @@ To repair symlinks after an upgrade:
 ```bash
 skills.sh refresh /path/to/your-project
 ```
+<!-- test comment 1783268728 -->
