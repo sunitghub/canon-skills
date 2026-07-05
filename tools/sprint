@@ -243,10 +243,11 @@ _gate_no_unchecked() {
 
 _gate_plan_signoff() {
   local id="$1" plan="$2"
-  # Trivial-tier sprints skip the sign-off gate — scoped to ## Sign-off only,
-  # so "tier: trivial" appearing elsewhere in plan.md (e.g. prose discussing
-  # the decision) can't accidentally trigger the skip.
-  if _acceptance_section "Sign-off" "$plan" 2>/dev/null | grep -qiE 'tier[[:space:]]*:?[[:space:]]*\*{0,2}trivial'; then
+  # Trivial-tier sprints skip the sign-off gate — anchored to the Tier: field
+  # itself (line-start match), so "tier: trivial" appearing in free text
+  # elsewhere in ## Sign-off (e.g. a Risk: one-liner discussing the decision)
+  # can't accidentally trigger the skip.
+  if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then
     return 0
   fi
   if ! grep -q "^## Sign-off" "$plan"; then
@@ -283,10 +284,10 @@ _gate_plan_content() {
 _gate_eval_report() {
   local id="$1" tdir="$2"
   local plan="$tdir/plan.md" report="$tdir/eval-report.md"
-  # Trivial-tier sprints skip the evaluator — check ## Sign-off only, same
-  # scoping as _gate_plan_signoff, so this can't be skipped by a stray
-  # "tier: trivial" mention elsewhere in plan.md.
-  if _acceptance_section "Sign-off" "$plan" 2>/dev/null | grep -qiE 'tier[[:space:]]*:?[[:space:]]*\*{0,2}trivial'; then
+  # Trivial-tier sprints skip the evaluator — same field-anchored check as
+  # _gate_plan_signoff, so this can't be skipped by a stray "tier: trivial"
+  # mention in free text elsewhere in plan.md.
+  if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then
     return 0
   fi
   if [[ ! -f "$report" ]]; then

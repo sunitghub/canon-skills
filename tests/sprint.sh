@@ -258,6 +258,29 @@ EOF
 stray_trivial_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$stray_trivial_output" "## Sign-off has unchecked items"
 
+# "tier: trivial" mentioned in ## Sign-off's own free-text Risk field (not
+# the Tier: field's value) must not trigger the skip either — regression for
+# a narrower bug where the fix above only scoped to the section, but the
+# regex still matched anywhere within it instead of the Tier: field itself.
+cat > ".tickets/$id/plan.md" <<'EOF'
+# Plan
+
+## Sign-off
+
+Tier: normal | Risk: this is not tier: trivial since it touches multiple files
+
+- [ ] Plan approved — proceed to implementation
+
+## Approach
+Add _gate_plan_signoff to tools/sprint.
+
+## Files
+- tools/sprint
+EOF
+
+risk_field_trivial_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$risk_field_trivial_output" "## Sign-off has unchecked items"
+
 # Sign-off checked — gate passes, eval gate fires next
 cat > ".tickets/$id/plan.md" <<'EOF'
 # Plan

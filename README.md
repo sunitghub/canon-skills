@@ -144,7 +144,7 @@ Creates a ticket, defines acceptance criteria, and writes the plan before touchi
 
 **`sprint complete`** — Block close until every box is checked.
 
-Runs the close path: simplify → code-review → security → repo/doc audit → **reviewer** (fresh subagent, advisory) → **evaluator** (fresh subagent, binding) → acceptance check → close. The evaluator — Read and Bash tools only, no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` before grading; the CLI blocks close if the field is absent or the verdict isn't `pass`. A fail or partial verdict also blocks close.
+Runs the close path: simplify → code-review → security → repo/doc audit → **reviewer** (fresh subagent, advisory) → **evaluator** (fresh subagent, binding) → acceptance check → close. The evaluator — Read and Bash tools only, no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` before grading; the CLI blocks close if the field is absent or the verdict isn't `pass`. Any `partial` criterion forces the verdict to `fail` — there's no separate non-blocking `partial` verdict — and either blocks close the same way.
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
