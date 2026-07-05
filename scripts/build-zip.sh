@@ -22,7 +22,12 @@ if [[ -d "$FIXTURE_DIR" ]]; then
   mkdir -p "$FIXTURE_STAGE"
   cp -r "$FIXTURE_DIR" "$FIXTURE_STAGE/context-check-fixture"
   find "$FIXTURE_STAGE" \( -name ".DS_Store" -o -name "*.pyc" \) -delete 2>/dev/null || true
-  (cd "$FIXTURE_STAGE" && zip -r "$FIXTURE_ZIP" "context-check-fixture" --quiet)
+  # zip embeds file mtimes, so identical content produces different bytes
+  # every rebuild (staging always re-copies with a fresh mtime) — normalize
+  # to a fixed timestamp so unchanged source content yields a byte-identical
+  # zip, and the post-commit hook stops committing a spurious "changed" zip.
+  find "$FIXTURE_STAGE" -exec touch -t 202001010000 {} +
+  (cd "$FIXTURE_STAGE" && zip -rX "$FIXTURE_ZIP" "context-check-fixture" --quiet)
   echo "dist: context-check-fixture.zip updated ($(du -sh "$FIXTURE_ZIP" | cut -f1))"
 else
   echo "Error: fixture dir not found: $FIXTURE_DIR" >&2
