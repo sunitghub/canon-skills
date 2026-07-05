@@ -2,7 +2,7 @@
 
 **Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any normal/high-risk request to add, fix, update, debug, implement, or build something.
 
-1. **Ticket and context.** Read `tools/ticket.md`, then run `sprint start "<title>"`. It creates/starts the
+1. **Ticket and context.** Read `tools/ticket.md` — inside the canon repo itself this is a plain relative path; inside a consumer project (skills installed via `skills.sh add`) `tools/` isn't symlinked in, so find it via `command -v sprint`'s containing directory instead, since `ticket.md` is a sibling of `sprint` there. Then run `sprint start "<title>"`. It creates/starts the
    ticket, records it as active, ensures `DECISIONS.md` and `HANDOFF.md` exist, and seeds
    `acceptance.md`/`plan.md` skeletons (see Planning Files below) if they don't already exist.
 
@@ -24,7 +24,7 @@
      actively scan every entry: identify any that constrain or conflict with this sprint's
      request. A conflict is not a passive note — it must be surfaced in the brief and
      resolved by the user before any implementation proceeds.
-   - Read `tools/handoff.md`, then: `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
+   - Read `tools/handoff.md` (same resolution as step 1's `tools/ticket.md` — plain relative path in canon itself, or via `command -v sprint`'s directory in a consumer project), then: `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
    - Active sprint files
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold
 
