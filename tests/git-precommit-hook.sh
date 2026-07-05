@@ -67,6 +67,31 @@ set -e
 [[ "$block_rc" -ne 0 ]] || fail "expected commit to be blocked"
 assert_contains "$block_output" "BLOCKED — ticket closed by direct file edit"
 
+# ── Behavior: does NOT block a never-before-committed ticket closed by sprint complete ──
+(
+  cd "$behavior_project"
+  # Clean up t-test1's still-staged edit left behind by the blocked commit above —
+  # a failed pre-commit hook does not unstage the index.
+  git reset -q HEAD -- .tickets/t-test1/ticket.md
+  git checkout -q -- .tickets/t-test1/ticket.md
+  mkdir -p .tickets/t-test2
+  cat > .tickets/t-test2/ticket.md <<'EOF'
+---
+id: t-test2
+status: closed
+---
+# test2
+EOF
+  git add .tickets/t-test2/ticket.md
+)
+
+set +e
+firstcommit_output="$(cd "$behavior_project" && git -c user.email=t@t.com -c user.name=t commit -m "close via sprint complete" 2>&1)"
+firstcommit_rc=$?
+set -e
+[[ "$firstcommit_rc" -eq 0 ]] || fail "expected first-ever commit of an already-closed ticket to succeed: $firstcommit_output"
+[[ "$firstcommit_output" != *"BLOCKED"* ]] || fail "expected no BLOCKED message for a never-before-committed ticket: $firstcommit_output"
+
 # ── Non-git project: skip cleanly ───────────────────────────────────────────
 nogit_project="$(mktemp -d)"
 trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$nogit_project"' EXIT

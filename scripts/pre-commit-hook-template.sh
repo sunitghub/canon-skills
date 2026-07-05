@@ -8,6 +8,12 @@ GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 DIRECT_CLOSE=""
 DIRECT_OPEN=""
 while IFS= read -r ticket_file; do
+  # Skip tickets with no prior committed version — a never-before-committed file
+  # shows its entire content as added lines, so this check can't distinguish a
+  # legitimate sprint-complete close (done before the file's first commit) from
+  # a hand-edit bypass. Other layers (tkt close's own refusal, the CLI's
+  # structural gates) remain the primary defense for that narrower case.
+  git cat-file -e "HEAD:$ticket_file" 2>/dev/null || continue
   ticket_diff=$(git diff --cached -- "$ticket_file" 2>/dev/null)
   echo "$ticket_diff" | grep -q "^+status: closed"      && DIRECT_CLOSE=1
   echo "$ticket_diff" | grep -q "^+status: in_progress" && DIRECT_OPEN=1
