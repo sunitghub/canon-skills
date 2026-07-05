@@ -300,31 +300,21 @@ _gate_eval_report() {
   run_epoch="$(echo "$run_id" | cut -d'-' -f1)"
   jsonl="$(project_root)/.claude/subagent-runs.jsonl"
   if [[ -f "$jsonl" && "$run_epoch" =~ ^[0-9]+$ ]]; then
-    local matched
-    matched="$(python3 - "$jsonl" "$run_epoch" <<'PYEOF'
-import sys, json, datetime
-log_path, run_epoch = sys.argv[1], int(sys.argv[2])
-matched = False
-try:
-    with open(log_path) as f:
-        for line in f:
-            line = line.strip()
-            if not line: continue
-            try:
-                d = json.loads(line)
-                ts = d.get('ts', '')
-                if not ts: continue
-                entry_epoch = int(datetime.datetime.strptime(ts, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=datetime.timezone.utc).timestamp())
-                if abs(entry_epoch - run_epoch) <= 3600:
-                    matched = True
-                    break
-            except Exception:
-                pass
-except Exception:
-    pass
-print('1' if matched else '0')
-PYEOF
-)"
+    local matched=0 line ts entry_epoch diff
+    while IFS= read -r line; do
+      [[ -z "$line" ]] && continue
+      ts="$(printf '%s' "$line" | grep -o '"ts"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')"
+      [[ -z "$ts" ]] && continue
+      [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
+      entry_epoch="$(date -u -d "$ts" +%s 2>/dev/null || date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null)" || continue
+      [[ "$entry_epoch" =~ ^[0-9]+$ ]] || continue
+      diff=$(( entry_epoch - run_epoch ))
+      (( diff < 0 )) && diff=$(( -diff ))
+      if (( diff <= 3600 )); then
+        matched=1
+        break
+      fi
+    done < "$jsonl"
     if [[ "$matched" != "1" ]]; then
       echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no matching subagent entry in .claude/subagent-runs.jsonl (±60 min window)."
       echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
