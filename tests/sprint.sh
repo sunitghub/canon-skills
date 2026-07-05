@@ -237,6 +237,27 @@ EOF
 unchecked_signoff_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$unchecked_signoff_output" "## Sign-off has unchecked items"
 
+# "tier: trivial" mentioned in ## Approach prose (not ## Sign-off) must not
+# trigger the trivial-tier skip — regression for a bug where the gate
+# grepped the whole plan.md instead of scoping to ## Sign-off.
+cat > ".tickets/$id/plan.md" <<'EOF'
+# Plan
+
+## Sign-off
+
+- [ ] Plan approved — proceed to implementation
+
+## Approach
+We considered tier: trivial but rejected it — this touches multiple files
+with coordinated intent.
+
+## Files
+- tools/sprint
+EOF
+
+stray_trivial_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$stray_trivial_output" "## Sign-off has unchecked items"
+
 # Sign-off checked — gate passes, eval gate fires next
 cat > ".tickets/$id/plan.md" <<'EOF'
 # Plan
