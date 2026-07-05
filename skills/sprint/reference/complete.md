@@ -98,8 +98,8 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not blocking** — surface findings to the user, record them in `review-notes.md`, then continue. The evaluator (step 2) owns the binding gate. Record the reviewer outcome in the Wrapup Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
    **Log the subagent run.** Immediately after the reviewer subagent completes, run
-   `tools/subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type reviewer`
-   from the project root. This feeds the same `.claude/subagent-runs.jsonl` audit trail the
+   `subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type reviewer`
+   (bare — it's on PATH, same as `sprint`/`tkt`). This feeds the same `.claude/subagent-runs.jsonl` audit trail the
    evaluator gate (step 2) checks — required now that no `SubagentStop` hook does this
    automatically. Do not skip even though the reviewer itself is advisory; the log entry's
    timestamp is what makes the evaluator's anti-gaming check meaningful.
@@ -122,8 +122,8 @@ Wait for explicit confirmation. Do not proceed if the trigger came from a broad 
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
    **Log the subagent run.** Immediately after the evaluator subagent completes, run
-   `tools/subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type evaluator`
-   from the project root, before reading `eval-report.md`. `tools/sprint complete`'s close
+   `subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type evaluator`
+   (bare — it's on PATH, same as `sprint`/`tkt`), before reading `eval-report.md`. `sprint complete`'s close
    gate (`_gate_eval_report`) hard-fails if `.claude/subagent-runs.jsonl` exists but has no
    entry within ±60 minutes of the `evaluator-run-id` the evaluator wrote — this CLI call is
    what satisfies that check now that no hook does it automatically. Skipping it risks a
