@@ -45,7 +45,7 @@ Before running each step, assess the change and skip if the criteria apply. When
 - No repo workflow, setup, docs, skills, standards, scripts, or tools changed
 
 ### Skip doc-audit if:
-- No user-facing docs changed — matches `doc-audit/SKILL.md`'s own scope: README, `guides/`, `examples/**/*.md`, `docs/*.md`, `tools/*.md`, or skill descriptions
+- No user-facing docs changed and no skill/standards frontmatter changed — matches `doc-audit/SKILL.md`'s own scope: README, `guides/`, `examples/**/*.md`, `docs/*.md`, `tools/*.md`, or `description`/`summary` frontmatter in `skills/*.md`/`standards/*.md`
 
 
 

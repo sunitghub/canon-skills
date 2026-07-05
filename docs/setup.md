@@ -49,8 +49,9 @@ Removes the git-native `.git/hooks/pre-commit` entry it installed, the Pi handof
 
 No hooks fire automatically for this — canon installs zero Claude Code hooks. `sprint start`'s
 context step explicitly reads `HANDOFF.md` at the start of a sprint; `wrapup`'s doc-refresh step
-explicitly updates it at close. Keep `HANDOFF.md` under 80 lines (checked at close time). Prune
-stale entries freely — git history preserves everything.
+explicitly updates it at close. Keep the content inside `HANDOFF.md`'s `<!-- canon:handoff:BEGIN/END -->`
+markers under 80 lines (checked at close time; content you add outside those markers isn't counted).
+Prune stale entries freely — git history preserves everything.
 
 ## Skill lifecycle
 

@@ -26,7 +26,7 @@ Simple work stays light. canon chooses the lightest tier that still protects the
 
 | Tier | When | What runs |
 |---|---|---|
-| **Trivial** | Single line, question, mechanical change | Work directly |
+| **Trivial** | Single line, question, mechanical change (never a new file, test/build wiring, hook/pipeline edit, or coordinated multi-file intent) | Work directly |
 | **Normal** | Focused, reversible change | ticket + acceptance + plan + brief research → build → wrapup + reviewer + evaluator |
 | **High-risk** | Security, irreversible ops, broad blast radius | Full pipeline: orient (parallel) + grill + impact analysis + required mitigation tests |
 
@@ -36,7 +36,7 @@ The agent that wrote the code is the worst possible reviewer of that code. canon
 
 1. `sprint complete` spawns a **fresh subagent** — Read and Bash only, no implementation history — to grade each acceptance criterion against the actual code.
 2. The evaluator writes a machine-generated `evaluator-run-id` before grading; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `subagent-log.sh` right after the subagent completes, making the field auditable.
-3. The CLI blocks close if the field is absent, the verdict isn't `pass` (a `fail` or `partial` verdict both block), or any acceptance box is unchecked.
+3. The CLI blocks close if the field is absent, the verdict isn't `pass` (any `partial` criterion forces the verdict to `fail` — there's no separate non-blocking `partial` verdict), or any acceptance box is unchecked.
 
 Same-context review reintroduces self-evaluation bias. The protocol fails closed when fresh-context evaluation is unavailable.
 
