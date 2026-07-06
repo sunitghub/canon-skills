@@ -25,7 +25,7 @@ Commit & Push belongs to `sprint complete`'s own step 10, not this pipeline — 
 
 ## Skip Logic
 
-**Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs (Commit & Push isn't part of this pipeline — see above). This global clause overrides every per-gate skip criterion below — e.g. a single-line rename inside `tools/` skips `repo-check` via this clause even though `repo-check`'s own criteria ("no tools changed") wouldn't otherwise justify it, since `tools/` did change.
+**Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs (Commit & Push isn't part of this pipeline — see above). This global clause overrides every per-gate skip criterion below — e.g. a single-line rename inside `tools/` skips `repo-check` via this clause even though `repo-check`'s own criteria ("no ... tools ... changed") wouldn't otherwise justify it, since `tools/` did change.
 
 Before each step, assess the change and skip if criteria apply. State why in one line — and which clause justified it (global override, or the gate's own criteria) when the two could seem to conflict.
 
