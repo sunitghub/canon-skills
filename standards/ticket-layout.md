@@ -73,7 +73,7 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | Doc | Created when | Required for close | Content |
 |---|---|---|---|
 | `acceptance.md` | `sprint start` | yes — `## Criteria` and `## Test Plan` each need ≥1 checklist item; `## Wrapup Gates` must exist | Definition of done, test plan, wrapup gate record |
-| `plan.md` | `sprint start` | yes — `## Approach` must have non-placeholder content | Approach, files, decisions; read after compaction |
+| `plan.md` | `sprint start` | yes — `## Approach` must have non-placeholder content; `## Sign-off` must exist with no unchecked items and at least one checked approval (skipped only if `Tier: trivial`) | Approach, files, decisions; read after compaction |
 | `research.md` | `sprint start` step 6 (normal, brief) or step 7 (high-risk/brownfield, full orient) | no — sprint doesn't gate on it, but expected before `## Approach` is drafted | Objective truth compression: relevant files, system model, constraints, unknowns |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
