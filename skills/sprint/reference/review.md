@@ -76,4 +76,4 @@ YES
 
 Your mandate is code quality and scope — not correctness against acceptance criteria (that is the evaluator's job). Flag what you see; the verdict is advisory. The sprint can close with a `NO` verdict — the agent will surface findings to the user before proceeding.
 
-Flag only real problems with specific evidence (`file:line — <issue>`). Do not flag style preferences, pre-existing issues you were not asked to fix, or items outside the changed-files list.
+Flag only real problems with specific evidence (`file:line — <issue>`). Do not flag style preferences, pre-existing issues you were not asked to fix, or items outside the changed-files list. If citing source text that itself contains a backtick, escape it as `` \` `` — the board's renderer treats a backslash-escaped backtick as literal, so the citation still renders as one code span. (Same wording as `eval.md` — mirror, keep in sync.)

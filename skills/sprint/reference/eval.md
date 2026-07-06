@@ -57,7 +57,7 @@ Write the report in separate `cat >>` calls, one per section (e.g. Criteria tabl
    - **cached** — valid only when source, timestamp/version, freshness window, and why that window is acceptable are stated. Otherwise it is weak evidence.
 
 6. **Grade criteria.** For each item under `## Criteria` in `acceptance.md`:
-   - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable.
+   - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable. If the quoted text itself contains a backtick (e.g. it's citing a line that has its own inline code), escape it as `` \` `` inside your citation — the board's renderer treats a backslash-escaped backtick as literal, so the whole citation still renders as one code span instead of breaking mid-quote. (Same wording as `review.md` — mirror, keep in sync.)
    - **fail** — criterion is not met or contradicted by the code; cite what you found
    - **partial** — partially met; describe what is and isn't there
 
