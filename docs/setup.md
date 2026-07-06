@@ -57,23 +57,7 @@ Prune stale entries freely — git history preserves everything.
 
 ## Skill lifecycle
 
-Order of operations for any new or edited skill:
-
-```
-Write SKILL.md
-      ↓
-./tools/canon-dev.sh lint     ← structure valid? (frontmatter, one-job, progressive disclosure)
-      ↓
-Write evals/evals.json        ← ≥3 cases: control + at least 2 other case types
-      ↓
-/skill-eval <name>            ← behavior correct? (executor + grader subagents)
-      ↓
-skills.sh add <name>          ← register for use
-```
-
-Fix lint failures before writing evals — a malformed skill may pass evals accidentally. If evals fail, fix the skill body, not the expectations (unless the expectation itself was wrong).
-
-Run evals before editing an existing skill to record a baseline pass rate. Keep the change only if pass rate holds or improves.
+See **[docs/agent-playbook.md → Skill lifecycle](agent-playbook.md#skill-lifecycle)** for the lint → eval → register order of operations.
 
 ## Reference
 
