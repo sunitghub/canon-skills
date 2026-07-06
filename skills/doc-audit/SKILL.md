@@ -19,7 +19,7 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 - `docs/*.md`
 - `examples/**/*.md`
 - `tools/*.md`
-- Skill frontmatter: `description` and `summary` fields across `skills/*.md` and `standards/*.md` — only if those paths exist in the current project
+- Skill frontmatter: `description` and `summary` fields across `skills/*/SKILL.md` and `standards/*.md` — only if those paths exist in the current project
 
 ## Steps
 
@@ -27,7 +27,7 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 
 2. Read `README.md`, `guides/*.md`, `docs/*.md`, `examples/**/*.md`, and `tools/*.md`. Note claims about features, behavior, and requirements.
 
-3. If `skills/` exists, read `description` and `summary` frontmatter in `skills/*.md` and `standards/*.md`; compare to each skill body.
+3. If `skills/` exists, read `description` and `summary` frontmatter in `skills/*/SKILL.md` and `standards/*.md`; compare to each skill body.
 
 4. Run these checks. Flag only high-confidence issues:
 
