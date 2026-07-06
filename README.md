@@ -238,7 +238,7 @@ Register canon in another project:
 ```
 
 - **[Full setup guide →](docs/setup.md)** — install, hook wiring, skill lifecycle, reference commands.
-- **[Production incident playbook →](docs/production-incident-playbook.md)** — Detect → Diagnose → Contain → Fix → Prevent. The five-stage protocol for when an AI agent misbehaves in production.
+- **[Production incident playbook →](docs/production-incident-playbook.md)** — Surface → Trace → Isolate → Resolve → Harden. The five-stage protocol for when an AI agent misbehaves in production.
 - **[Todo walkthrough →](examples/canon-todo-walkthrough)** — copy it to a disposable folder and walk the full flow, from empty board to shipped app.
 - **[check-offline skill example →](examples/check-offline)** — a worked skill + evals example: scans HTML prototypes for CDN dependencies that break offline.
 
