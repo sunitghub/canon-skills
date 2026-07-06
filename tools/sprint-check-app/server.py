@@ -279,6 +279,14 @@ def _known_ticket_ids() -> set[str]:
             ids.add(ticket_id)
     return ids
 
+def _cap_with_more(items: list, max_n: int) -> tuple[list, int]:
+    """Truncate items to max_n, assuming items is already in the desired
+    display order (e.g. most-recent-first) — this only truncates, never
+    re-sorts. Returns (capped_items, more_count)."""
+    if len(items) <= max_n:
+        return items, 0
+    return items[:max_n], len(items) - max_n
+
 def _plan_decision(ticket_path: Path) -> str:
     plan = ticket_path.parent / 'plan.md' if ticket_path.name == 'ticket.md' else ticket_path.with_name(f'{ticket_path.stem}-plan.md')
     if not plan.is_file():
@@ -344,8 +352,10 @@ def load_why(file_: str) -> dict:
         for _, ticket_id in sorted(scored, reverse=True)[:5]:
             add_unique(ticket_id)
 
+    capped_ids, more = _cap_with_more(matched_ids, 10)
+
     results = []
-    for ticket_id in matched_ids:
+    for ticket_id in capped_ids:
         found = _ticket_by_id(ticket_id)
         if not found:
             continue
@@ -360,6 +370,7 @@ def load_why(file_: str) -> dict:
     return {
         'file': target,
         'results': results,
+        'more': more,
         'message': '' if results else f'No tickets found for {target}.',
     }
 

@@ -10,6 +10,24 @@ source "$SCRIPT_DIR/ticket-root.sh"
 
 VERSION="1.0.0"
 
+# cap_with_more <max> <item...>
+# Sets _cap_result (array, truncated to <max>) and _cap_more (count truncated
+# away, 0 if none) — a bash-3.2-compatible way to return two values (no
+# namerefs; those are bash 4.3+ only, and this codebase must support macOS's
+# system bash 3.2). Assumes <item...> is already in the desired display order
+# (e.g. most-recent-first) — this only truncates, never re-sorts.
+cap_with_more() {
+  local max="$1"; shift
+  local total=$#
+  if (( total > max )); then
+    _cap_result=("${@:1:$max}")
+    _cap_more=$(( total - max ))
+  else
+    _cap_result=("$@")
+    _cap_more=0
+  fi
+}
+
 active_file() {
   local dir
   dir="$(ensure_tickets_dir)"
@@ -314,7 +332,9 @@ cmd_why() {
     return 0
   fi
 
-  add_unique_id() { [[ " ${matched_ids[*]} " != *" $1 "* ]] && matched_ids+=("$1") || true; }
+  # ${matched_ids[*]+"${matched_ids[*]}"} guards against bash 3.2's (macOS
+  # system bash) "unbound variable" error on an empty array under `set -u`.
+  add_unique_id() { [[ " ${matched_ids[*]+"${matched_ids[*]}"} " != *" $1 "* ]] && matched_ids+=("$1") || true; }
 
   # Primary: extract t-xxxx IDs from commit subjects
   local -a matched_ids=()
@@ -354,7 +374,12 @@ cmd_why() {
     return 0
   fi
 
-  for id in "${matched_ids[@]}"; do
+  # matched_ids is already most-recent-first from git log — cap_with_more
+  # only truncates, never re-sorts.
+  local _cap_result=() _cap_more=0
+  cap_with_more 10 "${matched_ids[@]+"${matched_ids[@]}"}"
+
+  for id in "${_cap_result[@]+"${_cap_result[@]}"}"; do
     local tfile
     tfile="$(find_ticket "$id" 2>/dev/null)" || continue
     local status title
@@ -371,6 +396,8 @@ cmd_why() {
       [[ -n "$decision" ]] && printf "  → %s\n" "$decision"
     fi
   done
+
+  (( _cap_more > 0 )) && echo "+$_cap_more more, older" || true
 }
 
 cmd_help() {

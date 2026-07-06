@@ -21,6 +21,7 @@ tests=(
   "$ROOT/tests/sprint-check-app.sh"
   "$ROOT/tests/sprint-check-api-parity.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
+  "$ROOT/tests/why-cap.sh"
 )
 
 for test_file in "${tests[@]}"; do
