@@ -50,7 +50,7 @@ Act on these when you see them — don't wait to be told.
 - One change needs edits in many unrelated places → fix the missing boundary first.
 - Structural edits mixed with behavior changes in one commit → split them.
 - Unclear behavior before touching it → characterize current behavior first.
-- A third copy of the same logic appears → remove the duplication, don't copy again.
+- A third copy of the same logic appears → remove the duplication, don't copy again. Exception: same logic ported across incompatible runtimes (bash/Python/Go, etc.) with no shared-code option — keep the ports, lock them with a parity test instead of merging.
 - Tests need excessive setup → the dependency structure is the problem, not the tests.
 - Refactor spreading into unrelated areas → cut back to the smallest change that makes the requested edit safe.
 - Error surfaces without context → preserve diagnostic info at the boundary, don't swallow it.
