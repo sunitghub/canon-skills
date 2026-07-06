@@ -109,10 +109,12 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 
    **Log the subagent run.** Immediately after the reviewer subagent completes, run
    `subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type reviewer` (bare —
-   it's on PATH, same as `sprint`/`tkt`). This feeds the same `.claude/subagent-runs.jsonl`
-   audit trail the evaluator gate (step 3) checks — required now that no `SubagentStop` hook
-   does this automatically. Do not skip even though the reviewer itself is advisory; the log
-   entry's timestamp is what makes the evaluator's anti-gaming check meaningful.
+   it's on PATH, same as `sprint`/`tkt`). This writes to the same `.claude/subagent-runs.jsonl`
+   audit trail as the evaluator's own log call (step 3) — required now that no `SubagentStop`
+   hook does this automatically. `_gate_eval_report` (step 3) matches by timestamp only, not
+   `agent_type`, so this reviewer entry isn't what satisfies that specific gate — the
+   evaluator's own log call is. Log it anyway: it's the complete audit trail of which subagents
+   actually ran this sprint, not just the one the close gate happens to check.
 
 3. **Evaluator review (normal+ tier).** Same `Tier: trivial` downgrade condition and exclusion
    as the reviewer gate above (skip only if `plan.md`'s `## Sign-off` `Tier:` field value is
