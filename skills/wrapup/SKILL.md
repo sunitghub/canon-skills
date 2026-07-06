@@ -65,6 +65,7 @@ Scope (check each that exists):
 - `HANDOFF.md` — refresh the narrative per the handoff protocol: Current Focus, In Progress, and Next Steps. `## Discoveries` is owned by capture — leave it. Decisions belong in `DECISIONS.md`, not here. Then check size **within the `<!-- canon:handoff:BEGIN -->`/`<!-- canon:handoff:END -->` markers only** — anything outside them may be the user's own content and must never be read, counted, or edited by this step: `awk '/<!-- canon:handoff:BEGIN -->/,/<!-- canon:handoff:END -->/' HANDOFF.md | wc -l`. If over 80, prune per `tools/handoff.md`'s "When to Prune" section before finishing this step.
 - `AGENTS.md` / `CLAUDE.md` — any convention-level learnings to surface? (propose + confirm before writing)
 - `README` — does it document any changed APIs, behaviors, or install steps?
+- `plan.md` (sprint tickets only) — is `## Approach` still within its ~500-word budget noted at the top of the file? If it grew past budget during implementation, compress the prose per `standards/efficiency.md`'s Token Efficiency section before closing.
 - Any other `.md` files explicitly opened or modified during the session
 
 Patch stale lines only. Skip files where nothing changed.
