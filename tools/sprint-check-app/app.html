@@ -1845,7 +1845,17 @@ function md(raw, ticketId) {
   let srcIdx = 0;
   const stamped = raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim()
     .replace(/^(- \[[ xX]\] )/gm, m => m + `\x00${srcIdx++}\x00`);
-  return sortChecklistRuns(esc(stamped))
+
+  // Protect inline-code spans before any other syntax transform sees them —
+  // otherwise markdown shown *as a code example* (e.g. `![alt](src)` or
+  // `**bold**`) gets reinterpreted as real syntax instead of staying literal.
+  const codeSpans = [];
+  const withCodePlaceholders = sortChecklistRuns(esc(stamped)).replace(/`([^`\n]+)`/g, (_, code) => {
+    codeSpans.push(code);
+    return `\x01${codeSpans.length - 1}\x01`;
+  });
+
+  return withCodePlaceholders
     .replace(/^# (.+)$/gm,  '<strong class="doc-heading-1">$1</strong>')
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
@@ -1855,7 +1865,6 @@ function md(raw, ticketId) {
     })
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
     .replace(/^\*\*([^*\n][^\n]*)$/gm,'<strong style="color:var(--text)">$1</strong>')
-    .replace(/`([^`\n]+)`/g, '<code class="doc-code">$1</code>')
     .replace(/^- \[([ xX])\] \x00(\d+)\x00(.+)$/gm, (_, checked, si, text) => {
       const done = checked.toLowerCase() === 'x';
       return `<span class="doc-bullet${done ? '' : ' doc-check-open'}" data-src-idx="${si}"><span class="doc-check-marker${done ? '' : ' open'}">${done ? '✓' : ''}</span><span>${text}</span></span>`;
@@ -1866,11 +1875,8 @@ function md(raw, ticketId) {
       if (rows.length < 2) return block;
       const [headerRow, sepRow, ...bodyRows] = rows;
       if (!/^\|[\s|:-]+\|$/.test(sepRow?.trim() || '')) return block;
-      const cells = row => {
-        const safe = row.replace(/<code[^>]*>[^<]*<\/code>/g, m => m.replace(/\|/g, '\x00'));
-        return safe.trim().split(/(?<!\\)\|/).slice(1, -1)
-          .map(c => c.trim().replace(/\x00/g, '|').replace(/\\\|/g, '|'));
-      };
+      const cells = row => row.trim().split(/(?<!\\)\|/).slice(1, -1)
+          .map(c => c.trim().replace(/\\\|/g, '|'));
       const thead = '<thead><tr>' + cells(headerRow).map(c => `<th>${c}</th>`).join('') + '</tr></thead>';
       const STATUS_CLASSES = { pass: 'status-pass', fail: 'status-fail', partial: 'status-partial', 'not-run': 'status-not-run' };
       const tbody = bodyRows.length
@@ -1880,7 +1886,10 @@ function md(raw, ticketId) {
           }).join('') + '</tr>').join('') + '</tbody>'
         : '';
       return `<div class="doc-table-wrap"><table class="doc-table">${thead}${tbody}</table></div>`;
-    });
+    })
+    // Restore protected code spans last, after every other transform has run,
+    // so backtick-wrapped text is never reinterpreted as image/bold/table/etc.
+    .replace(/\x01(\d+)\x01/g, (_, i) => `<code class="doc-code">${codeSpans[+i]}</code>`);
 }
 
 // ── Render ────────────────────────────────────────────────────────────────

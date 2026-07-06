@@ -20,7 +20,7 @@ You will receive:
 
 ## Tools
 
-Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool.
+Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report (`review-notes.md`) — findings go there only. (Same wording as `eval.md` — mirror, keep in sync.)
 
 ## Report-writing safety (Windows Git Bash)
 
