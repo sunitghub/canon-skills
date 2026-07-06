@@ -24,9 +24,9 @@ Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any oth
 
 ## Report-writing safety (Windows Git Bash)
 
-Writing the full report as one giant heredoc has failed on a live Windows Git-Bash machine with `unexpected EOF while looking for matching \`''` — a report's prose (contractions, possessives) and quoted source citations (e.g. JS string literals) can push the total count of literal `'` characters in one heredoc body to an odd number, which an outer quoting layer on that platform mishandles. Root cause is not fully traced (only live-reproduced) — treat this as a defensive mitigation, not a proven fix. (Same wording as `review.md` — mirror, keep in sync.)
+One-heredoc reports have failed on live Windows Git-Bash with `unexpected EOF while looking for matching \`''` — prose (contractions, possessives) plus quoted source citations (e.g. JS string literals) can push the total literal `'` count in one heredoc body to odd, which an outer quoting layer mishandles. Root cause not fully traced (live-reproduced only) — treat as defensive mitigation, not proven fix. (Same wording as `review.md` — mirror, keep in sync.)
 
-Write the report in separate `cat >>` calls, one per section (e.g. Criteria table, then Test Plan table, then Findings + Verdict) — never the whole report in a single heredoc. After each append, verify it landed (check the Bash call's exit code, or re-read the file's tail) before writing the next section. If a chunk's heredoc write fails, retry that same chunk split into smaller pieces — down to one table row per `cat >>` call if needed — until it succeeds. Never drop content or paraphrase a quoted citation to dodge the error: quoted source text must stay byte-exact per the Evidence rules above.
+Write the report in separate `cat >>` calls, one per section (e.g. Criteria table, then Test Plan table, then Findings + Verdict) — never one heredoc. Verify each append landed (Bash exit code, or re-read file tail) before the next section. Heredoc failure: retry the same chunk in smaller pieces — down to one table row per `cat >>` call if needed. Never drop content or paraphrase a quoted citation to dodge the error — quoted source text stays byte-exact per the Evidence rules above.
 
 ## Steps
 
