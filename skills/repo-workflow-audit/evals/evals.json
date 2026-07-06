@@ -51,12 +51,26 @@
       "id": 5,
       "case_type": "compliance",
       "prompt": "Run a repo-workflow-audit on a fictional skill at skills/status/SKILL.md. Its instructions repeat the same idea in three places: 'always produce concise output', 'keep responses concise', and 'avoid verbose responses'; it also has a paragraph of filler explaining that concise communication is good because users like concise communication. The intent is correct but the wording is bloated.",
-      "expected_output": "The audit still runs the four dispatches and the adversarial review includes a lean-language finding that flags the repeated concise-output instructions and filler prose, recommending simpler wording while preserving the intended behavior.",
+      "expected_output": "The audit still runs the four dispatches and the adversarial review includes a lean-language finding that flags the repeated concise-output instructions and filler prose, produces a candidate telegraphic-compressed rewrite with old/new word counts, and recommends it while preserving the intended behavior.",
       "expectations": [
         "Describes running all four dispatches rather than replacing the audit structure with a prose-only review",
         "Flags repeated wording or duplicated instruction as a lean-language finding",
         "Flags unnecessary filler or prose bloat as a lean-language finding",
+        "Produces or describes producing an actual candidate compressed rewrite, not just a flag",
+        "Reports old/new word counts as evidence of the compression",
         "Recommends simpler straight-to-the-point wording only where intent remains clear and correct"
+      ]
+    },
+    {
+      "id": 6,
+      "case_type": "boundary",
+      "prompt": "During a repo-workflow-audit, the user approves a compression finding that rewrites a bloated paragraph in skills/example/SKILL.md into telegraphic phrasing. The rewrite has been applied. Is the fix done once npm test passes and a stale-reference grep finds nothing?",
+      "expected_output": "No — for a compression fix specifically, tests and grep don't catch a rule or case silently dropped in prose compression. The audit must additionally dispatch a fresh-context subagent to diff the old file against the applied rewrite line-by-line for any dropped or weakened rule/case/template, and only consider the fix done once that diff-verification reports none.",
+      "expectations": [
+        "States that npm test passing and a clean stale-reference grep are not sufficient to consider a compression fix done",
+        "States a fresh-context subagent must diff old vs. new line-by-line for dropped or weakened rules/cases/templates",
+        "Frames this as an additional requirement specific to compression fixes, not a replacement for the existing test/grep re-verify step",
+        "Does not declare the compression fix done without this diff-verification step"
       ]
     }
   ]

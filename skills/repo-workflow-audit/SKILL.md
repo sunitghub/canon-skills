@@ -32,6 +32,8 @@ Run these as independent, fresh-context subagents in parallel — each is blind 
 
 2. **Adversarial review.** Read the target workflow's own review protocol (e.g. `skills/sprint/reference/review.md`) and apply the same scrutiny to the target scope's current contents as "the code under review." Look for internal contradictions, ambiguous instructions, assumptions about state/files that don't exist, and places where two files describe the same mechanism differently. Also run a lean-language pass on skill docs: flag prose bloat, unnecessary fluff, repeated wording/instructions, and wording that can be made simpler and more straight-to-the-point without losing clear, correct intent.
 
+   For each flagged file, don't just flag — produce an actual candidate rewrite: compress prose framing to telegraphic phrasing (drop articles/filler where grammar allows), modeled on the caveman project (github.com/JuliusBrussee/caveman) and this repo's own `t-532d` prune of `standards/efficiency.md`. Byte-preserve code, paths, commands, flags, and format templates — compress only the prose around them, never the rules/cases/templates themselves. Report old/new word counts as evidence of the compression, alongside the candidate rewrite.
+
 3. **Cross-doc consistency.** Read every file in the target scope together — plus anything outside it that describes the same mechanism (README sections, `docs/*.md`, `AGENTS.md`). Report contradictions or gaps as a set, not per-file: does one doc say something a sibling doc contradicts? Does a top-level rule (e.g. `AGENTS.md`'s Model Tiers) need to cross-reference a target-scope rule that overrides it for a specific case?
 
 4. **Stale-reference sweep.** Repo-wide grep (not limited to the target files) for anything — other skills, `docs/`, `README.md`, `starters/`, public posts — that references the target's old or removed behavior. State the search terms/globs used so an absence-of-findings claim is verifiable, not assumed.
@@ -41,6 +43,8 @@ Run these as independent, fresh-context subagents in parallel — each is blind 
 Dedupe findings across all 4 reports (the same issue often surfaces from more than one angle — that's cross-confirmation, not noise). Rank by severity. Present the full compiled list to the user before applying any fix — this skill produces a report; fixing is a separate, explicit step the user scopes (all findings, a subset, or just the regressions). Log anything genuinely out-of-scope as `NOTICED:` rather than fixing silently.
 
 If the user approves fixes, apply them directly, then re-verify with `npm test` (or the target repo's equivalent) and a fresh grep sweep for the same stale terms before considering it done — a subagent's "fixed" claim is not itself evidence; check the actual diff.
+
+For an approved **compression** fix specifically, that re-verify step isn't enough — tests and grep don't catch a rule or case silently dropped in prose compression. Before considering a compression fix done, dispatch a fresh-context subagent (`review` purpose) to diff the old file against the applied rewrite line-by-line and report any rule, case, or format template present in the old but missing or weakened in the new — mirroring `t-532d`'s pattern. Fix any finding and re-run the diff-verification until it reports none; for a file that's live `@`-imported into other projects' contexts (broad blast radius), run this verification twice, as `t-532d` did.
 
 ## Gotchas
 
