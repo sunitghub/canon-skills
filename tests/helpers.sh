@@ -63,3 +63,72 @@ run_fail() {
   [[ "$rc" -ne 0 ]] || fail "expected command to fail: $*"
   printf '%s\n' "$output"
 }
+
+# build_tickets_fixture <dir> — seeds <dir>/.tickets with t-placeholder (no
+# plan approval, no Sign-off section) and t-ready (approved plan) — the
+# minimal pair that exercises acceptance_has_items/plan_has_approach/
+# plan_approved computation. Shared by sprint-check-server.sh and
+# sprint-check-api-parity.sh so both test against one fixture definition.
+build_tickets_fixture() {
+  local dir="$1"
+  mkdir -p "$dir/.tickets/t-placeholder" "$dir/.tickets/t-ready"
+
+  cat > "$dir/.tickets/t-placeholder/ticket.md" <<'EOF'
+---
+id: t-placeholder
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Placeholder plan
+EOF
+  cat > "$dir/.tickets/t-placeholder/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x] Has criteria
+
+## Test Plan
+- [x] Has tests
+EOF
+  cat > "$dir/.tickets/t-placeholder/plan.md" <<'EOF'
+# Plan
+
+## Approach
+<!-- Describe how you will implement this. Keep this heading unchanged. -->
+
+## Decisions
+EOF
+
+  cat > "$dir/.tickets/t-ready/ticket.md" <<'EOF'
+---
+id: t-ready
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Ready plan
+EOF
+  cat > "$dir/.tickets/t-ready/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x] Has criteria
+
+## Test Plan
+- [x] Has tests
+EOF
+  cat > "$dir/.tickets/t-ready/plan.md" <<'EOF'
+# Plan
+
+## Sign-off
+- [x] Plan approved
+
+## Approach
+Use the smallest board-side check that catches untouched templates.
+
+## Decisions
+EOF
+}

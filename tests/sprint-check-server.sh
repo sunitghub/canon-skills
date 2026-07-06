@@ -16,66 +16,8 @@ WORK="$(mktemp -d)"
 PID=""
 cleanup() { [[ -n "$PID" ]] && kill "$PID" 2>/dev/null || true; rm -rf "$WORK"; }
 trap cleanup EXIT
-mkdir -p "$WORK/.tickets"
-mkdir -p "$WORK/.tickets/t-placeholder" "$WORK/.tickets/t-ready" "$WORK/.tickets/t-archived"
-cat > "$WORK/.tickets/t-placeholder/ticket.md" <<'EOF'
----
-id: t-placeholder
-status: open
-type: task
-priority: 2
-created: 2026-06-08T00:00:00Z
----
-# Placeholder plan
-EOF
-cat > "$WORK/.tickets/t-placeholder/acceptance.md" <<'EOF'
-# Acceptance
-
-## Criteria
-- [x] Has criteria
-
-## Test Plan
-- [x] Has tests
-EOF
-cat > "$WORK/.tickets/t-placeholder/plan.md" <<'EOF'
-# Plan
-
-## Approach
-<!-- Describe how you will implement this. Keep this heading unchanged. -->
-
-## Decisions
-EOF
-cat > "$WORK/.tickets/t-ready/ticket.md" <<'EOF'
----
-id: t-ready
-status: open
-type: task
-priority: 2
-created: 2026-06-08T00:00:00Z
----
-# Ready plan
-EOF
-cat > "$WORK/.tickets/t-ready/acceptance.md" <<'EOF'
-# Acceptance
-
-## Criteria
-- [x] Has criteria
-
-## Test Plan
-- [x] Has tests
-EOF
-cat > "$WORK/.tickets/t-ready/plan.md" <<'EOF'
-# Plan
-
-## Sign-off
-- [x] Plan approved
-
-## Approach
-Use the smallest board-side check that catches untouched templates.
-
-## Decisions
-EOF
-
+build_tickets_fixture "$WORK"
+mkdir -p "$WORK/.tickets/t-archived"
 cat > "$WORK/.tickets/t-archived/ticket.md" <<'EOF'
 ---
 id: t-archived
