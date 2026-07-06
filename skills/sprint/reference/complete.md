@@ -91,7 +91,13 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    reviewer. Same-context review is not acceptable.
 
    Reviewer has no implementation history. Invoke with a clean context, per the model-tier
-   check and shared gate mechanics above. Prompt must instruct it to:
+   check and shared gate mechanics above. **Pass `subagent_type: "Plan"`** on the `Agent`
+   call — the only mechanism that actually restricts a dispatched subagent's tools; the `Plan`
+   type excludes Edit, Write, and Agent at the harness level (Bash stays available, needed for
+   git commands and writing the report via `cat >>`). Chosen over `Explore` (same tool
+   restriction) because `Explore`'s own description warns it reads excerpts rather than whole
+   files — wrong fit for adversarial full-file review; the dispatch prompt overrides `Plan`'s
+   default architect framing regardless. Prompt must instruct it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
    - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
@@ -119,7 +125,8 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    needs approval" is not acceptable for normal/high-risk sprints. If the runtime can't spawn
    the evaluator subagent, stop closeout and report the blocker.
 
-   Invoke a fresh Agent subagent with a clean context, per the model-tier check above. Prompt
+   Invoke a fresh Agent subagent with a clean context, per the model-tier check above. Pass
+   `subagent_type: "Plan"`, same restriction and rationale as the reviewer gate above. Prompt
    must instruct it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
    - Record its model designation per the shared gate mechanics above
