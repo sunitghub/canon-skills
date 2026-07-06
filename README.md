@@ -30,9 +30,9 @@ cd /path/to/your-project
 ~/.canon/tools/skills.sh add sprint
 ```
 
-If the installer prompts to add `~/.canon/tools` to PATH, answer `y`, then run
-the printed `source ~/.zshrc` or `source ~/.bashrc` command before using bare
-`skills.sh`, `sprint`, or `sprint-check`.
+If the installer prompts to add `~/.canon/tools` to PATH, answer `y` and run the
+printed `source` command before using bare `skills.sh`, `sprint`, or
+`sprint-check` — see **[Full setup guide →](docs/setup.md)** for the full steps.
 
 To uninstall — cleans up agent hooks and removes canon skill symlinks from all registered projects:
 
