@@ -10,6 +10,7 @@ the steps and understand what each tool does and why.
 - The board flags incomplete Acceptance or Plan docs before you try to close or build from a placeholder.
 - Session continuity through `HANDOFF.md`, including a stop-and-resume checkpoint.
 - A user-triggered capture for a Todo-specific discovery found while building.
+- A UI mockup handed to the agent renders inline in the ticket doc on the board, not as a broken image link.
 - A high-impact "delete all" variant caught before code, where risk ratings become required tests and a human checkpoint before close.
 - Ticket search, readiness indicators, inline doc editing, status changes, git state, and commit context in `sprint-check`.
 - Closing the sprint is gated: the CLI checks the board's criteria and test plan are both filled and ticked.

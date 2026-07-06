@@ -44,6 +44,23 @@ DECISIONS.md
 HANDOFF.md
 ```
 
+**Optional — hand the agent a mockup.** If you have a UI sketch or screenshot for
+the feature, give it to the agent now:
+
+```text
+Here's a mockup of the layout I want: [Mockup-1.jpg]
+```
+
+The agent saves it to `.tickets/<id>/mockups/Mockup-1.jpg` and references it from
+the ticket doc as `![layout mockup](mockups/Mockup-1.jpg)`. Reload `sprint-check`
+and open the ticket — the image renders inline in the doc, not as a broken link:
+
+![Mockup image rendered inline in a ticket doc](../assets/Mockup-1.jpg)
+
+A second mockup for the completed-item state works the same way:
+
+![Second mockup image rendered inline in a ticket doc](../assets/Mockup-2.jpg)
+
 Then the agent takes over: it drafts **Acceptance** (done criteria + test plan)
 and **Plan** (`## Approach` + decisions), reads the codebase, and surfaces
 gray-area questions. It also classifies the risk tier. A small local Todo app
