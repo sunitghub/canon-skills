@@ -6,6 +6,73 @@ set -euo pipefail
 # shellcheck source=tools/skills/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# Reads: project_dir, _has_sprint, _has_ticket (caller locals, shared via bash's
+# dynamic scoping). Sets: hook_issues, _hook_names, _hook_tags.
+compute_hook_status() {
+  hook_issues=0
+  _hook_names=() _hook_tags=()
+  # canon installs no Claude Code hooks (settings.json) anymore — only a git-native
+  # pre-commit hook for sprint/ticket projects. Anything legacy in settings.json is
+  # migrated away by `add`/`init`, not reported here as an "issue."
+  if $_has_sprint || $_has_ticket; then
+    _hook_names+=("pre-commit (git)")
+    local _pc_hook="$project_dir/.git/hooks/pre-commit"
+    if [ -f "$_pc_hook" ] && grep -qF "canon-managed-pre-commit-hook" "$_pc_hook" 2>/dev/null; then
+      _hook_tags+=("ok")
+    elif [ ! -d "$project_dir/.git/hooks" ]; then
+      _hook_tags+=("skipped — not a git repo")
+    else
+      _hook_tags+=("not wired")
+      (( hook_issues++ )) || true
+    fi
+  fi
+}
+
+# Reads: agents_file, _has_sprint, _has_wrapup (caller locals). Prints the
+# "Skills:" list. Updates caller locals: issues, _printed_skills_header.
+render_skill_status_list() {
+  _printed_skills_header=false
+  if [ -f "$agents_file" ] && grep -qF "AI-SKILLS:BEGIN" "$agents_file" 2>/dev/null; then
+    echo "Skills:"
+    _printed_skills_header=true
+    while IFS= read -r line; do
+      local sname spath
+      sname=$(skill_row_name "$line")
+      spath=$(skill_row_path "$line")
+      [ -z "$sname" ] && continue
+
+      local tag="ok"
+      [ ! -f "$spath" ] && tag="broken ref" && (( issues++ )) || true
+
+      local canon_file
+      canon_file=$(find_skill "$sname" 2>/dev/null || true)
+      if [ -n "$canon_file" ] && [ "$canon_file" != "$spath" ]; then
+        tag="stale path"
+        (( issues++ )) || true
+      fi
+
+      if [[ "$sname" == "wrapup" ]] && ! $_has_sprint && [ "$tag" = "ok" ]; then
+        tag="upgrade available → sprint"
+      fi
+
+      local suffix=""
+      if [[ "$sname" == "ticket" ]]; then
+        if command -v tkt &>/dev/null; then
+          suffix="  (tkt on PATH)"
+        else
+          suffix="  (tkt not on PATH)"
+        fi
+      fi
+
+      printf "  %-25s %s%s\n" "$sname" "[$tag]" "$suffix"
+    done < <(registered_skill_rows "$agents_file")
+  fi
+
+  if ! $_printed_skills_header; then
+    echo "Skills: none"
+  fi
+}
+
 cmd_list() {
   local cols skill_w cat_w indent_w desc_w
   cols=${COLUMNS:-$(tput cols 2>/dev/null || echo 100)}
