@@ -216,9 +216,9 @@ recording every gate's outcome. For this Todo sprint it should look like:
 ## Wrapup Gates
 | Gate | Status | Reason |
 |------|--------|--------|
-| simplifier | skipped | clean minimal code, no simplification opportunities |
-| reviewer | skipped | no design implications in greenfield app |
-| security | skipped | no security-sensitive patterns (no auth, DB, user input handling, or API endpoints) |
+| code-simplifier | skipped | clean minimal code, no simplification opportunities |
+| code-reviewer | skipped | no design implications in greenfield app |
+| security-review | skipped | no security-sensitive patterns (no auth, DB, user input handling, or API endpoints) |
 | repo-check | skipped | no repo surface changed |
 | doc-audit | skipped | no user-facing docs changed |
 ```

@@ -18,7 +18,7 @@ Run after a session, feature, bug fix, or ticket. Skip steps that do not apply.
 code-simplifier → code-reviewer → security-review → repo-check → doc-audit → refresh docs
 ```
 
-Commit & Push belongs to `sprint complete`'s own step 9, not this pipeline — see
+Commit & Push belongs to `sprint complete`'s own step 10, not this pipeline — see
 `skills/sprint/reference/complete.md`.
 
 `code-simplifier` and `code-reviewer` run inline in the same session that did the work, so they scope to "code touched this session" from working memory — no git command needed, since the agent already knows what it changed. `security-review` runs the same way but derives its scope from git (`git diff --name-only $(git merge-base HEAD origin/main) HEAD`) because it needs an exact, auditable file list rather than memory. `reviewer`/`evaluator` (the separate fresh-subagent gates in `skills/sprint/reference/complete.md`, not this pipeline) always derive from git — they have no session memory to draw on at all.
@@ -45,7 +45,7 @@ Before running each step, assess the change and skip if the criteria apply. When
 - No repo workflow, setup, docs, skills, standards, scripts, or tools changed
 
 ### Skip doc-audit if:
-- No user-facing docs changed and no skill/standards frontmatter changed — matches `doc-audit/SKILL.md`'s own scope: README, `guides/`, `examples/**/*.md`, `docs/*.md`, `tools/*.md`, or `description`/`summary` frontmatter in `skills/*.md`/`standards/*.md`
+- No user-facing docs changed and no skill/standards frontmatter changed — matches `doc-audit/SKILL.md`'s own scope: README, `guides/*.md`, `examples/**/*.md`, `docs/*.md`, `tools/*.md`, or `description`/`summary` frontmatter in `skills/*.md`/`standards/*.md`
 
 
 
@@ -65,7 +65,7 @@ Scope (check each that exists):
 - `HANDOFF.md` — refresh the narrative per the handoff protocol: Current Focus, In Progress, and Next Steps. `## Discoveries` is owned by capture — leave it. Decisions belong in `DECISIONS.md`, not here. Then check size **within the `<!-- canon:handoff:BEGIN -->`/`<!-- canon:handoff:END -->` markers only** — anything outside them may be the user's own content and must never be read, counted, or edited by this step: `awk '/<!-- canon:handoff:BEGIN -->/,/<!-- canon:handoff:END -->/' HANDOFF.md | wc -l`. If over 80, prune per `tools/handoff.md`'s "When to Prune" section before finishing this step.
 - `AGENTS.md` / `CLAUDE.md` — any convention-level learnings to surface? (propose + confirm before writing)
 - `README` — does it document any changed APIs, behaviors, or install steps?
-- `plan.md` (sprint tickets only) — is `## Approach` still within its ~500-word budget noted at the top of the file? If it grew past budget during implementation, compress the prose per `standards/efficiency.md`'s Token Efficiency section before closing.
+- `plan.md` (sprint tickets only) — is the whole doc still within the ~500-word budget noted at the top of the file? If it grew past budget during implementation, compress the prose per `standards/efficiency.md`'s Token Efficiency section before closing.
 - Any other `.md` files explicitly opened or modified during the session
 
 Patch stale lines only. Skip files where nothing changed.

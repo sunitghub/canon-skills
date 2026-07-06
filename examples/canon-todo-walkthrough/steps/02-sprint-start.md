@@ -6,19 +6,19 @@ test plan for you to review. Nothing is built until you approve.
 
 ```mermaid
 flowchart LR
-    T[Ticket] --> A[Acceptance] --> O[[orient]]
-    O --> G[Grill] --> I[[impact]] --> AP[Approval] --> P[Plan]
+    T[Ticket] --> A[Acceptance] --> P[Plan draft] --> O[[orient]]
+    O --> G[Grill] --> I[[impact]] --> AP[Approval]
     classDef subskill stroke:#8888dd,stroke-width:2px
     class O,I subskill
 ```
 
 Steps in plain English:
 - **Acceptance** — the agent writes the checklist of "done" criteria and test commands.
+- **Plan draft** — the agent drafts `## Approach` in `plan.md` before the brief; this is what you'll review.
 - **Orient** *(runs automatically)* — the agent reads the codebase to understand what already exists.
 - **Grill** — the agent asks you the questions that change what gets built (see Step 5 below).
 - **Impact** *(runs automatically)* — the agent rates the risk of the change.
-- **Approval** — you say "approved" and the agent locks in the plan.
-- **Plan** — the final brief the agent implements against; only written after your approval.
+- **Approval** — you say "approved," and the agent finalizes and locks the already-drafted plan; only the approval checkbox, not the Approach content, is gated on approval.
 
 ## Step 1 - Open the empty board
 
@@ -44,12 +44,14 @@ DECISIONS.md
 HANDOFF.md
 ```
 
-Then the agent takes over: it drafts **Acceptance** (done criteria + test plan),
-reads the codebase, and surfaces gray-area questions. It also classifies the
-risk tier. A small local Todo app is normal-tier work, so the plan stays brief;
-a high-risk variant like "bulk delete every user's tasks" would trigger impact
-analysis before approval, and any HIGH risk would add mandatory mitigation tests
-to Acceptance. After approval, the agent writes **Plan** (approach + decisions).
+Then the agent takes over: it drafts **Acceptance** (done criteria + test plan)
+and **Plan** (`## Approach` + decisions), reads the codebase, and surfaces
+gray-area questions. It also classifies the risk tier. A small local Todo app
+is normal-tier work, so the plan stays brief; a high-risk variant like "bulk
+delete every user's tasks" would trigger impact analysis before approval, and
+any HIGH risk would add mandatory mitigation tests to Acceptance. Approval
+finalizes and locks the already-drafted **Plan** — it gates code, not the
+plan's content.
 
 Reload `sprint-check`. The ticket is In Progress and `not ready` — only
 `ticket.md` plus any drafted sprint docs exist so far. Open it to read what the
@@ -58,8 +60,8 @@ agent proposed.
 ![sprint-check board after sprint start](../assets/sprint-start-board.png)
 
 > Your agent's wording will differ from the samples below — that's expected. What
-> stays constant: Acceptance is binary and testable, and `plan.md` is written only
-> after you approve.
+> stays constant: Acceptance is binary and testable, and `plan.md`'s `## Approach`
+> is drafted before approval — approval locks the plan, it doesn't first-author it.
 
 ## Step 3 - Review what the agent drafted
 
