@@ -34,13 +34,16 @@ APP_HTML     = Path(__file__).parent / 'app.html'
 
 _FRONTMATTER = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL)
 _FIELD       = re.compile(r'^(\w+):\s*(.+)$', re.MULTILINE)
+IMAGE_MIME   = {'.png': 'image/png', '.gif': 'image/gif', '.jpg': 'image/jpeg',
+                 '.jpeg': 'image/jpeg', '.webp': 'image/webp'}
+IMAGE_EXTS   = tuple(IMAGE_MIME)
 
 def _doc_name(path: Path) -> str:
     return path.stem.replace('-', ' ').title()
 
-def _safe_ticket_doc(doc_file: str) -> Path | None:
+def _safe_ticket_doc(doc_file: str, exts: tuple[str, ...] = ('.md',)) -> Path | None:
     p = Path(doc_file)
-    if p.is_absolute() or '..' in p.parts or p.suffix != '.md':
+    if p.is_absolute() or '..' in p.parts or p.suffix.lower() not in exts:
         return None
     target = TICKETS_DIR / p
     try:
@@ -495,9 +498,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_image(self, path: Path):
-        ext = path.suffix.lower()
-        mime = {'png': 'image/png', 'gif': 'image/gif', 'jpg': 'image/jpeg',
-                'jpeg': 'image/jpeg', 'webp': 'image/webp'}.get(ext.lstrip('.'), 'application/octet-stream')
+        mime = IMAGE_MIME.get(path.suffix.lower(), 'application/octet-stream')
         try:
             body = path.read_bytes()
         except FileNotFoundError:
@@ -542,8 +543,15 @@ class Handler(BaseHTTPRequestHandler):
                 if content is None:
                     self.send_error(404); return
                 self.send_json({'content': content})
-            else:
-                self.send_error(404)
+                return
+            m = re.match(r'^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$', path)
+            if m:
+                ticket_id, relpath = m.group(1), unquote(m.group(2))
+                img = _safe_ticket_doc(f'{ticket_id}/{relpath}', exts=IMAGE_EXTS)
+                if img is None or not img.is_file():
+                    self.send_error(404); return
+                self.send_image(img); return
+            self.send_error(404)
 
     def do_POST(self):
         if not self._host_ok():

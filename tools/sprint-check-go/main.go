@@ -27,6 +27,7 @@ var (
 	frontmatterRe = regexp.MustCompile(`(?s)^---\s*\n(.*?)\n---\s*\n`)
 	fieldRe       = regexp.MustCompile(`(?m)^(\w+):\s*(.+)$`)
 	headingRe     = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
+	imageExts     = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
 	projectRoot   string
 	ticketsDir    string
 	handoffFile   string
@@ -164,6 +165,16 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			sendJSON(w, map[string]string{"content": content})
+			return
+		}
+		if m := regexp.MustCompile(`^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$`).FindStringSubmatch(path); m != nil {
+			ticketID, relpath := m[1], unescape(m[2])
+			p, ok := safeTicketDoc(ticketID+"/"+relpath, imageExts...)
+			if !ok || !exists(p) {
+				http.NotFound(w, r)
+				return
+			}
+			serveFile(w, p, mime.TypeByExtension(filepath.Ext(p)))
 			return
 		}
 		http.NotFound(w, r)
@@ -647,9 +658,20 @@ func readDoc(docFile string) (string, bool) {
 	return string(raw), err == nil
 }
 
-func safeTicketDoc(docFile string) (string, bool) {
+func safeTicketDoc(docFile string, exts ...string) (string, bool) {
+	if len(exts) == 0 {
+		exts = []string{".md"}
+	}
 	clean := filepath.Clean(filepath.FromSlash(docFile))
-	if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || filepath.Ext(clean) != ".md" {
+	ext := strings.ToLower(filepath.Ext(clean))
+	extOK := false
+	for _, e := range exts {
+		if ext == e {
+			extOK = true
+			break
+		}
+	}
+	if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || !extOK {
 		return "", false
 	}
 	p := filepath.Join(ticketsDir, clean)

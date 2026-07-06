@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # sprint-check-api-parity — assert server.py and main.go expose the same /api/
-# routes AND return equivalent /api/tickets payloads for the same fixture.
+# routes, return equivalent /api/tickets payloads, and serve identical
+# /api/ticket-image bytes (plus identical traversal/non-image rejection) for
+# the same fixture.
 
 set -euo pipefail
 
@@ -129,4 +131,46 @@ if mismatches:
     sys.exit(1)
 PY
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches for $WORK fixture)"
+
+# ── /api/ticket-image parity: same fixture image, both servers, same bytes;
+# traversal/non-image attempts rejected identically ──────────────────────────
+
+# Dedicated ticket with a canonical t-[a-z0-9]{4} id — build_tickets_fixture's
+# t-placeholder/t-ready are longer than 4 chars and would never match the
+# route's ticket-id pattern, silently degenerating every check below into a
+# 404==404 comparison instead of exercising the actual 200 success path.
+mkdir -p "$WORK/.tickets/t-mock/mockups"
+printf '\x89PNG\r\n\x1a\n' > "$WORK/.tickets/t-mock/mockups/test.png"
+cat > "$WORK/.tickets/t-mock/ticket.md" <<'EOF'
+---
+id: t-mock
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Mock ticket for ticket-image parity
+EOF
+
+check_ticket_image() {
+  local label="$1" py_status go_status
+  py_status="$(curl -s -o /tmp/parity-py-img.$$ -w '%{http_code}' "http://127.0.0.1:$PY_PORT/api/ticket-image/$2")"
+  go_status="$(curl -s -o /tmp/parity-go-img.$$ -w '%{http_code}' "http://127.0.0.1:$GO_PORT/api/ticket-image/$2")"
+  if [[ "$py_status" != "$go_status" ]]; then
+    rm -f /tmp/parity-py-img.$$ /tmp/parity-go-img.$$
+    fail "sprint-check-api-parity: FAIL — $label status mismatch (server.py=$py_status main.go=$go_status)"
+  fi
+  if [[ "$py_status" == "200" ]] && ! cmp -s /tmp/parity-py-img.$$ /tmp/parity-go-img.$$; then
+    rm -f /tmp/parity-py-img.$$ /tmp/parity-go-img.$$
+    fail "sprint-check-api-parity: FAIL — $label served different bytes"
+  fi
+  rm -f /tmp/parity-py-img.$$ /tmp/parity-go-img.$$
+}
+
+check_ticket_image "valid image"              "t-mock/mockups/test.png"
+check_ticket_image "traversal attempt"         "t-mock/../../../../etc/passwd"
+check_ticket_image "non-image extension (real file, wrong ext)" "t-mock/ticket.md"
+check_ticket_image "missing file"              "t-mock/mockups/does-not-exist.png"
+check_ticket_image "malformed ticket id"       "t-ready/mockups/test.png"
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically, for $WORK fixture)"
