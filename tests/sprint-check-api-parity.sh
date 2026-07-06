@@ -81,7 +81,7 @@ SPRINT_CHECK_ROOT="$WORK" python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
 PY_PID=$!
 disown "$PY_PID" 2>/dev/null || true
 
-SPRINT_CHECK_ROOT="$WORK" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
 GO_PID=$!
 disown "$GO_PID" 2>/dev/null || true
 

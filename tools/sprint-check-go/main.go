@@ -499,8 +499,9 @@ func loadWhy(file string) map[string]any {
 			ids = append(ids, item.id)
 		}
 	}
+	capped, more := capWithMore(ids, 10)
 	results := []map[string]any{}
-	for _, id := range ids {
+	for _, id := range capped {
 		t := byID[id]
 		results = append(results, map[string]any{"id": id, "status": t["status"], "title": t["title"], "decision": planDecision(byPath[id])})
 	}
@@ -508,7 +509,17 @@ func loadWhy(file string) map[string]any {
 	if len(results) == 0 {
 		msg = "No tickets found for " + target + "."
 	}
-	return map[string]any{"file": target, "results": results, "message": msg}
+	return map[string]any{"file": target, "results": results, "more": more, "message": msg}
+}
+
+// capWithMore truncates items to maxN, assuming items is already in the
+// desired display order (e.g. most-recent-first) — this only truncates,
+// never re-sorts. Returns (capped_items, more_count).
+func capWithMore(items []string, maxN int) ([]string, int) {
+	if len(items) <= maxN {
+		return items, 0
+	}
+	return items[:maxN], len(items) - maxN
 }
 
 func writeStatus(id, status string) bool {

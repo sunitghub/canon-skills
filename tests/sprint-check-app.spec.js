@@ -2,6 +2,8 @@
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
+const { execFileSync, spawn } = require('child_process');
+const net = require('net');
 
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
@@ -805,6 +807,77 @@ test.describe('board modal', () => {
       await expect(body.locator('table.doc-table td.status-pass')).toBeVisible();
     } finally {
       fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
+
+  test('Why mode caps results at 10 and shows a "+N more, older" line', async ({ page }) => {
+    // Why mode needs real git commits referencing ticket IDs, which the
+    // shared BASE server's fixture doesn't have — spin up a dedicated git
+    // repo + server for just this test rather than polluting real history.
+    const fixtureDir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'why-cap-'));
+    let serverProcess;
+    try {
+      const git = (...args) => execFileSync('git', args, { cwd: fixtureDir });
+      git('init', '-q');
+      git('config', 'user.email', 'test@test.com');
+      git('config', 'user.name', 'test');
+
+      fs.writeFileSync(path.join(fixtureDir, 'shared.js'), 'hello\n');
+      git('add', 'shared.js');
+      git('commit', '-q', '-m', 't-aaa1 initial add');
+      fs.mkdirSync(path.join(fixtureDir, '.tickets', 't-aaa1'), { recursive: true });
+      fs.writeFileSync(path.join(fixtureDir, '.tickets', 't-aaa1', 'ticket.md'), [
+        '---', 'id: t-aaa1', 'status: closed', 'type: task', 'priority: 2',
+        'created: 2026-01-01T00:00:00Z', '---', '', '# Initial add', '',
+      ].join('\n'));
+
+      const suffixes = ['bbb2', 'ccc3', 'ddd4', 'eee5', 'fff6', 'ggg7', 'hhh8', 'iii9', 'jjj0', 'kkk1', 'lll2', 'mmm3'];
+      for (const s of suffixes) {
+        fs.appendFileSync(path.join(fixtureDir, 'shared.js'), `change ${s}\n`);
+        git('add', 'shared.js');
+        git('commit', '-q', '-m', `t-${s} update shared.js`);
+        fs.mkdirSync(path.join(fixtureDir, '.tickets', `t-${s}`), { recursive: true });
+        fs.writeFileSync(path.join(fixtureDir, '.tickets', `t-${s}`, 'ticket.md'), [
+          '---', `id: t-${s}`, 'status: closed', 'type: task', 'priority: 2',
+          'created: 2026-01-01T00:00:00Z', '---', '', `# Update ${s}`, '',
+        ].join('\n'));
+      }
+
+      const port = await new Promise((resolve) => {
+        const srv = net.createServer();
+        srv.listen(0, '127.0.0.1', () => {
+          const p = srv.address().port;
+          srv.close(() => resolve(p));
+        });
+      });
+
+      const serverLog = fs.openSync(path.join(fixtureDir, 'server.log'), 'a');
+      const canonRoot = path.join(__dirname, '..');
+      serverProcess = spawn('python3', [path.join(canonRoot, 'tools', 'sprint-check-app', 'server.py'), String(port)], {
+        cwd: fixtureDir,
+        env: { ...process.env, SPRINT_CHECK_ROOT: fixtureDir },
+        stdio: ['ignore', serverLog, serverLog],
+      });
+      const dedicatedBase = `http://127.0.0.1:${port}`;
+      await expect.poll(async () => {
+        try {
+          const r = await page.request.get(`${dedicatedBase}/api/tickets`);
+          return r.status();
+        } catch {
+          return 0;
+        }
+      }, { timeout: 5000 }).toBe(200);
+
+      await page.goto(dedicatedBase);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill('why:shared.js');
+      await page.waitForSelector('#why-results.visible', { timeout: 5000 });
+
+      await expect(page.locator('.why-result')).toHaveCount(10);
+      await expect(page.locator('.why-result-more')).toHaveText('+3 more, older');
+    } finally {
+      if (serverProcess) serverProcess.kill();
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
     }
   });
 });
