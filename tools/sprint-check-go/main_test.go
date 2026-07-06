@@ -294,3 +294,104 @@ func TestResolveAppHTMLFallsBackToSourceWorkingDir(t *testing.T) {
 		t.Fatalf("resolveAppHTML = %q, want %q", got, appPath)
 	}
 }
+
+func TestSafeTicketDocRejectsSymlinkEscape(t *testing.T) {
+	setupTestProject(t)
+	outsideDir := t.TempDir()
+	outsideFile := filepath.Join(outsideDir, "secret.png")
+	writeFile(t, outsideFile, "secret")
+
+	ticketDir := filepath.Join(ticketsDir, "t-symv", "mockups")
+	if err := os.MkdirAll(ticketDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outsideFile, filepath.Join(ticketDir, "evil.png")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := safeTicketDoc("t-symv/mockups/evil.png", ".png"); ok {
+		t.Fatal("safeTicketDoc accepted a symlink escaping ticketsDir")
+	}
+}
+
+func TestSafeTicketDocAcceptsLegitimateNestedPath(t *testing.T) {
+	setupTestProject(t)
+	realFile := filepath.Join(ticketsDir, "t-legt", "mockups", "real.png")
+	writeFile(t, realFile, "\x89PNG\r\n\x1a\n")
+
+	p, ok := safeTicketDoc("t-legt/mockups/real.png", ".png")
+	if !ok {
+		t.Fatal("safeTicketDoc rejected a legitimate nested real file")
+	}
+	if p != realFile {
+		t.Fatalf("safeTicketDoc = %q, want %q", p, realFile)
+	}
+}
+
+func TestSafeTicketDocAllowsFreshWriteWithNonexistentLeaf(t *testing.T) {
+	setupTestProject(t)
+	if err := os.MkdirAll(filepath.Join(ticketsDir, "t-newf"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	p, ok := safeTicketDoc("t-newf/plan.md")
+	if !ok {
+		t.Fatal("safeTicketDoc rejected a fresh write to a not-yet-created file")
+	}
+	if p != filepath.Join(ticketsDir, "t-newf", "plan.md") {
+		t.Fatalf("safeTicketDoc = %q, unexpected path", p)
+	}
+}
+
+// A single-level "check only the immediate parent" fix would miss this: the
+// leaf AND its immediate parent both don't exist yet, but an EXISTING
+// symlinked directory two levels up already escapes ticketsDir. The guard
+// must walk up to the deepest existing ancestor, not just one level.
+func TestSafeTicketDocRejectsSymlinkEscapeTwoLevelsUpWithNonexistentLeaf(t *testing.T) {
+	setupTestProject(t)
+	outsideDir := t.TempDir()
+
+	if err := os.Symlink(outsideDir, filepath.Join(ticketsDir, "evil-symlink-dir")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := safeTicketDoc("evil-symlink-dir/newticket/newfile.md"); ok {
+		t.Fatal("safeTicketDoc accepted a path through an existing symlinked ancestor two levels up, with a nonexistent leaf and parent")
+	}
+}
+
+// A dangling symlink (the symlink itself exists, but its target does not)
+// makes filepath.EvalSymlinks fail — a fix that treats resolution failure as
+// "nothing to escape through" would incorrectly allow this, even though
+// os.WriteFile on such a path creates the target on write, landing outside
+// ticketsDir the moment something is actually written.
+func TestSafeTicketDocRejectsDanglingSymlinkAtLeaf(t *testing.T) {
+	setupTestProject(t)
+	outsideDir := t.TempDir()
+
+	if err := os.MkdirAll(filepath.Join(ticketsDir, "t-dang"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outsideDir, "not-created-yet.md"), filepath.Join(ticketsDir, "t-dang", "evil.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := safeTicketDoc("t-dang/evil.md"); ok {
+		t.Fatal("safeTicketDoc accepted a dangling symlink whose target lies outside ticketsDir")
+	}
+}
+
+func TestSafeTicketDocAllowsFreshWriteThroughRealExistingParent(t *testing.T) {
+	setupTestProject(t)
+	if err := os.MkdirAll(filepath.Join(ticketsDir, "t-deep", "sub"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	p, ok := safeTicketDoc("t-deep/sub/brandnew.md")
+	if !ok {
+		t.Fatal("safeTicketDoc rejected a fresh write through a real, existing, non-symlinked parent chain")
+	}
+	if p != filepath.Join(ticketsDir, "t-deep", "sub", "brandnew.md") {
+		t.Fatalf("safeTicketDoc = %q, unexpected path", p)
+	}
+}

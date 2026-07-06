@@ -735,4 +735,76 @@ test.describe('board modal', () => {
       fs.rmSync(ticketDir, { recursive: true, force: true });
     }
   });
+
+  test('markdown syntax shown as an inline-code example stays literal, real syntax still renders', async ({ page }) => {
+    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+
+    try {
+      fs.mkdirSync(path.join(ticketDir, 'mockups'), { recursive: true });
+      const png = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+        'base64'
+      );
+      fs.writeFileSync(path.join(ticketDir, 'mockups', 'real.png'), png);
+
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-07-06T00:00:00Z',
+        '---',
+        '',
+        '# Inline-code protection test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        `Ticket: \`${id}\``,
+        '',
+        '## Sign-off',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Documentation showing syntax as code: `![alt](src)` should stay literal.',
+        'Also test bold-as-code: `**not bold**` should stay literal.',
+        'Also test pipe-in-code: `a|b|c` should stay literal, not break a table.',
+        'A real image reference: ![real mockup](mockups/real.png)',
+        '',
+        '## Eval-style table',
+        '| Criterion | Status | Evidence |',
+        '|---|---|---|',
+        "| Uses `checkbox.className = 'x'` | pass | `file.py:10` |",
+        '',
+      ].join('\n'));
+
+      await page.goto(`${BASE}?debug=1`);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
+
+      const body = page.locator('#m-body');
+      const codeTexts = await body.locator('code.doc-code').allTextContents();
+      expect(codeTexts).toContain('![alt](src)');
+      expect(codeTexts).toContain('**not bold**');
+      expect(codeTexts).toContain('a|b|c');
+
+      const boldTexts = await body.locator('strong').allTextContents();
+      expect(boldTexts).not.toContain('not bold');
+
+      const img = body.locator('img.doc-mockup-img');
+      await expect(img).toBeVisible();
+      await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
+
+      await expect(body.locator('table.doc-table')).toBeVisible();
+      await expect(body.locator('table.doc-table td.status-pass')).toBeVisible();
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
 });

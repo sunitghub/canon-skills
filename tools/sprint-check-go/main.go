@@ -679,7 +679,52 @@ func safeTicketDoc(docFile string, exts ...string) (string, bool) {
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", false
 	}
+	if !containedAfterSymlinks(p) {
+		return "", false
+	}
 	return p, true
+}
+
+// containedAfterSymlinks resolves symlinks on the deepest existing ancestor
+// of p (walking upward past any not-yet-created components — an EXISTING
+// intermediate directory further up the chain could be a symlink, so a
+// single-level parent check is not enough) and confirms the result still
+// lies within ticketsDir. This is the Go equivalent of Python's
+// Path.resolve(strict=False)-based containment check.
+//
+// Resolution failure is ALWAYS treated as unsafe (reject), never as "nothing
+// to escape through" — that includes a dangling symlink at the leaf itself
+// (Lstat succeeds on the symlink, but EvalSymlinks fails because its target
+// doesn't exist): an attacker-planted dangling symlink pointing outside
+// ticketsDir must not be treated as safe just because its target is missing
+// *right now* — os.WriteFile on such a path creates the target on write,
+// landing outside ticketsDir. The walk-up only exists so a legitimately
+// not-yet-created leaf (and its not-yet-created parent directories) doesn't
+// spuriously fail; it always bottoms out at an existing entity — worst case
+// ticketsDir itself, which always exists in practice — so EvalSymlinks on
+// whatever the walk finds should never fail for a legitimate write.
+func containedAfterSymlinks(p string) bool {
+	target := p
+	for {
+		if _, err := os.Lstat(target); err == nil {
+			break
+		}
+		parent := filepath.Dir(target)
+		if parent == target {
+			break // reached filesystem root without finding anything that exists
+		}
+		target = parent
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return false // exists per Lstat but can't be resolved — reject, never assume safe
+	}
+	root, err := filepath.EvalSymlinks(ticketsDir)
+	if err != nil {
+		root = ticketsDir
+	}
+	rel, err := filepath.Rel(root, resolved)
+	return err == nil && !strings.HasPrefix(rel, "..")
 }
 
 func legacyDocTarget(docFile string) (string, bool) {

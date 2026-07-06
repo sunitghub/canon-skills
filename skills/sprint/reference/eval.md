@@ -20,7 +20,7 @@ You will receive:
 
 ## Tools
 
-Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool.
+Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report (`eval-report.md`) — grading happens there only. (Same wording as `review.md` — mirror, keep in sync.)
 
 ## Report-writing safety (Windows Git Bash)
 
@@ -30,11 +30,11 @@ Write the report in separate `cat >>` calls, one per section (e.g. Criteria tabl
 
 ## Steps
 
-1. **Save run-id.** Before reading anything, save a single line via Bash to `.tickets/<id>/eval-report.md` (creating the file if absent):
+1. **Save run-id.** Before reading anything, overwrite `.tickets/<id>/eval-report.md` with a single line via Bash — even if the file already exists from a prior pass; a stale run-id (or a report with no run-id, from a prior pass that overwrote it away at step 8) must never be trusted or left in place:
    ```
    evaluator-run-id: <epoch-seconds>-<RANDOM>
    ```
-   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to a fresh subagent invocation.
+   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation. Step 8 appends the rest of the report after this line — never re-overwrite the whole file at step 8, or this line is lost and the close gate fails on a missing run-id.
 
 2. **Derive changed files.** Run:
    ```
@@ -66,7 +66,7 @@ Write the report in separate `cat >>` calls, one per section (e.g. Criteria tabl
    - **not-run** — cannot determine from static reading alone; flag for human verification
    - **fail** — test is missing, wrong, or wouldn't catch the targeted failure
 
-8. **Save the report.** Save the evaluation via Bash to `.tickets/<id>/eval-report.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above:
+8. **Save the report.** Save the evaluation via Bash to `.tickets/<id>/eval-report.md` — append (`>>`), never truncate (`>`), so the run-id line from step 1 survives. Write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above:
 
 ```markdown
 # Eval Report
