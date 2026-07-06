@@ -22,6 +22,12 @@ You will receive:
 
 Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool.
 
+## Report-writing safety (Windows Git Bash)
+
+Writing the full report as one giant heredoc has failed on a live Windows Git-Bash machine with `unexpected EOF while looking for matching \`''` — a report's prose (contractions, possessives) and quoted source citations (e.g. JS string literals) can push the total count of literal `'` characters in one heredoc body to an odd number, which an outer quoting layer on that platform mishandles. Root cause is not fully traced (only live-reproduced) — treat this as a defensive mitigation, not a proven fix. (Same wording as `eval.md` — mirror, keep in sync.)
+
+Write the report in separate `cat >>` calls, one per section (e.g. Findings, then Verdict) — never the whole report in a single heredoc. After each append, verify it landed (check the Bash call's exit code, or re-read the file's tail) before writing the next section. If a chunk's heredoc write fails, retry that same chunk split into smaller pieces until it succeeds. Never drop content or paraphrase a quoted citation to dodge the error: quoted source text must stay byte-exact.
+
 ## Steps
 
 1. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These define the approved scope — anything beyond them is scope creep.
@@ -44,7 +50,7 @@ Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any oth
    - **Unnecessary complexity** — abstractions, layers, or indirection added without a clear reason
    - **Standards violations** — anything that conflicts with `standards/efficiency.md` (no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code)
 
-5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md`:
+5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above:
 
 ```markdown
 # Review Notes
