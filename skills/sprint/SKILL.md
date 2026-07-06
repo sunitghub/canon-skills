@@ -59,7 +59,7 @@ Use the full planning pipeline when any condition applies:
 - Downstream consumers react to the changed data or event
 - The implementation has genuine gray areas that would materially change the design
 
-High-risk sprints run orient, grill, impact-analysis, required mitigation tests, and full wrapup.
+High-risk sprints run orient, grill, impact-analysis, required mitigation tests, and wrapup.
 
 ## sprint start
 
