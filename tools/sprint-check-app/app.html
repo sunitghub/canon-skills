@@ -1851,8 +1851,8 @@ function md(raw, ticketId) {
   // otherwise markdown shown *as a code example* (e.g. `![alt](src)` or
   // `**bold**`) gets reinterpreted as real syntax instead of staying literal.
   const codeSpans = [];
-  const withCodePlaceholders = sortChecklistRuns(esc(stamped)).replace(/`([^`\n]+)`/g, (_, code) => {
-    codeSpans.push(code);
+  const withCodePlaceholders = sortChecklistRuns(esc(stamped)).replace(/`((?:\\`|[^`\n])+)`/g, (_, code) => {
+    codeSpans.push(code.replace(/\\`/g, '`'));
     return `\x01${codeSpans.length - 1}\x01`;
   });
 

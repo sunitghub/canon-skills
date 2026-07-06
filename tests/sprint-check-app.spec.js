@@ -810,6 +810,70 @@ test.describe('board modal', () => {
     }
   });
 
+  test('backslash-escaped nested backticks in a citation stay literal, no broken image', async ({ page }) => {
+    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+
+    try {
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-07-06T00:00:00Z',
+        '---',
+        '',
+        '# Nested-backtick citation test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        `Ticket: \`${id}\``,
+        '',
+        '## Sign-off',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Reproduces t-6ea4\'s exact broken-render pattern: an evidence citation',
+        'quoting source text that itself contains backticks, escaped with a',
+        'backslash so the outer citation stays one span.',
+        '',
+        '## Evidence table',
+        '| Criterion | Status | Evidence |',
+        '|---|---|---|',
+        '| Uses embed | pass | `standards/ticket-layout.md:1 — "already-saved \\`mockups/x.png\\` candidate, must be a real markdown image embed — \\`![alt](mockups/ghost.png)\\` — never a bare mention."` |',
+        '',
+      ].join('\n'));
+
+      await page.goto(`${BASE}?debug=1`);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
+
+      const body = page.locator('#m-body');
+      await expect(body.locator('code.doc-code').first()).toBeVisible();
+
+      // The whole citation must render as one code span with the backslash
+      // stripped and the inner backticks restored as plain characters — not
+      // as a broken <img> pointing at a nonexistent mockups/ghost.png.
+      const codeTexts = await body.locator('code.doc-code').allTextContents();
+      const citation = codeTexts.find(t => t.includes('mockups/ghost.png'));
+      expect(citation).toBeTruthy();
+      expect(citation).toContain('`mockups/x.png`');
+      expect(citation).toContain('`![alt](mockups/ghost.png)`');
+      expect(citation).not.toContain('\\`');
+
+      await expect(body.locator('img.doc-mockup-img')).toHaveCount(0);
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
+
   test('Why mode caps results at 10 and shows a "+N more, older" line', async ({ page }) => {
     // Why mode needs real git commits referencing ticket IDs, which the
     // shared BASE server's fixture doesn't have — spin up a dedicated git
