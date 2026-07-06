@@ -669,6 +669,9 @@ func readDoc(docFile string) (string, bool) {
 	return string(raw), err == nil
 }
 
+// Must stay behaviorally identical to server.py's _safe_ticket_doc
+// (tools/sprint-check-app/server.py) — enforced by tests/sprint-check-api-parity.sh,
+// not shared code. Change one, change the other, then re-run that test.
 func safeTicketDoc(docFile string, exts ...string) (string, bool) {
 	if len(exts) == 0 {
 		exts = []string{".md"}

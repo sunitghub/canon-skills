@@ -41,6 +41,9 @@ IMAGE_EXTS   = tuple(IMAGE_MIME)
 def _doc_name(path: Path) -> str:
     return path.stem.replace('-', ' ').title()
 
+# Must stay behaviorally identical to main.go's safeTicketDoc/containedAfterSymlinks
+# (tools/sprint-check-go/main.go) — enforced by tests/sprint-check-api-parity.sh, not
+# shared code. Change one, change the other, then re-run that test.
 def _safe_ticket_doc(doc_file: str, exts: tuple[str, ...] = ('.md',)) -> Path | None:
     p = Path(doc_file)
     if p.is_absolute() or '..' in p.parts or p.suffix.lower() not in exts:
