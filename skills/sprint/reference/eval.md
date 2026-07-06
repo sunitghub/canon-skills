@@ -16,7 +16,7 @@ You are an evaluator agent. You did NOT write the code under review. You have no
 
 You will receive:
 - Ticket ID (e.g. `t-d53d`)
-- The model you are running on, as designated by the caller — exactly `haiku`, or the exact session model id (e.g. `claude-sonnet-5`), never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself.
+- The model you are running on, as designated by the caller — exactly `haiku`, or the exact session model id (e.g. `claude-sonnet-5`), never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself. (Same wording as `review.md` — mirror, keep in sync.)
 
 ## Tools
 
@@ -36,7 +36,7 @@ Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any oth
    ```
    Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git.
 
-   If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers:
+   If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `review.md`/`security-review.md` (mirror — keep in sync):
    - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and read those real changed files rather than falling back to ticket artifacts.
    - If `HEAD` does not resolve (zero commits) or git itself is unavailable: log a warning noting no git baseline is available and treat every file currently in the working tree as the changed-file set (excluding `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`).
 

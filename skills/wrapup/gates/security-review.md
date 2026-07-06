@@ -13,7 +13,7 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git s
 
 Run `git diff --name-only $(git merge-base HEAD origin/main) HEAD` to identify changed files — the same base ref every other close gate uses. Analyze only those files — do not scan the full codebase.
 
-If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `review.md`/`eval.md`:
+If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `review.md`/`eval.md` (mirror — keep in sync):
 - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and scan those real changed files.
 - If `HEAD` does not resolve (zero commits) or git itself is unavailable: log a warning noting no git baseline is available and scan every file currently in the working tree (excluding `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`) rather than falling back to `.tickets/<id>/plan.md ## Files` — this gate needs actual source to scan for vulnerabilities, not a file-name list.
 

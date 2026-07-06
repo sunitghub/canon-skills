@@ -1,6 +1,6 @@
 ---
 name: repo-check
-description: Check repo surface files and sprint-check app usability against README intent before wrapup commits
+description: Check repo surface files against README intent before the close-time commit
 category: agent-ops
 tags: [repo-health, workflow, audit, cleanup]
 hidden: true
@@ -8,7 +8,7 @@ hidden: true
 
 # Repo Check
 
-Called by `wrapup` before commit when repo surface files changed.
+Called by `wrapup` before the close-time commit (`sprint complete` step 10) when repo surface files changed.
 
 ## Scope
 
@@ -59,7 +59,7 @@ documentation, setup, or agent behavior.
 
 8. **Syntax checks.** Run cheap structural checks for changed executable files:
    `bash -n` for shell scripts. For Python files, run `python3 -m py_compile` only if `command -v python3`
-   succeeds — some target machines (e.g. Windows without a real Python install, per `t-f04f`) have no
+   succeeds — some target machines (e.g. Windows without a real Python install) have no
    working `python3`; report the check as skipped with that reason rather than failing the gate.
 
 ## Report
