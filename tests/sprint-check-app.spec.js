@@ -592,4 +592,147 @@ test.describe('board modal', () => {
       }
     }
   });
+
+  test('mockup image referenced via markdown renders inline in the doc', async ({ page }) => {
+    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+
+    try {
+      fs.mkdirSync(path.join(ticketDir, 'mockups'), { recursive: true });
+      // 1x1 transparent PNG — real, decodable bytes, not just a magic-number stub,
+      // so the browser actually loads it rather than firing an error event.
+      const png = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+        'base64'
+      );
+      fs.writeFileSync(path.join(ticketDir, 'mockups', 'chosen.png'), png);
+
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-07-06T00:00:00Z',
+        '---',
+        '',
+        '# Mockup render test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        `Ticket: \`${id}\``,
+        '',
+        '## Sign-off',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Chosen visual direction:',
+        '',
+        '![Chosen mockup](mockups/chosen.png)',
+        '',
+      ].join('\n'));
+
+      await page.goto(`${BASE}?debug=1`);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
+
+      const img = page.locator('#m-body img.doc-mockup-img');
+      await expect(img).toBeVisible();
+      await expect(img).toHaveAttribute('src', `/api/ticket-image/${id}/mockups/chosen.png`);
+      // Confirm the browser actually decoded real image bytes, not a broken-image icon.
+      await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
+
+      // Raw markdown syntax must not leak through as literal text once rendered.
+      await expect(page.locator('#m-body')).not.toContainText('![Chosen mockup]');
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a crafted ticket-image path is rejected, not served', async ({ request }) => {
+    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+
+    try {
+      fs.mkdirSync(path.join(ticketDir, 'mockups'), { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: open',
+        'type: task',
+        'priority: 2',
+        'created: 2026-07-06T00:00:00Z',
+        '---',
+        '',
+        '# Traversal rejection test',
+        '',
+      ].join('\n'));
+
+      const traversal = await request.get(`${BASE}/api/ticket-image/${id}/../../../../etc/passwd`);
+      expect(traversal.status()).toBe(404);
+
+      const wrongExt = await request.get(`${BASE}/api/ticket-image/${id}/ticket.md`);
+      expect(wrongExt.status()).toBe(404);
+
+      const missing = await request.get(`${BASE}/api/ticket-image/${id}/mockups/does-not-exist.png`);
+      expect(missing.status()).toBe(404);
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a quote-breaking mockup src cannot inject a live HTML attribute', async ({ page }) => {
+    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+
+    try {
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-07-06T00:00:00Z',
+        '---',
+        '',
+        '# Src injection rejection test',
+        '',
+      ].join('\n'));
+      // No whitespace in the payload — the image regex's src group excludes
+      // \s, so a space-containing payload would just fail to match at all
+      // rather than exercising the attribute-escaping fix under test.
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        `Ticket: \`${id}\``,
+        '',
+        '## Sign-off',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        '![x](http://evil.example/x.png"onerror="window.__xss_fired=true"//)',
+        '',
+      ].join('\n'));
+
+      await page.goto(`${BASE}?debug=1`);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
+      await expect(page.locator('#m-body img.doc-mockup-img')).toBeVisible();
+
+      const fired = await page.evaluate(() => window.__xss_fired);
+      expect(fired).toBeUndefined();
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
 });
