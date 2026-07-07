@@ -555,11 +555,14 @@ test.describe('board modal', () => {
         '',
       ].join('\n'));
       // Title/body never mention the model — only acceptance.md's Wrapup Gates row does.
+      // The Criteria line below mentions the (model: X) convention itself as prose
+      // (t-1720 regression) — it must NOT be searchable, only the real Wrapup Gates row.
       fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
         '# Acceptance',
         '',
         '## Criteria',
         '- [x] Has criteria',
+        '- [x] Describes the convention itself, e.g. `(model: mistral)`, as prose — not a real usage',
         '',
         '## Test Plan',
         '- [x] Has tests',
@@ -577,6 +580,12 @@ test.describe('board modal', () => {
       await page.locator('#board-search').fill('haiku');
       await page.waitForTimeout(300);
       await expect(page.locator(`.card[data-id="${createdId}"]`)).toBeVisible({ timeout: 8000 });
+
+      // t-1720 regression: the Criteria prose mentions "mistral" via the (model: X)
+      // pattern, but only inside ## Criteria, not ## Wrapup Gates — must not be searchable.
+      await page.locator('#board-search').fill('mistral');
+      await page.waitForTimeout(300);
+      await expect(page.locator(`.card[data-id="${createdId}"]`)).not.toBeVisible();
 
       await page.locator('#board-search').fill('a-term-that-appears-nowhere-xyz');
       await page.waitForTimeout(300);

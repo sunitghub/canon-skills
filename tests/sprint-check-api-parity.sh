@@ -86,6 +86,7 @@ cat > "$WORK/.tickets/t-model/acceptance.md" <<'EOF'
 
 ## Criteria
 - [x] Has criteria
+- [x] Mentions the convention itself, e.g. `(model: <model>)`, in prose — not a real usage (t-1720 false-positive regression)
 
 ## Test Plan
 - [x] Has tests
@@ -158,6 +159,14 @@ for tid in sorted(py_n):
 if mismatches:
     print("sprint-check-api-parity: FAIL — /api/tickets payload mismatch between server.py and main.go")
     print("\n".join(mismatches))
+    sys.exit(1)
+
+# t-1720 regression: a Criteria line describing the (model: X) convention itself
+# must never leak into models_used — only real Wrapup Gates rows count. Exact-equality
+# (not just "doesn't contain <model>") so any other stray extraction fails loud too.
+models = py_n["t-model"]["models_used"]
+if models != ["claude-sonnet-5", "haiku"]:
+    print(f"sprint-check-api-parity: FAIL — t-1720 regression, t-model.models_used should be exactly ['claude-sonnet-5', 'haiku'], got {models!r}")
     sys.exit(1)
 PY
 
