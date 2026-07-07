@@ -83,4 +83,25 @@ if [[ "$start_occurrences" -lt 2 ]]; then
   fail "doc-mirror-parity: start.md should have 2 occurrences of the Windows command -v fallback clause (steps 1 and 5), found $start_occurrences"
 fi
 
-echo "doc-mirror-parity: ok (fallback commands match across 3 gates; review.md/eval.md bullets are byte-identical; Windows fallback clause present in all path-resolution copies)"
+# ── Check D: the "Self-serve visual verification" section (t-e8e1) must be a
+# true mirror between review.md and eval.md — normalize away only each file's
+# own "mirror, keep in sync" clause naming the *other* file, same normalization
+# strategy as Check B.
+visual_section() {
+  awk '/^## Self-serve visual verification/,/^## Steps/' "$1" | sed '$d'
+}
+
+review_visual="$(visual_section "$REVIEW" | sed 's/`review\.md`/`OTHER`/; s/`eval\.md`/`OTHER`/')"
+eval_visual="$(visual_section "$EVAL" | sed 's/`review\.md`/`OTHER`/; s/`eval\.md`/`OTHER`/')"
+
+if [[ -z "$review_visual" || -z "$eval_visual" ]]; then
+  fail "doc-mirror-parity: could not find the Self-serve visual verification section in review.md/eval.md — extraction pattern is stale"
+fi
+
+if [[ "$review_visual" != "$eval_visual" ]]; then
+  echo "doc-mirror-parity: FAIL — review.md and eval.md's Self-serve visual verification section diverged"
+  diff <(echo "$review_visual") <(echo "$eval_visual") || true
+  exit 1
+fi
+
+echo "doc-mirror-parity: ok (fallback commands match across 3 gates; review.md/eval.md bullets are byte-identical; Windows fallback clause present in all path-resolution copies; Self-serve visual verification section mirrored)"

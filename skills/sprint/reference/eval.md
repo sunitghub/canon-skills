@@ -28,6 +28,46 @@ One-heredoc reports have failed on live Windows Git-Bash with `unexpected EOF wh
 
 Write the report in separate `cat >>` calls, one per section (e.g. Criteria table, then Test Plan table, then Findings + Verdict) — never one heredoc. Verify each append landed (Bash exit code, or re-read file tail) before the next section. Heredoc failure: retry the same chunk in smaller pieces — down to one table row per `cat >>` call if needed — until it succeeds. Never drop content or paraphrase a quoted citation to dodge the error — quoted source text stays byte-exact per the Evidence rules above.
 
+## Self-serve visual verification (no Node/Playwright required)
+
+For a test-plan item that needs a rendered page (layout, theme, chart output) rather than
+static code reading: you have Bash, and a browser binary is often already installed even
+when there is no Node/npm/Playwright in the project (canon workshops deliberately run on
+machines without Node.js) — do not report `not-run` before trying this. (Same wording as
+`review.md` — mirror, keep in sync.)
+
+1. Find a browser binary: macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+   (or Chromium/Edge at the equivalent path); Linux `which google-chrome`, `chromium`, or
+   `chromium-browser`; Windows `where chrome`, or check the default `Program Files\Google\Chrome\Application\chrome.exe`.
+   If none exist anywhere, the check stays `not-run` — this recipe only covers the common
+   case where a browser IS installed but wasn't being used.
+2. Render and capture in one call:
+   ```
+   "<browser>" --headless=new --disable-gpu --no-first-run --disable-background-networking \
+     --disable-sync --disable-default-apps --screenshot="<out>.png" \
+     --window-size=<W>,<H> --hide-scrollbars "file://<absolute-path-to-page>"
+   ```
+   `--no-first-run --disable-background-networking --disable-sync --disable-default-apps`
+   avoids a live-reproduced hang: a fresh browser profile's background network calls (e.g.
+   GCM registration) can block the process from exiting. Size `<W>,<H>` to the full page —
+   a too-short window silently crops content below the fold rather than erroring.
+3. To check a specific theme rather than inheriting the host's OS setting:
+   `--blink-settings=preferredColorScheme=1` (light) is confirmed reliable, but `=2` (dark)
+   is **not** — live-reproduced on Chrome 149.0.7827.201: `=2` silently produced light
+   instead of erroring, and `--force-dark-mode`/`--enable-features=WebContentsForceDark`
+   don't help either — those invert page colors as an accessibility feature, they don't
+   affect the `prefers-color-scheme` media query at all (confirmed by combining them with
+   `=1` and still getting light). Never trust a color-scheme flag silently — verify with a
+   throwaway page (`window.matchMedia('(prefers-color-scheme: dark)').matches`) before
+   relying on it for a real check. For dark specifically, or for any page that has its own
+   explicit theme override (a `data-theme` attribute, a class toggle, a `localStorage` key
+   — common in dashboards with a light/dark button), the robust method is to make a scratch
+   copy of the page's HTML with that attribute/class pre-set directly, rather than
+   depending on browser-level scheme emulation at all — this works regardless of Chrome
+   version or host OS.
+4. `Read` the resulting PNG directly — Read supports images — and grade the test-plan item
+   against what you actually see, same evidentiary bar as any other citation.
+
 ## Steps
 
 1. **Save run-id.** Before reading anything, overwrite `.tickets/<id>/eval-report.md` with a single line via Bash — even if the file already exists from a prior pass; a stale run-id (or a report with no run-id, from a prior pass that overwrote it away at step 8) must never be trusted or left in place:
