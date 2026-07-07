@@ -1752,6 +1752,7 @@ function searchableText(t) {
     r.acceptanceUnchecked ? 'unchecked items incomplete' : '',
     r.planIncomplete ? 'plan incomplete incomplete' : '',
     ...(t.docs || []).flatMap(d => [d.name, docSlug(t, d.file)]),
+    ...(t.models_used || []),
   ].join(' '));
 }
 

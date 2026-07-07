@@ -67,6 +67,36 @@ trap cleanup EXIT
 
 build_tickets_fixture "$WORK"
 
+# Dedicated fixture for models_used parity (t-a19e) — not added to the shared
+# build_tickets_fixture helper since other tests assert against its exact
+# ticket set/content; a standalone ticket here keeps this check isolated.
+mkdir -p "$WORK/.tickets/t-model"
+cat > "$WORK/.tickets/t-model/ticket.md" <<'EOF'
+---
+id: t-model
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Model mention fixture
+EOF
+cat > "$WORK/.tickets/t-model/acceptance.md" <<'EOF'
+# Acceptance
+
+## Criteria
+- [x] Has criteria
+
+## Test Plan
+- [x] Has tests
+
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| reviewer | ran | verdict: YES (model: claude-sonnet-5) |
+| eval | ran | verdict: pass (model: HAIKU) |
+EOF
+
 free_port() {
   python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'
 }
@@ -173,4 +203,4 @@ check_ticket_image "non-image extension (real file, wrong ext)" "t-mock/ticket.m
 check_ticket_image "missing file"              "t-mock/mockups/does-not-exist.png"
 check_ticket_image "malformed ticket id"       "t-ready/mockups/test.png"
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically, for $WORK fixture)"
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used extraction; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically, for $WORK fixture)"

@@ -24,14 +24,15 @@ import (
 )
 
 var (
-	frontmatterRe = regexp.MustCompile(`(?s)^---\s*\n(.*?)\n---\s*\n`)
-	fieldRe       = regexp.MustCompile(`(?m)^(\w+):\s*(.+)$`)
-	headingRe     = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
-	imageExts     = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
-	projectRoot   string
-	ticketsDir    string
-	handoffFile   string
-	appHTML       string
+	frontmatterRe  = regexp.MustCompile(`(?s)^---\s*\n(.*?)\n---\s*\n`)
+	fieldRe        = regexp.MustCompile(`(?m)^(\w+):\s*(.+)$`)
+	headingRe      = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
+	modelMentionRe = regexp.MustCompile(`(?i)\(model:\s*([^)]+)\)`)
+	imageExts      = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
+	projectRoot    string
+	ticketsDir     string
+	handoffFile    string
+	appHTML        string
 )
 
 type docInfo struct {
@@ -268,12 +269,14 @@ func parseTicket(path string) (ticket, error) {
 		}
 		t["acceptance_has_items"] = nil
 		t["acceptance_unchecked"] = nil
+		t["models_used"] = []string{}
 		if acc, err := os.ReadFile(filepath.Join(filepath.Dir(path), "acceptance.md")); err == nil {
 			accText := string(acc)
 			cb := regexp.MustCompile(`(?m)^\s*[-*]\s+\[[ xX]\]\s+\S`)
 			unchecked := regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
 			t["acceptance_has_items"] = cb.MatchString(section(accText, "Criteria")) && cb.MatchString(section(accText, "Test Plan"))
 			t["acceptance_unchecked"] = unchecked.MatchString(accText)
+			t["models_used"] = modelsUsed(accText)
 		}
 		t["plan_has_approach"] = nil
 		t["plan_approved"] = nil
@@ -786,6 +789,19 @@ func usefulText(text string) bool {
 
 func sectionHasCheckedItem(text, heading string) bool {
 	return regexp.MustCompile(`(?m)^\s*[-*]\s+\[[xX]\]\s+\S`).MatchString(section(text, heading))
+}
+
+func modelsUsed(acceptanceText string) []string {
+	seen := []string{}
+	seenSet := map[string]bool{}
+	for _, m := range modelMentionRe.FindAllStringSubmatch(acceptanceText, -1) {
+		name := strings.ToLower(strings.TrimSpace(m[1]))
+		if name != "" && !seenSet[name] {
+			seenSet[name] = true
+			seen = append(seen, name)
+		}
+	}
+	return seen
 }
 
 func unquoteYAMLScalar(value string) string {

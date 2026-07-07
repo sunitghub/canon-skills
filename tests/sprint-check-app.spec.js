@@ -534,6 +534,58 @@ test.describe('board modal', () => {
     }
   });
 
+  test('search finds a ticket by model mention in acceptance.md, not just title/body', async ({ page }) => {
+    const stamp = Date.now();
+    const createdId = `t-model-${stamp}`;
+    const title = `Model search test ${stamp}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', createdId);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${createdId}`,
+        'status: open',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-08T00:00:00Z',
+        '---',
+        '',
+        `# ${title}`,
+        '',
+      ].join('\n'));
+      // Title/body never mention the model — only acceptance.md's Wrapup Gates row does.
+      fs.writeFileSync(path.join(ticketDir, 'acceptance.md'), [
+        '# Acceptance',
+        '',
+        '## Criteria',
+        '- [x] Has criteria',
+        '',
+        '## Test Plan',
+        '- [x] Has tests',
+        '',
+        '## Wrapup Gates',
+        '| Gate | Status | Reason |',
+        '|------|--------|--------|',
+        '| eval | ran | verdict: pass (model: haiku) |',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill('haiku');
+      await page.waitForTimeout(300);
+      await expect(page.locator(`.card[data-id="${createdId}"]`)).toBeVisible({ timeout: 8000 });
+
+      await page.locator('#board-search').fill('a-term-that-appears-nowhere-xyz');
+      await page.waitForTimeout(300);
+      await expect(page.locator(`.card[data-id="${createdId}"]`)).not.toBeVisible();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
   test('modal next and previous stay in the same status lane sorted by newest first', async ({ page }) => {
     const stamp = Date.now();
     const tickets = [
