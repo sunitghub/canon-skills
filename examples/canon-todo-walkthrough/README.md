@@ -16,6 +16,7 @@ the steps and understand what each tool does and why.
 - Closing the sprint is gated: the CLI checks the board's criteria and test plan are both filled and ticked.
 - An evaluator subagent with a clean context reviews the code before close — it finds a criterion that was checked without a test, the agent adds the test, and the sprint closes clean.
 - A plan-vs-actual table at close makes deviations explicit — every criterion shows `delivered`, `waived`, `deferred`, or `partial` with a reason.
+- A second ticket handed two competing mockups at once — both recorded in Plan, only the chosen one shipped in Acceptance — and a choice durable enough to earn a `DECISIONS.md` entry, not just a note in that one ticket.
 
 A developer runs the terminal commands. A product manager reads the board and
 reviews the acceptance criteria the agent drafts. Both roles are shown.
@@ -94,6 +95,7 @@ uses the bundled `sprint-check-win.exe`; it does not require WSL or Python.
 3. [03-sprint-check.md](steps/03-sprint-check.md) — review what the agent drafted on the board.
 4. [04-implementation.md](steps/04-implementation.md) — build and tick off criteria.
 5. [05-sprint-complete.md](steps/05-sprint-complete.md) — close with the gate, including the failure case.
+6. [06-ux-update.md](steps/06-ux-update.md) — a second ticket: multi-candidate mockups and a durable `DECISIONS.md` entry.
 
 The finished reference implementation is included in the workshop zip at
 `examples/todo-app`.
