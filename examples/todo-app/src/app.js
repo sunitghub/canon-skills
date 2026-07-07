@@ -1,16 +1,18 @@
-export function createTodo(title, now = Date.now()) {
+let seq = 0;
+
+export function createTodo(title, now = Date.now(), uniq = seq++) {
   const cleanTitle = title.trim();
   if (!cleanTitle) return null;
   return {
-    id: `todo-${now}-${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`,
+    id: `todo-${now}-${uniq}-${cleanTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`,
     title: cleanTitle,
     done: false,
     createdAt: now
   };
 }
 
-export function addTodo(items, title, now = Date.now()) {
-  const todo = createTodo(title, now);
+export function addTodo(items, title, now = Date.now(), uniq = seq++) {
+  const todo = createTodo(title, now, uniq);
   return todo ? [...items, todo] : items;
 }
 
