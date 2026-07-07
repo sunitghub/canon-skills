@@ -34,6 +34,15 @@ APP_HTML     = Path(__file__).parent / 'app.html'
 
 _FRONTMATTER = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL)
 _FIELD       = re.compile(r'^(\w+):\s*(.+)$', re.MULTILINE)
+_MODEL_MENTION = re.compile(r'\(model:\s*([^)]+)\)', re.IGNORECASE)
+
+def _models_used(acceptance_text: str) -> list[str]:
+    seen = []
+    for m in _MODEL_MENTION.finditer(acceptance_text):
+        name = m.group(1).strip().lower()
+        if name and name not in seen:
+            seen.append(name)
+    return seen
 IMAGE_MIME   = {'.png': 'image/png', '.gif': 'image/gif', '.jpg': 'image/jpeg',
                  '.jpeg': 'image/jpeg', '.webp': 'image/webp'}
 IMAGE_EXTS   = tuple(IMAGE_MIME)
@@ -115,6 +124,7 @@ def parse_ticket(path: Path) -> dict:
         # Check acceptance completeness: Criteria and Test Plan each need ≥1 checkbox item
         fields['acceptance_has_items'] = None
         fields['acceptance_unchecked'] = None
+        fields['models_used'] = []
         acc_path = path.parent / 'acceptance.md'
         if acc_path.is_file():
             try:
@@ -128,6 +138,7 @@ def parse_ticket(path: Path) -> dict:
                 # True if any unchecked items exist (blocks drag-to-done)
                 _unchecked = re.compile(r'^\s*[-*]\s+\[ \]\s+\S', re.MULTILINE)
                 fields['acceptance_unchecked'] = bool(_unchecked.search(acc_text))
+                fields['models_used'] = _models_used(acc_text)
             except Exception:
                 pass
         fields['plan_has_approach'] = None
