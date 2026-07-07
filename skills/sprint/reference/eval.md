@@ -30,11 +30,19 @@ Write the report in separate `cat >>` calls, one per section (e.g. Criteria tabl
 
 ## Self-serve visual verification (no Node/Playwright required)
 
-For a test-plan item that needs a rendered page (layout, theme, chart output) rather than
-static code reading: you have Bash, and a browser binary is often already installed even
-when there is no Node/npm/Playwright in the project (canon workshops deliberately run on
-machines without Node.js) — do not report `not-run` before trying this. (Same wording as
-`review.md` — mirror, keep in sync.)
+**Check for a project-level override first.** If the project's own `AGENTS.md`/`CLAUDE.md`
+explicitly forbids scripted/automated verification (e.g. "verify only by clicking through
+the app yourself — no scripts, no automation, in any language or tool" — a real workshop
+rule, deliberately teaching manual verification), that rule wins. Do not run this recipe;
+grade the test-plan item `not-run` and say so, so a human verifies it by hand instead. This
+check costs one file read and prevents silently violating an explicit project constraint
+the rest of this protocol never otherwise surfaces to you.
+
+Otherwise: for a test-plan item that needs a rendered page (layout, theme, chart output)
+rather than static code reading — you have Bash, and a browser binary is often already
+installed even when there is no Node/npm/Playwright in the project (canon workshops
+deliberately run on machines without Node.js) — do not report `not-run` before trying this.
+(Same wording as `review.md` — mirror, keep in sync.)
 
 1. Find a browser binary: macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
    (or Chromium/Edge at the equivalent path); Linux `which google-chrome`, `chromium`, or
