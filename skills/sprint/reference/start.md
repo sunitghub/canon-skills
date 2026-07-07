@@ -25,7 +25,14 @@
         (`mockups/option-a.png`, `mockups/option-b.png`), embed all candidates in
         `plan.md` alongside the choice under `## Decisions`, and embed only the chosen
         one in `acceptance.md` — leave discarded candidates in `mockups/` for
-        traceability, don't delete them.
+        traceability, don't delete them. Before writing each candidate's label and
+        description, `Read` that specific copied file again and describe what you
+        actually see in it — live-reproduced failure: two mockups got swapped relative
+        to their labels because content and identity were tracked by copy order/filename
+        order instead of by re-checking the file itself, so "Candidate A" ended up
+        describing the wrong image. This has no mechanical gate (`_gate_mockup_embed`
+        only checks that a real embed exists and the file is present, not that its
+        content matches its label) — the fix is re-verifying at write time.
 
      `sprint complete`'s `_gate_mockup_embed` enforces both steps mechanically — it
      blocks close if any image-extension filename mentioned in `plan.md`/`acceptance.md`
