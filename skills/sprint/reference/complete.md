@@ -177,7 +177,11 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 
 6. **DECISIONS.md.** Append any durable decisions made during this sprint — non-obvious
    architectural choices, explicit tradeoffs, out-of-scope calls. One row per decision. Write
-   the WHY, not the what. Skip if no new decisions were made.
+   the WHY, not the what. Skip if no new decisions were made. If this sprint's decision cleanly
+   supersedes or retires an *entire* earlier entry (not a fragment of a composite, multi-topic
+   one), move that earlier entry's row to `DECISIONS-archive.md` instead of leaving it in
+   `DECISIONS.md` forever — this is what keeps the file `sprint start` actively scans from
+   growing unbounded. Never split a multi-topic entry to archive part of it.
 
 7. **Conventions.** While context is fresh: did any convention-level learning emerge — pattern,
    naming norm, non-obvious file relationship, gotcha — worth a future agent knowing? Distinct

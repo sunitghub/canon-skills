@@ -22,7 +22,8 @@
    - `DECISIONS.md` at repo root — create with empty log table if absent. After reading,
      actively scan every entry: identify any that constrain or conflict with this sprint's
      request. A conflict is not a passive note — it must be surfaced in the brief and
-     resolved by the user before any implementation proceeds.
+     resolved by the user before any implementation proceeds. `DECISIONS-archive.md` (if
+     present) holds entries already superseded — historical reference, not part of this scan.
    - Read `tools/handoff.md` (same resolution as step 1's `tools/ticket.md` — plain relative path in canon itself, or via `command -v sprint`'s directory in a consumer project, or `where sprint` on Windows if `command -v` returns nothing), then: `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
    - Active sprint files
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold

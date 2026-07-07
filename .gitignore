@@ -1,6 +1,7 @@
 .tickets/
 HANDOFF.md
 DECISIONS.md
+DECISIONS-archive.md
 pbcopy
 .DS_Store
 __pycache__/
