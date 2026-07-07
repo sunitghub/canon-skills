@@ -22,18 +22,54 @@ See `standards/efficiency.md` for the full agent standards (code quality, securi
 <!-- MODEL-TIERS:BEGIN -->
 ## Model Tiers
 
-Match model to the sprint work being done. `explore`, `implement`, and `review` are sub-agent dispatch purposes tagged per `skills/sprint/SKILL.md`'s `## Dispatch purposes`; `plan creation` and `grill` are sprint steps that typically run inline in the main session, not separate dispatches — the model choice below still applies to whichever session/dispatch is doing that work.
+Match model to the sprint work being done. `explore`/`implement`/`review` are sub-agent
+dispatch purposes (`skills/sprint/SKILL.md`'s `## Dispatch purposes`); `plan creation` and
+`grill` are sprint steps that usually run inline in the main session, not separate
+dispatches — the tier below still applies to whichever session/dispatch does that work.
 
 - `explore` → Haiku — read-only, bounded search/mapping, no judgment calls.
 - `plan creation` → Fable or Opus — needs design judgment before scope locks in.
 - `implement` → Haiku/Sonnet — execution inside an approved plan.
-- `review` / `grill` → Opus — adversarial, judgment-heavy work a weaker model would rubber-stamp.
+- `review` / `grill` → Opus — adversarial, judgment-heavy; a weaker model would rubber-stamp.
 
-**Advisor graceful-degradation:** if the session has the `advisor` tool configured with Sonnet+Opus, `implement` can stay Haiku/Sonnet — Opus-level judgment is already reachable via `advisor()`. Otherwise, bump `implement` to Opus for high-risk sprints (no advisor safety net).
+**Advisor graceful-degradation.** With `advisor` configured on Sonnet+Opus, `implement` can
+stay Haiku/Sonnet — Opus-level judgment is reachable via `advisor()`. Without it, bump
+`implement` to Opus for high-risk sprints (no advisor safety net).
 
-**Exception — sprint close gates:** the `review`-purpose dispatches at sprint close (reviewer, evaluator) follow `skills/sprint/reference/complete.md`'s own model-tier rule instead of the `review → Opus` default above: session model unless a structural, file-path-only check finds every changed file low-risk (docs/skill-reference/standards, no security-sensitive markers), in which case they run on Haiku. This is a mechanical downgrade, never the dispatching agent's own risk judgment, and an explicit user request for full-tier review always overrides it. See `complete.md`'s "Model tier for gates" section for the exact rule.
+**Exception — sprint close gates.** Reviewer/evaluator dispatches at sprint close don't use
+the `review → Opus` default above — they follow `skills/sprint/reference/complete.md`'s own
+rule:
 
-**Cross-harness note:** this whole section assumes the harness exposes an `Agent`-tool-shaped primitive — spawn a fresh-context subagent, optionally on a different model, in one call. Claude Code's tool surface matches that directly. Under Codex, fresh-context dispatch is confirmed working (Codex's real `spawn_agent`/`wait_agent`/`close_agent` tools, namespace `multi_agent_v1`, successfully ran a canon evaluator gate in a prior session) — so the self-review-bias guarantee holds on both harnesses. Per-agent **model selection** is not confirmed under Codex: the real observed `spawn_agent` call takes only `agent_type`, `fork_context`, and `message` — no `model` field — so the Haiku-downgrade cost optimization above is Claude-Code-confirmed only. Don't assume it applies under Codex without testing live first. This isn't only a lost cost optimization: Codex has one model per whole session (its own model picker is session-level, not per-dispatch), so `review`/`grill`'s force-bump-to-Opus has nothing to act on either — a Codex session run on a cheap model silently loses the model-strength floor on its close gates too, with no escalation path. That's secondary to fresh-context isolation (the primary self-review-bias protection, which holds regardless) — but real, and worth knowing before trusting a Codex-run review on a mini model the same way you'd trust one under Claude Code.
+- Session model, downgraded to Haiku only when a structural, file-path-only check finds
+  every changed file low-risk (docs/skill-reference/standards, no security-sensitive
+  markers). Mechanical only — never the dispatching agent's own risk judgment.
+- An explicit user request for full-tier review always overrides the downgrade.
+- `acceptance.md`/`plan.md` content is never read for this classification — only file paths
+  and a live user instruction count. Both are what reviewer/evaluator read as ground truth
+  (`eval.md`'s own framing: "what was promised, what approach was approved"); letting
+  either one also steer its own review rigor would be a self-referential trust hole, not a
+  convenience.
+
+See `complete.md`'s "Model tier for gates" section for the exact rule.
+
+**Cross-harness note.** This section assumes an `Agent`-tool-shaped primitive: spawn a
+fresh-context subagent, optionally on a different model, in one call.
+
+- **Confirmed under Codex:** fresh-context dispatch works (Codex's real `spawn_agent`/
+  `wait_agent`/`close_agent` tools, namespace `multi_agent_v1`) — it successfully ran a
+  canon evaluator gate in a prior session, so the self-review-bias guarantee holds on
+  both harnesses.
+- **Not confirmed under Codex:** per-agent **model selection** — the observed `spawn_agent`
+  call takes `agent_type`/`fork_context`/`message`, no `model` field. The Haiku-downgrade
+  above is Claude-Code-confirmed only; don't assume it works under Codex without testing
+  live first.
+- **Bigger risk than the lost cost optimization:** Codex's model picker is session-level,
+  not per-dispatch — a Codex session run on a cheap model **silently** loses the
+  model-strength floor on `review`/`grill`'s close-gate Opus bump too, with no escalation
+  path.
+- Fresh-context isolation (the primary self-review-bias protection) still holds regardless
+  of any of the above — but it's real, and worth knowing before trusting a Codex-run
+  review on a mini model the way you'd trust one under Claude Code.
 <!-- MODEL-TIERS:END -->
 
 <!-- AI-SKILLS:BEGIN -->
