@@ -11,7 +11,26 @@
 4. **Planning files.** Both files were already seeded by step 1 (skeleton `## Criteria`/`## Test Plan`/`## QA` in `acceptance.md`, skeleton `## Sign-off`/`## Approach`/`## Files`/`## Decisions` in `plan.md`) — fill them in now, before the brief. The approval gate in step 11 blocks code, not planning file content.
    - `acceptance.md` — specific, binary conditions that define "done" under `## Criteria` and `## Test Plan`. For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution. `## QA`'s "Tested locally" box also blocks close if left unchecked — check it once you've actually verified the change, not before.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
-   - **Mockup/screenshot artifacts.** If a visual reference (pasted image or a given file path) is provided as the direction for this sprint, save it to `.tickets/<id>/mockups/<name>.<ext>` and insert an actual markdown image embed — `![alt](mockups/<name>.<ext>)`, relative to the ticket's own folder, not the full API path — in `plan.md`/`acceptance.md`. A bare or backticked filename mention (e.g. `` `mockups/<name>.<ext>` `` in prose) is not an embed and will render as plain text, not an image. The board only resolves and renders the actual `![alt](...)` tag inline. `sprint complete`'s `_gate_mockup_embed` enforces this mechanically — it blocks close if any `mockups/<name>.<ext>` reference in `plan.md`/`acceptance.md` never appears inside a real embed. **Multiple candidates** (e.g. two UI options): name each distinctly (`mockups/option-a.png`, `mockups/option-b.png`), embed all candidates in `plan.md` alongside the choice under `## Decisions`, and embed only the chosen one in `acceptance.md` — leave discarded candidates in `mockups/` for traceability, don't delete them.
+   - **Mockup/screenshot artifacts.** If a visual reference (pasted image, or a file path
+     given by the user — including an absolute host path like `C:\...\Mockup-1.jpg`) is
+     provided as the direction for this sprint:
+     1. **Copy the actual file** to `.tickets/<id>/mockups/<name>.<ext>` — a reference by
+        name alone is not enough; the board only ever serves images from inside the
+        ticket's own folder, so a file left at its original location is unreachable.
+     2. **Insert a real markdown image embed** — `![alt](mockups/<name>.<ext>)`, relative
+        to the ticket's own folder, not the full API path — in `plan.md`/`acceptance.md`.
+        A bare or backticked filename mention (e.g. `` `Mockup-1.jpg` `` or
+        `` `mockups/<name>.<ext>` `` in prose) is not an embed and renders as plain text.
+     3. **Multiple candidates** (e.g. two UI options): name each distinctly
+        (`mockups/option-a.png`, `mockups/option-b.png`), embed all candidates in
+        `plan.md` alongside the choice under `## Decisions`, and embed only the chosen
+        one in `acceptance.md` — leave discarded candidates in `mockups/` for
+        traceability, don't delete them.
+
+     `sprint complete`'s `_gate_mockup_embed` enforces both steps mechanically — it
+     blocks close if any image-extension filename mentioned in `plan.md`/`acceptance.md`
+     never resolves to a real embed in that same file, or if a real embed's target file
+     was never actually copied to `mockups/`.
    - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below)
    - If these already exist with real content (not just the skeleton): read them and proceed without recreating.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
