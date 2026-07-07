@@ -308,15 +308,33 @@ cat >> ".tickets/$id/plan.md" <<'EOF'
 EOF
 
 bad_mockup_output="$(run_fail "$SPRINT" complete)"
-assert_contains "$bad_mockup_output" "references a mockup that is never embedded"
-assert_contains "$bad_mockup_output" "mockups/option-a.png"
+assert_contains "$bad_mockup_output" "has a broken mockup reference"
+assert_contains "$bad_mockup_output" "option-a.png"
+assert_contains "$bad_mockup_output" "never embedded as a real image"
 
-# Same reference, now with a real embed elsewhere in the file — gate passes,
-# eval gate fires next
+# t-215f — a bare filename mention with no "mockups/" prefix at all (reported live
+# from a Windows workshop: a manually-created ticket referenced two mockups by bare
+# filename, and the original mockups/-prefix-only regex never caught it).
+sed -i.bak 's/`mockups\/option-a\.png`/`Mockup-1.jpg`/' ".tickets/$id/plan.md" && rm -f ".tickets/$id/plan.md.bak"
+bare_mockup_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$bare_mockup_output" "has a broken mockup reference"
+assert_contains "$bare_mockup_output" "Mockup-1.jpg"
+assert_contains "$bare_mockup_output" "never embedded as a real image"
+
+# Add a real embed for the bare mention, but do NOT create the file on disk —
+# t-215f's second gap: a syntactically-correct embed whose target was never actually
+# copied to mockups/ must also block, with a distinct message, not silently pass.
 cat >> ".tickets/$id/plan.md" <<'EOF'
 
-![Option A](mockups/option-a.png)
+![Mockup 1](mockups/Mockup-1.jpg)
 EOF
+missing_file_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$missing_file_output" "has a broken mockup reference"
+assert_contains "$missing_file_output" "doesn't exist on disk"
+
+# Actually copy the file to mockups/ — gate passes, eval gate fires next
+mkdir -p ".tickets/$id/mockups"
+printf '\x89PNG\r\n\x1a\n' > ".tickets/$id/mockups/Mockup-1.jpg"
 
 # All gates satisfied — sprint complete should succeed
 cat > ".tickets/$id/acceptance.md" <<'EOF'
