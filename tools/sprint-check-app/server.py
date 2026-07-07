@@ -138,7 +138,7 @@ def parse_ticket(path: Path) -> dict:
                 # True if any unchecked items exist (blocks drag-to-done)
                 _unchecked = re.compile(r'^\s*[-*]\s+\[ \]\s+\S', re.MULTILINE)
                 fields['acceptance_unchecked'] = bool(_unchecked.search(acc_text))
-                fields['models_used'] = _models_used(acc_text)
+                fields['models_used'] = _models_used(_section(acc_text, 'Wrapup Gates'))
             except Exception:
                 pass
         fields['plan_has_approach'] = None

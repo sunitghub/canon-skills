@@ -276,7 +276,7 @@ func parseTicket(path string) (ticket, error) {
 			unchecked := regexp.MustCompile(`(?m)^\s*[-*]\s+\[ \]\s+\S`)
 			t["acceptance_has_items"] = cb.MatchString(section(accText, "Criteria")) && cb.MatchString(section(accText, "Test Plan"))
 			t["acceptance_unchecked"] = unchecked.MatchString(accText)
-			t["models_used"] = modelsUsed(accText)
+			t["models_used"] = modelsUsed(section(accText, "Wrapup Gates"))
 		}
 		t["plan_has_approach"] = nil
 		t["plan_approved"] = nil
