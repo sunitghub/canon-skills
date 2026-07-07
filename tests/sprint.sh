@@ -297,6 +297,27 @@ Add _gate_plan_signoff to tools/sprint and tests.
 - tests/sprint.sh
 EOF
 
+# Mockup-embed gate — a bare/backticked mockup filename with no real image
+# embed anywhere in plan.md must block close, naming the offending path —
+# regression for t-f149 (rendered as plain text on the board, not caught
+# until a real workshop-prep ticket shipped it).
+cat >> ".tickets/$id/plan.md" <<'EOF'
+
+## Decisions
+- Option A (`mockups/option-a.png`): some text, no real embed anywhere.
+EOF
+
+bad_mockup_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$bad_mockup_output" "references a mockup that is never embedded"
+assert_contains "$bad_mockup_output" "mockups/option-a.png"
+
+# Same reference, now with a real embed elsewhere in the file — gate passes,
+# eval gate fires next
+cat >> ".tickets/$id/plan.md" <<'EOF'
+
+![Option A](mockups/option-a.png)
+EOF
+
 # All gates satisfied — sprint complete should succeed
 cat > ".tickets/$id/acceptance.md" <<'EOF'
 # Acceptance

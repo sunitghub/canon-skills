@@ -281,6 +281,29 @@ _gate_plan_content() {
   fi
 }
 
+_gate_mockup_embed() {
+  local id="$1"
+  local file bad_refs ref refs_seen
+  for file in "$2" "$3"; do
+    [[ -f "$file" ]] || continue
+    refs_seen="$(grep -oE 'mockups/[A-Za-z0-9_.-]+\.(png|jpg|jpeg|gif|webp)' "$file" | sort -u)"
+    [[ -z "$refs_seen" ]] && continue
+    bad_refs=()
+    while IFS= read -r ref; do
+      [[ -z "$ref" ]] && continue
+      local esc
+      esc="$(printf '%s' "$ref" | sed 's/[.[\*^$/]/\\&/g')"
+      grep -qE "!\[[^]]*\]\(${esc}\)" "$file" || bad_refs+=("$ref")
+    done <<< "$refs_seen"
+    if [[ "${#bad_refs[@]}" -gt 0 ]]; then
+      echo "Sprint $id cannot close: $file references a mockup that is never embedded as a real image."
+      printf '  %s\n' "${bad_refs[@]}"
+      echo "Use a real markdown image embed — ![alt](mockups/<name>.<ext>) — not a bare or backticked filename."
+      return 1
+    fi
+  done
+}
+
 _gate_eval_report() {
   local id="$1" tdir="$2"
   local plan="$tdir/plan.md" report="$tdir/eval-report.md"
@@ -349,6 +372,7 @@ cmd_complete() {
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
   _gate_no_unchecked        "$id" "$acceptance"          || exit 1
   _gate_plan_content        "$id" "$tdir/plan.md"        || exit 1
+  _gate_mockup_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1
   _gate_plan_signoff        "$id" "$tdir/plan.md"        || exit 1
   _gate_eval_report         "$id" "$tdir"                || exit 1
 
