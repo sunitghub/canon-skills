@@ -21,16 +21,32 @@ AGENT_TYPE=""
 SESSION_ID=""
 TRANSCRIPT=""
 
+usage() {
+  cat >&2 <<'EOF'
+Usage: subagent-log.sh --agent-id <id> [--agent-type reviewer|evaluator] [--session-id <id>] [--transcript-path <path>]
+       echo '{"agent_id":"...","agent_type":"..."}' | subagent-log.sh   (legacy hook payload)
+EOF
+}
+
 if [[ $# -gt 0 ]]; then
+  if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+    usage
+    exit 0
+  fi
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --agent-id) AGENT_ID="${2:-}"; shift; shift 2>/dev/null || true ;;
       --agent-type) AGENT_TYPE="${2:-}"; shift; shift 2>/dev/null || true ;;
       --session-id) SESSION_ID="${2:-}"; shift; shift 2>/dev/null || true ;;
       --transcript-path) TRANSCRIPT="${2:-}"; shift; shift 2>/dev/null || true ;;
-      *) shift ;;
+      *) echo "subagent-log.sh: unrecognized argument: $1" >&2; usage; exit 1 ;;
     esac
   done
+  if [[ -z "$AGENT_ID" ]]; then
+    echo "subagent-log.sh: --agent-id is required" >&2
+    usage
+    exit 1
+  fi
   REPO_ROOT="$(project_root)"
 else
   # Hook payload arrives on stdin as JSON
