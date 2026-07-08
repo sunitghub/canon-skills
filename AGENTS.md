@@ -22,10 +22,9 @@ See `standards/efficiency.md` for the full agent standards (code quality, securi
 <!-- MODEL-TIERS:BEGIN -->
 ## Model Tiers
 
-Match model to the sprint work being done. `explore`/`implement`/`review` are sub-agent
-dispatch purposes (`skills/sprint/SKILL.md`'s `## Dispatch purposes`); `plan creation` and
-`grill` are sprint steps that usually run inline in the main session, not separate
-dispatches — the tier below still applies to whichever session/dispatch does that work.
+Match model to the sprint work being done. `plan creation` and `grill` usually run inline
+in the main session rather than as separate dispatches — the tier below still applies to
+whichever session/dispatch does that work.
 
 - `explore` → Haiku — read-only, bounded search/mapping, no judgment calls.
 - `plan creation` → Fable or Opus — needs design judgment before scope locks in.
@@ -34,8 +33,8 @@ dispatches — the tier below still applies to whichever session/dispatch does t
 - `review` / `grill` → Opus — adversarial, judgment-heavy; a weaker model would rubber-stamp.
 
 **Exception — sprint close gates** follow their own rule (may downgrade to Haiku on a
-structural low-risk check, or an explicit user `Gate model:` override) — see
-`skills/sprint/reference/complete.md`'s "Model tier for gates" section, not this block.
+structural low-risk check, or an explicit user `Gate model:` override) — see the
+"Model tier for gates" note in `skills/sprint/reference/complete.md`, not this block.
 
 **Cross-harness note.** Fresh-context dispatch is confirmed working under Codex
 (`spawn_agent`/`wait_agent`/`close_agent`), but per-agent model selection is not — Codex's
