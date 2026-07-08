@@ -359,7 +359,13 @@ EOF
 missing_eval_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_eval_output" "eval-report.md is missing"
 
-# eval-report.md with non-pass verdict should block
+# eval-report.md with non-pass verdict should block — give it a matching
+# jsonl entry first so this test exercises the verdict check, not the
+# (now-mandatory) jsonl-authenticity check exercised separately below.
+mkdir -p .claude
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T01:46:40Z","session_id":"s1","agent_id":"agent-prelim","agent_type":"general-purpose","transcript_path":"/tmp/prelim.jsonl"}
+EOF
 cat > ".tickets/$id/eval-report.md" <<'EOF'
 # Eval Report
 evaluator-run-id: 1000000000-12345
@@ -404,7 +410,7 @@ cat > ".claude/subagent-runs.jsonl" <<'EOF'
 EOF
 match_output="$("$SPRINT" complete 2>&1 || true)"
 [[ "$match_output" == *"no matching subagent entry"* ]] && fail "matching JSONL entry should not block close: $match_output"
-# Sprint closed — start a fresh one to test JSONL-absent success path
+# Sprint closed — start a fresh one to test the JSONL-absent fail-closed path
 
 fresh_start_output="$("$SPRINT" start "JSONL absent path test")"
 fresh_id="$(printf '%s\n' "$fresh_start_output" | awk '/Sprint started:/ { print $3 }')"
@@ -437,7 +443,16 @@ evaluator-run-id: 1000000000-absent-test
 ## Verdict
 pass: all criteria met
 EOF
+# JSONL absent entirely → must fail closed, not silently skip verification
 rm -f .claude/subagent-runs.jsonl
+jsonl_absent_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$jsonl_absent_output" "subagent-runs.jsonl not found"
+
+# Provide a matching entry — now it can close
+# entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real2","agent_type":"general-purpose","transcript_path":"/tmp/eval2.jsonl"}
+EOF
 complete_output="$("$SPRINT" complete)"
 assert_contains "$complete_output" "Sprint completed: $fresh_id"
 assert_grep "^status: closed$" ".tickets/$fresh_id/ticket.md"

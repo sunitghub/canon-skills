@@ -344,27 +344,37 @@ _gate_eval_report() {
   run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | head -1 | sed 's/^evaluator-run-id:[[:space:]]*//')"
   run_epoch="$(echo "$run_id" | cut -d'-' -f1)"
   jsonl="$(project_root)/.claude/subagent-runs.jsonl"
-  if [[ -f "$jsonl" && "$run_epoch" =~ ^[0-9]+$ ]]; then
-    local matched=0 line ts entry_epoch diff
-    while IFS= read -r line; do
-      [[ -z "$line" ]] && continue
-      ts="$(printf '%s' "$line" | grep -o '"ts"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')"
-      [[ -z "$ts" ]] && continue
-      [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
-      entry_epoch="$(date -u -d "$ts" +%s 2>/dev/null || date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null)" || continue
-      [[ "$entry_epoch" =~ ^[0-9]+$ ]] || continue
-      diff=$(( entry_epoch - run_epoch ))
-      (( diff < 0 )) && diff=$(( -diff ))
-      if (( diff <= 3600 )); then
-        matched=1
-        break
-      fi
-    done < "$jsonl"
-    if [[ "$matched" != "1" ]]; then
-      echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no matching subagent entry in .claude/subagent-runs.jsonl (±60 min window)."
-      echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
-      return 1
+  # Fail closed, not open: a missing jsonl or unparseable run-id must block
+  # close, not silently skip verification — an unlogged/hand-written eval
+  # would otherwise satisfy this gate by just containing "pass:" below.
+  if [[ ! -f "$jsonl" ]]; then
+    echo "Sprint $id cannot close: .claude/subagent-runs.jsonl not found — cannot verify evaluator-run-id '$run_id' against a real subagent run."
+    echo "Log the evaluator subagent run with subagent-log.sh before closing."
+    return 1
+  fi
+  if [[ ! "$run_epoch" =~ ^[0-9]+$ ]]; then
+    echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix."
+    return 1
+  fi
+  local matched=0 line ts entry_epoch diff
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    ts="$(printf '%s' "$line" | grep -o '"ts"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')"
+    [[ -z "$ts" ]] && continue
+    [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
+    entry_epoch="$(date -u -d "$ts" +%s 2>/dev/null || date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null)" || continue
+    [[ "$entry_epoch" =~ ^[0-9]+$ ]] || continue
+    diff=$(( entry_epoch - run_epoch ))
+    (( diff < 0 )) && diff=$(( -diff ))
+    if (( diff <= 3600 )); then
+      matched=1
+      break
     fi
+  done < "$jsonl"
+  if [[ "$matched" != "1" ]]; then
+    echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no matching subagent entry in .claude/subagent-runs.jsonl (±60 min window)."
+    echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
+    return 1
   fi
   if ! grep -qE '^pass:' "$report"; then
     echo "Sprint $id cannot close: eval-report.md verdict is not pass."
