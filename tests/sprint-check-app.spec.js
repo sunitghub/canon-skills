@@ -28,17 +28,46 @@ test.describe('board modal', () => {
     await expect(tour).toContainText('## Wrapup Gates');
   });
 
-  test('Description tab appears on tickets with docs, absent on doc-less tickets', async ({ page }) => {
-    await page.goto(BASE);
-    await page.waitForLoadState('networkidle');
+  test('Description tab appears on tickets with docs', async ({ page }) => {
+    // Uses its own fixture ticket rather than "the first/newest card" —
+    // that assumption broke once a later-created ticket in this same repo
+    // happened to have no docs (see doc-less coverage in the test below).
+    const id = `t-desc-tab-${Date.now()}`;
 
-    // First card (newest open ticket) has docs — Description tab should appear
-    const firstCard = page.locator('.card').first();
-    await firstCard.click();
-    await page.waitForSelector('#m-docs', { timeout: 5000 });
-    const withDocsTabs = await page.locator('#m-docs .doc-tab').allTextContents();
-    expect(withDocsTabs.map(t => t.trim())).toContain('Description');
-    await page.keyboard.press('Escape');
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Description tab test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Approach',
+        'Has docs, so the Description tab should appear.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.waitForSelector('#m-docs', { timeout: 5000 });
+      const withDocsTabs = await page.locator('#m-docs .doc-tab').allTextContents();
+      expect(withDocsTabs.map(t => t.trim())).toContain('Description');
+      await page.keyboard.press('Escape');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
   });
 
   test('clicking an in-progress card opens the ticket modal', async ({ page }) => {
