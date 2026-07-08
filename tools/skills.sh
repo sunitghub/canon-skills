@@ -15,8 +15,20 @@ source "$(dirname "$SCRIPT")/skills/project.sh"
 source "$(dirname "$SCRIPT")/skills/agents.sh"
 # shellcheck source=tools/skills/display.sh
 source "$(dirname "$SCRIPT")/skills/display.sh"
-# shellcheck source=tools/skills/commands.sh
-source "$(dirname "$SCRIPT")/skills/commands.sh"
+# shellcheck source=tools/skills/prompts.sh
+source "$(dirname "$SCRIPT")/skills/prompts.sh"
+# shellcheck source=tools/skills/cmd-add.sh
+source "$(dirname "$SCRIPT")/skills/cmd-add.sh"
+# shellcheck source=tools/skills/cmd-status.sh
+source "$(dirname "$SCRIPT")/skills/cmd-status.sh"
+# shellcheck source=tools/skills/cmd-refresh.sh
+source "$(dirname "$SCRIPT")/skills/cmd-refresh.sh"
+# shellcheck source=tools/skills/cmd-remove.sh
+source "$(dirname "$SCRIPT")/skills/cmd-remove.sh"
+# shellcheck source=tools/skills/cmd-help.sh
+source "$(dirname "$SCRIPT")/skills/cmd-help.sh"
+# shellcheck source=tools/skills/cmd-init.sh
+source "$(dirname "$SCRIPT")/skills/cmd-init.sh"
 
 # Handle: skills.sh --scan [dir]  or  skills.sh [dir] --scan
 _scan_dir=""
