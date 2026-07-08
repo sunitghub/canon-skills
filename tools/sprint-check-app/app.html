@@ -797,6 +797,12 @@
       border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 4px;
       width: 160px;
     }
+    .signoff-risk-input--needs-value {
+      border-color: var(--col-discarded);
+    }
+    .signoff-risk-warning {
+      font-size: 10px; color: var(--col-discarded);
+    }
     .model-tier-note {
       font-size: 10px; color: var(--text-muted); opacity: 0.8; cursor: help;
     }
@@ -2593,9 +2599,23 @@ function injectSignoffControls(container, content, t) {
     riskInput.disabled = locked;
     riskInput.title = locked ? 'Ticket is closed — no further edits.' : '';
 
+    const riskWarning = document.createElement('span');
+    riskWarning.className = 'signoff-risk-warning';
+    riskWarning.textContent = 'Type a Risk summary to save';
+    riskWarning.style.display = 'none';
+
     const commitBase = async () => {
       const risk = riskInput.value.trim();
-      if (!risk) return; // never persist an empty Risk
+      if (!risk) {
+        // never persist an empty Risk — surface it instead of silently no-op'ing,
+        // since a Tier change with no Risk typed would otherwise vanish on reload
+        // with no indication anything went wrong.
+        riskInput.classList.add('signoff-risk-input--needs-value');
+        riskWarning.style.display = '';
+        return;
+      }
+      riskInput.classList.remove('signoff-risk-input--needs-value');
+      riskWarning.style.display = 'none';
       tierSelect.disabled = true; riskInput.disabled = true;
       try {
         const r = await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`);
@@ -2616,6 +2636,7 @@ function injectSignoffControls(container, content, t) {
 
     wrap.appendChild(tierSelect);
     wrap.appendChild(riskInput);
+    wrap.appendChild(riskWarning);
   }
 
   // ── Model tier ───────────────────────────────────────────────────────
