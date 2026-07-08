@@ -43,11 +43,16 @@ rule:
 - Session model, downgraded to Haiku only when a structural, file-path-only check finds
   every changed file low-risk (docs/skill-reference/standards, no security-sensitive
   markers). Mechanical only — never the dispatching agent's own risk judgment.
-- An explicit user request for full-tier review always overrides the downgrade.
-- `acceptance.md`/`plan.md` content is never read for this classification — only file paths
-  and a live user instruction count. Both are what reviewer/evaluator read as ground truth
-  (`eval.md`'s own framing: "what was promised, what approach was approved"); letting
-  either one also steer its own review rigor would be a self-referential trust hole, not a
+- An explicit user request for a specific model (including full-tier) always overrides the
+  downgrade, and is persisted verbatim as `plan.md`'s `## Sign-off` `Gate model:` field so
+  it survives a compaction before the gates actually dispatch.
+- `acceptance.md`/`plan.md` content is never read for the *classification itself* — only
+  file paths, plus one narrow exception: a `Gate model:` value on the Sign-off line, which
+  is read back only as a literal fact the user set (conversationally or by hand-editing the
+  file), never as a risk signal inferred from surrounding prose. Everything else in
+  `acceptance.md`/`plan.md` is what reviewer/evaluator read as ground truth (`eval.md`'s own
+  framing: "what was promised, what approach was approved"); letting the classification
+  itself take a cue from that prose would be a self-referential trust hole, not a
   convenience.
 
 See `complete.md`'s "Model tier for gates" section for the exact rule.

@@ -100,6 +100,16 @@
 
 11. **Wait for explicit approval.** Do not write code until confirmed. On approval, update `plan.md` — fill in the risk summary line in `## Sign-off` (`Tier: <tier> | Risk: <blast radius / key risks, one line>` — use tier classification for normal, impact analysis findings for high-risk), check the `- [ ] Plan approved` box, and add any grill resolutions. This is the durable approval record; `sprint complete` gates on it. (`plan.md` was created in step 4 — this step finalizes it, it does not create it.) If a normal/high-risk sprint turns out mid-flight to be genuinely trivial (grill or impact analysis reveals a one-liner with no coordinated multi-file intent, and the change is not one of `SKILL.md`'s four categorical not-trivial triggers — new file, test/build-infrastructure wiring, hook/pipeline/post-commit script change, or coordinated multi-file intent), the `## Sign-off` line can instead read `Tier: trivial | Risk: <reason>` — see `skills/sprint/reference/complete.md`'s reviewer/evaluator gates for what that downgrade skips.
 
+    **Optional gate-model override.** If the user asks (now, or any time before `sprint
+    complete` runs) to run the close-gate reviewer/evaluator on a specific model — e.g.
+    "run review/eval on haiku" — append `| Gate model: <value>` to the same Sign-off line
+    (`<value>` is a model id such as `haiku`/`opus`, or the literal `session` to force
+    full session-model review). Write it immediately when asked, not deferred, so a later
+    compaction doesn't lose it. A user can also add this segment by hand-editing `plan.md`
+    directly, without asking — the skeleton created in step 4 already carries a commented
+    hint showing the exact syntax. See `complete.md`'s "Model tier for gates" for how this
+    value is applied at close.
+
     Re-read `plan.md` after compaction or context reset.
 
     **During implementation, `plan.md` and `acceptance.md` are the source of truth.** If chat history or new discoveries conflict with the approved plan, stop and surface the conflict before changing scope. The agent resolves ambiguity inside the approved scope; scope changes require user confirmation.
