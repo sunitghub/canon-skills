@@ -104,4 +104,29 @@ if [[ "$review_visual" != "$eval_visual" ]]; then
   exit 1
 fi
 
-echo "doc-mirror-parity: ok (fallback commands match across 3 gates; review.md/eval.md bullets are byte-identical; Windows fallback clause present in all path-resolution copies; Self-serve visual verification section mirrored)"
+# ── Check E: the "If Bash file-writing is refused outright" paragraph (t-ef1e) must be
+# a true mirror between review.md and eval.md — normalize away each file's own "mirror,
+# keep in sync" cross-reference AND its own report-file target path (eval-report.md vs
+# review-notes.md), since those two differences are the only ones each copy is allowed.
+refusal_paragraph() {
+  awk '/^\*\*If Bash file-writing is refused/,/^## Self-serve/' "$1" | sed '$d'
+}
+
+normalize_refusal() {
+  sed 's/`review\.md`/`OTHER`/; s/`eval\.md`/`OTHER`/; s/eval-report\.md/REPORT_FILE/; s/review-notes\.md/REPORT_FILE/'
+}
+
+review_refusal="$(refusal_paragraph "$REVIEW" | normalize_refusal)"
+eval_refusal="$(refusal_paragraph "$EVAL" | normalize_refusal)"
+
+if [[ -z "$review_refusal" || -z "$eval_refusal" ]]; then
+  fail "doc-mirror-parity: could not find the 'If Bash file-writing is refused outright' paragraph in review.md/eval.md — extraction pattern is stale"
+fi
+
+if [[ "$review_refusal" != "$eval_refusal" ]]; then
+  echo "doc-mirror-parity: FAIL — review.md and eval.md's Bash-write-refusal paragraph diverged"
+  diff <(echo "$review_refusal") <(echo "$eval_refusal") || true
+  exit 1
+fi
+
+echo "doc-mirror-parity: ok (fallback commands match across 3 gates; review.md/eval.md bullets are byte-identical; Windows fallback clause present in all path-resolution copies; Self-serve visual verification section mirrored; Bash-write-refusal paragraph mirrored)"

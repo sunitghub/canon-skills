@@ -28,6 +28,16 @@ One-heredoc reports have failed on live Windows Git-Bash with `unexpected EOF wh
 
 Write the report in separate `cat >>` calls, one per section (e.g. Findings, then Verdict) — never one heredoc. Verify each append landed (Bash exit code, or re-read file tail) before the next section. Heredoc failure: retry the same chunk in smaller pieces until it succeeds. Never drop content or paraphrase a quoted citation to dodge the error — quoted source text stays byte-exact.
 
+**If Bash file-writing is refused outright** (a permission boundary, not a quoting/heredoc
+failure — live-reproduced on a real harness install where `Plan`-type Bash refuses all
+file-modifying commands, stricter than the Tools section above assumes): do not retry with
+smaller chunks, that won't help a permission refusal. Do not ask for or accept broader tool
+access (e.g. a re-dispatch as `general-purpose`) to work around it — that defeats the whole
+reason this gate runs as `Plan` in the first place. Instead, include your full report,
+verbatim, in the exact format specified below, in your final text response to the caller.
+The orchestrating agent will save it to `.tickets/<id>/review-notes.md` itself. (Same
+wording as `eval.md` — mirror, keep in sync.)
+
 ## Self-serve visual verification (no Node/Playwright required)
 
 **Check for a project-level override first.** If the project's own `AGENTS.md`/`CLAUDE.md`
