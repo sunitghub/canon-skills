@@ -85,7 +85,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    their own changed-files list via `git merge-base` — never pass one in; (c) close each
    subagent's handle (`TaskStop`) right after reading its verdict — completed handles still
    occupy thread slots, and closing the reviewer's before step 3 avoids a thread-limit block if
-   the evaluator needs a rerun; (d) each subagent records its model designation in its report
+   the evaluator needs a rerun; if `TaskStop` errors with `not running (status: completed)`,
+   that's expected (the harness may already auto-free a completed task's slot) — proceed, don't
+   retry or treat it as fatal; (d) each subagent records its model designation in its report
    — the exact value applied above (an explicit `Gate model:` value, `haiku` if the
    structural check classified this low-risk, or the exact session model id, e.g.
    `claude-sonnet-5`), never a paraphrase — same value as the Wrapup Gates table's
