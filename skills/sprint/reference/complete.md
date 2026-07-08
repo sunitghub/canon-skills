@@ -43,14 +43,17 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    Opus` default, scoped only to the two close-gate dispatches below.
 
    - **Check for an explicit Gate model override first.** Read `plan.md`'s `## Sign-off`
-     line for a `| Gate model: <value>` segment. This field is set only by a live user
-     instruction (e.g. "run review/eval on haiku") or a manual edit — never inferred or
-     asserted by the dispatching agent itself. If the user gives the instruction verbally
-     and the field isn't in `plan.md` yet, write/update the Sign-off line with it
-     immediately, before continuing — so a compaction between the ask and the actual
-     dispatch below doesn't lose it. If the field is present (however it got there), skip
-     the structural classification entirely and go straight to **Apply the result** below
-     with this value. If absent, fall through to the structural check.
+     line for a `| Gate model: <value>` segment. Valid `<value>`s (case-insensitive): a
+     model id (e.g. `haiku`, `sonnet`, `opus`), or the literal `session` to force full
+     session-model review — there is no separate `auto` value; omitting the field entirely
+     already means automatic. This field is set only by a live user instruction (e.g. "run
+     review/eval on haiku") or a manual edit — never inferred or asserted by the dispatching
+     agent itself. If the user gives the instruction verbally and the field isn't in
+     `plan.md` yet, write/update the Sign-off line with it immediately, before continuing —
+     so a compaction between the ask and the actual dispatch below doesn't lose it. If the
+     field is present (however it got there), skip the structural classification entirely
+     and go straight to **Apply the result** below with this value. If absent, fall through
+     to the structural check.
    - **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
      (same command the reviewer prompt uses).
    - **Check `git merge-base`'s exit status directly**, not the diff output. Failure
