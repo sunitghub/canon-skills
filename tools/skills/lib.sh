@@ -9,7 +9,7 @@ if declare -F registered_skill_rows &>/dev/null; then return 0; fi
 # We assume this script is sourced by tools/skills.sh or other sub-scripts in tools/skills/
 # and that the caller has set up the appropriate paths.
 
-# Guard: only source each lib once (skills.sh -> lib.sh -> commands.sh -> lib.sh chain)
+# Guard: only source each lib once (skills.sh -> lib.sh -> cmd-*.sh -> lib.sh chain)
 if ! declare -F _init_claude &>/dev/null; then
   # shellcheck source=tools/hooks-lib.sh
   source "$(dirname "${BASH_SOURCE[0]}")/../hooks-lib.sh"
