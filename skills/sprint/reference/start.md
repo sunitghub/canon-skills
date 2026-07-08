@@ -103,12 +103,13 @@
     **Optional gate-model override.** If the user asks (now, or any time before `sprint
     complete` runs) to run the close-gate reviewer/evaluator on a specific model — e.g.
     "run review/eval on haiku" — append `| Gate model: <value>` to the same Sign-off line
-    (`<value>` is a model id such as `haiku`/`opus`, or the literal `session` to force
-    full session-model review). Write it immediately when asked, not deferred, so a later
-    compaction doesn't lose it. A user can also add this segment by hand-editing `plan.md`
-    directly, without asking — the skeleton created in step 4 already carries a commented
-    hint showing the exact syntax. See `complete.md`'s "Model tier for gates" for how this
-    value is applied at close.
+    (`<value>` is case-insensitive: a model id such as `haiku`/`opus`, or the literal
+    `session` to force full session-model review — there is no separate `auto` value;
+    omitting the field entirely already means automatic). Write it immediately when asked,
+    not deferred, so a later compaction doesn't lose it. A user can also add this segment
+    by hand-editing `plan.md` directly, without asking — the skeleton created in step 4
+    already carries a commented hint showing the exact syntax and valid values. See
+    `complete.md`'s "Model tier for gates" for how this value is applied at close.
 
     Re-read `plan.md` after compaction or context reset.
 
