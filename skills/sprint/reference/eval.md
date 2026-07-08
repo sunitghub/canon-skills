@@ -94,6 +94,8 @@ deliberately run on machines without Node.js) — do not report `not-run` before
    ```
    Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation. Step 8 appends the rest of the report after this line — never re-overwrite the whole file at step 8, or this line is lost and the close gate fails on a missing run-id.
 
+   `date +%s` and `$RANDOM` are chosen because they work identically in Git Bash on Windows — do not substitute `uuidgen`, PowerShell, or any other tool even on a Windows path; live-reproduced failure: an evaluator subagent second-guessed this instruction on a Windows machine, tried PowerShell GUID generation then `uuidgen` (neither works in Git Bash), and wrote a malformed run-id that would have hard-failed the close gate.
+
 2. **Derive changed files.** Run:
    ```
    git diff --name-only $(git merge-base HEAD origin/main) HEAD
