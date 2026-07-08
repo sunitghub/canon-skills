@@ -1154,11 +1154,14 @@ test.describe('board modal', () => {
       await expect(page.locator('.signoff-risk-input')).toHaveValue('foo');
       await expect(page.locator('.model-tier-select')).toHaveValue('haiku');
 
-      // Change Tier only — the Gate model suffix must survive verbatim.
+      // Change Tier only — the Gate model suffix must survive verbatim, and the
+      // blank line separating the Tier line from the checkbox must not get eaten
+      // (regression: an earlier `\s*$` in the replace regex consumed it, gluing
+      // "- [x] Plan approved" directly onto the Tier line).
       await page.locator('.signoff-tier-select').selectOption('normal');
       await expect.poll(() =>
         fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
-      ).toContain('Tier: normal | Risk: foo | Gate model: haiku');
+      ).toContain('Tier: normal | Risk: foo | Gate model: haiku\n\n- [x] Plan approved');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -1349,9 +1352,11 @@ test.describe('board modal', () => {
       await expect(select).toHaveValue('default');
 
       await select.selectOption('haiku');
+      // Same regression as withSignoffBase: the blank line after the Tier line
+      // must survive, not get glued to the checkbox below.
       await expect.poll(() =>
         fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
-      ).toContain('Tier: normal | Risk: low blast radius | Gate model: haiku');
+      ).toContain('Tier: normal | Risk: low blast radius | Gate model: haiku\n\n- [x] Plan approved');
 
       // Close and re-open the ticket modal fresh, confirm it reflects the saved value.
       await page.keyboard.press('Escape');

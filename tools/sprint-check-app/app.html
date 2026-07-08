@@ -2523,7 +2523,7 @@ function withGateModel(content, newValue) {
   const nextHeadingOffset = rest.search(/^##\s+/m);
   const end = nextHeadingOffset === -1 ? content.length : start + nextHeadingOffset;
   const section = content.slice(start, end).replace(
-    /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?\s*$/im,
+    /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?[ \t]*$/im,
     (m, base) => newValue === 'default' ? base : `${base} | Gate model: ${newValue}`
   );
   return content.slice(0, start) + section + content.slice(end);
@@ -2555,7 +2555,7 @@ function withSignoffBase(content, tier, risk) {
   const newLine = `Tier: ${tier} | Risk: ${risk}`;
   const updatedSection = /^Tier:.*$/m.test(section)
     ? section.replace(
-        /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?\s*$/im,
+        /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?[ \t]*$/im,
         (m, base, suffix) => `${newLine}${suffix || ''}`
       )
     : '\n' + newLine + '\n' + section.replace(/^\n+/, '');
