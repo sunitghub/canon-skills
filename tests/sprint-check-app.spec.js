@@ -1113,6 +1113,71 @@ test.describe('board modal', () => {
     }
   });
 
+  test('selecting a Tier with Risk empty warns instead of silently dropping the change', async ({ page }) => {
+    const id = `t-signoff-tier-warn-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Signoff tier warn test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        '<!-- Fill in: Tier: <tier> | Risk: <blast radius / key risks, one line> -->',
+        '',
+        '- [ ] Plan approved',
+        '',
+        '## Approach',
+        'Not filled yet.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const risk = page.locator('.signoff-risk-input');
+      const warning = page.locator('.signoff-risk-warning');
+      await expect(warning).toBeHidden();
+
+      // Select a Tier with Risk still empty — no write should fire.
+      const planBefore = fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8');
+      await page.locator('.signoff-tier-select').selectOption('high-risk');
+      await expect(warning).toBeVisible();
+      await expect(risk).toHaveClass(/signoff-risk-input--needs-value/);
+      await page.waitForTimeout(300); // give a would-be write a chance to land
+      expect(fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')).toBe(planBefore);
+      await expect(page.locator('.model-tier-select')).toBeDisabled();
+
+      // Filling in Risk and blurring commits normally and clears the warning.
+      await risk.fill('affects all consumers — high blast radius');
+      await risk.blur();
+
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: high-risk | Risk: affects all consumers — high blast radius');
+      await expect(warning).toBeHidden();
+      await expect(risk).not.toHaveClass(/signoff-risk-input--needs-value/);
+      await expect(page.locator('.model-tier-select')).toBeEnabled();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('signoff form pre-fills from an existing parseable Tier/Risk/Gate model line and preserves the suffix on Tier change', async ({ page }) => {
     const id = `t-signoff-prefill-${Date.now()}`;
 
