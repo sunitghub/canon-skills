@@ -29,6 +29,8 @@ source "$(dirname "$SCRIPT")/skills/cmd-remove.sh"
 source "$(dirname "$SCRIPT")/skills/cmd-help.sh"
 # shellcheck source=tools/skills/cmd-init.sh
 source "$(dirname "$SCRIPT")/skills/cmd-init.sh"
+# shellcheck source=tools/skills/cmd-uninstall.sh
+source "$(dirname "$SCRIPT")/skills/cmd-uninstall.sh"
 
 # Handle: skills.sh --scan [dir]  or  skills.sh [dir] --scan
 _scan_dir=""
