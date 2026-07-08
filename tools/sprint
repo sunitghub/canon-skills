@@ -118,6 +118,7 @@ Ticket: \`$id\`
 
 ## Sign-off
 <!-- Fill in: Tier: <tier> | Risk: <blast radius / key risks, one line> -->
+<!-- Optional, append: | Gate model: <model-id-or-session> -- forces the sprint-close reviewer/evaluator onto that model (e.g. haiku, opus), overriding the automatic low-risk downgrade. Use "session" to force full session-model review. Omit entirely for default behavior. -->
 
 - [ ] Plan approved — proceed to implementation
 

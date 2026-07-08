@@ -30,8 +30,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    `reviewer` is the fresh-subagent advisory gate below (`skills/sprint/reference/review.md`,
    YES/NO verdict). Separate rows — never collapse.
 
-   For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model>)` — `haiku`
-   if the model-tier check below matched low-risk, otherwise the exact session model id (e.g.
+   For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model>)` — the
+   value actually applied by the model-tier check below: an explicit `Gate model:` value,
+   `haiku` if the structural check matched low-risk, or the exact session model id (e.g.
    `claude-sonnet-5`), never a paraphrase. Records which tier actually ran.
 
    Use `ran`/`skipped`, always with a reason — even for gates that ran, note the evidence
@@ -41,6 +42,15 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    **Model tier for gates.** Documented exception to `AGENTS.md`'s `## Model Tiers` `review →
    Opus` default, scoped only to the two close-gate dispatches below.
 
+   - **Check for an explicit Gate model override first.** Read `plan.md`'s `## Sign-off`
+     line for a `| Gate model: <value>` segment. This field is set only by a live user
+     instruction (e.g. "run review/eval on haiku") or a manual edit — never inferred or
+     asserted by the dispatching agent itself. If the user gives the instruction verbally
+     and the field isn't in `plan.md` yet, write/update the Sign-off line with it
+     immediately, before continuing — so a compaction between the ask and the actual
+     dispatch below doesn't lose it. If the field is present (however it got there), skip
+     the structural classification entirely and go straight to **Apply the result** below
+     with this value. If absent, fall through to the structural check.
    - **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
      (same command the reviewer prompt uses).
    - **Check `git merge-base`'s exit status directly**, not the diff output. Failure
@@ -56,14 +66,16 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
      definitions used elsewhere (`SKILL.md`'s high-risk trigger list, `security-review.md`'s
      skip-logic list). Allowlist, not denylist: any non-matching path defaults to normal cost —
      never overridden downward by the dispatching agent's own risk judgment.
-   - **Apply the result.** Low-risk → pass `model: "haiku"` on both the reviewer and evaluator
-     `Agent` calls; otherwise omit `model` (inherits the session model). Check once; both gates
-     share the classification — their actual verdicts (YES/NO for reviewer, pass/fail for
-     evaluator) stay separate and unrelated to this model-tier check.
+   - **Apply the result.** With an explicit `Gate model:` value: `session` → omit `model`
+     (inherits the session model, same effect as today's "keep on full/session model"
+     override); any other value → pass it verbatim as `model` on both the reviewer and
+     evaluator `Agent` calls. Without one, fall back to the structural check: low-risk →
+     pass `model: "haiku"`; otherwise omit `model`. Check once; both gates share the
+     result — their actual verdicts (YES/NO for reviewer, pass/fail for evaluator) stay
+     separate and unrelated to this model-tier check.
    - **High-risk sprints are unaffected** — the check only ever adds a cheap-model option,
-     never removes the mandatory dispatch itself.
-   - **User override always wins.** If the user has explicitly asked to keep gates on the
-     full/session model for this sprint, that overrides an automatic low-risk match.
+     never removes the mandatory dispatch itself. An explicit `Gate model:` override applies
+     regardless of tier, same as the structural low-risk check it can bypass.
 
    **Shared gate mechanics (reviewer + evaluator).** Four rules, stated once: (a) close
    confirmation authorizes spawning either subagent — never ask separately; (b) both derive
@@ -71,9 +83,10 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    subagent's handle (`TaskStop`) right after reading its verdict — completed handles still
    occupy thread slots, and closing the reviewer's before step 3 avoids a thread-limit block if
    the evaluator needs a rerun; (d) each subagent records its model designation in its report
-   — exactly `haiku` if the model-tier check above classified this low-risk, otherwise the exact
-   session model id (e.g. `claude-sonnet-5`), never a paraphrase — same value as the Wrapup
-   Gates table's `(model: <model>)` suffix.
+   — the exact value applied above (an explicit `Gate model:` value, `haiku` if the
+   structural check classified this low-risk, or the exact session model id, e.g.
+   `claude-sonnet-5`), never a paraphrase — same value as the Wrapup Gates table's
+   `(model: <model>)` suffix.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` (anchored to that field, so "trivial" appearing elsewhere in

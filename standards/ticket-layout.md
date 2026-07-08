@@ -77,6 +77,14 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | `research.md` | `sprint start` step 6 (normal, brief) or step 7 (high-risk/brownfield, full orient) | no — sprint doesn't gate on it, but expected before `## Approach` is drafted | Objective truth compression: relevant files, system model, constraints, unknowns |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
+**Optional `Gate model:` field.** `plan.md`'s `## Sign-off` line can carry a third segment,
+`Tier: <tier> | Risk: <one line> | Gate model: <value>`, to force the `sprint complete`
+reviewer/evaluator dispatches onto a specific model — `<value>` is a model id (`haiku`,
+`opus`, etc.) or the literal `session` to force full session-model review. Absent by
+default; the skeleton `plan.md` carries a commented hint showing the syntax. Settable by
+asking the agent ("run review/eval on haiku") or by hand-editing the line directly. See
+`skills/sprint/reference/complete.md`'s "Model tier for gates" for how it's applied.
+
 **Doc-less tickets** — tickets with no sprint docs are valid (e.g. backlog items, tasks that don't need a sprint), but closing one requires an explicit `tkt close <id> --no-sprint` — there is no silent default. The board renders the ticket body in the modal instead of doc tabs.
 
 ## Board Rendering Rules

@@ -16,7 +16,7 @@ You are a reviewer agent. You did NOT write the code under review. You have no i
 
 You will receive:
 - Ticket ID (e.g. `t-d53d`)
-- The model you are running on, as designated by the caller — exactly `haiku`, or the exact session model id (e.g. `claude-sonnet-5`), never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself. (Same wording as `eval.md` — mirror, keep in sync.)
+- The model you are running on, as designated by the caller — exactly `haiku`, the exact session model id (e.g. `claude-sonnet-5`), or the exact value of an explicit `Gate model:` override, never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself. (Same wording as `eval.md` — mirror, keep in sync.)
 
 ## Tools
 
