@@ -1005,4 +1005,208 @@ test.describe('board modal', () => {
       fs.rmSync(fixtureDir, { recursive: true, force: true });
     }
   });
+
+  test('model tier control is disabled until Sign-off has a real Tier line', async ({ page }) => {
+    const id = `t-model-tier-unfilled-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Model tier unfilled test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        '<!-- Fill in: Tier: <tier> | Risk: <blast radius / key risks, one line> -->',
+        '',
+        '- [ ] Plan approved',
+        '',
+        '## Approach',
+        'Not filled yet.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const select = page.locator('.model-tier-select');
+      await expect(select).toBeVisible();
+      await expect(select).toBeDisabled();
+      await expect(select).toHaveAttribute('title', /Fill in Tier\/Risk/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('model tier control writes and clears the Gate model suffix on Sign-off', async ({ page }) => {
+    const id = `t-model-tier-write-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Model tier write test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: normal | Risk: low blast radius',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const select = page.locator('.model-tier-select');
+      await expect(select).toBeEnabled();
+      await expect(select).toHaveValue('default');
+
+      await select.selectOption('haiku');
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: low blast radius | Gate model: haiku');
+
+      // Close and re-open the ticket modal fresh, confirm it reflects the saved value.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      const select2 = page.locator('.model-tier-select');
+      await expect(select2).toHaveValue('haiku');
+
+      await select2.selectOption('default');
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: low blast radius\n');
+      expect(fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')).not.toContain('Gate model');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('model tier control is disabled for a hand-set value it does not recognize', async ({ page }) => {
+    const id = `t-model-tier-custom-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Model tier custom value test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: normal | Risk: low blast radius | Gate model: session',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const select = page.locator('.model-tier-select');
+      await expect(select).toBeVisible();
+      await expect(select).toBeDisabled();
+      await expect(select).toHaveAttribute('title', /session/);
+      // Must not have been silently reset to Default in the file.
+      expect(fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')).toContain('Gate model: session');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('model tier control is disabled on a closed ticket', async ({ page }) => {
+    const id = `t-model-tier-closed-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: closed',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Model tier closed test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: normal | Risk: low blast radius',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const select = page.locator('.model-tier-select');
+      await expect(select).toBeVisible();
+      await expect(select).toBeDisabled();
+      await expect(select).toHaveAttribute('title', /closed/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
 });
