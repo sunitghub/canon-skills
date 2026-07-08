@@ -782,6 +782,17 @@
       font-size: 11px; color: var(--accent); text-decoration: none; opacity: 0.9;
     }
     .section-jump-link:hover { opacity: 1; text-decoration: underline; }
+    .model-tier-control {
+      display: flex; align-items: center; gap: 4px; margin-left: auto;
+    }
+    .model-tier-select {
+      font-size: 11px; color: var(--accent); background: transparent;
+      border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 2px;
+    }
+    .model-tier-select:disabled { opacity: 0.5; cursor: not-allowed; }
+    .model-tier-note {
+      font-size: 10px; color: var(--text-muted); opacity: 0.8; cursor: help;
+    }
     .doc-code {
       font-family: "JetBrains Mono", ui-monospace, monospace;
       font-size: 11px; background: var(--surface-raised);
@@ -2482,6 +2493,87 @@ function injectSectionJumps(container) {
   container.parentNode.insertBefore(bar, container);
 }
 
+const MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
+
+function parseGateModel(content) {
+  const signoff = sectionContent(content, 'Sign-off');
+  const tierLine = signoff.match(/^Tier:.*$/m);
+  if (!tierLine) return { filled: false, value: null };
+  const gateMatch = tierLine[0].match(/\|\s*Gate model:\s*(.+?)\s*$/i);
+  return { filled: true, value: gateMatch ? gateMatch[1].trim() : null };
+}
+
+function withGateModel(content, newValue) {
+  // Scope the rewrite to the Sign-off section only (same boundary logic as
+  // sectionContent) — a global replace could otherwise match a "Tier:"-looking
+  // line in an unrelated section (e.g. Approach prose).
+  const heading = /^##\s+Sign-off\s*$/m;
+  const headingMatch = heading.exec(content);
+  if (!headingMatch) return content;
+  const start = headingMatch.index + headingMatch[0].length;
+  const rest = content.slice(start);
+  const nextHeadingOffset = rest.search(/^##\s+/m);
+  const end = nextHeadingOffset === -1 ? content.length : start + nextHeadingOffset;
+  const section = content.slice(start, end).replace(
+    /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?\s*$/im,
+    (m, base) => newValue === 'default' ? base : `${base} | Gate model: ${newValue}`
+  );
+  return content.slice(0, start) + section + content.slice(end);
+}
+
+function injectModelTierControl(container, content, t) {
+  const bar = container.parentNode.querySelector('.section-jumps');
+  if (!bar) return;
+
+  const locked = t.status === 'closed' || t.status === 'cancelled';
+  const { filled, value } = parseGateModel(content);
+  const currentLower = value ? value.toLowerCase() : 'default';
+  const recognized = MODEL_TIER_OPTIONS.includes(currentLower);
+
+  let disabledReason = '';
+  if (locked) disabledReason = 'Ticket is closed — no further edits.';
+  else if (!filled) disabledReason = 'Fill in Tier/Risk on Sign-off first.';
+  else if (!recognized) disabledReason = `Custom override set by hand-edit: \`${value}\` — edit plan.md directly to change.`;
+
+  const wrap = document.createElement('span');
+  wrap.className = 'model-tier-control';
+  const select = document.createElement('select');
+  select.className = 'model-tier-select';
+  select.title = disabledReason || 'Model used for this ticket’s sprint-close reviewer/evaluator gates.';
+  select.disabled = Boolean(disabledReason);
+  MODEL_TIER_OPTIONS.forEach(opt => {
+    const o = document.createElement('option');
+    o.value = opt;
+    o.textContent = opt === 'default' ? 'Default' : opt[0].toUpperCase() + opt.slice(1);
+    select.appendChild(o);
+  });
+  select.value = recognized ? currentLower : 'default';
+  select.addEventListener('change', async () => {
+    select.disabled = true;
+    try {
+      const r = await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`);
+      const d = await r.json();
+      const updated = withGateModel(d.content, select.value);
+      await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: updated }),
+      });
+    } catch { /* best effort */ } finally {
+      const cur = state.tickets.find(tk => tk.id === state.selectedId);
+      if (cur) renderModalBody(cur);
+    }
+  });
+  wrap.appendChild(select);
+
+  const note = document.createElement('span');
+  note.className = 'model-tier-note';
+  note.textContent = 'No effect under Codex';
+  note.title = 'Codex’s sub-agent spawn tools have no per-agent model field, so this override is Claude-Code-only.';
+  wrap.appendChild(note);
+
+  bar.appendChild(wrap);
+}
+
 function renderModalBody(t) {
   const bodyEl  = document.getElementById('m-body');
   const editEl  = document.getElementById('m-edit-area');
@@ -2534,6 +2626,7 @@ function renderModalBody(t) {
         bodyEl.innerHTML = warning + md(d.content, t.id);
         tagCheckboxes(bodyEl);
         injectSectionJumps(bodyEl);
+        if (slug === 'plan') injectModelTierControl(bodyEl, d.content, t);
       })
       .catch(() => { bodyEl.innerHTML = '<span class="modal-empty">Could not load doc.</span>'; });
   }
