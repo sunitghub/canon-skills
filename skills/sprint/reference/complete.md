@@ -102,6 +102,15 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
+   **If the subagent's Bash refused to write the file** (per `review.md`'s "If Bash
+   file-writing is refused outright"), it returns the report in its response text instead —
+   check whether `.tickets/<id>/review-notes.md` actually exists after the dispatch
+   completes; if not, save the returned text to that path yourself before continuing. Never
+   re-dispatch with a broader-permission `subagent_type` (e.g. `general-purpose`) to route
+   around the refusal — that reopens the exact tool-restriction gap `Plan` exists to close
+   (see `t-ce74`/`t-b261` in `DECISIONS.md`). (Same wording as step 3 below — mirror, keep
+   in sync.)
+
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not
    blocking** — surface findings to the user, record them in `review-notes.md`, then continue.
    The evaluator (step 3) owns the binding gate. Record the reviewer outcome in the Wrapup
@@ -133,6 +142,15 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
    - Record its model designation per the shared gate mechanics above
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
+
+   **If the subagent's Bash refused to write the file** (per `eval.md`'s "If Bash
+   file-writing is refused outright"), it returns the report in its response text instead —
+   check whether `.tickets/<id>/eval-report.md` actually exists after the dispatch
+   completes; if not, save the returned text to that path yourself before continuing. Never
+   re-dispatch with a broader-permission `subagent_type` (e.g. `general-purpose`) to route
+   around the refusal — that reopens the exact tool-restriction gap `Plan` exists to close
+   (see `t-ce74`/`t-b261` in `DECISIONS.md`). (Same wording as step 2 above — mirror, keep
+   in sync.)
 
    **Log the subagent run.** Immediately after the evaluator subagent completes, run
    `subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type evaluator` (bare —
