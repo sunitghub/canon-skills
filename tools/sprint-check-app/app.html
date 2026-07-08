@@ -782,14 +782,21 @@
       font-size: 11px; color: var(--accent); text-decoration: none; opacity: 0.9;
     }
     .section-jump-link:hover { opacity: 1; text-decoration: underline; }
-    .model-tier-control {
+    .signoff-controls {
       display: flex; align-items: center; gap: 4px; margin-left: auto;
     }
-    .model-tier-select {
+    .model-tier-select, .signoff-tier-select {
       font-size: 11px; color: var(--accent); background: transparent;
       border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 2px;
     }
-    .model-tier-select:disabled { opacity: 0.5; cursor: not-allowed; }
+    .model-tier-select:disabled, .signoff-tier-select:disabled, .signoff-risk-input:disabled {
+      opacity: 0.5; cursor: not-allowed;
+    }
+    .signoff-risk-input {
+      font-size: 11px; color: var(--text-body); background: transparent;
+      border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 4px;
+      width: 160px;
+    }
     .model-tier-note {
       font-size: 10px; color: var(--text-muted); opacity: 0.8; cursor: help;
     }
@@ -2494,6 +2501,7 @@ function injectSectionJumps(container) {
 }
 
 const MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
+const SIGNOFF_TIER_OPTIONS = ['normal', 'high-risk'];
 
 function parseGateModel(content) {
   const signoff = sectionContent(content, 'Sign-off');
@@ -2521,11 +2529,96 @@ function withGateModel(content, newValue) {
   return content.slice(0, start) + section + content.slice(end);
 }
 
-function injectModelTierControl(container, content, t) {
+// Parses the base (Tier + Risk) portion of the Sign-off line, independent of
+// whatever Gate model suffix parseGateModel handles — mirrors its own logic
+// with base and suffix swapped.
+function parseSignoffBase(content) {
+  const signoff = sectionContent(content, 'Sign-off');
+  const tierLine = signoff.match(/^Tier:.*$/m);
+  if (!tierLine) return { exists: false, parseable: true, tier: 'normal', risk: '' };
+  const base = tierLine[0].replace(/\s*\|\s*Gate model:\s*.+?\s*$/i, '');
+  const m = base.match(/^Tier:\s*(.+?)\s*\|\s*Risk:\s*(.*)$/i);
+  const tier = m ? m[1].trim().toLowerCase() : '';
+  if (!m || !SIGNOFF_TIER_OPTIONS.includes(tier)) return { exists: true, parseable: false };
+  return { exists: true, parseable: true, tier, risk: m[2].trim() };
+}
+
+function withSignoffBase(content, tier, risk) {
+  const heading = /^##\s+Sign-off\s*$/m;
+  const headingMatch = heading.exec(content);
+  if (!headingMatch) return content;
+  const start = headingMatch.index + headingMatch[0].length;
+  const rest = content.slice(start);
+  const nextHeadingOffset = rest.search(/^##\s+/m);
+  const end = nextHeadingOffset === -1 ? content.length : start + nextHeadingOffset;
+  const section = content.slice(start, end);
+  const newLine = `Tier: ${tier} | Risk: ${risk}`;
+  const updatedSection = /^Tier:.*$/m.test(section)
+    ? section.replace(
+        /^(Tier:.*?)(\s*\|\s*Gate model:\s*.+?)?\s*$/im,
+        (m, base, suffix) => `${newLine}${suffix || ''}`
+      )
+    : '\n' + newLine + '\n' + section.replace(/^\n+/, '');
+  return content.slice(0, start) + updatedSection + content.slice(end);
+}
+
+function injectSignoffControls(container, content, t) {
   const bar = container.parentNode.querySelector('.section-jumps');
   if (!bar) return;
 
   const locked = t.status === 'closed' || t.status === 'cancelled';
+  const wrap = document.createElement('span');
+  wrap.className = 'signoff-controls';
+
+  // ── Tier / Risk ──────────────────────────────────────────────────────
+  const base = parseSignoffBase(content);
+  if (base.parseable) {
+    const tierSelect = document.createElement('select');
+    tierSelect.className = 'signoff-tier-select';
+    tierSelect.disabled = locked;
+    tierSelect.title = locked ? 'Ticket is closed — no further edits.' : 'Sprint tier.';
+    SIGNOFF_TIER_OPTIONS.forEach(opt => {
+      const o = document.createElement('option');
+      o.value = opt;
+      o.textContent = opt === 'high-risk' ? 'High-risk' : 'Normal';
+      tierSelect.appendChild(o);
+    });
+    tierSelect.value = base.tier;
+
+    const riskInput = document.createElement('input');
+    riskInput.type = 'text';
+    riskInput.className = 'signoff-risk-input';
+    riskInput.placeholder = 'Risk: blast radius / key risks, one line';
+    riskInput.value = base.risk;
+    riskInput.disabled = locked;
+    riskInput.title = locked ? 'Ticket is closed — no further edits.' : '';
+
+    const commitBase = async () => {
+      const risk = riskInput.value.trim();
+      if (!risk) return; // never persist an empty Risk
+      tierSelect.disabled = true; riskInput.disabled = true;
+      try {
+        const r = await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`);
+        const d = await r.json();
+        const updated = withSignoffBase(d.content, tierSelect.value, risk);
+        await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: updated }),
+        });
+      } catch { /* best effort */ } finally {
+        const cur = state.tickets.find(tk => tk.id === state.selectedId);
+        if (cur) renderModalBody(cur);
+      }
+    };
+    tierSelect.addEventListener('change', commitBase);
+    riskInput.addEventListener('blur', commitBase);
+    riskInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); riskInput.blur(); } });
+
+    wrap.appendChild(tierSelect);
+    wrap.appendChild(riskInput);
+  }
+
+  // ── Model tier ───────────────────────────────────────────────────────
   const { filled, value } = parseGateModel(content);
   const currentLower = value ? value.toLowerCase() : 'default';
   const recognized = MODEL_TIER_OPTIONS.includes(currentLower);
@@ -2535,8 +2628,6 @@ function injectModelTierControl(container, content, t) {
   else if (!filled) disabledReason = 'Fill in Tier/Risk on Sign-off first.';
   else if (!recognized) disabledReason = `Custom override set by hand-edit: \`${value}\` — edit plan.md directly to change.`;
 
-  const wrap = document.createElement('span');
-  wrap.className = 'model-tier-control';
   const select = document.createElement('select');
   select.className = 'model-tier-select';
   select.title = disabledReason || 'Model used for this ticket’s sprint-close reviewer/evaluator gates.';
@@ -2626,7 +2717,7 @@ function renderModalBody(t) {
         bodyEl.innerHTML = warning + md(d.content, t.id);
         tagCheckboxes(bodyEl);
         injectSectionJumps(bodyEl);
-        if (slug === 'plan') injectModelTierControl(bodyEl, d.content, t);
+        if (slug === 'plan') injectSignoffControls(bodyEl, d.content, t);
       })
       .catch(() => { bodyEl.innerHTML = '<span class="modal-empty">Could not load doc.</span>'; });
   }

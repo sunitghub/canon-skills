@@ -1047,6 +1047,261 @@ test.describe('board modal', () => {
       await expect(select).toBeVisible();
       await expect(select).toBeDisabled();
       await expect(select).toHaveAttribute('title', /Fill in Tier\/Risk/);
+
+      // Combined Sign-off form: Tier/Risk render with defaults even though
+      // Model tier stays disabled (no Tier line exists yet).
+      await expect(page.locator('.signoff-tier-select')).toHaveValue('normal');
+      const risk = page.locator('.signoff-risk-input');
+      await expect(risk).toHaveValue('');
+      await expect(risk).toHaveAttribute('placeholder', /blast radius/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('signoff Tier/Risk form writes the base line and enables Model tier after', async ({ page }) => {
+    const id = `t-signoff-base-write-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Signoff base write test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        '<!-- Fill in: Tier: <tier> | Risk: <blast radius / key risks, one line> -->',
+        '',
+        '- [ ] Plan approved',
+        '',
+        '## Approach',
+        'Not filled yet.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      await expect(page.locator('.model-tier-select')).toBeDisabled();
+
+      const risk = page.locator('.signoff-risk-input');
+      await risk.fill('greenfield, client-only — low blast radius');
+      await risk.blur();
+
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: greenfield, client-only — low blast radius');
+
+      // After the re-render, Model tier should now be enabled.
+      await expect(page.locator('.model-tier-select')).toBeEnabled();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('signoff form pre-fills from an existing parseable Tier/Risk/Gate model line and preserves the suffix on Tier change', async ({ page }) => {
+    const id = `t-signoff-prefill-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Signoff prefill test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: high-risk | Risk: foo | Gate model: haiku',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      await expect(page.locator('.signoff-tier-select')).toHaveValue('high-risk');
+      await expect(page.locator('.signoff-risk-input')).toHaveValue('foo');
+      await expect(page.locator('.model-tier-select')).toHaveValue('haiku');
+
+      // Change Tier only — the Gate model suffix must survive verbatim.
+      await page.locator('.signoff-tier-select').selectOption('normal');
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: foo | Gate model: haiku');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('signoff form does not render for an unrecognized Tier value, Model tier stays independent', async ({ page }) => {
+    const id = `t-signoff-trivial-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Signoff trivial tier test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: trivial | Risk: one-liner downgrade reason',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      await expect(page.locator('.signoff-tier-select')).toHaveCount(0);
+      await expect(page.locator('.signoff-risk-input')).toHaveCount(0);
+      // Model tier is unaffected by the unrecognized Tier value — it only
+      // checks that a Tier: line exists at all.
+      await expect(page.locator('.model-tier-select')).toBeEnabled();
+      await expect(page.locator('#m-body')).toContainText('Tier: trivial | Risk: one-liner downgrade reason');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('signoff form preserves an unrecognized Gate model value when Risk changes', async ({ page }) => {
+    const id = `t-signoff-preserve-custom-model-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Signoff preserve custom model test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: normal | Risk: foo | Gate model: session',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      await expect(page.locator('.model-tier-select')).toBeDisabled();
+
+      const risk = page.locator('.signoff-risk-input');
+      await risk.fill('bar');
+      await risk.blur();
+
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8')
+      ).toContain('Tier: normal | Risk: bar | Gate model: session');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('signoff Tier/Risk controls are disabled on a closed ticket', async ({ page }) => {
+    const id = `t-signoff-closed-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: closed',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        '# Signoff closed test',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: normal | Risk: low blast radius',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Some real approach notes.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      await expect(page.locator('.signoff-tier-select')).toBeDisabled();
+      await expect(page.locator('.signoff-risk-input')).toBeDisabled();
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
