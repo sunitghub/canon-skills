@@ -9,6 +9,7 @@ tests=(
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/skills-add-sprint.sh"
   "$ROOT/tests/skills-model-tiers-note.sh"
+  "$ROOT/tests/skills-subagent-log-permission.sh"
   "$ROOT/tests/skills-refresh.sh"
   "$ROOT/tests/skills-uninstall.sh"
   "$ROOT/tests/git-precommit-hook.sh"
