@@ -353,7 +353,7 @@ _gate_eval_report() {
     return 1
   fi
   if [[ ! "$run_epoch" =~ ^[0-9]+$ ]]; then
-    echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix."
+    echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix. See eval.md step 1: generate it with 'date +%s'/'\$RANDOM', never uuidgen/PowerShell."
     return 1
   fi
   local matched=0 line ts entry_epoch diff
