@@ -19,6 +19,8 @@ run_with_tty() {
   # forkpty (not openpty+Popen) gives the child a real controlling terminal —
   # offer_subagent_log_permission/offer_remove_subagent_log_permission open /dev/tty
   # directly, which requires an actual controlling tty, not just piped stdin/stdout fds.
+  # Echoes the child's captured tty output on our own stdout so callers can assert on it
+  # (e.g. the "[fail]" message) via $(run_with_tty ...) — not just on file side effects.
   python3 - "$1" "$2" <<'PYEOF'
 import os, pty, sys, time
 
@@ -29,13 +31,17 @@ if pid == 0:
 else:
     time.sleep(0.5)
     os.write(master, (answer + "\n").encode())
+    chunks = []
     try:
         while True:
-            if not os.read(master, 4096):
+            chunk = os.read(master, 4096)
+            if not chunk:
                 break
+            chunks.append(chunk)
     except OSError:
         pass
     os.waitpid(pid, 0)
+    sys.stdout.buffer.write(b"".join(chunks))
 PYEOF
 }
 
@@ -113,8 +119,10 @@ mkdir -p "$project4/.claude"
 printf '{ not valid json' > "$project4/.claude/settings.json"
 before="$(cat "$project4/.claude/settings.json")"
 
-run_with_tty "'$SKILLS' add sprint '$project4'" "y"
+output="$(run_with_tty "'$SKILLS' add sprint '$project4'" "y")"
 after="$(cat "$project4/.claude/settings.json")"
 assert_eq "$before" "$after"
+assert_contains "$output" "[fail]"
+assert_contains "$output" "not valid JSON"
 
 printf 'skills-subagent-log-permission: ok\n'
