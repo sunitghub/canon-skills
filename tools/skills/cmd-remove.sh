@@ -48,6 +48,8 @@ cmd_remove() {
 
   echo "Unregistered: $skill"
 
+  [ "$skill" = "sprint" ] && offer_remove_subagent_log_permission "$project_dir"
+
   remove_skills_symlinks "$project_dir" "$skill_file"
 
   if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ]; then
