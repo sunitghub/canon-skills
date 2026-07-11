@@ -6,7 +6,7 @@ Quick orientation for arriving agents. One line per directory.
 |---|---|
 | `bin/` | CLI entry points — `sprint`, `sprint-check`, `tkt` symlinks for PATH install |
 | `docs/` | User-facing documentation (how-it-works, sprint-check, agent-playbook, guides index) |
-| `examples/` | Worked walkthroughs — canon-todo-walkthrough shows a full sprint end-to-end |
+| `examples/` | Worked examples — `restaurant-bill-split` (prompt-driven sprint walkthrough), `slugify` (skill-eval demo) |
 | `extensions/` | Runtime-specific integrations — Pi agent handoff extension |
 | `guides/` | Standalone how-to guides for specific setups (AI agents, Windows, etc.) |
 | `meta/` | Repo meta-assets — screenshots, demo GIF recorder (`meta/package.json`); gitignored output |

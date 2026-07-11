@@ -17,7 +17,6 @@ tests=(
   "$ROOT/tests/skills-std.sh"
   "$ROOT/tests/install-target.sh"
   "$ROOT/tests/install-sh.sh"
-  "$ROOT/tests/copy-todo-walkthrough.sh"
   "$ROOT/tests/sprint-check-server.sh"
   "$ROOT/tests/sprint-check-app.sh"
   "$ROOT/tests/sprint-check-api-parity.sh"
