@@ -459,6 +459,150 @@ assert_grep "^status: closed$" ".tickets/$fresh_id/ticket.md"
 assert_grep "^status: closed$" ".tickets/$id/ticket.md"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after sprint complete"
 
+
+# ── eval_override (t-c0e6): human-hand-edit-only, deliberately coarse ─────
+# Never set via any tkt/sprint command — writing it directly to ticket.md
+# here simulates the only way it's ever set: a human hand-editing the file.
+# The CLI check is intentionally coarse (flag + at least one dated waiver
+# present) — per-item waiver correctness is verified by a human at
+# complete.md's steps 4-5, not re-derived mechanically here. A mechanical
+# per-item check (text-matching, then position-based correlation) was built
+# and abandoned as fundamentally unsound across five rounds of adversarial
+# review (see DECISIONS.md) — every version shipped failed open.
+
+# No eval_override field at all → unchanged fail-closed behavior
+override_start_output="$("$SPRINT" start "eval_override coverage")"
+override_id="$(printf '%s\n' "$override_start_output" | awk '/Sprint started:/ { print $3 }')"
+cat > ".tickets/$override_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+cat > ".tickets/$override_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] Some criterion. **Waived (partial):** live-API-only claim, user-approved waiver, 2026-07-11: cannot re-verify without real cost per run.
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | verdict: fail |
+EOF
+cat > ".tickets/$override_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+mkdir -p .claude
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-override","agent_type":"general-purpose","transcript_path":"/tmp/override.jsonl"}
+EOF
+cat > ".tickets/$override_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-override1
+## Verdict
+fail: one criterion partial
+EOF
+no_override_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$no_override_output" "eval-report.md verdict is not pass"
+
+# eval_override: true, acceptance.md has a dated waiver → allowed (coarse check)
+awk '/^---$/{c++; if (c==2) print "eval_override: true"; print; next} {print}' ".tickets/$override_id/ticket.md" > ".tickets/$override_id/ticket.md.tmp"
+mv ".tickets/$override_id/ticket.md.tmp" ".tickets/$override_id/ticket.md"
+override_pass_output="$("$SPRINT" complete)"
+assert_contains "$override_pass_output" "Sprint completed: $override_id"
+assert_grep "^status: closed$" ".tickets/$override_id/ticket.md"
+
+# eval_override: true, but acceptance.md has NO waiver at all → still blocked
+unwaived_start_output="$("$SPRINT" start "eval_override no waiver")"
+unwaived_id="$(printf '%s\n' "$unwaived_start_output" | awk '/Sprint started:/ { print $3 }')"
+awk -v v=true '/^---$/{c++; if (c==2) print "eval_override: " v; print; next} {print}' ".tickets/$unwaived_id/ticket.md" > ".tickets/$unwaived_id/ticket.md.tmp"
+mv ".tickets/$unwaived_id/ticket.md.tmp" ".tickets/$unwaived_id/ticket.md"
+cat > ".tickets/$unwaived_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+cat > ".tickets/$unwaived_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] Some criterion with no waiver annotation at all.
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | verdict: fail |
+EOF
+cat > ".tickets/$unwaived_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+cat > ".tickets/$unwaived_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-unwaived1
+## Verdict
+fail: one criterion not met, no waiver
+EOF
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-unwaived","agent_type":"general-purpose","transcript_path":"/tmp/unwaived.jsonl"}
+EOF
+unwaived_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$unwaived_output" "no dated waiver on record"
+[[ -f .tickets/ACTIVE ]] && "$TKT" close "$unwaived_id" --no-sprint >/dev/null
+
+# eval_override: true, acceptance.md mentions "waiver" but never "waived" → still blocked
+wrongword_start_output="$("$SPRINT" start "eval_override wrong word")"
+wrongword_id="$(printf '%s\n' "$wrongword_start_output" | awk '/Sprint started:/ { print $3 }')"
+awk -v v=true '/^---$/{c++; if (c==2) print "eval_override: " v; print; next} {print}' ".tickets/$wrongword_id/ticket.md" > ".tickets/$wrongword_id/ticket.md.tmp"
+mv ".tickets/$wrongword_id/ticket.md.tmp" ".tickets/$wrongword_id/ticket.md"
+cat > ".tickets/$wrongword_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+cat > ".tickets/$wrongword_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] Some criterion mentions a waiver process but records no waiver decision, dated 2026-07-11.
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | verdict: fail |
+EOF
+cat > ".tickets/$wrongword_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+cat > ".tickets/$wrongword_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-wrongword1
+## Verdict
+fail: one criterion not met
+EOF
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-wrongword","agent_type":"general-purpose","transcript_path":"/tmp/wrongword.jsonl"}
+EOF
+wrongword_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$wrongword_output" "no dated waiver on record"
+[[ -f .tickets/ACTIVE ]] && "$TKT" close "$wrongword_id" --no-sprint >/dev/null
+
+# No tkt command anywhere writes eval_override — regression guard
+grep -qE 'eval_override' "$TKT" && fail "tools/tkt must never gain a writer for eval_override — human-hand-edit-only by design"
 mkdir -p nested/deeper
 (
   cd nested/deeper
