@@ -325,8 +325,29 @@ cmd_why() {
   local dir
   dir="$(tickets_dir)"
 
+  local query_target="$target"
   local log_subjects
-  log_subjects="$(git log --follow --format="%s" -- "$target" 2>/dev/null)"
+  log_subjects="$(git log --follow --format="%s" -- "$query_target" 2>/dev/null)"
+  if [[ -z "$log_subjects" ]]; then
+    local basename
+    basename="$(basename -- "$target")"
+    local -a candidates=()
+    if [[ -n "$basename" && "$basename" != "." ]]; then
+      while IFS= read -r cand; do
+        [[ -z "$cand" ]] && continue
+        [[ "$(basename -- "$cand")" == "$basename" ]] && candidates+=("$cand")
+      done < <(git log --all --name-only --format= 2>/dev/null | sort -u)
+    fi
+    if [[ ${#candidates[@]} -eq 1 ]]; then
+      query_target="${candidates[0]}"
+      log_subjects="$(git log --follow --format="%s" -- "$query_target" 2>/dev/null)"
+    elif [[ ${#candidates[@]} -gt 1 ]]; then
+      local joined
+      joined="$(printf '%s, ' "${candidates[@]}")"
+      echo "Multiple files named $basename found — use the full path: ${joined%, }"
+      return 0
+    fi
+  fi
   if [[ -z "$log_subjects" ]]; then
     echo "No git history found for: $target"
     return 0

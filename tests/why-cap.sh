@@ -2,7 +2,10 @@
 # why-cap — tkt why and both board /api/why implementations cap matched
 # tickets to the latest 10 (git-log order, most-recent-first) and report a
 # "more" count when truncated, instead of unbounded output for high-churn
-# files.
+# files. Also covers the basename fallback: an exact-path miss searches all
+# historically-tracked filenames by basename — unique match resolves and
+# returns normal results, multiple matches list candidates (no auto-pick),
+# zero matches keeps the original "no git history" message.
 
 set -euo pipefail
 
@@ -75,6 +78,42 @@ assert_contains "$out_small" "t-aaa1"
 if [[ "$out_small" == *"more, older"* ]]; then
   fail "unexpected truncation message for a file touched by only 1 ticket: $out_small"
 fi
+
+# ── Basename fallback fixture: unique nested match + ambiguous duplicate ────
+
+mkdir -p "$WORK/nested/dir"
+echo "hello" > "$WORK/nested/dir/unique.js"
+git -C "$WORK" add nested/dir/unique.js
+git -C "$WORK" commit -q -m "t-aaa1 add nested unique file"
+
+mkdir -p "$WORK/dupA" "$WORK/dupB"
+echo "hello" > "$WORK/dupA/dup.js"
+git -C "$WORK" add dupA/dup.js
+git -C "$WORK" commit -q -m "t-aaa1 add dupA/dup.js"
+echo "hello" > "$WORK/dupB/dup.js"
+git -C "$WORK" add dupB/dup.js
+git -C "$WORK" commit -q -m "t-aaa1 add dupB/dup.js"
+
+# ── tkt why: basename fallback, unique match resolves like the full path ────
+
+out_full="$(cd "$WORK" && "$ROOT/tools/tkt" why nested/dir/unique.js)"
+out_basename="$(cd "$WORK" && "$ROOT/tools/tkt" why unique.js)"
+assert_eq "$out_full" "$out_basename"
+
+# ── tkt why: basename fallback, ambiguous match lists candidates, no pick ───
+
+out_ambiguous="$(cd "$WORK" && "$ROOT/tools/tkt" why dup.js)"
+assert_contains "$out_ambiguous" "Multiple files named dup.js"
+assert_contains "$out_ambiguous" "dupA/dup.js"
+assert_contains "$out_ambiguous" "dupB/dup.js"
+if [[ "$out_ambiguous" == *"t-aaa1"* ]]; then
+  fail "ambiguous basename match should not auto-pick a ticket: $out_ambiguous"
+fi
+
+# ── tkt why: no basename match at all keeps the original message ───────────
+
+out_none="$(cd "$WORK" && "$ROOT/tools/tkt" why totally-not-a-real-file.js)"
+assert_contains "$out_none" "No git history found for: totally-not-a-real-file.js"
 
 if ! command -v python3 >/dev/null 2>&1 || ! command -v go >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
   echo "why-cap: ok (CLI cap verified; board API parity skipped — python3/go/curl not all present)"
@@ -157,4 +196,64 @@ if py.get("more") != 0 or go.get("more") != 0:
     sys.exit(1)
 PY
 
-echo "why-cap: ok (tkt why caps to 10 + '+3 more, older'; server.py/main.go /api/why identical, capped to 10, more=3; both correctly report more=0 for a 1-ticket file)"
+# ── Both board APIs: basename fallback parity (unique + ambiguous + none) ───
+
+py_unique_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=unique.js")"
+go_unique_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=unique.js")"
+py_full_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=nested/dir/unique.js")"
+
+python3 - "$py_unique_json" "$go_unique_json" "$py_full_json" <<'PY'
+import json
+import sys
+
+py_basename, go_basename, py_full = (json.loads(a) for a in sys.argv[1:4])
+
+for label, resp in (("server.py", py_basename), ("main.go", go_basename)):
+    if resp.get("file") != "unique.js":
+        print(f"why-cap: FAIL — {label} basename fallback must echo the typed query in 'file', got {resp.get('file')!r}")
+        sys.exit(1)
+
+if [r["id"] for r in py_basename.get("results", [])] != [r["id"] for r in py_full.get("results", [])]:
+    print("why-cap: FAIL — server.py basename fallback result differs from querying the full path directly")
+    sys.exit(1)
+
+if [r["id"] for r in py_basename.get("results", [])] != [r["id"] for r in go_basename.get("results", [])]:
+    print("why-cap: FAIL — server.py and main.go basename fallback returned different results")
+    sys.exit(1)
+PY
+
+py_ambiguous_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=dup.js")"
+go_ambiguous_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=dup.js")"
+
+python3 - "$py_ambiguous_json" "$go_ambiguous_json" <<'PY'
+import json
+import sys
+
+py, go = (json.loads(a) for a in sys.argv[1:3])
+
+for label, resp in (("server.py", py), ("main.go", go)):
+    if resp.get("results"):
+        print(f"why-cap: FAIL — {label} ambiguous basename match must not auto-pick, got results={resp.get('results')!r}")
+        sys.exit(1)
+    msg = resp.get("message", "")
+    if "dupA/dup.js" not in msg or "dupB/dup.js" not in msg:
+        print(f"why-cap: FAIL — {label} ambiguous message missing a candidate path: {msg!r}")
+        sys.exit(1)
+PY
+
+py_none_json="$(curl -s "http://127.0.0.1:$PY_PORT/api/why?file=totally-not-a-real-file.js")"
+go_none_json="$(curl -s "http://127.0.0.1:$GO_PORT/api/why?file=totally-not-a-real-file.js")"
+
+python3 - "$py_none_json" "$go_none_json" <<'PY'
+import json
+import sys
+
+py, go = (json.loads(a) for a in sys.argv[1:3])
+
+for label, resp in (("server.py", py), ("main.go", go)):
+    if "No git history found" not in resp.get("message", ""):
+        print(f"why-cap: FAIL — {label} no-match message regressed: {resp.get('message')!r}")
+        sys.exit(1)
+PY
+
+echo "why-cap: ok (tkt why caps to 10 + '+3 more, older'; server.py/main.go /api/why identical, capped to 10, more=3; both correctly report more=0 for a 1-ticket file; basename fallback verified unique/ambiguous/none across tkt, server.py, main.go)"

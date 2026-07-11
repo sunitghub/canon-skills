@@ -315,6 +315,11 @@ def _plan_decision(ticket_path: Path) -> str:
             return line[4:].strip()
     return ''
 
+def _basename_candidates(basename: str, cwd: Path) -> list[str]:
+    out = run(['git', 'log', '--all', '--name-only', '--format='], cwd)
+    matches = {line for line in out.splitlines() if line.strip() and Path(line).name == basename}
+    return sorted(matches)
+
 def load_why(file_: str) -> dict:
     target = file_.strip()
     if not target:
@@ -325,7 +330,18 @@ def load_why(file_: str) -> dict:
         return {'file': target, 'results': [], 'message': 'Use a project-relative file path.'}
 
     cwd = PROJECT_ROOT
-    log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', target], cwd)
+    query_target = target
+    log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', query_target], cwd)
+    if not log_subjects:
+        candidates = _basename_candidates(p.name, cwd) if p.name else []
+        if len(candidates) == 1:
+            query_target = candidates[0]
+            log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', query_target], cwd)
+        elif len(candidates) > 1:
+            return {
+                'file': target, 'results': [],
+                'message': f'Multiple files named {p.name} found — use the full path: ' + ', '.join(candidates),
+            }
     if not log_subjects:
         return {'file': target, 'results': [], 'message': f'No git history found for {target}.'}
 
