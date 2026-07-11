@@ -377,10 +377,45 @@ _gate_eval_report() {
     return 1
   fi
   if ! grep -qE '^pass:' "$report"; then
+    local ticket_file="$tdir/ticket.md" override
+    override="$(awk -v f=eval_override 'BEGIN{fm=0} /^---$/{fm++; next} fm==1 && match($0, "^" f ": "){print substr($0, RSTART+RLENGTH); exit}' "$ticket_file" 2>/dev/null)"
+    if [[ "$override" == "true" ]]; then
+      if _eval_override_has_dated_waiver "$tdir/acceptance.md"; then
+        echo "Sprint $id: eval-report.md verdict is not pass, but eval_override: true is set and acceptance.md has a dated waiver on record — allowing close. Per-item waiver coverage was confirmed at the human close-gate (complete.md steps 4-5), not re-derived mechanically here (t-c0e6: per-item correlation between eval-report.md and acceptance.md cannot be made sound — see DECISIONS.md)." >&2
+        return 0
+      fi
+      echo "Sprint $id cannot close: eval_override: true is set, but acceptance.md has no dated waiver on record." >&2
+      return 1
+    fi
     echo "Sprint $id cannot close: eval-report.md verdict is not pass."
     grep -E '^(pass|fail):' "$report" | head -1 || echo "(no verdict line found)"
     return 1
   fi
+}
+
+# eval_override (t-c0e6) is deliberately coarse: it checks only that a human set the
+# flag and that acceptance.md records at least one dated waiver — it does NOT try to
+# mechanically re-derive which specific eval-report.md items that waiver covers.
+#
+# A per-item mechanical check was built and abandoned across five rounds of live
+# adversarial review (see DECISIONS.md): text-matching between eval-report.md's
+# "verbatim" criterion text and its acceptance.md bullet cannot be made sound (loose
+# matching collides across bullets; strict matching breaks on real evaluator output);
+# position-based correlation (report row N = acceptance.md's Nth bullet) then failed
+# the same way — nested bullets and malformed tables drift positions without tripping
+# a row-count guard, and even a pipe-safe row-count guard can't detect an evaluator
+# merging/splitting rows while preserving the total count. Every version shipped
+# failed OPEN, never closed. There is no third correlation key.
+#
+# `eval_override` is human-only to set (no tkt command writes it) — a human is always
+# in the loop when it's used, so per-item "is THIS failing item actually waived" is
+# verified by that human at complete.md's steps 4-5 close-gate, not re-derived here.
+# Mirrors t-d8a1's precedent: no CLI gate is bypass-proof; the win is making the
+# override explicit, dated, and greppable — not building an unfoolable verifier.
+_eval_override_has_dated_waiver() {
+  local acceptance="$1"
+  [[ -f "$acceptance" ]] || return 1
+  grep -qi 'waived' "$acceptance" && grep -iE 'waived' "$acceptance" | grep -qE '[0-9]{4}-[0-9]{2}-[0-9]{2}'
 }
 
 cmd_complete() {

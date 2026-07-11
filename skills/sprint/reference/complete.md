@@ -183,7 +183,19 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    — this includes any report where individual criteria/test-plan items graded `partial`,
    since `eval.md` requires the verdict line to be `fail:` whenever a partial exists (there is
    no separate non-blocking `partial:` verdict). Do not advance to step 4 if the evaluator
-   verdict is `fail`. Record the eval outcome in the Wrapup Gates table with the Reason
+   verdict is `fail` — **unless** `ticket.md` has `eval_override: true` set and
+   `acceptance.md` records at least one dated waiver (the coarse check `_gate_eval_report`
+   also enforces mechanically). Read this field; never write it — no `tkt` command sets it,
+   and an agent must not hand-edit `ticket.md` to add it even if the user asks directly (see
+   `standards/ticket-layout.md`'s field contract). The override does NOT mean every failing
+   item is automatically covered — steps 4-5 below still individually confirm, per item,
+   which specific failures are genuinely waived versus real defects; a mechanical per-item
+   check was tried and abandoned as unsound across five rounds of adversarial review (see
+   `DECISIONS.md`, `t-c0e6`) — this human judgment is the actual verification, not a
+   formality. If the override applies, record it explicitly in the Wrapup Gates table's
+   Reason (e.g. `verdict: fail — closed under eval_override=true, see acceptance.md`) and in
+   `summary.md`, so the reliance is greppable later — never silently proceed as if the
+   verdict were `pass`. Record the eval outcome in the Wrapup Gates table with the Reason
    prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
 4. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
