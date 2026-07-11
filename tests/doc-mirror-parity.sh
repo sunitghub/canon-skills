@@ -129,4 +129,28 @@ if [[ "$review_refusal" != "$eval_refusal" ]]; then
   exit 1
 fi
 
-echo "doc-mirror-parity: ok (fallback commands match across 3 gates; review.md/eval.md bullets are byte-identical; Windows fallback clause present in all path-resolution copies; Self-serve visual verification section mirrored; Bash-write-refusal paragraph mirrored)"
+# ── Check F: the explicit-base-ref branching (t-c368) must name the same two
+# git commands across all three gates — review.md/eval.md use numbered-step
+# prose, security-review.md uses one paragraph, so this only compares the
+# executable commands, same strategy as Check A.
+base_ref_commands() {
+  grep -oE 'git diff --name-only <base-ref> HEAD|git diff --name-only \$\(git merge-base HEAD origin/main\) HEAD' "$1" | sort -u
+}
+
+review_baseref="$(base_ref_commands "$REVIEW")"
+eval_baseref="$(base_ref_commands "$EVAL")"
+security_baseref="$(base_ref_commands "$SECURITY")"
+
+if [[ -z "$review_baseref" || -z "$eval_baseref" || -z "$security_baseref" ]]; then
+  fail "doc-mirror-parity: could not find base-ref branching commands in one of review.md/eval.md/security-review.md — extraction pattern is stale"
+fi
+
+if [[ "$review_baseref" != "$eval_baseref" || "$review_baseref" != "$security_baseref" ]]; then
+  echo "doc-mirror-parity: FAIL — explicit-base-ref branching commands diverged across gates"
+  echo "review.md:"; echo "$review_baseref" | sed 's/^/  /'
+  echo "eval.md:"; echo "$eval_baseref" | sed 's/^/  /'
+  echo "security-review.md:"; echo "$security_baseref" | sed 's/^/  /'
+  exit 1
+fi
+
+echo "doc-mirror-parity: ok (fallback commands match across 3 gates; review.md/eval.md bullets are byte-identical; Windows fallback clause present in all path-resolution copies; Self-serve visual verification section mirrored; Bash-write-refusal paragraph mirrored; base-ref branching commands match across 3 gates)"

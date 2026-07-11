@@ -55,6 +55,7 @@ title: Short description
 | `type` | enum | `tkt` | See allowed values below. |
 | `priority` | int 0–4 | `tkt` | 0 = highest. Default: 2. |
 | `title` | string | `tkt` / agent | Derived from markdown heading or explicit field. |
+| `ci` | bool | `tkt` | Optional. `true` marks the ticket CI-eligible for headless grading (`tkt ci <id> on`/`off`). Absent by default — most tickets are never CI-eligible. Setting it does not touch git; the ticket's `.tickets/<id>/` docs must still be force-added once (`git add -f`) since `.tickets/` is gitignored by default — `tkt ci` prints this reminder. |
 
 ### Allowed Values
 

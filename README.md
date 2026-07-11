@@ -136,6 +136,8 @@ Compared to common alternatives:
 
 **[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
 
+**[Headless CI grading →](docs/headless-ci.md)** — run reviewer/evaluator/security-review against an open PR unattended, via `claude -p`.
+
 ## The Two Commands
 
 **`sprint start "<what>"`** — Make your agent plan before it codes.

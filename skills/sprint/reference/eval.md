@@ -17,6 +17,7 @@ You are an evaluator agent. You did NOT write the code under review. You have no
 You will receive:
 - Ticket ID (e.g. `t-d53d`)
 - The model you are running on, as designated by the caller — exactly `haiku`, the exact session model id (e.g. `claude-sonnet-5`), or the exact value of an explicit `Gate model:` override, never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself. (Same wording as `review.md` — mirror, keep in sync.)
+- Base ref (optional — only present for a headless CI dispatch grading an existing PR/diff; absent for a normal interactive sprint close, in which case the standard `git merge-base HEAD origin/main` derivation below applies unchanged). (Same wording as `review.md`/`security-review.md` — mirror, keep in sync.)
 
 ## Tools
 
@@ -96,11 +97,15 @@ deliberately run on machines without Node.js) — do not report `not-run` before
 
    `date +%s` and `$RANDOM` are chosen because they work identically in Git Bash on Windows — do not substitute `uuidgen`, PowerShell, or any other tool even on a Windows path; live-reproduced failure: an evaluator subagent second-guessed this instruction on a Windows machine, tried PowerShell GUID generation then `uuidgen` (neither works in Git Bash), and wrote a malformed run-id that would have hard-failed the close gate.
 
-2. **Derive changed files.** Run:
+2. **Derive changed files.** If an explicit `Base ref` was passed (headless CI dispatch), run:
+   ```
+   git diff --name-only <base-ref> HEAD
+   ```
+   Otherwise (normal interactive sprint close), run:
    ```
    git diff --name-only $(git merge-base HEAD origin/main) HEAD
    ```
-   Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git.
+   Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git. (Same base-ref branching as `review.md`/`security-review.md` — mirror, keep in sync.)
 
    If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `review.md`/`security-review.md` (mirror — keep in sync):
    - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and read those real changed files rather than falling back to ticket artifacts.
