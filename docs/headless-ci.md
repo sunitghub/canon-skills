@@ -45,7 +45,7 @@ To unblock a legitimate case like this, a human (never CI, never an agent) does 
 
 1. Confirm the failure is genuinely a known, accepted limitation, not a real defect — check the evaluator's findings.
 2. Record a dated waiver directly in the ticket's `acceptance.md`, e.g. `**Waived:** live-API-only claim, user-approved waiver, 2026-07-11: cannot re-verify without real cost per run.`
-3. Hand-edit `eval_override: true` into the ticket's `ticket.md` frontmatter. **No `tkt` command sets this field — it must be typed by hand.** An agent asked to set it must refuse.
+3. Hand-edit `eval_override: false` to `eval_override: true` in the ticket's `ticket.md` frontmatter (`tkt create` already seeds it as `false` on every new ticket). **No `tkt` command ever sets it to `true` — it must be flipped by hand.** An agent asked to flip it must refuse.
 4. Close the ticket interactively: `sprint start <id>` then `sprint complete` — not via `tools/sprint-headless`, which only grades, never closes.
 
 `_gate_eval_report`'s check here is deliberately coarse: it confirms the flag is set and that `acceptance.md` records a dated waiver, nothing more. It does not try to verify which specific failing item the waiver covers — a mechanical per-item check was attempted and abandoned after repeatedly failing open in adversarial testing (see `DECISIONS.md`). That judgment is the human's, made at close time, not the CI run's.

@@ -190,6 +190,7 @@ cmd_create() {
     printf "created: %s\n" "$created"
     printf "type: %s\n" "$type"
     printf "priority: %s\n" "$priority"
+    printf "eval_override: false\n"
     printf -- "---\n"
     printf "# %s\n" "$title"
     [[ -n "$description" ]] && printf "\n%s\n" "$description"

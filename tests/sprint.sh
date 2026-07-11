@@ -460,19 +460,23 @@ assert_grep "^status: closed$" ".tickets/$id/ticket.md"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after sprint complete"
 
 
-# ── eval_override (t-c0e6): human-hand-edit-only, deliberately coarse ─────
-# Never set via any tkt/sprint command — writing it directly to ticket.md
-# here simulates the only way it's ever set: a human hand-editing the file.
-# The CLI check is intentionally coarse (flag + at least one dated waiver
-# present) — per-item waiver correctness is verified by a human at
-# complete.md's steps 4-5, not re-derived mechanically here. A mechanical
-# per-item check (text-matching, then position-based correlation) was built
-# and abandoned as fundamentally unsound across five rounds of adversarial
-# review (see DECISIONS.md) — every version shipped failed open.
+# ── eval_override (t-c0e6, t-7cd5): human-hand-edit-only, deliberately coarse
+# tkt create seeds every new ticket with "eval_override: false" (t-7cd5) so the
+# field is discoverable — but no tkt/sprint command ever WRITES "true"; flipping
+# it to true still requires a human hand-editing ticket.md directly. The CLI
+# check is intentionally coarse (flag + at least one dated waiver present) —
+# per-item waiver correctness is verified by a human at complete.md's steps
+# 4-5, not re-derived mechanically here. A mechanical per-item check
+# (text-matching, then position-based correlation) was built and abandoned as
+# fundamentally unsound across five rounds of adversarial review (see
+# DECISIONS.md) — every version shipped failed open.
 
-# No eval_override field at all → unchanged fail-closed behavior
+# Freshly created ticket seeds eval_override: false (t-7cd5)
 override_start_output="$("$SPRINT" start "eval_override coverage")"
 override_id="$(printf '%s\n' "$override_start_output" | awk '/Sprint started:/ { print $3 }')"
+assert_grep "^eval_override: false$" ".tickets/$override_id/ticket.md"
+
+# eval_override: false (the seeded default) → unchanged fail-closed behavior
 cat > ".tickets/$override_id/plan.md" <<'EOF'
 # Plan
 ## Sign-off
@@ -511,8 +515,11 @@ no_override_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$no_override_output" "eval-report.md verdict is not pass"
 
 # eval_override: true, acceptance.md has a dated waiver → allowed (coarse check)
-awk '/^---$/{c++; if (c==2) print "eval_override: true"; print; next} {print}' ".tickets/$override_id/ticket.md" > ".tickets/$override_id/ticket.md.tmp"
-mv ".tickets/$override_id/ticket.md.tmp" ".tickets/$override_id/ticket.md"
+# ticket.md already has "eval_override: false" seeded by tkt create — replace it,
+# don't insert a second line (a duplicate would let the first-match reader see
+# "false" and silently defeat this test).
+sed -i.bak 's/^eval_override: false$/eval_override: true/' ".tickets/$override_id/ticket.md"
+rm -f ".tickets/$override_id/ticket.md.bak"
 override_pass_output="$("$SPRINT" complete)"
 assert_contains "$override_pass_output" "Sprint completed: $override_id"
 assert_grep "^status: closed$" ".tickets/$override_id/ticket.md"
@@ -520,8 +527,8 @@ assert_grep "^status: closed$" ".tickets/$override_id/ticket.md"
 # eval_override: true, but acceptance.md has NO waiver at all → still blocked
 unwaived_start_output="$("$SPRINT" start "eval_override no waiver")"
 unwaived_id="$(printf '%s\n' "$unwaived_start_output" | awk '/Sprint started:/ { print $3 }')"
-awk -v v=true '/^---$/{c++; if (c==2) print "eval_override: " v; print; next} {print}' ".tickets/$unwaived_id/ticket.md" > ".tickets/$unwaived_id/ticket.md.tmp"
-mv ".tickets/$unwaived_id/ticket.md.tmp" ".tickets/$unwaived_id/ticket.md"
+sed -i.bak 's/^eval_override: false$/eval_override: true/' ".tickets/$unwaived_id/ticket.md"
+rm -f ".tickets/$unwaived_id/ticket.md.bak"
 cat > ".tickets/$unwaived_id/plan.md" <<'EOF'
 # Plan
 ## Sign-off
@@ -562,8 +569,8 @@ assert_contains "$unwaived_output" "no dated waiver on record"
 # eval_override: true, acceptance.md mentions "waiver" but never "waived" → still blocked
 wrongword_start_output="$("$SPRINT" start "eval_override wrong word")"
 wrongword_id="$(printf '%s\n' "$wrongword_start_output" | awk '/Sprint started:/ { print $3 }')"
-awk -v v=true '/^---$/{c++; if (c==2) print "eval_override: " v; print; next} {print}' ".tickets/$wrongword_id/ticket.md" > ".tickets/$wrongword_id/ticket.md.tmp"
-mv ".tickets/$wrongword_id/ticket.md.tmp" ".tickets/$wrongword_id/ticket.md"
+sed -i.bak 's/^eval_override: false$/eval_override: true/' ".tickets/$wrongword_id/ticket.md"
+rm -f ".tickets/$wrongword_id/ticket.md.bak"
 cat > ".tickets/$wrongword_id/plan.md" <<'EOF'
 # Plan
 ## Sign-off
@@ -601,8 +608,10 @@ wrongword_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$wrongword_output" "no dated waiver on record"
 [[ -f .tickets/ACTIVE ]] && "$TKT" close "$wrongword_id" --no-sprint >/dev/null
 
-# No tkt command anywhere writes eval_override — regression guard
-grep -qE 'eval_override' "$TKT" && fail "tools/tkt must never gain a writer for eval_override — human-hand-edit-only by design"
+# tools/tkt may only ever seed eval_override as the fixed "false" scaffolding
+# string — it must never contain a code path that writes "true" (t-7cd5).
+grep -qE 'eval_override' "$TKT" || fail "tools/tkt should seed eval_override: false on ticket creation, but the string is missing entirely"
+grep -E 'eval_override' "$TKT" | grep -qi 'true' && fail "tools/tkt must never write eval_override: true — that stays hand-edit-only by design"
 mkdir -p nested/deeper
 (
   cd nested/deeper
