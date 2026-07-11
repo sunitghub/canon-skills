@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# sprint-headless — CI-callable entry point that grades an already-open PR/diff
+# against a ci:true ticket's plan.md/acceptance.md, headlessly via `claude -p`.
+#
+# Usage: sprint-headless <ticket-id> --base-ref <ref>
+#        (or set GITHUB_BASE_REF instead of --base-ref)
+#
+# Runs exactly three gates (reviewer, evaluator, security-review) via a single
+# `claude -p` dispatch that internally spawns each as an Agent subagent. Never
+# writes code — the change under review already exists. See t-c368's plan.md
+# for the full design and the spike that verified this invocation contract.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/ticket-root.sh"
+
+ID="${1:-}"
+[[ -z "$ID" || "$ID" == --* ]] && { echo "Usage: sprint-headless <ticket-id> --base-ref <ref>" >&2; exit 1; }
+shift
+
+# Strict format check before $ID is used in any path or embedded in the prompt
+# text sent to claude -p — closes both a path-traversal vector and a
+# prompt-injection vector at the one point both would have to pass through.
+[[ "$ID" =~ ^t-[a-z0-9]{4}$ ]] || { echo "Error: '$ID' is not a valid ticket ID (expected t-[a-z0-9]{4})." >&2; exit 1; }
+
+BASE_REF="${GITHUB_BASE_REF:-}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base-ref) BASE_REF="${2:-}"; shift 2 ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+[[ -z "$BASE_REF" ]] && { echo "Error: --base-ref (or \$GITHUB_BASE_REF) is required — headless mode never infers a diff base." >&2; exit 1; }
+
+# Same rationale as $ID above — a git ref name is far more permissive than a
+# ticket ID, so this only rejects the common, safe shape (branch/tag names,
+# short/full SHAs); reject anything with shell metacharacters or whitespace
+# before it reaches the prompt text, rather than trusting git's own (looser)
+# ref-name rules as the sole boundary.
+[[ "$BASE_REF" =~ ^[A-Za-z0-9._/-]+$ ]] || { echo "Error: '$BASE_REF' is not a valid base ref (expected branch/tag name or SHA — letters, digits, '.', '_', '/', '-' only)." >&2; exit 1; }
+
+ROOT="$(project_root)"
+TDIR="$(tickets_dir)/$ID"
+TICKET_FILE="$TDIR/ticket.md"
+PLAN_FILE="$TDIR/plan.md"
+ACCEPTANCE_FILE="$TDIR/acceptance.md"
+
+[[ -f "$TICKET_FILE" ]] || { echo "Error: no ticket found at $TICKET_FILE" >&2; exit 1; }
+
+CI_FLAG="$(awk -v f=ci 'BEGIN{fm=0} /^---$/{fm++; next} fm==1 && match($0, "^" f ": "){print substr($0, RSTART+RLENGTH); exit}' "$TICKET_FILE")"
+if [[ "$CI_FLAG" != "true" ]]; then
+  echo "Error: $ID is not CI-eligible (ci: true not set). Run: tkt ci $ID on" >&2
+  exit 1
+fi
+
+if ! git -C "$ROOT" ls-files --error-unmatch "$PLAN_FILE" "$ACCEPTANCE_FILE" >/dev/null 2>&1; then
+  echo "Error: $ID's plan.md/acceptance.md aren't committed. Run: git add -f $TDIR/ && git commit" >&2
+  exit 1
+fi
+
+if ! grep -q '^\s*-\s*\[x\]\s*Plan approved' "$PLAN_FILE"; then
+  echo "Error: $ID's plan.md has no checked 'Plan approved' box — headless mode requires the durable human sign-off to already be recorded." >&2
+  exit 1
+fi
+
+PROMPT="You are the orchestrator for a headless CI grading run of ticket $ID in this repo. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
+
+Dispatch exactly three fresh Agent subagents, subagent_type: \"Plan\" for each, one at a time:
+1. Reviewer — instruct it to read skills/sprint/reference/review.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input (do not let it infer via git merge-base). It writes .tickets/$ID/review-notes.md and returns YES or NO.
+2. Evaluator — instruct it to read skills/sprint/reference/eval.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input. It writes .tickets/$ID/eval-report.md and returns pass or fail.
+3. Security-review — instruct it to read skills/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file).
+
+After each subagent completes, run: ./tools/subagent-log.sh --agent-id <the agent id from that dispatch> --agent-type <reviewer|evaluator|security-review>
+
+Once all three have run, output a final summary covering all three verdicts, then end your response with exactly one line, nothing after it:
+HEADLESS_VERDICT: PASS
+or
+HEADLESS_VERDICT: FAIL
+
+Verdict is PASS only if: reviewer verdict is YES, evaluator verdict is pass, and security-review found no HIGH-confidence findings. Any NO, fail, or HIGH finding makes the overall verdict FAIL."
+
+set +e
+RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
+  --output-format json \
+  --permission-mode dontAsk \
+  --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "Bash(./tools/subagent-log.sh:*)" "Read" "Grep" "Glob" "LS")"
+INVOKE_STATUS=$?
+set -e
+
+if [[ "$INVOKE_STATUS" -ne 0 ]]; then
+  echo "Error: claude -p invocation failed (exit $INVOKE_STATUS). Hard-failing." >&2
+  echo "$RESULT_JSON" >&2
+  exit 1
+fi
+
+PARSED="$(echo "$RESULT_JSON" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("PARSE_ERROR\t\t")
+    sys.exit(0)
+is_error = d.get("is_error", True)
+session_id = d.get("session_id", "unknown")
+result = d.get("result", "").replace(chr(10), chr(2))
+print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
+')"
+IS_ERROR="$(echo "$PARSED" | cut -f1)"
+SESSION_ID="$(echo "$PARSED" | cut -f2)"
+RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
+
+"$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-$SESSION_ID" --agent-type headless-orchestrator 2>/dev/null || true
+
+if [[ "$IS_ERROR" != "False" ]]; then
+  echo "Error: claude -p reported an error (is_error=$IS_ERROR). Hard-failing." >&2
+  echo "$RESULT_JSON" >&2
+  exit 1
+fi
+
+echo "$RESULT_TEXT"
+
+if echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: PASS$'; then
+  exit 0
+elif echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: FAIL$'; then
+  exit 1
+else
+  echo "Error: no HEADLESS_VERDICT line found in output. Hard-failing (ambiguous result)." >&2
+  exit 1
+fi

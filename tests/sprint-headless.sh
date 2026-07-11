@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# sprint-headless — covers the deterministic, free-to-run parts of the
+# headless CI entry point (t-c368): pre-flight guard rails and invocation-
+# error handling. Deliberately excludes real `claude -p` dispatch (real
+# reviewer/evaluator/security-review subagents) — that costs real API money
+# on every run and was instead verified live, once, this session (t-c368
+# summary.md/research.md record the real end-to-end and fail-case results).
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/tests/helpers.sh"
+
+SPRINT_HEADLESS="$ROOT/tools/sprint-headless"
+
+WORK="$(mktemp -d)"
+cleanup() { rm -rf "$WORK"; }
+trap cleanup EXIT
+
+git -C "$WORK" init -q
+git -C "$WORK" config user.email t@t.com
+git -C "$WORK" config user.name t
+echo hello > "$WORK/file.txt"
+git -C "$WORK" add file.txt
+git -C "$WORK" commit -q -m init
+
+seed_ticket() {
+  local id="$1"
+  mkdir -p "$WORK/.tickets/$id"
+  cat > "$WORK/.tickets/$id/ticket.md" <<EOF
+---
+id: $id
+status: open
+type: task
+priority: 2
+created: 2026-01-01T00:00:00Z
+---
+# fixture
+EOF
+  cat > "$WORK/.tickets/$id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+Tier: trivial | Risk: fixture
+- [ ] Plan approved — proceed to implementation
+## Approach
+fixture
+## Files
+- none
+## Decisions
+- none
+EOF
+  cat > "$WORK/.tickets/$id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] fixture
+## Test Plan
+- [x] fixture
+## QA
+- [x] Tested locally
+EOF
+}
+
+# ── 0. Invalid ticket ID / base-ref rejected before any path or prompt use ──
+
+out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" 't-aaaa; rm -rf /tmp/x' --base-ref HEAD)"
+assert_contains "$out" "not a valid ticket ID"
+
+seed_ticket t-aaaa
+out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref 'main; rm -rf /tmp/x')"
+assert_contains "$out" "not a valid base ref"
+
+# ── 1. Not CI-eligible ───────────────────────────────────────────────────
+out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
+assert_contains "$out" "not CI-eligible"
+
+# ── 2. CI-eligible but docs not committed/staged ────────────────────────
+
+(cd "$WORK" && "$ROOT/tools/tkt" ci t-aaaa on >/dev/null)
+out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
+assert_contains "$out" "aren't committed"
+
+# ── 3. Staged but plan not approved ─────────────────────────────────────
+
+(cd "$WORK" && git add -f ".tickets/t-aaaa/")
+out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
+assert_contains "$out" "Plan approved"
+
+# ── 4. Approved, but missing --base-ref ─────────────────────────────────
+
+sed -i.bak 's/- \[ \] Plan approved/- [x] Plan approved/' "$WORK/.tickets/t-aaaa/plan.md"
+rm -f "$WORK/.tickets/t-aaaa/plan.md.bak"
+(cd "$WORK" && git add -f ".tickets/t-aaaa/")
+out="$(cd "$WORK" && GITHUB_BASE_REF= run_fail "$SPRINT_HEADLESS" t-aaaa)"
+assert_contains "$out" "base-ref"
+
+# ── 5. All guard rails pass; claude -p invocation itself fails ─────────
+
+STUB_DIR="$(mktemp -d)"
+cat > "$STUB_DIR/claude" <<'EOF'
+#!/usr/bin/env bash
+echo '{"type":"result","is_error":true,"api_error_status":429,"result":"Rate limit exceeded","terminal_reason":"api_error"}'
+exit 1
+EOF
+chmod +x "$STUB_DIR/claude"
+
+out="$(cd "$WORK" && PATH="$STUB_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
+assert_contains "$out" "invocation failed"
+rm -rf "$STUB_DIR"
+
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message)"

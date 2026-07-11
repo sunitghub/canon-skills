@@ -11,7 +11,7 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git s
 
 ## Scope
 
-Run `git diff --name-only $(git merge-base HEAD origin/main) HEAD` to identify changed files — the same base ref every other close gate uses. Analyze only those files — do not scan the full codebase.
+If an explicit `Base ref` was passed (headless CI dispatch grading an existing PR/diff), run `git diff --name-only <base-ref> HEAD`. Otherwise (normal interactive close), run `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — the same base ref every other close gate uses by default. (Same base-ref branching as `review.md`/`eval.md` — mirror, keep in sync.) Analyze only the resulting changed files — do not scan the full codebase.
 
 If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `review.md`/`eval.md` (mirror — keep in sync):
 - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and scan those real changed files.

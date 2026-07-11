@@ -213,6 +213,36 @@ cmd_set_status() {
   printf "%s: %s\n" "$id" "$new_status"
 }
 
+cmd_ci() {
+  local id="${1:-}" value="${2:-on}"
+  [[ -z "$id" ]] && { echo "Usage: tkt ci <id> [on|off]" >&2; exit 1; }
+  case "$value" in
+    on|true)   value=true ;;
+    off|false) value=false ;;
+    *) echo "Error: value must be 'on' or 'off'" >&2; exit 1 ;;
+  esac
+
+  local file
+  file="$(find_ticket "$id")"
+  id="$(get_field "$file" id)"
+
+  if grep -q "^ci: " "$file"; then
+    set_field "$file" ci "$value"
+  else
+    awk -v v="$value" '
+      /^---$/ { c++; if (c==2) { print "ci: " v } ; print; next }
+      { print }
+    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+  fi
+
+  printf "%s: ci=%s\n" "$id" "$value"
+  if [[ "$value" == "true" ]]; then
+    local tdir
+    tdir="$(dirname "$file")"
+    echo "Reminder: commit this ticket's docs so CI can read them: git add -f $tdir/ && git commit" >&2
+  fi
+}
+
 cmd_close() {
   local id="" no_sprint=false
 
@@ -438,6 +468,9 @@ Commands:
                             ticket has sprint docs, or pass --no-sprint to
                             force-close a doc-less/backlog ticket directly.
   archive <id>              Set status to archived (hidden from board columns, searchable)
+  ci <id> [on|off]          Mark ticket CI-eligible (headless grading); [default: on]
+                            Reminds to 'git add -f' the ticket's docs — they're
+                            gitignored by default like every other ticket.
   current                   Show active ticket
   reopen <id>               Set status to open
   ls [--status=X]           List tickets (unfiltered by default)
@@ -459,6 +492,7 @@ main() {
     start)          cmd_set_status "${1:-}" in_progress ;;
     close)          cmd_close "$@" ;;
     archive)        cmd_set_status "${1:-}" archived ;;
+    ci)             cmd_ci "$@" ;;
     current)        cmd_current ;;
     reopen)         cmd_set_status "${1:-}" open ;;
     ls|list)        cmd_ls "$@" ;;
