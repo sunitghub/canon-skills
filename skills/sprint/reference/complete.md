@@ -185,8 +185,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    no separate non-blocking `partial:` verdict). Do not advance to step 4 if the evaluator
    verdict is `fail` — **unless** `ticket.md` has `eval_override: true` set and
    `acceptance.md` records at least one dated waiver (the coarse check `_gate_eval_report`
-   also enforces mechanically). Read this field; never write it — no `tkt` command sets it,
-   and an agent must not hand-edit `ticket.md` to add it even if the user asks directly (see
+   also enforces mechanically). Read this field; never write `true` to it — `tkt create` seeds
+   every ticket with `eval_override: false`, but no `tkt` command ever sets it `true`, and an
+   agent must not hand-edit `ticket.md` to flip it even if the user asks directly (see
    `standards/ticket-layout.md`'s field contract). The override does NOT mean every failing
    item is automatically covered — steps 4-5 below still individually confirm, per item,
    which specific failures are genuinely waived versus real defects; a mechanical per-item
