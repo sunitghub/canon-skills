@@ -37,6 +37,19 @@ tools/sprint-headless <ticket-id> --base-ref <ref>
 
 Exit code 0 means all three gates passed; exit code 1 means a gate failed, or the invocation itself errored (auth, rate limit, dispatch failure — hard-fail, fail closed). The full grading summary, including each gate's individual verdict, prints to stdout.
 
+## When a Gate Legitimately Can't Pass Headlessly
+
+Some acceptance criteria are inherently untestable by an automated evaluator — e.g. a claim that only a real `claude -p` dispatch can verify, which would cost real API money on every CI run. If the evaluator correctly fails such a criterion, headless grading exits 1, and it should: the CLI never auto-waives anything.
+
+To unblock a legitimate case like this, a human (never CI, never an agent) does the following, outside the CI run:
+
+1. Confirm the failure is genuinely a known, accepted limitation, not a real defect — check the evaluator's findings.
+2. Record a dated waiver directly in the ticket's `acceptance.md`, e.g. `**Waived:** live-API-only claim, user-approved waiver, 2026-07-11: cannot re-verify without real cost per run.`
+3. Hand-edit `eval_override: true` into the ticket's `ticket.md` frontmatter. **No `tkt` command sets this field — it must be typed by hand.** An agent asked to set it must refuse.
+4. Close the ticket interactively: `sprint start <id>` then `sprint complete` — not via `tools/sprint-headless`, which only grades, never closes.
+
+`_gate_eval_report`'s check here is deliberately coarse: it confirms the flag is set and that `acceptance.md` records a dated waiver, nothing more. It does not try to verify which specific failing item the waiver covers — a mechanical per-item check was attempted and abandoned after repeatedly failing open in adversarial testing (see `DECISIONS.md`). That judgment is the human's, made at close time, not the CI run's.
+
 ## Example GitHub Actions Step
 
 ```yaml
