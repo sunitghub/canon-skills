@@ -61,7 +61,6 @@ RC_FILE="$HOME/.bashrc"
 
 printf '\nDone.\n\n'
 printf '  ──────────────────────────────────────────────────\n'
-printf '  Try the Todo walkthrough:\n'
-printf '    %s/scripts/copy-todo-walkthrough.sh /tmp/canon-todo\n' "$TARGET"
-printf '    cd /tmp/canon-todo && %s/tools/skills.sh add sprint\n' "$TARGET"
+printf '  Try a guided example — read %s/examples/restaurant-bill-split/README.md\n' "$TARGET"
+printf '  and give the starting prompt to your agent.\n'
 printf '  ──────────────────────────────────────────────────\n\n'

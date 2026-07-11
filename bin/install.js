@@ -77,11 +77,10 @@ function main() {
 
   header('Done.');
   console.log(`
-  Example walkthrough:
+  Guided example:
 
-    ${TARGET}/scripts/copy-todo-walkthrough.sh /tmp/canon-todo
-    cd /tmp/canon-todo
-    ${TARGET}/tools/skills.sh add sprint
+    Read ${TARGET}/examples/restaurant-bill-split/README.md
+    and give its starting prompt to your agent.
 
   Full setup guide: ${TARGET}/guides/AI-Agents-Setup.md
 `);

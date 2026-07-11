@@ -54,16 +54,9 @@ sprint complete                  # agent: review, verify, close
 
 That's the day-to-day surface. Setup wires the tools once; after that, your agent does the work and canon keeps it in your repo — not your prompt history.
 
-Guided walkthrough:
-
-```bash
-~/.canon/scripts/copy-todo-walkthrough.sh <dest_folder_path>
-cd <dest_folder_path>
-~/.canon/tools/skills.sh add sprint
-```
-
-Build the Todo walkthrough in a disposable folder when you want to understand
-canon end to end without adding local sprint state to the canon checkout.
+Guided example: read [`examples/restaurant-bill-split/README.md`](examples/restaurant-bill-split/README.md)
+and give its starting prompt to your agent in a disposable folder — it walks through a fresh
+sprint end to end without adding local sprint state to the canon checkout.
 
 ## What Makes canon Different
 
@@ -241,8 +234,8 @@ Register canon in another project:
 
 - **[Full setup guide →](docs/setup.md)** — install, hook wiring, skill lifecycle, reference commands.
 - **[Production incident playbook →](docs/production-incident-playbook.md)** — Surface → Trace → Isolate → Resolve → Harden. The five-stage protocol for when an AI agent misbehaves in production.
-- **[Todo walkthrough →](examples/canon-todo-walkthrough)** — copy it to a disposable folder and walk the full flow, from empty board to shipped app.
-- **[check-offline skill example →](examples/check-offline)** — a worked skill + evals example: scans HTML prototypes for CDN dependencies that break offline.
+- **[Restaurant bill splitter →](examples/restaurant-bill-split)** — a prompt-driven sprint walkthrough: can a fresh evaluator catch plausible-looking but numerically wrong code?
+- **[Slugify skill-eval demo →](examples/slugify)** — a worked skill + evals example, no-evals vs. with-evals vs. with-evals-fixed.
 
 ## Contributing
 
