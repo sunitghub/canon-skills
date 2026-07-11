@@ -426,6 +426,17 @@ func loadCommit(hash string) map[string]any {
 	return map[string]any{"hash": hash, "subject": subject, "body": body, "author": runGit("log", "-1", "--format=%an", hash), "date": firstN(runGit("log", "-1", "--format=%ci", hash), 10), "files": files, "related_ticket_ids": sortedKeys(related)}
 }
 
+func basenameCandidates(basename string) []string {
+	out := runGit("log", "--all", "--name-only", "--format=")
+	seen := map[string]bool{}
+	for _, line := range nonEmpty(strings.Split(out, "\n")) {
+		if filepath.Base(line) == basename {
+			seen[line] = true
+		}
+	}
+	return sortedKeys(seen)
+}
+
 func loadWhy(file string) map[string]any {
 	target := strings.TrimSpace(file)
 	if target == "" {
@@ -434,7 +445,24 @@ func loadWhy(file string) map[string]any {
 	if filepath.IsAbs(target) || strings.Contains(filepath.ToSlash(target), "../") {
 		return map[string]any{"file": target, "results": []any{}, "message": "Use a project-relative file path."}
 	}
-	subjects := runGit("log", "--follow", "--format=%s", "--", target)
+	queryTarget := target
+	subjects := runGit("log", "--follow", "--format=%s", "--", queryTarget)
+	if subjects == "" {
+		basename := filepath.Base(target)
+		candidates := []string{}
+		if basename != "" && basename != "." {
+			candidates = basenameCandidates(basename)
+		}
+		if len(candidates) == 1 {
+			queryTarget = candidates[0]
+			subjects = runGit("log", "--follow", "--format=%s", "--", queryTarget)
+		} else if len(candidates) > 1 {
+			return map[string]any{
+				"file": target, "results": []any{},
+				"message": "Multiple files named " + basename + " found — use the full path: " + strings.Join(candidates, ", "),
+			}
+		}
+	}
 	if subjects == "" {
 		return map[string]any{"file": target, "results": []any{}, "message": "No git history found for " + target + "."}
 	}
