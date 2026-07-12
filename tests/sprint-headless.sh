@@ -95,6 +95,10 @@ assert_contains "$out" "base-ref"
 
 # ── 5. All guard rails pass; claude -p invocation itself fails ─────────
 
+# Minimal canon-repo-layout skills dir so the layout-detection guard (added
+# for consumer-project support) passes before reaching the claude stub below.
+mkdir -p "$WORK/skills/sprint"
+
 STUB_DIR="$(mktemp -d)"
 cat > "$STUB_DIR/claude" <<'EOF'
 #!/usr/bin/env bash
@@ -105,6 +109,20 @@ chmod +x "$STUB_DIR/claude"
 
 out="$(cd "$WORK" && PATH="$STUB_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
 assert_contains "$out" "invocation failed"
+
+# ── 6. Consumer-project layout (.claude/skills/sprint, no top-level skills/) ─
+
+rmdir "$WORK/skills/sprint" "$WORK/skills" 2>/dev/null || true
+mkdir -p "$WORK/.claude/skills/sprint"
+out="$(cd "$WORK" && PATH="$STUB_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
+assert_contains "$out" "invocation failed"
+rm -rf "$WORK/.claude/skills"
+
+# ── 7. Neither layout present ────────────────────────────────────────────
+
+out="$(cd "$WORK" && PATH="$STUB_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
+assert_contains "$out" "no sprint/wrapup skill docs found"
+
 rm -rf "$STUB_DIR"
 
-echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message)"
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed)"

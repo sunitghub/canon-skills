@@ -65,14 +65,31 @@ if ! grep -q '^\s*-\s*\[x\]\s*Plan approved' "$PLAN_FILE"; then
   exit 1
 fi
 
+# Resolve the skills-doc path prefix and subagent-log.sh location for the
+# repo this script is running in — canon's own repo (top-level skills/) or a
+# consumer project (skills.sh add's .claude/skills/ symlink to $SKILLS_ROOT/skills).
+# Fail closed before ever dispatching to claude -p if neither layout is found.
+if [[ -d "$ROOT/skills/sprint" ]]; then
+  SKILLS_PREFIX="skills"
+  SUBAGENT_LOG="./tools/subagent-log.sh"
+  SUBAGENT_LOG_ALLOW="Bash(./tools/subagent-log.sh:*)"
+elif [[ -d "$ROOT/.claude/skills/sprint" ]]; then
+  SKILLS_PREFIX=".claude/skills"
+  SUBAGENT_LOG="$SCRIPT_DIR/subagent-log.sh"
+  SUBAGENT_LOG_ALLOW="Bash($SCRIPT_DIR/subagent-log.sh:*)"
+else
+  echo "Error: no sprint/wrapup skill docs found at either '$ROOT/skills/sprint' (canon repo) or '$ROOT/.claude/skills/sprint' (consumer project). Run 'skills.sh add sprint' first." >&2
+  exit 1
+fi
+
 PROMPT="You are the orchestrator for a headless CI grading run of ticket $ID in this repo. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
 
 Dispatch exactly three fresh Agent subagents, subagent_type: \"Plan\" for each, one at a time:
-1. Reviewer — instruct it to read skills/sprint/reference/review.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input (do not let it infer via git merge-base). It writes .tickets/$ID/review-notes.md and returns YES or NO.
-2. Evaluator — instruct it to read skills/sprint/reference/eval.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input. It writes .tickets/$ID/eval-report.md and returns pass or fail.
-3. Security-review — instruct it to read skills/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file).
+1. Reviewer — instruct it to read $SKILLS_PREFIX/sprint/reference/review.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input (do not let it infer via git merge-base). It writes .tickets/$ID/review-notes.md and returns YES or NO.
+2. Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input. It writes .tickets/$ID/eval-report.md and returns pass or fail.
+3. Security-review — instruct it to read $SKILLS_PREFIX/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file).
 
-After each subagent completes, run: ./tools/subagent-log.sh --agent-id <the agent id from that dispatch> --agent-type <reviewer|evaluator|security-review>
+After each subagent completes, run: $SUBAGENT_LOG --agent-id <the agent id from that dispatch> --agent-type <reviewer|evaluator|security-review>
 
 Once all three have run, output a final summary covering all three verdicts, then end your response with exactly one line, nothing after it:
 HEADLESS_VERDICT: PASS
@@ -85,7 +102,7 @@ set +e
 RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
   --output-format json \
   --permission-mode dontAsk \
-  --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "Bash(./tools/subagent-log.sh:*)" "Read" "Grep" "Glob" "LS")"
+  --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
 INVOKE_STATUS=$?
 set -e
 
