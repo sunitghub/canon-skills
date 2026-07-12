@@ -34,29 +34,134 @@ to the total bill.
 
 1. Create a project folder named `RestaurantBillSplit` and open it in VS Code.
 2. Initialize the Canon skills and sprint workflow as shown in the workshop.
-3. Start a sprint with this prompt:
+3. Create (or open) `AGENTS.md` in the project root and add this section, exactly as written:
+
+   ```markdown
+   ## Workshop Guidelines
+
+   - Use vanilla HTML/CSS/JavaScript with no build step or external dependencies.
+   - Support equal splits using subtotal, number of people, and exactly three tip options: 10% selected by default, with 15% and 20% as alternatives.
+   - Do not add itemized splitting, tax, service charges, or persistence.
+   - Keep bill calculations in an isolated deterministic function.
+   - Do not start implementation or run `sprint complete` without explicit user approval.
+   - Verification and testing are manual-only; do not install or suggest test-automation tooling without asking first.
+   ```
+
+   This is project-local — it applies only inside this workshop folder, not to canon
+   generally. Note what it deliberately does *not* say: nothing about input validation.
+   That omission is intentional — asking for validation upfront would prevent the gap
+   this workshop exists to demonstrate from ever appearing in Act 1.
+
+4. Start a sprint with this prompt:
 
    `Create a Restaurant Bill Splitter app that runs in a browser.`
 
-4. Let the agent generate its initial acceptance criteria. Then edit the ticket
-   yourself: open the ticket, select **Acceptance**, choose **Edit**, add a new
-   checkbox under **Criteria**, and save it. Use this exact criterion:
+5. Let the agent generate its initial acceptance criteria and Test Plan. Review
+   them, approve the plan, and allow the agent to implement the first version.
+6. Open the implemented app and run the generated manual checks. The UI may
+   appear to handle invalid input correctly because its parser functions guard
+   the form fields. Now inspect the isolated `calculateSplit()` function: it
+   assumes that callers have already provided valid values.
 
-   `Displayed shares must be rounded to cents and sum exactly to the displayed total, including for uneven splits.`
+   Before moving on, check what the generated Test Plan actually tested. It's
+   common for every case to use a subtotal and people count that divide evenly
+   (for example, people = 4 with subtotals of 100, 110, 115, 120) — every one of
+   those totals splits with no remainder. A fully-checked Test Plan built only
+   from round, evenly-divisible inputs proves nothing about the remainder path:
+   try a subtotal that doesn't divide evenly by the people count, such as $101
+   split 3 ways, and check whether the displayed per-person amounts actually sum
+   to the displayed total. This is the same author writing the code and picking
+   its own test numbers — no incentive to reach for the input that would expose
+   its own bug. That's what the fresh evaluator exists to catch independently.
 
-   This demonstrates that a human can append one precise requirement without
-   spending another model turn. Leave the other generated criteria in place;
-   the acceptance document becomes the durable evidence that the evaluator
-   must check later.
-5. Leave the other generated criteria and the generated **Test Plan** in place.
-   Review them, then approve the plan.
-6. Ask the agent to implement the app, then manually test the sample bills.
-7. Run `sprint complete` so the fresh reviewer and evaluator inspect the work.
+   Try more than one non-evenly-divisible case, not just one, and compare the
+   *display format* between them — not just the numbers. When shares differ,
+   the app should show each distinct amount and how many people pay it, for
+   example "1 person pays $37.04, 2 people pay $37.03" — not a single averaged
+   "Per person: $X" line. It's possible for this to work for some inputs and
+   silently fall back to a flat, incorrect average for others, if the grouped
+   display only triggers under some condition rather than unconditionally
+   whenever shares aren't identical. Testing only one case can hide that
+   inconsistency; testing two or three different remainders exposes it.
+7. Fix the remainder gap right now, before looking at anything else. Open
+   **Acceptance**, and check the existing criteria for the per-person output —
+   this is usually a wording problem, not a missing criterion. It's common for
+   the generated text to say something like "per-person share (total / people)"
+   — that's not vague, it's *precise*, and it precisely describes the bug: a
+   single value from plain division, with no mention of "shares" (plural),
+   remainder handling, or summing to the total. A fresh evaluator grading that
+   criterion as written would likely call it a pass, because the code
+   faithfully does compute `total / people` — the criterion itself encodes the
+   wrong model of correct behavior, not an absent one.
+
+   Leave that existing criterion as it is. Add two new checkboxes under
+   **Criteria**, directly underneath it — kept separate rather than bundled
+   into one, since they're independent risks: the arithmetic could be correct
+   while the display still isn't, or vice versa, and a single compound
+   criterion can only report "partial" on the whole thing instead of pointing
+   at which half actually failed.
+
+   `If the bill doesn't split evenly, the extra pennies must be distributed among specific people's shares instead of being dropped, so all the shares added together equal the total exactly.`
+
+   `When shares differ from each other, the app must display each distinct amount along with how many people pay it (for example "1 person pays $X, 2 people pay $Y") instead of a single averaged per-person number.`
+
+   Then add matching cases to the **Test Plan**, one per criterion:
+
+   `$101.00 subtotal, 3 people, 10% tip — check that the underlying shares are $37.04, $37.03, $37.03 and add up to exactly $111.10, not $111.09.`
+
+   `$101.00 subtotal, 3 people, 10% tip, and at least one other non-evenly-divisible case — check that the app displays a grouped breakdown ("1 person pays $X, 2 people pay $Y") in both cases, not a single averaged per-person number in either.`
+
+   New, specific criteria are enough on their own — the evaluator grades each
+   independently, so the old loose wording sitting alongside them doesn't block
+   either from correctly failing on the real bug. (If you'd rather clean up the
+   old wording too instead of leaving it, that's a valid alternative — replace
+   "(total / people)" with language that explicitly rules out a single flat
+   value — but it's not necessary for the new criteria to work.)
+8. Add the other discovered requirement to the ticket: open **Acceptance**,
+   choose **Edit**, add a new checkbox under **Criteria** for each, and save:
+
+   `Calling calculateSplit() directly with an invalid subtotal or invalid people count must return a validation result and never produce NaN, Infinity, or a misleading calculation.`
+
+   `The app and calculateSplit() must reject split counts above a defined maximum, such as 100, and must never allocate an unbounded number of shares.`
+
+   This is subtle: normal UI testing may miss it because the UI validates first,
+   while the fresh evaluator can inspect whether the deterministic function
+   protects its own contract. The maximum also protects against excessive
+   memory allocation or a browser freeze from a maliciously large people count.
+
+   Check the UI parser too, not just the function: it likely enforces "positive"
+   but not "at most the maximum." A fix that only guards `calculateSplit()` still
+   leaves the UI's own front door unlocked — the second criterion says "the app
+   *and* `calculateSplit()`" for exactly this reason. Both layers need the same
+   cap; catching only one is a common, plausible-looking half-fix.
+9. Ask the agent:
+
+   `Update the plan and Test Plan with the requirements I just added — the new remainder-distribution criterion and its test case, and the validation and resource-limit criteria. Do not implement yet; wait for my approval.`
+
+10. Review the updated plan, then reply:
+
+    `Approve the updated plan. Do not implement yet.`
+
+11. Run `sprint complete` before fixing the new requirements. The security
+    reviewer should flag the unbounded share-allocation risk, and the fresh
+    evaluator should fail the related criteria with code evidence.
+12. Ask the agent to implement the approved validation and maximum-count
+    changes, then manually rerun the original bill-splitting checks. Test the
+    safe boundary, such as 100 people and then 101 people; do not enter an
+    enormous value that could freeze the browser.
+13. Run `sprint complete` again and confirm that the evaluator now passes.
 
 ## Separate the probabilistic and deterministic paths
 
 The language model may interpret the user’s request, collect missing inputs,
 and explain the result. It should not calculate the bill in free-form text.
+
+This is what's commonly called **tool use** or **function calling**: the
+model orchestrates and explains, but a deterministic function computes. The
+alternative — the model generating the numeric answer itself as part of its
+own text — is **probabilistic**: sampled token-by-token, capable of producing
+a wrong number that reads as confident and correct, and not guaranteed to
+repeat identically on the same inputs.
 
 Put the arithmetic in ordinary application code or behind a calculator/tool
 boundary. A suitable interface is:
@@ -108,6 +213,8 @@ The acceptance test plan should include at least these cases:
 | $100.00 | 15% | 2 | $115.00 | Two shares of $57.50 |
 | $100.00 | 15% | 3 | $115.00 | Three shares following the stated remainder policy |
 | $10.00 | 15% | 3 | $11.50 | Two shares of $3.83 and one share of $3.84 |
+| Direct `calculateSplit()` call with invalid input | — | — | Validation result | No `NaN`, `Infinity`, or misleading calculation |
+| People count above maximum, such as 101 | — | — | Rejected | No unbounded share allocation |
 | $0.00 | 15% | 2 | $0.00 | Two shares of $0.00 |
 | $12.34 | 15% | 2 | Policy-defined | Shares sum to the displayed total |
 
@@ -115,19 +222,20 @@ The acceptance test plan should include at least these cases:
 
 1. Ask the coding agent to build the app from the behavior and criteria above.
 2. Run the app and perform the manual checks.
-3. Run the sprint completion workflow and inspect the fresh evaluator report.
-4. Confirm that the evaluator checks the rounding criterion with concrete
-   file/line evidence. A naïve implementation that rounds every share to the
-   same amount may fail because the displayed shares do not add up to the total.
+3. Inspect the deterministic function and add the direct-input and maximum-count criteria.
+4. Ask the agent to update the plan and Test Plan, then approve the change.
+5. Run the security review and evaluator before fixing the function; inspect their evidence.
+6. Implement the approved validation and resource-limit changes, then rerun both gates.
 
 ## Example evaluator finding
 
-The evaluator may report that the rounding criterion fails because the
-implementation rounds each share independently. For an `$11.50` total split
-among 3 people, displaying `$3.83` for everyone produces `$11.49` in total.
-The evaluator should cite the calculation code and explain that the leftover
-cent was not reconciled. This is an example finding, not a guaranteed result;
-the evaluator grades the implementation it actually finds.
+The evaluator may report that the boundary criterion fails because
+`calculateSplit()` assumes valid inputs and does not guard against invalid
+values, even though the UI parser prevents those values during normal use. It
+should cite the function and explain the contract gap. The security reviewer
+may also flag the user-controlled loop that can allocate an unbounded shares
+array. These are example findings, not guaranteed results; each reviewer grades
+the implementation it actually finds.
 
 ## Important limitation
 
