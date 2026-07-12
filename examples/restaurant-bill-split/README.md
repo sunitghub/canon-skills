@@ -237,6 +237,98 @@ may also flag the user-controlled loop that can allocate an unbounded shares
 array. These are example findings, not guaranteed results; each reviewer grades
 the implementation it actually finds.
 
+## Session 2: headless CLI grading (local, no CI)
+
+Session 1 ran the reviewer, evaluator, and security-review gates *interactively* —
+inside a live chat, as part of `sprint complete`. This session shows that the exact
+same three gates can also be replayed *non-interactively*, from a plain terminal,
+against the ticket you already closed. This is the same mechanism a CI pipeline
+would run against a pull request (see `docs/headless-ci.md`) — here you run it
+locally, so no GitHub repository, Actions workflow, or per-student API secret is
+needed. Your already-authenticated local `claude` CLI is enough.
+
+Prerequisites: the ticket from Session 1 is closed, its `plan.md`/`acceptance.md`
+were approved, and the evaluator passed interactively. Note that ticket's ID (for
+example `t-a1b2`) — you'll need it below. Your `MealSplit` folder was `git init`'d
+before Session 1 started, with no remote — headless grading works fine against a
+purely local repo, but every step below is written to never assume history
+beyond that `git init`, since your repo may have as few as one commit.
+
+1. Record the current commit as your base ref — the "before" state that a
+   future diff will be graded against, the same role a PR's target branch
+   plays in CI:
+
+   ```
+   git rev-parse HEAD
+   ```
+
+   Copy the SHA it prints; you'll pass it as `--base-ref` in step 5.
+
+2. Mark the ticket CI-eligible:
+
+   ```
+   tkt ci <your-ticket-id> on
+   ```
+
+   This flips `ci: true` in the ticket's frontmatter and prints a reminder to
+   commit its docs.
+
+3. Ticket docs are gitignored by default, so force-add and commit them — a CI
+   checkout (or, here, a fresh headless run) has nothing to grade against
+   otherwise:
+
+   ```
+   git add -f .tickets/<your-ticket-id>/
+   git commit -m "chore: track <your-ticket-id> for headless grading"
+   ```
+
+4. Create something for headless grading to actually check — stand in for a
+   teammate's PR by temporarily reintroducing a bug: comment out the
+   remainder-distribution fix from Session 1 so shares no longer sum to the
+   total, then commit it:
+
+   ```
+   git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
+   ```
+
+5. Run headless grading against the base ref from step 1:
+
+   ```
+   tools/sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
+   ```
+
+   This dispatches fresh reviewer, evaluator, and security-review subagents —
+   the same protocols Session 1 used, reading the same `plan.md`/`acceptance.md`
+   — against the diff between that base ref and your current code. No code is
+   written or edited; this call only grades.
+
+6. Read the output. The full findings from all three gates print to stdout,
+   ending in exactly one line: `HEADLESS_VERDICT: PASS` or
+   `HEADLESS_VERDICT: FAIL`. Exit code `0` means all three gates passed; `1`
+   means a gate failed, or the invocation itself errored. Confirm the evaluator
+   reports `fail:` on the remainder-sum criterion, citing the commented-out
+   code as evidence, and that `HEADLESS_VERDICT: FAIL` prints with a non-zero
+   exit code — the same kind of finding Session 1's evaluator would have made
+   interactively.
+
+7. Unlike an interactive close, headless mode never writes `review-notes.md` or
+   `eval-report.md` to disk (`claude -p`'s non-interactive permission mode
+   denies that). The full text is in your terminal's scrollback instead, and
+   every subagent dispatch is still logged to `.claude/subagent-runs.jsonl` for
+   audit purposes — inspect it with `tail .claude/subagent-runs.jsonl`.
+
+8. Revert the bug and rerun the same command from step 5 against the same base
+   ref:
+
+   ```
+   git revert --no-edit HEAD
+   tools/sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
+   ```
+
+   Confirm all three gates now pass and `HEADLESS_VERDICT: PASS` prints with
+   exit code `0` — the same acceptance criteria, graded the same way, now
+   satisfied by the real fix from Session 1.
+
 ## Important limitation
 
 A fresh evaluator is not automatically a mathematically reliable oracle. Vague
