@@ -7,6 +7,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
+source "$SCRIPT_DIR/frontmatter-lib.sh"
 
 VERSION="1.0.0"
 
@@ -80,23 +81,6 @@ find_ticket() {
     1) echo "${matches[0]}" ;;
     *) echo "Error: ambiguous ID '$query' — ${#matches[@]} matches" >&2; exit 1 ;;
   esac
-}
-
-get_field() {
-  local file="$1" field="$2"
-  awk -v f="$field" '
-    /^---$/ { fm++; next }
-    fm == 1 && match($0, "^" f ": ") { print substr($0, RSTART+RLENGTH); exit }
-  ' "$file"
-}
-
-set_field() {
-  local file="$1" field="$2" value="$3"
-  awk -v f="$field" -v v="$value" '
-    /^---$/ { fm++; print; next }
-    fm == 1 && match($0, "^" f ": ") { print f ": " v; next }
-    { print }
-  ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 }
 
 get_title() {
@@ -349,13 +333,16 @@ cmd_current() {
   printf "%s  %s  %s\n" "$id" "$(get_field "$file" status)" "$(get_title "$file")"
 }
 
-cmd_why() {
-  local target="${1:-}"
-  [[ -z "$target" ]] && { echo "Usage: tkt why <file>" >&2; exit 1; }
-
-  local dir
-  dir="$(tickets_dir)"
-
+# _why_resolve_target <target> — resolves a bare filename to a tracked path via
+# basename fallback when the exact path has no history. Sets _why_resolved_target
+# on success (return 0). On an early-exit case (ambiguous candidates, or no
+# history at all) prints the user-facing message directly — never via command
+# substitution, which would swallow it instead of showing it — and returns 1.
+# Same dynamic-scoping idiom as cap_with_more's _cap_result/_cap_more: the
+# caller declares the var local first, this function (called directly, not
+# via "$(...)") assigns into that same scope.
+_why_resolve_target() {
+  local target="$1"
   local query_target="$target"
   local log_subjects
   log_subjects="$(git log --follow --format="%s" -- "$query_target" 2>/dev/null)"
@@ -376,20 +363,31 @@ cmd_why() {
       local joined
       joined="$(printf '%s, ' "${candidates[@]}")"
       echo "Multiple files named $basename found — use the full path: ${joined%, }"
-      return 0
+      return 1
     fi
   fi
   if [[ -z "$log_subjects" ]]; then
     echo "No git history found for: $target"
-    return 0
+    return 1
   fi
+  _why_resolved_target="$query_target"
+}
 
-  # ${matched_ids[*]+"${matched_ids[*]}"} guards against bash 3.2's (macOS
-  # system bash) "unbound variable" error on an empty array under `set -u`.
-  add_unique_id() { [[ " ${matched_ids[*]+"${matched_ids[*]}"} " != *" $1 "* ]] && matched_ids+=("$1") || true; }
+# _why_match_ids <query_target> <tickets_dir> — extracts ticket IDs from git
+# log subjects for the resolved target, falling back to keyword matching
+# against ticket titles when no t-xxxx IDs appear. Sets _why_ids (array,
+# possibly empty), same dynamic-scoping idiom as above.
+_why_match_ids() {
+  local query_target="$1" dir="$2"
+  local log_subjects
+  log_subjects="$(git log --follow --format="%s" -- "$query_target" 2>/dev/null)"
+
+  # ${_why_ids[*]+"${_why_ids[*]}"} guards against bash 3.2's (macOS system
+  # bash) "unbound variable" error on an empty array under `set -u`.
+  add_unique_id() { [[ " ${_why_ids[*]+"${_why_ids[*]}"} " != *" $1 "* ]] && _why_ids+=("$1") || true; }
 
   # Primary: extract t-xxxx IDs from commit subjects
-  local -a matched_ids=()
+  _why_ids=()
   local id
   while IFS= read -r id; do
     [[ -z "$id" ]] && continue
@@ -397,7 +395,7 @@ cmd_why() {
   done < <(echo "$log_subjects" | tr -cs 'a-zA-Z0-9-' '\n' | grep -E '^t-[a-z0-9]{4}$' || true)
 
   # Keyword fallback: match commit words against ticket titles
-  if [[ ${#matched_ids[@]} -eq 0 && -d "$dir" ]]; then
+  if [[ ${#_why_ids[@]} -eq 0 && -d "$dir" ]]; then
     local keywords
     keywords="$(echo "$log_subjects" \
       | tr '[:upper:]' '[:lower:]' \
@@ -420,17 +418,16 @@ cmd_why() {
       done < <(ticket_files "$dir")
     fi
   fi
+}
 
-  if [[ ${#matched_ids[@]} -eq 0 ]]; then
-    echo "No tickets found for: $target"
-    return 0
-  fi
-
-  # matched_ids is already most-recent-first from git log — cap_with_more
-  # only truncates, never re-sorts.
+# _why_print_results <id...> — prints capped, formatted results (most-recent-
+# first order preserved; cap_with_more only truncates, never re-sorts).
+_why_print_results() {
+  local -a ids=("$@")
   local _cap_result=() _cap_more=0
-  cap_with_more 10 "${matched_ids[@]+"${matched_ids[@]}"}"
+  cap_with_more 10 "${ids[@]+"${ids[@]}"}"
 
+  local id
   for id in "${_cap_result[@]+"${_cap_result[@]}"}"; do
     local tfile
     tfile="$(find_ticket "$id" 2>/dev/null)" || continue
@@ -450,6 +447,28 @@ cmd_why() {
   done
 
   (( _cap_more > 0 )) && echo "+$_cap_more more, older" || true
+}
+
+cmd_why() {
+  local target="${1:-}"
+  [[ -z "$target" ]] && { echo "Usage: tkt why <file>" >&2; exit 1; }
+
+  local dir
+  dir="$(tickets_dir)"
+
+  local _why_resolved_target=""
+  _why_resolve_target "$target" || return 0
+  local query_target="$_why_resolved_target"
+
+  local _why_ids=()
+  _why_match_ids "$query_target" "$dir"
+
+  if [[ ${#_why_ids[@]} -eq 0 ]]; then
+    echo "No tickets found for: $target"
+    return 0
+  fi
+
+  _why_print_results "${_why_ids[@]}"
 }
 
 cmd_help() {
