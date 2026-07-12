@@ -5,6 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
+source "$SCRIPT_DIR/frontmatter-lib.sh"
 TKT_BIN="$SCRIPT_DIR/tkt"
 
 ticket_dir_for() {
@@ -321,15 +322,10 @@ _gate_mockup_embed() {
   done
 }
 
-_gate_eval_report() {
-  local id="$1" tdir="$2"
-  local plan="$tdir/plan.md" report="$tdir/eval-report.md"
-  # Trivial-tier sprints skip the evaluator — same field-anchored check as
-  # _gate_plan_signoff, so this can't be skipped by a stray "tier: trivial"
-  # mention in free text elsewhere in plan.md.
-  if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then
-    return 0
-  fi
+# _gate_eval_report_exists <id> <tdir> — report file present, evaluator-run-id
+# field present. Fails closed: missing report or field blocks close.
+_gate_eval_report_exists() {
+  local id="$1" tdir="$2" report="$tdir/eval-report.md"
   if [[ ! -f "$report" ]]; then
     echo "Sprint $id cannot close: eval-report.md is missing."
     echo "Run the evaluator (eval skill) before closing, or confirm trivial tier in plan.md."
@@ -340,13 +336,20 @@ _gate_eval_report() {
     echo "Ensure the evaluator subagent wrote the run-id before grading."
     return 1
   fi
+}
+
+# _gate_eval_report_authentic <id> <tdir> — the evaluator-run-id must have a
+# valid timestamp prefix and a matching entry in .claude/subagent-runs.jsonl
+# within a ±60 min window. Fail closed, not open: a missing jsonl or
+# unparseable run-id must block close, not silently skip verification — an
+# unlogged/hand-written eval would otherwise satisfy this gate by just
+# containing "pass:" in the verdict check that follows.
+_gate_eval_report_authentic() {
+  local id="$1" tdir="$2" report="$tdir/eval-report.md"
   local run_id run_epoch jsonl
   run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | head -1 | sed 's/^evaluator-run-id:[[:space:]]*//')"
   run_epoch="$(echo "$run_id" | cut -d'-' -f1)"
   jsonl="$(project_root)/.claude/subagent-runs.jsonl"
-  # Fail closed, not open: a missing jsonl or unparseable run-id must block
-  # close, not silently skip verification — an unlogged/hand-written eval
-  # would otherwise satisfy this gate by just containing "pass:" below.
   if [[ ! -f "$jsonl" ]]; then
     echo "Sprint $id cannot close: .claude/subagent-runs.jsonl not found — cannot verify evaluator-run-id '$run_id' against a real subagent run."
     echo "Log the evaluator subagent run with subagent-log.sh before closing."
@@ -376,9 +379,17 @@ _gate_eval_report() {
     echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
     return 1
   fi
+}
+
+# _gate_eval_report_verdict <id> <tdir> — verdict must be pass:, or
+# eval_override: true plus a dated waiver in acceptance.md (see
+# _eval_override_has_dated_waiver's own header comment for why this check
+# stays coarse rather than mechanically re-deriving per-item coverage).
+_gate_eval_report_verdict() {
+  local id="$1" tdir="$2" report="$tdir/eval-report.md"
   if ! grep -qE '^pass:' "$report"; then
     local ticket_file="$tdir/ticket.md" override
-    override="$(awk -v f=eval_override 'BEGIN{fm=0} /^---$/{fm++; next} fm==1 && match($0, "^" f ": "){print substr($0, RSTART+RLENGTH); exit}' "$ticket_file" 2>/dev/null)"
+    override="$(get_field "$ticket_file" eval_override 2>/dev/null)"
     if [[ "$override" == "true" ]]; then
       if _eval_override_has_dated_waiver "$tdir/acceptance.md"; then
         echo "Sprint $id: eval-report.md verdict is not pass, but eval_override: true is set and acceptance.md has a dated waiver on record — allowing close. Per-item waiver coverage was confirmed at the human close-gate (complete.md steps 4-5), not re-derived mechanically here (t-c0e6: per-item correlation between eval-report.md and acceptance.md cannot be made sound — see DECISIONS.md)." >&2
@@ -391,6 +402,20 @@ _gate_eval_report() {
     grep -E '^(pass|fail):' "$report" | head -1 || echo "(no verdict line found)"
     return 1
   fi
+}
+
+_gate_eval_report() {
+  local id="$1" tdir="$2"
+  local plan="$tdir/plan.md"
+  # Trivial-tier sprints skip the evaluator — same field-anchored check as
+  # _gate_plan_signoff, so this can't be skipped by a stray "tier: trivial"
+  # mention in free text elsewhere in plan.md.
+  if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then
+    return 0
+  fi
+  _gate_eval_report_exists     "$id" "$tdir" || return 1
+  _gate_eval_report_authentic  "$id" "$tdir" || return 1
+  _gate_eval_report_verdict    "$id" "$tdir" || return 1
 }
 
 # eval_override (t-c0e6) is deliberately coarse: it checks only that a human set the
