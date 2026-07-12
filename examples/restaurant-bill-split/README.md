@@ -294,7 +294,7 @@ beyond that `git init`, since your repo may have as few as one commit.
 5. Run headless grading against the base ref from step 1:
 
    ```
-   tools/sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
+   sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
    ```
 
    This dispatches fresh reviewer, evaluator, and security-review subagents —
@@ -322,7 +322,7 @@ beyond that `git init`, since your repo may have as few as one commit.
 
    ```
    git revert --no-edit HEAD
-   tools/sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
+   sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
    ```
 
    Confirm all three gates now pass and `HEADLESS_VERDICT: PASS` prints with
