@@ -61,3 +61,30 @@ To unblock a legitimate case like this, a human (never CI, never an agent) does 
 ```
 
 Run this only in an isolated, secret-scoped CI environment — `claude -p`'s own permission system genuinely restricts what the headless orchestrator and its subagents can do (`--permission-mode dontAsk` + a narrow `--allowedTools` — read/dispatch only, no unrestricted Bash), but an isolated runner is still recommended defense-in-depth, since the agent is processing PR content that could, in principle, be adversarial.
+
+## Consumer-Project CI
+
+The example above only works when the CI checkout **is** canon's own repo — `tools/sprint-headless` exists at that relative path because canon's `tools/` directory is right there in the checkout.
+
+If your project installed canon via `~/.canon/tools/skills.sh add sprint` (per `docs/setup.md`), your repo has no local `tools/` directory of its own — `sprint`, `tkt`, and `sprint-headless` are only reachable via `$PATH`, pointing at wherever canon was cloned. That works fine on your own machine once you've answered `skills.sh add`'s PATH prompt, but **it does not carry over to a CI runner**: `skills.sh add`'s PATH offer (`tools/skills/prompts.sh`'s `offer_tkt_path`) only prompts when it detects an interactive terminal, and silently skips writing to `PATH` otherwise — a CI runner has no TTY, so it always takes that skip path. A fresh runner starts with neither a local `tools/` checkout nor a `PATH` entry for it, regardless of what's set up on your laptop.
+
+Provision both explicitly in the workflow: clone canon to a known path, then add its `tools/` to the runner's `PATH` before grading.
+
+```yaml
+- name: Checkout canon
+  uses: actions/checkout@v4
+  with:
+    repository: sunitghub/canon-skills
+    path: canon
+
+- name: Add canon tools to PATH
+  run: echo "${{ github.workspace }}/canon/tools" >> "$GITHUB_PATH"
+
+- name: Headless canon grading
+  if: contains(github.event.pull_request.body, 'Closes: t-')
+  run: sprint-headless <ticket-id> --base-ref "${{ github.event.pull_request.base.ref }}"
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+`$GITHUB_PATH` is GitHub Actions' own PATH-extension mechanism — appending to it persists the addition to every later step in the same job, so `sprint-headless` resolves bare in the grading step exactly as it would on a developer's machine after `skills.sh add` finishes locally. Note the grading step invokes `sprint-headless`, not `tools/sprint-headless` — with canon's `tools/` on `PATH` rather than vendored into your own repo, the relative path from the canon-repo-only example above doesn't exist here and would fail with "No such file or directory."
