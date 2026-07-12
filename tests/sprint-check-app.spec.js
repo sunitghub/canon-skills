@@ -563,6 +563,51 @@ test.describe('board modal', () => {
     }
   });
 
+  test('CI badge: shown for ci: true, absent for ci: false/unset', async ({ page }) => {
+    const stamp = Date.now();
+    const onId = `t-cion-${stamp}`;
+    const offId = `t-cioff-${stamp}`;
+
+    try {
+      for (const [id, ci] of [[onId, 'ci: true'], [offId, null]]) {
+        const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+        fs.mkdirSync(ticketDir, { recursive: true });
+        fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+          '---',
+          `id: ${id}`,
+          'status: open',
+          'type: task',
+          'priority: 2',
+          'created: 2026-06-01T00:00:00Z',
+          ...(ci ? [ci] : []),
+          '---',
+          '',
+          `# CI badge test ${id}`,
+          '',
+        ].join('\n'));
+      }
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(onId);
+      await page.waitForTimeout(200);
+      const onCard = page.locator('.card[data-id="' + onId + '"]');
+      await expect(onCard).toBeVisible({ timeout: 8000 });
+      await expect(onCard.locator('.ci-badge')).toBeVisible();
+      await expect(onCard.locator('.ci-badge')).toHaveText('CI');
+
+      await page.locator('#board-search').fill(offId);
+      await page.waitForTimeout(200);
+      const offCard = page.locator('.card[data-id="' + offId + '"]');
+      await expect(offCard).toBeVisible({ timeout: 8000 });
+      await expect(offCard.locator('.ci-badge')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', onId), { recursive: true, force: true });
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', offId), { recursive: true, force: true });
+    }
+  });
+
   test('search finds a ticket by model mention in acceptance.md, not just title/body', async ({ page }) => {
     const stamp = Date.now();
     const createdId = `t-model-${stamp}`;

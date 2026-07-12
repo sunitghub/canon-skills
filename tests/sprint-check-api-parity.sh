@@ -98,6 +98,33 @@ cat > "$WORK/.tickets/t-model/acceptance.md" <<'EOF'
 | eval | ran | verdict: pass (model: HAIKU) |
 EOF
 
+# Dedicated fixture for ci: true/false parity (t-978c) — the generic
+# per-key mismatch loop below already covers this field, no special-cased
+# assertion needed (unlike models_used, which tests extraction logic, not
+# just field equality).
+mkdir -p "$WORK/.tickets/t-cion" "$WORK/.tickets/t-cioff"
+cat > "$WORK/.tickets/t-cion/ticket.md" <<'EOF'
+---
+id: t-cion
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+ci: true
+---
+# CI-eligible fixture
+EOF
+cat > "$WORK/.tickets/t-cioff/ticket.md" <<'EOF'
+---
+id: t-cioff
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Non-CI fixture (ci field absent)
+EOF
+
 free_port() {
   python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'
 }
