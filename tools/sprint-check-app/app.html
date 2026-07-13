@@ -23,6 +23,7 @@
       --text-dim:       #363650;
       --accent:         #7c6af7;
       --accent-dim:     rgba(124,106,247,0.12);
+      --glow-tint:      rgba(124,106,247,.09);
 
       --col-open:       #94a3b8;
       --col-progress:   #60a5fa;
@@ -52,6 +53,7 @@
       --text-dim:       #b8b8d0;
       --accent:         #6c5cf7;
       --accent-dim:     rgba(108,92,247,0.10);
+      --glow-tint:      rgba(108,92,247,.05);
 
       --col-open:       #64748b;
       --col-progress:   #2563eb;
@@ -62,9 +64,12 @@
     /* smooth theme transition */
     html { transition: background .2s, color .2s; }
 
-    html, body { height: 100%; background: var(--bg); color: var(--text);
+    html, body { height: 100%; color: var(--text);
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-      font-size: 13px; line-height: 1.5; overflow: hidden; }
+      font-size: 13px; line-height: 1.5; overflow: hidden;
+      background: radial-gradient(1100px 700px at 14% -8%, var(--glow-tint), transparent 62%), var(--bg);
+      background-attachment: fixed;
+    }
 
     /* ── App shell ────────────────────────────── */
     #app { display: grid; grid-template-rows: var(--header-h) 1fr; height: 100vh; }
@@ -79,7 +84,8 @@
     .brand        { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: -.3px; }
     .brand-icon   { width: 20px; height: 20px; background: #1A1A1F; border-radius: 5px;
                     display: flex; align-items: center; justify-content: center;
-                    flex-shrink: 0; overflow: hidden; }
+                    flex-shrink: 0; overflow: hidden;
+                    box-shadow: 0 0 10px 1px rgba(0,255,255,.35), 0 0 2px rgba(0,255,255,.5); }
     .header-sep   { color: var(--border-hover); font-size: 16px; }
     .header-project { font-size: 13px; color: var(--text-muted); }
     .header-right { display: flex; align-items: center; gap: 14px; }
@@ -168,6 +174,7 @@
       background: var(--accent-dim);
       border-left: 3px solid var(--accent);
       border-bottom: 1px solid rgba(124,106,247,0.25);
+      box-shadow: inset 12px 0 24px -18px var(--accent);
     }
     #s-wip .sidebar-label {
       color: var(--accent);
@@ -395,7 +402,7 @@
     }
     .column-title {
       display: flex; align-items: center; gap: 7px;
-      font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      font-size: 11px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase;
     }
     .col-indicator { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .column-count {
@@ -502,7 +509,7 @@
     /* Card body — title zone */
     .card-body { padding: 10px 11px 8px; }
     .card-title {
-      font-size: 13px; font-weight: 500; color: var(--text);
+      font-size: 13px; font-weight: 600; color: var(--text);
       line-height: 1.5; overflow-wrap: anywhere; margin: 0;
       letter-spacing: -.1px;
     }
