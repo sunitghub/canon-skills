@@ -362,6 +362,21 @@ func loadTickets() []ticket {
 			tickets = append(tickets, t)
 		}
 	}
+	headlessRunsMu.Lock()
+	running := map[string]bool{}
+	for id, state := range headlessRuns {
+		if state["status"] == "running" {
+			running[id] = true
+		}
+	}
+	headlessRunsMu.Unlock()
+	if len(running) > 0 {
+		for _, t := range tickets {
+			if id, ok := t["id"].(string); ok && running[id] {
+				t["headless_running"] = true
+			}
+		}
+	}
 	return tickets
 }
 

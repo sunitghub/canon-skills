@@ -280,6 +280,20 @@ if [[ "$py_status" != "running" || "$go_status" != "running" ]]; then
   fail "sprint-check-api-parity: FAIL — headless-run trigger did not return status=running (py=$py_trigger go=$go_trigger)"
 fi
 
+# ── headless_running field on /api/tickets (t-dd51) ─────────────────────────
+py_tickets_running="$(curl -s "http://127.0.0.1:$PY_PORT/api/tickets?all=1")"
+go_tickets_running="$(curl -s "http://127.0.0.1:$GO_PORT/api/tickets?all=1")"
+python3 - "$py_tickets_running" "$go_tickets_running" <<'PY'
+import json, sys
+py = json.loads(sys.argv[1])
+go = json.loads(sys.argv[2])
+for label, tickets in (("server.py", py), ("main.go", go)):
+    t = next((t for t in tickets if t.get("id") == "t-mock"), None)
+    if not t or t.get("headless_running") is not True:
+        print(f"sprint-check-api-parity: FAIL — {label} /api/tickets missing headless_running=true for t-mock while run is in progress: {t}")
+        sys.exit(1)
+PY
+
 sleep 3
 py_done="$(curl -s "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/headless-run")"
 go_done="$(curl -s "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/headless-run")"
@@ -296,6 +310,19 @@ for label, d in (("server.py", py), ("main.go", go)):
         sys.exit(1)
     if d.get("exit_code") != 0:
         print(f"sprint-check-api-parity: FAIL — {label} headless-run exit_code should be 0, got {d.get('exit_code')!r}")
+        sys.exit(1)
+PY
+
+py_tickets_done="$(curl -s "http://127.0.0.1:$PY_PORT/api/tickets?all=1")"
+go_tickets_done="$(curl -s "http://127.0.0.1:$GO_PORT/api/tickets?all=1")"
+python3 - "$py_tickets_done" "$go_tickets_done" <<'PY'
+import json, sys
+py = json.loads(sys.argv[1])
+go = json.loads(sys.argv[2])
+for label, tickets in (("server.py", py), ("main.go", go)):
+    t = next((t for t in tickets if t.get("id") == "t-mock"), None)
+    if t and t.get("headless_running"):
+        print(f"sprint-check-api-parity: FAIL — {label} /api/tickets still reports headless_running after run completed: {t}")
         sys.exit(1)
 PY
 

@@ -198,6 +198,12 @@ def load_tickets() -> list:
             tickets.append(parse_ticket(f))
         except Exception:
             pass
+    with _HEADLESS_LOCK:
+        running_ids = {tid for tid, state in _HEADLESS_RUNS.items() if state.get('status') == 'running'}
+    if running_ids:
+        for t in tickets:
+            if t.get('id') in running_ids:
+                t['headless_running'] = True
     return tickets
 
 # ── HANDOFF.md parsing ────────────────────────────────────────────────────
