@@ -549,6 +549,17 @@
     }
     .ready-popover.visible { opacity: 1; }
 
+    .ci-run-tooltip {
+      position: fixed; z-index: 9999; pointer-events: none;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 4px 9px;
+      font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(0,0,0,.3);
+      opacity: 0; transform: translate(-50%, -100%);
+      transition: opacity .12s;
+    }
+    .ci-run-tooltip.visible { opacity: 1; }
+
     /* Archive button on Done cards */
     .card-archive {
       display: none; float: right; margin: 0 0 4px 8px;
@@ -589,7 +600,41 @@
     .ci-run-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 
     .modal-headless:empty { display: none; }
-    .headless-panel { margin: 0 20px 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); }
+    .headless-panel { margin: 0 20px 10px; padding: 12px 14px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); }
+
+    /* Step flow: Base ref -> Running -> Verdict, reflecting idle/running/done
+       states already computed by renderHeadlessStatus -- purely visual, no
+       new state machine. */
+    .headless-steps { display: flex; align-items: flex-start; margin-bottom: 6px; }
+    .headless-step { display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0; width: 92px; cursor: pointer; }
+    .headless-step-icon {
+      width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700; border: 2px solid var(--border-hover); color: var(--text-muted);
+      background: var(--surface); transition: border-color .2s, background .2s, color .2s, box-shadow .2s;
+    }
+    .headless-step-label {
+      font-size: 9px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--text-muted); text-align: center; line-height: 1.35;
+    }
+    .headless-step-line { flex: 1; height: 2px; background: var(--border-hover); margin: 10px -10px 0; transition: background .2s; }
+    .headless-step:hover .headless-step-icon { border-color: var(--accent); }
+    .headless-step.active .headless-step-icon { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim); }
+    .headless-step.active .headless-step-label { color: var(--accent); }
+    .headless-step.done .headless-step-icon { border-color: var(--col-done); background: rgba(74,222,128,.12); color: var(--col-done); }
+    .headless-step.done .headless-step-label { color: var(--col-done); }
+    .headless-step.fail .headless-step-icon { border-color: var(--col-discarded); background: rgba(248,113,113,.12); color: var(--col-discarded); }
+    .headless-step.fail .headless-step-label { color: var(--col-discarded); }
+    .headless-step.done + .headless-step-line,
+    .headless-step.fail + .headless-step-line { background: var(--col-done); }
+    .headless-steps-hint { font-size: 10px; color: var(--text-dim); text-align: center; margin-bottom: 6px; }
+    .headless-step-desc {
+      max-height: 0; overflow: hidden; opacity: 0;
+      font-size: 13px; color: var(--text-body); line-height: 1.55;
+      transition: max-height .2s ease, opacity .2s ease, margin .2s ease;
+    }
+    .headless-step-desc.expanded { max-height: 60px; opacity: 1; margin-bottom: 12px; }
+    .headless-baseref-hint { font-size: 11px; color: var(--text-muted); margin: 6px 0 8px; line-height: 1.4; }
+
     .headless-row { display: flex; gap: 8px; align-items: center; }
     .headless-row input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font-size: 12px; }
     .headless-run-btn { padding: 5px 10px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
@@ -2214,6 +2259,27 @@ function renderBoard() {
     _popoverTimer = setTimeout(() => _popover.classList.remove('visible'), 3000);
   }
 
+  // CI-run button tooltip — custom-styled, tied to hover/focus (not the
+  // ready-popover's non-interactive forced 3s auto-dismiss; this is a plain
+  // label, shown as long as the button is hovered/focused).
+  let _ciTooltip = document.getElementById('ci-run-tooltip');
+  if (!_ciTooltip) {
+    _ciTooltip = document.createElement('div');
+    _ciTooltip.id = 'ci-run-tooltip';
+    _ciTooltip.className = 'ci-run-tooltip';
+    _ciTooltip.textContent = 'Run headless grading';
+    document.body.appendChild(_ciTooltip);
+  }
+  function showCiRunTooltip(el) {
+    const r = el.getBoundingClientRect();
+    _ciTooltip.classList.add('visible');
+    requestAnimationFrame(() => {
+      _ciTooltip.style.left = `${r.left + r.width / 2}px`;
+      _ciTooltip.style.top = `${r.top - 8}px`;
+    });
+  }
+  function hideCiRunTooltip() { _ciTooltip.classList.remove('visible'); }
+
   board.querySelectorAll('.ready-indicator').forEach(el => {
     const show = eventName => {
       debugLog('ready trigger', eventName, el.dataset.id);
@@ -2240,8 +2306,13 @@ function renderBoard() {
   board.querySelectorAll('.ci-run-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
+      hideCiRunTooltip();
       openModal(btn.dataset.id);
     });
+    btn.addEventListener('mouseenter', () => showCiRunTooltip(btn));
+    btn.addEventListener('mouseleave', hideCiRunTooltip);
+    btn.addEventListener('focus', () => showCiRunTooltip(btn));
+    btn.addEventListener('blur', hideCiRunTooltip);
   });
 
   board.querySelectorAll('.card-id-copy').forEach(btn => {
@@ -2397,7 +2468,7 @@ function cardHTML(t, idx) {
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
-        ${String(t.ci) === 'true' ? `<button class="ci-run-btn" data-id="${esc(t.id)}" title="Run headless grading (opens ticket)" aria-label="Run headless grading">▶</button>` : ''}
+        ${String(t.ci) === 'true' ? `<button class="ci-run-btn" data-id="${esc(t.id)}" aria-label="Run headless grading">▶</button>` : ''}
       </div>
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
@@ -2508,6 +2579,22 @@ function startHeadlessPoll(ticketId) {
   }, 3000);
 }
 
+function setHeadlessSteps(status, pass) {
+  const steps = document.querySelectorAll('#m-headless .headless-step');
+  if (steps.length !== 3) return;
+  steps.forEach(s => s.classList.remove('active', 'done', 'fail'));
+  if (status === 'idle') {
+    steps[0].classList.add('active');
+  } else if (status === 'running') {
+    steps[0].classList.add('done');
+    steps[1].classList.add('active');
+  } else {
+    steps[0].classList.add('done');
+    steps[1].classList.add('done');
+    steps[2].classList.add(pass ? 'done' : 'fail');
+  }
+}
+
 function renderHeadlessStatus(ticketId, data) {
   if (state.selectedId !== ticketId) return;
   const el = document.getElementById('m-headless-status');
@@ -2516,9 +2603,11 @@ function renderHeadlessStatus(ticketId, data) {
   if (data.status === 'idle') {
     el.innerHTML = '';
     if (runBtn) runBtn.disabled = false;
+    setHeadlessSteps('idle');
   } else if (data.status === 'running') {
     if (runBtn) runBtn.disabled = true;
     el.innerHTML = `<span class="headless-running">Running… (${Math.round(data.elapsed || 0)}s)</span>`;
+    setHeadlessSteps('running');
   } else {
     if (runBtn) runBtn.disabled = false;
     const pass = /^HEADLESS_VERDICT: PASS$/m.test(data.output || '');
@@ -2529,8 +2618,15 @@ function renderHeadlessStatus(ticketId, data) {
       const pre = el.querySelector('.headless-output');
       pre.style.display = pre.style.display === 'none' ? 'block' : 'none';
     });
+    setHeadlessSteps('done', pass);
   }
 }
+
+const HEADLESS_STEP_DESCRIPTIONS = [
+  'Choose a branch, tag, or commit SHA to grade against, then start the run.',
+  'Reviewer, evaluator, and security-review run as fresh subagents in the background.',
+  'See the PASS/FAIL verdict below, with the full output one click away.',
+];
 
 function renderModalHeadless(t) {
   const el = document.getElementById('m-headless');
@@ -2538,12 +2634,37 @@ function renderModalHeadless(t) {
   if (String(t.ci) !== 'true') { el.innerHTML = ''; return; }
   el.innerHTML = `
     <div class="headless-panel">
+      <div class="headless-steps">
+        <div class="headless-step" data-step-idx="0"><div class="headless-step-icon">1</div><div class="headless-step-label">Set base ref</div></div>
+        <div class="headless-step-line"></div>
+        <div class="headless-step" data-step-idx="1"><div class="headless-step-icon">2</div><div class="headless-step-label">Grading in progress</div></div>
+        <div class="headless-step-line"></div>
+        <div class="headless-step" data-step-idx="2"><div class="headless-step-icon">3</div><div class="headless-step-label">Result ready</div></div>
+      </div>
+      <div class="headless-steps-hint">Click a step for details</div>
+      <div class="headless-step-desc" id="m-headless-step-desc"></div>
+      <div class="headless-baseref-hint">Grades the diff between this commit/branch and your current code — e.g. <code class="doc-code">main</code> or a commit SHA.</div>
       <div class="headless-row">
-        <input type="text" id="m-headless-baseref" placeholder="base ref (branch, tag, or SHA)">
-        <button id="m-headless-run" class="headless-run-btn">Run headless grading</button>
+        <input type="text" id="m-headless-baseref" placeholder="e.g. main, or a commit SHA">
+        <button id="m-headless-run" class="headless-run-btn">Start grading</button>
       </div>
       <div id="m-headless-status"></div>
     </div>`;
+  const descEl = document.getElementById('m-headless-step-desc');
+  el.querySelectorAll('.headless-step').forEach(stepEl => {
+    stepEl.addEventListener('click', () => {
+      const idx = Number(stepEl.dataset.stepIdx);
+      const alreadyOpen = descEl.classList.contains('expanded') && descEl.dataset.stepIdx === String(idx);
+      if (alreadyOpen) {
+        descEl.classList.remove('expanded');
+        descEl.dataset.stepIdx = '';
+      } else {
+        descEl.textContent = HEADLESS_STEP_DESCRIPTIONS[idx];
+        descEl.dataset.stepIdx = String(idx);
+        descEl.classList.add('expanded');
+      }
+    });
+  });
   document.getElementById('m-headless-run').addEventListener('click', () => {
     const input = document.getElementById('m-headless-baseref');
     const baseRef = input.value.trim();
