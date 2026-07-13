@@ -11,21 +11,21 @@
 
 - **Grades, never implements.** The PR's code already exists. Headless canon runs exactly three gates against it — `reviewer`, `evaluator`, `security-review` — and never edits or writes code itself.
 - **Not the full wrapup pipeline.** `code-simplifier`/`repo-check`/`doc-audit` are quality/consistency gates, not safety-critical, and aren't run headlessly.
-- **No per-ticket report files.** Claude Code's non-interactive `dontAsk` permission mode denies Bash-redirection writes outright, so `review-notes.md`/`eval-report.md` are never persisted to disk in headless mode. The full text of every gate's findings is captured in the CI job's own log output instead, and every subagent dispatch is recorded to `.claude/subagent-runs.jsonl` via `subagent-log.sh` for audit purposes.
+- **Reviewer/evaluator reports are persisted, despite the write restriction.** Claude Code's non-interactive `dontAsk` permission mode denies every dispatched agent's own Bash-redirection writes, including the orchestrator's — so the reviewer and evaluator subagents relay their full report text verbatim in their response instead of writing it themselves (the same fallback `review.md`/`eval.md` already document for a write refusal), and the orchestrator relays both reports back to `tools/sprint-headless` itself, delimited per gate. The wrapper script — an ordinary, unrestricted host process, not a `claude -p` instance — parses that relay and writes `.tickets/<id>/review-notes.md`/`eval-report.md` itself. This is fail-open: if a relay comes back malformed (missing or out-of-order delimiters), that one file is simply not written — a warning prints to stderr, but the run and its `HEADLESS_VERDICT` are unaffected. Security-review still has no dedicated report file, in headless or interactive mode — its findings only ever appear in the run's own output. Every subagent dispatch is also recorded to `.claude/subagent-runs.jsonl` via `subagent-log.sh` for audit purposes, and the full result is appended to `$GITHUB_STEP_SUMMARY` when that variable is set (GitHub Actions' own per-job summary UI).
 - **Human approval is front-loaded, not skipped.** A ticket's `plan.md`/`acceptance.md` must already be authored and approved (the `- [x] Plan approved` checkbox) before it's ever eligible for headless grading — the CI run only executes gates against an already-approved scope, it never makes planning decisions itself.
 
 ## Making a Ticket CI-Eligible
 
 1. Author `plan.md`/`acceptance.md` for the ticket as usual (by hand or via `sprint start`), and check `- [x] Plan approved`.
 2. Mark it CI-eligible: `tkt ci <id> on`.
-3. Commit the ticket's docs — they're gitignored by default like every other ticket, so a CI checkout has nothing to grade against otherwise:
+3. Commit the ticket's docs — a CI checkout has nothing to grade against otherwise. Inside canon's own repo, `.tickets/` is gitignored by default (canon's own `.gitignore`), so this force-add is required. In a consumer project, nothing installs a `.gitignore` for `.tickets/` — it may already be a plain untracked directory with no `.gitignore` entry at all, in which case `git add -f` is a harmless no-op (force-adding a file that isn't ignored just adds it normally). Either way, running this step is always correct:
    ```
    git add -f .tickets/<id>/
    git commit -m "mark <id> CI-eligible"
    ```
    `tkt ci` prints this reminder every time you enable it.
 
-Everything else about the ticket stays exactly as normal — `tkt ci <id> off` returns it to the gitignored default (existing commits aren't un-committed, but no further changes are force-tracked).
+Everything else about the ticket stays exactly as normal — `tkt ci <id> off` stops force-tracking further changes (existing commits aren't un-committed; whether the directory reverts to untracked-and-ignored depends entirely on whether your own project's `.gitignore` covers `.tickets/`, which canon's tooling never sets up for you).
 
 ## Running It
 

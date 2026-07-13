@@ -82,16 +82,31 @@ else
   exit 1
 fi
 
+REVIEWER_START="@@@CANON_HEADLESS_REPORT:reviewer@@@"
+REVIEWER_END="@@@CANON_HEADLESS_REPORT:/reviewer@@@"
+EVALUATOR_START="@@@CANON_HEADLESS_REPORT:evaluator@@@"
+EVALUATOR_END="@@@CANON_HEADLESS_REPORT:/evaluator@@@"
+
 PROMPT="You are the orchestrator for a headless CI grading run of ticket $ID in this repo. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
 
 Dispatch exactly three fresh Agent subagents, subagent_type: \"Plan\" for each, one at a time:
-1. Reviewer — instruct it to read $SKILLS_PREFIX/sprint/reference/review.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input (do not let it infer via git merge-base). It writes .tickets/$ID/review-notes.md and returns YES or NO.
-2. Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input. It writes .tickets/$ID/eval-report.md and returns pass or fail.
-3. Security-review — instruct it to read $SKILLS_PREFIX/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file).
+1. Reviewer — instruct it to read $SKILLS_PREFIX/sprint/reference/review.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input (do not let it infer via git merge-base). Its own Bash write will be refused (dontAsk denies it) — per review.md's own fallback, it will include its full report verbatim in its response text. It returns YES or NO.
+2. Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input. Same write-refusal fallback — it will include its full report verbatim in its response text. It returns pass or fail.
+3. Security-review — instruct it to read $SKILLS_PREFIX/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file, in headless or interactive mode).
 
 After each subagent completes, run: $SUBAGENT_LOG --agent-id <the agent id from that dispatch> --agent-type <reviewer|evaluator|security-review>
 
-Once all three have run, output a final summary covering all three verdicts, then end your response with exactly one line, nothing after it:
+You cannot write files yourself either. Instead, relay each of the reviewer's and evaluator's full report text VERBATIM (byte-for-byte, not summarized, not paraphrased) in your own final response, each wrapped in these exact delimiter lines on their own line with nothing else on them:
+
+$REVIEWER_START
+<reviewer's full report text, verbatim>
+$REVIEWER_END
+
+$EVALUATOR_START
+<evaluator's full report text, verbatim>
+$EVALUATOR_END
+
+Then output a summary covering all three verdicts, then end your response with exactly one line, nothing after it:
 HEADLESS_VERDICT: PASS
 or
 HEADLESS_VERDICT: FAIL
@@ -137,6 +152,43 @@ if [[ "$IS_ERROR" != "False" ]]; then
 fi
 
 echo "$RESULT_TEXT"
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  printf '%s\n' "$RESULT_TEXT" >> "$GITHUB_STEP_SUMMARY"
+fi
+
+# Extract one delimited section from $RESULT_TEXT. Prints the content between
+# the start/end marker lines (exclusive) and exits 0 on success; exits 1 with
+# nothing printed if either marker is missing or out of order — persistence
+# is fail-open by design (t-1bea): a bad/missing marker never blocks the run
+# or corrupts an existing file, it just means that one file doesn't get written.
+extract_report() {
+  local tag="$1"
+  python3 -c '
+import sys
+tag = sys.argv[1]
+text = sys.stdin.read()
+start = f"@@@CANON_HEADLESS_REPORT:{tag}@@@"
+end = f"@@@CANON_HEADLESS_REPORT:/{tag}@@@"
+si = text.find(start)
+ei = text.find(end)
+if si == -1 or ei == -1 or ei <= si:
+    sys.exit(1)
+sys.stdout.write(text[si + len(start):ei].strip("\n") + "\n")
+' "$tag" <<< "$RESULT_TEXT"
+}
+
+if REVIEW_CONTENT="$(extract_report reviewer)"; then
+  printf '%s' "$REVIEW_CONTENT" > "$TDIR/review-notes.md"
+else
+  echo "Warning: could not extract the reviewer's report from headless output — review-notes.md not persisted." >&2
+fi
+
+if EVAL_CONTENT="$(extract_report evaluator)"; then
+  printf '%s' "$EVAL_CONTENT" > "$TDIR/eval-report.md"
+else
+  echo "Warning: could not extract the evaluator's report from headless output — eval-report.md not persisted." >&2
+fi
 
 if echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: PASS$'; then
   exit 0
