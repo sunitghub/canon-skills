@@ -125,4 +125,87 @@ assert_contains "$out" "no sprint/wrapup skill docs found"
 
 rm -rf "$STUB_DIR"
 
-echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed)"
+# ── 8. Well-formed delimited response: correct content, no section-swap ────
+
+mkdir -p "$WORK/skills/sprint"
+rm -f "$WORK/.tickets/t-aaaa/review-notes.md" "$WORK/.tickets/t-aaaa/eval-report.md"
+
+STUB_OK_DIR="$(mktemp -d)"
+cat > "$STUB_OK_DIR/claude" <<'EOF'
+#!/usr/bin/env bash
+python3 -c '
+import json
+result = """Summary text.
+
+@@@CANON_HEADLESS_REPORT:reviewer@@@
+# Review Notes
+Verdict: YES
+@@@CANON_HEADLESS_REPORT:/reviewer@@@
+
+@@@CANON_HEADLESS_REPORT:evaluator@@@
+# Eval Report
+Verdict: pass: all good
+@@@CANON_HEADLESS_REPORT:/evaluator@@@
+
+HEADLESS_VERDICT: PASS"""
+print(json.dumps({"type": "result", "is_error": False, "session_id": "stub-ok", "result": result}))
+'
+EOF
+chmod +x "$STUB_OK_DIR/claude"
+
+(cd "$WORK" && PATH="$STUB_OK_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD >/dev/null)
+
+review_notes="$(cat "$WORK/.tickets/t-aaaa/review-notes.md")"
+eval_report="$(cat "$WORK/.tickets/t-aaaa/eval-report.md")"
+assert_contains "$review_notes" "Verdict: YES"
+assert_contains "$eval_report" "Verdict: pass: all good"
+# Section-swap guard: each file must contain only its own gate's content.
+if [[ "$review_notes" == *"Eval Report"* ]]; then fail "review-notes.md contains evaluator content — section swap"; fi
+if [[ "$eval_report" == *"Review Notes"* ]]; then fail "eval-report.md contains reviewer content — section swap"; fi
+
+# ── 9. Malformed delimiter (missing evaluator end marker): fail-open ───────
+
+rm -f "$WORK/.tickets/t-aaaa/review-notes.md" "$WORK/.tickets/t-aaaa/eval-report.md"
+
+STUB_BAD_DIR="$(mktemp -d)"
+cat > "$STUB_BAD_DIR/claude" <<'EOF'
+#!/usr/bin/env bash
+python3 -c '
+import json
+result = """Summary text.
+
+@@@CANON_HEADLESS_REPORT:reviewer@@@
+# Review Notes
+Verdict: YES
+@@@CANON_HEADLESS_REPORT:/reviewer@@@
+
+@@@CANON_HEADLESS_REPORT:evaluator@@@
+# Eval Report
+Verdict: pass: all good
+
+HEADLESS_VERDICT: PASS"""
+print(json.dumps({"type": "result", "is_error": False, "session_id": "stub-bad", "result": result}))
+'
+EOF
+chmod +x "$STUB_BAD_DIR/claude"
+
+set +e
+err="$(cd "$WORK" && PATH="$STUB_BAD_DIR:$PATH" "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD 2>&1 >/dev/null)"
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || fail "expected exit 0 (HEADLESS_VERDICT: PASS unaffected by extraction failure), got $rc"
+assert_contains "$err" "could not extract the evaluator's report"
+[[ -f "$WORK/.tickets/t-aaaa/review-notes.md" ]] || fail "review-notes.md should still be written (its markers were well-formed)"
+[[ -f "$WORK/.tickets/t-aaaa/eval-report.md" ]] && fail "eval-report.md should NOT be written (its end marker was missing)"
+
+# ── 10. GITHUB_STEP_SUMMARY receives the full result text when set ─────────
+
+SUMMARY_FILE="$(mktemp)"
+(cd "$WORK" && PATH="$STUB_OK_DIR:$PATH" GITHUB_STEP_SUMMARY="$SUMMARY_FILE" run_ok "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD >/dev/null)
+assert_contains "$(cat "$SUMMARY_FILE")" "HEADLESS_VERDICT: PASS"
+assert_contains "$(cat "$SUMMARY_FILE")" "Verdict: YES"
+rm -f "$SUMMARY_FILE"
+
+rm -rf "$STUB_OK_DIR" "$STUB_BAD_DIR"
+
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text)"
