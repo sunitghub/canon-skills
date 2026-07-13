@@ -598,6 +598,7 @@
       cursor: pointer; position: relative; z-index: 1; flex-shrink: 0;
     }
     .ci-run-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+    .ci-run-btn.running { color: var(--col-progress); border-color: var(--col-progress); animation: pulse 1s infinite; }
 
     .modal-headless:empty { display: none; }
     .headless-panel { margin: 0 20px 10px; padding: 12px 14px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); }
@@ -2468,7 +2469,7 @@ function cardHTML(t, idx) {
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
-        ${String(t.ci) === 'true' ? `<button class="ci-run-btn" data-id="${esc(t.id)}" aria-label="Run headless grading">▶</button>` : ''}
+        ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading">▶</button>` : ''}
       </div>
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}

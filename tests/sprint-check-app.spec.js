@@ -1830,5 +1830,30 @@ test.describe('board modal', () => {
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
+
+    test('card-level run button pulses while a run is in progress, and clears after it completes (t-dd51)', async ({ page }) => {
+      const id = 't-hlr1';
+      ciTicket(id);
+      const restore = installStub([
+        '#!/usr/bin/env bash', 'sleep 12', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
+      ].join('\n'));
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.evaluate(async (ticketId) => {
+          await fetch(`/api/ticket/${ticketId}/headless-run`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base_ref: 'main' }),
+          });
+        }, id);
+        await page.locator('#board-search').fill(id);
+        const runBtn = page.locator(`.card[data-id="${id}"] .ci-run-btn`);
+        await expect(runBtn).toHaveClass(/running/, { timeout: 20000 });
+        await expect(runBtn).not.toHaveClass(/running/, { timeout: 20000 });
+      } finally {
+        restore();
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
   });
 });
