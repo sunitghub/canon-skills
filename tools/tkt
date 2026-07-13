@@ -222,9 +222,16 @@ cmd_ci() {
 
   printf "%s: ci=%s\n" "$id" "$value"
   if [[ "$value" == "true" ]]; then
-    local tdir
+    local tdir root
     tdir="$(dirname "$file")"
-    echo "Reminder: commit this ticket's docs so CI can read them: git add -f $tdir/ && git commit" >&2
+    root="$(project_root)"
+    if git -C "$root" rev-parse --git-dir >/dev/null 2>&1; then
+      git -C "$root" add -f "$tdir/"
+      if ! git -C "$root" diff --cached --quiet -- "$tdir/"; then
+        git -C "$root" commit -q -m "chore: commit $id docs for CI eligibility" -- "$tdir/"
+        echo "Committed $id's docs so CI can read them." >&2
+      fi
+    fi
   fi
 }
 
