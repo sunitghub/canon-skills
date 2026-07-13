@@ -12,15 +12,15 @@
       --surface:        #13131a;
       --surface-raised: #1a1a24;
       --surface-hover:  #1e1e2a;
-      --border:         #232333;
-      --border-muted:   #1b1b28;
-      --border-hover:   #353548;
+      --border:         #2c2c40;
+      --border-muted:   #202030;
+      --border-hover:   #3d3d54;
       --modal-border:   #34344a;
       --panel-border:   #2b2b3d;
       --text:           #e0e0ec;
       --text-body:      #a5a5bc;
-      --text-muted:     #6a6a82;
-      --text-dim:       #363650;
+      --text-muted:     #86869e;
+      --text-dim:       #40405c;
       --accent:         #7c6af7;
       --accent-dim:     rgba(124,106,247,0.12);
       --glow-tint:      rgba(124,106,247,.09);
@@ -528,26 +528,17 @@
     html[data-theme="light"] .card-meta-label { color: var(--text-dim); }
     .card-meta-val   { font-size: 11px; color: var(--text-muted); }
 
-    .ready-indicator     { display: flex; align-items: center; gap: 3px; cursor: pointer; min-width: 0; }
+    .ready-indicator     { display: flex; align-items: center; gap: 3px; min-width: 0; }
     .ready-dot           { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .ready-indicator.ready     .ready-dot { background: var(--col-done); }
-    .ready-indicator.not-ready .ready-dot { background: #f59e0b; }
-    .ready-indicator.incomplete .ready-dot { background: var(--col-discarded); opacity: .85; }
     .ready-label         { font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
     .ready-indicator.ready      .ready-label { color: var(--col-done); }
-    .ready-indicator.not-ready  .ready-label { color: #f59e0b; }
-    .ready-indicator.incomplete .ready-label { color: var(--col-discarded); opacity: .75; font-weight: 500; }
-    html[data-theme="light"] .ready-indicator.not-ready .ready-dot  { background: #d97706; }
-    html[data-theme="light"] .ready-indicator.not-ready .ready-label { color: #d97706; }
-    .ready-popover {
-      position: fixed; z-index: 9999; pointer-events: none;
-      background: var(--surface-raised); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 7px 11px;
-      font-size: 11px; color: var(--text); line-height: 1.7;
-      box-shadow: 0 4px 14px rgba(0,0,0,.35);
-      opacity: 0; transition: opacity .15s;
+    .ready-flag {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+      font-size: 9px; font-weight: 800; line-height: 1;
+      color: #fff; background: var(--col-discarded);
     }
-    .ready-popover.visible { opacity: 1; }
 
     .ci-run-tooltip {
       position: fixed; z-index: 9999; pointer-events: none;
@@ -607,7 +598,12 @@
        states already computed by renderHeadlessStatus -- purely visual, no
        new state machine. */
     .headless-steps { display: flex; align-items: flex-start; margin-bottom: 6px; }
-    .headless-step { display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0; width: 92px; cursor: pointer; }
+    .headless-step {
+      display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0;
+      width: 92px; padding: 6px 0; border-radius: var(--radius-sm); cursor: pointer;
+      transition: background .15s;
+    }
+    .headless-step.selected { background: var(--surface-hover); }
     .headless-step-icon {
       width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
       font-size: 11px; font-weight: 700; border: 2px solid var(--border-hover); color: var(--text-muted);
@@ -2222,47 +2218,8 @@ function renderBoard() {
 
   let dragId = null;
 
-  // Ready indicator popover
-  let _popoverTimer = null;
-  let _popover = document.getElementById('ready-popover');
-  if (!_popover) {
-    _popover = document.createElement('div');
-    _popover.id = 'ready-popover';
-    _popover.className = 'ready-popover';
-    document.body.appendChild(_popover);
-  }
-  function showReadyPopover(el, t) {
-    const { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved } = readiness(t);
-    const accIcon = !hasAcceptance ? '○' : (acceptanceIncomplete || acceptanceUnchecked) ? '⚠' : '✓';
-    const accNote = acceptanceIncomplete ? ' — missing criteria or test items'
-      : acceptanceUnchecked ? ' — unchecked item remains (check Criteria, Test Plan, and QA)'
-      : '';
-    const planIcon = !hasPlan ? '○' : (planIncomplete || !planApproved) ? '⚠' : '✓';
-    const planNote = planIncomplete ? ' — add real Approach notes' : '';
-    const signoffIcon = planApproved ? '✓' : '○';
-    const signoffNote = hasPlan && !planApproved ? ' — check Plan approved' : '';
-    debugLog('ready popover', t.id, { ready, hasAcceptance, hasPlan, acceptanceIncomplete, acceptanceUnchecked, planIncomplete, planApproved });
-    _popover.innerHTML =
-      `<div>${accIcon} Acceptance${accNote}</div>` +
-      `<div>${planIcon} Plan${planNote}</div>` +
-      `<div>${signoffIcon} Sign-off${signoffNote}</div>` +
-      (ready ? '<div style="margin-top:4px;color:var(--col-done)">Signed off</div>'
-             : '<div style="margin-top:4px;color:var(--text-muted)">Add missing items to unblock</div>');
-    const r = el.getBoundingClientRect();
-    _popover.style.left = `${r.left}px`;
-    _popover.style.top  = `${r.top - _popover.offsetHeight - 8}px`;
-    _popover.classList.add('visible');
-    clearTimeout(_popoverTimer);
-    // reposition after paint (height now known)
-    requestAnimationFrame(() => {
-      _popover.style.top = `${r.top - _popover.offsetHeight - 8}px`;
-    });
-    _popoverTimer = setTimeout(() => _popover.classList.remove('visible'), 3000);
-  }
-
-  // CI-run button tooltip — custom-styled, tied to hover/focus (not the
-  // ready-popover's non-interactive forced 3s auto-dismiss; this is a plain
-  // label, shown as long as the button is hovered/focused).
+  // CI-run button tooltip — custom-styled, shown as long as the button is
+  // hovered/focused (not a forced auto-dismiss timer).
   let _ciTooltip = document.getElementById('ci-run-tooltip');
   if (!_ciTooltip) {
     _ciTooltip = document.createElement('div');
@@ -2280,21 +2237,6 @@ function renderBoard() {
     });
   }
   function hideCiRunTooltip() { _ciTooltip.classList.remove('visible'); }
-
-  board.querySelectorAll('.ready-indicator').forEach(el => {
-    const show = eventName => {
-      debugLog('ready trigger', eventName, el.dataset.id);
-      const t = findTicketById(el.dataset.id);
-      if (t) showReadyPopover(el, t);
-    };
-    el.addEventListener('pointerenter', () => show('pointerenter'));
-    el.addEventListener('mouseenter', () => show('mouseenter'));
-    el.addEventListener('focus', () => show('focus'));
-    el.addEventListener('click', e => {
-      e.stopPropagation();
-      show('click');
-    });
-  });
 
   board.querySelectorAll('.card-archive').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -2343,13 +2285,13 @@ function renderBoard() {
   board.querySelectorAll('.card').forEach(el => {
     el.addEventListener('pointerup', e => {
       if (e.button !== 0) return;
-      if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
+      if (e.target.closest('.card-archive, button, a, input, textarea, select, label')) return;
       if (el.classList.contains('dragging')) return;
       openCard(el);
     });
 
     el.addEventListener('click', e => {
-      if (e.target.closest('.card-archive, .ready-indicator, button, a, input, textarea, select, label')) return;
+      if (e.target.closest('.card-archive, button, a, input, textarea, select, label')) return;
       if (cardPointerOpen) return;
       const id = cardTicketId(el);
       openModal(id);
@@ -2486,9 +2428,10 @@ function cardHTML(t, idx) {
         </div>
         <div class="card-meta-col">
           <span class="card-meta-label">Status</span>
-          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || acceptanceUnchecked || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}" title="${ready ? 'Signed off' : 'Readiness details'}">
-            <span class="ready-dot"></span>
-            <span class="ready-label">${label}</span>
+          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || acceptanceUnchecked || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}">
+            ${ready
+              ? `<span class="ready-dot"></span><span class="ready-label">ready</span>`
+              : `<span class="ready-flag" aria-label="${esc(label)} — open the ticket for details">!</span>`}
           </span>
         </div>
       </div>
@@ -2652,17 +2595,20 @@ function renderModalHeadless(t) {
       <div id="m-headless-status"></div>
     </div>`;
   const descEl = document.getElementById('m-headless-step-desc');
-  el.querySelectorAll('.headless-step').forEach(stepEl => {
+  const stepEls = el.querySelectorAll('.headless-step');
+  stepEls.forEach(stepEl => {
     stepEl.addEventListener('click', () => {
       const idx = Number(stepEl.dataset.stepIdx);
       const alreadyOpen = descEl.classList.contains('expanded') && descEl.dataset.stepIdx === String(idx);
       if (alreadyOpen) {
         descEl.classList.remove('expanded');
         descEl.dataset.stepIdx = '';
+        stepEls.forEach(s => s.classList.remove('selected'));
       } else {
         descEl.textContent = HEADLESS_STEP_DESCRIPTIONS[idx];
         descEl.dataset.stepIdx = String(idx);
         descEl.classList.add('expanded');
+        stepEls.forEach(s => s.classList.toggle('selected', s === stepEl));
       }
     });
   });
