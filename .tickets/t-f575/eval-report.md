@@ -1,0 +1,36 @@
+evaluator-run-id: 1783952532-31852
+
+# Eval Report
+
+Ticket: `t-f575`
+Evaluated: 2026-07-13
+Model: claude-sonnet-5
+
+## Criteria
+
+| Criterion | Status | Evidence |
+|---|---|---|
+| Page background reads as atmospheric surface (gradient/vignette), not flat fill, both themes | pass | `tools/sprint-check-app/app.html:70 — \`background: radial-gradient(1100px 700px at 14% -8%, var(--glow-tint), transparent 62%), var(--bg);\`` with theme-specific `--glow-tint` at line 26 (dark, `rgba(124,106,247,.09)`) and line 56 (light, `rgba(108,92,247,.05)`). Confirmed rendered in fresh headless-Chrome screenshots of the real running app in both dark and light theme — subtle top-left purple glow visible in both, not a flat fill. |
+| Logo/active-sprint header has deliberate signature glow, both themes | pass | `tools/sprint-check-app/app.html:88 — \`box-shadow: 0 0 10px 1px rgba(0,255,255,.35), 0 0 2px rgba(0,255,255,.5); }\`` on `.brand-icon` (cyan glow). `tools/sprint-check-app/app.html:177 — \`box-shadow: inset 12px 0 24px -18px var(--accent);\`` on `#s-wip.has-items`. Rendered visibly in both theme screenshots taken of the live app (brand icon glow and sidebar inset glow both visible in dark and light captures). |
+| Column headers / card titles have clear typographic hierarchy, no new font import | pass | `tools/sprint-check-app/app.html:405 — \`font-size: 11px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase;\`` (`.column-title`). `tools/sprint-check-app/app.html:513 — \`font-size: 13px; font-weight: 600; color: var(--text);\`` (`.card-title`). No `font-family` changed anywhere in the diff; font stack at line 68 is unchanged system-font stack. Confirmed visually bolder/wider-tracked in both theme screenshots. |
+| No id/class renamed or removed anywhere the Playwright suite selects against | pass | Ran the real, current `npm run test:ui` suite against the live server myself: all 37 tests passed, 0 failures, 0 flakes, including the two tests that directly exercise the changed markup — `board modal › archive button: Done card can be archived...` and `board modal › CI badge: shown for ci: true, absent for ci: false/unset`. Diff shows `.card-archive`, `.ci-run-btn`, `.doc-heading-2`, `.section-jump-link` classes are all preserved (only their container/content/declarations changed, never renamed/removed). |
+| Both light and dark theme fully supported for every new/changed style | pass | `--glow-tint` defined separately at lines 26 (dark) and 56 (light); glow/typography rules use theme-aware `var(--accent)`/`var(--text)` custom properties, no hard-coded dark-only color found in the diff (the one fixed cyan value at line 88 is a deliberate brand-icon accent, legible identically in both themes per screenshots taken directly of the live app in both `data-theme` states). |
+| Archive/CI-badge overlap on closed+ci:true cards is genuinely fixed | pass | `tools/sprint-check-app/app.html:2403 — \`${t.status === 'closed' ? \`<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>\` : ''}\`` now renders inside `.card-body` (before `.card-title`), not `.card-head`; CSS at `tools/sprint-check-app/app.html:554 — \`display: none; float: right; margin: 0 0 4px 8px;\`` confirms the float. `tools/sprint-check-app/app.html:2400 — \`<button class="ci-run-btn" data-id="${esc(t.id)}" title="Run headless grading (opens ticket)" aria-label="Run headless grading">▶</button>\`` confirms icon-only Run button with both `title` and new `aria-label` preserved. The old `:has()` hide-on-hover band-aid is fully removed (confirmed absent from the current file). I independently reproduced the fix live rather than trusting the ticket docs' narrative: started the real server (`npm run sprint-check`, `127.0.0.1:8423`), drove a real Playwright/headless-Chrome session against `t-200b` (a real closed+`ci:true` card), hovered it, and measured actual `getBoundingClientRect()`/per-line `getClientRects()` of `.card-archive` vs. every glyph line of `.card-title` (not the paragraph's overall bounding box, which does overlap the float by design and is a false-positive trap) — zero line/archive overlap, zero header-row overlap among `.card-id`/`.card-id-copy`/`.type-badge`/`.ci-badge`/`.ci-run-btn`. Repeated against a synthetic injected closed+ci:true card with an adversarial 7-line-wrapping title — 0 of 7 title lines overlapped the archive rect, 0 header-row overlaps. |
+| Modal doc-content gets same typographic treatment as board | pass | `tools/sprint-check-app/app.html:803 — \`.doc-heading-2 {\`` (lines 803-807: uppercase, 750 weight, .06em tracking, bottom border, replacing the prior plain 14px heading). `tools/sprint-check-app/app.html:827 — \`.section-jump-link {\`` (lines 827-835: turns the nav link into a pill-chip matching `.doc-tab` at line 730). Confirmed rendered in a fresh screenshot of the real `t-200b` modal's Acceptance tab: "CRITERIA"/"TEST PLAN" nav pills render as bordered pill chips, and the in-content "CRITERIA" section header renders uppercase/bold with a visible bottom border. |
+
+## Test Plan
+
+| Item | Status | Notes |
+|---|---|---|
+| Full `npm run test:ui` suite (37 tests) passes with no regressions | pass | Ran it myself against the live server: 37/37 passed, 0 failures. No flake occurred on this run (the ticket's mentioned pre-existing intermittent flake did not reproduce here, and is not load-bearing either way since the full suite passed clean). |
+| Visual check via headless-Chrome screenshots in both dark and light theme, before/after | pass | Took fresh headless-Chrome screenshots of the live running app (not stale prior-pass screenshots) in both `data-theme="light"` and the dark default — atmosphere gradient, brand-icon glow, sidebar glow, and typography changes all visually confirmed present and theme-appropriate in both. |
+| Confirm no new network/font/CDN dependency (grep diff for `@import`, `url(http`, `@font-face`) | pass | `git diff $(git merge-base HEAD origin/main) HEAD -- tools/sprint-check-app/app.html \| grep -nE "@import\|url\\(http\|@font-face"` returns no matches. |
+| Direct bounding-box verification of the archive/badge fix on real `t-200b` and a synthetic long-title card | pass | Reproduced live, not inferred from ticket docs or a screenshot alone: measured real `getClientRects()` of `.card-title`'s text lines against `.card-archive`'s `getBoundingClientRect()` on the hovered `t-200b` card (2 lines, 0 overlaps) and on a synthetic injected closed+ci:true card with a deliberately long title (7 wrapped lines, 0 overlaps); also checked header-row (`card-id`/`copy`/`type-badge`/`ci-badge`/`ci-run-btn`) pairwise for overlap — none found on either card. |
+
+## Findings
+
+No findings.
+
+## Verdict
+
+pass: All seven acceptance criteria and all four test-plan items are met, including the archive/CI-badge overlap fix, which I independently reproduced against the live app (real server, real Playwright-driven hover, real per-line glyph bounding-box measurement on both the real `t-200b` card and an adversarial synthetic long-title card) rather than trusting the ticket's own narrative, and the full unmodified 37-test Playwright suite passes against the current code.
