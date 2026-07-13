@@ -247,6 +247,12 @@ would run against a pull request (see `docs/headless-ci.md`) — here you run it
 locally, so no GitHub repository, Actions workflow, or per-student API secret is
 needed. Your already-authenticated local `claude` CLI is enough.
 
+> If you've used the sprint-check board's "Start grading" button on a `ci: true`
+> card instead, this is the exact same flow — the button runs this same
+> `sprint-headless` command underneath, mapped to its own 3-step display:
+> steps 1-2 below are "Set base ref", step 4 (the run itself) is "Grading in
+> progress", and step 5 (reading `HEADLESS_VERDICT`) is "Result ready".
+
 Prerequisites: the ticket from Session 1 is closed, its `plan.md`/`acceptance.md`
 were approved, and the evaluator passed interactively. Note that ticket's ID (for
 example `t-a1b2`) — you'll need it below. Your `MealSplit` folder was `git init`'d
