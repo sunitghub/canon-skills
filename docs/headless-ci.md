@@ -17,13 +17,7 @@
 ## Making a Ticket CI-Eligible
 
 1. Author `plan.md`/`acceptance.md` for the ticket as usual (by hand or via `sprint start`), and check `- [x] Plan approved`.
-2. Mark it CI-eligible: `tkt ci <id> on`.
-3. Commit the ticket's docs — a CI checkout has nothing to grade against otherwise. Inside canon's own repo, `.tickets/` is gitignored by default (canon's own `.gitignore`), so this force-add is required. In a consumer project, nothing installs a `.gitignore` for `.tickets/` — it may already be a plain untracked directory with no `.gitignore` entry at all, in which case `git add -f` is a harmless no-op (force-adding a file that isn't ignored just adds it normally). Either way, running this step is always correct:
-   ```
-   git add -f .tickets/<id>/
-   git commit -m "mark <id> CI-eligible"
-   ```
-   `tkt ci` prints this reminder every time you enable it.
+2. Mark it CI-eligible: `tkt ci <id> on`. This force-adds and commits the ticket's docs itself (`git add -f .tickets/<id>/` + a commit) — a CI checkout has nothing to grade against otherwise, and `.tickets/` is gitignored by default inside canon's own repo. In a consumer project without a `.tickets/` gitignore entry, the force-add is a harmless no-op (force-adding a file that isn't ignored just adds it normally). No separate manual step is needed.
 
 Everything else about the ticket stays exactly as normal — `tkt ci <id> off` stops force-tracking further changes (existing commits aren't un-committed; whether the directory reverts to untracked-and-ignored depends entirely on whether your own project's `.gitignore` covers `.tickets/`, which canon's tooling never sets up for you).
 

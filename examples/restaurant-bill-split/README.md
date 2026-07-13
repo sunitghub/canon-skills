@@ -262,7 +262,7 @@ beyond that `git init`, since your repo may have as few as one commit.
    git rev-parse HEAD
    ```
 
-   Copy the SHA it prints; you'll pass it as `--base-ref` in step 5.
+   Copy the SHA it prints; you'll pass it as `--base-ref` in step 4.
 
 2. Mark the ticket CI-eligible:
 
@@ -270,19 +270,13 @@ beyond that `git init`, since your repo may have as few as one commit.
    tkt ci <your-ticket-id> on
    ```
 
-   This flips `ci: true` in the ticket's frontmatter and prints a reminder to
-   commit its docs.
-
-3. Ticket docs are gitignored by default, so force-add and commit them — a CI
+   This flips `ci: true` in the ticket's frontmatter and commits the ticket's
+   docs itself (`git add -f .tickets/<your-ticket-id>/` + a commit) — a CI
    checkout (or, here, a fresh headless run) has nothing to grade against
-   otherwise:
+   otherwise, and `.tickets/` is gitignored by default. No separate manual
+   commit step is needed.
 
-   ```
-   git add -f .tickets/<your-ticket-id>/
-   git commit -m "chore: track <your-ticket-id> for headless grading"
-   ```
-
-4. Create something for headless grading to actually check — stand in for a
+3. Create something for headless grading to actually check — stand in for a
    teammate's PR by temporarily reintroducing a bug: comment out the
    remainder-distribution fix from Session 1 so shares no longer sum to the
    total, then commit it:
@@ -291,7 +285,7 @@ beyond that `git init`, since your repo may have as few as one commit.
    git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
    ```
 
-5. Run headless grading against the base ref from step 1:
+4. Run headless grading against the base ref from step 1:
 
    ```
    sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
@@ -302,7 +296,7 @@ beyond that `git init`, since your repo may have as few as one commit.
    — against the diff between that base ref and your current code. No code is
    written or edited; this call only grades.
 
-6. Read the output. The full findings from all three gates print to stdout,
+5. Read the output. The full findings from all three gates print to stdout,
    ending in exactly one line: `HEADLESS_VERDICT: PASS` or
    `HEADLESS_VERDICT: FAIL`. Exit code `0` means all three gates passed; `1`
    means a gate failed, or the invocation itself errored. Confirm the evaluator
@@ -311,13 +305,13 @@ beyond that `git init`, since your repo may have as few as one commit.
    exit code — the same kind of finding Session 1's evaluator would have made
    interactively.
 
-7. Unlike an interactive close, headless mode never writes `review-notes.md` or
+6. Unlike an interactive close, headless mode never writes `review-notes.md` or
    `eval-report.md` to disk (`claude -p`'s non-interactive permission mode
    denies that). The full text is in your terminal's scrollback instead, and
    every subagent dispatch is still logged to `.claude/subagent-runs.jsonl` for
    audit purposes — inspect it with `tail .claude/subagent-runs.jsonl`.
 
-8. Revert the bug and rerun the same command from step 5 against the same base
+7. Revert the bug and rerun the same command from step 4 against the same base
    ref:
 
    ```
@@ -353,12 +347,11 @@ here is required to complete the workshop.
    the secret available; that combination is a well-known way to let an external PR
    exfiltrate your secret. Keep the workflow scoped to your own branches/PRs.
 
-4. Mark your ticket CI-eligible and commit its docs, same as the local flow:
+4. Mark your ticket CI-eligible, same as the local flow — this commits its docs
+   itself, no separate manual step needed:
 
    ```
    tkt ci <your-ticket-id> on
-   git add -f .tickets/<your-ticket-id>/
-   git commit -m "chore: track <your-ticket-id> for headless grading"
    ```
 
    See `docs/headless-ci.md`'s "Making a Ticket CI-Eligible" section for the full
