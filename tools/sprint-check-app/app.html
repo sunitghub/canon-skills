@@ -550,6 +550,14 @@
       transition: color .1s, background .1s, border-color .1s;
     }
     .card:hover .card-archive { display: block; }
+    /* card-archive is absolutely positioned at the card-head's right edge —
+       on a closed + ci:true card it would otherwise overlap .ci-badge and
+       .ci-run-btn, which sit in normal flow there. Only hide them on the
+       hover that actually reveals archive (:has scopes this to closed
+       cards only) — both must stay visible/clickable on hover for every
+       other (open) card. */
+    .card:hover:has(.card-archive) .ci-run-btn,
+    .card:hover:has(.card-archive) .ci-badge { display: none; }
     .card-archive:hover { color: var(--text); border-color: var(--border-hover); background: var(--surface-hover); }
 
     /* Type badges */
