@@ -329,6 +329,92 @@ beyond that `git init`, since your repo may have as few as one commit.
    exit code `0` — the same acceptance criteria, graded the same way, now
    satisfied by the real fix from Session 1.
 
+## Session 2 (GitHub, optional)
+
+This is what the instructor demos live, using their own API key — most students should
+stick with the local CLI flow above (Session 2) rather than provision their own
+credential. If you want to see the same grading run as a real GitHub Actions check on a
+pull request instead of from your own terminal, this section walks through it. Nothing
+here is required to complete the workshop.
+
+1. Create a GitHub repository for your `MealSplit` project and push your code to it.
+
+2. Add your Anthropic API key as a repository secret: **Settings → Secrets and
+   variables → Actions → New repository secret**, name it `ANTHROPIC_API_KEY`. Use a
+   Console API key (console.anthropic.com), not a Claude.ai or Copilot subscription
+   login — headless `claude -p` in a CI runner needs a credential that drops into a
+   single secret with no interactive login step, which is exactly what an API key is
+   and a subscription-based login isn't.
+
+3. Before wiring the workflow, know one real pitfall: GitHub does **not** expose repo
+   secrets to workflows triggered by `pull_request` from a fork — that's a genuine
+   protection, not a bug to work around. Don't switch the trigger to
+   `pull_request_target` combined with checking out the fork's own code just to make
+   the secret available; that combination is a well-known way to let an external PR
+   exfiltrate your secret. Keep the workflow scoped to your own branches/PRs.
+
+4. Mark your ticket CI-eligible and commit its docs, same as the local flow:
+
+   ```
+   tkt ci <your-ticket-id> on
+   git add -f .tickets/<your-ticket-id>/
+   git commit -m "chore: track <your-ticket-id> for headless grading"
+   ```
+
+   See `docs/headless-ci.md`'s "Making a Ticket CI-Eligible" section for the full
+   mechanics — this workshop doesn't change any of it.
+
+5. Add this workflow at `.github/workflows/headless-grading.yml`. It extends
+   `docs/headless-ci.md`'s own "Consumer-Project CI" recipe with one step that recipe
+   doesn't cover on its own: `sprint-headless` finds its gate docs (`review.md`,
+   `eval.md`, `security-review.md`) by looking for a `skills/` or `.claude/skills`
+   directory *inside your own MealSplit repo* — neither exists there, since (correctly)
+   you never commit `.claude/`. Create it fresh, every run, pointing at the canon
+   checkout instead of fighting that rule:
+
+   ```yaml
+   name: Headless canon grading
+
+   on:
+     pull_request:
+
+   jobs:
+     grade:
+       runs-on: ubuntu-latest
+       steps:
+         - name: Checkout MealSplit
+           uses: actions/checkout@v4
+
+         - name: Checkout canon
+           uses: actions/checkout@v4
+           with:
+             repository: sunitghub/canon-skills
+             path: canon
+
+         - name: Add canon tools to PATH
+           run: echo "${{ github.workspace }}/canon/tools" >> "$GITHUB_PATH"
+
+         - name: Make canon's skill docs discoverable from this repo
+           run: ln -s "${{ github.workspace }}/canon/skills" .claude/skills
+
+         - name: Headless canon grading
+           if: "contains(github.event.pull_request.body, 'Closes: t-')"
+           run: sprint-headless <your-ticket-id> --base-ref "${{ github.event.pull_request.base.ref }}"
+           env:
+             ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+   ```
+
+   Replace `<your-ticket-id>` with your real ticket ID. The `ln -s` step is what makes
+   the difference from a plain canon-repo checkout — without it, `sprint-headless`
+   would hard-fail with "no sprint/wrapup skill docs found" before ever reaching
+   `claude -p`, even though the binary itself resolves fine via `$GITHUB_PATH`.
+
+6. Open a pull request against your own repo. The workflow runs the same three gates
+   (reviewer, evaluator, security-review) you already saw locally, this time as a real
+   GitHub check on the PR. See `docs/headless-ci.md` for exit codes, what
+   `$GITHUB_STEP_SUMMARY` shows, and the waiver process for a criterion that genuinely
+   can't pass headlessly.
+
 ## Important limitation
 
 A fresh evaluator is not automatically a mathematically reliable oracle. Vague
