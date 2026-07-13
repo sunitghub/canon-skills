@@ -1746,5 +1746,89 @@ test.describe('board modal', () => {
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
+
+    test('step flow (t-1262): idle/running/done states, click-to-expand descriptions', async ({ page }) => {
+      const id = 't-hls1';
+      ciTicket(id);
+      const restore = installStub([
+        '#!/usr/bin/env bash', 'sleep 2', 'echo "stub output"', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
+      ].join('\n'));
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.waitForTimeout(200);
+        await page.locator(`.card[data-id="${id}"] .ci-run-btn`).click();
+        await expect(page.locator('#modal-overlay.open')).toBeVisible();
+        await page.waitForTimeout(400); // idle-pickup fetch in renderModalHeadless
+
+        const steps = page.locator('#m-headless .headless-step');
+        await expect(steps.nth(0)).toHaveClass(/active/);
+        await expect(steps.nth(1)).not.toHaveClass(/active|done/);
+        await expect(steps.nth(2)).not.toHaveClass(/active|done|fail/);
+
+        // Click-to-expand description, per step, toggles closed on re-click.
+        await steps.nth(0).click();
+        await expect(page.locator('#m-headless-step-desc')).toHaveClass(/expanded/);
+        await expect(page.locator('#m-headless-step-desc')).toContainText('commit SHA');
+        await steps.nth(1).click();
+        await expect(page.locator('#m-headless-step-desc')).toContainText('subagents');
+        await steps.nth(1).click();
+        await expect(page.locator('#m-headless-step-desc')).not.toHaveClass(/expanded/);
+
+        await page.locator('#m-headless-baseref').fill('main');
+        await page.locator('#m-headless-run').click();
+        await expect(steps.nth(1)).toHaveClass(/active/, { timeout: 3000 });
+        await expect(steps.nth(0)).toHaveClass(/done/);
+
+        await expect(steps.nth(2)).toHaveClass(/done/, { timeout: 10000 });
+        await expect(steps.nth(1)).toHaveClass(/done/);
+      } finally {
+        restore();
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('step flow shows a fail-colored final step on a FAIL verdict', async ({ page }) => {
+      const id = 't-hls2';
+      ciTicket(id);
+      const restore = installStub([
+        '#!/usr/bin/env bash', 'echo "stub fail output"', 'echo "HEADLESS_VERDICT: FAIL"', 'exit 1',
+      ].join('\n'));
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.waitForTimeout(200);
+        await page.locator(`.card[data-id="${id}"] .ci-run-btn`).click();
+        await page.waitForTimeout(400); // idle-pickup fetch in renderModalHeadless
+        await page.locator('#m-headless-baseref').fill('main');
+        await page.locator('#m-headless-run').click();
+        await expect(page.locator('#m-headless .headless-step').nth(2)).toHaveClass(/fail/, { timeout: 10000 });
+      } finally {
+        restore();
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('card-level Run button shows a custom tooltip, not the native title attribute', async ({ page }) => {
+      const id = 't-hls3';
+      ciTicket(id);
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.waitForTimeout(200);
+        const runBtn = page.locator(`.card[data-id="${id}"] .ci-run-btn`);
+        await expect(runBtn).not.toHaveAttribute('title', /.+/);
+        await runBtn.hover();
+        await expect(page.locator('#ci-run-tooltip')).toHaveClass(/visible/);
+        await expect(page.locator('#ci-run-tooltip')).toHaveText('Run headless grading');
+        await page.mouse.move(0, 0);
+        await expect(page.locator('#ci-run-tooltip')).not.toHaveClass(/visible/);
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
   });
 });
