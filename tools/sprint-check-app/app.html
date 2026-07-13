@@ -508,6 +508,7 @@
 
     /* Card body — title zone */
     .card-body { padding: 10px 11px 8px; }
+    .card-body::after { content: ''; display: table; clear: both; }
     .card-title {
       font-size: 13px; font-weight: 600; color: var(--text);
       line-height: 1.5; overflow-wrap: anywhere; margin: 0;
@@ -550,21 +551,21 @@
 
     /* Archive button on Done cards */
     .card-archive {
-      display: none; position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
+      display: none; float: right; margin: 0 0 4px 8px;
       font-size: 9px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
       color: var(--text-muted); background: var(--surface-raised); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); padding: 2px 6px; cursor: pointer; z-index: 2;
+      border-radius: var(--radius-sm); padding: 2px 6px; cursor: pointer;
       transition: color .1s, background .1s, border-color .1s;
     }
+    /* Moved into .card-body (before .card-title) and floated, rather than
+       absolutely pinned to .card-head's right edge — card-head is already
+       at ~100% width with type/CI badges + the headless-run button, with
+       no slack for a 6th element (live-reproduced: the old position always
+       overlapped .ci-badge/.ci-run-btn on a closed+ci:true card). Floating
+       it before the title lets the title text wrap around it naturally,
+       instead of guessing a fixed padding reservation that breaks on
+       different title lengths. */
     .card:hover .card-archive { display: block; }
-    /* card-archive is absolutely positioned at the card-head's right edge —
-       on a closed + ci:true card it would otherwise overlap .ci-badge and
-       .ci-run-btn, which sit in normal flow there. Only hide them on the
-       hover that actually reveals archive (:has scopes this to closed
-       cards only) — both must stay visible/clickable on hover for every
-       other (open) card. */
-    .card:hover:has(.card-archive) .ci-run-btn,
-    .card:hover:has(.card-archive) .ci-badge { display: none; }
     .card-archive:hover { color: var(--text); border-color: var(--border-hover); background: var(--surface-hover); }
 
     /* Type badges */
@@ -579,8 +580,13 @@
     .ci-badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; position: relative; z-index: 1; background: rgba(74,222,128,.15); color: #4ade80; }
     html[data-theme="light"] .ci-badge { background: rgba(22,163,74,.12); color: #16a34a; }
 
-    .ci-run-btn { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; letter-spacing: .02em; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; position: relative; z-index: 1; }
-    .ci-run-btn:hover { color: var(--text); border-color: var(--border-hover); background: var(--surface-hover); }
+    .ci-run-btn {
+      font-size: 9px; width: 18px; height: 18px; padding: 0; border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      border: 1px solid var(--border); background: var(--surface); color: var(--text-muted);
+      cursor: pointer; position: relative; z-index: 1; flex-shrink: 0;
+    }
+    .ci-run-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
 
     .modal-headless:empty { display: none; }
     .headless-panel { margin: 0 20px 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); }
@@ -793,8 +799,12 @@
       display: block; color: var(--text); font-weight: 700; letter-spacing: 0;
       white-space: normal;
     }
-    .doc-heading-1 { font-size: 17px; margin: 0 0 6px; }
-    .doc-heading-2 { font-size: 14px; margin: 12px 0 3px; }
+    .doc-heading-1 { font-size: 17px; margin: 0 0 6px; letter-spacing: -.1px; }
+    .doc-heading-2 {
+      font-size: 12px; margin: 16px 0 6px; padding-bottom: 5px;
+      letter-spacing: .06em; text-transform: uppercase; font-weight: 750;
+      border-bottom: 1px solid var(--border-muted);
+    }
     .doc-heading-3 { font-size: 13px; margin: 9px 0 2px; }
     .doc-table-wrap { overflow-x: auto; margin: 10px 0; }
     .doc-table { border-collapse: collapse; width: 100%; }
@@ -815,9 +825,14 @@
       border-bottom: 1px solid var(--panel-border);
     }
     .section-jump-link {
-      font-size: 11px; color: var(--accent); text-decoration: none; opacity: 0.9;
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--accent); text-decoration: none; opacity: 0.85;
+      padding: 3px 9px; border: 1px solid transparent; border-radius: 999px;
+      transition: opacity .1s, background .1s, border-color .1s;
     }
-    .section-jump-link:hover { opacity: 1; text-decoration: underline; }
+    .section-jump-link:hover {
+      opacity: 1; background: var(--accent-dim); border-color: var(--accent);
+    }
     .signoff-controls {
       display: flex; align-items: center; gap: 4px; margin-left: auto;
     }
@@ -2382,10 +2397,10 @@ function cardHTML(t, idx) {
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
-        ${String(t.ci) === 'true' ? `<button class="ci-run-btn" data-id="${esc(t.id)}" title="Run headless grading (opens ticket)">▶ Run</button>` : ''}
-        ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
+        ${String(t.ci) === 'true' ? `<button class="ci-run-btn" data-id="${esc(t.id)}" title="Run headless grading (opens ticket)" aria-label="Run headless grading">▶</button>` : ''}
       </div>
       <div class="card-body">
+        ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
         <p class="card-title">${esc(t.title)}</p>
       </div>
       <div class="card-footer">
