@@ -104,7 +104,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('hovering the ready indicator shows the readiness popover', async ({ page }) => {
+  test('a signed-off ticket shows the ready dot and label, no flag', async ({ page }) => {
     const id = `t-ready-pop-${Date.now()}`;
     const title = `Ready popover ${Date.now()}`;
 
@@ -137,7 +137,7 @@ test.describe('board modal', () => {
         '# Plan',
         '',
         '## Approach',
-        'Use the existing board readiness popover.',
+        'Use the existing board readiness indicator.',
         '',
         '## Sign-off',
         '- [x] Plan approved',
@@ -150,9 +150,10 @@ test.describe('board modal', () => {
       await page.locator('#board-search').fill(id);
       const indicator = page.locator(`.card[data-id="${id}"] .ready-indicator`);
       await expect(indicator).toBeVisible();
-      await indicator.hover();
-      await expect(page.locator('#ready-popover')).toBeVisible();
-      await expect(page.locator('#ready-popover')).toContainText('Signed off');
+      await expect(indicator).toHaveClass(/ready/);
+      await expect(indicator.locator('.ready-dot')).toBeVisible();
+      await expect(indicator).toContainText('ready');
+      await expect(indicator.locator('.ready-flag')).toHaveCount(0);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -194,7 +195,7 @@ test.describe('board modal', () => {
         '- [ ] Plan approved',
         '',
         '## Approach',
-        'Use the existing board readiness popover.',
+        'Use the existing board readiness indicator.',
         '',
       ].join('\n'));
 
@@ -203,11 +204,10 @@ test.describe('board modal', () => {
 
       await page.locator('#board-search').fill(id);
       const indicator = page.locator(`.card[data-id="${id}"] .ready-indicator`);
-      await expect(indicator).toContainText('needs signoff');
-      await expect(indicator).not.toContainText('ready');
-      await indicator.hover();
-      await expect(page.locator('#ready-popover')).toContainText('Sign-off');
-      await expect(page.locator('#ready-popover')).not.toContainText('Signed off');
+      await expect(indicator).toHaveClass(/incomplete|not-ready/);
+      const flag = indicator.locator('.ready-flag');
+      await expect(flag).toBeVisible();
+      await expect(flag).toHaveAttribute('aria-label', /needs signoff/);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -252,7 +252,7 @@ test.describe('board modal', () => {
         '- [x] Plan approved',
         '',
         '## Approach',
-        'Use the existing board readiness popover.',
+        'Use the existing board readiness indicator.',
         '',
       ].join('\n'));
 
@@ -261,11 +261,10 @@ test.describe('board modal', () => {
 
       await page.locator('#board-search').fill(id);
       const indicator = page.locator(`.card[data-id="${id}"] .ready-indicator`);
-      await expect(indicator).toContainText('unchecked items');
-      await expect(indicator).not.toContainText('ready');
-      await indicator.hover();
-      await expect(page.locator('#ready-popover')).toContainText('unchecked item remains');
-      await expect(page.locator('#ready-popover')).not.toContainText('Signed off');
+      await expect(indicator).toHaveClass(/incomplete|not-ready/);
+      const flag = indicator.locator('.ready-flag');
+      await expect(flag).toBeVisible();
+      await expect(flag).toHaveAttribute('aria-label', /unchecked items/);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
