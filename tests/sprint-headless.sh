@@ -74,10 +74,37 @@ out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
 assert_contains "$out" "not CI-eligible"
 
 # ── 2. CI-eligible but docs not committed/staged ────────────────────────
+# Hand-edit ci: true directly rather than `tkt ci on` (t-4238: that command
+# now auto-commits the docs) so this guard rail still gets exercised for a
+# ticket that was made ci:true some other way (e.g. a hand-edited ticket.md,
+# or a repo where the auto-commit failed for some reason).
 
-(cd "$WORK" && "$ROOT/tools/tkt" ci t-aaaa on >/dev/null)
+sed -i.bak 's/^type: task$/type: task\nci: true/' "$WORK/.tickets/t-aaaa/ticket.md"
+rm -f "$WORK/.tickets/t-aaaa/ticket.md.bak"
 out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
 assert_contains "$out" "aren't committed"
+
+# ── 2b. `tkt ci on` auto-commits the docs (t-4238) ──────────────────────
+
+seed_ticket t-cmt1
+(cd "$WORK" && "$ROOT/tools/tkt" ci t-cmt1 on >/dev/null)
+if ! git -C "$WORK" ls-files --error-unmatch .tickets/t-cmt1/plan.md .tickets/t-cmt1/acceptance.md >/dev/null 2>&1; then
+  fail "sprint-headless: FAIL — 'tkt ci on' did not commit t-cmt1's docs automatically"
+fi
+if ! git -C "$WORK" diff --quiet HEAD -- .tickets/t-cmt1/; then
+  fail "sprint-headless: FAIL — t-cmt1's docs are tracked but have uncommitted changes after 'tkt ci on'"
+fi
+# Running it again must be a no-op, not an empty commit or an error.
+before="$(git -C "$WORK" rev-parse HEAD)"
+(cd "$WORK" && "$ROOT/tools/tkt" ci t-cmt1 on >/dev/null)
+after="$(git -C "$WORK" rev-parse HEAD)"
+[[ "$before" == "$after" ]] || fail "sprint-headless: FAIL — repeat 'tkt ci on' created an unnecessary commit"
+
+# `tkt ci off` must not touch git.
+before="$(git -C "$WORK" rev-parse HEAD)"
+(cd "$WORK" && "$ROOT/tools/tkt" ci t-cmt1 off >/dev/null)
+after="$(git -C "$WORK" rev-parse HEAD)"
+[[ "$before" == "$after" ]] || fail "sprint-headless: FAIL — 'tkt ci off' created a commit; it should not touch git"
 
 # ── 3. Staged but plan not approved ─────────────────────────────────────
 
