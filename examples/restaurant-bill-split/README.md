@@ -395,7 +395,9 @@ here is required to complete the workshop.
            run: echo "${{ github.workspace }}/canon/tools" >> "$GITHUB_PATH"
 
          - name: Make canon's skill docs discoverable from this repo
-           run: ln -s "${{ github.workspace }}/canon/skills" .claude/skills
+           run: |
+             mkdir -p .claude
+             ln -s "${{ github.workspace }}/canon/skills" .claude/skills
 
          - name: Headless canon grading
            if: "contains(github.event.pull_request.body, 'Closes: t-')"
