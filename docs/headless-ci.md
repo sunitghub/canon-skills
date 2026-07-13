@@ -54,7 +54,7 @@ To unblock a legitimate case like this, a human (never CI, never an agent) does 
 
 ```yaml
 - name: Headless canon grading
-  if: contains(github.event.pull_request.body, 'Closes: t-') # or however you detect a CI-eligible ticket
+  if: "contains(github.event.pull_request.body, 'Closes: t-')" # or however you detect a CI-eligible ticket
   run: tools/sprint-headless <ticket-id> --base-ref "${{ github.event.pull_request.base.ref }}"
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -81,7 +81,7 @@ Provision both explicitly in the workflow: clone canon to a known path, then add
   run: echo "${{ github.workspace }}/canon/tools" >> "$GITHUB_PATH"
 
 - name: Headless canon grading
-  if: contains(github.event.pull_request.body, 'Closes: t-')
+  if: "contains(github.event.pull_request.body, 'Closes: t-')"
   run: sprint-headless <ticket-id> --base-ref "${{ github.event.pull_request.base.ref }}"
   env:
     ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
