@@ -1608,4 +1608,143 @@ test.describe('board modal', () => {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
+
+  test.describe('headless grading trigger (t-200b)', () => {
+    // These tests temporarily replace the real tools/sprint-headless with a
+    // stub so no real `claude -p` call is ever made, matching
+    // tests/sprint-check-api-parity.sh's own approach for the same reason.
+    // Restored in a finally block per test — never left swapped even on
+    // failure, since these tests run serially within this single file/worker.
+    const SPRINT_HEADLESS_PATH = path.join(PROJECT_ROOT, 'tools', 'sprint-headless');
+
+    function installStub(scriptBody) {
+      const backup = fs.readFileSync(SPRINT_HEADLESS_PATH, 'utf8');
+      fs.writeFileSync(SPRINT_HEADLESS_PATH, scriptBody, { mode: 0o755 });
+      return () => fs.writeFileSync(SPRINT_HEADLESS_PATH, backup, { mode: 0o755 });
+    }
+
+    function ciTicket(id) {
+      const dir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ticket.md'), [
+        '---', `id: ${id}`, 'status: open', 'type: task', 'priority: 2',
+        'created: 2026-06-01T00:00:00Z', 'ci: true', '---', '', `# ${id} headless-run test`, '',
+      ].join('\n'));
+    }
+
+    test('trigger, poll, and show a PASS verdict with real output', async ({ page }) => {
+      const id = 't-hlp1';
+      ciTicket(id);
+      const restore = installStub([
+        '#!/usr/bin/env bash', 'sleep 1', 'echo "stub pass output"', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
+      ].join('\n'));
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.waitForTimeout(200);
+        await page.locator(`.card[data-id="${id}"] .ci-run-btn`).click();
+        await expect(page.locator('#modal-overlay.open')).toBeVisible();
+        await page.locator('#m-headless-baseref').fill('main');
+        await page.locator('#m-headless-run').click();
+        await expect(page.locator('#m-headless-status')).toContainText('Running', { timeout: 3000 });
+        await expect(page.locator('#m-headless-status')).toContainText('PASS', { timeout: 10000 });
+        await page.locator('.headless-view-output').click();
+        await expect(page.locator('.headless-output')).toContainText('stub pass output');
+      } finally {
+        restore();
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('a claude -p failure surfaces its real error text, not a generic message', async ({ page }) => {
+      const id = 't-hlf1';
+      ciTicket(id);
+      const restore = installStub([
+        '#!/usr/bin/env bash',
+        'echo "Error: claude -p invocation failed (exit 1). Hard-failing." >&2',
+        'exit 1', '',
+      ].join('\n'));
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.waitForTimeout(200);
+        await page.locator(`.card[data-id="${id}"] .ci-run-btn`).click();
+        await page.locator('#m-headless-baseref').fill('main');
+        await page.locator('#m-headless-run').click();
+        await expect(page.locator('#m-headless-status')).toContainText('FAIL', { timeout: 10000 });
+        await page.locator('.headless-view-output').click();
+        await expect(page.locator('.headless-output')).toContainText('claude -p invocation failed');
+      } finally {
+        restore();
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('elapsed time increases while a slow run is in progress', async ({ page }) => {
+      const id = 't-hle1';
+      ciTicket(id);
+      const restore = installStub([
+        '#!/usr/bin/env bash', 'sleep 8', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
+      ].join('\n'));
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.waitForTimeout(200);
+        await page.locator(`.card[data-id="${id}"] .ci-run-btn`).click();
+        await page.locator('#m-headless-baseref').fill('main');
+        await page.locator('#m-headless-run').click();
+        await expect(page.locator('#m-headless-status')).toContainText('Running', { timeout: 3000 });
+        const firstText = await page.locator('#m-headless-status').textContent();
+        await page.waitForTimeout(3500);
+        const laterText = await page.locator('#m-headless-status').textContent();
+        expect(laterText).not.toBe(firstText);
+        expect(laterText).toContain('Running');
+      } finally {
+        restore();
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('a second trigger while one is running does not start a second subprocess', async ({ page }) => {
+      const id = 't-hld1';
+      ciTicket(id);
+      const restore = installStub([
+        '#!/usr/bin/env bash',
+        'echo "$$-$(date +%s%N)" >> "' + path.join(PROJECT_ROOT, '.tickets', id, 'run-markers.txt') + '"',
+        'sleep 5', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
+      ].join('\n'));
+      try {
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        const first = await page.evaluate(async (ticketId) => {
+          const r = await fetch(`/api/ticket/${ticketId}/headless-run`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base_ref: 'main' }),
+          });
+          return r.json();
+        }, id);
+        expect(first.status).toBe('running');
+        const second = await page.evaluate(async (ticketId) => {
+          const r = await fetch(`/api/ticket/${ticketId}/headless-run`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ base_ref: 'main' }),
+          });
+          return r.json();
+        }, id);
+        expect(second.status).toBe('running');
+        await page.waitForTimeout(6000);
+        const markerPath = path.join(PROJECT_ROOT, '.tickets', id, 'run-markers.txt');
+        const markers = fs.existsSync(markerPath)
+          ? fs.readFileSync(markerPath, 'utf8').trim().split('\n').filter(Boolean)
+          : [];
+        expect(markers.length).toBe(1);
+      } finally {
+        restore();
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+  });
 });

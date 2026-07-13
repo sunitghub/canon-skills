@@ -58,9 +58,18 @@ WORK="$(mktemp -d)"
 GO_BIN="$(mktemp -d)/sprint-check-go-bin"
 PY_PID=""
 GO_PID=""
+SPRINT_HEADLESS_BACKUP=""
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
+  # Restore the real tools/sprint-headless if the headless-run parity section
+  # below swapped in a stub — must run even on failure, so this lives in the
+  # trap-bound cleanup, not a linear post-check restore that set -e would skip.
+  if [[ -n "$SPRINT_HEADLESS_BACKUP" ]]; then
+    cp "$SPRINT_HEADLESS_BACKUP" "$ROOT/tools/sprint-headless"
+    chmod +x "$ROOT/tools/sprint-headless"
+    rm -f "$SPRINT_HEADLESS_BACKUP"
+  fi
   rm -rf "$WORK" "$(dirname "$GO_BIN")"
 }
 trap cleanup EXIT
@@ -239,4 +248,60 @@ check_ticket_image "non-image extension (real file, wrong ext)" "t-mock/ticket.m
 check_ticket_image "missing file"              "t-mock/mockups/does-not-exist.png"
 check_ticket_image "malformed ticket id"       "t-ready/mockups/test.png"
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used extraction; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically, for $WORK fixture)"
+# ── /api/ticket/<id>/headless-run parity (t-200b): trigger + poll shape ─────
+# Both servers reference tools/sprint-headless via a path relative to their
+# own file location (never $PATH) — temporarily swap the real script for a
+# stub so this never makes a real claude -p call. Restored by cleanup()
+# above even on failure, since set -e would skip a linear restore here.
+
+SPRINT_HEADLESS_BACKUP="$(mktemp)"
+cp "$ROOT/tools/sprint-headless" "$SPRINT_HEADLESS_BACKUP"
+cat > "$ROOT/tools/sprint-headless" <<'EOF'
+#!/usr/bin/env bash
+sleep 1
+echo "stub grading output"
+echo "HEADLESS_VERDICT: PASS"
+exit 0
+EOF
+chmod +x "$ROOT/tools/sprint-headless"
+
+py_idle="$(curl -s "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/headless-run")"
+go_idle="$(curl -s "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/headless-run")"
+if [[ "$(echo "$py_idle" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')" != "idle" ]] || \
+   [[ "$(echo "$go_idle" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')" != "idle" ]]; then
+  fail "sprint-check-api-parity: FAIL — headless-run idle-state status mismatch (py=$py_idle go=$go_idle)"
+fi
+
+py_trigger="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/headless-run" -d '{"base_ref":"main"}')"
+go_trigger="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/headless-run" -d '{"base_ref":"main"}')"
+py_status="$(echo "$py_trigger" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+go_status="$(echo "$go_trigger" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')"
+if [[ "$py_status" != "running" || "$go_status" != "running" ]]; then
+  fail "sprint-check-api-parity: FAIL — headless-run trigger did not return status=running (py=$py_trigger go=$go_trigger)"
+fi
+
+sleep 3
+py_done="$(curl -s "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/headless-run")"
+go_done="$(curl -s "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/headless-run")"
+python3 - "$py_done" "$go_done" <<'PY'
+import json, sys
+py = json.loads(sys.argv[1])
+go = json.loads(sys.argv[2])
+for label, d in (("server.py", py), ("main.go", go)):
+    if d.get("status") != "done":
+        print(f"sprint-check-api-parity: FAIL — {label} headless-run did not reach status=done: {d}")
+        sys.exit(1)
+    if "HEADLESS_VERDICT: PASS" not in d.get("output", ""):
+        print(f"sprint-check-api-parity: FAIL — {label} headless-run output missing expected verdict: {d}")
+        sys.exit(1)
+    if d.get("exit_code") != 0:
+        print(f"sprint-check-api-parity: FAIL — {label} headless-run exit_code should be 0, got {d.get('exit_code')!r}")
+        sys.exit(1)
+PY
+
+cp "$SPRINT_HEADLESS_BACKUP" "$ROOT/tools/sprint-headless"
+chmod +x "$ROOT/tools/sprint-headless"
+rm -f "$SPRINT_HEADLESS_BACKUP"
+SPRINT_HEADLESS_BACKUP=""
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used extraction; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; headless-run idle/running/done states match, for $WORK fixture)"

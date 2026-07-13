@@ -9,6 +9,8 @@ import socket
 import string
 import subprocess
 import sys
+import threading
+import time
 from datetime import date
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -499,6 +501,63 @@ def write_doc(doc_file: str, content: str) -> bool:
     p.write_text(content.strip() + '\n', encoding='utf-8')
     return True
 
+# ── Headless grading runs (t-200b) ──────────────────────────────────────────
+# tools/sprint-headless is referenced by a path relative to this file's own
+# location, never via $PATH — the server process's own location is always
+# known, regardless of the invoking user's shell setup (t-9737/t-d351/t-af61
+# class of PATH-resolution problems doesn't apply here).
+
+SPRINT_HEADLESS = Path(__file__).resolve().parent.parent / 'sprint-headless'
+
+_BASE_REF_RE = re.compile(r'^[A-Za-z0-9._/-]+$')
+
+_HEADLESS_RUNS: dict[str, dict] = {}
+_HEADLESS_LOCK = threading.Lock()
+
+def _run_headless(ticket_id: str, base_ref: str) -> None:
+    """Runs in a background thread; updates _HEADLESS_RUNS[ticket_id] on completion."""
+    try:
+        proc = subprocess.Popen(
+            [str(SPRINT_HEADLESS), ticket_id, '--base-ref', base_ref],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=PROJECT_ROOT,
+        )
+        output, _ = proc.communicate()
+        exit_code = proc.returncode
+    except Exception as e:
+        output = f'Error: could not start sprint-headless: {e}'
+        exit_code = 1
+    with _HEADLESS_LOCK:
+        state = _HEADLESS_RUNS.setdefault(ticket_id, {})
+        state['status'] = 'done'
+        state['output'] = output
+        state['exit_code'] = exit_code
+
+def start_headless_run(ticket_id: str, base_ref: str) -> dict:
+    """Starts a background run unless one is already in progress for this
+    ticket (double-spawn guard) — either way returns the current state.
+    Never calls get_headless_run_state() while _HEADLESS_LOCK is held —
+    threading.Lock is not reentrant, that would deadlock (live-reproduced)."""
+    already_running = False
+    with _HEADLESS_LOCK:
+        existing = _HEADLESS_RUNS.get(ticket_id)
+        if existing and existing.get('status') == 'running':
+            already_running = True
+        else:
+            _HEADLESS_RUNS[ticket_id] = {'status': 'running', 'output': '', 'exit_code': None, 'started_at': time.time()}
+    if not already_running:
+        threading.Thread(target=_run_headless, args=(ticket_id, base_ref), daemon=True).start()
+    return get_headless_run_state(ticket_id)
+
+def get_headless_run_state(ticket_id: str) -> dict:
+    with _HEADLESS_LOCK:
+        state = _HEADLESS_RUNS.get(ticket_id)
+        if not state:
+            return {'status': 'idle'}
+        result = {'status': state['status'], 'output': state.get('output', ''), 'exit_code': state.get('exit_code')}
+        if state['status'] == 'running':
+            result['elapsed'] = time.time() - state['started_at']
+    return result
+
 # ── HTTP handler ──────────────────────────────────────────────────────────
 
 class Handler(BaseHTTPRequestHandler):
@@ -592,6 +651,9 @@ class Handler(BaseHTTPRequestHandler):
                 if img is None or not img.is_file():
                     self.send_error(404); return
                 self.send_image(img); return
+            m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
+            if m:
+                self.send_json(get_headless_run_state(m.group(1))); return
             self.send_error(404)
 
     def do_POST(self):
@@ -621,6 +683,13 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             ok = write_doc(unquote(m.group(1)), str(payload.get('content', '')))
             self.send_json({'ok': ok}); return
+
+        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
+        if m:
+            base_ref = str(payload.get('base_ref', ''))
+            if not _BASE_REF_RE.match(base_ref):
+                self.send_error(400); return
+            self.send_json(start_headless_run(m.group(1), base_ref)); return
 
         if path == '/api/tickets':
             t = create_ticket(

@@ -564,6 +564,23 @@
     .ci-badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; position: relative; z-index: 1; background: rgba(74,222,128,.15); color: #4ade80; }
     html[data-theme="light"] .ci-badge { background: rgba(22,163,74,.12); color: #16a34a; }
 
+    .ci-run-btn { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 600; letter-spacing: .02em; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); cursor: pointer; position: relative; z-index: 1; }
+    .ci-run-btn:hover { color: var(--text); border-color: var(--border-hover); background: var(--surface-hover); }
+
+    .modal-headless:empty { display: none; }
+    .headless-panel { margin: 0 20px 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); }
+    .headless-row { display: flex; gap: 8px; align-items: center; }
+    .headless-row input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font-size: 12px; }
+    .headless-run-btn { padding: 5px 10px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .headless-run-btn:hover { background: var(--accent); color: var(--surface); }
+    .headless-run-btn:disabled { opacity: .5; cursor: not-allowed; }
+    #m-headless-status { margin-top: 8px; font-size: 12px; }
+    .headless-running { color: var(--text-muted); }
+    .headless-pass { color: #16a34a; font-weight: 700; }
+    .headless-fail { color: #dc2626; font-weight: 700; }
+    .headless-view-output { color: var(--accent); cursor: pointer; text-decoration: underline; }
+    .headless-output { margin-top: 8px; padding: 8px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow-y: auto; }
+
     /* Column-status left border + hover glow color */
     .col-open      { --card-glow: rgba(148,163,184, .45); --status-color: rgba(148,163,184, .72); }
     .col-progress  { --card-glow: rgba(96,165,250,  .5);  --status-color: rgba(96,165,250,  .78); }
@@ -1262,6 +1279,7 @@
       <button class="modal-close" id="btn-close">✕</button>
     </div>
     <div class="modal-meta" id="m-meta"></div>
+    <div class="modal-headless" id="m-headless"></div>
     <div class="modal-docs" id="m-docs"></div>
     <div class="modal-body">
       <div class="modal-body-text" id="m-body"></div>
@@ -2189,6 +2207,13 @@ function renderBoard() {
     });
   });
 
+  board.querySelectorAll('.ci-run-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      openModal(btn.dataset.id);
+    });
+  });
+
   board.querySelectorAll('.card-id-copy').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
@@ -2342,6 +2367,7 @@ function cardHTML(t, idx) {
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
+        ${String(t.ci) === 'true' ? `<button class="ci-run-btn" data-id="${esc(t.id)}" title="Run headless grading (opens ticket)">▶ Run</button>` : ''}
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
       </div>
       <div class="card-body">
@@ -2420,11 +2446,100 @@ function openModal(id) {
   renderModalDocs(t);
   renderModalBody(t);
   refreshModalActions(t);
+  renderModalHeadless(t);
   document.getElementById('modal-overlay').classList.add('open');
   renderBoard();
 }
 
 const HIDDEN_DOC_SLUGS = new Set(['blueprint']);
+
+// ── Headless grading trigger (t-200b) ───────────────────────────────────────
+
+let _headlessPollTimer = null;
+
+function stopHeadlessPoll() {
+  if (_headlessPollTimer) { clearInterval(_headlessPollTimer); _headlessPollTimer = null; }
+}
+
+function startHeadlessPoll(ticketId) {
+  stopHeadlessPoll();
+  _headlessPollTimer = setInterval(() => {
+    if (state.selectedId !== ticketId) { stopHeadlessPoll(); return; }
+    fetch(`/api/ticket/${encodeURIComponent(ticketId)}/headless-run`)
+      .then(r => r.json())
+      .then(data => {
+        renderHeadlessStatus(ticketId, data);
+        if (data.status !== 'running') {
+          stopHeadlessPoll();
+          loadData(); // refresh so review-notes.md/eval-report.md appear as doc tabs once written
+        }
+      })
+      .catch(() => stopHeadlessPoll());
+  }, 3000);
+}
+
+function renderHeadlessStatus(ticketId, data) {
+  if (state.selectedId !== ticketId) return;
+  const el = document.getElementById('m-headless-status');
+  if (!el) return;
+  const runBtn = document.getElementById('m-headless-run');
+  if (data.status === 'idle') {
+    el.innerHTML = '';
+    if (runBtn) runBtn.disabled = false;
+  } else if (data.status === 'running') {
+    if (runBtn) runBtn.disabled = true;
+    el.innerHTML = `<span class="headless-running">Running… (${Math.round(data.elapsed || 0)}s)</span>`;
+  } else {
+    if (runBtn) runBtn.disabled = false;
+    const pass = /^HEADLESS_VERDICT: PASS$/m.test(data.output || '');
+    el.innerHTML = `<span class="${pass ? 'headless-pass' : 'headless-fail'}">${pass ? 'PASS' : 'FAIL'}</span>` +
+      ` &mdash; <span class="headless-view-output">view output</span>` +
+      `<pre class="headless-output" style="display:none">${esc(data.output || '')}</pre>`;
+    el.querySelector('.headless-view-output')?.addEventListener('click', () => {
+      const pre = el.querySelector('.headless-output');
+      pre.style.display = pre.style.display === 'none' ? 'block' : 'none';
+    });
+  }
+}
+
+function renderModalHeadless(t) {
+  const el = document.getElementById('m-headless');
+  stopHeadlessPoll();
+  if (String(t.ci) !== 'true') { el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <div class="headless-panel">
+      <div class="headless-row">
+        <input type="text" id="m-headless-baseref" placeholder="base ref (branch, tag, or SHA)">
+        <button id="m-headless-run" class="headless-run-btn">Run headless grading</button>
+      </div>
+      <div id="m-headless-status"></div>
+    </div>`;
+  document.getElementById('m-headless-run').addEventListener('click', () => {
+    const input = document.getElementById('m-headless-baseref');
+    const baseRef = input.value.trim();
+    if (!baseRef) { input.focus(); return; }
+    fetch(`/api/ticket/${encodeURIComponent(t.id)}/headless-run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base_ref: baseRef }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        renderHeadlessStatus(t.id, data);
+        if (data.status === 'running') startHeadlessPoll(t.id);
+      })
+      .catch(() => {});
+  });
+  // Pick up an already-in-progress run (e.g. the modal was reopened) rather than
+  // showing a blank idle state that hides real, ongoing work.
+  fetch(`/api/ticket/${encodeURIComponent(t.id)}/headless-run`)
+    .then(r => r.json())
+    .then(data => {
+      renderHeadlessStatus(t.id, data);
+      if (data.status === 'running') startHeadlessPoll(t.id);
+    })
+    .catch(() => {});
+}
 
 function navigateTicket(dir) {
   if (modalState.editMode) return;
@@ -3144,6 +3259,7 @@ function closeModal() {
   document.getElementById('modal-overlay').classList.remove('open');
   modalState.pickingDoc = false;
   state.selectedId = null;
+  stopHeadlessPoll();
   renderBoard();
 }
 

@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,11 +29,15 @@ var (
 	fieldRe        = regexp.MustCompile(`(?m)^(\w+):\s*(.+)$`)
 	headingRe      = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
 	modelMentionRe = regexp.MustCompile(`(?i)\(model:\s*([^)]+)\)`)
+	baseRefRe      = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 	imageExts      = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
 	projectRoot    string
 	ticketsDir     string
 	handoffFile    string
 	appHTML        string
+	sprintHeadless string
+	headlessRuns   = map[string]map[string]any{}
+	headlessRunsMu sync.Mutex
 )
 
 type docInfo struct {
@@ -69,6 +74,7 @@ func main() {
 		toolsDir = filepath.Dir(toolsDir)
 	}
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
+	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
 	ticketsDir = filepath.Join(projectRoot, ".tickets")
 	handoffFile = filepath.Join(projectRoot, "HANDOFF.md")
 
@@ -178,6 +184,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			serveFile(w, p, mime.TypeByExtension(filepath.Ext(p)))
 			return
 		}
+		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
+			sendJSON(w, getHeadlessRunState(m[1]))
+			return
+		}
 		http.NotFound(w, r)
 	}
 }
@@ -205,6 +215,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
 		sendJSON(w, map[string]bool{"ok": writeDoc(unescape(m[1]), fmt.Sprint(payload["content"]))})
+		return
+	}
+	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
+		baseRef := fmt.Sprint(payload["base_ref"])
+		if !baseRefRe.MatchString(baseRef) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, startHeadlessRun(m[1], baseRef))
 		return
 	}
 	if path == "/api/tickets" {
@@ -944,6 +963,68 @@ func resolveAppHTML(toolsDir, root string, extraRoots ...string) string {
 		}
 	}
 	return candidates[0]
+}
+
+func resolveSprintHeadless(toolsDir, root string, extraRoots ...string) string {
+	candidates := []string{
+		filepath.Join(toolsDir, "sprint-headless"),
+		filepath.Join(root, "tools", "sprint-headless"),
+	}
+	for _, extraRoot := range extraRoots {
+		candidates = append(candidates, filepath.Join(extraRoot, "tools", "sprint-headless"))
+	}
+	for _, candidate := range candidates {
+		if exists(candidate) {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+// ── Headless grading runs (t-200b) ──────────────────────────────────────────
+
+func runHeadless(ticketID, baseRef string) {
+	output, err := exec.Command(sprintHeadless, ticketID, "--base-ref", baseRef).CombinedOutput()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			output = []byte(fmt.Sprintf("Error: could not start sprint-headless: %v", err))
+			exitCode = 1
+		}
+	}
+	headlessRunsMu.Lock()
+	defer headlessRunsMu.Unlock()
+	headlessRuns[ticketID]["status"] = "done"
+	headlessRuns[ticketID]["output"] = string(output)
+	headlessRuns[ticketID]["exit_code"] = exitCode
+}
+
+func startHeadlessRun(ticketID, baseRef string) map[string]any {
+	headlessRunsMu.Lock()
+	if existing, ok := headlessRuns[ticketID]; ok && existing["status"] == "running" {
+		headlessRunsMu.Unlock()
+		return getHeadlessRunState(ticketID)
+	}
+	headlessRuns[ticketID] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now()}
+	headlessRunsMu.Unlock()
+	go runHeadless(ticketID, baseRef)
+	return getHeadlessRunState(ticketID)
+}
+
+func getHeadlessRunState(ticketID string) map[string]any {
+	headlessRunsMu.Lock()
+	defer headlessRunsMu.Unlock()
+	state, ok := headlessRuns[ticketID]
+	if !ok {
+		return map[string]any{"status": "idle"}
+	}
+	result := map[string]any{"status": state["status"], "output": state["output"], "exit_code": state["exit_code"]}
+	if state["status"] == "running" {
+		result["elapsed"] = time.Since(state["started_at"].(time.Time)).Seconds()
+	}
+	return result
 }
 
 func serveFile(w http.ResponseWriter, path, contentType string) {
