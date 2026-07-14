@@ -8,6 +8,10 @@ hidden: true
 
 # Code Reviewer
 
+<!-- Not to be confused with skills/sprint/reference/review.md, whose gate name is
+     "reviewer" — this file's own gate name is "code-reviewer", despite the
+     opposite-looking filenames. See complete.md's Wrapup Gates table. -->
+
 ## Scope
 
 - Inline (wrapup's own step 2 invocation): code touched in the current session, from working memory — no git command, no checkout. This is how `wrapup/SKILL.md` runs this gate.
