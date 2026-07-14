@@ -200,6 +200,10 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
 
 4. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
+   - **Coverage check, before grading individual items.** Confirm every `acceptance.md ## Criteria`
+     item has at least one `## Test Plan` line that actually exercises it — not just restates
+     it. Treat missing coverage as a blocking gap: do not proceed until a real test-plan item
+     is added and run.
    - ✓ passed | ✗ failed | ? not run (maps to `eval.md`'s `pass`/`fail`/`not-run` — same three
      states, different notation since this step is a human-facing recap, not the evaluator's
      own report format)
