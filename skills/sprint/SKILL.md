@@ -37,7 +37,7 @@ Use no sprint when:
 - Modifies a hook, pipeline, or post-commit script
 - Touches more than one file with coordinated intent
 
-None of these four triggers can be downgraded to trivial mid-sprint — `complete.md`'s and `start.md`'s downgrade rule explicitly excludes them (see `skills/sprint/reference/complete.md`'s Reviewer/Evaluator gate section).
+None of these four triggers can be downgraded to trivial mid-sprint — `complete.md`'s and `start.md`'s downgrade rule explicitly excludes them (see `skills/sprint/reference/complete.md` steps 2-3, Reviewer gate / Evaluator review).
 
 Work directly, then report verification.
 
