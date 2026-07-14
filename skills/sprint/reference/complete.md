@@ -136,7 +136,12 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    hook does this automatically. `_gate_eval_report` (step 3) matches by timestamp only, not
    `agent_type`, so this reviewer entry isn't what satisfies that specific gate — the
    evaluator's own log call is. Log it anyway: it's the complete audit trail of which subagents
-   actually ran this sprint, not just the one the close gate happens to check.
+   actually ran this sprint, not just the one the close gate happens to check. **The id is
+   present in both foreground and background dispatch** — live-reproduced: it appears as a
+   trailing `agentId: <id>` token in the raw Agent-call result, which may be concatenated
+   directly onto the subagent's own returned text with no separator or newline (e.g.
+   `...verdict: YESagentId: a0051f...`). Look for it there rather than assuming it's absent
+   if a long report makes it easy to miss.
 
 3. **Evaluator review (normal+ tier).** Same `Tier: trivial` downgrade condition and exclusion
    as the reviewer gate above (skip only if `plan.md`'s `## Sign-off` `Tier:` field value is
@@ -171,7 +176,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    close gate (`_gate_eval_report`) hard-fails if `.claude/subagent-runs.jsonl` exists but has
    no entry within ±60 minutes of the `evaluator-run-id` the evaluator wrote — this CLI call is
    what satisfies that check now that no hook does it automatically. Skipping it risks a
-   confusing close-time failure on an otherwise-passing sprint.
+   confusing close-time failure on an otherwise-passing sprint. Same id-location note as the
+   reviewer gate above — the trailing `agentId: <id>` token may be glued onto the subagent's
+   own returned text with no separator; look for it there.
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes and close its handle per
    the shared gate mechanics above. Surface any `fail` findings to the user before proceeding
