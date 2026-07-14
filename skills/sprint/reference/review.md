@@ -45,6 +45,8 @@ wording as `eval.md` — mirror, keep in sync.)
 
 ## Self-serve visual verification (no Node/Playwright required)
 
+<!-- Mirrored in `eval.md` — locked by tests/doc-mirror-parity.sh Check D, keep in sync. -->
+
 **Check for a project-level override first.** If the project's own `AGENTS.md`/`CLAUDE.md`
 explicitly forbids scripted/automated verification (e.g. "verify only by clicking through
 the app yourself — no scripts, no automation, in any language or tool" — a real workshop
@@ -103,7 +105,7 @@ deliberately run on machines without Node.js) — do not report `not-run` before
    ```
    git diff --name-only $(git merge-base HEAD origin/main) HEAD
    ```
-   Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git, same as the evaluator. (Same base-ref branching as `eval.md`/`security-review.md` — mirror, keep in sync.)
+   Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git, same as the evaluator. (Same base-ref branching as `eval.md`/`security-review.md` — mirror, keep in sync; locked by `tests/doc-mirror-parity.sh`.)
 
    If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `eval.md`/`security-review.md` (mirror — keep in sync):
    - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and read those real changed files rather than falling back to ticket artifacts.
