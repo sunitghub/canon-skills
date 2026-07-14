@@ -84,8 +84,8 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 ## Wrapup Gates
 | Gate | Status | Reason |
 |------|--------|--------|
-| reviewer | ran | reviewed gate logic |
-| simplifier | skipped | test-only change |
+| code-reviewer | ran | reviewed gate logic |
+| code-simplifier | skipped | test-only change |
 EOF
 
 unchecked_output="$(run_fail "$SPRINT" complete)"
@@ -139,7 +139,7 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 ## Wrapup Gates
 | Gate | Status | Reason |
 |------|--------|--------|
-| reviewer | ran |  |
+| code-reviewer | ran |  |
 EOF
 
 empty_reason_output="$(run_fail "$SPRINT" complete)"
@@ -158,7 +158,7 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 ## Wrapup Gates
 | Gate | Status | Reason |
 |------|--------|--------|
-| reviewer | ran | — |
+| code-reviewer | ran | — |
 EOF
 
 emdash_reason_output="$(run_fail "$SPRINT" complete)"
@@ -177,8 +177,8 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 ## Wrapup Gates
 | Gate | Status | Reason |
 |------|--------|--------|
-| simplifier | skipped | docs-only change |
-| security | skipped | no auth patterns |
+| code-simplifier | skipped | docs-only change |
+| security-review | skipped | no auth patterns |
 EOF
 
 all_skipped_output="$(run_fail "$SPRINT" complete)"
@@ -197,8 +197,8 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 ## Wrapup Gates
 | Gate | Status | Reason |
 |------|--------|--------|
-| reviewer | ran | reviewed tools/sprint gate logic |
-| simplifier | skipped | no code touched |
+| code-reviewer | ran | reviewed tools/sprint gate logic |
+| code-simplifier | skipped | no code touched |
 EOF
 
 # plan.md still has no Approach content from earlier override
@@ -351,8 +351,8 @@ cat > ".tickets/$id/acceptance.md" <<'EOF'
 ## Wrapup Gates
 | Gate | Status | Reason |
 |------|--------|--------|
-| reviewer | ran | reviewed tools/sprint gate logic |
-| simplifier | skipped | test-only change |
+| code-reviewer | ran | reviewed tools/sprint gate logic |
+| code-simplifier | skipped | test-only change |
 EOF
 
 # eval-report.md gate — missing report should block
