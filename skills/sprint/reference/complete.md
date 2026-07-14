@@ -42,43 +42,38 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    **Model tier for gates.** Documented exception to `AGENTS.md`'s `## Model Tiers` `review →
    Opus` default, scoped only to the two close-gate dispatches below.
 
-   - **Check for an explicit Gate model override first.** Read `plan.md`'s `## Sign-off`
-     line for a `| Gate model: <value>` segment. Valid `<value>`s (case-insensitive): a
-     model id (e.g. `haiku`, `sonnet`, `opus`), or the literal `session` to force full
-     session-model review — there is no separate `auto` value; omitting the field entirely
-     already means automatic. This field is set only by a live user instruction (e.g. "run
-     review/eval on haiku") or a manual edit — never inferred or asserted by the dispatching
-     agent itself. If the user gives the instruction verbally and the field isn't in
-     `plan.md` yet, write/update the Sign-off line with it immediately, before continuing —
-     so a compaction between the ask and the actual dispatch below doesn't lose it. If the
-     field is present (however it got there), skip the structural classification entirely
-     and go straight to **Apply the result** below with this value. If absent, fall through
-     to the structural check.
+   - **Explicit Gate model override wins — check first.** Read `plan.md`'s `## Sign-off` line
+     for a `| Gate model: <value>` segment. Valid `<value>`s (case-insensitive): a model id
+     (`haiku`, `sonnet`, `opus`), or literal `session` to force full session-model review — no
+     separate `auto`; omitting the field already means automatic. Set only by a live user
+     instruction ("run review/eval on haiku") or manual edit — never inferred or asserted by
+     the dispatching agent itself. If asked verbally and the field isn't in `plan.md` yet, write it
+     immediately, before continuing — so a compaction between ask and dispatch doesn't lose
+     it. If present, skip structural classification and jump to **Apply the result** with this
+     value. If absent, fall through.
    - **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
      (same command the reviewer prompt uses).
-   - **Check `git merge-base`'s exit status directly**, not the diff output. Failure
-     (missing `origin/main`, detached HEAD, no git baseline) means normal cost, never
-     low-risk — a failed `merge-base` substitution can still leave the outer `git diff` running
-     against a different, non-empty baseline, so empty diff output is neither guaranteed nor
-     evidence of low risk. Only exit status is reliable.
-   - **Classify low-risk** only if every changed path matches the allowlist —
-     `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `skills/**/gates/*.md`,
-     `standards/**/*.md`, or a root-level `*.md` — AND no path contains a security-sensitive
-     marker (`auth`, `secret`, `session`, `crypto`, `token`, `credential`). Deliberately narrow
-     path-name substring list, distinct from the broader semantic "security-sensitive"
-     definitions used elsewhere (`SKILL.md`'s high-risk trigger list, `security-review.md`'s
-     skip-logic list). Allowlist, not denylist: any non-matching path defaults to normal cost —
-     never overridden downward by the dispatching agent's own risk judgment.
+   - **Check `git merge-base`'s exit status, not the diff output.** Failure (missing
+     `origin/main`, detached HEAD, no git baseline) means normal cost, never low-risk — a
+     failed substitution can leave the outer `git diff` running against a different,
+     non-empty baseline, so empty output is neither guaranteed nor evidence of low risk. Only
+     exit status is reliable.
+   - **Classify low-risk** only if every changed path matches the allowlist — `docs/**/*.md`,
+     `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `skills/**/gates/*.md`,
+     `standards/**/*.md`, or root-level `*.md` — AND no path contains a security marker
+     (`auth`, `secret`, `session`, `crypto`, `token`, `credential`). This substring list is
+     deliberately narrower than the semantic "security-sensitive" definitions elsewhere
+     (`SKILL.md`'s high-risk triggers, `security-review.md`'s skip list). Allowlist, not
+     denylist: any non-matching path defaults to normal cost — never overridden downward by
+     the agent's own risk judgment.
    - **Apply the result.** With an explicit `Gate model:` value: `session` → omit `model`
-     (inherits the session model, same effect as today's "keep on full/session model"
-     override); any other value → pass it verbatim as `model` on both the reviewer and
-     evaluator `Agent` calls. Without one, fall back to the structural check: low-risk →
-     pass `model: "haiku"`; otherwise omit `model`. Check once; both gates share the
-     result — their actual verdicts (YES/NO for reviewer, pass/fail for evaluator) stay
-     separate and unrelated to this model-tier check.
-   - **High-risk sprints are unaffected** — the check only ever adds a cheap-model option,
-     never removes the mandatory dispatch itself. An explicit `Gate model:` override applies
-     regardless of tier, same as the structural low-risk check it can bypass.
+     (inherits session model); any other value → pass it verbatim as `model` on both reviewer
+     and evaluator `Agent` calls. Without one: low-risk → pass `model: "haiku"`; otherwise
+     omit `model`. Check once; both gates share the result — their verdicts (YES/NO,
+     pass/fail) stay separate from this check.
+   - **High-risk sprints are unaffected** — the check only adds a cheap-model option, never
+     removes the mandatory dispatch. An explicit `Gate model:` override applies regardless of
+     tier.
 
    **Shared gate mechanics (reviewer + evaluator).** Four rules, stated once: (a) close
    confirmation authorizes spawning either subagent — never ask separately; (b) both derive
