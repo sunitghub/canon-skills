@@ -233,6 +233,65 @@ assert_contains "$(cat "$SUMMARY_FILE")" "HEADLESS_VERDICT: PASS"
 assert_contains "$(cat "$SUMMARY_FILE")" "Verdict: YES"
 rm -f "$SUMMARY_FILE"
 
+# ── 11. Windows JSON-parse binary present but not on Windows: never exec'd ──
+# uname on this test runner is never MINGW/MSYS/CYGWIN, so the IS_WINDOWS
+# gate in sprint-headless must keep using python3 and never attempt to run
+# the checked-in Windows PE binary — a non-executable stub in its place
+# proves it: if sprint-headless ever tried to exec it, this would hard-fail
+# instead of the well-formed-response path succeeding as in case 8.
+
+rm -f "$WORK/.tickets/t-aaaa/review-notes.md" "$WORK/.tickets/t-aaaa/eval-report.md"
+FAKE_WIN_EXE="$ROOT/tools/sprint-headless-json-win.exe"
+BACKED_UP_WIN_EXE=0
+if [[ -f "$FAKE_WIN_EXE" ]]; then
+  cp "$FAKE_WIN_EXE" "$FAKE_WIN_EXE.orig-test-backup"
+  BACKED_UP_WIN_EXE=1
+fi
+printf 'not a real executable' > "$FAKE_WIN_EXE"
+
+(cd "$WORK" && PATH="$STUB_OK_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD >/dev/null)
+review_notes="$(cat "$WORK/.tickets/t-aaaa/review-notes.md")"
+assert_contains "$review_notes" "Verdict: YES"
+
+if [[ "$BACKED_UP_WIN_EXE" -eq 1 ]]; then
+  mv "$FAKE_WIN_EXE.orig-test-backup" "$FAKE_WIN_EXE"
+else
+  rm -f "$FAKE_WIN_EXE"
+fi
+
+# ── 12. Adversarial content through awk extract_report: no injection, no mangling ─
+
+rm -f "$WORK/.tickets/t-aaaa/review-notes.md" "$WORK/.tickets/t-aaaa/eval-report.md"
+
+STUB_ADV_DIR="$(mktemp -d)"
+cat > "$STUB_ADV_DIR/claude" <<'EOF'
+#!/usr/bin/env bash
+python3 -c '
+import json
+result = """Summary text.
+
+@@@CANON_HEADLESS_REPORT:reviewer@@@
+# Review Notes
+Verdict: YES
+Adversarial content: "quoted", `backticked`, $HOME, and a \\backslash\\ pair.
+@@@CANON_HEADLESS_REPORT:/reviewer@@@
+
+@@@CANON_HEADLESS_REPORT:evaluator@@@
+# Eval Report
+Verdict: pass: all good
+@@@CANON_HEADLESS_REPORT:/evaluator@@@
+
+HEADLESS_VERDICT: PASS"""
+print(json.dumps({"type": "result", "is_error": False, "session_id": "stub-adv", "result": result}))
+'
+EOF
+chmod +x "$STUB_ADV_DIR/claude"
+
+(cd "$WORK" && PATH="$STUB_ADV_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD >/dev/null)
+review_notes="$(cat "$WORK/.tickets/t-aaaa/review-notes.md")"
+assert_contains "$review_notes" 'Adversarial content: "quoted", `backticked`, $HOME, and a \backslash\ pair.'
+rm -rf "$STUB_ADV_DIR"
+
 rm -rf "$STUB_OK_DIR" "$STUB_BAD_DIR"
 
-echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text)"
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled)"

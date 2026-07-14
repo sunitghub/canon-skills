@@ -34,8 +34,11 @@ done
 if command -v go >/dev/null 2>&1; then
   printf '==> %s\n' "tools/sprint-check-go"
   (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go)
+  printf '==> %s\n' "tools/sprint-headless-json-go"
+  (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go)
 else
   printf '==> %s\n' "tools/sprint-check-go skipped (go absent)"
+  printf '==> %s\n' "tools/sprint-headless-json-go skipped (go absent)"
 fi
 
 printf '\nAll tests passed.\n'
