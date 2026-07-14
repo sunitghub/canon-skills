@@ -77,9 +77,9 @@ Use when `plan.md` identifies **2 or more independent subsystems** — subsystem
 Spawn one Explore subagent per subsystem in a single message (parallel). Each subagent receives:
 - The subsystem name
 - Its known entry point(s) from `plan.md`
-- Instruction: survey entry points, trace imports and callers, flag non-obvious relationships, list every relevant file with a `file:line — \`quoted text\`` citation. Read only.
+- Instruction: survey entry points, trace imports and callers, flag non-obvious relationships, list every relevant file with a `file:line — \`quoted text\`` citation. Read only — return findings as text; do not write files (the `Explore` agent type has no `Write` tool).
 
-Each subagent writes its findings to `.tickets/<id>/research-<subsystem>.md`.
+After each subagent returns, write its findings verbatim to `.tickets/<id>/research-<subsystem>.md`.
 
 **Valid completion — content, not existence:**
 
