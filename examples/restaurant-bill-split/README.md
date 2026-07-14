@@ -291,6 +291,14 @@ beyond that `git init`, since your repo may have as few as one commit.
    git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
    ```
 
+   Steps 2 and 3 are now both separate commits sitting between the base ref
+   from step 1 and your current `HEAD` — so the diff step 4 grades includes
+   *both* the ticket's own `plan.md`/`acceptance.md` (from step 2) and this
+   reintroduced bug. That's expected, not a mistake: the reviewer/evaluator
+   already read `plan.md`/`acceptance.md` directly as ground truth, so seeing
+   them again in the diff doesn't get flagged as scope creep — the reintroduced
+   bug is still the only thing the verdict actually turns on.
+
 4. Run headless grading against the base ref from step 1:
 
    ```
