@@ -1,6 +1,6 @@
 ---
 name: code-reviewer
-description: Review local changes or a remote PR across correctness, maintainability, security, and test coverage
+description: Review code touched this session (wrapup's own inline invocation), local changes, or a remote PR across correctness, maintainability, security, and test coverage
 category: dev
 tags: [code-review, pull-requests, quality]
 hidden: true
