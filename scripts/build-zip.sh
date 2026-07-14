@@ -10,8 +10,11 @@ DIST_DIR="$REPO_ROOT/dist"
 FIXTURE_ZIP="$DIST_DIR/context-check-fixture.zip"
 FIXTURE_DIR="$REPO_ROOT/examples/context-check-fixture"
 FIXTURE_STAGE="$(mktemp -d)"
+HANDOFF_SKILL_ZIP="$DIST_DIR/handoff-skill.zip"
+HANDOFF_SKILL_DIR="$REPO_ROOT/dist/handoff-skill"
+HANDOFF_SKILL_STAGE="$(mktemp -d)"
 
-cleanup() { rm -rf "$FIXTURE_STAGE"; }
+cleanup() { rm -rf "$FIXTURE_STAGE" "$HANDOFF_SKILL_STAGE"; }
 trap cleanup EXIT
 
 mkdir -p "$DIST_DIR"
@@ -31,6 +34,23 @@ if [[ -d "$FIXTURE_DIR" ]]; then
   echo "dist: context-check-fixture.zip updated ($(du -sh "$FIXTURE_ZIP" | cut -f1))"
 else
   echo "Error: fixture dir not found: $FIXTURE_DIR" >&2
+  exit 1
+fi
+
+# ── Zip: handoff skill (standalone dist bundle) ──────────────────────────────
+if [[ -d "$HANDOFF_SKILL_DIR" ]]; then
+  rm -f "$HANDOFF_SKILL_ZIP"
+  mkdir -p "$HANDOFF_SKILL_STAGE"
+  # staged/zipped as "handoff" (not "handoff-skill") so the extracted
+  # directory name matches the SKILL.md frontmatter `name:` field and the
+  # installed command is /handoff, per standards/skill-setup-std.md naming
+  cp -r "$HANDOFF_SKILL_DIR" "$HANDOFF_SKILL_STAGE/handoff"
+  find "$HANDOFF_SKILL_STAGE" \( -name ".DS_Store" -o -name "*.pyc" \) -delete 2>/dev/null || true
+  find "$HANDOFF_SKILL_STAGE" -exec touch -t 202001010000 {} +
+  (cd "$HANDOFF_SKILL_STAGE" && zip -rX "$HANDOFF_SKILL_ZIP" "handoff" --quiet)
+  echo "dist: handoff-skill.zip updated ($(du -sh "$HANDOFF_SKILL_ZIP" | cut -f1))"
+else
+  echo "Error: handoff skill dir not found: $HANDOFF_SKILL_DIR" >&2
   exit 1
 fi
 
