@@ -8,9 +8,9 @@
 
 Wait for explicit confirmation. Don't proceed on a broad instruction like "resume"/"continue"/"finish" without specific close approval. An unwanted close is costly; asking is free.
 
-1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline on files modified since sprint start. Note: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session" — a multi-session sprint won't get earlier-session files re-checked by those two. Git-derived gates (reviewer, security-review, evaluator) diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
+1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit) on files modified since sprint start. wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session" — a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
-   After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md`:
+   The table below is named "Wrapup Gates" for historical reasons — it also records `reviewer`/`eval`, the two close-time gates that run outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md`:
 
    ```markdown
    ## Wrapup Gates
