@@ -130,18 +130,24 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
    **Log the subagent run.** Immediately after the reviewer subagent completes, run
-   `subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type reviewer` (bare —
-   it's on PATH, same as `sprint`/`tkt`). This writes to the same `.claude/subagent-runs.jsonl`
-   audit trail as the evaluator's own log call (step 3) — required now that no `SubagentStop`
-   hook does this automatically. `_gate_eval_report` (step 3) matches by timestamp only, not
-   `agent_type`, so this reviewer entry isn't what satisfies that specific gate — the
-   evaluator's own log call is. Log it anyway: it's the complete audit trail of which subagents
-   actually ran this sprint, not just the one the close gate happens to check. **The id is
-   present in both foreground and background dispatch** — live-reproduced: it appears as a
-   trailing `agentId: <id>` token in the raw Agent-call result, which may be concatenated
-   directly onto the subagent's own returned text with no separator or newline (e.g.
-   `...verdict: YESagentId: a0051f...`). Look for it there rather than assuming it's absent
-   if a long report makes it easy to miss.
+   `subagent-log.sh --agent-id <id> --agent-type reviewer` (bare — it's on PATH, same as
+   `sprint`/`tkt`). This writes to the same `.claude/subagent-runs.jsonl` audit trail as the
+   evaluator's own log call (step 3) — required now that no `SubagentStop` hook does this
+   automatically. `_gate_eval_report` (step 3) matches by timestamp only, not `agent_type` or
+   `agent_id`, so this reviewer entry isn't what satisfies that specific gate — the evaluator's
+   own log call is. Log it anyway: it's the complete audit trail of which subagents actually ran
+   this sprint, not just the one the close gate happens to check.
+
+   **What to pass for `<id>`.** The gate never reads `agent_id` — it only needs a jsonl entry
+   whose timestamp lands in the window (see step 3). So a harness-provided dispatch id is *not*
+   required. Use whichever is available, in order: (1) a trailing `agentId: <id>` token if the
+   raw Agent-call result exposes one — it may be concatenated directly onto the subagent's
+   returned text with no separator (e.g. `...verdict: YESagentId: a0051f...`); (2) otherwise a
+   stable synthetic id such as `reviewer-<ticket-id>` — same pattern `sprint-headless` already
+   uses (`--agent-id "headless-$SESSION_ID"`). Do **not** stall or switch dispatch modes hunting
+   for a token: a `Plan`-type foreground `Agent` call may expose no `agentId` at all — reproduced
+   independently in canon (`t-9a75`) and a separate Windows project (`t-6cd0`), so absence is
+   expected, not an error.
 
 3. **Evaluator review (normal+ tier).** Same `Tier: trivial` downgrade condition and exclusion
    as the reviewer gate above (skip only if `plan.md`'s `## Sign-off` `Tier:` field value is
@@ -170,15 +176,23 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    (see `t-ce74`/`t-b261` in `DECISIONS.md`). (Same wording as step 2 above — mirror, keep
    in sync.)
 
-   **Log the subagent run.** Immediately after the evaluator subagent completes, run
-   `subagent-log.sh --agent-id <agent-id-from-the-Agent-result> --agent-type evaluator` (bare —
-   it's on PATH, same as `sprint`/`tkt`), before reading `eval-report.md`. `sprint complete`'s
-   close gate (`_gate_eval_report`) hard-fails if `.claude/subagent-runs.jsonl` exists but has
-   no entry within ±60 minutes of the `evaluator-run-id` the evaluator wrote — this CLI call is
-   what satisfies that check now that no hook does it automatically. Skipping it risks a
-   confusing close-time failure on an otherwise-passing sprint. Same id-location note as the
-   reviewer gate above — the trailing `agentId: <id>` token may be glued onto the subagent's
-   own returned text with no separator; look for it there.
+   **Log the subagent run.** Immediately after the evaluator subagent completes, read the
+   `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`, then
+   run `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator` (bare — it's on
+   PATH, same as `sprint`/`tkt`). `sprint complete`'s close gate (`_gate_eval_report`)
+   hard-fails if `.claude/subagent-runs.jsonl` exists but has no entry within ±60 minutes of
+   that `evaluator-run-id` — this CLI call is what satisfies that check now that no hook does it
+   automatically. Skipping it risks a confusing close-time failure on an otherwise-passing
+   sprint.
+
+   **What to pass for `<id>`.** The gate matches only on the log entry's timestamp, never on the
+   `agent_id` value, so reusing the `evaluator-run-id` here is both sufficient and self-consistent
+   (it ties the audit line to the exact run recorded in the report). A harness dispatch token is
+   *not* required — a `Plan`-type foreground `Agent` call may expose none (reproduced in canon
+   `t-9a75` and a separate Windows project `t-6cd0`). Do not stall or switch to background-mode
+   dispatch to manufacture a token; if you do have one and prefer it, that works too, but
+   the run-id is always available from the report. (Same `<id>`-source guidance as step 2 —
+   mirror, keep in sync.)
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes and close its handle per
    the shared gate mechanics above. Surface any `fail` findings to the user before proceeding
