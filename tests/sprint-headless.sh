@@ -14,7 +14,24 @@ source "$ROOT/tests/helpers.sh"
 SPRINT_HEADLESS="$ROOT/tools/sprint-headless"
 
 WORK="$(mktemp -d)"
-cleanup() { rm -rf "$WORK"; }
+FAKE_WIN_EXE="$ROOT/tools/sprint-headless-json-win.exe"
+BACKED_UP_WIN_EXE=0
+# Trap-guaranteed, not just sequential cleanup: an assertion failure
+# (fail()/assert_contains exit on the spot under set -e) mid-mutation must
+# not leave the real, git-tracked win.exe corrupted in the working tree.
+# Also called directly right after the mutating test below, on the success
+# path, so the real binary isn't left swapped for the rest of the run.
+restore_win_exe_stub() {
+  if [[ "$BACKED_UP_WIN_EXE" -eq 1 && -f "$FAKE_WIN_EXE.orig-test-backup" ]]; then
+    mv -f "$FAKE_WIN_EXE.orig-test-backup" "$FAKE_WIN_EXE"
+  elif [[ "$BACKED_UP_WIN_EXE" -eq 2 ]]; then
+    rm -f "$FAKE_WIN_EXE"
+  fi
+}
+cleanup() {
+  rm -rf "$WORK"
+  restore_win_exe_stub
+}
 trap cleanup EXIT
 
 git -C "$WORK" init -q
@@ -239,13 +256,17 @@ rm -f "$SUMMARY_FILE"
 # the checked-in Windows PE binary — a non-executable stub in its place
 # proves it: if sprint-headless ever tried to exec it, this would hard-fail
 # instead of the well-formed-response path succeeding as in case 8.
+# BACKED_UP_WIN_EXE/FAKE_WIN_EXE are declared at the top of this file so
+# cleanup()'s EXIT trap can restore the real binary even if an assertion
+# below fails mid-test (set -e exits immediately, skipping any restore
+# written as plain sequential code after it).
 
 rm -f "$WORK/.tickets/t-aaaa/review-notes.md" "$WORK/.tickets/t-aaaa/eval-report.md"
-FAKE_WIN_EXE="$ROOT/tools/sprint-headless-json-win.exe"
-BACKED_UP_WIN_EXE=0
 if [[ -f "$FAKE_WIN_EXE" ]]; then
   cp "$FAKE_WIN_EXE" "$FAKE_WIN_EXE.orig-test-backup"
   BACKED_UP_WIN_EXE=1
+else
+  BACKED_UP_WIN_EXE=2
 fi
 printf 'not a real executable' > "$FAKE_WIN_EXE"
 
@@ -253,11 +274,7 @@ printf 'not a real executable' > "$FAKE_WIN_EXE"
 review_notes="$(cat "$WORK/.tickets/t-aaaa/review-notes.md")"
 assert_contains "$review_notes" "Verdict: YES"
 
-if [[ "$BACKED_UP_WIN_EXE" -eq 1 ]]; then
-  mv "$FAKE_WIN_EXE.orig-test-backup" "$FAKE_WIN_EXE"
-else
-  rm -f "$FAKE_WIN_EXE"
-fi
+restore_win_exe_stub
 
 # ── 12. Adversarial content through awk extract_report: no injection, no mangling ─
 
