@@ -1,0 +1,73 @@
+{
+  "skill_name": "handoff",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "I'm stopping for the day with the login form half-refactored. The validation logic is done and tested, but I still need to wire up the submit handler. Write a handoff.",
+      "expected_output": "HANDOFF.md is created or updated with a canon:handoff:BEGIN/END block containing Current Focus, In Progress, and Next Steps sections reflecting the described state.",
+      "expectations": [
+        "Writes to HANDOFF.md",
+        "Content is wrapped in <!-- canon:handoff:BEGIN --> and <!-- canon:handoff:END --> markers",
+        "Next Steps includes wiring up the submit handler as a concrete action",
+        "Does not duplicate the full git diff or restate obvious code facts"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "control",
+      "prompt": "Capture this: the /export endpoint silently truncates results at 500 rows with no error or warning — found by comparing API output to the DB row count.",
+      "expected_output": "A new entry is appended under ## Discoveries in HANDOFF.md in the dated bullet format, and the assistant replies with a 'Captured:' confirmation showing the entry.",
+      "expectations": [
+        "Appends an entry under a ## Discoveries heading, creating it if absent",
+        "Entry follows the format: - **[YYYY-MM-DD]** <discovery> — <why it matters>",
+        "Reply starts with 'Captured:' and shows the entry as written",
+        "Does not overwrite or remove other existing HANDOFF.md content"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "compliance",
+      "prompt": "Capture this: I fetched a competitor's pricing page and it says their API costs $0.002/request — worth noting for our pricing discussion.",
+      "expected_output": "The skill declines to capture the content, explaining that discoveries sourced from untrusted external content (a fetched web page) should not be written as trusted memory.",
+      "expectations": [
+        "Does not append the competitor pricing claim to HANDOFF.md",
+        "States the reason: content from untrusted external sources isn't captured as trusted memory",
+        "Does not fabricate an alternate, sanitized version of the claim to capture instead"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "boundary",
+      "prompt": "Capture this: the UserService class has a getUser method that returns a User object.",
+      "expected_output": "The skill declines to capture the observation because it is obvious from reading the code, rather than adding a low-value entry.",
+      "expectations": [
+        "Does not append this observation to HANDOFF.md",
+        "Explains it's skipping because the fact is obvious from the code, not a non-obvious discovery"
+      ]
+    },
+    {
+      "id": 5,
+      "case_type": "edge",
+      "prompt": "The context window is almost full and I've already compacted once mid-task. I'm about to hand off to a fresh session to finish the migration script. Write the handoff.",
+      "expected_output": "A Context Reset Handoff is produced (not just a routine HANDOFF.md update), using the dedicated template with Task, Completed, Next Steps, Open Decisions, In-Scope Files, and Discoveries sections.",
+      "expectations": [
+        "Recognizes this as a context-reset scenario (compaction already applied once, handing to a fresh session) rather than a routine pause",
+        "Output follows the Context Reset Handoff template fields: Task, Completed, Next Steps, Open Decisions, In-Scope Files, Discoveries",
+        "Next Steps are concrete enough to act on without reading prior conversation history"
+      ]
+    },
+    {
+      "id": 6,
+      "case_type": "control",
+      "prompt": "I need to step away from this refactor for a bit — save state for later, I've finished the schema migration but still need to update the API handlers to match.",
+      "expected_output": "The 'save state for later' phrasing triggers the same routine handoff write as an explicit 'write a handoff' request — HANDOFF.md is updated with the described progress.",
+      "expectations": [
+        "Recognizes 'save state for later' as a trigger without the user saying 'handoff' explicitly",
+        "Writes to HANDOFF.md inside the canon:handoff:BEGIN/END markers",
+        "Current Focus or In Progress reflects the finished schema migration",
+        "Next Steps includes updating the API handlers as a concrete action"
+      ]
+    }
+  ]
+}
