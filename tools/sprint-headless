@@ -127,7 +127,21 @@ if [[ "$INVOKE_STATUS" -ne 0 ]]; then
   exit 1
 fi
 
-PARSED="$(echo "$RESULT_JSON" | python3 -c '
+# On Windows, python3 isn't bundled with Git for Windows — use the committed
+# Go binary instead when running there and present; every other platform
+# (and Windows with the binary absent, e.g. an older checkout) keeps using
+# python3 unchanged. Never try to exec the Windows PE binary on macOS/Linux —
+# it would just fail with "cannot execute binary file".
+IS_WINDOWS=0
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
+esac
+JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
+
+if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
+  PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
+elif command -v python3 >/dev/null 2>&1; then
+  PARSED="$(echo "$RESULT_JSON" | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -139,6 +153,10 @@ session_id = d.get("session_id", "unknown")
 result = d.get("result", "").replace(chr(10), chr(2))
 print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
 ')"
+else
+  echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present — it wasn't found). Hard-failing." >&2
+  exit 1
+fi
 IS_ERROR="$(echo "$PARSED" | cut -f1)"
 SESSION_ID="$(echo "$PARSED" | cut -f2)"
 RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
@@ -164,18 +182,25 @@ fi
 # or corrupts an existing file, it just means that one file doesn't get written.
 extract_report() {
   local tag="$1"
-  python3 -c '
-import sys
-tag = sys.argv[1]
-text = sys.stdin.read()
-start = f"@@@CANON_HEADLESS_REPORT:{tag}@@@"
-end = f"@@@CANON_HEADLESS_REPORT:/{tag}@@@"
-si = text.find(start)
-ei = text.find(end)
-if si == -1 or ei == -1 or ei <= si:
-    sys.exit(1)
-sys.stdout.write(text[si + len(start):ei].strip("\n") + "\n")
-' "$tag" <<< "$RESULT_TEXT"
+  # Plain-text delimiter search on already-unescaped $RESULT_TEXT — no real
+  # JSON parsing, so this is portable to awk without the escaping risk that
+  # keeps the is_error/session_id/result parse above on python3/Go.
+  awk -v start="@@@CANON_HEADLESS_REPORT:${tag}@@@" -v end="@@@CANON_HEADLESS_REPORT:/${tag}@@@" '
+    $0 == end {
+      if (started) { found_end = 1 }
+      exit
+    }
+    started { n++; buf[n] = $0; next }
+    $0 == start { started = 1 }
+    END {
+      if (!started || !found_end) exit 1
+      first = 1; last = n
+      while (first <= last && buf[first] == "") first++
+      while (last >= first && buf[last] == "") last--
+      if (first > last) { print ""; exit }
+      for (i = first; i <= last; i++) print buf[i]
+    }
+  ' <<< "$RESULT_TEXT"
 }
 
 if REVIEW_CONTENT="$(extract_report reviewer)"; then

@@ -43,3 +43,13 @@ if command -v go >/dev/null 2>&1; then
 else
   echo "dist: sprint-check-win.exe skipped (go absent)"
 fi
+
+# ── Binary: sprint-headless-json-win.exe (Windows JSON-parse helper) ────────
+if command -v go >/dev/null 2>&1; then
+  GOOS=windows GOARCH=amd64 go build \
+    -o "$REPO_ROOT/tools/sprint-headless-json-win.exe" \
+    "$REPO_ROOT/tools/sprint-headless-json-go/main.go"
+  echo "dist: sprint-headless-json-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/sprint-headless-json-win.exe" | cut -f1))"
+else
+  echo "dist: sprint-headless-json-win.exe skipped (go absent)"
+fi
