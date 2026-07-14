@@ -1,5 +1,5 @@
 ---
-name: review
+name: reviewer
 description: Review completed sprint work for code quality, scope, and standards violations from a clean context — advisory gate at sprint close; verdict YES (clean) or NO (findings)
 category: dev
 tags: [quality, review, sprint]
@@ -7,6 +7,10 @@ hidden: true
 ---
 
 # Review
+
+<!-- Not to be confused with skills/wrapup/gates/reviewer.md, whose gate name is
+     "code-reviewer" — this file's own gate name is "reviewer", despite the
+     opposite-looking filenames. See complete.md's Wrapup Gates table. -->
 
 Called automatically by `sprint complete` — do not invoke directly.
 
