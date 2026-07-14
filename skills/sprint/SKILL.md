@@ -45,7 +45,7 @@ Work directly, then report verification.
 
 Default for focused, reversible product/docs/code changes that affect a small surface.
 
-Run `sprint start`, create `acceptance.md` and `plan.md`, then build after approval. Keep plan.md brief: files, approach, known constraints, and test plan.
+Run `sprint start`, create `acceptance.md` and `plan.md`, then build after approval. Keep plan.md brief: files, approach, known constraints. Test plan goes in `acceptance.md ## Test Plan`, not plan.md.
 
 Skip full orient, grill, and impact-analysis unless the local code is unclear or a high-risk trigger appears.
 
