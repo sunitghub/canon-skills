@@ -24,9 +24,10 @@ fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Build artifacts build-zip.sh may touch. Watched generically below (git status,
-# not a hardcoded per-file list) so a new artifact never needs a second edit here.
-ARTIFACT_PATHS=(dist/ tools/sprint-check-win.exe)
+# Build artifacts build-zip.sh may touch. Each is a hardcoded entry, not
+# auto-discovered — adding a new build-zip.sh artifact output also needs a
+# new entry here, or this hook silently leaves it uncommitted after rebuild.
+ARTIFACT_PATHS=(dist/ tools/sprint-check-win.exe tools/sprint-headless-json-win.exe)
 
 # Skip rebuild if the prior commit only touched build artifacts (e.g. this hook's
 # own commit, or an artifact-only commit) -- nothing upstream could have changed.
