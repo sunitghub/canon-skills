@@ -114,3 +114,5 @@
     Re-read `plan.md` after compaction or context reset.
 
     **During implementation, `plan.md` and `acceptance.md` are the source of truth.** If chat history or new discoveries conflict with the approved plan, stop and surface the conflict before changing scope. The agent resolves ambiguity inside the approved scope; scope changes require user confirmation.
+
+    **If `acceptance.md ## Criteria` is edited or gains an item mid-sprint, sync `acceptance.md ## Test Plan` in the same pass** — add coverage for the new/changed behavior, and fix any existing Test Plan line whose coverage no longer matches. Do this before reporting the update as done, not only when asked. If the change also affects the implementation approach, update `plan.md ## Approach` too.
