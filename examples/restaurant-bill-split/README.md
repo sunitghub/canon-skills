@@ -33,7 +33,12 @@ to the total bill.
 ## Beginner-friendly workflow
 
 1. Create a project folder named `RestaurantBillSplit` and open it in VS Code.
-2. Initialize the Canon skills and sprint workflow as shown in the workshop.
+2. Initialize the Canon skills and sprint workflow as shown in the workshop. Also
+   copy this example's own `.gitignore` into your project root — it keeps local
+   install artifacts (`.claude/skills`, `.agents/`) out of git by default.
+   Ticket docs and `HANDOFF.md` are deliberately *not* ignored here (unlike
+   canon's own repo) — plain `git add`/`git commit` picks them up like any
+   other project file, no separate force-add step to learn.
 3. Create (or open) `AGENTS.md` in the project root and add this section, exactly as written:
 
    ```markdown
@@ -279,8 +284,10 @@ beyond that `git init`, since your repo may have as few as one commit.
    This flips `ci: true` in the ticket's frontmatter and commits the ticket's
    docs itself (`git add -f .tickets/<your-ticket-id>/` + a commit) — a CI
    checkout (or, here, a fresh headless run) has nothing to grade against
-   otherwise, and `.tickets/` is gitignored by default. No separate manual
-   commit step is needed.
+   otherwise. This workshop's `.gitignore` doesn't ignore `.tickets/`, so the
+   force-add is a harmless no-op here — but `tkt ci on` still runs it and
+   commits, so this step works the same way whether or not your project
+   ignores `.tickets/`. No separate manual commit step is needed.
 
 3. Create something for headless grading to actually check — stand in for a
    teammate's PR by temporarily reintroducing a bug: comment out the
