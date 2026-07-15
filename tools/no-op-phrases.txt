@@ -1,0 +1,46 @@
+# no-op-phrases.txt — canonical list of no-op / filler phrases for skill files.
+#
+# A no-op is an instruction that does nothing to alter agent behavior: decorative
+# fluff and vague guidelines that burn reasoning tokens and obscure real instructions.
+# (Slide-deck Tip 7, "Kill No-Ops in Skill Files"; flagged as a big finding on prod skills.)
+#
+# Single owner (per standards/efficiency.md "same fact in multiple files -> one owner").
+# Consumers:
+#   - tools/canon-dev.sh  lint  (SP-NOOP, mechanical/deterministic check)
+#   - skills/repo-workflow-audit/SKILL.md  (dispatch #2 lean-language pass, LLM judgment)
+#   - skills/skill-export/SKILL.md  (filler removal during export)
+#
+# Format: one phrase per line, lowercase. Blank lines and lines starting with '#' are ignored.
+# Matching is case-insensitive. The linter only flags a phrase used as a directive
+# (leading a bullet/line or as a standalone sentence) and skips quoted, backticked, or
+# negated occurrences to limit false positives. The definitive test is still the No-Op Test:
+# remove the line — if agent output would not change, delete it (needs evals to confirm).
+
+# --- Decorative quality fluff (deck examples) ---
+be thorough
+be careful
+write clean code
+write clean, high-quality code
+write high-quality code
+high-quality code
+make implementation easy to read
+make the implementation easy to read
+follow best practices
+use best practices
+write good code
+do a good job
+ensure correctness
+
+# --- Vague hedging / filler (canon skill-export list) ---
+please
+make sure to
+you should
+always remember to
+it's important to
+it is important to
+note that
+keep in mind that
+as appropriate
+as needed
+if necessary
+where appropriate
