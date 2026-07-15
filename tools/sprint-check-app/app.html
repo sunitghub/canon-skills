@@ -866,7 +866,7 @@
     .doc-table th { background: var(--surface-raised); color: var(--text); font-weight: 600; font-size: 12px; white-space: nowrap; }
     .doc-table td { color: var(--text-body); font-size: 12px; line-height: 1.5; overflow-wrap: break-word; }
     .doc-table tr:hover td { background: var(--surface-hover); }
-    .doc-mockup-img { max-width: 100%; height: auto; display: block; margin: 10px 0; border-radius: 6px; border: 1px solid var(--border); }
+    .doc-visual-img { max-width: 100%; height: auto; display: block; margin: 10px 0; border-radius: 6px; border: 1px solid var(--border); }
     .doc-table td.status-pass    { color: #16a34a; font-weight: 600; }
     .doc-table td.status-fail    { color: #dc2626; font-weight: 600; }
     .doc-table td.status-partial { color: #d97706; font-weight: 600; }
@@ -1998,7 +1998,7 @@ function md(raw, ticketId) {
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
       const url = (ticketId ? resolveMockupSrc(src, ticketId) : src).replace(/"/g, '&quot;');
-      return `<img class="doc-mockup-img" src="${url}" alt="${alt.replace(/"/g, '&quot;')}" loading="lazy">`;
+      return `<img class="doc-visual-img" src="${url}" alt="${alt.replace(/"/g, '&quot;')}" loading="lazy">`;
     })
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
     .replace(/^\*\*([^*\n][^\n]*)$/gm,'<strong style="color:var(--text)">$1</strong>')

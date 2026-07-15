@@ -729,19 +729,19 @@ test.describe('board modal', () => {
     }
   });
 
-  test('mockup image referenced via markdown renders inline in the doc', async ({ page }) => {
+  test('visual image referenced via markdown renders inline in the doc', async ({ page }) => {
     const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
-      fs.mkdirSync(path.join(ticketDir, 'mockups'), { recursive: true });
+      fs.mkdirSync(path.join(ticketDir, 'visuals'), { recursive: true });
       // 1x1 transparent PNG — real, decodable bytes, not just a magic-number stub,
       // so the browser actually loads it rather than firing an error event.
       const png = Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
         'base64'
       );
-      fs.writeFileSync(path.join(ticketDir, 'mockups', 'chosen.png'), png);
+      fs.writeFileSync(path.join(ticketDir, 'visuals', 'chosen.png'), png);
 
       fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
         '---',
@@ -766,7 +766,7 @@ test.describe('board modal', () => {
         '## Approach',
         'Chosen visual direction:',
         '',
-        '![Chosen mockup](mockups/chosen.png)',
+        '![Chosen visual](visuals/chosen.png)',
         '',
       ].join('\n'));
 
@@ -778,14 +778,14 @@ test.describe('board modal', () => {
       await page.locator('.doc-tab', { hasText: 'Plan' }).click();
       await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
 
-      const img = page.locator('#m-body img.doc-mockup-img');
+      const img = page.locator('#m-body img.doc-visual-img');
       await expect(img).toBeVisible();
-      await expect(img).toHaveAttribute('src', `/api/ticket-image/${id}/mockups/chosen.png`);
+      await expect(img).toHaveAttribute('src', `/api/ticket-image/${id}/visuals/chosen.png`);
       // Confirm the browser actually decoded real image bytes, not a broken-image icon.
       await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
 
       // Raw markdown syntax must not leak through as literal text once rendered.
-      await expect(page.locator('#m-body')).not.toContainText('![Chosen mockup]');
+      await expect(page.locator('#m-body')).not.toContainText('![Chosen visual]');
     } finally {
       fs.rmSync(ticketDir, { recursive: true, force: true });
     }
@@ -796,7 +796,7 @@ test.describe('board modal', () => {
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
-      fs.mkdirSync(path.join(ticketDir, 'mockups'), { recursive: true });
+      fs.mkdirSync(path.join(ticketDir, 'visuals'), { recursive: true });
       fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
         '---',
         `id: ${id}`,
@@ -816,14 +816,14 @@ test.describe('board modal', () => {
       const wrongExt = await request.get(`${BASE}/api/ticket-image/${id}/ticket.md`);
       expect(wrongExt.status()).toBe(404);
 
-      const missing = await request.get(`${BASE}/api/ticket-image/${id}/mockups/does-not-exist.png`);
+      const missing = await request.get(`${BASE}/api/ticket-image/${id}/visuals/does-not-exist.png`);
       expect(missing.status()).toBe(404);
     } finally {
       fs.rmSync(ticketDir, { recursive: true, force: true });
     }
   });
 
-  test('a quote-breaking mockup src cannot inject a live HTML attribute', async ({ page }) => {
+  test('a quote-breaking visual src cannot inject a live HTML attribute', async ({ page }) => {
     const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
@@ -863,7 +863,7 @@ test.describe('board modal', () => {
       await page.locator(`.card[data-id="${id}"]`).click();
       await page.locator('.doc-tab', { hasText: 'Plan' }).click();
       await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
-      await expect(page.locator('#m-body img.doc-mockup-img')).toBeVisible();
+      await expect(page.locator('#m-body img.doc-visual-img')).toBeVisible();
 
       const fired = await page.evaluate(() => window.__xss_fired);
       expect(fired).toBeUndefined();
@@ -877,12 +877,12 @@ test.describe('board modal', () => {
     const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
 
     try {
-      fs.mkdirSync(path.join(ticketDir, 'mockups'), { recursive: true });
+      fs.mkdirSync(path.join(ticketDir, 'visuals'), { recursive: true });
       const png = Buffer.from(
         'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
         'base64'
       );
-      fs.writeFileSync(path.join(ticketDir, 'mockups', 'real.png'), png);
+      fs.writeFileSync(path.join(ticketDir, 'visuals', 'real.png'), png);
 
       fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
         '---',
@@ -908,7 +908,7 @@ test.describe('board modal', () => {
         'Documentation showing syntax as code: `![alt](src)` should stay literal.',
         'Also test bold-as-code: `**not bold**` should stay literal.',
         'Also test pipe-in-code: `a|b|c` should stay literal, not break a table.',
-        'A real image reference: ![real mockup](mockups/real.png)',
+        'A real image reference: ![real visual](visuals/real.png)',
         '',
         '## Eval-style table',
         '| Criterion | Status | Evidence |',
@@ -933,7 +933,7 @@ test.describe('board modal', () => {
       const boldTexts = await body.locator('strong').allTextContents();
       expect(boldTexts).not.toContain('not bold');
 
-      const img = body.locator('img.doc-mockup-img');
+      const img = body.locator('img.doc-visual-img');
       await expect(img).toBeVisible();
       await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
 
@@ -978,7 +978,7 @@ test.describe('board modal', () => {
         '## Evidence table',
         '| Criterion | Status | Evidence |',
         '|---|---|---|',
-        '| Uses embed | pass | `standards/ticket-layout.md:1 — "already-saved \\`mockups/x.png\\` candidate, must be a real markdown image embed — \\`![alt](mockups/ghost.png)\\` — never a bare mention."` |',
+        '| Uses embed | pass | `standards/ticket-layout.md:1 — "already-saved \\`visuals/x.png\\` candidate, must be a real markdown image embed — \\`![alt](visuals/ghost.png)\\` — never a bare mention."` |',
         '',
       ].join('\n'));
 
@@ -994,15 +994,15 @@ test.describe('board modal', () => {
 
       // The whole citation must render as one code span with the backslash
       // stripped and the inner backticks restored as plain characters — not
-      // as a broken <img> pointing at a nonexistent mockups/ghost.png.
+      // as a broken <img> pointing at a nonexistent visuals/ghost.png.
       const codeTexts = await body.locator('code.doc-code').allTextContents();
-      const citation = codeTexts.find(t => t.includes('mockups/ghost.png'));
+      const citation = codeTexts.find(t => t.includes('visuals/ghost.png'));
       expect(citation).toBeTruthy();
-      expect(citation).toContain('`mockups/x.png`');
-      expect(citation).toContain('`![alt](mockups/ghost.png)`');
+      expect(citation).toContain('`visuals/x.png`');
+      expect(citation).toContain('`![alt](visuals/ghost.png)`');
       expect(citation).not.toContain('\\`');
 
-      await expect(body.locator('img.doc-mockup-img')).toHaveCount(0);
+      await expect(body.locator('img.doc-visual-img')).toHaveCount(0);
     } finally {
       fs.rmSync(ticketDir, { recursive: true, force: true });
     }

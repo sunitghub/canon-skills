@@ -301,7 +301,7 @@ func TestSafeTicketDocRejectsSymlinkEscape(t *testing.T) {
 	outsideFile := filepath.Join(outsideDir, "secret.png")
 	writeFile(t, outsideFile, "secret")
 
-	ticketDir := filepath.Join(ticketsDir, "t-symv", "mockups")
+	ticketDir := filepath.Join(ticketsDir, "t-symv", "visuals")
 	if err := os.MkdirAll(ticketDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -309,17 +309,17 @@ func TestSafeTicketDocRejectsSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, ok := safeTicketDoc("t-symv/mockups/evil.png", ".png"); ok {
+	if _, ok := safeTicketDoc("t-symv/visuals/evil.png", ".png"); ok {
 		t.Fatal("safeTicketDoc accepted a symlink escaping ticketsDir")
 	}
 }
 
 func TestSafeTicketDocAcceptsLegitimateNestedPath(t *testing.T) {
 	setupTestProject(t)
-	realFile := filepath.Join(ticketsDir, "t-legt", "mockups", "real.png")
+	realFile := filepath.Join(ticketsDir, "t-legt", "visuals", "real.png")
 	writeFile(t, realFile, "\x89PNG\r\n\x1a\n")
 
-	p, ok := safeTicketDoc("t-legt/mockups/real.png", ".png")
+	p, ok := safeTicketDoc("t-legt/visuals/real.png", ".png")
 	if !ok {
 		t.Fatal("safeTicketDoc rejected a legitimate nested real file")
 	}
