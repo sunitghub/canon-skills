@@ -155,7 +155,7 @@ Each sprint produces up to five docs:
 
 All are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
 
-**Gated, not vibes.** The CLI owns state. `sprint complete` refuses to close while any acceptance or test-plan box is unchecked, `summary.md` is missing, or the `## Wrapup Gates` record is absent. The board surfaces the same checks early — cards flag `incomplete` in red before close-time.
+**Gated, not vibes.** The CLI owns state. `sprint complete` refuses to close while any acceptance or test-plan box is unchecked, `summary.md` is missing, the `## Wrapup Gates` record is absent, the evaluator run-id field is missing, `plan.md`'s Approach or Sign-off is empty or unapproved, or the eval verdict isn't `pass:` — the same full gate set as **Mechanical close gate** above. The board surfaces the same checks early — cards flag `incomplete` in red before close-time.
 
 Layering is intentional: `sprint complete` is CLI-enforced; planning, audits,
 test judgment, and clean-context evaluation are agent-required; `sprint-check`

@@ -94,7 +94,7 @@ One workflow command drives the lifecycle. The CLI handles deterministic state; 
 
 Enforcement layers:
 
-- **CLI-enforced:** ticket state, one active sprint, required sprint files, required checklist items, unchecked boxes, `summary.md`, `## Wrapup Gates`, plan Approach content, and the eval verdict being `pass` (not just present — `fail` or `partial` both block).
+- **CLI-enforced:** ticket state, one active sprint, required sprint files, required checklist items, unchecked boxes, `summary.md`, `## Wrapup Gates`, plan Approach content, plan `## Sign-off` (present and approved), the evaluator run-id field being present, and the eval verdict being `pass` (not just present — `fail` or `partial` both block).
 - **Agent-required:** tier classification, orientation, gray-area resolution, impact analysis, wrapup review/audit steps, test judgment, acceptance judgment, and invoking clean-context eval.
 - **Board-surfaced:** readiness indicators, inline warnings, ticket docs, commit/ticket context, and early visibility before the close gate runs.
 

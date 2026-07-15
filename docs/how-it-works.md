@@ -36,7 +36,7 @@ The agent that wrote the code is the worst possible reviewer of that code. canon
 
 1. `sprint complete` spawns a **fresh subagent** — Read and Bash only, no implementation history — to grade each acceptance criterion against the actual code.
 2. The evaluator writes a machine-generated `evaluator-run-id` before grading; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `subagent-log.sh` right after the subagent completes, making the field auditable.
-3. The CLI blocks close if the field is absent, the verdict isn't `pass` (any `partial` criterion forces the verdict to `fail` — there's no separate non-blocking `partial` verdict), or any acceptance box is unchecked.
+3. The CLI blocks close if the field is absent, the verdict isn't `pass` (any `partial` criterion forces the verdict to `fail` — there's no separate non-blocking `partial` verdict), any acceptance or test-plan box is unchecked, `summary.md` is missing, the `## Wrapup Gates` record is absent, or `plan.md`'s Approach or Sign-off is empty or unapproved.
 
 Same-context review reintroduces self-evaluation bias. The protocol fails closed when fresh-context evaluation is unavailable.
 
@@ -55,5 +55,7 @@ sprint complete
   └── summary.md — plan-vs-actual table, one row per criterion
   └── tkt close
 ```
+
+The one documented way past a `fail` evaluator verdict is a human-only escape hatch: a person hand-edits `eval_override: true` in the ticket's `ticket.md` frontmatter and records a dated waiver in `acceptance.md`. No `tkt` command sets it and no agent may write it — agents must refuse even if asked — so a close override always has a human in the loop (see `standards/ticket-layout.md`; the CI equivalent is in `docs/headless-ci.md`).
 
 Gates don't make agents smarter. They make certain failures impossible — and turn the ones that remain into data.

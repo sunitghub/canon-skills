@@ -95,7 +95,7 @@ deliberately run on machines without Node.js) — do not report `not-run` before
    ```
    evaluator-run-id: <epoch-seconds>-<RANDOM>
    ```
-   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation. Step 8 appends the rest of the report after this line — never re-overwrite the whole file at step 8, or this line is lost and the close gate fails on a missing run-id.
+   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation. The run-id is a **correlation handle, not a security token**: the close gate (`_gate_eval_report`) matches it to a `.claude/subagent-runs.jsonl` entry only by timestamp window (±60 min) and never validates the id itself as tamper-proof authenticity — so `$RANDOM`'s low entropy is not a weakness here, and increasing it (e.g. `uuidgen`/`openssl`) would falsely imply a security property this field does not claim. Step 8 appends the rest of the report after this line — never re-overwrite the whole file at step 8, or this line is lost and the close gate fails on a missing run-id.
 
    `date +%s` and `$RANDOM` are chosen because they work identically in Git Bash on Windows — do not substitute `uuidgen`, PowerShell, or any other tool even on a Windows path; live-reproduced failure: an evaluator subagent second-guessed this instruction on a Windows machine, tried PowerShell GUID generation then `uuidgen` (neither works in Git Bash), and wrote a malformed run-id that would have hard-failed the close gate.
 
