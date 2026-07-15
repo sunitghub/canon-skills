@@ -340,63 +340,111 @@ The quickest path uses `sprint-headless-eval` — one spec file, one command, on
 verdict. A full three-gate ceremony using `sprint-headless` (reviewer + evaluator
 + security-review against a real ticket) is shown further below for completeness.
 
-### Quick path: spec-driven eval
+### Quick path: board-centric eval
 
-No ticket lifecycle, no plan approval — just a markdown file with criteria and
-a base ref. This is the lowest-friction way to grade a diff.
+Create a ticket from the board, add acceptance criteria via the UI, then grade
+the existing code headlessly — no hand-written spec file, no plan approval, no
+full sprint ceremony. This is the lowest-friction way to demonstrate the
+fail → fix → pass cycle using `sprint-headless-eval`.
 
-1. Create a spec file (anywhere in your project) with the criteria you want
-   to check — pull them directly from your Session 1 acceptance:
+**Starting state:** Session 1's code is committed and working (the bill splitter
+with remainder handling). The `calculateSplit()` function does *not* yet enforce
+an upper limit on the people count — that gap is what this session exposes.
+
+> **Git terms used below:**
+> - `main` — the default branch; think of it as "the last known-good version."
+> - `commit` — a saved snapshot of your project's files, like a checkpoint.
+> - `HEAD` — whatever commit you're currently on (your latest checkpoint).
+
+1. Open the board (`sprint-check`) and click **+ New**. Fill in the form:
+
+   - **Title:** `Guard against upper limits in app & calculateSplit() function.`
+   - **Type:** Task
+   - **Priority:** P2
+   - Toggle **CI** on (this marks the ticket for headless grading)
+
+   Click **Create →**. The ticket appears on the board as a new card.
+
+2. On the ticket detail, click **+ New doc** → **Acceptance**. In the editor,
+   add one criterion and one test plan item:
 
    ```markdown
-   ---
-   ci: true
-   ---
-   # Remainder and validation criteria
+   ## Criteria
 
-   - [ ] If the bill doesn't split evenly, extra pennies are distributed among shares so all shares sum to the total exactly
-   - [ ] When shares differ, the app displays each distinct amount with how many people pay it
-   - [ ] calculateSplit() with people > 100 returns a validation error, never allocates unbounded shares
-   - [ ] The UI rejects people > 100 before calling calculateSplit()
+   - [ ] The app and calculateSplit() must reject split counts above a defined
+     maximum, such as 100, and must never allocate an unbounded number of shares.
+
+   ## Test Plan
+
+   - [ ] Calling calculateSplit() with people = 101 returns a validation error
+     and does not allocate a 101-element shares array
    ```
 
-   > **Tip:** You can create this spec file directly from the sprint-check
-   > board's New Ticket form (toggle CI on, write criteria as checkboxes in
-   > the body), then use that `ticket.md` as your spec file.
+   Click **Save**. The board indicator changes from `● incomplete` to
+   `● needs acc` or `● ready` once both sections have checklist items.
 
-2. Introduce a bug for the evaluator to catch — comment out the
-   remainder-distribution fix from Session 1 so shares no longer sum to the
-   total, then commit:
+3. Commit the ticket so the evaluator can read it:
 
-   ```
-   git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
+   ```bash
+   git add -f .tickets/
+   git commit -m "Add upper-limit acceptance criterion"
    ```
 
-3. Grade it:
+   Or in the chat: *"Commit the current staged files."* — the agent will
+   pick an appropriate commit message automatically.
 
+4. Grade the code as it stands — the function has no max-count guard yet:
+
+   ```bash
+   sprint-headless-eval .tickets/<id>/acceptance.md --base-ref main
    ```
-   sprint-headless-eval spec.md --base-ref HEAD~1
-   ```
 
-   This dispatches a fresh evaluator subagent against the diff between
-   `HEAD~1` (the pre-bug state) and HEAD. No code is written or edited; this
-   call only grades.
+   (Replace `<id>` with your ticket ID, e.g. `t-a1b2`.)
 
-4. Read the output: `HEADLESS_VERDICT: FAIL` with `file:line` evidence citing
-   the broken code. An `eval-report.md` appears next to `spec.md` with
+   `--base-ref main` means "compare the current code against the `main`
+   branch" — `main` is the default branch where your stable code lives, and
+   the evaluator uses this to identify what changed. It then reads the full
+   source to grade each criterion.
+
+   The evaluator inspects `calculateSplit()`, finds no upper-bound check, and
+   reports `HEADLESS_VERDICT: FAIL` with `file:line` evidence citing the
+   unguarded code. An `eval-report.md` appears in the ticket folder with
    per-criterion pass/fail verdicts.
 
-5. Revert the bug and re-grade:
+   > You can also run this from the board: enter `main` in the **Set base
+   > ref** field on the ticket's CI panel and click **▶ Start**.
+
+5. Switch to your chat agent and tell it to implement the fix:
 
    ```
-   git revert --no-edit HEAD
-   sprint-headless-eval spec.md --base-ref HEAD~2
+   Implement the acceptance criteria in the open ticket — add a max split
+   count of 100 to both calculateSplit() and the UI. Commit when done.
    ```
 
-   Confirm `HEADLESS_VERDICT: PASS` (exit 0). The evaluator now passes all
-   criteria.
+   The agent reads `.tickets/<id>/acceptance.md`, sees the unchecked criterion,
+   adds the guard to `calculateSplit()` (returning a validation error for
+   `people > 100`) and updates the UI validator to reject values above 100.
+   It commits the implementation.
 
-This path runs only the evaluator (~30-40k tokens). See `docs/headless-ci.md` →
+6. Re-grade against the same base ref:
+
+   ```bash
+   sprint-headless-eval .tickets/<id>/acceptance.md --base-ref main
+   ```
+
+   Confirm `HEADLESS_VERDICT: PASS` (exit 0). The evaluator now finds the
+   guard in both `calculateSplit()` and the UI, and passes all criteria.
+
+**What this demonstrated:**
+
+- Creating a ticket and acceptance criteria entirely from the board UI.
+- Using `sprint-headless-eval` to grade existing code against those criteria.
+- The fail → implement → pass cycle: a fresh evaluator catches the gap, the
+  chat agent fixes it, and the same evaluator confirms the fix.
+- The same `acceptance.md` file serves double duty: the agent reads it to know
+  what to build, and the evaluator reads it to know what to grade.
+
+This path runs only the evaluator (~30–40k tokens). See `docs/headless-ci.md` →
 "Lightweight Spec-Driven Gate" for the full reference and GitHub Actions recipe.
 
 ### Full three-gate ceremony (advanced)
