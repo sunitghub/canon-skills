@@ -360,6 +360,12 @@
       .search-sparkle { animation: none; opacity: .6; }
     }
     .board-search { position: relative; }
+    .search-enter-hint {
+      font-size: 11px; color: var(--text-muted); opacity: 0;
+      transition: opacity .2s; pointer-events: none;
+      margin-left: 8px; white-space: nowrap;
+    }
+    .search-enter-hint.visible { opacity: .7; }
     .search-clear:hover { color: var(--text); }
     .search-count {
       font-size: 12px; color: var(--text-muted);
@@ -1363,6 +1369,7 @@
             <path d="M18 14l.75 2.25L21 17l-2.25.75L18 20l-.75-2.25L15 17l2.25-.75L18 14z" opacity=".6"/>
           </svg>
         </label>
+        <span class="search-enter-hint" id="search-enter-hint">Press Enter to search</span>
         <div class="search-count" id="board-search-count"></div>
         <div id="drop-toast"></div>
       </div>
@@ -1905,8 +1912,6 @@ function searchableText(t) {
     r.planIncomplete ? 'plan incomplete incomplete' : '',
     ...(t.docs || []).flatMap(d => [d.name, docSlug(t, d.file)]),
     ...(t.models_used || []),
-    t.ci ? 'ci-eligible' : '',
-    t.eval_override ? 'eval-override' : '',
   ].join(' '));
 }
 
@@ -1931,6 +1936,9 @@ function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
   if (state.queryMode !== 'search') return true;
   if (!q) return true;
+  // Direct field queries — bypass prose search entirely (zero false positives)
+  if (q === 'is ci') return !!t.ci;
+  if (q === 'is override') return !!t.eval_override;
   const primary = primarySearchText(t);
   const readinessQueries = new Set(['ready', 'incomplete', 'acceptance incomplete', 'plan incomplete', 'needs plan', 'needs acc', 'unchecked items']);
   if (readinessQueries.has(q)) return primary.includes(q);
@@ -4037,8 +4045,8 @@ function setText(id, val) {
 
   // ── Search tips: rotating hints with AI sparkle ──────────────────────────
   const SEARCH_TIPS = [
-    { query: 'ci-eligible', hint: 'Find CI-graded tickets' },
-    { query: 'eval-override', hint: 'Closed via human override' },
+    { query: 'is:ci', hint: 'Find CI-graded tickets' },
+    { query: 'is:override', hint: 'Closed via human override' },
     { query: 'ready', hint: 'Ready to close' },
     { query: 'incomplete', hint: 'Missing acceptance or plan items' },
     { query: 'unchecked', hint: 'Has unchecked items' },
@@ -4085,25 +4093,51 @@ function setText(id, val) {
     sparkle.style.opacity = '0';
   }
 
-  // Pre-fill current tip query on focus when input is empty
-  input.addEventListener('focus', () => {
+  // Click in search = "I want this tip" → pre-fill, stop animation
+  // Click outside (blur) = restart tips if input wasn't used
+  let suppressPrefill = false;
+  const enterHint = document.getElementById('search-enter-hint');
+  function prefillTip() {
+    if (suppressPrefill) { suppressPrefill = false; return; }
     if (!input.value && currentTip) {
       input.value = currentTip.query;
       input.select();
       stopTips();
       shell.classList.add('has-query');
+      enterHint.classList.add('visible');
     }
+  }
+  function hideEnterHint() { enterHint.classList.remove('visible'); }
+  input.addEventListener('click', prefillTip);
+  input.addEventListener('blur', () => {
+    setTimeout(() => {
+      if (!document.activeElement || document.activeElement !== input) {
+        hideEnterHint();
+        if (input.value && currentTip === null) {
+          const normalized = normalizeSearch(input.value);
+          const isTipQuery = getTips().some(t => normalizeSearch(t.query) === normalized);
+          if (isTipQuery && !state.query) {
+            input.value = '';
+            shell.classList.remove('has-query');
+            startTips();
+          }
+        } else if (!input.value) {
+          startTips();
+        }
+      }
+    }, 100);
   });
 
   // Enter confirms a pre-filled or typed query
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter' && input.value) {
+      hideEnterHint();
       apply(input.value);
     }
   });
 
-  // Override the input handler to integrate tips (original apply() still called)
   input.addEventListener('input', () => {
+    hideEnterHint();
     if (input.value) {
       stopTips();
     } else {
@@ -4119,7 +4153,11 @@ function setText(id, val) {
     btn.addEventListener('click', () => {
       tipIndex = 0;
       stopTips();
-      if (!input.value) startTips();
+      input.value = '';
+      shell.classList.remove('has-query');
+      suppressPrefill = true;
+      apply('');
+      startTips();
     });
   });
 
