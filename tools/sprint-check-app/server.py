@@ -409,6 +409,7 @@ def load_why(file_: str) -> dict:
         'file': target,
         'results': results,
         'more': more,
+        'file_exists': (Path(cwd) / query_target).exists(),
         'message': '' if results else f'No tickets found for {target}.',
     }
 

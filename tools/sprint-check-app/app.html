@@ -398,6 +398,7 @@
       background: var(--surface); overflow: hidden; flex-shrink: 0;
     }
     .why-results.visible { display: block; }
+    .why-file-gone { font-size: 11px; color: #f59e0b; padding: 4px 12px 6px; background: rgba(245,158,11,.08); border-radius: 4px; margin: 0 12px 8px; }
     .why-results-head {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       padding: 10px 12px; border-bottom: 1px solid var(--border);
@@ -2230,11 +2231,13 @@ function renderWhyResults() {
   const results = why?.file === q ? (why.results || []) : [];
   const more = why?.file === q ? (why.more || 0) : 0;
   const message = why?.file === q ? why.message : '';
+  const fileGone = why?.file === q && why.file_exists === false && results.length > 0;
   el.innerHTML =
     `<div class="why-results-head">` +
       `<div class="why-title">Code archaeology: ${file}</div>` +
       `<div class="why-subtitle">${results.length ? `${results.length} ticket${results.length === 1 ? '' : 's'}` : 'why mode'}</div>` +
     `</div>` +
+    (fileGone ? `<div class="why-file-gone">⚠ This file no longer exists in the current tree — showing historical results</div>` : '') +
     (results.length
       ? `<div class="why-result-list">` + results.map(r =>
           `<button class="why-result" type="button" data-id="${esc(r.id)}">` +

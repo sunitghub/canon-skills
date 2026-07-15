@@ -574,7 +574,8 @@ func loadWhy(file string) map[string]any {
 	if len(results) == 0 {
 		msg = "No tickets found for " + target + "."
 	}
-	return map[string]any{"file": target, "results": results, "more": more, "message": msg}
+	_, statErr := os.Stat(filepath.Join(projectRoot, queryTarget))
+	return map[string]any{"file": target, "results": results, "more": more, "file_exists": statErr == nil, "message": msg}
 }
 
 // capWithMore truncates items to maxN, assuming items is already in the
