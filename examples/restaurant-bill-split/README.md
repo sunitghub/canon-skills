@@ -330,32 +330,97 @@ board shows the first ticket in DONE.
 
 Sessions 1 and 2 ran the reviewer, evaluator, and security-review gates
 *interactively* — inside a live chat, as part of `sprint complete`. This session
-shows that the exact same three gates can also be replayed *non-interactively*,
-from a plain terminal, against a ticket you already closed. This is the same
-mechanism a CI pipeline would run against a pull request (see `docs/headless-ci.md`)
-— here you run it locally, so no GitHub repository, Actions workflow, or per-student
-API secret is needed. Your already-authenticated local `claude` CLI is enough.
+shows those same gates can also run *non-interactively*, from a plain terminal.
+This is the same mechanism a CI pipeline would run against a pull request (see
+`docs/headless-ci.md`) — here you run it locally, so no GitHub repository,
+Actions workflow, or per-student API secret is needed. Your already-authenticated
+local `claude` CLI is enough.
+
+The quickest path uses `sprint-headless-eval` — one spec file, one command, one
+verdict. A full three-gate ceremony using `sprint-headless` (reviewer + evaluator
++ security-review against a real ticket) is shown further below for completeness.
+
+### Quick path: spec-driven eval
+
+No ticket lifecycle, no plan approval — just a markdown file with criteria and
+a base ref. This is the lowest-friction way to grade a diff.
+
+1. Create a spec file (anywhere in your project) with the criteria you want
+   to check — pull them directly from your Session 1 acceptance:
+
+   ```markdown
+   ---
+   ci: true
+   ---
+   # Remainder and validation criteria
+
+   - [ ] If the bill doesn't split evenly, extra pennies are distributed among shares so all shares sum to the total exactly
+   - [ ] When shares differ, the app displays each distinct amount with how many people pay it
+   - [ ] calculateSplit() with people > 100 returns a validation error, never allocates unbounded shares
+   - [ ] The UI rejects people > 100 before calling calculateSplit()
+   ```
+
+   > **Tip:** You can create this spec file directly from the sprint-check
+   > board's New Ticket form (toggle CI on, write criteria as checkboxes in
+   > the body), then use that `ticket.md` as your spec file.
+
+2. Introduce a bug for the evaluator to catch — comment out the
+   remainder-distribution fix from Session 1 so shares no longer sum to the
+   total, then commit:
+
+   ```
+   git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
+   ```
+
+3. Grade it:
+
+   ```
+   sprint-headless-eval spec.md --base-ref HEAD~1
+   ```
+
+   This dispatches a fresh evaluator subagent against the diff between
+   `HEAD~1` (the pre-bug state) and HEAD. No code is written or edited; this
+   call only grades.
+
+4. Read the output: `HEADLESS_VERDICT: FAIL` with `file:line` evidence citing
+   the broken code. An `eval-report.md` appears next to `spec.md` with
+   per-criterion pass/fail verdicts.
+
+5. Revert the bug and re-grade:
+
+   ```
+   git revert --no-edit HEAD
+   sprint-headless-eval spec.md --base-ref HEAD~2
+   ```
+
+   Confirm `HEADLESS_VERDICT: PASS` (exit 0). The evaluator now passes all
+   criteria.
+
+This path runs only the evaluator (~30-40k tokens). See `docs/headless-ci.md` →
+"Lightweight Spec-Driven Gate" for the full reference and GitHub Actions recipe.
+
+### Full three-gate ceremony (advanced)
+
+If you want to replay all three gates (reviewer + evaluator + security-review)
+against a real ticket — the same protocols the interactive `sprint complete`
+used — use `sprint-headless`. This requires the ticket lifecycle to be set up.
 
 > If you've used the sprint-check board's "Start grading" button on a `ci: true`
-> card instead, this is the exact same flow — the button runs this same
-> `sprint-headless` command underneath, mapped to its own 3-step display:
-> steps 1-2 below are "Set base ref", step 4 (the run itself) is "Grading in
-> progress", and step 5 (reading `HEADLESS_VERDICT`) is "Result ready".
+> card instead, this is the exact same flow — the button runs `sprint-headless`
+> underneath, mapped to its own 3-step display: steps 1-2 below are "Set base
+> ref", step 4 is "Grading in progress", and step 5 is "Result ready".
 
 Prerequisites: the ticket from Session 1 (or 2) is closed, its
 `plan.md`/`acceptance.md` were approved, and the evaluator passed interactively.
-Note that ticket's ID (for example `t-a1b2`) — you'll need it below. Your
-`MealSplit` folder was `git init`'d before Session 1 started, with no remote —
-headless grading works fine against a purely local repo.
+Note that ticket's ID (for example `t-a1b2`) — you'll need it below.
 
-1. Record the current commit as your base ref — the "before" state that a
-   future diff will be graded against:
+1. Record the current commit as your base ref:
 
    ```
    git rev-parse HEAD
    ```
 
-   Copy the SHA it prints; you'll pass it as `--base-ref` in step 4.
+   Copy the SHA.
 
 2. Mark the ticket CI-eligible:
 
@@ -364,34 +429,27 @@ headless grading works fine against a purely local repo.
    ```
 
    This flips `ci: true` in the ticket's frontmatter and commits the ticket's
-   docs itself (`git add -f .tickets/<your-ticket-id>/` + a commit). No
-   separate manual commit step is needed.
+   docs itself (`git add -f .tickets/<your-ticket-id>/` + a commit).
 
-3. Create something for headless grading to actually check — stand in for a
-   teammate's PR by temporarily reintroducing a bug: comment out the
-   remainder-distribution fix from Session 1 so shares no longer sum to the
-   total, then commit it:
+3. Introduce the bug and commit:
 
    ```
    git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
    ```
 
-4. Run headless grading against the base ref from step 1:
+4. Run full headless grading:
 
    ```
    sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
    ```
 
-   This dispatches fresh reviewer, evaluator, and security-review subagents —
-   the same protocols the interactive close used — against the diff between
-   that base ref and your current code. No code is written or edited; this
-   call only grades.
+   This dispatches fresh reviewer, evaluator, and security-review subagents
+   against the diff. No code is written or edited; this call only grades.
 
 5. Read the output. The full findings print to stdout, ending in exactly one
    line: `HEADLESS_VERDICT: PASS` or `HEADLESS_VERDICT: FAIL`. Exit code `0`
    means all three gates passed; `1` means a gate failed. Confirm the
-   evaluator reports `fail:` on the remainder-sum criterion, citing the
-   commented-out code as evidence.
+   evaluator reports `fail:` on the remainder-sum criterion.
 
 6. Revert the bug and rerun:
 
@@ -400,51 +458,11 @@ headless grading works fine against a purely local repo.
    sprint-headless <your-ticket-id> --base-ref <sha-from-step-1>
    ```
 
-   Confirm all three gates now pass and `HEADLESS_VERDICT: PASS` prints with
+   Confirm all three gates pass and `HEADLESS_VERDICT: PASS` prints with
    exit code `0`.
 
-### Alternative: lightweight spec-driven eval (fewer steps)
-
-If you don't need the full three-gate ceremony (reviewer + evaluator +
-security-review) and just want to check a specific requirement against a diff,
-`sprint-headless-eval` is the one-command version. No ticket lifecycle, no
-plan approval — just a spec file with criteria and a base ref.
-
-1. Create a spec file (anywhere in your project) with the criteria you want
-   to check:
-
-   ```markdown
-   ---
-   ci: true
-   ---
-   # Remainder distribution must be correct
-
-   - [ ] If the bill doesn't split evenly, extra pennies are distributed among shares so all shares sum to the total exactly
-   - [ ] calculateSplit() with people > 100 returns a validation error, never allocates unbounded shares
-   ```
-
-2. Introduce the bug (same as step 3 above), then grade:
-
-   ```
-   git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
-   sprint-headless-eval spec.md --base-ref HEAD~1
-   ```
-
-3. Read the output: `HEADLESS_VERDICT: FAIL` with `file:line` evidence citing
-   the broken code. An `eval-report.md` appears next to `spec.md`.
-
-4. Revert and rerun:
-
-   ```
-   git revert --no-edit HEAD
-   sprint-headless-eval spec.md --base-ref HEAD~1
-   ```
-
-   Confirm `HEADLESS_VERDICT: PASS` (exit 0).
-
-This path skips the ticket setup (`tkt ci`, plan approval, committed docs) and
-runs only the evaluator — ~30-40k tokens vs. ~100k+ for the full ceremony. See
-`docs/headless-ci.md` → "Lightweight Spec-Driven Gate" for the full reference.
+The full ceremony costs ~100k+ tokens (three subagents) but provides advisory
+reviewer findings and security-review coverage alongside the binding evaluator.
 
 ## Session 3 (GitHub, optional)
 
