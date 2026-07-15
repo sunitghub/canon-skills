@@ -285,41 +285,9 @@ _gate_plan_content() {
 
 _gate_visual_embed() {
   local id="$1"
-  local file mentions embedded ref bad_refs visuals_dir
-  for file in "$2" "$3"; do
-    [[ -f "$file" ]] || continue
-
-    # Basename of every real image embed's target path in this file — regardless of
-    # whether the mention driving it used a visuals/ prefix, so a bare filename
-    # mention and a visuals/-prefixed one resolve to the same identity.
-    embedded="$(grep -oE '!\[[^]]*\]\([^)]+\)' "$file" \
-      | sed -E 's/.*\(([^)]+)\)/\1/' \
-      | grep -oE '[A-Za-z0-9_.-]+\.(png|jpg|jpeg|gif|webp)$' \
-      | sort -u)"
-
-    # Every image-extension filename mentioned anywhere in the file — bare,
-    # backticked, visuals/-prefixed, or inside a real embed's own path.
-    mentions="$(grep -oE '[A-Za-z0-9_.-]+\.(png|jpg|jpeg|gif|webp)' "$file" | sort -u)"
-    [[ -z "$mentions" ]] && continue
-
-    visuals_dir="$(dirname "$file")/visuals"
-    bad_refs=()
-    while IFS= read -r ref; do
-      [[ -z "$ref" ]] && continue
-      if ! grep -qxF "$ref" <<< "$embedded"; then
-        bad_refs+=("$ref — never embedded as a real image")
-      elif [[ ! -f "$visuals_dir/$ref" ]]; then
-        bad_refs+=("$ref — embedded, but $visuals_dir/$ref doesn't exist on disk")
-      fi
-    done <<< "$mentions"
-
-    if [[ "${#bad_refs[@]}" -gt 0 ]]; then
-      echo "Sprint $id cannot close: $file has a broken visual reference."
-      printf '  %s\n' "${bad_refs[@]}"
-      echo "Use a real markdown image embed — ![alt](visuals/<name>.<ext>) — and make sure the file is actually copied to $visuals_dir/."
-      return 1
-    fi
-  done
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  "$script_dir/validate-visuals.sh" "$id" "$2" "$3"
 }
 
 # _gate_eval_report_exists <id> <tdir> — report file present, evaluator-run-id
@@ -346,10 +314,11 @@ _gate_eval_report_exists() {
 # containing "pass:" in the verdict check that follows.
 _gate_eval_report_authentic() {
   local id="$1" tdir="$2" report="$tdir/eval-report.md"
-  local run_id run_epoch jsonl
+  local run_id run_epoch jsonl script_dir
   run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | head -1 | sed 's/^evaluator-run-id:[[:space:]]*//')"
   run_epoch="$(echo "$run_id" | cut -d'-' -f1)"
   jsonl="$(project_root)/.claude/subagent-runs.jsonl"
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if [[ ! -f "$jsonl" ]]; then
     echo "Sprint $id cannot close: .claude/subagent-runs.jsonl not found — cannot verify evaluator-run-id '$run_id' against a real subagent run."
     echo "Log the evaluator subagent run with subagent-log.sh before closing."
@@ -359,22 +328,7 @@ _gate_eval_report_authentic() {
     echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix. See eval.md step 1: generate it with 'date +%s'/'\$RANDOM', never uuidgen/PowerShell."
     return 1
   fi
-  local matched=0 line ts entry_epoch diff
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    ts="$(printf '%s' "$line" | grep -o '"ts"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')"
-    [[ -z "$ts" ]] && continue
-    [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
-    entry_epoch="$(date -u -d "$ts" +%s 2>/dev/null || date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null)" || continue
-    [[ "$entry_epoch" =~ ^[0-9]+$ ]] || continue
-    diff=$(( entry_epoch - run_epoch ))
-    (( diff < 0 )) && diff=$(( -diff ))
-    if (( diff <= 3600 )); then
-      matched=1
-      break
-    fi
-  done < "$jsonl"
-  if [[ "$matched" != "1" ]]; then
+  if ! python3 "$script_dir/eval-ts-match.py" "$run_epoch" "$jsonl" >/dev/null 2>&1; then
     echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no matching subagent entry in .claude/subagent-runs.jsonl (±60 min window)."
     echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
     return 1
