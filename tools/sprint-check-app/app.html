@@ -315,7 +315,7 @@
     .board-search {
       width: min(360px, 100%);
       display: flex; align-items: center; gap: 8px;
-      padding: 0 11px; height: 36px;
+      padding: 0 11px 0 32px; height: 36px;
       border: 1px solid var(--border); border-radius: 8px;
       background: var(--surface); color: var(--text-muted);
       transition: border-color .12s, box-shadow .12s, background .12s;
@@ -342,6 +342,24 @@
       display: none;
     }
     .board-search.has-query .search-clear { display: block; }
+    .search-sparkle {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      width: 18px; height: 18px; pointer-events: none;
+      color: #7c3aed;
+      animation: sparkle-pulse 2s ease-in-out infinite;
+      transition: opacity .2s;
+    }
+    [data-theme="dark"] .search-sparkle { color: #f0c866; }
+    @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .search-sparkle { color: #f0c866; } }
+    .board-search.has-query .search-sparkle { opacity: 0; pointer-events: none; }
+    @keyframes sparkle-pulse {
+      0%, 100% { opacity: .35; transform: translateY(-50%) scale(.9); }
+      50% { opacity: 1; transform: translateY(-50%) scale(1.1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .search-sparkle { animation: none; opacity: .6; }
+    }
+    .board-search { position: relative; }
     .search-clear:hover { color: var(--text); }
     .search-count {
       font-size: 12px; color: var(--text-muted);
@@ -1340,6 +1358,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="board-search" type="search" placeholder="Search tickets..." autocomplete="off" spellcheck="false">
           <button class="search-clear" id="board-search-clear" type="button" aria-label="Clear search">×</button>
+          <svg class="search-sparkle" id="search-sparkle" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 2l1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5L12 2z"/>
+            <path d="M18 14l.75 2.25L21 17l-2.25.75L18 20l-.75-2.25L15 17l2.25-.75L18 14z" opacity=".6"/>
+          </svg>
         </label>
         <div class="search-count" id="board-search-count"></div>
         <div id="drop-toast"></div>
@@ -1883,6 +1905,8 @@ function searchableText(t) {
     r.planIncomplete ? 'plan incomplete incomplete' : '',
     ...(t.docs || []).flatMap(d => [d.name, docSlug(t, d.file)]),
     ...(t.models_used || []),
+    t.ci ? 'ci-eligible' : '',
+    t.eval_override ? 'eval-override' : '',
   ].join(' '));
 }
 
@@ -3944,7 +3968,7 @@ function setText(id, val) {
       btn.classList.toggle('active', active);
       btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
-    input.placeholder = mode === 'why' ? 'Why was this file built this way?' : 'Search tickets...';
+    // placeholder is now managed by the search-tips system (startTips/showTip)
     input.setAttribute('aria-label', mode === 'why' ? 'Find ticket history for a file' : 'Search tickets');
     renderBoard();
   }
@@ -4010,7 +4034,103 @@ function setText(id, val) {
     apply('');
     input.focus();
   });
+
+  // ── Search tips: rotating hints with AI sparkle ──────────────────────────
+  const SEARCH_TIPS = [
+    { query: 'ci-eligible', hint: 'Find CI-graded tickets' },
+    { query: 'eval-override', hint: 'Closed via human override' },
+    { query: 'ready', hint: 'Ready to close' },
+    { query: 'incomplete', hint: 'Missing acceptance or plan items' },
+    { query: 'unchecked', hint: 'Has unchecked items' },
+    { query: 'haiku', hint: 'Gates ran on haiku' },
+    { query: 'bug', hint: 'Bug tickets' },
+    { query: 'p0', hint: 'Critical priority' },
+  ];
+  const WHY_TIPS = [
+    { query: 'src/app.js', hint: 'Why was this file built this way?' },
+    { query: 'tools/sprint', hint: 'Decisions behind a tool' },
+    { query: 'README.md', hint: 'What shaped the README?' },
+    { query: 'standards/efficiency.md', hint: 'History of a standard' },
+  ];
+
+  const sparkle = document.getElementById('search-sparkle');
+  let tipIndex = 0;
+  let tipInterval = null;
+  let currentTip = null;
+
+  function getTips() {
+    return state.queryMode === 'why' ? WHY_TIPS : SEARCH_TIPS;
+  }
+
+  function showTip() {
+    const tips = getTips();
+    if (!tips.length) return;
+    tipIndex = tipIndex % tips.length;
+    currentTip = tips[tipIndex];
+    input.placeholder = `${currentTip.query}  \u2014  ${currentTip.hint}`;
+    tipIndex++;
+  }
+
+  function startTips() {
+    if (tipInterval) return;
+    showTip();
+    tipInterval = setInterval(showTip, 2500);
+    sparkle.style.opacity = '';
+  }
+
+  function stopTips() {
+    if (tipInterval) { clearInterval(tipInterval); tipInterval = null; }
+    currentTip = null;
+    input.placeholder = '';
+    sparkle.style.opacity = '0';
+  }
+
+  // Pre-fill current tip query on focus when input is empty
+  input.addEventListener('focus', () => {
+    if (!input.value && currentTip) {
+      input.value = currentTip.query;
+      input.select();
+      stopTips();
+      shell.classList.add('has-query');
+    }
+  });
+
+  // Enter confirms a pre-filled or typed query
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && input.value) {
+      apply(input.value);
+    }
+  });
+
+  // Override the input handler to integrate tips (original apply() still called)
+  input.addEventListener('input', () => {
+    if (input.value) {
+      stopTips();
+    } else {
+      startTips();
+    }
+  });
+
+  clear.addEventListener('click', () => {
+    setTimeout(() => { if (!input.value) startTips(); }, 0);
+  });
+
+  modeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      tipIndex = 0;
+      stopTips();
+      if (!input.value) startTips();
+    });
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !input.value) {
+      setTimeout(() => startTips(), 0);
+    }
+  });
+
   setMode('search');
+  startTips();
 })();
 
 // ── Tour panel ────────────────────────────────────────────────────────────
