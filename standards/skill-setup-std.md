@@ -3,8 +3,8 @@ name: skill-setup-std
 description: Validates skill files against canon standards. Use when adding a new skill or auditing existing ones.
 category: agent-ops
 tags: [skills, contributors, conventions]
-version: 1.8.0
-updated: 2026-06-17
+version: 1.9.0
+updated: 2026-07-15
 ---
 
 # Skill Setup Standard
@@ -13,7 +13,12 @@ Rules for adding or modifying skills in canon. Follow these so every skill behav
 
 ## Validation
 
-Run `./tools/canon-dev.sh lint` to validate all skills against these conventions. Fix any reported violations before committing. The linter checks: required frontmatter fields, `hidden` flag consistency, resolvable `depends` entries, and description quality.
+Run `./tools/canon-dev.sh lint` to validate all skills against these conventions. Fix reported violations before committing. The linter has two tiers:
+
+- **Blocking (structural) checks** — fail the run (exit 1): directory format, naming, required frontmatter fields, `name`/directory match, `category` enum, `@`-import resolution, and the `depends` graph (siblings declared, deps resolve).
+- **Advisory (prose/best-practice) checks** — print `warning:` lines with a stable check id and do **not** change the exit code by default. These are mechanical heuristics that flag *candidates*, not proof (the definitive No-Op Test needs evals; deeper semantic quality is `repo-workflow-audit`'s and `skill-eval`'s job). Current ids: `SP-DESC-PERSON` (first/second person), `SP-DESC-TRIGGER` (no when-to-use signal), `SP-DESC-CAP` (description+`when_to_use` over the 1,536-char cap), `SP-NOOP` (no-op/filler phrase from `tools/no-op-phrases.txt`), `SP-ATIMPORT` (deprecated `@`-import), `SP-TIME` (time-sensitive wording), `SP-BODYLEN` (SKILL.md body over 500 lines), `SP-REF-TOC` (reference file over 100 lines with no table of contents), `SP-HIDDEN` (a `depends:`-referenced skill not marked `hidden: true`), and `SP-EVALS-MISSING`/`SP-EVALS-COUNT`/`SP-EVALS-INVALID` (evals presence/count/validity).
+
+Add `--strict` to promote every advisory warning to a blocking error. The advisory layer needs `python3` (contributor tooling, same as `canon-dev.sh catalog`); if it is absent the layer is skipped with a notice and the structural checks still run. The no-op/filler phrase list in `tools/no-op-phrases.txt` is the single source shared by `lint`, `repo-workflow-audit`, and `skill-export`.
 
 ## File Location
 

@@ -15,7 +15,7 @@ Reads a canon skill and outputs its content as clean, paste-ready text — no fr
 
    1. Take the quoted string as the raw prompt text.
    2. Apply `standards/efficiency.md` principles to produce a tighter version:
-      - Remove hedging and filler: "please", "make sure to", "you should", "always remember to", "it's important to", "note that", "keep in mind that"
+      - Remove hedging and filler — the canonical no-op/filler list lives in `tools/no-op-phrases.txt` (shared with `canon-dev.sh lint` and `repo-workflow-audit`); it includes "please", "make sure to", "you should", "always remember to", "it's important to", "note that", "keep in mind that"
       - Remove preamble paragraphs that restate the task before giving instructions — start with the first instruction
       - Collapse multiple sentences that express the **same constraint** into one direct instruction
       - Imperative mood, active voice throughout
