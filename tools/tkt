@@ -367,10 +367,29 @@ _why_resolve_target() {
       query_target="${candidates[0]}"
       log_subjects="$(git log --follow --format="%s" -- "$query_target" 2>/dev/null)"
     elif [[ ${#candidates[@]} -gt 1 ]]; then
-      local joined
-      joined="$(printf '%s, ' "${candidates[@]}")"
-      echo "Multiple files named $basename found — use the full path: ${joined%, }"
-      return 1
+      # Rank by commit count — most-changed file is most likely the intended target
+      local best="" best_count=0
+      for cand in "${candidates[@]}"; do
+        local n
+        n="$(git log --oneline -- "$cand" 2>/dev/null | wc -l | tr -d ' ')"
+        if [[ "$n" -gt "$best_count" ]]; then
+          best_count="$n"
+          best="$cand"
+        fi
+      done
+      query_target="$best"
+      log_subjects="$(git log --follow --format="%s" -- "$query_target" 2>/dev/null)"
+      # Show resolved path + alternatives
+      echo "→ $query_target"
+      local alts=()
+      for cand in "${candidates[@]}"; do
+        [[ "$cand" != "$best" ]] && alts+=("$cand")
+      done
+      if [[ ${#alts[@]} -gt 0 ]]; then
+        local joined
+        joined="$(printf '%s, ' "${alts[@]:0:5}")"
+        echo "  Also in: ${joined%, }"
+      fi
     fi
   fi
   if [[ -z "$log_subjects" ]]; then

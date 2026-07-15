@@ -100,14 +100,12 @@ out_full="$(cd "$WORK" && "$ROOT/tools/tkt" why nested/dir/unique.js)"
 out_basename="$(cd "$WORK" && "$ROOT/tools/tkt" why unique.js)"
 assert_eq "$out_full" "$out_basename"
 
-# ── tkt why: basename fallback, ambiguous match lists candidates, no pick ───
+# ── tkt why: basename fallback, ambiguous match auto-resolves to most-committed ─
 
 out_ambiguous="$(cd "$WORK" && "$ROOT/tools/tkt" why dup.js)"
-assert_contains "$out_ambiguous" "Multiple files named dup.js"
-assert_contains "$out_ambiguous" "dupA/dup.js"
-assert_contains "$out_ambiguous" "dupB/dup.js"
-if [[ "$out_ambiguous" == *"t-aaa1"* ]]; then
-  fail "ambiguous basename match should not auto-pick a ticket: $out_ambiguous"
+assert_contains "$out_ambiguous" "dup.js"
+if [[ "$out_ambiguous" == *"Multiple files"* ]]; then
+  fail "ambiguous basename should auto-resolve, not refuse: $out_ambiguous"
 fi
 
 # ── tkt why: no basename match at all keeps the original message ───────────
@@ -232,12 +230,15 @@ import sys
 py, go = (json.loads(a) for a in sys.argv[1:3])
 
 for label, resp in (("server.py", py), ("main.go", go)):
-    if resp.get("results"):
-        print(f"why-cap: FAIL — {label} ambiguous basename match must not auto-pick, got results={resp.get('results')!r}")
+    if not resp.get("results"):
+        print(f"why-cap: FAIL — {label} ambiguous basename should auto-resolve and return results")
         sys.exit(1)
-    msg = resp.get("message", "")
-    if "dupA/dup.js" not in msg or "dupB/dup.js" not in msg:
-        print(f"why-cap: FAIL — {label} ambiguous message missing a candidate path: {msg!r}")
+    if not resp.get("resolved_path"):
+        print(f"why-cap: FAIL — {label} ambiguous basename should include resolved_path")
+        sys.exit(1)
+    alts = resp.get("alternatives", [])
+    if not alts:
+        print(f"why-cap: FAIL — {label} ambiguous basename should include alternatives")
         sys.exit(1)
 PY
 

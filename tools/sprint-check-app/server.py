@@ -340,16 +340,25 @@ def load_why(file_: str) -> dict:
     cwd = PROJECT_ROOT
     query_target = target
     log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', query_target], cwd)
+    resolved_path = None
+    alternatives = []
     if not log_subjects:
         candidates = _basename_candidates(p.name, cwd) if p.name else []
         if len(candidates) == 1:
             query_target = candidates[0]
+            resolved_path = query_target
             log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', query_target], cwd)
         elif len(candidates) > 1:
-            return {
-                'file': target, 'results': [],
-                'message': f'Multiple files named {p.name} found — use the full path: ' + ', '.join(candidates),
-            }
+            # Rank by commit count — most-changed file first
+            counted = []
+            for c in candidates:
+                n = run(['git', 'log', '--oneline', '--', c], cwd)
+                counted.append((len(n.splitlines()) if n else 0, c))
+            counted.sort(key=lambda x: -x[0])
+            query_target = counted[0][1]
+            resolved_path = query_target
+            alternatives = [c for _, c in counted[1:]][:5]
+            log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', query_target], cwd)
     if not log_subjects:
         return {'file': target, 'results': [], 'message': f'No git history found for {target}.'}
 
@@ -405,13 +414,18 @@ def load_why(file_: str) -> dict:
             'decision': _plan_decision(path),
         })
 
-    return {
+    result = {
         'file': target,
         'results': results,
         'more': more,
         'file_exists': (Path(cwd) / query_target).exists(),
         'message': '' if results else f'No tickets found for {target}.',
     }
+    if resolved_path:
+        result['resolved_path'] = resolved_path
+    if alternatives:
+        result['alternatives'] = alternatives
+    return result
 
 # ── Status write ──────────────────────────────────────────────────────────
 

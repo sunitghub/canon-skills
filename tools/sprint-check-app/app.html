@@ -399,6 +399,10 @@
     }
     .why-results.visible { display: block; }
     .why-file-gone { font-size: 11px; color: #f59e0b; padding: 4px 12px 6px; background: rgba(245,158,11,.08); border-radius: 4px; margin: 0 12px 8px; }
+    .why-resolved-path { font-size: 12px; color: var(--accent); font-family: ui-monospace, monospace; padding: 2px 12px 4px; }
+    .why-alternatives { font-size: 11px; color: var(--text-muted); padding: 0 12px 8px; }
+    .why-alt-link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+    .why-alt-link:hover { color: var(--text); }
     .why-results-head {
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
       padding: 10px 12px; border-bottom: 1px solid var(--border);
@@ -2232,12 +2236,16 @@ function renderWhyResults() {
   const more = why?.file === q ? (why.more || 0) : 0;
   const message = why?.file === q ? why.message : '';
   const fileGone = why?.file === q && why.file_exists === false && results.length > 0;
+  const resolvedPath = why?.file === q ? why.resolved_path : null;
+  const alternatives = why?.file === q ? (why.alternatives || []) : [];
   el.innerHTML =
     `<div class="why-results-head">` +
       `<div class="why-title">Code archaeology: ${file}</div>` +
       `<div class="why-subtitle">${results.length ? `${results.length} ticket${results.length === 1 ? '' : 's'}` : 'why mode'}</div>` +
     `</div>` +
+    (resolvedPath ? `<div class="why-resolved-path">→ ${esc(resolvedPath)}</div>` : '') +
     (fileGone ? `<div class="why-file-gone">⚠ This file no longer exists in the current tree — showing historical results</div>` : '') +
+    (alternatives.length ? `<div class="why-alternatives">Also in: ${alternatives.map(a => `<a class="why-alt-link" data-path="${esc(a)}">${esc(a)}</a>`).join(', ')}</div>` : '') +
     (results.length
       ? `<div class="why-result-list">` + results.map(r =>
           `<button class="why-result" type="button" data-id="${esc(r.id)}">` +
@@ -2253,6 +2261,13 @@ function renderWhyResults() {
       : `<div class="why-result-empty">${esc(message || 'No tickets found for this file.')}</div>`);
   el.querySelectorAll('.why-result').forEach(btn => {
     btn.addEventListener('click', () => openModal(btn.dataset.id));
+  });
+  el.querySelectorAll('.why-alt-link').forEach(link => {
+    link.addEventListener('click', () => {
+      const input = document.getElementById('board-search');
+      input.value = link.dataset.path;
+      apply(link.dataset.path);
+    });
   });
 }
 
