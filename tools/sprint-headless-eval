@@ -1,0 +1,267 @@
+#!/usr/bin/env bash
+# sprint-headless-eval — lightweight spec-driven CI gate that grades a markdown
+# criteria file against a diff, headlessly via `claude -p`.
+#
+# Usage: sprint-headless-eval <spec-file> --base-ref <ref>
+#        (or set GITHUB_BASE_REF instead of --base-ref)
+#
+# Unlike `sprint-headless` (full ceremony: reviewer + evaluator + security-review
+# against an existing ticket's plan.md/acceptance.md), this command runs only the
+# evaluator against criteria you write directly in a markdown file. No ticket
+# lifecycle, no plan approval, no reviewer — just: spec in, verdict out.
+#
+# The spec file is any markdown file containing `- [ ]` checklist items as
+# acceptance criteria. Optional YAML frontmatter (ci: true, type, priority) is
+# allowed but not required.
+#
+# Exit 0 = PASS, Exit 1 = FAIL or error.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --- Argument parsing ---
+
+SPEC_FILE="${1:-}"
+[[ -z "$SPEC_FILE" || "$SPEC_FILE" == --* ]] && {
+  echo "Usage: sprint-headless-eval <spec-file> --base-ref <ref>" >&2
+  echo "" >&2
+  echo "Grades the checklist criteria in <spec-file> against the diff between" >&2
+  echo "<base-ref> and HEAD. Runs only the evaluator (no reviewer, no security-review)." >&2
+  echo "" >&2
+  echo "The spec file is a markdown file with - [ ] checklist items as criteria." >&2
+  exit 1
+}
+shift
+
+BASE_REF="${GITHUB_BASE_REF:-}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base-ref) BASE_REF="${2:-}"; shift 2 ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+
+[[ -z "$BASE_REF" ]] && {
+  echo "Error: --base-ref (or \$GITHUB_BASE_REF) is required — headless mode never infers a diff base." >&2
+  exit 1
+}
+
+# Validate base-ref: allow branch/tag names, SHAs, and relative refs (~ ^).
+# Reject anything with shell metacharacters or whitespace.
+[[ "$BASE_REF" =~ ^[A-Za-z0-9._/^~-]+$ ]] || {
+  echo "Error: '$BASE_REF' is not a valid base ref (expected branch/tag name, SHA, or relative ref — letters, digits, '.', '_', '/', '-', '~', '^' only)." >&2
+  exit 1
+}
+
+# --- Spec file validation ---
+
+[[ -f "$SPEC_FILE" ]] || {
+  echo "Error: spec file not found: $SPEC_FILE" >&2
+  exit 1
+}
+
+# Extract criteria: lines matching `- [ ] ...` or `- [x] ...` (case-insensitive x)
+# Skip YAML frontmatter (between --- delimiters) if present.
+CRITERIA="$(awk '
+  BEGIN { in_front = 0; past_front = 0 }
+  /^---$/ {
+    if (!past_front) {
+      if (in_front) { past_front = 1; next }
+      else { in_front = 1; next }
+    }
+  }
+  in_front && !past_front { next }
+  /^[[:space:]]*-[[:space:]]*\[[[:space:]xX]\]/ { print }
+' "$SPEC_FILE")"
+
+if [[ -z "$CRITERIA" ]]; then
+  echo "Error: no checklist criteria found in $SPEC_FILE (expected lines like '- [ ] ...' or '- [x] ...')." >&2
+  echo "Each criterion must be a markdown checklist item in the body of the file." >&2
+  exit 1
+fi
+
+CRITERIA_COUNT="$(echo "$CRITERIA" | wc -l | tr -d ' ')"
+echo "Found $CRITERIA_COUNT criterion/criteria in $(basename "$SPEC_FILE")."
+
+# --- Resolve spec file directory (for writing eval-report.md) ---
+
+SPEC_DIR="$(cd "$(dirname "$SPEC_FILE")" && pwd)"
+SPEC_BASENAME="$(basename "$SPEC_FILE")"
+
+# --- Resolve project root (for running git and claude -p) ---
+# Walk up from spec file to find a .git directory.
+ROOT="$SPEC_DIR"
+while [[ "$ROOT" != "/" ]]; do
+  [[ -d "$ROOT/.git" ]] && break
+  ROOT="$(dirname "$ROOT")"
+done
+[[ -d "$ROOT/.git" ]] || {
+  echo "Error: could not find a git repository above $SPEC_FILE." >&2
+  exit 1
+}
+
+# --- Resolve skills-doc path for the evaluator protocol ---
+
+if [[ -d "$ROOT/skills/sprint" ]]; then
+  SKILLS_PREFIX="skills"
+  SUBAGENT_LOG="./tools/subagent-log.sh"
+  SUBAGENT_LOG_ALLOW="Bash(./tools/subagent-log.sh:*)"
+elif [[ -d "$ROOT/.claude/skills/sprint" ]]; then
+  SKILLS_PREFIX=".claude/skills"
+  SUBAGENT_LOG="$SCRIPT_DIR/subagent-log.sh"
+  SUBAGENT_LOG_ALLOW="Bash($SCRIPT_DIR/subagent-log.sh:*)"
+else
+  echo "Error: no sprint skill docs found at '$ROOT/skills/sprint' or '$ROOT/.claude/skills/sprint'. Run 'skills.sh add sprint' first." >&2
+  exit 1
+fi
+
+# --- Build evaluator prompt ---
+
+EVALUATOR_START="@@@CANON_HEADLESS_REPORT:evaluator@@@"
+EVALUATOR_END="@@@CANON_HEADLESS_REPORT:/evaluator@@@"
+
+# Read the spec file title (first # heading) for context
+SPEC_TITLE="$(awk '/^#[[:space:]]/ { sub(/^#[[:space:]]+/, ""); print; exit }' "$SPEC_FILE")"
+[[ -z "$SPEC_TITLE" ]] && SPEC_TITLE="$SPEC_BASENAME"
+
+PROMPT="You are the orchestrator for a lightweight headless eval run. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
+
+Dispatch exactly one fresh Agent subagent, subagent_type: \"Plan\":
+- Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md for the grading protocol format and evidence standards, then grade the following criteria against the diff between $BASE_REF and HEAD.
+
+**Important adaptations for this lightweight mode:**
+- There is NO ticket ID and NO .tickets/ directory for this run. The evaluator must NOT try to read .tickets/ or look for acceptance.md/plan.md in .tickets/.
+- The evaluator must NOT write eval-report.md (its Bash writes will be refused anyway). Instead, instruct it to include its full report verbatim in its response text.
+- The evaluator must skip the run-id step (step 1 of eval.md) — there is no ticket dir to write it to.
+- For step 2, the evaluator must derive changed files from: git diff --name-only $BASE_REF HEAD
+- For step 3, the acceptance criteria to grade are provided below (not in a file):
+
+**Spec: $SPEC_TITLE**
+
+**Criteria to grade (each is independent):**
+$CRITERIA
+
+- For steps 4-8, follow eval.md's normal protocol: read changed files, grade each criterion independently (pass/fail/partial with file:line + quoted-text evidence), produce the standard eval report format, and end with a verdict line: \`pass: all criteria met\` or \`fail: <reason>\`.
+- Any \`partial\` criterion forces the verdict to \`fail:\` (there is no non-blocking partial).
+
+After the evaluator subagent completes, run: $SUBAGENT_LOG --agent-id eval-lightweight-\$(date +%s) --agent-type evaluator
+
+You cannot write files yourself. Relay the evaluator's full report text VERBATIM (byte-for-byte, not summarized, not paraphrased) in your own final response, wrapped in these exact delimiter lines on their own line:
+
+$EVALUATOR_START
+<evaluator's full report text, verbatim>
+$EVALUATOR_END
+
+Then end your response with exactly one line, nothing after it:
+HEADLESS_VERDICT: PASS
+or
+HEADLESS_VERDICT: FAIL
+
+Verdict is PASS only if the evaluator's verdict line starts with pass:. Any fail: or partial makes the overall verdict FAIL."
+
+# --- Dispatch ---
+
+echo "Dispatching evaluator against diff $BASE_REF..HEAD ..."
+
+set +e
+RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
+  --output-format json \
+  --permission-mode dontAsk \
+  --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
+INVOKE_STATUS=$?
+set -e
+
+if [[ "$INVOKE_STATUS" -ne 0 ]]; then
+  echo "Error: claude -p invocation failed (exit $INVOKE_STATUS). Hard-failing." >&2
+  echo "$RESULT_JSON" >&2
+  exit 1
+fi
+
+# --- Parse JSON output ---
+
+IS_WINDOWS=0
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
+esac
+JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
+
+if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
+  PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
+elif command -v python3 >/dev/null 2>&1; then
+  PARSED="$(echo "$RESULT_JSON" | python3 -c '
+import json, sys
+try:
+    d = json.load(sys.stdin)
+except Exception:
+    print("PARSE_ERROR\t\t")
+    sys.exit(0)
+is_error = d.get("is_error", True)
+session_id = d.get("session_id", "unknown")
+result = d.get("result", "").replace(chr(10), chr(2))
+print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
+')"
+else
+  echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present). Hard-failing." >&2
+  exit 1
+fi
+
+IS_ERROR="$(echo "$PARSED" | cut -f1)"
+SESSION_ID="$(echo "$PARSED" | cut -f2)"
+RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
+
+"$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-eval-$SESSION_ID" --agent-type headless-eval-orchestrator 2>/dev/null || true
+
+if [[ "$IS_ERROR" != "False" ]]; then
+  echo "Error: claude -p reported an error (is_error=$IS_ERROR). Hard-failing." >&2
+  echo "$RESULT_JSON" >&2
+  exit 1
+fi
+
+# --- Output ---
+
+echo "$RESULT_TEXT"
+
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+  printf '%s\n' "$RESULT_TEXT" >> "$GITHUB_STEP_SUMMARY"
+fi
+
+# --- Extract and persist eval report ---
+
+extract_report() {
+  local tag="$1"
+  awk -v start="@@@CANON_HEADLESS_REPORT:${tag}@@@" -v end="@@@CANON_HEADLESS_REPORT:/${tag}@@@" '
+    $0 == end {
+      if (started) { found_end = 1 }
+      exit
+    }
+    started { n++; buf[n] = $0; next }
+    $0 == start { started = 1 }
+    END {
+      if (!started || !found_end) exit 1
+      first = 1; last = n
+      while (first <= last && buf[first] == "") first++
+      while (last >= first && buf[last] == "") last--
+      if (first > last) { print ""; exit }
+      for (i = first; i <= last; i++) print buf[i]
+    }
+  ' <<< "$RESULT_TEXT"
+}
+
+if EVAL_CONTENT="$(extract_report evaluator)"; then
+  printf '%s' "$EVAL_CONTENT" > "$SPEC_DIR/eval-report.md"
+  echo "Eval report written to: $SPEC_DIR/eval-report.md" >&2
+else
+  echo "Warning: could not extract the evaluator's report from headless output — eval-report.md not persisted." >&2
+fi
+
+# --- Verdict ---
+
+if echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: PASS$'; then
+  exit 0
+elif echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: FAIL$'; then
+  exit 1
+else
+  echo "Error: no HEADLESS_VERDICT line found in output. Hard-failing (ambiguous result)." >&2
+  exit 1
+fi

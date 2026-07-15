@@ -403,6 +403,49 @@ headless grading works fine against a purely local repo.
    Confirm all three gates now pass and `HEADLESS_VERDICT: PASS` prints with
    exit code `0`.
 
+### Alternative: lightweight spec-driven eval (fewer steps)
+
+If you don't need the full three-gate ceremony (reviewer + evaluator +
+security-review) and just want to check a specific requirement against a diff,
+`sprint-headless-eval` is the one-command version. No ticket lifecycle, no
+plan approval — just a spec file with criteria and a base ref.
+
+1. Create a spec file (anywhere in your project) with the criteria you want
+   to check:
+
+   ```markdown
+   ---
+   ci: true
+   ---
+   # Remainder distribution must be correct
+
+   - [ ] If the bill doesn't split evenly, extra pennies are distributed among shares so all shares sum to the total exactly
+   - [ ] calculateSplit() with people > 100 returns a validation error, never allocates unbounded shares
+   ```
+
+2. Introduce the bug (same as step 3 above), then grade:
+
+   ```
+   git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
+   sprint-headless-eval spec.md --base-ref HEAD~1
+   ```
+
+3. Read the output: `HEADLESS_VERDICT: FAIL` with `file:line` evidence citing
+   the broken code. An `eval-report.md` appears next to `spec.md`.
+
+4. Revert and rerun:
+
+   ```
+   git revert --no-edit HEAD
+   sprint-headless-eval spec.md --base-ref HEAD~1
+   ```
+
+   Confirm `HEADLESS_VERDICT: PASS` (exit 0).
+
+This path skips the ticket setup (`tkt ci`, plan approval, committed docs) and
+runs only the evaluator — ~30-40k tokens vs. ~100k+ for the full ceremony. See
+`docs/headless-ci.md` → "Lightweight Spec-Driven Gate" for the full reference.
+
 ## Session 3 (GitHub, optional)
 
 This is what the instructor demos live, using their own API key — most students
