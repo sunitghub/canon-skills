@@ -224,6 +224,7 @@ Choose the lightest tier that still protects the work:
   acceptance.md    ← done criteria (binary, checkable) + test plan
   plan.md          ← files to touch, approach, decisions, tier reason
   research.md      ← objective truth compression before ## Approach; brief for normal, full orient for high-risk
+  review-notes.md  ← advisory reviewer findings at close (code quality, scope, standards) + YES/NO verdict
   eval-report.md   ← adversarial grader output at close
   summary.md       ← plan-vs-actual table at close; what was left undone; commands run + exit codes
 ```
