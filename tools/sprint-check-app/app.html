@@ -670,9 +670,23 @@
 
     .headless-row { display: flex; gap: 8px; align-items: center; }
     .headless-row input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); font-size: 12px; }
-    .headless-run-btn { padding: 5px 10px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent-dim); color: var(--accent); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-    .headless-run-btn:hover { background: var(--accent); color: var(--surface); }
-    .headless-run-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .headless-run-btn { padding: 8px 16px; border-radius: 6px; border: none; background: var(--accent); color: #fff; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: background .15s, transform .1s; }
+    .headless-run-btn:hover { background: var(--accent-hover, var(--accent)); transform: scale(1.02); }
+    .headless-run-btn:active { transform: scale(.97); }
+    .headless-run-btn:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .headless-run-btn svg { width: 14px; height: 14px; fill: currentColor; flex-shrink: 0; }
+    .headless-step.active.headless-pulse { animation: headless-step-pulse 1.5s ease-in-out infinite; }
+    @keyframes headless-step-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 var(--accent-dim); }
+      50% { box-shadow: 0 0 0 8px transparent; }
+    }
+    .headless-step.headless-result-highlight .headless-step-icon {
+      animation: headless-result-glow 1s ease-in-out 3;
+    }
+    @keyframes headless-result-glow {
+      0%, 100% { box-shadow: 0 0 0 0 transparent; }
+      50% { box-shadow: 0 0 0 6px var(--accent-dim); transform: scale(1.15); }
+    }
     #m-headless-status { margin-top: 8px; font-size: 12px; }
     .headless-running { color: var(--text-muted); }
     .headless-pass { color: #16a34a; font-weight: 700; }
@@ -2455,7 +2469,7 @@ function cardHTML(t, idx) {
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
-        ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading">▶</button>` : ''}
+        ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
       </div>
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
@@ -2570,16 +2584,17 @@ function startHeadlessPoll(ticketId) {
 function setHeadlessSteps(status, pass) {
   const steps = document.querySelectorAll('#m-headless .headless-step');
   if (steps.length !== 3) return;
-  steps.forEach(s => s.classList.remove('active', 'done', 'fail'));
+  steps.forEach(s => s.classList.remove('active', 'done', 'fail', 'headless-pulse', 'headless-result-highlight'));
   if (status === 'idle') {
     steps[0].classList.add('active');
   } else if (status === 'running') {
     steps[0].classList.add('done');
-    steps[1].classList.add('active');
+    steps[1].classList.add('active', 'headless-pulse');
   } else {
     steps[0].classList.add('done');
     steps[1].classList.add('done');
     steps[2].classList.add(pass ? 'done' : 'fail');
+    steps[2].classList.add('headless-result-highlight');
   }
 }
 
@@ -2633,8 +2648,8 @@ function renderModalHeadless(t) {
       <div class="headless-step-desc" id="m-headless-step-desc"></div>
       <div class="headless-baseref-hint">Grades the diff between this commit/branch and your current code — e.g. <code class="doc-code">main</code> or a commit SHA.</div>
       <div class="headless-row">
-        <input type="text" id="m-headless-baseref" placeholder="e.g. main, or a commit SHA">
-        <button id="m-headless-run" class="headless-run-btn">Start grading</button>
+        <input type="text" id="m-headless-baseref" value="HEAD~1" placeholder="e.g. main, or a commit SHA">
+        <button id="m-headless-run" class="headless-run-btn"><svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg> Start grading</button>
       </div>
       <div id="m-headless-status"></div>
     </div>`;
@@ -2643,6 +2658,12 @@ function renderModalHeadless(t) {
   stepEls.forEach(stepEl => {
     stepEl.addEventListener('click', () => {
       const idx = Number(stepEl.dataset.stepIdx);
+      // Step 3 when done: toggle the results output directly
+      if (idx === 2 && (stepEl.classList.contains('done') || stepEl.classList.contains('fail'))) {
+        const outputToggle = document.querySelector('#m-headless-status .headless-view-output');
+        if (outputToggle) outputToggle.click();
+        return;
+      }
       const alreadyOpen = descEl.classList.contains('expanded') && descEl.dataset.stepIdx === String(idx);
       if (alreadyOpen) {
         descEl.classList.remove('expanded');
