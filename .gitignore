@@ -26,3 +26,4 @@ doc-findings.md
 node_modules/
 package-lock.json
 test-results/
+Vulnerability-Policy.md
