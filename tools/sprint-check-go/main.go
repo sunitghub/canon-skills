@@ -481,6 +481,8 @@ func loadWhy(file string) map[string]any {
 	}
 	queryTarget := target
 	subjects := runGit("log", "--follow", "--format=%s", "--", queryTarget)
+	var resolvedPath string
+	var alternatives []string
 	if subjects == "" {
 		basename := filepath.Base(target)
 		candidates := []string{}
@@ -489,12 +491,32 @@ func loadWhy(file string) map[string]any {
 		}
 		if len(candidates) == 1 {
 			queryTarget = candidates[0]
+			resolvedPath = queryTarget
 			subjects = runGit("log", "--follow", "--format=%s", "--", queryTarget)
 		} else if len(candidates) > 1 {
-			return map[string]any{
-				"file": target, "results": []any{},
-				"message": "Multiple files named " + basename + " found — use the full path: " + strings.Join(candidates, ", "),
+			type ranked struct {
+				count int
+				path  string
 			}
+			var items []ranked
+			for _, c := range candidates {
+				out := runGit("log", "--oneline", "--", c)
+				n := 0
+				if out != "" {
+					n = len(strings.Split(strings.TrimSpace(out), "\n"))
+				}
+				items = append(items, ranked{n, c})
+			}
+			sort.Slice(items, func(i, j int) bool { return items[i].count > items[j].count })
+			queryTarget = items[0].path
+			resolvedPath = queryTarget
+			for i, item := range items[1:] {
+				if i >= 5 {
+					break
+				}
+				alternatives = append(alternatives, item.path)
+			}
+			subjects = runGit("log", "--follow", "--format=%s", "--", queryTarget)
 		}
 	}
 	if subjects == "" {
@@ -575,7 +597,14 @@ func loadWhy(file string) map[string]any {
 		msg = "No tickets found for " + target + "."
 	}
 	_, statErr := os.Stat(filepath.Join(projectRoot, queryTarget))
-	return map[string]any{"file": target, "results": results, "more": more, "file_exists": statErr == nil, "message": msg}
+	result := map[string]any{"file": target, "results": results, "more": more, "file_exists": statErr == nil, "message": msg}
+	if resolvedPath != "" {
+		result["resolved_path"] = resolvedPath
+	}
+	if len(alternatives) > 0 {
+		result["alternatives"] = alternatives
+	}
+	return result
 }
 
 // capWithMore truncates items to maxN, assuming items is already in the
