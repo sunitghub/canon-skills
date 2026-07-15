@@ -242,15 +242,99 @@ may also flag the user-controlled loop that can allocate an unbounded shares
 array. These are example findings, not guaranteed results; each reviewer grades
 the implementation it actually finds.
 
-## Session 2: headless CLI grading (local, no CI)
+## Session 2: UI Styling with a Second Ticket
 
-Session 1 ran the reviewer, evaluator, and security-review gates *interactively* —
-inside a live chat, as part of `sprint complete`. This session shows that the exact
-same three gates can also be replayed *non-interactively*, from a plain terminal,
-against the ticket you already closed. This is the same mechanism a CI pipeline
-would run against a pull request (see `docs/headless-ci.md`) — here you run it
-locally, so no GitHub repository, Actions workflow, or per-student API secret is
-needed. Your already-authenticated local `claude` CLI is enough.
+Session 1 produced a working bill splitter with correct arithmetic. This session
+runs a second sprint on the same codebase to add visual styling — showing how
+canon handles competing design options and records durable decisions.
+
+**Starting state:** Session 1's ticket is closed, the code is committed, and the
+board shows the first ticket in DONE.
+
+1. Start a new sprint — this time, tell the agent it's ticket-only (the design
+   details are coming in a separate message):
+
+   ```
+   sprint start "Update Restaurant Bill Splitter styling, ticket only, details incoming"
+   ```
+
+   The new ticket appears in IN PROGRESS on the board.
+
+2. Give the agent two candidate mockup images. Navigate to
+   `<canon-skills-path>/examples/restaurant-bill-split/assets/` and copy the
+   full paths of `Mockup-1.jpeg` and `Mockup-2.jpeg` (on Windows: Shift +
+   right-click → Copy as path). Then send this prompt, pasting the paths:
+
+   ```
+   Below are two candidate styles for the Restaurant Bill Splitter.
+   Add both to the ticket plan and recommend your pick.
+   <paste paths here>
+   ```
+
+   The agent copies both images into the ticket's `visuals/` folder, embeds
+   them in `plan.md` under Decisions, and recommends one.
+
+3. Tell the agent which option to use:
+
+   ```
+   Go with Option B
+   ```
+
+   (Or Option A, if you prefer.) The agent updates `acceptance.md` with the
+   chosen design's styling criteria and requests approval to implement.
+
+4. Approve and let the agent implement the styling changes. Once it finishes,
+   open or refresh `index.html` in your browser to confirm the new look.
+
+5. Make the design choice durable — record it as a project-wide decision, not
+   just a ticket-local one:
+
+   ```
+   Now that we've picked this design, pull out the actual colors, fonts,
+   and spacing you used and record them as our default look for future
+   screens — not just this one. If anything feels specific to this
+   component rather than something that should apply everywhere, call
+   that out instead of guessing.
+   ```
+
+   The agent analyzes the implemented styles and writes them to `DECISIONS.md`
+   so future sprints follow the same visual language automatically.
+
+6. Manually test the styled app in the browser, then check off all items under
+   the Acceptance tab (since this is manual/visual verification).
+
+7. Set the close-gate model to Haiku (saves tokens for a low-risk styling
+   change): open the **Plan** tab on the board, click the Sign-off line's Risk
+   field and type `Low risk, client-only static app`. Then select **Haiku**
+   from the Model dropdown for the Review & Eval subagents.
+
+8. Tell the agent to close the sprint:
+
+   ```
+   sprint complete
+   ```
+
+   The wrapup pipeline runs (simplify → code-review → security → repo-check →
+   doc-audit), then the reviewer and evaluator subagents grade the styling
+   changes on Haiku. Once all gates pass, the ticket moves to DONE and a
+   `summary.md` records what was delivered vs. planned.
+
+**What this session demonstrated:**
+
+- A second sprint on files the first sprint already built.
+- Handling competing designs (two mockup candidates → one choice, recorded durably).
+- Recording a project-wide design decision that survives beyond this ticket.
+- Using a cheaper model tier (Haiku) for low-risk gate runs.
+
+## Session 3: headless CLI grading (optional, local, no CI)
+
+Sessions 1 and 2 ran the reviewer, evaluator, and security-review gates
+*interactively* — inside a live chat, as part of `sprint complete`. This session
+shows that the exact same three gates can also be replayed *non-interactively*,
+from a plain terminal, against a ticket you already closed. This is the same
+mechanism a CI pipeline would run against a pull request (see `docs/headless-ci.md`)
+— here you run it locally, so no GitHub repository, Actions workflow, or per-student
+API secret is needed. Your already-authenticated local `claude` CLI is enough.
 
 > If you've used the sprint-check board's "Start grading" button on a `ci: true`
 > card instead, this is the exact same flow — the button runs this same
@@ -258,16 +342,14 @@ needed. Your already-authenticated local `claude` CLI is enough.
 > steps 1-2 below are "Set base ref", step 4 (the run itself) is "Grading in
 > progress", and step 5 (reading `HEADLESS_VERDICT`) is "Result ready".
 
-Prerequisites: the ticket from Session 1 is closed, its `plan.md`/`acceptance.md`
-were approved, and the evaluator passed interactively. Note that ticket's ID (for
-example `t-a1b2`) — you'll need it below. Your `MealSplit` folder was `git init`'d
-before Session 1 started, with no remote — headless grading works fine against a
-purely local repo, but every step below is written to never assume history
-beyond that `git init`, since your repo may have as few as one commit.
+Prerequisites: the ticket from Session 1 (or 2) is closed, its
+`plan.md`/`acceptance.md` were approved, and the evaluator passed interactively.
+Note that ticket's ID (for example `t-a1b2`) — you'll need it below. Your
+`MealSplit` folder was `git init`'d before Session 1 started, with no remote —
+headless grading works fine against a purely local repo.
 
 1. Record the current commit as your base ref — the "before" state that a
-   future diff will be graded against, the same role a PR's target branch
-   plays in CI:
+   future diff will be graded against:
 
    ```
    git rev-parse HEAD
@@ -282,12 +364,8 @@ beyond that `git init`, since your repo may have as few as one commit.
    ```
 
    This flips `ci: true` in the ticket's frontmatter and commits the ticket's
-   docs itself (`git add -f .tickets/<your-ticket-id>/` + a commit) — a CI
-   checkout (or, here, a fresh headless run) has nothing to grade against
-   otherwise. This workshop's `.gitignore` doesn't ignore `.tickets/`, so the
-   force-add is a harmless no-op here — but `tkt ci on` still runs it and
-   commits, so this step works the same way whether or not your project
-   ignores `.tickets/`. No separate manual commit step is needed.
+   docs itself (`git add -f .tickets/<your-ticket-id>/` + a commit). No
+   separate manual commit step is needed.
 
 3. Create something for headless grading to actually check — stand in for a
    teammate's PR by temporarily reintroducing a bug: comment out the
@@ -298,14 +376,6 @@ beyond that `git init`, since your repo may have as few as one commit.
    git commit -am "chore: temporarily reintroduce remainder bug for grading demo"
    ```
 
-   Steps 2 and 3 are now both separate commits sitting between the base ref
-   from step 1 and your current `HEAD` — so the diff step 4 grades includes
-   *both* the ticket's own `plan.md`/`acceptance.md` (from step 2) and this
-   reintroduced bug. That's expected, not a mistake: the reviewer/evaluator
-   already read `plan.md`/`acceptance.md` directly as ground truth, so seeing
-   them again in the diff doesn't get flagged as scope creep — the reintroduced
-   bug is still the only thing the verdict actually turns on.
-
 4. Run headless grading against the base ref from step 1:
 
    ```
@@ -313,27 +383,17 @@ beyond that `git init`, since your repo may have as few as one commit.
    ```
 
    This dispatches fresh reviewer, evaluator, and security-review subagents —
-   the same protocols Session 1 used, reading the same `plan.md`/`acceptance.md`
-   — against the diff between that base ref and your current code. No code is
-   written or edited; this call only grades.
+   the same protocols the interactive close used — against the diff between
+   that base ref and your current code. No code is written or edited; this
+   call only grades.
 
-5. Read the output. The full findings from all three gates print to stdout,
-   ending in exactly one line: `HEADLESS_VERDICT: PASS` or
-   `HEADLESS_VERDICT: FAIL`. Exit code `0` means all three gates passed; `1`
-   means a gate failed, or the invocation itself errored. Confirm the evaluator
-   reports `fail:` on the remainder-sum criterion, citing the commented-out
-   code as evidence, and that `HEADLESS_VERDICT: FAIL` prints with a non-zero
-   exit code — the same kind of finding Session 1's evaluator would have made
-   interactively.
+5. Read the output. The full findings print to stdout, ending in exactly one
+   line: `HEADLESS_VERDICT: PASS` or `HEADLESS_VERDICT: FAIL`. Exit code `0`
+   means all three gates passed; `1` means a gate failed. Confirm the
+   evaluator reports `fail:` on the remainder-sum criterion, citing the
+   commented-out code as evidence.
 
-6. Unlike an interactive close, headless mode never writes `review-notes.md` or
-   `eval-report.md` to disk (`claude -p`'s non-interactive permission mode
-   denies that). The full text is in your terminal's scrollback instead, and
-   every subagent dispatch is still logged to `.claude/subagent-runs.jsonl` for
-   audit purposes — inspect it with `tail .claude/subagent-runs.jsonl`.
-
-7. Revert the bug and rerun the same command from step 4 against the same base
-   ref:
+6. Revert the bug and rerun:
 
    ```
    git revert --no-edit HEAD
@@ -341,95 +401,13 @@ beyond that `git init`, since your repo may have as few as one commit.
    ```
 
    Confirm all three gates now pass and `HEADLESS_VERDICT: PASS` prints with
-   exit code `0` — the same acceptance criteria, graded the same way, now
-   satisfied by the real fix from Session 1.
+   exit code `0`.
 
-## Session 2 (GitHub, optional)
+## Session 3 (GitHub, optional)
 
-This is what the instructor demos live, using their own API key — most students should
-stick with the local CLI flow above (Session 2) rather than provision their own
-credential. If you want to see the same grading run as a real GitHub Actions check on a
-pull request instead of from your own terminal, this section walks through it. Nothing
-here is required to complete the workshop.
-
-1. Create a GitHub repository for your `MealSplit` project and push your code to it.
-
-2. Add your Anthropic API key as a repository secret: **Settings → Secrets and
-   variables → Actions → New repository secret**, name it `ANTHROPIC_API_KEY`. Use a
-   Console API key (console.anthropic.com), not a Claude.ai or Copilot subscription
-   login — headless `claude -p` in a CI runner needs a credential that drops into a
-   single secret with no interactive login step, which is exactly what an API key is
-   and a subscription-based login isn't.
-
-3. Before wiring the workflow, know one real pitfall: GitHub does **not** expose repo
-   secrets to workflows triggered by `pull_request` from a fork — that's a genuine
-   protection, not a bug to work around. Don't switch the trigger to
-   `pull_request_target` combined with checking out the fork's own code just to make
-   the secret available; that combination is a well-known way to let an external PR
-   exfiltrate your secret. Keep the workflow scoped to your own branches/PRs.
-
-4. Mark your ticket CI-eligible, same as the local flow — this commits its docs
-   itself, no separate manual step needed:
-
-   ```
-   tkt ci <your-ticket-id> on
-   ```
-
-   See `docs/headless-ci.md`'s "Making a Ticket CI-Eligible" section for the full
-   mechanics — this workshop doesn't change any of it.
-
-5. Add this workflow at `.github/workflows/headless-grading.yml`. It extends
-   `docs/headless-ci.md`'s own "Consumer-Project CI" recipe with one step that recipe
-   doesn't cover on its own: `sprint-headless` finds its gate docs (`review.md`,
-   `eval.md`, `security-review.md`) by looking for a `skills/` or `.claude/skills`
-   directory *inside your own MealSplit repo* — neither exists there, since (correctly)
-   you never commit `.claude/`. Create it fresh, every run, pointing at the canon
-   checkout instead of fighting that rule:
-
-   ```yaml
-   name: Headless canon grading
-
-   on:
-     pull_request:
-
-   jobs:
-     grade:
-       runs-on: ubuntu-latest
-       steps:
-         - name: Checkout MealSplit
-           uses: actions/checkout@v4
-
-         - name: Checkout canon
-           uses: actions/checkout@v4
-           with:
-             repository: sunitghub/canon-skills
-             path: canon
-
-         - name: Add canon tools to PATH
-           run: echo "${{ github.workspace }}/canon/tools" >> "$GITHUB_PATH"
-
-         - name: Make canon's skill docs discoverable from this repo
-           run: |
-             mkdir -p .claude
-             ln -s "${{ github.workspace }}/canon/skills" .claude/skills
-
-         - name: Headless canon grading
-           if: "contains(github.event.pull_request.body, 'Closes: t-')"
-           run: sprint-headless <your-ticket-id> --base-ref "${{ github.event.pull_request.base.ref }}"
-           env:
-             ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-   ```
-
-   Replace `<your-ticket-id>` with your real ticket ID. The `ln -s` step is what makes
-   the difference from a plain canon-repo checkout — without it, `sprint-headless`
-   would hard-fail with "no sprint/wrapup skill docs found" before ever reaching
-   `claude -p`, even though the binary itself resolves fine via `$GITHUB_PATH`.
-
-6. Open a pull request against your own repo. The workflow runs the same three gates
-   (reviewer, evaluator, security-review) you already saw locally, this time as a real
-   GitHub check on the PR. See `docs/headless-ci.md` for exit codes, what
-   `$GITHUB_STEP_SUMMARY` shows, and the waiver process for a criterion that genuinely
-   can't pass headlessly.
+This is what the instructor demos live, using their own API key — most students
+should stick with the local CLI flow above rather than provision their own
+credential. See `docs/headless-ci.md` for the full GitHub Actions recipe.
 
 ## Important limitation
 
