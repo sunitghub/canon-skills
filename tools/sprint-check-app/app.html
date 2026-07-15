@@ -1502,6 +1502,13 @@
         <span class="create-label">Priority</span>
         <div class="create-pills" id="c-priorities"></div>
       </div>
+      <div class="create-row">
+        <span class="create-label">Options</span>
+        <div class="create-pills">
+          <button class="create-pill" id="c-ci" type="button" title="Mark ticket CI-eligible for headless grading">CI</button>
+          <button class="create-pill" id="c-eval-override" type="button" title="Allow closing even if evaluator reports partial/fail">Eval Override</button>
+        </div>
+      </div>
       <div class="editor-toolbar open" id="c-editor-toolbar">
         <button class="editor-tool" type="button" data-insert="checkbox" title="Checkbox" aria-label="Add checkbox">
           <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
@@ -3804,10 +3811,20 @@ document.getElementById('m-body').addEventListener('click', async e => {
 
   let selectedType = 'task';
   let selectedPri  = 2;
+  let ciEnabled = false;
+  let evalOverride = false;
   let templateUntouched = true;
+
+  const ciBtn = document.getElementById('c-ci');
+  const evalBtn = document.getElementById('c-eval-override');
+
+  ciBtn.addEventListener('click', () => { ciEnabled = !ciEnabled; ciBtn.classList.toggle('active', ciEnabled); });
+  evalBtn.addEventListener('click', () => { evalOverride = !evalOverride; evalBtn.classList.toggle('active', evalOverride); });
 
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
+    ciEnabled = false; evalOverride = false;
+    ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
     titleEl.value = ''; detectEl.textContent = '';
     bodyEl.value = TYPE_TEMPLATES['task'] || '';
     queueEl.textContent = '→ will open in: Open';
@@ -3878,7 +3895,7 @@ document.getElementById('m-body').addEventListener('click', async e => {
     try {
       const ticket = await fetch('/api/tickets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value }),
+        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride }),
       }).then(r => r.json());
       state.tickets.unshift(ticket);
       renderBoard();

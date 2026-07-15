@@ -212,7 +212,7 @@ created: 2026-06-27
 
 func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("", "", "", 2, "")
+	created := createTicket("", "", "", 2, "", false, false)
 	id := created["id"].(string)
 	if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(id) {
 		t.Fatalf("id = %q, want t-[a-z0-9]{4}", id)
@@ -233,7 +233,7 @@ func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 
 func TestWriteStatusUpdatesActive(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("Active test", "task", "open", 2, "")
+	created := createTicket("Active test", "task", "open", 2, "", false, false)
 	id := created["id"].(string)
 
 	if !writeStatus(id, "in_progress") {

@@ -491,7 +491,7 @@ def read_doc(doc_file: str) -> str | None:
         return None
     return p.read_text(encoding='utf-8', errors='replace')
 
-def create_ticket(title: str, type_: str, status: str, priority: int, body: str) -> dict:
+def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False) -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
     TICKETS_DIR.mkdir(exist_ok=True)
     existing = {p.stem for p in ticket_paths()} | {p.name for p in TICKETS_DIR.iterdir() if p.is_dir()}
@@ -502,8 +502,20 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str)
             break
     created = date.today().isoformat()
     safe_title = title.replace('\n', ' ').strip()
-    fm = (f'---\nid: {ticket_id}\ntitle: {safe_title}\nstatus: {status}\n'
-          f'type: {type_}\npriority: {priority}\ncreated: {created}\n---\n')
+    fm_lines = [
+        '---',
+        f'id: {ticket_id}',
+        f'title: {safe_title}',
+        f'status: {status}',
+        f'type: {type_}',
+        f'priority: {priority}',
+        f'created: {created}',
+    ]
+    if ci:
+        fm_lines.append('ci: true')
+    fm_lines.append(f'eval_override: {"true" if eval_override else "false"}')
+    fm_lines.append('---\n')
+    fm = '\n'.join(fm_lines)
     full = fm + '\n' + body.strip() + '\n' if body.strip() else fm
     ticket_dir = TICKETS_DIR / ticket_id
     ticket_dir.mkdir()
@@ -719,6 +731,8 @@ class Handler(BaseHTTPRequestHandler):
                 status   = str(payload.get('status', 'open')),
                 priority = int(payload.get('priority', 2)),
                 body     = str(payload.get('body', '')),
+                ci       = bool(payload.get('ci', False)),
+                eval_override = bool(payload.get('eval_override', False)),
             )
             self.send_json(t); return
 

@@ -233,6 +233,8 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			stringValue(payload, "status", "open"),
 			intValue(payload["priority"], 2),
 			stringValue(payload, "body", ""),
+			boolValue(payload["ci"]),
+			boolValue(payload["eval_override"]),
 		))
 		return
 	}
@@ -677,7 +679,7 @@ func writeDoc(docFile, content string) bool {
 	return os.WriteFile(p, []byte(strings.TrimSpace(content)+"\n"), 0644) == nil
 }
 
-func createTicket(title, typ, status string, priority int, body string) ticket {
+func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool) ticket {
 	os.MkdirAll(ticketsDir, 0755)
 	existing := map[string]bool{}
 	for _, p := range ticketPaths() {
@@ -713,7 +715,15 @@ func createTicket(title, typ, status string, priority int, body string) ticket {
 	}
 	dir := filepath.Join(ticketsDir, id)
 	os.MkdirAll(dir, 0755)
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), strings.TrimSpace(body))
+	ciLine := ""
+	if ci {
+		ciLine = "ci: true\n"
+	}
+	evalLine := "eval_override: false"
+	if evalOverride {
+		evalLine = "eval_override: true"
+	}
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	os.WriteFile(path, []byte(text), 0644)
 	t, _ := parseTicket(path)
@@ -1140,6 +1150,18 @@ func intValue(v any, fallback int) int {
 		}
 	}
 	return fallback
+}
+
+func boolValue(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case float64:
+		return x != 0
+	case string:
+		return x == "true" || x == "1"
+	}
+	return false
 }
 
 func stringValue(payload map[string]any, key, fallback string) string {
