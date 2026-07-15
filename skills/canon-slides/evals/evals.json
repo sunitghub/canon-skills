@@ -45,9 +45,9 @@
       "id": 4,
       "case_type": "compliance",
       "prompt": "Build the skill-authoring slide deck with the canon theme.",
-      "expected_output": "The skill reads standards/skill-setup-std.md and guides/skill-authoring.md, structures the deck with the required outline sections (title, problem, core pattern, canon implementation, gotchas, summary), and render instructions include --allow-local-files or the repo render script.",
+      "expected_output": "The skill reads standards/skill-setup-std.md and docs/agent-playbook.md, structures the deck with the required outline sections (title, problem, core pattern, canon implementation, gotchas, summary), and render instructions include --allow-local-files or the repo render script.",
       "expectations": [
-        "Reads standards/skill-setup-std.md or guides/skill-authoring.md",
+        "Reads standards/skill-setup-std.md or docs/agent-playbook.md",
         "Writes slides/skill-authoring.md",
         "Deck includes a title slide and a summary/takeaways slide",
         "Render instructions include --allow-local-files or npm run slides",

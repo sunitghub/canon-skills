@@ -14,7 +14,7 @@ Called by `wrapup` before the close-time commit (`sprint complete` step 10) when
 
 Run this when changes touch any of:
 
-- `README.md`, `guides/`, `examples/`, `docs/`
+- `README.md`, `examples/`, `docs/`
 - `skills/`, `standards/`, `tools/`, `scripts/`
 - `tools/skills.sh`, `CATALOG.md`, install/setup files
 

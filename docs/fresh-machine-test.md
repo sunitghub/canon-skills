@@ -14,7 +14,7 @@ Validates that canon is self-contained and works on a machine where none of your
 
 Headless (server) Linux is sufficient for the CLI suite and install tests, but **not** the board step, which requires a browser.
 
-**Windows 11 developers:** canon's CLI tools are bash scripts — they require WSL2. See [Windows 11 (WSL2)](#windows-11-wsl2) below. The UTM Windows 11 ARM64 image lets you test the Windows path on your Mac.
+**Windows 11 developers:** canon's CLI tools are bash scripts — on Windows 11 the supported path is Git for Windows (Git Bash), no WSL required. See [Windows 11](#windows-11) below (WSL2 is an optional alternative). The UTM Windows 11 ARM64 image lets you test the Windows path on your Mac.
 
 ---
 
@@ -154,11 +154,13 @@ Follow [examples/restaurant-bill-split/](../examples/restaurant-bill-split/READM
 
 ---
 
-## Windows 11 (WSL2)
+## Windows 11
 
-canon's CLI tools are bash scripts. On Windows 11 the supported path is **WSL2 with Ubuntu** — not Git Bash, not PowerShell.
+canon's CLI tools are bash scripts. The supported Windows 11 path is **Git for Windows (Git Bash) — no WSL required**: run `install.ps1` once to add `tools/` to your user PATH, then use **Git Bash** to clone/update canon and run the agent CLIs (`sprint`, `tkt`, `skills.sh`), and **PowerShell** (or any terminal) with `sprint-check-win` for the board — the board ships as a Go binary, so no Python is needed. See the [main setup guide](setup.md) and the README's **Windows 11 — no WSL required** section for the full steps.
 
-### Prerequisites
+**WSL2 with Ubuntu is an optional alternative** — use it only if you prefer a full Linux environment. Under WSL2 canon behaves exactly like the Linux/macOS path. The rest of this section documents that optional WSL2 route.
+
+### WSL2 prerequisites
 
 **1. Enable WSL2** (one-time, in PowerShell as administrator):
 

@@ -78,6 +78,8 @@ Canonical layout:
   acceptance.md    ← definition of done + test plan + ## QA (Tested locally); all three sections are seeded at sprint start with an unchecked box, which blocks close if left unchecked
   plan.md          ← approach, decisions, grill/impact sections for high-risk; ## Sign-off skeleton (with an unchecked approval box) is created at sprint start, filled in and checked on approval, re-read after compaction
   research.md      ← objective truth compression, written before ## Approach; brief bullets for normal-tier, full orient protocol for high-risk/brownfield
+  review-notes.md  ← advisory reviewer findings (code quality, scope, standards) + YES/NO verdict; written at sprint complete for normal+ sprints
+  eval-report.md   ← adversarial per-criterion grades (pass/fail with file:line) + evaluator-run-id; written at sprint complete for normal+ sprints
   summary.md       ← plan-vs-actual table; written at sprint complete
 ```
 

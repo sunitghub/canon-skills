@@ -143,13 +143,14 @@ Runs the close path: simplify → code-review → security → repo/doc audit �
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
-Each sprint produces up to five docs:
+Each sprint produces up to six docs:
 
 | Doc | Written | Contains |
 |---|---|---|
 | `acceptance.md` | sprint start | Done criteria · test plan · QA sign-off |
 | `plan.md` | sprint start | Approach · decisions made along the way |
 | `research.md` | sprint start | Objective truth: relevant files, system model, constraints, unknowns — brief for normal tier, full orient protocol for high-risk/brownfield |
+| `review-notes.md` | sprint complete (normal+) | Advisory reviewer findings — code quality, scope, standards — with a YES/NO verdict |
 | `eval-report.md` | sprint complete (normal+) | Adversarial criterion grades · pass/fail with file:line evidence |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
@@ -203,7 +204,7 @@ High-risk sprints add orient (with parallel subagents when multiple subsystems a
 
 Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/setup.md)**
 
-Every non-trivial change starts with a ticket. Each sprint produces up to five docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `research.md` (objective compression of what the system does before any plan is written — brief for normal tier, full orient protocol for high-risk/brownfield), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
+Every non-trivial change starts with a ticket. Each sprint produces up to six docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `research.md` (objective compression of what the system does before any plan is written — brief for normal tier, full orient protocol for high-risk/brownfield), `review-notes.md` (advisory reviewer findings written at close for non-trivial sprints), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
 
 canon enforces its own standards. A git-native pre-commit hook runs the test suite and blocks before commit — no advisory reminders, no honor system, no Claude Code hook to configure. What ships is what passed.
 
@@ -223,7 +224,7 @@ Gates don't make agents smarter. They make certain failures impossible — and t
 2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
 3. Use **PowerShell** (or any terminal) for everything else: `sprint-check-win` opens the board, tickets can be created and managed through the UI.
 
-For agent-driven workflows (`sprint`, `tkt`, `skills.sh`) run those from Git Bash. See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11-wsl2)** for the full setup.
+For agent-driven workflows (`sprint`, `tkt`, `skills.sh`) run those from Git Bash. See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11)** for the full setup.
 
 Register canon in another project:
 

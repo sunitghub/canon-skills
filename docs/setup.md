@@ -5,7 +5,7 @@
 > 2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
 > 3. Use **PowerShell** for everything else: `sprint-check-win` opens the board; create and manage tickets through the UI.
 >
-> For agent-driven workflows (`sprint`, `tkt`, `skills.sh`), run those commands from Git Bash. WSL2 also works — see [fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11-wsl2).
+> For agent-driven workflows (`sprint`, `tkt`, `skills.sh`), run those commands from Git Bash. WSL2 also works — see [fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11).
 
 ## Install
 

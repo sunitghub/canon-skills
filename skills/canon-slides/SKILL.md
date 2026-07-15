@@ -43,7 +43,7 @@ For `evaluator-pattern`, read:
 
 For `skill-authoring`, read:
 - `standards/skill-setup-std.md`
-- `guides/skill-authoring.md`
+- `docs/agent-playbook.md` (Skill lifecycle section)
 - `skills/skill-eval/SKILL.md` (the evals and testing section)
 
 **2b. Check for applicable partials.** Before writing slides, read `skills/canon-slides/partials/` and list available partials. If a partial fits the deck's topic or audience, read it and insert it verbatim at the appropriate position — do not rewrite or inline its content by hand.
