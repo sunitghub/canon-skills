@@ -284,7 +284,14 @@
       border: 1px solid var(--panel-border); border-radius: 6px;
       background: var(--surface-raised);
     }
-    .sidebar-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .sidebar-summary { display: flex; flex-wrap: wrap; gap: 6px 12px; padding-top: 10px; margin-top: 4px; border-top: 1px solid var(--border-muted); }
+    .sidebar-donut { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; padding: 8px 0; }
+    .sidebar-donut svg { width: 80px; height: 80px; flex-shrink: 0; }
+    .sidebar-donut-center { font-size: 16px; font-weight: 700; fill: var(--text); }
+    .sidebar-donut-legend { display: grid; grid-template-columns: 10px minmax(28px, auto) 1fr; gap: 4px 6px; font-size: 14px; color: var(--text-muted); align-items: center; }
+    .sidebar-donut-legend-item { display: contents; }
+    .sidebar-donut-legend-item strong { color: var(--text); font-size: 13px; text-align: right; font-variant-numeric: tabular-nums; }
+    .sidebar-donut-legend-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
     .summary-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
     .summary-icon { width: 14px; height: 14px; flex-shrink: 0; }
 
@@ -336,6 +343,7 @@
       font: inherit; font-size: 13px;
     }
     .board-search input::placeholder { color: var(--text-muted); }
+    input[type="search"]::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
     .search-clear {
       border: 0; background: transparent; color: var(--text-muted);
       cursor: pointer; padding: 2px; font-size: 15px; line-height: 1;
@@ -2157,7 +2165,30 @@ function renderSidebar() {
     closed:      `<svg class="summary-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="6"/><path d="M5.5 8.5l2 2 3-4"/></svg>`,
     cancelled:   `<svg class="summary-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M5.5 5.5l5 5M10.5 5.5l-5 5"/></svg>`,
   };
-  document.getElementById('s-summary').innerHTML = COLUMNS.map(col => {
+  // Donut chart: ticket types breakdown
+  const TYPE_COLORS = { bug: '#ef4444', feature: '#3b82f6', task: '#22c55e', chore: '#a78bfa', epic: '#f59e0b' };
+  const typeCounts = {};
+  tickets.forEach(t => { const ty = t.type || 'task'; typeCounts[ty] = (typeCounts[ty] || 0) + 1; });
+  const total = tickets.length;
+  const R = 24, C = 2 * Math.PI * R;
+  let offset = 0;
+  const segments = Object.entries(typeCounts).map(([type, count]) => {
+    const pct = total ? count / total : 0;
+    const dash = pct * C;
+    const seg = `<circle cx="32" cy="32" r="${R}" fill="none" stroke="${TYPE_COLORS[type] || '#64748b'}" stroke-width="8" stroke-dasharray="${dash} ${C - dash}" stroke-dashoffset="${-offset}" transform="rotate(-90 32 32)"/>`;
+    offset += dash;
+    return seg;
+  });
+  const emptyRing = total === 0 ? `<circle cx="32" cy="32" r="${R}" fill="none" stroke="var(--border)" stroke-width="8"/>` : '';
+  const legend = Object.entries(typeCounts).map(([type, count]) =>
+    `<div class="sidebar-donut-legend-item"><span class="sidebar-donut-legend-dot" style="background:${TYPE_COLORS[type] || '#64748b'}"></span><strong>${count}</strong> ${esc(type)}</div>`
+  ).join('');
+  const donutHtml = `<div class="sidebar-donut">
+    <svg viewBox="0 0 64 64">${emptyRing}${segments.join('')}<text class="sidebar-donut-center" x="32" y="32" text-anchor="middle" dominant-baseline="central">${total}</text></svg>
+    <div class="sidebar-donut-legend">${legend || '<span style="color:var(--text-dim)">No tickets</span>'}</div>
+  </div>`;
+
+  document.getElementById('s-summary').innerHTML = donutHtml + '<div class="sidebar-summary">' + COLUMNS.map(col => {
     const count = tickets.filter(t => t.status === col.status).length;
     const iconColor = col.status === 'in_progress' ? 'var(--col-progress)'
                     : col.status === 'closed'      ? 'var(--col-done)'
@@ -2167,7 +2198,7 @@ function renderSidebar() {
       ${STATUS_ICONS[col.status] || ''}
       <span style="color:var(--text-muted)">${count} ${esc(col.label.toLowerCase())}</span>
     </div>`;
-  }).join('');
+  }).join('') + '</div>';
 }
 
 function renderWhyResults() {
@@ -2649,7 +2680,7 @@ function renderModalHeadless(t) {
       <div class="headless-baseref-hint">Grades the diff between this commit/branch and your current code — e.g. <code class="doc-code">main</code> or a commit SHA.</div>
       <div class="headless-row">
         <input type="text" id="m-headless-baseref" value="HEAD~1" placeholder="e.g. main, or a commit SHA">
-        <button id="m-headless-run" class="headless-run-btn"><svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg> Start grading</button>
+        <button id="m-headless-run" class="headless-run-btn" title="Start headless grading — runs reviewer, evaluator, and security-review against the base ref"><svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg> Start</button>
       </div>
       <div id="m-headless-status"></div>
     </div>`;
