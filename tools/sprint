@@ -283,40 +283,40 @@ _gate_plan_content() {
   fi
 }
 
-_gate_mockup_embed() {
+_gate_visual_embed() {
   local id="$1"
-  local file mentions embedded ref bad_refs mockups_dir
+  local file mentions embedded ref bad_refs visuals_dir
   for file in "$2" "$3"; do
     [[ -f "$file" ]] || continue
 
     # Basename of every real image embed's target path in this file — regardless of
-    # whether the mention driving it used a mockups/ prefix, so a bare filename
-    # mention and a mockups/-prefixed one resolve to the same identity.
+    # whether the mention driving it used a visuals/ prefix, so a bare filename
+    # mention and a visuals/-prefixed one resolve to the same identity.
     embedded="$(grep -oE '!\[[^]]*\]\([^)]+\)' "$file" \
       | sed -E 's/.*\(([^)]+)\)/\1/' \
       | grep -oE '[A-Za-z0-9_.-]+\.(png|jpg|jpeg|gif|webp)$' \
       | sort -u)"
 
     # Every image-extension filename mentioned anywhere in the file — bare,
-    # backticked, mockups/-prefixed, or inside a real embed's own path.
+    # backticked, visuals/-prefixed, or inside a real embed's own path.
     mentions="$(grep -oE '[A-Za-z0-9_.-]+\.(png|jpg|jpeg|gif|webp)' "$file" | sort -u)"
     [[ -z "$mentions" ]] && continue
 
-    mockups_dir="$(dirname "$file")/mockups"
+    visuals_dir="$(dirname "$file")/visuals"
     bad_refs=()
     while IFS= read -r ref; do
       [[ -z "$ref" ]] && continue
       if ! grep -qxF "$ref" <<< "$embedded"; then
         bad_refs+=("$ref — never embedded as a real image")
-      elif [[ ! -f "$mockups_dir/$ref" ]]; then
-        bad_refs+=("$ref — embedded, but $mockups_dir/$ref doesn't exist on disk")
+      elif [[ ! -f "$visuals_dir/$ref" ]]; then
+        bad_refs+=("$ref — embedded, but $visuals_dir/$ref doesn't exist on disk")
       fi
     done <<< "$mentions"
 
     if [[ "${#bad_refs[@]}" -gt 0 ]]; then
-      echo "Sprint $id cannot close: $file has a broken mockup reference."
+      echo "Sprint $id cannot close: $file has a broken visual reference."
       printf '  %s\n' "${bad_refs[@]}"
-      echo "Use a real markdown image embed — ![alt](mockups/<name>.<ext>) — and make sure the file is actually copied to $mockups_dir/."
+      echo "Use a real markdown image embed — ![alt](visuals/<name>.<ext>) — and make sure the file is actually copied to $visuals_dir/."
       return 1
     fi
   done
@@ -459,7 +459,7 @@ cmd_complete() {
   _gate_wrapup_gates        "$id" "$acceptance"          || exit 1
   _gate_no_unchecked        "$id" "$acceptance"          || exit 1
   _gate_plan_content        "$id" "$tdir/plan.md"        || exit 1
-  _gate_mockup_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1
+  _gate_visual_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1
   _gate_plan_signoff        "$id" "$tdir/plan.md"        || exit 1
   _gate_eval_report         "$id" "$tdir"                || exit 1
 

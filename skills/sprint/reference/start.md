@@ -11,34 +11,34 @@
 4. **Planning files.** Both files were already seeded by step 1 (skeleton `## Criteria`/`## Test Plan`/`## QA` in `acceptance.md`, skeleton `## Sign-off`/`## Approach`/`## Files`/`## Decisions` in `plan.md`) — fill them in now, before the brief. The approval gate in step 11 blocks code, not planning file content.
    - `acceptance.md` — specific, binary conditions that define "done" under `## Criteria` and `## Test Plan`. For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution. `## QA`'s "Tested locally" box also blocks close if left unchecked — check it once you've actually verified the change, not before.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
-   - **Mockup/screenshot artifacts.** Visual reference (pasted image, or a file path
+   - **Visual reference artifacts.** Visual reference (pasted image, or a file path
      from the user — including an absolute host path like `C:\...\Mockup-1.jpg`) as
      sprint direction:
-     1. **Copy the actual file** to `.tickets/<id>/mockups/<name>.<ext>` — name alone
+     1. **Copy the actual file** to `.tickets/<id>/visuals/<name>.<ext>` — name alone
         isn't enough; the board only serves images from inside the ticket's own
         folder, so a file left at its original location is unreachable.
-     2. **Insert a real markdown image embed** — `![alt](mockups/<name>.<ext>)`,
+     2. **Insert a real markdown image embed** — `![alt](visuals/<name>.<ext>)`,
         relative to the ticket's own folder, not the full API path — in
         `plan.md`/`acceptance.md`. A bare or backticked filename mention (e.g.
-        `` `Mockup-1.jpg` `` or `` `mockups/<name>.<ext>` `` in prose) is not an
+        `` `Mockup-1.jpg` `` or `` `visuals/<name>.<ext>` `` in prose) is not an
         embed and renders as plain text.
      3. **Multiple candidates** (e.g. two UI options): name each distinctly
-        (`mockups/option-a.png`, `mockups/option-b.png`), embed all candidates in
+        (`visuals/option-a.png`, `visuals/option-b.png`), embed all candidates in
         `plan.md` alongside the choice under `## Decisions`, embed only the chosen
-        one in `acceptance.md` — keep discarded candidates in `mockups/` for
+        one in `acceptance.md` — keep discarded candidates in `visuals/` for
         traceability, don't delete. Before writing each candidate's label and
         description, `Read` that specific copied file again and describe what's
-        actually seen — live-reproduced failure: two mockups got swapped relative
+        actually seen — live-reproduced failure: two visuals got swapped relative
         to their labels, tracked by copy/filename order instead of re-checking the
         file itself, so "Candidate A" described the wrong image. No mechanical gate
-        catches this (`_gate_mockup_embed` only checks a real embed exists and the
+        catches this (`_gate_visual_embed` only checks a real embed exists and the
         file is present, not that content matches label) — fix is re-verifying at
         write time.
 
-     `sprint complete`'s `_gate_mockup_embed` enforces both steps mechanically — it
+     `sprint complete`'s `_gate_visual_embed` enforces both steps mechanically — it
      blocks close if any image-extension filename mentioned in `plan.md`/`acceptance.md`
      never resolves to a real embed in that same file, or if a real embed's target file
-     was never actually copied to `mockups/`.
+     was never actually copied to `visuals/`.
    - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below)
    - If these already exist with real content (not just the skeleton): read them and proceed without recreating.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.

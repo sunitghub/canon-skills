@@ -297,44 +297,44 @@ Add _gate_plan_signoff to tools/sprint and tests.
 - tests/sprint.sh
 EOF
 
-# Mockup-embed gate — a bare/backticked mockup filename with no real image
+# Visual-embed gate — a bare/backticked visual filename with no real image
 # embed anywhere in plan.md must block close, naming the offending path —
 # regression for t-f149 (rendered as plain text on the board, not caught
 # until a real workshop-prep ticket shipped it).
 cat >> ".tickets/$id/plan.md" <<'EOF'
 
 ## Decisions
-- Option A (`mockups/option-a.png`): some text, no real embed anywhere.
+- Option A (`visuals/option-a.png`): some text, no real embed anywhere.
 EOF
 
-bad_mockup_output="$(run_fail "$SPRINT" complete)"
-assert_contains "$bad_mockup_output" "has a broken mockup reference"
-assert_contains "$bad_mockup_output" "option-a.png"
-assert_contains "$bad_mockup_output" "never embedded as a real image"
+bad_visual_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$bad_visual_output" "has a broken visual reference"
+assert_contains "$bad_visual_output" "option-a.png"
+assert_contains "$bad_visual_output" "never embedded as a real image"
 
-# t-215f — a bare filename mention with no "mockups/" prefix at all (reported live
-# from a Windows workshop: a manually-created ticket referenced two mockups by bare
-# filename, and the original mockups/-prefix-only regex never caught it).
-sed -i.bak 's/`mockups\/option-a\.png`/`Mockup-1.jpg`/' ".tickets/$id/plan.md" && rm -f ".tickets/$id/plan.md.bak"
-bare_mockup_output="$(run_fail "$SPRINT" complete)"
-assert_contains "$bare_mockup_output" "has a broken mockup reference"
-assert_contains "$bare_mockup_output" "Mockup-1.jpg"
-assert_contains "$bare_mockup_output" "never embedded as a real image"
+# t-215f — a bare filename mention with no "visuals/" prefix at all (reported live
+# from a Windows workshop: a manually-created ticket referenced two visuals by bare
+# filename, and the original visuals/-prefix-only regex never caught it).
+sed -i.bak 's/`visuals\/option-a\.png`/`Mockup-1.jpg`/' ".tickets/$id/plan.md" && rm -f ".tickets/$id/plan.md.bak"
+bare_visual_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$bare_visual_output" "has a broken visual reference"
+assert_contains "$bare_visual_output" "Mockup-1.jpg"
+assert_contains "$bare_visual_output" "never embedded as a real image"
 
 # Add a real embed for the bare mention, but do NOT create the file on disk —
 # t-215f's second gap: a syntactically-correct embed whose target was never actually
-# copied to mockups/ must also block, with a distinct message, not silently pass.
+# copied to visuals/ must also block, with a distinct message, not silently pass.
 cat >> ".tickets/$id/plan.md" <<'EOF'
 
-![Mockup 1](mockups/Mockup-1.jpg)
+![Mockup 1](visuals/Mockup-1.jpg)
 EOF
 missing_file_output="$(run_fail "$SPRINT" complete)"
-assert_contains "$missing_file_output" "has a broken mockup reference"
+assert_contains "$missing_file_output" "has a broken visual reference"
 assert_contains "$missing_file_output" "doesn't exist on disk"
 
-# Actually copy the file to mockups/ — gate passes, eval gate fires next
-mkdir -p ".tickets/$id/mockups"
-printf '\x89PNG\r\n\x1a\n' > ".tickets/$id/mockups/Mockup-1.jpg"
+# Actually copy the file to visuals/ — gate passes, eval gate fires next
+mkdir -p ".tickets/$id/visuals"
+printf '\x89PNG\r\n\x1a\n' > ".tickets/$id/visuals/Mockup-1.jpg"
 
 # All gates satisfied — sprint complete should succeed
 cat > ".tickets/$id/acceptance.md" <<'EOF'

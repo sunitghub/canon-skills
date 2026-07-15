@@ -214,8 +214,8 @@ PY
 # t-placeholder/t-ready are longer than 4 chars and would never match the
 # route's ticket-id pattern, silently degenerating every check below into a
 # 404==404 comparison instead of exercising the actual 200 success path.
-mkdir -p "$WORK/.tickets/t-mock/mockups"
-printf '\x89PNG\r\n\x1a\n' > "$WORK/.tickets/t-mock/mockups/test.png"
+mkdir -p "$WORK/.tickets/t-mock/visuals"
+printf '\x89PNG\r\n\x1a\n' > "$WORK/.tickets/t-mock/visuals/test.png"
 cat > "$WORK/.tickets/t-mock/ticket.md" <<'EOF'
 ---
 id: t-mock
@@ -242,11 +242,11 @@ check_ticket_image() {
   rm -f /tmp/parity-py-img.$$ /tmp/parity-go-img.$$
 }
 
-check_ticket_image "valid image"              "t-mock/mockups/test.png"
+check_ticket_image "valid image"              "t-mock/visuals/test.png"
 check_ticket_image "traversal attempt"         "t-mock/../../../../etc/passwd"
 check_ticket_image "non-image extension (real file, wrong ext)" "t-mock/ticket.md"
-check_ticket_image "missing file"              "t-mock/mockups/does-not-exist.png"
-check_ticket_image "malformed ticket id"       "t-ready/mockups/test.png"
+check_ticket_image "missing file"              "t-mock/visuals/does-not-exist.png"
+check_ticket_image "malformed ticket id"       "t-ready/visuals/test.png"
 
 # ── /api/ticket/<id>/headless-run parity (t-200b): trigger + poll shape ─────
 # Both servers reference tools/sprint-headless via a path relative to their
