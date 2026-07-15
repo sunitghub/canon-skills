@@ -43,7 +43,10 @@ When in doubt: if an entry wouldn't change how the next session starts, cut it.
 check and any pruning it triggers operate **only** on lines between those
 markers — anything a user adds outside them (their own notes, a different
 section) is never read, counted toward the 80-line threshold, or edited by
-this protocol. See `standards/skill-setup-std.md` for the general
+this protocol. Both markers must actually be present: the range check silently
+yields 0 lines (a false "under budget") if either marker is missing, so `wrapup`
+confirms the `BEGIN`/`END` pair exists before counting and restores it if absent.
+See `standards/skill-setup-std.md` for the general
 `canon:<name>:BEGIN/END` convention this follows.
 
 ## Format

@@ -4,8 +4,8 @@ description: Canonical ticket structure contract — folder layout, frontmatter 
 category: dev
 tags: [tickets, schema, contract, internal]
 hidden: true
-version: 1.0.0
-updated: 2026-06-13
+version: 1.1.0
+updated: 2026-07-15
 ---
 
 # Ticket Layout
@@ -22,6 +22,7 @@ Internal reference. Defines the canonical structure for all canon tickets. Updat
     acceptance.md           ← sprint doc (agent-created)
     plan.md                 ← sprint doc (agent-created)
     research.md             ← sprint doc (agent-created; brief for normal-tier, full orient protocol for high-risk)
+    eval-report.md          ← sprint doc (agent-created at close, normal+; adversarial criterion grades)
     summary.md              ← sprint doc (agent-created at close)
 ```
 
@@ -77,6 +78,7 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | `acceptance.md` | `sprint start` | yes — `## Criteria` and `## Test Plan` each need ≥1 checklist item; `## Wrapup Gates` must exist | Definition of done, test plan, wrapup gate record |
 | `plan.md` | `sprint start` | yes — `## Approach` must have non-placeholder content; `## Sign-off` must exist with no unchecked items and at least one checked approval (skipped only if `Tier: trivial`) | Approach, files, decisions; read after compaction |
 | `research.md` | `sprint start` step 6 (normal, brief) or step 7 (high-risk/brownfield, full orient) | no — sprint doesn't gate on it, but expected before `## Approach` is drafted | Objective truth compression: relevant files, system model, constraints, unknowns |
+| `eval-report.md` | `sprint complete` (normal+ tier) | yes for normal+ — the evaluator run-id field must be present and the verdict line must be `pass:` (any `partial`/`fail` blocks); skipped only if `Tier: trivial` | Adversarial per-criterion grades (pass/fail/partial) with `file:line` evidence, written by the fresh evaluator subagent |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
 **Optional `Gate model:` field.** `plan.md`'s `## Sign-off` line can carry a third segment,

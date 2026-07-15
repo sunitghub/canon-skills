@@ -4,8 +4,8 @@ description: Coding standards, git conventions, and token-efficiency rules for A
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.0
-updated: 2026-07-06
+version: 1.0.1
+updated: 2026-07-15
 ---
 
 # Agent Standards
@@ -70,4 +70,4 @@ Act on these when you see them — don't wait to be told.
 - Use targeted bash commands — avoid ones that dump large output for a narrow query.
 - Keep CLAUDE.md and AGENTS.md concise — rules, gotchas, non-obvious conventions only.
 - Summarizing or rewriting: preserve code blocks, inline code, paths, URLs, commands, version numbers, and technical terms exactly.
-- Run `/context-check` to audit the always-on context budget; log findings to `context-findings.md`.
+- In Claude Code, run `/context-check` to audit the always-on context budget; log findings to `context-findings.md`. The `/context-check` slash command is Claude Code-specific — under Codex, Pi, or headless runs it does not exist; audit the budget manually there.
