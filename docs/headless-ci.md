@@ -83,3 +83,63 @@ Provision both explicitly in the workflow: clone canon to a known path, then add
 ```
 
 `$GITHUB_PATH` is GitHub Actions' own PATH-extension mechanism — appending to it persists the addition to every later step in the same job, so `sprint-headless` resolves bare in the grading step exactly as it would on a developer's machine after `skills.sh add` finishes locally. Note the grading step invokes `sprint-headless`, not `tools/sprint-headless` — with canon's `tools/` on `PATH` rather than vendored into your own repo, the relative path from the canon-repo-only example above doesn't exist here and would fail with "No such file or directory."
+
+## Lightweight Spec-Driven Gate (`sprint-headless-eval`)
+
+`tools/sprint-headless-eval` is the low-ceremony alternative to the full `sprint-headless` pipeline. It runs **only the evaluator** against criteria you write directly in a markdown file — no ticket, no plan approval, no reviewer, no security-review.
+
+Use it when:
+- You want a quick CI assertion on a narrow requirement without full sprint ceremony
+- You're grading a PR against a single spec file checked into the repo
+- You want the cheapest possible "does this diff satisfy this requirement?" check
+
+### Spec File Format
+
+Any markdown file with checklist items:
+
+```markdown
+---
+ci: true
+---
+# calculateSplit() must reject split counts above 100
+
+- [ ] Calling calculateSplit() with people > 100 returns a validation error
+- [ ] The UI rejects people > 100 before calling calculateSplit()
+- [ ] No unbounded array allocation occurs for large people values
+```
+
+Frontmatter is optional. The body must contain at least one `- [ ]` or `- [x]` checklist item — each becomes an independently graded acceptance criterion.
+
+### Running It
+
+```
+sprint-headless-eval <spec-file> --base-ref <ref>
+```
+
+`--base-ref` (or `$GITHUB_BASE_REF`) is required. Relative refs (`HEAD~1`, `main~3`, `HEAD^`) are accepted.
+
+The evaluator grades each criterion with pass/fail/partial and `file:line` evidence, writes `eval-report.md` in the same directory as the spec file, and prints `HEADLESS_VERDICT: PASS` (exit 0) or `HEADLESS_VERDICT: FAIL` (exit 1).
+
+### Differences from `sprint-headless`
+
+| | `sprint-headless` | `sprint-headless-eval` |
+|---|---|---|
+| Gates run | reviewer + evaluator + security-review | evaluator only |
+| Input | ticket ID + committed plan.md/acceptance.md | any markdown spec file with criteria |
+| Requires | `tkt ci <id> on`, plan approved, ticket committed | just the spec file and a git repo |
+| Output | review-notes.md + eval-report.md in `.tickets/<id>/` | eval-report.md next to the spec file |
+| Cost | ~100k+ tokens (three subagents) | ~30-40k tokens (one subagent) |
+
+### Example GitHub Actions Step
+
+```yaml
+- name: Spec-driven eval
+  run: sprint-headless-eval specs/input-validation.md --base-ref "${{ github.event.pull_request.base.ref }}"
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+### When to Use Which
+
+- **`sprint-headless`** — full-ceremony grading for tickets that went through planning, approval, and implementation. Three independent gates, advisory + binding + security.
+- **`sprint-headless-eval`** — quick, targeted assertion. One spec file, one evaluator, one verdict. Good for: regression checks ("does this PR still satisfy requirement X?"), ad-hoc quality gates, and lightweight CI on narrow changes.
