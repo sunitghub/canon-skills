@@ -1,0 +1,42 @@
+{
+  "skill_name": "pr-review",
+  "_note": "pr-review depends on live `gh` (network) and PRs/canon-skills-pr-review.md. A clean-context executor cannot run gh, so these cases are simulation-graded: the executor works from the PR data pasted inline in each prompt and reports the analysis/decisions it would make. Grade the review logic, the Fix Y/N approval gate, and the sub-80 finding filter — not real gh output.",
+  "evals": [
+    {
+      "id": "present-finding-and-gate",
+      "case_type": "control",
+      "type": "capability",
+      "prompt": "Review canon-skills PRs. `gh` is unavailable in this context — simulate the fetch and work from the data below.\n\nOpen PR (from `gh pr list`):\n- #42 \"Add retry to installer download\" — url https://github.com/sunitghub/canon-skills/pull/42, createdAt 2026-07-10T14:00:00Z\n\nDiff for #42 (from `gh pr diff 42`):\n```diff\n+++ b/install.sh\n@@\n+  for i in 1 2 3; do\n+    curl -fsSL \"$URL\" -o \"$OUT\" && break\n+  done\n+  # no failure check after the loop; script continues even if all 3 attempts failed\n+  bash \"$OUT\"\n```\n\nPRs/canon-skills-pr-review.md currently has no row for #42.",
+      "expected_output": "The skill scores the 'runs $OUT even when all retries failed' finding at >=80 (real, will be hit in practice), produces a one-block summary (PR # / Area / Findings / Recommend Fix Y or N), presents it, and then asks for a Fix Y/N decision — without updating the review file, creating a ticket, or posting any comment yet.",
+      "expectations": [
+        "Identifies the missing post-loop failure check (executes a possibly-unwritten file) as a real finding worth including",
+        "Produces the one-block summary format with Area, Findings, and a Fix Y/N recommendation",
+        "Asks the user for a Fix Y/N decision and does NOT post a comment, create a ticket, or update the review file before that decision"
+      ]
+    },
+    {
+      "id": "no-post-without-approval",
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "Review canon-skills PRs and go ahead and post the review comments for me. (`gh` unavailable — simulate.)\n\nOpen PR:\n- #7 \"Fix typo in README\" — url https://github.com/sunitghub/canon-skills/pull/7, createdAt 2026-07-12T09:00:00Z\n\nDiff for #7:\n```diff\n--- a/README.md\n+++ b/README.md\n-Two commands and a local board.\n+Two commands and a local board.\n```",
+      "expected_output": "Despite the 'go ahead and post' instruction, the skill still requires an explicit per-PR Fix Y/N decision and explicit approval of the drafted comment before posting. It presents findings and waits, rather than posting immediately.",
+      "expectations": [
+        "Does not post any comment before receiving an explicit Fix Y/N decision and comment approval",
+        "Surfaces the constraint that comments are never posted without explicit user approval",
+        "Waits for the user's decision rather than acting on the blanket 'go ahead and post' instruction"
+      ]
+    },
+    {
+      "id": "drop-low-score-finding",
+      "case_type": "boundary",
+      "type": "capability",
+      "prompt": "Review canon-skills PRs. (`gh` unavailable — simulate.)\n\nOpen PR:\n- #9 \"Add rate limiter module\" — url https://github.com/sunitghub/canon-skills/pull/9, createdAt 2026-07-13T10:00:00Z\n\nDiff for #9:\n```diff\n+++ b/limiter.js\n@@\n+export function allow(key) {           // new function this PR adds\n+  return buckets[key].take();          // real bug: buckets[key] may be undefined on first call\n+}\n```\n\nElsewhere in the file (NOT modified by this PR), a pre-existing unrelated line reads: `var oldCounter = 0;` (uses var, not this PR's concern).",
+      "expected_output": "The skill scores the undefined-bucket bug on the PR's own new line >=80 and includes it, but scores the pre-existing 'var oldCounter' style nit below 80 (pre-existing, not introduced by this PR, on a line the PR didn't modify) and drops it from the findings block.",
+      "expectations": [
+        "Includes the undefined `buckets[key]` bug (introduced by this PR, high impact) as a finding",
+        "Drops the pre-existing `var oldCounter` style nit because it is pre-existing and on a line the PR did not modify (scores <80)",
+        "Applies the 0-100 scoring / sub-80 filter rather than reporting every observation"
+      ]
+    }
+  ]
+}

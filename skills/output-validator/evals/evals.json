@@ -1,0 +1,41 @@
+{
+  "skill_name": "output-validator",
+  "evals": [
+    {
+      "id": "clean-reconciling-report",
+      "case_type": "control",
+      "type": "capability",
+      "prompt": "Validate this feature status report before I deliver it.\n\nHeadline: 100% complete — all 6 features shipped.\n\n| Feature | Status |\n|---|---|\n| Auth login | Released |\n| Password reset | Released |\n| SSO | Released |\n| Audit log | Released |\n| Rate limiting | Released |\n| Export CSV | Released |\n\nNo open security issues, blockers, or overdue items.",
+      "expected_output": "The skill writes a Phase 1 spec (counts reconcile, exceptions to surface, accurate headline), runs the three Phase 2 checks, finds no discrepancy, and outputs 'output-validator: clean' before delivering.",
+      "expectations": [
+        "Writes a pre-generation validation spec covering count reconciliation, exception categories, and headline accuracy",
+        "Reconciles the 6 detail rows against the headline count and finds them consistent",
+        "Concludes with 'output-validator: clean'"
+      ]
+    },
+    {
+      "id": "buried-security-blocker",
+      "case_type": "compliance",
+      "type": "capability",
+      "prompt": "Validate this report before delivery.\n\nHeadline: 99% complete — ready to release.\n\n| Feature | Status | Notes |\n|---|---|---|\n| Checkout | Released | |\n| Cart | Released | |\n| Payments | In Development | OPEN SECURITY ISSUE: card data logged in plaintext |\n| Search | Released | |\n\nSummary: On track, no concerns.",
+      "expected_output": "Check 2 surfaces the open security issue on Payments; Check 3 flags that the '99% complete / no concerns' headline is inaccurate while an open security issue exists, and the skill revises the headline before delivering.",
+      "expectations": [
+        "Surfaces the plaintext-card-data security issue explicitly as an exception that cannot be buried",
+        "Flags the headline ('99% complete / no concerns') as inaccurate given the open security issue",
+        "Revises or blocks the summary rather than emitting 'output-validator: clean'"
+      ]
+    },
+    {
+      "id": "counts-do-not-reconcile",
+      "case_type": "edge",
+      "type": "capability",
+      "prompt": "Validate this before I send it.\n\nHeadline: 10 tasks total, 10 complete.\n\n| Task | Status |\n|---|---|\n| T1 | Done |\n| T2 | Done |\n| T3 | Done |\n| T4 | In Progress |\n| T5 | Done |\n| T6 | Done |\n| T7 | Blocked |\n| T8 | Done |\n\nAll done!",
+      "expected_output": "Check 1 finds the detail rows (8 listed, 6 Done, 1 In Progress, 1 Blocked) do not reconcile with the '10 total, 10 complete' headline; the skill quotes both figures, states the discrepancy, and corrects the summary before delivering.",
+      "expectations": [
+        "Adds up the detail rows and compares to the headline counts, quoting both",
+        "States the discrepancy (headline claims 10/10 complete; detail shows 8 rows with In Progress and Blocked items)",
+        "Corrects the summary before delivering rather than passing it clean"
+      ]
+    }
+  ]
+}

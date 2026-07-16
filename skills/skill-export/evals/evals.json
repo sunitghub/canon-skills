@@ -1,0 +1,52 @@
+{
+  "skill_name": "skill-export",
+  "evals": [
+    {
+      "id": "flat-skill-export",
+      "case_type": "control",
+      "type": "capability",
+      "prompt": "skill-export capture\n\ncapture is a flat skill (no sub-directories other than evals/). skills/capture/SKILL.md contains:\n\n---\nname: capture\ndescription: Records non-obvious discoveries, constraints, and gotchas to HANDOFF.md. Use when something surprising is found mid-sprint.\ncategory: dev\ntags: [knowledge-management, handoff, memory]\n---\n\n# Capture\n\n## When to Capture\n\n- Filter or exclusion rules found by comparing data sets or running experiments\n- Environment gotchas: args, paths, config locations, tool behavior, build quirks\n\n## Action\n\n1. Append to `HANDOFF.md` under `## Discoveries`. Create the section if absent.\n2. Save a `project` memory.\n3. Reply: `Captured: <summary>`.",
+      "expected_output": "The skill outputs a header line, then the capture body verbatim starting at '# Capture' with the frontmatter block (name/description/category/tags) removed, then a footer 'Source: skills/capture/SKILL.md'. No preamble or wrapper commentary.",
+      "expectations": [
+        "Removes the entire frontmatter block (name, description, category, tags) between the opening and closing ---",
+        "Preserves the body verbatim from '# Capture' onward, including the '## When to Capture' / '## Action' headings, list items, and backticked text",
+        "Emits a '# capture — paste into ...' header and a 'Source: skills/capture/SKILL.md' footer, with no other commentary"
+      ]
+    },
+    {
+      "id": "reject-sub-skill",
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "skill-export sprint\n\nThe skill sprint lives at skills/sprint/SKILL.md and has a sub-directory skills/sprint/reference/ (in addition to skills/sprint/evals/).",
+      "expected_output": "The Flat check finds a non-evals sub-directory, so the skill refuses with the message: skill-export: 'sprint' has sub-skills — not supported. Use Claude Code with skills.sh for full fidelity. It does not output any exported content.",
+      "expectations": [
+        "Detects that sprint has a sub-directory other than evals/ (reference/)",
+        "Refuses with a 'has sub-skills — not supported' message and does not export any skill content"
+      ]
+    },
+    {
+      "id": "refine-mode",
+      "case_type": "boundary",
+      "type": "capability",
+      "prompt": "skill-export somename \"Please make sure to read the file first. It's important to note that you should always validate the input. Then, when you are ready, write the output to disk.\"",
+      "expected_output": "A second quoted argument triggers refine mode: the skill tightens the prompt per efficiency.md (drops 'please', 'make sure to', 'it's important to note that', 'you should') into imperative voice, retains every distinct instruction (read file first; validate input; write output to disk), and appends a 'Source: refined from user input (standards/efficiency.md)' footer. It does not read skills/somename/SKILL.md.",
+      "expectations": [
+        "Enters refine mode on the quoted second argument rather than trying to locate/export a skill named somename",
+        "Removes filler/hedging (please, make sure to, it's important to, you should) and uses imperative voice",
+        "Retains all three distinct instructions — read the file first, validate the input, write the output to disk",
+        "Appends the 'refined from user input (standards/efficiency.md)' footer"
+      ]
+    },
+    {
+      "id": "skill-not-found",
+      "case_type": "edge",
+      "type": "regression",
+      "prompt": "skill-export nonexistent-skill\n\nThere is no skills/nonexistent-skill/SKILL.md in the repo.",
+      "expected_output": "The Locate step finds no SKILL.md and outputs: skill-export: 'nonexistent-skill' not found — run ./tools/skills.sh list to see available skills. Then stops.",
+      "expectations": [
+        "Reports that the skill was not found and points to ./tools/skills.sh list",
+        "Does not fabricate or export any content"
+      ]
+    }
+  ]
+}
