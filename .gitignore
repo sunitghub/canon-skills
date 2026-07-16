@@ -10,7 +10,6 @@ meta/
 .\#*
 *~
 toPdfViaTempFile*
-guides/*.pdf
 tools/tailscale-check.sh
 posts/
 octave/

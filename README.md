@@ -154,7 +154,7 @@ Each sprint produces up to six docs:
 | `eval-report.md` | sprint complete (normal+) | Adversarial criterion grades · pass/fail with file:line evidence |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
-All are plain markdown in `.tickets/<id>/` and are injected into the agent's context at every session start — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
+All are plain markdown in `.tickets/<id>/` and are read into the agent's context by `sprint start` — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
 
 **Gated, not vibes.** The CLI owns state. `sprint complete` refuses to close while any acceptance or test-plan box is unchecked, `summary.md` is missing, the `## Wrapup Gates` record is absent, the evaluator run-id field is missing, `plan.md`'s Approach or Sign-off is empty or unapproved, or the eval verdict isn't `pass:` — the same full gate set as **Mechanical close gate** above. The board surfaces the same checks early — cards flag `incomplete` in red before close-time.
 

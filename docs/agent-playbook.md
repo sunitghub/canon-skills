@@ -226,7 +226,7 @@ Choose the lightest tier that still protects the work:
   research.md      ← objective truth compression before ## Approach; brief for normal, full orient for high-risk
   review-notes.md  ← advisory reviewer findings at close (code quality, scope, standards) + YES/NO verdict
   eval-report.md   ← adversarial grader output at close
-  summary.md       ← plan-vs-actual table at close; what was left undone; commands run + exit codes
+  summary.md       ← plan-vs-actual table at close; what was delivered, waived, deferred, or partial
 ```
 
 ### Acceptance criteria rules
