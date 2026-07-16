@@ -75,18 +75,19 @@ Immediately after the frontmatter, add a global animation block (before the titl
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.card { animation: fadeUp 0.35s both; }
+.card, .step { opacity: 0; }
+section.bespoke-marp-active .card,
+section.bespoke-marp-active .step { animation: fadeUp 0.35s both; }
 .c1 { animation-delay: 0.05s; } .c2 { animation-delay: 0.22s; }
 .c3 { animation-delay: 0.39s; } .c4 { animation-delay: 0.56s; }
 .c5 { animation-delay: 0.73s; }
-.step { animation: fadeUp 0.3s both; }
 .s1 { animation-delay: 0.05s; } .s2 { animation-delay: 0.18s; }
 .s3 { animation-delay: 0.31s; } .s4 { animation-delay: 0.44s; }
 .s5 { animation-delay: 0.57s; }
 </style>
 ```
 
-Assign `.card .cN` to each card in a set so they stagger in on load. Assign `.step .sN` to sequential row items (flow diagrams, timeline bars, etc.).
+Assign `.card .cN` to each card in a set so they slide in one-by-one; `.step .sN` for sequential row items (flow diagrams, timeline bars, etc.). **Scope the animation to `section.bespoke-marp-active`, not the bare class** — Marp's bespoke viewer keeps every slide in the DOM at once, so an unscoped `.card { animation: ... }` only plays once, on page load, for every card on every slide simultaneously; by the time a viewer reaches slide 6 the animation already finished on load and the cards just sit there fully visible. Scoping to the active-slide class means the base `.card`/`.step` rule holds `opacity:0` until Marp toggles `bespoke-marp-active` onto that slide's `<section>`, which both triggers the reveal on arrival and replays it correctly if the viewer navigates back to the slide later. This only affects the HTML/browser deck — PPTX output is a static per-slide screenshot, so exported slides always show the fully-revealed end state (expected, not a bug).
 
 **Space-filling — every slide uses a 3-row layout: heading / body / footer.**
 
@@ -96,7 +97,7 @@ The section is `display:flex; flex-direction:column; justify-content:flex-start`
 
 ```html
 <!-- Body only (no footer) -->
-<div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:12px;">
+<div style="display:flex; flex-direction:column; flex:1; min-height:0; justify-content:space-evenly; gap:12px;">
   <!-- cards, diagrams, etc -->
 </div>
 
@@ -134,6 +135,7 @@ Rules:
 3. Column layouts use `display:flex; align-items:stretch` (not `align-items:center`) with `flex:1` columns so they fill the available height.
 4. Footer callouts use `grid-template-rows:1fr auto` — `auto` guarantees the footer its natural height; `1fr` gives the body the rest.
 5. Never put the footer outside the `flex:1` container (orphaned elements render in a tiny strip below the content area).
+6. Vertical card lists (2–3 short cards) default to `justify-content:flex-start`, which packs them at the top and leaves the remaining height as dead space below — `flex:1` on the container only guarantees it *can* fill the slide, not that its children do. Use `justify-content:space-evenly` so leftover vertical space distributes as equal gaps around each card instead of collecting at the bottom. This is a pure CSS distribution, not a per-item size calculation — with 4+ cards or dense content the extra space per gap shrinks to nearly nothing on its own, so no different rule is needed at higher density.
 
 Quick reference:
 
@@ -142,7 +144,7 @@ Quick reference:
 | Body + footer callout | `display:grid; grid-template-rows:1fr auto; flex:1; min-height:0; gap:10px` |
 | Side-by-side columns | `display:flex; align-items:stretch; flex:1; min-height:0; gap:20px` |
 | 2-column card grid | `display:grid; grid-template-columns:1fr 1fr; flex:1; min-height:0; gap:16px` |
-| Vertical card list | `display:flex; flex-direction:column; flex:1; min-height:0; gap:12px` |
+| Vertical card list | `display:flex; flex-direction:column; flex:1; min-height:0; justify-content:space-evenly; gap:12px` |
 | Flow/pipeline | `display:flex; flex-direction:column; align-items:center; flex:1; min-height:0` |
 | Title / hook (no h2) | `display:flex; flex-direction:column; justify-content:center; flex:1; min-height:0` |
 
@@ -359,6 +361,8 @@ The page counter is in the bottom padding area (below the 604 px content zone), 
 - **`html: true` in frontmatter alone is not enough** — the CLI flag and frontmatter key must both be set.
 - **Diagram column width ≥ 260px.** Narrower columns make the context-window and stack diagrams look decorative rather than readable. Use `width:260px; flex-shrink:0` for diagram columns.
 - **Numbered card sizes.** Large number labels (`font-size:1.5em; font-weight:800`) read clearly in a 1280×720 viewport. Anything smaller at `0.7em` or below disappears in a projector room.
+- **Vertical card lists need `justify-content:space-evenly`, not the `flex-start` default.** `flex:1; min-height:0` on the container only makes it *able* to fill the slide — with 2–3 short cards and no `justify-content` set, they pack at the top and leave a visible dead-space band below. `space-evenly` distributes the leftover height as equal gaps instead.
+- **Card/step reveal animation is scoped to `section.bespoke-marp-active`, not a bare `.card`/`.step` rule.** An unscoped animation plays once for every card on every slide at page load, so by the time a viewer reaches a later slide the cards are already fully visible — no perceived reveal. Scoping to the active-slide class makes cards start at `opacity:0` and animate in only when Marp marks that slide active, so the reveal (and its replay on revisiting the slide) actually happens in the HTML deck. PPTX export is a static per-slide screenshot and always shows the fully-revealed end state — expected, not a bug.
 - Marp's `---` separators are load-bearing — they create slide breaks. Do not remove them when editing the `.md` source.
 - The `--allow-local-files` flag is required for CSS themes referenced by local path; without it, marp-cli silently ignores the theme.
 - The `theme:` value in the deck's frontmatter must match the theme name declared in the CSS (`/* @theme canon */`). Mismatch causes marp-cli to fall back to default styling.
