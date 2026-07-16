@@ -71,23 +71,28 @@ Immediately after the frontmatter, add a global animation block (before the titl
 
 ```html
 <style>
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+.card, .step {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
-.card, .step { opacity: 0; }
-section.bespoke-marp-active .card,
-section.bespoke-marp-active .step { animation: fadeUp 0.35s both; }
-.c1 { animation-delay: 0.05s; } .c2 { animation-delay: 0.22s; }
-.c3 { animation-delay: 0.39s; } .c4 { animation-delay: 0.56s; }
-.c5 { animation-delay: 0.73s; }
-.s1 { animation-delay: 0.05s; } .s2 { animation-delay: 0.18s; }
-.s3 { animation-delay: 0.31s; } .s4 { animation-delay: 0.44s; }
-.s5 { animation-delay: 0.57s; }
+svg.bespoke-marp-active .card,
+svg.bespoke-marp-active .step { opacity: 1; transform: translateY(0); }
+.c1 { transition-delay: 0.05s; } .c2 { transition-delay: 0.22s; }
+.c3 { transition-delay: 0.39s; } .c4 { transition-delay: 0.56s; }
+.c5 { transition-delay: 0.73s; }
+.s1 { transition-delay: 0.05s; } .s2 { transition-delay: 0.18s; }
+.s3 { transition-delay: 0.31s; } .s4 { transition-delay: 0.44s; }
+.s5 { transition-delay: 0.57s; }
 </style>
 ```
 
-Assign `.card .cN` to each card in a set so they slide in one-by-one; `.step .sN` for sequential row items (flow diagrams, timeline bars, etc.). **Scope the animation to `section.bespoke-marp-active`, not the bare class** — Marp's bespoke viewer keeps every slide in the DOM at once, so an unscoped `.card { animation: ... }` only plays once, on page load, for every card on every slide simultaneously; by the time a viewer reaches slide 6 the animation already finished on load and the cards just sit there fully visible. Scoping to the active-slide class means the base `.card`/`.step` rule holds `opacity:0` until Marp toggles `bespoke-marp-active` onto that slide's `<section>`, which both triggers the reveal on arrival and replays it correctly if the viewer navigates back to the slide later. This only affects the HTML/browser deck — PPTX output is a static per-slide screenshot, so exported slides always show the fully-revealed end state (expected, not a bug).
+Assign `.card .cN` to each card in a set so they slide in one-by-one; `.step .sN` for sequential row items (flow diagrams, timeline bars, etc.). **This must use `transition`, not `@keyframes`/`animation`, and must target `svg.bespoke-marp-active`, not `section.bespoke-marp-active`.** Two independent traps here:
+
+1. Marp wraps each slide as `<svg class="bespoke-marp-slide"><foreignObject><section>...</section></foreignObject></svg>`, and Marp's bespoke viewer toggles the `bespoke-marp-active` class onto the `<svg>` element at runtime — never onto `<section>`. A selector scoped to `section.bespoke-marp-active` matches nothing, ever, so every `.card`/`.step` stays at its hidden base state (`opacity:0`) forever — the slide looks like only its heading rendered, with the rest of the content invisible.
+2. Marp's own bespoke CSS includes `svg.bespoke-marp-slide.bespoke-marp-active.bespoke-marp-active-ready * { animation-name: __bespoke_marp__ !important; }`, which force-overrides any custom `animation-name` on every descendant of the active slide as soon as it's marked "ready" — including a correctly-scoped one. A `@keyframes`/`animation`-based reveal gets silently killed moments after the slide becomes active, before it can visibly play. `transition` is a completely different CSS mechanism that this override never touches, so it's the only reliable way to do a reveal-on-active-slide effect here.
+
+This only affects the HTML/browser deck — PPTX output is a static per-slide screenshot, so exported slides always show the fully-revealed end state (expected, not a bug).
 
 **Space-filling — every slide uses a 3-row layout: heading / body / footer.**
 
@@ -362,7 +367,7 @@ The page counter is in the bottom padding area (below the 604 px content zone), 
 - **Diagram column width ≥ 260px.** Narrower columns make the context-window and stack diagrams look decorative rather than readable. Use `width:260px; flex-shrink:0` for diagram columns.
 - **Numbered card sizes.** Large number labels (`font-size:1.5em; font-weight:800`) read clearly in a 1280×720 viewport. Anything smaller at `0.7em` or below disappears in a projector room.
 - **Vertical card lists need `justify-content:space-evenly`, not the `flex-start` default.** `flex:1; min-height:0` on the container only makes it *able* to fill the slide — with 2–3 short cards and no `justify-content` set, they pack at the top and leave a visible dead-space band below. `space-evenly` distributes the leftover height as equal gaps instead.
-- **Card/step reveal animation is scoped to `section.bespoke-marp-active`, not a bare `.card`/`.step` rule.** An unscoped animation plays once for every card on every slide at page load, so by the time a viewer reaches a later slide the cards are already fully visible — no perceived reveal. Scoping to the active-slide class makes cards start at `opacity:0` and animate in only when Marp marks that slide active, so the reveal (and its replay on revisiting the slide) actually happens in the HTML deck. PPTX export is a static per-slide screenshot and always shows the fully-revealed end state — expected, not a bug.
+- **Card/step reveal must use `transition`, scoped to `svg.bespoke-marp-active`, not `@keyframes`/`animation` scoped to `section.bespoke-marp-active`.** Two separate ways this breaks: (1) Marp puts the `bespoke-marp-active` class on the `<svg class="bespoke-marp-slide">` wrapper, never on the inner `<section>` — a `section.bespoke-marp-active` selector matches nothing and the slide just looks blank below its heading. (2) Marp's own CSS forcibly resets `animation-name` to a no-op with `!important` on every descendant of the active slide once it's "ready", so even a correctly-scoped `@keyframes` animation gets killed before it visibly plays. `transition` isn't touched by that override and is the only mechanism that reliably works. PPTX export is a static per-slide screenshot and always shows the fully-revealed end state — expected, not a bug.
 - Marp's `---` separators are load-bearing — they create slide breaks. Do not remove them when editing the `.md` source.
 - The `--allow-local-files` flag is required for CSS themes referenced by local path; without it, marp-cli silently ignores the theme.
 - The `theme:` value in the deck's frontmatter must match the theme name declared in the CSS (`/* @theme canon */`). Mismatch causes marp-cli to fall back to default styling.

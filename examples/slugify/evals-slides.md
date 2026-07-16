@@ -6,15 +6,15 @@ html: true
 ---
 
 <style>
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+.card {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
-.card { opacity: 0; }
-section.bespoke-marp-active .card { animation: fadeUp 0.35s both; }
-.c1 { animation-delay: 0.05s; } .c2 { animation-delay: 0.22s; }
-.c3 { animation-delay: 0.39s; } .c4 { animation-delay: 0.56s; }
-.c5 { animation-delay: 0.73s; }
+svg.bespoke-marp-active .card { opacity: 1; transform: translateY(0); }
+.c1 { transition-delay: 0.05s; } .c2 { transition-delay: 0.22s; }
+.c3 { transition-delay: 0.39s; } .c4 { transition-delay: 0.56s; }
+.c5 { transition-delay: 0.73s; }
 </style>
 
 <div style="display:flex; flex-direction:column; justify-content:center; flex:1; min-height:0; gap:24px;">
