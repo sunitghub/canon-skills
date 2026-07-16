@@ -125,3 +125,4 @@ Gaps in `## Unknowns` surface naturally at the `sprint start` research review ch
 - List excluded near-miss files and why they were ruled out — this prevents
   future re-reading of the same candidates.
 - Subagent transcripts are disposable. The only durable output is `research.md`.
+- **Perspective check:** High-risk sprints also run `start.md` step 6's three-lens perspective check (user, security, architect) during orient — see step 7 of `start.md`. Include any findings in `research.md ## Constraints`.

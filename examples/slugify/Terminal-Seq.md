@@ -2,8 +2,7 @@
 
 Skips `skills.sh add` — its documented `examples/` path syntax doesn't work with
 the current tool (`find_skill` only searches `standards/`, `tools/`, `skills/` by
-frontmatter name, never `examples/`; see `examples/check-offline/README.md` for the
-same stale instruction). This sets up a scratch project the same way `skills.sh add`
+frontmatter name, never `examples/`). This sets up a scratch project the same way `skills.sh add`
 would under the hood: a real `skills/` dir, symlinked into `.claude/skills/`.
 
 ## One-time setup

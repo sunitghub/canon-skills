@@ -1,6 +1,6 @@
 ---
 name: efficiency
-description: Coding standards, git conventions, and token-efficiency rules for AI agents
+description: Coding standards, code review feedback, git conventions, behavioral triggers, and token-efficiency rules for AI agents
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true

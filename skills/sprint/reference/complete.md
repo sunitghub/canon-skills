@@ -86,7 +86,17 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    — the exact value applied above (an explicit `Gate model:` value, `haiku` if the
    structural check classified this low-risk, or the exact session model id, e.g.
    `claude-sonnet-5`), never a paraphrase — same value as the Wrapup Gates table's
-   `(model: <model>)` suffix.
+   `(model: <model>)` suffix; (e) **what to pass for `<id>` in `subagent-log.sh`:** the gate
+   matches only on the log entry's timestamp, never on `agent_id` — so a harness-provided
+   dispatch id is not required. Use whichever is available: (1) a trailing `agentId: <id>`
+   token if the raw Agent-call result exposes one, (2) otherwise a stable synthetic id such as
+   `reviewer-<ticket-id>` or the evaluator's own `evaluator-run-id`. Do not stall or switch
+   dispatch modes hunting for a token — a `Plan`-type foreground `Agent` call may expose none
+   (reproduced in canon `t-9a75` and a separate Windows project `t-6cd0`); (f) **if a
+   subagent's Bash file-writing is refused outright** (permission boundary, not heredoc
+   failure): do not retry or re-dispatch with a broader-permission `subagent_type`. Check
+   whether the expected report file exists after dispatch; if not, save the returned report
+   text yourself before continuing.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` (anchored to that field, so "trivial" appearing elsewhere in
@@ -115,14 +125,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
-   **If the subagent's Bash refused to write the file** (per `review.md`'s "If Bash
-   file-writing is refused outright"), it returns the report in its response text instead —
-   check whether `.tickets/<id>/review-notes.md` actually exists after the dispatch
-   completes; if not, save the returned text to that path yourself before continuing. Never
-   re-dispatch with a broader-permission `subagent_type` (e.g. `general-purpose`) to route
-   around the refusal — that reopens the exact tool-restriction gap `Plan` exists to close
-   (see `t-ce74`/`t-b261` in `DECISIONS.md`). (Same wording as step 3 below — mirror, keep
-   in sync.)
+   **If the subagent's Bash refused to write the file:** see shared gate mechanics (f) above.
+   Check whether `.tickets/<id>/review-notes.md` exists after dispatch; if not, save the
+   returned report text yourself.
 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not
    blocking** — surface findings to the user, record them in `review-notes.md`, then continue.
@@ -138,16 +143,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    own log call is. Log it anyway: it's the complete audit trail of which subagents actually ran
    this sprint, not just the one the close gate happens to check.
 
-   **What to pass for `<id>`.** The gate never reads `agent_id` — it only needs a jsonl entry
-   whose timestamp lands in the window (see step 3). So a harness-provided dispatch id is *not*
-   required. Use whichever is available, in order: (1) a trailing `agentId: <id>` token if the
-   raw Agent-call result exposes one — it may be concatenated directly onto the subagent's
-   returned text with no separator (e.g. `...verdict: YESagentId: a0051f...`); (2) otherwise a
-   stable synthetic id such as `reviewer-<ticket-id>` — same pattern `sprint-headless` already
-   uses (`--agent-id "headless-$SESSION_ID"`). Do **not** stall or switch dispatch modes hunting
-   for a token: a `Plan`-type foreground `Agent` call may expose no `agentId` at all — reproduced
-   independently in canon (`t-9a75`) and a separate Windows project (`t-6cd0`), so absence is
-   expected, not an error.
+   **What to pass for `<id>`:** see shared gate mechanics (e) above.
 
 3. **Evaluator review (normal+ tier).** Same `Tier: trivial` downgrade condition and exclusion
    as the reviewer gate above (skip only if `plan.md`'s `## Sign-off` `Tier:` field value is
@@ -167,14 +163,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    - Record its model designation per the shared gate mechanics above
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
-   **If the subagent's Bash refused to write the file** (per `eval.md`'s "If Bash
-   file-writing is refused outright"), it returns the report in its response text instead —
-   check whether `.tickets/<id>/eval-report.md` actually exists after the dispatch
-   completes; if not, save the returned text to that path yourself before continuing. Never
-   re-dispatch with a broader-permission `subagent_type` (e.g. `general-purpose`) to route
-   around the refusal — that reopens the exact tool-restriction gap `Plan` exists to close
-   (see `t-ce74`/`t-b261` in `DECISIONS.md`). (Same wording as step 2 above — mirror, keep
-   in sync.)
+   **If the subagent's Bash refused to write the file:** see shared gate mechanics (f) above.
+   Check whether `.tickets/<id>/eval-report.md` exists after dispatch; if not, save the
+   returned report text yourself.
 
    **Log the subagent run.** Immediately after the evaluator subagent completes, read the
    `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`, then
@@ -185,14 +176,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    automatically. Skipping it risks a confusing close-time failure on an otherwise-passing
    sprint.
 
-   **What to pass for `<id>`.** The gate matches only on the log entry's timestamp, never on the
-   `agent_id` value, so reusing the `evaluator-run-id` here is both sufficient and self-consistent
-   (it ties the audit line to the exact run recorded in the report). A harness dispatch token is
-   *not* required — a `Plan`-type foreground `Agent` call may expose none (reproduced in canon
-   `t-9a75` and a separate Windows project `t-6cd0`). Do not stall or switch to background-mode
-   dispatch to manufacture a token; if you do have one and prefer it, that works too, but
-   the run-id is always available from the report. (Same `<id>`-source guidance as step 2 —
-   mirror, keep in sync.)
+   **What to pass for `<id>`:** see shared gate mechanics (e) above. For the evaluator
+   specifically, reusing the `evaluator-run-id` (from the report's first line) is the
+   recommended value — it ties the audit line to the exact run recorded in the report.
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes and close its handle per
    the shared gate mechanics above. Surface any `fail` findings to the user before proceeding
@@ -204,7 +190,9 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    also enforces mechanically). Read this field; never write `true` to it — `tkt create` seeds
    every ticket with `eval_override: false`, but no `tkt` command ever sets it `true`, and an
    agent must not hand-edit `ticket.md` to flip it even if the user asks directly (see
-   `standards/ticket-layout.md`'s field contract). The override does NOT mean every failing
+   `standards/ticket-layout.md`'s field contract). **Activation path:** only a human may
+   hand-edit `ticket.md` to set `eval_override: true`, outside of any agent session — this is
+   intentionally high-friction and auditable. The override does NOT mean every failing
    item is automatically covered — steps 4-5 below still individually confirm, per item,
    which specific failures are genuinely waived versus real defects; a mechanical per-item
    check was tried and abandoned as unsound across five rounds of adversarial review (see
