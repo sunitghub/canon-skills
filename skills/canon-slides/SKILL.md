@@ -67,32 +67,17 @@ html: true
 
 `html: true` is required — without it, all `<div>` styling is stripped by Marp.
 
-Immediately after the frontmatter, add a global animation block (before the title slide):
+**Card/step reveal uses Marp's native fragment feature — do not hand-roll CSS animation/transition for this.** Add `data-marpit-fragment="N"` (sequential per slide, starting at 1) to each card/step element:
 
 ```html
-<style>
-.card, .step {
-  opacity: 0;
-  transform: translateY(16px);
-  transition: opacity 0.35s ease, transform 0.35s ease;
-}
-svg.bespoke-marp-active .card,
-svg.bespoke-marp-active .step { opacity: 1; transform: translateY(0); }
-.c1 { transition-delay: 0.05s; } .c2 { transition-delay: 0.22s; }
-.c3 { transition-delay: 0.39s; } .c4 { transition-delay: 0.56s; }
-.c5 { transition-delay: 0.73s; }
-.s1 { transition-delay: 0.05s; } .s2 { transition-delay: 0.18s; }
-.s3 { transition-delay: 0.31s; } .s4 { transition-delay: 0.44s; }
-.s5 { transition-delay: 0.57s; }
-</style>
+<div class="card" data-marpit-fragment="1" style="...">First point</div>
+<div class="card" data-marpit-fragment="2" style="...">Second point</div>
+<div class="card" data-marpit-fragment="3" style="...">Third point</div>
 ```
 
-Assign `.card .cN` to each card in a set so they slide in one-by-one; `.step .sN` for sequential row items (flow diagrams, timeline bars, etc.). **This must use `transition`, not `@keyframes`/`animation`, and must target `svg.bespoke-marp-active`, not `section.bespoke-marp-active`.** Two independent traps here:
+Marp's bespoke viewer discovers every `[data-marpit-fragment]` element in a slide via `querySelectorAll` (in document order — the attribute's value doesn't matter, only its presence and DOM position) and reveals them one at a time as the viewer advances (space/arrow), only moving to the *next slide* once every fragment on the current one is revealed. This is what "slide in one-by-one" actually means for a Marp deck: a click-through build, not a timed auto-cascade. PPTX/print output ignores fragment state and always shows every fragment fully revealed (there's a dedicated print media-query rule for this) — expected, not a bug.
 
-1. Marp wraps each slide as `<svg class="bespoke-marp-slide"><foreignObject><section>...</section></foreignObject></svg>`, and Marp's bespoke viewer toggles the `bespoke-marp-active` class onto the `<svg>` element at runtime — never onto `<section>`. A selector scoped to `section.bespoke-marp-active` matches nothing, ever, so every `.card`/`.step` stays at its hidden base state (`opacity:0`) forever — the slide looks like only its heading rendered, with the rest of the content invisible.
-2. Marp's own bespoke CSS includes `svg.bespoke-marp-slide.bespoke-marp-active.bespoke-marp-active-ready * { animation-name: __bespoke_marp__ !important; }`, which force-overrides any custom `animation-name` on every descendant of the active slide as soon as it's marked "ready" — including a correctly-scoped one. A `@keyframes`/`animation`-based reveal gets silently killed moments after the slide becomes active, before it can visibly play. `transition` is a completely different CSS mechanism that this override never touches, so it's the only reliable way to do a reveal-on-active-slide effect here.
-
-This only affects the HTML/browser deck — PPTX output is a static per-slide screenshot, so exported slides always show the fully-revealed end state (expected, not a bug).
+**Do not attempt a custom CSS-only reveal keyed off the active slide.** Two independent things break it, and both are hard to notice until you actually navigate the deck rather than just looking at a single rendered slide: (1) any `<style>` block written in the deck's own markdown gets auto-scoped by Marpit — every selector is rewritten to require being a *descendant* of the current section (e.g. `.card` becomes `... > section .card`), so a selector like `svg.bespoke-marp-active .card` — which needs `.card` to be a descendant of the *ancestor* `<svg>` that actually receives the active-slide class — can never match; it's asking for a nested svg inside the section that doesn't exist. Moving the same rule into the theme CSS file doesn't help — theme CSS gets the identical per-section scoping. (2) Even a correctly-scoped `@keyframes`/`animation` gets its `animation-name` force-reset to a no-op by Marp's own bespoke CSS (`svg.bespoke-marp-active.bespoke-marp-active-ready * { animation-name: __bespoke_marp__ !important; }`) moments after the slide becomes active — so the animation is silently killed before it visibly plays. Native fragments sidestep both problems entirely, since they only need same-section attribute matching, which Marp's core (unscoped) fragment CSS already handles.
 
 **Space-filling — every slide uses a 3-row layout: heading / body / footer.**
 
@@ -367,7 +352,7 @@ The page counter is in the bottom padding area (below the 604 px content zone), 
 - **Diagram column width ≥ 260px.** Narrower columns make the context-window and stack diagrams look decorative rather than readable. Use `width:260px; flex-shrink:0` for diagram columns.
 - **Numbered card sizes.** Large number labels (`font-size:1.5em; font-weight:800`) read clearly in a 1280×720 viewport. Anything smaller at `0.7em` or below disappears in a projector room.
 - **Vertical card lists need `justify-content:space-evenly`, not the `flex-start` default.** `flex:1; min-height:0` on the container only makes it *able* to fill the slide — with 2–3 short cards and no `justify-content` set, they pack at the top and leave a visible dead-space band below. `space-evenly` distributes the leftover height as equal gaps instead.
-- **Card/step reveal must use `transition`, scoped to `svg.bespoke-marp-active`, not `@keyframes`/`animation` scoped to `section.bespoke-marp-active`.** Two separate ways this breaks: (1) Marp puts the `bespoke-marp-active` class on the `<svg class="bespoke-marp-slide">` wrapper, never on the inner `<section>` — a `section.bespoke-marp-active` selector matches nothing and the slide just looks blank below its heading. (2) Marp's own CSS forcibly resets `animation-name` to a no-op with `!important` on every descendant of the active slide once it's "ready", so even a correctly-scoped `@keyframes` animation gets killed before it visibly plays. `transition` isn't touched by that override and is the only mechanism that reliably works. PPTX export is a static per-slide screenshot and always shows the fully-revealed end state — expected, not a bug.
+- **Card/step reveal uses native `data-marpit-fragment="N"` attributes, never hand-rolled CSS.** See the explanation under step 3 — any custom animation/transition keyed off the active slide either can't match (deck `<style>` blocks and theme CSS are both auto-scoped per-section, so a selector needing the ancestor `<svg>`'s active-slide class can never reach it) or gets silently killed (Marp force-resets `animation-name` to a no-op on the active slide once "ready"). Fragments are Marp's own unscoped mechanism and don't hit either trap.
 - Marp's `---` separators are load-bearing — they create slide breaks. Do not remove them when editing the `.md` source.
 - The `--allow-local-files` flag is required for CSS themes referenced by local path; without it, marp-cli silently ignores the theme.
 - The `theme:` value in the deck's frontmatter must match the theme name declared in the CSS (`/* @theme canon */`). Mismatch causes marp-cli to fall back to default styling.
