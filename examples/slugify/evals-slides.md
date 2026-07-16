@@ -10,7 +10,8 @@ html: true
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.card { animation: fadeUp 0.35s both; }
+.card { opacity: 0; }
+section.bespoke-marp-active .card { animation: fadeUp 0.35s both; }
 .c1 { animation-delay: 0.05s; } .c2 { animation-delay: 0.22s; }
 .c3 { animation-delay: 0.39s; } .c4 { animation-delay: 0.56s; }
 .c5 { animation-delay: 0.73s; }
@@ -28,7 +29,7 @@ html: true
 
 ## The premise, pressure-tested
 
-<div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:14px;">
+<div style="display:flex; flex-direction:column; flex:1; min-height:0; justify-content:space-evenly; gap:14px;">
 <div class="card c1" style="padding:16px 20px; background:rgba(62,64,71,0.35); border-radius:10px; border-left:4px solid #00FFFF; font-size:0.85em; line-height:1.5;">
 <strong>Fair pushback:</strong> "couldn't you just keep tweaking the skill until it works?" Yes — once, in one session, by the person paying close attention.
 </div>
@@ -45,7 +46,7 @@ The evals folder isn't what gets the skill right the first time — it's what te
 ## The skill, with two independent bugs
 
 <div style="display:grid; grid-template-rows:1fr auto; flex:1; min-height:0; gap:10px;">
-<div style="display:flex; flex-direction:column; gap:12px; min-height:0;">
+<div style="display:flex; flex-direction:column; justify-content:space-evenly; gap:12px; min-height:0;">
 <div class="card c1" style="display:flex; gap:18px; align-items:center; padding:14px 20px; background:rgba(62,64,71,0.35); border-radius:10px; border-left:4px solid #F46600;">
 <div style="font-size:1.5em; font-weight:800; color:#F46600; min-width:28px; flex-shrink:0;">1</div>
 <div style="font-size:0.85em; line-height:1.45;"><strong>Step 3 accidentally keeps apostrophes</strong> in the character allowlist — they should be dropped.</div>
@@ -104,7 +105,7 @@ The agent re-derived "expected" from the skill's own flawed rule instead of judg
 
 ## Closing the loop
 
-<div style="display:flex; flex-direction:column; flex:1; min-height:0; gap:14px;">
+<div style="display:flex; flex-direction:column; flex:1; min-height:0; justify-content:space-evenly; gap:14px;">
 <div class="card c1" style="display:flex; gap:18px; align-items:center; padding:14px 20px; background:rgba(0,255,255,0.08); border-radius:10px; border-left:4px solid #00FFFF;">
 <div style="font-size:0.85em; line-height:1.45;"><strong>Having evals</strong> turns "seems fine" into a reproducible signal on the first run — the apostrophe bug needed zero human correction, just one prompt.</div>
 </div>
