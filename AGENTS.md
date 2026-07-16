@@ -27,7 +27,7 @@ in the main session rather than as separate dispatches — the tier below still 
 whichever session/dispatch does that work.
 
 - `explore` → Haiku — read-only, bounded search/mapping, no judgment calls.
-- `plan creation` → Sonnet or Opus — needs design judgment before scope locks in.
+- `plan creation` → Fable or Opus — needs design judgment before scope locks in.
 - `implement` → Haiku/Sonnet — execution inside an approved plan. Without `advisor`
   configured on Sonnet+Opus, bump to Opus for high-risk sprints instead.
 - `review` / `grill` → Opus — adversarial, judgment-heavy; a weaker model would rubber-stamp.
