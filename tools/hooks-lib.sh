@@ -101,93 +101,179 @@ _uninstall_claude() {
     return 0
   fi
 
-  # Single Python pass: remove all canon hook entries by matching their
-  # "command" field against known script names, then prune any leftover
-  # empty structures (empty hooks arrays, empty event-type arrays, empty
-  # "hooks" object). Replaces the former sed→awk→sed chain with proper
-  # json.load/dump — correct by construction, no regex-based JSON editing.
-  local result
-  result="$(python3 - "$settings" << 'PYEOF'
-import json, sys
+  local _canon_scripts=(auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh subagent-log.sh auto-polish-trigger.sh guard-managed-files.sh)
+  local removed=0
+  for _n in "${_canon_scripts[@]}"; do
+    local c
+    c=$(grep -cF "$_n" "$settings" 2>/dev/null) || c=0
+    removed=$(( removed + c ))
+  done
 
-CANON_SCRIPTS = [
-    "auto-handoff.sh", "handoff-inject.sh", "sprint-inject.sh",
-    "pre-commit-check.sh", "subagent-log.sh", "auto-polish-trigger.sh",
-    "guard-managed-files.sh"
-]
+  if [ "$removed" -gt 0 ]; then
+    local compact_tmp="${settings}.canon-compact"
+    cp "$settings" "$compact_tmp"
+    for _n in "${_canon_scripts[@]}"; do
+      sed -E "s/\\{[^{}]*\\\"type\\\"[[:space:]]*:[[:space:]]*\\\"command\\\"[^{}]*\\\"command\\\"[[:space:]]*:[[:space:]]*\\\"[^\\\"]*${_n}\\\"[^{}]*\\}[[:space:]]*,?//g" "$compact_tmp" > "${compact_tmp}.next"
+      mv "${compact_tmp}.next" "$compact_tmp"
+    done
+    sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$compact_tmp" > "${compact_tmp}.next"
+    mv "${compact_tmp}.next" "$compact_tmp"
 
-path = sys.argv[1]
-with open(path) as f:
-    data = json.load(f)
+    local tmp="${settings}.canon-tmp"
+    awk '
+      function push(line) { out[++n] = line }
+      function flush_buffer(   i) {
+        if (!drop) {
+          for (i = 1; i <= blen; i++) push(buf[i])
+        }
+        blen = 0
+        drop = 0
+        capture = 0
+      }
+      function canon_line(line) {
+        return line ~ /(auto-handoff|handoff-inject|sprint-inject|pre-commit-check|subagent-log|auto-polish-trigger|guard-managed-files)\.sh/
+      }
+      {
+        if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && $0 ~ /"command"[[:space:]]*:/) {
+          if (!canon_line($0)) push($0)
+          next
+        }
+        if (capture) {
+          buf[++blen] = $0
+          if (canon_line($0)) drop = 1
+          if ($0 ~ /^[[:space:]]*}[,]?[[:space:]]*$/) flush_buffer()
+          next
+        }
+        if ($0 ~ /"type"[[:space:]]*:[[:space:]]*"command"/ && n > 0) {
+          capture = 1
+          blen = 0
+          buf[++blen] = out[n]
+          n--
+          buf[++blen] = $0
+          next
+        }
+        push($0)
+      }
+      END {
+        if (capture) flush_buffer()
+        for (i = 1; i <= n; i++) {
+          if (out[i] ~ /^[[:space:]]*[]}][][,]?[[:space:]]*$/ && i > 1) {
+            sub(/,[[:space:]]*$/, "", out[i - 1])
+          }
+        }
+        for (i = 1; i <= n; i++) print out[i]
+      }
+    ' "$compact_tmp" > "$tmp"
+    sed -E 's/,[[:space:]]*([]}])/\1/g; s/([[\{])[[:space:]]*,/\1/g' "$tmp" > "${tmp}.next"
+    mv "${tmp}.next" "$tmp"
+    mv "$tmp" "$settings"
+    rm -f "$compact_tmp"
 
-removed = 0
-pruned = False
-hooks = data.get("hooks")
-if isinstance(hooks, dict):
-    for event, entries in list(hooks.items()):
-        if not isinstance(entries, list):
-            continue
-        kept = []
-        for entry in entries:
-            if not isinstance(entry, dict):
-                kept.append(entry)
-                continue
-            # Check top-level command entries (single-line hook format)
-            cmd = entry.get("command", "")
-            if entry.get("type") == "command" and any(s in cmd for s in CANON_SCRIPTS):
-                removed += 1
-                continue
-            # Check nested hooks arrays (matcher format)
-            inner_hooks = entry.get("hooks")
-            if isinstance(inner_hooks, list):
-                inner_kept = []
-                for h in inner_hooks:
-                    if isinstance(h, dict) and h.get("type") == "command":
-                        hcmd = h.get("command", "")
-                        if any(s in hcmd for s in CANON_SCRIPTS):
-                            removed += 1
-                            continue
-                    inner_kept.append(h)
-                if inner_kept:
-                    entry["hooks"] = inner_kept
-                    kept.append(entry)
-                else:
-                    # Empty hooks array — prune this matcher entry
-                    pruned = True
-            else:
-                kept.append(entry)
-        if kept:
-            hooks[event] = kept
-        else:
-            del hooks[event]
-            if removed == 0:
-                pruned = True
-    if not hooks:
-        del data["hooks"]
-        if removed == 0:
-            pruned = True
+    # After removal: if no "command" entries remain at all, the file is just
+    # empty matcher wrappers — collapse to {}
+    if ! grep -q '"command"' "$settings" 2>/dev/null; then
+      printf '{}' > "$settings"
+    fi
+  fi
 
-changed = removed > 0 or pruned
-if changed:
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-        f.write("\n")
+  # Prune leftover empty structures (empty matcher["hooks"] arrays, empty
+  # event-type arrays, an empty "hooks" object). No python3 dependency —
+  # uses awk for Windows/Git Bash compatibility.
+  # Runs every time: a file left with an empty skeleton from an *older*
+  # canon version has nothing for the removal step to find, but still
+  # needs cleanup.
+  local pruned=0
+  if grep -qE '"hooks"[[:space:]]*:[[:space:]]*\[\]' "$settings" 2>/dev/null; then
+    pruned=1
+  fi
+  # Also check if the hooks object is now effectively empty (only empty arrays)
+  if [ "$removed" -gt 0 ] || [ "$pruned" -eq 1 ]; then
+    local prune_tmp="${settings}.canon-prune"
+    awk '
+      # Remove objects whose "hooks" array is empty: { "matcher": "...", "hooks": [] }
+      # Handles both single-line and multi-line variants.
+      BEGIN { n = 0; skip = 0; brace = 0; buf_n = 0 }
+      {
+        # Single-line object with empty hooks — drop it
+        if ($0 ~ /\{[^}]*"hooks"[[:space:]]*:[[:space:]]*\[\][^}]*\}/) {
+          next
+        }
+        if (skip) {
+          buf[++buf_n] = $0
+          for (i = 1; i <= length($0); i++) {
+            c = substr($0, i, 1)
+            if (c == "{") brace++
+            if (c == "}") brace--
+          }
+          if (brace == 0) {
+            # Check if this buffered object has "hooks": []
+            has_empty = 0
+            for (b = 1; b <= buf_n; b++) {
+              if (buf[b] ~ /"hooks"[[:space:]]*:[[:space:]]*\[\]/) has_empty = 1
+            }
+            if (!has_empty) {
+              for (b = 1; b <= buf_n; b++) out[++n] = buf[b]
+            }
+            skip = 0
+            buf_n = 0
+          }
+          next
+        }
+        if ($0 ~ /^[[:space:]]*\{[[:space:]]*$/) {
+          skip = 1
+          brace = 1
+          buf_n = 1
+          buf[1] = $0
+          next
+        }
+        out[++n] = $0
+      }
+      END {
+        if (skip) { for (b = 1; b <= buf_n; b++) out[++n] = buf[b] }
+        # Fix trailing commas before ] or }
+        for (i = 1; i <= n; i++) {
+          if (out[i] ~ /^[[:space:]]*[\]}]/ && i > 1) sub(/,[[:space:]]*$/, "", out[i-1])
+        }
+        # Remove empty event arrays: "EventName": [\n  ]
+        for (i = 1; i <= n; i++) {
+          if (i < n && out[i] ~ /"[^"]*"[[:space:]]*:[[:space:]]*\[[[:space:]]*$/ && out[i+1] ~ /^[[:space:]]*\][,]?[[:space:]]*$/) {
+            out[i] = ""
+            out[i+1] = ""
+          }
+        }
+        # Fix trailing commas again after removals
+        m = 0
+        for (i = 1; i <= n; i++) {
+          if (out[i] != "") final[++m] = out[i]
+        }
+        for (i = 1; i <= m; i++) {
+          if (final[i] ~ /^[[:space:]]*[\]}]/ && i > 1) sub(/,[[:space:]]*$/, "", final[i-1])
+        }
+        for (i = 1; i <= m; i++) print final[i]
+      }
+    ' "$settings" > "$prune_tmp"
 
-# Output: "removed:<count>" or "pruned" or "none"
-if removed > 0:
-    print(f"removed:{removed}")
-elif pruned:
-    print("pruned")
-else:
-    print("none")
-PYEOF
-)"
+    # If the file now has no real content, collapse to {}
+    local content
+    content="$(tr -d '[:space:]' < "$prune_tmp")"
+    if [ "$content" = "{\"hooks\":{}}" ] || [ "$content" = "{}" ] || [ -z "$content" ]; then
+      printf '{}' > "$prune_tmp"
+      pruned=1
+    elif ! grep -q '"command"' "$prune_tmp" 2>/dev/null && ! grep -q '"hooks"' "$prune_tmp" 2>/dev/null; then
+      printf '{}' > "$prune_tmp"
+      pruned=1
+    fi
 
-  case "$result" in
-    removed:*) echo "  [removed]  ${result#removed:} Claude hook(s)" ;;
-    pruned)    echo "  [cleaned]  removed leftover empty hook skeleton" ;;
-    *)         echo "  [ok]     no canon Claude hooks found" ;;
-  esac
+    mv "$prune_tmp" "$settings"
+  fi
+
+  if [ "$removed" -gt 0 ]; then
+    echo "  [removed]  $removed Claude hook(s)"
+  elif [ "$pruned" -eq 1 ]; then
+    echo "  [cleaned]  removed leftover empty hook skeleton"
+  else
+    echo "  [ok]     no canon Claude hooks found"
+  fi
 }
 
 _uninstall_pi() {
