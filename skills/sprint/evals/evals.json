@@ -1,0 +1,42 @@
+{
+  "skill_name": "sprint",
+  "_note": "sprint is CLI-backed (./tools/sprint) and orchestrates sub-skills in reference/. A clean-context executor cannot run the CLI, so these cases are simulation-graded per skill-eval's Gotchas: grade whether the executor picks the right tier and the right sequence of steps (plan-before-code, approval gate, high-risk pipeline), not real CLI output.",
+  "evals": [
+    {
+      "id": "normal-tier-plan-then-approval",
+      "case_type": "control",
+      "type": "capability",
+      "prompt": "A user says: \"sprint start: add a --json flag to the tkt ls command so it can print tickets as JSON.\" This adds a new option across a CLI file and its output path (coordinated, more than a cosmetic one-liner). Walk through what the sprint skill has you do.",
+      "expected_output": "Classifies this as normal tier, runs `sprint start`, fills acceptance.md (criteria + test plan) and plan.md (approach), presents a brief, and waits for explicit user approval before writing any code. No orient/grill/impact-analysis unless a high-risk trigger appears.",
+      "expectations": [
+        "Classifies the work as normal tier (not trivial — it adds coordinated behavior across a file/output path)",
+        "Creates acceptance.md and plan.md and presents a brief BEFORE writing implementation code",
+        "Waits for explicit user approval before coding, rather than jumping straight to implementation"
+      ]
+    },
+    {
+      "id": "trivial-skip-sprint",
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "A user says: \"Fix the typo in README.md — 'commmands' should be 'commands'.\" Walk through how the sprint skill handles this.",
+      "expected_output": "Recognizes this as a trivial, single-line cosmetic change that is exempt from the sprint workflow: work directly and report verification, without creating a ticket or running sprint start.",
+      "expectations": [
+        "Classifies the change as trivial (single-line / cosmetic typo fix)",
+        "Does not create a ticket or run the full sprint start planning flow",
+        "Makes the fix directly and reports verification"
+      ]
+    },
+    {
+      "id": "high-risk-pipeline",
+      "case_type": "boundary",
+      "type": "capability",
+      "prompt": "A user says: \"sprint start: change the login flow to accept OAuth tokens and store the refreshed session in a cookie.\" Walk through what the sprint skill has you do before coding.",
+      "expected_output": "Classifies this as high-risk (touches auth/sessions and security-sensitive behavior), and runs the full planning pipeline — orient (research.md), grill (resolve gray areas), impact analysis with required mitigation tests, and any human checkpoint — before implementation, gated on explicit approval.",
+      "expectations": [
+        "Classifies the work as high-risk because it changes authentication/session behavior",
+        "Runs the high-risk pipeline (orient / grill / impact analysis) rather than the light normal-tier path",
+        "Requires mitigation tests for high risks and waits for approval before writing code"
+      ]
+    }
+  ]
+}
