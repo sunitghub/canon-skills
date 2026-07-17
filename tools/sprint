@@ -435,6 +435,57 @@ cmd_complete() {
   echo "Sprint completed: $id"
 }
 
+# _set_field_or_append <file> <field> <value> — set_field only rewrites an
+# existing "field: " line; tickets created before eval_fail_count existed have
+# no such line, so this falls back to appending one just before the closing
+# frontmatter "---" when the field is absent.
+_set_field_or_append() {
+  local file="$1" field="$2" value="$3"
+  if grep -qE "^${field}: " "$file"; then
+    set_field "$file" "$field" "$value"
+  else
+    awk -v f="$field" -v v="$value" '
+      /^---$/ { c++; if (c == 2) { print f ": " v } print; next }
+      { print }
+    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+  fi
+}
+
+# cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
+# eval_fail_count field: increments on a fail (or missing/malformed verdict),
+# resets to 0 on pass. Called explicitly by the agent right after reading
+# eval-report.md (complete.md step 3), the same pattern as subagent-log.sh's
+# explicit post-dispatch call — not a hook, so it works whether or not the
+# orchestrating agent goes on to invoke `sprint complete` itself. Prints the
+# resulting count and a retry-budget-exhausted notice at 3, but never blocks
+# on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
+cmd_eval_verdict() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
+  local tdir report ticket_file
+  tdir="$(ticket_dir_for "$id")"
+  report="$tdir/eval-report.md"
+  ticket_file="$tdir/ticket.md"
+  [[ -f "$report" ]] || { echo "Sprint $id: eval-report.md not found." >&2; exit 1; }
+  [[ -f "$ticket_file" ]] || { echo "Sprint $id: ticket.md not found." >&2; exit 1; }
+
+  local current new
+  current="$(get_field "$ticket_file" eval_fail_count 2>/dev/null)"
+  [[ -z "$current" ]] && current=0
+
+  if grep -qE '^pass:' "$report"; then
+    new=0
+  else
+    new=$((current + 1))
+  fi
+
+  _set_field_or_append "$ticket_file" eval_fail_count "$new"
+  echo "$id: eval_fail_count=$new"
+  if (( new >= 3 )); then
+    echo "Sprint $id: evaluator has failed $new times in a row — retry budget exhausted. Diagnose the root cause outside the automated loop, or set eval_override: true with a dated waiver to close anyway." >&2
+  fi
+}
+
 cmd_help() {
   cat <<'EOF'
 sprint — canon workflow spine
@@ -445,6 +496,9 @@ Usage:
   sprint current            Show the active sprint ticket
   sprint status             Show active ticket and required sprint files
   sprint complete           Validate acceptance checklist and close ticket
+  sprint eval-verdict <id>  Record the evaluator's pass/fail into ticket.md's
+                            eval_fail_count (internal — called by complete.md
+                            step 3, not run directly)
 
 The CLI owns deterministic workflow state. The agent still owns orientation,
 gray-area resolution, impact analysis, implementation, review, and test judgment.
@@ -460,6 +514,7 @@ main() {
     current) cmd_current ;;
     status) cmd_status ;;
     complete) cmd_complete ;;
+    eval-verdict) cmd_eval_verdict "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac
