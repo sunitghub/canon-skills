@@ -28,6 +28,16 @@ test.describe('board modal', () => {
     await expect(tour).toContainText('## Wrapup Gates');
   });
 
+  test('sidebar shows total commit count badge next to Recent Commits', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    const badge = page.locator('#s-commits-total');
+    await expect(badge).toBeVisible();
+    const text = await badge.textContent();
+    expect(Number(text)).toBeGreaterThan(0);
+  });
+
   test('Description tab appears on tickets with docs', async ({ page }) => {
     // Uses its own fixture ticket rather than "the first/newest card" —
     // that assumption broke once a later-created ticket in this same repo
