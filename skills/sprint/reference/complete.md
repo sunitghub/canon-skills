@@ -156,6 +156,21 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    needs approval" is not acceptable for normal/high-risk sprints. If the runtime can't spawn
    the evaluator subagent, stop closeout and report the blocker.
 
+   **Retry budget.** Before dispatching, scan this ticket's accumulated `## Wrapup Gates`
+   sections in `acceptance.md` backward from the most recently appended one, counting each
+   section's `eval` row `verdict: fail` and stopping the count at the first section whose
+   `eval` row is `verdict: pass` (or at the start of the file, whichever comes first) — each
+   `sprint complete` re-run appends its own section per step 1's table format, so this history
+   is already there and no new field or CLI change is needed. If that trailing count is already
+   3, do not dispatch another evaluator subagent. Instead, stop here and tell the human
+   explicitly:
+   "Evaluator has failed 3 times in a row — retry budget exhausted. Either diagnose the root
+   cause outside this automated loop, or set `eval_override: true` with a dated waiver (see
+   acceptance.md) to close anyway." This is a soft, doc-level nudge against blind auto-retries
+   on a stubborn finding — it does not change `_gate_eval_report_verdict`'s mechanics or add a
+   second enforcement layer on top of `eval_override`, which stays the sole, intentionally
+   human-only escape hatch.
+
    Invoke a fresh Agent subagent with a clean context, per the model-tier check above. Pass
    `subagent_type: "Plan"`, same restriction and rationale as the reviewer gate above. Prompt
    must instruct it to:
