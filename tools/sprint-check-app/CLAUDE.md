@@ -14,6 +14,10 @@ Any change to `app.html` requires Playwright verification — not just grep-base
 
 The server starts on `127.0.0.1:8423` and auto-increments if that port is busy. The URL is printed to the terminal on startup.
 
+## Toggleable Badges
+
+Put a badge's initial hidden state in an inline `style="display:none"` HTML attribute, not the CSS class rule. `element.style.display = ''` only clears an inline override — it can't override a `display: none` baked into the class's own stylesheet rule, so JS toggling silently does nothing. See `#s-modified`/`#s-commits-total` for the working convention (t-9cde).
+
 ## Drop Gates
 
 Client-side drop gates in `app.html` depend on server-computed fields from `server.py`. When writing acceptance criteria for a gate, name the exact server field — not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is testable; "blocked when acceptance has unchecked items" is ambiguous and can mask a wrong field being used (see t-0b5c).
