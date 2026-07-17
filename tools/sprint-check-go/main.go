@@ -434,7 +434,11 @@ func loadGit() map[string]any {
 	if branch == "" {
 		branch = "main"
 	}
-	return map[string]any{"branch": branch, "project": filepath.Base(projectRoot), "root": projectRoot, "modified": modified, "log": log}
+	var totalCommits any
+	if n, err := strconv.Atoi(strings.TrimSpace(runGit("rev-list", "--count", "HEAD"))); err == nil {
+		totalCommits = n
+	}
+	return map[string]any{"branch": branch, "project": filepath.Base(projectRoot), "root": projectRoot, "modified": modified, "log": log, "total_commits": totalCommits}
 }
 
 func loadCommit(hash string) map[string]any {

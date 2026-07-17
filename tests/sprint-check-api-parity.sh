@@ -76,6 +76,11 @@ trap cleanup EXIT
 
 build_tickets_fixture "$WORK"
 
+# Real git history so /api/git's total_commits parity check (below) exercises
+# the actual git rev-list path, not just both backends agreeing on null.
+(cd "$WORK" && git init -q && git config user.email "t@t.com" && git config user.name "t" \
+  && git commit -q --allow-empty -m "first" && git commit -q --allow-empty -m "second")
+
 # Dedicated fixture for models_used parity (t-a19e) — not added to the shared
 # build_tickets_fixture helper since other tests assert against its exact
 # ticket set/content; a standalone ticket here keeps this check isolated.
@@ -203,6 +208,26 @@ if mismatches:
 models = py_n["t-model"]["models_used"]
 if models != ["claude-sonnet-5", "haiku"]:
     print(f"sprint-check-api-parity: FAIL — t-1720 regression, t-model.models_used should be exactly ['claude-sonnet-5', 'haiku'], got {models!r}")
+    sys.exit(1)
+PY
+
+# ── /api/git total_commits parity (t-9cde) ──────────────────────────────────
+py_git="$(curl -s "http://127.0.0.1:$PY_PORT/api/git")"
+go_git="$(curl -s "http://127.0.0.1:$GO_PORT/api/git")"
+
+python3 - "$py_git" "$go_git" <<'PY'
+import json
+import sys
+
+py = json.loads(sys.argv[1])
+go = json.loads(sys.argv[2])
+
+py_total, go_total = py.get("total_commits"), go.get("total_commits")
+if py_total != go_total:
+    print(f"sprint-check-api-parity: FAIL — /api/git total_commits mismatch: server.py={py_total!r} main.go={go_total!r}")
+    sys.exit(1)
+if not isinstance(py_total, int) or py_total != 2:
+    print(f"sprint-check-api-parity: FAIL — /api/git total_commits should be 2 (fixture has 2 commits), got {py_total!r}")
     sys.exit(1)
 PY
 

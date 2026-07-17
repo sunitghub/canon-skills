@@ -166,6 +166,12 @@
     .sidebar-label {
       font-size: 11px; font-weight: 700; letter-spacing: .1em;
       text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .commit-total-badge {
+      font-size: 11px; font-weight: 600; letter-spacing: normal; text-transform: none;
+      padding: 1px 6px; background: var(--surface-hover); color: var(--text-muted);
+      border-radius: 10px;
     }
     /* ── Now working on ──────────────────────────── */
     #s-wip { display: none; }
@@ -1369,7 +1375,7 @@
         </div>
 
         <div class="sidebar-section">
-          <div class="sidebar-label">Recent Commits</div>
+          <div class="sidebar-label">Recent Commits<span class="commit-total-badge" id="s-commits-total" style="display:none"></span></div>
           <div class="commit-list" id="s-commits"></div>
         </div>
 
@@ -2158,6 +2164,10 @@ function renderSidebar() {
   }
 
   setText('s-focus', handoff?.focus || 'No HANDOFF.md Current Focus found.');
+
+  const commitsTotalEl = document.getElementById('s-commits-total');
+  if (typeof git?.total_commits === 'number') { commitsTotalEl.textContent = git.total_commits; commitsTotalEl.style.display = ''; }
+  else commitsTotalEl.style.display = 'none';
 
   const commitsEl = document.getElementById('s-commits');
   commitsEl.innerHTML = (git?.log ?? []).slice(0,5).map(c =>

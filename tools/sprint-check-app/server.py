@@ -251,7 +251,9 @@ def load_git() -> dict:
             log.append({'hash': parts[0], 'message': parts[1]})
             if len(log) == 8:
                 break
-    return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log}
+    total_commits_raw = run(['git', 'rev-list', '--count', 'HEAD'], cwd)
+    total_commits = int(total_commits_raw) if total_commits_raw.isdigit() else None
+    return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log, 'total_commits': total_commits}
 
 # ── Commit detail ─────────────────────────────────────────────────────────
 
