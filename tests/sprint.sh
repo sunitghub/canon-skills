@@ -641,3 +641,34 @@ partial="${partial:0:3}"
 partial_output="$("$SPRINT" start "$partial")"
 assert_contains "$partial_output" "Sprint started: $partial_ticket_id"
 "$TKT" close "$partial_ticket_id" --no-sprint >/dev/null
+
+# sprint eval-verdict: increments eval_fail_count on fail, resets on pass, warns at 3
+eval_id="$("$TKT" create "eval-verdict state machine test" -t task -p 3)"
+assert_grep "^eval_fail_count: 0$" ".tickets/$eval_id/ticket.md"
+
+echo "fail: first attempt" > ".tickets/$eval_id/eval-report.md"
+v1="$("$SPRINT" eval-verdict "$eval_id")"
+assert_contains "$v1" "eval_fail_count=1"
+assert_grep "^eval_fail_count: 1$" ".tickets/$eval_id/ticket.md"
+
+v2="$("$SPRINT" eval-verdict "$eval_id")"
+assert_contains "$v2" "eval_fail_count=2"
+
+v3="$("$SPRINT" eval-verdict "$eval_id" 2>&1)"
+assert_contains "$v3" "eval_fail_count=3"
+assert_contains "$v3" "retry budget exhausted"
+assert_grep "^eval_fail_count: 3$" ".tickets/$eval_id/ticket.md"
+
+echo "pass: fixed it" > ".tickets/$eval_id/eval-report.md"
+v4="$("$SPRINT" eval-verdict "$eval_id")"
+assert_contains "$v4" "eval_fail_count=0"
+assert_grep "^eval_fail_count: 0$" ".tickets/$eval_id/ticket.md"
+
+# backward compat: a ticket.md predating this field gets it appended, not rejected
+sed -i.bak '/^eval_fail_count: /d' ".tickets/$eval_id/ticket.md" && rm -f ".tickets/$eval_id/ticket.md.bak"
+grep -q '^eval_fail_count:' ".tickets/$eval_id/ticket.md" && fail "expected eval_fail_count line removed for backward-compat test"
+echo "fail: legacy ticket" > ".tickets/$eval_id/eval-report.md"
+v5="$("$SPRINT" eval-verdict "$eval_id")"
+assert_contains "$v5" "eval_fail_count=1"
+assert_grep "^eval_fail_count: 1$" ".tickets/$eval_id/ticket.md"
+"$TKT" close "$eval_id" --no-sprint >/dev/null
