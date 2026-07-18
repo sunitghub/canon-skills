@@ -36,7 +36,9 @@ to the caller. The orchestrating agent will save it itself.
 
 ## Self-serve visual verification (no Node/Playwright required)
 
-<!-- Locked by tests/doc-mirror-parity.sh Check D. -->
+<!-- Required-visual language locked by tests/doc-mirror-parity.sh Check E. -->
+<!-- Base-ref/fallback commands below locked by Checks A and D. -->
+<!-- review.md/eval.md reference this section (not inline copies) — Check B. -->
 
 **Check for a project-level override first.** If the project's own `AGENTS.md`/`CLAUDE.md`
 explicitly forbids scripted/automated verification (e.g. "verify only by clicking through
@@ -46,10 +48,25 @@ grade the test-plan item `not-run` and say so, so a human verifies it by hand in
 check costs one file read and prevents silently violating an explicit project constraint
 the rest of this protocol never otherwise surfaces to you.
 
-Otherwise: for a test-plan item that needs a rendered page (layout, theme, chart output)
-rather than static code reading — you have Bash, and a browser binary is often already
-installed even when there is no Node/npm/Playwright in the project (canon workshops
-deliberately run on machines without Node.js) — do not report `not-run` before trying this.
+Otherwise, this recipe is **required, not optional**, for any criterion or change
+that affects rendered UI — layout, theme, styling/CSS (**including CSS embedded in
+code**: Streamlit `_CSS` strings, styled-components/CSS-in-JS, inline styles, theme
+tokens), chart output, or a widget swap. You have Bash, and a browser binary is
+often already installed even when there is no Node/npm/Playwright in the project
+(canon workshops deliberately run on machines without Node.js). If a browser binary
+exists, render and grade against it — **do not report `not-run`** for a visual item
+you could have rendered. The trigger is user-visible impact, not the file extension
+in the diff: a change touching no `.css`/`.html` file can still be a UI change.
+
+**Check adjacent/related elements, not just the one the sprint changed.** A change
+that is in-scope and behaviorally correct can still silently break the *rendered*
+styling of a nearby element — e.g. wrapping an input in a form changes a widget's
+rendered testid, so CSS selectors defined elsewhere stop matching and the element
+reverts to default styling (live case: overtone `t-b75f` — a button lost its
+gradient this exact way, invisible to code review and to logic-only tests like
+Streamlit AppTest). When you render, confirm the affected element AND the elements
+around it still match their intended appearance, and flag any unintended visual
+regression as a finding even if it falls outside the sprint's stated focus.
 
 1. Find a browser binary: macOS `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
    (or Chromium/Edge at the equivalent path); Linux `which google-chrome`, `chromium`, or
