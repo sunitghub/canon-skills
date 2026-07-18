@@ -13,6 +13,8 @@ toPdfViaTempFile*
 tools/tailscale-check.sh
 posts/
 octave/
+# Local-only Octave slides theme; canon.css (generic default) stays tracked.
+skills/canon-slides/themes/octave.css
 critique/
 context-findings.md
 doc-findings.md
