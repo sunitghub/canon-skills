@@ -42,6 +42,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verif
 
 4. **Check each concern.** For every changed file, look for:
    - **Scope creep** — changes beyond what `plan.md` describes
+   - **Visual regression** — a change (even an in-scope, behaviorally-correct one) that alters the *rendered* appearance of an affected or adjacent element: styling/CSS (including CSS-in-code), layout, theme, or a widget swap that changes a rendered testid so styling defined elsewhere stops matching (`t-b75f`). If the change touches rendered UI, verify against actual rendered output ("## Self-serve visual verification"), not just the diff — a selector present in code is not proof it matches the rendered element.
    - **Dead code** — code made unreachable or unused by this change
    - **Unnecessary complexity** — abstractions, layers, or indirection added without a clear reason
    - **Standards violations** — anything that conflicts with `standards/efficiency.md` (no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code)

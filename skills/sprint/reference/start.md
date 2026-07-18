@@ -10,6 +10,26 @@
 
 4. **Planning files.** Both files were already seeded by step 1 (skeleton `## Criteria`/`## Test Plan`/`## QA` in `acceptance.md`, skeleton `## Sign-off`/`## Approach`/`## Files`/`## Decisions` in `plan.md`) — fill them in now, before the brief. The approval gate in step 11 blocks code, not planning file content.
    - `acceptance.md` — specific, binary conditions that define "done" under `## Criteria` and `## Test Plan`. For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution. `## QA`'s "Tested locally" box also blocks close if left unchecked — check it once you've actually verified the change, not before.
+   - **Visual acceptance criteria (required for UI-affecting work).** If this
+     sprint changes anything user-visible — UI layout, component markup,
+     styling/CSS (**including CSS embedded in code**: Streamlit `_CSS` strings,
+     styled-components/CSS-in-JS, inline `style=` attributes, theme tokens),
+     theming, or a widget swap — `acceptance.md ## Criteria` **must** include at
+     least one *visual* criterion pinning the expected **rendered** state of the
+     affected element (e.g. "the primary Ask button renders with the aqua→green
+     gradient fill and dark label"), and `## Test Plan` must include a
+     rendered-output verification step. The trigger is *user-visible impact*, not
+     the file extension in the diff — a change that touches no `.css`/`.html`
+     file (a `_CSS`-string edit, or a widget swap that changes a rendered testid)
+     is still a UI change. **Logic/unit tests are render-blind:** Streamlit
+     AppTest, jsdom, and logic-only snapshots verify behavior/DOM structure but
+     cannot see computed styles, gradients, or a rendered testid — a criterion
+     that only asserts behavior will not catch a styling regression (live case:
+     overtone `t-b75f` wrapped a button in `st.form`, silently changing its
+     testid and dropping its gradient, invisible to AppTest until a later bug
+     ticket). The reviewer/evaluator verify visual criteria against actual
+     rendered output — see `shared-gate-protocol.md ## Self-serve visual
+     verification` for the browser-binary recipe (no Node/Playwright needed).
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
    - **Visual reference artifacts.** Visual reference (pasted image, or a file path
      from the user — including an absolute host path like `C:\...\Mockup-1.jpg`) as

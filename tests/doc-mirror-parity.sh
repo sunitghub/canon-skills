@@ -89,4 +89,18 @@ if [[ "$shared_baseref" != "$security_baseref" ]]; then
   exit 1
 fi
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security)"
+# ── Check E: the required visual-verification convention (t-277d) must be
+# present — there is no CLI gate for it (CSS-in-code defeats a file-extension
+# trigger), so this lock guards the protocol language against silent deletion.
+# shared-gate-protocol.md must carry the "required (not optional)" framing and
+# the adjacent-element regression clause; start.md must carry the
+# visual-acceptance-criterion requirement for UI-affecting sprints.
+REQUIRED_VISUAL='required, not optional'
+ADJACENT_CLAUSE='Check adjacent/related elements'
+START_VISUAL_REQ='Visual acceptance criteria (required for UI-affecting work)'
+
+grep -qF "$REQUIRED_VISUAL" "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md ## Self-serve visual verification is missing the 'required, not optional' framing for UI changes (t-277d)"
+grep -qF "$ADJACENT_CLAUSE" "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the adjacent-element visual-regression check (t-277d)"
+grep -qF "$START_VISUAL_REQ" "$START" || fail "doc-mirror-parity: start.md is missing the required visual-acceptance-criterion guidance for UI-affecting sprints (t-277d)"
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md)"

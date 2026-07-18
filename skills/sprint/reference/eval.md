@@ -56,10 +56,11 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verif
    - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable. If the quoted text itself contains a backtick (e.g. it's citing a line that has its own inline code), escape it as `` \` `` inside your citation — the board's renderer treats a backslash-escaped backtick as literal, so the whole citation still renders as one code span instead of breaking mid-quote. (Same wording as `review.md` — mirror, keep in sync.)
    - **fail** — criterion is not met or contradicted by the code; cite what you found
    - **partial** — partially met; describe what is and isn't there
+   - For a **visual criterion** (rendered appearance — styling, layout, theme, a rendered widget), grade against **actual rendered output** via the browser-binary recipe ("## Self-serve visual verification"), not static reading. A CSS selector or style present in the source is not proof it matches the *rendered* element — a widget/testid change can leave the code looking correct while the element renders unstyled (`t-b75f`). If a browser binary exists, render before grading.
 
 7. **Grade test plan.** For each item under `## Test Plan`:
    - **pass** — the test or check is implemented and would catch the failure it targets
-   - **not-run** — cannot determine from static reading alone; flag for human verification
+   - **not-run** — cannot determine from static reading alone; flag for human verification. **For a visual/rendered item you must first attempt the browser-binary render (see "## Self-serve visual verification") — do not grade a renderable visual item `not-run` when a browser binary is available.**
    - **fail** — test is missing, wrong, or wouldn't catch the targeted failure
 
 8. **Save the report.** Save the evaluation via Bash to `.tickets/<id>/eval-report.md` — append (`>>`), never truncate (`>`), so the run-id line from step 1 survives. Write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above:
