@@ -1,6 +1,6 @@
 ---
 name: skill-export
-description: Exports any flat canon skill as a paste-ready prompt, or refines an existing prompt using efficiency.md standards. Invoke as skill-export <skill-name> or skill-export <skill-name> "<prompt>". Rejects skills with sub-skills.
+description: Exports any flat canon skill as a paste-ready prompt, or refines an existing prompt using efficiency.md standards. Use when running a skill in claude.ai, a system prompt, or another environment that doesn't load SKILL.md natively. Invoke as skill-export <skill-name> or skill-export <skill-name> "<prompt>". Rejects skills with sub-skills.
 category: agent-ops
 tags: [skills, export, prompt, claude-ai, portability]
 ---
