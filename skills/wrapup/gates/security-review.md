@@ -4,16 +4,16 @@ description: Identify high-confidence exploitable vulnerabilities in code
 category: dev
 tags: [security, vulnerabilities, code-review]
 hidden: true
-allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Read, Glob, Grep, LS
+allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git show:*), Bash(git merge-base:*), Bash(git rev-list:*), Read, Glob, Grep, LS
 ---
 
 # Security Review
 
 ## Scope
 
-If an explicit `Base ref` was passed (headless CI dispatch grading an existing PR/diff), run `git diff --name-only <base-ref> HEAD`. Otherwise (normal interactive close), run `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — the same base ref every other close gate uses by default. (Same base-ref branching as `review.md`/`eval.md` — mirror, keep in sync; locked by `tests/doc-mirror-parity.sh`.) Analyze only the resulting changed files — do not scan the full codebase.
+If an explicit `Base ref` was passed (headless CI dispatch grading an existing PR/diff), run `git diff --name-only <base-ref> HEAD`. Otherwise (normal interactive close), run `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — the same base ref every other close gate uses by default. (Same base-ref branching as `shared-gate-protocol.md` — mirror, keep in sync; locked against it by `tests/doc-mirror-parity.sh` Checks A/D.) Analyze only the resulting changed files — do not scan the full codebase.
 
-If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `review.md`/`eval.md` (mirror — keep in sync):
+If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers, same as `shared-gate-protocol.md` (mirror — keep in sync):
 - If `HEAD` resolves (the repo has ≥1 commit): diff against the repo's first commit instead — `git diff --name-only $(git rev-list --max-parents=0 HEAD) HEAD`, plus untracked files (`git status --porcelain`) — and scan those real changed files.
 - If `HEAD` does not resolve (zero commits) or git itself is unavailable: log a warning noting no git baseline is available and scan every file currently in the working tree (excluding `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next`) rather than falling back to `.tickets/<id>/plan.md ## Files` — this gate needs actual source to scan for vulnerabilities, not a file-name list.
 

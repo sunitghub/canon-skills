@@ -10,7 +10,7 @@ hidden: true
 
 Runs in `sprint start`. Writes to `plan.md` and `acceptance.md`.
 
-Always present the rating table and required actions before proceeding — even when all dimensions are LOW. For all-LOW: "Impact assessment: all dimensions LOW — no required mitigations." User sees every assessment; there is no silent path.
+Always present the rating table and required actions before proceeding — even when all dimensions are LOW. For all-LOW: "Impact assessment: all dimensions LOW — no required mitigations."
 
 ## Step 1 — Interrogate the request
 

@@ -8,9 +8,9 @@
 
 Wait for explicit confirmation. Don't proceed on a broad instruction like "resume"/"continue"/"finish" without specific close approval. An unwanted close is costly; asking is free.
 
-1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit) on files modified since sprint start. wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session" — a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
+1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
-   The table below is named "Wrapup Gates" for historical reasons — it also records `reviewer`/`eval`, the two close-time gates that run outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md`:
+   The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (row order below is an illustrative record, not the execution order — `reviewer`/`eval` actually run at steps 2-3, after the pipeline gates):
 
    ```markdown
    ## Wrapup Gates
@@ -74,6 +74,11 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    - **High-risk sprints are unaffected** — the check only adds a cheap-model option, never
      removes the mandatory dispatch. An explicit `Gate model:` override applies regardless of
      tier.
+   - **Cross-harness caveat.** The automatic Haiku downgrade is confirmed only under Claude
+     Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's `spawn_agent` has no per-agent
+     `model` field (its model picker is session-level), so don't assume the downgrade takes
+     effect under Codex without testing live first — an explicit `Gate model:` override or
+     full-tier review is the safe default there.
 
    **Shared gate mechanics (reviewer + evaluator).** Four rules, stated once: (a) close
    confirmation authorizes spawning either subagent — never ask separately; (b) both derive
