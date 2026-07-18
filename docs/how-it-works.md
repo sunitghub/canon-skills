@@ -35,7 +35,7 @@ Simple work stays light. canon chooses the lightest tier that still protects the
 The agent that wrote the code is the worst possible reviewer of that code. canon enforces separation structurally:
 
 1. `sprint complete` spawns a **fresh subagent** — Read and Bash only, no implementation history — to grade each acceptance criterion against the actual code.
-2. The evaluator writes a machine-generated `evaluator-run-id` before grading; the orchestrating agent logs the real `agent_id` to `.claude/subagent-runs.jsonl` via `subagent-log.sh` right after the subagent completes, making the field auditable.
+2. The evaluator writes a machine-generated `evaluator-run-id` before grading; the orchestrating agent logs a matching entry to `.claude/subagent-runs.jsonl` via `subagent-log.sh` right after the subagent completes, and the close gate correlates the report to that run by a ±60-minute timestamp window. The run-id is a correlation handle, not a security token — the gate never validates it as `agent_id`.
 3. The CLI blocks close if the field is absent, the verdict isn't `pass` (any `partial` criterion forces the verdict to `fail` — there's no separate non-blocking `partial` verdict), any acceptance or test-plan box is unchecked, `summary.md` is missing, the `## Wrapup Gates` record is absent, or `plan.md`'s Approach or Sign-off is empty or unapproved.
 
 Same-context review reintroduces self-evaluation bias. The protocol fails closed when fresh-context evaluation is unavailable.

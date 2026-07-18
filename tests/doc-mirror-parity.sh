@@ -103,4 +103,18 @@ grep -qF "$REQUIRED_VISUAL" "$SHARED" || fail "doc-mirror-parity: shared-gate-pr
 grep -qF "$ADJACENT_CLAUSE" "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the adjacent-element visual-regression check (t-277d)"
 grep -qF "$START_VISUAL_REQ" "$START" || fail "doc-mirror-parity: start.md is missing the required visual-acceptance-criterion guidance for UI-affecting sprints (t-277d)"
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md)"
+# ── Check F: the citation backtick-escape rule is triplicated in
+# shared-gate-protocol.md, eval.md, and review.md (each gate doc is dispatched
+# to a fresh subagent independently, so the rule must be self-contained in each,
+# not referenced). The three copies aren't byte-identical (surrounding prose
+# differs), so this locks the load-bearing invariant phrase against silent
+# divergence — the same "duplicate but lock with a parity test" pattern as
+# Checks A/D, satisfying standards/efficiency.md's DRY trigger.
+CITATION_ESCAPE_RULE='the board'\''s renderer treats a backslash-escaped backtick as literal'
+
+for file in "$SHARED" "$EVAL" "$REVIEW"; do
+  label="$(basename "$file")"
+  grep -qF "$CITATION_ESCAPE_RULE" "$file" || fail "doc-mirror-parity: $label is missing the citation backtick-escape rule verbatim (\"$CITATION_ESCAPE_RULE\") — the citation-format wording has diverged across the gate docs"
+done
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md)"

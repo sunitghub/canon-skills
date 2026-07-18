@@ -119,7 +119,7 @@
    - Test plan (verbatim from acceptance.md ## Test Plan)
    - Open questions or blockers still unresolved
 
-11. **Wait for explicit approval.** Do not write code until confirmed. On approval, update `plan.md` — fill in the risk summary line in `## Sign-off` (`Tier: <tier> | Risk: <blast radius / key risks, one line>` — use tier classification for normal, impact analysis findings for high-risk), check the `- [ ] Plan approved` box, and add any grill resolutions. This is the durable approval record; `sprint complete` gates on it. (`plan.md` was created in step 4 — this step finalizes it, it does not create it.) If a normal/high-risk sprint turns out mid-flight to be genuinely trivial (grill or impact analysis reveals a one-liner with no coordinated multi-file intent, and the change is not one of `SKILL.md`'s four categorical not-trivial triggers — new file, test/build-infrastructure wiring, hook/pipeline/post-commit script change, or coordinated multi-file intent), the `## Sign-off` line can instead read `Tier: trivial | Risk: <reason>` — see `skills/sprint/reference/complete.md`'s reviewer/evaluator gates for what that downgrade skips.
+11. **Wait for explicit approval.** Do not write code until confirmed. On approval, update `plan.md` — fill in the risk summary line in `## Sign-off` (`Tier: <tier> | Risk: <blast radius / key risks, one line>` — use tier classification for normal, impact analysis findings for high-risk), check the `- [ ] Plan approved` box, and add any grill resolutions. This is the durable approval record; `sprint complete` gates on it. (`plan.md`'s skeleton was seeded in step 1 and filled in during step 4 — this step finalizes it, it does not create it.) If a normal/high-risk sprint turns out mid-flight to be genuinely trivial (grill or impact analysis reveals a one-liner with no coordinated multi-file intent, and the change is not one of `SKILL.md`'s four categorical not-trivial triggers — new file, test/build-infrastructure wiring, hook/pipeline/post-commit script change, or coordinated multi-file intent), the `## Sign-off` line can instead read `Tier: trivial | Risk: <reason>` — see `skills/sprint/reference/complete.md`'s reviewer/evaluator gates for what that downgrade skips.
 
     **Optional gate-model override.** If the user asks (now, or any time before `sprint
     complete` runs) to run the close-gate reviewer/evaluator on a specific model — e.g.
@@ -128,7 +128,7 @@
     `session` to force full session-model review — there is no separate `auto` value;
     omitting the field entirely already means automatic). Write it immediately when asked,
     not deferred, so a later compaction doesn't lose it. A user can also add this segment
-    by hand-editing `plan.md` directly, without asking — the skeleton created in step 4
+    by hand-editing `plan.md` directly, without asking — the skeleton seeded in step 1
     already carries a commented hint showing the exact syntax and valid values. See
     `complete.md`'s "Model tier for gates" for how this value is applied at close.
 

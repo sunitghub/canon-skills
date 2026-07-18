@@ -32,6 +32,8 @@ tools/sprint-headless <ticket-id> --base-ref <ref>
 
 Exit code 0 means all three gates passed; exit code 1 means a gate failed, or the invocation itself errored (auth, rate limit, dispatch failure — hard-fail, fail closed). The full grading summary, including each gate's individual verdict, prints to stdout.
 
+Note the reviewer's binding-ness differs from interactive close: at an interactive `sprint complete` the `reviewer` gate is **advisory** (a `NO` verdict doesn't block close — see `complete.md`/`review.md`). Headless CI is stricter — a reviewer `NO` (like an evaluator `fail` or a HIGH security finding) makes the overall verdict FAIL and forces exit 1, because CI has no human in the loop to weigh an advisory verdict.
+
 ## When a Gate Legitimately Can't Pass Headlessly
 
 Some acceptance criteria are inherently untestable by an automated evaluator — e.g. a claim that only a real `claude -p` dispatch can verify, which would cost real API money on every CI run. If the evaluator correctly fails such a criterion, headless grading exits 1, and it should: the CLI never auto-waives anything.
