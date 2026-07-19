@@ -124,6 +124,24 @@ the branch, which looked correct.
 13 minutes *before* the commit that replaced it. Nothing in a test suite checks whether your evidence
 still describes your code. The evaluator compared file times against commit times and said so.
 
+**And it doesn't take the fix on trust either.** On the next pass it re-checked every finding it had
+raised — note the column header, and that one row is still `partial`:
+
+<img src="meta/screenshots/eval-disposition.jpg" alt="Evaluator re-checking its own prior findings: a table headed 'Evidence I derived myself', each prior finding marked fixed or partial with the derivation shown - git log timestamps compared, images read back" width="680">
+
+**The part that makes it trustworthy is that it also declines to over-reach.** Here it found one of my
+totals was corroborated for only 11 of its 17 members, and that a label I had cited as evidence was
+*"an unfalsifiable handle"*. It considered grading the item `partial`, decided that would mean
+penalising outside the stated criteria — and recorded the gap anyway:
+
+<img src="meta/screenshots/eval-judgement.jpg" alt="Evaluator note: a claimed total is corroborated for only 11 of 17 members and cites labels defined nowhere; it declines to grade the item partial because that would penalise outside the stated criteria, and records the gap so the total is not mistaken for verified evidence" width="680">
+
+> *"Recorded here so the total is not mistaken for verified evidence."*
+
+That sentence is the whole design in one line. A gate that only ever fails things is noise; a gate
+that only ever passes things is theatre. This one refused to certify a number **and** refused to fail
+the work over a criterion nobody had set.
+
 > The transferable lesson: **"the tests pass" is a claim, and it needs its own evidence.**
 
 ## Not just CRUD
