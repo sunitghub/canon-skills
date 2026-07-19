@@ -16,7 +16,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 [![sprint-check board — searchable local kanban with status-aware cards and repo context](meta/screenshots/Board-1.jpg)](docs/index.html)
 
-<div align="center"><em>An agent workflow harness.</em></div>
+<div align="center"><em>Your agent plans in the repo, and a second agent checks its work.</em></div>
 
 One-time setup:
 
@@ -60,20 +60,86 @@ sprint end to end without adding local sprint state to the canon checkout.
 
 ## What Makes canon Different
 
-The agent that wrote the code is the worst possible reviewer of that code. canon enforces a structural separation that most tools skip.
+**The agent that wrote the code is the worst possible reviewer of that code.** Most harnesses ask the
+same agent to check its own work. canon makes that structurally impossible.
 
-1. **Adversarial close review.** Before a sprint closes, a fresh subagent — restricted to Read and Bash, with no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` as its first action; the orchestrating agent logs a matching entry to `.claude/subagent-runs.jsonl` via `subagent-log.sh` right after, and the close gate ties the report to that run by a ±60-minute timestamp window. The run-id is a correlation handle, not a security token — the gate never validates it as tamper-proof. Each criterion gets a pass, fail, or partial verdict with a `file:line` cite. A fail blocks close.
-2. **Proportional review cost.** The close-review gates stay mandatory and independent, but not always full-price: a structural check on changed file paths — never the agent's own risk judgment — runs the advisory reviewer and the binding adversarial evaluator on a cheaper model when every changed file is low-risk (docs, skill/standards reference files, no security-sensitive markers). An explicit ask to run these gates on a specific model — including keeping full-tier review — always overrides the classification, and is recorded in `plan.md`'s Sign-off so it survives a compaction before the gates run. The **Wrapup Gates** table on the Acceptance tab records which model ran each gate.
-3. **Delivery receipt.** When a sprint closes, the agent writes a plan-vs-actual table — one row per acceptance criterion, showing whether it was delivered, waived, deferred, or partial. Deviations can't be buried in prose. The **Summary** tab on the board makes this permanent and queryable.
-4. **Mechanical close gate.** The CLI refuses to close while Acceptance or Test Plan items are unchecked, `summary.md` is missing, the Wrapup Gates record is absent, the evaluator run-id field is missing, or `plan.md`'s Approach/Sign-off sections are empty or unapproved. The eval verdict itself must be `pass:` — any `partial` criterion forces the verdict to `fail:` (there's no separate non-blocking `partial:` verdict), and either blocks close the same way. Gates don't make agents smarter — they make certain failures impossible.
+1. **A second agent, with no memory of building it.** Before a sprint closes, a fresh subagent —
+   Read and Bash only, no implementation history — grades every acceptance criterion against the
+   actual code, with a `file:line` cite per verdict. It has no idea why any choice was made, so it
+   cannot inherit the assumption that produced the bug. A `fail` blocks the close.
+2. **The close gate is mechanical, not advisory.** The CLI refuses to close while any acceptance box
+   is unchecked, `summary.md` is missing, the gates record is absent, or the eval verdict isn't
+   `pass:`. Any `partial` forces `fail:`. Gates don't make agents smarter — they make certain
+   failures impossible.
+3. **A delivery receipt you can't write prose around.** Close produces a plan-vs-actual table, one
+   row per criterion: delivered, waived, deferred, or partial. Deviations appear in the table or the
+   sprint doesn't close.
+4. **Decisions outlive the context window.** Plans, rejected alternatives, discovered constraints and
+   the acceptance bar live in `.tickets/` as plain markdown — read back in at the next `sprint start`.
+   A compaction, a new session, or you in six months all get the same thread.
+5. **Cost proportional to risk.** Simple work stays light. The close gates stay mandatory but run on
+   a cheaper model when every changed file is low-risk — decided by a structural check on file paths,
+   never by the agent's own judgment of its own work.
 
-   *The CLI enforces state and close gates; the agent and evaluator judge whether the work behind those gates is true. The board surfaces problems early.*
+## What it actually caught
 
-5. **Parallel subsystem research.** High-risk sprints spawn one Explore subagent per independent subsystem concurrently — wall-clock research time scales with the largest subsystem, not the total.
-6. **Session continuity.** `HANDOFF.md`, the active ticket, and recent closed tickets give a returning agent enough context to resume without replaying project history.
-7. **Knowledge capture.** Non-obvious constraints found mid-build go to `HANDOFF.md ## Discoveries` immediately — before compaction or a session break can lose them.
-8. **Risk-aware planning.** Simple work stays light. High-impact work runs impact analysis before code; every HIGH risk becomes a required Acceptance test.
-9. **Queryable intent.** Every sprint records decisions, acceptance criteria, and rejected alternatives as plain markdown — the board surfaces the plan behind a file without touching `git log`.
+Claims about process are cheap. Here is what the gates found across two sprints on a real project —
+an agentic app whose code *and tests* were largely AI-written.
+
+**They never found a wrong number.** Every figure reproduced exactly when the evaluator recomputed it
+independently. What they found instead were things a test suite structurally cannot reach.
+
+**A test that could not fail.** The suite checked that a button was disabled when a flag was set:
+
+```python
+assert button.disabled == live_only     # both sides read the same list
+```
+
+Change the code and the expected answer changes with it — the check agrees with itself, always. It
+passed every run until someone broke the code on purpose. The fix is to state the expectation
+independently:
+
+```python
+offline_safe = {"question A", "question B"}          # written by hand, not derived
+assert button.disabled == (q not in offline_safe)
+```
+
+**How you find those: break the code on purpose.** If no test complains, the test was decoration.
+
+```
+$ # deliberately flip a flag the suite claims to guard
+$ run the suite
+  all checks passed              ← the bug: it cannot fail
+
+$ # after stating the expectation independently
+  FAILED — disabled=False contradicts the offline-safe list      ✓
+```
+
+**Safety code nobody had ever run.** Three defects sat in branches written specifically to be
+defensive — including a guard that fell back to a call raising the same error it existed to avoid.
+All three passed the suite. The reviewer found them by *executing the failure case*, not by reading
+the branch, which looked correct.
+
+**Evidence that had quietly gone stale.** Screenshots proving a feature still worked were timestamped
+13 minutes *before* the commit that replaced it. Nothing in a test suite checks whether your evidence
+still describes your code. The evaluator compared file times against commit times and said so.
+
+> The transferable lesson: **"the tests pass" is a claim, and it needs its own evidence.**
+
+## Not just CRUD
+
+Most agent harnesses are demonstrated on todo apps and CRUD endpoints, where "correct" is obvious
+and a wrong answer is visibly wrong.
+
+canon's harder workout has been **standards-governed industrial work** — a knowledge-graph agent
+answering questions against [CFIHOS](https://www.jip36-cfihos.org/) (the IOGP capital-facilities
+handover specification) and ISO 14224 failure taxonomy, where every answer must cite a source and an
+uncited one is marked unverified.
+
+That domain punishes a harness differently. Correctness is *semantic*: a plausible, fluent, well-cited
+answer can still be wrong because a threshold came from the wrong source. Domain conventions are
+non-negotiable in ways no linter knows about. And the failure mode isn't a crash — it's an answer that
+looks authoritative and isn't. Adversarial review earns its cost fastest exactly there.
 
 ## The Board
 
@@ -122,10 +188,9 @@ Every acceptance criterion, its outcome, and any deviations — permanently on t
 
 </details>
 
-Compared to common alternatives:
-- **CLAUDE.md alone** — injects context but has no lifecycle gate; the agent can skip planning or close without review.
-- **Linear + Cursor Rules** — external tracker plus editor conventions; state lives outside the repo and drifts as the project evolves.
-- **Plandex** — LLM-native planning and execution, but cloud-dependent and no per-project repo-local audit trail.
+The distinction that matters: context files inject knowledge but gate nothing, and external trackers
+keep state outside the repo where it drifts. canon's state is in your repo, and the close gate is
+mechanical.
 
 **[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
 
@@ -156,7 +221,7 @@ Each sprint produces up to six docs:
 
 All are plain markdown in `.tickets/<id>/` and are read into the agent's context by `sprint start` — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
 
-**Gated, not vibes.** The CLI owns state. `sprint complete` refuses to close while any acceptance or test-plan box is unchecked, `summary.md` is missing, the `## Wrapup Gates` record is absent, the evaluator run-id field is missing, `plan.md`'s Approach or Sign-off is empty or unapproved, or the eval verdict isn't `pass:` — the same full gate set as **Mechanical close gate** above. The board surfaces the same checks early — cards flag `incomplete` in red before close-time.
+**Gated, not vibes.** The CLI owns state; the agent and evaluator judge whether the work behind the gates is true. The board surfaces the same checks early — cards flag `incomplete` in red well before close-time.
 
 Layering is intentional: `sprint complete` is CLI-enforced; planning, audits,
 test judgment, and clean-context evaluation are agent-required; `sprint-check`
@@ -204,11 +269,7 @@ High-risk sprints add orient (with parallel subagents when multiple subsystems a
 
 Define your standards once; every project inherits them via symlinked skills directories — Claude Code, Codex, and Pi, in sync. Update the canon repo, every project picks it up on the next session. No copies, no drift, no setup ritual per project. **[How this works →](docs/setup.md)**
 
-Every non-trivial change starts with a ticket. Each sprint produces up to six docs: `acceptance.md` (done criteria + test plan), `plan.md` (approach + decisions), `research.md` (objective compression of what the system does before any plan is written — brief for normal tier, full orient protocol for high-risk/brownfield), `review-notes.md` (advisory reviewer findings written at close for non-trivial sprints), `eval-report.md` (adversarial criterion grades written at close for non-trivial sprints), and `summary.md` (plan-vs-actual at close). A future agent reading that folder knows *why* something was built, what trade-offs were ruled out, and whether the spec was fully met.
-
-canon enforces its own standards. A git-native pre-commit hook runs the test suite and blocks before commit — no advisory reminders, no honor system, no Claude Code hook to configure. What ships is what passed.
-
-Gates don't make agents smarter. They make certain failures impossible — and turn the ones that remain into data.
+canon enforces its own standards on itself. A git-native pre-commit hook runs the test suite and blocks before commit — no advisory reminders, no honour system. What ships is what passed.
 
 ## Setup
 
