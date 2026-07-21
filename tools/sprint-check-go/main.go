@@ -728,11 +728,6 @@ func dedupeVisualName(ticketID, filename string) string {
 // writeVisual decodes a base64-encoded image and writes it to
 // .tickets/<id>/visuals/, auto-suffixing on filename collision.
 func writeVisual(ticketID, filename, dataB64 string) map[string]any {
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(dataB64)), "data:") {
-		if idx := strings.Index(dataB64, ","); idx != -1 {
-			dataB64 = dataB64[idx+1:]
-		}
-	}
 	raw, err := base64.StdEncoding.DecodeString(dataB64)
 	if err != nil || len(raw) == 0 || len(raw) > maxVisualBytes {
 		return map[string]any{"ok": false}
