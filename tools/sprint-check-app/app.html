@@ -3808,6 +3808,54 @@ document.getElementById('m-body').addEventListener('click', async e => {
   if (t) renderModalBody(t);
 });
 
+// ── Clipboard image paste (t-626d) ─────────────────────────────────────────
+// Lands pasted images in .tickets/<id>/visuals/, the same convention `sprint
+// start` uses for mockups/visual references (standards/ticket-layout.md).
+
+const PASTE_IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+let pasteVisualCounter = 0;
+
+function readClipboardImages(e) {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return [];
+  const out = [];
+  for (const item of items) {
+    if (item.kind !== 'file') continue;
+    const ext = PASTE_IMAGE_EXT[item.type];
+    if (!ext) continue;
+    const blob = item.getAsFile();
+    if (blob) out.push({ blob, ext });
+  }
+  return out;
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function insertPlainText(textarea, text) {
+  textarea.focus();
+  textarea.setSelectionRange(textarea.selectionStart, textarea.selectionEnd);
+  document.execCommand('insertText', false, text);
+}
+
+async function uploadVisual(ticketId, filename, base64) {
+  try {
+    const res = await fetch(`/api/ticket/${ticketId}/visual`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, data: base64 }),
+    });
+    return res.ok ? await res.json() : { ok: false };
+  } catch {
+    return { ok: false };
+  }
+}
+
 // ── Create ticket ─────────────────────────────────────────────────────────
 
 (function initCreate() {
@@ -3824,6 +3872,19 @@ document.getElementById('m-body').addEventListener('click', async e => {
   let ciEnabled = false;
   let evalOverride = false;
   let templateUntouched = true;
+  let stagedVisuals = [];
+
+  bodyEl.addEventListener('paste', e => {
+    const images = readClipboardImages(e);
+    if (!images.length) return;
+    e.preventDefault();
+    images.forEach(img => {
+      pasteVisualCounter += 1;
+      const index = pasteVisualCounter;
+      insertPlainText(bodyEl, `![pasted-${index}](pending:${index})`);
+      stagedVisuals.push({ index, filename: `pasted-${index}.${img.ext}`, promise: blobToBase64(img.blob) });
+    });
+  });
 
   const ciBtn = document.getElementById('c-ci');
   const evalBtn = document.getElementById('c-eval-override');
@@ -3833,7 +3894,7 @@ document.getElementById('m-body').addEventListener('click', async e => {
 
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-    ciEnabled = false; evalOverride = false;
+    ciEnabled = false; evalOverride = false; stagedVisuals = [];
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
     titleEl.value = ''; detectEl.textContent = '';
     bodyEl.value = TYPE_TEMPLATES['task'] || '';
@@ -3907,6 +3968,26 @@ document.getElementById('m-body').addEventListener('click', async e => {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride }),
       }).then(r => r.json());
+
+      if (stagedVisuals.length) {
+        let body = ticket.body || '';
+        for (const v of stagedVisuals) {
+          const data = await v.promise;
+          const result = await uploadVisual(ticket.id, v.filename, data);
+          const replacement = result && result.ok
+            ? `![pasted-${v.index}](visuals/${result.filename})`
+            : '![paste failed]()';
+          body = body.replace(`![pasted-${v.index}](pending:${v.index})`, replacement);
+        }
+        if (body !== ticket.body) {
+          await fetch(`/api/ticket/${ticket.id}/body`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body }),
+          });
+          ticket.body = body;
+        }
+      }
+
       state.tickets.unshift(ticket);
       renderBoard();
       close();
@@ -3964,6 +4045,30 @@ document.getElementById('c-editor-toolbar').addEventListener('click', e => {
 });
 document.getElementById('m-edit-area').addEventListener('keydown', e => {
   handleMarkdownEnter(e, e.currentTarget);
+});
+document.getElementById('m-edit-area').addEventListener('paste', async e => {
+  const images = readClipboardImages(e);
+  if (!images.length) return;
+  e.preventDefault();
+  const t = state.tickets.find(tk => tk.id === state.selectedId);
+  if (!t) return;
+  const editEl = e.currentTarget;
+  for (const img of images) {
+    pasteVisualCounter += 1;
+    const index = pasteVisualCounter;
+    const marker = `![Uploading pasted-${index}…]()`;
+    const markerStart = editEl.selectionStart;
+    insertPlainText(editEl, marker);
+    const data = await blobToBase64(img.blob);
+    const result = await uploadVisual(t.id, `pasted-${index}.${img.ext}`, data);
+    const replacement = result && result.ok ? `![pasted-${index}](visuals/${result.filename})` : '![paste failed]()';
+    // Re-locate the marker rather than assume it's still at markerStart — the
+    // user may keep typing elsewhere while the upload is in flight.
+    const at = editEl.value.indexOf(marker, markerStart);
+    if (at !== -1) {
+      editEl.value = editEl.value.slice(0, at) + replacement + editEl.value.slice(at + marker.length);
+    }
+  }
 });
 document.getElementById('c-body').addEventListener('keydown', e => {
   handleMarkdownEnter(e, e.currentTarget);

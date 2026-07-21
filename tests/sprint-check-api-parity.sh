@@ -273,6 +273,71 @@ check_ticket_image "non-image extension (real file, wrong ext)" "t-mock/ticket.m
 check_ticket_image "missing file"              "t-mock/visuals/does-not-exist.png"
 check_ticket_image "malformed ticket id"       "t-ready/visuals/test.png"
 
+# ── POST /api/ticket/<id>/visual parity (t-626d): accept + reject cases ─────
+
+VISUAL_PNG_B64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+
+check_visual_upload() {
+  local label="$1" body="$2" py_res go_res
+  py_res="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/visual" -d "$body")"
+  go_res="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/visual" -d "$body")"
+  python3 - "$py_res" "$go_res" "$label" <<'PY'
+import json, sys
+py_res, go_res, label = sys.argv[1], sys.argv[2], sys.argv[3]
+if json.loads(py_res) != json.loads(go_res):
+    print(f"sprint-check-api-parity: FAIL — /visual {label} mismatch (server.py={py_res} main.go={go_res})")
+    sys.exit(1)
+PY
+}
+
+check_visual_upload "reject bad extension" "{\"filename\":\"x.txt\",\"data\":\"$VISUAL_PNG_B64\"}"
+check_visual_upload "reject bad base64"    '{"filename":"x.png","data":"!!!not-base64!!!"}'
+check_visual_upload "reject traversal"     "{\"filename\":\"../../x.png\",\"data\":\"$VISUAL_PNG_B64\"}"
+
+# Both servers share the same on-disk .tickets/ fixture, so uploads from one
+# server are visible to the other — reset the visuals dir before each
+# backend's own upload sequence, or py's write would shift go's auto-suffix
+# (and vice versa) and the two responses would never actually match.
+reset_visuals() { rm -rf "$WORK/.tickets/t-mock/visuals"; mkdir -p "$WORK/.tickets/t-mock/visuals"; }
+
+reset_visuals
+py_upload="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/visual" -d "{\"filename\":\"pasted-1.png\",\"data\":\"$VISUAL_PNG_B64\"}")"
+reset_visuals
+go_upload="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/visual" -d "{\"filename\":\"pasted-1.png\",\"data\":\"$VISUAL_PNG_B64\"}")"
+python3 - "$py_upload" "$go_upload" <<'PY'
+import json, sys
+py_upload, go_upload = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+if py_upload.get("ok") is not True:
+    print(f"sprint-check-api-parity: FAIL — server.py rejected a valid /visual upload: {sys.argv[1]}")
+    sys.exit(1)
+if go_upload.get("ok") is not True:
+    print(f"sprint-check-api-parity: FAIL — main.go rejected a valid /visual upload: {sys.argv[2]}")
+    sys.exit(1)
+if py_upload != go_upload:
+    print(f"sprint-check-api-parity: FAIL — /visual upload result mismatch (server.py={sys.argv[1]} main.go={sys.argv[2]})")
+    sys.exit(1)
+PY
+
+# Same filename uploaded twice against the SAME backend must auto-suffix, never overwrite —
+# checked independently per backend (each against its own freshly-reset dir), then compared.
+reset_visuals
+curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/visual" -d "{\"filename\":\"pasted-1.png\",\"data\":\"$VISUAL_PNG_B64\"}" >/dev/null
+py_dup="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/visual" -d "{\"filename\":\"pasted-1.png\",\"data\":\"$VISUAL_PNG_B64\"}")"
+reset_visuals
+curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/visual" -d "{\"filename\":\"pasted-1.png\",\"data\":\"$VISUAL_PNG_B64\"}" >/dev/null
+go_dup="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/visual" -d "{\"filename\":\"pasted-1.png\",\"data\":\"$VISUAL_PNG_B64\"}")"
+python3 - "$py_dup" "$go_dup" <<'PY'
+import json, sys
+py_dup, go_dup = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+if py_dup != go_dup:
+    print(f"sprint-check-api-parity: FAIL — /visual collision-suffix mismatch (server.py={sys.argv[1]} main.go={sys.argv[2]})")
+    sys.exit(1)
+if py_dup.get("filename") != "pasted-1-2.png":
+    print(f"sprint-check-api-parity: FAIL — collision did not auto-suffix: {sys.argv[1]}")
+    sys.exit(1)
+PY
+reset_visuals
+
 # ── /api/ticket/<id>/headless-run parity (t-200b): trigger + poll shape ─────
 # Both servers reference tools/sprint-headless via a path relative to their
 # own file location (never $PATH) — temporarily swap the real script for a
