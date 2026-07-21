@@ -294,6 +294,32 @@ check_visual_upload "reject bad extension" "{\"filename\":\"x.txt\",\"data\":\"$
 check_visual_upload "reject bad base64"    '{"filename":"x.png","data":"!!!not-base64!!!"}'
 check_visual_upload "reject traversal"     "{\"filename\":\"../../x.png\",\"data\":\"$VISUAL_PNG_B64\"}"
 
+# Oversized payload (>8MB decoded, the MAX_VISUAL_BYTES/maxVisualBytes cap) — built to a
+# temp file rather than an inline -d string, since a >8MB base64 blob is too large for a
+# shell argument/heredoc.
+OVERSIZED_BODY="$(mktemp)"
+{
+  printf '{"filename":"x.png","data":"'
+  head -c 9000000 /dev/zero | base64 | tr -d '\n'
+  printf '"}'
+} > "$OVERSIZED_BODY"
+py_oversized="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/visual" --data-binary "@$OVERSIZED_BODY")"
+go_oversized="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/visual" --data-binary "@$OVERSIZED_BODY")"
+rm -f "$OVERSIZED_BODY"
+python3 - "$py_oversized" "$go_oversized" <<'PY'
+import json, sys
+py_oversized, go_oversized = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+if py_oversized.get("ok") is not False:
+    print(f"sprint-check-api-parity: FAIL — server.py accepted an oversized (>8MB) /visual upload: {sys.argv[1]}")
+    sys.exit(1)
+if go_oversized.get("ok") is not False:
+    print(f"sprint-check-api-parity: FAIL — main.go accepted an oversized (>8MB) /visual upload: {sys.argv[2]}")
+    sys.exit(1)
+PY
+if [[ -e "$WORK/.tickets/t-mock/visuals/x.png" ]]; then
+  fail "sprint-check-api-parity: FAIL — oversized /visual upload wrote a file to disk"
+fi
+
 # Both servers share the same on-disk .tickets/ fixture, so uploads from one
 # server are visible to the other — reset the visuals dir before each
 # backend's own upload sequence, or py's write would shift go's auto-suffix
