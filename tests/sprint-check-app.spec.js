@@ -8,6 +8,25 @@ const net = require('net');
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 
+// 1x1 transparent PNG, real decodable bytes (t-626d paste tests).
+const PASTE_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+
+// Simulates an OS clipboard image paste — real clipboard access is unreliable
+// in headless Chromium, so this dispatches a synthetic ClipboardEvent with a
+// constructed DataTransfer/File, which the app's paste listeners can't tell
+// apart from a real paste (both read clipboardData.items).
+async function pasteImageIntoElement(page, selector, { base64 = PASTE_PNG_B64, filename = 'clipboard.png', mime = 'image/png' } = {}) {
+  await page.evaluate(async ({ selector, base64, filename, mime }) => {
+    const el = document.querySelector(selector);
+    el.focus();
+    const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+    const file = new File([bytes], filename, { type: mime });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, { selector, base64, filename, mime });
+}
+
 test.describe('board modal', () => {
   test('feature tour copy reflects current sprint gates', async ({ page }) => {
     await page.goto(BASE);
@@ -799,6 +818,213 @@ test.describe('board modal', () => {
     } finally {
       fs.rmSync(ticketDir, { recursive: true, force: true });
     }
+  });
+
+  test('pasting a clipboard image into New Ticket lands it in visuals/ and renders (t-626d)', async ({ page }) => {
+    const title = `Paste image test ${Date.now()}`;
+    let createdId = '';
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+
+      await pasteImageIntoElement(page, '#c-body');
+      await expect(page.locator('#c-body')).toHaveValue(/!\[pasted-1\]\(pending:1\)/);
+
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      expect(createdId).toBeTruthy();
+
+      const ticketMd = path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md');
+      await expect.poll(() => fs.existsSync(ticketMd) ? fs.readFileSync(ticketMd, 'utf8') : '')
+        .toMatch(/!\[pasted-1\]\(visuals\/pasted-1\.png\)/);
+      const ticketBody = fs.readFileSync(ticketMd, 'utf8');
+      expect(ticketBody).not.toContain('pending:1');
+      expect(fs.existsSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'visuals', 'pasted-1.png'))).toBe(true);
+
+      await card.click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      const img = page.locator('#m-body img.doc-visual-img');
+      await expect(img).toBeVisible();
+      await expect(img).toHaveAttribute('src', `/api/ticket-image/${createdId}/visuals/pasted-1.png`);
+      await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
+  test('pasting two images into the same New Ticket produces two distinct files (t-626d)', async ({ page }) => {
+    const title = `Paste two images test ${Date.now()}`;
+    let createdId = '';
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+
+      await pasteImageIntoElement(page, '#c-body');
+      await pasteImageIntoElement(page, '#c-body');
+      await expect(page.locator('#c-body')).toHaveValue(/!\[pasted-1\]\(pending:1\)/);
+      await expect(page.locator('#c-body')).toHaveValue(/!\[pasted-2\]\(pending:2\)/);
+
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+
+      const visualsDir = path.join(PROJECT_ROOT, '.tickets', createdId, 'visuals');
+      await expect.poll(() => fs.existsSync(visualsDir) ? fs.readdirSync(visualsDir).sort() : [])
+        .toEqual(['pasted-1.png', 'pasted-2.png']);
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
+  test('pasting an image into edit mode inserts a real embed without reload (t-626d)', async ({ page }) => {
+    const title = `Paste edit mode test ${Date.now()}`;
+    let createdId = '';
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-body').fill('## Notes\nExisting text.');
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+
+      await card.click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      await page.locator('#btn-edit-doc').click();
+      await expect(page.locator('#m-edit-area')).toBeVisible();
+
+      await pasteImageIntoElement(page, '#m-edit-area');
+      await expect(page.locator('#m-edit-area')).toHaveValue(/Uploading pasted-1…/);
+      await expect.poll(() => page.locator('#m-edit-area').inputValue())
+        .toMatch(/!\[pasted-1\]\(visuals\/pasted-1\.png\)/);
+
+      page.on('dialog', dialog => { throw new Error(`unexpected dialog: ${dialog.message()}`); });
+      await page.locator('#btn-save-top').click();
+      await expect(page.locator('#m-edit-area')).toBeHidden();
+
+      const ticketBody = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
+      expect(ticketBody).toMatch(/!\[pasted-1\]\(visuals\/pasted-1\.png\)/);
+      expect(fs.existsSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'visuals', 'pasted-1.png'))).toBe(true);
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
+  test('pasting an image into a companion doc (plan.md) edit mode inserts a real embed (t-626d)', async ({ page }) => {
+    const id = `t-${Math.random().toString(36).slice(2, 6).padEnd(4, '0')}`;
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+
+    try {
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---', `id: ${id}`, 'status: in_progress', 'type: task', 'priority: 2',
+        'created: 2026-07-21T00:00:00Z', '---', '', '# Companion doc paste test', '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan', '', `Ticket: \`${id}\``, '', '## Sign-off', '- [x] Plan approved',
+        '', '## Approach', 'Existing approach text.', '', '## Decisions', '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
+      await page.locator('#btn-edit-doc').click();
+      // enterEditMode fetches the companion doc's content asynchronously and
+      // overwrites #m-edit-area's value once it resolves — wait for the real
+      // content, not just visibility, or a paste lands before the fetch wipes it.
+      await expect(page.locator('#m-edit-area')).toHaveValue(/Existing approach text\./);
+
+      await pasteImageIntoElement(page, '#m-edit-area');
+      await expect.poll(() => page.locator('#m-edit-area').inputValue())
+        .toMatch(/!\[pasted-1\]\(visuals\/pasted-1\.png\)/);
+
+      page.on('dialog', dialog => { throw new Error(`unexpected dialog: ${dialog.message()}`); });
+      await page.locator('#btn-save-top').click();
+      await expect(page.locator('#m-edit-area')).toBeHidden();
+
+      const planContent = fs.readFileSync(path.join(ticketDir, 'plan.md'), 'utf8');
+      expect(planContent).toMatch(/!\[pasted-1\]\(visuals\/pasted-1\.png\)/);
+      expect(fs.existsSync(path.join(ticketDir, 'visuals', 'pasted-1.png'))).toBe(true);
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+    }
+  });
+
+  test('a failed visual upload in New Ticket leaves a visible marker, not a dangling pending: reference (t-626d)', async ({ page }) => {
+    const title = `Paste upload failure test ${Date.now()}`;
+    let createdId = '';
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      // Force the upload endpoint to fail so the create-flow's failure path runs.
+      await page.route('**/api/ticket/*/visual', route => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ ok: false }),
+      }));
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+      await pasteImageIntoElement(page, '#c-body');
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+
+      const ticketMd = path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md');
+      await expect.poll(() => fs.existsSync(ticketMd) ? fs.readFileSync(ticketMd, 'utf8') : '')
+        .toMatch(/!\[paste failed\]\(\)/);
+      const ticketBody = fs.readFileSync(ticketMd, 'utf8');
+      expect(ticketBody).not.toContain('pending:1');
+      expect(fs.existsSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'visuals'))).toBe(false);
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
+  test('pasting plain text is unaffected by the image-paste handler (t-626d)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('#btn-create').click();
+    await page.waitForSelector('#create-modal', { timeout: 3000 });
+
+    await page.evaluate(() => {
+      const el = document.querySelector('#c-body');
+      el.focus();
+      const dt = new DataTransfer();
+      dt.setData('text/plain', 'hello world');
+      el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    });
+
+    await expect(page.locator('#c-body')).not.toHaveValue(/pending:|visuals\//);
   });
 
   test('a crafted ticket-image path is rejected, not served', async ({ request }) => {

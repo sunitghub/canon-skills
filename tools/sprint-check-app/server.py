@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """sprint-check local HTTP server — stdlib only, no pip required."""
 
+import base64
 import json
 import os
 import random
@@ -536,6 +537,49 @@ def write_doc(doc_file: str, content: str) -> bool:
     p.write_text(content.strip() + '\n', encoding='utf-8')
     return True
 
+# Must stay behaviorally identical to main.go's writeVisual (t-626d) — enforced
+# by tests/sprint-check-api-parity.sh, not shared code.
+MAX_VISUAL_BYTES = 8 * 1024 * 1024
+_SAFE_VISUAL_NAME = re.compile(r'^[A-Za-z0-9_.-]+$')
+
+def _dedupe_visual_name(ticket_id: str, filename: str) -> str | None:
+    """Return a collision-free filename under .tickets/<id>/visuals/, auto-suffixing
+    before the extension (never overwrites). None if filename is unsafe."""
+    stem, ext = os.path.splitext(filename)
+    if not _SAFE_VISUAL_NAME.match(filename) or ext.lower() not in IMAGE_EXTS:
+        return None
+    candidate = filename
+    n = 2
+    while True:
+        target = _safe_ticket_doc(f'{ticket_id}/visuals/{candidate}', exts=IMAGE_EXTS)
+        if target is None:
+            return None
+        if not target.is_file():
+            return candidate
+        candidate = f'{stem}-{n}{ext}'
+        n += 1
+
+def write_visual(ticket_id: str, filename: str, data_b64: str) -> dict:
+    """Decode a base64-encoded image and write it to .tickets/<id>/visuals/,
+    auto-suffixing on filename collision. {'ok': False} on any validation failure."""
+    if data_b64.strip().lower().startswith('data:') and ',' in data_b64:
+        data_b64 = data_b64.split(',', 1)[1]
+    try:
+        raw = base64.b64decode(data_b64, validate=True)
+    except Exception:
+        return {'ok': False}
+    if not raw or len(raw) > MAX_VISUAL_BYTES:
+        return {'ok': False}
+    name = _dedupe_visual_name(ticket_id, filename)
+    if name is None:
+        return {'ok': False}
+    target = _safe_ticket_doc(f'{ticket_id}/visuals/{name}', exts=IMAGE_EXTS)
+    if target is None:
+        return {'ok': False}
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(raw)
+    return {'ok': True, 'filename': name}
+
 # ── Headless grading runs (t-200b) ──────────────────────────────────────────
 # tools/sprint-headless is referenced by a path relative to this file's own
 # location, never via $PATH — the server process's own location is always
@@ -713,6 +757,10 @@ class Handler(BaseHTTPRequestHandler):
         if m:
             ok = write_body(m.group(1), str(payload.get('body', '')))
             self.send_json({'ok': ok}); return
+
+        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/visual$', path)
+        if m:
+            self.send_json(write_visual(m.group(1), str(payload.get('filename', '')), str(payload.get('data', '')))); return
 
         m = re.match(r'^/api/doc/(.+)$', path)
         if m:

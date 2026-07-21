@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ var (
 	modelMentionRe = regexp.MustCompile(`(?i)\(model:\s*([^)]+)\)`)
 	baseRefRe      = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 	imageExts      = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
+	safeVisualName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 	projectRoot    string
 	ticketsDir     string
 	handoffFile    string
@@ -213,6 +215,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, map[string]bool{"ok": writeBody(m[1], fmt.Sprint(payload["body"]))})
 		return
 	}
+	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`).FindStringSubmatch(path); m != nil {
+		sendJSON(w, writeVisual(m[1], stringValue(payload, "filename", ""), stringValue(payload, "data", "")))
+		return
+	}
 	if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
 		sendJSON(w, map[string]bool{"ok": writeDoc(unescape(m[1]), fmt.Sprint(payload["content"]))})
 		return
@@ -358,7 +364,11 @@ func ticketPaths() []string {
 }
 
 func loadTickets() []ticket {
-	var tickets []ticket
+	// Must stay a non-nil slice — Go's encoding/json marshals a nil slice as
+	// `null`, not `[]`, unlike server.py's load_tickets (always `tickets = []`);
+	// the frontend's renderHeader crashes on `null.filter(...)` when zero
+	// tickets exist, which aborts the whole board render (t-626d).
+	tickets := []ticket{}
 	for _, p := range ticketPaths() {
 		if t, err := parseTicket(p); err == nil {
 			tickets = append(tickets, t)
@@ -681,6 +691,67 @@ func writeDoc(docFile, content string) bool {
 		return false
 	}
 	return os.WriteFile(p, []byte(strings.TrimSpace(content)+"\n"), 0644) == nil
+}
+
+// Must stay behaviorally identical to server.py's write_visual (t-626d) —
+// enforced by tests/sprint-check-api-parity.sh, not shared code.
+const maxVisualBytes = 8 * 1024 * 1024
+
+// dedupeVisualName returns a collision-free filename under .tickets/<id>/visuals/,
+// auto-suffixing before the extension (never overwrites). "" if filename is unsafe.
+func dedupeVisualName(ticketID, filename string) string {
+	ext := strings.ToLower(filepath.Ext(filename))
+	stem := strings.TrimSuffix(filename, filepath.Ext(filename))
+	extOK := false
+	for _, e := range imageExts {
+		if ext == e {
+			extOK = true
+			break
+		}
+	}
+	if !safeVisualName.MatchString(filename) || !extOK {
+		return ""
+	}
+	candidate := filename
+	for n := 2; ; n++ {
+		target, ok := safeTicketDoc(ticketID+"/visuals/"+candidate, imageExts...)
+		if !ok {
+			return ""
+		}
+		if !exists(target) {
+			return candidate
+		}
+		candidate = fmt.Sprintf("%s-%d%s", stem, n, ext)
+	}
+}
+
+// writeVisual decodes a base64-encoded image and writes it to
+// .tickets/<id>/visuals/, auto-suffixing on filename collision.
+func writeVisual(ticketID, filename, dataB64 string) map[string]any {
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(dataB64)), "data:") {
+		if idx := strings.Index(dataB64, ","); idx != -1 {
+			dataB64 = dataB64[idx+1:]
+		}
+	}
+	raw, err := base64.StdEncoding.DecodeString(dataB64)
+	if err != nil || len(raw) == 0 || len(raw) > maxVisualBytes {
+		return map[string]any{"ok": false}
+	}
+	name := dedupeVisualName(ticketID, filename)
+	if name == "" {
+		return map[string]any{"ok": false}
+	}
+	target, ok := safeTicketDoc(ticketID+"/visuals/"+name, imageExts...)
+	if !ok {
+		return map[string]any{"ok": false}
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+		return map[string]any{"ok": false}
+	}
+	if os.WriteFile(target, raw, 0644) != nil {
+		return map[string]any{"ok": false}
+	}
+	return map[string]any{"ok": true, "filename": name}
 }
 
 func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool) ticket {
