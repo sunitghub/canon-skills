@@ -562,8 +562,6 @@ def _dedupe_visual_name(ticket_id: str, filename: str) -> str | None:
 def write_visual(ticket_id: str, filename: str, data_b64: str) -> dict:
     """Decode a base64-encoded image and write it to .tickets/<id>/visuals/,
     auto-suffixing on filename collision. {'ok': False} on any validation failure."""
-    if data_b64.strip().lower().startswith('data:') and ',' in data_b64:
-        data_b64 = data_b64.split(',', 1)[1]
     try:
         raw = base64.b64decode(data_b64, validate=True)
     except Exception:
