@@ -40,6 +40,26 @@ The agent that wrote the code is the worst possible reviewer of that code. canon
 
 Same-context review reintroduces self-evaluation bias. The protocol fails closed when fresh-context evaluation is unavailable.
 
+## Evals vs Tests
+
+These get conflated because both are "checks," but they sit at different layers and mean different things when they pass. The evaluator does **not** "run the tests" — tests run; the evaluator *judges*.
+
+| | **Tests** | **Evals** |
+|---|---|---|
+| **Subject** | Code behaviour — given input X, does the function return Y? | Non-deterministic / agentic output — is a skill's output, or the completed work, actually correct? |
+| **Runner** | Deterministic test runner (pytest, etc.), no judgment | A **fresh-context agent** with no implementation history, precisely so it can't rubber-stamp its own work |
+| **What "pass" proves** | An assertion held | An independent grader re-derived the claim and agreed, with `file:line` evidence |
+| **Catches** | Broken logic, regressions | What a test structurally can't: a test that can *never fail*, defensive branches nobody ran, "evidence" that quietly went stale, plausible-but-wrong output |
+
+"Eval" covers two related things in canon:
+
+1. **Skill evals** (`skill-eval`, cases in `skills/<name>/evals/evals.json`) — verify a *skill* produces correct output for a known set of prompts. Because the thing under test is an agent behaviour, not a pure function, they run via an **executor + grader subagent pair in fresh context** (≥3 cases: a control plus boundary / over-caution / compliance types).
+2. **The evaluator gate** at `sprint complete` (`skills/sprint/reference/eval.md`) — a fresh-context adversarial agent that grades each acceptance criterion against the delivered code and writes `eval-report.md`. This is a *review gate*, not a test suite.
+
+Both are distinct from **tests**, which are the deterministic checks that ship with the code and are exercised by a runner. The evaluator may *inspect* the tests as evidence (e.g. confirming a test can actually fail) — but grading criteria is not the same as executing a test suite.
+
+Rule of thumb: **tests keep the code honest; evals keep the agent honest.**
+
 ## Session Continuity
 
 `HANDOFF.md`, the active ticket, and recent closed tickets are read explicitly by `sprint start`'s context step — canon installs zero Claude Code hooks. A context reset or fresh session never loses the thread — the plan, decisions, and acceptance bar are in `.tickets/<id>/`, not the chat history.
