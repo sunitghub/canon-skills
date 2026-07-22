@@ -530,6 +530,52 @@ test.describe('board modal', () => {
     }
   });
 
+  test('Save button appears immediately after creating a new companion doc (t-c58c)', async ({ page }) => {
+    const title = `New-doc save button test ${Date.now()}`;
+    let createdId = '';
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      await card.click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+
+      await page.locator('#btn-new-doc').click();
+      await page.locator('.doc-type-card[data-slug="plan"]').click();
+      await page.locator('#act-picker-edit').click();
+      await expect(page.locator('#m-edit-area')).toBeVisible();
+
+      // The bug: Save/Cancel were missing, and the stale +New-doc/Edit buttons stuck around
+      // because renderModalDocs ran before modalState.editMode was set to true.
+      await expect(page.locator('#btn-save-top')).toBeVisible();
+      await expect(page.locator('#btn-cancel-top')).toBeVisible();
+      await expect(page.locator('#btn-new-doc')).toHaveCount(0);
+      await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
+
+      page.on('dialog', dialog => { throw new Error(`unexpected dialog: ${dialog.message()}`); });
+      const template = await page.locator('#m-edit-area').inputValue();
+      await page.locator('#m-edit-area').fill(template.replace('## Approach', '## Approach\npasted plan content'));
+      await page.locator('#btn-save-top').click();
+      await expect(page.locator('#m-edit-area')).toBeHidden();
+
+      const planContent = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'plan.md'), 'utf8');
+      expect(planContent).toContain('pasted plan content');
+    } finally {
+      if (createdId) {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+      }
+    }
+  });
+
   test('archive button: Done card can be archived; archived ticket appears in search but not board columns', async ({ page }) => {
     const title = `Archive test ${Date.now()}`;
     const createdId = `t-arch-${Date.now()}`;
@@ -1161,6 +1207,10 @@ test.describe('board modal', () => {
       await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
 
       const body = page.locator('#m-body');
+      // The active-tab class flips synchronously in the click handler, before the
+      // doc content's own async fetch resolves — wait for real content, not just
+      // the tab state, or this reads an empty/stale body under load (t-c58c).
+      await expect(body.locator('code.doc-code').first()).toBeVisible();
       const codeTexts = await body.locator('code.doc-code').allTextContents();
       expect(codeTexts).toContain('![alt](src)');
       expect(codeTexts).toContain('**not bold**');
