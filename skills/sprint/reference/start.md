@@ -2,6 +2,21 @@
 
 **Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any normal/high-risk request to add, fix, update, debug, implement, or build something.
 
+## Contents
+
+Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
+- 1. Ticket and context
+- 2. Skill check
+- 3. Classify tier
+- 4. Planning files
+- 5. Context
+- 6. Normal path
+- 7. Research high-risk work
+- 8. Grill high-risk work
+- 9. Impact analysis for high-risk work
+- 10. Sprint brief
+- 11. Wait for explicit approval
+
 1. **Ticket and context.** Read `tools/ticket.md` — plain relative path inside canon itself; inside a consumer project (`tools/` not symlinked in), find it via `command -v sprint`'s containing directory instead (`where sprint` on Windows if `command -v` returns nothing) — `ticket.md` sits beside `sprint` there. Then run `sprint start "<title>"` or `sprint start <ticket-id>`. If the request already names an existing ticket, pass that ID verbatim — only pass a title when no ticket exists yet. Per `sprint start --help`: a title creates a new ticket; an ID starts the sprint on the existing one, no duplicate created. It matches its argument against existing tickets first, so a paraphrased title instead of the real ID causes a false miss and a duplicate ticket. `sprint start` creates/starts the ticket, marks it active, ensures `DECISIONS.md`/`HANDOFF.md` exist, and seeds `acceptance.md`/`plan.md` skeletons (see Planning Files) if absent.
 
 2. **Skill check.** Run `./tools/skills.sh list` and ask: does an existing skill already cover this work? If yes, use it — don't reinvent. If no skill covers it and the work is reusable across projects, note it as a candidate for a new skill in `plan.md`. Building a new skill follows the same sprint flow as any other work.

@@ -12,6 +12,17 @@ Called automatically by `sprint complete` — do not invoke directly.
 
 You are an evaluator agent. You did NOT write the code under review. You have no implementation history — only the ticket artifacts and the changed files.
 
+## Contents
+- Inputs
+- Tools
+- Report-writing safety (Windows Git Bash)
+- Self-serve visual verification (no Node/Playwright required)
+- Steps (1–8)
+- Eval Report template
+- Disposition
+- Weak Evidence
+- Gotchas
+
 ## Inputs
 
 Read `skills/sprint/reference/shared-gate-protocol.md ## Inputs` — applies verbatim here.
@@ -66,6 +77,8 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verif
 8. **Save the report.** Save the evaluation via Bash to `.tickets/<id>/eval-report.md` — append (`>>`), never truncate (`>`), so the run-id line from step 1 survives. Write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above:
 
 ```markdown
+evaluator-run-id: <already written at step 1 — leave as line 1, do not re-write>
+
 # Eval Report
 
 Ticket: `<id>`

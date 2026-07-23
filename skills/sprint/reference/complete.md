@@ -8,6 +8,20 @@
 
 Wait for explicit confirmation. Don't proceed on a broad instruction like "resume"/"continue"/"finish" without specific close approval. An unwanted close is costly; asking is free.
 
+## Contents
+
+Steps run in order (2-3 are the fresh-context gates; the rest run in the main session):
+- 1. Wrapup (pipeline gates)
+- 2. Reviewer gate (normal+)
+- 3. Evaluator review (normal+)
+- 4. Test verification
+- 5. Acceptance check
+- 6. DECISIONS.md
+- 7. Conventions
+- 8. Summary
+- 9. Close
+- 10. Commit & Push
+
 1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
    **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has actually been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (excluding `.tickets/` files, which are gitignored and never need committing for this purpose) — commit now if not. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
@@ -124,7 +138,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
    check and shared gate mechanics above. **Pass `subagent_type: "Plan"`** on the `Agent`
    call — the only mechanism that actually restricts a dispatched subagent's tools; the `Plan`
    type excludes Edit, Write, and Agent at the harness level (Bash stays available, needed for
-   git commands and writing the report via `cat >>`). Chosen over `Explore` (same tool
+   git commands and writing the report via `cat >>` — though some harnesses refuse even `Plan`-type file-modifying Bash, in which case the subagent relays its report in-response per `shared-gate-protocol.md ## Report-writing safety`). Chosen over `Explore` (same tool
    restriction) because `Explore`'s own description warns it reads excerpts rather than whole
    files — wrong fit for adversarial full-file review; the dispatch prompt overrides `Plan`'s
    default architect framing regardless. Prompt must instruct it to:
