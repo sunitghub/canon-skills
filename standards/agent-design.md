@@ -4,6 +4,7 @@ description: Agent design principles for projects building LLM-powered software 
 category: agent-ops
 tags: [agents, llm, prompts, context, control-flow, state]
 inject: true
+hidden: true
 version: 1.0.0
 updated: 2026-06-22
 ---

@@ -3,6 +3,7 @@ name: output-validator
 description: Validates agent-generated reports and summaries before delivery. Catches generator-evaluator collapse — where the AI summarizes data without checking if the summary is true. Run before delivering any report, status update, or data summary.
 category: agent-ops
 tags: [validation, reports, accuracy, output-quality]
+hidden: true
 ---
 
 # Output Validator
