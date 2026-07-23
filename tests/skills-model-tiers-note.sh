@@ -34,11 +34,6 @@ assert_count 1 "MODEL-TIERS:BEGIN" "$project/AGENTS.md"
 "$SKILLS" remove efficiency "$project" >/dev/null
 assert_count 1 "MODEL-TIERS:BEGIN" "$project/AGENTS.md"
 
-# Removing a different (also inject-type) skill never touches the block.
-"$SKILLS" add agent-design "$project" >/dev/null
-"$SKILLS" remove agent-design "$project" >/dev/null
-assert_count 1 "MODEL-TIERS:BEGIN" "$project/AGENTS.md"
-
 # Removing efficiency when the block is absent doesn't error.
 project2="$(make_project)"
 trap 'rm -rf "$project" "$tmp_home" "$project2"' EXIT

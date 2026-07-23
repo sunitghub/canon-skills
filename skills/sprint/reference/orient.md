@@ -10,6 +10,15 @@ hidden: true
 
 Called by `sprint start` after context documents are read.
 
+## Contents
+- Step 1 — Survey the target area
+- Step 2 — Trace dependencies
+- Step 3 — Flag non-obvious relationships
+- Step 4 — Write findings
+- Research template (`research.md`): Objective · Relevant Files · System Model · Constraints · Unknowns · Not In Scope
+- Parallel Research
+- Scope rules
+
 ## Step 1 — Survey the target area
 
 Read the target area. Focus on:

@@ -28,13 +28,16 @@ tkt show <id>                 # show full ticket
 
 ## Sprint Artifacts
 
-Canonical layout for a sprint ticket:
+Core sprint-ticket artifacts (see `standards/ticket-layout.md` for the authoritative full field contract and doc lifecycle):
 
 | File | Written by | Purpose |
 |---|---|---|
 | `ticket.md` | `sprint start` / `tkt` | Frontmatter + description |
-| `acceptance.md` | agent at sprint start | Done criteria + test plan |
+| `acceptance.md` | agent at sprint start | Done criteria + test plan + QA |
 | `plan.md` | agent at sprint start | Approach + decisions |
+| `research.md` | agent at sprint start | Objective truth: relevant files, system model, constraints |
+| `review-notes.md` | agent at sprint complete (normal+) | Advisory reviewer findings + verdict |
+| `eval-report.md` | agent at sprint complete (normal+) | Adversarial per-criterion grades + verdict |
 | `summary.md` | agent at sprint complete | Plan-vs-actual table + close prose |
 
 `summary.md` appears as a **Summary** tab on the board — read-only once the

@@ -12,6 +12,14 @@ Runs in `sprint start`. Writes to `plan.md` and `acceptance.md`.
 
 Always present the rating table and required actions before proceeding — even when all dimensions are LOW. For all-LOW: "Impact assessment: all dimensions LOW — no required mitigations."
 
+## Contents
+- Step 1 — Interrogate the request
+- Step 2 — Rate the five dimensions
+- Step 3 — Required actions for HIGH ratings
+- Step 4 — Human checkpoint
+- Step 5 — Write the impact block
+- Past sprint carryover
+
 ## Step 1 — Interrogate the request
 
 Rate from context first. For MEDIUM or HIGH dimensions, ask only questions whose answers can change the rating.
@@ -106,11 +114,9 @@ Append to `plan.md`:
 - Approved autonomy: plan only / implement only / implement + run tests / no autonomous execution / not applicable
 ```
 
-Append to `acceptance.md` under `## Test Plan`:
+Append under the existing `## Test Plan` heading in `acceptance.md` (seeded at sprint start — fill it in, do not add a second heading):
 
 ```markdown
-## Test Plan
-
 > All tests must pass before sprint complete is accepted.
 
 ### Functional tests

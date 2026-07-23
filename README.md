@@ -34,7 +34,7 @@ If the installer prompts to add `~/.canon/tools` to PATH, answer `y` and run the
 printed `source` command before using bare `skills.sh`, `sprint`, or
 `sprint-check` — see **[Full setup guide →](docs/setup.md)** for the full steps.
 
-To uninstall — cleans up agent hooks and removes canon skill symlinks from all registered projects:
+To uninstall — cleans up canon's git-native pre-commit hook (and any legacy Claude Code hooks from older installs) and removes canon skill symlinks from all registered projects:
 
 ```bash
 skills.sh uninstall
@@ -68,7 +68,7 @@ same agent to check its own work. canon makes that structurally impossible.
    actual code, with a `file:line` cite per verdict. It has no idea why any choice was made, so it
    cannot inherit the assumption that produced the bug. A `fail` blocks the close.
 2. **The close gate is mechanical, not advisory.** The CLI refuses to close while any acceptance box
-   is unchecked, `summary.md` is missing, the gates record is absent, or the eval verdict isn't
+   is unchecked, `summary.md` is missing, the gates record is absent, a referenced visual mockup was never embedded, or the eval verdict isn't
    `pass:`. Any `partial` forces `fail:`. Gates don't make agents smarter — they make certain
    failures impossible.
 3. **A delivery receipt you can't write prose around.** Close produces a plan-vs-actual table, one

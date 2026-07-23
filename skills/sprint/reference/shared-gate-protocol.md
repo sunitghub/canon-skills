@@ -8,6 +8,14 @@ hidden: true
 
 Referenced by `review.md` and `eval.md`. Do not invoke directly.
 
+## Contents
+- Inputs
+- Tools
+- Report-writing safety (Windows Git Bash)
+- Self-serve visual verification (no Node/Playwright required)
+- Base-ref derivation
+- Citation format
+
 ## Inputs
 
 You will receive:

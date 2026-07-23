@@ -9,6 +9,22 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git s
 
 # Security Review
 
+## Contents
+- Scope
+- Confidence Threshold
+- Do Not Flag
+- Optional Scanner Evidence
+- Process
+- Vulnerability Categories
+- Action Endpoint Patterns
+- Language-Specific Patterns
+- Severity Classification
+- Report Format
+- Needs Verification
+- Out of Scope
+
+> **`allowed-tools` note:** the `allowed-tools:` frontmatter above is advisory when this gate runs inline in the main session (it does not bind there); it is enforced only when the gate is dispatched as a fresh subagent under headless-CI invocation (`tools/sprint-headless`). The two fresh-subagent gates (`review.md`/`eval.md`) carry no such frontmatter and rely on `subagent_type: "Plan"` instead.
+
 ## Scope
 
 If an explicit `Base ref` was passed (headless CI dispatch grading an existing PR/diff), run `git diff --name-only <base-ref> HEAD`. Otherwise (normal interactive close), run `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — the same base ref every other close gate uses by default. (Same base-ref branching as `shared-gate-protocol.md` — mirror, keep in sync; locked against it by `tests/doc-mirror-parity.sh` Checks A/D.) Analyze only the resulting changed files — do not scan the full codebase.
