@@ -57,7 +57,7 @@ Prune stale entries freely — git history preserves everything.
 
 ## Skill lifecycle
 
-See **[docs/agent-playbook.md → Skill lifecycle](agent-playbook.md#skill-lifecycle)** for the lint → eval → register order of operations.
+See **[standards/skill-setup-std.md](../standards/skill-setup-std.md)** for the lint → eval → register order of operations.
 
 ## Reference
 

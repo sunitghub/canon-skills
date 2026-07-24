@@ -319,7 +319,7 @@ Register canon in another project:
 
 ## Contributing
 
-Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. For the full skill authoring lifecycle (lint → eval → register), see **[docs/agent-playbook.md → Skill lifecycle](docs/agent-playbook.md#skill-lifecycle)**.
+Add or refine a skill — see **[CONTRIBUTING.md](CONTRIBUTING.md)**. For the full skill authoring lifecycle (lint → eval → register), see **[standards/skill-setup-std.md](standards/skill-setup-std.md)**.
 
 ---
 
