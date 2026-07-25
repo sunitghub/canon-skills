@@ -39,6 +39,33 @@ this file is the public-facing shortlist.
     mines history to improve what gets loaded next time. Natural pairing.
   - Not a fit until canon has meaningful session volume to scan against.
 
+- **JTBD job-type dimension + eval-only `bugfix` tier + `mikado` skill** — three linked ideas
+  from reviewing [nWave](https://github.com/nWave-ai/nWave)'s Jobs-To-Be-Done guide (7-wave ODI
+  pipeline; cross-wave verbs `root-why`/`mikado`/`mutation-test`). canon routes by *risk*
+  (trivial/normal/high-risk); nWave routes by *job shape* (greenfield/brownfield/bugfix/refactor).
+  Adopt job-shape as an **orthogonal** planning dimension, not a replacement for risk tiers.
+
+  Design constraints before building:
+  - **North-star:** job type may *add* planning steps; only structural risk may *reduce* gates;
+    a tracked sprint never drops below the binding evaluator without a recorded `eval_override`
+    waiver. Job-type = planning aids; risk-tier = gates. Separate axes.
+  - **`bugfix` tier is eval-only, not gate-choice.** A tier between trivial and normal that keeps
+    the binding fresh-context evaluator and drops the *advisory* reviewer + heavy wrapup. Do NOT
+    build a board gate-picker or a "close with no gates" path — canon already rejected skipping
+    gates on low-risk work in favor of cheaper-but-independent review (`t-1477`), the evaluator is
+    mandatory at normal+ (`t-c5d4`/`t-5230`), and "none" already exists as trivial tier / `tkt`-only.
+  - **Eligibility is structural, never agent judgment.** Reuse the existing file-path/trigger
+    low-risk check (`t-8c24`: the classifier never reads plan prose). Qualifies for `bugfix` when
+    the change is a single logic file (+ its test), a covering test exists, and none of
+    `SKILL.md`'s four categorical not-trivial triggers is present. Board shows the derived tier +
+    reason read-only; an evaluator skip is the recorded `eval_override` + dated waiver (`t-d8a1`).
+  - **`mikado` is a refactor-phase planning skill, gates unchanged.** Maps the dependency tree,
+    does leaf changes first, reverts immediately when a change forces unplanned prerequisites.
+    Invoked during orient/plan for a refactor job; produces the plan, touches no close gate.
+  - **`root-why` (lightweight 5-Whys)** is the natural bugfix-job planning step, distinct from the
+    heavier `docs/production-incident-playbook.md`; candidate for the same JTBD dimension.
+  - Ship each of the three as its own gated sprint. This entry is the captured design, not the build.
+
 ## Planned — post-traction
 
 - **Windows 11 CI coverage** — add a WSL2 job to `.github/workflows/ci.yml` once the repo goes public; validates the `ss`/python3 port-detection path that `lsof` currently covers on macOS runners.
