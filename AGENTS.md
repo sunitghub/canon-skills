@@ -49,4 +49,5 @@ Haiku-downgrade above works under Codex without testing live first.
 | Skill | Category | Source |
 |-------|----------|--------|
 | sprint | dev | /Users/sunitjoshi/Developer/canon/skills/sprint/SKILL.md |
+| mikado | dev | /Users/sunitjoshi/Developer/canon/skills/mikado/SKILL.md |
 <!-- AI-SKILLS:END -->
