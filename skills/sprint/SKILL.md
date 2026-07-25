@@ -61,6 +61,20 @@ Use the full planning pipeline when any condition applies:
 
 High-risk sprints run orient, grill, impact-analysis, required mitigation tests, and wrapup.
 
+## Job types (JTBD)
+
+Job type is a second dimension, **orthogonal to the risk tiers above**. The tier decides how much
+planning and which gates run; the job type only adds an optional *pre-implementation planning
+step* — it never changes which gates run.
+
+| Job | Signal | Added planning step |
+|---|---|---|
+| Bug fix | ticket `type: bug` | **root-why** — `skills/sprint/reference/root-why.md` (5-Whys + convert the report into an independent invariant + worked example before coding) |
+| Refactor | recognized job shape (restructure without behavior change) | **mikado** skill — reversible dependency graph before touching code |
+| Feature / other | default | none beyond the tier's own planning |
+
+The invariant: job type may *add* a planning step; only structural risk may *reduce* gates.
+
 ## sprint start
 
 Read `skills/sprint/reference/start.md` for the full protocol (steps 1-11).

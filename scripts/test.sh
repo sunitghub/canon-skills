@@ -22,6 +22,7 @@ tests=(
   "$ROOT/tests/sprint-check-app.sh"
   "$ROOT/tests/sprint-check-api-parity.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
+  "$ROOT/tests/jtbd-routing.sh"
   "$ROOT/tests/why-cap.sh"
   "$ROOT/tests/sprint-headless.sh"
 )

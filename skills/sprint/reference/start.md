@@ -78,6 +78,16 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
    - If these already exist with real content (not just the skeleton): read them and proceed without recreating.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
    - Record the tier and one-line reason in `plan.md`.
+   - **Job-type planning step (JTBD).** Job type is *orthogonal to risk tier* — it adds a
+     planning step, it never changes which gates run. Before drafting `## Approach`, route by job:
+     - `type: bug` → run **root-why** (read `skills/sprint/reference/root-why.md`): the 5-Whys
+       root cause, and convert the reported bug into an independently-stated corrected invariant
+       + ≥1 hand-computed worked example before any code. This complements the five-incident-stage
+       plan structure noted in the `plan.md` bullet above.
+     - **refactor job** (restructuring without behavior change) → run the **mikado** skill to
+       produce a reversible dependency graph before touching code; log the graph in `plan.md`.
+       (Refactor is recognized as a job shape here, not a ticket `type`.)
+     - any other type → no extra planning step.
 
 5. **Context.** Read in order:
    - For `type: bug` tickets: grep the repo's bug-pattern log, if present, for similar symptoms before diagnosing. Known patterns reduce time-to-root-cause and avoid repeating past fixes.
