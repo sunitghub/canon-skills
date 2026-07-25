@@ -65,6 +65,26 @@ if ! grep -q '^\s*-\s*\[x\]\s*Plan approved' "$PLAN_FILE"; then
   exit 1
 fi
 
+# Read the workflow tier from the committed plan.md ## Sign-off. `Tier: bugfix` is the
+# eval-only tier: headless skips the advisory reviewer but keeps the binding evaluator +
+# security-review (mirrors interactive complete.md). Anchored to the Tier: field *within*
+# ## Sign-off — not the `type:` frontmatter (the orthogonal job type) and not the Risk:
+# free text. Headless trusts the committed tier: a wrong `Tier: bugfix` only skips the
+# advisory reviewer; the binding gates always run.
+TIER="$(awk '
+  /^##[[:space:]]+Sign-off[[:space:]]*$/ { in_so=1; next }
+  in_so && /^##[[:space:]]/ { exit }
+  in_so && /^[[:space:]]*[Tt]ier[[:space:]]*:/ {
+    s=$0
+    sub(/^[[:space:]]*[Tt]ier[[:space:]]*:[[:space:]]*/, "", s)
+    sub(/[[:space:]]*\|.*$/, "", s)
+    gsub(/[[:space:]]/, "", s)
+    print tolower(s); exit
+  }
+' "$PLAN_FILE")"
+BUGFIX=0
+[[ "$TIER" == "bugfix" ]] && BUGFIX=1
+
 # Resolve the skills-doc path prefix and subagent-log.sh location for the
 # repo this script is running in — canon's own repo (top-level skills/) or a
 # consumer project (skills.sh add's .claude/skills/ symlink to $SKILLS_ROOT/skills).
@@ -87,16 +107,26 @@ REVIEWER_END="@@@CANON_HEADLESS_REPORT:/reviewer@@@"
 EVALUATOR_START="@@@CANON_HEADLESS_REPORT:evaluator@@@"
 EVALUATOR_END="@@@CANON_HEADLESS_REPORT:/evaluator@@@"
 
-PROMPT="You are the orchestrator for a headless CI grading run of ticket $ID in this repo. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
+# Gate set, relay blocks, and verdict rule vary by tier. bugfix (eval-only) skips
+# the advisory reviewer and keeps the binding evaluator + security-review; every
+# other tier runs all three. Non-bugfix text is unchanged from the original prompt.
+if [[ "$BUGFIX" -eq 1 ]]; then
+  GATE_INSTRUCTIONS="This is a Tier: bugfix ticket — the eval-only tier — so the advisory reviewer gate is intentionally SKIPPED; the binding evaluator still runs. Dispatch exactly two fresh Agent subagents, subagent_type: \"Plan\" for each, one at a time:
+1. Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input (do not let it infer via git merge-base). Its own Bash write will be refused (dontAsk denies it) — per eval.md's own fallback, it will include its full report verbatim in its response text. It returns pass or fail.
+2. Security-review — instruct it to read $SKILLS_PREFIX/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file)."
+  RELAY_INSTRUCTIONS="You cannot write files yourself either. Instead, relay the evaluator's full report text VERBATIM (byte-for-byte, not summarized, not paraphrased) in your own final response, wrapped in these exact delimiter lines on their own line with nothing else on them:
 
-Dispatch exactly three fresh Agent subagents, subagent_type: \"Plan\" for each, one at a time:
+$EVALUATOR_START
+<evaluator's full report text, verbatim>
+$EVALUATOR_END"
+  LOG_TYPES="<evaluator|security-review>"
+  VERDICT_RULE="Verdict is PASS only if: evaluator verdict is pass, and security-review found no HIGH-confidence findings. Any fail or HIGH finding makes the overall verdict FAIL. (The advisory reviewer is skipped for the Tier: bugfix eval-only tier.)"
+else
+  GATE_INSTRUCTIONS="Dispatch exactly three fresh Agent subagents, subagent_type: \"Plan\" for each, one at a time:
 1. Reviewer — instruct it to read $SKILLS_PREFIX/sprint/reference/review.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input (do not let it infer via git merge-base). Its own Bash write will be refused (dontAsk denies it) — per review.md's own fallback, it will include its full report verbatim in its response text. It returns YES or NO.
 2. Evaluator — instruct it to read $SKILLS_PREFIX/sprint/reference/eval.md and follow its protocol for ticket $ID, with Base ref: $BASE_REF as an explicit input. Same write-refusal fallback — it will include its full report verbatim in its response text. It returns pass or fail.
-3. Security-review — instruct it to read $SKILLS_PREFIX/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file, in headless or interactive mode).
-
-After each subagent completes, run: $SUBAGENT_LOG --agent-id <the agent id from that dispatch> --agent-type <reviewer|evaluator|security-review>
-
-You cannot write files yourself either. Instead, relay each of the reviewer's and evaluator's full report text VERBATIM (byte-for-byte, not summarized, not paraphrased) in your own final response, each wrapped in these exact delimiter lines on their own line with nothing else on them:
+3. Security-review — instruct it to read $SKILLS_PREFIX/wrapup/gates/security-review.md and follow its protocol, with Base ref: $BASE_REF as an explicit input. Ask it to report HIGH/MEDIUM findings, if any, in its final response text (this gate has no dedicated report file, in headless or interactive mode)."
+  RELAY_INSTRUCTIONS="You cannot write files yourself either. Instead, relay each of the reviewer's and evaluator's full report text VERBATIM (byte-for-byte, not summarized, not paraphrased) in your own final response, each wrapped in these exact delimiter lines on their own line with nothing else on them:
 
 $REVIEWER_START
 <reviewer's full report text, verbatim>
@@ -104,14 +134,25 @@ $REVIEWER_END
 
 $EVALUATOR_START
 <evaluator's full report text, verbatim>
-$EVALUATOR_END
+$EVALUATOR_END"
+  LOG_TYPES="<reviewer|evaluator|security-review>"
+  VERDICT_RULE="Verdict is PASS only if: reviewer verdict is YES, evaluator verdict is pass, and security-review found no HIGH-confidence findings. Any NO, fail, or HIGH finding makes the overall verdict FAIL."
+fi
 
-Then output a summary covering all three verdicts, then end your response with exactly one line, nothing after it:
+PROMPT="You are the orchestrator for a headless CI grading run of ticket $ID in this repo. The code change under review already exists as the diff between $BASE_REF and HEAD — you never write or edit code yourself.
+
+$GATE_INSTRUCTIONS
+
+After each subagent completes, run: $SUBAGENT_LOG --agent-id <the agent id from that dispatch> --agent-type $LOG_TYPES
+
+$RELAY_INSTRUCTIONS
+
+Then output a summary covering all verdicts, then end your response with exactly one line, nothing after it:
 HEADLESS_VERDICT: PASS
 or
 HEADLESS_VERDICT: FAIL
 
-Verdict is PASS only if: reviewer verdict is YES, evaluator verdict is pass, and security-review found no HIGH-confidence findings. Any NO, fail, or HIGH finding makes the overall verdict FAIL."
+$VERDICT_RULE"
 
 set +e
 RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
@@ -203,10 +244,14 @@ extract_report() {
   ' <<< "$RESULT_TEXT"
 }
 
-if REVIEW_CONTENT="$(extract_report reviewer)"; then
-  printf '%s' "$REVIEW_CONTENT" > "$TDIR/review-notes.md"
-else
-  echo "Warning: could not extract the reviewer's report from headless output — review-notes.md not persisted." >&2
+# In bugfix mode the reviewer is intentionally not dispatched, so there is no
+# reviewer block to extract — skip it (a missing block here is expected, not a warning).
+if [[ "$BUGFIX" -eq 0 ]]; then
+  if REVIEW_CONTENT="$(extract_report reviewer)"; then
+    printf '%s' "$REVIEW_CONTENT" > "$TDIR/review-notes.md"
+  else
+    echo "Warning: could not extract the reviewer's report from headless output — review-notes.md not persisted." >&2
+  fi
 fi
 
 if EVAL_CONTENT="$(extract_report evaluator)"; then
