@@ -2861,7 +2861,8 @@ function injectSectionJumps(container) {
 }
 
 const MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
-const SIGNOFF_TIER_OPTIONS = ['normal', 'high-risk'];
+const SIGNOFF_TIER_OPTIONS = ['normal', 'bugfix', 'high-risk'];
+const SIGNOFF_TIER_LABELS = { normal: 'Normal', bugfix: 'Bugfix', 'high-risk': 'High-risk' };
 
 function parseGateModel(content) {
   const signoff = sectionContent(content, 'Sign-off');
@@ -2940,7 +2941,7 @@ function injectSignoffControls(container, content, t) {
     SIGNOFF_TIER_OPTIONS.forEach(opt => {
       const o = document.createElement('option');
       o.value = opt;
-      o.textContent = opt === 'high-risk' ? 'High-risk' : 'Normal';
+      o.textContent = SIGNOFF_TIER_LABELS[opt] || opt;
       tierSelect.appendChild(o);
     });
     tierSelect.value = base.tier;

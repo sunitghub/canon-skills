@@ -27,4 +27,9 @@ if grep -qE "ArrowLeft|ArrowRight" "$APP"; then
   fail "modal keydown handler should not bind ArrowLeft/ArrowRight (use explicit nav buttons instead)"
 fi
 
+# t-f377: bugfix is a first-class board tier option with a correct label (not the
+# old ternary that mislabeled anything non-high-risk as "Normal").
+assert_grep "'normal', 'bugfix', 'high-risk'" "$APP"
+assert_grep "bugfix: 'Bugfix'" "$APP"
+
 printf 'sprint-check-app: ok\n'
