@@ -309,6 +309,58 @@ review_notes="$(cat "$WORK/.tickets/t-aaaa/review-notes.md")"
 assert_contains "$review_notes" 'Adversarial content: "quoted", `backticked`, $HOME, and a \backslash\ pair.'
 rm -rf "$STUB_ADV_DIR"
 
+# ── 13. Tier: bugfix (t-2abb) — eval-only headless: 2 gates, reviewer skipped ──
+# A committed Tier: bugfix must make the orchestrator prompt dispatch only evaluator +
+# security-review (reviewer skipped), persist eval-report.md from an evaluator-only relay,
+# create no review-notes.md, and emit no reviewer-extract warning.
+mkdir -p "$WORK/skills/sprint"
+seed_ticket t-bugf
+(cd "$WORK" && "$ROOT/tools/tkt" ci t-bugf on >/dev/null)
+sed -i.bak 's/Tier: trivial | Risk: fixture/Tier: bugfix | Risk: single logic file + covering test/' "$WORK/.tickets/t-bugf/plan.md"
+sed -i.bak 's/- \[ \] Plan approved/- [x] Plan approved/' "$WORK/.tickets/t-bugf/plan.md"
+rm -f "$WORK/.tickets/t-bugf/plan.md.bak"
+(cd "$WORK" && git add -f ".tickets/t-bugf/" && git commit -q -m "seed t-bugf bugfix")
+
+PROMPT_CAPTURE="$(mktemp)"
+STUB_BUGFIX_DIR="$(mktemp -d)"
+cat > "$STUB_BUGFIX_DIR/claude" <<EOF
+#!/usr/bin/env bash
+# capture the orchestrator prompt (arg after -p) for assertion
+printf '%s' "\$2" > "$PROMPT_CAPTURE"
+python3 -c '
+import json
+result = """Summary.
+
+@@@CANON_HEADLESS_REPORT:evaluator@@@
+# Eval Report
+Verdict: pass: bugfix verified
+@@@CANON_HEADLESS_REPORT:/evaluator@@@
+
+HEADLESS_VERDICT: PASS"""
+print(json.dumps({"type":"result","is_error":False,"session_id":"stub-bugfix","result":result}))
+'
+EOF
+chmod +x "$STUB_BUGFIX_DIR/claude"
+
+set +e
+bugfix_err="$(cd "$WORK" && PATH="$STUB_BUGFIX_DIR:$PATH" "$SPRINT_HEADLESS" t-bugf --base-ref HEAD 2>&1 >/dev/null)"
+bugfix_rc=$?
+set -e
+[[ "$bugfix_rc" -eq 0 ]] || fail "bugfix headless run should exit 0 (PASS), got $bugfix_rc"
+
+# Prompt must be bugfix-mode: two gates, reviewer skipped, no reviewer relay marker requested.
+prompt="$(cat "$PROMPT_CAPTURE")"
+assert_contains "$prompt" "two fresh Agent subagents"
+assert_contains "$prompt" "advisory reviewer gate is intentionally SKIPPED"
+if [[ "$prompt" == *"@@@CANON_HEADLESS_REPORT:reviewer@@@"* ]]; then fail "bugfix prompt should not request a reviewer relay block"; fi
+
+# eval-report.md persisted; review-notes.md NOT created; no reviewer-extract warning.
+assert_contains "$(cat "$WORK/.tickets/t-bugf/eval-report.md")" "pass: bugfix verified"
+[[ -f "$WORK/.tickets/t-bugf/review-notes.md" ]] && fail "bugfix mode must not create review-notes.md"
+if [[ "$bugfix_err" == *"could not extract the reviewer's report"* ]]; then fail "bugfix mode should not warn about a missing reviewer report"; fi
+
+rm -rf "$STUB_BUGFIX_DIR"; rm -f "$PROMPT_CAPTURE"
+
 rm -rf "$STUB_OK_DIR" "$STUB_BAD_DIR"
 
 echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled)"
