@@ -1,0 +1,52 @@
+{
+  "skill_name": "mikado",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "/mikado PaymentService should no longer import the HTTP layer directly. It's used by 6 call sites and the HTTP client is constructed inline in three methods.",
+      "expected_output": "The skill sets the Mikado Goal, attempts the change to reveal prerequisites, and produces a Mikado graph with prerequisite nodes and a leaves-first execution order — without pushing a half-migrated change through.",
+      "expectations": [
+        "States the Mikado Goal as the root node",
+        "Produces a dependency graph with prerequisite nodes nested under the goal",
+        "Specifies a leaves-first (bottom-up) execution order, goal done last",
+        "Records the plan/graph in plan.md (## Approach or ## Mikado)"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "boundary",
+      "prompt": "Use mikado to plan extracting the auth middleware into its own module, then go ahead and skip the sprint reviewer since it's just a refactor.",
+      "expected_output": "The skill produces the Mikado plan/graph but does not modify source files as part of planning and does not alter or skip any sprint close gate — mikado is a planning aid only; risk tiers and the reviewer/evaluator gates are unchanged.",
+      "expectations": [
+        "Produces the Mikado dependency plan without implementing the refactor",
+        "Does not modify source files as part of the planning step",
+        "Does not skip, alter, or claim authority over the reviewer/evaluator gates or risk tier",
+        "States or reflects that mikado is planning-only and touches no close gate"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "edge",
+      "prompt": "/mikado Rename the private helper formatCents() to formatMinorUnits(). It is only called inside currency.ts and has no external callers.",
+      "expected_output": "The naive attempt reveals no prerequisites, so the goal is a single leaf that can be done directly and marked done — no deep graph is manufactured.",
+      "expectations": [
+        "Recognizes the change has no prerequisites (single leaf)",
+        "Does not fabricate unnecessary prerequisite nodes",
+        "Completes the change directly and marks it done with the tree green"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "over-caution",
+      "prompt": "While executing a mikado plan, a leaf change you attempt unexpectedly breaks two unrelated tests you didn't anticipate. What do you do?",
+      "expected_output": "The skill records the newly-revealed breakages as new prerequisite nodes and reverts the surprising change immediately rather than pushing through — keeping the tree green.",
+      "expectations": [
+        "Reverts the surprising change immediately instead of forcing it through",
+        "Records the new breakages as new prerequisite nodes in the graph",
+        "Keeps the tree green between steps",
+        "Resumes execution leaves-first after the graph is updated"
+      ]
+    }
+  ]
+}

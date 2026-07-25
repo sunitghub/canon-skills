@@ -10,9 +10,8 @@ Register these directly into a project with `skills.sh add <name>`.
 |---|---|---|
 | `capture` | dev | Records non-obvious discoveries, constraints, and gotchas to HANDOFF.md. Use when something surprising is found mid-sprint. |
 | `context-check` | agent-ops | Audits always-on context load for bloat, redundancy, and quality. Use when context feels heavy or periodically to keep the always-on budget lean. |
-| `output-validator` | agent-ops | Validates agent-generated reports and summaries before delivery. Catches generator-evaluator collapse — where the AI summarizes data without checking if the summary is true. Run before delivering any report, status update, or data summary. |
+| `mikado` | dev | Maps the dependency tree for a refactor before changing code, using the Mikado Method — attempt the goal, revert on breakage, record prerequisites, execute leaves-first. Use when a refactor is likely to cascade into prerequisite changes or touch interdependent modules. |
 | `skill-eval` | dev | Runs execution evals for a named skill against test cases in evals/evals.json. Use when you want to verify a skill produces correct output for known prompts, check skill quality after edits, or confirm a new skill works before registering it. |
-| `skill-export` | agent-ops | Exports any flat canon skill as a paste-ready prompt, or refines an existing prompt using efficiency.md standards. Invoke as skill-export <skill-name> or skill-export <skill-name> "<prompt>". Rejects skills with sub-skills. |
 | `sprint` | dev | Manages the sprint workflow for focused changes. Use when asked to add, fix, update, implement, debug, or build — see the Workflow tiers section for what's out of scope. |
 
 ## Standards
@@ -21,7 +20,6 @@ Auto-injected / contributor reference — not registered directly.
 
 | Standard | Category | Description |
 |---|---|---|
-| `agent-design` | agent-ops | Agent design principles for projects building LLM-powered software — own your prompts, context, control flow, and state. Add with skills.sh add agent-design. |
 | `efficiency` | agent-ops | Coding standards, code review feedback, git conventions, behavioral triggers, and token-efficiency rules for AI agents |
 | `skill-setup-std` | agent-ops | Validates skill files against canon standards. Use when adding a new skill or auditing existing ones. |
 
