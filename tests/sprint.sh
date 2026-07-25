@@ -672,3 +672,45 @@ v5="$("$SPRINT" eval-verdict "$eval_id")"
 assert_contains "$v5" "eval_fail_count=1"
 assert_grep "^eval_fail_count: 1$" ".tickets/$eval_id/ticket.md"
 "$TKT" close "$eval_id" --no-sprint >/dev/null
+
+# --- Bugfix tier (t-4b2a): eval-only — must NOT be exempt from the evaluator gate ---
+# Contrast with trivial: trivial skips the eval-report gate; bugfix must not, because
+# bugfix keeps the binding evaluator (only the advisory reviewer is skipped agent-side).
+bugfix_id="$("$SPRINT" start "bugfix tier keeps the evaluator" | awk '/Sprint started:/ { print $3 }')"
+
+cat > ".tickets/$bugfix_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| fix | delivered |
+EOF
+cat > ".tickets/$bugfix_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] Bug fixed; independent invariant holds.
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| security-review | ran | no trust boundary touched |
+| repo-check | ran | single-file fix |
+EOF
+cat > ".tickets/$bugfix_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+Tier: bugfix | Risk: single logic file + covering test
+- [x] Plan approved — proceed to implementation
+## Approach
+Fix the off-by-one in the split calc; the covering test asserts the independent invariant.
+EOF
+
+# Tier: bugfix + no eval-report → must be BLOCKED (bugfix keeps the binding evaluator)
+bugfix_no_eval="$(run_fail "$SPRINT" complete)"
+assert_contains "$bugfix_no_eval" "eval-report.md is missing"
+
+# Flip the identical setup to Tier: trivial → the eval gate is now skipped and it closes,
+# proving the contrast: trivial skips the evaluator, bugfix does not.
+sed -i.bak 's/^Tier: bugfix .*/Tier: trivial | Risk: genuinely a one-liner/' ".tickets/$bugfix_id/plan.md" && rm -f ".tickets/$bugfix_id/plan.md.bak"
+trivial_close="$("$SPRINT" complete 2>&1 || true)"
+assert_contains "$trivial_close" "closed"

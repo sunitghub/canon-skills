@@ -41,6 +41,30 @@ None of these four triggers can be downgraded to trivial mid-sprint — `complet
 
 Work directly, then report verification.
 
+### Bugfix (eval-only)
+
+A lighter tier between Trivial and Normal for a small, well-contained fix. It is **eval-only**:
+it keeps the binding fresh-context **evaluator** and drops the *advisory* reviewer + the heavier
+wrapup gates. It **never drops below the binding evaluator** — that is the whole point of the trim.
+
+Eligibility is **structural**, decided at close from the actual diff (not planned scope), and
+requires **all** of:
+- the change is a single logic file **plus its covering test** (no wider surface);
+- a covering test exists that asserts an **independent** invariant (not a re-derivation of the
+  code — see `reference/root-why.md`);
+- **none** of the four categorical not-trivial triggers is present (new file beyond the test,
+  test/build-infrastructure wiring, hook/pipeline/post-commit change, or coordinated multi-file
+  intent). If any is present, the sprint stays Normal.
+
+Bugfix is a *complete-time downgrade* (mirrors the trivial valve): planning runs as Normal; at
+close, if the diff qualifies, write `Tier: bugfix` in `plan.md`'s `## Sign-off`. Because bugfix is
+non-trivial, the CLI still requires the eval-report, sign-off, and acceptance gates — only the
+advisory reviewer and heavy wrapup are skipped (`complete.md` steps 1-3). It is strictly safer
+than the trivial tier, which skips the evaluator too.
+
+Pairs naturally with a `type: bug` job (see Job types below): `root-why` produces the independent
+invariant, and the covering test that asserts it is exactly the bugfix-tier eligibility precondition.
+
 ### Normal
 
 Default for focused, reversible product/docs/code changes that affect a small surface.

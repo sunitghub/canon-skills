@@ -24,6 +24,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
 1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
+   **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
+   wrapup: keep `security-review` (a fix can still touch a trust boundary) and `repo-check`;
+   `code-simplifier` and `doc-audit` may be skipped for a single-file fix — record each skip and
+   its reason in the Wrapup Gates table. The advisory `reviewer` (step 2) is skipped for bugfix;
+   the binding `evaluator` (step 3) always runs.
+
    **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has actually been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (excluding `.tickets/` files, which are gitignored and never need committing for this purpose) — commit now if not. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
 
    The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (row order below is an illustrative record, not the execution order — `reviewer`/`eval` actually run at steps 2-3, after the pipeline gates):
@@ -120,9 +126,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    text yourself before continuing.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
-   field value itself is `trivial` (anchored to that field, so "trivial" appearing elsewhere in
-   Sign-off's free text — e.g. a `Risk:` one-liner discussing the decision — never triggers the
-   skip). A sprint always starts as normal or high-risk (`SKILL.md`'s tiers never let genuinely
+   field value itself is `trivial` **or** `bugfix` (anchored to that field, so the word appearing
+   elsewhere in Sign-off's free text — e.g. a `Risk:` one-liner discussing the decision — never
+   triggers the skip). `bugfix` is the **eval-only** tier: it skips *this advisory reviewer* but,
+   unlike `trivial`, still runs the binding evaluator in step 3. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers never let genuinely
    trivial work start a sprint), but can be *downgraded* to trivial mid-flight if grill or
    impact analysis reveals the real change is a one-liner with no coordinated multi-file intent
    — write `Tier: trivial` and a one-line reason in `## Sign-off` if that happens. **This
@@ -130,7 +137,17 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    (new file, test/build-infrastructure wiring, hook/pipeline/post-commit script change, or
    coordinated multi-file intent) — those stay normal/high-risk regardless of how small the
    diff looks, so `AGENTS.md`'s "eval is mandatory" for those cases can never be bypassed by
-   this escape valve. Absent an explicit, in-bounds downgrade, this gate is mandatory. For
+   this escape valve.
+
+   **Bugfix downgrade (eval-only).** The same mid-flight downgrade also supports `Tier: bugfix`
+   for a small, well-contained fix. At close, if the actual diff is a single logic file **plus
+   its covering test** — the test asserting an *independent* invariant, not a re-derivation of the
+   code (see `reference/root-why.md`) — and **none** of the four categorical not-trivial triggers
+   above is present, write `Tier: bugfix` in `## Sign-off`. That skips this advisory reviewer and
+   the heavier wrapup gates (step 1), but **keeps the binding evaluator (step 3) and every CLI
+   gate**. Eligibility is structural (read from the diff), not the agent's judgment of its own
+   work. It is strictly safer than the `trivial` valve, which skips the evaluator too — the four
+   triggers exclude `bugfix` for the same reason they exclude `trivial`. Absent an explicit, in-bounds downgrade, this gate is mandatory. For
    normal and high-risk sprints, always spawn a freshly invoked Agent subagent for the
    reviewer. Same-context review is not acceptable.
 
@@ -166,11 +183,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    **What to pass for `<id>`:** see shared gate mechanics (e) above.
 
-3. **Evaluator review (normal+ tier).** Same `Tier: trivial` downgrade condition and exclusion
-   as the reviewer gate above (skip only if `plan.md`'s `## Sign-off` `Tier:` field value is
-   `trivial`, which can never apply to `SKILL.md`'s four categorical not-trivial triggers). For
-   normal and high-risk sprints, always spawn a freshly invoked Agent subagent for the
-   evaluator review, per the shared gate mechanics above.
+3. **Evaluator review (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` `Tier:` field
+   value is `trivial` (which can never apply to `SKILL.md`'s four categorical not-trivial
+   triggers). **Unlike the reviewer gate, `Tier: bugfix` does NOT skip this gate** — bugfix is
+   eval-only, so the binding evaluator always runs; that is exactly what makes the reviewer-skip
+   safe. For normal, high-risk, **and bugfix** sprints, always spawn a freshly invoked Agent
+   subagent for the evaluator review, per the shared gate mechanics above.
 
    Evaluator needs a fresh context, no implementation history, grading adversarially against
    `acceptance.md`. Same-context review, self-review, or "reviewed directly because delegation
