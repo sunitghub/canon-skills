@@ -1418,6 +1418,54 @@ test.describe('board modal', () => {
     }
   });
 
+  test('signoff Tier dropdown renders bugfix as a first-class option', async ({ page }) => {
+    const id = `t-signoff-tier-bugfix-${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: bug',
+        'priority: 2',
+        'created: 2026-07-25T00:00:00Z',
+        '---',
+        '',
+        '# Bugfix tier board option',
+        '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan',
+        '',
+        '## Sign-off',
+        'Tier: bugfix | Risk: single logic file + covering test',
+        '',
+        '- [x] Plan approved',
+        '',
+        '## Approach',
+        'Fix the off-by-one.',
+        '',
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      // Tier: bugfix must be parseable → controls render, dropdown shows the bugfix
+      // value, and the option carries the correct "Bugfix" label (not "Normal").
+      const tier = page.locator('.signoff-tier-select');
+      await expect(tier).toBeVisible();
+      await expect(tier).toHaveValue('bugfix');
+      await expect(tier.locator('option[value="bugfix"]')).toHaveText('Bugfix');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('signoff Tier/Risk form writes the base line and enables Model tier after', async ({ page }) => {
     const id = `t-signoff-base-write-${Date.now()}`;
 
