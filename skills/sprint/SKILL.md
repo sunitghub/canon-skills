@@ -62,6 +62,11 @@ non-trivial, the CLI still requires the eval-report, sign-off, and acceptance ga
 advisory reviewer and heavy wrapup are skipped (`complete.md` steps 1-3). It is strictly safer
 than the trivial tier, which skips the evaluator too.
 
+`sprint suggest-tier` surfaces this eligibility mechanically — it reads the diff (never plan prose)
+and *proposes* `bugfix` or `normal`; it never writes `Tier:` or auto-downgrades. It checks only the
+structural shape (single logic file + covering test, none of the four triggers); whether the test
+asserts an *independent* invariant stays a judgment for the binding evaluator.
+
 Pairs naturally with a `type: bug` job (see Job types below): `root-why` produces the independent
 invariant, and the covering test that asserts it is exactly the bugfix-tier eligibility precondition.
 

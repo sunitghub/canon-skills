@@ -486,6 +486,131 @@ cmd_eval_verdict() {
   fi
 }
 
+# --- suggest-tier: propose-only structural bugfix-tier classifier (t-b6a3) ---
+# Reads the diff ONLY (never plan prose — t-8c24) and PROPOSES a tier; writes
+# nothing. The human/agent still hand-writes `Tier: bugfix` in plan.md ## Sign-off.
+# Mirrors complete.md's model-tier posture: merge-base EXIT STATUS decides, not
+# empty diff output (t-f04f); allowlist, not denylist — any doubt -> normal.
+
+# test source file — allowed as the covering test
+_st_is_test() {
+  local p="$1" b="${1##*/}"
+  case "$p" in
+    tests/*|test/*|spec/*|*/tests/*|*/test/*|*/spec/*|__tests__/*|*/__tests__/*) return 0 ;;
+  esac
+  case "$b" in
+    *.test.*|*.spec.*|*_test.*|test_*.*|*Test.*|*Tests.*|*_spec.rb) return 0 ;;
+  esac
+  return 1
+}
+
+# build / test-infrastructure file (not-trivial trigger 2)
+_st_is_infra() {
+  local p="$1" b="${1##*/}"
+  case "$p" in
+    scripts/*|*/scripts/*) return 0 ;;
+  esac
+  case "$b" in
+    package.json|package-lock.json|yarn.lock|pnpm-lock.yaml|tsconfig.json|tsconfig.*.json|jest.config.*|vitest.config.*|babel.config.*|.babelrc|.eslintrc*|.prettierrc*|Makefile|makefile|GNUmakefile|*.mk|CMakeLists.txt|go.mod|go.sum|Cargo.toml|Cargo.lock|requirements.txt|setup.py|setup.cfg|pyproject.toml|tox.ini|pom.xml|build.gradle|build.gradle.kts|Gemfile|Gemfile.lock) return 0 ;;
+  esac
+  return 1
+}
+
+# hook / pipeline / post-commit file (not-trivial trigger 3)
+_st_is_hookpipe() {
+  local p="$1" b="${1##*/}"
+  case "$p" in
+    .github/workflows/*|.github/actions/*|.circleci/*|hooks/*|*/hooks/*|.git/hooks/*) return 0 ;;
+  esac
+  case "$b" in
+    .gitlab-ci.yml|Jenkinsfile|.travis.yml|azure-pipelines.yml|azure-pipelines.yaml|*pre-commit*|*post-commit*|*pre-push*|commit-msg) return 0 ;;
+  esac
+  return 1
+}
+
+_st_emit() {
+  # _st_emit <tier> <reason>
+  echo "suggested tier: $1"
+  echo "reason: $2"
+  echo 'note: propose-only — this suggests, it does not apply. The agent/human still writes `Tier: bugfix` in plan.md ## Sign-off if it applies.'
+  echo 'caveat: only the structural shape is checked here. Whether the covering test asserts an independent invariant (not a re-derivation of the code) is a judgment owned by the binding evaluator (and eventually the t-5220 mutation-test), never verified mechanically.'
+}
+
+# cmd_suggest_tier [<id>] [--base-ref <ref>] — structural, propose-only.
+# <id> is accepted for interface parity with the ticket's proposed name but is
+# not required (the diff is repo-relative, not ticket-scoped).
+cmd_suggest_tier() {
+  local base="" id=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --base-ref) base="${2:-}"; shift 2 || { echo "Error: --base-ref requires a value" >&2; exit 1; } ;;
+      --base-ref=*) base="${1#*=}"; shift ;;
+      -h|--help) echo "Usage: sprint suggest-tier [<id>] [--base-ref <ref>]"; return 0 ;;
+      -*) echo "Unknown option: $1" >&2; exit 1 ;;
+      *) id="$1"; shift ;;
+    esac
+  done
+  : "${id:-}"  # accepted, intentionally unused for classification
+
+  # Base ref: explicit override, else merge-base HEAD origin/main. Decide on
+  # EXIT STATUS, not empty output (t-f04f) — a failed substitution can leave the
+  # outer git diff running against a different, non-empty baseline.
+  if [[ -z "$base" ]]; then
+    if ! base="$(git merge-base HEAD origin/main 2>/dev/null)"; then
+      _st_emit normal "no git baseline (git merge-base HEAD origin/main failed — missing origin/main, detached/zero-commit HEAD, or not a git repo)"
+      return 0
+    fi
+  fi
+
+  local diff_out
+  if ! diff_out="$(git diff --name-status "$base" HEAD 2>/dev/null)"; then
+    _st_emit normal "could not compute diff against base ref '$base'"
+    return 0
+  fi
+  if [[ -z "$diff_out" ]]; then
+    _st_emit normal "empty diff against '$base' — nothing to classify"
+    return 0
+  fi
+
+  local logic_count=0 logic_file="" test_seen=""
+  local status path rest
+  while IFS=$'\t' read -r status path rest; do
+    [[ -z "$status" ]] && continue
+    # renames/copies report old<TAB>new — the surviving path is in $rest
+    case "$status" in
+      R*|C*) path="${rest:-$path}" ;;
+    esac
+    [[ -z "$path" ]] && continue
+
+    if _st_is_hookpipe "$path"; then
+      _st_emit normal "not-trivial trigger: hook/pipeline/post-commit change ($path)"; return 0
+    fi
+    if _st_is_infra "$path"; then
+      _st_emit normal "not-trivial trigger: test/build-infrastructure wiring ($path)"; return 0
+    fi
+    if _st_is_test "$path"; then
+      test_seen="$path"; continue
+    fi
+    # non-test, non-infra, non-hook = logic file
+    if [[ "${status:0:1}" == "A" ]]; then
+      _st_emit normal "not-trivial trigger: new file beyond the test ($path added)"; return 0
+    fi
+    logic_count=$((logic_count + 1))
+    logic_file="$path"
+  done <<< "$diff_out"
+
+  if (( logic_count == 1 )); then
+    local why="single logic file ($logic_file)"
+    [[ -n "$test_seen" ]] && why="$why + covering test ($test_seen)"
+    why="$why; none of the four not-trivial triggers present"
+    _st_emit bugfix "$why"
+  elif (( logic_count == 0 )); then
+    _st_emit normal "no non-test logic file changed — nothing a bugfix would fix"
+  else
+    _st_emit normal "not-trivial trigger: coordinated multi-file intent ($logic_count non-test logic files changed)"
+  fi
+}
+
 cmd_help() {
   cat <<'EOF'
 sprint — canon workflow spine
@@ -496,6 +621,9 @@ Usage:
   sprint current            Show the active sprint ticket
   sprint status             Show active ticket and required sprint files
   sprint complete           Validate acceptance checklist and close ticket
+  sprint suggest-tier [<id>]  Propose (never apply) a bugfix|normal tier from the
+                            diff — structural, propose-only; the human still writes
+                            `Tier: bugfix` in plan.md ## Sign-off
   sprint eval-verdict <id>  Record the evaluator's pass/fail into ticket.md's
                             eval_fail_count (internal — called by complete.md
                             step 3, not run directly)
@@ -514,6 +642,7 @@ main() {
     current) cmd_current ;;
     status) cmd_status ;;
     complete) cmd_complete ;;
+    suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
