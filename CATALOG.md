@@ -8,6 +8,7 @@ Register these directly into a project with `skills.sh add <name>`.
 
 | Skill | Category | Description |
 |---|---|---|
+| `ai-audit` | agent-ops | Audits an AI/LLM codebase across nine surfaces using the SCAN method and returns a ship/conditional/hold verdict. Use when asked to review, audit, or security-check an AI agent, LLM app, RAG pipeline, or prompt/tool-calling system for AI-specific risks. Static analysis only. |
 | `capture` | dev | Records non-obvious discoveries, constraints, and gotchas to HANDOFF.md. Use when something surprising is found mid-sprint. |
 | `context-check` | agent-ops | Audits always-on context load for bloat, redundancy, and quality. Use when context feels heavy or periodically to keep the always-on budget lean. |
 | `mikado` | dev | Maps the dependency tree for a refactor before changing code, using the Mikado Method — attempt the goal, revert on breakage, record prerequisites, execute leaves-first. Use when a refactor is likely to cascade into prerequisite changes or touch interdependent modules. |
