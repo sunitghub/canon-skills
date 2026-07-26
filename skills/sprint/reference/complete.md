@@ -13,7 +13,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 Steps run in order (2-3 are the fresh-context gates; the rest run in the main session):
 - 1. Wrapup (pipeline gates)
 - 2. Reviewer gate (normal+)
-- 3. Evaluator review (normal+)
+- 3. Evaluator review (normal+) — advisory mutation-test may run after
 - 4. Test verification
 - 5. Acceptance check
 - 6. DECISIONS.md
@@ -45,6 +45,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
    | eval | ran | verdict: pass — eval-report.md written (model: haiku) |
+   | mutation-test | skipped | advisory — no logic files changed |
    ```
 
    `code-reviewer` and `reviewer` are distinct gates — `code-reviewer` is wrapup's in-context
@@ -259,6 +260,16 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `summary.md`, so the reliance is greppable later — never silently proceed as if the
    verdict were `pass`. Record the eval outcome in the Wrapup Gates table with the Reason
    prefixed `verdict:` (e.g. `verdict: pass` or `verdict: fail — <one-line summary>`).
+
+   **Mutation test (advisory, normal+ tier).** After the binding evaluator, optionally run the
+   `mutation-test` skill as a fresh dispatched subagent to check whether the sprint's tests have
+   teeth — it applies small logic mutations to the changed *logic* files and reports surviving
+   mutants (tests that cannot fail). Read `skills/mutation-test/SKILL.md` and follow it. This is
+   **advisory only** — it never blocks close, and it complements (does not replace) the evaluator.
+   Skip when no logic files changed (docs/config/test-only diffs), and record the outcome in the
+   Wrapup Gates table (`ran | N surviving mutants (advisory)` or `skipped | no logic files
+   changed`). When it runs inside a sprint it writes `.tickets/<id>/mutation-report.md`. No CLI
+   close gate depends on it — see the skill's Promotion path.
 
 4. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - **Coverage check, before grading individual items.** Confirm every `acceptance.md ## Criteria`

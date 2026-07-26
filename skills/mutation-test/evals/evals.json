@@ -1,0 +1,53 @@
+{
+  "skill_name": "mutation-test",
+  "_note": "Simulation-graded, like the sprint/pr-review evals (DECISIONS 2026-07-16): a clean-context executor cannot run real git/test commands against a live diff, so each prompt supplies the diff/file content inline and the executor reasons about what the skill prescribes. Do not 'fix' these later by trying to make them run git/pytest/npm in a subagent.",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "You are mutation-testing this changed logic file. The suite for it contains only:\n\n```python\n# src/offline.py (changed this sprint)\nlive_only = [\"question A\", \"question B\"]\ndef button_disabled(q):\n    return q in live_only\n```\n```python\n# tests/test_offline.py\ndef test_button():\n    for q in live_only:\n        assert button_disabled(q) == (q in live_only)\n```\nApply your mutation set to src/offline.py and report which mutants survive. Explain what a surviving mutant means.",
+      "expected_output": "The executor applies a mutation (e.g. flips `in` / negates the return / swaps the boolean) to button_disabled, notes the test still passes because the assertion re-derives its expected value from the same `live_only` list it is testing, reports the mutant as SURVIVED, and identifies it as a test that cannot fail. It should note the fix is to state the expectation independently. Advisory only.",
+      "expectations": [
+        "Applies at least one mutation from the skill's mutation set to the logic file (not the test file)",
+        "Identifies that the mutant SURVIVES because the test re-derives its expected value from the code under test",
+        "Labels the surviving mutant as a 'test that cannot fail' or equivalent",
+        "Reports as advisory and does not claim to block sprint close"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "boundary",
+      "prompt": "Run mutation-test on this sprint. `git diff --name-only $(git merge-base HEAD origin/main) HEAD` returns:\n\n```\nREADME.md\ndocs/setup.md\nconfig/settings.yaml\ntests/test_helpers.py\n```\nProceed.",
+      "expected_output": "The skill filters the changed set to logic files only, finds none (all are docs, config, or a test file), and stops with a message like 'no logic files changed'. It does not mutate anything.",
+      "expectations": [
+        "Recognizes that none of the changed files are production logic files",
+        "Explicitly skips/declines to mutate docs, config, and test files",
+        "Does not apply any mutation",
+        "Reports that there is nothing to mutation-test rather than proceeding"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "compliance",
+      "prompt": "You are about to mutation-test src/pricing.js (changed this sprint). Walk through exactly how you apply a single mutation and what you do after the suite runs, including any cleanup and end-of-run checks.",
+      "expected_output": "The executor describes the exact loop: save original bytes, apply one mutation, run the suite, record killed/survived, then restore the original bytes unconditionally regardless of the suite result, and finally verify the working tree is clean (git status --porcelain empty, restore via git checkout -- if dirty). It should note the run is isolated in a dispatched subagent.",
+      "expectations": [
+        "Restores the mutated file unconditionally, whether the suite passed, failed, or errored",
+        "Runs the suite between applying the mutation and restoring",
+        "Ends with a clean-working-tree verification (git status) and restores via git if dirty",
+        "States the run is isolated (fresh subagent), not mutating source in the main session"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "edge",
+      "prompt": "You mutation-tested a Python file src/calc.py. You applied a mutation, ran pytest (it failed — mutant killed), then RESTORED the file to its exact original bytes and confirmed `git status` shows the file clean/unmodified. But when you re-run pytest on the untouched, restored source, it STILL reports the same failure that only makes sense for the mutated version — as if the mutation were still there. What is the likely cause and what do you do?",
+      "expected_output": "The executor recognizes the stale-bytecode gotcha: pytest is executing cached __pycache__/*.pyc compiled from the mutated source, so the restored source isn't what actually ran. It clears the cache (or forces recompilation) and re-verifies against the restored source before trusting any verdict.",
+      "expectations": [
+        "Identifies stale compiled bytecode / __pycache__ as the likely cause of unreliable verdicts",
+        "Clears the cache or forces recompilation between mutation and suite run",
+        "Re-verifies the mutation is actually live before trusting the survived/killed verdict"
+      ]
+    }
+  ]
+}
