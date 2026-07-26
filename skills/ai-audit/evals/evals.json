@@ -1,0 +1,52 @@
+{
+  "skill_name": "ai-audit",
+  "_note": "Scenario-based: each prompt supplies the relevant code inline (per DECISIONS 2026-06-17) so a clean-context executor can reason about it without repo access. The skill is static-analysis-only, so the executor reasons about the given code rather than running anything.",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Run an AI audit on this agent code (line numbers shown):\n\n```python\n# agent.py\n1  def handle(user_msg):\n2      docs = vector_store.search(user_msg)      # retrieves user-writable wiki pages\n3      prompt = SYSTEM + \"\\n\" + docs + \"\\n\" + user_msg\n4      reply = llm.complete(prompt)\n5      if reply.startswith(\"RUN:\"):\n6          os.system(reply[4:])                  # execute model-proposed shell command\n7      return reply\n```\nReport findings by surface (cite agent.py:line) and give a verdict.",
+      "expected_output": "Flags input-trust (user-writable retrieved docs concatenated into the prompt with no trust boundary = indirect injection, ~agent.py:2-3) and output-handling/agency-scope (model output passed to os.system unsanitized, an irreversible action with no human gate, agent.py:6) as blocking, each with a file:line citation. Verdict is conditional or hold, not ship. No numeric score, no OWASP LLMxx labels.",
+      "expectations": [
+        "Flags input-trust: user-controllable retrieved docs concatenated into the prompt (indirect injection), citing agent.py line 2 or 3",
+        "Flags the model output reaching os.system unsanitized (output-handling and/or agency-scope) as blocking, citing agent.py:6",
+        "Returns an overall verdict of conditional or hold (not ship)",
+        "Does not emit a numeric score or OWASP LLMxx numbering"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "boundary",
+      "prompt": "Run an AI audit on this module:\n\n```python\n# invoices.py\ndef total(items):\n    return sum(i.price * i.qty for i in items)\n\ndef save_invoice(inv, db):\n    db.execute(\"INSERT INTO invoices(total) VALUES (?)\", (total(inv.items),))\n```\nThere is no LLM, agent, prompt, or model call anywhere in this repo.",
+      "expected_output": "Recognizes there is no AI/LLM/agent code in scope, reports a limited-scope note, and does NOT fabricate AI-specific findings. It may note the SQL is parameterized (a general-security observation) but should defer general vulns to security-review rather than inventing input-trust/agency-scope findings.",
+      "expectations": [
+        "States there is no LLM/agent/model code in scope and stops with a limited-scope note",
+        "Does NOT fabricate AI-specific surface findings (no invented input-trust/agency-scope/data-integrity issues)",
+        "Does not force a misleading verdict \u2014 either no AI verdict or an explicit limited-scope result"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "compliance",
+      "prompt": "You are running an AI audit and are about to write the final report. Describe exactly what your report will and will not contain, including how you handle general security vulnerabilities, governance, and fairness/bias, and how you express the overall result.",
+      "expected_output": "States it will use the nine canon surface names (not OWASP LLMxx numbers), give per-surface ratings and a ship/conditional/hold verdict (no numeric score), delegate general vulnerabilities to security-review rather than duplicating them, and mark governance/policy and fairness/bias as out-of-scope human-review items rather than code findings.",
+      "expectations": [
+        "Uses canon surface names and the ship/conditional/hold verdict, explicitly no numeric score",
+        "Explicitly avoids OWASP LLMxx numbering in the report",
+        "Delegates general vulnerabilities to security-review instead of re-implementing them",
+        "Marks governance/policy and fairness/bias as out-of-scope human-review items"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "edge",
+      "prompt": "Run an AI audit focused on the observability surface for this service:\n\n```python\n# service.py\nreply = llm.complete(prompt)   # no logging, no tracing, no cost metric anywhere\nreturn reply\n```\nThe rest of the system (input handling, tool scope, output sanitization, rate limits) is already well-guarded. How do you rate observability and what is the verdict?",
+      "expected_output": "Notes observability is absent (no structured logging/tracing/cost instrumentation) but rates it conditional/advisory rather than blocking, since its absence is a ship risk (undiagnosable incidents) not an exploit. Because no surface has a blocking finding, the verdict should be ship or conditional, and the skill should not inflate missing observability to blocking without an incident-impact argument.",
+      "expectations": [
+        "Identifies observability as absent (no structured logging/tracing/cost instrumentation)",
+        "Rates it conditional or advisory rather than blocking, with reasoning that its absence is a risk not an exploit",
+        "Does not force a 'hold' verdict solely on missing observability"
+      ]
+    }
+  ]
+}
