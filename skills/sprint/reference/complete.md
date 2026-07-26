@@ -25,12 +25,13 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 1. **Wrapup.** Read `skills/wrapup/SKILL.md`, run the wrapup pipeline (code-simplifier, code-reviewer, security-review, repo-check, doc-audit, then refresh docs) over the sprint's changed files — scope varies by gate: wrapup's memory-scoped gates (code-simplifier, code-reviewer) only see "code touched this session", so a multi-session sprint won't get earlier-session files re-checked by those two; security-review derives scope from git instead. `reviewer`/`evaluator` (steps 2-3 below, not part of this pipeline) also diff against `origin/main`, so they cover the full sprint regardless of session boundaries.
 
    **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
-   wrapup: keep `security-review` (a fix can still touch a trust boundary) and `repo-check`;
+   wrapup: keep `security-review` (a fix can still touch a trust boundary), `repo-check`, and
+   the inline `code-reviewer` (the cheap in-context 8-dimension check — it runs, not skipped);
    `code-simplifier` and `doc-audit` may be skipped for a single-file fix — record each skip and
    its reason in the Wrapup Gates table. The advisory `reviewer` (step 2) is skipped for bugfix;
    the binding `evaluator` (step 3) always runs.
 
-   **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has actually been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (excluding `.tickets/` files, which are gitignored and never need committing for this purpose) — commit now if not. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
+   **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (excluding `.tickets/` files, which are gitignored and never need committing for this purpose) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
 
    The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (row order below is an illustrative record, not the execution order — `reviewer`/`eval` actually run at steps 2-3, after the pipeline gates):
 
@@ -53,10 +54,14 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `reviewer` is the fresh-subagent advisory gate below (`skills/sprint/reference/review.md`,
    YES/NO verdict). Separate rows — never collapse.
 
+   The `eval` row, by contrast, is just a shorter name for the **evaluator** gate (step 3,
+   `skills/sprint/reference/eval.md`) — `eval` and `evaluator` are the one binding
+   fresh-subagent gate, not two things, unlike the reviewer/code-reviewer pair.
+
    For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model>)` — the
-   value actually applied by the model-tier check below: an explicit `Gate model:` value,
+   value applied by the model-tier check below: an explicit `Gate model:` value,
    `haiku` if the structural check matched low-risk, or the exact session model id (e.g.
-   `claude-sonnet-5`), never a paraphrase. Records which tier actually ran.
+   `claude-sonnet-5`), never a paraphrase. Records which tier ran.
 
    Use `ran`/`skipped`, always with a reason — even for gates that ran, note the evidence
    checked. Avoid bare "ran"; use e.g. `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69`
@@ -154,7 +159,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    Reviewer has no implementation history. Invoke with a clean context, per the model-tier
    check and shared gate mechanics above. **Pass `subagent_type: "Plan"`** on the `Agent`
-   call — the only mechanism that actually restricts a dispatched subagent's tools; the `Plan`
+   call — the only mechanism that restricts a dispatched subagent's tools; the `Plan`
    type excludes Edit, Write, and Agent at the harness level (Bash stays available, needed for
    git commands and writing the report via `cat >>` — though some harnesses refuse even `Plan`-type file-modifying Bash, in which case the subagent relays its report in-response per `shared-gate-protocol.md ## Report-writing safety`). Chosen over `Explore` (same tool
    restriction) because `Explore`'s own description warns it reads excerpts rather than whole
@@ -342,8 +347,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
 10. **Commit & Push.** Always run this at the end, once close succeeds — even if no code
     changed (docs and config still need committing). This step owns Commit & Push — wrapup's
-    own pipeline (step 1) never commits, because `DECISIONS.md`/`HANDOFF.md`/`summary.md` are
-    written by steps 6-8, after wrapup finishes; committing any earlier would miss them.
+    own pipeline (step 1) never commits, because `summary.md` (step 8) and this sprint's
+    `DECISIONS.md`/convention updates (steps 6-7) are produced after the wrapup pipeline
+    finishes; committing any earlier would miss them. (`HANDOFF.md` is refreshed inside
+    wrapup's own refresh-docs step, so it is already current by the time this step commits.)
     - List all modified and untracked files (`git status`). Stage only the files relevant to
       this session's work — never `git add -A`.
     - Draft a commit message per `standards/efficiency.md`'s Git conventions: imperative mood,

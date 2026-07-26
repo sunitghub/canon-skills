@@ -33,9 +33,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Tools` — applies here
 
 ## Report-writing safety (Windows Git Bash)
 
-Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` — applies here. The orchestrating agent saves to `.tickets/<id>/eval-report.md` if Bash write is refused.
-
-Write the report in separate `cat >>` calls, one per section (e.g. Criteria table, then Test Plan table, then Findings + Verdict) — never one heredoc. Verify each append landed (Bash exit code, or re-read file tail) before the next section. Heredoc failure: retry the same chunk in smaller pieces — down to one table row per `cat >>` call if needed — until it succeeds.
+Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` — the full chunked-write / verify-each-append / retry-smaller protocol applies here. The orchestrating agent saves to `.tickets/<id>/eval-report.md` if Bash write is refused. Eval-specific delta: split the report into sections in this order — Criteria table, then Test Plan table, then Findings + Verdict — one `cat >>` per section; if a chunk still fails the retry, go down to one table row per `cat >>` call.
 
 ## Self-serve visual verification (no Node/Playwright required)
 
@@ -64,7 +62,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verif
    - **cached** — valid only when source, timestamp/version, freshness window, and why that window is acceptable are stated. Otherwise it is weak evidence.
 
 6. **Grade criteria.** For each item under `## Criteria` in `acceptance.md`:
-   - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable. If the quoted text itself contains a backtick (e.g. it's citing a line that has its own inline code), escape it as `` \` `` inside your citation — the board's renderer treats a backslash-escaped backtick as literal, so the whole citation still renders as one code span instead of breaking mid-quote. (Same wording as `review.md` — mirror, keep in sync.)
+   - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable. If the quoted text itself contains a backtick (e.g. it's citing a line that has its own inline code), escape it as `` \` `` inside your citation — the board's renderer treats a backslash-escaped backtick as literal, so the whole citation still renders as one code span instead of breaking mid-quote. (This backtick-escape rule is intentionally self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `review.md` are dispatched to fresh subagents independently; the invariant phrase is locked across all three by `tests/doc-mirror-parity.sh` Check F. Keep the escape rule in sync.)
    - **fail** — criterion is not met or contradicted by the code; cite what you found
    - **partial** — partially met; describe what is and isn't there
    - For a **visual criterion** (rendered appearance — styling, layout, theme, a rendered widget), grade against **actual rendered output** via the browser-binary recipe ("## Self-serve visual verification"), not static reading. A CSS selector or style present in the source is not proof it matches the *rendered* element — a widget/testid change can leave the code looking correct while the element renders unstyled (`t-b75f`). If a browser binary exists, render before grading.

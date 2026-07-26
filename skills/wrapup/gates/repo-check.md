@@ -47,10 +47,13 @@ documentation, setup, or agent behavior.
 6. **sprint-check app experience.** When changes touch `tools/sprint-check`,
    `tools/sprint-check-app/`, `docs/sprint-check.md`, or README claims about
    the board, **visual verification is required — `open` alone does not count.**
-   Run `/verify` (Claude-Code-only, like `/context-check` — absent under Codex/Pi/headless) or use Playwright (`npm run test:ui`) to inspect the affected
-   flows in a real browser. Specifically: open a ticket that exercises the
+   Render and inspect the affected flows in a real browser: use Playwright
+   (`npm run test:ui`) if it's set up, or the self-serve headless-browser
+   screenshot recipe in `skills/sprint/reference/shared-gate-protocol.md
+   ## Self-serve visual verification` (needs only a browser binary — no
+   Node/Playwright). Specifically: open a ticket that exercises the
    changed surface (tables, modals, tabs, etc.) and confirm the layout renders
-   correctly. If `/verify` is unavailable or Playwright isn't set up, take a screenshot and inspect it
+   correctly. If no browser tooling is available at all, take a screenshot and inspect it
    before declaring the gate passed. Declaring done without visual confirmation
    is a gate failure.
 

@@ -27,6 +27,7 @@ Simple work stays light. canon chooses the lightest tier that still protects the
 | Tier | When | What runs |
 |---|---|---|
 | **Trivial** | Single line, question, mechanical change (never a new file, test/build wiring, hook/pipeline edit, or coordinated multi-file intent) | Work directly |
+| **Bugfix** | Single logic file plus its covering test, none of the not-trivial triggers — a *complete-time downgrade* decided from the actual diff | Eval-only: keeps the binding evaluator + a lighter wrapup; skips the advisory reviewer |
 | **Normal** | Focused, reversible change | ticket + acceptance + plan + brief research → build → wrapup + reviewer + evaluator |
 | **High-risk** | Security, irreversible ops, broad blast radius | Full pipeline: orient (parallel) + grill + impact analysis + required mitigation tests |
 

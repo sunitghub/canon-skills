@@ -123,6 +123,7 @@ Canonical layout:
   research.md      ← objective truth compression, written before ## Approach; brief bullets for normal-tier, full orient protocol for high-risk/brownfield
   review-notes.md  ← advisory reviewer findings (code quality, scope, standards) + YES/NO verdict; written at sprint complete for normal+ sprints
   eval-report.md   ← adversarial per-criterion grades (pass/fail with file:line) + evaluator-run-id; written at sprint complete for normal+ sprints
+  mutation-report.md ← optional advisory; written by the mutation-test skill at sprint complete when logic files changed; never close-gated
   summary.md       ← plan-vs-actual table; written at sprint complete
 ```
 
