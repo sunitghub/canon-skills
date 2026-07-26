@@ -242,93 +242,9 @@ may also flag the user-controlled loop that can allocate an unbounded shares
 array. These are example findings, not guaranteed results; each reviewer grades
 the implementation it actually finds.
 
-## Session 2: UI Styling with a Second Ticket
+## Session 2: headless CLI grading (optional, local, no CI)
 
-Session 1 produced a working bill splitter with correct arithmetic. This session
-runs a second sprint on the same codebase to add visual styling — showing how
-canon handles competing design options and records durable decisions.
-
-**Starting state:** Session 1's ticket is closed, the code is committed, and the
-board shows the first ticket in DONE.
-
-1. Start a new sprint — this time, tell the agent it's ticket-only (the design
-   details are coming in a separate message):
-
-   ```
-   sprint start "Update Restaurant Bill Splitter styling, ticket only, details incoming"
-   ```
-
-   The new ticket appears in IN PROGRESS on the board.
-
-2. Give the agent two candidate mockup images. Navigate to
-   `<canon-skills-path>/examples/restaurant-bill-split/assets/` and copy the
-   full paths of `Mockup-1.jpeg` and `Mockup-2.jpeg` (on Windows: Shift +
-   right-click → Copy as path). Then send this prompt, pasting the paths:
-
-   ```
-   Below are two candidate styles for the Restaurant Bill Splitter.
-   Add both to the ticket plan and recommend your pick.
-   <paste paths here>
-   ```
-
-   The agent copies both images into the ticket's `visuals/` folder, embeds
-   them in `plan.md` under Decisions, and recommends one.
-
-3. Tell the agent which option to use:
-
-   ```
-   Go with Option B
-   ```
-
-   (Or Option A, if you prefer.) The agent updates `acceptance.md` with the
-   chosen design's styling criteria and requests approval to implement.
-
-4. Approve and let the agent implement the styling changes. Once it finishes,
-   open or refresh `index.html` in your browser to confirm the new look.
-
-5. Make the design choice durable — record it as a project-wide decision, not
-   just a ticket-local one:
-
-   ```
-   Now that we've picked this design, pull out the actual colors, fonts,
-   and spacing you used and record them as our default look for future
-   screens — not just this one. If anything feels specific to this
-   component rather than something that should apply everywhere, call
-   that out instead of guessing.
-   ```
-
-   The agent analyzes the implemented styles and writes them to `DECISIONS.md`
-   so future sprints follow the same visual language automatically.
-
-6. Manually test the styled app in the browser, then check off all items under
-   the Acceptance tab (since this is manual/visual verification).
-
-7. Set the close-gate model to Haiku (saves tokens for a low-risk styling
-   change): open the **Plan** tab on the board, click the Sign-off line's Risk
-   field and type `Low risk, client-only static app`. Then select **Haiku**
-   from the Model dropdown for the Review & Eval subagents.
-
-8. Tell the agent to close the sprint:
-
-   ```
-   sprint complete
-   ```
-
-   The wrapup pipeline runs (simplify → code-review → security → repo-check →
-   doc-audit), then the reviewer and evaluator subagents grade the styling
-   changes on Haiku. Once all gates pass, the ticket moves to DONE and a
-   `summary.md` records what was delivered vs. planned.
-
-**What this session demonstrated:**
-
-- A second sprint on files the first sprint already built.
-- Handling competing designs (two mockup candidates → one choice, recorded durably).
-- Recording a project-wide design decision that survives beyond this ticket.
-- Using a cheaper model tier (Haiku) for low-risk gate runs.
-
-## Session 3: headless CLI grading (optional, local, no CI)
-
-Sessions 1 and 2 ran the reviewer, evaluator, and security-review gates
+Session 1 ran the reviewer, evaluator, and security-review gates
 *interactively* — inside a live chat, as part of `sprint complete`. This session
 shows those same gates can also run *non-interactively*, from a plain terminal.
 This is the same mechanism a CI pipeline would run against a pull request (see
@@ -458,7 +374,7 @@ used — use `sprint-headless`. This requires the ticket lifecycle to be set up.
 > underneath, mapped to its own 3-step display: steps 1-2 below are "Set base
 > ref", step 4 is "Grading in progress", and step 5 is "Result ready".
 
-Prerequisites: the ticket from Session 1 (or 2) is closed, its
+Prerequisites: the ticket from Session 1 is closed, its
 `plan.md`/`acceptance.md` were approved, and the evaluator passed interactively.
 Note that ticket's ID (for example `t-a1b2`) — you'll need it below.
 
@@ -512,11 +428,118 @@ Note that ticket's ID (for example `t-a1b2`) — you'll need it below.
 The full ceremony costs ~100k+ tokens (three subagents) but provides advisory
 reviewer findings and security-review coverage alongside the binding evaluator.
 
-## Session 3 (GitHub, optional)
+## Session 3 (GitHub Actions, instructor demo)
 
-This is what the instructor demos live, using their own API key — most students
-should stick with the local CLI flow above rather than provision their own
-credential. See `docs/headless-ci.md` for the full GitHub Actions recipe.
+Sessions 1–2 ran the gate *interactively* or from a *local* terminal. This session wires the
+**same** `sprint-headless-eval` gate into **GitHub Actions**, so opening a PR grades it
+automatically and posts a **red ❌ / green ✓ check** on the PR. This is best run as an
+instructor-led demo — it needs a repo secret and spends real API tokens per PR event, so most
+students should stay on the local flow above.
+
+> **The whole point:** the gate stops being something a human remembers to run and becomes a
+> mechanical check on every PR. A change that violates an acceptance criterion gets a red check;
+> fixing it turns the check green. With branch protection on, red **blocks the merge**.
+
+### Prerequisites
+
+- The app on a GitHub repo (public or private) with **Actions enabled**.
+- An **`ANTHROPIC_API_KEY`** repo secret:
+  ```bash
+  gh secret set ANTHROPIC_API_KEY   # paste the key when prompted (never commit it)
+  ```
+- A committed spec file with the criteria to grade (reuse `specs/max-people.md` from Session 2).
+- *(Optional, to actually block merges):* a branch-protection rule on `main` that requires the
+  `grade` status check to pass.
+
+### 1. Add the workflow (on `main`)
+
+Commit `.github/workflows/canon-gate.yml`. This is the exact workflow used to produce the run
+below — verified end to end:
+
+```yaml
+name: canon gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  grade:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0            # full history — the gate diffs against the base SHA
+
+      - name: Checkout canon
+        uses: actions/checkout@v4
+        with:
+          repository: sunitghub/canon-skills
+          path: canon
+
+      - name: Add canon tools to PATH
+        run: echo "$GITHUB_WORKSPACE/canon/tools" >> "$GITHUB_PATH"
+
+      - name: Make canon skills resolvable to the gate
+        run: |
+          mkdir -p .claude
+          ln -sfn "$GITHUB_WORKSPACE/canon/skills" .claude/skills
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Headless canon gate (spec-driven evaluator)
+        run: sprint-headless-eval specs/max-people.md --base-ref "${{ github.event.pull_request.base.sha }}"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Why it's built this way:
+- **`fetch-depth: 0`** — the gate runs `git diff <base-sha> HEAD`; a shallow checkout has no base
+  to diff against.
+- **Two checkouts** — the PR being graded, plus canon itself (from the public `canon-skills`) so
+  `sprint-headless-eval` and the evaluator protocol exist. `canon/tools` goes on `$GITHUB_PATH`;
+  `.claude/skills` is symlinked to the checked-out `canon/skills` so the gate resolves
+  `sprint/reference/eval.md`.
+- **`--base-ref …base.sha`** — the PR's base commit is a guaranteed ancestor of the checked-out
+  merge commit, so the diff is exactly the PR's changes.
+- **`npm install -g @anthropic-ai/claude-code`** — installs the `claude` CLI the gate shells out
+  to (a few seconds on `ubuntu-latest`; Node and `python3` are preinstalled).
+
+### 2. Open a PR that violates the spec → watch it go red
+
+Branch from `main`, make a change that breaks an existing criterion (e.g. delete the `people > 100`
+cap), and open a PR. Actions runs the workflow automatically:
+
+```bash
+gh pr checks <pr-number> --watch     # or the PR's Checks tab
+```
+
+The evaluator reads the PR diff, sees the cap is gone, and the `grade` check fails —
+`HEADLESS_VERDICT: FAIL`, exit 1, **red ❌**. (In a real run the evaluator even noted the cap was
+*removed*, not just missing: *"the upper bound on people was deleted, not added."*)
+
+### 3. Push the fix → green → merge
+
+Restore the guard and push to the same branch. Actions re-runs on `synchronize`, the evaluator now
+finds the cap short-circuiting before the loop, the `grade` check passes (**green ✓**), and — with
+branch protection on — the merge button unlocks. Merge it; if the PR body had `Closes #<issue>`,
+GitHub closes the linked issue.
+
+### What to expect / notes
+
+- A run takes ~2–3 minutes (checkout + `npm install` + one evaluator dispatch, ~30–40k tokens).
+- The evaluator picks whatever model `claude` defaults to on the runner (observed: Sonnet / Opus);
+  the verdict and `file:line` evidence print in the step log and the job summary.
+- A harmless `Node.js 20 is deprecated … forced to run on Node.js 24` annotation may appear from
+  `actions/checkout@v4` — it doesn't affect the gate.
+- `sprint-headless-eval` grades the spec's criteria only. For the full reviewer + evaluator +
+  security-review pipeline against a real ticket, swap in `sprint-headless <ticket-id> --base-ref …`
+  (see `docs/headless-ci.md`) — heavier, and it needs the ticket committed via `tkt ci <id> on`.
+- **No auto-waivers:** a criterion that genuinely can't be verified in CI correctly fails the run.
+  Unblocking is human-only, outside CI — a dated waiver in `acceptance.md` plus a hand-edited
+  `eval_override: true`. No `tkt` command or agent may flip that flag.
 
 ## Important limitation
 
