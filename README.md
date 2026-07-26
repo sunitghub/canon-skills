@@ -218,7 +218,7 @@ mechanical.
 
 **`sprint start "<what>"`** — Make your agent plan before it codes.
 
-Creates a ticket, defines acceptance criteria, and writes the plan before touching source. Normal changes stay light; high-risk changes add parallel subsystem mapping (one agent per independent subsystem, run concurrently), gray-area resolution, five-dimension impact analysis, any required human checkpoint, and adversarial review. The plan lives in `.tickets/<id>/` and survives context resets.
+Creates a ticket, defines acceptance criteria, and writes the plan before touching source. Normal changes stay light; a `bugfix` tier (a single logic file plus its covering test) runs eval-only — it keeps the binding evaluator but skips the advisory reviewer and heavier wrapup; high-risk changes add parallel subsystem mapping (one agent per independent subsystem, run concurrently), gray-area resolution, five-dimension impact analysis, any required human checkpoint, and adversarial review. The plan lives in `.tickets/<id>/` and survives context resets.
 
 **`sprint complete`** — Block close until every box is checked.
 

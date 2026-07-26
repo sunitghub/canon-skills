@@ -4,8 +4,8 @@ description: Canonical ticket structure contract — folder layout, frontmatter 
 category: dev
 tags: [tickets, schema, contract, internal]
 hidden: true
-version: 1.2.0
-updated: 2026-07-15
+version: 1.3.0
+updated: 2026-07-26
 ---
 
 # Ticket Layout
@@ -24,6 +24,7 @@ Internal reference. Defines the canonical structure for all canon tickets. Updat
     research.md             ← sprint doc (agent-created; brief for normal-tier, full orient protocol for high-risk)
     review-notes.md         ← sprint doc (agent-created at close, normal+; advisory reviewer findings)
     eval-report.md          ← sprint doc (agent-created at close, normal+; adversarial criterion grades)
+    mutation-report.md      ← optional advisory (mutation-test skill at close, normal+ when logic files changed; never close-gated)
     summary.md              ← sprint doc (agent-created at close)
 ```
 
@@ -80,8 +81,9 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | `acceptance.md` | `sprint start` | yes — `## Criteria` and `## Test Plan` each need ≥1 checklist item; `## Wrapup Gates` must exist | Definition of done, test plan, wrapup gate record |
 | `plan.md` | `sprint start` | yes — `## Approach` must have non-placeholder content; `## Sign-off` must exist with no unchecked items and at least one checked approval (skipped only if `Tier: trivial`) | Approach, files, decisions; read after compaction |
 | `research.md` | `sprint start` step 6 (normal, brief) or step 7 (high-risk/brownfield, full orient) | no — sprint doesn't gate on it, but expected before `## Approach` is drafted | Objective truth compression: relevant files, system model, constraints, unknowns |
-| `review-notes.md` | `sprint complete` (normal+ tier) | no — advisory reviewer gate; written for normal+ but not CLI-gated (the evaluator's `eval-report.md` is the binding one) | Advisory reviewer findings — code quality, scope, standards violations — with a YES/NO verdict |
+| `review-notes.md` | `sprint complete` (normal+ tier; skipped for `Tier: bugfix`, which drops the advisory reviewer) | no — advisory reviewer gate; written for normal+ but not CLI-gated (the evaluator's `eval-report.md` is the binding one) | Advisory reviewer findings — code quality, scope, standards violations — with a YES/NO verdict |
 | `eval-report.md` | `sprint complete` (normal+ tier) | yes for normal+ — the evaluator run-id field must be present and the verdict line must be `pass:` (any criterion graded `partial` forces that line to `fail:`, so a non-`pass:` verdict blocks — there is no separate `partial:` verdict line); skipped only if `Tier: trivial` | Adversarial per-criterion grades (pass/fail/partial) with `file:line` evidence, written by the fresh evaluator subagent |
+| `mutation-report.md` | `sprint complete` step 3 (advisory; only when logic files changed) | no — advisory only, never close-gated | Surviving mutants (tests that cannot fail) reported by the `mutation-test` skill; renders as a doc tab like any companion `.md` |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
 **Optional `Gate model:` field.** `plan.md`'s `## Sign-off` line can carry a third segment,
