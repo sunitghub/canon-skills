@@ -714,3 +714,105 @@ assert_contains "$bugfix_no_eval" "eval-report.md is missing"
 sed -i.bak 's/^Tier: bugfix .*/Tier: trivial | Risk: genuinely a one-liner/' ".tickets/$bugfix_id/plan.md" && rm -f ".tickets/$bugfix_id/plan.md.bak"
 trivial_close="$("$SPRINT" complete 2>&1 || true)"
 assert_contains "$trivial_close" "closed"
+
+# --- sprint suggest-tier (t-b6a3): propose-only structural bugfix-tier classifier ---
+# Isolated git fixtures (make_project's shared repo has no origin/main baseline).
+# Asserts run in the MAIN shell, never inside a subshell, so `fail` exits the suite;
+# only the `cd` is scoped inside command substitution.
+st_git_init() {  # st_git_init <dir>
+  git -C "$1" init -q
+  git -C "$1" config user.email t@example.com
+  git -C "$1" config user.name test
+}
+
+# Case 1: one modified logic file + a covering test → bugfix; and it writes nothing.
+st_d1="$(mktemp -d)"
+st_git_init "$st_d1"
+mkdir -p "$st_d1/src" "$st_d1/tests"
+echo 'a' > "$st_d1/src/foo.js"
+git -C "$st_d1" add -A >/dev/null && git -C "$st_d1" commit -qm base
+git -C "$st_d1" update-ref refs/remotes/origin/main HEAD
+echo 'b' >> "$st_d1/src/foo.js"
+echo 'covering test' > "$st_d1/tests/foo_test.sh"
+git -C "$st_d1" add -A >/dev/null && git -C "$st_d1" commit -qm fix
+st_bugfix="$(cd "$st_d1" && "$SPRINT" suggest-tier)"
+assert_contains "$st_bugfix" "suggested tier: bugfix"
+assert_contains "$st_bugfix" "covering test"
+assert_contains "$st_bugfix" "propose-only"
+assert_contains "$st_bugfix" "independent invariant"
+# propose-only: the run must not create/modify any file (no Tier: written anywhere)
+st_clean="$(cd "$st_d1" && git status --porcelain)"
+assert_eq "" "$st_clean"
+rm -rf "$st_d1"
+
+# Case 2: an added non-test logic file → normal (new file beyond the test)
+st_d2="$(mktemp -d)"
+st_git_init "$st_d2"
+mkdir -p "$st_d2/src"
+echo 'a' > "$st_d2/src/foo.js"
+git -C "$st_d2" add -A >/dev/null && git -C "$st_d2" commit -qm base
+git -C "$st_d2" update-ref refs/remotes/origin/main HEAD
+echo 'x' > "$st_d2/src/newmod.js"
+git -C "$st_d2" add -A >/dev/null && git -C "$st_d2" commit -qm add
+st_newfile="$(cd "$st_d2" && "$SPRINT" suggest-tier)"
+assert_contains "$st_newfile" "suggested tier: normal"
+assert_contains "$st_newfile" "new file beyond the test"
+rm -rf "$st_d2"
+
+# Case 3: two modified non-test logic files → normal (coordinated multi-file intent)
+st_d3="$(mktemp -d)"
+st_git_init "$st_d3"
+mkdir -p "$st_d3/src"
+echo 'a' > "$st_d3/src/foo.js"
+echo 'a' > "$st_d3/src/bar.js"
+git -C "$st_d3" add -A >/dev/null && git -C "$st_d3" commit -qm base
+git -C "$st_d3" update-ref refs/remotes/origin/main HEAD
+echo 'b' >> "$st_d3/src/foo.js"
+echo 'b' >> "$st_d3/src/bar.js"
+git -C "$st_d3" add -A >/dev/null && git -C "$st_d3" commit -qm two
+st_multi="$(cd "$st_d3" && "$SPRINT" suggest-tier)"
+assert_contains "$st_multi" "suggested tier: normal"
+assert_contains "$st_multi" "coordinated multi-file intent"
+rm -rf "$st_d3"
+
+# Case 4: a build/test-infrastructure file in the diff → normal (infrastructure wiring)
+st_d4="$(mktemp -d)"
+st_git_init "$st_d4"
+mkdir -p "$st_d4/src"
+echo 'a' > "$st_d4/src/foo.js"
+git -C "$st_d4" add -A >/dev/null && git -C "$st_d4" commit -qm base
+git -C "$st_d4" update-ref refs/remotes/origin/main HEAD
+echo 'b' >> "$st_d4/src/foo.js"
+echo '{}' > "$st_d4/package.json"
+git -C "$st_d4" add -A >/dev/null && git -C "$st_d4" commit -qm infra
+st_infra="$(cd "$st_d4" && "$SPRINT" suggest-tier)"
+assert_contains "$st_infra" "suggested tier: normal"
+assert_contains "$st_infra" "test/build-infrastructure wiring"
+rm -rf "$st_d4"
+
+# Case 5: a hook/pipeline file in the diff → normal (hook/pipeline change)
+st_d5="$(mktemp -d)"
+st_git_init "$st_d5"
+mkdir -p "$st_d5/src" "$st_d5/.github/workflows"
+echo 'a' > "$st_d5/src/foo.js"
+git -C "$st_d5" add -A >/dev/null && git -C "$st_d5" commit -qm base
+git -C "$st_d5" update-ref refs/remotes/origin/main HEAD
+echo 'b' >> "$st_d5/src/foo.js"
+echo 'ci' > "$st_d5/.github/workflows/ci.yml"
+git -C "$st_d5" add -A >/dev/null && git -C "$st_d5" commit -qm ci
+st_hook="$(cd "$st_d5" && "$SPRINT" suggest-tier)"
+assert_contains "$st_hook" "suggested tier: normal"
+assert_contains "$st_hook" "hook/pipeline/post-commit change"
+rm -rf "$st_d5"
+
+# Case 6: no origin/main baseline → normal, exit 0 (decided by merge-base exit status)
+st_d6="$(mktemp -d)"
+st_git_init "$st_d6"
+mkdir -p "$st_d6/src"
+echo 'a' > "$st_d6/src/foo.js"
+git -C "$st_d6" add -A >/dev/null && git -C "$st_d6" commit -qm base
+if st_nobase="$(cd "$st_d6" && "$SPRINT" suggest-tier)"; then st_rc=0; else st_rc=$?; fi
+assert_eq "0" "$st_rc"
+assert_contains "$st_nobase" "suggested tier: normal"
+assert_contains "$st_nobase" "no git baseline"
+rm -rf "$st_d6"
