@@ -455,9 +455,12 @@ students should stay on the local flow above.
 Commit `.github/workflows/canon-gate.yml`. This is the exact workflow used to produce the run
 below — verified end to end:
 
-> **Shortcut:** click **⚙ CI** ("Set up CI gate") in the sprint-check board header and it writes
-> this file for you (from a shipped, gate-aware template; it refuses if the file already exists).
-> You still add the `ANTHROPIC_API_KEY` secret and push. The version below is equivalent.
+> **Shortcut:** the sprint-check board's **⚙ CI** ("Set up CI gate") button writes a `canon-gate.yml`
+> for you (from a shipped template; it refuses if one exists). Note it writes the **ticket-driven,
+> gate-aware** version — it grades the canon ticket referenced in the PR body (`Closes: t-xxxx`),
+> dispatching `sprint-headless-eval`/`sprint-headless` by the ticket's `gate`, and **skips** PRs that
+> reference no ticket. This restaurant example is **spec-driven** (no canon ticket), so use the block
+> below instead of the board-generated file. Either way you add the `ANTHROPIC_API_KEY` secret and push.
 
 ```yaml
 name: canon gate
