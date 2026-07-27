@@ -23,6 +23,8 @@ tkt current                   # show active ticket
 tkt close <id> [--no-sprint]  # mark closed (refuses without --no-sprint — directs to sprint complete if sprint docs exist, or to sprint start/--no-sprint otherwise)
 tkt archive <id>              # mark archived (hidden from board, searchable)
 tkt reopen <id>               # reopen
+tkt ci <id> [on|off]          # mark CI-eligible for headless grading
+tkt gate <id> [eval|full]     # headless gate mode: eval-only vs full (needs ci on)
 tkt show <id>                 # show full ticket
 ```
 

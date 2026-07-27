@@ -59,16 +59,22 @@ GO_BIN="$(mktemp -d)/sprint-check-go-bin"
 PY_PID=""
 GO_PID=""
 SPRINT_HEADLESS_BACKUP=""
+SPRINT_HEADLESS_EVAL_BACKUP=""
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
-  # Restore the real tools/sprint-headless if the headless-run parity section
-  # below swapped in a stub — must run even on failure, so this lives in the
-  # trap-bound cleanup, not a linear post-check restore that set -e would skip.
+  # Restore the real tools/sprint-headless(-eval) if the headless-run parity
+  # section below swapped in stubs — must run even on failure, so this lives in
+  # the trap-bound cleanup, not a linear post-check restore that set -e would skip.
   if [[ -n "$SPRINT_HEADLESS_BACKUP" ]]; then
     cp "$SPRINT_HEADLESS_BACKUP" "$ROOT/tools/sprint-headless"
     chmod +x "$ROOT/tools/sprint-headless"
     rm -f "$SPRINT_HEADLESS_BACKUP"
+  fi
+  if [[ -n "$SPRINT_HEADLESS_EVAL_BACKUP" ]]; then
+    cp "$SPRINT_HEADLESS_EVAL_BACKUP" "$ROOT/tools/sprint-headless-eval"
+    chmod +x "$ROOT/tools/sprint-headless-eval"
+    rm -f "$SPRINT_HEADLESS_EVAL_BACKUP"
   fi
   rm -rf "$WORK" "$(dirname "$GO_BIN")"
 }
@@ -137,6 +143,32 @@ priority: 2
 created: 2026-06-08T00:00:00Z
 ---
 # Non-CI fixture (ci field absent)
+EOF
+
+# Dedicated fixture for gate:eval parity (t-4e57) — the generic per-key mismatch
+# loop below covers the field itself; a full ticket (absent gate) is already
+# covered by every other fixture, so this only needs to exercise gate=eval.
+mkdir -p "$WORK/.tickets/t-gate"
+cat > "$WORK/.tickets/t-gate/ticket.md" <<'EOF'
+---
+id: t-gate
+status: open
+type: task
+priority: 2
+created: 2026-06-08T00:00:00Z
+ci: true
+gate: eval
+---
+# Eval-gate fixture
+EOF
+cat > "$WORK/.tickets/t-gate/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [ ] something holds
+## Test Plan
+- [ ] a check
+## QA
+- [ ] Tested locally
 EOF
 
 free_port() {
@@ -375,11 +407,25 @@ cp "$ROOT/tools/sprint-headless" "$SPRINT_HEADLESS_BACKUP"
 cat > "$ROOT/tools/sprint-headless" <<'EOF'
 #!/usr/bin/env bash
 sleep 1
-echo "stub grading output"
+echo "STUB-TOOL: full-pipeline"
 echo "HEADLESS_VERDICT: PASS"
 exit 0
 EOF
 chmod +x "$ROOT/tools/sprint-headless"
+
+# Stub sprint-headless-eval too, with a distinct marker, so the gate-mode
+# dispatch selection (t-4e57) can be asserted: a gate:eval ticket must invoke
+# this tool, a full ticket must invoke sprint-headless above.
+SPRINT_HEADLESS_EVAL_BACKUP="$(mktemp)"
+cp "$ROOT/tools/sprint-headless-eval" "$SPRINT_HEADLESS_EVAL_BACKUP"
+cat > "$ROOT/tools/sprint-headless-eval" <<'EOF'
+#!/usr/bin/env bash
+sleep 1
+echo "STUB-TOOL: eval-only"
+echo "HEADLESS_VERDICT: PASS"
+exit 0
+EOF
+chmod +x "$ROOT/tools/sprint-headless-eval"
 
 py_idle="$(curl -s "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/headless-run")"
 go_idle="$(curl -s "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/headless-run")"
@@ -424,6 +470,9 @@ for label, d in (("server.py", py), ("main.go", go)):
     if "HEADLESS_VERDICT: PASS" not in d.get("output", ""):
         print(f"sprint-check-api-parity: FAIL — {label} headless-run output missing expected verdict: {d}")
         sys.exit(1)
+    if "STUB-TOOL: full-pipeline" not in d.get("output", ""):
+        print(f"sprint-check-api-parity: FAIL — {label} full-gate ticket did not dispatch sprint-headless (full pipeline): {d}")
+        sys.exit(1)
     if d.get("exit_code") != 0:
         print(f"sprint-check-api-parity: FAIL — {label} headless-run exit_code should be 0, got {d.get('exit_code')!r}")
         sys.exit(1)
@@ -442,9 +491,44 @@ for label, tickets in (("server.py", py), ("main.go", go)):
         sys.exit(1)
 PY
 
+# ── gate-mode dispatch selection (t-4e57): a gate:eval ticket must invoke
+# sprint-headless-eval; a full ticket (t-mock, above) invoked sprint-headless ─
+py_gate_trig="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/t-gate/headless-run" -d '{"base_ref":"main"}')"
+go_gate_trig="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/t-gate/headless-run" -d '{"base_ref":"main"}')"
+[[ "$(echo "$py_gate_trig" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')" == "running" ]] || fail "sprint-check-api-parity: FAIL — t-gate headless-run (server.py) did not start: $py_gate_trig"
+[[ "$(echo "$go_gate_trig" | python3 -c 'import json,sys; print(json.load(sys.stdin)["status"])')" == "running" ]] || fail "sprint-check-api-parity: FAIL — t-gate headless-run (main.go) did not start: $go_gate_trig"
+sleep 3
+py_gate_done="$(curl -s "http://127.0.0.1:$PY_PORT/api/ticket/t-gate/headless-run")"
+go_gate_done="$(curl -s "http://127.0.0.1:$GO_PORT/api/ticket/t-gate/headless-run")"
+python3 - "$py_gate_done" "$go_gate_done" <<'PY'
+import json, sys
+for label, raw in (("server.py", sys.argv[1]), ("main.go", sys.argv[2])):
+    d = json.loads(raw)
+    out = d.get("output", "")
+    if "STUB-TOOL: eval-only" not in out:
+        print(f"sprint-check-api-parity: FAIL — {label} gate:eval ticket did not dispatch sprint-headless-eval: {d}")
+        sys.exit(1)
+    if "STUB-TOOL: full-pipeline" in out:
+        print(f"sprint-check-api-parity: FAIL — {label} gate:eval ticket wrongly dispatched the full pipeline: {d}")
+        sys.exit(1)
+PY
+
+# ── create-with-gate parity (t-4e57): POST /api/tickets writes gate: eval ────
+for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
+  label="${be%%:*}"; port="${be##*:}"
+  eid="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"gate create","type":"task","ci":true,"gate":"eval"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  grep -q '^gate: eval$' "$WORK/.tickets/$eid/ticket.md" || fail "sprint-check-api-parity: FAIL — $label create with gate:eval did not write 'gate: eval' ($eid)"
+  fid="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"full create","type":"task","ci":true}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  if grep -q '^gate:' "$WORK/.tickets/$fid/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label full create wrote a gate line ($fid)"; fi
+done
+
 cp "$SPRINT_HEADLESS_BACKUP" "$ROOT/tools/sprint-headless"
 chmod +x "$ROOT/tools/sprint-headless"
 rm -f "$SPRINT_HEADLESS_BACKUP"
 SPRINT_HEADLESS_BACKUP=""
+cp "$SPRINT_HEADLESS_EVAL_BACKUP" "$ROOT/tools/sprint-headless-eval"
+chmod +x "$ROOT/tools/sprint-headless-eval"
+rm -f "$SPRINT_HEADLESS_EVAL_BACKUP"
+SPRINT_HEADLESS_EVAL_BACKUP=""
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used extraction; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; headless-run idle/running/done states match, for $WORK fixture)"
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval, for $WORK fixture)"

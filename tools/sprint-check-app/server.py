@@ -494,7 +494,7 @@ def read_doc(doc_file: str) -> str | None:
         return None
     return p.read_text(encoding='utf-8', errors='replace')
 
-def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False) -> dict:
+def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full') -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
     TICKETS_DIR.mkdir(exist_ok=True)
     existing = {p.stem for p in ticket_paths()} | {p.name for p in TICKETS_DIR.iterdir() if p.is_dir()}
@@ -516,6 +516,9 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str,
     ]
     if ci:
         fm_lines.append('ci: true')
+    if gate == 'eval':
+        # eval-only headless gate; absent line = full (mirrors ci's present/absent convention)
+        fm_lines.append('gate: eval')
     fm_lines.append(f'eval_override: {"true" if eval_override else "false"}')
     fm_lines.append('---\n')
     fm = '\n'.join(fm_lines)
@@ -585,17 +588,35 @@ def write_visual(ticket_id: str, filename: str, data_b64: str) -> dict:
 # class of PATH-resolution problems doesn't apply here).
 
 SPRINT_HEADLESS = Path(__file__).resolve().parent.parent / 'sprint-headless'
+SPRINT_HEADLESS_EVAL = Path(__file__).resolve().parent.parent / 'sprint-headless-eval'
 
 _BASE_REF_RE = re.compile(r'^[A-Za-z0-9._/-]+$')
+
+def _ticket_gate(ticket_id: str) -> str:
+    """Read a ticket's headless gate mode ('eval' or 'full') from frontmatter.
+    Absent = 'full' (the default 3-gate pipeline), mirroring the ci convention."""
+    p = TICKETS_DIR / ticket_id / 'ticket.md'
+    try:
+        m = _FRONTMATTER.match(p.read_text(encoding='utf-8', errors='replace'))
+        if m:
+            for fm in _FIELD.finditer(m.group(1)):
+                if fm.group(1) == 'gate':
+                    return 'eval' if _unquote_yaml_scalar(fm.group(2).strip()) == 'eval' else 'full'
+    except Exception:
+        pass
+    return 'full'
 
 _HEADLESS_RUNS: dict[str, dict] = {}
 _HEADLESS_LOCK = threading.Lock()
 
 def _run_headless(ticket_id: str, base_ref: str) -> None:
-    """Runs in a background thread; updates _HEADLESS_RUNS[ticket_id] on completion."""
+    """Runs in a background thread; updates _HEADLESS_RUNS[ticket_id] on completion.
+    Picks the eval-only tool (sprint-headless-eval) when the ticket's gate is 'eval',
+    else the full sprint-headless pipeline."""
+    tool = SPRINT_HEADLESS_EVAL if _ticket_gate(ticket_id) == 'eval' else SPRINT_HEADLESS
     try:
         proc = subprocess.Popen(
-            [str(SPRINT_HEADLESS), ticket_id, '--base-ref', base_ref],
+            [str(tool), ticket_id, '--base-ref', base_ref],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=PROJECT_ROOT,
         )
         output, _ = proc.communicate()
@@ -781,6 +802,7 @@ class Handler(BaseHTTPRequestHandler):
                 body     = str(payload.get('body', '')),
                 ci       = bool(payload.get('ci', False)),
                 eval_override = bool(payload.get('eval_override', False)),
+                gate     = 'eval' if str(payload.get('gate', '')).lower() == 'eval' else 'full',
             )
             self.send_json(t); return
 

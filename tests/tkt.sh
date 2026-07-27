@@ -72,3 +72,15 @@ mkdir -p nested/deeper
   nested_id="$("$TKT" create "Nested ticket")"
   [[ -f "../../.tickets/$nested_id/ticket.md" ]] || fail "expected nested create to use project .tickets"
 )
+
+# ── tkt gate (t-4e57): eval sets the line, full removes it, no-arg prints, bad errors ─
+gate_id="$("$TKT" create "Gate mode ticket")"
+assert_contains "$("$TKT" gate "$gate_id")" "$gate_id: gate=full"
+assert_contains "$("$TKT" gate "$gate_id" eval)" "$gate_id: gate=eval"
+assert_grep "^gate: eval$" ".tickets/$gate_id/ticket.md"
+assert_contains "$("$TKT" gate "$gate_id")" "$gate_id: gate=eval"
+"$TKT" gate "$gate_id" full >/dev/null
+grep -q "^gate:" ".tickets/$gate_id/ticket.md" && fail "expected 'gate:' line removed after 'gate full'" || true
+assert_contains "$("$TKT" gate "$gate_id")" "$gate_id: gate=full"
+bad_gate_output="$(run_fail "$TKT" gate "$gate_id" bogus)"
+assert_contains "$bad_gate_output" "must be 'eval' or 'full'"

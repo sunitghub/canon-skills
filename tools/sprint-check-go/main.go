@@ -241,6 +241,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			stringValue(payload, "body", ""),
 			boolValue(payload["ci"]),
 			boolValue(payload["eval_override"]),
+			stringValue(payload, "gate", "full"),
 		))
 		return
 	}
@@ -749,7 +750,7 @@ func writeVisual(ticketID, filename, dataB64 string) map[string]any {
 	return map[string]any{"ok": true, "filename": name}
 }
 
-func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool) ticket {
+func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string) ticket {
 	os.MkdirAll(ticketsDir, 0755)
 	existing := map[string]bool{}
 	for _, p := range ticketPaths() {
@@ -789,11 +790,15 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	if ci {
 		ciLine = "ci: true\n"
 	}
+	gateLine := ""
+	if strings.ToLower(gate) == "eval" {
+		gateLine = "gate: eval\n"
+	}
 	evalLine := "eval_override: false"
 	if evalOverride {
 		evalLine = "eval_override: true"
 	}
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, evalLine, strings.TrimSpace(body))
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, gateLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	os.WriteFile(path, []byte(text), 0644)
 	t, _ := parseTicket(path)
@@ -1108,14 +1113,40 @@ func resolveSprintHeadless(toolsDir, root string, extraRoots ...string) string {
 
 // ── Headless grading runs (t-200b) ──────────────────────────────────────────
 
+// ticketGate reads a ticket's headless gate mode ("eval" or "full") from
+// frontmatter. Absent = "full" (the default 3-gate pipeline), mirroring ci.
+func ticketGate(ticketID string) string {
+	raw, err := os.ReadFile(filepath.Join(ticketsDir, ticketID, "ticket.md"))
+	if err != nil {
+		return "full"
+	}
+	if m := frontmatterRe.FindStringSubmatchIndex(string(raw)); m != nil {
+		fm := string(raw)[m[2]:m[3]]
+		for _, match := range fieldRe.FindAllStringSubmatch(fm, -1) {
+			if match[1] == "gate" {
+				if unquoteYAMLScalar(strings.TrimSpace(match[2])) == "eval" {
+					return "eval"
+				}
+				return "full"
+			}
+		}
+	}
+	return "full"
+}
+
 func runHeadless(ticketID, baseRef string) {
-	output, err := exec.Command(sprintHeadless, ticketID, "--base-ref", baseRef).CombinedOutput()
+	// Pick the eval-only tool when the ticket's gate is "eval", else the full pipeline.
+	tool := sprintHeadless
+	if ticketGate(ticketID) == "eval" {
+		tool = filepath.Join(filepath.Dir(sprintHeadless), "sprint-headless-eval")
+	}
+	output, err := exec.Command(tool, ticketID, "--base-ref", baseRef).CombinedOutput()
 	exitCode := 0
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
 		} else {
-			output = []byte(fmt.Sprintf("Error: could not start sprint-headless: %v", err))
+			output = []byte(fmt.Sprintf("Error: could not start %s: %v", filepath.Base(tool), err))
 			exitCode = 1
 		}
 	}
