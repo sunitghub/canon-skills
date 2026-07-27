@@ -30,6 +30,16 @@ to convert input to integer cents, calculate in cents, round the per-person
 share to cents, and explicitly handle any remainder so the displayed shares sum
 to the total bill.
 
+## Before you start
+
+You need canon installed and the board running:
+
+1. Install canon and register the sprint skill in your project — see the **[setup guide](../../docs/setup.md)** (`skills.sh add sprint`).
+2. Start the board in a terminal: `sprint-check` (macOS/Linux) or `sprint-check-win` (Windows). It opens `http://127.0.0.1:8423` — that's the board the screenshots below show.
+3. Start your agent (Claude Code / Codex) in the project.
+
+> The two walkthroughs below cover the same arc: **"Beginner-friendly workflow"** is the step-by-step path to follow; **"Suggested demonstration sequence"** is a condensed recap for instructors.
+
 ## Beginner-friendly workflow
 
 1. Create a project folder named `RestaurantBillSplit` and open it in VS Code.
@@ -63,6 +73,11 @@ to the total bill.
 
 5. Let the agent generate its initial acceptance criteria and Test Plan. Review
    them, approve the plan, and allow the agent to implement the first version.
+
+   Your board now shows the ticket — a `CI`-eligible card carries a green **CI** badge and a **▶** run button:
+
+   ![sprint-check board with the Restaurant Bill Splitter ticket card (CI badge + run button) in the In Progress lane](images/board-ticket.png)
+
 6. Open the implemented app and run the generated manual checks. The UI may
    appear to handle invalid input correctly because its parser functions guard
    the form fields. Now inspect the isolated `calculateSplit()` function: it
@@ -155,6 +170,11 @@ to the total bill.
     safe boundary, such as 100 people and then 101 people; do not enter an
     enormous value that could freeze the browser.
 13. Run `sprint complete` again and confirm that the evaluator now passes.
+
+    The ticket moves to the **DONE** lane and its **Summary** tab records what was delivered vs. planned:
+
+    ![Closed ticket Summary tab showing a plan-vs-actual table (delivered per criterion)](images/done-summary.png)
+
 
 ## Separate the probabilistic and deterministic paths
 
@@ -279,6 +299,8 @@ an upper limit on the people count — that gap is what this session exposes.
    - **Priority:** P2
    - Toggle **CI** on (this marks the ticket for headless grading)
 
+   ![New Ticket modal — title, Type, Priority, and the CI / Eval-only / Eval Override options](images/new-ticket.png)
+
    Click **Create →**. The ticket appears on the board as a new card.
 
 2. On the ticket detail, click **+ New doc** → **Acceptance**. In the editor,
@@ -298,6 +320,11 @@ an upper limit on the people count — that gap is what this session exposes.
 
    Click **Save**. The board indicator changes from `● incomplete` to
    `● needs acc` or `● ready` once both sections have checklist items.
+
+   The ticket's **Acceptance** tab renders the criteria as a checklist (the CI grading panel sits at the top of the ticket):
+
+   ![Ticket Acceptance tab showing the criteria checklist, with the CI grading panel above it](images/acceptance-criteria.png)
+
 
 3. Commit the ticket so the evaluator can read it:
 
@@ -328,6 +355,9 @@ an upper limit on the people count — that gap is what this session exposes.
 
    > You can also run this from the board: enter a base ref in the **Set base
    > ref** field on the ticket's CI panel and click **▶ Start**.
+
+   ![The ticket's CI grading panel: Set base ref → Grading in progress → Result ready, with a base-ref field and a Start button](images/ci-panel.png)
+
 
 5. Switch to your chat agent and tell it to implement the fix:
 
