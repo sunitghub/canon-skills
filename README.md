@@ -322,6 +322,7 @@ Register canon in another project:
 - **[Production incident playbook →](docs/production-incident-playbook.md)** — Surface → Trace → Isolate → Resolve → Harden. The five-stage protocol for when an AI agent misbehaves in production.
 - **[Restaurant bill splitter →](examples/restaurant-bill-split)** — a prompt-driven sprint walkthrough: can a fresh evaluator catch plausible-looking but numerically wrong code?
 - **[Slugify skill-eval demo →](examples/slugify)** — a worked skill + evals example, no-evals vs. with-evals vs. with-evals-fixed.
+- **[DSL spec workshop →](examples/dsl-discount-spec)** — build a feature against a hand-written `Given/When/Then` spec inside a sprint, then break the implementation live and watch the spec (not a person) catch it.
 
 ## Contributing
 
