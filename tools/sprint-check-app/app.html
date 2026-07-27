@@ -1325,6 +1325,7 @@
         </div>
       </div>
       <button class="create-btn" id="btn-create" title="Create new ticket">+ New</button>
+      <button class="theme-toggle" id="btn-ci-setup" title="Set up CI gate — write .github/workflows/canon-gate.yml so PRs are graded by canon" style="font-size:12px;font-weight:700;letter-spacing:-.3px">⚙ CI</button>
       <button class="theme-toggle tour-toggle" id="tour-btn" title="Feature tour" aria-label="Feature tour" style="font-size:13px;font-weight:700;letter-spacing:-.5px">?</button>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">🌙</button>
     </div>
@@ -4421,6 +4422,24 @@ function setText(id, val) {
   apply(isDark);
   btn.addEventListener('click', () => apply(html.getAttribute('data-theme') === 'light'));
 })();
+
+// Set up CI gate — one click writes .github/workflows/canon-gate.yml (refuse-on-exists).
+document.getElementById('btn-ci-setup')?.addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/ci-workflow', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    }).then(r => r.json());
+    if (res.ok) {
+      showToast('✓ Wrote ' + res.path + ' — add an ANTHROPIC_API_KEY secret + push to enable PR grading', 'warn');
+    } else if (res.reason === 'exists') {
+      showToast('⚠ ' + res.path + ' already exists — delete it to regenerate', 'block');
+    } else {
+      showToast('⚠ Could not write CI workflow: ' + (res.reason || 'unknown error'), 'block');
+    }
+  } catch (e) {
+    showToast('⚠ Could not reach the server to set up CI', 'block');
+  }
+});
 
 // ── Boot ──────────────────────────────────────────────────────────────────
 

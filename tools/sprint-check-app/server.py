@@ -589,6 +589,22 @@ def write_visual(ticket_id: str, filename: str, data_b64: str) -> dict:
 
 SPRINT_HEADLESS = Path(__file__).resolve().parent.parent / 'sprint-headless'
 SPRINT_HEADLESS_EVAL = Path(__file__).resolve().parent.parent / 'sprint-headless-eval'
+CANON_GATE_TEMPLATE = Path(__file__).resolve().parent.parent / 'canon-gate-template.yml'
+
+def write_ci_workflow() -> dict:
+    """Copy the shipped canon-gate workflow template to the project's
+    .github/workflows/canon-gate.yml. Fixed target path (no traversal);
+    refuses rather than clobbering an existing workflow."""
+    rel = '.github/workflows/canon-gate.yml'
+    dest = PROJECT_ROOT / '.github' / 'workflows' / 'canon-gate.yml'
+    if dest.exists():
+        return {'ok': False, 'reason': 'exists', 'path': rel}
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(CANON_GATE_TEMPLATE.read_text(encoding='utf-8'), encoding='utf-8')
+    except Exception as e:
+        return {'ok': False, 'reason': str(e), 'path': rel}
+    return {'ok': True, 'path': rel}
 
 _BASE_REF_RE = re.compile(r'^[A-Za-z0-9._/-]+$')
 
@@ -792,6 +808,9 @@ class Handler(BaseHTTPRequestHandler):
             if not _BASE_REF_RE.match(base_ref):
                 self.send_error(400); return
             self.send_json(start_headless_run(m.group(1), base_ref)); return
+
+        if path == '/api/ci-workflow':
+            self.send_json(write_ci_workflow()); return
 
         if path == '/api/tickets':
             t = create_ticket(

@@ -455,6 +455,10 @@ students should stay on the local flow above.
 Commit `.github/workflows/canon-gate.yml`. This is the exact workflow used to produce the run
 below — verified end to end:
 
+> **Shortcut:** click **⚙ CI** ("Set up CI gate") in the sprint-check board header and it writes
+> this file for you (from a shipped, gate-aware template; it refuses if the file already exists).
+> You still add the `ANTHROPIC_API_KEY` secret and push. The version below is equivalent.
+
 ```yaml
 name: canon gate
 
