@@ -312,22 +312,21 @@ an upper limit on the people count — that gap is what this session exposes.
 4. Grade the code as it stands — the function has no max-count guard yet:
 
    ```bash
-   sprint-headless-eval .tickets/<id>/acceptance.md --base-ref main
+   sprint-headless-eval <id>
    ```
 
-   (Replace `<id>` with your ticket ID, e.g. `t-a1b2`.)
-
-   `--base-ref main` means "compare the current code against the `main`
-   branch" — `main` is the default branch where your stable code lives, and
-   the evaluator uses this to identify what changed. It then reads the full
-   source to grade each criterion.
+   (Replace `<id>` with your ticket ID, e.g. `t-a1b2`.) Passing the ticket id
+   grades that ticket's `.tickets/<id>/acceptance.md` and writes `eval-report.md`
+   back into the ticket folder. `--base-ref` defaults to `origin/main` (then
+   `main`) — the mainline your change is compared against — so you don't need to
+   pass it locally; add `--base-ref <ref>` to override.
 
    The evaluator inspects `calculateSplit()`, finds no upper-bound check, and
    reports `HEADLESS_VERDICT: FAIL` with `file:line` evidence citing the
    unguarded code. An `eval-report.md` appears in the ticket folder with
    per-criterion pass/fail verdicts.
 
-   > You can also run this from the board: enter `main` in the **Set base
+   > You can also run this from the board: enter a base ref in the **Set base
    > ref** field on the ticket's CI panel and click **▶ Start**.
 
 5. Switch to your chat agent and tell it to implement the fix:
@@ -342,10 +341,10 @@ an upper limit on the people count — that gap is what this session exposes.
    `people > 100`) and updates the UI validator to reject values above 100.
    It commits the implementation.
 
-6. Re-grade against the same base ref:
+6. Re-grade the same ticket:
 
    ```bash
-   sprint-headless-eval .tickets/<id>/acceptance.md --base-ref main
+   sprint-headless-eval <id>
    ```
 
    Confirm `HEADLESS_VERDICT: PASS` (exit 0). The evaluator now finds the
