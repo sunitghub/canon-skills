@@ -24,7 +24,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SPEC_FILE="${1:-}"
 [[ -z "$SPEC_FILE" || "$SPEC_FILE" == --* ]] && {
-  echo "Usage: sprint-headless-eval <spec-file> --base-ref <ref>" >&2
+  echo "Usage: sprint-headless-eval <spec-file> --base-ref <ref> [--model <model>]" >&2
   echo "" >&2
   echo "Grades the checklist criteria in <spec-file> against the diff between" >&2
   echo "<base-ref> and HEAD. Runs only the evaluator (no reviewer, no security-review)." >&2
@@ -35,9 +35,11 @@ SPEC_FILE="${1:-}"
 shift
 
 BASE_REF="${GITHUB_BASE_REF:-}"
+MODEL=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --base-ref) BASE_REF="${2:-}"; shift 2 ;;
+    --model) MODEL="${2:-}"; shift 2 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -46,6 +48,19 @@ done
   echo "Error: --base-ref (or \$GITHUB_BASE_REF) is required — headless mode never infers a diff base." >&2
   exit 1
 }
+
+# Validate --model the same way as base-ref: a model alias (haiku/sonnet/opus)
+# or a full model id — letters, digits, '.', '_', '-' only. Rejects shell
+# metacharacters before the value reaches the `claude` args. Empty = unset
+# (claude uses its default, or an ANTHROPIC_MODEL env value if the caller set one).
+if [[ -n "$MODEL" ]]; then
+  [[ "$MODEL" =~ ^[A-Za-z0-9._-]+$ ]] || {
+    echo "Error: '$MODEL' is not a valid model (alias or model id — letters, digits, '.', '_', '-' only)." >&2
+    exit 1
+  }
+fi
+MODEL_ARGS=()
+[[ -n "$MODEL" ]] && MODEL_ARGS=(--model "$MODEL")
 
 # Validate base-ref: allow branch/tag names, SHAs, and relative refs (~ ^).
 # Reject anything with shell metacharacters or whitespace.
@@ -168,6 +183,7 @@ set +e
 RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
   --output-format json \
   --permission-mode dontAsk \
+  ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
   --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
 INVOKE_STATUS=$?
 set -e

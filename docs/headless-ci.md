@@ -36,6 +36,12 @@ Note the reviewer's binding-ness differs from interactive close: at an interacti
 
 **`Tier: bugfix` tickets — reviewer skipped (eval-only).** When the committed `plan.md` `## Sign-off` records `Tier: bugfix` (canon's eval-only tier), headless dispatches only the **evaluator + security-review** and skips the advisory reviewer entirely — matching interactive `sprint complete`, where bugfix drops the advisory reviewer but keeps the binding evaluator. The verdict is then PASS iff the evaluator passes and security-review finds no HIGH finding. Headless reads the tier from the `Tier:` field in `## Sign-off` (not the `type:` frontmatter, which is the orthogonal job type), and it **trusts the committed tier**: because bugfix only skips the *advisory* reviewer, a wrongly-set `Tier: bugfix` costs at most a skipped advisory pass — the binding evaluator and security-review always run. (Mechanically detecting/proposing the tier from the diff is tracked separately; headless only honors what is committed.)
 
+**Choosing the model (cost control).** By default the gates run on `claude`'s default model (why unqualified runs land on Sonnet/Opus). To run them cheaper — e.g. Haiku for a low-risk PR — set the model one of two ways:
+- **Via the ticket's Plan:** add `| Gate model: <model>` to the committed `plan.md` `## Sign-off` line — the same field interactive `sprint complete` already honors. `sprint-headless` reads it and passes `--model <model>` to the dispatch; the literal `session` or an absent field means the default. Example: `Tier: normal | Risk: low-risk client-only change | Gate model: haiku`.
+- **Via the environment:** set `ANTHROPIC_MODEL` in the workflow step's `env:` (e.g. `ANTHROPIC_MODEL: claude-haiku-4-5`) — `claude` honors it. An explicit `Gate model:` takes precedence when both are set.
+
+The model applies to the dispatched reviewer/evaluator subagents (the expensive part), not just the orchestrator — verified via the run's `modelUsage`.
+
 ## When a Gate Legitimately Can't Pass Headlessly
 
 Some acceptance criteria are inherently untestable by an automated evaluator — e.g. a claim that only a real `claude -p` dispatch can verify, which would cost real API money on every CI run. If the evaluator correctly fails such a criterion, headless grading exits 1, and it should: the CLI never auto-waives anything.
@@ -123,6 +129,8 @@ sprint-headless-eval <spec-file> --base-ref <ref>
 `--base-ref` (or `$GITHUB_BASE_REF`) is required. Relative refs (`HEAD~1`, `main~3`, `HEAD^`) are accepted.
 
 The evaluator grades each criterion with pass/fail/partial and `file:line` evidence, writes `eval-report.md` in the same directory as the spec file, and prints `HEADLESS_VERDICT: PASS` (exit 0) or `HEADLESS_VERDICT: FAIL` (exit 1).
+
+To run the evaluator on a specific model (e.g. Haiku to save tokens), pass `--model <model>` — an alias (`haiku`/`sonnet`/`opus`) or a full model id: `sprint-headless-eval specs/x.md --base-ref main --model haiku`. Alternatively set `ANTHROPIC_MODEL` in the environment; `claude` honors either. The model governs the dispatched evaluator subagent, not just the orchestrator.
 
 ### Differences from `sprint-headless`
 

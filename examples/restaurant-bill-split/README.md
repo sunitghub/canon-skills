@@ -530,8 +530,14 @@ GitHub closes the linked issue.
 ### What to expect / notes
 
 - A run takes ~2–3 minutes (checkout + `npm install` + one evaluator dispatch, ~30–40k tokens).
-- The evaluator picks whatever model `claude` defaults to on the runner (observed: Sonnet / Opus);
-  the verdict and `file:line` evidence print in the step log and the job summary.
+- **Model / cost control.** By default the evaluator runs on whatever model `claude` defaults to
+  on the runner (Sonnet/Opus). To force a cheaper model, add `--model haiku` to the gate step
+  (`sprint-headless-eval specs/max-people.md --base-ref … --model haiku`), or set
+  `ANTHROPIC_MODEL: claude-haiku-4-5` in the step's `env:`. For the full `sprint-headless <ticket>`
+  path, put `| Gate model: haiku` on the ticket's committed `plan.md` `## Sign-off` line — the same
+  field the board's **Plan** tab Model dropdown edits — and headless honors it. The model applies to
+  the dispatched evaluator subagent, not just the orchestrator. The verdict and `file:line` evidence
+  print in the step log and the job summary.
 - A harmless `Node.js 20 is deprecated … forced to run on Node.js 24` annotation may appear from
   `actions/checkout@v4` — it doesn't affect the gate.
 - `sprint-headless-eval` grades the spec's criteria only. For the full reviewer + evaluator +
