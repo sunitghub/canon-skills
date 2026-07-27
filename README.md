@@ -186,6 +186,12 @@ A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.
 
 <a href="docs/index.html#doc-editing"><img src="meta/screenshots/doc-editing-demo.gif" alt="Doc editing demo clip" width="680"></a>
 
+#### CI gate & Eval-only mode
+
+<img src="meta/screenshots/ci-gate-setup.png" alt="sprint-check board header with the ⚙ CI 'Set up CI gate' button and a toast confirming .github/workflows/canon-gate.yml was written — one click generates the PR-grading workflow" width="680">
+
+<sub>New tickets can be marked <strong>Eval-only</strong> (evaluator-only headless grading) alongside <strong>CI</strong>; the ⚙ CI button writes a ticket-driven, gate-aware <code>canon-gate.yml</code> so opened PRs are graded automatically.</sub>
+
 #### Plan Incomplete
 
 <a href="docs/sprint-check.md#ticket-completeness"><img src="meta/screenshots/plan-incomplete.png" alt="Plan incomplete warning screenshot" width="680"></a>
