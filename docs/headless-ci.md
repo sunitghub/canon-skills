@@ -28,7 +28,7 @@ Everything else about the ticket stays exactly as normal — `tkt ci <id> off` s
 tools/sprint-headless <ticket-id> --base-ref <ref>
 ```
 
-`--base-ref` (or `$GITHUB_BASE_REF`) is required — headless mode never infers a diff base the way an interactive session's `git merge-base HEAD origin/main` does. Point it at the PR's actual target branch.
+`--base-ref` (or `$GITHUB_BASE_REF`) points at the PR's target branch. When omitted it defaults to `origin/main` (then `main`, else a clear error) — convenient for local runs; in CI always pass it explicitly (the workflow template does), so the diff base is never ambiguous.
 
 Exit code 0 means all three gates passed; exit code 1 means a gate failed, or the invocation itself errored (auth, rate limit, dispatch failure — hard-fail, fail closed). The full grading summary, including each gate's individual verdict, prints to stdout.
 
@@ -123,23 +123,25 @@ Frontmatter is optional. The body must contain at least one `- [ ]` or `- [x]` c
 ### Running It
 
 ```
-sprint-headless-eval <spec-file> --base-ref <ref>
+sprint-headless-eval <ticket-id|spec-file> [--base-ref <ref>] [--model <model>]
 ```
 
-`--base-ref` (or `$GITHUB_BASE_REF`) is required. Relative refs (`HEAD~1`, `main~3`, `HEAD^`) are accepted.
+Pass **a ticket id** (`t-xxxx`) to grade that ticket's `.tickets/<id>/acceptance.md` and write `eval-report.md` **into the ticket folder** — every artifact stays ticket-self-contained, and its `## QA` items are not graded (per `eval.md`, QA is the human's attestation). Or pass **any markdown spec file** with `- [ ]` criteria; its `eval-report.md` is written next to it.
 
-The evaluator grades each criterion with pass/fail/partial and `file:line` evidence, writes `eval-report.md` in the same directory as the spec file, and prints `HEADLESS_VERDICT: PASS` (exit 0) or `HEADLESS_VERDICT: FAIL` (exit 1).
+`--base-ref` (or `$GITHUB_BASE_REF`) defaults to `origin/main` (then `main`, else a clear error) when omitted; an explicit `--base-ref` and `$GITHUB_BASE_REF` take precedence, in that order. Relative refs (`HEAD~1`, `main~3`, `HEAD^`) are accepted.
 
-To run the evaluator on a specific model (e.g. Haiku to save tokens), pass `--model <model>` — an alias (`haiku`/`sonnet`/`opus`) or a full model id: `sprint-headless-eval specs/x.md --base-ref main --model haiku`. Alternatively set `ANTHROPIC_MODEL` in the environment; `claude` honors either. The model governs the dispatched evaluator subagent, not just the orchestrator.
+The evaluator grades each criterion with pass/fail/partial and `file:line` evidence, writes `eval-report.md` (in the ticket folder, or next to the spec file), and prints `HEADLESS_VERDICT: PASS` (exit 0) or `HEADLESS_VERDICT: FAIL` (exit 1).
+
+To run the evaluator on a specific model (e.g. Haiku to save tokens), pass `--model <model>` — an alias (`haiku`/`sonnet`/`opus`) or a full model id: `sprint-headless-eval t-abcd --model haiku`. Alternatively set `ANTHROPIC_MODEL` in the environment; `claude` honors either. The model governs the dispatched evaluator subagent, not just the orchestrator.
 
 ### Differences from `sprint-headless`
 
 | | `sprint-headless` | `sprint-headless-eval` |
 |---|---|---|
 | Gates run | reviewer + evaluator + security-review | evaluator only |
-| Input | ticket ID + committed plan.md/acceptance.md | any markdown spec file with criteria |
-| Requires | `tkt ci <id> on`, plan approved, ticket committed | just the spec file and a git repo |
-| Output | review-notes.md + eval-report.md in `.tickets/<id>/` | eval-report.md next to the spec file |
+| Input | ticket ID + committed plan.md/acceptance.md | a **ticket id** (grades its acceptance.md) or any markdown spec file with criteria |
+| Requires | `tkt ci <id> on`, plan approved, ticket committed | just the ticket/spec and a git repo |
+| Output | review-notes.md + eval-report.md in `.tickets/<id>/` | eval-report.md in the ticket folder (ticket id) or next to the spec file |
 | Cost | ~100k+ tokens (three subagents) | ~30-40k tokens (one subagent) |
 
 ### Example GitHub Actions Step

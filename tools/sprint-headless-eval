@@ -19,20 +19,36 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/ticket-root.sh"
 
 # --- Argument parsing ---
 
 SPEC_FILE="${1:-}"
 [[ -z "$SPEC_FILE" || "$SPEC_FILE" == --* ]] && {
-  echo "Usage: sprint-headless-eval <spec-file> --base-ref <ref> [--model <model>]" >&2
+  echo "Usage: sprint-headless-eval <ticket-id|spec-file> --base-ref <ref> [--model <model>]" >&2
   echo "" >&2
-  echo "Grades the checklist criteria in <spec-file> against the diff between" >&2
-  echo "<base-ref> and HEAD. Runs only the evaluator (no reviewer, no security-review)." >&2
+  echo "Grades checklist criteria against the diff between <base-ref> and HEAD," >&2
+  echo "running only the evaluator (no reviewer, no security-review)." >&2
   echo "" >&2
-  echo "The spec file is a markdown file with - [ ] checklist items as criteria." >&2
+  echo "  <ticket-id>  a t-xxxx id: grades .tickets/<id>/acceptance.md and writes" >&2
+  echo "               eval-report.md into that ticket folder." >&2
+  echo "  <spec-file>  any markdown file with - [ ] checklist items as criteria;" >&2
+  echo "               eval-report.md is written next to it." >&2
+  echo "" >&2
+  echo "--base-ref defaults to origin/main (then main) when omitted." >&2
   exit 1
 }
 shift
+
+# Ticket-id mode: `sprint-headless-eval t-xxxx` grades that ticket's acceptance.md
+# and writes the report into the ticket folder (ticket-self-contained). Any other
+# first arg is treated as a spec-file path (original behavior).
+if [[ "$SPEC_FILE" =~ ^t-[a-z0-9]{4}$ ]]; then
+  TDIR="$(tickets_dir)/$SPEC_FILE"
+  [[ -d "$TDIR" ]] || { echo "Error: ticket '$SPEC_FILE' not found at $TDIR." >&2; exit 1; }
+  [[ -f "$TDIR/acceptance.md" ]] || { echo "Error: ticket '$SPEC_FILE' has no acceptance.md at $TDIR/acceptance.md." >&2; exit 1; }
+  SPEC_FILE="$TDIR/acceptance.md"
+fi
 
 BASE_REF="${GITHUB_BASE_REF:-}"
 MODEL=""
@@ -44,10 +60,20 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -z "$BASE_REF" ]] && {
-  echo "Error: --base-ref (or \$GITHUB_BASE_REF) is required — headless mode never infers a diff base." >&2
-  exit 1
-}
+# Base ref precedence: explicit --base-ref > $GITHUB_BASE_REF > default origin/main
+# (then main). This softens headless's prior "never infers a base" rule for local/
+# ticket convenience; CI still passes its base explicitly (the workflow template
+# does), so the default only ever helps local runs. Error only if no default resolves.
+if [[ -z "$BASE_REF" ]]; then
+  if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    BASE_REF="origin/main"
+  elif git rev-parse --verify --quiet main >/dev/null 2>&1; then
+    BASE_REF="main"
+  else
+    echo "Error: no --base-ref/\$GITHUB_BASE_REF given and could not resolve a default base ref (origin/main or main). Pass --base-ref explicitly." >&2
+    exit 1
+  fi
+fi
 
 # Validate --model the same way as base-ref: a model alias (haiku/sonnet/opus)
 # or a full model id — letters, digits, '.', '_', '-' only. Rejects shell
@@ -77,9 +103,11 @@ MODEL_ARGS=()
 }
 
 # Extract criteria: lines matching `- [ ] ...` or `- [x] ...` (case-insensitive x)
-# Skip YAML frontmatter (between --- delimiters) if present.
+# Skip YAML frontmatter (between --- delimiters) if present, and skip any items
+# under a `## QA` heading — per eval.md, the QA "Tested locally" attestation is
+# not the evaluator's to grade (relevant when the file is a ticket's acceptance.md).
 CRITERIA="$(awk '
-  BEGIN { in_front = 0; past_front = 0 }
+  BEGIN { in_front = 0; past_front = 0; in_qa = 0 }
   /^---$/ {
     if (!past_front) {
       if (in_front) { past_front = 1; next }
@@ -87,6 +115,9 @@ CRITERIA="$(awk '
     }
   }
   in_front && !past_front { next }
+  /^##[[:space:]]+QA([[:space:]]|$)/ { in_qa = 1; next }
+  /^##[[:space:]]/ { in_qa = 0; next }
+  in_qa { next }
   /^[[:space:]]*-[[:space:]]*\[[[:space:]xX]\]/ { print }
 ' "$SPEC_FILE")"
 

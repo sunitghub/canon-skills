@@ -40,6 +40,10 @@ git -C "$WORK" config user.name t
 echo hello > "$WORK/file.txt"
 git -C "$WORK" add file.txt
 git -C "$WORK" commit -q -m init
+# Deterministic branch name with no `main`/`origin/main`, so the base-ref default
+# resolution (origin/main → main → error) is predictable across runners; case 15
+# creates those refs explicitly when it needs them.
+git -C "$WORK" branch -M work
 
 seed_ticket() {
   local id="$1"
@@ -129,13 +133,15 @@ after="$(git -C "$WORK" rev-parse HEAD)"
 out="$(cd "$WORK" && run_fail "$SPRINT_HEADLESS" t-aaaa --base-ref HEAD)"
 assert_contains "$out" "Plan approved"
 
-# ── 4. Approved, but missing --base-ref ─────────────────────────────────
+# ── 4. Approved, no --base-ref, and no default resolves (t-54e5) ────────
+# With no --base-ref/$GITHUB_BASE_REF the tools default to origin/main → main;
+# WORK has neither (branch is `work`, no remote), so it errors clearly instead.
 
 sed -i.bak 's/- \[ \] Plan approved/- [x] Plan approved/' "$WORK/.tickets/t-aaaa/plan.md"
 rm -f "$WORK/.tickets/t-aaaa/plan.md.bak"
 (cd "$WORK" && git add -f ".tickets/t-aaaa/")
 out="$(cd "$WORK" && GITHUB_BASE_REF= run_fail "$SPRINT_HEADLESS" t-aaaa)"
-assert_contains "$out" "base-ref"
+assert_contains "$out" "could not resolve a default base ref"
 
 # ── 5. All guard rails pass; claude -p invocation itself fails ─────────
 
@@ -447,6 +453,80 @@ assert_contains "$out" "not a valid model"
 
 rm -rf "$STUB_CAP_DIR"; rm -f "$CAP_ARGS"
 
+# ── 15. sprint-headless-eval ticket-id mode + QA exclusion + base-ref default (t-54e5) ──
+SPRINT_HEADLESS_EVAL="$ROOT/tools/sprint-headless-eval"
+mkdir -p "$WORK/skills/sprint"
+seed_ticket t-ev01   # acceptance.md: Criteria/Test Plan "fixture" + QA "Tested locally"
+
+PROMPT_CAP="$(mktemp)"; ARGS_CAP="$(mktemp)"
+STUB_EV_DIR="$(mktemp -d)"
+cat > "$STUB_EV_DIR/claude" <<EOF
+#!/usr/bin/env bash
+printf '%s' "\$2" > "$PROMPT_CAP"
+for a in "\$@"; do printf '<<ARG>>%s\n' "\$a"; done > "$ARGS_CAP"
+printf '%s\n' '{"type":"result","is_error":false,"session_id":"ev","result":"@@@CANON_HEADLESS_REPORT:evaluator@@@\nVerdict: pass: ok\n@@@CANON_HEADLESS_REPORT:/evaluator@@@\nHEADLESS_VERDICT: PASS"}'
+EOF
+chmod +x "$STUB_EV_DIR/claude"
+
+# 15a. ticket-id: grades .tickets/<id>/acceptance.md, report into ticket folder,
+# no --base-ref → default origin/main (simulated), QA item excluded from criteria.
+git -C "$WORK" update-ref refs/remotes/origin/main HEAD
+rm -f "$WORK/.tickets/t-ev01/eval-report.md"
+(cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 >/dev/null)
+[[ -f "$WORK/.tickets/t-ev01/eval-report.md" ]] || fail "eval ticket mode: eval-report.md not written into the ticket folder"
+assert_contains "$(cat "$WORK/.tickets/t-ev01/eval-report.md")" "pass: ok"
+ev_prompt="$(cat "$PROMPT_CAP")"
+assert_contains "$ev_prompt" "git diff --name-only origin/main HEAD"
+assert_contains "$ev_prompt" "fixture"
+if [[ "$ev_prompt" == *"Tested locally"* ]]; then fail "eval ticket mode: QA 'Tested locally' leaked into graded criteria"; fi
+
+# 15b. missing ticket → clear error, no dispatch
+: > "$ARGS_CAP"
+out="$(cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" t-zzzz)"
+assert_contains "$out" "not found"
+[[ -s "$ARGS_CAP" ]] && fail "eval ticket mode: claude invoked for a missing ticket"
+
+# 15c. base-ref default falls back to main when origin/main is absent
+git -C "$WORK" update-ref -d refs/remotes/origin/main
+git -C "$WORK" branch -f main HEAD
+: > "$ARGS_CAP"
+(cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 >/dev/null)
+main_prompt="$(cat "$PROMPT_CAP")"
+assert_contains "$main_prompt" "git diff --name-only main HEAD"
+if [[ "$main_prompt" == *"origin/main"* ]]; then fail "eval: fell back to main but still referenced origin/main"; fi
+git -C "$WORK" branch -D main >/dev/null 2>&1 || true
+
+# 15d. --model works with the ticket-id form
+git -C "$WORK" update-ref refs/remotes/origin/main HEAD
+: > "$ARGS_CAP"
+(cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 --model haiku >/dev/null)
+{ grep -qx "<<ARG>>--model" "$ARGS_CAP" && grep -qx "<<ARG>>haiku" "$ARGS_CAP"; } || fail "eval ticket mode: --model haiku not passed"
+
+# 15e. explicit --base-ref beats the default
+(cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ev01 --base-ref HEAD >/dev/null)
+head_prompt="$(cat "$PROMPT_CAP")"
+assert_contains "$head_prompt" "git diff --name-only HEAD HEAD"
+if [[ "$head_prompt" == *"origin/main"* ]]; then fail "eval: default used despite explicit --base-ref"; fi
+
+# 15f. spec-file mode still works (report next to the spec)
+mkdir -p "$WORK/specs2"
+printf '# spec\n- [ ] some standalone criterion\n' > "$WORK/specs2/s.md"
+rm -f "$WORK/specs2/eval-report.md"
+(cd "$WORK" && PATH="$STUB_EV_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs2/s.md --base-ref HEAD >/dev/null)
+[[ -f "$WORK/specs2/eval-report.md" ]] || fail "eval spec mode: eval-report.md not written next to the spec"
+
+# 15g. neither origin/main nor main → clear error (fresh repo, no remote)
+NB="$(mktemp -d)"
+git -C "$NB" init -q; git -C "$NB" config user.email t@t.com; git -C "$NB" config user.name t
+echo x > "$NB/f"; git -C "$NB" add f; git -C "$NB" commit -q -m x; git -C "$NB" branch -M somebranch
+mkdir -p "$NB/skills/sprint" "$NB/specs"; printf '# s\n- [ ] x\n' > "$NB/specs/s.md"
+out="$(cd "$NB" && PATH="$STUB_EV_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" specs/s.md)"
+assert_contains "$out" "could not resolve a default base ref"
+rm -rf "$NB"
+
+git -C "$WORK" update-ref -d refs/remotes/origin/main 2>/dev/null || true
+rm -rf "$STUB_EV_DIR"; rm -f "$PROMPT_CAP" "$ARGS_CAP"
+
 rm -rf "$STUB_OK_DIR" "$STUB_BAD_DIR"
 
-echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled; model plumbing: Gate model:/--model reaches claude, session/absent passes none, invalid hard-fails before dispatch)"
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, no-resolvable-base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled; model plumbing: Gate model:/--model reaches claude, session/absent passes none, invalid hard-fails before dispatch; sprint-headless-eval ticket-id mode grades .tickets/<id>/acceptance.md into the ticket folder excluding ## QA, base-ref defaults origin/main→main with explicit override + clear no-default error, spec-file mode still works)"

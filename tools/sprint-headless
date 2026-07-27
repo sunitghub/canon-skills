@@ -32,7 +32,19 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ -z "$BASE_REF" ]] && { echo "Error: --base-ref (or \$GITHUB_BASE_REF) is required — headless mode never infers a diff base." >&2; exit 1; }
+# Base ref precedence: explicit --base-ref > $GITHUB_BASE_REF > default origin/main
+# (then main) — same rule as sprint-headless-eval. CI always passes its base
+# explicitly, so the default only helps local runs; error only if none resolves.
+if [[ -z "$BASE_REF" ]]; then
+  if git rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    BASE_REF="origin/main"
+  elif git rev-parse --verify --quiet main >/dev/null 2>&1; then
+    BASE_REF="main"
+  else
+    echo "Error: no --base-ref/\$GITHUB_BASE_REF given and could not resolve a default base ref (origin/main or main). Pass --base-ref explicitly." >&2
+    exit 1
+  fi
+fi
 
 # Same rationale as $ID above — a git ref name is far more permissive than a
 # ticket ID, so this only rejects the common, safe shape (branch/tag names,
