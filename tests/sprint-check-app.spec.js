@@ -498,6 +498,24 @@ test.describe('board modal', () => {
     }
   });
 
+  test('Set up CI gate writes canon-gate.yml and refuses on re-click (t-344e)', async ({ page }) => {
+    const wf = path.join(PROJECT_ROOT, '.github', 'workflows', 'canon-gate.yml');
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-ci-setup').click();
+      await expect(page.locator('#drop-toast')).toContainText('canon-gate.yml');
+      await expect.poll(() => fs.existsSync(wf)).toBe(true);
+
+      // Re-click → refuse-on-exists surfaced
+      await page.locator('#btn-ci-setup').click();
+      await expect(page.locator('#drop-toast')).toContainText('already exists');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.github'), { recursive: true, force: true });
+    }
+  });
+
   test('Research doc type available in + button and shows tab when present', async ({ page }) => {
     const title = `Research tab test ${Date.now()}`;
     let createdId = '';

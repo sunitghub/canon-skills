@@ -232,6 +232,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, startHeadlessRun(m[1], baseRef))
 		return
 	}
+	if path == "/api/ci-workflow" {
+		sendJSON(w, writeCIWorkflow())
+		return
+	}
 	if path == "/api/tickets" {
 		sendJSON(w, createTicket(
 			stringValue(payload, "title", "Untitled"),
@@ -803,6 +807,30 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	os.WriteFile(path, []byte(text), 0644)
 	t, _ := parseTicket(path)
 	return t
+}
+
+// writeCIWorkflow copies the shipped canon-gate workflow template to the
+// project's .github/workflows/canon-gate.yml. Fixed target path (no traversal);
+// refuses rather than clobbering an existing workflow. Mirror of server.py's
+// write_ci_workflow.
+func writeCIWorkflow() map[string]any {
+	rel := ".github/workflows/canon-gate.yml"
+	dest := filepath.Join(projectRoot, ".github", "workflows", "canon-gate.yml")
+	if _, err := os.Stat(dest); err == nil {
+		return map[string]any{"ok": false, "reason": "exists", "path": rel}
+	}
+	tmpl := filepath.Join(filepath.Dir(sprintHeadless), "canon-gate-template.yml")
+	data, err := os.ReadFile(tmpl)
+	if err != nil {
+		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
+	}
+	if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
+	}
+	if err := os.WriteFile(dest, data, 0644); err != nil {
+		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
+	}
+	return map[string]any{"ok": true, "path": rel}
 }
 
 func replaceTicket(id string, fn func(string) string) bool {

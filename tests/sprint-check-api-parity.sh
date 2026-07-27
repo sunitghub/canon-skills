@@ -28,6 +28,7 @@ py_routes() {
 go_routes() {
   {
     grep -oE 'case "/api/[^"]+"' "$MAIN_GO" | sed 's/case "//;s/"$//' || true
+    grep -oE 'path == "/api/[^"]+"' "$MAIN_GO" | sed 's/path == "//;s/"$//' || true
     grep -oE '`\^/api/[^`/()\$\\]+' "$MAIN_GO" | sed 's/`\^//' || true
   } | sed 's|/$||' | sort -u
 }
@@ -522,6 +523,33 @@ for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
   if grep -q '^gate:' "$WORK/.tickets/$fid/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label full create wrote a gate line ($fid)"; fi
 done
 
+# ── /api/ci-workflow parity (t-344e): both write byte-identical canon-gate.yml + refuse-on-exists ─
+# Both servers share $WORK, so exercise py fully (write + refuse), clear, then go.
+rm -rf "$WORK/.github"
+py_ci="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ci-workflow" -d '{}')"
+py_written="$(cat "$WORK/.github/workflows/canon-gate.yml")"
+py_ci2="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ci-workflow" -d '{}')"
+rm -rf "$WORK/.github"
+go_ci="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ci-workflow" -d '{}')"
+go_written="$(cat "$WORK/.github/workflows/canon-gate.yml")"
+go_ci2="$(curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ci-workflow" -d '{}')"
+python3 - "$py_ci" "$go_ci" "$py_ci2" "$go_ci2" <<'PY'
+import json, sys
+py_ci, go_ci, py_ci2, go_ci2 = (json.loads(a) for a in sys.argv[1:5])
+if py_ci.get("ok") is not True or go_ci.get("ok") is not True:
+    print(f"sprint-check-api-parity: FAIL — ci-workflow create not ok (py={py_ci} go={go_ci})"); sys.exit(1)
+if py_ci != go_ci:
+    print(f"sprint-check-api-parity: FAIL — ci-workflow create JSON mismatch (py={py_ci} go={go_ci})"); sys.exit(1)
+if py_ci2.get("ok") is not False or py_ci2.get("reason") != "exists":
+    print(f"sprint-check-api-parity: FAIL — server.py ci-workflow did not refuse-on-exists: {py_ci2}"); sys.exit(1)
+if py_ci2 != go_ci2:
+    print(f"sprint-check-api-parity: FAIL — ci-workflow refuse-on-exists JSON mismatch (py={py_ci2} go={go_ci2})"); sys.exit(1)
+PY
+cmp -s "$WORK/.github/workflows/canon-gate.yml" "$ROOT/tools/canon-gate-template.yml" || fail "sprint-check-api-parity: FAIL — go-written canon-gate.yml differs from the shipped template"
+[[ "$py_written" == "$go_written" ]] || fail "sprint-check-api-parity: FAIL — server.py and main.go wrote different canon-gate.yml content"
+[[ "$py_written" == "$(cat "$ROOT/tools/canon-gate-template.yml")" ]] || fail "sprint-check-api-parity: FAIL — server.py-written canon-gate.yml differs from the shipped template"
+rm -rf "$WORK/.github"
+
 cp "$SPRINT_HEADLESS_BACKUP" "$ROOT/tools/sprint-headless"
 chmod +x "$ROOT/tools/sprint-headless"
 rm -f "$SPRINT_HEADLESS_BACKUP"
@@ -531,4 +559,4 @@ chmod +x "$ROOT/tools/sprint-headless-eval"
 rm -f "$SPRINT_HEADLESS_EVAL_BACKUP"
 SPRINT_HEADLESS_EVAL_BACKUP=""
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval, for $WORK fixture)"
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"

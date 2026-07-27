@@ -67,6 +67,10 @@ To unblock a legitimate case like this, a human (never CI, never an agent) does 
 
 Run this only in an isolated, secret-scoped CI environment — `claude -p`'s own permission system genuinely restricts what the headless orchestrator and its subagents can do (`--permission-mode dontAsk` + a narrow `--allowedTools` — read/dispatch only, no unrestricted Bash), but an isolated runner is still recommended defense-in-depth, since the agent is processing PR content that could, in principle, be adversarial.
 
+## Generating the workflow from the board
+
+Instead of hand-adding the workflow, click **⚙ CI** ("Set up CI gate") in the sprint-check board header — it writes `.github/workflows/canon-gate.yml` from a shipped template (refusing if the file already exists, so it never clobbers a customized one). That workflow extracts the ticket id from the PR body (`Closes: t-xxxx`), then dispatches by the ticket's committed `gate`: `sprint-headless-eval` for `gate: eval`, else the full `sprint-headless`. You still: add an `ANTHROPIC_API_KEY` repo secret, commit + push the file, and (optionally) require the `grade` check in branch protection to block merges. The board only *writes the file* — it can't set GitHub secrets or push.
+
 ## Consumer-Project CI
 
 The example above only works when the CI checkout **is** canon's own repo — `tools/sprint-headless` exists at that relative path because canon's `tools/` directory is right there in the checkout.
