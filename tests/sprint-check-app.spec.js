@@ -461,6 +461,43 @@ test.describe('board modal', () => {
     expect(placeholder).not.toMatch(/^Description$/i);
   });
 
+  test('New Ticket Eval-only toggle is CI-gated and writes gate: eval (t-4e57)', async ({ page }) => {
+    const title = `Eval-only test ${Date.now()}`;
+    let createdId = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+
+      const evalPill = page.locator('#c-gate-eval');
+      // CI off → Eval-only is disabled (mode only meaningful with CI)
+      await expect(evalPill).toBeDisabled();
+
+      // Turn CI on → Eval-only becomes enabled
+      await page.locator('#c-ci').click();
+      await expect(evalPill).toBeEnabled();
+
+      // Enable Eval-only, then create
+      await evalPill.click();
+      await expect(evalPill).toHaveClass(/active/);
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+
+      // The created ticket.md carries both ci: true and gate: eval
+      const tm = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
+      expect(tm).toMatch(/^ci: true$/m);
+      expect(tm).toMatch(/^gate: eval$/m);
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
   test('Research doc type available in + button and shows tab when present', async ({ page }) => {
     const title = `Research tab test ${Date.now()}`;
     let createdId = '';

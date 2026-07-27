@@ -236,6 +236,48 @@ cmd_ci() {
   fi
 }
 
+cmd_gate() {
+  local id="${1:-}" value="${2:-}"
+  [[ -z "$id" ]] && { echo "Usage: tkt gate <id> [eval|full]" >&2; exit 1; }
+
+  local file
+  file="$(find_ticket "$id")"
+  id="$(get_field "$file" id)"
+
+  # No value → print the current mode (absent frontmatter line = full).
+  if [[ -z "$value" ]]; then
+    local cur
+    cur="$(get_field "$file" gate)"
+    printf "%s: gate=%s\n" "$id" "${cur:-full}"
+    return 0
+  fi
+
+  case "$value" in
+    eval)
+      # eval-only headless gate: sprint-headless-eval instead of the full pipeline.
+      if grep -q "^gate: " "$file"; then
+        set_field "$file" gate eval
+      else
+        awk '
+          /^---$/ { c++; if (c==2) { print "gate: eval" } ; print; next }
+          { print }
+        ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+      fi
+      ;;
+    full)
+      # full is the default, represented by the ABSENCE of the line (mirrors ci).
+      awk '
+        /^---$/ { fm++; print; next }
+        fm == 1 && /^gate: / { next }
+        { print }
+      ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+      ;;
+    *) echo "Error: mode must be 'eval' or 'full'" >&2; exit 1 ;;
+  esac
+
+  printf "%s: gate=%s\n" "$id" "$value"
+}
+
 cmd_close() {
   local id="" no_sprint=false
 
@@ -520,6 +562,10 @@ Commands:
                             by default inside canon's own repo; a consumer project
                             may have no such .gitignore entry at all, in which case
                             this is a harmless no-op.
+  gate <id> [eval|full]     Headless gate mode for the CI run button: 'eval' runs
+                            sprint-headless-eval (evaluator only), 'full' (default)
+                            runs the full sprint-headless pipeline. No arg prints
+                            the current mode. Only meaningful when ci is on.
   current                   Show active ticket
   reopen <id>               Set status to open
   ls [--status=X]           List tickets (unfiltered by default)
@@ -542,6 +588,7 @@ main() {
     close)          cmd_close "$@" ;;
     archive)        cmd_set_status "${1:-}" archived ;;
     ci)             cmd_ci "$@" ;;
+    gate)           cmd_gate "$@" ;;
     current)        cmd_current ;;
     reopen)         cmd_set_status "${1:-}" open ;;
     ls|list)        cmd_ls "$@" ;;

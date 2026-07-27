@@ -1512,6 +1512,7 @@
         <span class="create-label">Options</span>
         <div class="create-pills">
           <button class="create-pill" id="c-ci" type="button" title="Mark ticket CI-eligible for headless grading">CI</button>
+          <button class="create-pill" id="c-gate-eval" type="button" title="Eval-only headless gate: the run button uses sprint-headless-eval (evaluator only) instead of the full pipeline. Requires CI.">Eval-only</button>
           <button class="create-pill" id="c-eval-override" type="button" title="Allow closing even if evaluator reports partial/fail">Eval Override</button>
         </div>
       </div>
@@ -3872,6 +3873,7 @@ async function uploadVisual(ticketId, filename, base64) {
   let selectedPri  = 2;
   let ciEnabled = false;
   let evalOverride = false;
+  let gateEval = false;
   let templateUntouched = true;
   let stagedVisuals = [];
 
@@ -3889,14 +3891,24 @@ async function uploadVisual(ticketId, filename, base64) {
 
   const ciBtn = document.getElementById('c-ci');
   const evalBtn = document.getElementById('c-eval-override');
+  const gateBtn = document.getElementById('c-gate-eval');
 
-  ciBtn.addEventListener('click', () => { ciEnabled = !ciEnabled; ciBtn.classList.toggle('active', ciEnabled); });
+  // Eval-only is only meaningful when CI is on; keep it disabled + reset otherwise.
+  function syncGate() {
+    gateBtn.disabled = !ciEnabled;
+    gateBtn.style.opacity = ciEnabled ? '' : '0.4';
+    if (!ciEnabled) { gateEval = false; gateBtn.classList.remove('active'); }
+  }
+
+  ciBtn.addEventListener('click', () => { ciEnabled = !ciEnabled; ciBtn.classList.toggle('active', ciEnabled); syncGate(); });
+  gateBtn.addEventListener('click', () => { if (!ciEnabled) return; gateEval = !gateEval; gateBtn.classList.toggle('active', gateEval); });
   evalBtn.addEventListener('click', () => { evalOverride = !evalOverride; evalBtn.classList.toggle('active', evalOverride); });
 
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-    ciEnabled = false; evalOverride = false; stagedVisuals = [];
+    ciEnabled = false; evalOverride = false; gateEval = false; stagedVisuals = [];
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
+    gateBtn.classList.remove('active'); syncGate();
     titleEl.value = ''; detectEl.textContent = '';
     bodyEl.value = TYPE_TEMPLATES['task'] || '';
     queueEl.textContent = '→ will open in: Open';
@@ -3967,7 +3979,7 @@ async function uploadVisual(ticketId, filename, base64) {
     try {
       const ticket = await fetch('/api/tickets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride }),
+        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full' }),
       }).then(r => r.json());
 
       if (stagedVisuals.length) {
