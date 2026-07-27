@@ -85,6 +85,35 @@ TIER="$(awk '
 BUGFIX=0
 [[ "$TIER" == "bugfix" ]] && BUGFIX=1
 
+# Read `Gate model:` from the same committed ## Sign-off line (the field the
+# interactive `sprint complete` already honors — see complete.md's "Model tier
+# for gates"). Wiring it here makes the Plan's model choice apply to headless CI
+# too, closing the interactive-vs-headless gap. `session` (or an absent field)
+# means "no override" → claude's default. Any other value is passed as --model.
+GATE_MODEL="$(awk '
+  /^##[[:space:]]+Sign-off[[:space:]]*$/ { in_so=1; next }
+  in_so && /^##[[:space:]]/ { exit }
+  in_so && /^[[:space:]]*[Tt]ier[[:space:]]*:/ {
+    if (match($0, /[Gg]ate[[:space:]]+model[[:space:]]*:[[:space:]]*/)) {
+      s = substr($0, RSTART+RLENGTH)
+      sub(/[[:space:]]*\|.*$/, "", s)
+      gsub(/[[:space:]]/, "", s)
+      print tolower(s)
+    }
+    exit
+  }
+' "$PLAN_FILE")"
+MODEL=""
+if [[ -n "$GATE_MODEL" && "$GATE_MODEL" != "session" ]]; then
+  [[ "$GATE_MODEL" =~ ^[A-Za-z0-9._-]+$ ]] || {
+    echo "Error: Gate model '$GATE_MODEL' in $PLAN_FILE ## Sign-off is invalid (alias or model id — letters, digits, '.', '_', '-' only)." >&2
+    exit 1
+  }
+  MODEL="$GATE_MODEL"
+fi
+MODEL_ARGS=()
+[[ -n "$MODEL" ]] && MODEL_ARGS=(--model "$MODEL")
+
 # Resolve the skills-doc path prefix and subagent-log.sh location for the
 # repo this script is running in — canon's own repo (top-level skills/) or a
 # consumer project (skills.sh add's .claude/skills/ symlink to $SKILLS_ROOT/skills).
@@ -158,6 +187,7 @@ set +e
 RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
   --output-format json \
   --permission-mode dontAsk \
+  ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
   --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
 INVOKE_STATUS=$?
 set -e

@@ -361,6 +361,92 @@ if [[ "$bugfix_err" == *"could not extract the reviewer's report"* ]]; then fail
 
 rm -rf "$STUB_BUGFIX_DIR"; rm -f "$PROMPT_CAPTURE"
 
+# ── 14. Model plumbing (t-4003) — Gate model / --model reaches claude -p ──────
+# A claude stub that records its argv (one marker-prefixed line per arg) lets us
+# assert --model is/ isn't passed, with no real dispatch. The marker prefix makes
+# a real `--model` argv token distinguishable from the same text inside the prompt.
+SPRINT_HEADLESS_EVAL="$ROOT/tools/sprint-headless-eval"
+CAP_ARGS="$(mktemp)"
+STUB_CAP_DIR="$(mktemp -d)"
+cat > "$STUB_CAP_DIR/claude" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do printf '<<ARG>>%s\n' "\$a"; done > "$CAP_ARGS"
+printf '%s\n' '{"type":"result","is_error":false,"session_id":"cap","result":"@@@CANON_HEADLESS_REPORT:reviewer@@@\nVerdict: YES\n@@@CANON_HEADLESS_REPORT:/reviewer@@@\n@@@CANON_HEADLESS_REPORT:evaluator@@@\nVerdict: pass: ok\n@@@CANON_HEADLESS_REPORT:/evaluator@@@\nHEADLESS_VERDICT: PASS"}'
+EOF
+chmod +x "$STUB_CAP_DIR/claude"
+
+assert_model_arg()   { grep -qx "<<ARG>>--model" "$CAP_ARGS" && grep -qx "<<ARG>>$1" "$CAP_ARGS" || fail "sprint-headless model test: expected '--model $1' in claude argv"; }
+assert_no_model_arg() { if grep -qx "<<ARG>>--model" "$CAP_ARGS"; then fail "sprint-headless model test: unexpected --model in claude argv"; fi; }
+
+# plan.md writer — files are already tracked (tkt ci on), and the tools read the
+# working-tree plan.md, so re-committing per scenario isn't needed.
+write_plan() {
+  cat > "$WORK/.tickets/t-mdl1/plan.md" <<EOF
+# Plan
+## Sign-off
+$1
+- [x] Plan approved — proceed to implementation
+## Approach
+fixture
+## Files
+- none
+## Decisions
+- none
+EOF
+}
+
+mkdir -p "$WORK/skills/sprint"
+seed_ticket t-mdl1
+(cd "$WORK" && "$ROOT/tools/tkt" ci t-mdl1 on >/dev/null)
+
+# 14a. Gate model: haiku → --model haiku reaches claude
+write_plan 'Tier: normal | Risk: fixture | Gate model: haiku'
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+assert_model_arg haiku
+
+# 14b. Gate model: session → no --model (claude default)
+write_plan 'Tier: normal | Risk: fixture | Gate model: session'
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+assert_no_model_arg
+
+# 14c. No Gate model field → no --model (unchanged default path)
+write_plan 'Tier: normal | Risk: fixture'
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD >/dev/null)
+assert_no_model_arg
+
+# 14d. Invalid Gate model → hard-fail before claude, no dispatch
+write_plan 'Tier: normal | Risk: fixture | Gate model: bad;model'
+: > "$CAP_ARGS"
+out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD)"
+assert_contains "$out" "is invalid"
+[[ -s "$CAP_ARGS" ]] && fail "sprint-headless model test: claude was invoked despite an invalid Gate model"
+
+# 14e. sprint-headless-eval --model haiku → --model haiku reaches claude
+mkdir -p "$WORK/specs"
+cat > "$WORK/specs/x.md" <<'EOF'
+# spec
+- [ ] something holds
+EOF
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD --model haiku >/dev/null)
+assert_model_arg haiku
+
+# 14f. sprint-headless-eval without --model → no --model
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
+assert_no_model_arg
+
+# 14g. sprint-headless-eval --model invalid → hard-fail before claude
+: > "$CAP_ARGS"
+out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD --model 'bad;model')"
+assert_contains "$out" "not a valid model"
+[[ -s "$CAP_ARGS" ]] && fail "sprint-headless-eval model test: claude was invoked despite an invalid --model"
+
+rm -rf "$STUB_CAP_DIR"; rm -f "$CAP_ARGS"
+
 rm -rf "$STUB_OK_DIR" "$STUB_BAD_DIR"
 
-echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled)"
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, missing base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled; model plumbing: Gate model:/--model reaches claude, session/absent passes none, invalid hard-fails before dispatch)"
