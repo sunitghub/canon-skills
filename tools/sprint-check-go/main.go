@@ -186,6 +186,21 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			serveFile(w, p, mime.TypeByExtension(filepath.Ext(p)))
 			return
 		}
+		if m := regexp.MustCompile(`^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$`).FindStringSubmatch(path); m != nil {
+			ticketID, relpath := m[1], unescape(m[2])
+			p, ok := safeTicketDoc(ticketID+"/"+relpath, ".feature")
+			if !ok || !exists(p) {
+				http.NotFound(w, r)
+				return
+			}
+			data, err := os.ReadFile(p)
+			if err != nil {
+				http.NotFound(w, r)
+				return
+			}
+			sendJSON(w, map[string]string{"content": string(data)})
+			return
+		}
 		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
 			sendJSON(w, getHeadlessRunState(m[1]))
 			return

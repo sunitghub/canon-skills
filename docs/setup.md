@@ -55,6 +55,22 @@ explicitly updates it at close. Keep the content inside `HANDOFF.md`'s `<!-- can
 markers under 80 lines (checked at close time; content you add outside those markers isn't counted).
 Prune stale entries freely — git history preserves everything.
 
+## Tracking `.tickets/` in your project
+
+canon keeps its **own** working `.tickets/` gitignored (they're canon's internal dev tickets, not
+product). **Projects that consume canon should do the opposite — track `.tickets/` in git, don't add
+it to `.gitignore`.** Your sprint state (`acceptance.md`, `plan.md`, `summary.md`, and any
+ticket-local `features/*.feature` specs) is the durable record that survives context resets, and it
+must be committed for two reasons:
+
+- **Headless CI grading** reads the graded ticket's `acceptance.md` from the checked-out repo — an
+  uncommitted ticket is invisible to the PR gate.
+- **Ticket-scoped `.feature` references** (a criterion pointing at `features/<name>.feature` under
+  the ticket) only render on the board and reach CI if the file is committed with the ticket.
+
+If you started from a template that gitignores `.tickets/`, remove that line so your agent's planning
+and specs travel with the repo.
+
 ## Skill lifecycle
 
 See **[standards/skill-setup-std.md](../standards/skill-setup-std.md)** for the lint → eval → register order of operations.
