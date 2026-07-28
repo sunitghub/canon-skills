@@ -288,6 +288,19 @@ recognized step shapes, not switching to free-text parsing.
 | Valid code, below minimum | 40.00 | `SAVE10` | `false` | `reason: "minimum not met"` |
 | Unknown code | 200.00 | `SAVE99` | `false` | `reason: "invalid code"` |
 
+## What each case means in the business
+
+The table above is the machine-facing contract. This companion table keeps the same cases legible to
+the person who owns the pricing policy and explains what each result protects.
+
+| Case | What to run or change | Expected result | Why it matters |
+|---|---|---|---|
+| Valid code above minimum | Run the saved spec with cart `120.00` and code `SAVE20`. | `[PASS]`; `applied: true`; final total `96.00`. | Confirms an approved promotion is applied at the correct threshold and amount. |
+| Valid code below minimum | Run the saved spec with cart `40.00` and code `SAVE10`. | `[PASS]`; `applied: false`; reason `minimum not met`. | Prevents discounts from leaking below the commercial minimum and protects margin. |
+| Unknown code | Run the saved spec with cart `200.00` and code `SAVE99`. | `[PASS]`; `applied: false`; reason `invalid code`. | Prevents an unapproved or mistyped code from changing the order total. |
+| Deliberate implementation break | Remove the minimum-total check from `discount.py`, then rerun the same spec. | The below-minimum scenario returns `[FAIL]` with the actual/expected mismatch. | Demonstrates that the written policy catches a regression without someone having to inspect the diff. |
+| Restore the implementation | Put the minimum-total check back and rerun the spec. | Three `[PASS]` lines; exit code `0`. | Confirms the production behavior is back in agreement with the policy contract. |
+
 ## Where this pattern fits — and where it doesn't
 
 Say this part out loud if you're running this as a group workshop; it's what keeps the exercise
