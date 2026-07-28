@@ -117,4 +117,20 @@ for file in "$SHARED" "$EVAL" "$REVIEW"; do
   grep -qF "$CITATION_ESCAPE_RULE" "$file" || fail "doc-mirror-parity: $label is missing the citation backtick-escape rule verbatim (\"$CITATION_ESCAPE_RULE\") — the citation-format wording has diverged across the gate docs"
 done
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md)"
+# ── Check G: the scenario-backed grading language (t-c67e) must survive in
+# eval.md (the evaluator runs the runner command, and never grades a runnable
+# scenario item `not-run`) and start.md (scenario-backed criteria name a runner
+# command and are locked before implementation). No CLI gate enforces scenario
+# grading — this locks the protocol language against silent deletion, the same
+# "lock the convention" pattern as Check E for t-277d.
+EVAL_SCENARIO='scenario-backed criterion'
+EVAL_SCENARIO_NOTRUN='do not grade it `not-run` from static reading when the command is present and runnable'
+START_SCENARIO='Scenario-backed acceptance criteria'
+START_ORDERING='locked at the sprint-start approval gate'
+
+grep -qF "$EVAL_SCENARIO" "$EVAL" || fail "doc-mirror-parity: eval.md is missing the scenario-backed run-to-grade rule verbatim (\"$EVAL_SCENARIO\") (t-c67e)"
+grep -qF "$EVAL_SCENARIO_NOTRUN" "$EVAL" || fail "doc-mirror-parity: eval.md is missing the scenario 'do not grade not-run when runnable' rule verbatim (t-c67e)"
+grep -qF "$START_SCENARIO" "$START" || fail "doc-mirror-parity: start.md is missing the scenario-backed acceptance-criteria guidance verbatim (\"$START_SCENARIO\") (t-c67e)"
+grep -qF "$START_ORDERING" "$START" || fail "doc-mirror-parity: start.md is missing the before-implementation ordering norm verbatim (\"$START_ORDERING\") (t-c67e)"
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md)"
