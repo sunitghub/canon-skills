@@ -45,6 +45,20 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      ticket). The reviewer/evaluator verify visual criteria against actual
      rendered output — see `shared-gate-protocol.md ## Self-serve visual
      verification` for the browser-binary recipe (no Node/Playwright needed).
+   - **Scenario-backed acceptance criteria (optional — for input→output claims).** A criterion
+     that is a genuine input→output claim MAY carry a Given/When/Then block — an inline
+     ` ```gherkin ` block (`t-6e32`), or a ` ```gherkin-file ` reference to a ticket-local
+     `.feature` (`t-f89a`). If it does, `## Test Plan` **must** name the exact runner command
+     that executes it (e.g. `python dsl_runner.py specs/discount.feature`): the evaluator grades a
+     **scenario-backed** criterion by *running that command and reading the boolean exit code*,
+     not by reading prose. canon ships no runner — the project provides a small fixed-pattern one
+     (see `examples/dsl-discount-spec/dsl_runner.py`), deliberately not a general Gherkin engine.
+     This is additive — most criteria stay prose; use it only where a machine can answer
+     pass/fail. **Ordering (what makes it a real check):** scenario-backed criteria must be
+     **locked at the sprint-start approval gate**, before implementation — never add or edit a
+     scenario during implementation to match the code you just wrote. A spec authored alongside
+     the code it checks is a regression lock, not a correctness proof; the fresh evaluator
+     discloses a scenario that appears authored or edited alongside the implementation.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
    - **Visual reference artifacts.** Visual reference (pasted image, or a file path
      from the user — including an absolute host path like `C:\...\Mockup-1.jpg`) as

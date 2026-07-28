@@ -283,7 +283,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      is added and run.
    - ✓ passed | ✗ failed | ? not run (maps to `eval.md`'s `pass`/`fail`/`not-run` — same three
      states, different notation since this step is a human-facing recap, not the evaluator's
-     own report format)
+     own report format). A **scenario-backed** item — a Test Plan line naming a runner command
+     (e.g. `python dsl_runner.py specs/x.feature`) — should show ✓/✗ from an actual run, not `?`:
+     the evaluator runs it rather than reading it (`eval.md` steps 6–7).
    - If any ✗ or ?: report which tests did not pass. Do not close the ticket. Stop here.
    - Include impact and regression tests.
    - Classify required evidence for each item. Load-bearing test/tool evidence must fail closed

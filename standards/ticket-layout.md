@@ -87,6 +87,14 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 | `mutation-report.md` | `sprint complete` step 3 (advisory; only when logic files changed) | no — advisory only, never close-gated | Surviving mutants (tests that cannot fail) reported by the `mutation-test` skill; renders as a doc tab like any companion `.md` |
 | `summary.md` | `sprint complete` step 8 | yes — must exist before close | Plan-vs-actual table; one row per acceptance criterion |
 
+**Scenario-backed criteria (`t-c67e`).** A `## Criteria` item in `acceptance.md` may be
+*scenario-backed* — it carries a Given/When/Then block, either inline (` ```gherkin `, `t-6e32`)
+or a reference to a ticket-local `.feature` (` ```gherkin-file `, `t-f89a`). When it is, `## Test
+Plan` **must** name the exact runner command that executes the scenario, because the evaluator
+grades that criterion by running the command and reading its exit code (`pass` iff `0`), not by
+reading prose — see `skills/sprint/reference/eval.md` step 6. Such criteria must be locked at the
+sprint-start approval gate before implementation. This is additive; prose criteria are unchanged.
+
 **Optional `Gate model:` field.** `plan.md`'s `## Sign-off` line can carry a third segment,
 `Tier: <tier> | Risk: <one line> | Gate model: <value>`, to force the `sprint complete`
 reviewer/evaluator dispatches onto a specific model — `<value>` is a model id (`haiku`,
