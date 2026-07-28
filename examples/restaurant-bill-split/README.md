@@ -176,6 +176,14 @@ You need canon installed and the board running:
     ![Closed ticket Summary tab showing a plan-vs-actual table (delivered per criterion)](images/done-summary.png)
 
 
+> **New — scenario criteria (optional).** The Acceptance editor's toolbar now includes
+> **Scenario** and **Scenario from file** buttons. This workshop uses *prose numerical* criteria on
+> purpose, but an input→output criterion like the ones here (e.g. "$100.00 subtotal, 15% tip, 2
+> people → $115.00 total, $57.50 each") can instead be written as an executable `Given/When/Then`
+> scenario that the fresh evaluator **runs** rather than reads. If you want to see that pattern
+> hands-on, do the **[DSL spec workshop](../dsl-discount-spec/README.md)** next — same fail → fix →
+> pass loop, but the check is an executable spec.
+
 ## Separate the probabilistic and deterministic paths
 
 The language model may interpret the user’s request, collect missing inputs,

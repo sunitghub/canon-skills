@@ -114,6 +114,35 @@ snapshot; `HEAD` is "the commit you're currently on."
     any implementation existed — that ordering is what made it a real check instead of a description
     of whatever the code happened to do.
 
+## Seeing — and authoring — the spec on the board
+
+`sprint-check` renders a `Given/When/Then` block written in an acceptance criterion as a
+highlighted **scenario panel**, so the spec you're grading against is readable at a glance
+instead of buried in a text file. When step 4's agent puts the three scenarios into
+`acceptance.md`, the ticket's **Acceptance** tab shows them like this:
+
+![The Acceptance tab rendering the three discount scenarios as a highlighted Gherkin panel under a checkbox criterion](images/scenario-panel.png)
+
+You (or the agent) don't have to hand-type the fences — the Acceptance editor's toolbar has two
+scenario buttons:
+
+![The Acceptance editor toolbar; the Scenario button inserts an inline Given/When/Then block and the Scenario-from-file button references a .feature file](images/editor-toolbar.png)
+
+- **Scenario** (the lines-and-arrow button) inserts an inline ` ```gherkin ` block skeleton to fill in.
+- **Scenario from file** (the document button) inserts a ` ```gherkin-file ` reference to a
+  `.feature` kept under the ticket (`.tickets/<id>/features/<name>.feature`); the board fetches and
+  renders that file inline. This is for *display* — the workshop's checker still runs the project
+  copy, `python dsl_runner.py specs/discount.feature`.
+
+Each scenario is authored as its own checkbox criterion, so an unchecked scenario blocks
+`sprint complete` exactly like any other unmet criterion.
+
+**Why this matters for step 8's grading:** because the criterion carries a real `Given/When/Then`
+block and names its runner command in `## Test Plan`, canon's evaluator grades it by **running that
+command and reading the exit code** — not by reading `discount.py` and judging whether it looks
+right. That "run it, report the boolean" behavior is canon's defined rule for scenario-backed
+criteria, and it's exactly what makes the live break in step 9 impossible for the gate to miss.
+
 ## The spec, annotated
 
 ```gherkin
