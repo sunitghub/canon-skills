@@ -42,4 +42,11 @@ else
   printf '==> %s\n' "tools/sprint-headless-json-go skipped (go absent)"
 fi
 
+if command -v node >/dev/null 2>&1; then
+  printf '==> %s\n' "tests/sprint-check-gherkin.js"
+  node "$ROOT/tests/sprint-check-gherkin.js"
+else
+  printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
+fi
+
 printf '\nAll tests passed.\n'
