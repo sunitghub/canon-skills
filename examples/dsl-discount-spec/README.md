@@ -131,8 +131,26 @@ scenario buttons:
 - **Scenario** (the lines-and-arrow button) inserts an inline ` ```gherkin ` block skeleton to fill in.
 - **Scenario from file** (the document button) inserts a ` ```gherkin-file ` reference to a
   `.feature` kept under the ticket (`.tickets/<id>/features/<name>.feature`); the board fetches and
-  renders that file inline. This is for *display* — the workshop's checker still runs the project
-  copy, `python dsl_runner.py specs/discount.feature`.
+  renders that file inline. The inserted skeleton now also seeds a `runner:` line — see below.
+
+**Naming the runner on the reference.** A ` ```gherkin-file ` block can carry an optional
+`runner: <cmd>` line right beside its `.feature` path:
+
+```gherkin-file
+features/discount.feature
+runner: python dsl_runner.py
+```
+
+The board renders the referenced scenarios as usual and shows the **resolved runner command** —
+`<runner>` joined to the feature path — as a labeled chip directly beneath the panel:
+
+![The board's Acceptance tab: the three discount scenarios rendered as a Gherkin panel, with a RUNNER chip beneath it reading "python dsl_runner.py features/discount.feature"](images/runner-line.png)
+
+This keeps the command that validates the spec *with the spec*, instead of only in `## Test Plan`
+prose. It is **display only** — the board never executes the runner. At `sprint complete` the fresh
+evaluator reads that line, forms `python dsl_runner.py features/discount.feature`, runs it, and
+grades on the exit code (the same "run it, report the boolean" behavior described below). The
+workshop's own checker still runs the project copy, `python dsl_runner.py specs/discount.feature`.
 
 The criterion is a real checkbox, so leaving it unchecked blocks `sprint complete` like any
 other unmet criterion. The panel above keeps all three scenarios under one criterion (mirroring
