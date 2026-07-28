@@ -347,6 +347,32 @@ func TestSafeTicketDocAcceptsLegitimateNestedPath(t *testing.T) {
 	}
 }
 
+// t-f89a: the /api/ticket-feature route reuses safeTicketDoc with the .feature
+// extension — same trust boundary as visuals, just a different ext.
+func TestSafeTicketDocFeatureExtScoping(t *testing.T) {
+	setupTestProject(t)
+	realFile := filepath.Join(ticketsDir, "t-feat", "features", "spec.feature")
+	writeFile(t, realFile, "Scenario: x\n  Given a\n")
+	if p, ok := safeTicketDoc("t-feat/features/spec.feature", ".feature"); !ok || p != realFile {
+		t.Fatalf("safeTicketDoc rejected a legitimate nested .feature (ok=%v p=%q)", ok, p)
+	}
+
+	tm := filepath.Join(ticketsDir, "t-feat", "ticket.md")
+	writeFile(t, tm, "---\nid: t-feat\n---\n")
+	if _, ok := safeTicketDoc("t-feat/ticket.md", ".feature"); ok {
+		t.Fatal("safeTicketDoc accepted a non-.feature path under the .feature extension")
+	}
+
+	outside := filepath.Join(t.TempDir(), "outside.feature")
+	writeFile(t, outside, "Scenario: leak\n")
+	if err := os.Symlink(outside, filepath.Join(ticketsDir, "t-feat", "features", "evil.feature")); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := safeTicketDoc("t-feat/features/evil.feature", ".feature"); ok {
+		t.Fatal("safeTicketDoc accepted a symlink .feature escaping ticketsDir")
+	}
+}
+
 func TestSafeTicketDocAllowsFreshWriteWithNonexistentLeaf(t *testing.T) {
 	setupTestProject(t)
 	if err := os.MkdirAll(filepath.Join(ticketsDir, "t-newf"), 0755); err != nil {

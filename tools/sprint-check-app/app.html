@@ -1092,6 +1092,8 @@
     .doc-bullet + .doc-scenario { margin-top: 2px; }
     .doc-scenario-kw { color: var(--scenario-keyword); font-weight: 600; }
     .doc-scenario-comment { color: var(--text-dim); font-style: italic; }
+    .doc-scenario-ref { color: var(--text-muted); font-style: italic; }
+    .doc-scenario-error { color: var(--col-discarded); border-color: rgba(248,113,113,.35); font-style: italic; }
     .eval-run-id {
       display: inline-flex; align-items: center; gap: 6px;
       background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.25);
@@ -1482,6 +1484,9 @@
         <button class="editor-tool" type="button" data-insert="scenario" title="Scenario (Gherkin)" aria-label="Add Gherkin scenario">
           <svg viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h9"/><path d="M4 19h13"/><path d="m17 10 3 2-3 2"/></svg>
         </button>
+        <button class="editor-tool" type="button" data-insert="scenario-file" title="Scenario from .feature file" aria-label="Reference a Gherkin .feature file">
+          <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h4"/><path d="M9 17h2"/></svg>
+        </button>
       </div>
       <textarea id="m-edit-area" class="modal-edit-area" style="display:none" spellcheck="false"></textarea>
       <div class="editor-kb-hint" id="m-kb-hint" style="display:none">Shift+↵ plain newline &nbsp;·&nbsp; ↵↵ exit list</div>
@@ -1568,6 +1573,9 @@
         </button>
         <button class="editor-tool" type="button" data-insert="scenario" title="Scenario (Gherkin)" aria-label="Add Gherkin scenario">
           <svg viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h9"/><path d="M4 19h13"/><path d="m17 10 3 2-3 2"/></svg>
+        </button>
+        <button class="editor-tool" type="button" data-insert="scenario-file" title="Scenario from .feature file" aria-label="Reference a Gherkin .feature file">
+          <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h4"/><path d="M9 17h2"/></svg>
         </button>
       </div>
       <textarea id="c-body" class="modal-edit-area create-textarea" placeholder="Notes (optional)" spellcheck="false"></textarea>
@@ -2090,6 +2098,45 @@ function renderGherkinFence(fence) {
   return `<div class="doc-scenario">${html}</div>`;
 }
 
+// A ```gherkin-file reference points at a ticket-local .feature path. md() emits this
+// placeholder synchronously; hydrateFeatureRefs() fetches + fills it after render.
+const FEATURE_REF_RE = /^features\/[A-Za-z0-9._\-\/]+\.feature$/;
+function renderFeatureRefPlaceholder(src) {
+  const raw = String(src == null ? '' : src).trim();
+  if (!FEATURE_REF_RE.test(raw) || raw.includes('..')) {
+    return `<div class="doc-scenario doc-scenario-ref doc-scenario-error">Invalid feature reference: ${esc(raw)} (expected features/&lt;name&gt;.feature)</div>`;
+  }
+  const attr = esc(raw).replace(/"/g, '&quot;');
+  return `<div class="doc-scenario doc-scenario-ref" data-feature-src="${attr}">Loading ${esc(raw)}…</div>`;
+}
+
+// Fetch each referenced ticket-local .feature and replace its placeholder with a
+// rendered scenario panel (or a legible error state). Server-side _safe_ticket_doc /
+// safeTicketDoc is the real trust boundary; this only reads .feature under the ticket.
+function hydrateFeatureRefs(container, ticketId) {
+  if (!container || !ticketId) return;
+  container.querySelectorAll('.doc-scenario-ref[data-feature-src]').forEach(el => {
+    const src = el.getAttribute('data-feature-src') || '';
+    const url = `/api/ticket-feature/${encodeURIComponent(ticketId)}/` +
+      src.split('/').map(encodeURIComponent).join('/');
+    fetch(url)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error('not-found')))
+      .then(d => {
+        const content = ((d && d.content) || '').replace(/\s+$/, '');
+        if (!content.trim()) {
+          el.className = 'doc-scenario doc-scenario-ref doc-scenario-error';
+          el.textContent = `Empty feature file: ${src}`;
+          return;
+        }
+        el.outerHTML = renderGherkinFence({ body: content });
+      })
+      .catch(() => {
+        el.className = 'doc-scenario doc-scenario-ref doc-scenario-error';
+        el.textContent = `Could not load ${src}`;
+      });
+  });
+}
+
 // Minimal markdown: headers, bold, inline code, checklist items, bullet lists, images
 function md(raw, ticketId) {
   if (!raw) return '';
@@ -2100,11 +2147,20 @@ function md(raw, ticketId) {
   const stamped = raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim()
     .replace(/^(- \[[ xX]\] )/gm, m => m + `\x00${srcIdx++}\x00`);
 
+  // Extract ```gherkin-file references (body = a ticket-local .feature path) first —
+  // these render asynchronously: md() emits a placeholder that hydrateFeatureRefs()
+  // fetches and fills after the HTML is in the DOM (md() itself is synchronous).
+  const featureRefs = [];
+  const deRef = stamped.replace(
+    /^([ \t]*)```[ \t]*gherkin-file[ \t]*\n([\s\S]*?)\n[ \t]*```[ \t]*$/gim,
+    (_m, _indent, body) => { featureRefs.push(body.trim()); return `\x03${featureRefs.length - 1}\x03`; }
+  );
+
   // Extract fenced Gherkin blocks (```gherkin / ```feature) before escaping or any
   // other transform, so their content renders as a scenario panel and is never
   // reinterpreted as markdown. Non-gherkin fences are left untouched (behavior unchanged).
   const fences = [];
-  const deFenced = stamped.replace(
+  const deFenced = deRef.replace(
     /^([ \t]*)```[ \t]*(?:gherkin|feature)[ \t]*\n([\s\S]*?)\n[ \t]*```[ \t]*$/gim,
     (_m, indent, body) => {
       fences.push({ body, indent });
@@ -2156,8 +2212,10 @@ function md(raw, ticketId) {
     // Restore protected code spans last, after every other transform has run,
     // so backtick-wrapped text is never reinterpreted as image/bold/table/etc.
     .replace(/\x01(\d+)\x01/g, (_, i) => `<code class="doc-code">${codeSpans[+i]}</code>`)
-    // Restore fenced Gherkin blocks last, as styled scenario panels.
-    .replace(/\x02(\d+)\x02/g, (_, i) => renderGherkinFence(fences[+i]));
+    // Restore fenced Gherkin blocks as styled scenario panels.
+    .replace(/\x02(\d+)\x02/g, (_, i) => renderGherkinFence(fences[+i]))
+    // Restore ```gherkin-file references as async placeholders (hydrated post-render).
+    .replace(/\x03(\d+)\x03/g, (_, i) => renderFeatureRefPlaceholder(featureRefs[+i]));
 }
 
 // ── Render ────────────────────────────────────────────────────────────────
@@ -3116,6 +3174,7 @@ function renderModalBody(t) {
     }
     bodyEl.innerHTML = md(content, t.id);
     injectSectionJumps(bodyEl);
+    hydrateFeatureRefs(bodyEl, t.id);
     return;
   }
 
@@ -3152,6 +3211,7 @@ function renderModalBody(t) {
         bodyEl.innerHTML = warning + md(d.content, t.id);
         tagCheckboxes(bodyEl);
         injectSectionJumps(bodyEl);
+        hydrateFeatureRefs(bodyEl, t.id);
         if (slug === 'plan') injectSignoffControls(bodyEl, d.content, t);
       })
       .catch(() => { bodyEl.innerHTML = '<span class="modal-empty">Could not load doc.</span>'; });
@@ -3524,6 +3584,9 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
     after = '`';
   } else if (kind === 'scenario') {
     before = linePrefixForTextarea(textarea, '- [ ] **Scenario name**\n```gherkin\nScenario: Scenario name\n  Given \n  When \n  Then \n```\n');
+    after = '';
+  } else if (kind === 'scenario-file') {
+    before = linePrefixForTextarea(textarea, '- [ ] **Scenario name**\n```gherkin-file\nfeatures/name.feature\n```\n');
     after = '';
   } else if (kind === 'bold') {
     before = '**';

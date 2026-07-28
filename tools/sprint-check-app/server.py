@@ -765,6 +765,14 @@ class Handler(BaseHTTPRequestHandler):
                 if img is None or not img.is_file():
                     self.send_error(404); return
                 self.send_image(img); return
+            m = re.match(r'^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$', path)
+            if m:
+                ticket_id, relpath = m.group(1), unquote(m.group(2))
+                feat = _safe_ticket_doc(f'{ticket_id}/{relpath}', exts=('.feature',))
+                if feat is None or not feat.is_file():
+                    self.send_error(404); return
+                self.send_json({'content': feat.read_text(encoding='utf-8', errors='replace')})
+                return
             m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
             if m:
                 self.send_json(get_headless_run_state(m.group(1))); return

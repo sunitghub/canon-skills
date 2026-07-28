@@ -40,6 +40,13 @@ assert_grep 'function renderGherkinFence' "$APP"
 assert_grep 'function validateGherkinBlocks' "$APP"
 assert_grep 'doc-scenario-kw' "$APP"
 assert_grep 'scenario-bg:' "$APP"
+
+# t-f89a: ticket-scoped .feature reference — toolbar button, async render, error state.
+assert_grep 'data-insert="scenario-file"' "$APP"
+assert_grep 'function renderFeatureRefPlaceholder' "$APP"
+assert_grep 'function hydrateFeatureRefs' "$APP"
+assert_grep 'gherkin-file' "$APP"
+assert_grep 'api/ticket-feature' "$APP"
 if grep -q 'data-insert="toggle"' "$APP"; then
   fail "dead <details> 'Code block' toolbar insert should be replaced by data-insert=\"scenario\""
 fi

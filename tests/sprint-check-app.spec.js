@@ -2444,3 +2444,124 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
     }
   });
 });
+
+test.describe('ticket-scoped feature reference (t-f89a)', () => {
+  const DISCOUNT_FEATURE = [
+    'Scenario: Valid code above minimum applies the discount',
+    '  Given cart_total 120.00',
+    '  When discount is applied',
+    '  Then applied is true',
+    '',
+    'Scenario: Valid code below minimum is rejected',
+    '  Given cart_total 40.00',
+    '  When discount is applied',
+    '  Then applied is false',
+    '',
+    'Scenario: Unknown code is rejected',
+    '  Given cart_total 200.00',
+    '  When discount is applied',
+    '  Then applied is false',
+    '',
+  ].join('\n');
+
+  function makeRefTicket(id, refPath, { withFile = true } = {}) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), [
+      '---', `id: ${id}`, 'status: in_progress', 'type: feature', 'priority: 2',
+      'created: 2026-07-27T00:00:00Z', '---', '', '# Feature ref test', '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(dir, 'acceptance.md'), [
+      '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
+      '- [ ] **Discount rules (from file)**', '```gherkin-file', refPath, '```', '',
+      '## Test Plan', '- [x] run', '', '## QA', '- [x] Tested locally', '',
+    ].join('\n'));
+    if (withFile) {
+      fs.mkdirSync(path.join(dir, 'features'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'features', 'discount.feature'), DISCOUNT_FEATURE);
+    }
+  }
+
+  async function openAcceptance(page, id) {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+    await page.locator('.doc-tab', { hasText: 'Acceptance' }).click();
+    await expect(page.locator('.doc-tab.active')).toHaveText('Acceptance');
+  }
+
+  test('a ```gherkin-file reference renders the ticket-local .feature as a scenario panel (A3)', async ({ page }) => {
+    const id = `t-fr-ok-${Date.now()}`.slice(0, 24);
+    const tid = `t-fr${Math.random().toString(36).slice(2, 4)}`;
+    try {
+      makeRefTicket(tid, 'features/discount.feature');
+      await openAcceptance(page, tid);
+      const panel = page.locator('#m-body .doc-scenario').first();
+      // Hydration is async — wait for the fetched panel to replace the placeholder.
+      await expect(panel.locator('.doc-scenario-kw', { hasText: /^Scenario$/ })).toHaveCount(3, { timeout: 5000 });
+      await expect(page.locator('#m-body')).not.toContainText('```gherkin-file');
+      await expect(page.locator('#m-body')).not.toContainText('Could not load');
+      await expect(page.locator('#m-body .doc-scenario-error')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+    }
+  });
+
+  test('a reference to a missing .feature shows a legible error state, not a blank panel (A3/A4)', async ({ page }) => {
+    const tid = `t-fx${Math.random().toString(36).slice(2, 4)}`;
+    try {
+      makeRefTicket(tid, 'features/missing.feature', { withFile: false });
+      await openAcceptance(page, tid);
+      const err = page.locator('#m-body .doc-scenario-error');
+      await expect(err).toBeVisible({ timeout: 5000 });
+      await expect(err).toContainText('Could not load features/missing.feature');
+      // Distinct, legible background in dark and light.
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      const darkBg = await err.evaluate(el => getComputedStyle(el).backgroundColor);
+      expect(darkBg).toBe('rgb(25, 26, 39)');
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      const lightBg = await err.evaluate(el => getComputedStyle(el).backgroundColor);
+      expect(lightBg).toBe('rgb(244, 241, 251)');
+      expect(lightBg).not.toBe(darkBg);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+    }
+  });
+
+  test('an invalid (traversal) reference path renders an inline invalid-reference state, never fetches escape (A2)', async ({ page }) => {
+    const tid = `t-fv${Math.random().toString(36).slice(2, 4)}`;
+    try {
+      makeRefTicket(tid, 'features/../../secret.feature', { withFile: false });
+      await openAcceptance(page, tid);
+      const err = page.locator('#m-body .doc-scenario-error');
+      await expect(err).toBeVisible({ timeout: 5000 });
+      await expect(err).toContainText('Invalid feature reference');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+    }
+  });
+
+  test('toolbar "Scenario from file" button inserts a ```gherkin-file skeleton (A5)', async ({ page }) => {
+    const tid = `t-ft${Math.random().toString(36).slice(2, 4)}`;
+    try {
+      makeRefTicket(tid, 'features/discount.feature');
+      await openAcceptance(page, tid);
+      await page.locator('#btn-edit-doc').click();
+      await expect(page.locator('#m-edit-area')).toBeVisible();
+      await expect(page.locator('#m-edit-area')).toHaveValue(/gherkin-file/);
+      const btn = page.locator('#m-editor-toolbar .editor-tool[data-insert="scenario-file"]');
+      await expect(btn).toBeVisible();
+      await page.locator('#m-edit-area').focus();
+      await page.locator('#m-edit-area').evaluate(el => { el.setSelectionRange(0, 0); });
+      await btn.click();
+      const val = await page.locator('#m-edit-area').inputValue();
+      expect(val).toContain('```gherkin-file');
+      expect(val).toContain('features/name.feature');
+      expect(val).toMatch(/- \[ \] \*\*Scenario name\*\*/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+    }
+  });
+});

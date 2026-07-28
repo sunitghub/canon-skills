@@ -559,4 +559,49 @@ chmod +x "$ROOT/tools/sprint-headless-eval"
 rm -f "$SPRINT_HEADLESS_EVAL_BACKUP"
 SPRINT_HEADLESS_EVAL_BACKUP=""
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"
+# ── /api/ticket-feature parity (t-f89a): same fixture .feature, both servers,
+# identical text; traversal/non-feature/missing rejected identically ──────────
+mkdir -p "$WORK/.tickets/t-mock/features"
+printf 'Scenario: parity\n  Given a\n  Then b\n' > "$WORK/.tickets/t-mock/features/spec.feature"
+
+check_ticket_feature() {
+  local label="$1" py_status go_status
+  py_status="$(curl -s -o /tmp/parity-py-feat.$$ -w '%{http_code}' "http://127.0.0.1:$PY_PORT/api/ticket-feature/$2")"
+  go_status="$(curl -s -o /tmp/parity-go-feat.$$ -w '%{http_code}' "http://127.0.0.1:$GO_PORT/api/ticket-feature/$2")"
+  if [[ "$py_status" != "$go_status" ]]; then
+    rm -f /tmp/parity-py-feat.$$ /tmp/parity-go-feat.$$
+    fail "sprint-check-api-parity: FAIL — ticket-feature $label status mismatch (server.py=$py_status main.go=$go_status)"
+  fi
+  # This is a JSON endpoint: the two backends' encoders differ in whitespace and
+  # HTML-escaping, so compare PARSED content (mirrors the /api/tickets approach),
+  # never raw bytes. 404 bodies legitimately differ and aren't compared.
+  if [[ "$py_status" == "200" ]]; then
+    python3 - /tmp/parity-py-feat.$$ /tmp/parity-go-feat.$$ "$label" <<'PY'
+import json, sys
+py = json.load(open(sys.argv[1])); go = json.load(open(sys.argv[2]))
+if py.get("content") != go.get("content"):
+    print(f"sprint-check-api-parity: FAIL — ticket-feature {sys.argv[3]} content mismatch")
+    sys.exit(1)
+PY
+  fi
+  rm -f /tmp/parity-py-feat.$$ /tmp/parity-go-feat.$$
+}
+
+check_ticket_feature "valid feature"     "t-mock/features/spec.feature"
+check_ticket_feature "traversal attempt" "t-mock/../../../../etc/passwd"
+check_ticket_feature "non-feature ext"   "t-mock/ticket.md"
+check_ticket_feature "missing file"      "t-mock/features/none.feature"
+
+# Guard against a degenerate 404==404 pass: the valid case must be a real 200
+# whose JSON {content} carries the file text.
+py_feat_body="$(curl -s "http://127.0.0.1:$PY_PORT/api/ticket-feature/t-mock/features/spec.feature")"
+python3 - "$py_feat_body" <<'PY'
+import json, sys
+d = json.loads(sys.argv[1])
+if "Scenario: parity" not in d.get("content", ""):
+    print(f"sprint-check-api-parity: FAIL — ticket-feature valid case did not return file text: {sys.argv[1]}")
+    sys.exit(1)
+PY
+rm -rf "$WORK/.tickets/t-mock/features"
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"
