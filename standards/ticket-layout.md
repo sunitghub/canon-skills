@@ -92,7 +92,11 @@ Sprint docs are created by the agent inside `.tickets/<id>/`. They are not manag
 or a reference to a ticket-local `.feature` (` ```gherkin-file `, `t-f89a`). When it is, `## Test
 Plan` **must** name the exact runner command that executes the scenario, because the evaluator
 grades that criterion by running the command and reading its exit code (`pass` iff `0`), not by
-reading prose — see `skills/sprint/reference/eval.md` step 6. Such criteria must be locked at the
+reading prose — see `skills/sprint/reference/eval.md` step 6. A ` ```gherkin-file ` reference may
+also carry a `runner: <cmd>` line inside the fence (`t-6f8e`) — the structured home for that
+command: the board renders the resolved `<runner> <feature-path>` beneath the scenario panel
+(display only, never executed by the board) and the evaluator forms and runs that same command.
+Such criteria must be locked at the
 sprint-start approval gate before implementation. This is additive; prose criteria are unchanged.
 
 **Optional `Gate model:` field.** `plan.md`'s `## Sign-off` line can carry a third segment,

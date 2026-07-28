@@ -51,7 +51,14 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      `.feature` (`t-f89a`). If it does, `## Test Plan` **must** name the exact runner command
      that executes it (e.g. `python dsl_runner.py specs/discount.feature`): the evaluator grades a
      **scenario-backed** criterion by *running that command and reading the boolean exit code*,
-     not by reading prose. canon ships no runner — the project provides a small fixed-pattern one
+     not by reading prose. A ` ```gherkin-file ` reference MAY additionally carry a
+     `runner: <cmd>` line inside the fence (e.g. `runner: python dsl_runner.py`, `t-6f8e`) — when
+     present it is the **structured home** of the runner command: the board renders the resolved
+     `<runner> <feature-path>` beneath the scenario panel (display only — the board never executes
+     it) and the evaluator forms and runs that same command, so the command travels with the spec
+     it checks instead of living only in prose. The `## Test Plan` item still carries the checkable
+     line (it may restate that command or reference the scenario's runner). canon ships no runner —
+     the project provides a small fixed-pattern one
      (see `examples/dsl-discount-spec/dsl_runner.py`), deliberately not a general Gherkin engine.
      This is additive — most criteria stay prose; use it only where a machine can answer
      pass/fail. **Ordering (what makes it a real check):** scenario-backed criteria must be
