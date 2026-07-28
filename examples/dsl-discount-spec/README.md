@@ -145,6 +145,98 @@ command and reading the exit code** — not by reading `discount.py` and judging
 right. That "run it, report the boolean" behavior is canon's defined rule for scenario-backed
 criteria, and it's exactly what makes the live break in step 9 impossible for the gate to miss.
 
+## Hands-on: create the ticket on the board and grade it with the evaluator
+
+The Beginner-friendly workflow above drives everything through `sprint start`. Here's the same idea
+**board-first** — create the ticket in the UI, author the spec as a scenario in the Acceptance form,
+let the agent build against it, and watch the fresh evaluator *run* your scenario and grade it. Run
+it on the cheaper, faster **Haiku** model.
+
+1. **New Ticket.** On the board (`sprint-check`), click **+ New**, title it `DSL Discount`, Type
+   **Task**, Priority **P2**, then **Create →**.
+
+   ![New Ticket modal — DSL Discount, Task, P2](images/new-ticket.png)
+
+2. **Author the spec as an Acceptance scenario.** Open the card → **+ New doc → Acceptance**. In the
+   editor, click the **Scenario** toolbar button and paste the three discount scenarios as one
+   criterion, then name the runner in the Test Plan:
+
+   ````markdown
+   ## Criteria
+   - [ ] **Discount rules — apply/reject by code and cart minimum**
+   ```gherkin
+   Scenario: Valid code above minimum applies the discount
+     Given cart_total 120.00
+     And code "SAVE20"
+     When discount is applied
+     Then applied is true
+     And final_total is 96.00
+
+   Scenario: Valid code below minimum is rejected
+     Given cart_total 40.00
+     And code "SAVE10"
+     When discount is applied
+     Then applied is false
+     And reason is "minimum not met"
+
+   Scenario: Unknown code is rejected
+     Given cart_total 200.00
+     And code "SAVE99"
+     When discount is applied
+     Then applied is false
+     And reason is "invalid code"
+   ```
+
+   ## Test Plan
+   - [ ] `python dsl_runner.py specs/discount.feature` exits 0
+   ````
+
+   Save — the board renders your scenario as a highlighted panel under its checkbox:
+
+   ![Acceptance tab rendering the three discount scenarios as a highlighted Gherkin panel](images/scenario-panel.png)
+
+3. **Let the agent plan and build against it.** Ask your agent (use the ticket id from step 1):
+
+   > Start a sprint on ticket `<id>` (`sprint start <id>`) to implement `discount.py` against the
+   > Gherkin scenario in its Acceptance. Write the plan; after I approve it, implement — keeping
+   > `python dsl_runner.py specs/discount.feature` as the check. Don't edit the spec or the runner.
+
+   `sprint start <id>` adopts the ticket you created on the board and seeds a `plan.md` (approach +
+   sign-off) — which the close gate in step 4 requires; your Acceptance scenario is left as-is.
+   Review and approve the plan, then let the agent implement.
+
+4. **Grade it with the evaluator — on Haiku.** Set the gate model to Haiku (the ticket's **Plan**
+   tab → **Model** dropdown → `haiku`, or add `| Gate model: haiku` to `plan.md`'s `## Sign-off`
+   line), then run `sprint complete`. The fresh evaluator **runs your Test Plan command and grades on
+   the exit code** — it doesn't just read `discount.py`. Against a not-yet-correct implementation it
+   fails, naming the exact mismatch (real output from a Haiku evaluator run):
+
+   ```
+   [FAIL] Valid code above minimum applies the discount -- applied False != expected True; final_total 120.0 != expected 96.0
+   [FAIL] Valid code below minimum is rejected -- reason 'invalid code' != expected 'minimum not met'
+   [PASS] Unknown code is rejected
+   fail: runner exited 1 — "Valid code above minimum" and "Valid code below minimum is rejected" mismatched.
+   ```
+
+   Fix `discount.py` and re-run; the same evaluator now passes:
+
+   ```
+   [PASS] Valid code above minimum applies the discount
+   [PASS] Valid code below minimum is rejected
+   [PASS] Unknown code is rejected
+   pass: the runner exited 0 with all three scenarios reporting [PASS].
+   ```
+
+   Nobody read the diff to catch the wrong implementation — the evaluator *ran the spec* and the
+   boolean did. That's the whole point, and on Haiku it's cheap enough to do on every close.
+
+> **Why the interactive close here, not the headless gate?** canon's headless gate
+> (`sprint-headless-eval`, the one CI uses) deliberately runs the evaluator with a **narrow tool
+> allowlist** because it grades *untrusted* PR diffs — so it can't execute an arbitrary scenario
+> runner and would mark the "runner exits 0" item *not-run*. The interactive `sprint complete`
+> evaluator has the tools to run it, so scenario execution works there today. Letting the headless
+> path run scenario runners safely is tracked as a separate improvement.
+
 ## The spec, annotated
 
 ```gherkin
