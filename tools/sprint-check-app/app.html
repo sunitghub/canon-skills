@@ -25,6 +25,10 @@
       --accent-dim:     rgba(124,106,247,0.12);
       --glow-tint:      rgba(124,106,247,.09);
 
+      --scenario-bg:      #191a27;
+      --scenario-border:  #33334d;
+      --scenario-keyword: #d98cc0;
+
       --col-open:       #94a3b8;
       --col-progress:   #60a5fa;
       --col-done:       #4ade80;
@@ -54,6 +58,10 @@
       --accent:         #6c5cf7;
       --accent-dim:     rgba(108,92,247,0.10);
       --glow-tint:      rgba(108,92,247,.05);
+
+      --scenario-bg:      #f4f1fb;
+      --scenario-border:  #ddd6f0;
+      --scenario-keyword: #9c2f80;
 
       --col-open:       #64748b;
       --col-progress:   #2563eb;
@@ -1068,6 +1076,22 @@
       color: var(--col-discarded);
       font-size: 12px;
     }
+    .doc-scenario {
+      background: var(--scenario-bg);
+      border: 1px solid var(--scenario-border);
+      border-radius: 7px;
+      padding: 10px 13px;
+      margin: 4px 0 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      overflow-x: auto;
+      tab-size: 2;
+    }
+    .doc-bullet + .doc-scenario { margin-top: 2px; }
+    .doc-scenario-kw { color: var(--scenario-keyword); font-weight: 600; }
+    .doc-scenario-comment { color: var(--text-dim); font-style: italic; }
     .eval-run-id {
       display: inline-flex; align-items: center; gap: 6px;
       background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.25);
@@ -1455,8 +1479,8 @@
         <button class="editor-tool" type="button" data-insert="code" title="Inline code" aria-label="Add inline code">
           <svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"></path><path d="m8 6-6 6 6 6"></path></svg>
         </button>
-        <button class="editor-tool" type="button" data-insert="toggle" title="Code block" aria-label="Add code block">
-          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 13h4"/></svg>
+        <button class="editor-tool" type="button" data-insert="scenario" title="Scenario (Gherkin)" aria-label="Add Gherkin scenario">
+          <svg viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h9"/><path d="M4 19h13"/><path d="m17 10 3 2-3 2"/></svg>
         </button>
       </div>
       <textarea id="m-edit-area" class="modal-edit-area" style="display:none" spellcheck="false"></textarea>
@@ -1542,8 +1566,8 @@
         <button class="editor-tool" type="button" data-insert="code" title="Inline code" aria-label="Add inline code">
           <svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"></path><path d="m8 6-6 6 6 6"></path></svg>
         </button>
-        <button class="editor-tool" type="button" data-insert="toggle" title="Code block" aria-label="Add code block">
-          <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 13h4"/></svg>
+        <button class="editor-tool" type="button" data-insert="scenario" title="Scenario (Gherkin)" aria-label="Add Gherkin scenario">
+          <svg viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h9"/><path d="M4 19h13"/><path d="m17 10 3 2-3 2"/></svg>
         </button>
       </div>
       <textarea id="c-body" class="modal-edit-area create-textarea" placeholder="Notes (optional)" spellcheck="false"></textarea>
@@ -2047,6 +2071,25 @@ function resolveMockupSrc(src, ticketId) {
   return `/api/ticket-image/${encodeURIComponent(ticketId)}/${relpath}`;
 }
 
+// Render a fenced Gherkin block as a styled scenario panel. Keyword-highlights
+// Gherkin lines and escapes all text — raw doc content is never interpolated into
+// HTML (esc() is applied to every fragment), so a scenario cannot inject markup.
+const GHERKIN_KW = /^(\s*)(Scenario Outline|Scenario|Feature|Background|Examples|Rule|Given|When|Then|And|But|\*)/;
+function renderGherkinFence(fence) {
+  const indent = (fence && fence.indent) || '';
+  const html = String(fence && fence.body != null ? fence.body : '').split('\n').map(rawLine => {
+    const line = indent && rawLine.startsWith(indent) ? rawLine.slice(indent.length) : rawLine;
+    if (/^\s*#/.test(line)) return `<span class="doc-scenario-comment">${esc(line)}</span>`;
+    const m = line.match(GHERKIN_KW);
+    if (m) {
+      const lead = m[1], kw = m[2], rest = line.slice(lead.length + kw.length);
+      return `${esc(lead)}<span class="doc-scenario-kw">${esc(kw)}</span>${esc(rest)}`;
+    }
+    return esc(line);
+  }).join('\n');
+  return `<div class="doc-scenario">${html}</div>`;
+}
+
 // Minimal markdown: headers, bold, inline code, checklist items, bullet lists, images
 function md(raw, ticketId) {
   if (!raw) return '';
@@ -2057,11 +2100,23 @@ function md(raw, ticketId) {
   const stamped = raw.replace(/<!--[\s\S]*?-->/g, '').replace(/\n{3,}/g, '\n\n').trim()
     .replace(/^(- \[[ xX]\] )/gm, m => m + `\x00${srcIdx++}\x00`);
 
+  // Extract fenced Gherkin blocks (```gherkin / ```feature) before escaping or any
+  // other transform, so their content renders as a scenario panel and is never
+  // reinterpreted as markdown. Non-gherkin fences are left untouched (behavior unchanged).
+  const fences = [];
+  const deFenced = stamped.replace(
+    /^([ \t]*)```[ \t]*(?:gherkin|feature)[ \t]*\n([\s\S]*?)\n[ \t]*```[ \t]*$/gim,
+    (_m, indent, body) => {
+      fences.push({ body, indent });
+      return `\x02${fences.length - 1}\x02`;
+    }
+  );
+
   // Protect inline-code spans before any other syntax transform sees them —
   // otherwise markdown shown *as a code example* (e.g. `![alt](src)` or
   // `**bold**`) gets reinterpreted as real syntax instead of staying literal.
   const codeSpans = [];
-  const withCodePlaceholders = sortChecklistRuns(esc(stamped)).replace(/`((?:\\`|[^`\n])+)`/g, (_, code) => {
+  const withCodePlaceholders = sortChecklistRuns(esc(deFenced)).replace(/`((?:\\`|[^`\n])+)`/g, (_, code) => {
     codeSpans.push(code.replace(/\\`/g, '`'));
     return `\x01${codeSpans.length - 1}\x01`;
   });
@@ -2100,7 +2155,9 @@ function md(raw, ticketId) {
     })
     // Restore protected code spans last, after every other transform has run,
     // so backtick-wrapped text is never reinterpreted as image/bold/table/etc.
-    .replace(/\x01(\d+)\x01/g, (_, i) => `<code class="doc-code">${codeSpans[+i]}</code>`);
+    .replace(/\x01(\d+)\x01/g, (_, i) => `<code class="doc-code">${codeSpans[+i]}</code>`)
+    // Restore fenced Gherkin blocks last, as styled scenario panels.
+    .replace(/\x02(\d+)\x02/g, (_, i) => renderGherkinFence(fences[+i]));
 }
 
 // ── Render ────────────────────────────────────────────────────────────────
@@ -3261,7 +3318,72 @@ function hasUsefulSectionText(text, placeholders = []) {
   return !placeholders.some(p => cleaned === p);
 }
 
+// Slim structural validation for fenced Gherkin blocks (```gherkin / ```feature).
+// Catches: a step before any Scenario, a Scenario with no steps, an unrecognized
+// keyword among steps, an unclosed fence, and a block with no Scenario. This is a
+// structural check, not a full Gherkin parser — free-text description lines (under
+// Feature, or before a scenario's first step) are allowed to avoid false positives.
+function validateGherkinBlocks(content) {
+  const lines = String(content ?? '').split('\n');
+  const OPEN  = /^[ \t]*```[ \t]*(?:gherkin|feature)[ \t]*$/i;
+  const CLOSE = /^[ \t]*```[ \t]*$/;
+  const STEP     = /^(?:Given|When|Then|And|But|\*)\b/;
+  const SCENARIO = /^Scenario(?: Outline)?\b/;
+
+  let inBlock = false, blockLine = 0, inDocstring = false;
+  let sawScenario = false, ctxOpen = false, ctxIsScenario = false, ctxHasStep = false, ctxName = '';
+  const scenarioNeedsSteps = () =>
+    (ctxOpen && ctxIsScenario && !ctxHasStep)
+      ? `Gherkin scenario "${ctxName}" has no Given/When/Then steps.`
+      : '';
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!inBlock) {
+      if (OPEN.test(line)) {
+        inBlock = true; blockLine = i + 1; inDocstring = false;
+        sawScenario = false; ctxOpen = false; ctxIsScenario = false; ctxHasStep = false; ctxName = '';
+      }
+      continue;
+    }
+    if (/^[ \t]*"""/.test(line)) { inDocstring = !inDocstring; continue; }
+    if (inDocstring) continue;
+    if (CLOSE.test(line)) {
+      const e = scenarioNeedsSteps();
+      if (e) return e;
+      if (!sawScenario) return `Gherkin block (line ${blockLine}) has no Scenario — add a "Scenario:" line.`;
+      inBlock = false; ctxOpen = false; continue;
+    }
+    const t = line.trim();
+    if (!t || t.startsWith('#') || t.startsWith('@') || t.startsWith('|')) continue;
+    if (SCENARIO.test(t)) {
+      const e = scenarioNeedsSteps();
+      if (e) return e;
+      sawScenario = true; ctxOpen = true; ctxIsScenario = true; ctxHasStep = false;
+      ctxName = t.replace(/^Scenario(?: Outline)?:?\s*/, '').trim() || '(unnamed)';
+    } else if (/^Background\b/.test(t)) {
+      const e = scenarioNeedsSteps();
+      if (e) return e;
+      ctxOpen = true; ctxIsScenario = false; ctxHasStep = false;
+    } else if (STEP.test(t)) {
+      if (!ctxOpen) return `Gherkin step "${t.split(/\s+/)[0]}" appears before any Scenario (line ${i + 1}).`;
+      ctxHasStep = true;
+    } else if (/^(?:Feature|Rule|Examples)\b/.test(t)) {
+      if (/^Examples\b/.test(t)) { const e = scenarioNeedsSteps(); if (e) return e; ctxOpen = false; }
+    } else if (ctxOpen && ctxIsScenario && ctxHasStep) {
+      // A stray line once steps have started is a likely typo'd keyword. Description
+      // lines (before the first step) are intentionally not flagged.
+      return `Unrecognized Gherkin keyword "${t.split(/\s+/)[0]}" (line ${i + 1}). Expected Given/When/Then/And/But or a new Scenario.`;
+    }
+  }
+  if (inBlock) return `Unclosed \`\`\`gherkin block (opened at line ${blockLine}). Add a closing \`\`\`.`;
+  return '';
+}
+
 function validateDocContent(slug, content) {
+  const gherkinError = validateGherkinBlocks(content);
+  if (gherkinError) return gherkinError;
+
   if (slug === 'acceptance') {
     if (!hasFilledCheckbox(sectionContent(content, 'Criteria'))) {
       return 'Add at least one filled checklist item under ## Criteria before saving.';
@@ -3400,9 +3522,9 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
   } else if (kind === 'code') {
     before = '`';
     after = '`';
-  } else if (kind === 'toggle') {
-    before = linePrefixForTextarea(textarea, '<details>\n<summary>');
-    after = '</summary>\n\n</details>';
+  } else if (kind === 'scenario') {
+    before = linePrefixForTextarea(textarea, '- [ ] **Scenario name**\n```gherkin\nScenario: Scenario name\n  Given \n  When \n  Then \n```\n');
+    after = '';
   } else if (kind === 'bold') {
     before = '**';
     after = '**';
