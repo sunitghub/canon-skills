@@ -71,5 +71,40 @@ ok('branch 4: unclosed fence is blocked',
 ok('block with no Scenario is blocked',
   /has no Scenario/.test(validateGherkinBlocks('```gherkin\nFeature: f\n```')));
 
+// ── Structured runner field on ```gherkin-file references (t-6f8e) ──────────
+const { parseFeatureRefBody, renderFeatureRefPlaceholder, renderRunnerLabel } = ctx;
+ok('parseFeatureRefBody is loaded from app.html', typeof parseFeatureRefBody === 'function');
+
+// parseFeatureRefBody — path + runner, path-only, runner-only, order-independent.
+const pr = parseFeatureRefBody('features/discount.feature\nrunner: python dsl_runner.py');
+ok('parse: path+runner splits src', pr.src === 'features/discount.feature', pr);
+ok('parse: path+runner splits runner', pr.runner === 'python dsl_runner.py', pr);
+const po = parseFeatureRefBody('features/discount.feature');
+ok('parse: path-only has empty runner', po.src === 'features/discount.feature' && po.runner === '', po);
+const ro = parseFeatureRefBody('runner: python dsl_runner.py');
+ok('parse: runner-only has empty src', ro.src === '' && ro.runner === 'python dsl_runner.py', ro);
+const ord = parseFeatureRefBody('runner: node run.js\n\nfeatures/x.feature');
+ok('parse: order-independent + blank lines ignored', ord.src === 'features/x.feature' && ord.runner === 'node run.js', ord);
+
+// renderFeatureRefPlaceholder — path+runner carries both attrs, no error.
+const phBoth = renderFeatureRefPlaceholder('features/discount.feature\nrunner: python dsl_runner.py');
+ok('placeholder: path+runner has data-feature-src', /data-feature-src="features\/discount\.feature"/.test(phBoth), phBoth);
+ok('placeholder: path+runner has data-runner', /data-runner="python dsl_runner\.py"/.test(phBoth), phBoth);
+ok('placeholder: path+runner is not an error', !/doc-scenario-error/.test(phBoth), phBoth);
+// path-only still renders as today, with an empty runner attr.
+const phPath = renderFeatureRefPlaceholder('features/discount.feature');
+ok('placeholder: path-only renders (no error)', !/doc-scenario-error/.test(phPath) && /data-feature-src=/.test(phPath), phPath);
+ok('placeholder: path-only has empty data-runner', /data-runner=""/.test(phPath), phPath);
+// runner-only (no valid path) and traversal are error states.
+ok('placeholder: runner-only body is an error', /doc-scenario-error/.test(renderFeatureRefPlaceholder('runner: python dsl_runner.py')));
+ok('placeholder: traversal path is an error', /doc-scenario-error/.test(renderFeatureRefPlaceholder('features/../secrets.feature')));
+
+// renderRunnerLabel — resolves `<runner> <src>`, empty when no runner, escapes markup.
+const lbl = renderRunnerLabel('python dsl_runner.py', 'features/discount.feature');
+ok('label: shows resolved command', /python dsl_runner\.py features\/discount\.feature/.test(lbl) && /doc-scenario-runner/.test(lbl), lbl);
+ok('label: empty runner renders nothing', renderRunnerLabel('', 'features/x.feature') === '');
+const evil = renderRunnerLabel('python x.py; <img src=x onerror=alert(1)>', 'features/x.feature');
+ok('label: escapes markup (no raw <img>)', !/<img/.test(evil) && /&lt;img/.test(evil), evil);
+
 if (fails) { console.error(`sprint-check-gherkin: ${fails} FAILED`); process.exit(1); }
 console.log('sprint-check-gherkin: ok');

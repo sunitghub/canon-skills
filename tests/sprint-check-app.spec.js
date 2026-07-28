@@ -2464,16 +2464,17 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
     '',
   ].join('\n');
 
-  function makeRefTicket(id, refPath, { withFile = true } = {}) {
+  function makeRefTicket(id, refPath, { withFile = true, runner = null } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), [
       '---', `id: ${id}`, 'status: in_progress', 'type: feature', 'priority: 2',
       'created: 2026-07-27T00:00:00Z', '---', '', '# Feature ref test', '',
     ].join('\n'));
+    const fenceLines = runner ? [refPath, `runner: ${runner}`] : [refPath];
     fs.writeFileSync(path.join(dir, 'acceptance.md'), [
       '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
-      '- [ ] **Discount rules (from file)**', '```gherkin-file', refPath, '```', '',
+      '- [ ] **Discount rules (from file)**', '```gherkin-file', ...fenceLines, '```', '',
       '## Test Plan', '- [x] run', '', '## QA', '- [x] Tested locally', '',
     ].join('\n'));
     if (withFile) {
@@ -2504,6 +2505,39 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       await expect(page.locator('#m-body')).not.toContainText('```gherkin-file');
       await expect(page.locator('#m-body')).not.toContainText('Could not load');
       await expect(page.locator('#m-body .doc-scenario-error')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+    }
+  });
+
+  test('a ```gherkin-file block with a runner: line renders a non-executable resolved-command label (t-6f8e)', async ({ page }) => {
+    const tid = `t-fn${Math.random().toString(36).slice(2, 4)}`;
+    try {
+      makeRefTicket(tid, 'features/discount.feature', { runner: 'python dsl_runner.py' });
+      await openAcceptance(page, tid);
+      const panel = page.locator('#m-body .doc-scenario').first();
+      await expect(panel.locator('.doc-scenario-kw', { hasText: /^Scenario$/ })).toHaveCount(3, { timeout: 5000 });
+      // The runner label appears beneath the panel, showing `<runner> <feature-path>`.
+      const runnerLabel = page.locator('#m-body .doc-scenario-runner');
+      await expect(runnerLabel).toHaveCount(1);
+      await expect(runnerLabel).toContainText('python dsl_runner.py features/discount.feature');
+      // `runner:` must not leak as literal fence text, and no error state.
+      await expect(page.locator('#m-body')).not.toContainText('```gherkin-file');
+      await expect(page.locator('#m-body')).not.toContainText('runner: python');
+      await expect(page.locator('#m-body .doc-scenario-error')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+    }
+  });
+
+  test('a path-only ```gherkin-file block renders no runner label (t-6f8e backward-compat)', async ({ page }) => {
+    const tid = `t-fp${Math.random().toString(36).slice(2, 4)}`;
+    try {
+      makeRefTicket(tid, 'features/discount.feature');
+      await openAcceptance(page, tid);
+      const panel = page.locator('#m-body .doc-scenario').first();
+      await expect(panel.locator('.doc-scenario-kw', { hasText: /^Scenario$/ })).toHaveCount(3, { timeout: 5000 });
+      await expect(page.locator('#m-body .doc-scenario-runner')).toHaveCount(0);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
     }
@@ -2559,6 +2593,7 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       const val = await page.locator('#m-edit-area').inputValue();
       expect(val).toContain('```gherkin-file');
       expect(val).toContain('features/name.feature');
+      expect(val).toContain('runner: python dsl_runner.py');
       expect(val).toMatch(/- \[ \] \*\*Scenario name\*\*/);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });

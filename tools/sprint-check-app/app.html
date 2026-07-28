@@ -1094,6 +1094,20 @@
     .doc-scenario-comment { color: var(--text-dim); font-style: italic; }
     .doc-scenario-ref { color: var(--text-muted); font-style: italic; }
     .doc-scenario-error { color: var(--col-discarded); border-color: rgba(248,113,113,.35); font-style: italic; }
+    .doc-scenario-runner {
+      display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+      margin: -10px 0 14px; padding: 7px 12px;
+      border: 1px dashed var(--scenario-border); border-radius: 6px;
+      background: transparent;
+    }
+    .doc-scenario-runner-label {
+      font-size: 10px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--text-muted);
+    }
+    .doc-scenario-runner code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px; color: var(--text);
+    }
     .eval-run-id {
       display: inline-flex; align-items: center; gap: 6px;
       background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.25);
@@ -2098,16 +2112,47 @@ function renderGherkinFence(fence) {
   return `<div class="doc-scenario">${html}</div>`;
 }
 
-// A ```gherkin-file reference points at a ticket-local .feature path. md() emits this
-// placeholder synchronously; hydrateFeatureRefs() fetches + fills it after render.
-const FEATURE_REF_RE = /^features\/[A-Za-z0-9._\-\/]+\.feature$/;
-function renderFeatureRefPlaceholder(src) {
+// A ```gherkin-file reference points at a ticket-local .feature path, and MAY carry
+// an optional `runner: <cmd>` line naming the command that validates it. md() emits
+// this placeholder synchronously; hydrateFeatureRefs() fetches + fills it after render.
+
+// Split a ```gherkin-file body into { src, runner }: exactly one .feature path line
+// plus an optional `runner:` line, order-independent, blank lines ignored. The first
+// non-runner line is the path candidate (validated by the caller).
+function parseFeatureRefBody(body) {
+  const runnerLine = /^runner:\s*(.*)$/i;
+  let src = '', runner = '';
+  String(body == null ? '' : body).split('\n').forEach(raw => {
+    const line = raw.trim();
+    if (!line) return;
+    const m = line.match(runnerLine);
+    if (m) { runner = m[1].trim(); return; }
+    if (!src) src = line;
+  });
+  return { src, runner };
+}
+
+// Non-executable display of the runner command a scenario-backed criterion names.
+// The board never runs this — the fresh evaluator executes `<runner> <feature>` at
+// sprint complete (see skills/sprint/reference/eval.md). Every fragment is esc()'d and
+// the value never reaches a shell, subprocess, or eval on any board code path.
+function renderRunnerLabel(runner, src) {
+  const cmd = String(runner == null ? '' : runner).trim();
+  if (!cmd) return '';
+  const full = src ? `${cmd} ${src}` : cmd;
+  return `<div class="doc-scenario-runner"><span class="doc-scenario-runner-label">Runner</span><code>${esc(full)}</code></div>`;
+}
+
+function renderFeatureRefPlaceholder(body) {
+  const featureRefRe = /^features\/[A-Za-z0-9._\-\/]+\.feature$/;
+  const { src, runner } = parseFeatureRefBody(body);
   const raw = String(src == null ? '' : src).trim();
-  if (!FEATURE_REF_RE.test(raw) || raw.includes('..')) {
+  if (!featureRefRe.test(raw) || raw.includes('..')) {
     return `<div class="doc-scenario doc-scenario-ref doc-scenario-error">Invalid feature reference: ${esc(raw)} (expected features/&lt;name&gt;.feature)</div>`;
   }
   const attr = esc(raw).replace(/"/g, '&quot;');
-  return `<div class="doc-scenario doc-scenario-ref" data-feature-src="${attr}">Loading ${esc(raw)}…</div>`;
+  const runnerAttr = esc(runner).replace(/"/g, '&quot;');
+  return `<div class="doc-scenario doc-scenario-ref" data-feature-src="${attr}" data-runner="${runnerAttr}">Loading ${esc(raw)}…</div>`;
 }
 
 // Fetch each referenced ticket-local .feature and replace its placeholder with a
@@ -2117,6 +2162,7 @@ function hydrateFeatureRefs(container, ticketId) {
   if (!container || !ticketId) return;
   container.querySelectorAll('.doc-scenario-ref[data-feature-src]').forEach(el => {
     const src = el.getAttribute('data-feature-src') || '';
+    const runner = el.getAttribute('data-runner') || '';
     const url = `/api/ticket-feature/${encodeURIComponent(ticketId)}/` +
       src.split('/').map(encodeURIComponent).join('/');
     fetch(url)
@@ -2128,7 +2174,7 @@ function hydrateFeatureRefs(container, ticketId) {
           el.textContent = `Empty feature file: ${src}`;
           return;
         }
-        el.outerHTML = renderGherkinFence({ body: content });
+        el.outerHTML = renderGherkinFence({ body: content }) + renderRunnerLabel(runner, src);
       })
       .catch(() => {
         el.className = 'doc-scenario doc-scenario-ref doc-scenario-error';
@@ -3586,7 +3632,7 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
     before = linePrefixForTextarea(textarea, '- [ ] **Scenario name**\n```gherkin\nScenario: Scenario name\n  Given \n  When \n  Then \n```\n');
     after = '';
   } else if (kind === 'scenario-file') {
-    before = linePrefixForTextarea(textarea, '- [ ] **Scenario name**\n```gherkin-file\nfeatures/name.feature\n```\n');
+    before = linePrefixForTextarea(textarea, '- [ ] **Scenario name**\n```gherkin-file\nfeatures/name.feature\nrunner: python dsl_runner.py\n```\n');
     after = '';
   } else if (kind === 'bold') {
     before = '**';
