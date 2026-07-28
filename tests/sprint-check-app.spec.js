@@ -2245,3 +2245,189 @@ test.describe('board modal', () => {
     });
   });
 });
+
+test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
+  const DISCOUNT_ACCEPTANCE = [
+    '# Acceptance',
+    '',
+    '## Criteria',
+    '- [ ] **Valid code above minimum applies the discount**',
+    '```gherkin',
+    'Scenario: Valid code above minimum applies the discount',
+    '  Given cart_total 120.00',
+    '  And code "SAVE20"',
+    '  When discount is applied',
+    '  Then applied is true',
+    '  And final_total is 96.00',
+    '',
+    'Scenario: Valid code below minimum is rejected',
+    '  Given cart_total 40.00',
+    '  When discount is applied',
+    '  Then applied is false',
+    '',
+    'Scenario: Unknown code is rejected',
+    '  Given cart_total 200.00',
+    '  When discount is applied',
+    '  Then applied is false',
+    '```',
+    '',
+    '## Test Plan',
+    '- [x] (cd examples/dsl-discount-spec && python dsl_runner.py specs/discount.feature) exits 0',
+    '',
+    '## QA',
+    '- [x] Tested locally',
+    '',
+  ].join('\n');
+
+  function makeTicket(id, acceptance) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), [
+      '---', `id: ${id}`, 'status: in_progress', 'type: feature', 'priority: 2',
+      'created: 2026-07-27T00:00:00Z', '---', '', '# Gherkin render test', '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(dir, 'acceptance.md'), acceptance.replace('# Acceptance\n', `# Acceptance\nTicket: \`${id}\`\n`));
+  }
+
+  async function openAcceptance(page, id) {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+    await page.locator('.doc-tab', { hasText: 'Acceptance' }).click();
+    await expect(page.locator('.doc-tab.active')).toHaveText('Acceptance');
+  }
+
+  test('a ```gherkin block renders as a distinct scenario panel with highlighted keywords, in dark and light (C2/C3/C4)', async ({ page }) => {
+    const id = `t-gk-render-${Date.now()}`;
+    try {
+      makeTicket(id, DISCOUNT_ACCEPTANCE);
+      await openAcceptance(page, id);
+
+      const body = page.locator('#m-body');
+      const panel = body.locator('.doc-scenario');
+      await expect(panel).toHaveCount(1);
+
+      // C2: literal fence markers must not leak; keywords highlighted; 3 scenarios.
+      await expect(body).not.toContainText('```gherkin');
+      await expect(panel).toContainText('Scenario: Valid code above minimum applies the discount');
+      await expect(panel.locator('.doc-scenario-kw', { hasText: /^Scenario$/ })).toHaveCount(3);
+      expect(await panel.locator('.doc-scenario-kw', { hasText: /^Given$/ }).count()).toBeGreaterThanOrEqual(3);
+
+      // C4: the checkbox criterion above renders with a check marker.
+      await expect(body.locator('.doc-check-marker').first()).toBeVisible();
+
+      // C3: each theme drives a distinct panel background via its --scenario-bg var.
+      // The board's default theme varies, so set each explicitly rather than assume one.
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      const darkBg = await panel.evaluate(el => getComputedStyle(el).backgroundColor);
+      const darkDocBg = await body.evaluate(el => getComputedStyle(el).backgroundColor);
+      expect(darkBg).toBe('rgb(25, 26, 39)');
+      expect(darkBg).not.toBe(darkDocBg);
+      const darkKw = await panel.locator('.doc-scenario-kw').first().evaluate(el => getComputedStyle(el).color);
+      expect(darkKw).toBe('rgb(217, 140, 192)');
+
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      const lightBg = await panel.evaluate(el => getComputedStyle(el).backgroundColor);
+      const lightDocBg = await body.evaluate(el => getComputedStyle(el).backgroundColor);
+      expect(lightBg).toBe('rgb(244, 241, 251)');
+      expect(lightBg).not.toBe(lightDocBg);
+      expect(lightBg).not.toBe(darkBg);
+      const lightKw = await panel.locator('.doc-scenario-kw').first().evaluate(el => getComputedStyle(el).color);
+      expect(lightKw).toBe('rgb(156, 47, 128)');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('scenario step text is escaped — a <script> in a step cannot inject markup (security)', async ({ page }) => {
+    const id = `t-gk-xss-${Date.now()}`;
+    try {
+      makeTicket(id, [
+        '# Acceptance', '', '## Criteria', '- [ ] **x**', '```gherkin',
+        'Scenario: xss', '  Given <script>window.__gkxss=true</script>', '  Then ok', '```',
+        '', '## Test Plan', '- [x] run', '', '## QA', '- [x] Tested locally', '',
+      ].join('\n'));
+      await openAcceptance(page, id);
+      await expect(page.locator('#m-body .doc-scenario')).toBeVisible();
+      expect(await page.evaluate(() => window.__gkxss)).toBeUndefined();
+      await expect(page.locator('#m-body .doc-scenario')).toContainText('<script>window.__gkxss=true</script>');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('toolbar Scenario button inserts a checkbox + ```gherkin skeleton (C1)', async ({ page }) => {
+    const id = `t-gk-insert-${Date.now()}`;
+    try {
+      makeTicket(id, DISCOUNT_ACCEPTANCE);
+      await openAcceptance(page, id);
+      await page.locator('#btn-edit-doc').click();
+      await expect(page.locator('#m-edit-area')).toBeVisible();
+      await expect(page.locator('#m-edit-area')).toHaveValue(/Valid code above minimum/);
+
+      // The former "Code block" (toggle) button is gone; a Scenario button exists.
+      await expect(page.locator('.editor-tool[data-insert="toggle"]')).toHaveCount(0);
+      const scenarioBtn = page.locator('#m-editor-toolbar .editor-tool[data-insert="scenario"]');
+      await expect(scenarioBtn).toBeVisible();
+
+      // Insert at the start of the textarea.
+      await page.locator('#m-edit-area').focus();
+      await page.locator('#m-edit-area').evaluate(el => { el.setSelectionRange(0, 0); });
+      await scenarioBtn.click();
+
+      const val = await page.locator('#m-edit-area').inputValue();
+      expect(val).toContain('```gherkin');
+      expect(val).toContain('Scenario: Scenario name');
+      expect(val).toMatch(/- \[ \] \*\*Scenario name\*\*/);
+      expect(val).toContain('Given ');
+      expect(val).toContain('When ');
+      expect(val).toContain('Then ');
+      expect(val).not.toContain('<details>');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a malformed ```gherkin block blocks save; a well-formed one saves (C5)', async ({ page }) => {
+    const id = `t-gk-valid-${Date.now()}`;
+    try {
+      makeTicket(id, DISCOUNT_ACCEPTANCE);
+      await openAcceptance(page, id);
+      await page.locator('#btn-edit-doc').click();
+      await expect(page.locator('#m-edit-area')).toBeVisible();
+      // enterEditMode fetches the doc content asynchronously and overwrites the
+      // textarea once it resolves — wait for the real content before editing, or
+      // a fill() lands before the fetch wipes it (t-c58c pattern).
+      await expect(page.locator('#m-edit-area')).toHaveValue(/Valid code above minimum/);
+
+      // Malformed: a step before any Scenario. Save must be blocked via an alert.
+      // Accept dialogs in the handler so the alert unblocks the page (a
+      // waitForEvent+click Promise.all deadlocks: click can't resolve while the
+      // alert blocks the page, and the dialog isn't accepted until after).
+      const dialogs = [];
+      page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
+      const malformed = [
+        '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria', '- [ ] **bad**', '```gherkin',
+        'Given cart_total 10', 'Scenario: x', '  Then ok', '```', '',
+        '## Test Plan', '- [x] run', '', '## QA', '- [x] Tested locally', '',
+      ].join('\n');
+      await page.locator('#m-edit-area').fill(malformed);
+      await page.locator('#btn-save-top').click();
+      await expect.poll(() => dialogs.join('\n')).toMatch(/before any Scenario/);
+      // Still in edit mode (save was blocked).
+      await expect(page.locator('#m-edit-area')).toBeVisible();
+      const dialogCountAfterMalformed = dialogs.length;
+
+      // Now make it well-formed (the discount fixture) — save succeeds, no new dialog.
+      await page.locator('#m-edit-area').fill(DISCOUNT_ACCEPTANCE.replace('# Acceptance\n', `# Acceptance\nTicket: \`${id}\`\n`));
+      await page.locator('#btn-save-top').click();
+      await expect(page.locator('#m-edit-area')).toBeHidden();
+      expect(dialogs.length).toBe(dialogCountAfterMalformed);
+      await expect(page.locator('#m-body .doc-scenario')).toBeVisible();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+});

@@ -32,4 +32,16 @@ fi
 assert_grep "'normal', 'bugfix', 'high-risk'" "$APP"
 assert_grep "bugfix: 'Bugfix'" "$APP"
 
+# t-6e32: Gherkin scenarios in the acceptance form — toolbar button, renderer,
+# validator, and theme-aware panel styling. The dead <details> "Code block"
+# insert must be gone.
+assert_grep 'data-insert="scenario"' "$APP"
+assert_grep 'function renderGherkinFence' "$APP"
+assert_grep 'function validateGherkinBlocks' "$APP"
+assert_grep 'doc-scenario-kw' "$APP"
+assert_grep 'scenario-bg:' "$APP"
+if grep -q 'data-insert="toggle"' "$APP"; then
+  fail "dead <details> 'Code block' toolbar insert should be replaced by data-insert=\"scenario\""
+fi
+
 printf 'sprint-check-app: ok\n'
