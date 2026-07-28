@@ -187,13 +187,14 @@ You need canon installed and the board running:
     ![Closed ticket Summary tab showing a plan-vs-actual table (delivered per criterion)](images/done-summary.png)
 
 
-> **New — scenario criteria (optional).** The Acceptance editor's toolbar now includes
-> **Scenario** and **Scenario from file** buttons. This workshop uses *prose numerical* criteria on
-> purpose, but an input→output criterion like the ones here (e.g. "$100.00 subtotal, 15% tip, 2
-> people → $115.00 total, $57.50 each") can instead be written as an executable `Given/When/Then`
-> scenario that the fresh evaluator **runs** rather than reads. If you want to see that pattern
-> hands-on, do the **[DSL spec workshop](../dsl-discount-spec/README.md)** next — same fail → fix →
-> pass loop, but the check is an executable spec.
+> **Scenario criteria — prose vs. executable.** You just used one in step 7: the remainder rule
+> written as an executable `Given/When/Then` scenario the evaluator *runs* (the Acceptance editor's
+> **Scenario** and **Scenario from file** toolbar buttons author these). Most of this workshop's
+> criteria stay *prose* — a numerical result a fresh evaluator judges — and that mix is the lesson:
+> use a scenario where a machine can answer pass/fail deterministically, prose where independent
+> judgment is what you want. To go deeper on the executable-spec pattern end to end, do the
+> **[DSL spec workshop](../dsl-discount-spec/README.md)** next — same fail → fix → pass loop, built
+> entirely around a spec.
 
 ## Separate the probabilistic and deterministic paths
 
