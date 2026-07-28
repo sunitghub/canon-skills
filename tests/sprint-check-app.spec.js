@@ -2402,25 +2402,38 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
       // a fill() lands before the fetch wipes it (t-c58c pattern).
       await expect(page.locator('#m-edit-area')).toHaveValue(/Valid code above minimum/);
 
-      // Malformed: a step before any Scenario. Save must be blocked via an alert.
+      // Each of the four validateGherkinBlocks branches must block the save with a
+      // specific message (runtime coverage of every branch, in the real board).
       // Accept dialogs in the handler so the alert unblocks the page (a
       // waitForEvent+click Promise.all deadlocks: click can't resolve while the
       // alert blocks the page, and the dialog isn't accepted until after).
       const dialogs = [];
       page.on('dialog', d => { dialogs.push(d.message()); d.accept(); });
-      const malformed = [
-        '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria', '- [ ] **bad**', '```gherkin',
-        'Given cart_total 10', 'Scenario: x', '  Then ok', '```', '',
-        '## Test Plan', '- [x] run', '', '## QA', '- [x] Tested locally', '',
-      ].join('\n');
-      await page.locator('#m-edit-area').fill(malformed);
-      await page.locator('#btn-save-top').click();
-      await expect.poll(() => dialogs.join('\n')).toMatch(/before any Scenario/);
-      // Still in edit mode (save was blocked).
-      await expect(page.locator('#m-edit-area')).toBeVisible();
-      const dialogCountAfterMalformed = dialogs.length;
+      const mk = (block) => ['# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
+        '- [ ] **bad**', ...block, '', '## Test Plan', '- [x] run', '', '## QA',
+        '- [x] Tested locally', ''].join('\n');
+      // An unclosed fence consumes everything after it, so a trailing section would
+      // trip a different branch — put its required headings BEFORE the Criteria block
+      // so the unclosed ```gherkin genuinely runs to EOF.
+      const unclosedDoc = ['# Acceptance', `Ticket: \`${id}\``, '', '## Test Plan',
+        '- [x] run', '', '## QA', '- [x] Tested locally', '', '## Criteria',
+        '- [ ] **bad**', '```gherkin', 'Scenario: x', '  Given a'].join('\n');
+      const badCases = [
+        { doc: mk(['```gherkin', 'Given cart_total 10', 'Scenario: x', '  Then ok', '```']), re: /before any Scenario/ },
+        { doc: mk(['```gherkin', 'Scenario: empty', 'Scenario: real', '  Given a', '```']), re: /no Given\/When\/Then/ },
+        { doc: mk(['```gherkin', 'Scenario: x', '  Given a', '  Wen b', '```']), re: /Unrecognized Gherkin keyword/ },
+        { doc: unclosedDoc, re: /Unclosed/ },
+      ];
+      for (const c of badCases) {
+        const n = dialogs.length;
+        await page.locator('#m-edit-area').fill(c.doc);
+        await page.locator('#btn-save-top').click();
+        await expect.poll(() => dialogs.slice(n).join('\n')).toMatch(c.re);
+        await expect(page.locator('#m-edit-area')).toBeVisible(); // save was blocked
+      }
 
-      // Now make it well-formed (the discount fixture) — save succeeds, no new dialog.
+      // Well-formed (the discount fixture) — save succeeds, no new dialog.
+      const dialogCountAfterMalformed = dialogs.length;
       await page.locator('#m-edit-area').fill(DISCOUNT_ACCEPTANCE.replace('# Acceptance\n', `# Acceptance\nTicket: \`${id}\`\n`));
       await page.locator('#btn-save-top').click();
       await expect(page.locator('#m-edit-area')).toBeHidden();
