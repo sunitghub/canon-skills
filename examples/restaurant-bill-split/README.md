@@ -59,7 +59,7 @@ You need canon installed and the board running:
    - Do not add itemized splitting, tax, service charges, or persistence.
    - Keep bill calculations in an isolated deterministic function.
    - Do not start implementation or run `sprint complete` without explicit user approval.
-   - Verification and testing are manual-only; do not install or suggest test-automation tooling without asking first.
+   - Verification is manual by default; do not install test-automation frameworks or add a build step without asking. The one exception: a scenario-backed acceptance criterion (a Given/When/Then block) may carry a small **dependency-free** test — plain JavaScript run with `node`, no framework — that the agent generates to execute the scenario against the calculation function, with its command named in the Test Plan.
    ```
 
    This is project-local — it applies only inside this workshop folder, not to canon
@@ -114,29 +114,35 @@ You need canon installed and the board running:
    faithfully does compute `total / people` — the criterion itself encodes the
    wrong model of correct behavior, not an absent one.
 
-   Leave that existing criterion as it is. Add two new checkboxes under
-   **Criteria**, directly underneath it — kept separate rather than bundled
-   into one, since they're independent risks: the arithmetic could be correct
-   while the display still isn't, or vice versa, and a single compound
-   criterion can only report "partial" on the whole thing instead of pointing
-   at which half actually failed.
+   Leave that existing criterion as it is. Add **one new criterion** underneath it — but instead
+   of prose, write it as an executable **Given/When/Then scenario**. In the Acceptance editor,
+   click the **Scenario** toolbar button and fill in the block with the exact expected numbers:
 
-   `If the bill doesn't split evenly, the extra pennies must be distributed among specific people's shares instead of being dropped, so all the shares added together equal the total exactly.`
+   ```gherkin
+   Scenario: Uneven split distributes the pennies so shares sum to the total
+     Given a subtotal of $101.00
+     And a tip of 10%
+     And 3 people
+     When the bill is split
+     Then the shares are $37.04, $37.03, $37.03
+     And the shares sum to exactly $111.10
+     And the display shows "1 person pays $37.04, 2 people pay $37.03"
+   ```
 
-   `When shares differ from each other, the app must display each distinct amount along with how many people pay it (for example "1 person pays $X, 2 people pay $Y") instead of a single averaged per-person number.`
+   The board renders it as a highlighted panel under its checkbox — this is what a student sees on
+   the **Acceptance** tab:
 
-   Then add matching cases to the **Test Plan**, one per criterion:
+   ![The Acceptance tab rendering the remainder requirement as a highlighted Given/When/Then scenario under a checkbox criterion](images/remainder-scenario.png)
 
-   `$101.00 subtotal, 3 people, 10% tip — check that the underlying shares are $37.04, $37.03, $37.03 and add up to exactly $111.10, not $111.09.`
-
-   `$101.00 subtotal, 3 people, 10% tip, and at least one other non-evenly-divisible case — check that the app displays a grouped breakdown ("1 person pays $X, 2 people pay $Y") in both cases, not a single averaged per-person number in either.`
-
-   New, specific criteria are enough on their own — the evaluator grades each
-   independently, so the old loose wording sitting alongside them doesn't block
-   either from correctly failing on the real bug. (If you'd rather clean up the
-   old wording too instead of leaving it, that's a valid alternative — replace
-   "(total / people)" with language that explicitly rules out a single flat
-   value — but it's not necessary for the new criteria to work.)
+   An earlier draft of this workshop split the remainder rule into *two* prose criteria — one for the
+   pennies-summing arithmetic, one for the grouped display — kept separate so a reviewer could tell
+   which half failed, since a single prose criterion can only report "partial." An executable
+   scenario removes that trade-off: when it fails, the runner names the exact `Then` step that didn't
+   hold (e.g. "shares sum to 111.09, expected 111.10"), so one scenario stays precise about *what*
+   broke. The concrete numbers are baked into the `Then` steps, so a wrong-but-plausible flat average
+   has nowhere to hide. This doesn't retire the fresh evaluator — it still grades every other
+   criterion by independent judgment; the scenario just makes *this* one deterministic, caught by the
+   check and corroborated by the evaluator running it.
 8. Add the other discovered requirement to the ticket: open **Acceptance**,
    choose **Edit**, add a new checkbox under **Criteria** for each, and save:
 
@@ -156,7 +162,12 @@ You need canon installed and the board running:
    cap; catching only one is a common, plausible-looking half-fix.
 9. Ask the agent:
 
-   `Update the plan and Test Plan with the requirements I just added — the new remainder-distribution criterion and its test case, and the validation and resource-limit criteria. Do not implement yet; wait for my approval.`
+   `Update the plan and Test Plan for the requirements I just added. For the new remainder scenario, generate a small dependency-free test (plain JavaScript run with node, no framework) that executes its Given/When/Then against calculateSplit(), and put the exact command on the Test Plan line. Also add the validation and resource-limit criteria. Do not implement yet; wait for my approval.`
+
+   You're no longer hand-writing the check — the agent generates the test *from the scenario*, and at
+   `sprint complete` the fresh evaluator **runs** that command and grades on its exit code rather than
+   reading the code and judging. That "run it, report the boolean" step is what makes the remainder
+   bug impossible to wave past.
 
 10. Review the updated plan, then reply:
 
