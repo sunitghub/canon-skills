@@ -134,8 +134,10 @@ scenario buttons:
   renders that file inline. This is for *display* — the workshop's checker still runs the project
   copy, `python dsl_runner.py specs/discount.feature`.
 
-Each scenario is authored as its own checkbox criterion, so an unchecked scenario blocks
-`sprint complete` exactly like any other unmet criterion.
+The criterion is a real checkbox, so leaving it unchecked blocks `sprint complete` like any
+other unmet criterion. The panel above keeps all three scenarios under one criterion (mirroring
+`discount.feature`); if you'd rather each scenario be graded and checked off on its own, split
+them into one criterion per scenario — the panel renders the same either way.
 
 **Why this matters for step 8's grading:** because the criterion carries a real `Given/When/Then`
 block and names its runner command in `## Test Plan`, canon's evaluator grades it by **running that
