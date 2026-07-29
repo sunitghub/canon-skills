@@ -1,34 +1,10 @@
-// app.js — discount logic for the standalone "Discount Apply" app.
+// app.js — browser glue for the Discount Apply page.
 //
-// Dual-use by design:
-//   • In the browser, the guarded block at the bottom wires the form to apply_discount.
-//   • In Node, dsl_runner.js imports apply_discount and runs specs/discount.feature
-//     against it — the same function, so there is no second copy of the logic to drift.
-//
-// The exact rules are defined in ../specs/discount.feature. This file must satisfy them;
-// don't edit the spec to match the code.
+// The business rule lives in discount.js (loaded before this file by index.html), which defines
+// the global apply_discount(cartTotal, code). This file only reads the form, calls the rule, and
+// writes the result — no business logic here, so the rule has exactly one home.
 
-function apply_discount(cartTotal, code) {
-  const RULES = {
-    SAVE10: { rate: 0.1, min: 50 }, // 10% off, only if cart_total >= 50
-    SAVE20: { rate: 0.2, min: 100 }, // 20% off, only if cart_total >= 100
-  };
-
-  const rule = RULES[code];
-  if (!rule) {
-    return { applied: false, final_total: cartTotal, reason: "invalid code" };
-  }
-  if (cartTotal < rule.min) {
-    return { applied: false, final_total: cartTotal, reason: "minimum not met" };
-  }
-
-  // Round to cents so 120.00 * 0.8 lands exactly on 96.00.
-  const final_total = Math.round(cartTotal * (1 - rule.rate) * 100) / 100;
-  return { applied: true, final_total, reason: `${code} applied` };
-}
-
-// --- Browser glue (skipped when imported by Node) --------------------------
-if (typeof document !== "undefined") {
+(function () {
   const $ = (id) => document.getElementById(id);
   const money = (n) => `$${Number(n).toFixed(2)}`;
 
@@ -45,7 +21,7 @@ if (typeof document !== "undefined") {
       return;
     }
 
-    const result = apply_discount(cartTotal, code);
+    const result = apply_discount(cartTotal, code); // from discount.js
     message.textContent = result.applied
       ? `${result.reason} — you saved ${money(cartTotal - result.final_total)}.`
       : result.reason;
@@ -59,9 +35,4 @@ if (typeof document !== "undefined") {
       if (e.key === "Enter") onApply();
     });
   });
-}
-
-// --- Node export (ignored by the browser) ----------------------------------
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = { apply_discount };
-}
+})();
