@@ -141,48 +141,30 @@ the runner and the code are produced from that.**
 
    ![The Acceptance tab rendering the three discount scenarios as a highlighted Gherkin panel under a checkbox criterion](images/scenario-panel.png)
 
-3. **Add the build instruction — once — so the agent knows how to check it.** The scenario you just
-   wrote **stays in Acceptance**: that's the source of truth, and it's all a non-engineer needs to
-   write. To spare the newcomer from knowing how to build a runner, add a short, reusable build
-   instruction to `plan.md` (or paste it into the sprint prompt in step 4). Notice it does **not**
-   name a function signature — the agent infers that from the scenario:
+3. **You don't write the build instruction — `sprint start` seeds it.** The scenario **stays in
+   Acceptance** (the source of truth), and that's all a non-engineer writes. When you
+   `sprint start <id>` (step 4), canon seeds a standard build instruction into `plan.md` — from
+   `start.md`'s scenario-backed rule — and the agent follows it: extract the scenario to a *derived*
+   `specs/discount.feature`, **infer** the function from it (`Given` → inputs, `Then` → output fields,
+   so you never write a signature), implement `app/discount.js`, build `app/dsl_runner.js`, and write
+   the runner command into `## Test Plan` (the board already seeded a placeholder there). Default is
+   JavaScript; for Python, just tell the agent to use `discount.py` with a Python runner.
 
-   > **Build instruction (for the implementing agent)**
+   <details>
+   <summary>The exact build instruction canon seeds — for reference (you don't hand it over)</summary>
+
    > - Treat the scenario(s) in Acceptance as the behavior contract.
-   > - Extract them verbatim into `specs/discount.feature`. That file is a *derived artifact* —
-   >   Acceptance stays the source; don't hand-edit the `.feature` afterward.
-   > - Infer the function under test from the scenario: `Given` lines are the inputs, `Then` lines are
-   >   the output fields. You choose the name and signature — the author doesn't specify it.
-   > - Implement it in `app/discount.js`, and build `app/dsl_runner.js` — a small fixed-pattern Node
-   >   runner that recognizes exactly this `.feature`'s step shapes, runs the function for each
-   >   scenario, prints `[PASS]`/`[FAIL]`, and exits `0` only if all pass.
-   > - Write the runner command into Acceptance's `## Test Plan` yourself (fill the placeholder there),
-   >   because you chose the runner's name, path, and language — the author didn't. Use one Test Plan
-   >   line per `.feature` file. Don't edit the spec to make the check pass; if the inputs, outputs, or
-   >   naming are ambiguous, ask before implementing.
+   > - Extract them verbatim into `specs/discount.feature` (a *derived artifact* — Acceptance stays the source; don't hand-edit it).
+   > - Infer the function under test: `Given` lines are the inputs, `Then` lines are the output fields. You choose the name and signature.
+   > - Implement it in `app/discount.js`, and build `app/dsl_runner.js` — a small fixed-pattern Node runner that recognizes this `.feature`'s step shapes, prints `[PASS]`/`[FAIL]`, and exits `0` only if all pass.
+   > - Write the runner command into `## Test Plan` yourself (one line per `.feature`); don't edit the spec to force a pass; ask if anything is ambiguous.
 
-   This is the move that closes the "but how do I even test a `.feature`?" gap: the author writes only
-   the readable rule; the agent turns it into a `.feature`, a function, and a runner — and canon's
-   fresh evaluator later grades it by *running* the command the agent wrote into `## Test Plan`.
-   (Default is JavaScript — `app/discount.js`. Want Python instead? Just tell the agent to implement it
-   in `discount.py` with a Python runner; the scenario and this instruction don't change.)
+   </details>
 
-   **Who fills the Test Plan runner line, and when.** The evaluator grades a scenario-backed criterion
-   by *running* the command named in `## Test Plan`, so that command must be there by close — but it's
-   the **agent's** to write, not the author's:
-   - **New ticket / no runner yet:** the author leaves the Test Plan slot empty (the placeholder above);
-     the agent writes the command once it's built the runner. A brand-new scenario's author never has
-     to know the runner's filename, path, or language.
-   - **A ticket that reuses an existing runner:** the command is known convention, so it's fine to
-     pre-fill or **append** it by hand — e.g. add `` `node dsl_runner.js specs/<new>.feature` exits 0 ``
-     for the new file; the agent just adds the new scenarios.
-   - **Several distinct `.feature` files in one ticket:** one Test Plan line each (the agent appends
-     them). Keep cohesive scenarios in a single `.feature` with a single line.
-
-   Note the ordering this preserves: the **scenario** — the `Then` expectations, i.e. the correctness
-   bar — is what's locked at the sprint-start approval gate, before any code. The runner **command** is
-   just a mechanical pointer to it, so the agent finalizing that line during the build doesn't violate
-   "lock the spec before the code."
+   **Ordering** this preserves: the *scenario* (the `Then` expectations — the correctness bar) is what's
+   locked at the sprint-start approval gate; the runner *command* is a mechanical pointer the agent
+   fills during the build. (Reusing a runner that already exists? You can pre-fill or append
+   `` `node dsl_runner.js specs/<new>.feature` exits 0 `` by hand — one Test Plan line per `.feature`.)
 
    Optionally, the runner command can travel *with* the spec: if you reference the scenario via a
    ` ```gherkin-file ` block with a `runner:` line, the board renders the resolved command as a chip
@@ -192,9 +174,9 @@ the runner and the code are produced from that.**
 
 4. **`sprint start <id>` and approve.** Point your agent at the ticket:
 
-   > Start a sprint on ticket `<id>` (`sprint start <id>`) and implement it per its Acceptance scenario
-   > and the build instruction in the plan. Ask me anything ambiguous first; after I approve the plan,
-   > build it — don't edit the spec or the runner to force a pass.
+   > Start a sprint on ticket `<id>` (`sprint start <id>`) and follow the build instruction it seeds
+   > into `plan.md` from the Acceptance scenario. Ask me anything ambiguous first; after I approve the
+   > plan, build it — don't edit the spec or the runner to force a pass.
 
    Review the plan, then approve. The agent writes `specs/discount.feature` (from the Acceptance
    scenario), the inferred rule in `app/discount.js`, the runner `app/dsl_runner.js`, and fills the
