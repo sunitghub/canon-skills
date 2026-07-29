@@ -25,7 +25,7 @@ sandbox.window = sandbox; sandbox.globalThis = sandbox;
 const ctx = vm.createContext(sandbox);
 for (const s of scripts) { try { vm.runInContext(s, ctx, { timeout: 5000 }); } catch (_) { /* hoisted fns still bound */ } }
 
-const { hasGherkinScenario, seedTestPlanRunnerPlaceholder } = ctx;
+const { hasGherkinScenario, seedTestPlanRunnerPlaceholder, criteriaCursorOffset } = ctx;
 const TEST_PLAN_RUNNER_PLACEHOLDER = '- [ ] <the agent writes the runner command here after building the runner>';
 let fails = 0;
 function ok(name, cond, detail) {
@@ -77,6 +77,26 @@ ok('no false positive on plain prose', !hasGherkinScenario('## Criteria\n- [ ] d
 {
   const doc = '```gherkin\nScenario: s\n  Given a\n  Then b\n```\n\n## Criteria\n- [ ] x\n';
   ok('no Test Plan heading → unchanged', seedTestPlanRunnerPlaceholder(doc) === doc);
+}
+
+// 7. criteriaCursorOffset — caret lands inside ## Criteria (after its last line, before ## Test Plan).
+{
+  ok('criteriaCursorOffset loaded', typeof criteriaCursorOffset === 'function');
+  const doc = 'Ticket: `t-x`\n\n## Criteria\nThe checklist...\n<!-- guide -->\n\n- [ ]\n\n## Test Plan\n<!-- g -->\n- [ ]\n\n## QA\n- [ ] Tested locally';
+  const off = criteriaCursorOffset(doc);
+  const tpIdx = doc.indexOf('## Test Plan');
+  ok('offset is inside the Criteria section (before ## Test Plan)', typeof off === 'number' && off > doc.indexOf('## Criteria') && off < tpIdx, { off, tpIdx });
+  ok('offset lands at end of the last Criteria line (the empty checkbox)', doc.slice(0, off).endsWith('- [ ]'), doc.slice(off - 6, off));
+}
+
+// 8. No ## Criteria heading → null.
+ok('criteriaCursorOffset returns null without a Criteria heading', criteriaCursorOffset('## Notes\n- [ ] x') === null);
+
+// 9. Skips the guide comment / blank when Criteria already has a real criterion.
+{
+  const doc = '## Criteria\n<!-- guide -->\n- [ ] **Real criterion**\n\n## Test Plan\n- [ ]';
+  const off = criteriaCursorOffset(doc);
+  ok('offset lands after the real criterion line, not the comment', doc.slice(0, off).endsWith('**Real criterion**'), doc.slice(0, off));
 }
 
 console.log(fails === 0 ? 'sprint-check-seed: ok' : `sprint-check-seed: ${fails} FAILED`);
