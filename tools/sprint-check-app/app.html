@@ -3306,7 +3306,13 @@ function exitEditMode(t) {
 }
 
 async function saveEdit(t) {
-  const content = normalizeDocTitle(t, document.getElementById('m-edit-area').value);
+  let content = normalizeDocTitle(t, document.getElementById('m-edit-area').value);
+  // For the Acceptance doc, seed the Test Plan runner placeholder before validating/saving, so a
+  // first Save of a scenario-bearing doc both passes the Test Plan check and persists the
+  // placeholder (guarded/idempotent — no-op when there's no scenario or a real command already).
+  if (modalState.activeDoc && docSlug(t, modalState.activeDoc) === 'acceptance') {
+    content = seedTestPlanRunnerPlaceholder(content);
+  }
   const validationError = validateDocStructure(t, content);
   if (validationError) {
     alert(validationError);
@@ -3644,6 +3650,18 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
   if (!selected && after) {
     cursorOffset = start + before.length;
     textarea.setSelectionRange(cursorOffset, cursorOffset);
+  }
+
+  // Inserting a scenario into the Acceptance editor should immediately seed the Test Plan runner
+  // placeholder (so it shows up in-session and the first Save passes the Test Plan validation).
+  // The seeded line lands under ## Test Plan, below the Criteria cursor, so prior offsets stay valid.
+  if ((kind === 'scenario' || kind === 'scenario-file') && textarea.id === 'm-edit-area') {
+    const seeded = seedTestPlanRunnerPlaceholder(textarea.value);
+    if (seeded !== textarea.value) {
+      const s = textarea.selectionStart, e = textarea.selectionEnd;
+      textarea.value = seeded;
+      textarea.setSelectionRange(s, e);
+    }
   }
 }
 

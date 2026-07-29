@@ -130,9 +130,12 @@ the runner and the code are produced from that.**
    - [ ] <the agent writes the runner command here after it builds the runner — for this workshop that lands on `node dsl_runner.js specs/discount.feature` exits 0>
    ````
 
-   You author only the scenario and this one Test Plan slot. You do **not** need to know the runner's
-   filename, the `.feature` path, or the language — the agent picks those and fills the command in
-   (that's why the slot is a placeholder, not a command you type).
+   You author only the scenario. You do **not** need to know the runner's filename, the `.feature`
+   path, or the language, and you don't even have to type the Test Plan line: **the board seeds that
+   placeholder automatically the moment you insert a scenario** (and again on save), so a first Save
+   passes the "add a Test Plan item" check without a Save-then-reopen dance. The agent later replaces
+   the placeholder with the real command once it builds the runner (that's why it's a placeholder,
+   not a command you type).
 
    Save — the board renders the scenarios as a highlighted panel under the checkbox:
 
