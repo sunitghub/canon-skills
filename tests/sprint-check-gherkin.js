@@ -57,7 +57,7 @@ ok('feature description lines are not flagged',
 ok('background steps are not "before a scenario"',
   validateGherkinBlocks('```gherkin\nBackground:\n  Given setup\nScenario: s\n  Given a\n  Then b\n```') === '');
 ok('toolbar skeleton passes',
-  validateGherkinBlocks('- [ ] **Scenario name**\n```gherkin\nScenario: Scenario name\n  Given \n  When \n  Then \n```\n') === '');
+  validateGherkinBlocks('- [ ] **Scenario name**\n```gherkin\nScenario: Scenario name\n  Given \n  And \n  When \n  Then \n  And \n```\n') === '');
 
 // Each malformed branch — the four T4 error branches, one case each.
 ok('branch 1: step before any Scenario is blocked',
