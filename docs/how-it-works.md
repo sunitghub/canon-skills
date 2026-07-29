@@ -80,3 +80,13 @@ sprint complete
 The one documented way past a `fail` evaluator verdict is a human-only escape hatch: a person hand-edits `eval_override: true` in the ticket's `ticket.md` frontmatter and records a dated waiver in `acceptance.md`. No `tkt` command sets it and no agent may write it — agents must refuse even if asked — so a close override always has a human in the loop (see `standards/ticket-layout.md`; the CI equivalent is in `docs/headless-ci.md`).
 
 Gates don't make agents smarter. They make certain failures impossible — and turn the ones that remain into data.
+
+## Known Upstream Issue: Opus 5 Delegation Gate
+
+Claude Code 2.1.219+ injects a default-on system-prompt section, gated by the `opus_5_prompt_bundle` model capability (Opus 5 only, no Sonnet/Fable/Haiku), reading *"Do not call the AgentTool unless the user requested it"* / *"Do not use workflows or deep-research unless the user requested it"* — no `settings.json` key or CLI flag disables it ([anthropics/claude-code#80988](https://github.com/anthropics/claude-code/issues/80988)).
+
+canon's skills lean on **standing** delegation triggers written into `SKILL.md`/`CLAUDE.md` rather than a literal per-turn ask (`sprint`, `wrapup`, `mutation-test`, `repo-workflow-audit`, `skill-eval`, and the `Explore`-agent guidance all fork subagents this way). Named/specific triggers still register as "requested"; fuzzy standing triggers — the shape most of the above use — can be silently suppressed on Opus 5, with no error surfaced. A run with delegation quietly disabled looks identical to a normal one.
+
+Check exposure: `claude --version` (only Opus 5 sessions are affected) and, if run on Opus, watch whether a task that should clearly hand off to a subagent actually dispatches one.
+
+canon installs zero Claude Code hooks by design (see Session Continuity above); the standing fix for this — a `UserPromptSubmit` hook that injects a delegation "request" every turn, satisfying the tool's own escape clause — is an opt-in per-user mitigation via the `update-config` skill, not something canon wires in automatically. Tracked in `t-643c`.
