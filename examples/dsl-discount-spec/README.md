@@ -181,15 +181,18 @@ the runner and the code are produced from that.**
 
    ```bash
    $ node dsl_runner.js 120 SAVE20
-     amount:      120
-     code:        SAVE20
-     applied:     true
-     final_total: 96
-     reason:      SAVE20 applied
+     amount:           120
+     code:             SAVE20
+     applied:          true
+     final_total:      96
+     reason:           SAVE20 applied
 
    $ node dsl_runner.js 40 SAVE10
-     applied:     false
-     reason:      minimum not met
+     amount:           40
+     code:             SAVE10
+     applied:          false
+     final_total:      40
+     reason:           minimum not met
    ```
 
    That distinction is the lesson: **checking the scenarios** answers "does the code match the agreed
