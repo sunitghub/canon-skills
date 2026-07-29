@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Discount Apply</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --card: #1e293b;
+        --line: #334155;
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --accent: #22c55e;
+        --reject: #f59e0b;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: radial-gradient(1200px 600px at 50% -10%, #1e293b, var(--bg));
+        color: var(--text);
+      }
+      .card {
+        width: 380px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 28px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+      h1 { margin: 0 0 4px; font-size: 20px; }
+      p.sub { margin: 0 0 22px; color: var(--muted); font-size: 13px; }
+      label { display: block; font-size: 12px; color: var(--muted); margin: 0 0 6px; letter-spacing: 0.02em; text-transform: uppercase; }
+      .field { margin-bottom: 16px; }
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        font-size: 15px;
+        color: var(--text);
+        background: #0f172a;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+      button {
+        width: 100%;
+        padding: 11px;
+        margin-top: 4px;
+        font-size: 15px;
+        font-weight: 600;
+        color: #06240f;
+        background: var(--accent);
+        border: 0;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      button:hover { filter: brightness(1.05); }
+      .out {
+        margin-top: 22px;
+        border-top: 1px solid var(--line);
+        padding-top: 18px;
+      }
+      .row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 12px; }
+      .row .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.02em; }
+      #message { font-weight: 600; text-align: right; max-width: 220px; }
+      #message[data-state="apply"] { color: var(--accent); }
+      #message[data-state="reject"] { color: var(--reject); }
+      #discounted { font-size: 22px; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Discount Apply</h1>
+      <p class="sub">Enter a cart amount and a code, then apply.</p>
+
+      <div class="field">
+        <label for="amount">Amount</label>
+        <input id="amount" type="number" step="0.01" min="0" placeholder="120.00" value="120.00" />
+      </div>
+
+      <div class="field">
+        <label for="code">Code</label>
+        <input id="code" type="text" placeholder="SAVE20" value="SAVE20" />
+      </div>
+
+      <button id="apply">Apply</button>
+
+      <div class="out">
+        <div class="row">
+          <span class="k">Message</span>
+          <span id="message">Enter a code and apply.</span>
+        </div>
+        <div class="row">
+          <span class="k">Discounted Amount</span>
+          <span id="discounted">—</span>
+        </div>
+      </div>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
