@@ -1,15 +1,18 @@
-// dsl_runner.js — minimal Given/When/Then runner for app.js's apply_discount().
+// dsl_runner.js — minimal Given/When/Then runner for discount.js's apply_discount().
 //
-// The JavaScript twin of dsl_runner.py: same fixed-pattern step-matcher, same output,
-// same exit-code contract — it just runs the browser app's function instead of a Python
-// one. Not a general Gherkin engine: it recognizes only the exact step shapes used in
-// specs/discount.feature. A step-matcher this size can be read end to end and trusted;
-// pointing a free-text natural-language parser at live-edited spec text can't.
+// The JavaScript twin of dsl_runner.py: same fixed-pattern step-matcher, same [PASS]/[FAIL]
+// output, same exit-code contract. Not a general Gherkin engine — it recognizes only the exact
+// step shapes used in specs/discount.feature. A matcher this size can be read end to end and
+// trusted; a free-text natural-language parser can't.
 //
-// Run:  node dsl_runner.js ../specs/discount.feature
+// Two modes:
+//   Check the scenarios (this is the BDD gate — fixed inputs, expected outputs, PASS/FAIL):
+//     node dsl_runner.js ../specs/discount.feature      → three [PASS], exits 0 (1 on any FAIL)
+//   Try the rule on ad-hoc input (compute only — NOT a pass/fail check):
+//     node dsl_runner.js 120 SAVE20                      → prints applied / final_total / reason
 
 const fs = require("fs");
-const { apply_discount } = require("./app.js");
+const { apply_discount } = require("./discount.js");
 
 const GIVEN_TOTAL = /Given cart_total ([\d.]+)/;
 const GIVEN_CODE = /And code "(\w+)"/;
@@ -43,7 +46,8 @@ function parseScenarios(text) {
   return scenarios;
 }
 
-function run(path) {
+// Mode 1 — run the scenarios, print [PASS]/[FAIL], return overall ok.
+function runScenarios(path) {
   let ok = true;
   const text = fs.readFileSync(path, "utf8");
   for (const sc of parseScenarios(text)) {
@@ -65,9 +69,34 @@ function run(path) {
   return ok;
 }
 
-const path = process.argv[2];
-if (!path) {
-  console.error("usage: node dsl_runner.js <path-to-.feature>");
+// Mode 2 — compute the rule for one ad-hoc amount + code (no pass/fail; there's no expectation).
+function tryOne(amount, code) {
+  const r = apply_discount(amount, code);
+  console.log(`  amount:           ${amount}`);
+  console.log(`  code:             ${code}`);
+  console.log(`  applied:          ${r.applied}`);
+  console.log(`  final_total:      ${r.final_total}`);
+  console.log(`  reason:           ${r.reason}`);
+}
+
+const USAGE = "usage: node dsl_runner.js <path-to.feature>   # check scenarios (PASS/FAIL)\n" +
+  "       node dsl_runner.js <amount> <code>       # try the rule on one input";
+
+const arg = process.argv[2];
+if (!arg) {
+  console.error(USAGE);
   process.exit(2);
 }
-process.exit(run(path) ? 0 : 1);
+
+if (arg.endsWith(".feature")) {
+  process.exit(runScenarios(arg) ? 0 : 1);
+} else {
+  const amount = parseFloat(arg);
+  const code = process.argv[3];
+  if (Number.isNaN(amount) || !code) {
+    console.error(USAGE);
+    process.exit(2);
+  }
+  tryOne(amount, code);
+  process.exit(0);
+}
