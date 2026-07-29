@@ -16,6 +16,7 @@ basic composer.
 2. Preserve the entry's metadata (`Status`, `Format`, and `Core hook`) for editorial review.
 3. Refine the post for a fast LinkedIn read:
    - sharpen the first two lines without inventing claims;
+   - preserve the author's voice and factual wording; improve expression, not substance;
    - remove repetition and unexplained jargon;
    - keep concrete evidence, examples, and meaningful caveats;
    - use short paragraphs and plain-text bullets (`•`), not Markdown list syntax;
