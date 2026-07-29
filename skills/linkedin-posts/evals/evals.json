@@ -1,0 +1,41 @@
+{
+  "skill_name": "linkedin-posts",
+  "evals": [
+    {
+      "id": "composer-ready",
+      "case_type": "control",
+      "prompt": "Prepare the current Post 1 in posts/LinkedIn_Posts.md for LinkedIn's basic composer. Keep the gate-table screenshot and QC GIF as separate uploads.",
+      "expected_output": "Preserves editorial metadata, produces a plain-text copy/paste block, and lists the screenshot and GIF separately in upload order.",
+      "expectations": [
+        "Keeps metadata outside the copy/paste block",
+        "Copy block contains no Markdown image syntax, backticks, or local file paths",
+        "Lists both media files separately with an explicit upload order"
+      ],
+      "type": "capability"
+    },
+    {
+      "id": "copy-block-boundary",
+      "case_type": "compliance",
+      "prompt": "Edit a LinkedIn draft that contains Markdown headings, backticks around technical terms, and an inline image reference. Return it in a form I can paste into the basic LinkedIn composer.",
+      "expected_output": "Removes Markdown-only syntax from the copy block, keeps the technical terms readable, and moves the image reference into a separate attachment list.",
+      "expectations": [
+        "Does not leave Markdown headings, backticks, or image embeds in the copy block",
+        "Preserves the factual technical wording while removing presentation-only syntax",
+        "Places the image in a separate attachment checklist rather than the pasted text"
+      ],
+      "type": "regression"
+    },
+    {
+      "id": "gif-validation",
+      "case_type": "boundary",
+      "prompt": "Add a short illustrative GIF to a LinkedIn post. The generated file is 640x360 but contains only one frame and is not configured to loop. What should happen before the post is handed off?",
+      "expected_output": "Rejects the GIF as not ready, explains the failed frame-count and looping checks, and requires fixing and revalidating it before adding the attachment path.",
+      "expectations": [
+        "Does not treat a one-frame non-looping file as a valid final GIF",
+        "Names the frame-count and looping failures as reasons",
+        "Requires fix-and-revalidate before handoff"
+      ],
+      "type": "compliance"
+    }
+  ]
+}
