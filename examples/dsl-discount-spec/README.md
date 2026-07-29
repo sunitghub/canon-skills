@@ -33,11 +33,11 @@ runs your code with the `Given` inputs, and compares the result to the `Then` li
 `[PASS]`/`[FAIL]` and returning exit code `0`/`1`.
 
 **The part newcomers get stuck on is "how do I build that runner?" — and the answer in this
-workshop is: you don't hand-write it.** You describe what you want in a canon ticket (the scenario,
-plus "write these scenarios to a `.feature` file and build a runner that validates them"), and the
-agent builds the `.feature`, the runner, and the rule. canon's fresh evaluator then grades the work
-by *running* that runner. You supply the intent and the behavior; the harness builds and checks the
-rest.
+workshop is: you don't hand-write it.** You author the scenario in a canon ticket's **Acceptance**,
+add a one-time build instruction ("build a runner that validates this scenario"), and the agent
+produces the `.feature`, the runner, and the rule — inferring the function straight from the
+scenario, so you never write a function signature. canon's fresh evaluator then grades the work by
+*running* that runner. You supply the intent and the behavior; the harness builds and checks the rest.
 
 The rest of this README walks that arc end to end.
 
@@ -134,39 +134,44 @@ the runner and the code are produced from that.**
 
    ![The Acceptance tab rendering the three discount scenarios as a highlighted Gherkin panel under a checkbox criterion](images/scenario-panel.png)
 
-3. **Tell the ticket to produce the `.feature` and the runner.** Add a short `plan.md` note (or put
-   it in the sprint prompt below) with the build instruction — this is what spares the newcomer from
-   knowing how to write a runner:
+3. **Add the build instruction — once — so the agent knows how to check it.** The scenario you just
+   wrote **stays in Acceptance**: that's the source of truth, and it's all a non-engineer needs to
+   write. To spare the newcomer from knowing how to build a runner, add a short, reusable build
+   instruction to `plan.md` (or paste it into the sprint prompt in step 4). Notice it does **not**
+   name a function signature — the agent infers that from the scenario:
 
-   > - Write the three scenarios above to `specs/discount.feature`.
-   > - Put the rule in `app/discount.js` as `apply_discount(cartTotal, code)` returning
-   >   `{ applied, final_total, reason }`.
-   > - Build `app/dsl_runner.js` — a small fixed-pattern Node runner that reads
-   >   `specs/discount.feature`, runs `apply_discount` for each scenario, prints `[PASS]`/`[FAIL]`,
-   >   and exits `0` only if all pass.
-   > - Don't edit the spec to make the check pass; if the spec seems wrong, ask.
+   > **Build instruction (for the implementing agent)**
+   > - Treat the scenario(s) in Acceptance as the behavior contract.
+   > - Extract them verbatim into `specs/discount.feature`. That file is a *derived artifact* —
+   >   Acceptance stays the source; don't hand-edit the `.feature` afterward.
+   > - Infer the function under test from the scenario: `Given` lines are the inputs, `Then` lines are
+   >   the output fields. You choose the name and signature — the author doesn't specify it.
+   > - Implement it in `app/discount.js`, and build `app/dsl_runner.js` — a small fixed-pattern Node
+   >   runner that recognizes exactly this `.feature`'s step shapes, runs the function for each
+   >   scenario, prints `[PASS]`/`[FAIL]`, and exits `0` only if all pass.
+   > - Name that runner command in Acceptance's `## Test Plan`. Don't edit the spec to make the check
+   >   pass; if the inputs, outputs, or naming are ambiguous, ask before implementing.
 
-   You can also name the runner command right next to the scenario, using a ` ```gherkin-file `
-   reference with a `runner:` line, so the command travels with the spec:
+   This is the move that closes the "but how do I even test a `.feature`?" gap: the author writes only
+   the readable rule; the agent turns it into a `.feature`, a function, and a runner — and canon's
+   fresh evaluator later grades it by *running* that runner. (Default is JavaScript — `app/discount.js`.
+   Want Python instead? Just tell the agent to implement it in `discount.py` with a Python runner; the
+   scenario and this instruction don't change.)
 
-   ```gherkin-file
-   features/discount.feature
-   runner: node dsl_runner.js
-   ```
-
-   The board renders the referenced scenarios and shows the **resolved runner command** as a chip
+   Optionally, the runner command can travel *with* the spec: if you reference the scenario via a
+   ` ```gherkin-file ` block with a `runner:` line, the board renders the resolved command as a chip
    beneath the panel (display only — the board never executes it):
 
    ![The board's Acceptance tab: the three discount scenarios rendered as a Gherkin panel, with a RUNNER chip beneath it reading the resolved runner command joined to the feature path](images/runner-line.png)
 
 4. **`sprint start <id>` and approve.** Point your agent at the ticket:
 
-   > Start a sprint on ticket `<id>` (`sprint start <id>`). Per its Acceptance scenario and plan,
-   > write `specs/discount.feature`, implement the rule in `app/discount.js`, and build
-   > `app/dsl_runner.js` so that `node dsl_runner.js specs/discount.feature` exits 0. Don't edit the
-   > spec or the runner to force a pass.
+   > Start a sprint on ticket `<id>` (`sprint start <id>`) and implement it per its Acceptance scenario
+   > and the build instruction in the plan. Ask me anything ambiguous first; after I approve the plan,
+   > build it — don't edit the spec or the runner to force a pass.
 
-   Review the plan, then approve. The agent writes the three files.
+   Review the plan, then approve. The agent writes `specs/discount.feature` (from the Acceptance
+   scenario), the inferred rule in `app/discount.js`, and the runner `app/dsl_runner.js`.
 
 5. **Run the runner yourself — two ways.** First, the **check** (this is the BDD gate — fixed
    inputs, expected outputs):
@@ -194,6 +199,8 @@ the runner and the code are produced from that.**
      final_total:      40
      reason:           minimum not met
    ```
+
+   ![Terminal: node dsl_runner.js specs/discount.feature prints three green [PASS] lines and exits 0, then two try-it runs (120/SAVE20 → 96, 40/SAVE10 → minimum not met) print the computed applied/final_total/reason](images/runner-pass.png)
 
    That distinction is the lesson: **checking the scenarios** answers "does the code match the agreed
    behavior?"; **trying an input** just runs the rule. Only the first can fail.
@@ -231,6 +238,8 @@ This is the payoff, and it's worth doing slowly in front of a group.
    [FAIL] Valid code below minimum is rejected -- applied true != expected false; reason "SAVE10 applied" != expected "minimum not met"
    [PASS] Unknown code is rejected
    ```
+
+   ![Terminal: after the minimum-cart check is removed, node dsl_runner.js specs/discount.feature prints [PASS], a red [FAIL] on "Valid code below minimum is rejected" naming the exact applied/reason mismatch, then [PASS], and exits 1](images/runner-break.png)
 
    An exact, specific mismatch — exit code 1. Reload `index.html` and you'll see the app now wrongly
    discounts a $40 cart with `SAVE10`, because the app and the check share `discount.js`.
