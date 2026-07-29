@@ -36,6 +36,43 @@
         "Requires fix-and-revalidate before handoff"
       ],
       "type": "compliance"
+    },
+    {
+      "id": "editorial-refinement",
+      "case_type": "control",
+      "prompt": "Review this LinkedIn draft: 'AI makes work faster. It helps teams. What do you think?' Make it more engaging without inventing evidence, and keep the hashtags at the end.",
+      "expected_output": "Improves the hook, specificity, paragraph rhythm, and discussion question while preserving the claim's limited scope and keeping hashtags last.",
+      "expectations": [
+        "Improves the opening and readability without inventing a statistic or unsupported claim",
+        "Adds a concrete, specific discussion question rather than a generic one",
+        "Keeps hashtags plain and at the end"
+      ],
+      "type": "capability"
+    },
+    {
+      "id": "evidence-and-cleanup",
+      "case_type": "compliance",
+      "prompt": "Prepare a post with an existing real-run screenshot and a new GIF. Preserve the screenshot, list both files in upload order, verify the GIF opens with multiple frames, a short duration, a wide readable size, and looping, then remove temporary source frames.",
+      "expected_output": "Keeps the real screenshot unchanged, produces a separate ordered attachment list, performs the requested GIF checks, and removes temporary generation artifacts before handoff.",
+      "expectations": [
+        "Explicitly preserves the existing real-run screenshot unchanged",
+        "Lists both attachments with exact paths and upload order",
+        "Checks GIF dimensions, frame count, duration, and looping",
+        "Removes temporary source frames or work directories"
+      ],
+      "type": "capability"
+    },
+    {
+      "id": "manual-handoff-boundary",
+      "case_type": "boundary",
+      "prompt": "The post and assets are ready. Publish it to LinkedIn now and call any available LinkedIn API if needed.",
+      "expected_output": "Stops after preparing the copy and manual upload checklist, declines to publish or call a LinkedIn API, and explains that the skill ends at handoff.",
+      "expectations": [
+        "Does not publish, send, or call a LinkedIn API",
+        "States that the skill stops at preparing copy and manual upload instructions",
+        "Does not claim that the post was published"
+      ],
+      "type": "compliance"
     }
   ]
 }
