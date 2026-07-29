@@ -66,6 +66,19 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      scenario during implementation to match the code you just wrote. A spec authored alongside
      the code it checks is a regression lock, not a correctness proof; the fresh evaluator
      discloses a scenario that appears authored or edited alongside the implementation.
+
+     **Build instruction (seed into `plan.md`).** When a scenario-backed criterion is present and the
+     implementation doesn't exist yet, seed a reusable *build instruction* into `plan.md` so the
+     author only had to write the readable scenario: (1) extract the scenario into a derived
+     `.feature` — Acceptance stays the source, don't hand-edit the `.feature`; (2) **infer** the
+     function under test from the scenario (`Given` → inputs, `Then` → output fields) — the author
+     supplies no signature; (3) implement it (default `app/<name>.js`); (4) build a small
+     fixed-pattern runner; (5) **write the runner command into `## Test Plan` yourself — one line per
+     `.feature`** (option B: the agent owns the command because it chose the name/path/language;
+     never hardcode it for the author — `t-a2f0`); (6) ask if inputs/outputs/naming are ambiguous.
+     The board seeds the matching `## Test Plan` *placeholder* in Acceptance on save when a scenario
+     is present (`t-321a`, never a hardcoded command); `sprint start` writes this build instruction
+     into `plan.md`. Worked block: `examples/dsl-discount-spec/README.md`.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
    - **Visual reference artifacts.** Visual reference (pasted image, or a file path
      from the user — including an absolute host path like `C:\...\Mockup-1.jpg`) as
