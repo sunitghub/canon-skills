@@ -3276,7 +3276,16 @@ function enterEditMode(t) {
   if (modalState.activeDoc) {
     fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`)
       .then(r => r.ok ? r.json() : { content: '' })
-      .then(d => { editEl.value = ensureDocGuideComments(t, d.content || ''); });
+      .then(d => {
+        editEl.value = ensureDocGuideComments(t, d.content || '');
+        // On opening the Acceptance doc, drop the caret at the end of the last ## Criteria line so
+        // authoring (and the Scenario button) starts under Criteria, not Test Plan. Runs after the
+        // value is set, so it wins over the synchronous focus() below.
+        if (docSlug(t, modalState.activeDoc) === 'acceptance') {
+          const pos = criteriaCursorOffset(editEl.value);
+          if (pos != null) { editEl.focus(); editEl.setSelectionRange(pos, pos); }
+        }
+      });
   } else {
     editEl.value = (t.body || '').trim();
   }
@@ -3801,6 +3810,28 @@ function seedTestPlanRunnerPlaceholder(content) {
   while (insertAt < end && /^[ \t]*<!--/.test(lines[insertAt])) insertAt++;
   lines.splice(insertAt, 0, PLACEHOLDER);
   return lines.join('\n');
+}
+
+// Offset of the end of the last content line in the `## Criteria` section, so the editor can drop
+// the caret there on open (authoring + the Scenario button then land under Criteria, not Test Plan).
+// Returns null when there is no `## Criteria` heading. Pure; unit-tested in tests/sprint-check-seed.js.
+function criteriaCursorOffset(content) {
+  const s = String(content ?? '');
+  const lines = s.split('\n');
+  const hIdx = lines.findIndex((l) => /^##[ \t]+Criteria[ \t]*$/.test(l));
+  if (hIdx === -1) return null;
+  let end = lines.length;
+  for (let i = hIdx + 1; i < lines.length; i++) { if (/^##[ \t]+/.test(lines[i])) { end = i; break; } }
+  // Last non-blank, non-comment line in the section (normally the last checkbox); else the heading.
+  let target = hIdx;
+  for (let i = hIdx + 1; i < end; i++) {
+    const t = lines[i].trim();
+    if (!t || t.startsWith('<!--')) continue;
+    target = i;
+  }
+  let off = 0;
+  for (let i = 0; i < target; i++) off += lines[i].length + 1; // + newline
+  return off + lines[target].length; // end of the target line (before its trailing newline)
 }
 
 function ensureDocGuideComments(t, content) {
