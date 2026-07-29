@@ -45,6 +45,8 @@ fi
 if command -v node >/dev/null 2>&1; then
   printf '==> %s\n' "tests/sprint-check-gherkin.js"
   node "$ROOT/tests/sprint-check-gherkin.js"
+  printf '==> %s\n' "tests/sprint-check-editor.js"
+  node "$ROOT/tests/sprint-check-editor.js"
 else
   printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
 fi
