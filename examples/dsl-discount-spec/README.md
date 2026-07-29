@@ -127,8 +127,12 @@ the runner and the code are produced from that.**
    ```
 
    ## Test Plan
-   - [ ] `node dsl_runner.js specs/discount.feature` exits 0
+   - [ ] <the agent writes the runner command here after it builds the runner — for this workshop that lands on `node dsl_runner.js specs/discount.feature` exits 0>
    ````
+
+   You author only the scenario and this one Test Plan slot. You do **not** need to know the runner's
+   filename, the `.feature` path, or the language — the agent picks those and fills the command in
+   (that's why the slot is a placeholder, not a command you type).
 
    Save — the board renders the scenarios as a highlighted panel under the checkbox:
 
@@ -149,14 +153,33 @@ the runner and the code are produced from that.**
    > - Implement it in `app/discount.js`, and build `app/dsl_runner.js` — a small fixed-pattern Node
    >   runner that recognizes exactly this `.feature`'s step shapes, runs the function for each
    >   scenario, prints `[PASS]`/`[FAIL]`, and exits `0` only if all pass.
-   > - Name that runner command in Acceptance's `## Test Plan`. Don't edit the spec to make the check
-   >   pass; if the inputs, outputs, or naming are ambiguous, ask before implementing.
+   > - Write the runner command into Acceptance's `## Test Plan` yourself (fill the placeholder there),
+   >   because you chose the runner's name, path, and language — the author didn't. Use one Test Plan
+   >   line per `.feature` file. Don't edit the spec to make the check pass; if the inputs, outputs, or
+   >   naming are ambiguous, ask before implementing.
 
    This is the move that closes the "but how do I even test a `.feature`?" gap: the author writes only
    the readable rule; the agent turns it into a `.feature`, a function, and a runner — and canon's
-   fresh evaluator later grades it by *running* that runner. (Default is JavaScript — `app/discount.js`.
-   Want Python instead? Just tell the agent to implement it in `discount.py` with a Python runner; the
-   scenario and this instruction don't change.)
+   fresh evaluator later grades it by *running* the command the agent wrote into `## Test Plan`.
+   (Default is JavaScript — `app/discount.js`. Want Python instead? Just tell the agent to implement it
+   in `discount.py` with a Python runner; the scenario and this instruction don't change.)
+
+   **Who fills the Test Plan runner line, and when.** The evaluator grades a scenario-backed criterion
+   by *running* the command named in `## Test Plan`, so that command must be there by close — but it's
+   the **agent's** to write, not the author's:
+   - **New ticket / no runner yet:** the author leaves the Test Plan slot empty (the placeholder above);
+     the agent writes the command once it's built the runner. A brand-new scenario's author never has
+     to know the runner's filename, path, or language.
+   - **A ticket that reuses an existing runner:** the command is known convention, so it's fine to
+     pre-fill or **append** it by hand — e.g. add `` `node dsl_runner.js specs/<new>.feature` exits 0 ``
+     for the new file; the agent just adds the new scenarios.
+   - **Several distinct `.feature` files in one ticket:** one Test Plan line each (the agent appends
+     them). Keep cohesive scenarios in a single `.feature` with a single line.
+
+   Note the ordering this preserves: the **scenario** — the `Then` expectations, i.e. the correctness
+   bar — is what's locked at the sprint-start approval gate, before any code. The runner **command** is
+   just a mechanical pointer to it, so the agent finalizing that line during the build doesn't violate
+   "lock the spec before the code."
 
    Optionally, the runner command can travel *with* the spec: if you reference the scenario via a
    ` ```gherkin-file ` block with a `runner:` line, the board renders the resolved command as a chip
@@ -171,7 +194,8 @@ the runner and the code are produced from that.**
    > build it — don't edit the spec or the runner to force a pass.
 
    Review the plan, then approve. The agent writes `specs/discount.feature` (from the Acceptance
-   scenario), the inferred rule in `app/discount.js`, and the runner `app/dsl_runner.js`.
+   scenario), the inferred rule in `app/discount.js`, the runner `app/dsl_runner.js`, and fills the
+   `## Test Plan` runner command to match.
 
 5. **Run the runner yourself — two ways.** First, the **check** (this is the BDD gate — fixed
    inputs, expected outputs):
