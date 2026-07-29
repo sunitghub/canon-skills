@@ -3744,6 +3744,47 @@ function ensureHeadingComment(content, heading, comment) {
   return content.replace(re, `$1\n${comment}`);
 }
 
+// Does this doc contain a Gherkin scenario? (a fenced gherkin/gherkin-file block or a Scenario: line)
+function hasGherkinScenario(content) {
+  const s = String(content ?? '');
+  return /```[ \t]*gherkin(?:-file)?\b/i.test(s) || /^[ \t]*Scenario:/m.test(s);
+}
+
+// Standard Test Plan runner placeholder — the *agent* writes the real command after building the
+// runner (it chose the name/path/language); the board never hardcodes one. See DECISIONS t-a2f0.
+// Kept function-local (not a module-level const) so the vm-sandbox unit test can load these hoisted
+// functions without a TDZ on a partially-initialized script (t-6f8e lesson).
+
+// When an Acceptance doc has a Gherkin scenario, seed the Test Plan placeholder — but only when
+// `## Test Plan` has no real command yet, and never twice (idempotent). Pure: content -> content.
+// Unit-tested in tests/sprint-check-seed.js.
+function seedTestPlanRunnerPlaceholder(content) {
+  const PLACEHOLDER = '- [ ] <the agent writes the runner command here after building the runner>';
+  const s = String(content ?? '');
+  if (!hasGherkinScenario(s)) return s;
+  const lines = s.split('\n');
+  const hIdx = lines.findIndex((l) => /^##[ \t]+Test Plan[ \t]*$/.test(l));
+  if (hIdx === -1) return s;
+  let end = lines.length;
+  for (let i = hIdx + 1; i < lines.length; i++) { if (/^##[ \t]+/.test(lines[i])) { end = i; break; } }
+  // Idempotent: already seeded.
+  for (let i = hIdx + 1; i < end; i++) { if (lines[i].includes(PLACEHOLDER)) return s; }
+  // A real command is already there (a checkbox with non-comment content) → never clobber.
+  for (let i = hIdx + 1; i < end; i++) {
+    const m = lines[i].match(/^[ \t]*-[ \t]*\[[ xX]\][ \t]*(.*)$/);
+    if (m) { const body = m[1].trim(); if (body && !body.startsWith('<!--')) return s; }
+  }
+  // Prefer reusing an empty checkbox slot; otherwise insert after the heading + any guide comments.
+  for (let i = hIdx + 1; i < end; i++) {
+    const m = lines[i].match(/^([ \t]*)-[ \t]*\[[ xX]\][ \t]*$/);
+    if (m) { lines[i] = m[1] + PLACEHOLDER; return lines.join('\n'); }
+  }
+  let insertAt = hIdx + 1;
+  while (insertAt < end && /^[ \t]*<!--/.test(lines[insertAt])) insertAt++;
+  lines.splice(insertAt, 0, PLACEHOLDER);
+  return lines.join('\n');
+}
+
 function ensureDocGuideComments(t, content) {
   let next = ensureTicketLineComment(content);
   const slug = modalState.activeDoc ? docSlug(t, modalState.activeDoc) : '';
@@ -3751,6 +3792,7 @@ function ensureDocGuideComments(t, content) {
     next = ensureHeadingComment(next, 'Criteria', '<!-- Add or edit checklist items below. Keep this heading unchanged. -->');
     next = ensureHeadingComment(next, 'Test Plan', '<!-- Add or edit test commands below. Keep this heading unchanged. -->');
     next = ensureHeadingComment(next, 'QA', '<!-- Add sign-off items below. Keep this heading unchanged. -->');
+    next = seedTestPlanRunnerPlaceholder(next);
   } else if (slug === 'plan') {
     next = ensureHeadingComment(next, 'Approach', '<!-- Add or edit approach notes below. Keep this heading unchanged. -->');
     next = ensureHeadingComment(next, 'Decisions', '<!-- Record choices made during the sprint. Keep this heading unchanged. -->');
