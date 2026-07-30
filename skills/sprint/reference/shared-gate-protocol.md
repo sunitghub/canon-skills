@@ -91,6 +91,11 @@ regression as a finding even if it falls outside the sprint's stated focus.
    avoids a live-reproduced hang: a fresh browser profile's background network calls (e.g.
    GCM registration) can block the process from exiting. Size `<W>,<H>` to the full page —
    a too-short window silently crops content below the fold rather than erroring.
+   **Windows + Git Bash `file://` path:** the `<absolute-path-to-page>` must be Chrome's native
+   form `file:///C:/Users/...`, not Git Bash's MSYS `/c/Users/...` — `file:///c/Users/...` loads a
+   blank page (silently, no error), so the shot is empty and the check mis-grades. Convert with
+   `cygpath -m` (emits `C:/Users/...` with forward slashes): `"file:///$(cygpath -m "<absolute-path>")"`.
+   macOS/Linux paths need no conversion.
 3. To check a specific theme rather than inheriting the host's OS setting:
    `--blink-settings=preferredColorScheme=1` (light) is confirmed reliable, but `=2` (dark)
    is **not** — live-reproduced on Chrome 149.0.7827.201: `=2` silently produced light
