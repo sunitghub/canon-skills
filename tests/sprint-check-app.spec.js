@@ -532,6 +532,8 @@ test.describe('board modal', () => {
       if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
     }
   });
+
+  test('Set up CI gate writes canon-gate.yml and refuses on re-click (t-344e)', async ({ page }) => {
     const wf = path.join(PROJECT_ROOT, '.github', 'workflows', 'canon-gate.yml');
     try {
       await page.goto(BASE);
