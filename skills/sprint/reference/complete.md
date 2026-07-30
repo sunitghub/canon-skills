@@ -31,6 +31,35 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    its reason in the Wrapup Gates table. The advisory `reviewer` (step 2) is skipped for bugfix;
    the binding `evaluator` (step 3) always runs.
 
+   **Demo mode — time-boxed close for live demos.** When `ticket.md` has `demo: true` (a
+   `tkt`-owned frontmatter flag, absent = false — see `standards/ticket-layout.md`), run the
+   **demo close-path**: keep exactly **`security-review` + the binding `evaluator` (step 3)**,
+   and skip the advisory `reviewer` (step 2) **and every other wrapup gate** (code-simplifier,
+   code-reviewer, repo-check, doc-audit). It **never drops below the binding evaluator** — that
+   floor is non-negotiable; `demo` only trims the same *advisory reviewer + wrapup* gates the
+   `bugfix` tier already trims, so it is a user-elected `bugfix`-lite plus forced Haiku (see the
+   Model-tier section below). This reduction is driven by an explicit **user flag, not structural
+   risk** — the one documented place a gate reduction is flag-driven rather than diff-driven,
+   the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
+   `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
+   It is paid for by being **loud** — a demo close must never look like a full close:
+   - Every demo-skipped gate's `## Wrapup Gates` row reads `skipped | demo mode` (e.g.
+     `code-simplifier | skipped | demo mode`). `security-review` and `eval` read `ran`.
+   - `security-review` still gets a real `ran` row with checked evidence, so `_gate_wrapup_gates`
+     (which requires ≥1 non-placeholder `ran` row) and `_gate_eval_report` are both satisfied
+     with **no CLI change** — the CLI floor is unchanged; demo only trims agent-run/advisory gates.
+   - `summary.md` (step 8) must state the ticket was **"closed in Demo mode (security-review +
+     evaluator, Haiku)"** — name the gate(s) that ran and the model.
+
+   `demo` is unaffected by tier: it applies on top of a normal/high-risk sprint. It does **not**
+   skip the evaluator, `_gate_plan_signoff`, `_gate_acceptance_sections`, or any other CLI gate —
+   only `trivial` skips the evaluator, and `demo` is never `trivial`. **Scope note (Phase B):**
+   this close-path is fully exercisable by hand-setting `demo: true` in `ticket.md`; the `tkt demo`
+   command, New-Ticket checkbox, Plan-tab toggle, tooltip, and JSON parity are Phase A, and the
+   headless `ci + demo` guard/warning is Phase C — none are required here. Headless/CI runs
+   (`sprint-headless`/`sprint-headless-eval`) always run full and ignore `demo`.
+
+
    **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (excluding `.tickets/` files, which are gitignored and never need committing for this purpose) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
 
    The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (row order below is an illustrative record, not the execution order — `reviewer`/`eval` actually run at steps 2-3, after the pipeline gates):
@@ -79,6 +108,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      immediately, before continuing — so a compaction between ask and dispatch doesn't lose
      it. If present, skip structural classification and jump to **Apply the result** with this
      value. If absent, fall through.
+   - **Demo mode forces Haiku.** If `ticket.md` has `demo: true` and `plan.md` has **no** explicit
+     `Gate model:` value, apply `model: "haiku"` to the evaluator (and, though it's skipped on the
+     demo path, any gate that would run) — same effect as writing `Gate model: haiku`, without
+     needing to edit `plan.md`. An explicit `Gate model:` value still wins over this (checked
+     above). This forces Haiku on *any* diff, distinct from the structural low-risk downgrade
+     below. No CLI change — this is an agent-protocol read of the `demo` flag.
    - **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
      (same command the reviewer prompt uses).
    - **Check `git merge-base`'s exit status, not the diff output.** Failure (missing
@@ -134,7 +169,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` **or** `bugfix` (anchored to that field, so the word appearing
    elsewhere in Sign-off's free text — e.g. a `Risk:` one-liner discussing the decision — never
-   triggers the skip). `bugfix` is the **eval-only** tier: it skips *this advisory reviewer* but,
+   triggers the skip), **or if `ticket.md` has `demo: true`** (the demo close-path skips this
+   advisory gate the same way `bugfix` does, while still running the binding evaluator in step 3
+   — see "Demo mode" in step 1). `bugfix` is the **eval-only** tier: it skips *this advisory reviewer* but,
    unlike `trivial`, still runs the binding evaluator in step 3. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers never let genuinely
    trivial work start a sprint), but can be *downgraded* to trivial mid-flight if grill or
    impact analysis reveals the real change is a one-liner with no coordinated multi-file intent

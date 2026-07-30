@@ -90,6 +90,26 @@ Use the full planning pipeline when any condition applies:
 
 High-risk sprints run orient, grill, impact-analysis, required mitigation tests, and wrapup.
 
+### Demo (time-boxed close)
+
+**Orthogonal to the risk tiers above** — a user-elected close modifier, not a fifth risk level.
+Set by the `tkt`-owned frontmatter flag `demo: true` on the ticket (absent = false), so it can
+ride on top of a normal or high-risk sprint. It is **not** chosen at `sprint start`; it is set on
+the ticket (Phase B: hand-set `demo: true`; Phase A adds `tkt demo`/board surfaces).
+
+For a live demo (20–30 min), `sprint complete` runs a **fast close-path**: keep exactly
+**`security-review` + the binding evaluator (forced Haiku)**, and skip the advisory reviewer plus
+the rest of wrapup — the same *advisory reviewer + wrapup* gates `bugfix` trims, plus forced
+Haiku. It is a user-elected `bugfix`-lite and **never drops below the binding evaluator**.
+
+Unlike `bugfix`/`trivial` (structural, decided from the diff), demo's reduction is driven by an
+explicit **user flag, not structural risk** — the one documented place canon bends its
+"only structural risk may reduce gates" invariant, justified as the same explicit/auditable
+override class as `eval_override` / `Gate model:` and paid for by being loud (Demo markers on
+the Wrapup Gates rows + a `summary.md` demo line). See `reference/complete.md`'s "Demo mode"
+(step 1) for the full close-path and `AGENTS.md`'s north-star exception. Headless/CI ignores
+`demo` and always runs full.
+
 ## Job types (JTBD)
 
 Job type is a second dimension, **orthogonal to the risk tiers above**. The tier decides how much
