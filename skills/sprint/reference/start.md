@@ -70,12 +70,19 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      **Build instruction (seed into `plan.md`).** When a scenario-backed criterion is present and the
      implementation doesn't exist yet, seed a reusable *build instruction* into `plan.md` so the
      author only had to write the readable scenario: (1) extract the scenario into a derived
-     `.feature` — Acceptance stays the source, don't hand-edit the `.feature`; (2) **infer** the
-     function under test from the scenario (`Given` → inputs, `Then` → output fields) — the author
-     supplies no signature; (3) implement it — **default JavaScript** (`app/<name>.js`); (4) build a small
+     `.feature` — Acceptance stays the source, don't hand-edit the `.feature`; (2) **infer the
+     function _signature_ only** from the scenario (`Given` → inputs, `Then` → output fields) — the
+     author supplies no signature. Inference stops at the signature: it does **not** extend to
+     business-rule *values*; (3) implement it — **default JavaScript** (`app/<name>.js`); (4) build a small
      fixed-pattern runner whose default command is `node dsl_runner.js specs/<name>.feature`; (5) **write the runner command into `## Test Plan` yourself — one line per
      `.feature`** (option B: the agent owns the command because it chose the name/path/language;
-     never hardcode it for the author — `t-a2f0`); (6) ask if inputs/outputs/naming are ambiguous.
+     never hardcode it for the author — `t-a2f0`); (6) **never invent rule values the scenarios don't
+     pin.** Before implementing, list every behavior the scenarios leave unspecified — exact
+     thresholds, rates, boundary/edge values, ranges *between* the given data points, unhandled
+     inputs — and surface them to the user as explicit gaps to confirm; a scenario proving "40 is
+     rejected" pins only "min > 40", never "min = 50". Ask if the signature **or** any rule value is
+     ambiguous — do not fill the gap with a plausible guess (a guessed threshold still makes the
+     runner pass, so neither the runner nor the fresh evaluator will catch it — `t-ef19`).
      The board seeds the matching `## Test Plan` *placeholder* in Acceptance on save when a scenario
      is present (`t-321a`, never a hardcoded command); `sprint start` writes this build instruction
      into `plan.md`. Worked block: `examples/dsl-discount-spec/README.md`. **Language default is
