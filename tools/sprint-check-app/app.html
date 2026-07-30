@@ -645,6 +645,13 @@
     }
     .ci-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.65); flex-shrink: 0; }
 
+    .demo-badge {
+      font-size: 10px; padding: 1px 7px 1px 5px; border-radius: 4px; font-weight: 700;
+      letter-spacing: .04em; text-transform: uppercase; position: relative; z-index: 1;
+      display: inline-flex; align-items: center; gap: 4px; color: #fff; background: #f59e0b;
+    }
+    .demo-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.7); flex-shrink: 0; }
+
     .ci-run-btn {
       font-size: 9px; width: 18px; height: 18px; padding: 0; border-radius: 4px;
       display: flex; align-items: center; justify-content: center;
@@ -1558,6 +1565,7 @@
           <button class="create-pill" id="c-ci" type="button" title="Mark ticket CI-eligible for headless grading">CI</button>
           <button class="create-pill" id="c-gate-eval" type="button" title="Eval-only headless gate: the run button uses sprint-headless-eval (evaluator only) instead of the full pipeline. Requires CI.">Eval-only</button>
           <button class="create-pill" id="c-eval-override" type="button" title="Allow closing even if evaluator reports partial/fail">Eval Override</button>
+          <button class="create-pill" id="c-demo" type="button" title="Demo mode: fast close for live demos — sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.">Demo</button>
         </div>
       </div>
       <div class="editor-toolbar open" id="c-editor-toolbar">
@@ -2063,6 +2071,11 @@ function typeBadge(type) {
 function ciBadge(t) {
   if (String(t.ci) !== 'true') return '';
   return `<span class="ci-badge" title="CI-eligible — headless grading (tools/sprint-headless) can run against this ticket. Set with: tkt ci ${esc(t.id)} off">CI</span>`;
+}
+
+function demoBadge(t) {
+  if (String(t.demo) !== 'true') return '';
+  return `<span class="demo-badge" title="Demo mode — sprint complete runs the reduced close-path: security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO</span>`;
 }
 
 function sortChecklistRuns(text) {
@@ -2698,6 +2711,7 @@ function cardHTML(t, idx) {
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
+        ${demoBadge(t)}
         ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
       </div>
       <div class="card-body">
@@ -4238,6 +4252,7 @@ async function uploadVisual(ticketId, filename, base64) {
   let ciEnabled = false;
   let evalOverride = false;
   let gateEval = false;
+  let demoEnabled = false;
   let templateUntouched = true;
   let stagedVisuals = [];
 
@@ -4256,6 +4271,7 @@ async function uploadVisual(ticketId, filename, base64) {
   const ciBtn = document.getElementById('c-ci');
   const evalBtn = document.getElementById('c-eval-override');
   const gateBtn = document.getElementById('c-gate-eval');
+  const demoBtn = document.getElementById('c-demo');
 
   // Eval-only is only meaningful when CI is on; keep it disabled + reset otherwise.
   function syncGate() {
@@ -4267,12 +4283,14 @@ async function uploadVisual(ticketId, filename, base64) {
   ciBtn.addEventListener('click', () => { ciEnabled = !ciEnabled; ciBtn.classList.toggle('active', ciEnabled); syncGate(); });
   gateBtn.addEventListener('click', () => { if (!ciEnabled) return; gateEval = !gateEval; gateBtn.classList.toggle('active', gateEval); });
   evalBtn.addEventListener('click', () => { evalOverride = !evalOverride; evalBtn.classList.toggle('active', evalOverride); });
+  // Demo is independent of CI (no gate coupling).
+  demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); });
 
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-    ciEnabled = false; evalOverride = false; gateEval = false; stagedVisuals = [];
+    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
-    gateBtn.classList.remove('active'); syncGate();
+    gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
     titleEl.value = ''; detectEl.textContent = '';
     bodyEl.value = TYPE_TEMPLATES['task'] || '';
     queueEl.textContent = '→ will open in: Open';
@@ -4343,7 +4361,7 @@ async function uploadVisual(ticketId, filename, base64) {
     try {
       const ticket = await fetch('/api/tickets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full' }),
+        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled }),
       }).then(r => r.json());
 
       if (stagedVisuals.length) {

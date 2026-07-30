@@ -212,7 +212,7 @@ created: 2026-06-27
 
 func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("", "", "", 2, "", false, false, "full")
+	created := createTicket("", "", "", 2, "", false, false, "full", false)
 	id := created["id"].(string)
 	if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(id) {
 		t.Fatalf("id = %q, want t-[a-z0-9]{4}", id)
@@ -234,7 +234,7 @@ func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 func TestCreateTicketGate(t *testing.T) {
 	setupTestProject(t)
 	// eval mode writes the gate line and surfaces it in the ticket JSON
-	ev := createTicket("eval gate", "task", "open", 2, "", true, false, "eval")
+	ev := createTicket("eval gate", "task", "open", 2, "", true, false, "eval", false)
 	if ev["gate"] != "eval" {
 		t.Fatalf("gate JSON = %v, want eval", ev["gate"])
 	}
@@ -243,7 +243,7 @@ func TestCreateTicketGate(t *testing.T) {
 		t.Fatalf("ticket.md missing 'gate: eval':\n%s", raw)
 	}
 	// full mode (default) writes no gate line
-	full := createTicket("full gate", "task", "open", 2, "", true, false, "full")
+	full := createTicket("full gate", "task", "open", 2, "", true, false, "full", false)
 	raw2, _ := os.ReadFile(filepath.Join(ticketsDir, full["id"].(string), "ticket.md"))
 	if strings.Contains(string(raw2), "gate:") {
 		t.Fatalf("full-mode ticket.md should have no gate line:\n%s", raw2)
@@ -252,7 +252,7 @@ func TestCreateTicketGate(t *testing.T) {
 
 func TestWriteStatusUpdatesActive(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("Active test", "task", "open", 2, "", false, false, "full")
+	created := createTicket("Active test", "task", "open", 2, "", false, false, "full", false)
 	id := created["id"].(string)
 
 	if !writeStatus(id, "in_progress") {

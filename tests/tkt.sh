@@ -84,3 +84,18 @@ grep -q "^gate:" ".tickets/$gate_id/ticket.md" && fail "expected 'gate:' line re
 assert_contains "$("$TKT" gate "$gate_id")" "$gate_id: gate=full"
 bad_gate_output="$(run_fail "$TKT" gate "$gate_id" bogus)"
 assert_contains "$bad_gate_output" "must be 'eval' or 'full'"
+
+# ── tkt demo (t-dfaa): on sets demo: true, off removes it, no-arg prints, bad errors ─
+demo_id="$("$TKT" create "Demo mode ticket")"
+grep -q "^demo:" ".tickets/$demo_id/ticket.md" && fail "expected no 'demo:' line on a fresh ticket" || true
+assert_contains "$("$TKT" demo "$demo_id")" "$demo_id: demo=false"
+assert_contains "$("$TKT" demo "$demo_id" on)" "$demo_id: demo=true"
+assert_grep "^demo: true$" ".tickets/$demo_id/ticket.md"
+assert_contains "$("$TKT" demo "$demo_id")" "$demo_id: demo=true"
+"$TKT" demo "$demo_id" off >/dev/null
+grep -q "^demo:" ".tickets/$demo_id/ticket.md" && fail "expected 'demo:' line removed after 'demo off'" || true
+assert_contains "$("$TKT" demo "$demo_id")" "$demo_id: demo=false"
+bad_demo_output="$(run_fail "$TKT" demo "$demo_id" bogus)"
+assert_contains "$bad_demo_output" "must be 'on' or 'off'"
+demo_usage_output="$(run_fail "$TKT" demo)"
+assert_contains "$demo_usage_output" "Usage: tkt demo <id> [on|off]"
