@@ -498,7 +498,40 @@ test.describe('board modal', () => {
     }
   });
 
-  test('Set up CI gate writes canon-gate.yml and refuses on re-click (t-344e)', async ({ page }) => {
+  test('New Ticket Demo toggle writes demo: true and shows the DEMO card badge (t-dfaa)', async ({ page }) => {
+    const title = `Demo toggle test ${Date.now()}`;
+    let createdId = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+
+      // Demo is independent of CI — enabled without turning CI on
+      const demoPill = page.locator('#c-demo');
+      await expect(demoPill).toBeEnabled();
+      await demoPill.click();
+      await expect(demoPill).toHaveClass(/active/);
+
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+
+      // Frontmatter carries demo: true
+      const tm = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
+      expect(tm).toMatch(/^demo: true$/m);
+
+      // The card renders the DEMO badge
+      await expect(card.locator('.demo-badge')).toBeVisible();
+      await expect(card.locator('.demo-badge')).toHaveText('DEMO');
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
     const wf = path.join(PROJECT_ROOT, '.github', 'workflows', 'canon-gate.yml');
     try {
       await page.goto(BASE);

@@ -494,7 +494,7 @@ def read_doc(doc_file: str) -> str | None:
         return None
     return p.read_text(encoding='utf-8', errors='replace')
 
-def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full') -> dict:
+def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full', demo: bool = False) -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
     TICKETS_DIR.mkdir(exist_ok=True)
     existing = {p.stem for p in ticket_paths()} | {p.name for p in TICKETS_DIR.iterdir() if p.is_dir()}
@@ -519,6 +519,9 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str,
     if gate == 'eval':
         # eval-only headless gate; absent line = full (mirrors ci's present/absent convention)
         fm_lines.append('gate: eval')
+    if demo:
+        # demo close-path; absent line = false (mirrors ci/gate present/absent convention)
+        fm_lines.append('demo: true')
     fm_lines.append(f'eval_override: {"true" if eval_override else "false"}')
     fm_lines.append('---\n')
     fm = '\n'.join(fm_lines)
@@ -830,6 +833,7 @@ class Handler(BaseHTTPRequestHandler):
                 ci       = bool(payload.get('ci', False)),
                 eval_override = bool(payload.get('eval_override', False)),
                 gate     = 'eval' if str(payload.get('gate', '')).lower() == 'eval' else 'full',
+                demo     = bool(payload.get('demo', False)),
             )
             self.send_json(t); return
 

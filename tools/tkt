@@ -278,6 +278,51 @@ cmd_gate() {
   printf "%s: gate=%s\n" "$id" "$value"
 }
 
+cmd_demo() {
+  local id="${1:-}" value="${2:-}"
+  [[ -z "$id" ]] && { echo "Usage: tkt demo <id> [on|off]" >&2; exit 1; }
+
+  local file
+  file="$(find_ticket "$id")"
+  id="$(get_field "$file" id)"
+
+  # No value → print the current state (absent frontmatter line = false).
+  if [[ -z "$value" ]]; then
+    local cur
+    cur="$(get_field "$file" demo)"
+    printf "%s: demo=%s\n" "$id" "${cur:-false}"
+    return 0
+  fi
+
+  case "$value" in
+    on|true)   value=true ;;
+    off|false) value=false ;;
+    *) echo "Error: value must be 'on' or 'off'" >&2; exit 1 ;;
+  esac
+
+  if [[ "$value" == "true" ]]; then
+    # demo mode: sprint complete runs the reduced close-path (security-review +
+    # binding evaluator, forced Haiku) — see skills/sprint/reference/complete.md.
+    if grep -q "^demo: " "$file"; then
+      set_field "$file" demo true
+    else
+      awk '
+        /^---$/ { c++; if (c==2) { print "demo: true" } ; print; next }
+        { print }
+      ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+    fi
+  else
+    # false is the default, represented by the ABSENCE of the line (mirrors ci/gate).
+    awk '
+      /^---$/ { fm++; print; next }
+      fm == 1 && /^demo: / { next }
+      { print }
+    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+  fi
+
+  printf "%s: demo=%s\n" "$id" "$value"
+}
+
 cmd_close() {
   local id="" no_sprint=false
 
@@ -566,6 +611,11 @@ Commands:
                             sprint-headless-eval (evaluator only), 'full' (default)
                             runs the full sprint-headless pipeline. No arg prints
                             the current mode. Only meaningful when ci is on.
+  demo <id> [on|off]        Mark ticket for the demo close-path: 'sprint complete'
+                            runs security-review + the binding evaluator only
+                            (forced Haiku), skipping the advisory reviewer + rest
+                            of wrapup. No arg prints the current state; off (default)
+                            removes the line. Never drops below the evaluator.
   current                   Show active ticket
   reopen <id>               Set status to open
   ls [--status=X]           List tickets (unfiltered by default)
@@ -589,6 +639,7 @@ main() {
     archive)        cmd_set_status "${1:-}" archived ;;
     ci)             cmd_ci "$@" ;;
     gate)           cmd_gate "$@" ;;
+    demo)           cmd_demo "$@" ;;
     current)        cmd_current ;;
     reopen)         cmd_set_status "${1:-}" open ;;
     ls|list)        cmd_ls "$@" ;;

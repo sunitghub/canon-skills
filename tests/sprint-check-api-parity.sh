@@ -523,6 +523,23 @@ for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
   if grep -q '^gate:' "$WORK/.tickets/$fid/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label full create wrote a gate line ($fid)"; fi
 done
 
+# ── create-with-demo parity (t-dfaa): POST /api/tickets writes demo: true; absent otherwise ──
+py_demo_id=""; go_demo_id=""
+for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
+  label="${be%%:*}"; port="${be##*:}"
+  did="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"demo create","type":"task","demo":true}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  grep -q '^demo: true$' "$WORK/.tickets/$did/ticket.md" || fail "sprint-check-api-parity: FAIL — $label create with demo:true did not write 'demo: true' ($did)"
+  nd="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"nodemo create","type":"task"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  if grep -q '^demo:' "$WORK/.tickets/$nd/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label create without demo wrote a demo line ($nd)"; fi
+  if [[ "$label" == "server.py" ]]; then py_demo_id="$did"; else go_demo_id="$did"; fi
+done
+# frontmatter byte-parity between backends for a demo ticket (ignore the naturally-differing id/title/created)
+py_fm="$(awk '/^---$/{c++} c<2{print} c==2{print; exit}' "$WORK/.tickets/$py_demo_id/ticket.md" | grep -vE '^(id|title|created): ')"
+go_fm="$(awk '/^---$/{c++} c<2{print} c==2{print; exit}' "$WORK/.tickets/$go_demo_id/ticket.md" | grep -vE '^(id|title|created): ')"
+[[ "$py_fm" == "$go_fm" ]] || fail "sprint-check-api-parity: FAIL — demo frontmatter byte-mismatch between server.py and main.go:
+py=[$py_fm]
+go=[$go_fm]"
+
 # ── /api/ci-workflow parity (t-344e): both write byte-identical canon-gate.yml + refuse-on-exists ─
 # Both servers share $WORK, so exercise py fully (write + refuse), clear, then go.
 rm -rf "$WORK/.github"
