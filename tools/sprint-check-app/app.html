@@ -977,6 +977,17 @@
     .signoff-risk-input--needs-value {
       border-color: var(--col-discarded);
     }
+    .signoff-demo-toggle {
+      font-size: 11px; font-weight: 700; letter-spacing: .03em;
+      color: var(--text-body); background: transparent;
+      border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 8px; cursor: pointer;
+    }
+    .signoff-demo-toggle.active {
+      color: #fff; background: #f59e0b; border-color: #f59e0b;
+    }
+    .signoff-demo-toggle:disabled {
+      opacity: 0.5; cursor: not-allowed;
+    }
     .signoff-risk-warning {
       font-size: 10px; color: var(--col-discarded);
     }
@@ -3214,6 +3225,36 @@ function injectSignoffControls(container, content, t) {
   note.textContent = 'No effect under Codex';
   note.title = 'Codex’s sub-agent spawn tools have no per-agent model field, so this override is Claude-Code-only.';
   wrap.appendChild(note);
+
+  // ── Demo toggle (t-64a0) ─────────────────────────────────────────────
+  // Unlike Tier/Risk/Model (which edit plan.md prose), this edits the `demo`
+  // FRONTMATTER boolean via POST /api/ticket/<id>/demo, then updates t.demo +
+  // re-renders so the DEMO card badge appears/disappears live (mirrors moveCard).
+  const demoOn = String(t.demo) === 'true';
+  const demoBtn = document.createElement('button');
+  demoBtn.type = 'button';
+  demoBtn.className = 'signoff-demo-toggle' + (demoOn ? ' active' : '');
+  demoBtn.textContent = demoOn ? 'Demo: on' : 'Demo: off';
+  demoBtn.disabled = locked;
+  demoBtn.title = locked
+    ? 'Ticket is closed — no further edits.'
+    : 'Demo mode: sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
+  demoBtn.addEventListener('click', async () => {
+    const next = String(t.demo) !== 'true';
+    demoBtn.disabled = true;
+    try {
+      await fetch(`/api/ticket/${t.id}/demo`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ demo: next }),
+      });
+      t.demo = next ? 'true' : 'false';
+    } catch { /* best effort */ } finally {
+      renderBoard();
+      const cur = state.tickets.find(tk => tk.id === state.selectedId);
+      if (cur) renderModalBody(cur);
+    }
+  });
+  wrap.appendChild(demoBtn);
 
   bar.appendChild(wrap);
 }

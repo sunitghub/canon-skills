@@ -540,6 +540,34 @@ go_fm="$(awk '/^---$/{c++} c<2{print} c==2{print; exit}' "$WORK/.tickets/$go_dem
 py=[$py_fm]
 go=[$go_fm]"
 
+# ── demo-toggle parity (t-64a0): POST /api/ticket/<id>/demo ON inserts, OFF removes, byte-parity, idempotent ──
+tog="$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/tickets" -d '{"title":"demo toggle","type":"task"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+grep -q '^demo:' "$WORK/.tickets/$tog/ticket.md" && fail "sprint-check-api-parity: FAIL — new toggle ticket unexpectedly has a demo line ($tog)"
+# ON via server.py → demo: true present; capture result
+curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/$tog/demo" -d '{"demo":true}' >/dev/null
+grep -q '^demo: true$' "$WORK/.tickets/$tog/ticket.md" || fail "sprint-check-api-parity: FAIL — server.py demo toggle ON did not write 'demo: true' ($tog)"
+py_tog="$(cat "$WORK/.tickets/$tog/ticket.md")"
+# idempotent ON (server.py) — still exactly one demo line, ok:true
+[[ "$(curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/$tog/demo" -d '{"demo":true}')" == '{"ok": true}' ]] || fail "sprint-check-api-parity: FAIL — server.py idempotent demo ON did not return ok:true ($tog)"
+[[ "$(grep -c '^demo:' "$WORK/.tickets/$tog/ticket.md")" == "1" ]] || fail "sprint-check-api-parity: FAIL — server.py idempotent demo ON duplicated the demo line ($tog)"
+# OFF via server.py → line removed
+curl -s -X POST "http://127.0.0.1:$PY_PORT/api/ticket/$tog/demo" -d '{"demo":false}' >/dev/null
+grep -q '^demo:' "$WORK/.tickets/$tog/ticket.md" && fail "sprint-check-api-parity: FAIL — server.py demo toggle OFF did not remove the demo line ($tog)"
+# ON via main.go on the same ticket → must byte-match server.py's ON result
+curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/$tog/demo" -d '{"demo":true}' >/dev/null
+go_tog="$(cat "$WORK/.tickets/$tog/ticket.md")"
+[[ "$py_tog" == "$go_tog" ]] || fail "sprint-check-api-parity: FAIL — demo toggle ON byte-mismatch server.py vs main.go:
+py=[$py_tog]
+go=[$go_tog]"
+# OFF via main.go → line removed
+curl -s -X POST "http://127.0.0.1:$GO_PORT/api/ticket/$tog/demo" -d '{"demo":false}' >/dev/null
+grep -q '^demo:' "$WORK/.tickets/$tog/ticket.md" && fail "sprint-check-api-parity: FAIL — main.go demo toggle OFF did not remove the demo line ($tog)"
+# strict-id guard: a non-t-xxxx id must not match the demo route (falls through to 404, no write)
+for port in "$PY_PORT" "$GO_PORT"; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/ticket/notaticket/demo" -d '{"demo":true}')"
+  [[ "$code" == "404" ]] || fail "sprint-check-api-parity: FAIL — demo route accepted a non-t-xxxx id on port $port (status $code)"
+done
+
 # ── /api/ci-workflow parity (t-344e): both write byte-identical canon-gate.yml + refuse-on-exists ─
 # Both servers share $WORK, so exercise py fully (write + refuse), clear, then go.
 rm -rf "$WORK/.github"

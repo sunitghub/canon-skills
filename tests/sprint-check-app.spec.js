@@ -1675,6 +1675,61 @@ test.describe('board modal', () => {
     }
   });
 
+  test('Plan-tab Demo toggle writes/removes the demo frontmatter and updates the card badge live (t-64a0)', async ({ page }) => {
+    const title = `Plan demo toggle ${Date.now()}`;
+    let id = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      // Create via the UI so the server assigns a real t-xxxx id (the demo endpoint's
+      // strict id regex requires it — a synthetic long fixture id would be rejected).
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      id = await card.getAttribute('data-id') || '';
+
+      // Seed a plan.md so the Plan tab renders the signoff controls (incl. the Demo toggle).
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '',
+        '- [x] Plan approved', '', '## Approach', 'Filled.', '',
+      ].join('\n'));
+
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const toggle = page.locator('.signoff-demo-toggle');
+      await expect(toggle).toHaveText('Demo: off');
+      await expect(toggle).not.toHaveClass(/active/);
+      await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
+
+      // Toggle ON → frontmatter gains demo: true, button flips, card badge appears live
+      await toggle.click();
+      await expect.poll(() =>
+        fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8')
+      ).toMatch(/^demo: true$/m);
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo: on');
+      await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toBeVisible();
+
+      // Toggle OFF → demo line removed, badge gone
+      await page.locator('.signoff-demo-toggle').click();
+      await expect.poll(() =>
+        /^demo:/m.test(fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8'))
+      ).toBe(false);
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo: off');
+      await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
+    } finally {
+      if (id) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('signoff form pre-fills from an existing parseable Tier/Risk/Gate model line and preserves the suffix on Tier change', async ({ page }) => {
     const id = `t-signoff-prefill-${Date.now()}`;
 
