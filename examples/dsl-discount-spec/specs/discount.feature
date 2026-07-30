@@ -4,6 +4,7 @@ Scenario: Valid code above minimum applies the discount
   When discount is applied
   Then applied is true
   And final_total is 96.00
+  And reason is "SAVE20 applied"
 
 Scenario: Valid code below minimum is rejected
   Given cart_total 40.00

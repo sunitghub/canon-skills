@@ -110,6 +110,7 @@ the runner and the code are produced from that.**
      When discount is applied
      Then applied is true
      And final_total is 96.00
+     And reason is "SAVE20 applied"
 
    Scenario: Valid code below minimum is rejected
      Given cart_total 40.00
@@ -294,6 +295,15 @@ Every line here is both **readable** (a non-engineer can confirm this rule is wh
 **executable** (the runner runs it against the real function and gets a real answer). That
 dual requirement is the whole pattern — a spec that's precise but unreadable is just code with extra
 steps; a spec that's readable but unrun is just a comment.
+
+The runner enforces **only the values a `Then` line asserts** — here `applied`, `reason`, and (in
+scenario 1) `final_total`. Everything the spec doesn't assert is free: the function's name, its
+internal structure, and any field no `Then` mentions. That's a feature, not a gap — you pin what you
+care about and leave the rest to the implementation. It's also why scenario 1 pins
+`And reason is "SAVE20 applied"`: the applied-case message is part of the contract, so every correct
+build must produce it. The `app/discount.js` shown in this repo is **one reference implementation**
+your agent might produce; a different model may name things differently or word an unasserted field
+differently and still pass — the spec, not the code listing, is the source of truth.
 
 ## The runner, annotated
 
