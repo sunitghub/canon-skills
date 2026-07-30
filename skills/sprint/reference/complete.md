@@ -109,9 +109,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      it. If present, skip structural classification and jump to **Apply the result** with this
      value. If absent, fall through.
    - **Demo mode forces Haiku.** If `ticket.md` has `demo: true` and `plan.md` has **no** explicit
-     `Gate model:` value, apply `model: "haiku"` to the evaluator (and, though it's skipped on the
-     demo path, any gate that would run) — same effect as writing `Gate model: haiku`, without
-     needing to edit `plan.md`. An explicit `Gate model:` value still wins over this (checked
+     `Gate model:` value, apply `model: "haiku"` to the two gates the demo path runs —
+     `security-review` and the binding evaluator — same effect as writing `Gate model: haiku`,
+     without needing to edit `plan.md`. An explicit `Gate model:` value still wins over this (checked
      above). This forces Haiku on *any* diff, distinct from the structural low-risk downgrade
      below. No CLI change — this is an agent-protocol read of the `demo` flag.
    - **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
