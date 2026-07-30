@@ -40,6 +40,17 @@ structural low-risk check, or an explicit user `Gate model:` override) — see t
 (`spawn_agent`/`wait_agent`/`close_agent`), but per-agent model selection is not — Codex's
 `spawn_agent` has no `model` field, and its model picker is session-level. Don't assume the
 Haiku-downgrade above works under Codex without testing live first.
+
+**North-star exception — `demo` mode.** canon's governing invariant is *only structural risk
+may reduce close gates, and a sprint never drops below the binding evaluator* (`DECISIONS.md`
+2026-07-25). `demo: true` is the **one documented exception to the first clause**: it reduces
+the close to `security-review` + the binding evaluator (forced Haiku), skipping the advisory
+reviewer + rest of wrapup — driven by an explicit **user flag rather than structural risk**.
+Justified as the same class of explicit, human-set, auditable override as `eval_override` /
+`Gate model:`, and paid for by being loud (Demo-mode markers on the Wrapup Gates rows + a
+`summary.md` demo line). It **honors the second clause unconditionally** — the evaluator always
+runs. See `skills/sprint/reference/complete.md`'s "Demo mode" step and the 2026-07-30
+north-star-amendment entry in `DECISIONS.md`.
 <!-- MODEL-TIERS:END -->
 
 <!-- AI-SKILLS:BEGIN -->
