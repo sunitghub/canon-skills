@@ -28,6 +28,9 @@ function parseScenarios(text) {
   for (const line of text.split(/\r?\n/)) {
     const s = line.trim();
     let m;
+    if (s.startsWith("#")) {
+      continue; // comment line — never starts a scenario or sets a field (t-b878)
+    }
     if (s.startsWith("Scenario:")) {
       current = { name: s.slice("Scenario:".length).trim() };
       scenarios.push(current);
