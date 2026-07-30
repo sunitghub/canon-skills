@@ -35,9 +35,20 @@ a `PASS`/`FAIL` verdict per scenario and returning exit code `0`/`1`.
 **The part newcomers get stuck on is "how do I build that runner?" — and the answer in this
 workshop is: you don't hand-write it.** You author the scenario in a canon ticket's **Acceptance**,
 add a one-time build instruction ("build a runner that validates this scenario"), and the agent
-produces the `.feature`, the runner, and the rule — inferring the function straight from the
-scenario, so you never write a function signature. canon's fresh evaluator then grades the work by
-*running* that runner. You supply the intent and the behavior; the harness builds and checks the rest.
+produces the `.feature`, the runner, and the rule — inferring the function's **signature** from the
+scenario (`Given`→inputs, `Then`→outputs), so you never write a function signature. canon's fresh
+evaluator then grades the work by *running* that runner. You supply the intent and the behavior;
+the harness builds and checks the rest.
+
+> **Pin the numbers, or the agent must ask.** Inference stops at the signature — it does **not**
+> extend to business-rule *values*. A scenario proving "cart_total 40 + SAVE10 → rejected" pins only
+> "SAVE10's minimum is above 40", not "= 50", and says nothing about SAVE10's rate. Any threshold,
+> rate, boundary, or range your scenarios don't pin, the build instruction requires the agent to
+> **surface as an explicit gap and ask** — never fill in with a plausible guess. (A guessed
+> threshold still makes the runner pass every scenario, so neither the runner nor the fresh
+> evaluator would catch it — which is exactly why the value has to be pinned.) The boundary
+> scenarios in `specs/discount.feature` (`50.00`/`49.99` for SAVE10, `99.99` for SAVE20) exist to
+> pin `50`/`100`/`10%` so nothing is left to inference.
 
 The rest of this README walks that arc end to end.
 
@@ -146,8 +157,9 @@ the runner and the code are produced from that.**
    Acceptance** (the source of truth), and that's all a non-engineer writes. When you
    `sprint start <id>` (step 4), canon seeds a standard build instruction into `plan.md` — from
    `start.md`'s scenario-backed rule — and the agent follows it: extract the scenario to a *derived*
-   `specs/discount.feature`, **infer** the function from it (`Given` → inputs, `Then` → output fields,
-   so you never write a signature), implement `app/discount.js`, build `app/dsl_runner.js`, and write
+   `specs/discount.feature`, **infer** the function's *signature* from it (`Given` → inputs, `Then` → output fields,
+   so you never write a signature — but inference stops there; rule *values* it can't see get asked about, not guessed),
+   implement `app/discount.js`, build `app/dsl_runner.js`, and write
    the runner command into `## Test Plan` (the board already seeded a placeholder there). Default is
    JavaScript; for Python, just tell the agent to use `discount.py` with a Python runner.
 
@@ -156,9 +168,10 @@ the runner and the code are produced from that.**
 
    > - Treat the scenario(s) in Acceptance as the behavior contract.
    > - Extract them verbatim into `specs/discount.feature` (a *derived artifact* — Acceptance stays the source; don't hand-edit it).
-   > - Infer the function under test: `Given` lines are the inputs, `Then` lines are the output fields. You choose the name and signature.
+   > - Infer the function's **signature** only: `Given` lines are the inputs, `Then` lines are the output fields. You choose the name and signature. Inference does **not** extend to business-rule values.
    > - Implement it in `app/discount.js`, and build `app/dsl_runner.js` — a small fixed-pattern Node runner that recognizes this `.feature`'s step shapes, prints a `PASS`/`FAIL` verdict per scenario, and exits `0` only if all pass.
-   > - Write the runner command into `## Test Plan` yourself (one line per `.feature`); don't edit the spec to force a pass; ask if anything is ambiguous.
+   > - Write the runner command into `## Test Plan` yourself (one line per `.feature`); don't edit the spec to force a pass.
+   > - **Never invent rule values the scenarios don't pin** (thresholds, rates, boundaries, ranges between the given data points, unhandled inputs). Before implementing, list every unspecified behavior and surface it as an explicit gap to confirm; ask if the signature *or* any rule value is ambiguous.
 
    </details>
 
