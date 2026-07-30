@@ -1,13 +1,15 @@
 // dsl_runner.js — minimal Given/When/Then runner for discount.js's apply_discount().
 //
-// The JavaScript twin of dsl_runner.py: same fixed-pattern step-matcher, same [PASS]/[FAIL]
-// output, same exit-code contract. Not a general Gherkin engine — it recognizes only the exact
-// step shapes used in specs/discount.feature. A matcher this size can be read end to end and
+// The JavaScript twin of dsl_runner.py: same fixed-pattern step-matcher, same per-scenario
+// verdict output, same exit-code contract. Not a general Gherkin engine — it recognizes only the
+// exact step shapes used in specs/discount.feature. A matcher this size can be read end to end and
 // trusted; a free-text natural-language parser can't.
 //
 // Two modes:
 //   Check the scenarios (this is the BDD gate — fixed inputs, expected outputs, PASS/FAIL):
-//     node dsl_runner.js ../specs/discount.feature      → three [PASS], exits 0 (1 on any FAIL)
+//     node dsl_runner.js ../specs/discount.feature
+//       → one line per scenario: `Amount: <n>, Code: <code>, Verdict: PASS|FAIL, Reason: <reason>`
+//         (exits 0, or 1 on any FAIL with the exact mismatch appended)
 //   Try the rule on ad-hoc input (compute only — NOT a pass/fail check):
 //     node dsl_runner.js 120 SAVE20                      → prints applied / final_total / reason
 
@@ -46,7 +48,16 @@ function parseScenarios(text) {
   return scenarios;
 }
 
-// Mode 1 — run the scenarios, print [PASS]/[FAIL], return overall ok.
+// Whole numbers without a trailing .0 (120, not 120.0); decimals otherwise. Mirrors
+// dsl_runner.py's _fmt_amount so both runners print identical Amount values.
+function fmtAmount(n) {
+  return String(n); // JS Number already prints whole numbers without a trailing .0
+}
+
+// Mode 1 — run the scenarios, print one projected line per scenario, return overall ok.
+// Line format: `Amount: <n>, Code: <code>, Verdict: PASS|FAIL, Reason: <result.reason>`
+// (on FAIL the exact mismatch is appended). Fallback for scenarios whose fields don't
+// project cleanly onto these columns: print the scenario name + PASS/FAIL.
 function runScenarios(path) {
   let ok = true;
   const text = fs.readFileSync(path, "utf8");
@@ -62,8 +73,11 @@ function runScenarios(path) {
     if ("expect_reason" in sc && result.reason !== sc.expect_reason) {
       problems.push(`reason ${JSON.stringify(result.reason)} != expected ${JSON.stringify(sc.expect_reason)}`);
     }
-    const mark = problems.length === 0 ? "PASS" : "FAIL";
-    console.log(`  [${mark}] ${sc.name}` + (problems.length ? ` -- ${problems.join("; ")}` : ""));
+    const verdict = problems.length === 0 ? "PASS" : "FAIL";
+    const line =
+      `Amount: ${fmtAmount(sc.total)}, Code: ${sc.code}, ` +
+      `Verdict: ${verdict}, Reason: ${result.reason ?? ""}`;
+    console.log(line + (problems.length ? ` -- ${problems.join("; ")}` : ""));
     ok = ok && problems.length === 0;
   }
   return ok;

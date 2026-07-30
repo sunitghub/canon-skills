@@ -30,7 +30,7 @@ Scenario: Valid code below minimum is rejected
 That block is a **scenario**. A file of scenarios is a `.feature` file. On its own it's just
 readable text — what makes it a *check* is a small program, a **runner**, that reads the scenario,
 runs your code with the `Given` inputs, and compares the result to the `Then` lines, printing
-`[PASS]`/`[FAIL]` and returning exit code `0`/`1`.
+a `PASS`/`FAIL` verdict per scenario and returning exit code `0`/`1`.
 
 **The part newcomers get stuck on is "how do I build that runner?" — and the answer in this
 workshop is: you don't hand-write it.** You author the scenario in a canon ticket's **Acceptance**,
@@ -57,7 +57,7 @@ Three small files, each with one job:
 |---|---|
 | `specs/discount.feature` | the **scenarios** — the readable behavior contract |
 | `app/discount.js` | the **rule** — `apply_discount(cartTotal, code) → { applied, final_total, reason }` |
-| `app/dsl_runner.js` | the **runner** — checks the rule against the scenarios (`[PASS]`/`[FAIL]`, exit 0/1) |
+| `app/dsl_runner.js` | the **runner** — checks the rule against the scenarios (`PASS`/`FAIL` per scenario, exit 0/1) |
 
 The browser app (`app/index.html` + `app/app.js`) imports the *same* `discount.js`, so the thing you
 click and the thing the scenario checks are one piece of code, not two copies that can drift.
@@ -156,7 +156,7 @@ the runner and the code are produced from that.**
    > - Treat the scenario(s) in Acceptance as the behavior contract.
    > - Extract them verbatim into `specs/discount.feature` (a *derived artifact* — Acceptance stays the source; don't hand-edit it).
    > - Infer the function under test: `Given` lines are the inputs, `Then` lines are the output fields. You choose the name and signature.
-   > - Implement it in `app/discount.js`, and build `app/dsl_runner.js` — a small fixed-pattern Node runner that recognizes this `.feature`'s step shapes, prints `[PASS]`/`[FAIL]`, and exits `0` only if all pass.
+   > - Implement it in `app/discount.js`, and build `app/dsl_runner.js` — a small fixed-pattern Node runner that recognizes this `.feature`'s step shapes, prints a `PASS`/`FAIL` verdict per scenario, and exits `0` only if all pass.
    > - Write the runner command into `## Test Plan` yourself (one line per `.feature`); don't edit the spec to force a pass; ask if anything is ambiguous.
 
    </details>
@@ -189,7 +189,15 @@ the runner and the code are produced from that.**
    node dsl_runner.js specs/discount.feature
    ```
 
-   Three `[PASS]` lines and exit code 0. Second, **try the rule** on any amount and code you like —
+   Three lines — one `Verdict: PASS` per scenario — and exit code 0:
+
+   ```
+   Amount: 120, Code: SAVE20, Verdict: PASS, Reason: SAVE20 applied
+   Amount: 40, Code: SAVE10, Verdict: PASS, Reason: minimum not met
+   Amount: 200, Code: SAVE99, Verdict: PASS, Reason: invalid code
+   ```
+
+   Second, **try the rule** on any amount and code you like —
    this just computes the result, it is *not* a pass/fail check (there's no expected value to compare
    against):
 
@@ -209,7 +217,7 @@ the runner and the code are produced from that.**
      reason:           minimum not met
    ```
 
-   ![Terminal: node dsl_runner.js specs/discount.feature prints three green [PASS] lines and exits 0, then two try-it runs (120/SAVE20 → 96, 40/SAVE10 → minimum not met) print the computed applied/final_total/reason](images/runner-pass.png)
+   ![Terminal: node dsl_runner.js specs/discount.feature prints three per-scenario lines — Amount/Code/Verdict: PASS/Reason for SAVE20, SAVE10, SAVE99 — and exits 0, then two try-it runs (120/SAVE20 → 96, 40/SAVE10 → minimum not met) print the computed applied/final_total/reason](images/runner-pass.png)
 
    That distinction is the lesson: **checking the scenarios** answers "does the code match the agreed
    behavior?"; **trying an input** just runs the rule. Only the first can fail.
@@ -243,12 +251,12 @@ This is the payoff, and it's worth doing slowly in front of a group.
    ```
 
    ```
-   [PASS] Valid code above minimum applies the discount
-   [FAIL] Valid code below minimum is rejected -- applied true != expected false; reason "SAVE10 applied" != expected "minimum not met"
-   [PASS] Unknown code is rejected
+   Amount: 120, Code: SAVE20, Verdict: PASS, Reason: SAVE20 applied
+   Amount: 40, Code: SAVE10, Verdict: FAIL, Reason: SAVE10 applied -- applied true != expected false; reason "SAVE10 applied" != expected "minimum not met"
+   Amount: 200, Code: SAVE99, Verdict: PASS, Reason: invalid code
    ```
 
-   ![Terminal: after the minimum-cart check is removed, node dsl_runner.js specs/discount.feature prints [PASS], a red [FAIL] on "Valid code below minimum is rejected" naming the exact applied/reason mismatch, then [PASS], and exits 1](images/runner-break.png)
+   ![Terminal: after the minimum-cart check is removed, node dsl_runner.js specs/discount.feature prints a PASS line, a red Verdict: FAIL on the "below minimum" scenario naming the exact applied/reason mismatch, then a PASS line, and exits 1](images/runner-break.png)
 
    An exact, specific mismatch — exit code 1. Reload `index.html` and you'll see the app now wrongly
    discounts a $40 cart with `SAVE10`, because the app and the check share `discount.js`.
@@ -259,7 +267,7 @@ This is the payoff, and it's worth doing slowly in front of a group.
    right. Against the broken rule it fails, naming the exact mismatch; fix `discount.js` and the same
    evaluator passes. Nobody read the diff to catch the regression — the scenario did.
 
-3. Revert your edit and re-run to confirm three `[PASS]` lines and exit 0.
+3. Revert your edit and re-run to confirm three `PASS` lines and exit 0.
 
 **Why the check could catch it:** it was written in Part 1, *before* the rule existed. That ordering
 is what makes it a real check instead of a description of whatever the code happened to do.
@@ -310,7 +318,7 @@ workshop:
 | `app/discount.js` (rule) + the HTML app | `app/dsl_runner.js` (Node) | `node dsl_runner.js specs/discount.feature` |
 | `discount.py` (headless function) | `dsl_runner.py` (Python) | `python dsl_runner.py specs/discount.feature` |
 
-Both grade the identical three scenarios with identical `[PASS]`/`[FAIL]` output and exit code. The
+Both grade the identical three scenarios with identical `PASS`/`FAIL` output and exit code. The
 JavaScript path is the main one above (it's the one you can see and click); the Python path is the
 original and is what canon's own docs reference — pick whichever you prefer.
 
@@ -329,11 +337,11 @@ the person who owns the pricing policy and explains what each result protects.
 
 | Case | What to run or change | Expected result | Why it matters |
 |---|---|---|---|
-| Valid code above minimum | Run the saved spec with cart `120.00` and code `SAVE20`. | `[PASS]`; `applied: true`; final total `96.00`. | Confirms an approved promotion is applied at the correct threshold and amount. |
-| Valid code below minimum | Run the saved spec with cart `40.00` and code `SAVE10`. | `[PASS]`; `applied: false`; reason `minimum not met`. | Prevents discounts from leaking below the commercial minimum and protects margin. |
-| Unknown code | Run the saved spec with cart `200.00` and code `SAVE99`. | `[PASS]`; `applied: false`; reason `invalid code`. | Prevents an unapproved or mistyped code from changing the order total. |
-| Deliberate implementation break | Remove the minimum-total check from `app/discount.js`, then rerun the spec. | The below-minimum scenario returns `[FAIL]` with the actual/expected mismatch. | Demonstrates that the written policy catches a regression without someone having to inspect the diff. |
-| Restore the implementation | Put the minimum-total check back and rerun the spec. | Three `[PASS]` lines; exit code `0`. | Confirms the production behavior is back in agreement with the policy contract. |
+| Valid code above minimum | Run the saved spec with cart `120.00` and code `SAVE20`. | `PASS`; `applied: true`; final total `96.00`. | Confirms an approved promotion is applied at the correct threshold and amount. |
+| Valid code below minimum | Run the saved spec with cart `40.00` and code `SAVE10`. | `PASS`; `applied: false`; reason `minimum not met`. | Prevents discounts from leaking below the commercial minimum and protects margin. |
+| Unknown code | Run the saved spec with cart `200.00` and code `SAVE99`. | `PASS`; `applied: false`; reason `invalid code`. | Prevents an unapproved or mistyped code from changing the order total. |
+| Deliberate implementation break | Remove the minimum-total check from `app/discount.js`, then rerun the spec. | The below-minimum scenario returns `FAIL` with the actual/expected mismatch. | Demonstrates that the written policy catches a regression without someone having to inspect the diff. |
+| Restore the implementation | Put the minimum-total check back and rerun the spec. | Three `PASS` lines; exit code `0`. | Confirms the production behavior is back in agreement with the policy contract. |
 
 ## Where this pattern fits — and where it doesn't
 
@@ -390,7 +398,7 @@ Condensed recap, for running this live in front of a group:
 3. Let the agent build the `.feature` + `discount.js` + `dsl_runner.js`; run the checker, show green;
    `node dsl_runner.js 120 SAVE20` to poke the rule live.
 4. Sprint the app (Part 2), open it, apply `SAVE20` → $96.00.
-5. Break `discount.js` live, re-run the checker (and `sprint complete`), show the exact `[FAIL]` and
+5. Break `discount.js` live, re-run the checker (and `sprint complete`), show the exact `FAIL` and
    the app now wrongly discounting $40, then revert and show green again. This is the whole point in
    about fifteen seconds.
 6. Close on the honest-limit section above — name what this does and doesn't prove before anyone asks.
