@@ -10,10 +10,18 @@ tags: [linkedin, writing, media]
 Maintain `posts/LinkedIn_Posts.md` as an editorial queue and a publishing-ready source for LinkedIn's
 basic composer.
 
+Each entry must include `Status`, `Date`, `Format`, and either `Core hook` or `Target`. Keep standalone
+`Post` entries first, followed by `Reply` entries; within each group, order by `Date` ascending (oldest
+first). Use an ISO date (`YYYY-MM-DD`) for `Date`. If historical dates are unavailable, use the date the
+draft was added and preserve the existing chronological order; do not invent a publication date and
+present it as historical fact.
+
 ## Workflow
 
 1. Read the target entry, its footer instructions, nearby posts, and every referenced media file.
-2. Preserve the entry's metadata (`Status`, `Format`, and `Core hook`) for editorial review.
+2. Preserve the entry's metadata (`Status`, `Date`, `Format`, and `Core hook` or `Target`) for editorial
+   review. When adding or updating an entry, place standalone posts before replies, then re-sort each
+   group by `Date` ascending.
 3. Refine the post for a fast LinkedIn read:
    - sharpen the first two lines without inventing claims;
    - preserve the author's voice and factual wording; improve expression, not substance;
@@ -22,11 +30,16 @@ basic composer.
    - use short paragraphs and plain-text bullets (`•`), not Markdown list syntax;
    - end with one specific question or invitation when it fits the post;
    - keep hashtags plain and at the end.
+   - For a standalone post, use at most one engaging or humorous GIF when it materially helps the
+     hook. In the editorial entry, place its upload instruction immediately below the Core hook. The
+     basic LinkedIn composer renders attached media as post media rather than truly inline; treat
+     “below the hook” as the intended visual priority, not Markdown inside the copy block.
 4. Put the final text under `### Copy/paste into LinkedIn`. This block must contain only text that can
    be pasted into the composer: no Markdown headings, backticks, image embeds, local paths, or editorial
    notes. Use Unicode punctuation and bullets when they improve readability.
 5. Put media under `### Attachments`, outside the copy block. List exact repo-relative paths in upload
-   order and identify which asset is evidence versus decorative or illustrative.
+   order and identify which asset is evidence versus decorative or illustrative. If a GIF is used, list
+   it first and explicitly say to place it below the hook; list any evidence screenshot after it.
 6. Preserve grounded screenshots exactly unless the user explicitly requests an edit. Do not replace a
    real run artifact with an illustration.
 
@@ -43,6 +56,9 @@ When the entry calls for a GIF:
    duration, and is configured to loop.
 4. Inspect the rendered asset, verify the attachment path from the repo root, and remove any temporary
    source frames or work directories created during generation.
+
+Use no more than one GIF per standalone post. The GIF is an attention device, not evidence; keep a real
+run screenshot or other grounded artifact as a separate attachment when the claim needs proof.
 
 ## Validation
 

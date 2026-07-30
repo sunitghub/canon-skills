@@ -5,9 +5,10 @@
       "id": "composer-ready",
       "case_type": "control",
       "prompt": "Prepare the current Post 1 in posts/LinkedIn_Posts.md for LinkedIn's basic composer. Keep the gate-table screenshot and QC GIF as separate uploads.",
-      "expected_output": "Preserves editorial metadata, produces a plain-text copy/paste block, and lists the screenshot and GIF separately in upload order.",
+      "expected_output": "Preserves editorial metadata including Date, keeps the entry in Date-ascending order, produces a plain-text copy/paste block, and lists the screenshot and GIF separately in upload order.",
       "expectations": [
         "Keeps metadata outside the copy/paste block",
+        "Preserves the ISO Date field and Date-ascending ordering",
         "Copy block contains no Markdown image syntax, backticks, or local file paths",
         "Lists both media files separately with an explicit upload order"
       ],
@@ -56,7 +57,7 @@
       "expected_output": "Keeps the real screenshot unchanged, produces a separate ordered attachment list, performs the requested GIF checks, and removes temporary generation artifacts before handoff.",
       "expectations": [
         "Explicitly preserves the existing real-run screenshot unchanged",
-        "Lists both attachments with exact paths and upload order",
+        "Lists one GIF first with instructions to place it immediately below the opening hook, followed by the evidence screenshot",
         "Checks GIF dimensions, frame count, duration, and looping",
         "Removes temporary source frames or work directories"
       ],
