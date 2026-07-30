@@ -234,6 +234,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, writeVisual(m[1], stringValue(payload, "filename", ""), stringValue(payload, "data", "")))
 		return
 	}
+	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`).FindStringSubmatch(path); m != nil {
+		sendJSON(w, map[string]bool{"ok": writeDemo(m[1], boolValue(payload["demo"]))})
+		return
+	}
 	if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
 		sendJSON(w, map[string]bool{"ok": writeDoc(unescape(m[1]), fmt.Sprint(payload["content"]))})
 		return
@@ -662,6 +666,43 @@ func writeStatus(id, status string) bool {
 		updateActive(canonicalTicketID(id), status)
 	}
 	return ok
+}
+
+// writeDemo toggles the boolean `demo` frontmatter field on an existing ticket. ON ensures a
+// `demo: true` line (appended as the last frontmatter field); OFF removes any `demo:` line
+// (absent = false, matching `tkt demo`). Returns true if the ticket exists (idempotent).
+// Kept byte-for-byte identical to server.py's write_demo — parity-tested (t-64a0).
+func writeDemo(id string, want bool) bool {
+	path := findTicketPath(id)
+	if path == "" {
+		return false
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	text := string(raw)
+	m := frontmatterRe.FindStringSubmatchIndex(text)
+	if m == nil {
+		return false
+	}
+	var kept []string
+	for _, ln := range strings.Split(text[m[2]:m[3]], "\n") {
+		if strings.HasPrefix(ln, "demo:") {
+			continue
+		}
+		kept = append(kept, ln)
+	}
+	if want {
+		kept = append(kept, "demo: true")
+	}
+	updated := "---\n" + strings.Join(kept, "\n") + "\n---\n" + text[m[1]:]
+	if updated != text {
+		if err := os.WriteFile(path, []byte(updated), 0644); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalTicketID(id string) string {

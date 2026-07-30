@@ -474,6 +474,26 @@ def write_status(ticket_id: str, new_status: str) -> bool:
     _update_active(canonical_id, new_status)
     return True
 
+def write_demo(ticket_id: str, want: bool) -> bool:
+    """Toggle the boolean `demo` frontmatter field on an existing ticket. ON ensures a
+    `demo: true` line (appended as the last frontmatter field); OFF removes any `demo:` line
+    (absent = false, matching `tkt demo`). Returns True if the ticket exists (idempotent).
+    Kept byte-for-byte identical to main.go's writeDemo — parity-tested (t-64a0)."""
+    path = _find_ticket_path(ticket_id)
+    if not path:
+        return False
+    text = path.read_text(encoding='utf-8', errors='replace')
+    fm_match = _FRONTMATTER.match(text)
+    if not fm_match:
+        return False
+    kept = [ln for ln in fm_match.group(1).split('\n') if not ln.startswith('demo:')]
+    if want:
+        kept.append('demo: true')
+    updated = '---\n' + '\n'.join(kept) + '\n---\n' + text[fm_match.end():]
+    if updated != text:
+        path.write_text(updated, encoding='utf-8')
+    return True
+
 def write_body(ticket_id: str, new_body: str) -> bool:
     """Replace the body (everything after frontmatter) of a ticket."""
     path = _find_ticket_path(ticket_id)
@@ -807,6 +827,11 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/visual$', path)
         if m:
             self.send_json(write_visual(m.group(1), str(payload.get('filename', '')), str(payload.get('data', '')))); return
+
+        m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/demo$', path)
+        if m:
+            ok = write_demo(m.group(1), bool(payload.get('demo', False)))
+            self.send_json({'ok': ok}); return
 
         m = re.match(r'^/api/doc/(.+)$', path)
         if m:
