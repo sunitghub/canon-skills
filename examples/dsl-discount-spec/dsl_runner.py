@@ -33,6 +33,8 @@ def parse_scenarios(text: str) -> list[dict]:
     current: dict | None = None
     for line in text.splitlines():
         s = line.strip()
+        if s.startswith("#"):
+            continue  # comment line — never starts a scenario or sets a field (t-b878)
         if s.startswith("Scenario:"):
             current = {"name": s.removeprefix("Scenario:").strip()}
             scenarios.append(current)
