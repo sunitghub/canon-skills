@@ -8,6 +8,12 @@ the CFIHOS/Overtone work this example is drawn from, a spec runner for a plant-e
 conformance engine built the same way.
 
 Run:  python dsl_runner.py specs/discount.feature
+
+Output is one line per scenario, projected from the scenario itself — Amount/Code from the
+`Given` lines, Verdict from expected-vs-actual, Reason from apply_discount's result:
+    Amount: 120, Code: SAVE20, Verdict: PASS, Reason: SAVE20 applied
+On FAIL the exact mismatch (`applied … != expected …`) is appended. Fallback for scenarios
+whose fields don't project cleanly onto these columns: print the scenario name + PASS/FAIL.
 """
 import re
 import sys
@@ -45,6 +51,11 @@ def parse_scenarios(text: str) -> list[dict]:
     return scenarios
 
 
+def _fmt_amount(n: float) -> str:
+    """Whole numbers without a trailing .0 (120, not 120.0); decimals otherwise."""
+    return str(int(n)) if float(n).is_integer() else str(n)
+
+
 def run(path: str) -> bool:
     ok = True
     for sc in parse_scenarios(Path(path).read_text()):
@@ -56,8 +67,12 @@ def run(path: str) -> bool:
             problems.append(f"final_total {result.get('final_total')} != expected {sc['expect_total']}")
         if "expect_reason" in sc and result.get("reason") != sc["expect_reason"]:
             problems.append(f"reason {result.get('reason')!r} != expected {sc['expect_reason']!r}")
-        mark = "PASS" if not problems else "FAIL"
-        print(f"  [{mark}] {sc['name']}" + (f" -- {'; '.join(problems)}" if problems else ""))
+        verdict = "PASS" if not problems else "FAIL"
+        line = (
+            f"Amount: {_fmt_amount(sc['total'])}, Code: {sc['code']}, "
+            f"Verdict: {verdict}, Reason: {result.get('reason', '')}"
+        )
+        print(line + (f" -- {'; '.join(problems)}" if problems else ""))
         ok = ok and not problems
     return ok
 
