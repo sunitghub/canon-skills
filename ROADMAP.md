@@ -66,6 +66,44 @@ this file is the public-facing shortlist.
     heavier `docs/production-incident-playbook.md`; candidate for the same JTBD dimension.
   - Ship each of the three as its own gated sprint. This entry is the captured design, not the build.
 
+## Backlog — sprint workflow
+
+- **`demo` mode — one-click time-boxed close for live demos** (captured design, not the build).
+  A board **Demo** checkbox on the New-Ticket form (next to CI / Eval-only / Eval Override) that
+  makes `sprint complete` run a fast path for 20–30 min demos: **only the binding evaluator (forced
+  Haiku) + exactly one wrapup gate (`security-review`)**, skipping the advisory reviewer and the rest
+  of wrapup. Requested 2026-07-30; ~80% already exists (`Tier: bugfix` + `Gate model: haiku` gets
+  most of it today by hand).
+
+  Design constraints before building:
+  - **Never drops below the binding evaluator.** Keeps canon's north-star hard floor (2026-07-25):
+    the evaluator always runs. `demo` only reduces the *advisory reviewer + wrapup* gates — the same
+    ones the `bugfix` tier already reduces — so it's a user-elected `bugfix`-lite + forced Haiku.
+  - **Reduction is by user flag, not structural risk** — the one place this bends the north-star
+    ("only structural risk may reduce gates"). Justified as the same class of explicit, human-set,
+    auditable override as `eval_override` / `Gate model:`, and paid for by being **loud**: a Demo
+    badge on the card, `summary.md` states "closed in Demo mode (security-review + evaluator, Haiku)",
+    Wrapup Gates rows read `skipped | demo mode`. A demo close must never look like a full close.
+  - **Reuse existing machinery.** Frontmatter `demo: true` (`tkt`-owned, absent=false), `tkt demo
+    <id> [on|off]`, parsed into ticket JSON with server.py↔main.go parity — mirror the `ci`/`gate`
+    (`t-4e57`) pattern exactly. Model: `demo` implies `Gate model: haiku` unless an explicit value is
+    set (explicit wins). This forces Haiku on *any* diff — distinct from the structural low-risk
+    downgrade.
+  - **The one wrapup gate = `security-review`** (recommended; open for confirmation). The evaluator
+    covers criteria-vs-code; security is the one defect class unacceptable to ship even in a demo,
+    and `bugfix` already retains it. Alternative: the in-context `code-reviewer` (nearly free).
+  - **Headless/CI ignores `demo`.** `sprint-headless`/`sprint-headless-eval` always run full — CI
+    grades untrusted diffs and must not be softened by a ticket flag. Warn on `ci:true + demo:true`.
+  - **Reversible.** A demo-closed ticket can be `tkt reopen`'d and re-run through full close before
+    any real merge. Frame `demo` for demonstrations/disposable repos, not production merges.
+  - **Naming:** `demo` matches the framing; `express`/`quick` would signal reduced rigor more.
+
+  Phasing (each its own gated sprint): **A** — plumbing (frontmatter + `tkt demo` + JSON parity +
+  New-Ticket checkbox + card badge; 3-way parity surface). **B** — protocol (`complete.md` demo
+  close-path + `AGENTS.md`/docs + DECISIONS entry recording the north-star amendment). **C**
+  (optional) — headless-path guard + `ci+demo` warning. Suggested order: **B first** (protocol-only,
+  testable via a hand-set `demo:true` before touching the board), then A, then C.
+
 ## Backlog — workshop examples
 
 - **`dsl-discount-spec` follow-ups** — two small, deferred items from the runner-output work
