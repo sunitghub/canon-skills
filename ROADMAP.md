@@ -89,6 +89,22 @@ this file is the public-facing shortlist.
     (`t-4e57`) pattern exactly. Model: `demo` implies `Gate model: haiku` unless an explicit value is
     set (explicit wins). This forces Haiku on *any* diff — distinct from the structural low-risk
     downgrade.
+  - **Three set-surfaces, editable post-creation.** `demo` is a close-time behavior modifier like
+    `Tier` / `Gate model`, so it must be settable *after* creation, not only at New-Ticket time — the
+    common flow is `sprint start "Create some app"` then "actually, this is just a demo." Three
+    surfaces, all writing the same `demo: true` frontmatter: (1) the New-Ticket form checkbox
+    (creation-time), (2) an editable toggle on the **Plan tab** alongside the existing `Tier` /
+    `Gate model` dropdowns (decide-later, on the board), (3) `tkt demo <id> [on|off]` (agent/CLI).
+    Mirrors how `ci`/`gate` (`t-4e57`) are both New-Ticket-set and post-creation-editable.
+  - **Explain via a static tooltip, never injected prose.** To tell the user *what* demo does, add a
+    `title=` tooltip on the New-Ticket checkbox and the Plan-tab toggle (mirror the CI badge tooltip,
+    `app.html:2065`) — worded generically, e.g. *"Demo mode: fast close — binding evaluator + one
+    wrapup gate only, Haiku unless an explicit Gate model is set."* **Do not** inject a per-ticket
+    sentence into the Description or Plan at check-time: it duplicates the frontmatter source of
+    truth, goes stale on `tkt demo off` (the exact stale-evidence failure the evaluator exists to
+    catch), and would be *factually wrong* when an explicit non-Haiku `Gate model` wins or if the
+    single gate is later confirmed as `code-reviewer` rather than `security-review`. The *resolved*,
+    always-true statement lands in `summary.md` **at close**, where the gate and model are settled.
   - **The one wrapup gate = `security-review`** (recommended; open for confirmation). The evaluator
     covers criteria-vs-code; security is the one defect class unacceptable to ship even in a demo,
     and `bugfix` already retains it. Alternative: the in-context `code-reviewer` (nearly free).
@@ -99,7 +115,8 @@ this file is the public-facing shortlist.
   - **Naming:** `demo` matches the framing; `express`/`quick` would signal reduced rigor more.
 
   Phasing (each its own gated sprint): **A** — plumbing (frontmatter + `tkt demo` + JSON parity +
-  New-Ticket checkbox + card badge; 3-way parity surface). **B** — protocol (`complete.md` demo
+  New-Ticket checkbox + Plan-tab toggle + card badge + checkbox/toggle tooltips; 3-way parity
+  surface). **B** — protocol (`complete.md` demo
   close-path + `AGENTS.md`/docs + DECISIONS entry recording the north-star amendment). **C**
   (optional) — headless-path guard + `ci+demo` warning. Suggested order: **B first** (protocol-only,
   testable via a hand-set `demo:true` before touching the board), then A, then C.
