@@ -1204,6 +1204,7 @@
       flex-shrink: 0; line-height: 1;
     }
     .theme-toggle:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+    .theme-toggle.has-label { width: auto; min-width: 28px; padding: 0 10px; }
     .tour-toggle {
       color: var(--accent);
       border-color: rgba(124, 106, 247, .42);
@@ -1219,7 +1220,7 @@
 
     /* ── Create ticket button ────────────────────── */
     .create-btn {
-      padding: 5px 13px; border-radius: 6px; font-size: 12px; font-weight: 500;
+      height: 28px; padding: 0 13px; border-radius: 6px; font-size: 12px; font-weight: 500;
       border: 1px solid var(--accent); background: var(--accent-dim);
       color: var(--accent); cursor: pointer; flex-shrink: 0;
       transition: background .1s, color .1s;
@@ -1383,7 +1384,7 @@
         </div>
       </div>
       <button class="create-btn" id="btn-create" title="Create new ticket">+ New</button>
-      <button class="theme-toggle" id="btn-ci-setup" title="Set up CI gate — write .github/workflows/canon-gate.yml so PRs are graded by canon" style="font-size:12px;font-weight:700;letter-spacing:-.3px">⚙ CI</button>
+      <button class="theme-toggle has-label" id="btn-ci-setup" title="Set up CI gate — write .github/workflows/canon-gate.yml so PRs are graded by canon" style="font-size:12px;font-weight:700;letter-spacing:-.3px">⚙ CI</button>
       <button class="theme-toggle tour-toggle" id="tour-btn" title="Feature tour" aria-label="Feature tour" style="font-size:13px;font-weight:700;letter-spacing:-.5px">?</button>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">🌙</button>
     </div>
