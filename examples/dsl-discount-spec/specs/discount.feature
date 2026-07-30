@@ -45,3 +45,11 @@ Scenario: SAVE20 one cent below its minimum is rejected
   When discount is applied
   Then applied is false
   And reason is "minimum not met"
+
+Scenario: SAVE20 exactly at its minimum applies at 20 percent
+  Given cart_total 100.00
+  And code "SAVE20"
+  When discount is applied
+  Then applied is true
+  And final_total is 80.00
+  And reason is "SAVE20 applied"

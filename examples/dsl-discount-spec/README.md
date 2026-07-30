@@ -47,8 +47,8 @@ the harness builds and checks the rest.
 > **surface as an explicit gap and ask** — never fill in with a plausible guess. (A guessed
 > threshold still makes the runner pass every scenario, so neither the runner nor the fresh
 > evaluator would catch it — which is exactly why the value has to be pinned.) The boundary
-> scenarios in `specs/discount.feature` (`50.00`/`49.99` for SAVE10, `99.99` for SAVE20) exist to
-> pin `50`/`100`/`10%` so nothing is left to inference.
+> scenarios in `specs/discount.feature` (`50.00`/`49.99` for SAVE10, `100.00`/`99.99` for SAVE20)
+> exist to pin `50`/`100`/`10%`/`20%` on both sides so nothing is left to inference.
 
 The rest of this README walks that arc end to end.
 
