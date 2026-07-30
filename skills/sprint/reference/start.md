@@ -17,7 +17,7 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
 - 10. Sprint brief
 - 11. Wait for explicit approval
 
-1. **Ticket and context.** Read `tools/ticket.md` — plain relative path inside canon itself; inside a consumer project (`tools/` not symlinked in), find it via `command -v sprint`'s containing directory instead (`where sprint` on Windows if `command -v` returns nothing) — `ticket.md` sits beside `sprint` there. Then run `sprint start "<title>"` or `sprint start <ticket-id>`. If the request already names an existing ticket, pass that ID verbatim — only pass a title when no ticket exists yet. Per `sprint start --help`: a title creates a new ticket; an ID starts the sprint on the existing one, no duplicate created. It matches its argument against existing tickets first, so a paraphrased title instead of the real ID causes a false miss and a duplicate ticket. `sprint start` creates/starts the ticket, marks it active, ensures `DECISIONS.md`/`HANDOFF.md` exist, and seeds `acceptance.md`/`plan.md` skeletons (see Planning Files) if absent.
+1. **Ticket and context.** Read `tools/ticket.md` — plain relative path inside canon itself; inside a consumer project (`tools/` not symlinked in), find it via `command -v sprint`'s containing directory instead (`where sprint` on Windows if `command -v` returns nothing) — `ticket.md` sits beside `sprint` there. Then run `sprint start "<title>"` or `sprint start <ticket-id>`. If the request already names an existing ticket, pass that ID verbatim — only pass a title when no ticket exists yet. Per `sprint start --help`: a title creates a new ticket; an ID starts the sprint on the existing one, no duplicate created. It matches its argument against existing tickets first, so a paraphrased title instead of the real ID causes a false miss and a duplicate ticket. `sprint start` creates/starts the ticket, marks it active, ensures `DECISIONS.md`/`HANDOFF.md` exist, and seeds `acceptance.md`/`plan.md` skeletons (see Planning Files) if absent. Once started, **read the ticket's own docs before drafting a plan or asking the user for direction**: `.tickets/<id>/ticket.md` (the Description), `acceptance.md`, and `plan.md` — plus `research.md` if present. This `.tickets/<id>/ticket.md` is a **different file** from the CLI helper `tools/ticket.md` named at the start of this step: the helper documents the `tkt`/`sprint` commands; the ticket's own `ticket.md` holds the Description and frontmatter. An empty or template-only Description does not mean the work is unspecified — the build contract may live entirely in `acceptance.md`/`plan.md` (see Planning Files).
 
 2. **Skill check.** Run `./tools/skills.sh list` and ask: does an existing skill already cover this work? If yes, use it — don't reinvent. If no skill covers it and the work is reusable across projects, note it as a candidate for a new skill in `plan.md`. Building a new skill follows the same sprint flow as any other work.
 
@@ -72,13 +72,16 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      author only had to write the readable scenario: (1) extract the scenario into a derived
      `.feature` — Acceptance stays the source, don't hand-edit the `.feature`; (2) **infer** the
      function under test from the scenario (`Given` → inputs, `Then` → output fields) — the author
-     supplies no signature; (3) implement it (default `app/<name>.js`); (4) build a small
-     fixed-pattern runner; (5) **write the runner command into `## Test Plan` yourself — one line per
+     supplies no signature; (3) implement it — **default JavaScript** (`app/<name>.js`); (4) build a small
+     fixed-pattern runner whose default command is `node dsl_runner.js specs/<name>.feature`; (5) **write the runner command into `## Test Plan` yourself — one line per
      `.feature`** (option B: the agent owns the command because it chose the name/path/language;
      never hardcode it for the author — `t-a2f0`); (6) ask if inputs/outputs/naming are ambiguous.
      The board seeds the matching `## Test Plan` *placeholder* in Acceptance on save when a scenario
      is present (`t-321a`, never a hardcoded command); `sprint start` writes this build instruction
-     into `plan.md`. Worked block: `examples/dsl-discount-spec/README.md`.
+     into `plan.md`. Worked block: `examples/dsl-discount-spec/README.md`. **Language default is
+     JavaScript** — the `python dsl_runner.py …` examples in the scenario-backed rules above (and in
+     `eval.md`/`complete.md`) are language-agnostic illustrations of *a runner command*, not a Python
+     mandate; use Python (`discount.py` + `python dsl_runner.py`) only when the user asks for it.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
    - **Visual reference artifacts.** Visual reference (pasted image, or a file path
      from the user — including an absolute host path like `C:\...\Mockup-1.jpg`) as
@@ -110,6 +113,7 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      was never actually copied to `visuals/`.
    - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below)
    - If these already exist with real content (not just the skeleton): read them and proceed without recreating.
+   - **A template-only Description is not "unspecified."** A ticket created on the board carries a seeded Description type-template (`## Description` followed by `What should be built?` / `What should be done?` / `What is broken?` etc.) — that prompt is not a real description. When `acceptance.md` (criteria/scenario) or `plan.md` already specify the work, treat **that** as the build contract and proceed; do not stall or ask the user for direction solely because the Description is empty or still the seeded template.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
    - Record the tier and one-line reason in `plan.md`.
    - **Job-type planning step (JTBD).** Job type is *orthogonal to risk tier* — it adds a
