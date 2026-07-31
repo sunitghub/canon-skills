@@ -192,6 +192,27 @@ def legacy_doc_target(doc_file: str) -> Path | None:
         return TICKETS_DIR / m.group(1) / f'{m.group(2)}.md'
     return TICKETS_DIR / safe
 
+def _eval_fail_count(ticket: dict) -> int:
+    try:
+        return int(ticket.get('eval_fail_count') or 0)
+    except (TypeError, ValueError):
+        return 0
+
+def _type_outcome_stats(tickets: list) -> dict:
+    """Per-type {closed, clean} counts over closed tickets. `clean` = eval_fail_count 0/missing."""
+    stats: dict = {}
+    for t in tickets:
+        if t.get('status') != 'closed':
+            continue
+        ttype = t.get('type')
+        if not ttype:
+            continue
+        entry = stats.setdefault(ttype, {'closed': 0, 'clean': 0})
+        entry['closed'] += 1
+        if _eval_fail_count(t) == 0:
+            entry['clean'] += 1
+    return stats
+
 def load_tickets() -> list:
     tickets = []
     for f in ticket_paths():
@@ -199,6 +220,12 @@ def load_tickets() -> list:
             tickets.append(parse_ticket(f))
         except Exception:
             pass
+    outcome_stats = _type_outcome_stats(tickets)
+    for t in tickets:
+        if t.get('status') in ('open', 'in_progress'):
+            entry = outcome_stats.get(t.get('type'))
+            if entry and entry['closed'] >= 2:
+                t['type_outcome'] = entry
     with _HEADLESS_LOCK:
         running_ids = {tid for tid, state in _HEADLESS_RUNS.items() if state.get('status') == 'running'}
     if running_ids:

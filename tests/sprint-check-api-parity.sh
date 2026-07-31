@@ -172,6 +172,44 @@ cat > "$WORK/.tickets/t-gate/acceptance.md" <<'EOF'
 - [ ] Tested locally
 EOF
 
+# Dedicated fixture for type_outcome parity (t-cdeb) — the generic per-key
+# mismatch loop below covers the field itself; needs 2+ closed tickets of a
+# shared type (the field's visibility threshold) plus an open ticket of that
+# type to receive it, which the shared build_tickets_fixture doesn't provide.
+mkdir -p "$WORK/.tickets/t-oc1" "$WORK/.tickets/t-oc2" "$WORK/.tickets/t-ocopen"
+cat > "$WORK/.tickets/t-oc1/ticket.md" <<'EOF'
+---
+id: t-oc1
+status: closed
+type: chore
+priority: 2
+eval_fail_count: 0
+created: 2026-06-08T00:00:00Z
+---
+# Closed clean chore fixture
+EOF
+cat > "$WORK/.tickets/t-oc2/ticket.md" <<'EOF'
+---
+id: t-oc2
+status: closed
+type: chore
+priority: 2
+eval_fail_count: 1
+created: 2026-06-08T00:00:00Z
+---
+# Closed rework chore fixture
+EOF
+cat > "$WORK/.tickets/t-ocopen/ticket.md" <<'EOF'
+---
+id: t-ocopen
+status: open
+type: chore
+priority: 2
+created: 2026-06-08T00:00:00Z
+---
+# Open chore fixture, receives type_outcome
+EOF
+
 free_port() {
   python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'
 }

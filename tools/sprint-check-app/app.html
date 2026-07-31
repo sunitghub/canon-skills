@@ -652,6 +652,15 @@
     }
     .demo-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.7); flex-shrink: 0; }
 
+    /* Outcome badge — aggregate over closed tickets of the same type, shown only when
+       type_outcome is present (server omits it below a 2-closed-ticket sample). */
+    .outcome-badge {
+      font-size: 10px; padding: 1px 7px; border-radius: 4px; font-weight: 700;
+      letter-spacing: .02em; position: relative; z-index: 1; color: #fff;
+    }
+    .outcome-badge.outcome-good { background: #22c55e; }
+    .outcome-badge.outcome-mixed { background: #f59e0b; }
+
     .ci-run-btn {
       font-size: 9px; width: 18px; height: 18px; padding: 0; border-radius: 4px;
       display: flex; align-items: center; justify-content: center;
@@ -2080,6 +2089,14 @@ function typeBadge(type) {
   return `<span class="type-badge type-${esc(t)}">${esc(t)}</span>`;
 }
 
+function outcomeBadge(t) {
+  const o = t.type_outcome;
+  if (!o || !o.closed) return '';
+  const good = o.clean / o.closed > 0.5;
+  const title = `Past ${esc(t.type || 'task')} tickets: ${o.clean} of ${o.closed} closed without eval rework (eval_fail_count 0)`;
+  return `<span class="outcome-badge ${good ? 'outcome-good' : 'outcome-mixed'}" title="${title}">${o.clean}/${o.closed} clean</span>`;
+}
+
 function ciBadge(t) {
   if (String(t.ci) !== 'true') return '';
   return `<span class="ci-badge" title="CI-eligible — headless grading (tools/sprint-headless) can run against this ticket. Set with: tkt ci ${esc(t.id)} off">CI</span>`;
@@ -2722,6 +2739,7 @@ function cardHTML(t, idx) {
         <span class="card-id">${esc(t.id)}</span>
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
         ${typeBadge(t.type)}
+        ${outcomeBadge(t)}
         ${ciBadge(t)}
         ${demoBadge(t)}
         ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
