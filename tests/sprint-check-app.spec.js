@@ -533,13 +533,20 @@ test.describe('board modal', () => {
     }
   });
 
-  test('open card shows the type_outcome badge from past closed tickets of the same type (t-cdeb)', async ({ page }) => {
+  test('sidebar type legend shows the type_outcome ratio once per type, not repeated on cards (t-5a09)', async ({ page }) => {
     const stamp = Date.now();
-    const type = `outcometest${stamp}`;
+    // Short type name, matching real-world type length (bug/feature/task/chore/epic, <=7
+    // chars): the legend's grid column width is shared across all rows and sizes to the
+    // longest type name on the board, so an unrealistically long synthetic type (e.g. a full
+    // "outcometest<timestamp>" string) would widen/wrap the row on its own — a test-fixture
+    // artifact, not a regression in the fix under test (verified against real board data,
+    // which stays single-line at this dot design).
+    const type = `t${stamp.toString(36).slice(-4)}`;
     const cleanId = `t-oc-clean-${stamp}`;
     const reworkId = `t-oc-rework-${stamp}`;
     const openId = `t-oc-open-${stamp}`;
-    const ids = [cleanId, reworkId, openId];
+    const openId2 = `t-oc-open2-${stamp}`;
+    const ids = [cleanId, reworkId, openId, openId2];
 
     const writeTicket = (id, status, extraFrontmatter = '') => {
       const dir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -563,18 +570,42 @@ test.describe('board modal', () => {
       writeTicket(cleanId, 'closed', 'eval_fail_count: 0');
       writeTicket(reworkId, 'closed', 'eval_fail_count: 3');
       writeTicket(openId, 'open');
+      writeTicket(openId2, 'open');
 
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(openId);
 
-      const card = page.locator(`.card[data-id="${openId}"]`);
-      await expect(card).toBeVisible();
-      const badge = card.locator('.outcome-badge');
-      await expect(badge).toBeVisible();
-      await expect(badge).toHaveText('1/2 clean');
+      // No per-card badge anywhere on the board — the whole point of this change (t-5a09) —
+      // covers both same-type open cards, not just one.
+      await expect(page.locator(`.card[data-id="${openId}"]`)).toBeVisible();
+      await expect(page.locator(`.card[data-id="${openId2}"]`)).toBeVisible();
+      await expect(page.locator('.card .outcome-dot')).toHaveCount(0);
+
+      // Sidebar legend shows the ratio exactly once for this type, as a compact dot
+      // (not a wrapping text pill — the narrow legend column can't fit "N/M clean" inline).
+      const legendItem = page.locator('.sidebar-donut-legend-item', { hasText: type });
+      await expect(legendItem).toBeVisible();
+      const dot = legendItem.locator('.outcome-dot');
+      await expect(dot).toHaveCount(1);
+      await expect(dot).toBeVisible();
+      await expect(dot).toHaveAttribute('data-tooltip', /1 of 2 past .+ closed/);
+      await expect(dot).toHaveAttribute('aria-label', /1 of 2 past .+ closed/);
+      // hover shows the shared custom tooltip with the full detail text
+      await dot.hover();
+      const tooltip = page.locator('#hover-tooltip');
+      await expect(tooltip).toHaveClass(/visible/);
+      await expect(tooltip).toContainText('1 of 2 past');
+      await page.mouse.move(0, 0);
+      await expect(tooltip).not.toHaveClass(/visible/);
       // rendered-output check: the mixed-result color variant, not the good/green one
-      await expect(badge).toHaveClass(/outcome-mixed/);
+      await expect(dot).toHaveClass(/outcome-mixed/);
+      // no line-wrap regression: the legend item has `display: contents` (no box of its own),
+      // so check its rendered type-name+dot wrapper span instead — that's the actual box that
+      // would grow tall if the dot didn't fit inline.
+      const typeSpan = legendItem.locator('span', { hasText: type }).last();
+      const typeBox = await typeSpan.boundingBox();
+      // single line is 21px in production (verified against real board data); a wrap is ~42px
+      expect(typeBox.height).toBeLessThan(30);
     } finally {
       for (const id of ids) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -2347,10 +2378,10 @@ test.describe('board modal', () => {
         const runBtn = page.locator(`.card[data-id="${id}"] .ci-run-btn`);
         await expect(runBtn).not.toHaveAttribute('title', /.+/);
         await runBtn.hover();
-        await expect(page.locator('#ci-run-tooltip')).toHaveClass(/visible/);
-        await expect(page.locator('#ci-run-tooltip')).toHaveText('Run headless grading');
+        await expect(page.locator('#hover-tooltip')).toHaveClass(/visible/);
+        await expect(page.locator('#hover-tooltip')).toHaveText('Run headless grading');
         await page.mouse.move(0, 0);
-        await expect(page.locator('#ci-run-tooltip')).not.toHaveClass(/visible/);
+        await expect(page.locator('#hover-tooltip')).not.toHaveClass(/visible/);
       } finally {
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
