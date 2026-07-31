@@ -388,6 +388,42 @@ func ticketPaths() []string {
 	return paths
 }
 
+func evalFailCount(t ticket) int {
+	switch v := t["eval_fail_count"].(type) {
+	case int:
+		return v
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return n
+		}
+	}
+	return 0
+}
+
+// typeOutcomeStats: per-type {closed, clean} counts over closed tickets. clean = eval_fail_count 0/missing.
+func typeOutcomeStats(tickets []ticket) map[string]map[string]int {
+	stats := map[string]map[string]int{}
+	for _, t := range tickets {
+		if t["status"] != "closed" {
+			continue
+		}
+		ttype, _ := t["type"].(string)
+		if ttype == "" {
+			continue
+		}
+		entry, ok := stats[ttype]
+		if !ok {
+			entry = map[string]int{"closed": 0, "clean": 0}
+			stats[ttype] = entry
+		}
+		entry["closed"]++
+		if evalFailCount(t) == 0 {
+			entry["clean"]++
+		}
+	}
+	return stats
+}
+
 func loadTickets() []ticket {
 	// Must stay a non-nil slice — Go's encoding/json marshals a nil slice as
 	// `null`, not `[]`, unlike server.py's load_tickets (always `tickets = []`);
@@ -397,6 +433,17 @@ func loadTickets() []ticket {
 	for _, p := range ticketPaths() {
 		if t, err := parseTicket(p); err == nil {
 			tickets = append(tickets, t)
+		}
+	}
+	outcomeStats := typeOutcomeStats(tickets)
+	for _, t := range tickets {
+		status, _ := t["status"].(string)
+		if status != "open" && status != "in_progress" {
+			continue
+		}
+		ttype, _ := t["type"].(string)
+		if entry, ok := outcomeStats[ttype]; ok && entry["closed"] >= 2 {
+			t["type_outcome"] = entry
 		}
 	}
 	headlessRunsMu.Lock()

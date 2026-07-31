@@ -533,6 +533,53 @@ test.describe('board modal', () => {
     }
   });
 
+  test('open card shows the type_outcome badge from past closed tickets of the same type (t-cdeb)', async ({ page }) => {
+    const stamp = Date.now();
+    const type = `outcometest${stamp}`;
+    const cleanId = `t-oc-clean-${stamp}`;
+    const reworkId = `t-oc-rework-${stamp}`;
+    const openId = `t-oc-open-${stamp}`;
+    const ids = [cleanId, reworkId, openId];
+
+    const writeTicket = (id, status, extraFrontmatter = '') => {
+      const dir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        `status: ${status}`,
+        `type: ${type}`,
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        extraFrontmatter,
+        '---',
+        '',
+        `# ${id}`,
+        '',
+      ].filter(Boolean).join('\n'));
+    };
+
+    try {
+      writeTicket(cleanId, 'closed', 'eval_fail_count: 0');
+      writeTicket(reworkId, 'closed', 'eval_fail_count: 3');
+      writeTicket(openId, 'open');
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(openId);
+
+      const card = page.locator(`.card[data-id="${openId}"]`);
+      await expect(card).toBeVisible();
+      const badge = card.locator('.outcome-badge');
+      await expect(badge).toBeVisible();
+      await expect(badge).toHaveText('1/2 clean');
+      // rendered-output check: the mixed-result color variant, not the good/green one
+      await expect(badge).toHaveClass(/outcome-mixed/);
+    } finally {
+      for (const id of ids) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('Set up CI gate writes canon-gate.yml and refuses on re-click (t-344e)', async ({ page }) => {
     const wf = path.join(PROJECT_ROOT, '.github', 'workflows', 'canon-gate.yml');
     try {
