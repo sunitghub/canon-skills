@@ -148,8 +148,11 @@ saved snapshot; `HEAD` is "the commit you're currently on."
 
 ## Part 2 — Run the check
 
+From the `app/` directory (where `dsl_runner.js` and `hvac_check.js` live):
+
 ```bash
-node dsl_runner.js specs/hvac-diagnostic.feature
+cd app
+node dsl_runner.js ../specs/hvac-diagnostic.feature
 ```
 
 Nine lines — one `Verdict: PASS` per scenario — and exit code 0:
@@ -188,10 +191,10 @@ $ node dsl_runner.js rla 19 22
    in `checkBreaker`. Save, then re-run the check:
 
    ```bash
-   node dsl_runner.js specs/hvac-diagnostic.feature
+   node dsl_runner.js ../specs/hvac-diagnostic.feature
    ```
 
-   The "below the required rating fails" scenario now reports `Verdict: FAIL` — the exact
+   (still from `app/`.) The "below the required rating fails" scenario now reports `Verdict: FAIL` — the exact
    mismatch (`compliant true != expected false; reason "breaker meets required rating" !=
    expected "breaker undersized"`) — and the run exits 1. The other eight scenarios still pass;
    only the one the broken code actually affects goes red.
