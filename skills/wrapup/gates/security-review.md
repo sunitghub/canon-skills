@@ -58,6 +58,15 @@ Additionally exclude:
 - Lack of hardening measures — flag concrete vulnerabilities only, not absent best practices
 - Vulnerabilities only in `*.ipynb` notebooks unless there is a concrete attack path for untrusted input
 
+**Runtime posture is out of this gate's scope (by design).** This is a *static, diff-scoped* code
+review — it never runs the system. Ongoing/runtime security that isn't visible in a code diff is
+deliberately not this gate's job: credential-compromise **blast radius** and anomaly/behavioral
+**detection** (one stolen credential driving thousands of actions), **rate-limiting / DoS**, and
+**continuous enforcement / posture drift** ("enforcement lives in ongoing management, not at
+sign-in") all belong to the operational side — see `docs/production-incident-playbook.md`. For
+AI/LLM systems, `skills/ai-audit/SKILL.md`'s `agency-scope` / `resource-control` / `observability`
+surfaces cover the AI-app analogues (still static). Flag only code-visible sinks here.
+
 ## Optional Scanner Evidence
 
 If the repo already provides a scanner or rule set, run it when it is relevant to
@@ -75,7 +84,7 @@ and continue with manual review. Scanner absence is not a skipped security gate.
 
 ## Vulnerability Categories
 
-Injection, XSS, authorization bypass, weak crypto, unsafe deserialization, SSRF, CSRF, file security, broken auth, business logic flaws, API security, misconfiguration, error leaks, sensitive logs, agent/MCP security (permission scope, tool over-provisioning, MCP server config exposure), secrets (hardcoded credentials, API keys, tokens).
+Injection, XSS, authorization bypass, weak crypto, unsafe deserialization, SSRF, CSRF, file security, broken auth, business logic flaws, API security, misconfiguration, error leaks, sensitive logs, agent/MCP security (permission scope, tool over-provisioning, MCP server config exposure), secrets (hardcoded credentials, API keys, tokens), third-party data egress (a diff that adds an analytics/tracking pixel, a third-party script/tag/SDK inclusion, or code that sends PII, credentials, or session tokens to a third-party endpoint — flag when it can carry sensitive data out of an **authenticated/legitimate** flow, since access control at sign-in does not prevent it; the pattern must be diff-visible and the sensitive-data path concrete, per the HIGH/MEDIUM bar).
 
 ## Action Endpoint Patterns
 
