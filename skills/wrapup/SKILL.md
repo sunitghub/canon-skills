@@ -39,7 +39,7 @@ Before each step, assess the change and skip if criteria apply. State why in one
 
 ### Skip security-review if:
 - No security-sensitive files or patterns changed
-- Security-sensitive means: authentication, authorization, DB queries, externally-facing/untrusted input handling (web forms, API payloads, network requests — not trusted local CLI args a single developer runs against their own machine), file I/O, API endpoints, crypto, session management, environment/secret access, MCP server config or agent tool/permission definitions, hardcoded credential/secret access, destructive/irreversible client-side actions (delete-all, bulk clear, cache flush)
+- Security-sensitive means: authentication, authorization, DB queries, externally-facing/untrusted input handling (web forms, API payloads, network requests — not trusted local CLI args a single developer runs against their own machine), file I/O, API endpoints, crypto, session management, environment/secret access, MCP server config or agent tool/permission definitions, hardcoded credential/secret access, destructive/irreversible client-side actions (delete-all, bulk clear, cache flush), third-party data egress (adding an analytics/tracking pixel, a third-party script/tag/SDK, or any code that sends PII/credentials/tokens to a third-party endpoint — including from inside an authenticated flow)
 
 ### Skip repo-check if:
 - No repo workflow, setup, docs, skills, standards, scripts, or tools changed
