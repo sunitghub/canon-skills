@@ -13,7 +13,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 Steps run in order (2-3 are the fresh-context gates; the rest run in the main session):
 - 1. Wrapup (pipeline gates)
 - 2. Reviewer gate (normal+)
-- 3. Evaluator review (normal+) — advisory mutation-test may run after
+- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory mutation-test may run after
 - 4. Test verification
 - 5. Acceptance check
 - 6. DECISIONS.md
@@ -37,8 +37,8 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    and skip the advisory `reviewer` (step 2) **and every other wrapup gate** (code-simplifier,
    code-reviewer, repo-check, doc-audit). It **never drops below the binding evaluator** — that
    floor is non-negotiable; `demo` only trims the same *advisory reviewer + wrapup* gates the
-   `bugfix` tier already trims, so it is a user-elected `bugfix`-lite plus forced Haiku (see the
-   Model-tier section below). This reduction is driven by an explicit **user flag, not structural
+   `bugfix` tier already trims, so it is a user-elected `bugfix`-lite plus a forced-Haiku
+   evaluator (see the Model-tier section below). This reduction is driven by an explicit **user flag, not structural
    risk** — the one documented place a gate reduction is flag-driven rather than diff-driven,
    the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
    `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
@@ -48,8 +48,13 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    - `security-review` still gets a real `ran` row with checked evidence, so `_gate_wrapup_gates`
      (which requires ≥1 non-placeholder `ran` row) and `_gate_eval_report` are both satisfied
      with **no CLI change** — the CLI floor is unchanged; demo only trims agent-run/advisory gates.
+     `security-review` runs inline on the session model (only the evaluator is forced to Haiku —
+     see the Model-tier section below). If the diff has no security surface, `security-review`
+     still *runs* as the one retained wrapup gate, and its `ran` row records the honest evidence —
+     e.g. `ran | reviewed diff — no security-sensitive files changed` — rather than a manufactured
+     finding; that satisfies the ≥1-`ran`-row floor without pretending a review found something.
    - `summary.md` (step 8) must state the ticket was **"closed in Demo mode (security-review +
-     evaluator, Haiku)"** — name the gate(s) that ran and the model.
+     evaluator; evaluator on Haiku)"** — name the gate(s) that ran and the evaluator model.
 
    `demo` is unaffected by tier: it applies on top of a normal/high-risk sprint. It does **not**
    skip the evaluator, `_gate_plan_signoff`, `_gate_acceptance_sections`, or any other CLI gate —
@@ -60,7 +65,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    (`sprint-headless`/`sprint-headless-eval`) always run full and ignore `demo`.
 
 
-   **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (excluding `.tickets/` files, which are gitignored and never need committing for this purpose) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
+   **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (where the project gitignores `.tickets/`, those files don't need committing for this purpose; a project that tracks `.tickets/` in git may include them) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
 
    The "Wrapup Gates" table also records `reviewer`/`eval` — the two close-time gates outside the wrapup pipeline (steps 2-3). After assessing each gate, append a `## Wrapup Gates` section to `acceptance.md` (row order below is an illustrative record, not the execution order — `reviewer`/`eval` actually run at steps 2-3, after the pipeline gates):
 
@@ -108,12 +113,16 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      immediately, before continuing — so a compaction between ask and dispatch doesn't lose
      it. If present, skip structural classification and jump to **Apply the result** with this
      value. If absent, fall through.
-   - **Demo mode forces Haiku.** If `ticket.md` has `demo: true` and `plan.md` has **no** explicit
-     `Gate model:` value, apply `model: "haiku"` to the two gates the demo path runs —
-     `security-review` and the binding evaluator — same effect as writing `Gate model: haiku`,
-     without needing to edit `plan.md`. An explicit `Gate model:` value still wins over this (checked
-     above). This forces Haiku on *any* diff, distinct from the structural low-risk downgrade
-     below. No CLI change — this is an agent-protocol read of the `demo` flag.
+   - **Demo mode forces Haiku (evaluator only).** If `ticket.md` has `demo: true` and `plan.md`
+     has **no** explicit `Gate model:` value, apply `model: "haiku"` to the **binding evaluator
+     dispatch** — same effect as writing `Gate model: haiku`, without needing to edit `plan.md`.
+     This is scoped to the evaluator because it is the only demo-path gate that is a *dispatched
+     subagent*; `security-review` runs **inline in the main session** (see `wrapup/SKILL.md`), so
+     it takes no per-dispatch `model:` param — it runs on the session model (to run the whole
+     demo close cheaply, switch the session model to Haiku via `/model`). An explicit
+     `Gate model:` value still wins over this (checked above). This forces Haiku on *any* diff,
+     distinct from the structural low-risk downgrade below. No CLI change — this is an
+     agent-protocol read of the `demo` flag.
    - **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
      (same command the reviewer prompt uses).
    - **Check `git merge-base`'s exit status, not the diff output.** Failure (missing
@@ -226,7 +235,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    **What to pass for `<id>`:** see shared gate mechanics (e) above.
 
-3. **Evaluator review (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` `Tier:` field
+3. **Evaluator review (non-trivial tiers — normal, high-risk, bugfix).** Skip only if `plan.md`'s `## Sign-off` `Tier:` field
    value is `trivial` (which can never apply to `SKILL.md`'s four categorical not-trivial
    triggers). **Unlike the reviewer gate, `Tier: bugfix` does NOT skip this gate** — bugfix is
    eval-only, so the binding evaluator always runs; that is exactly what makes the reviewer-skip
@@ -321,7 +330,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    - ✓ passed | ✗ failed | ? not run (maps to `eval.md`'s `pass`/`fail`/`not-run` — same three
      states, different notation since this step is a human-facing recap, not the evaluator's
      own report format). A **scenario-backed** item — a Test Plan line naming a runner command
-     (e.g. `python dsl_runner.py specs/x.feature`) — should show ✓/✗ from an actual run, not `?`:
+     (e.g. `node dsl_runner.js specs/x.feature`) — should show ✓/✗ from an actual run, not `?`:
      the evaluator runs it rather than reading it (`eval.md` steps 6–7).
    - If any ✗ or ?: report which tests did not pass. Do not close the ticket. Stop here.
    - Include impact and regression tests.

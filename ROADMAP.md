@@ -64,16 +64,24 @@ this file is the public-facing shortlist.
     Invoked during orient/plan for a refactor job; produces the plan, touches no close gate.
   - **`root-why` (lightweight 5-Whys)** is the natural bugfix-job planning step, distinct from the
     heavier `docs/production-incident-playbook.md`; candidate for the same JTBD dimension.
-  - Ship each of the three as its own gated sprint. This entry is the captured design, not the build.
+  - **SHIPPED — all three, each as its own gated sprint.** JTBD job-types and the eval-only
+    `bugfix` tier now live in `skills/sprint/SKILL.md` (`## Job types (JTBD)` + `### Bugfix`);
+    `root-why` is `skills/sprint/reference/root-why.md`; the `mikado` skill is `skills/mikado/`
+    (in `CATALOG.md`). `sprint suggest-tier` (`t-b6a3`) surfaces bugfix eligibility structurally.
+    Entry retained below as the captured design.
 
 ## Backlog — sprint workflow
 
-- **`demo` mode — one-click time-boxed close for live demos** (captured design, not the build).
+- **`demo` mode — time-boxed close for live demos** — **Phases A + B SHIPPED**; Phase C outstanding.
   A board **Demo** checkbox on the New-Ticket form (next to CI / Eval-only / Eval Override) that
-  makes `sprint complete` run a fast path for 20–30 min demos: **only the binding evaluator (forced
-  Haiku) + exactly one wrapup gate (`security-review`)**, skipping the advisory reviewer and the rest
-  of wrapup. Requested 2026-07-30; ~80% already exists (`Tier: bugfix` + `Gate model: haiku` gets
-  most of it today by hand).
+  makes `sprint complete` run a fast path for 20–30 min demos: **the binding evaluator (forced
+  Haiku) + exactly one wrapup gate (`security-review`, which runs inline on the session model)**,
+  skipping the advisory reviewer and the rest of wrapup. Requested 2026-07-30. **Now implemented,
+  not by-hand:** Phase B protocol/docs (`t-f0ab`) + Phase A plumbing — `demo` frontmatter, `tkt demo`,
+  New-Ticket checkbox, Plan-tab toggle, card badge, JSON parity (`t-dfaa`/`t-64a0`). The close-path
+  reads the `demo` flag directly (no longer approximated by hand-setting `Tier: bugfix` +
+  `Gate model: haiku`). **Outstanding:** Phase C — headless `ci + demo` guard/warning. Design
+  below retained for reference.
 
   Design constraints before building:
   - **Never drops below the binding evaluator.** Keeps canon's north-star hard floor (2026-07-25):

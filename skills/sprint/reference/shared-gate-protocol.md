@@ -1,6 +1,6 @@
 ---
 name: shared-gate-protocol
-description: Shared protocol sections for reviewer and evaluator subagents — inputs, tools, report-writing safety, visual verification
+description: Shared protocol sections for reviewer and evaluator subagents — inputs, tools, base-ref derivation, citation format, report-writing safety, visual verification
 hidden: true
 ---
 

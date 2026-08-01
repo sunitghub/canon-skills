@@ -98,9 +98,11 @@ ride on top of a normal or high-risk sprint. It is **not** chosen at `sprint sta
 the ticket (Phase B: hand-set `demo: true`; Phase A adds `tkt demo`/board surfaces).
 
 For a live demo (20–30 min), `sprint complete` runs a **fast close-path**: keep exactly
-**`security-review` + the binding evaluator (forced Haiku)**, and skip the advisory reviewer plus
-the rest of wrapup — the same *advisory reviewer + wrapup* gates `bugfix` trims, plus forced
-Haiku. It is a user-elected `bugfix`-lite and **never drops below the binding evaluator**.
+**`security-review` + the binding evaluator**, and skip the advisory reviewer plus
+the rest of wrapup — the same *advisory reviewer + wrapup* gates `bugfix` trims. The **evaluator
+is forced to Haiku** (`security-review` runs inline on the session model — only the dispatched
+evaluator takes a `model:` param; see `reference/complete.md`'s Model-tier section). It is a
+user-elected `bugfix`-lite and **never drops below the binding evaluator**.
 
 Unlike `bugfix`/`trivial` (structural, decided from the diff), demo's reduction is driven by an
 explicit **user flag, not structural risk** — the one documented place canon bends its
@@ -142,7 +144,7 @@ Canonical layout:
   plan.md          ← approach, decisions, grill/impact sections for high-risk; ## Sign-off skeleton (with an unchecked approval box) is created at sprint start, filled in and checked on approval, re-read after compaction
   research.md      ← objective truth compression, written before ## Approach; brief bullets for normal-tier, full orient protocol for high-risk/brownfield
   review-notes.md  ← advisory reviewer findings (code quality, scope, standards) + YES/NO verdict; written at sprint complete for normal+ sprints
-  eval-report.md   ← adversarial per-criterion grades (pass/fail with file:line) + evaluator-run-id; written at sprint complete for normal+ sprints
+  eval-report.md   ← adversarial per-criterion grades (pass/fail with file:line) + evaluator-run-id; written at sprint complete for non-trivial sprints (normal, high-risk, and bugfix — bugfix is eval-only, so it keeps this)
   mutation-report.md ← optional advisory; written by the mutation-test skill at sprint complete when logic files changed; never close-gated
   summary.md       ← plan-vs-actual table; written at sprint complete
 ```

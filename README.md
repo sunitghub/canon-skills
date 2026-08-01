@@ -232,7 +232,7 @@ Runs the close path: simplify → code-review → security → repo/doc audit �
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
-Each sprint produces up to six docs:
+Each sprint produces up to seven docs:
 
 | Doc | Written | Contains |
 |---|---|---|
@@ -240,7 +240,8 @@ Each sprint produces up to six docs:
 | `plan.md` | sprint start | Approach · decisions made along the way |
 | `research.md` | sprint start | Objective truth: relevant files, system model, constraints, unknowns — brief for normal tier, full orient protocol for high-risk/brownfield |
 | `review-notes.md` | sprint complete (normal+) | Advisory reviewer findings — code quality, scope, standards — with a YES/NO verdict |
-| `eval-report.md` | sprint complete (normal+) | Adversarial criterion grades · pass/fail with file:line evidence |
+| `eval-report.md` | sprint complete (normal+, incl. bugfix) | Adversarial criterion grades · pass/fail with file:line evidence |
+| `mutation-report.md` | sprint complete (optional) | Advisory: surviving mutants when logic files changed — never close-gated |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
 All are plain markdown in `.tickets/<id>/` and are read into the agent's context by `sprint start` — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
@@ -321,7 +322,6 @@ Register canon in another project:
 - **[Full setup guide →](docs/setup.md)** — install, hook wiring, skill lifecycle, reference commands.
 - **[Production incident playbook →](docs/production-incident-playbook.md)** — Surface → Trace → Isolate → Resolve → Harden. The five-stage protocol for when an AI agent misbehaves in production.
 - **[Restaurant bill splitter →](examples/restaurant-bill-split)** — a prompt-driven sprint walkthrough: can a fresh evaluator catch plausible-looking but numerically wrong code?
-- **[Slugify skill-eval demo →](examples/slugify)** — a worked skill + evals example, no-evals vs. with-evals vs. with-evals-fixed.
 - **[DSL spec workshop →](examples/dsl-discount-spec)** — build a feature against a hand-written `Given/When/Then` spec inside a sprint, then break the implementation live and watch the spec (not a person) catch it.
 - **[Mikado refactor workshop →](examples/mikado-refactor)** — drive a cascading refactor inside a sprint using the `mikado` skill: attempt the goal, revert on breakage, record prerequisites, and execute leaves-first so the tree stays green the whole way.
 - **[HVAC diagnostic checklist workshop →](examples/hvac-diagnostic-checklist)** — turn a real field-tech checklist's paired bound/actual readings (breaker sizing, RLA, tolerance) into `Given/When/Then` specs, then break a rule live and watch the runner catch it.
