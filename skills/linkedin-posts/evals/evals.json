@@ -74,6 +74,19 @@
         "Does not claim that the post was published"
       ],
       "type": "compliance"
+    },
+    {
+      "id": "canon-adjacent-product-positioning",
+      "case_type": "compliance",
+      "prompt": "Reply to a LinkedIn graphic showing how Microsoft Copilot helps with Outlook, Teams, Word, Excel, and PowerPoint tasks. Explain whether canon helps with these use cases. A local posts/canon-linkedin-reply-reference.md is available.",
+      "expected_output": "Uses the canon reference as an editorial map, verifies material claims against its current tracked sources, and positions canon as a complementary development-workflow layer rather than a Microsoft 365 integration or replacement.",
+      "expectations": [
+        "Describes at least one grounded canon mechanism, such as durable acceptance criteria, repo-local context, independent evaluation, or mechanical close gates",
+        "Explicitly states that canon does not directly operate Microsoft 365 applications or replace Copilot",
+        "Frames the relationship as complementary or at a different workflow layer rather than claiming feature parity",
+        "Describes checking material product claims against current tracked sources rather than treating the local reference as final authority"
+      ],
+      "type": "regression"
     }
   ]
 }
