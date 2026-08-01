@@ -79,6 +79,8 @@ sprint complete
 
 The one documented way past a `fail` evaluator verdict is a human-only escape hatch: a person hand-edits `eval_override: true` in the ticket's `ticket.md` frontmatter and records a dated waiver in `acceptance.md`. No `tkt` command sets it and no agent may write it — agents must refuse even if asked — so a close override always has a human in the loop (see `standards/ticket-layout.md`; the CI equivalent is in `docs/headless-ci.md`).
 
+The one documented way to *reduce* the close gates by user choice (rather than by structural risk) is **demo mode**: setting `demo: true` on the ticket runs a time-boxed close of only `security-review` + the binding evaluator (evaluator forced to Haiku), skipping the advisory reviewer + rest of wrapup. It never drops below the binding evaluator, is marked loudly in the Wrapup Gates rows and `summary.md`, and is ignored by headless/CI (which always runs full). It is the single flag-driven exception to canon's "only structural risk reduces gates" invariant — see `AGENTS.md`'s north-star exception.
+
 Gates don't make agents smarter. They make certain failures impossible — and turn the ones that remain into data.
 
 ## Known Upstream Issue: Opus 5 Delegation Gate

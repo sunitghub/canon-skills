@@ -4,7 +4,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 
 ## Approach
 
-- Non-trivial work requires an open ticket before `sprint start`. Trivial fixes (typo, single-line config) are exempt. Adding a new file, wiring into test or build infrastructure, modifying a hook, pipeline, or post-commit script, or touching more than one file with coordinated intent is **normal tier** — eval is mandatory.
+- Non-trivial work requires an open ticket before `sprint start`. Trivial fixes (typo, single-line config) are exempt. Adding a new file, wiring into test or build infrastructure, modifying a hook, pipeline, or post-commit script, or touching more than one file with coordinated intent is **normal tier** — eval is mandatory. A `bugfix` tier (a single logic file plus its covering test) sits between trivial and normal: it is **eval-only** — keeps the binding evaluator but drops the advisory reviewer + heavy wrapup — and is a complete-time downgrade decided from the diff, never planned. See `skills/sprint/SKILL.md`'s Workflow tiers.
 - Think before coding. Surface tradeoffs, don't hide confusion.
 - Minimum code that solves the problem. Nothing speculative.
 - Touch only what you must. Clean up only your own mess.
@@ -44,8 +44,9 @@ Haiku-downgrade above works under Codex without testing live first.
 **North-star exception — `demo` mode.** canon's governing invariant is *only structural risk
 may reduce close gates, and a sprint never drops below the binding evaluator* (`DECISIONS.md`
 2026-07-25). `demo: true` is the **one documented exception to the first clause**: it reduces
-the close to `security-review` + the binding evaluator (forced Haiku), skipping the advisory
-reviewer + rest of wrapup — driven by an explicit **user flag rather than structural risk**.
+the close to `security-review` + the binding evaluator (the **evaluator** forced to Haiku;
+`security-review` runs inline on the session model), skipping the advisory reviewer + rest of
+wrapup — driven by an explicit **user flag rather than structural risk**.
 Justified as the same class of explicit, human-set, auditable override as `eval_override` /
 `Gate model:`, and paid for by being loud (Demo-mode markers on the Wrapup Gates rows + a
 `summary.md` demo line). It **honors the second clause unconditionally** — the evaluator always

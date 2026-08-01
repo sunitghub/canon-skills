@@ -6,7 +6,7 @@ Quick orientation for arriving agents. One line per directory.
 |---|---|
 | `bin/` | npm installer entry point — `install.js` (resolves the target dir, clones/updates canon, runs `skills.sh init`) |
 | `docs/` | User-facing documentation — how-it-works, sprint-check, setup, agent-playbook (agentic-app build practices), headless-ci, and the `docs/index.html` landing page |
-| `examples/` | Worked examples — `restaurant-bill-split` (prompt-driven sprint walkthrough), `slugify` (skill-eval demo) |
+| `examples/` | Worked examples — `restaurant-bill-split` (prompt-driven sprint walkthrough) |
 | `extensions/` | Runtime-specific integrations — Pi agent handoff extension |
 | `meta/` | Repo meta-assets — screenshots, demo GIF recorder (`meta/package.json`); gitignored output |
 | `posts/` | Long-form writing and blog drafts |
