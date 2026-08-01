@@ -17,9 +17,16 @@ criteria against the code; mutation-test checks whether the tests protecting tha
 
 ## Run isolated, on changed logic files only
 
-- **Dispatch as a fresh subagent** (`subagent_type: "Plan"`, same posture as the reviewer/evaluator
-  gates). Mutating source in the main session dirties the tree that session will commit — never do
-  that inline. The subagent mutates and restores within its own turn.
+- **Dispatch as a fresh subagent** (`subagent_type: "general-purpose"`). Mutating source in the
+  main session dirties the tree that session will commit — never do that inline. The subagent
+  mutates and restores within its own turn. **Not `"Plan"`** — the reviewer/evaluator gates use
+  `Plan` because they want its harness-level Edit/Write restriction (it keeps those adversarial
+  reviews honest: a subagent that can't touch code can't quietly "fix" what it's supposed to be
+  grading). This skill's own loop is the opposite: it *requires* write access to mutate and
+  restore files, so `Plan` can't run it at all — a `Plan`-dispatched run can only report that it's
+  blocked, never a real mutant count (reproduced live in canon `t-cdeb`). Safety here comes from
+  the tight, explicit mutation-set scope and the End-of-run guarantee below (a clean
+  `git status --porcelain` check), not from restricting the subagent's tools.
 - **Scope = the sprint diff.** Target set is
   `git diff --name-only $(git merge-base HEAD origin/main) HEAD`. Check `git merge-base`'s **exit
   status**, not whether the output is empty — a failed base resolution must mean "run nothing," not
