@@ -18,7 +18,10 @@ present it as historical fact.
 
 ## Workflow
 
-1. Read the target entry, its footer instructions, nearby posts, and every referenced media file.
+1. For a canon-related post or reply, read `posts/canon-linkedin-reply-reference.md` when it exists.
+   Treat it as an editorial map, not product authority: verify material claims against the current
+   tracked sources it names, and prefer those sources if they differ. Then read the target entry, its
+   footer instructions, nearby posts, and every referenced media file.
 2. Preserve the entry's metadata (`Status`, `Date`, `Format`, and `Core hook` or `Target`) for editorial
    review. When adding or updating an entry, place standalone posts before replies, then re-sort each
    group by `Date` ascending.
