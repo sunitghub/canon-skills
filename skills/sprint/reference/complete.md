@@ -31,10 +31,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    its reason in the Wrapup Gates table. The advisory `reviewer` (step 2) is skipped for bugfix;
    the binding `evaluator` (step 3) always runs.
 
-   **Demo mode — time-boxed close for live demos.** When `ticket.md` has `demo: true` (a
+   **Demo mode — light close for live demos or docs/UX work.** When `ticket.md` has `demo: true` (a
    `tkt`-owned frontmatter flag, absent = false — see `standards/ticket-layout.md`), run the
-   **demo close-path**: keep exactly **`security-review` + the binding `evaluator` (step 3)**,
-   and skip the advisory `reviewer` (step 2) **and every other wrapup gate** (code-simplifier,
+   **demo close-path**. The `demo` flag covers one light-close for two user-elected intents — a
+   live demo (time-box), or a docs/research/UX-mockup sprint whose whole surface is `.md`/`.pen`
+   (+ visuals) with no code to code-review or simplify. The close-path is identical for both:
+   keep exactly **`security-review` + the binding `evaluator` (step 3)**, and skip the advisory `reviewer` (step 2) **and every other wrapup gate** (code-simplifier,
    code-reviewer, repo-check, doc-audit). It **never drops below the binding evaluator** — that
    floor is non-negotiable; `demo` only trims the same *advisory reviewer + wrapup* gates the
    `bugfix` tier already trims, so it is a user-elected `bugfix`-lite plus a forced-Haiku

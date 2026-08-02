@@ -90,24 +90,40 @@ Use the full planning pipeline when any condition applies:
 
 High-risk sprints run orient, grill, impact-analysis, required mitigation tests, and wrapup.
 
-### Demo (time-boxed close)
+### Demo / Docs / UX (light close)
 
 **Orthogonal to the risk tiers above** — a user-elected close modifier, not a fifth risk level.
 Set by the `tkt`-owned frontmatter flag `demo: true` on the ticket (absent = false), so it can
 ride on top of a normal or high-risk sprint. It is **not** chosen at `sprint start`; it is set on
-the ticket (Phase B: hand-set `demo: true`; Phase A adds `tkt demo`/board surfaces).
+the ticket (Phase B: hand-set `demo: true`; Phase A adds `tkt demo`/board surfaces — the
+New-Ticket **Demo/Docs/UX** option and Plan-tab toggle).
 
-For a live demo (20–30 min), `sprint complete` runs a **fast close-path**: keep exactly
+One light-close covers **two intents**, both explicit and user-elected:
+- **Live demo** (20–30 min time-box) — trim the close so a demo isn't gated on full wrapup.
+- **Docs / research / UX work** — a sprint whose entire surface is `.md`/`.pen` (+ exported
+  visuals): research write-ups, feature docs, UX/screen mockups, wireframes. There is no code
+  to code-review or simplify, so the heavy wrapup + advisory reviewer add little; the binding
+  evaluator still earns its keep by grading the doc/mockup against its own acceptance criteria
+  (research questions answered with cites; required screens present, embedded, and fresh).
+
+For either intent, `sprint complete` runs a **fast close-path**: keep exactly
 **`security-review` + the binding evaluator**, and skip the advisory reviewer plus
 the rest of wrapup — the same *advisory reviewer + wrapup* gates `bugfix` trims. The **evaluator
 is forced to Haiku** (`security-review` runs inline on the session model — only the dispatched
 evaluator takes a `model:` param; see `reference/complete.md`'s Model-tier section). It is a
-user-elected `bugfix`-lite and **never drops below the binding evaluator**.
+user-elected `bugfix`-lite and **never drops below the binding evaluator** — so it never needs,
+and must never set, `eval_override`.
 
-Unlike `bugfix`/`trivial` (structural, decided from the diff), demo's reduction is driven by an
+**Keyword recognition at `sprint start`.** When a request reads as docs/research/UX work —
+signals like *study, research, docs, documentation, UX, mockup, screen mockup, wireframe,
+design* — propose the light-close (offer to set `tkt demo <id> on`) rather than a full close,
+and say why. It stays user-elected: propose, don't auto-apply. A request that also touches code
+is a normal/high-risk sprint, not a light-close, regardless of keywords.
+
+Unlike `bugfix`/`trivial` (structural, decided from the diff), this reduction is driven by an
 explicit **user flag, not structural risk** — the one documented place canon bends its
 "only structural risk may reduce gates" invariant, justified as the same explicit/auditable
-override class as `eval_override` / `Gate model:` and paid for by being loud (Demo markers on
+override class as `eval_override` / `Gate model:` and paid for by being loud (Demo/Docs markers on
 the Wrapup Gates rows + a `summary.md` demo line). See `reference/complete.md`'s "Demo mode"
 (step 1) for the full close-path and `AGENTS.md`'s north-star exception. Headless/CI ignores
 `demo` and always runs full.
