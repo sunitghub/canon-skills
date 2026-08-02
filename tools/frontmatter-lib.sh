@@ -3,6 +3,9 @@
 # both tkt and sprint (extracted from tkt's original get_field/set_field to
 # close a DRY gap — repo-audit 07-12-2026, t-2f2a). Byte-identical logic to
 # what tkt carried inline before this extraction.
+# Convention: route all frontmatter field mutations through these helpers
+# (get_field / set_field / set_or_add_field / remove_field) — never re-inline
+# the insert-before-second-`---` or strip-line awk in tkt/sprint (t-59e8).
 
 get_field() {
   local file="$1" field="$2"
