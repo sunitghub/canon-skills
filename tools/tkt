@@ -212,14 +212,7 @@ cmd_ci() {
   file="$(find_ticket "$id")"
   id="$(get_field "$file" id)"
 
-  if grep -q "^ci: " "$file"; then
-    set_field "$file" ci "$value"
-  else
-    awk -v v="$value" '
-      /^---$/ { c++; if (c==2) { print "ci: " v } ; print; next }
-      { print }
-    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
-  fi
+  set_or_add_field "$file" ci "$value"
 
   printf "%s: ci=%s\n" "$id" "$value"
   if [[ "$value" == "true" ]]; then
@@ -255,22 +248,11 @@ cmd_gate() {
   case "$value" in
     eval)
       # eval-only headless gate: sprint-headless-eval instead of the full pipeline.
-      if grep -q "^gate: " "$file"; then
-        set_field "$file" gate eval
-      else
-        awk '
-          /^---$/ { c++; if (c==2) { print "gate: eval" } ; print; next }
-          { print }
-        ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
-      fi
+      set_or_add_field "$file" gate eval
       ;;
     full)
       # full is the default, represented by the ABSENCE of the line (mirrors ci).
-      awk '
-        /^---$/ { fm++; print; next }
-        fm == 1 && /^gate: / { next }
-        { print }
-      ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+      remove_field "$file" gate
       ;;
     *) echo "Error: mode must be 'eval' or 'full'" >&2; exit 1 ;;
   esac
@@ -303,21 +285,10 @@ cmd_demo() {
   if [[ "$value" == "true" ]]; then
     # demo mode: sprint complete runs the reduced close-path (security-review +
     # binding evaluator, forced Haiku) — see skills/sprint/reference/complete.md.
-    if grep -q "^demo: " "$file"; then
-      set_field "$file" demo true
-    else
-      awk '
-        /^---$/ { c++; if (c==2) { print "demo: true" } ; print; next }
-        { print }
-      ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
-    fi
+    set_or_add_field "$file" demo true
   else
     # false is the default, represented by the ABSENCE of the line (mirrors ci/gate).
-    awk '
-      /^---$/ { fm++; print; next }
-      fm == 1 && /^demo: / { next }
-      { print }
-    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
+    remove_field "$file" demo
   fi
 
   printf "%s: demo=%s\n" "$id" "$value"

@@ -435,22 +435,6 @@ cmd_complete() {
   echo "Sprint completed: $id"
 }
 
-# _set_field_or_append <file> <field> <value> — set_field only rewrites an
-# existing "field: " line; tickets created before eval_fail_count existed have
-# no such line, so this falls back to appending one just before the closing
-# frontmatter "---" when the field is absent.
-_set_field_or_append() {
-  local file="$1" field="$2" value="$3"
-  if grep -qE "^${field}: " "$file"; then
-    set_field "$file" "$field" "$value"
-  else
-    awk -v f="$field" -v v="$value" '
-      /^---$/ { c++; if (c == 2) { print f ": " v } print; next }
-      { print }
-    ' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
-  fi
-}
-
 # cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
 # eval_fail_count field: increments on a fail (or missing/malformed verdict),
 # resets to 0 on pass. Called explicitly by the agent right after reading
@@ -479,7 +463,7 @@ cmd_eval_verdict() {
     new=$((current + 1))
   fi
 
-  _set_field_or_append "$ticket_file" eval_fail_count "$new"
+  set_or_add_field "$ticket_file" eval_fail_count "$new"
   echo "$id: eval_fail_count=$new"
   if (( new >= 3 )); then
     echo "Sprint $id: evaluator has failed $new times in a row — retry budget exhausted. Diagnose the root cause outside the automated loop, or set eval_override: true with a dated waiver to close anyway." >&2
