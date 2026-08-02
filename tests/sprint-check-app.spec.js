@@ -1784,7 +1784,7 @@ test.describe('board modal', () => {
       await page.locator('.doc-tab', { hasText: 'Plan' }).click();
 
       const toggle = page.locator('.signoff-demo-toggle');
-      await expect(toggle).toHaveText('Demo: off');
+      await expect(toggle).toHaveText('Demo/Docs/UX ✗');
       await expect(toggle).not.toHaveClass(/active/);
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
 
@@ -1793,7 +1793,7 @@ test.describe('board modal', () => {
       await expect.poll(() =>
         fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8')
       ).toMatch(/^demo: true$/m);
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo: on');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/Docs/UX ✓');
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toBeVisible();
 
       // Toggle OFF → demo line removed, badge gone
@@ -1801,7 +1801,7 @@ test.describe('board modal', () => {
       await expect.poll(() =>
         /^demo:/m.test(fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8'))
       ).toBe(false);
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo: off');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/Docs/UX ✗');
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
     } finally {
       if (id) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
