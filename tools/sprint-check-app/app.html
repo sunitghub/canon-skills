@@ -1591,7 +1591,7 @@
           <button class="create-pill" id="c-ci" type="button" title="Mark ticket CI-eligible for headless grading">CI</button>
           <button class="create-pill" id="c-gate-eval" type="button" title="Eval-only headless gate: the run button uses sprint-headless-eval (evaluator only) instead of the full pipeline. Requires CI.">Eval-only</button>
           <button class="create-pill" id="c-eval-override" type="button" title="Allow closing even if evaluator reports partial/fail">Eval Override</button>
-          <button class="create-pill" id="c-demo" type="button" title="Demo mode: fast close for live demos — sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.">Demo</button>
+          <button class="create-pill" id="c-demo" type="button" title="Demo/Docs/UX light-close: for live demos AND docs/research/UX-mockup (.md/.pen) work — sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.">Demo/Docs/UX</button>
         </div>
       </div>
       <div class="editor-toolbar open" id="c-editor-toolbar">
@@ -2110,7 +2110,7 @@ function ciBadge(t) {
 
 function demoBadge(t) {
   if (String(t.demo) !== 'true') return '';
-  return `<span class="demo-badge" title="Demo mode — sprint complete runs the reduced close-path: security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO</span>`;
+  return `<span class="demo-badge" title="Demo/Docs/UX light-close — for live demos or docs/research/UX-mockup work: sprint complete runs the reduced close-path (security-review + the binding evaluator only, forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO/DOCS</span>`;
 }
 
 function sortChecklistRuns(text) {
@@ -3271,11 +3271,11 @@ function injectSignoffControls(container, content, t) {
   const demoBtn = document.createElement('button');
   demoBtn.type = 'button';
   demoBtn.className = 'signoff-demo-toggle' + (demoOn ? ' active' : '');
-  demoBtn.textContent = demoOn ? 'Demo: on' : 'Demo: off';
+  demoBtn.textContent = demoOn ? 'Demo/Docs/UX: on' : 'Demo/Docs/UX: off';
   demoBtn.disabled = locked;
   demoBtn.title = locked
     ? 'Ticket is closed — no further edits.'
-    : 'Demo mode: sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
+    : 'Demo/Docs/UX light-close (live demos or docs/research/UX-mockup work): sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
   demoBtn.addEventListener('click', async () => {
     const next = String(t.demo) !== 'true';
     demoBtn.disabled = true;

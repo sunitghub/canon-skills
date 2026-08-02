@@ -22,6 +22,17 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
 2. **Skill check.** Run `./tools/skills.sh list` and ask: does an existing skill already cover this work? If yes, use it — don't reinvent. If no skill covers it and the work is reusable across projects, note it as a candidate for a new skill in `plan.md`. Building a new skill follows the same sprint flow as any other work.
 
 3. **Classify tier.** Decide normal vs high-risk using the workflow tiers in `skills/sprint/SKILL.md`. The `trivial` and `bugfix` tiers are not chosen here — they are *complete-time downgrades* decided at close from the actual diff (see `reference/complete.md` steps 2-3); a sprint always starts as normal or high-risk.
+   - **Docs/UX light-close recognition.** If the request reads as docs/research/UX
+     work — signals like *study, research, docs, documentation, UX, mockup, screen
+     mockup, wireframe, design*, and the deliverable is `.md`/`.pen` (+ exported
+     visuals) with no code — *propose* the Demo/Docs/UX light-close (offer to run
+     `tkt demo <id> on`) and say why: heavy wrapup + the advisory reviewer add
+     little with no code, while the binding Haiku evaluator still grades the
+     doc/mockup against `acceptance.md`. It stays user-elected — propose, don't
+     auto-apply — and rides on top of the normal/high-risk tier you classified
+     above; it is not a substitute for that classification. A request that also
+     touches code is a full sprint regardless of keywords. See `SKILL.md`'s
+     "Demo / Docs / UX (light close)" section.
 
 4. **Planning files.** Both files were already seeded by step 1 (skeleton `## Criteria`/`## Test Plan`/`## QA` in `acceptance.md`, skeleton `## Sign-off`/`## Approach`/`## Files`/`## Decisions` in `plan.md`) — fill them in now, before the brief. The approval gate in step 11 blocks code, not planning file content.
    - `acceptance.md` — specific, binary conditions that define "done" under `## Criteria` and `## Test Plan`. For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution. `## QA`'s "Tested locally" box also blocks close if left unchecked — check it once you've actually verified the change, not before. This "not before" discipline applies to every box in `## Criteria`, `## Test Plan`, and `## QA`, not just this one: tick each box at the moment its evidence exists, never in bulk. A single find-replace across the checklist converts unverified items into claims silently, and `sprint complete` cannot tell the difference — it gates on boxes being *checked*, not on them being *true*. Live-reproduced (overtone-app `t-f413`): three items were bulk-ticked, including "verified across all 25 nodes", which the evaluator later falsified against a capture containing 15.

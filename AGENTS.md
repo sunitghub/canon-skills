@@ -41,17 +41,20 @@ structural low-risk check, or an explicit user `Gate model:` override) — see t
 `spawn_agent` has no `model` field, and its model picker is session-level. Don't assume the
 Haiku-downgrade above works under Codex without testing live first.
 
-**North-star exception — `demo` mode.** canon's governing invariant is *only structural risk
+**North-star exception — `demo` mode (Demo/Docs/UX light-close).** canon's governing invariant is *only structural risk
 may reduce close gates, and a sprint never drops below the binding evaluator* (`DECISIONS.md`
 2026-07-25). `demo: true` is the **one documented exception to the first clause**: it reduces
 the close to `security-review` + the binding evaluator (the **evaluator** forced to Haiku;
 `security-review` runs inline on the session model), skipping the advisory reviewer + rest of
-wrapup — driven by an explicit **user flag rather than structural risk**.
+wrapup — driven by an explicit **user flag rather than structural risk**. The one flag covers
+one light-close for **two user-elected intents**: a **live demo** (time-box) or **docs/research/UX**
+work whose entire surface is `.md`/`.pen` (+ visuals) with no code (surfaced as the New-Ticket
+**Demo/Docs/UX** option, `DECISIONS.md` 2026-08-02).
 Justified as the same class of explicit, human-set, auditable override as `eval_override` /
-`Gate model:`, and paid for by being loud (Demo-mode markers on the Wrapup Gates rows + a
+`Gate model:`, and paid for by being loud (Demo/Docs markers on the Wrapup Gates rows + a
 `summary.md` demo line). It **honors the second clause unconditionally** — the evaluator always
-runs. See `skills/sprint/reference/complete.md`'s "Demo mode" step and the 2026-07-30
-north-star-amendment entry in `DECISIONS.md`.
+runs, so it never involves `eval_override`. See `skills/sprint/reference/complete.md`'s "Demo mode" step and the 2026-07-30
+and 2026-08-02 north-star-amendment entries in `DECISIONS.md`.
 <!-- MODEL-TIERS:END -->
 
 <!-- AI-SKILLS:BEGIN -->
