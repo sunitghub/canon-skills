@@ -3271,7 +3271,7 @@ function injectSignoffControls(container, content, t) {
   const demoBtn = document.createElement('button');
   demoBtn.type = 'button';
   demoBtn.className = 'signoff-demo-toggle' + (demoOn ? ' active' : '');
-  demoBtn.textContent = demoOn ? 'Demo/Docs/UX: on' : 'Demo/Docs/UX: off';
+  demoBtn.textContent = demoOn ? 'Demo/Docs/UX ✓' : 'Demo/Docs/UX ✗';
   demoBtn.disabled = locked;
   demoBtn.title = locked
     ? 'Ticket is closed — no further edits.'
