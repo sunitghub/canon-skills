@@ -64,5 +64,4 @@ and 2026-08-02 north-star-amendment entries in `DECISIONS.md`.
 | Skill | Category | Source |
 |-------|----------|--------|
 | sprint | dev | /Users/sunitjoshi/Developer/canon/skills/sprint/SKILL.md |
-| mikado | dev | /Users/sunitjoshi/Developer/canon/skills/mikado/SKILL.md |
 <!-- AI-SKILLS:END -->
