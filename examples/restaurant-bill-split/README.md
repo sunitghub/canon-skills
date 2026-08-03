@@ -196,6 +196,55 @@ You need canon installed and the board running:
 > **[DSL spec workshop](../dsl-discount-spec/README.md)** next — same fail → fix → pass loop, built
 > entirely around a spec.
 
+## Show Search and Why on this board
+
+By the time you've run a sprint or two above, your `.tickets/` folder and git
+history hold enough for both board query modes to have something real to say.
+The segmented control at the top of the board flips between them: **Search**
+answers *"which ticket is this?"* (state and metadata), **Why** answers *"why
+does this file look the way it does?"* (the Plan decisions behind it).
+
+> The two clips below are the board's generic Search and Why demos, not captures
+> of this workshop's board. The queries in each caption are the restaurant-specific
+> ones to type against *your* board — swap in your own screenshots under `images/`
+> if you want workshop-exact visuals.
+
+### Search — find a ticket by metadata
+
+Type into the search box and matching cards stay in their original lanes, so you
+never lose the status context. A few things to try on the restaurant board:
+
+- **Priority:** type `p2` to isolate the max-people-cap ticket (created P2 in
+  Session 2). `p0`/`p1` narrow by other priorities.
+- **Readiness label:** right after `sprint start`, before you approve the plan,
+  type `plan incomplete` — the fresh bill-splitter card lights up, then drops out
+  of the filter once Acceptance and Plan are filled in.
+- **Domain keyword:** `remainder` or `split` pulls the penny-distribution ticket
+  by title/description; `bug` filters by type. Press `Esc` to restore the board.
+
+![The board's Search mode: typing a query filters cards in place while preserving their lanes](../../meta/screenshots/ticket-search-demo.gif)
+
+### Why — ask why a file is the way it is
+
+Flip the control to **Why** (or use the `why:` shortcut) and enter a
+project-relative file path. sprint-check scans git history, matches tickets, and
+shows Plan-decision excerpts above the board.
+
+- After the remainder sprint, run `why:index.html` (or whichever file holds
+  `calculateSplit()`) — it surfaces the ticket and the Plan decision behind the
+  cent-rounding/remainder policy: *why* pennies are distributed instead of a flat
+  average.
+- After Session 2, run `why:` on the same file again — now two tickets' decisions
+  stack up: the remainder policy *and* the max-people guard. One file, a decision
+  trail across sprints.
+
+![The board's Why mode: entering a file path surfaces the tickets and Plan decisions behind it](../../meta/screenshots/why-mode-demo.gif)
+
+> Why mode reads git history, so it only returns decisions once the relevant
+> sprint's commits exist. Run `why:` before committing and it falls back to
+> keyword-matching ticket titles, or comes up empty — itself a useful thing to
+> show a class.
+
 ## Separate the probabilistic and deterministic paths
 
 The language model may interpret the user’s request, collect missing inputs,
