@@ -4,18 +4,18 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.1
-updated: 2026-07-15
+version: 1.0.2
+updated: 2026-08-03
 ---
 
 # Agent Standards
 
 ## Code
 
-- Edit existing files, don't create new ones.
+- Prefer editing existing files over creating new ones; add a new file only when the task needs one.
 - Delete dead code you orphan — no commented blocks, no `_unused` renames. Leave pre-existing dead code unless asked.
 - No feature flags or backwards-compat shims — change the code directly.
-- No comments unless the WHY is non-obvious.
+- Match the surrounding code's comment density, naming, and idiom — add a comment only where the WHY isn't clear from the code.
 - Don't reformat, rename, or add type hints to adjacent code — fix only what was asked.
 - Out-of-scope issues found while working: `NOTICED: <what>` — don't fix silently.
 - Never introduce OWASP Top 10 vulnerabilities or commit secrets, credentials, or `.env` files.
