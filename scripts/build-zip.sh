@@ -33,8 +33,10 @@ if [[ -d "$FIXTURE_DIR" ]]; then
   (cd "$FIXTURE_STAGE" && zip -rX "$FIXTURE_ZIP" "context-check-fixture" --quiet)
   echo "dist: context-check-fixture.zip updated ($(du -sh "$FIXTURE_ZIP" | cut -f1))"
 else
-  echo "Error: fixture dir not found: $FIXTURE_DIR" >&2
-  exit 1
+  # Source dir intentionally purged (see DECISIONS 2026-08-03). Keep the existing
+  # frozen dist/context-check-fixture.zip; just skip regeneration instead of aborting
+  # the whole hook (which would also skip the handoff-skill zip + Windows .exe builds).
+  echo "dist: context-check-fixture.zip skipped (source dir absent — fixture purged)"
 fi
 
 # ── Zip: handoff skill (standalone dist bundle) ──────────────────────────────
