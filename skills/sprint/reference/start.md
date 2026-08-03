@@ -104,6 +104,14 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
    - **Visual reference artifacts.** Visual reference (pasted image, or a file path
      from the user — including an absolute host path like `C:\...\Mockup-1.jpg`) as
      sprint direction:
+
+     **Prefer a code/HTML mockup over a screenshot or prose description when the user
+     can provide one** — a working `.html`/component mockup (or a code file to port) is a
+     higher-fidelity design input than an image, since the agent reads the actual markup
+     rather than an approximation. Copy it to `.tickets/<id>/visuals/<name>.html` and link
+     it in `plan.md` (`[mockup](visuals/<name>.html)`); it is a reference file, not an
+     image, so `_gate_visual_embed` (image embeds only) does not apply. When the reference
+     is an image/screenshot instead, use the embed flow:
      1. **Copy the actual file** to `.tickets/<id>/visuals/<name>.<ext>` — name alone
         isn't enough; the board only serves images from inside the ticket's own
         folder, so a file left at its original location is unreachable.
@@ -129,6 +137,11 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      blocks close if any image-extension filename mentioned in `plan.md`/`acceptance.md`
      never resolves to a real embed in that same file, or if a real embed's target file
      was never actually copied to `visuals/`.
+
+     This block is about the design **input** the agent builds from. Verifying the
+     **rendered output** (that the built UI matches) is a separate concern — keep the
+     visual acceptance criteria + rendered-output screenshot checks
+     (`shared-gate-protocol.md`) unchanged; a screenshot is the right artifact there.
    - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below)
    - If these already exist with real content (not just the skeleton): read them and proceed without recreating.
    - **A template-only Description is not "unspecified."** A ticket created on the board carries a seeded Description type-template (`## Description` followed by `What should be built?` / `What should be done?` / `What is broken?` etc.) — that prompt is not a real description. When `acceptance.md` (criteria/scenario) or `plan.md` already specify the work, treat **that** as the build contract and proceed; do not stall or ask the user for direction solely because the Description is empty or still the seeded template.
