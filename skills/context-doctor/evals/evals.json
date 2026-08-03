@@ -1,0 +1,53 @@
+{
+  "skill_name": "context-doctor",
+  "_note": "Scenario-based: each prompt supplies the relevant context files inline (per DECISIONS 2026-06-17) so a clean-context executor can reason without repo access. context-doctor is static-analysis-only — the executor reasons about the given files rather than running anything.",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Run context-doctor on this repo. Here is the entire agent context:\n\n```markdown\n# CLAUDE.md (repo root)\n1  This is a web app.\n2  In code: default to writing NO comments. Never write docstrings.\n3  Always leave documentation as appropriate for the reader.\n4  Never create files unless explicitly asked.\n```\nThere are no other agent-context files. Produce the Summary table and a verdict.",
+      "expected_output": "Flags Rules -> judgement as action (CLAUDE.md:2 blanket 'NO comments/never docstrings' — recommend judgment-framed 'match surrounding code'). Flags Conflicting instructions as action (line 2 'NO comments' vs line 3 'leave documentation as appropriate'), quoting both sides. Emits a Summary table with a row per lens, an overall verdict of trim or overloaded (not lean), a file:line/quote for each finding, and NO numeric score.",
+      "expectations": [
+        "Rates Rules -> judgement as action, citing CLAUDE.md line 2, and recommends judgment-framed guidance instead of the blanket rule",
+        "Rates Conflicting instructions as action, quoting both the 'no comments' (line 2) and 'leave documentation' (line 3) sides",
+        "Produces a Summary table with one row per lens (lens/status/evidence/recommendation)",
+        "Overall verdict is trim or overloaded, not lean",
+        "Emits no numeric score or percentage"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "boundary",
+      "prompt": "Run context-doctor on this repo. It contains only application source and tests:\n\n```\nsrc/app.py\nsrc/db.py\ntests/test_app.py\n```\nThere is no CLAUDE.md, no AGENTS.md, no .claude/skills, and no other agent-instruction or config files anywhere.",
+      "expected_output": "Recognizes there are no agent-context artifacts to audit, reports a limited-scope note, and does NOT fabricate lens findings. Does not force a lean/trim/overloaded verdict as if it had assessed real context — states there is nothing to audit and stops.",
+      "expectations": [
+        "States there are no agent-context artifacts (no CLAUDE.md/AGENTS.md/skills) and stops with a limited-scope note",
+        "Does NOT fabricate findings on any of the seven lenses",
+        "Does not present a misleading verdict as though real context was assessed"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "compliance",
+      "prompt": "You are running context-doctor and are about to produce the report. Describe exactly what your report will and will not contain, how you express the result, whether you run or edit anything, and where/how the report file is written.",
+      "expected_output": "States it will use the seven named lenses with a per-lens status (aligned/advisory/action) and one overall verdict (lean/trim/overloaded), explicitly no numeric score; that it is static-only (never runs the repo or edits the audited files); and that it writes claude-optimization.md to the repo root only after explicit confirmation, overwriting as a snapshot.",
+      "expectations": [
+        "Uses the seven lens names with per-lens status and a lean/trim/overloaded verdict, explicitly no numeric score",
+        "States it is static-only — does not run the repo or edit the audited files",
+        "States it writes claude-optimization.md to the repo root after explicit confirmation (overwrite snapshot)"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "edge",
+      "prompt": "Run context-doctor. The repo's agent context is one always-loaded file:\n\n```markdown\n# CLAUDE.md\n(400 lines) — includes a 250-line 'Release & Verification Procedure' section used only when cutting a release, a 60-line 'Database migration safety: never drop a table without a backup and human approval' section, and 90 lines describing the repo layout that is obvious from the file tree.\n```\nRate the lenses and give a verdict.",
+      "expected_output": "Flags Upfront -> progressive disclosure as action: the 250-line release procedure is always injected but rarely needed (move to an on-demand skill/reference), and the 90-line obvious repo-layout description adds little (Claude can see the file tree). Does NOT recommend relaxing the migration-safety rule under Rules -> judgement — that guards an irreversible action and should stay explicit. Verdict trim or overloaded.",
+      "expectations": [
+        "Rates Upfront -> progressive disclosure as action and recommends moving the rarely-needed release procedure behind on-demand loading",
+        "Notes the obvious repo-layout description as low-value always-on context",
+        "Does NOT flag the migration-safety rule as over-constraint — recognizes safety/irreversible-action rules should stay explicit",
+        "Overall verdict is trim or overloaded"
+      ]
+    }
+  ]
+}

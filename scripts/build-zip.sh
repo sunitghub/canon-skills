@@ -13,8 +13,11 @@ FIXTURE_STAGE="$(mktemp -d)"
 HANDOFF_SKILL_ZIP="$DIST_DIR/handoff-skill.zip"
 HANDOFF_SKILL_DIR="$REPO_ROOT/dist/handoff-skill"
 HANDOFF_SKILL_STAGE="$(mktemp -d)"
+CONTEXT_DOCTOR_ZIP="$DIST_DIR/context-doctor.zip"
+CONTEXT_DOCTOR_DIR="$REPO_ROOT/skills/context-doctor"
+CONTEXT_DOCTOR_STAGE="$(mktemp -d)"
 
-cleanup() { rm -rf "$FIXTURE_STAGE" "$HANDOFF_SKILL_STAGE"; }
+cleanup() { rm -rf "$FIXTURE_STAGE" "$HANDOFF_SKILL_STAGE" "$CONTEXT_DOCTOR_STAGE"; }
 trap cleanup EXIT
 
 mkdir -p "$DIST_DIR"
@@ -54,6 +57,23 @@ if [[ -d "$HANDOFF_SKILL_DIR" ]]; then
 else
   echo "Error: handoff skill dir not found: $HANDOFF_SKILL_DIR" >&2
   exit 1
+fi
+
+# ── Zip: context-doctor (standalone distributable skill) ─────────────────────
+# Self-contained: ship SKILL.md + the standalone install README only. Evals stay
+# in-repo for /skill-eval and are excluded from the distributable bundle. Extracted
+# top-level dir is "context-doctor" (matches SKILL.md name: → /context-doctor command).
+if [[ -d "$CONTEXT_DOCTOR_DIR" ]]; then
+  rm -f "$CONTEXT_DOCTOR_ZIP"
+  mkdir -p "$CONTEXT_DOCTOR_STAGE/context-doctor"
+  cp "$CONTEXT_DOCTOR_DIR/SKILL.md" "$CONTEXT_DOCTOR_STAGE/context-doctor/"
+  [[ -f "$CONTEXT_DOCTOR_DIR/README.md" ]] && cp "$CONTEXT_DOCTOR_DIR/README.md" "$CONTEXT_DOCTOR_STAGE/context-doctor/"
+  find "$CONTEXT_DOCTOR_STAGE" \( -name ".DS_Store" -o -name "*.pyc" \) -delete 2>/dev/null || true
+  find "$CONTEXT_DOCTOR_STAGE" -exec touch -t 202001010000 {} +
+  (cd "$CONTEXT_DOCTOR_STAGE" && zip -rX "$CONTEXT_DOCTOR_ZIP" "context-doctor" --quiet)
+  echo "dist: context-doctor.zip updated ($(du -sh "$CONTEXT_DOCTOR_ZIP" | cut -f1))"
+else
+  echo "dist: context-doctor.zip skipped (skills/context-doctor absent)"
 fi
 
 # ── Binary: sprint-check-win.exe (Windows board server) ─────────────────────
