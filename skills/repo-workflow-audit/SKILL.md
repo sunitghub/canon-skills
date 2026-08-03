@@ -36,6 +36,8 @@ Run these as independent, fresh-context subagents in parallel — each is blind 
 
 3. **Cross-doc consistency.** Read every file in the target scope together — plus anything outside it that describes the same mechanism (README sections, `docs/*.md`, `AGENTS.md`). Report contradictions or gaps as a set, not per-file: does one doc say something a sibling doc contradicts? Does a top-level rule (e.g. `AGENTS.md`'s Model Tiers) need to cross-reference a target-scope rule that overrides it for a specific case?
 
+   **Conflicting-instruction lens.** Beyond hard contradictions, evaluate the *co-injected* context set — `standards/efficiency.md`, `AGENTS.md`, the active skill's `SKILL.md` + reference docs, and the project `CLAUDE.md` — as it is loaded into a single request *simultaneously*, and flag directives that clash or pull opposite ways even without a strict logical contradiction (e.g. a blanket "never do X" in one file alongside "do X when appropriate" in another). Overlapping or conflicting directives in one loaded context cost the model reasoning to reconcile before it can act — the same overconstraint that bloats a system prompt. Cite **both sides** (`file:line` + quoted directive) as a distinct finding class, and name the higher-leverage side to keep so the fix is a resolution, not just a flag.
+
 4. **Stale-reference sweep.** Repo-wide grep (not limited to the target files) for anything — other skills, `docs/`, `README.md`, `examples/`, public posts — that references the target's old or removed behavior. State the search terms/globs used so an absence-of-findings claim is verifiable, not assumed.
 
 ## Compile, don't auto-fix
