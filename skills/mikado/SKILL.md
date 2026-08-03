@@ -3,6 +3,7 @@ name: mikado
 description: Maps the dependency tree for a refactor before changing code, using the Mikado Method — attempt the goal, revert on breakage, record prerequisites, execute leaves-first. Use when a refactor is likely to cascade into prerequisite changes or touch interdependent modules.
 category: dev
 tags: [refactoring, planning, dependencies, reversible]
+hidden: true
 ---
 
 # Mikado

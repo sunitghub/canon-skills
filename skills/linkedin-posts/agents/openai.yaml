@@ -1,7 +1,0 @@
-interface:
-  display_name: "LinkedIn Posts"
-  short_description: "Prepare LinkedIn posts for copy/paste"
-  default_prompt: "Use $linkedin-posts to prepare this draft for LinkedIn."
-
-policy:
-  allow_implicit_invocation: true

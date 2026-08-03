@@ -3,6 +3,7 @@ name: mutation-test
 description: Applies small logic mutations to a sprint's changed logic files and asserts the test suite fails on each — a surviving mutant is a test that cannot fail. Use when asked to mutation-test, check whether tests have teeth, or find tests that pass no matter what the code does. Advisory, not a close gate.
 category: dev
 tags: [testing, quality, mutation-testing, verification]
+hidden: true
 ---
 
 # Mutation Test
