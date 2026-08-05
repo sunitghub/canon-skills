@@ -252,6 +252,28 @@ Layering is intentional: `sprint complete` is CLI-enforced; planning, audits,
 test judgment, and clean-context evaluation are agent-required; `sprint-check`
 is board-surfaced visibility while the work is still in progress.
 
+### Which model runs the close gates
+
+The close gates stay mandatory regardless of model — this only decides *which* model runs the
+reviewer and the binding evaluator. First match wins:
+
+| # | Condition | Set by | Model used | Scope |
+|---|---|---|---|---|
+| 1 | `Gate model:` is a model id (`haiku`/`sonnet`/`opus`) | User only — live instruction or manual edit in `plan.md` | that model | Both gates; overrides everything below, any risk tier |
+| 2 | `Gate model: session` | User only | current session model | Forces full-tier review; skips the structural check |
+| 3 | `demo: true` on the ticket (and no `Gate model:`) | User, via the demo flag | Haiku, on any diff | Evaluator only — `security-review` runs inline on the session model |
+| 4 | Structural low-risk: **every** changed path in the allowlist AND no security-marker substring | Automatic — `git diff` vs `git merge-base HEAD origin/main` | Haiku | Allowlist, not denylist; if the baseline check fails, falls to row 5 |
+| 5 | Default — any non-matching path, or the baseline check fails | Automatic fallback | current session model (Sonnet/Opus) | High-risk sprints always land here or above |
+
+*Allowlist:* `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `skills/**/gates/*.md`, `standards/**/*.md`, root `*.md`.
+*Security markers:* `auth`, `secret`, `session`, `crypto`, `token`, `credential`.
+
+The evaluator runs on your **session model by default**; it drops to **Haiku** only via an explicit
+user setting (rows 1–3) or a purely mechanical file-path check (row 4) — never the agent's own
+judgment of its own work. The chosen model is recorded on the `eval` row as `(model: <id>)` for
+audit. (The automatic Haiku downgrade is confirmed only under Claude Code.) Full logic:
+[`skills/sprint/reference/complete.md`](skills/sprint/reference/complete.md) → "Model tier for gates."
+
 ## Code Archaeology
 
 **Why mode** — Ask why this file was built this way.
