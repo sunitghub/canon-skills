@@ -156,7 +156,24 @@ Follow [examples/restaurant-bill-split/](../examples/restaurant-bill-split/READM
 
 ## Windows 11
 
-canon's CLI tools are bash scripts. The supported Windows 11 path is **Git for Windows (Git Bash) — no WSL required**: run `install.ps1` once to add `tools/` to your user PATH, then use **Git Bash** to clone/update canon and run the agent CLIs (`sprint`, `tkt`, `skills.sh`), and **PowerShell** (or any terminal) with `sprint-check-win` for the board — the board ships as a Go binary, so no Python is needed. See the [main setup guide](setup.md) and the README's **Windows 11 — no WSL required** section for the full steps.
+canon's CLI tools are bash scripts. The supported Windows 11 path is **Git for Windows (Git Bash) — no WSL required**: run **`install.cmd`** once (double-click it, or `install.cmd` from any terminal — it launches `install.ps1` without tripping PowerShell's execution policy) to add `tools/` to your user PATH, then use **Git Bash** to clone/update canon and run the agent CLIs (`sprint`, `tkt`, `skills.sh`), and **PowerShell** (or any terminal) with `sprint-check-win` for the board — the board ships as a Go binary, so no Python is needed. See the [main setup guide](setup.md) and the README's **Windows 11 — no WSL required** section for the full steps.
+
+#### Windows setup gotchas (real field errors + fixes)
+
+Three errors have been seen on fresh Windows machines — each has a simple fix:
+
+- **`install.ps1 is not digitally signed … UnauthorizedAccess`** — Windows' PowerShell
+  execution policy blocking unsigned scripts. Fix: run **`install.cmd`** (batch is not subject
+  to the policy), or invoke `powershell -ExecutionPolicy Bypass -File .\install.ps1` (a
+  process-scoped bypass; no persistent system change). This is not a canon bug.
+- **`WARNING: bash not found on PATH`** even though `where git` finds `git.exe` — Git for
+  Windows adds `git.exe` (`C:\Program Files\Git\cmd`) to PATH but **not** `bash.exe`
+  (`C:\Program Files\Git\bin`). Fix: run canon's CLI tools from the **Git Bash** terminal, or
+  add `C:\Program Files\Git\bin` to your PATH. (Git is installed — bash is just not on PATH.)
+- **`fatal: not a git repository (or any of the parent directories): .git`** — you're not
+  inside a cloned canon folder (a downloaded/extracted zip has no `.git`). Fix: `git clone`
+  canon into a folder and run `git`/`sprint`/`tkt` commands from **inside** that folder, not
+  from your home directory.
 
 **WSL2 with Ubuntu is an optional alternative** — use it only if you prefer a full Linux environment. Under WSL2 canon behaves exactly like the Linux/macOS path. The rest of this section documents that optional WSL2 route.
 

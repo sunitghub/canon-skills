@@ -1,7 +1,7 @@
 # Canon Setup
 
 > **Windows 11 — no WSL required:** install [Git for Windows](https://git-scm.com/download/win), then:
-> 1. Run `install.ps1` once from PowerShell — adds `tools/` to your user PATH.
+> 1. Run **`install.cmd`** once (double-click it, or run `install.cmd` from any terminal) — it launches `install.ps1` for you and adds `tools/` to your user PATH. Running `install.ps1` directly can fail with *"not digitally signed … UnauthorizedAccess"* (Windows' PowerShell execution policy blocking unsigned scripts); `install.cmd` sidesteps it with a process-scoped bypass, or run `powershell -ExecutionPolicy Bypass -File .\install.ps1` manually.
 > 2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
 > 3. Use **PowerShell** for everything else: `sprint-check-win` opens the board; create and manage tickets through the UI.
 >
