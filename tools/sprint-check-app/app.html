@@ -4372,6 +4372,7 @@ async function uploadVisual(ticketId, filename, base64) {
     titleEl.value = ''; detectEl.textContent = '';
     bodyEl.value = TYPE_TEMPLATES['task'] || '';
     queueEl.textContent = '→ will open in: Open';
+    document.getElementById('c-submit').disabled = false;
     resetPanelDrag(document.getElementById('create-modal'));
     resetPanelResize(document.getElementById('create-modal'));
     renderTypePills(); renderPriPills();
