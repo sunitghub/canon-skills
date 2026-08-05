@@ -449,6 +449,45 @@ test.describe('board modal', () => {
     }
   });
 
+  test('Create button stays clickable across successive creates in one session', async ({ page }) => {
+    // Regression: submit() disabled #c-submit but only re-enabled it in catch,
+    // so after the first successful create the button stayed disabled and a
+    // second click did nothing until page reload.
+    const first = `First create ${Date.now()}`;
+    const second = `Second create ${Date.now()}`;
+    const createdIds = [];
+
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      // First create
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-title').fill(first);
+      await page.locator('#c-submit').click();
+      const firstCard = page.locator('.card', { hasText: first });
+      await expect(firstCard).toBeVisible();
+      createdIds.push(await firstCard.getAttribute('data-id') || '');
+
+      // Reopen — the Create button must not be stuck disabled from the last submit
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await expect(page.locator('#c-submit')).toBeEnabled();
+
+      // Second create via a real click (not Enter) must actually create a ticket
+      await page.locator('#c-title').fill(second);
+      await page.locator('#c-submit').click();
+      const secondCard = page.locator('.card', { hasText: second });
+      await expect(secondCard).toBeVisible();
+      createdIds.push(await secondCard.getAttribute('data-id') || '');
+    } finally {
+      for (const id of createdIds) {
+        if (id) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    }
+  });
+
   test('create-ticket textarea has updated placeholder', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
