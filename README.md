@@ -248,6 +248,8 @@ All are plain markdown in `.tickets/<id>/` and are read into the agent's context
 
 **Gated, not vibes.** The CLI owns state; the agent and evaluator judge whether the work behind the gates is true. The board surfaces the same checks early — cards flag `incomplete` in red well before close-time.
 
+**[What each wrapup gate checks — and doesn't →](docs/wrapup-gates.md)** — the checks/skips reference for every close-path gate, and the install-time/runtime security it deliberately leaves out of scope.
+
 Layering is intentional: `sprint complete` is CLI-enforced; planning, audits,
 test judgment, and clean-context evaluation are agent-required; `sprint-check`
 is board-surfaced visibility while the work is still in progress.
