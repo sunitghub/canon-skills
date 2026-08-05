@@ -341,6 +341,12 @@ This is the same mechanism a CI pipeline would run against a pull request (see
 Actions workflow, or per-student API secret is needed. Your already-authenticated
 local `claude` CLI is enough.
 
+> **Windows:** `sprint-headless-eval` and `sprint-headless` run from a normal **CMD or PowerShell**
+> window via their `.cmd` wrappers — you don't need to open Git Bash. Git for Windows must still be
+> installed (the wrapper runs the script through Git's `bash`, which also means no Python is needed —
+> a bundled `sprint-headless-json-win.exe` parses the output), and the `claude` CLI must be installed
+> to do the actual grading.
+
 The quickest path uses `sprint-headless-eval` — one spec file, one command, one
 verdict. A full three-gate ceremony using `sprint-headless` (reviewer + evaluator
 + security-review against a real ticket) is shown further below for completeness.
