@@ -15,7 +15,14 @@ while IFS= read -r ticket_file; do
   # structural gates) remain the primary defense for that narrower case.
   git cat-file -e "HEAD:$ticket_file" 2>/dev/null || continue
   ticket_diff=$(git diff --cached -- "$ticket_file" 2>/dev/null)
-  echo "$ticket_diff" | grep -q "^+status: closed"      && DIRECT_CLOSE=1
+  # A legitimate CLI close (sprint complete / tkt close) co-adds a `closed:` marker line
+  # in the same diff via tkt's cmd_set_status; a bare hand-edit of status does not (t-dec8).
+  # Only the marker-less status flip is a hand-edit bypass worth blocking — this is what
+  # lets a real sprint-complete close of a previously-committed (e.g. interim-committed
+  # in_progress) ticket through, which the old "never-committed only" exemption could not.
+  if echo "$ticket_diff" | grep -q "^+status: closed"; then
+    echo "$ticket_diff" | grep -q "^+closed:" || DIRECT_CLOSE=1
+  fi
   echo "$ticket_diff" | grep -q "^+status: in_progress" && DIRECT_OPEN=1
 done < <(git diff --cached --name-only 2>/dev/null | grep "^\.tickets/")
 

@@ -42,6 +42,13 @@ assert_contains "$close_output" "$second_id: closed"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after closing active ticket"
 assert_grep "^status: closed$" ".tickets/$second_id/ticket.md"
 
+# t-dec8: a CLI close writes a `closed:` marker (the pre-commit hook keys off a co-added
+# `closed:` line to tell a legit CLI close from a hand-edited status), and reopen removes it.
+assert_grep "^closed: " ".tickets/$second_id/ticket.md"
+"$TKT" reopen "$second_id" >/dev/null
+assert_grep "^status: open$" ".tickets/$second_id/ticket.md"
+grep -qE "^closed: " ".tickets/$second_id/ticket.md" && fail "expected reopen to remove the closed: marker" || true
+
 # A ticket with sprint docs refuses close without --no-sprint, pointing to sprint complete
 sprint_id="$("$TKT" create "Ticket with sprint docs")"
 mkdir -p ".tickets/$sprint_id"

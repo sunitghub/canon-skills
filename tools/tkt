@@ -191,6 +191,15 @@ cmd_set_status() {
   file="$(find_ticket "$id")"
   set_field "$file" status "$new_status"
   id="$(get_field "$file" id)"
+  # CLI close marker (t-dec8): the pre-commit hook distinguishes a legitimate CLI close
+  # from a hand-edited `status: closed` by a co-added `closed:` line in the same ticket.md
+  # diff. Write it when closing, clear it on every other transition so a reopened/started
+  # ticket carries no stale marker (and a later hand-edit close is still caught).
+  if [[ "$new_status" == "closed" ]]; then
+    set_or_add_field "$file" closed "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  else
+    remove_field "$file" closed
+  fi
   if [[ "$new_status" == "in_progress" ]]; then
     set_active "$id"
   else
