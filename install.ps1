@@ -26,8 +26,9 @@ if (($UserPath -split ';') -notcontains $ToolsPath) {
 }
 
 if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
-  Write-Warning "bash not found on PATH. Install Git for Windows from https://git-scm.com/download/win"
-  Write-Warning "canon's CLI tools and git-native pre-commit hook require bash to run."
+  Write-Warning "bash not found on PATH. canon's CLI tools (sprint, tkt, skills.sh) and its git-native pre-commit hook require bash."
+  Write-Warning "If Git for Windows is already installed (``where git`` works), bash is at 'C:\Program Files\Git\bin\bash.exe' but is NOT on PATH by default -- only git.exe (in \cmd) is. Fix: run canon's CLI tools from the Git Bash terminal, or add 'C:\Program Files\Git\bin' to your PATH."
+  Write-Warning "If Git is not installed at all, get it from https://git-scm.com/download/win"
   Write-Host ""
 }
 
