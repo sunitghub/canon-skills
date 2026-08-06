@@ -196,6 +196,181 @@ You need canon installed and the board running:
 > **[DSL spec workshop](../dsl-discount-spec/README.md)** next — same fail → fix → pass loop, built
 > entirely around a spec.
 
+## Optional module: catching an injected-HTML (XSS) gap with `security-review`
+
+Session 1 above exercises the **evaluator** — it catches a *numerical* gap that maps to an
+acceptance criterion. This module exercises a different close gate, **`security-review`**, and the
+contrast is the entire lesson: it catches a class of bug the evaluator by design will not — an
+exploitable vulnerability that no acceptance criterion ever mentions.
+
+> The evaluator grades the **spec**; `security-review` reads the **code** for exploitable sinks
+> regardless of the spec. A spec-driven gate is blind to a vulnerability the spec never named — which
+> is exactly why canon runs both.
+
+### Set up the feature
+
+This module assumes the app has a **Comments field** and an **Apply button**. Add the feature in two
+places — and the whole trick is to say **nothing** about escaping or sanitizing:
+
+- In your workshop `AGENTS.md`, under the guidelines, add one bullet:
+
+  ```markdown
+  - Include a free-text Comments field and an Apply button. Inputs (people, tip, comments) take effect only when Apply is clicked, at which point the bill recalculates and the comment is shown on the receipt.
+  ```
+
+- Use this `sprint start` prompt:
+
+  ```
+  sprint start 'Create a bill splitter app that runs in a browser, with calculations in a separate file and showing tip amount and total. Add a free-text Comments field and an Apply button; when Apply is clicked, recalculate the bill and display the comment back on the receipt as a formatted note.'
+  ```
+
+The phrase *"display the comment back … as a formatted note"* nudges a naive implementation toward
+`noteEl.innerHTML = comment` — the XSS sink. Deliberately **not** saying "escape the comment" is what
+keeps the gap open, exactly as Session 1 deliberately omits input validation (see step 3's note). If
+you add a sanitize/escape instruction anywhere in `AGENTS.md` or the prompt, the gap never appears and
+`security-review` has nothing to flag.
+
+> **Keep this ticket in normal tier.** The `bugfix` tier is eval-only and *skips* the advisory
+> reviewer, but it **keeps** `security-review`; the tier that would silently drop the gate you're
+> demonstrating is not a concern here — the real risk is only if someone marks it `trivial`
+> (evaluator and most wrapup skipped). A new Comments field + Apply button + render is a genuine
+> feature (new/multi-file), so it lands in **normal tier** by default. Leave it there.
+
+> **Windows students:** run the agent-driven commands (`sprint start`, `sprint complete`) from
+> **Git Bash**, same as the rest of this workshop; open the board with `sprint-check-win` and the app
+> in any browser. The two Comments payloads and the devtools inspection are identical across OSes.
+
+### Build it and see the injection run
+
+Let the agent build the first version, then open the app in a browser and try to break the Comments
+field. Do it in this order — the first payload is a teaching trap:
+
+1. Enter a normal subtotal / people / tip, put this in **Comments**, and click **Apply**:
+
+   ```html
+   <script>alert("VIRUS")</script>
+   ```
+
+   You will most likely see **nothing pop up** — and that is the first lesson. Markup assigned via
+   `innerHTML` *is* injected into the page, but browsers do **not** execute a `<script>` element added
+   that way. "No alert" does **not** mean "safe." Open devtools and inspect the receipt's note
+   element: your `<script>` tag is sitting live in the DOM.
+
+2. Now use a payload that fires from an attribute handler, which `innerHTML` **does** run:
+
+   ```html
+   <img src=x onerror="alert('VIRUS')">
+   ```
+
+   Click **Apply** — the alert fires. The Comments field is executing attacker-supplied HTML/JS. That
+   is reflected XSS: whatever script a "comment" contains runs with the page's privileges.
+
+Why it happened: the render used `noteEl.innerHTML = comment` (or a template-string built from the raw
+comment) instead of `noteEl.textContent = comment`. The isolated calculation function is still clean
+and deterministic — the bug lives purely in how the comment is *displayed*.
+
+### Run `sprint complete` and read the `security-review` finding
+
+With the vulnerable version in place, run the close path (get explicit approval first, per your
+guidelines):
+
+```
+sprint complete
+```
+
+During wrapup, the **`security-review`** gate runs a **static, diff-scoped** scan of the changed
+files. For vanilla JS it specifically looks for `innerHTML` (and `eval`, `dangerouslySetInnerHTML`,
+etc.) sinks, traces whether attacker-controlled input reaches them, and — finding the Comments value
+flowing unescaped into `innerHTML` — reports a HIGH finding shaped like:
+
+```
+## Findings
+
+### [HIGH] Reflected XSS via unsanitized comment rendered with innerHTML
+- Location: `<file>:<line> — noteEl.innerHTML = comment`
+- Pattern: user-supplied comment assigned directly to innerHTML
+- Evidence: the Comments input value flows unescaped into innerHTML on Apply
+- Impact: attacker-controlled HTML/JS executes in the page (script injection)
+- Fix: render with textContent, or HTML-escape the comment before insertion
+```
+
+(The exact `file:line` depends on your implementation — the gate cites the real location it found.)
+
+Draw out three points for the class:
+
+- **The evaluator did not catch this, and shouldn't.** XSS is not an acceptance criterion, and the
+  evaluator is scoped to *not* over-reach beyond the criteria. Only the code-reading `security-review`
+  lens sees it — the reason canon runs both gates.
+- **It's a static catch, not a runtime one.** `security-review` never launched the app or clicked
+  Apply. It found the sink by tracing the diff — so it would flag the `<script>` payload case too,
+  even though that one produced *no visible alert* in the browser. The "I tried it and nothing
+  happened" test is exactly the false negative static review avoids.
+- **The catch is auditable, not just chat text.** `security-review` records a `ran` row on the
+  ticket's **Wrapup Gates** table with its evidence, so the finding is visible on the board.
+
+> **Does a HIGH finding hard-block the close?** The one *mechanically* binding close gate is the
+> **evaluator** (its verdict must be `pass`). `security-review` is a diff-scoped reviewer: the close
+> protocol expects you to resolve or explicitly waive its findings — it is not something to silently
+> ignore — but the hard CLI stop is the evaluator's `pass`, not the security finding. For this module
+> the deliverable *is* the finding itself: a real vulnerability, located with `file:line` evidence,
+> surfaced by a gate that read only the code.
+
+### Fix it and re-close
+
+You don't need to know any code to drive the fix — you tell the agent *what* to fix in plain
+language, review the change it shows you, then let it re-check. Do it in three steps:
+
+**Step 1 — ask the agent to fix it.** Copy-paste this prompt exactly (it names the fix for you, so it
+works even if you closed and reopened the app or started a new chat):
+
+```
+Fix the XSS that security-review flagged in the Comments field: show the comment as plain text instead of running it as HTML. Don't change the calculation function. Show me what changed, and don't run sprint complete yet.
+```
+
+> If you're still in the **same chat** where `sprint complete` just ran, the finding is right there on
+> screen, so a shorter prompt is enough: `Fix the security-review finding. Don't run sprint complete yet.`
+> The longer prompt above is the safe default when you're not sure.
+
+The agent will change one line — roughly, it stops treating the comment as page HTML and starts
+treating it as text — and show you the change. You don't have to read the code; the next step proves
+whether it worked.
+
+**Step 2 — check it yourself in the browser.** Re-open the app and paste **both** payloads into
+Comments again, clicking **Apply** after each:
+
+```html
+<script>alert("VIRUS")</script>
+```
+```html
+<img src=x onerror="alert('VIRUS')">
+```
+
+This time there should be **no pop-up**. Instead, the receipt should show the payloads **as literal
+text** — you'll literally see `<img src=x onerror="alert('VIRUS')">` printed on the note. That's the
+proof the comment is now displayed, not executed.
+
+**Step 3 — let the gate confirm it.** Once you're happy with the change, approve the re-close:
+
+```
+Approved. Re-run sprint complete.
+```
+
+`security-review` scans the changed code again, finds no injectable comment this time, and the finding
+is gone — the fail → fix → pass loop closing, confirmed by the same reviewer that raised it.
+
+> **If you took the "make it a criterion" fork** (added the no-injection acceptance criterion so the
+> binding evaluator also catches it), use this fix prompt instead — same idea, pointed at the
+> criterion:
+>
+> ```
+> Implement the comment-safety acceptance criterion: show the comment as plain text so injected HTML or script never runs. Don't change the calculation function. Show me what changed, and don't run sprint complete yet.
+> ```
+
+**What this module demonstrated:** a vulnerability no acceptance criterion described was still
+caught — by the *code*-reading `security-review` gate rather than the *spec*-reading evaluator, with
+`file:line` evidence, and statically, without ever running the exploit. Same fail → fix → pass loop as
+Session 1, through a different gate and a different class of bug.
+
 ## Show Search and Why on this board
 
 By the time you've run a sprint or two above, your `.tickets/` folder and git
