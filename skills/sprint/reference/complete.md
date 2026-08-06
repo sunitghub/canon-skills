@@ -63,8 +63,13 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    only `trivial` skips the evaluator, and `demo` is never `trivial`. **Scope note (Phase B):**
    this close-path is fully exercisable by hand-setting `demo: true` in `ticket.md`; the `tkt demo`
    command, New-Ticket checkbox, Plan-tab toggle, tooltip, and JSON parity are Phase A, and the
-   headless `ci + demo` guard/warning is Phase C — none are required here. Headless/CI runs
-   (`sprint-headless`/`sprint-headless-eval`) always run full and ignore `demo`.
+   headless `ci + demo` guard/warning is Phase C — none are required here. Headless/CI never
+   *reduces the gate set* for `demo`: `sprint-headless` runs its full pipeline and ignores `demo`
+   entirely. `sprint-headless-eval` (already eval-only) also runs its full gate set, but **does**
+   read `demo: true` in ticket-id mode to default the dispatched evaluator to Haiku when no
+   `--model` is given (model choice only — same effect as the interactive "Demo mode forces Haiku",
+   never a skipped gate; explicit `--model` wins). See `docs/headless-ci.md` and `DECISIONS.md`
+   2026-08-06.
 
 
    **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (where the project gitignores `.tickets/`, those files don't need committing for this purpose; a project that tracks `.tickets/` in git may include them) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
