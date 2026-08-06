@@ -198,14 +198,11 @@ You need canon installed and the board running:
 
 ## Optional module: catching an injected-HTML (XSS) gap with `security-review`
 
-Session 1 above exercises the **evaluator** — it catches a *numerical* gap that maps to an
-acceptance criterion. This module exercises a different close gate, **`security-review`**, and the
-contrast is the entire lesson: it catches a class of bug the evaluator by design will not — an
-exploitable vulnerability that no acceptance criterion ever mentions.
-
-> The evaluator grades the **spec**; `security-review` reads the **code** for exploitable sinks
-> regardless of the spec. A spec-driven gate is blind to a vulnerability the spec never named — which
-> is exactly why canon runs both.
+Session 1 above exercises the **evaluator** — a *numerical* gap tied to an acceptance criterion. This
+module exercises a different close gate, **`security-review`**, which by design catches what the
+evaluator won't: an exploitable vulnerability no acceptance criterion ever mentions. The evaluator
+grades the **spec**; `security-review` reads the **code** for exploitable sinks regardless of the
+spec — which is exactly why canon runs both.
 
 ### Set up the feature
 
@@ -232,9 +229,10 @@ you add a sanitize/escape instruction anywhere in `AGENTS.md` or the prompt, the
 
 > **Keep this ticket in normal tier.** The `bugfix` tier is eval-only and *skips* the advisory
 > reviewer, but it **keeps** `security-review`; the tier that would silently drop the gate you're
-> demonstrating is not a concern here — the real risk is only if someone marks it `trivial`
-> (evaluator and most wrapup skipped). A new Comments field + Apply button + render is a genuine
-> feature (new/multi-file), so it lands in **normal tier** by default. Leave it there.
+> demonstrating is not a concern here — the real risk is only if someone treats this as `trivial`
+> (which uses **no sprint at all** — no evaluator, no wrapup, no `security-review`). A new Comments
+> field + Apply button + render is a genuine feature (new/multi-file), so it lands in **normal tier**
+> by default. Leave it there.
 
 > **Windows students:** run the agent-driven commands (`sprint start`, `sprint complete`) from
 > **Git Bash**, same as the rest of this workshop; open the board with `sprint-check-win` and the app
@@ -263,7 +261,7 @@ field. Do it in this order — the first payload is a teaching trap:
    ```
 
    Click **Apply** — the alert fires. The Comments field is executing attacker-supplied HTML/JS. That
-   is reflected XSS: whatever script a "comment" contains runs with the page's privileges.
+   is DOM-based XSS: whatever script a "comment" contains runs with the page's privileges.
 
 Why it happened: the render used `noteEl.innerHTML = comment` (or a template-string built from the raw
 comment) instead of `noteEl.textContent = comment`. The isolated calculation function is still clean
@@ -279,19 +277,19 @@ sprint complete
 ```
 
 During wrapup, the **`security-review`** gate runs a **static, diff-scoped** scan of the changed
-files. For vanilla JS it specifically looks for `innerHTML` (and `eval`, `dangerouslySetInnerHTML`,
-etc.) sinks, traces whether attacker-controlled input reaches them, and — finding the Comments value
-flowing unescaped into `innerHTML` — reports a HIGH finding shaped like:
+files. For vanilla JS it specifically looks for `innerHTML` (and `eval`, etc.) sinks, traces whether
+attacker-controlled input reaches them, and — finding the Comments value flowing unescaped into
+`innerHTML` — reports a HIGH finding shaped like:
 
 ```
 ## Findings
 
-### [HIGH] Reflected XSS via unsanitized comment rendered with innerHTML
-- Location: `<file>:<line> — noteEl.innerHTML = comment`
-- Pattern: user-supplied comment assigned directly to innerHTML
-- Evidence: the Comments input value flows unescaped into innerHTML on Apply
-- Impact: attacker-controlled HTML/JS executes in the page (script injection)
-- Fix: render with textContent, or HTML-escape the comment before insertion
+### [HIGH] DOM-based XSS via unsanitized comment rendered with innerHTML
+- **Location**: `<file>:<line> — noteEl.innerHTML = comment`
+- **Pattern**: user-supplied comment assigned directly to innerHTML
+- **Evidence**: the Comments input value flows unescaped into innerHTML on Apply
+- **Impact**: attacker-controlled HTML/JS executes in the page (script injection)
+- **Fix**: render with textContent, or HTML-escape the comment before insertion
 ```
 
 (The exact `file:line` depends on your implementation — the gate cites the real location it found.)
@@ -300,7 +298,11 @@ Draw out three points for the class:
 
 - **The evaluator did not catch this, and shouldn't.** XSS is not an acceptance criterion, and the
   evaluator is scoped to *not* over-reach beyond the criteria. Only the code-reading `security-review`
-  lens sees it — the reason canon runs both gates.
+  lens sees it — the reason canon runs both gates. **Optional fork — "make it a criterion":** if you
+  *want* the binding evaluator to catch the XSS too, add a no-injection acceptance criterion (e.g.
+  *"A comment containing HTML or script — such as `<img src=x onerror=...>` — is displayed as inert
+  text; no injected markup executes"*). Then the fresh evaluator grades it directly and a failure
+  **hard-blocks** the close. The "Fix it and re-close" step below has a fix prompt for that path.
 - **It's a static catch, not a runtime one.** `security-review` never launched the app or clicked
   Apply. It found the sink by tracing the diff — so it would flag the `<script>` payload case too,
   even though that one produced *no visible alert* in the browser. The "I tried it and nothing
@@ -310,10 +312,11 @@ Draw out three points for the class:
 
 > **Does a HIGH finding hard-block the close?** The one *mechanically* binding close gate is the
 > **evaluator** (its verdict must be `pass`). `security-review` is a diff-scoped reviewer: the close
-> protocol expects you to resolve or explicitly waive its findings — it is not something to silently
-> ignore — but the hard CLI stop is the evaluator's `pass`, not the security finding. For this module
-> the deliverable *is* the finding itself: a real vulnerability, located with `file:line` evidence,
-> surfaced by a gate that read only the code.
+> protocol **surfaces its findings as a warning to resolve** — it does not hard-block, and there is no
+> formal waiver artifact for a security finding (only the evaluator has one, `eval_override`). So the
+> hard CLI stop is the evaluator's `pass`, not the security finding. For this module the deliverable
+> *is* the finding itself: a real vulnerability, located with `file:line` evidence, surfaced by a gate
+> that read only the code.
 
 ### Fix it and re-close
 
@@ -356,7 +359,8 @@ Approved. Re-run sprint complete.
 ```
 
 `security-review` scans the changed code again, finds no injectable comment this time, and the finding
-is gone — the fail → fix → pass loop closing, confirmed by the same reviewer that raised it.
+is gone — the fail → fix → pass loop closing, confirmed by the same gate that raised it (it holds no
+memory of the prior finding; it simply re-scans the new diff).
 
 > **If you took the "make it a criterion" fork** (added the no-injection acceptance criterion so the
 > binding evaluator also catches it), use this fix prompt instead — same idea, pointed at the
