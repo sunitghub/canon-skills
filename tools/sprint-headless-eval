@@ -20,6 +20,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
+source "$SCRIPT_DIR/frontmatter-lib.sh"
 
 # --- Argument parsing ---
 
@@ -31,7 +32,8 @@ SPEC_FILE="${1:-}"
   echo "running only the evaluator (no reviewer, no security-review)." >&2
   echo "" >&2
   echo "  <ticket-id>  a t-xxxx id: grades .tickets/<id>/acceptance.md and writes" >&2
-  echo "               eval-report.md into that ticket folder." >&2
+  echo "               eval-report.md into that ticket folder. If the ticket has" >&2
+  echo "               demo: true and no --model is given, the evaluator defaults to Haiku." >&2
   echo "  <spec-file>  any markdown file with - [ ] checklist items as criteria;" >&2
   echo "               eval-report.md is written next to it." >&2
   echo "" >&2
@@ -43,10 +45,12 @@ shift
 # Ticket-id mode: `sprint-headless-eval t-xxxx` grades that ticket's acceptance.md
 # and writes the report into the ticket folder (ticket-self-contained). Any other
 # first arg is treated as a spec-file path (original behavior).
+TICKET_DIR=""
 if [[ "$SPEC_FILE" =~ ^t-[a-z0-9]{4}$ ]]; then
   TDIR="$(tickets_dir)/$SPEC_FILE"
   [[ -d "$TDIR" ]] || { echo "Error: ticket '$SPEC_FILE' not found at $TDIR." >&2; exit 1; }
   [[ -f "$TDIR/acceptance.md" ]] || { echo "Error: ticket '$SPEC_FILE' has no acceptance.md at $TDIR/acceptance.md." >&2; exit 1; }
+  TICKET_DIR="$TDIR"
   SPEC_FILE="$TDIR/acceptance.md"
 fi
 
@@ -59,6 +63,23 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# Demo mode → default the evaluator to Haiku (ticket-id mode only). Mirrors the
+# interactive close's "Demo mode forces Haiku (evaluator only)" (complete.md step 1):
+# when the ticket carries demo: true and the caller passed no explicit --model, run
+# the (still-binding) evaluator on Haiku for a cheap demo/light-close grade. This
+# reads the flag for MODEL selection only — it never skips a gate, so headless still
+# runs its full (eval-only) gate set. Scoped to sprint-headless-eval; sprint-headless
+# still ignores demo. Precedence: explicit --model > demo:true→haiku > env/claude default.
+# Trailing CR is trimmed so a CRLF ticket.md (Windows) still matches "true".
+if [[ -z "$MODEL" && -n "$TICKET_DIR" && -f "$TICKET_DIR/ticket.md" ]]; then
+  DEMO_FLAG="$(get_field "$TICKET_DIR/ticket.md" demo 2>/dev/null || true)"
+  DEMO_FLAG="${DEMO_FLAG%$'\r'}"
+  if [[ "$DEMO_FLAG" == "true" ]]; then
+    MODEL="haiku"
+    echo "Notice: ticket $(basename "$TICKET_DIR") has demo: true and no --model — defaulting the evaluator to Haiku." >&2
+  fi
+fi
 
 # Base ref precedence: explicit --base-ref > $GITHUB_BASE_REF > default origin/main
 # (then main). This softens headless's prior "never infers a base" rule for local/

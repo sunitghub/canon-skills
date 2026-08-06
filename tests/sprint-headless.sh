@@ -451,6 +451,55 @@ out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS_EVAL"
 assert_contains "$out" "not a valid model"
 [[ -s "$CAP_ARGS" ]] && fail "sprint-headless-eval model test: claude was invoked despite an invalid --model"
 
+# 14h–14k. sprint-headless-eval demo:true → default evaluator to Haiku (t-9dda).
+# Ticket-id mode reads the ticket's demo flag for MODEL selection only (no gate change).
+# seed a demo ticket (frontmatter demo: true) + a non-demo ticket, each with acceptance criteria.
+seed_eval_ticket() {  # <id> <demo:true|"">
+  local id="$1" demo_line="$2"
+  mkdir -p "$WORK/.tickets/$id"
+  cat > "$WORK/.tickets/$id/ticket.md" <<EOF
+---
+id: $id
+status: open
+type: task
+priority: 2
+created: 2026-01-01T00:00:00Z${demo_line:+
+$demo_line}
+---
+# fixture
+EOF
+  cat > "$WORK/.tickets/$id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [ ] something holds
+EOF
+}
+seed_eval_ticket t-demo "demo: true"
+seed_eval_ticket t-ndm0 ""
+
+# 14h. demo: true + no --model → --model haiku (auto-default)
+: > "$CAP_ARGS"
+demo_out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-demo --base-ref HEAD 2>&1)"
+assert_model_arg haiku
+assert_contains "$demo_out" "demo: true and no --model"
+
+# 14i. demo: true + explicit --model sonnet → explicit wins (sonnet, not haiku)
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-demo --base-ref HEAD --model sonnet >/dev/null)
+assert_model_arg sonnet
+if grep -qx "<<ARG>>haiku" "$CAP_ARGS"; then fail "sprint-headless-eval demo test: explicit --model must win over demo:true"; fi
+
+# 14j. ticket WITHOUT demo + no --model → no --model (unchanged default)
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" t-ndm0 --base-ref HEAD >/dev/null)
+assert_no_model_arg
+
+# 14k. spec-file mode never reads demo (scope): a demo ticket exists, but a spec-file path → no --model
+: > "$CAP_ARGS"
+(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" specs/x.md --base-ref HEAD >/dev/null)
+assert_no_model_arg
+
+rm -rf "$WORK/.tickets/t-demo" "$WORK/.tickets/t-ndm0"
 rm -rf "$STUB_CAP_DIR"; rm -f "$CAP_ARGS"
 
 # ── 15. sprint-headless-eval ticket-id mode + QA exclusion + base-ref default (t-54e5) ──

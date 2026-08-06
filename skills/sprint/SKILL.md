@@ -125,8 +125,10 @@ explicit **user flag, not structural risk** — the one documented place canon b
 "only structural risk may reduce gates" invariant, justified as the same explicit/auditable
 override class as `eval_override` / `Gate model:` and paid for by being loud (Demo/Docs markers on
 the Wrapup Gates rows + a `summary.md` demo line). See `reference/complete.md`'s "Demo mode"
-(step 1) for the full close-path and `AGENTS.md`'s north-star exception. Headless/CI ignores
-`demo` and always runs full.
+(step 1) for the full close-path and `AGENTS.md`'s north-star exception. Headless/CI never reduces
+the gate set for `demo`: `sprint-headless` ignores `demo` entirely, and `sprint-headless-eval` runs
+its full (eval-only) gate set but reads `demo: true` (ticket-id mode) to default the evaluator to
+Haiku when no `--model` is given — a model choice, never a skipped gate.
 
 ## Job types (JTBD)
 

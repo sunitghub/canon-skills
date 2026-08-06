@@ -138,6 +138,8 @@ The evaluator grades each criterion with pass/fail/partial and `file:line` evide
 
 To run the evaluator on a specific model (e.g. Haiku to save tokens), pass `--model <model>` — an alias (`haiku`/`sonnet`/`opus`) or a full model id: `sprint-headless-eval t-abcd --model haiku`. Alternatively set `ANTHROPIC_MODEL` in the environment; `claude` honors either. The model governs the dispatched evaluator subagent, not just the orchestrator.
 
+**Demo tickets default to Haiku.** In **ticket-id mode**, if the ticket's frontmatter has `demo: true` and you pass **no** `--model`, `sprint-headless-eval` defaults the evaluator to Haiku (and prints a notice) — mirroring the interactive close's "Demo mode forces Haiku (evaluator only)". This is a model choice only: the (still-binding) evaluator always runs, so no gate is skipped. Precedence: an explicit `--model` wins over the demo default, which in turn wins over `ANTHROPIC_MODEL`/the `claude` default (it is applied by passing `--model haiku`). This is scoped to `sprint-headless-eval`; `sprint-headless` ignores `demo` and always runs its full pipeline on the default/`Gate model:` model. Spec-file mode has no ticket frontmatter, so it never reads `demo`.
+
 ### Differences from `sprint-headless`
 
 | | `sprint-headless` | `sprint-headless-eval` |
