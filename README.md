@@ -254,6 +254,41 @@ Layering is intentional: `sprint complete` is CLI-enforced; planning, audits,
 test judgment, and clean-context evaluation are agent-required; `sprint-check`
 is board-surfaced visibility while the work is still in progress.
 
+### Two ways to grade headless — `sprint-headless` vs `sprint-headless-eval`
+
+Both grade a diff that **already exists** and both **run only against a base ref** — you never let
+them write code. The difference is ceremony: the full pipeline runs three gates against an
+approved ticket; the eval-only command runs one gate against anything with checklist criteria.
+
+| | `sprint-headless` | `sprint-headless-eval` |
+|---|---|---|
+| Gates | reviewer + evaluator + security-review (`bugfix` tier: evaluator + security-review) | evaluator only |
+| Input | ticket id + committed, approved `plan.md`/`acceptance.md` | a ticket id (grades its `acceptance.md`) **or** any markdown file with `- [ ]` criteria |
+| Requires | `tkt ci <id> on`, `- [x] Plan approved`, ticket committed | just the ticket/spec + a git repo |
+| Writes | `review-notes.md` + `eval-report.md` in `.tickets/<id>/` | `eval-report.md` in the ticket folder, or next to the spec file |
+| Cost | ~100k+ tokens (three subagents) | ~30–40k tokens (one subagent) |
+| Verdict | `HEADLESS_VERDICT: PASS`/`FAIL` → exit 0/1; any gate fail → FAIL | same; any `partial` forces `fail:` |
+
+**Neither headless command runs your code.** Both dispatch through `claude -p --permission-mode
+dontAsk` with Bash whitelisted to `git diff/log/show/status` plus read-only tools — so they grade
+by *reading the diff and citing `file:line`*, never by executing a test suite or rendering a
+browser. That means an acceptance item phrased as "run `npm test …`" or "render and assert the
+DOM" can't be *executed* here; it will be graded statically (or land `not-run → fail`). Execution
+lives at the **interactive `sprint complete`** close, whose evaluator gets full Bash and *does*
+run your tests / a headless browser and grades by exit code. Rule of thumb: write headless
+criteria to be verifiable by reading the diff; reserve run-it-and-watch-it-fail checks for the
+interactive close.
+
+> **No remote?** The base ref defaults to `origin/main` → `main`. If neither resolves (e.g. your
+> branch is `master`, or there's no remote), it silently falls back to diffing against the repo's
+> **root commit** — which makes the whole tree look "changed." Tag a real baseline
+> (`git tag seed <commit>`) and pass `--base-ref seed` so the diff means "what this sprint
+> changed." Verified end-to-end on Windows-on-ARM (Git Bash `MINGW64_NT…ARM64`), where the
+> bundled x64 `sprint-headless-json-win.exe` runs under emulation and no `ANTHROPIC_API_KEY` is
+> needed if `claude` is already logged in.
+
+**[Headless CI grading →](docs/headless-ci.md)** — full prerequisites, the spec-file format, model/cost control, waivers, and consumer-project CI wiring.
+
 ### Which model runs the close gates
 
 The close gates stay mandatory regardless of model — this only decides *which* model runs the
