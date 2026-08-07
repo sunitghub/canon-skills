@@ -7,9 +7,17 @@
 # (get_field / set_field / set_or_add_field / remove_field) — never re-inline
 # the insert-before-second-`---` or strip-line awk in tkt/sprint (t-59e8).
 
+# get_field <file> <field> — read a frontmatter field's value. CRLF-tolerant:
+# the leading `sub(/\r$/, "")` strips a trailing CR from each line before the
+# `---` delimiter match and the value capture, so a CRLF-saved ticket.md (e.g.
+# hand-edited on Windows) still parses and the returned value has no trailing
+# `\r`. It is a strict no-op on LF files. NOTE: set_field/remove_field below
+# still assume LF on their write path (stripping `\r` there could silently
+# rewrite line endings) — only the read path is hardened here (t-4fca).
 get_field() {
   local file="$1" field="$2"
   awk -v f="$field" '
+    { sub(/\r$/, "") }
     /^---$/ { fm++; next }
     fm == 1 && match($0, "^" f ": ") { print substr($0, RSTART+RLENGTH); exit }
   ' "$file"

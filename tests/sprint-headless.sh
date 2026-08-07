@@ -381,8 +381,8 @@ printf '%s\n' '{"type":"result","is_error":false,"session_id":"cap","result":"@@
 EOF
 chmod +x "$STUB_CAP_DIR/claude"
 
-assert_model_arg()   { grep -qx "<<ARG>>--model" "$CAP_ARGS" && grep -qx "<<ARG>>$1" "$CAP_ARGS" || fail "sprint-headless model test: expected '--model $1' in claude argv"; }
-assert_no_model_arg() { if grep -qx "<<ARG>>--model" "$CAP_ARGS"; then fail "sprint-headless model test: unexpected --model in claude argv"; fi; }
+assert_model_arg()   { grep -qx "<<ARG>>--model" "$CAP_ARGS" && grep -qx "<<ARG>>$1" "$CAP_ARGS" || fail "headless model test: expected '--model $1' in claude argv"; }
+assert_no_model_arg() { if grep -qx "<<ARG>>--model" "$CAP_ARGS"; then fail "headless model test: unexpected --model in claude argv"; fi; }
 
 # plan.md writer — files are already tracked (tkt ci on), and the tools read the
 # working-tree plan.md, so re-committing per scenario isn't needed.
