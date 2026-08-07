@@ -71,7 +71,7 @@ Rule of thumb: **tests keep the code honest; evals keep the agent honest.**
 sprint complete
   └── Wrapup: simplify → code-review → security → repo-check → doc-audit
   └── Reviewer (fresh subagent, normal+ tier — cheaper model if changed files are structurally low-risk, or any model the user names via plan.md's Gate model: field)
-  └── Evaluator (fresh subagent, normal+ tier) — adversarial, blocks on fail (same model rule)
+  └── Evaluator (fresh subagent, non-trivial tiers — bugfix/normal/high-risk) — adversarial, blocks on fail (same model rule)
   └── Acceptance check — CLI blocks on unchecked items
   └── summary.md — plan-vs-actual table, one row per criterion
   └── tkt close

@@ -58,4 +58,4 @@ Minor style or preference notes (optional to act on).
 Broader suggestions — refactors, missing tests, follow-up work.
 ```
 
-Be specific. Explain why each finding matters.
+Explain why each finding matters.

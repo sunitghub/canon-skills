@@ -102,7 +102,7 @@ tkt reopen <id>                   # reopen a closed ticket
 | Skill | Trigger | Expected |
 |-------|---------|----------|
 | `sprint` | `"Start a sprint for X"` | Tier selected → brief → awaits approval → writes plan.md |
-| `context-check` | `/context-check` | Context audit; findings appended to context-findings.md |
+| `context-check` | `/context-check` | Context audit; writes context-check-report.md at the project root |
 | `doc-audit` | `/doc-audit` | README/guides audit; findings appended to doc-findings.md |
 | `output-validator` | `/output-validator` | Pre/post-generation report validation |
 | `skill-export` | `skill-export <name>` | Exports flat skill as paste-ready text |

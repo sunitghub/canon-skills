@@ -38,9 +38,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    (+ visuals) with no code to code-review or simplify. The close-path is identical for both:
    keep exactly **`security-review` + the binding `evaluator` (step 3)**, and skip the advisory `reviewer` (step 2) **and every other wrapup gate** (code-simplifier,
    code-reviewer, repo-check, doc-audit). It **never drops below the binding evaluator** — that
-   floor is non-negotiable; `demo` only trims the same *advisory reviewer + wrapup* gates the
-   `bugfix` tier already trims, so it is a user-elected `bugfix`-lite plus a forced-Haiku
-   evaluator (see the Model-tier section below). This reduction is driven by an explicit **user flag, not structural
+   floor is non-negotiable; `demo` trims a **superset** of what the `bugfix` tier
+   trims — the advisory `reviewer` plus, additionally, `code-reviewer` and
+   `repo-check` (which `bugfix` keeps) — leaving only `security-review` + the
+   forced-Haiku evaluator (see the Model-tier section below). This reduction is driven by an explicit **user flag, not structural
    risk** — the one documented place a gate reduction is flag-driven rather than diff-driven,
    the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
    `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
