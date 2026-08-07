@@ -97,8 +97,9 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      The board seeds the matching `## Test Plan` *placeholder* in Acceptance on save when a scenario
      is present (`t-321a`, never a hardcoded command); `sprint start` writes this build instruction
      into `plan.md`. Worked block: `examples/dsl-discount-spec/README.md`. **Language default is
-     JavaScript** — the `python dsl_runner.py …` examples in the scenario-backed rules above (and in
-     `eval.md`/`complete.md`) are language-agnostic illustrations of *a runner command*, not a Python
+     JavaScript** — the runner-command examples in the scenario-backed rules above (shown as
+     `python dsl_runner.py …`) and in `eval.md`/`complete.md` (shown as `node dsl_runner.js …`)
+     are language-agnostic illustrations of *a runner command*, not a language
      mandate; use Python (`discount.py` + `python dsl_runner.py`) only when the user asks for it.
    - `plan.md` — files to inspect, files to create/modify, step-by-step build plan under `## Approach`. For `type: bug` tickets, structure the plan around the five incident stages (Surface/Trace/Isolate/Resolve/Harden). Write `## Approach` per `standards/efficiency.md`'s Token Efficiency section from this first draft, not just when trimming the whole doc for its ~500-word budget at close — it's re-read on every compaction/context reset, so lean prose pays off for the rest of the ticket's lifetime.
    - **Visual reference artifacts.** Visual reference (pasted image, or a file path

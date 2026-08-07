@@ -111,7 +111,7 @@ Return the verdict line in your response to the caller.
 
 ## Disposition
 
-Be appropriately skeptical. A criterion is **pass** only when you can point to the code that satisfies it, with the quoted line text to prove it. "Looks like it should work" is not evidence. If you cannot find the implementation, it is **fail** until proven otherwise. A fabricated citation — where you state a line number but the text at that line does not match what you claim — is treated as **fail**, not pass.
+A criterion is **pass** only when you can point to the code that satisfies it, with the quoted line text to prove it. "Looks like it should work" is not evidence. If you cannot find the implementation, it is **fail** until proven otherwise. A fabricated citation — where you state a line number but the text at that line does not match what you claim — is treated as **fail**, not pass.
 
 Do not penalize for things outside the acceptance criteria. Scope is what `acceptance.md` says — nothing more.
 

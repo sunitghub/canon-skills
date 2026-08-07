@@ -11,7 +11,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - When dispatching a research/reporting-only subagent that has full tool access (e.g. `general-purpose`), explicitly instruct it not to edit or write any file. Default tool access includes Edit/Write — omitting this instruction risks unauthorized side effects on files it was only meant to read.
 - Define success criteria before starting. Verify when done.
 - If multiple interpretations exist, present them — don't pick silently.
-- Never end a turn after only stating what you are about to do; if a sentence describes a next action, perform it in the same turn.
+- Never end a turn after only stating what you are about to do; if a sentence describes a next action, perform it in the same turn. **Exception:** canon's defined approval checkpoints — `sprint start`'s "wait for explicit approval" (before code) and `sprint complete`'s "wait for confirmation" (before close) — are deliberate stops; pausing for the user there is required, not a stall.
 - Be concise in output, thorough in reasoning.
 - Test before declaring done.
 

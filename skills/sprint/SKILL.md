@@ -59,7 +59,7 @@ requires **all** of:
 Bugfix is a *complete-time downgrade* (mirrors the trivial valve): planning runs as Normal; at
 close, if the diff qualifies, write `Tier: bugfix` in `plan.md`'s `## Sign-off`. Because bugfix is
 non-trivial, the CLI still requires the eval-report, sign-off, and acceptance gates — only the
-advisory reviewer and heavy wrapup are skipped (`complete.md` steps 1-3). It is strictly safer
+advisory reviewer and heavy wrapup are skipped (`complete.md` steps 1-2). It is strictly safer
 than the trivial tier, which skips the evaluator too.
 
 `sprint suggest-tier` surfaces this eligibility mechanically — it reads the diff (never plan prose)
@@ -108,7 +108,8 @@ One light-close covers **two intents**, both explicit and user-elected:
 
 For either intent, `sprint complete` runs a **fast close-path**: keep exactly
 **`security-review` + the binding evaluator**, and skip the advisory reviewer plus
-the rest of wrapup — the same *advisory reviewer + wrapup* gates `bugfix` trims. The **evaluator
+the rest of wrapup — a **superset** of what `bugfix` trims, additionally dropping
+`code-reviewer` and `repo-check` (which `bugfix` keeps). The **evaluator
 is forced to Haiku** (`security-review` runs inline on the session model — only the dispatched
 evaluator takes a `model:` param; see `reference/complete.md`'s Model-tier section). It is a
 user-elected `bugfix`-lite and **never drops below the binding evaluator** — so it never needs,

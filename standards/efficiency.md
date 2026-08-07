@@ -72,4 +72,4 @@ Act on these when you see them — don't wait to be told.
 - Use targeted bash commands — avoid ones that dump large output for a narrow query.
 - Keep CLAUDE.md and AGENTS.md concise — rules, gotchas, non-obvious conventions only.
 - Summarizing or rewriting: preserve code blocks, inline code, paths, URLs, commands, version numbers, and technical terms exactly.
-- In Claude Code, run `/context-check` to audit the always-on context budget; log findings to `context-findings.md`. The `/context-check` slash command is Claude Code-specific — under Codex, Pi, or headless runs it does not exist; audit the budget manually there.
+- In Claude Code, run `/context-check` to audit the always-on context budget; it writes a `context-check-report.md` at the project root (after confirmation). The `/context-check` slash command is Claude Code-specific — under Codex, Pi, or headless runs it does not exist; audit the budget manually there.
