@@ -7,6 +7,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 tests=(
   "$ROOT/tests/tkt.sh"
   "$ROOT/tests/sprint.sh"
+  "$ROOT/tests/frontmatter-lib.sh"
   "$ROOT/tests/skills-add-sprint.sh"
   "$ROOT/tests/skills-model-tiers-note.sh"
   "$ROOT/tests/skills-subagent-log-permission.sh"
