@@ -5,8 +5,8 @@ category: agent-ops
 tags: [agents, llm, prompts, context, control-flow, state]
 inject: true
 hidden: true
-version: 1.0.0
-updated: 2026-06-22
+version: 1.1.0
+updated: 2026-08-08
 ---
 
 # Agent Design Principles
@@ -52,3 +52,15 @@ Write the loop yourself. Framework magic that decides when to pause, retry, or c
 - Build control structures that match your use case: some tool calls warrant a direct loop-continue; others warrant breaking out and waiting for a webhook.
 - Pause between tool *selection* and tool *invocation* for high-stakes calls — this is the gate where human review is possible. Most frameworks don't expose this seam.
 - Incorporate context compaction, rate limiting, tracing, and durable sleep as explicit steps in your control flow, not afterthoughts.
+
+## Pattern Vocabulary (recognize, don't prescribe)
+
+Classic [GoF](https://www.digitalocean.com/community/tutorials/gangs-of-four-gof-design-patterns) names for the structures above — shared vocabulary for reasoning about an agentic architecture, **not** a mandate to introduce the classes. Recognize where one already fits; never force a pattern where a simpler construct does (KISS/YAGNI). Agentic systems realize these at the protocol/architecture level, rarely as a class literally named `Command`.
+
+| GoF pattern | Agentic realization |
+|---|---|
+| **Command** | A tool call *is* a request object (name + args), decoupled from execution — gate it before invoking (*Own Your Control Flow*), make it idempotent, and log it. The atomic unit everything else composes. |
+| **Chain of Responsibility** | A gate/guardrail pipeline: each step handles the request or passes it on, with a terminal binding handler that can stop the chain. |
+| **Mediator** | An orchestrator/supervisor coordinates subagents so they don't couple directly to one another (multi-agent systems). |
+| **Memento** | The serialized event log — externalize state so any point can be resumed or forked (*Agent as Stateless Reducer*). |
+| **Flyweight** | Share the immutable prefix/context across many fine-grained calls — prompt/prefix caching, subagent fan-out (*Own Your Context Window*). The cost/latency-at-scale lens. |
