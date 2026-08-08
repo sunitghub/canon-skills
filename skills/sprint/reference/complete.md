@@ -109,6 +109,8 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    checked. Avoid bare "ran"; use e.g. `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69`
    or `npm test passed 2026-06-13`. **`sprint complete` blocks without this section.**
 
+   **Scope note:** the next two subsections — *Model tier for gates* and *Shared gate mechanics* — configure the step 2–3 fresh-context gates (reviewer/evaluator), not the wrapup pipeline. They live under step 1 because the interim commit above is their shared precondition.
+
    **Model tier for gates.** Documented exception to `AGENTS.md`'s `## Model Tiers` `review →
    Opus` default, scoped only to the two close-gate dispatches below.
 

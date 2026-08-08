@@ -133,4 +133,46 @@ grep -qF "$EVAL_SCENARIO_NOTRUN" "$EVAL" || fail "doc-mirror-parity: eval.md is 
 grep -qF "$START_SCENARIO" "$START" || fail "doc-mirror-parity: start.md is missing the scenario-backed acceptance-criteria guidance verbatim (\"$START_SCENARIO\") (t-c67e)"
 grep -qF "$START_ORDERING" "$START" || fail "doc-mirror-parity: start.md is missing the before-implementation ordering norm verbatim (\"$START_ORDERING\") (t-c67e)"
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md)"
+# ── Check H: the design-fit tag set (t-d92e) must stay identical between the
+# code-reviewer gate definition (reviewer.md dim.3) and its user-facing doc row
+# (docs/wrapup-gates.md). The two are hand-synced; this locks the principle
+# vocabulary so a future edit to either side can't silently drift it.
+REVIEWER_GATE="$ROOT/skills/wrapup/gates/reviewer.md"
+WRAPUP_DOC="$ROOT/docs/wrapup-gates.md"
+
+design_tags() {
+  grep -oE '\[(SRP|OCP|LSP|ISP|DIP|DRY|LoD|CoC|pattern-fit)\]' "$1" | sort -u
+}
+
+gate_tags="$(design_tags "$REVIEWER_GATE")"
+doc_tags="$(design_tags "$WRAPUP_DOC")"
+
+if [[ -z "$gate_tags" || -z "$doc_tags" ]]; then
+  fail "doc-mirror-parity: design-fit tags not found in reviewer.md or wrapup-gates.md — the tag-set extraction pattern is stale"
+fi
+
+if [[ "$gate_tags" != "$doc_tags" ]]; then
+  echo "doc-mirror-parity: FAIL — design-fit tag set diverged between reviewer.md and docs/wrapup-gates.md"
+  echo "reviewer.md:"; echo "$gate_tags" | sed 's/^/  /'
+  echo "wrapup-gates.md:"; echo "$doc_tags" | sed 's/^/  /'
+  exit 1
+fi
+
+# ── Check I: the demo-mode / gate-floor invariant "never drops below the binding
+# evaluator" is intentionally distributed (not de-duplicated) across the workflow
+# docs — DECISIONS.md 2026-08-07 keeps the "superset" phrasing in place as
+# drift-resistant rather than consolidating it. This locks the verbatim phrase in
+# each home so a demo-policy edit can't silently drop it from one — the same
+# "duplicate but lock with a parity test" pattern as Checks A/D/F.
+EVALUATOR_FLOOR='never drops below the binding evaluator'
+COMPLETE="$ROOT/skills/sprint/reference/complete.md"
+SPRINT_SKILL="$ROOT/skills/sprint/SKILL.md"
+HOWITWORKS="$ROOT/docs/how-it-works.md"
+AGENTS="$ROOT/AGENTS.md"
+
+for file in "$SPRINT_SKILL" "$COMPLETE" "$HOWITWORKS" "$AGENTS"; do
+  label="$(basename "$file")"
+  grep -qF "$EVALUATOR_FLOOR" "$file" || fail "doc-mirror-parity: $label is missing the gate-floor invariant verbatim (\"$EVALUATOR_FLOOR\") — the demo-mode/evaluator-floor wording has drifted across the workflow docs"
+done
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md)"

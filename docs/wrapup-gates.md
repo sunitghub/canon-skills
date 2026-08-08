@@ -10,7 +10,7 @@ See the [README](../README.md#the-two-commands) for the lifecycle overview,
 [`docs/how-it-works.md`](how-it-works.md) for the CLI/agent split, and
 [`skills/sprint/reference/complete.md`](../skills/sprint/reference/complete.md) for the authoritative
 close-path logic. Each gate's own definition lives in `skills/wrapup/gates/*.md`,
-`skills/doc-audit/SKILL.md`, and `skills/sprint/reference/eval.md`.
+`skills/doc-audit/SKILL.md`, `skills/sprint/reference/review.md` (the advisory `reviewer` gate), and `skills/sprint/reference/eval.md`.
 
 The wrapup pipeline itself is `code-simplifier → code-reviewer → security-review → repo-check →
 doc-audit → refresh docs`. The `reviewer`, `evaluator`, and advisory `mutation-test` gates are driven
