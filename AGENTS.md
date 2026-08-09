@@ -9,6 +9,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - Minimum code that solves the problem. Nothing speculative.
 - Touch only what you must. Clean up only your own mess.
 - When dispatching a research/reporting-only subagent that has full tool access (e.g. `general-purpose`), explicitly instruct it not to edit or write any file. Default tool access includes Edit/Write — omitting this instruction risks unauthorized side effects on files it was only meant to read.
+- Subagent dispatches should return a structured report, not raw tool noise. Use `skills/sprint/reference/subagent-report.md` as the return-shape contract: Result, Output, Evidence, Learnings. Preserve context hygiene — snapshot the active working branch only, do not transform parent context into text, and exclude sibling/abandoned branches.
 - Define success criteria before starting. Verify when done.
 - If multiple interpretations exist, present them — don't pick silently.
 - Never end a turn after only stating what you are about to do; if a sentence describes a next action, perform it in the same turn. **Exception:** canon's defined approval checkpoints — `sprint start`'s "wait for explicit approval" (before code) and `sprint complete`'s "wait for confirmation" (before close) — are deliberate stops; pausing for the user there is required, not a stall.
@@ -26,11 +27,11 @@ Match model to the sprint work being done. `plan creation` and `grill` usually r
 in the main session rather than as separate dispatches — the tier below still applies to
 whichever session/dispatch does that work.
 
-- `explore` → Haiku — read-only, bounded search/mapping, no judgment calls.
-- `plan creation` → Fable or Opus — needs design judgment before scope locks in.
-- `implement` → Haiku/Sonnet — execution inside an approved plan. Without `advisor`
+- `explore` → Haiku, thinking `minimal` — read-only, bounded search/mapping, no judgment calls.
+- `plan creation` → Fable or Opus, thinking `medium`/`high` — needs design judgment before scope locks in.
+- `implement` → Haiku/Sonnet, thinking `medium` — execution inside an approved plan. Without `advisor`
   configured on Sonnet+Opus, bump to Opus for high-risk sprints instead.
-- `review` / `grill` → Opus — adversarial, judgment-heavy; a weaker model would rubber-stamp.
+- `review` / `grill` → Opus, thinking `high` — adversarial, judgment-heavy; a weaker model would rubber-stamp.
 
 **Exception — sprint close gates** follow their own rule (may downgrade to Haiku on a
 structural low-risk check, or an explicit user `Gate model:` override) — see the

@@ -39,6 +39,13 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` 
 
 Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verification` — full recipe there.
 
+## Report structure
+
+For general subagent return-shape guidance (Result, Output, Evidence, Learnings),
+read `skills/sprint/reference/subagent-report.md`. The eval-report template below
+is gate-specific and takes precedence for this close-gate report, but the
+right-sizing, snippet, and evidence principles apply.
+
 ## Steps
 
 1. **Save run-id.** Before reading anything, overwrite `.tickets/<id>/eval-report.md` with a single line via Bash — even if the file already exists from a prior pass; a stale run-id (or a report with no run-id, from a prior pass that overwrote it away at step 8) must never be trusted or left in place:
