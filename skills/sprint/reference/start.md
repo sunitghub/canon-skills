@@ -143,7 +143,7 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      **rendered output** (that the built UI matches) is a separate concern — keep the
      visual acceptance criteria + rendered-output screenshot checks
      (`shared-gate-protocol.md`) unchanged; a screenshot is the right artifact there.
-   - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below)
+   - `research.md` — objective compression of truth, brief for normal-tier, full orient protocol for high-risk/brownfield (see Research below). Constraints/discoveries may carry the optional 🔴/🟡/🟢 priority glyph defined in `tools/handoff.md` (`## Priority and dates`) — 🔴 load-bearing, 🟢 info-only — and spell any referenced future date absolutely.
    - If these already exist with real content (not just the skeleton): read them and proceed without recreating.
    - **A template-only Description is not "unspecified."** A ticket created on the board carries a seeded Description type-template (`## Description` followed by `What should be built?` / `What should be done?` / `What is broken?` etc.) — that prompt is not a real description. When `acceptance.md` (criteria/scenario) or `plan.md` already specify the work, treat **that** as the build contract and proceed; do not stall or ask the user for direction solely because the Description is empty or still the seeded template.
    - Read `standards/ticket-layout.md` for the canonical field contract, doc lifecycle, and board rendering rules.
@@ -172,7 +172,7 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
 
 6. **Normal path.** For normal-tier work:
    - Inspect the files and callers needed for the requested change.
-   - Write a brief `research.md` — a few bullets of findings and constraints — before drafting `## Approach`. Keep it short; this is not the full orient protocol (see step 7 for why this file matters even when planning stays in the same session).
+   - Write a brief `research.md` — a few bullets of findings and constraints — before drafting `## Approach`. Keep it short; this is not the full orient protocol (see step 7 for why this file matters even when planning stays in the same session). Bullets may carry the optional priority glyph from `tools/handoff.md` (`## Priority and dates`) so the load-bearing constraints stand out.
    - Fill in `## Approach` in `plan.md` and `## Test Plan` in `acceptance.md` (not `plan.md` — `plan.md`'s skeleton has no Test Plan heading, and every grading step reads/grades it from `acceptance.md`). Both headings already exist from step 1's skeleton — this is filling them in, not creating them.
    - **Perspective check.** Before drafting the brief, ask one challenge question from each lens: (a) *user* — will the behavior change match what they expect? (b) *security* — does this touch auth, input validation, or trust boundaries? (c) *architect* — does this add surface that canon's minimalism principle would resist? Surface any concern in the brief. **This check is not normal-tier-only: high-risk sprints run the same three-lens perspective check during orient (step 7), before presenting the research summary. It is complementary to grill (step 8), not subsumed by it — grill resolves implementation gray areas within the approved scope, while the perspective check challenges the change itself from the user/security/architect lenses.**
    - Produce the sprint brief from Step 10.
