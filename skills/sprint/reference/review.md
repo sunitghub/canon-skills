@@ -32,6 +32,13 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` 
 
 Read `skills/sprint/reference/shared-gate-protocol.md ## Self-serve visual verification` — full recipe there.
 
+## Report structure
+
+For general subagent return-shape guidance (Result, Output, Evidence, Learnings),
+read `skills/sprint/reference/subagent-report.md`. The review-notes template below
+is gate-specific and takes precedence for this close-gate report, but the
+right-sizing, snippet, and evidence principles apply.
+
 ## Steps
 
 1. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These define the approved scope — anything beyond them is scope creep.
