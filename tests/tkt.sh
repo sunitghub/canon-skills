@@ -106,3 +106,68 @@ bad_demo_output="$(run_fail "$TKT" demo "$demo_id" bogus)"
 assert_contains "$bad_demo_output" "must be 'on' or 'off'"
 demo_usage_output="$(run_fail "$TKT" demo)"
 assert_contains "$demo_usage_output" "Usage: tkt demo <id> [on|off]"
+
+# ── tkt learn (t-0232): distill close artifacts into an UNPROMOTED candidate ──
+
+# 1. Deviations present → an UNPROMOTED candidate with the non-delivered rows + findings.
+learn_id="$("$TKT" create "Learn distill ticket")"
+cat > ".tickets/$learn_id/summary.md" <<'EOF'
+# Summary
+
+| Acceptance item | Status | Notes |
+|---|---|---|
+| Core behavior works | delivered | ok |
+| Extra polish | waived | out of scope this sprint |
+| Migration path | deferred | tracked in a follow-up |
+EOF
+cat > ".tickets/$learn_id/eval-report.md" <<'EOF'
+evaluator-run-id: test-123
+# Eval Report
+## Findings
+1. The guard only covers case A; case B is unverified.
+## Verdict
+fail: one partial
+EOF
+learn_out="$("$TKT" learn "$learn_id")"
+assert_contains "$learn_out" "wrote UNPROMOTED learnings candidate"
+assert_file_exists ".tickets/$learn_id/learnings.md"
+assert_grep "^status: UNPROMOTED$" ".tickets/$learn_id/learnings.md"
+cand="$(cat ".tickets/$learn_id/learnings.md")"
+assert_contains "$cand" "Extra polish"
+assert_contains "$cand" "Migration path"
+assert_contains "$cand" "case A"
+# a delivered row must NOT appear as a deviation
+if [[ "$cand" == *"Core behavior works"* ]]; then fail "tkt learn: delivered row leaked into the candidate"; fi
+# must never write to a durable store — only the ticket folder
+[[ -f critique/canon-learnings.md ]] && fail "tkt learn must not create critique/canon-learnings.md" || true
+
+# 2. Re-run refuses to clobber; --force regenerates.
+reclobber="$(run_fail "$TKT" learn "$learn_id")"
+assert_contains "$reclobber" "already exists"
+force_out="$("$TKT" learn "$learn_id" --force)"
+assert_contains "$force_out" "wrote UNPROMOTED learnings candidate"
+
+# 3. Clean sprint (all delivered, no findings) → writes nothing, says so.
+clean_id="$("$TKT" create "Clean sprint ticket")"
+cat > ".tickets/$clean_id/summary.md" <<'EOF'
+# Summary
+
+| Acceptance item | Status | Notes |
+|---|---|---|
+| Everything shipped | delivered | ok |
+EOF
+cat > ".tickets/$clean_id/eval-report.md" <<'EOF'
+evaluator-run-id: test-456
+# Eval Report
+## Findings
+No findings.
+## Verdict
+pass: all good
+EOF
+clean_out="$("$TKT" learn "$clean_id")"
+assert_contains "$clean_out" "nothing to distill"
+[[ -f ".tickets/$clean_id/learnings.md" ]] && fail "tkt learn wrote a candidate for a clean sprint" || true
+
+# 4. Usage error with no id.
+learn_usage="$(run_fail "$TKT" learn)"
+assert_contains "$learn_usage" "Usage: tkt learn <id> [--force]"
