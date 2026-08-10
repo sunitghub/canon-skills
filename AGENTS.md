@@ -34,7 +34,8 @@ whichever session/dispatch does that work.
 - `review` / `grill` → Opus, thinking `high` — adversarial, judgment-heavy; a weaker model would rubber-stamp.
 
 **Exception — sprint close gates** follow their own rule (may downgrade to Haiku on a
-structural low-risk check, or an explicit user `Gate model:` override) — see the
+structural low-risk check, on a `demo: true` ticket (evaluator only), or via an explicit user
+`Gate model:` override) — see the
 "Model tier for gates" note in `skills/sprint/reference/complete.md`, not this block.
 
 **Cross-harness note.** Fresh-context dispatch is confirmed working under Codex

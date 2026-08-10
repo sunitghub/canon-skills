@@ -46,7 +46,7 @@ Explain only when the fix isn't self-evident; security/architectural issues get 
 
 Act on these when you see them — don't wait to be told.
 
-- Same fact in multiple files → pick one owner, derive the rest.
+- Same fact in multiple files → pick one owner, derive the rest. Exception: deliberately-mirrored docs/prose that must stay self-contained for separate consumers (e.g. gate docs each dispatched to a fresh subagent) — keep the copies, lock them with a parity test (`tests/doc-mirror-parity.sh`) instead of merging.
 - One change needs edits in many unrelated places → fix the missing boundary first.
 - Structural edits mixed with behavior changes in one commit → split them.
 - Unclear behavior before touching it → characterize current behavior first.

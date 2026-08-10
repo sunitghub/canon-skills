@@ -41,7 +41,7 @@ Core sprint-ticket artifacts (see `standards/ticket-layout.md` for the authorita
 | `plan.md` | agent at sprint start | Approach + decisions |
 | `research.md` | agent at sprint start | Objective truth: relevant files, system model, constraints |
 | `review-notes.md` | agent at sprint complete (normal+) | Advisory reviewer findings + verdict |
-| `eval-report.md` | agent at sprint complete (normal+) | Adversarial per-criterion grades + verdict |
+| `eval-report.md` | agent at sprint complete (non-trivial: normal, high-risk, bugfix) | Adversarial per-criterion grades + verdict |
 | `summary.md` | agent at sprint complete | Plan-vs-actual table + close prose |
 
 `summary.md` appears as a **Summary** tab on the board — read-only once the
