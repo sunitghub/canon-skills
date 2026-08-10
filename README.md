@@ -232,7 +232,7 @@ Runs the close path: simplify → code-review → security → repo/doc audit �
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
-Each sprint produces up to seven docs:
+Each sprint produces up to eight docs:
 
 | Doc | Written | Contains |
 |---|---|---|

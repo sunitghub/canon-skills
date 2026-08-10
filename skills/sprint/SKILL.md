@@ -165,6 +165,7 @@ Canonical layout:
   review-notes.md  ← advisory reviewer findings (code quality, scope, standards) + YES/NO verdict; written at sprint complete for normal+ sprints
   eval-report.md   ← adversarial per-criterion grades (pass/fail with file:line) + evaluator-run-id; written at sprint complete for non-trivial sprints (normal, high-risk, and bugfix — bugfix is eval-only, so it keeps this)
   mutation-report.md ← optional advisory; written by the mutation-test skill at sprint complete when logic files changed; never close-gated
+  learnings.md     ← optional UNPROMOTED lessons candidate; written by `tkt learn` from this sprint's deviations + evaluator findings, for a non-builder to promote; never close-gated
   summary.md       ← plan-vs-actual table; written at sprint complete
 ```
 
