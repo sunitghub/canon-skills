@@ -242,6 +242,7 @@ Each sprint produces up to seven docs:
 | `review-notes.md` | sprint complete (normal+) | Advisory reviewer findings — code quality, scope, standards — with a YES/NO verdict |
 | `eval-report.md` | sprint complete (normal+, incl. bugfix) | Adversarial criterion grades · pass/fail with file:line evidence |
 | `mutation-report.md` | sprint complete (optional) | Advisory: surviving mutants when logic files changed — never close-gated |
+| `learnings.md` | sprint complete (optional, via `tkt learn`) | UNPROMOTED lessons candidate — the sprint's deviations + evaluator findings, for a non-builder to promote |
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
 All are plain markdown in `.tickets/<id>/` and are read into the agent's context by `sprint start` — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
@@ -278,6 +279,13 @@ lives at the **interactive `sprint complete`** close, whose evaluator gets full 
 run your tests / a headless browser and grades by exit code. Rule of thumb: write headless
 criteria to be verifiable by reading the diff; reserve run-it-and-watch-it-fail checks for the
 interactive close.
+
+**Cache an unchanged diff (opt-in).** Re-grading a diff you haven't touched costs tokens for a
+verdict you already have. Pass `--cache` (or set `CANON_GATE_CACHE=1`) and either headless command
+reuses the prior verdict — keyed on the exact diff content — without re-dispatching `claude -p`,
+announcing loudly that it did. Off by default (canon never *silently* reduces gate assurance);
+`--no-cache` always wins. Both PASS and FAIL are cached; edit the code to force a fresh grade. See
+**[Headless CI grading → Verdict Caching](docs/headless-ci.md)**.
 
 > **No remote?** The base ref defaults to `origin/main` → `main`. If neither resolves (e.g. your
 > branch is `master`, or there's no remote), it silently falls back to diffing against the repo's
@@ -328,6 +336,16 @@ commits predate ticket IDs, it falls back to keyword matching against ticket
 titles.
 
 `git log` tells you what changed. `.tickets/` tells you why — decisions made, alternatives rejected, the acceptance bar set. The board makes it searchable without touching git history. A new agent, or you six months later, gets the full picture before touching a line.
+
+**Learn mode** — Capture the lesson a sprint just taught, without letting the author grade itself.
+
+`tkt why` is the read side of repo-as-memory; `tkt learn <id>` is the capture side. It distills a
+closed sprint's objective close artifacts — the non-`delivered` rows of `summary.md` and the
+evaluator's `eval-report.md` findings — into an **UNPROMOTED** `.tickets/<id>/learnings.md`
+candidate. It **proposes, never promotes**: a reviewer *without* the sprint's implementation history
+(a fresh agent or you later) moves any keeper into the durable store, so the agent that wrote the
+code never certifies its own lessons. Clean sprints produce nothing; `sprint complete` only *nudges*
+it when deviations exist — never auto-fires.
 
 ## How Sprint Works
 
