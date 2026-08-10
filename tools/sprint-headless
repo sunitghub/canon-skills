@@ -14,9 +14,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
+source "$SCRIPT_DIR/gate-cache.sh"
 
 ID="${1:-}"
-[[ -z "$ID" || "$ID" == --* ]] && { echo "Usage: sprint-headless <ticket-id> --base-ref <ref>" >&2; exit 1; }
+[[ -z "$ID" || "$ID" == --* ]] && { echo "Usage: sprint-headless <ticket-id> --base-ref <ref> [--cache|--no-cache]" >&2; exit 1; }
 shift
 
 # Strict format check before $ID is used in any path or embedded in the prompt
@@ -25,12 +26,27 @@ shift
 [[ "$ID" =~ ^t-[a-z0-9]{4}$ ]] || { echo "Error: '$ID' is not a valid ticket ID (expected t-[a-z0-9]{4})." >&2; exit 1; }
 
 BASE_REF="${GITHUB_BASE_REF:-}"
+CACHE_FLAG=-1   # -1 = unset (fall back to env), 1 = --cache, 0 = --no-cache
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --base-ref) BASE_REF="${2:-}"; shift 2 ;;
+    --cache) CACHE_FLAG=1; shift ;;
+    --no-cache) CACHE_FLAG=0; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# Caching is opt-in (see gate-cache.sh): explicit --cache/--no-cache wins, else
+# CANON_GATE_CACHE=1 enables it. Default (nothing set) = off, fully fresh grading.
+if [[ "$CACHE_FLAG" -eq 1 ]]; then
+  CACHE_ON=1
+elif [[ "$CACHE_FLAG" -eq 0 ]]; then
+  CACHE_ON=0
+elif [[ "${CANON_GATE_CACHE:-}" == "1" ]]; then
+  CACHE_ON=1
+else
+  CACHE_ON=0
+fi
 
 # Base ref precedence: explicit --base-ref > $GITHUB_BASE_REF > default origin/main
 # (then main) — same rule as sprint-headless-eval. CI always passes its base
@@ -195,36 +211,53 @@ HEADLESS_VERDICT: FAIL
 
 $VERDICT_RULE"
 
-set +e
-RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
-  --output-format json \
-  --permission-mode dontAsk \
-  ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-  --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
-INVOKE_STATUS=$?
-set -e
-
-if [[ "$INVOKE_STATUS" -ne 0 ]]; then
-  echo "Error: claude -p invocation failed (exit $INVOKE_STATUS). Hard-failing." >&2
-  echo "$RESULT_JSON" >&2
-  exit 1
+# --- Cache lookup (opt-in) ---
+# Gate-set differs by tier, so it is part of the key. Criteria text = the
+# committed acceptance.md + plan.md (editing either invalidates). Keyed on the
+# exact diff content too, so a stale entry can never be hit. Loud + auditable.
+if [[ "$BUGFIX" -eq 1 ]]; then GATESET="evaluator+security"; else GATESET="reviewer+evaluator+security"; fi
+CACHE_KEY=""
+CACHE_HIT=0
+if [[ "$CACHE_ON" -eq 1 ]]; then
+  CACHE_CRITERIA="$(cat "$ACCEPTANCE_FILE" "$PLAN_FILE")"
+  CACHE_KEY="$(gate_cache_key "$ROOT" "$BASE_REF" "$CACHE_CRITERIA" "$MODEL" "$GATESET")"
+  gate_cache_has "$ROOT" "$CACHE_KEY" && CACHE_HIT=1
 fi
 
-# On Windows, python3 isn't bundled with Git for Windows — use the committed
-# Go binary instead when running there and present; every other platform
-# (and Windows with the binary absent, e.g. an older checkout) keeps using
-# python3 unchanged. Never try to exec the Windows PE binary on macOS/Linux —
-# it would just fail with "cannot execute binary file".
-IS_WINDOWS=0
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
-esac
-JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
+if [[ "$CACHE_HIT" -eq 1 ]]; then
+  gate_cache_banner "$ROOT" "$CACHE_KEY"
+  RESULT_TEXT="$(gate_cache_get "$ROOT" "$CACHE_KEY")"
+else
+  set +e
+  RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
+    --output-format json \
+    --permission-mode dontAsk \
+    ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+    --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
+  INVOKE_STATUS=$?
+  set -e
 
-if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
-  PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
-elif command -v python3 >/dev/null 2>&1; then
-  PARSED="$(echo "$RESULT_JSON" | python3 -c '
+  if [[ "$INVOKE_STATUS" -ne 0 ]]; then
+    echo "Error: claude -p invocation failed (exit $INVOKE_STATUS). Hard-failing." >&2
+    echo "$RESULT_JSON" >&2
+    exit 1
+  fi
+
+  # On Windows, python3 isn't bundled with Git for Windows — use the committed
+  # Go binary instead when running there and present; every other platform
+  # (and Windows with the binary absent, e.g. an older checkout) keeps using
+  # python3 unchanged. Never try to exec the Windows PE binary on macOS/Linux —
+  # it would just fail with "cannot execute binary file".
+  IS_WINDOWS=0
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
+  esac
+  JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
+
+  if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
+    PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
+  elif command -v python3 >/dev/null 2>&1; then
+    PARSED="$(echo "$RESULT_JSON" | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -236,20 +269,31 @@ session_id = d.get("session_id", "unknown")
 result = d.get("result", "").replace(chr(10), chr(2))
 print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
 ')"
-else
-  echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present — it wasn't found). Hard-failing." >&2
-  exit 1
+  else
+    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present — it wasn't found). Hard-failing." >&2
+    exit 1
+  fi
+  IS_ERROR="$(echo "$PARSED" | cut -f1)"
+  SESSION_ID="$(echo "$PARSED" | cut -f2)"
+  RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
+
+  "$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-$SESSION_ID" --agent-type headless-orchestrator 2>/dev/null || true
+
+  if [[ "$IS_ERROR" != "False" ]]; then
+    echo "Error: claude -p reported an error (is_error=$IS_ERROR). Hard-failing." >&2
+    echo "$RESULT_JSON" >&2
+    exit 1
+  fi
 fi
-IS_ERROR="$(echo "$PARSED" | cut -f1)"
-SESSION_ID="$(echo "$PARSED" | cut -f2)"
-RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
 
-"$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-$SESSION_ID" --agent-type headless-orchestrator 2>/dev/null || true
-
-if [[ "$IS_ERROR" != "False" ]]; then
-  echo "Error: claude -p reported an error (is_error=$IS_ERROR). Hard-failing." >&2
-  echo "$RESULT_JSON" >&2
-  exit 1
+# --- Persist to cache on a MISS (both PASS and FAIL are cached) ---
+if [[ "$CACHE_ON" -eq 1 && "$CACHE_HIT" -eq 0 ]]; then
+  if echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: PASS$'; then CACHE_VERDICT=PASS
+  elif echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: FAIL$'; then CACHE_VERDICT=FAIL
+  else CACHE_VERDICT=""; fi
+  if [[ -n "$CACHE_VERDICT" ]]; then
+    printf '%s' "$RESULT_TEXT" | gate_cache_put "$ROOT" "$CACHE_KEY" "$CACHE_VERDICT" "${SESSION_ID:-unknown}" "$MODEL" "$GATESET"
+  fi
 fi
 
 echo "$RESULT_TEXT"
