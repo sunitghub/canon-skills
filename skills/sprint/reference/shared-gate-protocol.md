@@ -9,12 +9,31 @@ hidden: true
 Referenced by `review.md` and `eval.md`. Do not invoke directly.
 
 ## Contents
+- Evidence is not success
 - Inputs
 - Tools
 - Report-writing safety (Windows Git Bash)
 - Self-serve visual verification (no Node/Playwright required)
 - Base-ref derivation
 - Citation format
+
+## Evidence is not success
+
+Before grading anything, hold these three lines. They are the positive statement of
+the Weak Evidence and Disposition rules the gate docs already enforce — canon's
+governing frame is that **"the tests pass" is a claim, and it needs its own evidence**
+(README.md).
+
+- **A passed gate certifies only what that gate checked — not that the work is correct.**
+  Your verdict covers the criteria in front of you against the changed files; it is not a
+  blanket warrant that the sprint is sound. Grade what you can prove, and say what you did
+  not check.
+- **Reaching a limit is not success.** Retries exhausted, a token/time budget hit, a
+  subagent that stopped, or "no more findings surfaced" are stopping conditions, not
+  passing ones. Only satisfied criteria — with evidence — earn a `pass`.
+- **Compaction or a context reset is not a completion signal.** A summarized or truncated
+  history does not mean work finished. Re-derive state from the ticket artifacts and the
+  changed files, never from the fact that the context was compacted.
 
 ## Inputs
 
