@@ -379,6 +379,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      `CLAUDE.md`, or a subdirectory `CLAUDE.md` if one exists). Confirm with the user before
      writing.
    - No: skip silently.
+   - **Learnings candidate (nudge, never automatic).** If this sprint's `summary.md` plan-vs-actual
+     table has any non-`delivered` row (waived/deferred/partial), or the evaluator recorded
+     findings, suggest running `tkt learn <id>` — it distills those close artifacts into an
+     **UNPROMOTED** `.tickets/<id>/learnings.md` candidate for a *non-builder* (fresh agent or human)
+     to promote later into the durable store (canon: `critique/canon-learnings.md` or `standards/`).
+     It proposes, never promotes, and is never auto-fired — surface it, don't run it unasked.
 
 8. **Summary.** Write `.tickets/<id>/summary.md` with the plan-vs-actual table and a
    one-paragraph summary. Also output both in chat.

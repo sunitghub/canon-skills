@@ -27,6 +27,7 @@ tkt ci <id> [on|off]          # mark CI-eligible for headless grading
 tkt gate <id> [eval|full]     # headless gate mode: eval-only vs full (needs ci on)
 tkt demo <id> [on|off]        # demo close-path: security-review + evaluator only (Haiku)
 tkt show <id>                 # show full ticket
+tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
 ```
 
 ## Sprint Artifacts
