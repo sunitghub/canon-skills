@@ -95,8 +95,8 @@ High-risk sprints run orient, grill, impact-analysis, required mitigation tests,
 **Orthogonal to the risk tiers above** — a user-elected close modifier, not a fifth risk level.
 Set by the `tkt`-owned frontmatter flag `demo: true` on the ticket (absent = false), so it can
 ride on top of a normal or high-risk sprint. It is **not** chosen at `sprint start`; it is set on
-the ticket (Phase B: hand-set `demo: true`; Phase A adds `tkt demo`/board surfaces — the
-New-Ticket **Demo/Docs/UX** option and Plan-tab toggle).
+the ticket — via the shipped `tkt demo <id> on` command or by hand-setting `demo: true`; the
+board surfaces (New-Ticket **Demo/Docs/UX** option, Plan-tab toggle) are Phase A.
 
 One light-close covers **two intents**, both explicit and user-elected:
 - **Live demo** (20–30 min time-box) — trim the close so a demo isn't gated on full wrapup.
