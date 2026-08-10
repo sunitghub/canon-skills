@@ -25,6 +25,7 @@ Internal reference. Defines the canonical structure for all canon tickets. Updat
     review-notes.md         ← sprint doc (agent-created at close, normal+; advisory reviewer findings)
     eval-report.md          ← sprint doc (agent-created at close, normal+; adversarial criterion grades)
     mutation-report.md      ← optional advisory (mutation-test skill at close, normal+ when logic files changed; never close-gated)
+    learnings.md            ← optional UNPROMOTED lessons candidate (`tkt learn` at/after close; deviations + evaluator findings, for a non-builder to promote; never close-gated)
     summary.md              ← sprint doc (agent-created at close)
 ```
 

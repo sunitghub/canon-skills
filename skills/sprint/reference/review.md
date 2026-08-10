@@ -24,6 +24,10 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Inputs` — applies ver
 
 Read `skills/sprint/reference/shared-gate-protocol.md ## Tools` — applies here. Your report file is `review-notes.md`.
 
+## Evidence is not success
+
+Read `skills/sprint/reference/shared-gate-protocol.md ## Evidence is not success` before grading — it applies here.
+
 ## Report-writing safety (Windows Git Bash)
 
 Read `skills/sprint/reference/shared-gate-protocol.md ## Report-writing safety` — applies here. The orchestrating agent saves to `.tickets/<id>/review-notes.md` if Bash write is refused.

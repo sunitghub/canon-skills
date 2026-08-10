@@ -15,6 +15,7 @@ You are an evaluator agent. You did NOT write the code under review. You have no
 ## Contents
 - Inputs
 - Tools
+- Evidence is not success
 - Report-writing safety (Windows Git Bash)
 - Self-serve visual verification (no Node/Playwright required)
 - Steps (1–8)
@@ -30,6 +31,10 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Inputs` — applies ver
 ## Tools
 
 Read `skills/sprint/reference/shared-gate-protocol.md ## Tools` — applies here. Your report file is `eval-report.md`.
+
+## Evidence is not success
+
+Read `skills/sprint/reference/shared-gate-protocol.md ## Evidence is not success` before grading — it applies here.
 
 ## Report-writing safety (Windows Git Bash)
 
