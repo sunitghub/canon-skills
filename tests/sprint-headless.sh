@@ -576,6 +576,75 @@ rm -rf "$NB"
 git -C "$WORK" update-ref -d refs/remotes/origin/main 2>/dev/null || true
 rm -rf "$STUB_EV_DIR"; rm -f "$PROMPT_CAP" "$ARGS_CAP"
 
+# ── 16. Verdict cache (t-6c95) — opt-in, keyed on diff content ──────────
+# Technique: prove a cache HIT skips the grader by swapping in a `claude` stub
+# that would HARD-FAIL if invoked — a run that still succeeds proves claude was
+# never called. Uses a real base ref (cachebase) so new commits change the diff.
+mkdir -p "$WORK/skills/sprint"
+rm -rf "$WORK/.canon-cache"
+git -C "$WORK" tag -f cachebase HEAD >/dev/null 2>&1
+echo "cache change one" >> "$WORK/file.txt"
+git -C "$WORK" add file.txt && git -C "$WORK" commit -q -m "cache diff 1"
+mkdir -p "$WORK/cspec"
+printf '# cache spec\n- [ ] cached criterion holds\n' > "$WORK/cspec/s.md"
+
+STUB_C_OK="$(mktemp -d)"      # returns PASS
+cat > "$STUB_C_OK/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"type":"result","is_error":false,"session_id":"cache-ok","result":"@@@CANON_HEADLESS_REPORT:evaluator@@@\nVerdict: pass: cached ok\n@@@CANON_HEADLESS_REPORT:/evaluator@@@\nHEADLESS_VERDICT: PASS"}'
+EOF
+chmod +x "$STUB_C_OK/claude"
+
+STUB_C_FAILCALL="$(mktemp -d)"  # hard-fails if actually invoked
+cat > "$STUB_C_FAILCALL/claude" <<'EOF'
+#!/usr/bin/env bash
+echo '{"type":"result","is_error":true,"result":"boom — claude should not have been called"}'
+exit 1
+EOF
+chmod +x "$STUB_C_FAILCALL/claude"
+
+STUB_C_FAILV="$(mktemp -d)"     # returns a FAIL verdict (grader ran, verdict fail)
+cat > "$STUB_C_FAILV/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' '{"type":"result","is_error":false,"session_id":"cache-failv","result":"@@@CANON_HEADLESS_REPORT:evaluator@@@\nVerdict: fail: nope\n@@@CANON_HEADLESS_REPORT:/evaluator@@@\nHEADLESS_VERDICT: FAIL"}'
+EOF
+chmod +x "$STUB_C_FAILV/claude"
+
+# 16a. first --cache run (PASS) → exit 0 and a cache entry is written
+(cd "$WORK" && PATH="$STUB_C_OK:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase --cache >/dev/null)
+ls "$WORK"/.canon-cache/gates/*.txt >/dev/null 2>&1 || fail "cache: no entry written after first --cache run"
+
+# 16b. second --cache run, unchanged diff, failing-call stub → still exit 0 (HIT) + loud banner
+hit_err="$(cd "$WORK" && PATH="$STUB_C_FAILCALL:$PATH" run_ok "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase --cache 2>&1)"
+assert_contains "$hit_err" "CACHED VERDICT"
+
+# 16c. --no-cache with the failing-call stub → actually dispatches, hard-fails (bypasses cache)
+out="$(cd "$WORK" && PATH="$STUB_C_FAILCALL:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase --no-cache)"
+assert_contains "$out" "invocation failed"
+
+# 16d. changed diff → MISS: a new commit changes cachebase..HEAD; failing-call stub → hard-fail
+echo "cache change two" >> "$WORK/file.txt"
+git -C "$WORK" add file.txt && git -C "$WORK" commit -q -m "cache diff 2"
+out="$(cd "$WORK" && PATH="$STUB_C_FAILCALL:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase --cache)"
+assert_contains "$out" "invocation failed"
+
+# 16e. FAIL is cached AND reused: grade the new diff FAIL (exit 1, entry stored),
+#      then swap to the PASS stub — a HIT must still exit 1 (cached FAIL, not re-graded).
+(cd "$WORK" && PATH="$STUB_C_FAILV:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase --cache >/dev/null)
+fail_hit_err="$(cd "$WORK" && PATH="$STUB_C_OK:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase --cache 2>&1)"
+assert_contains "$fail_hit_err" "CACHED VERDICT"
+
+# 16f. caching OFF by default (no flag/env): the failing-call stub is dispatched → hard-fail
+out="$(cd "$WORK" && PATH="$STUB_C_FAILCALL:$PATH" run_fail "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase)"
+assert_contains "$out" "invocation failed"
+
+# 16g. CANON_GATE_CACHE=1 enables caching without the flag → HIT on the stored FAIL entry (exit 1)
+env_hit_err="$(cd "$WORK" && PATH="$STUB_C_FAILCALL:$PATH" CANON_GATE_CACHE=1 run_fail "$SPRINT_HEADLESS_EVAL" cspec/s.md --base-ref cachebase 2>&1)"
+assert_contains "$env_hit_err" "CACHED VERDICT"
+
+rm -rf "$STUB_C_OK" "$STUB_C_FAILCALL" "$STUB_C_FAILV" "$WORK/.canon-cache" "$WORK/cspec"
+git -C "$WORK" tag -d cachebase >/dev/null 2>&1 || true
+
 rm -rf "$STUB_OK_DIR" "$STUB_BAD_DIR"
 
-echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, no-resolvable-base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled; model plumbing: Gate model:/--model reaches claude, session/absent passes none, invalid hard-fails before dispatch; sprint-headless-eval ticket-id mode grades .tickets/<id>/acceptance.md into the ticket folder excluding ## QA, base-ref defaults origin/main→main with explicit override + clear no-default error, spec-file mode still works)"
+echo "sprint-headless: ok (guard rails: not-ci-eligible, uncommitted docs, unapproved plan, no-resolvable-base-ref all hard-fail; invocation error hard-fails with a clear message; canon-repo and consumer-project skills layouts both resolve, neither-layout case fails closed; well-formed relay persists correct per-gate content with no section-swap; malformed relay skips that file with a warning and leaves HEADLESS_VERDICT/exit-code unaffected; GITHUB_STEP_SUMMARY receives the full result text; a present-but-non-Windows sprint-headless-json-win.exe is never exec'd; adversarial content (quotes, backticks, \$HOME, backslashes) survives extract_report unmangled; model plumbing: Gate model:/--model reaches claude, session/absent passes none, invalid hard-fails before dispatch; sprint-headless-eval ticket-id mode grades .tickets/<id>/acceptance.md into the ticket folder excluding ## QA, base-ref defaults origin/main→main with explicit override + clear no-default error, spec-file mode still works; verdict cache is opt-in via --cache/--no-cache/CANON_GATE_CACHE, a HIT on an unchanged diff reuses the verdict without calling claude and says so loudly, a changed diff misses, FAIL is cached and reused, and caching is off by default)"

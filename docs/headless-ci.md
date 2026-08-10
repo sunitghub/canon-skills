@@ -42,6 +42,24 @@ Note the reviewer's binding-ness differs from interactive close: at an interacti
 
 The model applies to the dispatched reviewer/evaluator subagents (the expensive part), not just the orchestrator — verified via the run's `modelUsage`.
 
+## Verdict Caching (opt-in)
+
+Both graders can cache a verdict so an **unchanged diff** isn't re-graded — prime-agent's "don't rerun the same gate when the workspace hasn't changed," applied as canon's *cost proportional to risk*. It is **off by default**: canon never silently reduces gate assurance, so a cached reuse must be an explicit, auditable choice.
+
+Enable it per-run with `--cache` (or `CANON_GATE_CACHE=1`); `--no-cache` always wins:
+
+```bash
+sprint-headless-eval t-1234 --base-ref origin/main --cache
+CANON_GATE_CACHE=1 sprint-headless t-1234 --base-ref origin/main
+```
+
+- **Key.** A cache entry is valid only while the `git diff <base> HEAD` **content**, the criteria text, the model, and the gate-set are all byte-identical. Change any one — edit the code, the acceptance criteria, the model, or the tier — and the key changes, so a stale entry can never be hit. (The base-ref *name* is not in the key: two bases that yield an identical diff grade identically.)
+- **Loud + auditable.** A HIT prints a `=== CACHED VERDICT — reused, grader NOT re-run ===` banner to stderr with the source session, timestamp, and diff-hash. It never masquerades as a fresh grade — mirroring `eval.md`'s rule that cached evidence counts only with source, timestamp, freshness window, and why it's acceptable.
+- **Both PASS and FAIL are cached.** You don't re-pay to get the same FAIL on an unchanged diff; change the code (or pass `--no-cache`) to force a re-grade.
+- **Storage.** Entries live under the repo's gitignored `.canon-cache/gates/` — always local, never committed or shared.
+
+This only speeds the **headless** graders. The interactive `sprint complete` close is untouched — it always runs its fresh-context gates.
+
 ## When a Gate Legitimately Can't Pass Headlessly
 
 Some acceptance criteria are inherently untestable by an automated evaluator — e.g. a claim that only a real `claude -p` dispatch can verify, which would cost real API money on every CI run. If the evaluator correctly fails such a criterion, headless grading exits 1, and it should: the CLI never auto-waives anything.

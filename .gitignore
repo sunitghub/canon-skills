@@ -2,6 +2,8 @@
 HANDOFF.md
 DECISIONS.md
 DECISIONS-archive.md
+# Opt-in headless-grader verdict cache (tools/gate-cache.sh) — always local, never shared.
+.canon-cache/
 pbcopy
 .DS_Store
 __pycache__/

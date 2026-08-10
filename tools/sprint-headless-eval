@@ -21,15 +21,20 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/frontmatter-lib.sh"
+source "$SCRIPT_DIR/gate-cache.sh"
 
 # --- Argument parsing ---
 
 SPEC_FILE="${1:-}"
 [[ -z "$SPEC_FILE" || "$SPEC_FILE" == --* ]] && {
-  echo "Usage: sprint-headless-eval <ticket-id|spec-file> --base-ref <ref> [--model <model>]" >&2
+  echo "Usage: sprint-headless-eval <ticket-id|spec-file> --base-ref <ref> [--model <model>] [--cache|--no-cache]" >&2
   echo "" >&2
   echo "Grades checklist criteria against the diff between <base-ref> and HEAD," >&2
   echo "running only the evaluator (no reviewer, no security-review)." >&2
+  echo "" >&2
+  echo "  --cache / --no-cache  opt-in verdict cache keyed on the exact diff content" >&2
+  echo "               (also enabled via CANON_GATE_CACHE=1). A HIT reuses the prior" >&2
+  echo "               verdict without re-running the grader and says so loudly." >&2
   echo "" >&2
   echo "  <ticket-id>  a t-xxxx id: grades .tickets/<id>/acceptance.md and writes" >&2
   echo "               eval-report.md into that ticket folder. If the ticket has" >&2
@@ -56,13 +61,28 @@ fi
 
 BASE_REF="${GITHUB_BASE_REF:-}"
 MODEL=""
+CACHE_FLAG=-1   # -1 = unset (fall back to env), 1 = --cache, 0 = --no-cache
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --base-ref) BASE_REF="${2:-}"; shift 2 ;;
     --model) MODEL="${2:-}"; shift 2 ;;
+    --cache) CACHE_FLAG=1; shift ;;
+    --no-cache) CACHE_FLAG=0; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+
+# Caching is opt-in (see gate-cache.sh): explicit --cache/--no-cache wins, else
+# CANON_GATE_CACHE=1 enables it. Default (nothing set) = off, fully fresh grading.
+if [[ "$CACHE_FLAG" -eq 1 ]]; then
+  CACHE_ON=1
+elif [[ "$CACHE_FLAG" -eq 0 ]]; then
+  CACHE_ON=0
+elif [[ "${CANON_GATE_CACHE:-}" == "1" ]]; then
+  CACHE_ON=1
+else
+  CACHE_ON=0
+fi
 
 # Demo mode → default the evaluator to Haiku (ticket-id mode only). Mirrors the
 # interactive close's "Demo mode forces Haiku (evaluator only)" (complete.md step 1):
@@ -227,37 +247,50 @@ HEADLESS_VERDICT: FAIL
 
 Verdict is PASS only if the evaluator's verdict line starts with pass:. Any fail: or partial makes the overall verdict FAIL."
 
-# --- Dispatch ---
-
-echo "Dispatching evaluator against diff $BASE_REF..HEAD ..."
-
-set +e
-RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
-  --output-format json \
-  --permission-mode dontAsk \
-  ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-  --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
-INVOKE_STATUS=$?
-set -e
-
-if [[ "$INVOKE_STATUS" -ne 0 ]]; then
-  echo "Error: claude -p invocation failed (exit $INVOKE_STATUS). Hard-failing." >&2
-  echo "$RESULT_JSON" >&2
-  exit 1
+# --- Cache lookup (opt-in) ---
+# On a HIT, reuse the prior relayed report + verdict without re-running the
+# grader. Keyed on the exact diff content + criteria + model + gate-set, so an
+# edited diff/criteria/model can never hit a stale entry. Loud + auditable.
+CACHE_KEY=""
+CACHE_HIT=0
+if [[ "$CACHE_ON" -eq 1 ]]; then
+  CACHE_KEY="$(gate_cache_key "$ROOT" "$BASE_REF" "$CRITERIA" "$MODEL" "eval-only")"
+  gate_cache_has "$ROOT" "$CACHE_KEY" && CACHE_HIT=1
 fi
 
-# --- Parse JSON output ---
+if [[ "$CACHE_HIT" -eq 1 ]]; then
+  gate_cache_banner "$ROOT" "$CACHE_KEY"
+  RESULT_TEXT="$(gate_cache_get "$ROOT" "$CACHE_KEY")"
+else
+  echo "Dispatching evaluator against diff $BASE_REF..HEAD ..."
 
-IS_WINDOWS=0
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
-esac
-JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
+  set +e
+  RESULT_JSON="$(cd "$ROOT" && claude -p "$PROMPT" \
+    --output-format json \
+    --permission-mode dontAsk \
+    ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
+    --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
+  INVOKE_STATUS=$?
+  set -e
 
-if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
-  PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
-elif command -v python3 >/dev/null 2>&1; then
-  PARSED="$(echo "$RESULT_JSON" | python3 -c '
+  if [[ "$INVOKE_STATUS" -ne 0 ]]; then
+    echo "Error: claude -p invocation failed (exit $INVOKE_STATUS). Hard-failing." >&2
+    echo "$RESULT_JSON" >&2
+    exit 1
+  fi
+
+  # --- Parse JSON output ---
+
+  IS_WINDOWS=0
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
+  esac
+  JSON_HELPER="$SCRIPT_DIR/sprint-headless-json-win.exe"
+
+  if [[ "$IS_WINDOWS" -eq 1 && -f "$JSON_HELPER" ]]; then
+    PARSED="$(echo "$RESULT_JSON" | "$JSON_HELPER")"
+  elif command -v python3 >/dev/null 2>&1; then
+    PARSED="$(echo "$RESULT_JSON" | python3 -c '
 import json, sys
 try:
     d = json.load(sys.stdin)
@@ -269,21 +302,32 @@ session_id = d.get("session_id", "unknown")
 result = d.get("result", "").replace(chr(10), chr(2))
 print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
 ')"
-else
-  echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present). Hard-failing." >&2
-  exit 1
+  else
+    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present). Hard-failing." >&2
+    exit 1
+  fi
+
+  IS_ERROR="$(echo "$PARSED" | cut -f1)"
+  SESSION_ID="$(echo "$PARSED" | cut -f2)"
+  RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
+
+  "$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-eval-$SESSION_ID" --agent-type headless-eval-orchestrator 2>/dev/null || true
+
+  if [[ "$IS_ERROR" != "False" ]]; then
+    echo "Error: claude -p reported an error (is_error=$IS_ERROR). Hard-failing." >&2
+    echo "$RESULT_JSON" >&2
+    exit 1
+  fi
 fi
 
-IS_ERROR="$(echo "$PARSED" | cut -f1)"
-SESSION_ID="$(echo "$PARSED" | cut -f2)"
-RESULT_TEXT="$(echo "$PARSED" | cut -f3- | tr '\002' '\n')"
-
-"$SCRIPT_DIR/subagent-log.sh" --agent-id "headless-eval-$SESSION_ID" --agent-type headless-eval-orchestrator 2>/dev/null || true
-
-if [[ "$IS_ERROR" != "False" ]]; then
-  echo "Error: claude -p reported an error (is_error=$IS_ERROR). Hard-failing." >&2
-  echo "$RESULT_JSON" >&2
-  exit 1
+# --- Persist to cache on a MISS (both PASS and FAIL are cached) ---
+if [[ "$CACHE_ON" -eq 1 && "$CACHE_HIT" -eq 0 ]]; then
+  if echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: PASS$'; then CACHE_VERDICT=PASS
+  elif echo "$RESULT_TEXT" | grep -q '^HEADLESS_VERDICT: FAIL$'; then CACHE_VERDICT=FAIL
+  else CACHE_VERDICT=""; fi
+  if [[ -n "$CACHE_VERDICT" ]]; then
+    printf '%s' "$RESULT_TEXT" | gate_cache_put "$ROOT" "$CACHE_KEY" "$CACHE_VERDICT" "${SESSION_ID:-unknown}" "$MODEL" "eval-only"
+  fi
 fi
 
 # --- Output ---
