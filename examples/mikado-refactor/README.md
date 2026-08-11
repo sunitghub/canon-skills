@@ -51,6 +51,10 @@ step while the *structure* underneath them is rebuilt.
 
 ## Before you start
 
+**Requires Python 3.10+** (the refactor's answer key uses the `X | None` type-annotation syntax,
+which raises a `TypeError` on 3.9 and earlier). On Windows, use `py` wherever this guide shows
+`python3` — e.g. `py -m unittest discover -s tests`.
+
 1. Install canon's skills if you haven't:
    ```bash
    ~/.canon/tools/skills.sh add sprint

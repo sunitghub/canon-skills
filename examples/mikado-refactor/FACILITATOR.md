@@ -24,8 +24,10 @@ mkdir ~/MikadoDemo && cd ~/MikadoDemo
 cp -R /path/to/canon/examples/mikado-refactor/. .
 
 # 2. Sanity-check Python + git
-python3 --version        # any 3.x
+python3 --version        # 3.10+ required (the answer key uses `X | None` type syntax)
 git --version
+
+# On Windows, use `py` wherever this guide shows `python3` (e.g. `py -m unittest ...`).
 
 # 3. Establish the green baseline and the clean commit Mikado reverts to
 git init && git add -A && git commit -m "start: coupled OrderReport"
