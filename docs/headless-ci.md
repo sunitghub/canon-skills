@@ -171,6 +171,10 @@ sprint-headless-eval t-1234 --base-ref origin/main \
 
 ⚠️ **Security — grant narrowly.** The evaluator runs under `--permission-mode dontAsk` against an **untrusted diff**, so a blanket `"Bash"` grant is a code-execution / prompt-injection vector. Grant the **specific runner only**, e.g. `"Bash(bash tests/run.sh:*)"` — never bare `"Bash"` or `"Bash(bash:*)"`. Broadening is an explicit, committed, auditable choice (the run prints a `Notice: evaluator allowedTools (from …)` line); the default stays locked so no consumer incurs this risk unintentionally. A malformed or non-array file fails closed (non-zero exit, no grading).
 
+### Scoping the grade to `## Criteria` (`--criteria-only`)
+
+By default `sprint-headless-eval` grades every `- [ ]` item — both `## Criteria` and `## Test Plan` (only `## QA` is excluded). Pass `--criteria-only` to grade **only** items under `## Criteria`, skipping `## Test Plan`. This is for callers that **execute the Test Plan themselves** (e.g. an orchestrator that runs the tests on the host) and want the fresh evaluator scoped to the static criteria — so it stays binding without fail-closing on Test-Plan items it cannot run. With no `## Criteria` heading, `--criteria-only` fails closed with a hint.
+
 ### Differences from `sprint-headless`
 
 | | `sprint-headless` | `sprint-headless-eval` |
