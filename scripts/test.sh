@@ -27,6 +27,7 @@ tests=(
   "$ROOT/tests/why-cap.sh"
   "$ROOT/tests/dsl-runner-comments.sh"
   "$ROOT/tests/sprint-headless.sh"
+  "$ROOT/tests/sprint-headless-eval-tools.sh"
 )
 
 for test_file in "${tests[@]}"; do

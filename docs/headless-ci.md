@@ -158,6 +158,19 @@ To run the evaluator on a specific model (e.g. Haiku to save tokens), pass `--mo
 
 **Demo tickets default to Haiku.** In **ticket-id mode**, if the ticket's frontmatter has `demo: true` and you pass **no** `--model`, `sprint-headless-eval` defaults the evaluator to Haiku (and prints a notice) — mirroring the interactive close's "Demo mode forces Haiku (evaluator only)". This is a model choice only: the (still-binding) evaluator always runs, so no gate is skipped. Precedence: an explicit `--model` wins over the demo default, which in turn wins over `ANTHROPIC_MODEL`/the `claude` default (it is applied by passing `--model haiku`). This is scoped to `sprint-headless-eval`; `sprint-headless` ignores `demo` and always runs its full pipeline on the default/`Gate model:` model. Spec-file mode has no ticket frontmatter, so it never reads `demo`.
 
+### Evaluator tool permissions (`--allowed-tools-file`)
+
+By default the evaluator subagent runs under a **least-privilege allowlist** — `Agent`, read-only `git` (`diff`/`log`/`show`/`status`), the subagent-log hook, and `Read`/`Grep`/`Glob`/`LS`. It deliberately has **no general Bash**, so it cannot execute code: a criterion whose only proof is running a command grades `not-run` and (per `eval.md`'s fail-closed rule) forces `fail`.
+
+To let the evaluator run a load-bearing test, pass `--allowed-tools-file <json>` — a JSON array of tool strings that **replaces** the default list (the script always force-adds `Agent` and the subagent-log entry so dispatch/audit can't break). The shipped template `tools/headless-eval-tools.json` is exactly the least-privilege set; copy it and add only what you need:
+
+```bash
+sprint-headless-eval t-1234 --base-ref origin/main \
+  --allowed-tools-file my-eval-tools.json
+```
+
+⚠️ **Security — grant narrowly.** The evaluator runs under `--permission-mode dontAsk` against an **untrusted diff**, so a blanket `"Bash"` grant is a code-execution / prompt-injection vector. Grant the **specific runner only**, e.g. `"Bash(bash tests/run.sh:*)"` — never bare `"Bash"` or `"Bash(bash:*)"`. Broadening is an explicit, committed, auditable choice (the run prints a `Notice: evaluator allowedTools (from …)` line); the default stays locked so no consumer incurs this risk unintentionally. A malformed or non-array file fails closed (non-zero exit, no grading).
+
 ### Differences from `sprint-headless`
 
 | | `sprint-headless` | `sprint-headless-eval` |

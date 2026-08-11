@@ -27,11 +27,15 @@ source "$SCRIPT_DIR/gate-cache.sh"
 
 SPEC_FILE="${1:-}"
 [[ -z "$SPEC_FILE" || "$SPEC_FILE" == --* ]] && {
-  echo "Usage: sprint-headless-eval <ticket-id|spec-file> --base-ref <ref> [--model <model>] [--cache|--no-cache]" >&2
+  echo "Usage: sprint-headless-eval <ticket-id|spec-file> --base-ref <ref> [--model <model>] [--allowed-tools-file <json>] [--cache|--no-cache]" >&2
   echo "" >&2
   echo "Grades checklist criteria against the diff between <base-ref> and HEAD," >&2
   echo "running only the evaluator (no reviewer, no security-review)." >&2
   echo "" >&2
+  echo "  --allowed-tools-file <json>  JSON array of tools the evaluator subagent may use." >&2
+  echo "               Default (no flag) = the built-in least-privilege list (git reads only)." >&2
+  echo "               A file REPLACES that list (Agent + subagent-log are force-added); grant" >&2
+  echo "               only NARROW extras — see tools/headless-eval-tools.json + docs/headless-ci.md." >&2
   echo "  --cache / --no-cache  opt-in verdict cache keyed on the exact diff content" >&2
   echo "               (also enabled via CANON_GATE_CACHE=1). A HIT reuses the prior" >&2
   echo "               verdict without re-running the grader and says so loudly." >&2
@@ -61,11 +65,15 @@ fi
 
 BASE_REF="${GITHUB_BASE_REF:-}"
 MODEL=""
+ALLOWED_TOOLS_FILE=""
+PRINT_ALLOWED_TOOLS=0
 CACHE_FLAG=-1   # -1 = unset (fall back to env), 1 = --cache, 0 = --no-cache
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --base-ref) BASE_REF="${2:-}"; shift 2 ;;
     --model) MODEL="${2:-}"; shift 2 ;;
+    --allowed-tools-file) ALLOWED_TOOLS_FILE="${2:-}"; shift 2 ;;
+    --print-allowed-tools) PRINT_ALLOWED_TOOLS=1; shift ;;
     --cache) CACHE_FLAG=1; shift ;;
     --no-cache) CACHE_FLAG=0; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -169,7 +177,7 @@ if [[ -z "$CRITERIA" ]]; then
 fi
 
 CRITERIA_COUNT="$(echo "$CRITERIA" | wc -l | tr -d ' ')"
-echo "Found $CRITERIA_COUNT criterion/criteria in $(basename "$SPEC_FILE")."
+[[ "$PRINT_ALLOWED_TOOLS" -eq 1 ]] || echo "Found $CRITERIA_COUNT criterion/criteria in $(basename "$SPEC_FILE")."
 
 # --- Resolve spec file directory (for writing eval-report.md) ---
 
@@ -201,6 +209,57 @@ elif [[ -d "$ROOT/.claude/skills/sprint" ]]; then
 else
   echo "Error: no sprint skill docs found at '$ROOT/skills/sprint' or '$ROOT/.claude/skills/sprint'. Run 'skills.sh add sprint' first." >&2
   exit 1
+fi
+
+# --- Resolve the evaluator's allowedTools (config-driven, secure-by-default) ---
+# No --allowed-tools-file  => the built-in least-privilege list (unchanged behavior).
+# A file                   => its JSON string-array, with the two mechanism-required
+#                             entries (Agent + the runtime subagent-log allow) force-added
+#                             so a hand-edited config can't break dispatch/audit. Broadening
+#                             the evaluator's tools is thus an explicit, auditable opt-in;
+#                             the dontAsk evaluator grades an untrusted diff, so any added
+#                             grant must be NARROW (see tools/headless-eval-tools.json).
+ALLOWED_TOOLS=()
+resolve_allowed_tools() {
+  local default=("Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")
+  if [[ -z "$ALLOWED_TOOLS_FILE" ]]; then
+    ALLOWED_TOOLS=("${default[@]}")
+    return 0
+  fi
+  [[ -f "$ALLOWED_TOOLS_FILE" ]] || { echo "Error: --allowed-tools-file not found: $ALLOWED_TOOLS_FILE" >&2; exit 1; }
+  command -v python3 >/dev/null 2>&1 || { echo "Error: python3 is required to parse --allowed-tools-file." >&2; exit 1; }
+  local parsed
+  parsed="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception as e:
+    sys.stderr.write("Error: invalid JSON in --allowed-tools-file: %s\n" % e); sys.exit(2)
+if not isinstance(d, list) or not all(isinstance(x, str) for x in d):
+    sys.stderr.write("Error: --allowed-tools-file must be a JSON array of strings.\n"); sys.exit(2)
+for x in d:
+    if "\n" in x:
+        sys.stderr.write("Error: tool entries must not contain newlines.\n"); sys.exit(2)
+    print(x)
+' "$ALLOWED_TOOLS_FILE")" || exit 1
+  while IFS= read -r line; do
+    [[ -n "$line" ]] && ALLOWED_TOOLS+=("$line")
+  done <<< "$parsed"
+  # Force-add mechanism-required entries (dispatch + audit) if the config omitted them.
+  local have_agent=0 have_log=0 t
+  for t in ${ALLOWED_TOOLS[@]+"${ALLOWED_TOOLS[@]}"}; do
+    [[ "$t" == "Agent" ]] && have_agent=1
+    [[ "$t" == "$SUBAGENT_LOG_ALLOW" ]] && have_log=1
+  done
+  [[ "$have_agent" -eq 1 ]] || ALLOWED_TOOLS+=("Agent")
+  [[ "$have_log" -eq 1 ]] || ALLOWED_TOOLS+=("$SUBAGENT_LOG_ALLOW")
+  echo "Notice: evaluator allowedTools (from $ALLOWED_TOOLS_FILE): ${ALLOWED_TOOLS[*]}" >&2
+}
+resolve_allowed_tools
+
+if [[ "$PRINT_ALLOWED_TOOLS" -eq 1 ]]; then
+  printf '%s\n' "${ALLOWED_TOOLS[@]}"
+  exit 0
 fi
 
 # --- Build evaluator prompt ---
@@ -269,7 +328,7 @@ else
     --output-format json \
     --permission-mode dontAsk \
     ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-    --allowedTools "Agent" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git show:*)" "Bash(git status:*)" "$SUBAGENT_LOG_ALLOW" "Read" "Grep" "Glob" "LS")"
+    --allowedTools "${ALLOWED_TOOLS[@]}")"
   INVOKE_STATUS=$?
   set -e
 
