@@ -36,6 +36,8 @@ SPEC_FILE="${1:-}"
   echo "               Default (no flag) = the built-in least-privilege list (git reads only)." >&2
   echo "               A file REPLACES that list (Agent + subagent-log are force-added); grant" >&2
   echo "               only NARROW extras — see tools/headless-eval-tools.json + docs/headless-ci.md." >&2
+  echo "  --criteria-only  Grade only items under '## Criteria' (skip '## Test Plan'). For callers" >&2
+  echo "               that run the Test Plan themselves and want the evaluator scoped to static criteria." >&2
   echo "  --cache / --no-cache  opt-in verdict cache keyed on the exact diff content" >&2
   echo "               (also enabled via CANON_GATE_CACHE=1). A HIT reuses the prior" >&2
   echo "               verdict without re-running the grader and says so loudly." >&2
@@ -67,6 +69,8 @@ BASE_REF="${GITHUB_BASE_REF:-}"
 MODEL=""
 ALLOWED_TOOLS_FILE=""
 PRINT_ALLOWED_TOOLS=0
+CRITERIA_ONLY=0
+PRINT_CRITERIA=0
 CACHE_FLAG=-1   # -1 = unset (fall back to env), 1 = --cache, 0 = --no-cache
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,6 +78,8 @@ while [[ $# -gt 0 ]]; do
     --model) MODEL="${2:-}"; shift 2 ;;
     --allowed-tools-file) ALLOWED_TOOLS_FILE="${2:-}"; shift 2 ;;
     --print-allowed-tools) PRINT_ALLOWED_TOOLS=1; shift ;;
+    --criteria-only) CRITERIA_ONLY=1; shift ;;
+    --print-criteria) PRINT_CRITERIA=1; shift ;;
     --cache) CACHE_FLAG=1; shift ;;
     --no-cache) CACHE_FLAG=0; shift ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -155,8 +161,11 @@ MODEL_ARGS=()
 # Skip YAML frontmatter (between --- delimiters) if present, and skip any items
 # under a `## QA` heading — per eval.md, the QA "Tested locally" attestation is
 # not the evaluator's to grade (relevant when the file is a ticket's acceptance.md).
-CRITERIA="$(awk '
-  BEGIN { in_front = 0; past_front = 0; in_qa = 0 }
+# With --criteria-only, grade ONLY items under `## Criteria` (skip `## Test Plan`
+# too) — for callers (e.g. canon-factory eval-arm) that execute the Test Plan
+# themselves on the host and want the evaluator scoped to the static criteria.
+CRITERIA="$(awk -v conly="$CRITERIA_ONLY" '
+  BEGIN { in_front = 0; past_front = 0; in_qa = 0; in_crit = 0 }
   /^---$/ {
     if (!past_front) {
       if (in_front) { past_front = 1; next }
@@ -164,16 +173,25 @@ CRITERIA="$(awk '
     }
   }
   in_front && !past_front { next }
-  /^##[[:space:]]+QA([[:space:]]|$)/ { in_qa = 1; next }
-  /^##[[:space:]]/ { in_qa = 0; next }
+  /^##[[:space:]]+Criteria([[:space:]]|$)/ { in_crit = 1; in_qa = 0; next }
+  /^##[[:space:]]+QA([[:space:]]|$)/ { in_qa = 1; in_crit = 0; next }
+  /^##[[:space:]]/ { in_qa = 0; in_crit = 0; next }
   in_qa { next }
-  /^[[:space:]]*-[[:space:]]*\[[[:space:]xX]\]/ { print }
+  /^[[:space:]]*-[[:space:]]*\[[[:space:]xX]\]/ { if (!conly || in_crit) print }
 ' "$SPEC_FILE")"
 
 if [[ -z "$CRITERIA" ]]; then
   echo "Error: no checklist criteria found in $SPEC_FILE (expected lines like '- [ ] ...' or '- [x] ...')." >&2
   echo "Each criterion must be a markdown checklist item in the body of the file." >&2
+  [[ "$CRITERIA_ONLY" -eq 1 ]] && echo "Note: --criteria-only grades only items under a '## Criteria' heading; add one, or drop --criteria-only." >&2
   exit 1
+fi
+
+# Test/debug seam: print the resolved criteria (honoring --criteria-only) and exit
+# before invoking claude — no model/network. Mirrors --print-allowed-tools.
+if [[ "$PRINT_CRITERIA" -eq 1 ]]; then
+  printf '%s\n' "$CRITERIA"
+  exit 0
 fi
 
 CRITERIA_COUNT="$(echo "$CRITERIA" | wc -l | tr -d ' ')"
