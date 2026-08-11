@@ -28,6 +28,7 @@ tests=(
   "$ROOT/tests/dsl-runner-comments.sh"
   "$ROOT/tests/sprint-headless.sh"
   "$ROOT/tests/sprint-headless-eval-tools.sh"
+  "$ROOT/tests/sprint-headless-eval-criteria-only.sh"
 )
 
 for test_file in "${tests[@]}"; do
