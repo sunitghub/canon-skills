@@ -262,6 +262,14 @@ graph persists in `plan.md`, so a context reset mid-refactor doesn't lose which 
 - **Done check:** `grep -nE "import.*SqliteOrders|SqliteOrders\(" app/report.py` returns nothing.
 - **The one-liner to repeat:** *attempt → break → revert → record → leaves-first, green between every step, goal last.*
 
+## A second exercise (for repeat or advanced sessions)
+
+For a second run with a *different* cascade shape — migrating a widely-used API signature instead of
+inverting a dependency — use **[`exercise-2/`](exercise-2/README.md)**. It ships its own coupled
+app, green test suite, and a verified leaves-first answer key (Step 0 naive break → revert →
+leaves-first, goal last), so a room that already saw this answer key gets a fresh discovery. Same
+60-minute Path A / Path B structure applies.
+
 ## Common student stumbles
 
 | Symptom | Cause | Fix |

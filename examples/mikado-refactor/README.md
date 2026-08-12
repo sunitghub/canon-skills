@@ -256,6 +256,14 @@ quicksand. You discover the order by *attempting the goal and letting the breaka
 prerequisites* — the revert-and-record loop is the part that plain "small commits" advice leaves out,
 and it's the part that keeps you from three hours deep in a change you can't finish or abandon.
 
+## A second exercise (replay value)
+
+Once a room has worked this refactor, the answer key is spent. For a fresh cascade with a *different*
+shape — migrating the signature of an API that many call sites depend on, rather than inverting a
+dependency — run **[`exercise-2/`](exercise-2/README.md)**. It's self-contained (its own `app/` +
+`tests/` + verified answer key) and produces a leaf-per-call-site graph, so exercise 1's solution
+doesn't carry over.
+
 ## The Mikado skill, for reference
 
 - Skill definition: [`skills/mikado/SKILL.md`](../../skills/mikado/SKILL.md)
