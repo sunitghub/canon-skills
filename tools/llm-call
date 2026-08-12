@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# llm-call — provider-neutral, single-shot LLM adapter for OpenAI-compatible gateways.
+#
+# Reads a prompt on stdin, calls ONE model on any OpenAI-compatible /chat/completions
+# endpoint, and writes the reply to stdout. Never prints the API key. No vendor is
+# hardcoded. Self-contained: needs only git (optional), curl and python3.
+#
+# Usage:
+#   printf '%s' "<prompt>" | llm-call [model]
+#   llm-call --usage-from <response.json> [outfile]
+#
+# Config (env):
+#   LLM_MODEL       Model id, used when no model argument is given.
+#   LLM_BASE_URL    API base, no trailing /chat/completions.
+#                   Default: https://openrouter.ai/api/v1
+#   LLM_API_KEY     API key. Falls back to $OPENROUTER_API_KEY, then to the file at
+#                   $LLM_KEY_FILE (a NAME=value line or a raw key; quotes stripped).
+#   LLM_TITLE       Optional X-Title header value (some gateways display it). Default: llm-call
+#   LLM_USAGE_FILE  Optional path to write this call's usage report to, as
+#                   {"model","tokens_prompt","tokens_completion","tokens_total","cost"}.
+#                   Cost is included ONLY if the provider returned one; no price table.
+#
+# Note: only models served on /chat/completions work here. Gateways that route some
+# models to /responses or /messages (e.g. GPT, Claude) will not answer through this path.
+set -euo pipefail
+
+# Extract an OpenAI-compatible usage block into a compact usage report.
+# `--usage-from <response.json> [outfile]` is also a public test seam: it exercises
+# exactly this extraction from a canned response, so no live API call is needed.
+usage_report() { # <response.json> <outfile> [model]
+  python3 - "$1" "$2" "${3:-}" <<'PY' 2>/dev/null || return 0
+import json, sys
+resp, out, model = sys.argv[1], sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else "")
+try:
+    d = json.load(open(resp))
+    if not isinstance(d, dict):
+        d = {}
+except Exception:
+    d = {}
+u = d.get("usage") if isinstance(d.get("usage"), dict) else {}
+rep = {"model": d.get("model") or model or None,
+       "tokens_prompt": u.get("prompt_tokens"),
+       "tokens_completion": u.get("completion_tokens"),
+       "tokens_total": u.get("total_tokens"),
+       # Providers that price the call inline (e.g. OpenRouter) put it here; others omit it.
+       "cost": u.get("cost", d.get("cost"))}
+json.dump(rep, open(out, "w"))
+PY
+}
+
+if [ "${1:-}" = "--usage-from" ]; then
+  [ -n "${2:-}" ] || { echo "llm-call: --usage-from needs a response json path" >&2; exit 2; }
+  out="${3:-${LLM_USAGE_FILE:-}}"
+  [ -n "$out" ] || { echo "llm-call: --usage-from needs an outfile or LLM_USAGE_FILE" >&2; exit 2; }
+  usage_report "$2" "$out" "${LLM_MODEL:-}"
+  exit 0
+fi
+
+model="${1:-${LLM_MODEL:-}}"
+[ -n "$model" ] || { echo "llm-call: no model (pass as arg or set \$LLM_MODEL)" >&2; exit 2; }
+
+base="${LLM_BASE_URL:-https://openrouter.ai/api/v1}"
+base="${base%/}"
+
+key="${LLM_API_KEY:-${OPENROUTER_API_KEY:-}}"
+if [ -z "$key" ] && [ -n "${LLM_KEY_FILE:-}" ] && [ -f "${LLM_KEY_FILE:-}" ]; then
+  raw="$(tr -d '\r\n' < "$LLM_KEY_FILE")"
+  case "$raw" in *=*) key="${raw#*=}" ;; *) key="$raw" ;; esac
+  key="$(printf '%s' "$key" | sed -E 's/^["'"'"']//; s/["'"'"']$//')"
+fi
+[ -n "$key" ] || { echo "llm-call: no API key (\$LLM_API_KEY / \$OPENROUTER_API_KEY / \$LLM_KEY_FILE)" >&2; exit 2; }
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+cat > "$tmp/prompt.txt"
+
+LLM_M="$model" python3 -c 'import json,os,sys; p=open(sys.argv[1]).read(); sys.stdout.write(json.dumps({"model":os.environ["LLM_M"],"messages":[{"role":"user","content":p}]}))' "$tmp/prompt.txt" > "$tmp/payload.json"
+
+http_code="$(curl -sS -X POST "$base/chat/completions" \
+  -H "Authorization: Bearer $key" \
+  -H "Content-Type: application/json" \
+  -H "X-Title: ${LLM_TITLE:-llm-call}" \
+  -d @"$tmp/payload.json" \
+  -o "$tmp/resp.json" -w '%{http_code}')" || { echo "llm-call: curl request failed" >&2; exit 1; }
+
+content="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception as e:
+    sys.stderr.write("llm-call: response parse error: %s\n" % e); sys.exit(3)
+if isinstance(d, dict) and d.get("error"):
+    sys.stderr.write("llm-call: api error: %s\n" % json.dumps(d["error"])[:400]); sys.exit(4)
+try:
+    sys.stdout.write(d["choices"][0]["message"]["content"])
+except Exception:
+    sys.stderr.write("llm-call: no content in response: %s\n" % json.dumps(d)[:400]); sys.exit(5)
+' "$tmp/resp.json")" || { echo "llm-call: HTTP $http_code — no usable content" >&2; exit 1; }
+
+[ -n "$content" ] || { echo "llm-call: empty content (HTTP $http_code)" >&2; exit 1; }
+
+# Report token usage (and provider-returned cost), if asked to.
+if [ -n "${LLM_USAGE_FILE:-}" ]; then
+  usage_report "$tmp/resp.json" "$LLM_USAGE_FILE" "$model"
+fi
+
+echo "llm-call: model=$model http=$http_code chars=${#content}" >&2
+printf '%s\n' "$content"
