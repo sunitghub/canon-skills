@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# disposable-cred — run a command wrapped in a disposable, guaranteed-revoked credential, with an
+# allowlist environment boundary. Provider-neutral and self-contained (bash only; works in Git Bash).
+#
+# It provisions a per-run credential via CRED_PROVISION_CMD (which prints ONLY the handle on stdout),
+# runs the given command with a MINIMAL env (env -i) plus an explicit allowlist and the handle injected
+# as $CRED_VAR, and ALWAYS revokes via CRED_REVOKE_CMD at teardown — including on failure, crash, or
+# interrupt. The provisioning secret and the hooks themselves never reach the wrapped command.
+#
+# Why an ALLOWLIST (not a denylist): the command sees only what is named in CRED_ENV_ALLOW (plus the
+# handle), so an unknown or newly-added sensitive variable can never leak through by omission.
+#
+# Env:
+#   CRED_PROVISION_CMD  (required) mints a credential; prints ONLY the handle on stdout. Its own
+#                       provisioning secret lives in its process env and must never be printed.
+#   CRED_REVOKE_CMD     (required) revokes the credential; reads the handle on stdin (never argv).
+#   CRED_ENV_ALLOW      space-separated env-var names allowed through to the command. Default:
+#                       "PATH HOME USER LOGNAME SHELL TERM LANG LC_ALL LC_CTYPE TMPDIR".
+#   CRED_VAR            name the handle is injected under in the command's env (default: CRED).
+#
+# Usage:
+#   CRED_PROVISION_CMD=... CRED_REVOKE_CMD=... disposable-cred [--] <command> [args...]
+#
+# Exit codes: 2 = usage (missing hook/command); 1 = provisioning failed / empty handle; 3 = the command
+# succeeded but revocation FAILED (loud, orphaned-credential warning); otherwise the command's own status.
+# Never prints the provisioning secret or the handle value.
+#
+# Portability: pure bash + env/printenv/trap/sh -c only — no GNU-only date/%3N or GNU-only flags — so it
+# runs anywhere canon does, including Git Bash on Windows.
+set -euo pipefail
+
+[ -n "${CRED_PROVISION_CMD:-}" ] || { echo "disposable-cred: CRED_PROVISION_CMD is required" >&2; exit 2; }
+[ -n "${CRED_REVOKE_CMD:-}" ]    || { echo "disposable-cred: CRED_REVOKE_CMD is required" >&2; exit 2; }
+[ "${1:-}" = "--" ] && shift
+[ "$#" -gt 0 ] || { echo "disposable-cred: a command to run is required (after --)" >&2; exit 2; }
+
+CRED_VAR="${CRED_VAR:-CRED}"
+CRED_ENV_ALLOW="${CRED_ENV_ALLOW:-PATH HOME USER LOGNAME SHELL TERM LANG LC_ALL LC_CTYPE TMPDIR}"
+
+handle=""
+_revoked=0
+_revoke_failed=0
+
+# Idempotent revoke: runs at most once; no-ops if no handle was ever issued. The handle travels on
+# stdin (never argv) so it cannot leak via the process table.
+revoke_once() {
+  [ "$_revoked" -eq 1 ] && return 0
+  [ -n "$handle" ] || return 0
+  _revoked=1
+  if printf '%s' "$handle" | sh -c "$CRED_REVOKE_CMD" >/dev/null 2>&1; then
+    echo "disposable-cred: revoked credential at teardown" >&2
+  else
+    echo "disposable-cred: WARNING orphaned credential — revoke failed at teardown" >&2
+    _revoke_failed=1
+  fi
+}
+
+# Guaranteed teardown: EXIT covers normal + error paths; INT/TERM funnel through EXIT so a crash or
+# Ctrl-C still revokes. exit inside the EXIT trap does not re-enter it, so the status is deterministic.
+_on_exit() {
+  status=$?
+  revoke_once
+  if [ "$_revoke_failed" -eq 1 ]; then exit 3; fi
+  exit "$status"
+}
+trap _on_exit EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# 1. Provision the disposable credential (stdout = handle only).
+handle="$(sh -c "$CRED_PROVISION_CMD")" || { echo "disposable-cred: provisioning failed" >&2; exit 1; }
+[ -n "$handle" ] || { echo "disposable-cred: provisioner returned no credential handle" >&2; exit 1; }
+echo "disposable-cred: provisioned credential (handle hidden)" >&2
+
+# 2. Run the command with ONLY the allowlisted env + the handle injected as $CRED_VAR. Anything not
+#    named in CRED_ENV_ALLOW — including the provisioning secret and the hooks — is dropped.
+cmd_env=(env -i)
+for _n in $CRED_ENV_ALLOW; do
+  if _v="$(printenv "$_n")"; then cmd_env+=("$_n=$_v"); fi
+done
+cmd_env+=("$CRED_VAR=$handle")
+
+set +e
+"${cmd_env[@]}" "$@"
+_rc=$?
+set -e
+
+# 3. Teardown/revoke is handled by the EXIT trap; propagate the command's status (the trap overrides
+#    to 3 if revocation itself failed).
+exit "$_rc"
