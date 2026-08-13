@@ -138,6 +138,22 @@ never aborts the fleet.
 Add `--rosters claude-fast,claude-deep` to race only a subset, or `--keep` to keep the arm
 worktrees around for inspection.
 
+### Race effort levels (same model, different depth)
+
+Effort — Claude's `output_config.effort` (`max`/`xhigh`/`high`/`medium`/`low`) — controls how many
+tokens the model spends thinking and acting. It's a **second axis**: `factory/rosters.claude-effort.conf`
+races **one** model across effort levels, so the leaderboard answers "what's the cheapest effort that
+still passes?"
+
+```bash
+factory/cdw.sh --ticket t-abcd --rosters-file factory/rosters.claude-effort.conf
+```
+
+Cost scales with it for free (the price map is keyed by model id, so higher effort → more tokens →
+higher `est.` cost). Unset effort == the API default `high`; level availability varies by model
+(`xhigh` = Opus 4.7+/Sonnet 5/Fable 5; `max` = 4.6+). To set effort on any roster line directly:
+`bash factory/llm-messages.sh <model> --effort <level>`.
+
 ---
 
 ## Step 3 — Run the arms inside a smolvm microVM (Tier B)
@@ -253,7 +269,10 @@ launch/publish actions — a blind cross-site POST is rejected. The wizard walks
 ![Factory UI — Landing](images/ui-landing.png)
 
 1. **Ticket** — point it at your repo and pick the bill-splitter ticket (with a criteria preview).
-2. **Roster** — choose the Claude arms (`claude-fast`/`balanced`/`deep`); paid arms are flagged.
+2. **Roster** — choose the Claude arms (`claude-fast`/`balanced`/`deep`) and, optionally, an **effort
+   level per arm** (max/xhigh/high/medium/low; default = the roster's own). Paid arms are flagged. On
+   launch the UI writes an ephemeral roster with your effort choices — no `.conf` editing, and the
+   command body always comes from the known roster (a UI effort value can't inject a command).
 3. **Preflight** — confirm what will launch.
 4. **Run** — starts `cdw.sh` in the background and tracks status. Before spawning, it validates the
    ticket id + roster names against the known set (no request string ever becomes a command).
