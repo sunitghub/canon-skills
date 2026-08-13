@@ -74,7 +74,9 @@ same agent to check its own work. canon makes that structurally impossible.
 3. **A delivery receipt you can't write prose around.** Close produces a plan-vs-actual table, one
    row per criterion: delivered, waived, deferred, or partial. Deviations appear in the table or the
    sprint doesn't close.
-4. **Decisions outlive the context window.** Plans, rejected alternatives, discovered constraints and
+4. **Decisions outlive the context window.** A long-running agent fails in three ways no bigger model
+   fixes — it *contradicts* an earlier decision, *redoes* finished work, or *drifts* off the question.
+   Those are state-management failures, not capability gaps. Plans, rejected alternatives, discovered constraints and
    the acceptance bar live in `.tickets/` as plain markdown — read back in at the next `sprint start`.
    A compaction, a new session, or you in six months all get the same thread.
 5. **Cost proportional to risk.** Simple work stays light. The close gates stay mandatory but run on
@@ -214,7 +216,11 @@ Every acceptance criterion, its outcome, and any deviations — permanently on t
 
 The distinction that matters: context files inject knowledge but gate nothing, and external trackers
 keep state outside the repo where it drifts. canon's state is in your repo, and the close gate is
-mechanical.
+mechanical. Agent memory is converging on **git-versioned context repositories** — durable, diff-able
+state that lives with the code instead of in a vector store or a prompt window — and `.tickets/` is
+exactly that. What canon adds on top is the close gate: it governs correctness at close, so the repo
+holds *checked* memory. canon isn't a ranked-recall engine — it's the governance layer that makes
+repo-as-memory trustworthy.
 
 **[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
 
