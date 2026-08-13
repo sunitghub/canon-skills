@@ -166,6 +166,9 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      request. A conflict is not a passive note — it must be surfaced in the brief and
      resolved by the user before any implementation proceeds. `DECISIONS-archive.md` (if
      present) holds entries already superseded — historical reference, not part of this scan.
+     Within a still-live entry, ignore any fragment tagged `superseded-by: <YYYY-MM-DD>` in its
+     Reason cell — that fragment was retired by a later decision (the entry itself stays because
+     its other topics are live), so do not surface it as a live constraint or resurrect it.
    - Read `tools/handoff.md` (same resolution as step 1's `tools/ticket.md` — plain relative path in canon itself, or via `command -v sprint`'s directory in a consumer project, or `where sprint` on Windows if `command -v` returns nothing), then: `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
    - Active sprint files
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold

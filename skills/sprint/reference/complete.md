@@ -370,7 +370,14 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    supersedes or retires an *entire* earlier entry (not a fragment of a composite, multi-topic
    one), move that earlier entry's row to `DECISIONS-archive.md` instead of leaving it in
    `DECISIONS.md` forever — this is what keeps the file `sprint start` actively scans from
-   growing unbounded. Never split a multi-topic entry to archive part of it.
+   growing unbounded. Never split a multi-topic entry to archive part of it. When this sprint's
+   decision instead retires only **one fragment** of a composite, multi-topic entry (so the
+   whole-entry archive-move above does not apply), do not archive or split it — mark the retired
+   fragment in place by appending `superseded-by: <YYYY-MM-DD>` (this sprint's decision date) to
+   that entry's Reason cell, naming which fragment is retired. The entry stays in `DECISIONS.md`
+   (its other topics are still live), but the marker makes the dead fragment greppable and tells
+   `start.md`'s scan (step 5) not to treat it as a live constraint. See
+   `standards/ticket-layout.md`'s DECISIONS record contract for the marker's exact shape.
 
 7. **Conventions.** While context is fresh: did any convention-level learning emerge — pattern,
    naming norm, non-obvious file relationship, gotcha — worth a future agent knowing? Distinct

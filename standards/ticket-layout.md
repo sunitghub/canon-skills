@@ -138,3 +138,25 @@ The board (`sprint-check-app`) derives all rendering from the ticket JSON produc
 - Closed tickets — `sprint complete` runs `tkt close` internally (its own gates already passed). A bare `tkt close <id>` refuses unless `--no-sprint` is passed: it errors toward `sprint complete` if sprint docs exist, or toward `sprint start`/`--no-sprint` if they don't. This sets `status: closed` and removes `ACTIVE`. Sprint docs become read-only on the board. The agent must not reopen a ticket after close without explicit user instruction.
 - ACTIVE file — `.tickets/ACTIVE` contains exactly one ticket ID when a sprint is in progress. `tkt start` writes it; `tkt close` removes it. Only one sprint may be active at a time.
 - Mockup promotion (any turn, any session) — if a message names an already-saved `visuals/<name>.<ext>` candidate to promote into `acceptance.md` (e.g. "use option B"), the promotion must be a real markdown image embed — `![alt](visuals/<name>.<ext>)` — never a bare or backticked filename mention. This holds independent of `sprint start`'s own steps, which only run once per sprint; a later promotion message isn't one of them.
+
+## DECISIONS.md record contract
+
+`DECISIONS.md` lives at the repo root and records durable choices future sprints must respect (see
+`skills/sprint/SKILL.md`'s `## DECISIONS.md` and `complete.md` step 6). One row per decision in a
+`| Date | Decision | Reason |` table; newest on top; write the WHY, not the what.
+
+**Supersession — two mechanisms, by scope:**
+
+- **Whole-entry supersession → archive-move.** When a later decision retires an *entire* earlier
+  entry, move that row out to `DECISIONS-archive.md`. `start.md` step 5's decision-scan excludes the
+  archive file, so an archived decision can never be resurfaced as a live constraint. This keeps the
+  actively-scanned `DECISIONS.md` from growing unbounded. Never split a multi-topic entry to archive
+  part of it.
+- **Fragment supersession → inline `superseded-by:` marker.** When a later decision retires only
+  **one fragment** of a composite, multi-topic entry (whose other topics stay live), the entry cannot
+  be archive-moved or split. Instead, append `superseded-by: <YYYY-MM-DD>` (the retiring decision's
+  date) to that entry's Reason cell, naming the retired fragment. The entry stays in `DECISIONS.md`;
+  the marker makes the dead fragment greppable and instructs `start.md` step 5's scan to skip it —
+  so a fresh agent will not resurrect the retired fragment. Prefer writing atomic, single-topic
+  entries in the first place, so the cleaner whole-entry archive-move applies and this marker is
+  rarely needed.
