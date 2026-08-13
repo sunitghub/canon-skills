@@ -75,31 +75,46 @@ Create a ticket in your canon-factory checkout and give it acceptance criteria t
 tkt create "Restaurant Bill Splitter"      # prints a ticket id, e.g. t-abcd
 ```
 
-Edit `.tickets/t-abcd/acceptance.md` so `## Criteria` includes both the everyday behavior and an
-executable remainder scenario:
+Edit `.tickets/t-abcd/acceptance.md`. Keep the everyday behavior as prose criteria; make the
+**correctness-critical** remainder criterion *scenario-backed* by nesting a Given/When/Then block
+**directly under that criterion** — that is what turns it into a deterministic, exit-code check
+instead of a prose reading:
 
 ````markdown
 ## Criteria
 - [ ] Accepts a subtotal, a tip % (10% default; 15% and 20% offered), and a whole-number split count.
 - [ ] Displays tip, total, and each person's share.
 - [ ] Per-person shares are computed in integer cents and **sum exactly to the displayed total**,
-      including when the bill does not divide evenly — distinct shares are shown with how many
-      people pay each (e.g. "1 person pays $33.67, 2 people pay $33.66").
-
-```gherkin
-Scenario: $101.00 split 3 ways, no tip
-  Given a subtotal of 101.00 and 0% tip and 3 people
-  When the bill is split
-  Then the shares are 33.66, 33.66, 33.67 and sum to 101.00
-```
+      including when the bill does not divide evenly:
+  ```gherkin
+  Scenario: $101.00 split 3 ways, no tip
+    Given a subtotal of 101.00 and 0% tip and 3 people
+    When the bill is split
+    Then the shares are 33.66, 33.66, 33.67 and sum to 101.00
+  ```
 
 ## Test Plan
+- [ ] manual: enter $101.00 / 0% / 3 people and confirm the displayed shares and their sum.
 - [ ] `node dsl_runner.js specs/split.feature` exits 0 against the calculation function.
 ````
 
-That remainder scenario is the whole point: an arm that ships flat `total / people` division
-passes the first two criteria and **fails** this one — and the independent evaluator runs the
-scenario rather than reading the prose.
+The scenario **backs** that third criterion — it is not a separate checklist item, and it does not
+duplicate a prose version of the same rule. The evaluator grades that criterion by **running** the
+scenario (reading the exit code); the first two criteria stay prose and are graded by reading / manual QA.
+
+**Scenario-backing is optional.** canon ships no runner — a scenario-backed criterion needs a small
+fixed-pattern `dsl_runner` (see `examples/dsl-discount-spec/`), its command named in the Test Plan, and
+it must be locked at approval time (never authored alongside the code it checks). For a quick demo
+without a runner, drop the Gherkin and write the same criterion as **precise prose** — the fresh
+evaluator still catches the flat-division bug by reading it:
+
+```markdown
+- [ ] For $101.00 split 3 ways with no tip, the shares are $33.66, $33.66, $33.67 and sum to $101.00
+      (integer-cent math; distinct shares shown when they differ — e.g. "1 person pays $33.67, 2 pay $33.66").
+```
+
+Either way, an arm that ships flat `total / people` division passes the first two criteria and
+**fails** the remainder one — the gap the workshop exists to expose.
 
 ---
 
