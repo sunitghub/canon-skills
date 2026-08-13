@@ -70,6 +70,28 @@ this file is the public-facing shortlist.
     (in `CATALOG.md`). `sprint suggest-tier` (`t-b6a3`) surfaces bugfix eligibility structurally.
     Entry retained below as the captured design.
 
+- **Ranked cross-ticket recall — rank retrieved memory by the active sub-goal** — parked from the
+  2026-08-13 agentic-memory review (`t-3b69`; the same review that shipped the README framing +
+  `t-2d4a`'s `superseded-by:` marker). Retrieval-ranking studies find that *ranking which memory
+  governs* by the current sub-goal carries most of the accuracy lift under context eviction —
+  more than a gate that only decides *whether* to recall — and that better ranking can cost fewer
+  tokens (right context beats more context). Practitioner map: [N. Diamant, *Agent Memory
+  Techniques*](https://github.com/NirDiamant/Agent_Memory_Techniques).
+
+  Design constraints before building:
+  - **Not a fix, and not applicable at today's scope.** `sprint start` reads the *whole* active
+    ticket, so there is nothing to rank at single-ticket scope — canon governs correctness at
+    close, it is not a ranked-recall memory system. This only becomes relevant if canon ever
+    injects **cross-ticket** memory (e.g. `tkt why` history, or pulling prior `DECISIONS.md`
+    entries by relevance). Until such a recall surface exists, adding ranking is speculative
+    machinery canon's minimalism should refuse.
+  - **Rank by the active sub-goal, not recency or similarity alone** — the finding is that
+    sub-goal-anchored ranking is what clears the no-memory floor; recency/arbitrary retrieval does
+    not. Any future design must anchor on the current objective, not just embedding proximity.
+  - **Pairs with `superseded-by:` (`t-2d4a`)** — ranking must treat a retired fragment as
+    non-recallable, so the scan-skip and any future ranker share one notion of "still governs."
+  - Revisit only alongside a concrete cross-ticket recall feature; not a fit as a standalone.
+
 ## Backlog — sprint workflow
 
 - **`demo` mode — time-boxed close for live demos** — **Phases A + B SHIPPED**; Phase C outstanding.
