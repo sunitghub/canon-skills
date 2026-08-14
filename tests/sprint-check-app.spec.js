@@ -133,6 +133,50 @@ test.describe('board modal', () => {
     }
   });
 
+  test('double-clicking a card Copy button copies the .tickets/<id> folder path (single-click still copies the id)', async ({ page }) => {
+    const id = `t-copy-${Date.now()}`;
+    const title = `Copy folder ${Date.now()}`;
+
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---',
+        `id: ${id}`,
+        'status: in_progress',
+        'type: task',
+        'priority: 2',
+        'created: 2026-06-28T00:00:00Z',
+        '---',
+        '',
+        `# ${title}`,
+        '',
+      ].join('\n'));
+
+      // Stub the clipboard before app scripts run — real clipboard is unreliable headless.
+      await page.addInitScript(() => {
+        window.__copied = [];
+        navigator.clipboard.writeText = (t) => { window.__copied.push(t); return Promise.resolve(); };
+      });
+
+      await page.goto(`${BASE}?debug=1`);
+      await page.waitForLoadState('networkidle');
+
+      const copyBtn = page.locator(`.col-progress .card[data-id="${id}"] .card-id-copy`);
+      await expect(copyBtn).toBeVisible();
+
+      await copyBtn.click();
+      await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe(id);
+
+      await copyBtn.dblclick();
+      await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toMatch(new RegExp(`/\\.tickets/${id}$`));
+      // The double-click must not have left the modal open.
+      await expect(page.locator('#m-id')).not.toHaveText(id);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a signed-off ticket shows the ready dot and label, no flag', async ({ page }) => {
     const id = `t-ready-pop-${Date.now()}`;
     const title = `Ready popover ${Date.now()}`;

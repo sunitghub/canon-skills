@@ -2324,6 +2324,7 @@ function renderHeader() {
   const { git, tickets } = state;
   setText('h-project',  git?.project || 'project');
   document.getElementById('h-project').title = git?.root || '';
+  state.gitRoot = git?.root || '';
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
   setText('h-open',     tickets.filter(t => t.status === 'open').length);
@@ -2607,16 +2608,28 @@ function renderBoard() {
   });
 
   board.querySelectorAll('.card-id-copy').forEach(btn => {
+    const flash = (label) => {
+      const prev = btn.textContent;
+      btn.textContent = label;
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = 'Copy';
+        btn.classList.remove('copied');
+      }, 1200);
+      return prev;
+    };
+    const ticketDir = (id) => {
+      const root = (state.gitRoot || '').replace(/\/+$/, '');
+      return (root ? root + '/' : '') + '.tickets/' + id;
+    };
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      navigator.clipboard.writeText(btn.dataset.copy).then(() => {
-        btn.textContent = 'Done';
-        btn.classList.add('copied');
-        setTimeout(() => {
-          btn.textContent = 'Copy';
-          btn.classList.remove('copied');
-        }, 1200);
-      }).catch(() => {});
+      if (e.detail > 1) return; // second click of a double-click; dblclick copies the folder path
+      navigator.clipboard.writeText(btn.dataset.copy).then(() => flash('Done')).catch(() => {});
+    });
+    btn.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(ticketDir(btn.dataset.copy)).then(() => flash('Path')).catch(() => {});
     });
   });
 
@@ -2756,7 +2769,7 @@ function cardHTML(t, idx) {
     <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
-        <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID">Copy</button>
+        <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID — double-click to copy the .tickets/ folder path">Copy</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
         ${demoBadge(t)}
