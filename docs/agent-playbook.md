@@ -1,7 +1,7 @@
 ---
 title: Agentic App Playbook
 description: Practices, patterns, and steps for building grounded agentic apps — language-agnostic, living checklist
-updated: 2026-07-24
+updated: 2026-08-16
 ---
 
 # Agentic App Playbook
@@ -52,6 +52,7 @@ The core pattern for an analytical agent: **the deterministic layer decides; the
 - [ ] **Approval-gate irreversible actions.** Read before write; propose before commit. A write-back, send, deploy, or migration is *proposed*, then executed only on explicit human approval behind an access check.
 - [ ] **Never over-state confidence.** An inferred cause is not a measurement — keep its confidence medium or low, and put the hedge in the answer, not buried in a field.
 - [ ] **Fail loudly.** Surface ambiguity instead of silently picking one interpretation and moving on.
+- [ ] **Never pass a credential in argv.** A key on the command line is visible in the process table to anything that can list processes, and **no redaction layer can reach it** — log scrubbing sees output, never arguments. Hand it over on stdin instead (e.g. a client's config-from-stdin mode), or via an env var the child inherits. A temp file is the tempting middle ground and is worse cross-platform: `mktemp` gives you 0600 on Unix, but Windows cannot enforce an equivalent ACL, so stdin is the option that keeps the secret off disk everywhere.
 - [ ] **Sanitise untrusted input at the boundary.** Catch PII and unsafe inputs before they reach the model (NER + regex), not after — and never capture untrusted external content into durable memory as if it were ground truth.
 
 > canon: the close gate refuses to ship uncited/unverified work, and `sprint`'s irreversible-action rule requires confirmation before destructive steps.
@@ -76,6 +77,8 @@ The core pattern for an analytical agent: **the deterministic layer decides; the
 - [ ] **Evaluate at three layers.** Deterministic (format / existence / verdict parsing; fail closed) → semantic (a clean-context grader for correctness and groundedness; run each case a few times and flag variance) → behavioral (did it call the right tools, escalate when unsure, stay in scope). Each layer catches what the others can't.
 - [ ] **Black-box the tests.** Assert real end-to-end behavior (prompt in, output out). Never re-derive the expected value from the code under test, and never mirror the production logic in the assertion — state the expectation independently, or the test can't fail.
 - [ ] **Route new intents on disjoint signals.** When you add a question type, make its trigger unambiguous and disjoint from the existing ones, then regression-lock the old paths — a broad keyword can silently hijack an existing flow.
+
+- [ ] **Never promote a security boundary on mocks alone.** A credential path, sandbox, or isolation boundary must be exercised against a live provider before you trust it or reuse it elsewhere. A mock asserts whatever its author assumed, so it confirms the design you already believed — the failure modes that matter (a host key that still crosses, a variable that never reaches the guest, a teardown that silently no-ops) only appear against the real thing. A live run that *contradicts* your acceptance criteria is the gate working, not a setback.
 
 > canon: `sprint complete` dispatches a fresh reviewer (advisory) and evaluator (binding) with clean context, and the evaluator's `pass:` verdict is required to close.
 
