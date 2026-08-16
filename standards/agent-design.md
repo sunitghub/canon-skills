@@ -5,8 +5,8 @@ category: agent-ops
 tags: [agents, llm, prompts, context, control-flow, state]
 inject: true
 hidden: true
-version: 1.1.0
-updated: 2026-08-08
+version: 1.2.0
+updated: 2026-08-16
 ---
 
 # Agent Design Principles
@@ -44,6 +44,8 @@ An agent is a pure function over an accumulated event log: `(events[]) → next_
 - Serialize the event log; resume from any point by loading it. Restart and resumability are free.
 - Execution state (current step, waiting status, retry count) should be derivable from the log — avoid a separate execution-state store unless the log genuinely can't hold it.
 - Forking and branching are structurally cheap: copy a prefix of the log into a new context.
+- Durable state belongs where the agent cannot rewrite it. If the process that appends events can also edit them, the log is a convenience, not a record — put it behind an API or privilege boundary the executor can't reach around.
+- Distinguish tamper-*evident* from tamper-*proof*. A hash chain detects edits; only a separate process or host prevents them. Claiming prevention while holding only detection is worse than claiming neither, because it stops anyone looking.
 
 ## Own Your Control Flow
 
