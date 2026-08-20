@@ -23,7 +23,7 @@ hidden: true
 1. Determine target: inline session memory, local diff, or remote PR.
 2. For PRs, checkout and read description plus linked tickets.
 3. Review all eight dimensions.
-4. Report only actionable findings.
+4. Report every real finding — place each into the severity sections below rather than omitting it; do not drop a finding because it looks low-severity or you are not fully certain. Coverage is the job at the finding stage; ranking and filtering happen in the sections (and downstream, via the human).
 5. For PRs, return to the previous/default branch.
 
 ## Review Dimensions
@@ -61,4 +61,4 @@ Minor style or preference notes (optional to act on).
 Broader suggestions — refactors, missing tests, follow-up work.
 ```
 
-Explain why a finding matters only when the fix isn't self-evident; security and architectural findings always get a full explanation (per `standards/efficiency.md`). This PR-style report format is intentionally distinct from the sprint `reviewer` gate's terse one-finding-per-line format (`skills/sprint/reference/review.md`).
+Report for coverage, then rank. A genuine correctness, bug, or scope finding belongs in `Critical` or `Improvements` even at low confidence — mark it `(low confidence)` rather than omitting it; the section is the severity ranking and the human is the downstream filter, so a finding that later gets filtered out is cheaper than a missed defect. `Nitpicks` is for subjective style/preference notes only, and is the one bucket where the design-fit `[pattern-fit]` "default to silence" rule (dim. 3) still governs — keep it sparse; coverage never means style nagging. Explain why a finding matters only when the fix isn't self-evident; security and architectural findings always get a full explanation (per `standards/efficiency.md`). This PR-style report format is intentionally distinct from the sprint `reviewer` gate's terse one-finding-per-line format (`skills/sprint/reference/review.md`).
