@@ -404,6 +404,7 @@ Register canon in another project:
 
 - **[Full setup guide →](docs/setup.md)** — install, hook wiring, skill lifecycle, reference commands.
 - **[Production incident playbook →](docs/production-incident-playbook.md)** — Surface → Trace → Isolate → Resolve → Harden. The five-stage protocol for when an AI agent misbehaves in production.
+- **[Retrieval architecture playbook →](docs/retrieval-architecture-playbook.md)** — vector RAG or Graph RAG? Four ordered tests, cheapest first. Corpus size appears in none of them.
 - **[Restaurant bill splitter →](examples/restaurant-bill-split)** — a prompt-driven sprint walkthrough: can a fresh evaluator catch plausible-looking but numerically wrong code?
 - **[DSL spec workshop →](examples/dsl-discount-spec)** — build a feature against a hand-written `Given/When/Then` spec inside a sprint, then break the implementation live and watch the spec (not a person) catch it.
 - **[Mikado refactor workshop →](examples/mikado-refactor)** — drive a cascading refactor inside a sprint using the `mikado` skill: attempt the goal, revert on breakage, record prerequisites, and execute leaves-first so the tree stays green the whole way.
