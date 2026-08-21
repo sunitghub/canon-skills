@@ -113,7 +113,7 @@ where:
   Refund approvals: Refunds over £250 require director approval; under £250 any team member
 ```
 
-Builds clean. Thirteen relations, zero warnings. The wrong fact is then injected into every subsequent prompt under a `memory:` header. The graph does not merely fail to catch the error — it launders it into authoritative-looking context and freezes it there.
+Builds clean. Thirteen relations, zero warnings. The wrong fact is then injected into every subsequent prompt under a `memory:` header. The graph does not merely fail to catch the error — it launders it into authoritative-looking context and freezes it there. (The elapsed-time figure is machine-dependent; the counts and the served text are not.)
 
 **Stopping rule:** if you cannot gate the extraction, do not build the graph. You are not choosing between two retrieval architectures at that point; you are choosing between a system whose errors are visible per-answer and one whose errors are permanent and dressed as structure.
 
@@ -157,6 +157,12 @@ Discount its effect sizes, for three reasons.
 extract 0    ontolog 0   schema 0    reindex 0   stale 0
 chunk 0      rerank 0    hop count 0 win rate 0  statistical 0
 confidence interval 0    baseline tun 0
+```
+
+Reproduce it against your own copy of the PDF — the counts above are the only claim in this playbook you cannot check from a public repo:
+
+```bash
+pdftotext -layout GraphRAG.pdf - | grep -ic <term>
 ```
 
 ("entity resolution" appears once — in the About-TigerGraph blurb, not the methodology.) Extraction cost, ontology design, entity resolution, and re-extraction on document change are the line items where Graph RAG projects actually fail, and none is priced. Quality claims are qualitative throughout: the findings chapter contains two numbers, both about tokens.
