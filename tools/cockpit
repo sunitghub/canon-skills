@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# cockpit — launch the canon cockpit: a loopback PTY-owning daemon that serves
+# an embedded terminal at /cockpit, so `sprint start <id>` runs in-browser.
+# Backend: tools/cockpit-daemon (Go). Runtime stays a separate app; the daemon
+# owns the PTY, canon stays the gate.
+
+set -euo pipefail
+
+_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+DAEMON_DIR="$SCRIPT_DIR/cockpit-daemon"
+
+usage() {
+  cat <<'EOF'
+cockpit — open the canon cockpit (embedded agent terminal) in your browser.
+
+Usage:
+  cockpit [t-xxxx]   Open the cockpit; optionally prefill a ticket id to Start.
+  cockpit --help
+
+The cockpit daemon binds 127.0.0.1 only and owns the PTY running `sprint start`.
+EOF
+}
+
+case "${1:-}" in
+  -h|--help|help) usage; exit 0 ;;
+esac
+TICKET="${1:-}"
+
+open_browser() {
+  local url="$1"
+  if command -v open >/dev/null 2>&1; then open "$url"
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$url" &
+  elif command -v wslview >/dev/null 2>&1; then wslview "$url" &
+  else echo "Open in your browser: $url" >&2; fi
+}
+
+# Prefer a prebuilt binary (dist); else build from source (dev, go required).
+BIN="$DAEMON_DIR/cockpit-daemon"
+if [[ ! -x "$BIN" ]]; then
+  if command -v go >/dev/null 2>&1; then
+    ( cd "$DAEMON_DIR" && go build -o "$BIN" . )
+  else
+    echo "Error: cockpit-daemon binary not found and Go is not installed." >&2
+    exit 1
+  fi
+fi
+
+STATE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/canon-cockpit.XXXXXX")"
+export COCKPIT_STATE_DIR="$STATE_DIR"
+export COCKPIT_PROJECT_ROOT="${SPRINT_CHECK_ROOT:-$PWD}"
+# Resolve the sprint CLI next to this launcher if present, else rely on PATH.
+[[ -x "$SCRIPT_DIR/sprint" ]] && export COCKPIT_SPRINT_BIN="$SCRIPT_DIR/sprint"
+
+"$BIN" -addr 127.0.0.1:0 &
+DAEMON_PID=$!
+trap 'kill "$DAEMON_PID" 2>/dev/null; rm -rf "$STATE_DIR"; exit 0' INT TERM EXIT
+
+# Wait for the daemon to publish its {addr,token} state file.
+STATE_FILE="$STATE_DIR/daemon.json"
+for _ in $(seq 1 50); do [[ -s "$STATE_FILE" ]] && break; sleep 0.1; done
+if [[ ! -s "$STATE_FILE" ]]; then
+  echo "Error: cockpit daemon did not start." >&2
+  exit 1
+fi
+
+ADDR="$(sed -n 's/.*"addr":"\([^"]*\)".*/\1/p' "$STATE_FILE")"
+URL="http://$ADDR/cockpit"
+[[ -n "$TICKET" ]] && URL="$URL?ticket=$TICKET"
+echo "cockpit: $URL"
+[[ "${COCKPIT_NO_BROWSER:-0}" == "1" ]] || open_browser "$URL"
+wait "$DAEMON_PID"

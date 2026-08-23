@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>canon cockpit</title>
+<link rel="stylesheet" href="/web/vendor/xterm.css">
+<style>
+  :root{--bg:#0b0f17;--panel:#131a24;--panel2:#0d131c;--border:#232c3a;--text:#e6edf3;--dim:#8b98a9;--faint:#5b6675;--accent:#3b82f6;--green:#22c55e;--yellow:#eab308;--red:#ef4444;--mono:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;--ui:Inter,system-ui,sans-serif}
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font-family:var(--ui)}
+  #app{display:flex;flex-direction:column;height:100vh}
+  header{display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+  .brand .sq{width:18px;height:18px;border-radius:5px;background:var(--accent);display:inline-block}
+  .start{display:flex;align-items:center;gap:8px;margin-left:6px}
+  .start input{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px;width:120px}
+  button{border:0;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--ui)}
+  .btn-start{background:var(--accent);color:#fff}
+  .btn-kill{background:var(--panel2);color:var(--dim);border:1px solid var(--border)}
+  .btn-kill:hover{color:var(--red);border-color:var(--red)}
+  .spacer{flex:1}
+  .status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--dim);font-family:var(--mono)}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+  .dot.running{background:var(--yellow)} .dot.done{background:var(--green)} .dot.error{background:var(--red)}
+  .model{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  #term-wrap{flex:1;min-height:0;background:var(--panel2);padding:8px}
+  #terminal{height:100%}
+  .hint{color:var(--faint);font-size:12px;padding:24px;font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand"><span class="sq"></span> canon <span style="color:var(--faint)">cockpit</span></div>
+    <div class="start">
+      <input id="ticket" placeholder="t-xxxx" spellcheck="false" autocomplete="off">
+      <button class="btn-start" id="startBtn">▶ Start sprint</button>
+      <button class="btn-kill" id="killBtn" disabled>Kill</button>
+    </div>
+    <div class="spacer"></div>
+    <span class="model" id="model">model: from plan.md</span>
+    <span class="status"><span class="dot" id="dot"></span><span id="statusText">idle</span></span>
+  </header>
+  <div id="term-wrap"><div id="terminal"></div></div>
+</div>
+
+<script src="/web/vendor/xterm.js"></script>
+<script src="/web/vendor/xterm-addon-fit.js"></script>
+<script>
+(function(){
+  "use strict";
+  var TOKEN = "__COCKPIT_TOKEN__";
+  var PREFILL = "__COCKPIT_TICKET__";
+  var session = null, sessTok = null, streamAbort = null;
+
+  var term = new Terminal({
+    fontFamily: "JetBrains Mono, ui-monospace, Menlo, monospace",
+    fontSize: 13, cursorBlink: true,
+    theme: { background: "#0d131c", foreground: "#e6edf3", cursor: "#3b82f6" }
+  });
+  var fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById("terminal"));
+  fit.fit();
+  term.writeln("\x1b[38;5;244mcanon cockpit — enter a ticket id and press Start to launch \x1b[1msprint start <id>\x1b[0m\x1b[38;5;244m in a real terminal.\x1b[0m");
+
+  var dotEl = document.getElementById("dot"), statusEl = document.getElementById("statusText");
+  function setStatus(cls, text){ dotEl.className = "dot " + (cls||""); statusEl.textContent = text; }
+
+  function authHeaders(tok){ return { "Authorization": "Bearer " + tok }; }
+
+  async function start(){
+    var ticket = document.getElementById("ticket").value.trim();
+    if(!/^t-[a-z0-9]{4}$/.test(ticket)){ term.writeln("\r\n\x1b[31minvalid ticket id (expected t-xxxx)\x1b[0m"); return; }
+    setStatus("running","starting…");
+    try{
+      var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket}) });
+      if(!r.ok){ setStatus("error","start failed ("+r.status+")"); term.writeln("\r\n\x1b[31mstart failed: "+r.status+"\x1b[0m"); return; }
+      var j = await r.json();
+      session = j.session; sessTok = j.token;
+      document.getElementById("killBtn").disabled = false;
+      setStatus("running","running · "+ticket);
+      term.clear();
+      resize();
+      attachStream();
+    }catch(e){ setStatus("error","error"); term.writeln("\r\n\x1b[31m"+e+"\x1b[0m"); }
+  }
+
+  async function attachStream(){
+    if(streamAbort) streamAbort.abort();
+    streamAbort = new AbortController();
+    var resp = await fetch("/session/"+session+"/stream", { headers: authHeaders(sessTok), signal: streamAbort.signal });
+    if(!resp.ok){ setStatus("error","stream "+resp.status); return; }
+    var reader = resp.body.getReader(), dec = new TextDecoder(), buf = "";
+    while(true){
+      var chunk = await reader.read();
+      if(chunk.done) break;
+      buf += dec.decode(chunk.value, {stream:true});
+      var frames = buf.split("\n\n"); buf = frames.pop();
+      for(var i=0;i<frames.length;i++){
+        var ev="message", data="";
+        frames[i].split("\n").forEach(function(line){
+          if(line.indexOf("event:")===0) ev = line.slice(6).trim();
+          else if(line.indexOf("data: ")===0) data += line.slice(6);
+        });
+        if(ev==="out" && data){ term.write(Uint8Array.from(atob(data), function(c){return c.charCodeAt(0);})); }
+        else if(ev==="exit"){ setStatus("done","finished"); }
+      }
+    }
+  }
+
+  term.onData(function(d){
+    if(!session) return;
+    fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: d }).catch(function(){});
+  });
+
+  function resize(){
+    fit.fit();
+    if(!session) return;
+    fetch("/session/"+session+"/resize", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({cols:term.cols, rows:term.rows}) }).catch(function(){});
+  }
+  window.addEventListener("resize", resize);
+
+  async function kill(){
+    if(!session) return;
+    await fetch("/session/"+session+"/kill", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});
+    if(streamAbort) streamAbort.abort();
+    setStatus("","killed"); document.getElementById("killBtn").disabled = true; session=null; sessTok=null;
+  }
+
+  document.getElementById("startBtn").addEventListener("click", start);
+  document.getElementById("killBtn").addEventListener("click", kill);
+  document.getElementById("ticket").addEventListener("keydown", function(e){ if(e.key==="Enter") start(); });
+  if(PREFILL){ document.getElementById("ticket").value = PREFILL; }
+})();
+</script>
+</body>
+</html>

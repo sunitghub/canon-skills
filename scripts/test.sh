@@ -42,9 +42,12 @@ if command -v go >/dev/null 2>&1; then
   (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-check-go)
   printf '==> %s\n' "tools/sprint-headless-json-go"
   (cd "$ROOT" && GO111MODULE=off go test ./tools/sprint-headless-json-go)
+  printf '==> %s\n' "tools/cockpit-daemon"
+  (cd "$ROOT/tools/cockpit-daemon" && go test ./...)
 else
   printf '==> %s\n' "tools/sprint-check-go skipped (go absent)"
   printf '==> %s\n' "tools/sprint-headless-json-go skipped (go absent)"
+  printf '==> %s\n' "tools/cockpit-daemon skipped (go absent)"
 fi
 
 if command -v node >/dev/null 2>&1; then
