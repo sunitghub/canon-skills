@@ -117,3 +117,34 @@ For high-risk work, `sprint start` rates the change across five risk dimensions 
 Each dimension is rated HIGH, MEDIUM, or LOW. The ratings aren't advisory: **every HIGH adds required mitigation to the acceptance plan** — a rollback test for permanent operations, a handler-binding grep and server-side auth check for multiple trigger paths, a per-consumer test for cascade risk, an audit-log requirement for broad audience — and the `sprint complete` gate refuses to close while any of those items is still unchecked in `acceptance.md`. The gate checks box state, not the work behind it — the agent verifies each mitigation actually holds before checking it. Normal-tier changes record that no high-risk trigger was found and proceed with a shorter plan.
 
 **Regression carryover.** `sprint start` also scans `.tickets/` for closed tickets that touched the same files this sprint will modify, and adds one regression test per match. Past work that passed stays passing — the test obligation rides along automatically, so a later change can't silently break behavior an earlier ticket established.
+
+## Cockpit — start & drive an agent in the browser (experimental, P1)
+
+`cockpit` opens a single-window surface where you launch and drive a sprint agent
+without leaving the browser — no second terminal.
+
+```bash
+cockpit            # open the cockpit
+cockpit t-8a63     # open it with a ticket prefilled in the Start control
+```
+
+- **What it does (P1):** a background daemon (`tools/cockpit-daemon`) owns a real
+  **PTY** running `sprint start <id>`, and serves an embedded terminal (xterm.js)
+  at `/cockpit`. Click **Start sprint** (or prefill a ticket) → the agent runs
+  in-page; you type to it there. The agent keeps running if you close the tab and
+  reattaches (scrollback replayed) when you reopen; **Kill** stops it cleanly with
+  no orphaned process.
+- **Why a daemon:** the `sprint-check` board server is ephemeral and stdlib-only,
+  and Go's stdlib has no PTY/WebSocket. The daemon is an isolated Go module
+  (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board
+  server stays pure stdlib.
+- **Security:** binds **127.0.0.1 only**; every request checks loopback Host/Origin;
+  a boot token gates session start and a per-session token gates stream/input/kill;
+  ticket ids are validated `^t-[a-z0-9]{4}$` and exec'd as an argv slice (never a
+  shell); tokens travel via a `0600` state file, never argv. Transport is stdlib
+  **SSE (output) + POST (input)** — no WebSocket.
+- **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS;
+  Windows validation is pending a Windows box.
+- **Scope:** P1 is the launcher + embedded terminal + Start control. The full
+  three-pane cockpit (app-under-test preview, inline acceptance) is follow-up work
+  (P2/P3) — see `Future/Terminal-In-Board/` and ticket `t-8a63`.

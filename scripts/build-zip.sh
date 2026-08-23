@@ -95,3 +95,13 @@ if command -v go >/dev/null 2>&1; then
 else
   echo "dist: sprint-headless-json-win.exe skipped (go absent)"
 fi
+
+# ── Binary: cockpit-daemon-win.exe (Windows cockpit PTY backend) ────────────
+# Own Go module (tools/cockpit-daemon/go.mod) → build from its dir, module mode.
+if command -v go >/dev/null 2>&1; then
+  ( cd "$REPO_ROOT/tools/cockpit-daemon" && GOOS=windows GOARCH=amd64 go build \
+      -o "$REPO_ROOT/tools/cockpit-daemon-win.exe" . )
+  echo "dist: cockpit-daemon-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/cockpit-daemon-win.exe" | cut -f1))"
+else
+  echo "dist: cockpit-daemon-win.exe skipped (go absent)"
+fi
