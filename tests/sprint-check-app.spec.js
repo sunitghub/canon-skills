@@ -3019,4 +3019,39 @@ test.describe('cockpit in board (t-ddc8)', () => {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
+
+  test('toggling the last unchecked box in the cockpit flips the board\'s acceptance_unchecked readiness on reload', async ({ page }) => {
+    const id = `t-ckready-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', {
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'Filled.', ''],
+      });
+      const dir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.writeFileSync(path.join(dir, 'acceptance.md'), [
+        '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
+        '- [x] Already done', '- [ ] Toggle me to finish', '',
+        '## Test Plan', '- [x] already run', '',
+        '## QA', '- [x] Tested locally', '',
+      ].join('\n'));
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+
+      const card = page.locator(`.card[data-id="${id}"]`);
+      await expect(card.locator('.ready-indicator')).not.toHaveClass(/(?:^|\s)ready(?:\s|$)/);
+
+      await card.locator('.card-start').click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.locator('#ck-accept .doc-bullet.doc-check-open').click();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id);
+      await expect(card.locator('.ready-indicator')).toHaveClass(/(?:^|\s)ready(?:\s|$)/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
 });
