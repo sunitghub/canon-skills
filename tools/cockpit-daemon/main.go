@@ -135,6 +135,7 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	page = strings.ReplaceAll(page, "__COCKPIT_EMBED__", embed)
 	page = strings.ReplaceAll(page, "__COCKPIT_AUTOSTART__", autostart)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
 	io.WriteString(w, page)
 }
 
