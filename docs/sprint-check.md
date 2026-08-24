@@ -145,6 +145,18 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   **SSE (output) + POST (input)** — no WebSocket.
 - **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS;
   Windows validation is pending a Windows box.
-- **Scope:** P1 is the launcher + embedded terminal + Start control. The full
-  three-pane cockpit (app-under-test preview, inline acceptance) is follow-up work
-  (P2/P3) — see `Future/Terminal-In-Board/` and ticket `t-8a63`.
+- **Board-integrated cockpit mode (P3):** every card shows **▶ Start** (OPEN) or
+  **▶ Resume** (IN_PROGRESS) — click it to switch the board itself into cockpit
+  mode: the kanban lanes collapse to a left ticket rail (with an **inline
+  acceptance checklist** that toggles and writes back to `acceptance.md`) and an
+  embedded terminal takes the center. The board never owns a PTY — it
+  discovers a running `cockpit-daemon` via `daemon.json`, or launches one on
+  demand (`/api/cockpit` in both `server.py` and `main.go`), with no secret ever
+  passed via argv. **Esc / "← Board"** returns to the kanban view; only one
+  sprint may be active at a time, so Start is disabled on other cards while a
+  session is live. The rail can collapse to a 44px icon strip to maximize the
+  terminal; the app-under-test preview slot is present but collapsed (richness
+  is follow-up work, `t-b19b`).
+- **Scope:** P1 (this daemon + standalone `cockpit` launcher) and P3 (the board
+  integration above) are done. The preview pane and further visual polish are
+  follow-up work — see `Future/Terminal-In-Board/` and tickets `t-8a63`/`t-ddc8`.
