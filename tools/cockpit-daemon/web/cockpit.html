@@ -27,6 +27,16 @@
   #term-wrap{flex:1;min-height:0;background:var(--panel2);padding:8px}
   #terminal{height:100%}
   .hint{color:var(--faint);font-size:12px;padding:24px;font-family:var(--mono)}
+  /* embed=1: the board frames this page and supplies ticket context, so trim
+     the daemon page's own brand + ticket input; keep Start/Kill + status so a
+     Resume (no autostart) can still be driven from inside the frame. */
+  body.embed .brand{display:none}
+  body.embed #ticket{display:none}
+  body.embed header{padding:7px 12px}
+  /* the board's own #ck-model chip is the single model readout in cockpit
+     mode (t-ddc8) — this page's #model span is a static, never-updated
+     placeholder, so hide it in embed to avoid a second, dead "model:" chip */
+  body.embed .model{display:none}
 </style>
 </head>
 <body>
@@ -52,6 +62,8 @@
   "use strict";
   var TOKEN = "__COCKPIT_TOKEN__";
   var PREFILL = "__COCKPIT_TICKET__";
+  var EMBED = "__COCKPIT_EMBED__";
+  var AUTOSTART = "__COCKPIT_AUTOSTART__";
   var session = null, sessTok = null, streamAbort = null;
 
   var term = new Terminal({
@@ -133,6 +145,8 @@
   document.getElementById("killBtn").addEventListener("click", kill);
   document.getElementById("ticket").addEventListener("keydown", function(e){ if(e.key==="Enter") start(); });
   if(PREFILL){ document.getElementById("ticket").value = PREFILL; }
+  if(EMBED === "1"){ document.body.classList.add("embed"); }
+  if(AUTOSTART === "1" && PREFILL){ start(); }
 })();
 </script>
 </body>

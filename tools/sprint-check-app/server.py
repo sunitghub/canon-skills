@@ -641,6 +641,91 @@ SPRINT_HEADLESS = Path(__file__).resolve().parent.parent / 'sprint-headless'
 SPRINT_HEADLESS_EVAL = Path(__file__).resolve().parent.parent / 'sprint-headless-eval'
 CANON_GATE_TEMPLATE = Path(__file__).resolve().parent.parent / 'canon-gate-template.yml'
 
+# ── Cockpit daemon integration (t-ddc8) ─────────────────────────────────────
+# The board never owns a PTY (t-1262 lesson): it discovers/launches the shipped
+# cockpit-daemon (which owns the PTY) and the frontend iframes its /cockpit page.
+# The board reads only the daemon's addr from the 0600 daemon.json; the token
+# stays daemon-side. The spawn argv is fixed — no board/user input is
+# interpolated. Kept behaviorally identical to main.go's cockpit* helpers —
+# parity-tested by tests/sprint-check-api-parity.sh.
+import tempfile
+import urllib.request
+
+def _resolve_cockpit_daemon() -> str:
+    """COCKPIT_DAEMON_BIN overrides (tests point at a stub); default is the built
+    binary under tools/cockpit-daemon."""
+    override = os.environ.get('COCKPIT_DAEMON_BIN')
+    if override:
+        return override
+    name = 'cockpit-daemon.exe' if os.name == 'nt' else 'cockpit-daemon'
+    return str(Path(__file__).resolve().parent.parent / 'cockpit-daemon' / name)
+
+def _resolve_cockpit_sprint_bin() -> str:
+    p = Path(__file__).resolve().parent.parent / 'sprint'
+    return str(p) if p.exists() else ''
+
+COCKPIT_DAEMON_BIN = _resolve_cockpit_daemon()
+COCKPIT_SPRINT_BIN = _resolve_cockpit_sprint_bin()
+
+def _cockpit_state_dir() -> str:
+    return os.environ.get('COCKPIT_STATE_DIR') or os.path.join(tempfile.gettempdir(), 'canon-cockpit-board')
+
+def _cockpit_healthy(addr: str) -> bool:
+    if not addr:
+        return False
+    try:
+        with urllib.request.urlopen(f'http://{addr}/healthz', timeout=0.4) as r:
+            return r.status == 200
+    except Exception:
+        return False
+
+def _discover_cockpit_addr() -> tuple[str, bool]:
+    """Read the daemon addr (only the addr, never the token) from daemon.json
+    and report whether that daemon answers /healthz."""
+    try:
+        raw = Path(_cockpit_state_dir(), 'daemon.json').read_text(encoding='utf-8')
+        addr = str(json.loads(raw).get('addr', ''))
+    except Exception:
+        return '', False
+    return addr, _cockpit_healthy(addr)
+
+def cockpit_discover() -> dict:
+    addr, ok = _discover_cockpit_addr()
+    return {'running': ok, 'addr': addr or None}
+
+def ensure_cockpit() -> dict:
+    """Return a running daemon's addr, launching one on demand if none is
+    healthy. The spawn argv is fixed; project root + sprint bin go via env."""
+    addr, ok = _discover_cockpit_addr()
+    if ok:
+        return {'running': True, 'addr': addr, 'launched': False}
+    if not (COCKPIT_DAEMON_BIN and os.path.exists(COCKPIT_DAEMON_BIN)):
+        return {'running': False, 'addr': None, 'error': 'cockpit daemon binary not found'}
+    state_dir = _cockpit_state_dir()
+    os.makedirs(state_dir, exist_ok=True)
+    try:
+        os.remove(os.path.join(state_dir, 'daemon.json'))  # clear any stale addr
+    except FileNotFoundError:
+        pass
+    env = dict(os.environ, COCKPIT_STATE_DIR=state_dir, COCKPIT_PROJECT_ROOT=str(PROJECT_ROOT))
+    if COCKPIT_SPRINT_BIN:
+        env['COCKPIT_SPRINT_BIN'] = COCKPIT_SPRINT_BIN
+    try:
+        # start_new_session detaches: the daemon outlives the board (agent
+        # survives the browser tab, nebula's model).
+        subprocess.Popen(
+            [COCKPIT_DAEMON_BIN, '-addr', '127.0.0.1:0'], env=env,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+        )
+    except Exception as e:
+        return {'running': False, 'addr': None, 'error': str(e)}
+    for _ in range(50):
+        addr, ok = _discover_cockpit_addr()
+        if ok:
+            return {'running': True, 'addr': addr, 'launched': True}
+        time.sleep(0.1)
+    return {'running': False, 'addr': None, 'error': 'daemon did not become ready'}
+
 def write_ci_workflow() -> dict:
     """Copy the shipped canon-gate workflow template to the project's
     .github/workflows/canon-gate.yml. Fixed target path (no traversal);
@@ -797,6 +882,8 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/why':
             file_ = parse_qs(parsed.query).get('file', [''])[0]
             self.send_json(load_why(file_))
+        elif path == '/api/cockpit':
+            self.send_json(cockpit_discover())
         else:
             m = re.match(r'^/api/commit/([0-9a-f]{4,40})$', path)
             if m:
@@ -874,6 +961,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/ci-workflow':
             self.send_json(write_ci_workflow()); return
+
+        if path == '/api/cockpit':
+            self.send_json(ensure_cockpit()); return
 
         if path == '/api/tickets':
             t = create_ticket(

@@ -2851,3 +2851,148 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
     }
   });
 });
+
+test.describe('cockpit in board (t-ddc8)', () => {
+  // Stub /api/cockpit so no real daemon is ever spawned — these tests exercise
+  // the board's mode switch + rail + inline acceptance, not the PTY.
+  async function stubCockpit(page) {
+    await page.route('**/api/cockpit', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+    }));
+  }
+
+  function writeTicket(id, status, { acceptanceCriteria = null, plan = null } = {}) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), [
+      '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
+      'created: 2026-08-24T00:00:00Z', '---', '', `# Cockpit test ${id}`, '',
+    ].join('\n'));
+    if (acceptanceCriteria) {
+      fs.writeFileSync(path.join(dir, 'acceptance.md'), [
+        '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
+        ...acceptanceCriteria, '', '## Test Plan', '- [ ] a check', '', '## QA', '- [ ] Tested locally', '',
+      ].join('\n'));
+    }
+    if (plan) fs.writeFileSync(path.join(dir, 'plan.md'), plan.join('\n'));
+  }
+
+  test('Resume on an in-progress card enters cockpit mode; acceptance renders; Esc returns', async ({ page }) => {
+    const id = `t-ckres-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] First cockpit criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low | Gate model: haiku', '', '- [x] Plan approved', '', '## Approach', 'Filled.', ''],
+      });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+
+      const resumeBtn = page.locator(`.card[data-id="${id}"] .card-start`);
+      await expect(resumeBtn).toHaveText('▶ Resume');
+      await resumeBtn.click();
+
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      // Inline acceptance rail renders the Criteria checklist.
+      await expect(page.locator('#ck-accept .doc-bullet').first()).toBeVisible();
+      await expect(page.locator('#ck-accept')).toContainText('First cockpit criterion');
+      // Read-only model chip inherits from plan.md's Gate model.
+      await expect(page.locator('#ck-model')).toContainText('haiku');
+      // The embedded terminal iframe points at the (stubbed) daemon /cockpit with embed=1.
+      await expect(page.locator('#ck-iframe')).toHaveAttribute('src', /\/cockpit\?ticket=.*embed=1/);
+
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('card affordance is status-gated: Start on open, Resume on in-progress, none on closed', async ({ page }) => {
+    const stamp = Date.now();
+    const openId = `t-ckopen-${stamp}`;
+    const progId = `t-ckprog-${stamp}`;
+    const doneId = `t-ckdone-${stamp}`;
+    try {
+      writeTicket(openId, 'open');
+      writeTicket(progId, 'in_progress');
+      writeTicket(doneId, 'closed');
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(openId);
+      await expect(page.locator(`.card[data-id="${openId}"] .card-start`)).toHaveText('▶ Start');
+
+      await page.locator('#board-search').fill(progId);
+      await expect(page.locator(`.card[data-id="${progId}"] .card-start`)).toHaveText('▶ Resume');
+
+      await page.locator('#board-search').fill(doneId);
+      await expect(page.locator(`.card[data-id="${doneId}"] .card-start`)).toHaveCount(0);
+    } finally {
+      for (const id of [openId, progId, doneId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('single active: Start is disabled on an open card while another sprint is in progress', async ({ page }) => {
+    const stamp = Date.now();
+    const openId = `t-ck1open-${stamp}`;
+    const progId = `t-ck1prog-${stamp}`;
+    try {
+      writeTicket(openId, 'open');
+      writeTicket(progId, 'in_progress');
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(openId);
+      // An in-progress ticket exists (progId, plus possibly others) → open Start is disabled.
+      const startBtn = page.locator(`.card[data-id="${openId}"] .card-start`);
+      await expect(startBtn).toBeDisabled();
+      await expect(startBtn).toHaveClass(/disabled/);
+    } finally {
+      for (const id of [openId, progId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('toggling an inline acceptance criterion in the cockpit writes back to acceptance.md', async ({ page }) => {
+    const id = `t-cktog-${Date.now()}`;
+    const acc = path.join(PROJECT_ROOT, '.tickets', id, 'acceptance.md');
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Toggle me on'] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const bullet = page.locator('#ck-accept .doc-bullet[data-check-idx]').first();
+      await expect(bullet).toBeVisible();
+      await bullet.click();
+
+      // The write lands in acceptance.md — the first criterion flips to checked.
+      await expect.poll(() => fs.readFileSync(acc, 'utf8')).toMatch(/- \[x\] Toggle me on/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('focus toggle collapses the ticket rail to maximize the terminal', async ({ page }) => {
+    const id = `t-ckfocus-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Something'] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await expect(page.locator('#cockpit')).not.toHaveClass(/rail-collapsed/);
+      await page.locator('#ck-rail-toggle').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/rail-collapsed/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+});
