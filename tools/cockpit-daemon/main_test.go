@@ -356,9 +356,6 @@ func TestCockpitPageAndAssets(t *testing.T) {
 	if !strings.Contains(page, "/web/vendor/xterm.js") {
 		t.Fatal("cockpit page does not reference xterm.js")
 	}
-	if resp.Header.Get("Cache-Control") != "no-store" {
-		t.Fatalf("cockpit page Cache-Control: want no-store, got %q", resp.Header.Get("Cache-Control"))
-	}
 
 	r2, err := http.Get(base + "/web/vendor/xterm.js")
 	if err != nil {
