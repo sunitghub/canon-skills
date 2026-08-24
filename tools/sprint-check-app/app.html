@@ -1402,18 +1402,6 @@
     .ck-accept { font-size: 12px; }
     .ck-accept .doc-bullet { cursor: pointer; }
     .ck-accept .doc-bullet[data-check-idx] { cursor: pointer; }
-    .ck-add-crit {
-      display: flex; gap: 6px; margin-top: 10px;
-    }
-    .ck-add-crit input {
-      flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-      border-radius: 6px; padding: 5px 8px; font-size: 12px;
-    }
-    .ck-add-crit input:focus { outline: none; border-color: var(--accent); }
-    .ck-add-crit button {
-      background: var(--accent); color: #fff; border: 0; border-radius: 6px;
-      padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
-    }
     .ck-add-hint { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
     .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c); }
     .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
@@ -1612,10 +1600,6 @@
           </div>
           <div class="ck-section-label">Acceptance</div>
           <div class="ck-accept" id="ck-accept"></div>
-          <div class="ck-add-crit">
-            <input type="text" id="ck-crit-input" placeholder="Add a criterion...">
-            <button type="button" id="ck-crit-add">Add</button>
-          </div>
         </div>
         <div class="ck-rail-icons">
           <span class="ck-rail-icon">☰</span>
@@ -4216,7 +4200,7 @@ async function renderCockpitAcceptance(t) {
   const box = document.getElementById('ck-accept');
   const docFile = ckAcceptanceDoc(t);
   cockpitState.acceptanceDoc = docFile;
-  if (!docFile) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet — add the first criterion below.</div>'; return; }
+  if (!docFile) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; return; }
   let content = '';
   try {
     const r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
@@ -4256,47 +4240,6 @@ async function mountCockpitTerminal(t) {
   msg.textContent = '';
 }
 
-// Append `- [ ] <text>` at the end of the ## Criteria section.
-function appendCriterion(content, text) {
-  const line = `- [ ] ${text}`;
-  if (!content.trim()) return `# Acceptance\n\n## Criteria\n${line}\n\n## Test Plan\n\n## QA\n`;
-  const lines = content.split('\n');
-  let start = -1;
-  for (let i = 0; i < lines.length; i++) if (/^##\s+Criteria\s*$/.test(lines[i])) { start = i; break; }
-  if (start === -1) return content.replace(/\s*$/, '') + `\n${line}\n`;
-  let end = lines.length;
-  for (let i = start + 1; i < lines.length; i++) if (/^##\s+/.test(lines[i])) { end = i; break; }
-  let insertAt = start + 1;
-  for (let i = start + 1; i < end; i++) if (lines[i].trim() !== '') insertAt = i + 1;
-  lines.splice(insertAt, 0, line);
-  return lines.join('\n');
-}
-
-async function ckAddCriterion() {
-  const input = document.getElementById('ck-crit-input');
-  const text = input.value.trim();
-  const t = findTicketById(cockpitState.id);
-  if (!text || !t || t.status === 'closed' || t.status === 'cancelled') return;
-  let docFile = cockpitState.acceptanceDoc || docFileFor(t, 'acceptance');
-  let content = '';
-  try {
-    const r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
-    if (r.ok) content = (await r.json()).content || '';
-  } catch {}
-  const updated = appendCriterion(content, text);
-  try {
-    await fetch(`/api/doc/${encodeURIComponent(docFile)}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: updated }),
-    });
-  } catch {}
-  input.value = '';
-  try { const tr = await fetch('/api/tickets'); if (tr.ok) state.tickets = await tr.json(); } catch {}
-  const nt = findTicketById(cockpitState.id) || t;
-  cockpitState.acceptanceDoc = ckAcceptanceDoc(nt) || docFile;
-  await renderCockpitAcceptance(nt);
-}
-
 // Inline acceptance toggle in the cockpit rail (reuses toggleCheckbox → /api/doc).
 document.getElementById('ck-accept').addEventListener('click', async e => {
   const bullet = e.target.closest('.doc-bullet[data-check-idx]');
@@ -4322,8 +4265,6 @@ document.getElementById('ck-preview-label').addEventListener('click', () => {
   // Preview pane richness is t-b19b; the collapsed slot is a no-op placeholder.
   showToast('App preview lands in t-b19b', 'warn');
 });
-document.getElementById('ck-crit-add').addEventListener('click', ckAddCriterion);
-document.getElementById('ck-crit-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ckAddCriterion(); } });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open')) closeCockpit();
 });
