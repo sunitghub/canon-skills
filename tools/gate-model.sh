@@ -12,7 +12,11 @@
 # from the Sign-off section's Tier line, or nothing. Scoped to that one section
 # and that one line: a `Tier:`-looking line in a later section is ignored.
 gate_model_parse() {
-  awk '
+  # LC_ALL=C pins [[:space:]]/tolower to ASCII. Without it the host locale decides:
+  # macOS awk strips U+00A0 as whitespace while a C-locale awk does not, so the same
+  # plan.md would resolve differently per machine — and diverge from the Go port,
+  # which strips ASCII whitespace only.
+  LC_ALL=C awk '
     /^##[[:space:]]+Sign-off[[:space:]]*$/ { in_so=1; next }
     in_so && /^##[[:space:]]/ { exit }
     in_so && /^[[:space:]]*[Tt]ier[[:space:]]*:/ {
@@ -28,13 +32,17 @@ gate_model_parse() {
 }
 
 # gate_model_resolve <plan-file> — prints the model to pass as `--model`, or
-# nothing when no override applies. `session` and an absent field both mean "no
-# override" → the CLI's own default. Exits 2 on a value that is present but
-# invalid, so a typo fails loudly instead of silently running on the default.
+# nothing when no override applies. An absent field, `session`, and `default` all
+# mean "no override" → the CLI's own default. `default` is included because it is
+# the literal label of the board's own dropdown (app.html's MODEL_TIER_OPTIONS),
+# so a hand-written `Gate model: default` is a plausible typo that would
+# otherwise be forwarded as an invalid model id. Exits 2 on a value that is
+# present but invalid, so a real typo fails loudly rather than running silently
+# on the default.
 gate_model_resolve() {
   local plan="$1" v
   v="$(gate_model_parse "$plan")"
-  [[ -z "$v" || "$v" == "session" ]] && return 0
+  [[ -z "$v" || "$v" == "session" || "$v" == "default" ]] && return 0
   # Must START with a letter or digit, not just consist of the allowed charset.
   # `-` is legal inside a model id (claude-sonnet-5) but a LEADING one makes the
   # value a flag: `--model --dangerously-skip-permissions` hands the CLI a second

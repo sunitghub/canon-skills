@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared fixture set for the two real `Gate model:` resolvers that produce a --model argv for claude: tools/gate-model.sh's gate_model_resolve (bash/awk, used by sprint-headless) and cockpit-daemon's gateModel (Go). Both must agree on `expect` for every case. Cross-runtime port, locked by parity per standards/efficiency.md. `parse` is gate_model_parse's raw output; `expect` is the resolved value (\"\" = no --model flag). NOTE: app.html's parseGateModel is a THIRD reader, display-only for the board's #ck-model chip, and is deliberately not pinned here — it differs on label case (see the case-variant fixture below).",
+  "_comment": "Shared fixture set for the two real `Gate model:` resolvers that produce a --model argv for claude: tools/gate-model.sh's gate_model_resolve (bash/awk, used by sprint-headless) and cockpit-daemon's gateModel (Go). Both must agree on `expect` for every case. Cross-runtime port, locked by parity per standards/efficiency.md. `parse` is gate_model_parse's raw output; `expect` is the resolved value (\"\" = no --model flag). NOTE: app.html's parseGateModel is a THIRD reader, display-only for the board's #ck-model chip, and is deliberately not pinned here. It diverges more widely than label case: it also requires a literal `|` before the label, matches only an unindented capital-T `Tier:`, does NOT stop at the next `|`, and applies no charset guard — so the board's chip can display a different value than the daemon passes to --model. See HANDOFF.md ## Discoveries.",
   "cases": [
     {
       "name": "value present",
@@ -113,6 +113,18 @@
       "name": "leading dot is rejected",
       "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: ._profile\n",
       "parse": "._profile",
+      "expect": ""
+    },
+    {
+      "name": "`default` is a no-override sentinel, like `session`",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: default\n",
+      "parse": "default",
+      "expect": ""
+    },
+    {
+      "name": "non-ASCII whitespace inside the value is rejected by both ports",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: hai ku\n",
+      "parse": "hai ku",
       "expect": ""
     }
   ]

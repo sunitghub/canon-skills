@@ -8,8 +8,11 @@
 // per-session endpoints require that session's own token. Ticket ids are
 // validated against ^t-[a-z0-9]{4}$ before they reach exec, and are never
 // interpolated into a shell — the command is exec'd as an argv slice. No token
-// is ever passed via argv or the child's env; the needs-you hook reads its
-// credential from a 0600 curl -K file under the daemon's own state dir.
+// is ever passed via argv. The needs-you hook reads a STATUS-ONLY token from a
+// 0600 curl -K file under the daemon's own state dir — deliberately not the
+// session token, which would also authorize /input (see handleSession). The
+// child inherits the daemon's environment verbatim, so an operator who exports
+// COCKPIT_TOKEN does place the boot token there; no in-repo launcher does.
 //
 // Permissions are INHERITED, never overridden: no --permission-mode, no bypass
 // flag, and nothing is ever written into the target project — the session's hook
@@ -63,12 +66,15 @@ type server struct {
 }
 
 type session struct {
-	sid     string
-	ticket  string
-	token   string
-	pty     pty.Pty
-	cmd     *pty.Cmd
-	hookDir string // daemon-owned ephemeral --settings dir; removed when the session ends
+	sid    string
+	ticket string
+	token  string
+	// statusToken authorizes ONLY POST /session/<id>/status. Separate from token
+	// because the needs-you hook's credential is reachable by the spawned agent.
+	statusToken string
+	pty         pty.Pty
+	cmd         *pty.Cmd
+	hookDir     string // daemon-owned ephemeral --settings dir; removed when the session ends
 
 	mu            sync.Mutex
 	buf           []byte
@@ -259,7 +265,7 @@ func (s *server) spawn(ticket string) (*session, error) {
 	if err != nil {
 		return nil, err
 	}
-	sid, tok := randToken()[:16], randToken()
+	sid, tok, statusTok := randToken()[:16], randToken(), randToken()
 	var args []string
 	if m := s.gateModel(ticket); m != "" {
 		args = append(args, "--model", m)
@@ -268,7 +274,7 @@ func (s *server) spawn(ticket string) (*session, error) {
 	// settings (verified: the project's own permissions.ask rules still fire), so
 	// the daemon never writes into the target project. Losing the hook costs the
 	// status signal, never the spawn.
-	hookDir, err := s.writeHookSettings(sid, tok)
+	hookDir, err := s.writeHookSettings(sid, statusTok)
 	switch {
 	case err == nil:
 		args = append(args, "--settings", filepath.Join(hookDir, "settings.json"))
@@ -285,7 +291,7 @@ func (s *server) spawn(ticket string) (*session, error) {
 		return nil, err
 	}
 	se := &session{
-		sid: sid, ticket: ticket, token: tok, hookDir: hookDir,
+		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, hookDir: hookDir,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 	}
@@ -308,7 +314,16 @@ func (s *server) spawn(ticket string) (*session, error) {
 	return se, nil
 }
 
-// handleSession routes /session/{sid}/{stream|input|resize|kill}.
+// handleSession routes /session/{sid}/{stream|input|resize|kill|status}.
+//
+// Two capabilities, deliberately not one. The browser holds the session token,
+// which authorizes stream/input/resize/kill. The needs-you hook holds a
+// status-only token, because the hook runs as a child of the spawned agent and
+// therefore anything the hook can read, the agent can read too (same UID — 0600
+// keeps out other users, not this process). Issuing the hook the session token
+// would hand the agent /input, i.e. the ability to write to its own PTY master
+// and type the answer to its own permission prompt — which would quietly defeat
+// the inherited-permissions guarantee this daemon is built on.
 func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/session/")
 	parts := strings.SplitN(rest, "/", 2)
@@ -324,6 +339,14 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such session", http.StatusNotFound)
 		return
 	}
+	if action == "status" {
+		if !secureEqual(bearer(r), se.statusToken) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		s.handleStatus(w, r, se)
+		return
+	}
 	if !secureEqual(bearer(r), se.token) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -337,8 +360,6 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleResize(w, r, se)
 	case "kill":
 		s.handleKill(w, r, se)
-	case "status":
-		s.handleStatus(w, r, se)
 	default:
 		http.NotFound(w, r)
 	}
@@ -536,10 +557,12 @@ var errNoDaemonAddr = errors.New("daemon address unknown")
 // (verified live against a real permissions.ask prompt) — which posts
 // "needs-you" back to this daemon.
 //
-// The session token travels in curl's -K config file, not on curl's argv, so it
-// never appears in `ps` output; both files are 0600 under the daemon's own state
-// dir, never inside the user's project. Returns the dir to clean up on exit.
-func (s *server) writeHookSettings(sid, token string) (string, error) {
+// The credential is a STATUS-ONLY token (never the session token — see
+// handleSession), and it travels in curl's -K config file rather than on curl's
+// argv, so it never appears in `ps` output. Both files are 0600 under the
+// daemon's own state dir, never inside the user's project. Returns the dir to
+// clean up on exit.
+func (s *server) writeHookSettings(sid, statusToken string) (string, error) {
 	if s.cfg.addr == "" {
 		return "", errNoDaemonAddr
 	}
@@ -547,7 +570,12 @@ func (s *server) writeHookSettings(sid, token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	conf := fmt.Sprintf("url = \"http://%s/session/%s/status\"\nheader = \"Authorization: Bearer %s\"\nrequest = \"POST\"\ndata = \"needs-you\"\nsilent\nmax-time = 3\n", s.cfg.addr, sid, token)
+	// noproxy is load-bearing, not hygiene: curl honours http_proxy/ALL_PROXY from
+	// the environment with no automatic localhost bypass, the hook inherits the
+	// daemon's env, and the hook command ends `|| true` — so on any machine with a
+	// proxy set the needs-you ping would be routed away and fail invisibly,
+	// silently disabling the one signal this whole feature exists to provide.
+	conf := fmt.Sprintf("url = \"http://%s/session/%s/status\"\nheader = \"Authorization: Bearer %s\"\nrequest = \"POST\"\ndata = \"needs-you\"\nnoproxy = \"*\"\nsilent\nmax-time = 3\n", s.cfg.addr, sid, statusToken)
 	confPath := filepath.Join(dir, "curl.conf")
 	if err := os.WriteFile(confPath, []byte(conf), 0o600); err != nil {
 		os.RemoveAll(dir)
@@ -574,6 +602,53 @@ func (s *server) writeHookSettings(sid, token string) (string, error) {
 		return "", err
 	}
 	return dir, nil
+}
+
+// ticketsDir resolves `.tickets` by walking up from projectRoot, mirroring
+// tools/ticket-root.sh's tickets_dir(). `tools/cockpit` sets
+// COCKPIT_PROJECT_ROOT to $PWD, so launching `cockpit t-xxxx` from a
+// subdirectory would otherwise make every Gate model: override a silent no-op —
+// indistinguishable from "no plan.md yet", since both are just a read error.
+func (s *server) ticketsDir() string {
+	dir := s.cfg.projectRoot
+	for dir != "" && dir != "/" {
+		for _, marker := range []string{".tickets", ".git"} {
+			if fi, err := os.Stat(filepath.Join(dir, marker)); err == nil && fi.IsDir() {
+				return filepath.Join(dir, ".tickets")
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return filepath.Join(s.cfg.projectRoot, ".tickets")
+}
+
+// sweepStaleHookDirs removes leftover per-session hook dirs at boot. cleanup()
+// handles the graceful paths (kill, natural exit), but a SIGKILLed or crashed
+// daemon leaves them behind, each holding a curl.conf. Age-gated rather than
+// unconditional so a concurrently running daemon sharing this state dir cannot
+// have its live sessions swept out from under it. A stale token authorizes
+// nothing — it names a session that died with its daemon — so this is disk
+// hygiene, not a secret-expiry mechanism.
+func (s *server) sweepStaleHookDirs(maxAge time.Duration) {
+	dir := s.hookStateDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), "session-") {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < maxAge {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
+	}
 }
 
 // hookStateDir lives under the same state dir as daemon.json, so
@@ -637,7 +712,10 @@ func (se *session) setStatus(status string) {
 // the same job that script does for headless CI: turn a plan.md's `Gate model:`
 // into a `--model` argv for `claude`. It is deliberately aligned to that awk
 // program rather than to the board's own display-only reader
-// (app.html's parseGateModel), which differs on label case. Two ports of one
+// (app.html's parseGateModel), which diverges more widely than label case: it
+// also requires a literal `|` before the label, matches only an unindented
+// capital-T `Tier:`, does not stop at the next `|`, and applies no charset guard
+// — so the board's chip can display a value the daemon never passes. Two ports of one
 // rule across runtimes that share no code is the cross-runtime exception in
 // standards/efficiency.md; tests/gate-model-parity.sh pins both to one fixture
 // set, so changing one without the other fails the suite.
@@ -685,7 +763,18 @@ func parseGateModel(content string) string {
 	if i := strings.Index(v, "|"); i >= 0 {
 		v = v[:i]
 	}
-	return strings.ToLower(strings.Join(strings.Fields(v), ""))
+	// ASCII-only, matching awk's C-locale [[:space:]] and tolower: strings.Fields
+	// and strings.ToLower are Unicode-aware, so a NBSP inside the value would be
+	// stripped here but rejected by the bash port — the two must not disagree.
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r == ' ' || r == '\t' || r == '\r' || r == '\n' || r == '\v' || r == '\f':
+			return -1
+		case r >= 'A' && r <= 'Z':
+			return r + ('a' - 'A')
+		}
+		return r
+	}, v)
 }
 
 // gateModel returns the model to pass as `--model` for this ticket, or "" when
@@ -697,13 +786,16 @@ func parseGateModel(content string) string {
 // default model and saying so. ticket has already passed ticketRe, so it cannot
 // traverse out of .tickets/.
 func (s *server) gateModel(ticket string) string {
-	plan := filepath.Join(s.cfg.projectRoot, ".tickets", ticket, "plan.md")
+	plan := filepath.Join(s.ticketsDir(), ticket, "plan.md")
 	b, err := os.ReadFile(plan)
 	if err != nil {
 		return ""
 	}
 	v := parseGateModel(string(b))
-	if v == "" || v == "session" {
+	// Absent, `session`, and `default` all mean "no override" — `default` is the
+	// board dropdown's own label, so a hand-written one would otherwise be
+	// forwarded as an invalid model id.
+	if v == "" || v == "session" || v == "default" {
 		return ""
 	}
 	if !modelValueRe.MatchString(v) {
@@ -751,6 +843,7 @@ func main() {
 	// The requested addr may carry port 0; the hook's callback URL needs the real
 	// one the listener bound.
 	s.cfg.addr = ln.Addr().String()
+	s.sweepStaleHookDirs(24 * time.Hour)
 	if err := writeStateFile(s.cfg.stateDir, ln.Addr().String(), cfg.token); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: state file:", err)
 	}
