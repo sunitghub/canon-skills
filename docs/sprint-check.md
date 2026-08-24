@@ -142,9 +142,11 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   `--permission-mode`, no bypass flag. Whatever that project is already
   configured to auto-approve, it auto-approves here too. If the ticket's
   `plan.md` carries a `Gate model:` value, the daemon passes it as `--model`;
-  a malformed value is ignored rather than forwarded (same resolution as
-  `sprint-headless`, shared via `tools/gate-model.sh` and pinned across the two
-  runtimes by `tests/gate-model-parity.sh`).
+  the *parse* is shared with `sprint-headless` (`tools/gate-model.sh`, pinned
+  across the two runtimes by `tests/gate-model-parity.sh`), but the disposition on
+  a malformed value differs on purpose: the daemon warns on stderr and starts on
+  the default model, because a human is sitting in front of the terminal, whereas
+  headless CI hard-fails the run. `session` and `default` both mean "no override".
 - **"Needs you" status.** Because the agent inherits the project's permissions,
   it can end up blocked on a prompt while you're looking at another tab. The
   status dot turns red and pulses (**needs you**) as soon as that happens, and a

@@ -51,12 +51,27 @@ func fakeSprint(t *testing.T) (bin, argvFile, pidFile string) {
 	return
 }
 
+// newTestServer leaves cfg.addr empty on purpose: with no callback URL the hook
+// is skipped, so argv stays exactly the joined prompt and the argv assertions
+// don't have to carry a temp-dir path. Tests that need the hook use
+// newTestServerWithAddr.
 func newTestServer(t *testing.T, bin string) (*httptest.Server, string) {
 	t.Helper()
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	return ts, ts.URL
+}
+
+// newTestServerWithAddr sets a callback addr (so the needs-you hook is written)
+// and returns the *server, for tests that inspect per-session state such as the
+// status-only token or the hook dir.
+func newTestServerWithAddr(t *testing.T, bin string) (*httptest.Server, string, *server) {
+	t.Helper()
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	return ts, ts.URL, s
 }
 
 func startSession(t *testing.T, base, ticket, token string) *http.Response {
@@ -621,11 +636,23 @@ func TestConstantTimeAuthEdgeCases(t *testing.T) {
 // every other per-session endpoint.
 func TestNeedsYouStatus(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
-	_, base := newTestServer(t, bin)
+	_, base, s := newTestServerWithAddr(t, bin)
 	resp := startSession(t, base, "t-ab12", bootTok)
 	var out struct{ Session, Token string }
 	json.NewDecoder(resp.Body).Decode(&out)
 	resp.Body.Close()
+
+	// The hook holds a status-only token, not the session token.
+	s.mu.Lock()
+	se := s.sessions[out.Session]
+	s.mu.Unlock()
+	if se == nil {
+		t.Fatal("session not registered")
+	}
+	statusTok := se.statusToken
+	if statusTok == "" || statusTok == out.Token {
+		t.Fatalf("status token must exist and differ from the session token (got %q vs %q)", statusTok, out.Token)
+	}
 
 	statusURL := base + "/session/" + out.Session + "/status"
 	post := func(tok, body string) int {
@@ -645,11 +672,30 @@ func TestNeedsYouStatus(t *testing.T) {
 	if got := post("", "needs-you"); got != http.StatusUnauthorized {
 		t.Fatalf("no token: want 401, got %d", got)
 	}
-	if got := post(strings.Repeat("z", len(out.Token)), "needs-you"); got != http.StatusUnauthorized {
+	if got := post(strings.Repeat("z", len(statusTok)), "needs-you"); got != http.StatusUnauthorized {
 		t.Fatalf("wrong token: want 401, got %d", got)
 	}
+	// Capability separation, both directions. The session token must not be able
+	// to write status, and (the one that matters) the status token must not reach
+	// /input — the endpoint that writes to the PTY master, which would let the
+	// spawned agent answer its own permission prompt.
+	if got := post(out.Token, "needs-you"); got != http.StatusUnauthorized {
+		t.Fatalf("session token on /status: want 401, got %d", got)
+	}
+	for _, action := range []string{"input", "kill", "resize"} {
+		req, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/"+action, strings.NewReader("1\n"))
+		req.Header.Set("Authorization", "Bearer "+statusTok)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		if r.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("status token on /%s: want 401, got %d", action, r.StatusCode)
+		}
+	}
 	for _, bad := range []string{"", "done", "NEEDS-YOU", "needs-you\x00extra", "running; rm -rf /"} {
-		if got := post(out.Token, bad); got != http.StatusBadRequest {
+		if got := post(statusTok, bad); got != http.StatusBadRequest {
 			t.Fatalf("status %q: want 400, got %d", bad, got)
 		}
 	}
@@ -659,7 +705,7 @@ func TestNeedsYouStatus(t *testing.T) {
 	buf := streamCollectFrames(t, ctx, base, out.Session, out.Token)
 	waitFor(t, buf, "out=READY", 3*time.Second)
 
-	if got := post(out.Token, "needs-you"); got != http.StatusNoContent {
+	if got := post(statusTok, "needs-you"); got != http.StatusNoContent {
 		t.Fatalf("needs-you: want 204, got %d", got)
 	}
 	waitFor(t, buf, "status=needs-you", 3*time.Second)
@@ -738,7 +784,7 @@ func TestHookSettingsFile(t *testing.T) {
 	if strings.Contains(cmd, "sess-token-abc") {
 		t.Errorf("session token leaked into the hook command string: %q", cmd)
 	}
-	if string(raw) != "" && strings.Contains(string(raw), "sess-token-abc") {
+	if strings.Contains(string(raw), "sess-token-abc") {
 		t.Errorf("session token leaked into settings.json: %s", raw)
 	}
 
@@ -807,6 +853,61 @@ func TestSpawnLeavesProjectUntouched(t *testing.T) {
 	}
 	if strings.Contains(argv, root) {
 		t.Fatalf("--settings points inside the project: %q", argv)
+	}
+}
+
+// TestHookDirLifecycle pins the two halves of hook-dir hygiene: kill removes the
+// live session's dir, and the boot sweep clears crash debris while leaving a
+// concurrent daemon's fresh dirs alone. Without these, deleting both cleanup()
+// call sites left the whole suite green.
+func TestHookDirLifecycle(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	s.mu.Lock()
+	se := s.sessions[out.Session]
+	s.mu.Unlock()
+	if se == nil || se.hookDir == "" {
+		t.Fatal("expected a hook dir for a session started with a known addr")
+	}
+	if _, err := os.Stat(se.hookDir); err != nil {
+		t.Fatalf("hook dir missing while the session is live: %v", err)
+	}
+
+	killReq, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/kill", nil)
+	killReq.Header.Set("Authorization", "Bearer "+out.Token)
+	kr, err := http.DefaultClient.Do(killReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kr.Body.Close()
+	if _, err := os.Stat(se.hookDir); !os.IsNotExist(err) {
+		t.Fatalf("hook dir survived kill: %v", err)
+	}
+
+	// Boot sweep: an old dir goes, a fresh one stays.
+	hooks := s.hookStateDir()
+	old := filepath.Join(hooks, "session-old")
+	fresh := filepath.Join(hooks, "session-fresh")
+	for _, d := range []string{old, fresh} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stale := time.Now().Add(-48 * time.Hour)
+	if err := os.Chtimes(old, stale, stale); err != nil {
+		t.Fatal(err)
+	}
+	s.sweepStaleHookDirs(24 * time.Hour)
+	if _, err := os.Stat(old); !os.IsNotExist(err) {
+		t.Errorf("stale hook dir survived the sweep: %v", err)
+	}
+	if _, err := os.Stat(fresh); err != nil {
+		t.Errorf("sweep removed a fresh hook dir (would clobber a live sibling daemon): %v", err)
 	}
 }
 
