@@ -3132,6 +3132,30 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('opening the cockpit fetches acceptance.md once, not twice, for Acceptance + Test Plan (t-96a8)', async ({ page }) => {
+    const id = `t-ckfetch-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      const docFile = `${id}/acceptance.md`;
+      let fetchCount = 0;
+      await page.route(`**/api/doc/${encodeURIComponent(docFile)}`, route => {
+        fetchCount++;
+        return route.continue();
+      });
+
+      await page.evaluate(id => window.openCockpit(id), id);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      expect(fetchCount).toBe(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('Acceptance and Test Plan accordion sections start collapsed and toggle independently (t-96a8)', async ({ page }) => {
     const id = `t-ckacc-${Date.now()}`;
     try {
