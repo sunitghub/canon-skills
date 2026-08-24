@@ -1441,7 +1441,7 @@
     .ck-accordion-header:hover .ck-accordion-chevron { color: var(--accent); }
     .ck-accordion-section.collapsed .ck-accordion-chevron { transform: rotate(-90deg); }
     .ck-accordion-section.collapsed .ck-accordion-body { display: none; }
-    .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c); box-shadow: inset 0 1px 0 rgba(255,255,255,.04); }
+    .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c); }
     .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
     .ck-term-msg {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -4237,8 +4237,7 @@ async function openCockpit(id) {
   document.getElementById('cockpit').classList.remove('rail-collapsed');
   document.getElementById('cockpit-overlay').classList.add('open');
   renderCockpitModel(t);
-  await renderCockpitAcceptance(t);
-  await renderCockpitTestPlan(t);
+  await renderCockpitDocs(t);
   await mountCockpitTerminal(t);
   // Poll while open — a running agent edits acceptance.md as it works, and
   // the rail should reflect that without the human having to close/reopen.
@@ -4246,8 +4245,7 @@ async function openCockpit(id) {
   cockpitPollTimer = setInterval(() => {
     const ct = findTicketById(cockpitState.id);
     if (!ct) return;
-    renderCockpitAcceptance(ct);
-    renderCockpitTestPlan(ct);
+    renderCockpitDocs(ct);
   }, 5000);
 }
 
@@ -4279,32 +4277,40 @@ function ckAcceptanceDoc(t) {
   return acc ? acc.file : null;
 }
 
-// Renders the acceptance.md ## Criteria section as a view-only checklist
-// (t-96a8 — no toggle, no write-back; see the cockpitState comment above).
-async function renderCockpitAcceptance(t) {
-  const box = document.getElementById('ck-accept');
+// Fetches acceptance.md's raw content once — shared by both render calls
+// below so a poll tick (or cockpit open) issues one fetch, not two, against
+// the same doc. Returns null if the ticket has no acceptance.md at all.
+async function fetchAcceptanceContent(t) {
   const docFile = ckAcceptanceDoc(t);
-  if (!docFile) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; return; }
-  let content = '';
+  if (!docFile) return null;
   try {
     const r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
-    if (r.ok) content = (await r.json()).content || '';
+    if (r.ok) return (await r.json()).content || '';
   } catch {}
+  return '';
+}
+
+// Renders both Acceptance and Test Plan from one shared fetch (t-96a8 —
+// view-only, no toggle, no write-back; see the cockpitState comment above).
+async function renderCockpitDocs(t) {
+  const content = await fetchAcceptanceContent(t);
+  renderCockpitAcceptance(content, t);
+  renderCockpitTestPlan(content, t);
+}
+
+// Renders the acceptance.md ## Criteria section as a view-only checklist.
+function renderCockpitAcceptance(content, t) {
+  const box = document.getElementById('ck-accept');
+  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; return; }
   const criteria = sectionContent(content, 'Criteria') || content;
   box.innerHTML = md(criteria, t.id);
 }
 
 // Renders the acceptance.md ## Test Plan section as a view-only checklist,
 // same as renderCockpitAcceptance above.
-async function renderCockpitTestPlan(t) {
+function renderCockpitTestPlan(content, t) {
   const box = document.getElementById('ck-testplan');
-  const docFile = ckAcceptanceDoc(t);
-  if (!docFile) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; return; }
-  let content = '';
-  try {
-    const r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
-    if (r.ok) content = (await r.json()).content || '';
-  } catch {}
+  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; return; }
   const testPlan = sectionContent(content, 'Test Plan');
   if (!testPlan) { box.innerHTML = '<div class="ck-add-hint">No Test Plan section yet for this ticket.</div>'; return; }
   box.innerHTML = md(testPlan, t.id);
