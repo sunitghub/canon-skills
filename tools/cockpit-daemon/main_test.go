@@ -792,7 +792,10 @@ func TestHookSettingsFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"sess-token-abc", "/session/sid123/status", "127.0.0.1:8455"} {
+	// noproxy is asserted because its absence is silent: curl would route the ping
+	// through a proxy and the hook's `|| true` would swallow the failure, disabling
+	// needs-you with the whole suite still green.
+	for _, want := range []string{"sess-token-abc", "/session/sid123/status", "127.0.0.1:8455", "noproxy = \"*\""} {
 		if !strings.Contains(string(conf), want) {
 			t.Errorf("curl.conf missing %q: %s", want, conf)
 		}
