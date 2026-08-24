@@ -671,8 +671,9 @@ func shellQuote(s string) string {
 
 var validStatuses = map[string]bool{"running": true, "needs-you": true}
 
-// handleStatus receives the hook's ping. Session-token gated like every other
-// per-session endpoint.
+// handleStatus receives the hook's ping. Gated by the session's STATUS-ONLY
+// token (see handleSession) — deliberately not the session token, which the
+// spawned agent could otherwise use to write to its own PTY.
 func (s *server) handleStatus(w http.ResponseWriter, r *http.Request, se *session) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
