@@ -1,14 +1,20 @@
 // cockpit-daemon — a loopback-only, PTY-owning backend for the sprint-check
-// cockpit. It launches `sprint start <id>` in a real pseudo-terminal so an
-// interactive agent (claude/codex) behaves as if on a TTY, and bridges that
-// PTY to the browser over stdlib SSE (output) + POST (input). No WebSocket.
+// cockpit. It launches an interactive `claude` session on the ticket in a real
+// pseudo-terminal, so the agent behaves as if on a TTY, and bridges that PTY to
+// the browser over stdlib SSE (output) + POST (input). No WebSocket.
 //
 // Security: binds loopback only; every endpoint (except /healthz) checks Host
 // and Origin are loopback; /session/start requires the daemon boot token;
 // per-session endpoints require that session's own token. Ticket ids are
 // validated against ^t-[a-z0-9]{4}$ before they reach exec, and are never
 // interpolated into a shell — the command is exec'd as an argv slice. No token
-// is ever passed via argv.
+// is ever passed via argv or the child's env; the needs-you hook reads its
+// credential from a 0600 curl -K file under the daemon's own state dir.
+//
+// Permissions are INHERITED, never overridden: no --permission-mode, no bypass
+// flag, and nothing is ever written into the target project — the session's hook
+// config rides in on --settings, which merges with (does not replace) whatever
+// that project already configures.
 package main
 
 import (
@@ -43,10 +49,11 @@ var ticketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 type config struct {
 	addr           string        // loopback bind address
 	token          string        // daemon boot token (gates /session/start)
-	sprintBin      string        // binary to exec (default "sprint")
+	sprintBin      string        // binary to exec (default "claude")
 	projectRoot    string        // working dir for the spawned command
 	scrollback     int           // bytes of replayable output per session
 	sessionReapTTL time.Duration // grace period after natural exit before a session entry is reaped
+	stateDir       string        // daemon-owned dir for daemon.json + per-session hook settings
 }
 
 type server struct {
@@ -56,16 +63,18 @@ type server struct {
 }
 
 type session struct {
-	sid    string
-	ticket string
-	token  string
-	pty    pty.Pty
-	cmd    *pty.Cmd
+	sid     string
+	ticket  string
+	token   string
+	pty     pty.Pty
+	cmd     *pty.Cmd
+	hookDir string // daemon-owned ephemeral --settings dir; removed when the session ends
 
 	mu            sync.Mutex
 	buf           []byte
 	max           int
-	subs          map[chan []byte]struct{}
+	subs          map[chan frame]struct{}
+	status        string // "running" | "needs-you"
 	done          chan struct{}
 	doneOnce      sync.Once
 	exited        bool
@@ -73,15 +82,27 @@ type session struct {
 	onNaturalExit func() // set by spawn(); schedules the reap-after-TTL cleanup
 }
 
+// frame is one SSE event bound for the browser. Terminal output and status
+// changes share the per-subscriber channel so they stay ordered relative to each
+// other — a "needs-you" that arrived before the prompt was drawn would be
+// confusing.
+type frame struct {
+	event string
+	data  []byte
+}
+
 func newServer(cfg config) *server {
 	if cfg.sprintBin == "" {
-		cfg.sprintBin = "sprint"
+		cfg.sprintBin = "claude"
 	}
 	if cfg.scrollback <= 0 {
 		cfg.scrollback = 256 * 1024
 	}
 	if cfg.sessionReapTTL <= 0 {
 		cfg.sessionReapTTL = 15 * time.Minute
+	}
+	if cfg.stateDir == "" {
+		cfg.stateDir = envOr("COCKPIT_STATE_DIR", defaultStateDir())
 	}
 	return &server{cfg: cfg, sessions: map[string]*session{}}
 }
@@ -225,25 +246,48 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"session": se.sid, "token": se.token})
 }
 
-// spawn launches `sprint start <ticket>` in a PTY. The ticket is passed as a
-// discrete argv element (never a shell string); no token is in the argv/env of
-// the child.
+// spawn launches an interactive `claude` session on the ticket in a PTY.
+//
+// The prompt is ONE argv element — exactly what a human would type at the
+// prompt, and what the sprint skill's own trigger phrase recognizes. The old
+// bash-CLI shape (`sprintBin "start" <ticket>`) must not be reused: `claude`
+// treats unrecognized positionals as free-text prompt content and submits only
+// the first, so the ticket id was silently dropped (verified live, t-842b).
+// Still an argv slice, never a shell string; no token is in the argv of the child.
 func (s *server) spawn(ticket string) (*session, error) {
 	p, err := pty.New()
 	if err != nil {
 		return nil, err
 	}
-	c := p.Command(s.cfg.sprintBin, "start", ticket)
+	sid, tok := randToken()[:16], randToken()
+	var args []string
+	if m := s.gateModel(ticket); m != "" {
+		args = append(args, "--model", m)
+	}
+	// The Notification hook goes in via --settings, which loads ADDITIONAL
+	// settings (verified: the project's own permissions.ask rules still fire), so
+	// the daemon never writes into the target project. Losing the hook costs the
+	// status signal, never the spawn.
+	hookDir, err := s.writeHookSettings(sid, tok)
+	switch {
+	case err == nil:
+		args = append(args, "--settings", filepath.Join(hookDir, "settings.json"))
+	case !errors.Is(err, errNoDaemonAddr):
+		fmt.Fprintf(os.Stderr, "cockpit: needs-you status unavailable: %v\n", err)
+	}
+	args = append(args, "sprint start "+ticket)
+	c := p.Command(s.cfg.sprintBin, args...)
 	c.Dir = s.cfg.projectRoot
 	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
 	if err := c.Start(); err != nil {
 		p.Close()
+		os.RemoveAll(hookDir)
 		return nil, err
 	}
 	se := &session{
-		sid: randToken()[:16], ticket: ticket, token: randToken(),
-		pty: p, cmd: c, max: s.cfg.scrollback,
-		subs: map[chan []byte]struct{}{}, done: make(chan struct{}),
+		sid: sid, ticket: ticket, token: tok, hookDir: hookDir,
+		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
+		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 	}
 	// Natural exit (no explicit /kill) leaves the entry in s.sessions so a quick
 	// reattach can still replay scrollback; reap it after a grace TTL so a
@@ -293,6 +337,8 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleResize(w, r, se)
 	case "kill":
 		s.handleKill(w, r, se)
+	case "status":
+		s.handleStatus(w, r, se)
 	default:
 		http.NotFound(w, r)
 	}
@@ -309,11 +355,11 @@ func (s *server) handleStream(w http.ResponseWriter, r *http.Request, se *sessio
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	ch := make(chan []byte, 256)
+	ch := make(chan frame, 256)
 	se.mu.Lock()
 	snapshot := append([]byte(nil), se.buf...)
 	se.subs[ch] = struct{}{}
-	exited := se.exited
+	exited, status := se.exited, se.status
 	se.mu.Unlock()
 	defer func() {
 		se.mu.Lock()
@@ -323,6 +369,11 @@ func (s *server) handleStream(w http.ResponseWriter, r *http.Request, se *sessio
 
 	if len(snapshot) > 0 {
 		writeSSE(w, "out", snapshot)
+	}
+	// Replay the current status too: a reattaching tab must not show a green dot
+	// for a session that is sitting on an unanswered permission prompt.
+	if !exited && status != "" {
+		writeSSE(w, "status", []byte(status))
 	}
 	if exited {
 		writeSSE(w, "exit", nil)
@@ -339,16 +390,16 @@ func (s *server) handleStream(w http.ResponseWriter, r *http.Request, se *sessio
 		case <-se.done:
 			for {
 				select {
-				case chunk := <-ch:
-					writeSSE(w, "out", chunk)
+				case f := <-ch:
+					writeSSE(w, f.event, f.data)
 				default:
 					writeSSE(w, "exit", nil)
 					flusher.Flush()
 					return
 				}
 			}
-		case chunk := <-ch:
-			writeSSE(w, "out", chunk)
+		case f := <-ch:
+			writeSSE(w, f.event, f.data)
 			flusher.Flush()
 		case <-keepalive.C:
 			io.WriteString(w, ": keepalive\n\n")
@@ -375,6 +426,9 @@ func (s *server) handleInput(w http.ResponseWriter, r *http.Request, se *session
 		http.Error(w, "write failed", http.StatusInternalServerError)
 		return
 	}
+	// The human just typed — whatever they were being asked, they are answering
+	// it. Clears needs-you without needing a second hook event to tell us.
+	se.setStatus("running")
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -403,6 +457,7 @@ func (s *server) handleKill(w http.ResponseWriter, r *http.Request, se *session)
 	killProcess(se.cmd) // platform-specific: no orphaned children
 	se.pty.Close()
 	se.markDone()
+	se.cleanup()
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
@@ -422,12 +477,7 @@ func (se *session) readLoop() {
 			if len(se.buf) > se.max {
 				se.buf = se.buf[len(se.buf)-se.max:]
 			}
-			for ch := range se.subs {
-				select {
-				case ch <- chunk:
-				default:
-				}
-			}
+			se.broadcastLocked(frame{event: "out", data: chunk})
 			se.mu.Unlock()
 		}
 		if err != nil {
@@ -439,17 +489,223 @@ func (se *session) readLoop() {
 	killed := se.killed
 	se.mu.Unlock()
 	se.markDone()
+	se.cleanup()
 	if !killed && se.onNaturalExit != nil {
 		se.onNaturalExit()
 	}
 }
 
+// broadcastLocked fans a frame out to every attached stream; the caller holds
+// se.mu. Sends are non-blocking — a subscriber that has stopped draining loses
+// frames rather than stalling the PTY reader.
+func (se *session) broadcastLocked(f frame) {
+	for ch := range se.subs {
+		select {
+		case ch <- f:
+		default:
+		}
+	}
+}
+
 func (se *session) markDone() { se.doneOnce.Do(func() { close(se.done) }) }
+
+// cleanup removes the daemon-owned --settings dir. Called on kill and on natural
+// exit, so a long-lived daemon doesn't accumulate hook dirs.
+func (se *session) cleanup() {
+	if se.hookDir != "" {
+		os.RemoveAll(se.hookDir)
+	}
+}
 
 func (se *session) isExited() bool {
 	se.mu.Lock()
 	defer se.mu.Unlock()
 	return se.exited
+}
+
+// ── needs-you status ───────────────────────────────────────────────────────
+
+// errNoDaemonAddr means the hook has no callback URL to point at — only
+// reachable before the listener is bound, so it is expected in unit tests and
+// not worth a warning.
+var errNoDaemonAddr = errors.New("daemon address unknown")
+
+// writeHookSettings builds the daemon-owned, session-scoped settings file passed
+// to `claude --settings`. It holds one Notification hook — the event Claude Code
+// fires when it opens a permission prompt or otherwise waits on the human
+// (verified live against a real permissions.ask prompt) — which posts
+// "needs-you" back to this daemon.
+//
+// The session token travels in curl's -K config file, not on curl's argv, so it
+// never appears in `ps` output; both files are 0600 under the daemon's own state
+// dir, never inside the user's project. Returns the dir to clean up on exit.
+func (s *server) writeHookSettings(sid, token string) (string, error) {
+	if s.cfg.addr == "" {
+		return "", errNoDaemonAddr
+	}
+	dir, err := os.MkdirTemp(s.hookStateDir(), "session-")
+	if err != nil {
+		return "", err
+	}
+	conf := fmt.Sprintf("url = \"http://%s/session/%s/status\"\nheader = \"Authorization: Bearer %s\"\nrequest = \"POST\"\ndata = \"needs-you\"\nsilent\nmax-time = 3\n", s.cfg.addr, sid, token)
+	confPath := filepath.Join(dir, "curl.conf")
+	if err := os.WriteFile(confPath, []byte(conf), 0o600); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	// `|| true`: a status ping must never fail the agent's own turn.
+	hook := map[string]any{
+		"hooks": map[string]any{
+			"Notification": []any{map[string]any{
+				"hooks": []any{map[string]any{
+					"type":    "command",
+					"command": "curl -K " + shellQuote(confPath) + " >/dev/null 2>&1 || true",
+				}},
+			}},
+		},
+	}
+	data, err := json.Marshal(hook)
+	if err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	if err := os.WriteFile(filepath.Join(dir, "settings.json"), data, 0o600); err != nil {
+		os.RemoveAll(dir)
+		return "", err
+	}
+	return dir, nil
+}
+
+// hookStateDir lives under the same state dir as daemon.json, so
+// COCKPIT_STATE_DIR relocates both together — a test or a second daemon that
+// redirects its state must not still be writing hook files into the shared
+// default.
+func (s *server) hookStateDir() string {
+	d := filepath.Join(s.cfg.stateDir, "hooks")
+	_ = os.MkdirAll(d, 0o700)
+	return d
+}
+
+// shellQuote single-quotes a path for the hook command string, which Claude Code
+// runs through a shell. The path is daemon-generated (a temp dir under the state
+// dir), but quoting it costs nothing and keeps that assumption from becoming
+// load-bearing.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+var validStatuses = map[string]bool{"running": true, "needs-you": true}
+
+// handleStatus receives the hook's ping. Session-token gated like every other
+// per-session endpoint.
+func (s *server) handleStatus(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<10))
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	status := strings.TrimSpace(string(body))
+	if !validStatuses[status] {
+		http.Error(w, "unknown status", http.StatusBadRequest)
+		return
+	}
+	se.setStatus(status)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// setStatus records the new status and tells every attached browser. A no-op
+// when nothing changed, so a chatty hook can't flood the stream.
+func (se *session) setStatus(status string) {
+	se.mu.Lock()
+	defer se.mu.Unlock()
+	if se.status == status || se.exited {
+		return
+	}
+	se.status = status
+	// Same critical section as the assignment: two concurrent callers can't
+	// interleave into a stream order that disagrees with se.status.
+	se.broadcastLocked(frame{event: "status", data: []byte(status)})
+}
+
+// ── gate model ─────────────────────────────────────────────────────────────
+
+// This ports tools/gate-model.sh's gate_model_parse/gate_model_resolve to Go —
+// the same job that script does for headless CI: turn a plan.md's `Gate model:`
+// into a `--model` argv for `claude`. It is deliberately aligned to that awk
+// program rather than to the board's own display-only reader
+// (app.html's parseGateModel), which differs on label case. Two ports of one
+// rule across runtimes that share no code is the cross-runtime exception in
+// standards/efficiency.md; tests/gate-model-parity.sh pins both to one fixture
+// set, so changing one without the other fails the suite.
+var (
+	// [ \t\r], not \s: awk is line-based so its [[:space:]] can never span lines,
+	// but Go matches the whole document at once, where \s would let ^##\s+ run
+	// across a newline. \r is kept so a CRLF plan.md parses the same either side.
+	signoffHeadingRe = regexp.MustCompile(`(?m)^##[ \t]+Sign-off[ \t\r]*$`)
+	nextHeadingRe    = regexp.MustCompile(`(?m)^##[ \t]`)
+	tierLineRe       = regexp.MustCompile(`(?m)^[ \t]*[Tt]ier[ \t]*:.*$`)
+	gateModelLabelRe = regexp.MustCompile(`[Gg]ate[ \t]+model[ \t]*:[ \t]*`)
+	// Mirrors gate_model_resolve's charset guard. A shell is never involved (the
+	// command is an argv slice), but a plan.md is a plain file a human edits, so
+	// the value is still untrusted input to exec.
+	modelValueRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+)
+
+// parseGateModel returns the raw lowercased `Gate model:` value from the
+// Sign-off section's Tier line, or "" — gate_model_parse's contract.
+func parseGateModel(content string) string {
+	h := signoffHeadingRe.FindStringIndex(content)
+	if h == nil {
+		return ""
+	}
+	section := content[h[1]:]
+	if n := nextHeadingRe.FindStringIndex(section); n != nil {
+		section = section[:n[0]]
+	}
+	line := tierLineRe.FindString(section)
+	if line == "" {
+		return ""
+	}
+	m := gateModelLabelRe.FindStringIndex(line)
+	if m == nil {
+		return ""
+	}
+	v := line[m[1]:]
+	// Stop at the next `|` — the value is one field of a pipe-delimited line —
+	// then strip all whitespace, as the awk does.
+	if i := strings.Index(v, "|"); i >= 0 {
+		v = v[:i]
+	}
+	return strings.ToLower(strings.Join(strings.Fields(v), ""))
+}
+
+// gateModel returns the model to pass as `--model` for this ticket, or "" when
+// no override applies. `session` and an absent field both mean "the CLI's own
+// default", matching gate_model_resolve. A present-but-invalid value is dropped
+// with a stderr warning rather than aborting the spawn: headless CI can fail the
+// whole run on a typo, but here a human is watching a terminal they just asked
+// for, and killing the session would be a worse answer than starting it on the
+// default model and saying so. ticket has already passed ticketRe, so it cannot
+// traverse out of .tickets/.
+func (s *server) gateModel(ticket string) string {
+	plan := filepath.Join(s.cfg.projectRoot, ".tickets", ticket, "plan.md")
+	b, err := os.ReadFile(plan)
+	if err != nil {
+		return ""
+	}
+	v := parseGateModel(string(b))
+	if v == "" || v == "session" {
+		return ""
+	}
+	if !modelValueRe.MatchString(v) {
+		fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid Gate model %q in %s (alias or model id — letters, digits, '.', '_', '-' only)\n", v, plan)
+		return ""
+	}
+	return v
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
@@ -477,7 +733,7 @@ func main() {
 	cfg := config{
 		addr:        *addr,
 		token:       envOr("COCKPIT_TOKEN", randToken()),
-		sprintBin:   envOr("COCKPIT_SPRINT_BIN", "sprint"),
+		sprintBin:   envOr("COCKPIT_SPRINT_BIN", "claude"),
 		projectRoot: envOr("COCKPIT_PROJECT_ROOT", mustGetwd()),
 	}
 	s := newServer(cfg)
@@ -487,7 +743,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "listen:", err)
 		os.Exit(1)
 	}
-	if err := writeStateFile(ln.Addr().String(), cfg.token); err != nil {
+	// The requested addr may carry port 0; the hook's callback URL needs the real
+	// one the listener bound.
+	s.cfg.addr = ln.Addr().String()
+	if err := writeStateFile(s.cfg.stateDir, ln.Addr().String(), cfg.token); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: state file:", err)
 	}
 	fmt.Fprintf(os.Stderr, "cockpit-daemon listening on %s\n", ln.Addr().String())
@@ -500,8 +759,7 @@ func main() {
 
 // writeStateFile hands the board the daemon's addr + boot token via a 0600
 // file (never argv). The board reads it to authorize /session/start.
-func writeStateFile(addr, token string) error {
-	dir := envOr("COCKPIT_STATE_DIR", defaultStateDir())
+func writeStateFile(dir, addr, token string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
