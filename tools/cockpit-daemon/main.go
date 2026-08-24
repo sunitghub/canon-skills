@@ -650,9 +650,14 @@ var (
 	tierLineRe       = regexp.MustCompile(`(?m)^[ \t]*[Tt]ier[ \t]*:.*$`)
 	gateModelLabelRe = regexp.MustCompile(`[Gg]ate[ \t]+model[ \t]*:[ \t]*`)
 	// Mirrors gate_model_resolve's charset guard. A shell is never involved (the
-	// command is an argv slice), but a plan.md is a plain file a human edits, so
-	// the value is still untrusted input to exec.
-	modelValueRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	// command is an argv slice), but the value still becomes an argv element, and
+	// plan.md is writable by the very agent this value configures — so the guard
+	// requires a LEADING letter or digit, not merely the allowed charset. `-` is
+	// legal inside a model id (claude-sonnet-5); a leading one would turn
+	// `--model <value>` into a second option, e.g.
+	// `--model --dangerously-skip-permissions`, escalating the next session past
+	// the inherited-permissions guarantee this daemon rests on.
+	modelValueRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 )
 
 // parseGateModel returns the raw lowercased `Gate model:` value from the

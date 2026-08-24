@@ -90,6 +90,30 @@
       "plan": "## Sign-off\r\nTier: normal | Risk: none | Gate model: opus\r\n",
       "parse": "opus",
       "expect": "opus"
+    },
+    {
+      "name": "leading-hyphen value is rejected (would become a second CLI flag)",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: --dangerously-skip-permissions\n",
+      "parse": "--dangerously-skip-permissions",
+      "expect": ""
+    },
+    {
+      "name": "single-hyphen flag is rejected",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: -v\n",
+      "parse": "-v",
+      "expect": ""
+    },
+    {
+      "name": "internal hyphens are still fine (real model ids)",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: claude-haiku-4-5-20251001\n",
+      "parse": "claude-haiku-4-5-20251001",
+      "expect": "claude-haiku-4-5-20251001"
+    },
+    {
+      "name": "leading dot is rejected",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: ._profile\n",
+      "parse": "._profile",
+      "expect": ""
     }
   ]
 }

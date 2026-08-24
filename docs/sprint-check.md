@@ -147,7 +147,7 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   runtimes by `tests/gate-model-parity.sh`).
 - **"Needs you" status.** Because the agent inherits the project's permissions,
   it can end up blocked on a prompt while you're looking at another tab. The
-  status dot turns red and pulses (**needs you**) the moment that happens, and a
+  status dot turns red and pulses (**needs you**) as soon as that happens, and a
   tab attaching later is told the pending status too — so a reattach can't show
   green over an unanswered prompt. Typing clears it. The signal is Claude Code's
   own `Notification` hook, handed to the session via `claude --settings <file>`
@@ -165,7 +165,11 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   shell); tokens travel via a `0600` state file, never argv. Transport is stdlib
   **SSE (output) + POST (input)** — no WebSocket.
 - **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS;
-  Windows validation is pending a Windows box.
+  Windows validation is pending a Windows box. The interactive-`claude` spawn
+  above is **macOS-only so far** — its behaviour under ConPTY is unverified and
+  deliberately deferred.
+- **Prerequisite:** `claude` must be on `PATH`. If it isn't, Start fails with the
+  exec error surfaced in the terminal rather than hanging.
 - **Board-integrated cockpit mode (P3):** every card shows **▶ Start** (OPEN) or
   **▶ Resume** (IN_PROGRESS) — click it to switch the board itself into cockpit
   mode: the kanban lanes collapse to a left ticket rail and an embedded
