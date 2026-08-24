@@ -884,6 +884,15 @@ func TestSpawnModelFlag(t *testing.T) {
 		{"a value with shell metacharacters never becomes an argv element",
 			"Tier: normal | Risk: none | Gate model: haiku;touch$(id)",
 			"ARGC:1\nARG:sprint start t-ab12\n"},
+		// plan.md is writable by the agent this value configures, so a value that
+		// could be re-read as a flag must never reach argv — otherwise a session
+		// could escalate the next one past the inherited-permissions guarantee.
+		{"a leading-hyphen value never reaches argv as a second flag",
+			"Tier: normal | Risk: none | Gate model: --dangerously-skip-permissions",
+			"ARGC:1\nARG:sprint start t-ab12\n"},
+		{"a real hyphenated model id still reaches argv",
+			"Tier: normal | Risk: none | Gate model: claude-sonnet-5",
+			"ARGC:3\nARG:--model\nARG:claude-sonnet-5\nARG:sprint start t-ab12\n"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bin, argvFile, _ := fakeSprint(t)

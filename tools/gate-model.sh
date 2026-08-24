@@ -35,8 +35,15 @@ gate_model_resolve() {
   local plan="$1" v
   v="$(gate_model_parse "$plan")"
   [[ -z "$v" || "$v" == "session" ]] && return 0
-  if [[ ! "$v" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "Error: Gate model '$v' in $plan ## Sign-off is invalid (alias or model id — letters, digits, '.', '_', '-' only)." >&2
+  # Must START with a letter or digit, not just consist of the allowed charset.
+  # `-` is legal inside a model id (claude-sonnet-5) but a LEADING one makes the
+  # value a flag: `--model --dangerously-skip-permissions` hands the CLI a second
+  # option instead of a value. plan.md is writable by the very agent this value
+  # configures, so a permissive charset here is a privilege-escalation path, not
+  # a typo class — see standards/agent-design.md on durable state an agent can
+  # rewrite.
+  if [[ ! "$v" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    echo "Error: Gate model '$v' in $plan ## Sign-off is invalid (alias or model id — must start with a letter or digit; letters, digits, '.', '_', '-' only)." >&2
     return 2
   fi
   printf '%s\n' "$v"
