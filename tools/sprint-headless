@@ -15,6 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ticket-root.sh"
 source "$SCRIPT_DIR/gate-cache.sh"
+source "$SCRIPT_DIR/gate-model.sh"
 
 ID="${1:-}"
 [[ -z "$ID" || "$ID" == --* ]] && { echo "Usage: sprint-headless <ticket-id> --base-ref <ref> [--cache|--no-cache]" >&2; exit 1; }
@@ -118,27 +119,9 @@ BUGFIX=0
 # for gates"). Wiring it here makes the Plan's model choice apply to headless CI
 # too, closing the interactive-vs-headless gap. `session` (or an absent field)
 # means "no override" → claude's default. Any other value is passed as --model.
-GATE_MODEL="$(awk '
-  /^##[[:space:]]+Sign-off[[:space:]]*$/ { in_so=1; next }
-  in_so && /^##[[:space:]]/ { exit }
-  in_so && /^[[:space:]]*[Tt]ier[[:space:]]*:/ {
-    if (match($0, /[Gg]ate[[:space:]]+model[[:space:]]*:[[:space:]]*/)) {
-      s = substr($0, RSTART+RLENGTH)
-      sub(/[[:space:]]*\|.*$/, "", s)
-      gsub(/[[:space:]]/, "", s)
-      print tolower(s)
-    }
-    exit
-  }
-' "$PLAN_FILE")"
-MODEL=""
-if [[ -n "$GATE_MODEL" && "$GATE_MODEL" != "session" ]]; then
-  [[ "$GATE_MODEL" =~ ^[A-Za-z0-9._-]+$ ]] || {
-    echo "Error: Gate model '$GATE_MODEL' in $PLAN_FILE ## Sign-off is invalid (alias or model id — letters, digits, '.', '_', '-' only)." >&2
-    exit 1
-  }
-  MODEL="$GATE_MODEL"
-fi
+# Resolution lives in gate-model.sh — the cockpit daemon needs the same answer
+# in Go (t-842b), so there is one bash owner rather than a copy per caller.
+MODEL="$(gate_model_resolve "$PLAN_FILE")" || exit 1
 MODEL_ARGS=()
 [[ -n "$MODEL" ]] && MODEL_ARGS=(--model "$MODEL")
 

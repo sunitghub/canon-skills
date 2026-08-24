@@ -25,9 +25,14 @@ import (
 
 const bootTok = "boot-token-test"
 
-// fakeSprint writes a script that stands in for `sprint`: it records its argv
+// fakeSprint writes a script that stands in for `claude`: it records its argv
 // and pid, prints READY, then echoes stdin (so input round-trips). Set as
 // COCKPIT_SPRINT_BIN. It never sees any daemon token.
+//
+// argv is recorded one element per line behind an ARGC count, not as "$*" — a
+// space-joined "$*" cannot tell `["sprint start t-ab12"]` from
+// `["start", "t-ab12"]`, so it would pass either way and never catch a
+// regression back to the bash-CLI shape.
 func fakeSprint(t *testing.T) (bin, argvFile, pidFile string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -35,7 +40,8 @@ func fakeSprint(t *testing.T) (bin, argvFile, pidFile string) {
 	pidFile = filepath.Join(dir, "pid.txt")
 	bin = filepath.Join(dir, "fake-sprint.sh")
 	script := "#!/bin/sh\n" +
-		"printf 'ARGV:%s\\n' \"$*\" > \"" + argvFile + "\"\n" +
+		"printf 'ARGC:%s\\n' \"$#\" > \"" + argvFile + "\"\n" +
+		"for a in \"$@\"; do printf 'ARG:%s\\n' \"$a\" >> \"" + argvFile + "\"; done\n" +
 		"printf '%s\\n' \"$$\" > \"" + pidFile + "\"\n" +
 		"printf 'READY\\n'\n" +
 		"cat\n"
@@ -47,7 +53,7 @@ func fakeSprint(t *testing.T) (bin, argvFile, pidFile string) {
 
 func newTestServer(t *testing.T, bin string) (*httptest.Server, string) {
 	t.Helper()
-	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir()})
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	return ts, ts.URL
@@ -186,10 +192,11 @@ func TestLifecycle(t *testing.T) {
 		t.Fatal("missing session/token")
 	}
 
-	// argv targeting + no-token-in-argv.
+	// argv targeting + no-token-in-argv. Exactly one element, the joined prompt —
+	// the two-arg bash-CLI shape drops the ticket id under a real `claude`.
 	argv := waitFile(t, argvFile, 3*time.Second)
-	if !strings.Contains(argv, "start t-ab12") {
-		t.Fatalf("argv not targeted at ticket: %q", argv)
+	if want := "ARGC:1\nARG:sprint start t-ab12\n"; argv != want {
+		t.Fatalf("argv = %q, want %q", argv, want)
 	}
 	if strings.Contains(argv, out.Token) || strings.Contains(argv, bootTok) {
 		t.Fatalf("token leaked into argv: %q", argv)
@@ -285,6 +292,44 @@ func streamCollect(t *testing.T, ctx context.Context, base, sid, token string) *
 			if strings.HasPrefix(line, "data: ") {
 				if dec, e := base64.StdEncoding.DecodeString(strings.TrimSpace(line[len("data: "):])); e == nil {
 					out.Write(dec)
+				}
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return out
+}
+
+// streamCollectFrames is streamCollect but keeps the event name, as
+// "<event>=<data>\n" per frame — needed where the event type is the thing under
+// test, since a terminal that merely printed the word "needs-you" would satisfy
+// a data-only assertion.
+func streamCollectFrames(t *testing.T, ctx context.Context, base, sid, token string) *safeBuf {
+	t.Helper()
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, base+"/session/"+sid+"/stream", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream: want 200, got %d", resp.StatusCode)
+	}
+	out := &safeBuf{}
+	go func() {
+		defer resp.Body.Close()
+		rd := bufio.NewReader(resp.Body)
+		event := ""
+		for {
+			line, err := rd.ReadString('\n')
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				event = strings.TrimSpace(line[len("event: "):])
+			case strings.HasPrefix(line, "data: "):
+				if dec, e := base64.StdEncoding.DecodeString(strings.TrimSpace(line[len("data: "):])); e == nil {
+					out.Write([]byte(event + "=" + string(dec) + "\n"))
 				}
 			}
 			if err != nil {
@@ -474,7 +519,7 @@ func TestClosedPTYReturns410(t *testing.T) {
 
 func TestSessionReapedAfterNaturalExitTTL(t *testing.T) {
 	bin := fakeSprintQuickExit(t)
-	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), sessionReapTTL: 50 * time.Millisecond})
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), sessionReapTTL: 50 * time.Millisecond})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	base := ts.URL
@@ -566,5 +611,303 @@ func TestConstantTimeAuthEdgeCases(t *testing.T) {
 	r.Body.Close()
 	if r.StatusCode != http.StatusNoContent {
 		t.Fatalf("correct session token: want 204, got %d", r.StatusCode)
+	}
+}
+
+// TestNeedsYouStatus covers the whole needs-you path short of a live claude: the
+// hook's POST flips the status, an attached stream is told, a reattaching stream
+// is told too (so a fresh tab can't show green over an unanswered prompt), the
+// human typing clears it, and the endpoint is token-gated and validated like
+// every other per-session endpoint.
+func TestNeedsYouStatus(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base := newTestServer(t, bin)
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	statusURL := base + "/session/" + out.Session + "/status"
+	post := func(tok, body string) int {
+		req, _ := http.NewRequest(http.MethodPost, statusURL, strings.NewReader(body))
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+
+	// Unauthorized and malformed are rejected before any state change.
+	if got := post("", "needs-you"); got != http.StatusUnauthorized {
+		t.Fatalf("no token: want 401, got %d", got)
+	}
+	if got := post(strings.Repeat("z", len(out.Token)), "needs-you"); got != http.StatusUnauthorized {
+		t.Fatalf("wrong token: want 401, got %d", got)
+	}
+	for _, bad := range []string{"", "done", "NEEDS-YOU", "needs-you\x00extra", "running; rm -rf /"} {
+		if got := post(out.Token, bad); got != http.StatusBadRequest {
+			t.Fatalf("status %q: want 400, got %d", bad, got)
+		}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	buf := streamCollectFrames(t, ctx, base, out.Session, out.Token)
+	waitFor(t, buf, "out=READY", 3*time.Second)
+
+	if got := post(out.Token, "needs-you"); got != http.StatusNoContent {
+		t.Fatalf("needs-you: want 204, got %d", got)
+	}
+	waitFor(t, buf, "status=needs-you", 3*time.Second)
+
+	// A newly attached stream learns the pending status from the replay.
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	buf2 := streamCollectFrames(t, ctx2, base, out.Session, out.Token)
+	waitFor(t, buf2, "status=needs-you", 3*time.Second)
+	cancel2()
+
+	// Typing answers whatever was asked, so the status clears itself.
+	inReq, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/input", strings.NewReader("1\n"))
+	inReq.Header.Set("Authorization", "Bearer "+out.Token)
+	ir, err := http.DefaultClient.Do(inReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir.Body.Close()
+	// Must be a running that arrives AFTER the needs-you. A bare
+	// waitFor("status=running") would already be satisfied by the replay frame the
+	// stream emits on attach, and so would pass even if input cleared nothing.
+	waitForAfter(t, buf, "status=needs-you", "status=running", 3*time.Second)
+}
+
+// waitForAfter waits for `want` to appear at some point after the first
+// occurrence of `after`, so a transition can be asserted rather than mere
+// presence.
+func waitForAfter(t *testing.T, buf *safeBuf, after, want string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		s := buf.String()
+		if i := strings.Index(s, after); i >= 0 && strings.Contains(s[i+len(after):], want) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %q after %q; got %q", want, after, buf.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// TestHookSettingsFile asserts the shape of what the daemon hands `claude
+// --settings`: the Notification event, a curl call that reads its credential
+// from a -K file, and the token in that 0600 file rather than in the command
+// string (which Claude Code runs through a shell, where it would land in `ps`).
+func TestHookSettingsFile(t *testing.T) {
+	s := newServer(config{token: bootTok, addr: "127.0.0.1:8455", projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	dir, err := s.writeHookSettings("sid123", "sess-token-abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	raw, err := os.ReadFile(filepath.Join(dir, "settings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var parsed struct {
+		Hooks map[string][]struct {
+			Hooks []struct{ Type, Command string }
+		}
+	}
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		t.Fatalf("settings.json is not valid JSON: %v", err)
+	}
+	n, ok := parsed.Hooks["Notification"]
+	if !ok || len(n) != 1 || len(n[0].Hooks) != 1 {
+		t.Fatalf("want exactly one Notification hook, got %+v", parsed.Hooks)
+	}
+	cmd := n[0].Hooks[0].Command
+	if !strings.Contains(cmd, "curl -K ") {
+		t.Errorf("hook command should read its credential from a -K file: %q", cmd)
+	}
+	if strings.Contains(cmd, "sess-token-abc") {
+		t.Errorf("session token leaked into the hook command string: %q", cmd)
+	}
+	if string(raw) != "" && strings.Contains(string(raw), "sess-token-abc") {
+		t.Errorf("session token leaked into settings.json: %s", raw)
+	}
+
+	conf, err := os.ReadFile(filepath.Join(dir, "curl.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"sess-token-abc", "/session/sid123/status", "127.0.0.1:8455"} {
+		if !strings.Contains(string(conf), want) {
+			t.Errorf("curl.conf missing %q: %s", want, conf)
+		}
+	}
+	for _, f := range []string{"curl.conf", "settings.json"} {
+		fi, err := os.Stat(filepath.Join(dir, f))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != 0o600 {
+			t.Errorf("%s mode = %v, want 0600", f, fi.Mode().Perm())
+		}
+	}
+}
+
+// The daemon must write nothing into the target project — that is what keeps
+// DECISIONS.md's 2026-07-02 "zero Claude Code hooks in a project's settings"
+// intact while still using the hook signal.
+func TestSpawnLeavesProjectUntouched(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	existing := filepath.Join(root, ".claude", "settings.local.json")
+	if err := os.MkdirAll(filepath.Dir(existing), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	before := []byte(`{"permissions":{"ask":["Write"]},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo mine"}]}]}}`)
+	if err := os.WriteFile(existing, before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, addr: "127.0.0.1:8455", stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	argv := waitFile(t, argvFile, 3*time.Second)
+
+	after, err := os.ReadFile(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Fatalf("daemon modified the project's settings:\nbefore: %s\nafter:  %s", before, after)
+	}
+	entries, err := os.ReadDir(filepath.Join(root, ".claude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("daemon added files to the project's .claude/: %v", entries)
+	}
+	// The hook rode in on argv instead, pointing outside the project.
+	if !strings.Contains(argv, "--settings") {
+		t.Fatalf("no --settings in argv: %q", argv)
+	}
+	if strings.Contains(argv, root) {
+		t.Fatalf("--settings points inside the project: %q", argv)
+	}
+}
+
+type gateModelCase struct{ Name, Plan, Parse, Expect string }
+
+func loadGateModelFixtures(t *testing.T) []gateModelCase {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "tests", "fixtures", "gate-model-cases.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fx struct{ Cases []gateModelCase }
+	if err := json.Unmarshal(raw, &fx); err != nil {
+		t.Fatal(err)
+	}
+	if len(fx.Cases) == 0 {
+		t.Fatal("no fixture cases loaded")
+	}
+	return fx.Cases
+}
+
+// TestParseGateModelFixtures and TestResolveGateModelFixtures run the real Go
+// port over the same fixture set tests/gate-model-parity.sh feeds the real
+// bash/awk implementation in tools/gate-model.sh. Both must agree, so a
+// divergence in either port fails one of the two suites.
+func TestParseGateModelFixtures(t *testing.T) {
+	for _, c := range loadGateModelFixtures(t) {
+		if got := parseGateModel(c.Plan); got != c.Parse {
+			t.Errorf("%s: parseGateModel = %q, want %q", c.Name, got, c.Parse)
+		}
+	}
+}
+
+func TestResolveGateModelFixtures(t *testing.T) {
+	for _, c := range loadGateModelFixtures(t) {
+		root := t.TempDir()
+		dir := filepath.Join(root, ".tickets", "t-ab12")
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(c.Plan), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+		if got := s.gateModel("t-ab12"); got != c.Expect {
+			t.Errorf("%s: gateModel = %q, want %q", c.Name, got, c.Expect)
+		}
+	}
+}
+
+// A missing plan.md is the common case for a brand-new ticket — no override, no error.
+func TestResolveGateModelNoPlan(t *testing.T) {
+	s := newServer(config{projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	if got := s.gateModel("t-ab12"); got != "" {
+		t.Fatalf("gateModel with no plan.md = %q, want \"\"", got)
+	}
+}
+
+// TestSpawnModelFlag proves the resolved model actually reaches argv (and that a
+// rejected one does not). Value-level semantics are covered exhaustively by the
+// fixture tests above; these are the end-to-end paths through spawn().
+func TestSpawnModelFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name, tierLine, wantArgv string
+	}{
+		{"resolved model reaches argv, prompt stays last",
+			"Tier: high-risk | Risk: none | Gate model: haiku",
+			"ARGC:3\nARG:--model\nARG:haiku\nARG:sprint start t-ab12\n"},
+		{"no suffix means no flag",
+			"Tier: normal | Risk: none",
+			"ARGC:1\nARG:sprint start t-ab12\n"},
+		{"session means no flag",
+			"Tier: normal | Risk: none | Gate model: session",
+			"ARGC:1\nARG:sprint start t-ab12\n"},
+		{"a value with shell metacharacters never becomes an argv element",
+			"Tier: normal | Risk: none | Gate model: haiku;touch$(id)",
+			"ARGC:1\nARG:sprint start t-ab12\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bin, argvFile, _ := fakeSprint(t)
+			root := t.TempDir()
+			dir := filepath.Join(root, ".tickets", "t-ab12")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			plan := "# Plan\n\n## Sign-off\n" + tc.tierLine + "\n\n## Approach\n1. do it\n"
+			if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+
+			resp := startSession(t, ts.URL, "t-ab12", bootTok)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("start: %d", resp.StatusCode)
+			}
+			resp.Body.Close()
+			if argv := waitFile(t, argvFile, 3*time.Second); argv != tc.wantArgv {
+				t.Fatalf("argv = %q, want %q", argv, tc.wantArgv)
+			}
+		})
 	}
 }

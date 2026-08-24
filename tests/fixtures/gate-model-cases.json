@@ -1,0 +1,95 @@
+{
+  "_comment": "Shared fixture set for the two real `Gate model:` resolvers that produce a --model argv for claude: tools/gate-model.sh's gate_model_resolve (bash/awk, used by sprint-headless) and cockpit-daemon's gateModel (Go). Both must agree on `expect` for every case. Cross-runtime port, locked by parity per standards/efficiency.md. `parse` is gate_model_parse's raw output; `expect` is the resolved value (\"\" = no --model flag). NOTE: app.html's parseGateModel is a THIRD reader, display-only for the board's #ck-model chip, and is deliberately not pinned here — it differs on label case (see the case-variant fixture below).",
+  "cases": [
+    {
+      "name": "value present",
+      "plan": "## Sign-off\nTier: high-risk | Risk: none | Gate model: haiku\n\n- [x] Plan approved\n",
+      "parse": "haiku",
+      "expect": "haiku"
+    },
+    {
+      "name": "full model id, not just a dropdown alias",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: claude-sonnet-5\n",
+      "parse": "claude-sonnet-5",
+      "expect": "claude-sonnet-5"
+    },
+    {
+      "name": "session means no override",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: session\n",
+      "parse": "session",
+      "expect": ""
+    },
+    {
+      "name": "no suffix on the Tier line",
+      "plan": "## Sign-off\nTier: normal | Risk: none\n",
+      "parse": "",
+      "expect": ""
+    },
+    {
+      "name": "no Tier line in the section",
+      "plan": "## Sign-off\n- [ ] Plan approved\n",
+      "parse": "",
+      "expect": ""
+    },
+    {
+      "name": "no Sign-off section at all",
+      "plan": "## Approach\nTier: normal | Gate model: opus\n",
+      "parse": "",
+      "expect": ""
+    },
+    {
+      "name": "Tier-looking line in a LATER section is out of scope",
+      "plan": "## Sign-off\nTier: normal | Risk: none\n\n## Approach\nTier: normal | Gate model: opus\n",
+      "parse": "",
+      "expect": ""
+    },
+    {
+      "name": "lowercase label with leading indent",
+      "plan": "## Sign-off\n  tier: normal | Risk: none | gate model: sonnet\n",
+      "parse": "sonnet",
+      "expect": "sonnet"
+    },
+    {
+      "name": "uppercase MODEL in the label does NOT match (awk's own semantics; the board's JS reader differs here)",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate MODEL: sonnet\n",
+      "parse": "",
+      "expect": ""
+    },
+    {
+      "name": "value stops at the next pipe",
+      "plan": "## Sign-off\nTier: normal | Gate model: opus | Note: keep\n",
+      "parse": "opus",
+      "expect": "opus"
+    },
+    {
+      "name": "surrounding whitespace is stripped",
+      "plan": "## Sign-off\nTier: normal | Risk: none   |    Gate model:    fable   \n",
+      "parse": "fable",
+      "expect": "fable"
+    },
+    {
+      "name": "label with no value",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model:\n",
+      "parse": "",
+      "expect": ""
+    },
+    {
+      "name": "shell metacharacters are rejected, not forwarded to exec",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: haiku;touch$(id)\n",
+      "parse": "haiku;touch$(id)",
+      "expect": ""
+    },
+    {
+      "name": "a path is rejected",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: ../../etc/passwd\n",
+      "parse": "../../etc/passwd",
+      "expect": ""
+    },
+    {
+      "name": "CRLF line endings",
+      "plan": "## Sign-off\r\nTier: normal | Risk: none | Gate model: opus\r\n",
+      "parse": "opus",
+      "expect": "opus"
+    }
+  ]
+}

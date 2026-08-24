@@ -129,11 +129,32 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
 ```
 
 - **What it does (P1):** a background daemon (`tools/cockpit-daemon`) owns a real
-  **PTY** running `sprint start <id>`, and serves an embedded terminal (xterm.js)
-  at `/cockpit`. Click **Start sprint** (or prefill a ticket) → the agent runs
-  in-page; you type to it there. The agent keeps running if you close the tab and
-  reattaches (scrollback replayed) when you reopen; **Kill** stops it cleanly with
-  no orphaned process.
+  **PTY** running an interactive `claude` session on the ticket, and serves an
+  embedded terminal (xterm.js) at `/cockpit`. Click **Start sprint** (or prefill a
+  ticket) → the agent runs in-page; you type to it there. The agent keeps running
+  if you close the tab and reattaches (scrollback replayed) when you reopen;
+  **Kill** stops it cleanly with no orphaned process.
+- **It is a real agent, with this project's own permissions.** The daemon execs
+  `claude` with the ticket as a single prompt argument (`sprint start <id>`) —
+  the same thing you would type at a terminal — so it can write files and run
+  commands, and it prompts you in the embedded terminal exactly as it would in a
+  real one. The daemon **never** overrides permission behavior: no
+  `--permission-mode`, no bypass flag. Whatever that project is already
+  configured to auto-approve, it auto-approves here too. If the ticket's
+  `plan.md` carries a `Gate model:` value, the daemon passes it as `--model`;
+  a malformed value is ignored rather than forwarded (same resolution as
+  `sprint-headless`, shared via `tools/gate-model.sh` and pinned across the two
+  runtimes by `tests/gate-model-parity.sh`).
+- **"Needs you" status.** Because the agent inherits the project's permissions,
+  it can end up blocked on a prompt while you're looking at another tab. The
+  status dot turns red and pulses (**needs you**) the moment that happens, and a
+  tab attaching later is told the pending status too — so a reattach can't show
+  green over an unanswered prompt. Typing clears it. The signal is Claude Code's
+  own `Notification` hook, handed to the session via `claude --settings <file>`
+  from the daemon's state dir: **the daemon writes nothing into your project**,
+  which keeps `DECISIONS.md`'s 2026-07-02 "zero Claude Code hooks in a project's
+  settings" intact. The hook's callback credential lives in a `0600` curl `-K`
+  config file, so it never appears in `ps`.
 - **Why a daemon:** the `sprint-check` board server is ephemeral and stdlib-only,
   and Go's stdlib has no PTY/WebSocket. The daemon is an isolated Go module
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board
