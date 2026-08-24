@@ -1474,6 +1474,12 @@
       border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer;
     }
     .card-start:hover { filter: brightness(1.08); }
+    /* Resume gets its own color instead of Start's accent, so a quick glance
+       distinguishes "begin fresh" from "continue an active sprint". Uses
+       --col-done (green), not --col-progress (blue) — an IN_PROGRESS card
+       already shows a blue status dot/badge, so blue here would just repeat
+       a color already on the card instead of adding a distinct signal. */
+    .card-start.resume { background: var(--col-done); }
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */
@@ -2987,7 +2993,7 @@ function cardHTML(t, idx) {
     const dis = activeExists;
     startBtn = `<button class="card-start${dis ? ' disabled' : ''}" data-id="${esc(t.id)}"${dis ? ' disabled title="Another sprint is active — finish it before starting a new one"' : ' title="Start this sprint in the cockpit"'}>▶ Start</button>`;
   } else if (t.status === 'in_progress') {
-    startBtn = `<button class="card-start" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
+    startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
   }
   return `
     <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
