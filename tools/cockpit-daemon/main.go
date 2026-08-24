@@ -13,6 +13,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"embed"
 	"encoding/base64"
 	"encoding/hex"
@@ -40,11 +41,12 @@ var webFS embed.FS
 var ticketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 
 type config struct {
-	addr        string // loopback bind address
-	token       string // daemon boot token (gates /session/start)
-	sprintBin   string // binary to exec (default "sprint")
-	projectRoot string // working dir for the spawned command
-	scrollback  int    // bytes of replayable output per session
+	addr           string        // loopback bind address
+	token          string        // daemon boot token (gates /session/start)
+	sprintBin      string        // binary to exec (default "sprint")
+	projectRoot    string        // working dir for the spawned command
+	scrollback     int           // bytes of replayable output per session
+	sessionReapTTL time.Duration // grace period after natural exit before a session entry is reaped
 }
 
 type server struct {
@@ -60,13 +62,15 @@ type session struct {
 	pty    pty.Pty
 	cmd    *pty.Cmd
 
-	mu       sync.Mutex
-	buf      []byte
-	max      int
-	subs     map[chan []byte]struct{}
-	done     chan struct{}
-	doneOnce sync.Once
-	exited   bool
+	mu            sync.Mutex
+	buf           []byte
+	max           int
+	subs          map[chan []byte]struct{}
+	done          chan struct{}
+	doneOnce      sync.Once
+	exited        bool
+	killed        bool   // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
+	onNaturalExit func() // set by spawn(); schedules the reap-after-TTL cleanup
 }
 
 func newServer(cfg config) *server {
@@ -75,6 +79,9 @@ func newServer(cfg config) *server {
 	}
 	if cfg.scrollback <= 0 {
 		cfg.scrollback = 256 * 1024
+	}
+	if cfg.sessionReapTTL <= 0 {
+		cfg.sessionReapTTL = 15 * time.Minute
 	}
 	return &server{cfg: cfg, sessions: map[string]*session{}}
 }
@@ -179,6 +186,15 @@ func bearer(r *http.Request) string {
 	return ""
 }
 
+// secureEqual compares tokens in constant time. An empty want or got never
+// matches — subtle.ConstantTimeCompare("", "") would otherwise return 1.
+func secureEqual(got, want string) bool {
+	if got == "" || want == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
 // ── Handlers ─────────────────────────────────────────────────────────────
 
 func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
@@ -186,7 +202,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if s.cfg.token == "" || bearer(r) != s.cfg.token {
+	if s.cfg.token == "" || !secureEqual(bearer(r), s.cfg.token) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -229,6 +245,17 @@ func (s *server) spawn(ticket string) (*session, error) {
 		pty: p, cmd: c, max: s.cfg.scrollback,
 		subs: map[chan []byte]struct{}{}, done: make(chan struct{}),
 	}
+	// Natural exit (no explicit /kill) leaves the entry in s.sessions so a quick
+	// reattach can still replay scrollback; reap it after a grace TTL so a
+	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
+	// own immediate delete is unaffected — it never sets onNaturalExit's timer.
+	se.onNaturalExit = func() {
+		time.AfterFunc(s.cfg.sessionReapTTL, func() {
+			s.mu.Lock()
+			delete(s.sessions, se.sid)
+			s.mu.Unlock()
+		})
+	}
 	s.mu.Lock()
 	s.sessions[se.sid] = se
 	s.mu.Unlock()
@@ -253,7 +280,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no such session", http.StatusNotFound)
 		return
 	}
-	if bearer(r) != se.token {
+	if !secureEqual(bearer(r), se.token) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -335,6 +362,10 @@ func (s *server) handleInput(w http.ResponseWriter, r *http.Request, se *session
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if se.isExited() {
+		http.Error(w, "session has exited", http.StatusGone)
+		return
+	}
 	data, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -348,6 +379,10 @@ func (s *server) handleInput(w http.ResponseWriter, r *http.Request, se *session
 }
 
 func (s *server) handleResize(w http.ResponseWriter, r *http.Request, se *session) {
+	if se.isExited() {
+		http.Error(w, "session has exited", http.StatusGone)
+		return
+	}
 	var body struct{ Cols, Rows int }
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<12)).Decode(&body); err != nil || body.Cols <= 0 || body.Rows <= 0 {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -362,6 +397,9 @@ func (s *server) handleKill(w http.ResponseWriter, r *http.Request, se *session)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	se.mu.Lock()
+	se.killed = true
+	se.mu.Unlock()
 	killProcess(se.cmd) // platform-specific: no orphaned children
 	se.pty.Close()
 	se.markDone()
@@ -398,11 +436,21 @@ func (se *session) readLoop() {
 	}
 	se.mu.Lock()
 	se.exited = true
+	killed := se.killed
 	se.mu.Unlock()
 	se.markDone()
+	if !killed && se.onNaturalExit != nil {
+		se.onNaturalExit()
+	}
 }
 
 func (se *session) markDone() { se.doneOnce.Do(func() { close(se.done) }) }
+
+func (se *session) isExited() bool {
+	se.mu.Lock()
+	defer se.mu.Unlock()
+	return se.exited
+}
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
