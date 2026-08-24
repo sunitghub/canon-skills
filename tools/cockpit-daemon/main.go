@@ -119,8 +119,21 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	if !ticketRe.MatchString(ticket) {
 		ticket = ""
 	}
+	// embed=1 trims the daemon page's own chrome (brand + ticket input) when the
+	// board frames it; autostart=1 auto-launches the prefilled ticket. Both are
+	// strictly "1" or empty — no other value is injected.
+	embed := ""
+	if r.URL.Query().Get("embed") == "1" {
+		embed = "1"
+	}
+	autostart := ""
+	if r.URL.Query().Get("autostart") == "1" {
+		autostart = "1"
+	}
 	page := strings.ReplaceAll(string(raw), "__COCKPIT_TOKEN__", s.cfg.token)
 	page = strings.ReplaceAll(page, "__COCKPIT_TICKET__", ticket)
+	page = strings.ReplaceAll(page, "__COCKPIT_EMBED__", embed)
+	page = strings.ReplaceAll(page, "__COCKPIT_AUTOSTART__", autostart)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	io.WriteString(w, page)
 }

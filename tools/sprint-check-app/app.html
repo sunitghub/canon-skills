@@ -1346,6 +1346,107 @@
     }
     .tour-caption { font-size: 11px; color: var(--text-muted); line-height: 1.6; }
 
+    /* ── Cockpit (t-ddc8) — one-window mode: board collapses, embedded agent
+       terminal + inline acceptance rail + collapsed preview slot ───────────── */
+    #cockpit-overlay {
+      position: fixed; inset: 0; z-index: 60; background: var(--bg);
+      display: none; flex-direction: column;
+    }
+    #cockpit-overlay.open { display: flex; }
+    #cockpit { display: flex; flex-direction: column; height: 100%; }
+    .ck-topbar {
+      display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .ck-topbar .spacer { flex: 1; }
+    .ck-back {
+      background: var(--surface-raised); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .ck-back:hover { background: var(--surface-hover); }
+    .ck-id { font-family: var(--mono, monospace); font-size: 12px; color: var(--text-muted); }
+    .ck-title { font-size: 14px; font-weight: 600; color: var(--text);
+      max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ck-model {
+      font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted);
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 6px; padding: 3px 8px;
+    }
+    .ck-toggle {
+      background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 9px; font-size: 13px; cursor: pointer;
+    }
+    .ck-toggle:hover { color: var(--text); }
+    .ck-body { flex: 1; min-height: 0; display: flex; }
+    .ck-rail {
+      width: 320px; flex-shrink: 0; border-right: 1px solid var(--border);
+      background: var(--surface); overflow-y: auto; padding: 14px; transition: width .18s ease;
+    }
+    #cockpit.rail-collapsed .ck-rail { width: 44px; padding: 12px 0; overflow: hidden; }
+    #cockpit.rail-collapsed .ck-rail .ck-rail-full { display: none; }
+    .ck-rail-icons { display: none; flex-direction: column; align-items: center; gap: 16px; }
+    #cockpit.rail-collapsed .ck-rail-icons { display: flex; }
+    .ck-rail-icons .ck-rail-icon { color: var(--text-faint); font-size: 15px; }
+    .ck-rail-icons .ck-rail-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-progress, #60a5fa); }
+    .ck-section-label {
+      font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-faint);
+      text-transform: uppercase; margin: 0 0 8px;
+    }
+    .ck-ticket-card {
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; margin-bottom: 16px;
+    }
+    .ck-ticket-card .ck-tc-id { font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted); }
+    .ck-ticket-card .ck-tc-title { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 4px; }
+    .ck-accept { font-size: 12px; }
+    .ck-accept .doc-bullet { cursor: pointer; }
+    .ck-accept .doc-bullet[data-check-idx] { cursor: pointer; }
+    .ck-add-crit {
+      display: flex; gap: 6px; margin-top: 10px;
+    }
+    .ck-add-crit input {
+      flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 5px 8px; font-size: 12px;
+    }
+    .ck-add-crit input:focus { outline: none; border-color: var(--accent); }
+    .ck-add-crit button {
+      background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+      padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .ck-add-hint { font-size: 10px; color: var(--text-faint); margin-top: 6px; }
+    .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c); }
+    .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
+    .ck-term-msg {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted); font-family: var(--mono, monospace); font-size: 13px; padding: 24px;
+      text-align: center; pointer-events: none;
+    }
+    .ck-preview {
+      width: 360px; flex-shrink: 0; border-left: 1px solid var(--border);
+      background: var(--surface); display: flex; flex-direction: column;
+    }
+    .ck-preview.collapsed { width: 40px; }
+    .ck-preview.collapsed .ck-preview-full { display: none; }
+    .ck-preview-collapsed-label {
+      display: none; writing-mode: vertical-rl; transform: rotate(180deg);
+      color: var(--text-faint); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+      margin: 12px auto; cursor: pointer;
+    }
+    .ck-preview.collapsed .ck-preview-collapsed-label { display: block; }
+    .ck-loopbar {
+      display: flex; align-items: center; gap: 10px; padding: 6px 14px; flex-shrink: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      font-family: var(--mono, monospace); font-size: 11px; color: var(--text-faint);
+    }
+    .ck-loopbar .ck-loop-note { margin-left: auto; }
+    .card-start {
+      margin-left: auto; background: var(--accent); color: #fff; border: 0;
+      border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+    .card-start:hover { filter: brightness(1.08); }
+    .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-faint); cursor: not-allowed; }
+
     /* ── Scrollbars ───────────────────────────── */
     ::-webkit-scrollbar       { width: 4px; height: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -1484,6 +1585,53 @@
       <div id="board"></div>
       <div class="board-empty-search" id="board-empty-search"></div>
     </section>
+  </div>
+</div>
+
+<!-- Cockpit (t-ddc8): one-window mode — board collapses, embedded agent terminal +
+     inline acceptance rail + collapsed preview slot -->
+<div id="cockpit-overlay">
+  <div id="cockpit">
+    <div class="ck-topbar">
+      <button class="ck-back" id="ck-back" type="button">← Board</button>
+      <span class="ck-id" id="ck-id"></span>
+      <span class="ck-title" id="ck-title"></span>
+      <span class="spacer"></span>
+      <span class="ck-model" id="ck-model">model: from plan.md</span>
+      <button class="ck-toggle" id="ck-rail-toggle" type="button" title="Collapse rail" aria-label="Collapse rail">⟨ ⟩</button>
+    </div>
+    <div class="ck-body">
+      <div class="ck-rail">
+        <div class="ck-rail-full">
+          <div class="ck-ticket-card">
+            <div class="ck-tc-id" id="ck-tc-id"></div>
+            <div class="ck-tc-title" id="ck-tc-title"></div>
+          </div>
+          <div class="ck-section-label">Acceptance</div>
+          <div class="ck-accept" id="ck-accept"></div>
+          <div class="ck-add-crit">
+            <input type="text" id="ck-crit-input" placeholder="Add a criterion...">
+            <button type="button" id="ck-crit-add">Add</button>
+          </div>
+        </div>
+        <div class="ck-rail-icons">
+          <span class="ck-rail-icon">☰</span>
+          <span class="ck-rail-dot"></span>
+        </div>
+      </div>
+      <div class="ck-term">
+        <iframe id="ck-iframe" title="Agent terminal" style="visibility:hidden"></iframe>
+        <div class="ck-term-msg" id="ck-term-msg"></div>
+      </div>
+      <div class="ck-preview collapsed">
+        <div class="ck-preview-full"></div>
+        <div class="ck-preview-collapsed-label" id="ck-preview-label">Preview</div>
+      </div>
+    </div>
+    <div class="ck-loopbar">
+      <span>plan → build → test → close</span>
+      <span class="ck-loop-note">one window · no switching</span>
+    </div>
   </div>
 </div>
 
@@ -2607,6 +2755,14 @@ function renderBoard() {
     btn.addEventListener('blur', hideHoverTooltip);
   });
 
+  board.querySelectorAll('.card-start').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (btn.disabled) return;
+      openCockpit(btn.dataset.id);
+    });
+  });
+
   board.querySelectorAll('.card-id-copy').forEach(btn => {
     const flash = (label) => {
       const prev = btn.textContent;
@@ -2765,6 +2921,17 @@ function cardHTML(t, idx) {
   const animStyle = (idx !== undefined) ? ` style="--i:${idx}"` : '';
   const pri = t.priority ?? 2;
   const priLabel = ['P0 critical','P1 high','P2 normal','P3 low','P4 backlog'][pri] ?? `P${pri}`;
+  // Cockpit Start/Resume (t-ddc8): status-gated + single-active. Only one sprint
+  // may run at a time (the CLI's ACTIVE lock); the UI reflects that by disabling
+  // Start on OPEN cards while any ticket is in_progress.
+  const activeExists = (state.tickets || []).some(x => x.status === 'in_progress');
+  let startBtn = '';
+  if (t.status === 'open') {
+    const dis = activeExists;
+    startBtn = `<button class="card-start${dis ? ' disabled' : ''}" data-id="${esc(t.id)}"${dis ? ' disabled title="Another sprint is active — finish it before starting a new one"' : ' title="Start this sprint in the cockpit"'}>▶ Start</button>`;
+  } else if (t.status === 'in_progress') {
+    startBtn = `<button class="card-start" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
+  }
   return `
     <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       <div class="card-head">
@@ -2774,6 +2941,7 @@ function cardHTML(t, idx) {
         ${ciBadge(t)}
         ${demoBadge(t)}
         ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
+        ${startBtn}
       </div>
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
@@ -3989,6 +4157,174 @@ async function moveCard(t, newStatus) {
   if (modalOpen) closeModal(); else renderBoard();
 }
 
+// ── Cockpit (t-ddc8): one-window mode ───────────────────────────────────────
+// Board↔cockpit switch. The board owns no PTY — it ensures the shipped
+// cockpit-daemon is running (POST /api/cockpit) and iframes its /cockpit page.
+// Inline acceptance edits reuse the /api/doc write path (toggleCheckbox).
+const cockpitState = { id: null, addr: null, acceptanceDoc: null };
+
+async function openCockpit(id) {
+  const t = findTicketById(id);
+  if (!t) return;
+  cockpitState.id = id;
+  state.selectedId = id;
+  document.getElementById('ck-id').textContent = displayTicketId(t);
+  document.getElementById('ck-title').textContent = t.title || '';
+  document.getElementById('ck-tc-id').textContent = displayTicketId(t);
+  document.getElementById('ck-tc-title').textContent = t.title || '';
+  document.getElementById('cockpit').classList.remove('rail-collapsed');
+  document.getElementById('cockpit-overlay').classList.add('open');
+  renderCockpitModel(t);
+  await renderCockpitAcceptance(t);
+  await mountCockpitTerminal(t);
+}
+
+function closeCockpit() {
+  document.getElementById('cockpit-overlay').classList.remove('open');
+  const iframe = document.getElementById('ck-iframe');
+  if (iframe) iframe.src = 'about:blank'; // drop the SSE stream held by the embed
+  cockpitState.id = null; cockpitState.addr = null; cockpitState.acceptanceDoc = null;
+  loadData().then(render).catch(() => renderBoard());
+}
+
+// Model chip is read-only, sourced from plan.md's `Gate model:` (or the default).
+async function renderCockpitModel(t) {
+  const el = document.getElementById('ck-model');
+  el.textContent = 'model: from plan.md';
+  const planDoc = (t.docs || []).find(d => docSlug(t, d.file) === 'plan');
+  if (!planDoc) return;
+  try {
+    const r = await fetch(`/api/doc/${encodeURIComponent(planDoc.file)}`);
+    if (!r.ok) return;
+    const gm = parseGateModel((await r.json()).content || '');
+    if (gm.filled && gm.value) el.textContent = `model: ${gm.value} · plan.md`;
+  } catch {}
+}
+
+function ckAcceptanceDoc(t) {
+  const acc = (t.docs || []).find(d => docSlug(t, d.file) === 'acceptance');
+  return acc ? acc.file : null;
+}
+
+// Renders the acceptance.md ## Criteria section as an inline checklist. Criteria
+// is the first checkbox-bearing section in canon's acceptance.md, so a bullet's
+// src index equals its whole-doc checkbox index that toggleCheckbox() flips.
+async function renderCockpitAcceptance(t) {
+  const box = document.getElementById('ck-accept');
+  const docFile = ckAcceptanceDoc(t);
+  cockpitState.acceptanceDoc = docFile;
+  if (!docFile) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet — add the first criterion below.</div>'; return; }
+  let content = '';
+  try {
+    const r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
+    if (r.ok) content = (await r.json()).content || '';
+  } catch {}
+  const criteria = sectionContent(content, 'Criteria') || content;
+  box.innerHTML = md(criteria, t.id);
+  const locked = t.status === 'closed' || t.status === 'cancelled';
+  box.querySelectorAll('.doc-bullet[data-src-idx]').forEach(b => {
+    if (!locked) b.dataset.checkIdx = b.dataset.srcIdx;
+  });
+}
+
+async function mountCockpitTerminal(t) {
+  const msg = document.getElementById('ck-term-msg');
+  const iframe = document.getElementById('ck-iframe');
+  msg.textContent = 'Starting the cockpit daemon…';
+  iframe.style.visibility = 'hidden';
+  let addr = null, err = '';
+  try {
+    const r = await fetch('/api/cockpit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json();
+    if (d && d.running && d.addr) addr = d.addr; else err = (d && d.error) || 'daemon unavailable';
+  } catch { err = 'request failed'; }
+  if (!addr) {
+    msg.textContent = 'Could not start the cockpit daemon (' + err + '). Build tools/cockpit-daemon and retry.';
+    iframe.style.visibility = 'hidden';
+    return;
+  }
+  cockpitState.addr = addr;
+  // autostart the sprint only for a fresh OPEN ticket; Resume loads the terminal
+  // with the Start control available (the daemon/sprint ACTIVE guard prevents a
+  // true double-run).
+  const autostart = t.status === 'open' ? '1' : '0';
+  iframe.src = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=${autostart}`;
+  iframe.style.visibility = 'visible';
+  msg.textContent = '';
+}
+
+// Append `- [ ] <text>` at the end of the ## Criteria section.
+function appendCriterion(content, text) {
+  const line = `- [ ] ${text}`;
+  if (!content.trim()) return `# Acceptance\n\n## Criteria\n${line}\n\n## Test Plan\n\n## QA\n`;
+  const lines = content.split('\n');
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) if (/^##\s+Criteria\s*$/.test(lines[i])) { start = i; break; }
+  if (start === -1) return content.replace(/\s*$/, '') + `\n${line}\n`;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) if (/^##\s+/.test(lines[i])) { end = i; break; }
+  let insertAt = start + 1;
+  for (let i = start + 1; i < end; i++) if (lines[i].trim() !== '') insertAt = i + 1;
+  lines.splice(insertAt, 0, line);
+  return lines.join('\n');
+}
+
+async function ckAddCriterion() {
+  const input = document.getElementById('ck-crit-input');
+  const text = input.value.trim();
+  const t = findTicketById(cockpitState.id);
+  if (!text || !t || t.status === 'closed' || t.status === 'cancelled') return;
+  let docFile = cockpitState.acceptanceDoc || docFileFor(t, 'acceptance');
+  let content = '';
+  try {
+    const r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
+    if (r.ok) content = (await r.json()).content || '';
+  } catch {}
+  const updated = appendCriterion(content, text);
+  try {
+    await fetch(`/api/doc/${encodeURIComponent(docFile)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: updated }),
+    });
+  } catch {}
+  input.value = '';
+  try { const tr = await fetch('/api/tickets'); if (tr.ok) state.tickets = await tr.json(); } catch {}
+  const nt = findTicketById(cockpitState.id) || t;
+  cockpitState.acceptanceDoc = ckAcceptanceDoc(nt) || docFile;
+  await renderCockpitAcceptance(nt);
+}
+
+// Inline acceptance toggle in the cockpit rail (reuses toggleCheckbox → /api/doc).
+document.getElementById('ck-accept').addEventListener('click', async e => {
+  const bullet = e.target.closest('.doc-bullet[data-check-idx]');
+  if (!bullet || !cockpitState.acceptanceDoc) return;
+  const t = findTicketById(cockpitState.id);
+  if (!t || t.status === 'closed' || t.status === 'cancelled') return;
+  const idx = Number(bullet.dataset.checkIdx);
+  const wasOpen = bullet.classList.contains('doc-check-open');
+  bullet.classList.toggle('doc-check-open', !wasOpen);
+  const marker = bullet.querySelector('.doc-check-marker');
+  if (marker) { marker.classList.toggle('open', !wasOpen); marker.textContent = wasOpen ? '✓' : ''; }
+  await toggleCheckbox(cockpitState.acceptanceDoc, idx);
+  try { const tr = await fetch('/api/tickets'); if (tr.ok) state.tickets = await tr.json(); } catch {}
+  const nt = findTicketById(cockpitState.id);
+  if (nt) await renderCockpitAcceptance(nt);
+});
+
+document.getElementById('ck-back').addEventListener('click', closeCockpit);
+document.getElementById('ck-rail-toggle').addEventListener('click', () => {
+  document.getElementById('cockpit').classList.toggle('rail-collapsed');
+});
+document.getElementById('ck-preview-label').addEventListener('click', () => {
+  // Preview pane richness is t-b19b; the collapsed slot is a no-op placeholder.
+  showToast('App preview lands in t-b19b', 'warn');
+});
+document.getElementById('ck-crit-add').addEventListener('click', ckAddCriterion);
+document.getElementById('ck-crit-input').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); ckAddCriterion(); } });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open')) closeCockpit();
+});
+
 // ── Semantic ticket matching ──────────────────────────────────────────────
 
 const _STOP = new Set(['a','an','the','and','or','in','on','for','to','of','with','by',
@@ -4921,5 +5257,12 @@ document.getElementById('btn-ci-setup')?.addEventListener('click', async () => {
 loadData();
 setInterval(loadData, 8000);
 </script>
+    <div class="ck-loopbar">
+      <span>plan → build → test → close</span>
+      <span class="ck-loop-note">one window · agent + board · no switching</span>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>

@@ -51,4 +51,15 @@ if grep -q 'data-insert="toggle"' "$APP"; then
   fail "dead <details> 'Code block' toolbar insert should be replaced by data-insert=\"scenario\""
 fi
 
+# t-ddc8: cockpit-in-board — mode switch, card Start/Resume, /api/cockpit embed,
+# inline acceptance rail, focus collapse. The board never owns a PTY.
+assert_grep 'id="cockpit-overlay"' "$APP"
+assert_grep 'function openCockpit' "$APP"
+assert_grep 'function closeCockpit' "$APP"
+assert_grep "fetch\\('/api/cockpit'" "$APP"
+assert_grep 'class="card-start' "$APP"
+assert_grep 'renderCockpitAcceptance' "$APP"
+assert_grep 'rail-collapsed' "$APP"
+assert_grep 'embed=1' "$APP"
+
 printf 'sprint-check-app: ok\n'

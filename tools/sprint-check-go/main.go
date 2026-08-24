@@ -38,6 +38,8 @@ var (
 	handoffFile    string
 	appHTML        string
 	sprintHeadless string
+	cockpitDaemonBin string
+	cockpitSprintBin string
 	headlessRuns   = map[string]map[string]any{}
 	headlessRunsMu sync.Mutex
 )
@@ -77,6 +79,8 @@ func main() {
 	}
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
+	cockpitDaemonBin = resolveCockpitDaemon(toolsDir, projectRoot, cwd)
+	cockpitSprintBin = resolveSibling(sprintHeadless, "sprint")
 	ticketsDir = filepath.Join(projectRoot, ".tickets")
 	handoffFile = filepath.Join(projectRoot, "HANDOFF.md")
 
@@ -158,6 +162,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, loadGit())
 	case "/api/why":
 		sendJSON(w, loadWhy(r.URL.Query().Get("file")))
+	case "/api/cockpit":
+		sendJSON(w, cockpitDiscover())
 	default:
 		if regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`).MatchString(path) {
 			serveFile(w, filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(path, "/"))), mime.TypeByExtension(filepath.Ext(path)))
@@ -253,6 +259,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/ci-workflow" {
 		sendJSON(w, writeCIWorkflow())
+		return
+	}
+	if path == "/api/cockpit" {
+		sendJSON(w, ensureCockpit())
 		return
 	}
 	if path == "/api/tickets" {
@@ -1245,6 +1255,137 @@ func resolveSprintHeadless(toolsDir, root string, extraRoots ...string) string {
 		}
 	}
 	return candidates[0]
+}
+
+// ── Cockpit daemon integration (t-ddc8) ─────────────────────────────────────
+// The board never owns a PTY (t-1262 lesson): it discovers/launches the shipped
+// cockpit-daemon (which owns the PTY) and the frontend iframes its /cockpit
+// page. The board reads only the daemon's addr from the 0600 daemon.json; the
+// token stays daemon-side. The spawn argv is fixed — no board/user input is
+// interpolated. Must stay behaviorally identical to server.py's cockpit_*
+// helpers — parity-tested by tests/sprint-check-api-parity.sh.
+
+// resolveCockpitDaemon finds the cockpit-daemon binary. COCKPIT_DAEMON_BIN
+// overrides (used by tests to point at a stub); default is the built binary
+// next to the tools dir.
+func resolveCockpitDaemon(toolsDir, root string, extraRoots ...string) string {
+	if b := os.Getenv("COCKPIT_DAEMON_BIN"); b != "" {
+		return b
+	}
+	name := "cockpit-daemon"
+	if runtime.GOOS == "windows" {
+		name = "cockpit-daemon.exe"
+	}
+	candidates := []string{
+		filepath.Join(toolsDir, "cockpit-daemon", name),
+		filepath.Join(root, "tools", "cockpit-daemon", name),
+	}
+	for _, extraRoot := range extraRoots {
+		candidates = append(candidates, filepath.Join(extraRoot, "tools", "cockpit-daemon", name))
+	}
+	for _, candidate := range candidates {
+		if exists(candidate) {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+// resolveSibling returns a path to `name` next to `ref` if it exists, else "".
+func resolveSibling(ref, name string) string {
+	if ref == "" {
+		return ""
+	}
+	p := filepath.Join(filepath.Dir(ref), name)
+	if exists(p) {
+		return p
+	}
+	return ""
+}
+
+// cockpitStateDir is where the board expects the daemon to publish daemon.json.
+// COCKPIT_STATE_DIR overrides (tests); default is a fixed loopback-local temp dir.
+func cockpitStateDir() string {
+	if d := os.Getenv("COCKPIT_STATE_DIR"); d != "" {
+		return d
+	}
+	return filepath.Join(os.TempDir(), "canon-cockpit-board")
+}
+
+func cockpitHealthy(addr string) bool {
+	if addr == "" {
+		return false
+	}
+	client := &http.Client{Timeout: 400 * time.Millisecond}
+	resp, err := client.Get("http://" + addr + "/healthz")
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
+}
+
+// discoverCockpitAddr reads the daemon addr from daemon.json (only the addr —
+// never the token) and reports whether that daemon answers /healthz.
+func discoverCockpitAddr() (string, bool) {
+	raw, err := os.ReadFile(filepath.Join(cockpitStateDir(), "daemon.json"))
+	if err != nil {
+		return "", false
+	}
+	var st struct {
+		Addr string `json:"addr"`
+	}
+	if json.Unmarshal(raw, &st) != nil {
+		return "", false
+	}
+	return st.Addr, cockpitHealthy(st.Addr)
+}
+
+func cockpitDiscover() map[string]any {
+	addr, ok := discoverCockpitAddr()
+	var addrAny any
+	if addr != "" {
+		addrAny = addr
+	}
+	return map[string]any{"running": ok, "addr": addrAny}
+}
+
+// ensureCockpit returns a running daemon's addr, launching one on demand if
+// none is healthy. The spawn argv is fixed (["-addr","127.0.0.1:0"]); the
+// project root + sprint bin are passed via env, never argv.
+func ensureCockpit() map[string]any {
+	if addr, ok := discoverCockpitAddr(); ok {
+		return map[string]any{"running": true, "addr": addr, "launched": false}
+	}
+	if !exists(cockpitDaemonBin) {
+		return map[string]any{"running": false, "addr": nil, "error": "cockpit daemon binary not found"}
+	}
+	stateDir := cockpitStateDir()
+	os.MkdirAll(stateDir, 0700)
+	os.Remove(filepath.Join(stateDir, "daemon.json")) // clear any stale addr
+	cmd := exec.Command(cockpitDaemonBin, "-addr", "127.0.0.1:0")
+	env := append(os.Environ(),
+		"COCKPIT_STATE_DIR="+stateDir,
+		"COCKPIT_PROJECT_ROOT="+projectRoot,
+	)
+	if cockpitSprintBin != "" {
+		env = append(env, "COCKPIT_SPRINT_BIN="+cockpitSprintBin)
+	}
+	cmd.Env = env
+	if err := cmd.Start(); err != nil {
+		return map[string]any{"running": false, "addr": nil, "error": err.Error()}
+	}
+	// Detach: don't Wait — the daemon must outlive the board (agent survives the
+	// browser tab, nebula's model). Reap the child in the background so a fast
+	// exit (e.g. bind failure) doesn't leave a zombie.
+	go func() { _ = cmd.Wait() }()
+	for i := 0; i < 50; i++ {
+		if addr, ok := discoverCockpitAddr(); ok {
+			return map[string]any{"running": true, "addr": addr, "launched": true}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return map[string]any{"running": false, "addr": nil, "error": "daemon did not become ready"}
 }
 
 // ── Headless grading runs (t-200b) ──────────────────────────────────────────
