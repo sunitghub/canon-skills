@@ -15,6 +15,10 @@ toPdfViaTempFile*
 tools/tailscale-check.sh
 posts/
 octave/
+# Future/ is a local-only design scratchpad (pen.dev mockups, exploration
+# notes) — never tracked, so mockup work verifies via direct tool inspection,
+# not a git diff. See DECISIONS.md (t-96a8).
+Future/
 # LinkedIn-posts skill is canon-local only, not a public canon-skills capability (t-9efb; see DECISIONS.md 2026-08-03). Present in local working copies, untracked so it never reaches either remote.
 skills/linkedin-posts/
 # Local-only Octave slides theme; canon.css (generic default) stays tracked.
