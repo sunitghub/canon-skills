@@ -147,16 +147,23 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   Windows validation is pending a Windows box.
 - **Board-integrated cockpit mode (P3):** every card shows **▶ Start** (OPEN) or
   **▶ Resume** (IN_PROGRESS) — click it to switch the board itself into cockpit
-  mode: the kanban lanes collapse to a left ticket rail (with an **inline
-  acceptance checklist** that toggles and writes back to `acceptance.md`) and an
-  embedded terminal takes the center. The board never owns a PTY — it
-  discovers a running `cockpit-daemon` via `daemon.json`, or launches one on
-  demand (`/api/cockpit` in both `server.py` and `main.go`), with no secret ever
+  mode: the kanban lanes collapse to a left ticket rail and an embedded
+  terminal takes the center. The board never owns a PTY — it discovers a
+  running `cockpit-daemon` via `daemon.json`, or launches one on demand
+  (`/api/cockpit` in both `server.py` and `main.go`), with no secret ever
   passed via argv. **Esc / "← Board"** returns to the kanban view; only one
   sprint may be active at a time, so Start is disabled on other cards while a
   session is live. The rail can collapse to a 44px icon strip to maximize the
   terminal; the app-under-test preview slot is present but collapsed (richness
   is follow-up work, `t-b19b`).
-- **Scope:** P1 (this daemon + standalone `cockpit` launcher) and P3 (the board
-  integration above) are done. The preview pane and further visual polish are
-  follow-up work — see `Future/Terminal-In-Board/` and tickets `t-8a63`/`t-ddc8`.
+- **Rail accordion (P3.1):** the ticket rail shows **Acceptance** and **Test
+  Plan** as independent, collapsible accordion sections (both start collapsed).
+  Both are **view-only** — no click-to-toggle, no write path to
+  `acceptance.md` — so a human watching the agent work can't inadvertently
+  check a box that isn't actually verified. The rail **polls** every 5s while
+  the cockpit is open, so edits the running agent (or anyone else) makes to
+  `acceptance.md` show up without closing/reopening the cockpit.
+- **Scope:** P1 (this daemon + standalone `cockpit` launcher), P3 (the board
+  integration above), and P3.1 (the rail accordion) are done. The preview pane
+  and further visual polish are follow-up work — see `Future/Terminal-In-Board/`
+  and tickets `t-8a63`/`t-ddc8`/`t-96a8`.

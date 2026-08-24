@@ -2896,6 +2896,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await resumeBtn.click();
 
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      // Acceptance starts collapsed — expand it to see the checklist.
+      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
       // Inline acceptance rail renders the Criteria checklist.
       await expect(page.locator('#ck-accept .doc-bullet').first()).toBeVisible();
       await expect(page.locator('#ck-accept')).toContainText('First cockpit criterion');
@@ -2978,24 +2980,27 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('toggling an inline acceptance criterion in the cockpit writes back to acceptance.md', async ({ page }) => {
+  test('Acceptance renders view-only in the cockpit — clicking a bullet never writes to acceptance.md (t-96a8)', async ({ page }) => {
     const id = `t-cktog-${Date.now()}`;
     const acc = path.join(PROJECT_ROOT, '.tickets', id, 'acceptance.md');
     try {
-      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Toggle me on'] });
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Do not toggle me'] });
+      const before = fs.readFileSync(acc, 'utf8');
       await stubCockpit(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
 
-      const bullet = page.locator('#ck-accept .doc-bullet[data-check-idx]').first();
+      const bullet = page.locator('#ck-accept .doc-bullet', { hasText: 'Do not toggle me' });
       await expect(bullet).toBeVisible();
+      await expect(bullet).not.toHaveAttribute('data-check-idx');
       await bullet.click();
+      await page.waitForTimeout(300); // no write path exists — nothing to poll for
 
-      // The write lands in acceptance.md — the first criterion flips to checked.
-      await expect.poll(() => fs.readFileSync(acc, 'utf8')).toMatch(/- \[x\] Toggle me on/);
+      expect(fs.readFileSync(acc, 'utf8')).toBe(before);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -3020,36 +3025,141 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('toggling the last unchecked box in the cockpit flips the board\'s acceptance_unchecked readiness on reload', async ({ page }) => {
-    const id = `t-ckready-${Date.now()}`;
+  test('Test Plan panel renders view-only, distinct from Criteria — clicking it never writes to acceptance.md (t-96a8)', async ({ page }) => {
+    const id = `t-cktp-${Date.now()}`;
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
     try {
-      writeTicket(id, 'in_progress', {
-        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'Filled.', ''],
-      });
-      const dir = path.join(PROJECT_ROOT, '.tickets', id);
-      fs.writeFileSync(path.join(dir, 'acceptance.md'), [
+      writeTicket(id, 'in_progress');
+      const accPath = path.join(dir, 'acceptance.md');
+      const before = [
         '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
-        '- [x] Already done', '- [ ] Toggle me to finish', '',
-        '## Test Plan', '- [x] already run', '',
-        '## QA', '- [x] Tested locally', '',
-      ].join('\n'));
+        '- [x] Crit one', '- [ ] Crit two', '',
+        '## Test Plan', '- [ ] Plan one', '- [x] Plan two', '',
+        '## QA', '- [ ] Tested locally', '',
+      ].join('\n');
+      fs.writeFileSync(accPath, before);
       await stubCockpit(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
-
-      const card = page.locator(`.card[data-id="${id}"]`);
-      await expect(card.locator('.ready-indicator')).not.toHaveClass(/(?:^|\s)ready(?:\s|$)/);
-
-      await card.locator('.card-start').click();
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await page.locator('#ck-accept .doc-bullet.doc-check-open').click();
-      await page.keyboard.press('Escape');
+
+      // Both sections start collapsed — expand Test Plan to see it.
+      await page.locator('.ck-accordion-header[data-accordion="ck-testplan-section"]').click();
+      await expect(page.locator('#ck-testplan')).toBeVisible();
+      await expect(page.locator('#ck-testplan')).toContainText('Plan one');
+      await expect(page.locator('#ck-testplan')).toContainText('Plan two');
+      await expect(page.locator('#ck-testplan')).not.toContainText('Crit one');
+
+      const bullet = page.locator('#ck-testplan .doc-bullet', { hasText: 'Plan one' });
+      await expect(bullet).not.toHaveAttribute('data-check-idx');
+      await bullet.click();
+      await page.waitForTimeout(300); // no write path exists — nothing to poll for
+
+      expect(fs.readFileSync(accPath, 'utf8')).toBe(before);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('cockpit polls acceptance.md while open, picking up an external edit without user interaction (t-96a8)', async ({ page }) => {
+    const id = `t-ckpoll-${Date.now()}`;
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Not yet edited'] });
+      const accPath = path.join(dir, 'acceptance.md');
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
+      await expect(page.locator('#ck-accept')).toContainText('Not yet edited');
+
+      // Simulate the agent (or anyone) editing acceptance.md while the cockpit
+      // is open — no cockpit interaction at all, just an external file write.
+      fs.writeFileSync(accPath, [
+        '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
+        '- [x] Edited externally while cockpit was open', '',
+        '## Test Plan', '- [ ] a check', '', '## QA', '- [ ] Tested locally', '',
+      ].join('\n'));
+
+      await expect(page.locator('#ck-accept')).toContainText('Edited externally while cockpit was open', { timeout: 10000 });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('closing the cockpit clears the poll timer; reopening never stacks a second one (t-96a8)', async ({ page }) => {
+    const id = `t-cktimer-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      // Drive openCockpit/closeCockpit directly (not via click+re-render) so
+      // this test isolates the timer-lifecycle invariant from board re-render
+      // timing. window.openCockpit/closeCockpit exist because app.html's
+      // script is a plain (non-module) <script> — top-level function
+      // declarations attach to window.
+      await page.evaluate(id => {
+        window.__setIntervalCalls = 0;
+        window.__clearIntervalCalls = 0;
+        const origSet = window.setInterval, origClear = window.clearInterval;
+        window.setInterval = (...a) => { window.__setIntervalCalls++; return origSet(...a); };
+        window.clearInterval = (...a) => { window.__clearIntervalCalls++; return origClear(...a); };
+      }, id);
+
+      await page.evaluate(id => window.openCockpit(id), id);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.evaluate(() => window.closeCockpit());
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
       await page.waitForLoadState('networkidle');
 
+      await page.evaluate(id => window.openCockpit(id), id);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
+      // One setInterval per open (2 opens); at least one clearInterval per
+      // close — proving openCockpit's own guard actually cleared the prior
+      // timer rather than stacking a second one silently.
+      expect(calls.set).toBe(2);
+      expect(calls.clear).toBeGreaterThanOrEqual(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Acceptance and Test Plan accordion sections start collapsed and toggle independently (t-96a8)', async ({ page }) => {
+    const id = `t-ckacc-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
-      await expect(card.locator('.ready-indicator')).toHaveClass(/(?:^|\s)ready(?:\s|$)/);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const acceptSection = page.locator('#ck-accept-section');
+      const testPlanSection = page.locator('#ck-testplan-section');
+      // Both start collapsed.
+      await expect(acceptSection).toHaveClass(/collapsed/);
+      await expect(testPlanSection).toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-accept')).toBeHidden();
+
+      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
+      await expect(acceptSection).not.toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-accept')).toBeVisible();
+      // Test Plan untouched by expanding Acceptance.
+      await expect(testPlanSection).toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-testplan')).toBeHidden();
+
+      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
+      await expect(acceptSection).toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-accept')).toBeHidden();
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
