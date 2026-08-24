@@ -1387,10 +1387,10 @@
     #cockpit.rail-collapsed .ck-rail .ck-rail-full { display: none; }
     .ck-rail-icons { display: none; flex-direction: column; align-items: center; gap: 16px; }
     #cockpit.rail-collapsed .ck-rail-icons { display: flex; }
-    .ck-rail-icons .ck-rail-icon { color: var(--text-faint); font-size: 15px; }
+    .ck-rail-icons .ck-rail-icon { color: var(--text-muted); font-size: 15px; }
     .ck-rail-icons .ck-rail-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-progress, #60a5fa); }
     .ck-section-label {
-      font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-faint);
+      font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-muted);
       text-transform: uppercase; margin: 0 0 8px;
     }
     .ck-ticket-card {
@@ -1414,7 +1414,7 @@
       background: var(--accent); color: #fff; border: 0; border-radius: 6px;
       padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
     }
-    .ck-add-hint { font-size: 10px; color: var(--text-faint); margin-top: 6px; }
+    .ck-add-hint { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
     .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c); }
     .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
     .ck-term-msg {
@@ -1430,22 +1430,25 @@
     .ck-preview.collapsed .ck-preview-full { display: none; }
     .ck-preview-collapsed-label {
       display: none; writing-mode: vertical-rl; transform: rotate(180deg);
-      color: var(--text-faint); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+      color: var(--text-muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
       margin: 12px auto; cursor: pointer;
     }
     .ck-preview.collapsed .ck-preview-collapsed-label { display: block; }
     .ck-loopbar {
       display: flex; align-items: center; gap: 10px; padding: 6px 14px; flex-shrink: 0;
       background: var(--surface); border-top: 1px solid var(--border);
-      font-family: var(--mono, monospace); font-size: 11px; color: var(--text-faint);
+      font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted);
     }
     .ck-loopbar .ck-loop-note { margin-left: auto; }
+    /* Floated into .card-body (before .card-title), not a .card-head flex child —
+       card-head has no slack for a 6th element on a ci:true + demo:true card (same
+       overflow this file already documents for .card-archive above). */
     .card-start {
-      margin-left: auto; background: var(--accent); color: #fff; border: 0;
+      float: right; margin: 0 0 4px 8px; background: var(--accent); color: #fff; border: 0;
       border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer;
     }
     .card-start:hover { filter: brightness(1.08); }
-    .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-faint); cursor: not-allowed; }
+    .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */
     ::-webkit-scrollbar       { width: 4px; height: 4px; }
@@ -2941,10 +2944,10 @@ function cardHTML(t, idx) {
         ${ciBadge(t)}
         ${demoBadge(t)}
         ${String(t.ci) === 'true' ? `<button class="ci-run-btn${t.headless_running ? ' running' : ''}" data-id="${esc(t.id)}" aria-label="Run headless grading"><svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M4 2.5v11l9-5.5z"/></svg></button>` : ''}
-        ${startBtn}
       </div>
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
+        ${startBtn}
         <p class="card-title">${esc(t.title)}</p>
       </div>
       <div class="card-footer">
@@ -5257,12 +5260,6 @@ document.getElementById('btn-ci-setup')?.addEventListener('click', async () => {
 loadData();
 setInterval(loadData, 8000);
 </script>
-    <div class="ck-loopbar">
-      <span>plan → build → test → close</span>
-      <span class="ck-loop-note">one window · agent + board · no switching</span>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>

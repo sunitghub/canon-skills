@@ -2862,11 +2862,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
-  function writeTicket(id, status, { acceptanceCriteria = null, plan = null } = {}) {
+  function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), [
       '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
+      `ci: ${ci}`, `demo: ${demo}`,
       'created: 2026-08-24T00:00:00Z', '---', '', `# Cockpit test ${id}`, '',
     ].join('\n'));
     if (acceptanceCriteria) {
@@ -2932,6 +2933,29 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator(`.card[data-id="${doneId}"] .card-start`)).toHaveCount(0);
     } finally {
       for (const id of [openId, progId, doneId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Start stays visible on a card that is both ci:true and demo:true (card-head has no slack for a 6th badge)', async ({ page }) => {
+    const id = `t-ckoverf-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { ci: true, demo: true });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+
+      const card = page.locator(`.card[data-id="${id}"]`);
+      const startBtn = card.locator('.card-start');
+      await expect(startBtn).toHaveText('▶ Start');
+      await expect(startBtn).toBeVisible();
+      // Floated into .card-body (not squeezed as a 6th .card-head flex child), so its
+      // box must stay within the card's own bounding box, not clipped past card-head's
+      // overflow:hidden edge.
+      const cardBox = await card.boundingBox();
+      const btnBox = await startBtn.boundingBox();
+      expect(btnBox.x + btnBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
 

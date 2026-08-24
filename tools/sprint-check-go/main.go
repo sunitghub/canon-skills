@@ -26,22 +26,22 @@ import (
 )
 
 var (
-	frontmatterRe  = regexp.MustCompile(`(?s)^---\s*\n(.*?)\n---\s*\n`)
-	fieldRe        = regexp.MustCompile(`(?m)^(\w+):\s*(.+)$`)
-	headingRe      = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
-	modelMentionRe = regexp.MustCompile(`(?i)\(model:\s*([^)]+)\)`)
-	baseRefRe      = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
-	imageExts      = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
-	safeVisualName = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-	projectRoot    string
-	ticketsDir     string
-	handoffFile    string
-	appHTML        string
-	sprintHeadless string
+	frontmatterRe    = regexp.MustCompile(`(?s)^---\s*\n(.*?)\n---\s*\n`)
+	fieldRe          = regexp.MustCompile(`(?m)^(\w+):\s*(.+)$`)
+	headingRe        = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
+	modelMentionRe   = regexp.MustCompile(`(?i)\(model:\s*([^)]+)\)`)
+	baseRefRe        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+	imageExts        = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
+	safeVisualName   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	projectRoot      string
+	ticketsDir       string
+	handoffFile      string
+	appHTML          string
+	sprintHeadless   string
 	cockpitDaemonBin string
 	cockpitSprintBin string
-	headlessRuns   = map[string]map[string]any{}
-	headlessRunsMu sync.Mutex
+	headlessRuns     = map[string]map[string]any{}
+	headlessRunsMu   sync.Mutex
 )
 
 type docInfo struct {
