@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"syscall"
@@ -354,6 +356,9 @@ func TestCockpitPageAndAssets(t *testing.T) {
 	if !strings.Contains(page, "/web/vendor/xterm.js") {
 		t.Fatal("cockpit page does not reference xterm.js")
 	}
+	if resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("cockpit page Cache-Control: want no-store, got %q", resp.Header.Get("Cache-Control"))
+	}
 
 	r2, err := http.Get(base + "/web/vendor/xterm.js")
 	if err != nil {
@@ -363,6 +368,27 @@ func TestCockpitPageAndAssets(t *testing.T) {
 	r2.Body.Close()
 	if r2.StatusCode != http.StatusOK || len(b2) < 10000 {
 		t.Fatalf("xterm.js asset: status %d, %d bytes", r2.StatusCode, len(b2))
+	}
+
+	// SRI: the integrity attribute on each vendored asset must match that
+	// asset's own actual served bytes (sha384, base64), not merely be present.
+	for _, name := range []string{"xterm.css", "xterm.js", "xterm-addon-fit.js"} {
+		re := regexp.MustCompile(`(?:href|src)="/web/vendor/` + regexp.QuoteMeta(name) + `" integrity="sha384-([^"]+)"`)
+		m := re.FindStringSubmatch(page)
+		if m == nil {
+			t.Fatalf("%s: no integrity attribute found in cockpit page", name)
+		}
+		ar, err := http.Get(base + "/web/vendor/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ab, _ := io.ReadAll(ar.Body)
+		ar.Body.Close()
+		sum := sha512.Sum384(ab)
+		want := base64.StdEncoding.EncodeToString(sum[:])
+		if m[1] != want {
+			t.Fatalf("%s: integrity %s does not match served bytes' hash sha384-%s", name, m[1], want)
+		}
 	}
 
 	// Valid ?ticket= is prefilled; an invalid one is dropped.
@@ -377,5 +403,171 @@ func TestCockpitPageAndAssets(t *testing.T) {
 	r4.Body.Close()
 	if strings.Contains(string(b4), "evil;rm") {
 		t.Fatal("invalid ticket was not dropped from prefill")
+	}
+}
+
+// fakeSprintQuickExit writes a script that prints READY then exits immediately
+// (no `cat`, unlike fakeSprint) — used to test the natural-exit paths (closed-PTY
+// status, reap-after-TTL) without an explicit /kill.
+func fakeSprintQuickExit(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "fake-sprint-quick.sh")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf 'READY\\n'\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+// waitForSessionExited polls /input until the closed-PTY 410 path fires,
+// i.e. until the session has naturally exited.
+func waitForSessionExited(t *testing.T, base, sid, token string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		req, _ := http.NewRequest(http.MethodPost, base+"/session/"+sid+"/input", strings.NewReader(""))
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusGone {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for session to exit")
+}
+
+func TestClosedPTYReturns410(t *testing.T) {
+	bin := fakeSprintQuickExit(t)
+	_, base := newTestServer(t, bin)
+
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	waitForSessionExited(t, base, out.Session, out.Token, 3*time.Second)
+
+	inReq, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/input", strings.NewReader("x"))
+	inReq.Header.Set("Authorization", "Bearer "+out.Token)
+	ir, err := http.DefaultClient.Do(inReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir.Body.Close()
+	if ir.StatusCode != http.StatusGone {
+		t.Fatalf("input after natural exit: want 410, got %d", ir.StatusCode)
+	}
+
+	rzBody, _ := json.Marshal(map[string]int{"Cols": 80, "Rows": 24})
+	rzReq, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/resize", bytes.NewReader(rzBody))
+	rzReq.Header.Set("Authorization", "Bearer "+out.Token)
+	rr, err := http.DefaultClient.Do(rzReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr.Body.Close()
+	if rr.StatusCode != http.StatusGone {
+		t.Fatalf("resize after natural exit: want 410, got %d", rr.StatusCode)
+	}
+}
+
+func TestSessionReapedAfterNaturalExitTTL(t *testing.T) {
+	bin := fakeSprintQuickExit(t)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), sessionReapTTL: 50 * time.Millisecond})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	base := ts.URL
+
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	waitForSessionExited(t, base, out.Session, out.Token, 3*time.Second)
+
+	// Still present right after exit (410, the grace period before reap) —
+	// not yet 404.
+	inReq, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/input", strings.NewReader("x"))
+	inReq.Header.Set("Authorization", "Bearer "+out.Token)
+	ir, err := http.DefaultClient.Do(inReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir.Body.Close()
+	if ir.StatusCode != http.StatusGone {
+		t.Fatalf("immediately after exit: want 410 (still present), got %d", ir.StatusCode)
+	}
+
+	// After the TTL elapses, the reaper deletes the entry — same request now 404.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		req2, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/input", strings.NewReader("x"))
+		req2.Header.Set("Authorization", "Bearer "+out.Token)
+		r2, err := http.DefaultClient.Do(req2)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r2.Body.Close()
+		if r2.StatusCode == http.StatusNotFound {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("session not reaped after TTL, last status %d", r2.StatusCode)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func TestConstantTimeAuthEdgeCases(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base := newTestServer(t, bin)
+
+	// Boot token: same length as the real one but wrong bytes, and empty.
+	sameLenWrong := strings.Repeat("x", len(bootTok))
+	for _, tok := range []string{sameLenWrong, ""} {
+		resp := startSession(t, base, "t-ab12", tok)
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("boot token %q: want 401, got %d", tok, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	// Session token: same length as the real one but wrong bytes, and empty.
+	sameLenWrongSess := strings.Repeat("y", len(out.Token))
+	for _, tok := range []string{sameLenWrongSess, ""} {
+		req, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/input", strings.NewReader("x"))
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		if r.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("session token %q: want 401, got %d", tok, r.StatusCode)
+		}
+	}
+
+	// Sanity: the real token still works — the constant-time swap didn't
+	// break correctness, only timing.
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/input", strings.NewReader("hi\n"))
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != http.StatusNoContent {
+		t.Fatalf("correct session token: want 204, got %d", r.StatusCode)
 	}
 }
