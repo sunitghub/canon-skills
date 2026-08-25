@@ -2,7 +2,10 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# -P (physical path) so this matches lsof's resolved cwd exactly — plain pwd
+# doesn't traverse a symlinked path component (t-2a71: sweep_stale_stub_processes
+# below compares against this as its default root).
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 TOOLS_DIR="$ROOT/tools"
 TKT="$TOOLS_DIR/tkt"
 SPRINT="$TOOLS_DIR/sprint"
