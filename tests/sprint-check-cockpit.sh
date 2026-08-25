@@ -18,10 +18,12 @@ fi
 SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 WORK="$(mktemp -d)"
 GO_BIN=""
-PY_PID=""; GO_PID=""
+PY_PID=""; GO_PID=""; PY_PID2=""; GO_PID2=""
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
+  [[ -n "$PY_PID2" ]] && kill "$PY_PID2" 2>/dev/null || true
+  [[ -n "$GO_PID2" ]] && kill "$GO_PID2" 2>/dev/null || true
   # kill any stub daemon http servers this test spawned (detached, so matched by
   # their unique state-dir path in argv)
   pkill -f "$WORK" 2>/dev/null || true
@@ -39,6 +41,11 @@ cat > "$STUB" <<'EOF'
 #!/usr/bin/env bash
 # record argv so the test can assert a fixed argv with no token
 printf '%s\n' "$@" > "$COCKPIT_STATE_DIR/argv.txt"
+# record COCKPIT_SPRINT_BIN as the launcher actually set it (t-7bdd): empty
+# means the launcher left it unset, so the daemon's own "claude" default
+# would apply; a non-empty value must be an explicit pass-through, never the
+# bash sprint CLI the launcher used to hard-code.
+printf '%s' "${COCKPIT_SPRINT_BIN:-}" > "$COCKPIT_STATE_DIR/env-sprintbin.txt"
 exec python3 - <<'PY'
 import http.server, socketserver, json, os
 class H(http.server.BaseHTTPRequestHandler):
@@ -93,6 +100,13 @@ PY
     fail "sprint-check-cockpit: FAIL — $label leaked a token into the daemon argv: [$argv]"
   fi
 
+  # t-7bdd: with no COCKPIT_SPRINT_BIN in the launching process's own env, the
+  # launcher must leave it unset in the daemon's env — never resolve it to the
+  # bash sprint CLI (the regression: the daemon's own "claude" default got
+  # silently overridden every time the board launched it).
+  local sprintbin_env; sprintbin_env="$(cat "$sd/env-sprintbin.txt" 2>/dev/null || true)"
+  [[ -z "$sprintbin_env" ]] || fail "sprint-check-cockpit: FAIL — $label default launch set COCKPIT_SPRINT_BIN=[$sprintbin_env], want unset"
+
   # second POST discovers the now-running daemon → launched:false (idempotent)
   local res2; res2="$(curl -s -X POST "$base/api/cockpit" -d '{}')"
   python3 - "$res2" "$label" <<'PY'
@@ -120,6 +134,16 @@ wait_ready() {
   return 1
 }
 
+# t-7bdd: an explicit COCKPIT_SPRINT_BIN in the *board's own* launching env
+# (a test stub, say) must still pass through unchanged — the fix removes the
+# wrong default, not the ability to override.
+OVERRIDE_VALUE="/path/to/fake-claude-stub.sh"
+assert_override_passthrough() {
+  local label="$1" sd="$2"
+  local sprintbin_env; sprintbin_env="$(cat "$sd/env-sprintbin.txt" 2>/dev/null || true)"
+  [[ "$sprintbin_env" == "$OVERRIDE_VALUE" ]] || fail "sprint-check-cockpit: FAIL — $label override launch set COCKPIT_SPRINT_BIN=[$sprintbin_env], want [$OVERRIDE_VALUE]"
+}
+
 # ── server.py ───────────────────────────────────────────────────────────────
 PY_PORT="$(free_port)"; PY_SD="$WORK/state-py"
 SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$PY_SD" COCKPIT_DAEMON_BIN="$STUB" \
@@ -127,6 +151,15 @@ SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$PY_SD" COCKPIT_DAEMON_BIN="$STUB" 
 PY_PID=$!; disown "$PY_PID" 2>/dev/null || true
 wait_ready "$PY_PORT" || fail "sprint-check-cockpit: server.py did not start"
 exercise "server.py" "http://127.0.0.1:$PY_PORT" "$PY_SD"
+
+# server.py, override case: COCKPIT_SPRINT_BIN already set in the launching env
+PY_PORT2="$(free_port)"; PY_SD2="$WORK/state-py-override"; mkdir -p "$PY_SD2"
+SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$PY_SD2" COCKPIT_DAEMON_BIN="$STUB" COCKPIT_SPRINT_BIN="$OVERRIDE_VALUE" \
+  python3 "$SERVER_PY" "$PY_PORT2" >/dev/null 2>&1 &
+PY_PID2=$!; disown "$PY_PID2" 2>/dev/null || true
+wait_ready "$PY_PORT2" || fail "sprint-check-cockpit: server.py (override) did not start"
+curl -s -X POST "http://127.0.0.1:$PY_PORT2/api/cockpit" -d '{}' >/dev/null
+assert_override_passthrough "server.py" "$PY_SD2"
 
 # ── main.go (parity) ─────────────────────────────────────────────────────────
 if command -v go >/dev/null 2>&1; then
@@ -138,6 +171,15 @@ if command -v go >/dev/null 2>&1; then
   GO_PID=$!; disown "$GO_PID" 2>/dev/null || true
   wait_ready "$GO_PORT" || fail "sprint-check-cockpit: main.go did not start"
   exercise "main.go" "http://127.0.0.1:$GO_PORT" "$GO_SD"
+
+  # main.go, override case: COCKPIT_SPRINT_BIN already set in the launching env
+  GO_PORT2="$(free_port)"; GO_SD2="$WORK/state-go-override"; mkdir -p "$GO_SD2"
+  SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$GO_SD2" COCKPIT_DAEMON_BIN="$STUB" COCKPIT_SPRINT_BIN="$OVERRIDE_VALUE" \
+    "$GO_BIN" "$GO_PORT2" >/dev/null 2>&1 &
+  GO_PID2=$!; disown "$GO_PID2" 2>/dev/null || true
+  wait_ready "$GO_PORT2" || fail "sprint-check-cockpit: main.go (override) did not start"
+  curl -s -X POST "http://127.0.0.1:$GO_PORT2/api/cockpit" -d '{}' >/dev/null
+  assert_override_passthrough "main.go" "$GO_SD2"
 else
   echo "sprint-check-cockpit: go absent — main.go parity portion skipped"
 fi

@@ -80,7 +80,11 @@ func main() {
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
 	cockpitDaemonBin = resolveCockpitDaemon(toolsDir, projectRoot, cwd)
-	cockpitSprintBin = resolveSibling(sprintHeadless, "sprint")
+	// Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test
+	// stub); otherwise empty, so the daemon's own default ("claude", t-842b)
+	// applies — never the bash sprint CLI, which doesn't understand claude's
+	// --settings flag (t-7bdd).
+	cockpitSprintBin = os.Getenv("COCKPIT_SPRINT_BIN")
 	ticketsDir = filepath.Join(projectRoot, ".tickets")
 	handoffFile = filepath.Join(projectRoot, "HANDOFF.md")
 
@@ -1289,18 +1293,6 @@ func resolveCockpitDaemon(toolsDir, root string, extraRoots ...string) string {
 		}
 	}
 	return candidates[0]
-}
-
-// resolveSibling returns a path to `name` next to `ref` if it exists, else "".
-func resolveSibling(ref, name string) string {
-	if ref == "" {
-		return ""
-	}
-	p := filepath.Join(filepath.Dir(ref), name)
-	if exists(p) {
-		return p
-	}
-	return ""
 }
 
 // cockpitStateDir is where the board expects the daemon to publish daemon.json.
