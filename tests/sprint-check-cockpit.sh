@@ -15,6 +15,11 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
   exit 0
 fi
 
+# t-2a71: reap any stub daemon leaked by a prior run this script's own
+# trap-on-EXIT couldn't reach (e.g. the process was SIGKILLed, or its parent
+# shell never ran its exit machinery at all) — before creating this run's own.
+sweep_stale_stub_processes
+
 SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 WORK="$(mktemp -d)"
 GO_BIN=""
