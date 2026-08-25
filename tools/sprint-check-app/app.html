@@ -1358,6 +1358,28 @@
     }
     #cockpit-overlay.open { display: flex; }
     #cockpit { display: flex; flex-direction: column; height: 100%; }
+    .ck-leave-confirm-overlay {
+      position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.55);
+      display: none; align-items: center; justify-content: center;
+    }
+    .ck-leave-confirm-overlay.open { display: flex; }
+    .ck-leave-confirm {
+      width: 380px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,.4);
+    }
+    .ck-leave-confirm-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .ck-leave-confirm-body { font-size: 13px; color: var(--text-body); line-height: 1.5; }
+    .ck-leave-confirm-status { font-size: 12px; color: var(--text-muted); margin-top: 10px; min-height: 16px; }
+    .ck-leave-confirm-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .ck-leave-btn { border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; }
+    .ck-leave-btn-save { background: var(--accent); color: #fff; }
+    .ck-leave-btn-save:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
+    .ck-leave-btn-leave { background: var(--surface-raised); color: var(--text); border: 1px solid var(--border); }
+    .ck-leave-btn-leave:disabled { opacity: .4; cursor: not-allowed; }
+    .ck-leave-btn-cancel { background: transparent; color: var(--text-muted); }
+    .ck-leave-btn-cancel:hover { color: var(--text); }
+    .ck-leave-btn-cancel:disabled { opacity: .4; cursor: not-allowed; }
+    .ck-leave-btn-cancel:disabled:hover { color: var(--text-muted); }
     .ck-topbar {
       display: flex; align-items: center; gap: 12px; padding: 8px 14px;
       background: var(--surface); border-bottom: 1px solid var(--border);
@@ -1696,6 +1718,22 @@
     <div class="ck-loopbar">
       <span>plan → build → test → close</span>
       <span class="ck-loop-note">one window · no switching</span>
+    </div>
+  </div>
+  <!-- t-f6b6: leaving a live session (Board button) must never silently orphan it. -->
+  <div id="ck-leave-confirm" class="ck-leave-confirm-overlay">
+    <div class="ck-leave-confirm">
+      <div class="ck-leave-confirm-title">A sprint session is still running</div>
+      <div class="ck-leave-confirm-body" id="ck-leave-confirm-body">
+        Leaving now without ending it will orphan the process — it keeps running with no way to
+        reconnect from here.
+      </div>
+      <div class="ck-leave-confirm-status" id="ck-leave-confirm-status"></div>
+      <div class="ck-leave-confirm-actions">
+        <button class="ck-leave-btn ck-leave-btn-save" id="ck-leave-save" type="button">Save &amp; End</button>
+        <button class="ck-leave-btn ck-leave-btn-leave" id="ck-leave-leave" type="button">Leave running</button>
+        <button class="ck-leave-btn ck-leave-btn-cancel" id="ck-leave-cancel" type="button">Cancel</button>
+      </div>
     </div>
   </div>
 </div>
@@ -4230,8 +4268,95 @@ async function moveCard(t, newStatus) {
 // rail only ever reads acceptance.md, never writes to it. Since nothing here
 // writes, there is no whole-document checkbox index to compute or keep in
 // sync — the earlier toggle-write path's index-offset math is gone with it.
-const cockpitState = { id: null, addr: null };
+const cockpitState = { id: null, addr: null, status: null };
 let cockpitPollTimer = null;
+
+// t-f6b6: the board and the daemon page are different origins (different
+// port), so the only channel for "is a session live" and "please save state
+// then end" is postMessage — and the only real trust boundary is validating
+// every INCOMING message's origin/source before acting on it (outbound is
+// fine with "*": no secret ever rides in these payloads, just status labels
+// and a fixed command name).
+window.addEventListener('message', (e) => {
+  const iframe = document.getElementById('ck-iframe');
+  if (!iframe || !cockpitState.addr) return;
+  if (e.source !== iframe.contentWindow) return;
+  if (e.origin !== 'http://' + cockpitState.addr) return;
+  const d = e.data;
+  if (!d || d.source !== 'canon-cockpit') return;
+  if (d.type === 'status') {
+    cockpitState.status = d.status;
+  } else if (d.type === 'ended' && cockpitState._onEnded) {
+    cockpitState._onEnded();
+  }
+});
+
+function sessionIsLive() {
+  return cockpitState.status === 'running' || cockpitState.status === 'needs-you';
+}
+
+function openLeaveConfirm() {
+  const needsYou = cockpitState.status === 'needs-you';
+  // Reset every control fresh — a prior session's in-flight save could have
+  // left "Leave running"/"Cancel" disabled and stale status text behind.
+  document.getElementById('ck-leave-save').disabled = needsYou;
+  document.getElementById('ck-leave-leave').disabled = false;
+  document.getElementById('ck-leave-cancel').disabled = false;
+  document.getElementById('ck-leave-confirm-body').textContent = needsYou
+    ? 'The agent is waiting on you right now — resolve the current prompt first, or leave it running.'
+    : 'Leaving now without ending it will orphan the process — it keeps running with no way to reconnect from here.';
+  document.getElementById('ck-leave-confirm-status').textContent = '';
+  document.getElementById('ck-leave-confirm').classList.add('open');
+}
+
+function closeLeaveConfirm() {
+  document.getElementById('ck-leave-confirm').classList.remove('open');
+}
+
+function teardownCockpit() {
+  document.getElementById('cockpit-overlay').classList.remove('open');
+  const iframe = document.getElementById('ck-iframe');
+  if (iframe) iframe.src = 'about:blank'; // drop the SSE stream held by the embed
+  if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
+  cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
+  loadData().then(render).catch(() => renderBoard());
+}
+
+document.getElementById('ck-leave-cancel').addEventListener('click', closeLeaveConfirm);
+document.getElementById('ck-leave-leave').addEventListener('click', () => { closeLeaveConfirm(); teardownCockpit(); });
+document.getElementById('ck-leave-save').addEventListener('click', () => {
+  const iframe = document.getElementById('ck-iframe');
+  const statusEl = document.getElementById('ck-leave-confirm-status');
+  const saveBtn = document.getElementById('ck-leave-save');
+  document.getElementById('ck-leave-leave').disabled = true;
+  // Cancel must not be clickable mid-save either — closeLeaveConfirm() only
+  // hides the modal, it doesn't abort the pending save-and-end sequence, so
+  // a "successful" cancel would tear the cockpit down anyway once the
+  // marker/timeout fires, with no dialog left open to explain why.
+  document.getElementById('ck-leave-cancel').disabled = true;
+  saveBtn.disabled = true;
+  statusEl.textContent = 'Saving state…';
+  let done = false;
+  const finish = (msg) => {
+    if (done) return; done = true;
+    cockpitState._onEnded = null;
+    statusEl.textContent = msg;
+    closeLeaveConfirm();
+    teardownCockpit();
+  };
+  cockpitState._onEnded = () => finish('Saved and ended.');
+  // Overridable so tests don't wait 90 real seconds; production leaves it unset.
+  const fallbackMs = window.__cockpitSaveFallbackMs || 90000;
+  setTimeout(() => {
+    if (done) return;
+    // The marker never showed up — force the kill directly rather than just
+    // blanking the iframe, or the session orphans anyway (the exact bug
+    // this whole flow exists to prevent).
+    iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
+    setTimeout(() => finish('Timed out waiting for save — ended anyway. It may be incomplete.'), 3000);
+  }, fallbackMs);
+  iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'save-and-end' }, 'http://' + cockpitState.addr);
+});
 
 async function openCockpit(id) {
   const t = findTicketById(id);
@@ -4257,13 +4382,10 @@ async function openCockpit(id) {
   }, 5000);
 }
 
+// t-f6b6: never tear down silently while a session is live — confirm first.
 function closeCockpit() {
-  document.getElementById('cockpit-overlay').classList.remove('open');
-  const iframe = document.getElementById('ck-iframe');
-  if (iframe) iframe.src = 'about:blank'; // drop the SSE stream held by the embed
-  if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
-  cockpitState.id = null; cockpitState.addr = null;
-  loadData().then(render).catch(() => renderBoard());
+  if (sessionIsLive()) { openLeaveConfirm(); return; }
+  teardownCockpit();
 }
 
 // Model chip is read-only, sourced from plan.md's `Gate model:` (or the default).
