@@ -16,6 +16,7 @@
   .start{display:flex;align-items:center;gap:8px;margin-left:6px}
   .start input{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px;width:120px}
   button{border:0;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--ui)}
+  button:disabled{opacity:.4;cursor:not-allowed}
   .btn-start{background:var(--accent);color:#fff}
   .btn-kill{background:var(--panel2);color:var(--dim);border:1px solid var(--border)}
   .btn-kill:hover{color:var(--red);border-color:var(--red)}
@@ -104,6 +105,9 @@
       if(!r.ok){ setStatus("error","start failed ("+r.status+")"); term.writeln("\r\n\x1b[31mstart failed: "+r.status+"\x1b[0m"); return; }
       var j = await r.json();
       session = j.session; sessTok = j.token; activeTicket = ticket;
+      // A second Start while this one is live would spawn a parallel session
+      // on the same ticket — no daemon-side guard against it (t-2zoa, live).
+      document.getElementById("startBtn").disabled = true;
       document.getElementById("killBtn").disabled = false;
       setStatus("running","running · "+ticket);
       term.clear();
@@ -135,7 +139,7 @@
           if(st === "needs-you") setStatus("needsyou","needs you · "+activeTicket);
           else setStatus("running","running · "+activeTicket);
         }
-        else if(ev==="exit"){ setStatus("done","finished"); }
+        else if(ev==="exit"){ setStatus("done","finished"); document.getElementById("startBtn").disabled = false; document.getElementById("killBtn").disabled = true; }
       }
     }
   }
@@ -156,7 +160,7 @@
     if(!session) return;
     await fetch("/session/"+session+"/kill", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});
     if(streamAbort) streamAbort.abort();
-    setStatus("","killed"); document.getElementById("killBtn").disabled = true; session=null; sessTok=null;
+    setStatus("","killed"); document.getElementById("killBtn").disabled = true; document.getElementById("startBtn").disabled = false; session=null; sessTok=null;
   }
 
   document.getElementById("startBtn").addEventListener("click", start);
