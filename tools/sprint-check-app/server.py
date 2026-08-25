@@ -661,8 +661,11 @@ def _resolve_cockpit_daemon() -> str:
     return str(Path(__file__).resolve().parent.parent / 'cockpit-daemon' / name)
 
 def _resolve_cockpit_sprint_bin() -> str:
-    p = Path(__file__).resolve().parent.parent / 'sprint'
-    return str(p) if p.exists() else ''
+    """Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test
+    stub); otherwise empty, so the daemon's own default ("claude", t-842b)
+    applies — never the bash sprint CLI, which doesn't understand claude's
+    --settings flag (t-7bdd)."""
+    return os.environ.get('COCKPIT_SPRINT_BIN', '')
 
 COCKPIT_DAEMON_BIN = _resolve_cockpit_daemon()
 COCKPIT_SPRINT_BIN = _resolve_cockpit_sprint_bin()
