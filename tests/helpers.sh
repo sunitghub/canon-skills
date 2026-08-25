@@ -54,6 +54,56 @@ run_ok() {
   "$@"
 }
 
+# _etime_to_seconds <etime> — converts ps -o etime='s "[[dd-]hh:]mm:ss" format
+# to a plain integer count of seconds. Portable across BSD (macOS) and GNU
+# (Linux) ps, which both use this same format for -o etime.
+_etime_to_seconds() {
+  local etime="$1" days=0 rest hh mm ss
+  if [[ "$etime" == *-* ]]; then
+    days="${etime%%-*}"
+    rest="${etime#*-}"
+  else
+    rest="$etime"
+  fi
+  IFS=: read -r a b c <<< "$rest"
+  if [[ -n "$c" ]]; then
+    hh="$a"; mm="$b"; ss="$c"
+  else
+    hh=0; mm="$a"; ss="$b"
+  fi
+  echo $(( 10#$days*86400 + 10#$hh*3600 + 10#$mm*60 + 10#$ss ))
+}
+
+# sweep_stale_stub_processes [max_age_seconds] [root] — kills any bare
+# `python3 -` process (t-2a71: the test-stub-daemon pattern spawned by
+# `exec python3 - <<PY ... PY`, indistinguishable from anything else by argv
+# alone) whose cwd is <root> (default: this repo's root) AND whose age
+# exceeds max_age_seconds (default 300 — a generous ceiling above any single
+# test run's real duration). A trap-based `cleanup EXIT` inside the test
+# script itself cannot help here: it never runs at all if the process is
+# SIGKILLed or its parent shell is torn down non-gracefully, which is exactly
+# how these leak. Both gates are required — cwd alone would risk killing an
+# unrelated python3 REPL a developer is running by hand in this same repo;
+# age alone would risk killing a genuinely concurrent, still-legitimate test
+# run's own live stub. On any doubt, this skips rather than kills — a missed
+# sweep just means "still leaked, try again next run" (recoverable); a
+# wrongful kill destroys someone's in-progress work (not recoverable).
+sweep_stale_stub_processes() {
+  command -v pgrep >/dev/null 2>&1 && command -v lsof >/dev/null 2>&1 || return 0
+  local max_age="${1:-300}" root="${2:-$ROOT}"
+  local pid etime secs cwd
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    etime="$(ps -o etime= -p "$pid" 2>/dev/null | tr -d ' ')" || continue
+    [[ -n "$etime" ]] || continue
+    secs="$(_etime_to_seconds "$etime")"
+    [[ "$secs" -gt "$max_age" ]] || continue
+    cwd="$(lsof -p "$pid" 2>/dev/null | awk '$4=="cwd"{print $NF}')"
+    [[ "$cwd" == "$root" ]] || continue
+    kill "$pid" 2>/dev/null || true
+  done < <(pgrep -f '^python3 -$' 2>/dev/null || true)
+}
+
 run_fail() {
   local output rc
   set +e
