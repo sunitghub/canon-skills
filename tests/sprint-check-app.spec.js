@@ -3025,6 +3025,121 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('rail is drag-resizable, and collapse still reaches 44px after a manual resize', async ({ page }) => {
+    const id = `t-ckresize-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Something'] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const rail = page.locator('.ck-rail');
+      const before = (await rail.boundingBox()).width;
+      const handle = page.locator('#ck-rail-resize');
+      const hb = await handle.boundingBox();
+      await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(hb.x + hb.width / 2 + 80, hb.y + hb.height / 2);
+      await page.mouse.up();
+      const after = (await rail.boundingBox()).width;
+      expect(after).toBeGreaterThan(before + 60);
+
+      // An inline width from the resize must not defeat the 44px collapse
+      // rule — inline styles otherwise always beat a class selector. Poll
+      // (toHaveCSS retries) rather than read boundingBox once immediately —
+      // the width change animates over .ck-rail's own transition, so an
+      // instant snapshot right after the click can still show the pre-click
+      // value for a moment.
+      await page.locator('#ck-rail-toggle').click();
+      await expect(rail).toHaveCSS('width', '44px');
+
+      // Expanding again restores the manually-resized width, not the default.
+      await page.locator('#ck-rail-toggle').click();
+      await expect(async () => {
+        expect((await rail.boundingBox()).width).toBeGreaterThan(before + 60);
+      }).toPass({ timeout: 2000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('findHandoffStateForTicket extracts only the matching ticket\'s bullet, including continuation lines', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const raw = [
+      '## In Progress',
+      '',
+      '- **`t-aaaa`** (Other ticket) — some unrelated state that should never match.',
+      '  Continuation line for the other ticket.',
+      '- **`t-bbbb`** (Our ticket) — plan approved, implementation done: built the thing.',
+      '  Next: user confirms, then sprint complete.',
+      '- **`t-cccc`** (A third ticket) — also unrelated.',
+      '',
+      '## Discoveries',
+      '- something that must never leak into the In Progress extraction',
+    ].join('\n');
+    const result = await page.evaluate((raw) => findHandoffStateForTicket(raw, 't-bbbb'), raw);
+    expect(result).toContain('Our ticket');
+    expect(result).toContain('Next: user confirms');
+    expect(result).not.toContain('t-aaaa');
+    expect(result).not.toContain('t-cccc');
+    expect(result).not.toContain('Discoveries');
+
+    const none = await page.evaluate((raw) => findHandoffStateForTicket(raw, 't-zzzz'), raw);
+    expect(none).toBeNull();
+  });
+
+  test('Status section renders this ticket\'s HANDOFF.md bullet, above Acceptance', async ({ page }) => {
+    const id = `t-ckstate-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
+      await stubCockpit(page);
+      await page.route('**/api/handoff', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ focus: null, raw: `## In Progress\n\n- **\`${id}\`** (Test) — plan approved, doing the thing.\n` }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await expect(page.locator('#ck-state')).toContainText('plan approved, doing the thing');
+      // Status sits above Acceptance in DOM order, and starts expanded
+      // (not collapsed like Acceptance/Test Plan) — it's the freshest,
+      // most immediately relevant context.
+      const sectionOrder = await page.locator('.ck-accordion-section').evaluateAll(els => els.map(e => e.id));
+      expect(sectionOrder.indexOf('ck-state-section')).toBeLessThan(sectionOrder.indexOf('ck-accept-section'));
+      await expect(page.locator('#ck-state-section')).not.toHaveClass(/collapsed/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Status section shows a hint when this ticket has no HANDOFF.md bullet', async ({ page }) => {
+    const id = `t-cknostate-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await stubCockpit(page);
+      await page.route('**/api/handoff', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ focus: null, raw: '## In Progress\n\n- Nothing about this ticket here.\n' }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await expect(page.locator('#ck-state')).toContainText('No saved state yet');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('Test Plan panel renders view-only, distinct from Criteria — clicking it never writes to acceptance.md (t-96a8)', async ({ page }) => {
     const id = `t-cktp-${Date.now()}`;
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -3184,6 +3299,25 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
       await expect(acceptSection).toHaveClass(/collapsed/);
       await expect(page.locator('#ck-accept')).toBeHidden();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Acceptance/Test Plan section headers show a checklist item count', async ({ page }) => {
+    const id = `t-ckcount-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] one', '- [x] two', '- [ ] three'] });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await expect(page.locator('#ck-accept-count')).toHaveText('(3)');
+      // writeTicket's fixed Test Plan body is a single "- [ ] a check" item.
+      await expect(page.locator('#ck-testplan-count')).toHaveText('(1)');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
