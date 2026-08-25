@@ -65,7 +65,33 @@ func newTestServer(t *testing.T, bin string) (*httptest.Server, string) {
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
 	return ts, ts.URL
+}
+
+// killAllSessions kills every session's child process so a leaked fake-sprint.sh
+// (blocked forever on "cat" reading stdin) doesn't survive the test — at
+// stress-test iteration counts, enough leaked processes exhaust file
+// descriptors and cause unrelated later spawns to fail with 500s. Registered
+// as a t.Cleanup after ts.Close's, so it runs first (LIFO) and reaps
+// processes before the TempDirs referenced by projectRoot/stateDir/fakeSprint
+// are removed.
+func killAllSessions(s *server) {
+	s.mu.Lock()
+	sessions := make([]*session, 0, len(s.sessions))
+	for _, se := range s.sessions {
+		sessions = append(sessions, se)
+	}
+	s.mu.Unlock()
+	for _, se := range sessions {
+		se.mu.Lock()
+		se.killed = true
+		se.mu.Unlock()
+		killProcess(se.cmd)
+		se.pty.Close()
+		se.markDone()
+		se.cleanup()
+	}
 }
 
 // newTestServerWithAddr sets a callback addr (so the needs-you hook is written)
@@ -76,6 +102,7 @@ func newTestServerWithAddr(t *testing.T, bin string) (*httptest.Server, string, 
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
 	return ts, ts.URL, s
 }
 
@@ -542,6 +569,7 @@ func TestSessionReapedAfterNaturalExitTTL(t *testing.T) {
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), sessionReapTTL: 50 * time.Millisecond})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
 	base := ts.URL
 
 	resp := startSession(t, base, "t-ab12", bootTok)
@@ -833,6 +861,7 @@ func TestSpawnLeavesProjectUntouched(t *testing.T) {
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, addr: "127.0.0.1:8455", stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
 
 	resp := startSession(t, ts.URL, "t-ab12", bootTok)
 	if resp.StatusCode != http.StatusOK {
@@ -1017,6 +1046,7 @@ func TestSpawnModelFlag(t *testing.T) {
 			s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 			ts := httptest.NewServer(s.handler())
 			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
 
 			resp := startSession(t, ts.URL, "t-ab12", bootTok)
 			if resp.StatusCode != http.StatusOK {
