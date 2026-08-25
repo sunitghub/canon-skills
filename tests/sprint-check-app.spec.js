@@ -3226,6 +3226,19 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: cockpitHtml }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
+    await reopenCockpitNoReload(page, id);
+  }
+
+  // Opens a cockpit session without navigating — a fresh page.goto would reset
+  // all client-side JS state, trivially masking any "stale state carried over
+  // from a prior session" bug. Overrides the /cockpit route in place (the most
+  // recently registered handler wins) so a second call can serve different
+  // fake-page behavior within the same page/session.
+  async function reopenCockpitNoReload(page, id, cockpitHtml) {
+    if (cockpitHtml) {
+      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: cockpitHtml }));
+    }
+    await page.locator('#board-search').fill('');
     await page.locator('#board-search').fill(id);
     await page.locator(`.card[data-id="${id}"] .card-start`).click();
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
@@ -3360,7 +3373,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('Cancel is disabled mid-save; a fresh modal open resets all three buttons', async ({ page }) => {
+  test('Cancel is disabled mid-save', async ({ page }) => {
     const id = `t-lcreset-${Date.now()}`;
     try {
       writeTicket(id, 'in_progress');
@@ -3375,6 +3388,39 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-leave')).toBeDisabled();
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a fresh modal open resets buttons left disabled by a prior session\'s mid-save state', async ({ page }) => {
+    const id1 = `t-lcreset1-${Date.now()}`;
+    const id2 = `t-lcreset2-${Date.now()}`;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      // Session 1: force a quick fallback so its save-and-end actually completes
+      // and tears down, leaving Cancel/Leave-running's disabled=true behind in
+      // the DOM (openLeaveConfirm is the only thing that resets them).
+      await openResumedCockpit(page, id1, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
+      await page.evaluate(() => { window.__cockpitSaveFallbackMs = 200; });
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-save').click();
+      await expect(page.locator('#ck-leave-cancel')).toBeDisabled();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+
+      // Session 2: fresh cockpit, fresh leave-confirm open, SAME page (no
+      // reload) — must not inherit session 1's stuck-disabled buttons or
+      // leftover "Saving state…" text.
+      await reopenCockpitNoReload(page, id2, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-cancel')).toBeEnabled();
+      await expect(page.locator('#ck-leave-leave')).toBeEnabled();
+      await expect(page.locator('#ck-leave-save')).toBeEnabled();
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('');
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
 });
