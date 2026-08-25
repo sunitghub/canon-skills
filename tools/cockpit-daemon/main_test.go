@@ -1673,7 +1673,7 @@ func TestPreviewRootAndServe(t *testing.T) {
 
 	// The previewToken must authorize ONLY the preview route — never /input,
 	// /kill, or /resize (the whole point of a separate, narrower token).
-	for _, action := range []string{"input", "kill", "resize"} {
+	for _, action := range []string{"input", "kill", "resize", "status"} {
 		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/"+action, strings.NewReader("{}"))
 		req.Header.Set("Authorization", "Bearer "+out.PreviewToken)
 		rr, err := http.DefaultClient.Do(req)
