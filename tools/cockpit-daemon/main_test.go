@@ -39,9 +39,14 @@ func fakeSprint(t *testing.T) (bin, argvFile, pidFile string) {
 	argvFile = filepath.Join(dir, "argv.txt")
 	pidFile = filepath.Join(dir, "pid.txt")
 	bin = filepath.Join(dir, "fake-sprint.sh")
+	// Writes to a .tmp path and renames into place so a concurrent reader (waitFile,
+	// which returns as soon as the file is non-empty) never observes a partial
+	// write — the file doesn't exist at all until the rename makes it appear whole.
 	script := "#!/bin/sh\n" +
-		"printf 'ARGC:%s\\n' \"$#\" > \"" + argvFile + "\"\n" +
-		"for a in \"$@\"; do printf 'ARG:%s\\n' \"$a\" >> \"" + argvFile + "\"; done\n" +
+		"tmp=\"" + argvFile + ".tmp\"\n" +
+		"printf 'ARGC:%s\\n' \"$#\" > \"$tmp\"\n" +
+		"for a in \"$@\"; do printf 'ARG:%s\\n' \"$a\" >> \"$tmp\"; done\n" +
+		"mv \"$tmp\" \"" + argvFile + "\"\n" +
 		"printf '%s\\n' \"$$\" > \"" + pidFile + "\"\n" +
 		"printf 'READY\\n'\n" +
 		"cat\n"
