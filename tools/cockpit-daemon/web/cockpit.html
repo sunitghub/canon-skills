@@ -30,10 +30,10 @@
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
   /* Resume (autostart=0) leaves the terminal idle until Start sprint is
      clicked manually — easy to miss, since a fresh (autostart=1) Start
-     launches with no click needed at all. This nudge only shows in that
-     specific gap: before Start is clicked, on a resumed session. */
-  .start-hint{color:var(--accent);font-size:12px;font-weight:600;animation:pulse 1.4s ease-in-out infinite;display:none}
-  .start-hint.show{display:inline}
+     launches with no click needed at all. Pulse the button itself (not a
+     separate label — a label next to Kill read as pointing at Kill) only
+     in that specific gap: before Start is clicked, on a resumed session. */
+  .btn-start.pulse{animation:pulse 1.4s ease-in-out infinite}
   .status.needsyou{color:var(--red)}
   .model{font-family:var(--mono);font-size:11px;color:var(--faint)}
   #term-wrap{flex:1;min-height:0;background:var(--panel2);padding:8px}
@@ -59,7 +59,6 @@
       <input id="ticket" placeholder="t-xxxx" spellcheck="false" autocomplete="off">
       <button class="btn-start" id="startBtn">▶ Start sprint</button>
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
-      <span class="start-hint" id="startHint">← click to resume</span>
     </div>
     <div class="spacer"></div>
     <span class="model" id="model">model: from plan.md</span>
@@ -133,7 +132,7 @@
   async function start(){
     var ticket = document.getElementById("ticket").value.trim();
     if(!/^t-[a-z0-9]{4}$/.test(ticket)){ term.writeln("\r\n\x1b[31minvalid ticket id (expected t-xxxx)\x1b[0m"); return; }
-    document.getElementById("startHint").classList.remove("show");
+    document.getElementById("startBtn").classList.remove("pulse");
     setStatus("running","starting…");
     try{
       var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket}) });
@@ -222,7 +221,7 @@
   if(PREFILL){ document.getElementById("ticket").value = PREFILL; }
   if(EMBED === "1"){ document.body.classList.add("embed"); }
   if(AUTOSTART === "1" && PREFILL){ start(); }
-  else if(PREFILL){ document.getElementById("startHint").classList.add("show"); }
+  else if(PREFILL){ document.getElementById("startBtn").classList.add("pulse"); }
 })();
 </script>
 </body>
