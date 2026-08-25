@@ -62,11 +62,24 @@ func fakeSprint(t *testing.T) (bin, argvFile, pidFile string) {
 // newTestServerWithAddr.
 func newTestServer(t *testing.T, bin string) (*httptest.Server, string) {
 	t.Helper()
-	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
 	return ts, ts.URL
+}
+
+// seedTicketDir creates <root>/.tickets/<ticket>/ so handleStart's existence
+// check (t-ef59) doesn't reject the "t-ab12" happy path every other test
+// assumes works. Empty is intentional — a ticket dir need not hold
+// ticket.md/plan.md yet to be startable (t-ef59 ## Decisions).
+func seedTicketDir(t *testing.T, root, ticket string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, ".tickets", ticket), 0o755); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // killAllSessions kills every session's child process so a leaked fake-sprint.sh
@@ -99,7 +112,9 @@ func killAllSessions(s *server) {
 // status-only token or the hook dir.
 func newTestServerWithAddr(t *testing.T, bin string) (*httptest.Server, string, *server) {
 	t.Helper()
-	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
@@ -141,6 +156,74 @@ func TestTicketValidationAndInjection(t *testing.T) {
 		t.Fatalf("valid ticket: want 200, got %d", resp.StatusCode)
 	}
 	resp.Body.Close()
+}
+
+// A shape-valid ticket id that doesn't exist in the project must never reach
+// spawn(): the daemon's fixed prompt would resolve to nothing and the spawned
+// agent goes hunting for context instead of failing clearly (t-842b, fixed by
+// t-ef59).
+func TestStartRejectsMissingTicketDir(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir() // no .tickets/ at all
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("missing ticket dir: want 400, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if _, err := os.Stat(argvFile); err == nil {
+		t.Fatal("a missing ticket dir still spawned a process (argv file exists)")
+	}
+}
+
+// A ticket directory that exists but has no ticket.md/plan.md yet is still
+// startable — the check is existence, not content completeness (t-ef59 ##
+// Decisions).
+func TestStartAllowsEmptyTicketDir(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("empty ticket dir: want 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	waitFile(t, argvFile, 3*time.Second)
+}
+
+// A .tickets/<id> path that exists as a file, not a directory, is treated as
+// absent — IsDir(), not existence alone.
+func TestStartRejectsTicketPathThatIsAFile(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".tickets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12"), []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("ticket path is a file: want 400, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if _, err := os.Stat(argvFile); err == nil {
+		t.Fatal("a file-shaped ticket path still spawned a process (argv file exists)")
+	}
 }
 
 func TestOriginAndHostRejected(t *testing.T) {
@@ -566,7 +649,9 @@ func TestClosedPTYReturns410(t *testing.T) {
 
 func TestSessionReapedAfterNaturalExitTTL(t *testing.T) {
 	bin := fakeSprintQuickExit(t)
-	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), sessionReapTTL: 50 * time.Millisecond})
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), sessionReapTTL: 50 * time.Millisecond})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
 	t.Cleanup(func() { killAllSessions(s) })
@@ -850,6 +935,7 @@ func TestHookSettingsFile(t *testing.T) {
 func TestSpawnLeavesProjectUntouched(t *testing.T) {
 	bin, argvFile, _ := fakeSprint(t)
 	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
 	existing := filepath.Join(root, ".claude", "settings.local.json")
 	if err := os.MkdirAll(filepath.Dir(existing), 0o755); err != nil {
 		t.Fatal(err)

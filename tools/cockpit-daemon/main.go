@@ -244,6 +244,13 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid ticket id", http.StatusBadRequest)
 		return
 	}
+	// Shape-valid is not enough: with no such ticket in the project, spawn()'s
+	// fixed "sprint start <id>" prompt resolves to nothing, and the spawned
+	// agent goes hunting for context instead of failing clearly (t-842b).
+	if fi, err := os.Stat(filepath.Join(s.ticketsDir(), body.Ticket)); err != nil || !fi.IsDir() {
+		http.Error(w, "ticket not found in project", http.StatusBadRequest)
+		return
+	}
 	se, err := s.spawn(body.Ticket)
 	if err != nil {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
