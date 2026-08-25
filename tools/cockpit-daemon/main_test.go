@@ -1472,3 +1472,76 @@ func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
 	}
 	t.Fatal("session was never reaped via the fallback path")
 }
+
+// TestIdleReapAbortsWhenHumanReturnsMidSave proves saveAndEndIdle honors
+// plan.md's stated guarantee ("any real activity resets it") even after the
+// save-and-kill sequence has already begun (t-2e7e, reviewer-caught: the
+// original implementation only checked activity BEFORE starting the
+// sequence, never during the wait for the save marker/fallback).
+func TestIdleReapAbortsWhenHumanReturnsMidSave(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	// Generous absolute values (not just generous ratios) so this survives
+	// -race contention the way TestIdleReapIgnoresMarkerPredatingTheSavePrompt
+	// initially didn't. idleTimeout(1s) means the first reap cycle starts
+	// ~1-1.4s in; saveFallback(4s) puts its ORIGINAL kill deadline at roughly
+	// t=5.4s if never aborted. The human's input lands well before that. If
+	// the fix works, the abort happens within one 100ms poll tick and the
+	// session survives past t=5.4s; a *second*, legitimate idle cycle (the
+	// fake agent still never responds) won't reach its own kill deadline
+	// until ~t=6.5s+, so checking at t=6.0s cleanly distinguishes "aborted
+	// the original kill" from "never aborted at all."
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Second, idleCheckInterval: 100 * time.Millisecond,
+		saveFallback: 4 * time.Second,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	// Wait for the reaper to fire and enter its save-and-wait window, then
+	// confirm it's mid-sequence.
+	time.Sleep(1500 * time.Millisecond)
+	s.mu.Lock()
+	se, ok := s.sessions[out.Session]
+	s.mu.Unlock()
+	if !ok {
+		t.Fatal("session already gone before the human could respond")
+	}
+	se.mu.Lock()
+	reaping := se.reaping
+	se.mu.Unlock()
+	if !reaping {
+		t.Fatal("reaper never entered the save-and-wait sequence")
+	}
+
+	// A human sends real input mid-wait — this must abort the pending kill.
+	inReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/input", strings.NewReader("still here\n"))
+	inReq.Header.Set("Authorization", "Bearer "+out.Token)
+	ir, err := http.DefaultClient.Do(inReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ir.Body.Close()
+	if ir.StatusCode != http.StatusNoContent {
+		t.Fatalf("input: want 204, got %d", ir.StatusCode)
+	}
+
+	// Confirm the session survives past what would have been the ORIGINAL
+	// fallback kill (~t=5.4-5.8s) and before a legitimate second idle cycle's
+	// own deadline could plausibly fire (~t=6.5s+) — see comment above.
+	time.Sleep(4500 * time.Millisecond)
+	s.mu.Lock()
+	_, stillThere := s.sessions[out.Session]
+	s.mu.Unlock()
+	if !stillThere {
+		t.Fatal("session was killed even though a human sent real input mid-save-wait")
+	}
+}

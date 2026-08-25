@@ -91,6 +91,8 @@ type session struct {
 	reaping       bool      // t-2e7e: set while saveAndEndIdle is in flight, guards against a second reap goroutine
 	onNaturalExit func()    // set by spawn(); schedules the reap-after-TTL cleanup
 	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
+	humanInputAt  time.Time // t-2e7e: bumped ONLY by a real POST /input (not PTY output/echo);
+	// lets an in-flight save-and-kill detect a human actually came back and abort
 }
 
 // frame is one SSE event bound for the browser. Terminal output and status
@@ -492,6 +494,7 @@ func (s *server) handleInput(w http.ResponseWriter, r *http.Request, se *session
 	}
 	se.mu.Lock()
 	se.lastActivity = time.Now() // t-2e7e: input counts as activity too, not just output
+	se.humanInputAt = se.lastActivity
 	se.mu.Unlock()
 	// The human just typed — whatever they were being asked, they are answering
 	// it. Clears needs-you without needing a second hook event to tell us.
@@ -668,9 +671,9 @@ func (s *server) saveAndEndIdle(se *session) {
 		"HANDOFF.md if relevant) with where things stand and anything unresolved, then " +
 		"print the exact line " + cockpitSaveMarker + " on its own, and stop.\r"
 	se.mu.Lock()
-	sentAt := len(se.buf) // only output written AFTER the prompt counts — buf may hold an
-	se.mu.Unlock()        // unrelated earlier line matching the marker verbatim (e.g. from a
-	// prior conversation about this very feature) that must never trigger a false kill.
+	sentAt := len(se.buf)            // only output written AFTER the prompt counts — buf may hold an
+	humanBaseline := se.humanInputAt // unrelated earlier line matching the marker verbatim (e.g. from a
+	se.mu.Unlock()                   // prior conversation about this very feature) that must never trigger a false kill.
 	if _, err := se.pty.Write([]byte(prompt)); err != nil {
 		s.killSession(se) // can't even write to it — nothing more to wait for
 		return
@@ -692,9 +695,21 @@ func (s *server) saveAndEndIdle(se *session) {
 			} // else: buf was trimmed to max size since sentAt — scan it all, no valid offset
 			found := containsMarkerLine(newOutput, cockpitSaveMarker)
 			exited := se.exited
+			// A real human POST /input during the wait (not PTY output/echo,
+			// which could just be the agent talking to itself) means someone
+			// came back — abort the kill and let the idle clock (bumped by
+			// that same input) decide again later, per plan.md's "any real
+			// activity resets it" guarantee.
+			humanReturned := se.humanInputAt.After(humanBaseline)
+			if humanReturned {
+				se.reaping = false
+			}
 			se.mu.Unlock()
 			if exited {
 				return // already gone naturally — nothing left to kill
+			}
+			if humanReturned {
+				return
 			}
 			if found {
 				s.killSession(se)
