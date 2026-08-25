@@ -1424,16 +1424,18 @@ func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
 	seedTicketDir(t, root, "t-ab12")
 	s := newServer(config{
 		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
-		// idleTimeout generous enough that the shell's own fork/exec/printf
-		// startup can never race past it before the stale marker is flushed
-		// (see fakeAgentWithStaleMarker's "sleep 1" comment).
-		idleTimeout: 150 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		// idleTimeout generous enough that fork/exec/shell-startup latency under
+		// heavy machine load (e.g. running alongside other -race tests) can never
+		// race past it before the stale marker is flushed — a 150ms budget was
+		// reviewer-caught as flaky under load (reproduced: 3/3 failures running 3
+		// copies concurrently under -race). 2s comfortably exceeds observed worst-case.
+		idleTimeout: 2 * time.Second, idleCheckInterval: 50 * time.Millisecond,
 		// saveFallback deliberately longer than saveAndEndIdle's fixed 500ms poll
 		// interval, so the "early" check below lands after at least one real poll
 		// (where a whole-buffer-scan bug would already have false-killed) but well
 		// before the fallback would kill it anyway — otherwise the fallback alone
 		// could mask a broken marker scan.
-		saveFallback: 3 * time.Second,
+		saveFallback: 6 * time.Second,
 	})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
@@ -1447,7 +1449,7 @@ func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
 	// The stale marker lands in se.buf immediately (before idle-reap even
 	// starts). Wait past idleTimeout + one 500ms poll tick, so a whole-buffer
 	// scan bug would already have false-killed by now.
-	time.Sleep(900 * time.Millisecond)
+	time.Sleep(3 * time.Second)
 	s.mu.Lock()
 	_, stillThereEarly := s.sessions[out.Session]
 	s.mu.Unlock()
@@ -1458,7 +1460,7 @@ func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
 	// It must still be reaped eventually via the fallback (the agent never
 	// responds to the real save prompt either) — proving this isn't just a
 	// reaper that silently never fires.
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		s.mu.Lock()
 		_, stillThere := s.sessions[out.Session]
