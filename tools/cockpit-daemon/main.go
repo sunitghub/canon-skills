@@ -50,13 +50,16 @@ var webFS embed.FS
 var ticketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 
 type config struct {
-	addr           string        // loopback bind address
-	token          string        // daemon boot token (gates /session/start)
-	sprintBin      string        // binary to exec (default "claude")
-	projectRoot    string        // working dir for the spawned command
-	scrollback     int           // bytes of replayable output per session
-	sessionReapTTL time.Duration // grace period after natural exit before a session entry is reaped
-	stateDir       string        // daemon-owned dir for daemon.json + per-session hook settings
+	addr              string        // loopback bind address
+	token             string        // daemon boot token (gates /session/start)
+	sprintBin         string        // binary to exec (default "claude")
+	projectRoot       string        // working dir for the spawned command
+	scrollback        int           // bytes of replayable output per session
+	sessionReapTTL    time.Duration // grace period after natural exit before a session entry is reaped
+	stateDir          string        // daemon-owned dir for daemon.json + per-session hook settings
+	idleTimeout       time.Duration // t-2e7e: reap a session after this much PTY inactivity (default 5m, nebula's own default)
+	idleCheckInterval time.Duration // t-2e7e: how often to scan for idle sessions (default 30s)
+	saveFallback      time.Duration // t-2e7e: force-kill if the save marker never appears within this long (default 60s)
 }
 
 type server struct {
@@ -84,8 +87,10 @@ type session struct {
 	done          chan struct{}
 	doneOnce      sync.Once
 	exited        bool
-	killed        bool   // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
-	onNaturalExit func() // set by spawn(); schedules the reap-after-TTL cleanup
+	killed        bool      // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
+	reaping       bool      // t-2e7e: set while saveAndEndIdle is in flight, guards against a second reap goroutine
+	onNaturalExit func()    // set by spawn(); schedules the reap-after-TTL cleanup
+	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
 }
 
 // frame is one SSE event bound for the browser. Terminal output and status
@@ -110,13 +115,35 @@ func newServer(cfg config) *server {
 	if cfg.stateDir == "" {
 		cfg.stateDir = envOr("COCKPIT_STATE_DIR", defaultStateDir())
 	}
-	return &server{cfg: cfg, sessions: map[string]*session{}}
+	if cfg.idleTimeout <= 0 {
+		cfg.idleTimeout = 5 * time.Minute
+	}
+	if cfg.idleCheckInterval <= 0 {
+		cfg.idleCheckInterval = 30 * time.Second
+	}
+	if cfg.saveFallback <= 0 {
+		cfg.saveFallback = 60 * time.Second
+	}
+	s := &server{cfg: cfg, sessions: map[string]*session{}}
+	s.startIdleReaper()
+	return s
 }
 
 func randToken() string {
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// newUUIDv4 hand-formats 16 random bytes as RFC 4122 — no new dependency for
+// one formatting function. `claude --session-id` requires "a valid UUID"
+// (t-2e7e).
+func newUUIDv4() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	b[6] = (b[6] & 0x0f) | 0x40 // version 4
+	b[8] = (b[8] & 0x3f) | 0x80 // variant 10
+	return fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
 }
 
 // ── HTTP wiring ────────────────────────────────────────────────────────────
@@ -288,7 +315,15 @@ func (s *server) spawn(ticket string) (*session, error) {
 	case !errors.Is(err, errNoDaemonAddr):
 		fmt.Fprintf(os.Stderr, "cockpit: needs-you status unavailable: %v\n", err)
 	}
-	args = append(args, "sprint start "+ticket)
+	// t-2e7e: pin/resume a claude session id. Never --fork-session alongside
+	// --resume — that mints a NEW id instead of continuing the real
+	// conversation, defeating the whole point.
+	claudeSessionID, resuming := s.resolveClaudeSessionID(ticket)
+	if resuming {
+		args = append(args, "--resume", claudeSessionID)
+	} else {
+		args = append(args, "--session-id", claudeSessionID, "sprint start "+ticket)
+	}
 	c := p.Command(s.cfg.sprintBin, args...)
 	c.Dir = s.cfg.projectRoot
 	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
@@ -301,6 +336,7 @@ func (s *server) spawn(ticket string) (*session, error) {
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, hookDir: hookDir,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
+		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
 	// Natural exit (no explicit /kill) leaves the entry in s.sessions so a quick
 	// reattach can still replay scrollback; reap it after a grace TTL so a
@@ -454,6 +490,9 @@ func (s *server) handleInput(w http.ResponseWriter, r *http.Request, se *session
 		http.Error(w, "write failed", http.StatusInternalServerError)
 		return
 	}
+	se.mu.Lock()
+	se.lastActivity = time.Now() // t-2e7e: input counts as activity too, not just output
+	se.mu.Unlock()
 	// The human just typed — whatever they were being asked, they are answering
 	// it. Clears needs-you without needing a second hook event to tell us.
 	se.setStatus("running")
@@ -479,7 +518,21 @@ func (s *server) handleKill(w http.ResponseWriter, r *http.Request, se *session)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	s.killSession(se)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// killSession is the shared teardown handleKill and the idle reaper
+// (t-2e7e) both use — no orphaned children, hook dir removed, session
+// entry dropped. Safe to call on an already-exited/already-killed session:
+// killProcess on a dead pid just errors silently, markDone is a sync.Once,
+// and deleting an already-absent map key is a no-op.
+func (s *server) killSession(se *session) {
 	se.mu.Lock()
+	if se.killed {
+		se.mu.Unlock()
+		return // already torn down by a concurrent caller (e.g. handleKill racing the idle reaper)
+	}
 	se.killed = true
 	se.mu.Unlock()
 	killProcess(se.cmd) // platform-specific: no orphaned children
@@ -489,7 +542,6 @@ func (s *server) handleKill(w http.ResponseWriter, r *http.Request, se *session)
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // ── session I/O ────────────────────────────────────────────────────────────
@@ -505,6 +557,7 @@ func (se *session) readLoop() {
 			if len(se.buf) > se.max {
 				se.buf = se.buf[len(se.buf)-se.max:]
 			}
+			se.lastActivity = time.Now() // t-2e7e: real output resets the idle clock
 			se.broadcastLocked(frame{event: "out", data: chunk})
 			se.mu.Unlock()
 		}
@@ -549,6 +602,121 @@ func (se *session) isExited() bool {
 	se.mu.Lock()
 	defer se.mu.Unlock()
 	return se.exited
+}
+
+// ── idle reaping (t-2e7e) ────────────────────────────────────────────────
+//
+// Verified against nebula's actual README, not assumed: it does not tie
+// cleanup to client disconnect at all ("Quit the UI, close the laptop lid,
+// come back tomorrow — the agents never stopped"). What it reaps is purely
+// idle-based ("idle PTYs... are killed after session_idle_timeout — pinned
+// agents, working agents, ones waiting on you... are all spared"). This
+// mirrors that: idle-ness is a property of the PTY's own activity, not of
+// whether a browser is attached, so it works even if the tab was closed
+// with zero JS ever running (the exact gap t-f6b6's client-side flow can't
+// close on its own).
+
+const cockpitSaveMarker = "COCKPIT_STATE_SAVED"
+
+// startIdleReaper runs for the server's whole lifetime. Each tick, any
+// session that is not needs-you, not already exited, and has produced zero
+// new PTY output (and received no input) for cfg.idleTimeout gets ended via
+// saveAndEndIdle.
+func (s *server) startIdleReaper() {
+	go func() {
+		ticker := time.NewTicker(s.cfg.idleCheckInterval)
+		defer ticker.Stop()
+		for range ticker.C {
+			s.reapIdleSessions()
+		}
+	}()
+}
+
+func (s *server) reapIdleSessions() {
+	s.mu.Lock()
+	candidates := make([]*session, 0, len(s.sessions))
+	for _, se := range s.sessions {
+		candidates = append(candidates, se)
+	}
+	s.mu.Unlock()
+	for _, se := range candidates {
+		se.mu.Lock()
+		idle := time.Since(se.lastActivity) > s.cfg.idleTimeout
+		blocked := se.status == "needs-you"
+		exited := se.exited
+		alreadyReaping := se.reaping
+		if idle && !blocked && !exited && !alreadyReaping {
+			se.reaping = true
+		}
+		se.mu.Unlock()
+		if !idle || blocked || exited || alreadyReaping {
+			continue
+		}
+		go s.saveAndEndIdle(se)
+	}
+}
+
+// saveAndEndIdle mirrors t-f6b6's client-side Save & End, moved server-side
+// so it works with zero browser attached: the daemon owns the PTY directly,
+// so no HTTP round-trip to itself is needed. Writes the save prompt, polls
+// its own already-buffered output for the exact marker line, then kills. A
+// bounded fallback force-kills if the marker never appears — same shape as
+// the client-side version's own fallback, so an idle-but-unresponsive
+// session can't block the reaper forever.
+func (s *server) saveAndEndIdle(se *session) {
+	prompt := "Please save your current state now: update plan.md/acceptance.md (and " +
+		"HANDOFF.md if relevant) with where things stand and anything unresolved, then " +
+		"print the exact line " + cockpitSaveMarker + " on its own, and stop.\r"
+	se.mu.Lock()
+	sentAt := len(se.buf) // only output written AFTER the prompt counts — buf may hold an
+	se.mu.Unlock()        // unrelated earlier line matching the marker verbatim (e.g. from a
+	// prior conversation about this very feature) that must never trigger a false kill.
+	if _, err := se.pty.Write([]byte(prompt)); err != nil {
+		s.killSession(se) // can't even write to it — nothing more to wait for
+		return
+	}
+	deadline := time.NewTimer(s.cfg.saveFallback)
+	defer deadline.Stop()
+	poll := time.NewTicker(500 * time.Millisecond)
+	defer poll.Stop()
+	for {
+		select {
+		case <-deadline.C:
+			s.killSession(se)
+			return
+		case <-poll.C:
+			se.mu.Lock()
+			newOutput := se.buf
+			if sentAt <= len(newOutput) {
+				newOutput = newOutput[sentAt:]
+			} // else: buf was trimmed to max size since sentAt — scan it all, no valid offset
+			found := containsMarkerLine(newOutput, cockpitSaveMarker)
+			exited := se.exited
+			se.mu.Unlock()
+			if exited {
+				return // already gone naturally — nothing left to kill
+			}
+			if found {
+				s.killSession(se)
+				return
+			}
+		}
+	}
+}
+
+var ansiCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
+
+// containsMarkerLine matches a whole trimmed line exactly — a coincidental
+// substring mid-sentence (the agent describing what it's about to do) must
+// never count, same discipline as t-f6b6's client-side marker matcher.
+func containsMarkerLine(buf []byte, marker string) bool {
+	clean := ansiCSIRe.ReplaceAllString(string(buf), "")
+	for _, line := range strings.Split(clean, "\n") {
+		if strings.TrimSpace(line) == marker {
+			return true
+		}
+	}
+	return false
 }
 
 // ── needs-you status ───────────────────────────────────────────────────────
@@ -631,6 +799,43 @@ func (s *server) ticketsDir() string {
 		dir = parent
 	}
 	return filepath.Join(s.cfg.projectRoot, ".tickets")
+}
+
+var ticketStatusRe = regexp.MustCompile(`(?m)^status:\s*(\S+)`)
+
+// ticketStatus reads the `status:` frontmatter field from a ticket's own
+// ticket.md. Empty string (never an error) if the file or field is absent —
+// callers treat that the same as "not in_progress" (t-2e7e).
+func (s *server) ticketStatus(ticket string) string {
+	b, err := os.ReadFile(filepath.Join(s.ticketsDir(), ticket, "ticket.md"))
+	if err != nil {
+		return ""
+	}
+	m := ticketStatusRe.FindSubmatch(b)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+// resolveClaudeSessionID decides whether to resume a persisted claude
+// session or mint a fresh one (t-2e7e). Resume only when the ticket is
+// already in_progress — a ticket freshly (re)opened from open/closed always
+// starts clean, so a stale, unrelated conversation is never silently resumed
+// onto later work. The id is persisted to the ticket's own folder (not the
+// daemon's state dir) so it survives a daemon restart.
+func (s *server) resolveClaudeSessionID(ticket string) (id string, resuming bool) {
+	idPath := filepath.Join(s.ticketsDir(), ticket, ".cockpit-session-id")
+	if s.ticketStatus(ticket) == "in_progress" {
+		if b, err := os.ReadFile(idPath); err == nil {
+			if existing := strings.TrimSpace(string(b)); existing != "" {
+				return existing, true
+			}
+		}
+	}
+	id = newUUIDv4()
+	_ = os.WriteFile(idPath, []byte(id+"\n"), 0o600)
+	return id, false
 }
 
 // sweepStaleHookDirs removes leftover per-session hook dirs at boot. cleanup()

@@ -1405,6 +1405,14 @@
       background: var(--surface-raised); border: 1px solid var(--border);
       border-radius: 6px; padding: 3px 8px;
     }
+    /* Always in the topbar (not the collapsible rail) so it's visible even
+       rail-collapsed — t-2e7e's grill required this be unmissable. */
+    .ck-needs-you-badge {
+      display: flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: #f4a300; color: #1a1a1f; font-weight: 800; font-size: 13px;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
     .ck-body { flex: 1; min-height: 0; display: flex; }
     .ck-rail {
       position: relative;
@@ -1711,6 +1719,7 @@
       <span class="ck-id" id="ck-id"></span>
       <span class="ck-title" id="ck-title"></span>
       <span class="spacer"></span>
+      <span class="ck-needs-you-badge" id="ck-needs-you-badge" title="Agent is waiting on you" style="display:none">!</span>
       <span class="ck-model" id="ck-model">model: from plan.md</span>
     </div>
     <div class="ck-body">
@@ -4345,10 +4354,16 @@ window.addEventListener('message', (e) => {
   if (!d || d.source !== 'canon-cockpit') return;
   if (d.type === 'status') {
     cockpitState.status = d.status;
+    renderNeedsYouBadge();
   } else if (d.type === 'ended' && cockpitState._onEnded) {
     cockpitState._onEnded();
   }
 });
+
+function renderNeedsYouBadge() {
+  document.getElementById('ck-needs-you-badge').style.display =
+    cockpitState.status === 'needs-you' ? 'flex' : 'none';
+}
 
 function sessionIsLive() {
   return cockpitState.status === 'running' || cockpitState.status === 'needs-you';
@@ -4378,6 +4393,7 @@ function teardownCockpit() {
   if (iframe) iframe.src = 'about:blank'; // drop the SSE stream held by the embed
   if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
   cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
+  renderNeedsYouBadge();
   loadData().then(render).catch(() => renderBoard());
 }
 
@@ -4421,6 +4437,8 @@ async function openCockpit(id) {
   const t = findTicketById(id);
   if (!t) return;
   cockpitState.id = id;
+  cockpitState.status = null;
+  renderNeedsYouBadge();
   state.selectedId = id;
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
