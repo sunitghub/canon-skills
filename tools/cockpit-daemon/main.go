@@ -34,6 +34,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -75,9 +76,16 @@ type session struct {
 	// statusToken authorizes ONLY POST /session/<id>/status. Separate from token
 	// because the needs-you hook's credential is reachable by the spawned agent.
 	statusToken string
-	pty         pty.Pty
-	cmd         *pty.Cmd
-	hookDir     string // daemon-owned ephemeral --settings dir; removed when the session ends
+	// previewToken authorizes ONLY GET /session/<id>/preview/<relpath> (t-b19b).
+	// Separate from token for the same reason as statusToken, one level further:
+	// it rides in a query string (an <iframe src> can't carry an Authorization
+	// header) where the PREVIEWED PAGE'S OWN untrusted JS can read it straight off
+	// location.search — it must never be able to do anything but read files under
+	// the resolved preview root.
+	previewToken string
+	pty          pty.Pty
+	cmd          *pty.Cmd
+	hookDir      string // daemon-owned ephemeral --settings dir; removed when the session ends
 
 	mu            sync.Mutex
 	buf           []byte
@@ -93,6 +101,7 @@ type session struct {
 	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
 	humanInputAt  time.Time // t-2e7e: bumped ONLY by a real POST /input (not PTY output/echo);
 	// lets an in-flight save-and-kill detect a human actually came back and abort
+	previewRoot string // t-b19b: symlink-validated dir under projectRoot; set once via /preview-root
 }
 
 // frame is one SSE event bound for the browser. Terminal output and status
@@ -285,7 +294,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, map[string]string{"session": se.sid, "token": se.token})
+	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken})
 }
 
 // spawn launches an interactive `claude` session on the ticket in a PTY.
@@ -301,7 +310,7 @@ func (s *server) spawn(ticket string) (*session, error) {
 	if err != nil {
 		return nil, err
 	}
-	sid, tok, statusTok := randToken()[:16], randToken(), randToken()
+	sid, tok, statusTok, previewTok := randToken()[:16], randToken(), randToken(), randToken()
 	var args []string
 	if m := s.gateModel(ticket); m != "" {
 		args = append(args, "--model", m)
@@ -335,8 +344,9 @@ func (s *server) spawn(ticket string) (*session, error) {
 		return nil, err
 	}
 	se := &session{
-		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, hookDir: hookDir,
-		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
+		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
+		hookDir: hookDir,
+		pty:     p, cmd: c, max: s.cfg.scrollback, status: "running",
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
@@ -392,6 +402,13 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleStatus(w, r, se)
 		return
 	}
+	// t-b19b: authenticated via a query-param previewToken, never se.token — an
+	// <iframe src> navigation can't carry an Authorization header, and this is
+	// the one route a browser loads by direct GET rather than fetch().
+	if relpath, ok := strings.CutPrefix(action, "preview/"); ok {
+		s.handlePreview(w, r, se, relpath)
+		return
+	}
 	if !secureEqual(bearer(r), se.token) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -405,6 +422,8 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleResize(w, r, se)
 	case "kill":
 		s.handleKill(w, r, se)
+	case "preview-root":
+		s.handlePreviewRoot(w, r, se)
 	default:
 		http.NotFound(w, r)
 	}
@@ -732,6 +751,105 @@ func containsMarkerLine(buf []byte, marker string) bool {
 		}
 	}
 	return false
+}
+
+// ── preview pane (t-b19b) ────────────────────────────────────────────────
+//
+// Serves the containing directory of whatever file the agent reports via a
+// PREVIEW_FILE marker (cockpit.html watches for it and relays the path here),
+// so a small static app's sibling ./style.css/./app.js resolve the way any
+// real static file server would — not just the one named file. Bounded to
+// projectRoot: the daemon process already has full read access to the whole
+// project, so the actual thing this check prevents is a malformed or
+// malicious absolute path (typo, injected content) pointing the browser at
+// files outside the project entirely (e.g. ~/.ssh, /etc/passwd).
+//
+// The daemon re-validates the path itself rather than trusting whatever the
+// client relayed — cockpit.html has no privileged position to assert a path
+// is safe; only the daemon, which already owns path-safety logic elsewhere,
+// does.
+
+// previewRootFor resolves the safe, symlink-checked directory to serve for a
+// reported (agent-chosen) absolute file path. Rejects a non-absolute path, a
+// nonexistent directory, or one whose resolved real path falls outside
+// projectRoot.
+func previewRootFor(reportedPath, projectRoot string) (string, bool) {
+	if !filepath.IsAbs(reportedPath) {
+		return "", false
+	}
+	dir := filepath.Dir(filepath.Clean(reportedPath))
+	resolvedDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", false // doesn't exist or can't be resolved — never assume safe
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(projectRoot)
+	if err != nil {
+		resolvedRoot = projectRoot
+	}
+	rel, err := filepath.Rel(resolvedRoot, resolvedDir)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return "", false
+	}
+	return resolvedDir, true
+}
+
+// handlePreviewRoot validates and stores the one directory this session's
+// /preview/<relpath> route will serve from. Authenticated via the real
+// session token (only the trusted board relay reaches here) — never the
+// narrower previewToken, which authorizes reads only, not setting the root.
+func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	root, ok := previewRootFor(body.Path, s.cfg.projectRoot)
+	if !ok {
+		http.Error(w, "path not allowed", http.StatusBadRequest)
+		return
+	}
+	se.mu.Lock()
+	se.previewRoot = root
+	se.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handlePreview serves a file from the session's validated preview root.
+// GET-only, previewToken-only (query param — an <iframe src> can't carry an
+// Authorization header). http.FileServer(http.Dir(root)) already refuses to
+// serve anything above root via "../" in relpath; root itself was already
+// validated to be under projectRoot at /preview-root time.
+func (s *server) handlePreview(w http.ResponseWriter, r *http.Request, se *session, relpath string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !secureEqual(r.URL.Query().Get("token"), se.previewToken) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	se.mu.Lock()
+	root := se.previewRoot
+	se.mu.Unlock()
+	if root == "" {
+		http.Error(w, "no preview available", http.StatusNotFound)
+		return
+	}
+	// Rewrite the path (StripPrefix's own pattern) rather than constructing a
+	// bare *http.Request from scratch, so headers like If-Modified-Since and
+	// Range still reach the file server unchanged.
+	r2 := new(http.Request)
+	*r2 = *r
+	r2.URL = new(url.URL)
+	*r2.URL = *r.URL
+	r2.URL.Path = "/" + relpath
+	http.FileServer(http.Dir(root)).ServeHTTP(w, r2)
 }
 
 // ── needs-you status ───────────────────────────────────────────────────────

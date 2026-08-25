@@ -1531,6 +1531,25 @@
       margin: 12px auto; cursor: pointer;
     }
     .ck-preview.collapsed .ck-preview-collapsed-label { display: block; }
+    .ck-preview-header {
+      display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+      border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600;
+      color: var(--text-muted); flex-shrink: 0;
+    }
+    .ck-preview-collapse {
+      background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 14px;
+      padding: 2px 6px; line-height: 1;
+    }
+    .ck-preview-collapse:hover { color: var(--accent); }
+    .ck-preview-body { flex: 1; min-height: 0; position: relative; }
+    .ck-preview-body iframe { width: 100%; height: 100%; border: 0; display: block; }
+    .ck-preview-msg {
+      padding: 16px; font-size: 13px; color: var(--text-muted); font-family: var(--mono, monospace);
+      line-height: 1.5;
+    }
+    .ck-preview-msg code {
+      background: var(--surface-raised); padding: 2px 5px; border-radius: 4px; word-break: break-all;
+    }
     .ck-loopbar {
       display: flex; align-items: center; gap: 10px; padding: 6px 14px; flex-shrink: 0;
       background: var(--surface); border-top: 1px solid var(--border);
@@ -1770,8 +1789,14 @@
         <iframe id="ck-iframe" title="Agent terminal" style="visibility:hidden"></iframe>
         <div class="ck-term-msg" id="ck-term-msg"></div>
       </div>
-      <div class="ck-preview collapsed">
-        <div class="ck-preview-full"></div>
+      <div class="ck-preview collapsed" id="ck-preview">
+        <div class="ck-preview-full">
+          <div class="ck-preview-header">
+            <span>Preview</span>
+            <button class="ck-preview-collapse" id="ck-preview-collapse" type="button" title="Collapse preview">»</button>
+          </div>
+          <div class="ck-preview-body" id="ck-preview-body"></div>
+        </div>
         <div class="ck-preview-collapsed-label" id="ck-preview-label">Preview</div>
       </div>
     </div>
@@ -4357,12 +4382,67 @@ window.addEventListener('message', (e) => {
     renderNeedsYouBadge();
   } else if (d.type === 'ended' && cockpitState._onEnded) {
     cockpitState._onEnded();
+  } else if (d.type === 'preview-file') {
+    renderPreviewFile(d.session, d.previewToken, d.relpath);
+  } else if (d.type === 'preview-server-cmd') {
+    renderPreviewServerCmd(d.cmd);
+  } else if (d.type === 'preview-timeout') {
+    renderPreviewMessage("Couldn't determine how to preview this ticket's deliverable — the agent didn't respond with a recognized marker within 60s.");
+  } else if (d.type === 'preview-rejected') {
+    renderPreviewMessage('The reported preview path was rejected (must resolve to a location inside the project).');
   }
 });
 
 function renderNeedsYouBadge() {
   document.getElementById('ck-needs-you-badge').style.display =
     cockpitState.status === 'needs-you' ? 'flex' : 'none';
+}
+
+// ── Preview pane (t-b19b) ───────────────────────────────────────────────────
+// v1 scope, deliberately: the daemon never starts/stops/manages any process.
+// A static-file deliverable gets served read-only into a sandboxed iframe; a
+// server-needing deliverable gets a static "run this yourself" message.
+
+function renderPreviewMessage(text) {
+  document.getElementById('ck-preview-body').innerHTML =
+    '<div class="ck-preview-msg"></div>';
+  document.querySelector('#ck-preview-body .ck-preview-msg').textContent = text;
+}
+
+function renderPreviewFile(session, previewToken, relpath) {
+  if (!cockpitState.addr || !session || !previewToken || !relpath) {
+    renderPreviewMessage("Couldn't load the preview (missing session details).");
+    return;
+  }
+  const url = `http://${cockpitState.addr}/session/${encodeURIComponent(session)}/preview/${encodeURIComponent(relpath)}?token=${encodeURIComponent(previewToken)}`;
+  const body = document.getElementById('ck-preview-body');
+  body.innerHTML = '';
+  const iframe = document.createElement('iframe');
+  // allow-scripts only, deliberately no allow-same-origin — the previewed
+  // app-under-test is untrusted content; this keeps it at an opaque origin
+  // so it can't reach real daemon endpoints even if it reads its own token
+  // straight off location.search (see t-b19b plan.md's Pre-mortem).
+  iframe.setAttribute('sandbox', 'allow-scripts');
+  iframe.src = url;
+  body.appendChild(iframe);
+}
+
+function renderPreviewServerCmd(cmd) {
+  const body = document.getElementById('ck-preview-body');
+  body.innerHTML = '<div class="ck-preview-msg">This app needs a running server — run this yourself:<br><br><code></code></div>';
+  body.querySelector('code').textContent = cmd;
+}
+
+function requestPreview() {
+  const iframe = document.getElementById('ck-iframe');
+  if (!iframe || !iframe.contentWindow || !cockpitState.addr) return;
+  renderPreviewMessage('Asking the agent how to preview this ticket’s deliverable…');
+  iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'preview-request' }, 'http://' + cockpitState.addr);
+}
+
+function resetPreview() {
+  document.getElementById('ck-preview').classList.add('collapsed');
+  document.getElementById('ck-preview-body').innerHTML = '';
 }
 
 function sessionIsLive() {
@@ -4394,6 +4474,7 @@ function teardownCockpit() {
   if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
   cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
   renderNeedsYouBadge();
+  resetPreview();
   loadData().then(render).catch(() => renderBoard());
 }
 
@@ -4439,6 +4520,7 @@ async function openCockpit(id) {
   cockpitState.id = id;
   cockpitState.status = null;
   renderNeedsYouBadge();
+  resetPreview();
   state.selectedId = id;
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
@@ -4664,8 +4746,11 @@ document.getElementById('ck-rail-toggle').addEventListener('click', () => {
   resizeEl.addEventListener('pointercancel', stopResize);
 })();
 document.getElementById('ck-preview-label').addEventListener('click', () => {
-  // Preview pane richness is t-b19b; the collapsed slot is a no-op placeholder.
-  showToast('App preview lands in t-b19b', 'warn');
+  document.getElementById('ck-preview').classList.remove('collapsed');
+  requestPreview();
+});
+document.getElementById('ck-preview-collapse').addEventListener('click', () => {
+  document.getElementById('ck-preview').classList.add('collapsed');
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open')) closeCockpit();

@@ -1545,3 +1545,175 @@ func TestIdleReapAbortsWhenHumanReturnsMidSave(t *testing.T) {
 		t.Fatal("session was killed even though a human sent real input mid-save-wait")
 	}
 }
+
+// ── t-b19b: preview pane path safety + auth ─────────────────────────────────
+
+func TestPreviewRootFor(t *testing.T) {
+	root := t.TempDir()
+	appDir := filepath.Join(root, "examples", "foo")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	indexFile := filepath.Join(appDir, "index.html")
+	if err := os.WriteFile(indexFile, []byte("<html></html>"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Happy path: the reported file's containing directory, resolved.
+	got, ok := previewRootFor(indexFile, root)
+	if !ok {
+		t.Fatal("expected ok for a file under projectRoot")
+	}
+	wantResolved, _ := filepath.EvalSymlinks(appDir)
+	if got != wantResolved {
+		t.Fatalf("got %q, want %q", got, wantResolved)
+	}
+
+	// Relative path rejected outright — PREVIEW_FILE must report an absolute path.
+	if _, ok := previewRootFor("examples/foo/index.html", root); ok {
+		t.Fatal("expected relative path to be rejected")
+	}
+
+	// Outside projectRoot entirely.
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "index.html")
+	os.WriteFile(outsideFile, []byte("x"), 0o644)
+	if _, ok := previewRootFor(outsideFile, root); ok {
+		t.Fatal("expected a path outside projectRoot to be rejected")
+	}
+
+	// Nonexistent directory.
+	if _, ok := previewRootFor(filepath.Join(root, "does", "not", "exist", "index.html"), root); ok {
+		t.Fatal("expected a nonexistent directory to be rejected")
+	}
+
+	// Symlink escape: a directory INSIDE projectRoot that's actually a symlink
+	// pointing outside it must not be accepted just because its unresolved
+	// path looks contained.
+	escapeLink := filepath.Join(root, "escape")
+	if err := os.Symlink(outside, escapeLink); err != nil {
+		t.Skipf("symlink not supported on this platform: %v", err)
+	}
+	escapeFile := filepath.Join(escapeLink, "index.html")
+	if _, ok := previewRootFor(escapeFile, root); ok {
+		t.Fatal("expected a symlink escaping projectRoot to be rejected")
+	}
+}
+
+func TestPreviewRootAndServe(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	appDir := filepath.Join(root, "examples", "foo")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	indexFile := filepath.Join(appDir, "index.html")
+	os.WriteFile(indexFile, []byte("<html>hi</html>"), 0o644)
+	os.WriteFile(filepath.Join(appDir, "style.css"), []byte("body{color:red}"), 0o644)
+
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token, PreviewToken string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if out.PreviewToken == "" {
+		t.Fatal("start response did not include a previewToken")
+	}
+
+	// Set the preview root via the real session token.
+	body, _ := json.Marshal(map[string]string{"path": indexFile})
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/preview-root", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r1, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1.Body.Close()
+	if r1.StatusCode != http.StatusNoContent {
+		t.Fatalf("preview-root: want 204, got %d", r1.StatusCode)
+	}
+
+	// GET the reported file via previewToken (query param, not header).
+	r2, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/index.html?token=" + out.PreviewToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b2, _ := io.ReadAll(r2.Body)
+	r2.Body.Close()
+	if r2.StatusCode != http.StatusOK || string(b2) != "<html>hi</html>" {
+		t.Fatalf("preview index.html: status=%d body=%q", r2.StatusCode, b2)
+	}
+
+	// A SIBLING file must also resolve — the whole directory is served, not
+	// just the one reported file.
+	r3, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/style.css?token=" + out.PreviewToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b3, _ := io.ReadAll(r3.Body)
+	r3.Body.Close()
+	if r3.StatusCode != http.StatusOK || string(b3) != "body{color:red}" {
+		t.Fatalf("preview style.css: status=%d body=%q", r3.StatusCode, b3)
+	}
+
+	// Wrong/missing token is rejected.
+	r4, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/index.html?token=wrong")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r4.Body.Close()
+	if r4.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("wrong previewToken: want 401, got %d", r4.StatusCode)
+	}
+
+	// The previewToken must authorize ONLY the preview route — never /input,
+	// /kill, or /resize (the whole point of a separate, narrower token).
+	for _, action := range []string{"input", "kill", "resize"} {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/"+action, strings.NewReader("{}"))
+		req.Header.Set("Authorization", "Bearer "+out.PreviewToken)
+		rr, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rr.Body.Close()
+		if rr.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("previewToken used against /%s: want 401, got %d", action, rr.StatusCode)
+		}
+	}
+}
+
+func TestPreviewRootRejectsPathOutsideProjectRoot(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	outside := t.TempDir()
+	outsideFile := filepath.Join(outside, "secret.txt")
+	os.WriteFile(outsideFile, []byte("nope"), 0o644)
+
+	body, _ := json.Marshal(map[string]string{"path": outsideFile})
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/preview-root", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r1, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r1.Body.Close()
+	if r1.StatusCode != http.StatusBadRequest {
+		t.Fatalf("path outside projectRoot: want 400, got %d", r1.StatusCode)
+	}
+}

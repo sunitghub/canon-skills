@@ -3598,3 +3598,154 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 });
+
+test.describe('cockpit preview pane (t-b19b)', () => {
+  function writeTicket(id, status) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), [
+      '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
+      'created: 2026-08-24T00:00:00Z', '---', '', `# Preview pane test ${id}`, '',
+    ].join('\n'));
+  }
+
+  // Simulates what real cockpit.html sends AFTER it has already asked the
+  // daemon to validate the reported path (t-b19b's plan.md decision: the
+  // daemon re-validates, never trusts the client-relayed path uncomprehendingly)
+  // — this fake page only tests the BOARD side's reaction to each outcome.
+  function fakePreviewCockpitPage({ respondWith = 'file', delayMs = 30 } = {}) {
+    const respond = {
+      file: "window.parent.postMessage({source:'canon-cockpit', type:'preview-file', session:'sess1', previewToken:'ptok1', relpath:'index.html'}, '*');",
+      'server-cmd': "window.parent.postMessage({source:'canon-cockpit', type:'preview-server-cmd', cmd:'npm run dev'}, '*');",
+      timeout: "window.parent.postMessage({source:'canon-cockpit', type:'preview-timeout'}, '*');",
+      rejected: "window.parent.postMessage({source:'canon-cockpit', type:'preview-rejected'}, '*');",
+    }[respondWith];
+    return `<!doctype html><html><body><script>
+      window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+      window.addEventListener('message', function(e){
+        var d = e.data;
+        if(!d || d.source !== 'canon-cockpit') return;
+        if(d.type === 'preview-request'){
+          setTimeout(function(){ ${respond} }, ${delayMs});
+        }
+      });
+    </script></body></html>`;
+  }
+
+  async function openResumedCockpit(page, id, cockpitHtml) {
+    await page.route('**/api/cockpit', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+    }));
+    await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: cockpitHtml }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await reopenCockpitNoReload(page, id);
+  }
+
+  async function reopenCockpitNoReload(page, id, cockpitHtml) {
+    if (cockpitHtml) {
+      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: cockpitHtml }));
+    }
+    await page.locator('#board-search').fill('');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+  }
+
+  test('PREVIEW_FILE loads a sandboxed iframe pointed at the daemon preview endpoint', async ({ page }) => {
+    const id = `t-pvfile-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
+      const iframe = page.locator('#ck-preview-body iframe');
+      await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/index.html?token=ptok1');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe', async ({ page }) => {
+    const id = `t-pvcmd-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'server-cmd' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview-body')).toContainText('npm run dev');
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('no marker within the timeout shows the fallback message', async ({ page }) => {
+    const id = `t-pvto-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'timeout' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview-body')).toContainText("couldn't determine", { ignoreCase: true });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a daemon-rejected path shows a rejection message, not a broken iframe', async ({ page }) => {
+    const id = `t-pvrej-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'rejected' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview-body')).toContainText('rejected');
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('collapse button re-collapses the pane', async ({ page }) => {
+    const id = `t-pvcol-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
+      await page.locator('#ck-preview-collapse').click();
+      await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a fresh cockpit open never inherits a prior session\'s stale preview content', async ({ page }) => {
+    const id1 = `t-pvst1-${Date.now()}`;
+    const id2 = `t-pvst2-${Date.now()}`;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      await openResumedCockpit(page, id1, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(1);
+
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-leave').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+
+      await reopenCockpitNoReload(page, id2, fakePreviewCockpitPage({ respondWith: 'server-cmd' }));
+      await page.waitForTimeout(100);
+      await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+});

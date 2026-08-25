@@ -76,7 +76,7 @@
   var PREFILL = "__COCKPIT_TICKET__";
   var EMBED = "__COCKPIT_EMBED__";
   var AUTOSTART = "__COCKPIT_AUTOSTART__";
-  var session = null, sessTok = null, streamAbort = null;
+  var session = null, sessTok = null, previewTok = null, streamAbort = null;
 
   var term = new Terminal({
     fontFamily: "JetBrains Mono, ui-monospace, Menlo, monospace",
@@ -110,6 +110,13 @@
   }
   var LOOPBACK_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
   var pendingMarker = null; // set while waiting for a save-and-end marker line
+  // t-b19b: preview watch is independent of pendingMarker (it never kills the
+  // session) — a prefix match, not exact, since both markers carry a variable
+  // payload after the fixed prefix.
+  var previewDeadline = 0; // epoch ms while watching for a preview marker; 0 = not watching
+  var PREVIEW_FILE_PREFIX = "PREVIEW_FILE: ";
+  var PREVIEW_SERVER_CMD_PREFIX = "PREVIEW_SERVER_CMD: ";
+  var PREVIEW_TIMEOUT_MS = 60000;
   window.addEventListener("message", function(e){
     if(e.source !== window.parent) return;
     if(!LOOPBACK_ORIGIN.test(e.origin)) return;
@@ -124,6 +131,20 @@
     } else if(d.type === "force-end" && session){
       pendingMarker = null;
       kill();
+    } else if(d.type === "preview-request" && session){
+      var deadline = Date.now() + PREVIEW_TIMEOUT_MS;
+      previewDeadline = deadline;
+      var previewPrompt = "If this ticket's deliverable is a single static HTML file needing no "
+        + "server, print the exact line PREVIEW_FILE: <absolute path>. If it needs a running dev "
+        + "server, print the exact line PREVIEW_SERVER_CMD: <the exact command to start it> -- "
+        + "don't start anything yourself.";
+      fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: previewPrompt + "\r" }).catch(function(){});
+      setTimeout(function(){
+        if(previewDeadline === deadline){
+          previewDeadline = 0;
+          try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-timeout" }, "*"); }catch(e){}
+        }
+      }, PREVIEW_TIMEOUT_MS);
     }
   });
 
@@ -138,7 +159,7 @@
       var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket}) });
       if(!r.ok){ setStatus("error","start failed ("+r.status+")"); term.writeln("\r\n\x1b[31mstart failed: "+r.status+"\x1b[0m"); return; }
       var j = await r.json();
-      session = j.session; sessTok = j.token; activeTicket = ticket;
+      session = j.session; sessTok = j.token; previewTok = j.previewToken; activeTicket = ticket;
       // A second Start while this one is live would spawn a parallel session
       // on the same ticket — no daemon-side guard against it (t-2zoa, live).
       document.getElementById("startBtn").disabled = true;
@@ -170,17 +191,50 @@
         if(ev==="out" && data){
           var bytes = Uint8Array.from(atob(data), function(c){return c.charCodeAt(0);});
           term.write(bytes);
-          if(pendingMarker){
+          if(pendingMarker || previewDeadline){
             var text = new TextDecoder().decode(bytes);
-            // Whole-line match only — a coincidental substring mid-sentence
-            // (the agent describing what it's about to do) must not count.
             var lines = text.split(/\r?\n/);
             for(var li=0; li<lines.length; li++){
-              if(lines[li].replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").trim() === pendingMarker){
+              var clean = lines[li].replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").trim();
+              // Whole-line exact match only — a coincidental substring
+              // mid-sentence (the agent describing what it's about to do)
+              // must not count.
+              if(pendingMarker && clean === pendingMarker){
                 pendingMarker = null;
                 kill().then(function(){
                   try{ window.parent.postMessage({ source: "canon-cockpit", type: "ended" }, "*"); }catch(e){}
                 });
+                break;
+              }
+              // Prefix match, not exact — PREVIEW_FILE/PREVIEW_SERVER_CMD
+              // carry a variable payload after the fixed prefix.
+              if(previewDeadline && clean.indexOf(PREVIEW_FILE_PREFIX) === 0){
+                previewDeadline = 0;
+                var filePath = clean.slice(PREVIEW_FILE_PREFIX.length).trim();
+                // The daemon re-validates this path itself (symlink-safe
+                // containment under projectRoot) before this page relays
+                // anything to the board — cockpit.html has no privileged
+                // position to assert the path is safe on its own.
+                fetch("/session/"+session+"/preview-root", {
+                  method: "POST",
+                  headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)),
+                  body: JSON.stringify({ path: filePath })
+                }).then(function(pr){
+                  if(pr.ok){
+                    var relpath = filePath.split(/[\\/]/).pop();
+                    try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-file", session: session, previewToken: previewTok, relpath: relpath }, "*"); }catch(e){}
+                  } else {
+                    try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-rejected" }, "*"); }catch(e){}
+                  }
+                }).catch(function(){
+                  try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-rejected" }, "*"); }catch(e){}
+                });
+                break;
+              }
+              if(previewDeadline && clean.indexOf(PREVIEW_SERVER_CMD_PREFIX) === 0){
+                previewDeadline = 0;
+                var serverCmd = clean.slice(PREVIEW_SERVER_CMD_PREFIX.length).trim();
+                try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-server-cmd", cmd: serverCmd }, "*"); }catch(e){}
                 break;
               }
             }
