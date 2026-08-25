@@ -3557,4 +3557,44 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
+
+  test('needs-you badge (t-2e7e): shown top-right on needs-you, hidden on running, hidden on reopen', async ({ page }) => {
+    const id = `t-badge-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(100);
+      const badge = page.locator('#ck-needs-you-badge');
+      await expect(badge).toBeHidden();
+
+      // The board only trusts a status message whose source is the cockpit
+      // iframe's own contentWindow, so it must be posted FROM the iframe's
+      // frame context, not the top-level page (which would look like an
+      // unrelated postMessage the listener correctly ignores).
+      const postFromIframe = (status) => page.frameLocator('#ck-iframe').locator('body').evaluate((_, s) => {
+        window.parent.postMessage({ source: 'canon-cockpit', type: 'status', status: s }, '*');
+      }, status);
+
+      // Flip the fake daemon's status to needs-you without navigating.
+      await postFromIframe('needs-you');
+      await expect(badge).toBeVisible();
+      await expect(badge).toHaveText('!');
+
+      // Back to running clears it again.
+      await postFromIframe('running');
+      await expect(badge).toBeHidden();
+
+      // A fresh reopen must never inherit a prior session's stale badge state.
+      await postFromIframe('needs-you');
+      await expect(badge).toBeVisible();
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-leave').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      await reopenCockpitNoReload(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(100);
+      await expect(badge).toBeHidden();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
 });

@@ -322,12 +322,11 @@ func TestLifecycle(t *testing.T) {
 		t.Fatal("missing session/token")
 	}
 
-	// argv targeting + no-token-in-argv. Exactly one element, the joined prompt —
-	// the two-arg bash-CLI shape drops the ticket id under a real `claude`.
+	// argv targeting + no-token-in-argv. --session-id <uuid> then the joined
+	// prompt — the two-arg bash-CLI shape drops the ticket id under a real
+	// `claude` (t-842b); a fresh spawn always pins a session id (t-2e7e).
 	argv := waitFile(t, argvFile, 3*time.Second)
-	if want := "ARGC:1\nARG:sprint start t-ab12\n"; argv != want {
-		t.Fatalf("argv = %q, want %q", argv, want)
-	}
+	assertFreshSpawnArgv(t, argv, "sprint start t-ab12")
 	if strings.Contains(argv, out.Token) || strings.Contains(argv, bootTok) {
 		t.Fatalf("token leaked into argv: %q", argv)
 	}
@@ -480,6 +479,39 @@ func waitFor(t *testing.T, buf *safeBuf, want string, timeout time.Duration) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %q; got %q", want, buf.String())
+}
+
+var testUUIDRe = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+
+// assertFreshSpawnArgv checks the argv shape for a fresh (non-resumed)
+// spawn — optionally a leading --model pair, then --session-id <uuid>, then
+// the joined prompt as the last element — and returns the generated uuid
+// (t-2e7e). extraArgc is any leading argv elements before --session-id
+// (e.g. 2 for "--model haiku").
+func assertFreshSpawnArgv(t *testing.T, argv, wantPrompt string, leading ...string) string {
+	t.Helper()
+	lines := strings.Split(strings.TrimRight(argv, "\n"), "\n")
+	wantArgc := len(leading) + 3
+	if len(lines) != wantArgc+1 || lines[0] != fmt.Sprintf("ARGC:%d", wantArgc) {
+		t.Fatalf("argv shape unexpected: %q (want ARGC:%d)", argv, wantArgc)
+	}
+	for i, want := range leading {
+		if lines[1+i] != "ARG:"+want {
+			t.Fatalf("argv shape unexpected: %q (leading arg %d want %q)", argv, i, want)
+		}
+	}
+	off := 1 + len(leading)
+	if lines[off] != "ARG:--session-id" {
+		t.Fatalf("argv shape unexpected: %q (want --session-id at position %d)", argv, off)
+	}
+	id := strings.TrimPrefix(lines[off+1], "ARG:")
+	if !testUUIDRe.MatchString(id) {
+		t.Fatalf("argv session id not a valid UUID: %q", id)
+	}
+	if lines[off+2] != "ARG:"+wantPrompt {
+		t.Fatalf("argv shape unexpected: %q (want prompt %q at position %d)", argv, wantPrompt, off+2)
+	}
+	return id
 }
 
 func waitFile(t *testing.T, path string, timeout time.Duration) string {
@@ -1094,29 +1126,30 @@ func TestResolveGateModelNoPlan(t *testing.T) {
 // fixture tests above; these are the end-to-end paths through spawn().
 func TestSpawnModelFlag(t *testing.T) {
 	for _, tc := range []struct {
-		name, tierLine, wantArgv string
+		name, tierLine string
+		wantLeading    []string // leading argv elements before --session-id, if any
 	}{
 		{"resolved model reaches argv, prompt stays last",
 			"Tier: high-risk | Risk: none | Gate model: haiku",
-			"ARGC:3\nARG:--model\nARG:haiku\nARG:sprint start t-ab12\n"},
+			[]string{"--model", "haiku"}},
 		{"no suffix means no flag",
 			"Tier: normal | Risk: none",
-			"ARGC:1\nARG:sprint start t-ab12\n"},
+			nil},
 		{"session means no flag",
 			"Tier: normal | Risk: none | Gate model: session",
-			"ARGC:1\nARG:sprint start t-ab12\n"},
+			nil},
 		{"a value with shell metacharacters never becomes an argv element",
 			"Tier: normal | Risk: none | Gate model: haiku;touch$(id)",
-			"ARGC:1\nARG:sprint start t-ab12\n"},
+			nil},
 		// plan.md is writable by the agent this value configures, so a value that
 		// could be re-read as a flag must never reach argv — otherwise a session
 		// could escalate the next one past the inherited-permissions guarantee.
 		{"a leading-hyphen value never reaches argv as a second flag",
 			"Tier: normal | Risk: none | Gate model: --dangerously-skip-permissions",
-			"ARGC:1\nARG:sprint start t-ab12\n"},
+			nil},
 		{"a real hyphenated model id still reaches argv",
 			"Tier: normal | Risk: none | Gate model: claude-sonnet-5",
-			"ARGC:3\nARG:--model\nARG:claude-sonnet-5\nARG:sprint start t-ab12\n"},
+			[]string{"--model", "claude-sonnet-5"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bin, argvFile, _ := fakeSprint(t)
@@ -1139,9 +1172,301 @@ func TestSpawnModelFlag(t *testing.T) {
 				t.Fatalf("start: %d", resp.StatusCode)
 			}
 			resp.Body.Close()
-			if argv := waitFile(t, argvFile, 3*time.Second); argv != tc.wantArgv {
-				t.Fatalf("argv = %q, want %q", argv, tc.wantArgv)
-			}
+			argv := waitFile(t, argvFile, 3*time.Second)
+			assertFreshSpawnArgv(t, argv, "sprint start t-ab12", tc.wantLeading...)
 		})
 	}
+}
+
+// ── t-2e7e: session id resume/fresh + idle reaping ──────────────────────────
+
+func writeTicketStatus(t *testing.T, root, ticket, status string) {
+	t.Helper()
+	dir := filepath.Join(root, ".tickets", ticket)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nid: " + ticket + "\nstatus: " + status + "\n---\n# test\n"
+	if err := os.WriteFile(filepath.Join(dir, "ticket.md"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveClaudeSessionID(t *testing.T) {
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+
+	// No ticket.md at all → fresh, and the id gets persisted.
+	id1, resuming := s.resolveClaudeSessionID("t-ab12")
+	if resuming {
+		t.Fatal("expected fresh (no status file), got resuming")
+	}
+	if !testUUIDRe.MatchString(id1) {
+		t.Fatalf("id1 not a valid UUID: %q", id1)
+	}
+	persisted, err := os.ReadFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-session-id"))
+	if err != nil || strings.TrimSpace(string(persisted)) != id1 {
+		t.Fatalf("id1 not persisted correctly: %v %q", err, persisted)
+	}
+
+	// status: open (not in_progress) with a persisted id from above → still
+	// fresh; a reopened ticket must never resume a stale, unrelated conversation.
+	writeTicketStatus(t, root, "t-ab12", "open")
+	id2, resuming := s.resolveClaudeSessionID("t-ab12")
+	if resuming || id2 == id1 {
+		t.Fatalf("expected a fresh id on status:open, got resuming=%v id=%q (was %q)", resuming, id2, id1)
+	}
+
+	// status: in_progress with a persisted id → resume that exact id.
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	id3, resuming := s.resolveClaudeSessionID("t-ab12")
+	if !resuming || id3 != id2 {
+		t.Fatalf("expected resume of %q, got resuming=%v id=%q", id2, resuming, id3)
+	}
+}
+
+func TestSpawnResumesPersistedSessionOnlyWhenInProgress(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "open")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	// First spawn: status is "open" → fresh --session-id.
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	argv := waitFile(t, argvFile, 3*time.Second)
+	firstID := assertFreshSpawnArgv(t, argv, "sprint start t-ab12")
+
+	// Flip to in_progress (as the real sprint skill would) and spawn again —
+	// must resume the SAME id via --resume, never --fork-session.
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	if err := os.Truncate(argvFile, 0); err != nil {
+		t.Fatal(err)
+	}
+	resp2 := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("second start: %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+	argv2 := waitFile(t, argvFile, 3*time.Second)
+	want := "ARGC:2\nARG:--resume\nARG:" + firstID + "\n"
+	if argv2 != want {
+		t.Fatalf("resume argv = %q, want %q", argv2, want)
+	}
+	if strings.Contains(argv2, "--fork-session") {
+		t.Fatalf("resume argv must never include --fork-session: %q", argv2)
+	}
+}
+
+// fakeAgentThatSaves simulates a real agent responding to the daemon's
+// injected save prompt: on seeing that specific text on stdin, it prints the
+// exact marker line (t-2e7e). Never exits on its own (like fakeSprint), so
+// the test controls its lifetime entirely via the reaper/kill.
+func fakeAgentThatSaves(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-saves.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r line; do\n" +
+		"  case \"$line\" in\n" +
+		"    *'save your current state'*) printf '" + cockpitSaveMarker + "\\n' ;;\n" +
+		"  esac\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// fakeAgentThatIgnores never responds to anything on stdin — used to exercise
+// the save-fallback force-kill path (t-2e7e).
+func fakeAgentThatIgnores(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-ignores.sh")
+	script := "#!/bin/sh\nprintf 'READY\\n'\ncat >/dev/null\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func TestIdleReapSparesNeedsYouSession(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	s.mu.Lock()
+	se := s.sessions[out.Session]
+	s.mu.Unlock()
+	se.setStatus("needs-you")
+
+	// Well past idleTimeout — if the exemption didn't work, this would be reaped.
+	time.Sleep(300 * time.Millisecond)
+
+	s.mu.Lock()
+	_, stillThere := s.sessions[out.Session]
+	s.mu.Unlock()
+	if !stillThere {
+		t.Fatal("needs-you session was reaped — must always be exempted")
+	}
+}
+
+func TestIdleReapKillsIdleSessionAfterSaveMarker(t *testing.T) {
+	bin := fakeAgentThatSaves(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		saveFallback: 3 * time.Second,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			return // reaped — success
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("idle session with a responsive fake agent was never reaped")
+}
+
+func TestIdleReapFallbackKillsWhenMarkerNeverAppears(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		saveFallback: 200 * time.Millisecond,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	// idleTimeout (50ms) + saveFallback (200ms) + generous margin.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			return // fallback force-killed it — success
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("idle session with an unresponsive fake agent was never fallback-killed")
+}
+
+// fakeAgentWithStaleMarker prints the exact marker line unprompted, early in
+// its own output (simulating an unrelated earlier mention of this feature's
+// own marker string), then goes unresponsive like fakeAgentThatIgnores. Used
+// to prove saveAndEndIdle only counts output written AFTER its save prompt
+// (t-2e7e regression: a naive whole-buffer scan would false-kill instantly).
+func fakeAgentWithStaleMarker(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-stale-marker.sh")
+	// The trailing "sleep 1" guarantees the marker line lands in se.buf and
+	// this process goes truly idle well before idleTimeout elapses — without
+	// it, a short test idleTimeout can race the shell's own fork/exec/printf
+	// startup, letting the reaper fire before the "stale" line even exists.
+	script := "#!/bin/sh\n" +
+		"printf '" + cockpitSaveMarker + "\\n'\n" +
+		"sleep 1\n" +
+		"cat >/dev/null\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
+	bin := fakeAgentWithStaleMarker(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		// idleTimeout generous enough that the shell's own fork/exec/printf
+		// startup can never race past it before the stale marker is flushed
+		// (see fakeAgentWithStaleMarker's "sleep 1" comment).
+		idleTimeout: 150 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		// saveFallback deliberately longer than saveAndEndIdle's fixed 500ms poll
+		// interval, so the "early" check below lands after at least one real poll
+		// (where a whole-buffer-scan bug would already have false-killed) but well
+		// before the fallback would kill it anyway — otherwise the fallback alone
+		// could mask a broken marker scan.
+		saveFallback: 3 * time.Second,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	// The stale marker lands in se.buf immediately (before idle-reap even
+	// starts). Wait past idleTimeout + one 500ms poll tick, so a whole-buffer
+	// scan bug would already have false-killed by now.
+	time.Sleep(900 * time.Millisecond)
+	s.mu.Lock()
+	_, stillThereEarly := s.sessions[out.Session]
+	s.mu.Unlock()
+	if !stillThereEarly {
+		t.Fatal("session was killed on a stale marker line that predates any save prompt")
+	}
+
+	// It must still be reaped eventually via the fallback (the agent never
+	// responds to the real save prompt either) — proving this isn't just a
+	// reaper that silently never fires.
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("session was never reaped via the fallback path")
 }
