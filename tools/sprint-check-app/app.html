@@ -33,6 +33,7 @@
       --col-open:       #94a3b8;
       --col-progress:   #60a5fa;
       --col-done:       #4ade80;
+      --col-done-contrast: #04210f;
       --col-discarded:  #f87171;
 
       --sidebar-w: 240px;
@@ -68,6 +69,7 @@
       --col-open:       #64748b;
       --col-progress:   #2563eb;
       --col-done:       #16a34a;
+      --col-done-contrast: #ffffff;
       --col-discarded:  #dc2626;
     }
 
@@ -1479,7 +1481,7 @@
        --col-done (green), not --col-progress (blue) — an IN_PROGRESS card
        already shows a blue status dot/badge, so blue here would just repeat
        a color already on the card instead of adding a distinct signal. */
-    .card-start.resume { background: var(--col-done); }
+    .card-start.resume { background: var(--col-done); color: var(--col-done-contrast); }
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */
