@@ -3189,3 +3189,192 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 });
+
+test.describe('cockpit leave-session confirm (t-f6b6)', () => {
+  // A minimal fake /cockpit page implementing only the postMessage contract
+  // real cockpit.html speaks — no real PTY, no real claude process. Isolates
+  // testing of the BOARD side's confirm/save/timeout logic.
+  function fakeCockpitPage({ initialStatus = 'running', endDelayMs = 50 } = {}) {
+    return `<!doctype html><html><body><script>
+      window.parent.postMessage({source:'canon-cockpit', type:'status', status:${JSON.stringify(initialStatus)}}, '*');
+      window.addEventListener('message', function(e){
+        var d = e.data;
+        if(!d || d.source !== 'canon-cockpit') return;
+        if(d.type === 'save-and-end'){
+          setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, ${endDelayMs});
+        } else if(d.type === 'force-end'){
+          window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
+        }
+      });
+    </script></body></html>`;
+  }
+
+  function writeTicket(id, status) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), [
+      '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
+      'created: 2026-08-24T00:00:00Z', '---', '', `# Leave-confirm test ${id}`, '',
+    ].join('\n'));
+  }
+
+  async function openResumedCockpit(page, id, cockpitHtml) {
+    await page.route('**/api/cockpit', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+    }));
+    await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: cockpitHtml }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+  }
+
+  test('leaving while running shows the confirm dialog with all three choices', async ({ page }) => {
+    const id = `t-lcrun-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(100); // let the status postMessage land
+      await page.locator('#ck-back').click();
+      const modal = page.locator('#ck-leave-confirm');
+      await expect(modal).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-save')).toBeEnabled();
+      await expect(page.locator('#ck-leave-leave')).toBeVisible();
+      await expect(page.locator('#ck-leave-cancel')).toBeVisible();
+      // Cancel leaves everything untouched.
+      await page.locator('#ck-leave-cancel').click();
+      await expect(modal).not.toHaveClass(/open/);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('needs-you disables Save & End with an explanation', async ({ page }) => {
+    const id = `t-lcny-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'needs-you' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-save')).toBeDisabled();
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText('waiting on you');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('leaving after the session already finished skips the modal entirely', async ({ page }) => {
+    const id = `t-lcdone-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'done' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Leave running proceeds immediately, no save prompt sent', async ({ page }) => {
+    const id = `t-lcleave-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-leave').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Save & End waits for the ended reply before tearing down', async ({ page }) => {
+    const id = `t-lcsave-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 400 }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-save').click();
+      // Still open immediately after clicking — the fake page hasn't replied yet.
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
+      // Once the fake page's delayed 'ended' arrives, teardown proceeds.
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a forged ended message not actually from the iframe is ignored', async ({ page }) => {
+    const id = `t-lcforge-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      // endDelayMs huge: the real reply must never be what completes this test.
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-save').click();
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
+      // Forged message sent from the TOP frame itself, not the iframe — wrong
+      // source and wrong origin. If the board's listener didn't validate
+      // e.source/e.origin, this alone would complete the flow.
+      await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'ended' }, '*'));
+      await page.waitForTimeout(300);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('fallback timeout force-ends and warns the save may be incomplete', async ({ page }) => {
+    const id = `t-lctimeout-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      // Never replies to save-and-end; force-end still gets a reply, exercising the fallback path.
+      const html = `<!doctype html><html><body><script>
+        window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+        window.addEventListener('message', function(e){
+          var d = e.data;
+          if(d && d.source === 'canon-cockpit' && d.type === 'force-end'){
+            window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
+          }
+        });
+      </script></body></html>`;
+      await openResumedCockpit(page, id, html);
+      await page.evaluate(() => { window.__cockpitSaveFallbackMs = 300; });
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-save').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Cancel is disabled mid-save; a fresh modal open resets all three buttons', async ({ page }) => {
+    const id = `t-lcreset-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      // Never replies at all — the save just sits "in flight" for this test's purposes.
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#ck-leave-save').click();
+      // Mid-save: Cancel and Leave running must not be clickable — closeLeaveConfirm()
+      // alone doesn't abort the pending save-and-end sequence.
+      await expect(page.locator('#ck-leave-cancel')).toBeDisabled();
+      await expect(page.locator('#ck-leave-leave')).toBeDisabled();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+});
