@@ -98,8 +98,14 @@ fi
 
 # ── Binary: cockpit-daemon-win.exe (Windows cockpit PTY backend) ────────────
 # Own Go module (tools/cockpit-daemon/go.mod) → build from its dir, module mode.
+# -buildvcs=false (t-b612): a module-mode build inside a git repo auto-stamps
+# the current HEAD commit hash into the binary, so it differs on every single
+# commit regardless of whether this module's own source changed — omit that
+# metadata entirely rather than chase a "flaky" rebuild that was actually
+# fully deterministic given its real (constantly-changing) input.
 if command -v go >/dev/null 2>&1; then
   ( cd "$REPO_ROOT/tools/cockpit-daemon" && GOOS=windows GOARCH=amd64 go build \
+      -buildvcs=false \
       -o "$REPO_ROOT/tools/cockpit-daemon-win.exe" . )
   echo "dist: cockpit-daemon-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/cockpit-daemon-win.exe" | cut -f1))"
 else
