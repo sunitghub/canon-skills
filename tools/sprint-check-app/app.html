@@ -1418,11 +1418,20 @@
       position: absolute; top: 50%; right: 2px; transform: translateY(-50%);
       width: 16px; height: 32px; padding: 0; border: 1px solid var(--border);
       border-radius: 0 6px 6px 0; background: var(--surface-raised); color: var(--text-muted);
-      display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 1;
+      display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 3;
     }
     .ck-rail-handle:hover { color: var(--text); background: var(--surface-hover); }
     .ck-rail-handle svg { transition: transform .18s ease; }
     #cockpit.rail-collapsed .ck-rail-handle svg { transform: rotate(180deg); }
+    /* Drag strip along the full border — separate from the small collapse
+       button above it (higher z-index there so a direct click still hits
+       the button, not the drag strip underneath it). */
+    .ck-rail-resize {
+      position: absolute; top: 0; right: -3px; width: 7px; height: 100%;
+      cursor: col-resize; z-index: 2; background: transparent;
+    }
+    .ck-rail-resize:hover, .ck-rail-resize.resizing { background: var(--accent-dim); }
+    #cockpit.rail-collapsed .ck-rail-resize { display: none; }
     #cockpit.rail-collapsed .ck-rail { width: 44px; padding: 12px 0; overflow: hidden; }
     #cockpit.rail-collapsed .ck-rail .ck-rail-full { display: none; }
     .ck-rail-icons { display: none; flex-direction: column; align-items: center; gap: 16px; }
@@ -1433,6 +1442,10 @@
       font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-muted);
       text-transform: uppercase; margin: 0;
     }
+    .ck-section-count {
+      margin-left: 5px; font-weight: 700; letter-spacing: 0; text-transform: none;
+      color: var(--accent);
+    }
     .ck-ticket-card {
       background: var(--surface-raised); border: 1px solid var(--border);
       border-radius: 10px; padding: 10px 12px; margin-bottom: 16px;
@@ -1442,6 +1455,24 @@
     .ck-ticket-card .ck-tc-title { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 4px; }
     /* View-only (t-96a8) — no cursor:pointer; these bullets don't toggle. */
     .ck-accept, .ck-testplan { font-size: 12px; }
+    .ck-state {
+      font-size: 12px; color: var(--text-body); line-height: 1.55;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .ck-state p { margin: 0 0 8px 0; }
+    .ck-state p:last-child { margin-bottom: 0; }
+    /* Each checklist entry as its own card, scoped to the cockpit rail only
+       — the shared .doc-bullet class is used elsewhere (ticket modal) where
+       this treatment doesn't apply. */
+    .ck-accept .doc-bullet, .ck-testplan .doc-bullet {
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; margin: 0 0 6px 0;
+    }
+    .ck-accept .doc-bullet:last-child, .ck-testplan .doc-bullet:last-child { margin-bottom: 0; }
+    .ck-accept .doc-bullet[data-check-idx]:hover, .ck-testplan .doc-bullet[data-check-idx]:hover {
+      border-color: var(--border-hover); background: var(--surface-hover);
+    }
     .ck-add-hint { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
 
     /* Accordion sections (t-96a8): Acceptance + Test Plan, each its own
@@ -1687,14 +1718,24 @@
         <button class="ck-rail-handle" id="ck-rail-toggle" type="button" title="Collapse rail" aria-label="Collapse rail">
           <svg viewBox="0 0 20 20" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 5l-5 5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
+        <div class="ck-rail-resize" id="ck-rail-resize" title="Drag to resize"></div>
         <div class="ck-rail-full">
           <div class="ck-ticket-card">
             <div class="ck-tc-id" id="ck-tc-id"></div>
             <div class="ck-tc-title" id="ck-tc-title"></div>
           </div>
+          <div class="ck-accordion-section" id="ck-state-section">
+            <div class="ck-accordion-header" data-accordion="ck-state-section">
+              <div class="ck-section-label">Status</div>
+              <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="ck-accordion-body">
+              <div class="ck-state" id="ck-state"></div>
+            </div>
+          </div>
           <div class="ck-accordion-section collapsed" id="ck-accept-section">
             <div class="ck-accordion-header" data-accordion="ck-accept-section">
-              <div class="ck-section-label">Acceptance</div>
+              <div class="ck-section-label">Acceptance<span class="ck-section-count" id="ck-accept-count"></span></div>
               <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <div class="ck-accordion-body">
@@ -1703,7 +1744,7 @@
           </div>
           <div class="ck-accordion-section collapsed" id="ck-testplan-section">
             <div class="ck-accordion-header" data-accordion="ck-testplan-section">
-              <div class="ck-section-label">Test Plan</div>
+              <div class="ck-section-label">Test Plan<span class="ck-section-count" id="ck-testplan-count"></span></div>
               <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <div class="ck-accordion-body">
@@ -3815,6 +3856,14 @@ function hasFilledCheckbox(text) {
   return /^- \[[ xX]\]\s+\S/m.test(withoutGuidance(text));
 }
 
+// Counts real checklist items — same line shape hasFilledCheckbox tests for,
+// as a global count instead of a boolean. Used for the cockpit rail's
+// "ACCEPTANCE (n)" / "TEST PLAN (n)" section-count badges.
+function countChecklistItems(text) {
+  const matches = withoutGuidance(text).match(/^- \[[ xX]\]\s+\S/gm);
+  return matches ? matches.length : 0;
+}
+
 function hasUncheckedBox(text) {
   return /^\s*[-*]\s+\[ \]\s+\S/m.test(withoutGuidance(text));
 }
@@ -4381,6 +4430,7 @@ async function openCockpit(id) {
   document.getElementById('cockpit-overlay').classList.add('open');
   renderCockpitModel(t);
   await renderCockpitDocs(t);
+  await renderCockpitState(t);
   await mountCockpitTerminal(t);
   // Poll while open — a running agent edits acceptance.md as it works, and
   // the rail should reflect that without the human having to close/reopen.
@@ -4389,6 +4439,7 @@ async function openCockpit(id) {
     const ct = findTicketById(cockpitState.id);
     if (!ct) return;
     renderCockpitDocs(ct);
+    renderCockpitState(ct);
   }, 5000);
 }
 
@@ -4438,22 +4489,78 @@ async function renderCockpitDocs(t) {
   renderCockpitTestPlan(content, t);
 }
 
+// Finds this ticket's own bullet under HANDOFF.md's "## In Progress" section
+// (the save-state convention documented in tools/handoff.md: "- Ticket or
+// file path — current state" — free-form prose, not a rigid schema) by
+// matching the ticket id anywhere in the bullet's own top line, then
+// capturing any indented continuation lines until the next top-level bullet.
+function findHandoffStateForTicket(raw, ticketId) {
+  if (!raw) return null;
+  const section = sectionContent(raw, 'In Progress');
+  if (!section) return null;
+  const idRe = new RegExp('\\b' + ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+  let current = null, matched = null;
+  const flush = () => { if (current && idRe.test(current[0])) matched = current.join('\n').trim(); };
+  for (const line of section.split('\n')) {
+    if (/^-\s+/.test(line)) {
+      flush();
+      if (matched) break;
+      current = [line];
+    } else if (current) {
+      current.push(line);
+    }
+  }
+  if (!matched) flush();
+  return matched;
+}
+
+// Renders this ticket's HANDOFF.md state bullet, if any — a fresh fetch each
+// call (not the page-load-cached state.handoff) so it reflects a save the
+// live agent just made, not a stale snapshot from when the cockpit opened.
+async function renderCockpitState(t) {
+  const box = document.getElementById('ck-state');
+  let raw = '';
+  try {
+    const r = await fetch('/api/handoff');
+    if (r.ok) raw = (await r.json()).raw || '';
+  } catch {}
+  const bullet = findHandoffStateForTicket(raw, t.id);
+  box.innerHTML = bullet ? formatStateAsParagraphs(bullet, t) : '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>';
+}
+
+// The ticket id/title prefix is already shown in the ck-ticket-card above —
+// drop it here. HANDOFF.md's own line breaks are just ~80-col source
+// wrapping for editing, not semantic paragraphs — collapse them, then split
+// into real sentences so this doesn't render as one dense wrapped blob.
+function formatStateAsParagraphs(bullet, t) {
+  const withoutPrefix = bullet.replace(/^-\s+(\*\*[^*]*\*\*\s*)?(\([^)]*\)\s*)?[—-]\s*/, '');
+  const flat = withoutPrefix.replace(/\s+/g, ' ').trim();
+  const sentences = flat.split(/(?<=[.:])\s+(?=[A-Z0-9`$<])/g).filter(Boolean);
+  return sentences.map(s => `<p>${md(s, t.id)}</p>`).join('');
+}
+
 // Renders the acceptance.md ## Criteria section as a view-only checklist.
 function renderCockpitAcceptance(content, t) {
   const box = document.getElementById('ck-accept');
-  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; return; }
+  const countEl = document.getElementById('ck-accept-count');
+  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; countEl.textContent = ''; return; }
   const criteria = sectionContent(content, 'Criteria') || content;
   box.innerHTML = md(criteria, t.id);
+  const n = countChecklistItems(criteria);
+  countEl.textContent = n ? `(${n})` : '';
 }
 
 // Renders the acceptance.md ## Test Plan section as a view-only checklist,
 // same as renderCockpitAcceptance above.
 function renderCockpitTestPlan(content, t) {
   const box = document.getElementById('ck-testplan');
-  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; return; }
+  const countEl = document.getElementById('ck-testplan-count');
+  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; countEl.textContent = ''; return; }
   const testPlan = sectionContent(content, 'Test Plan');
-  if (!testPlan) { box.innerHTML = '<div class="ck-add-hint">No Test Plan section yet for this ticket.</div>'; return; }
+  if (!testPlan) { box.innerHTML = '<div class="ck-add-hint">No Test Plan section yet for this ticket.</div>'; countEl.textContent = ''; return; }
   box.innerHTML = md(testPlan, t.id);
+  const n = countChecklistItems(testPlan);
+  countEl.textContent = n ? `(${n})` : '';
 }
 
 async function mountCockpitTerminal(t) {
@@ -4491,8 +4598,53 @@ document.querySelectorAll('.ck-accordion-header[data-accordion]').forEach(header
 
 document.getElementById('ck-back').addEventListener('click', closeCockpit);
 document.getElementById('ck-rail-toggle').addEventListener('click', () => {
-  document.getElementById('cockpit').classList.toggle('rail-collapsed');
+  const cockpit = document.getElementById('cockpit');
+  const rail = document.querySelector('#cockpit .ck-rail');
+  const collapsing = !cockpit.classList.contains('rail-collapsed');
+  // An inline width from a manual resize always beats the collapsed-state
+  // CSS rule (inline wins over any class selector) — stash it and restore
+  // on expand, or the rail would silently ignore the 44px collapse width.
+  if (collapsing) {
+    if (rail.style.width) rail.dataset.customWidth = rail.style.width;
+    rail.style.width = '';
+  } else if (rail.dataset.customWidth) {
+    rail.style.width = rail.dataset.customWidth;
+  }
+  cockpit.classList.toggle('rail-collapsed');
 });
+
+(function makeRailResizable() {
+  const rail = document.querySelector('#cockpit .ck-rail');
+  const resizeEl = document.getElementById('ck-rail-resize');
+  if (!rail || !resizeEl) return;
+  const MIN_W = 220, MAX_W = 520;
+  let resizing = false, startX = 0, startWidth = 0;
+  resizeEl.addEventListener('pointerdown', e => {
+    if (document.getElementById('cockpit').classList.contains('rail-collapsed')) return;
+    resizing = true;
+    startX = e.clientX;
+    startWidth = rail.getBoundingClientRect().width;
+    rail.style.transition = 'none'; // no lag trailing the pointer mid-drag
+    resizeEl.classList.add('resizing');
+    document.body.style.userSelect = 'none';
+    resizeEl.setPointerCapture(e.pointerId);
+  });
+  resizeEl.addEventListener('pointermove', e => {
+    if (!resizing) return;
+    const next = Math.min(MAX_W, Math.max(MIN_W, startWidth + (e.clientX - startX)));
+    rail.style.width = next + 'px';
+  });
+  const stopResize = e => {
+    if (!resizing) return;
+    resizing = false;
+    rail.style.transition = '';
+    resizeEl.classList.remove('resizing');
+    document.body.style.userSelect = '';
+    try { resizeEl.releasePointerCapture(e.pointerId); } catch {}
+  };
+  resizeEl.addEventListener('pointerup', stopResize);
+  resizeEl.addEventListener('pointercancel', stopResize);
+})();
 document.getElementById('ck-preview-label').addEventListener('click', () => {
   // Preview pane richness is t-b19b; the collapsed slot is a no-op placeholder.
   showToast('App preview lands in t-b19b', 'warn');
