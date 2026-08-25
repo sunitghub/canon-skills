@@ -1405,16 +1405,24 @@
       background: var(--surface-raised); border: 1px solid var(--border);
       border-radius: 6px; padding: 3px 8px;
     }
-    .ck-toggle {
-      background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border);
-      border-radius: 6px; padding: 5px 9px; font-size: 13px; cursor: pointer;
-    }
-    .ck-toggle:hover { color: var(--text); }
     .ck-body { flex: 1; min-height: 0; display: flex; }
     .ck-rail {
+      position: relative;
       width: 320px; flex-shrink: 0; border-right: 1px solid var(--border);
       background: var(--surface); overflow-y: auto; padding: 14px; transition: width .18s ease;
     }
+    /* Docked to the rail's own right edge (an IDE-sidebar-style collapse
+       handle) rather than a generic topbar button far from what it
+       controls — moves with the rail as its width transitions. */
+    .ck-rail-handle {
+      position: absolute; top: 50%; right: 2px; transform: translateY(-50%);
+      width: 16px; height: 32px; padding: 0; border: 1px solid var(--border);
+      border-radius: 0 6px 6px 0; background: var(--surface-raised); color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 1;
+    }
+    .ck-rail-handle:hover { color: var(--text); background: var(--surface-hover); }
+    .ck-rail-handle svg { transition: transform .18s ease; }
+    #cockpit.rail-collapsed .ck-rail-handle svg { transform: rotate(180deg); }
     #cockpit.rail-collapsed .ck-rail { width: 44px; padding: 12px 0; overflow: hidden; }
     #cockpit.rail-collapsed .ck-rail .ck-rail-full { display: none; }
     .ck-rail-icons { display: none; flex-direction: column; align-items: center; gap: 16px; }
@@ -1673,10 +1681,12 @@
       <span class="ck-title" id="ck-title"></span>
       <span class="spacer"></span>
       <span class="ck-model" id="ck-model">model: from plan.md</span>
-      <button class="ck-toggle" id="ck-rail-toggle" type="button" title="Collapse rail" aria-label="Collapse rail">⟨ ⟩</button>
     </div>
     <div class="ck-body">
       <div class="ck-rail">
+        <button class="ck-rail-handle" id="ck-rail-toggle" type="button" title="Collapse rail" aria-label="Collapse rail">
+          <svg viewBox="0 0 20 20" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 5l-5 5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <div class="ck-rail-full">
           <div class="ck-ticket-card">
             <div class="ck-tc-id" id="ck-tc-id"></div>
