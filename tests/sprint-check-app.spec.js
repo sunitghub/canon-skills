@@ -3304,6 +3304,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('Plan section renders plan.md content, including the Gate model line, and starts collapsed', async ({ page }) => {
+    const id = `t-ckplan-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', {
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low | Gate model: haiku', '', '- [x] Plan approved', '', '## Approach', 'Filled in with real detail.', ''],
+      });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const planSection = page.locator('#ck-plan-section');
+      await expect(planSection).toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-plan')).toBeHidden();
+
+      await page.locator('.ck-accordion-header[data-accordion="ck-plan-section"]').click();
+      await expect(planSection).not.toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-plan')).toContainText('Gate model: haiku');
+      await expect(page.locator('#ck-plan')).toContainText('Filled in with real detail');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Plan section shows a hint when this ticket has no plan.md yet', async ({ page }) => {
+    const id = `t-cknoplan-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await page.locator('.ck-accordion-header[data-accordion="ck-plan-section"]').click();
+      await expect(page.locator('#ck-plan')).toContainText('No plan.md yet');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('Acceptance/Test Plan section headers show a checklist item count', async ({ page }) => {
     const id = `t-ckcount-${Date.now()}`;
     try {
