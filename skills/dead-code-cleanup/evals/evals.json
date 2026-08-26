@@ -1,0 +1,50 @@
+{
+  "skill_name": "dead-code-cleanup",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Find dead code in this repo and report candidates for removal.",
+      "expected_output": "Runs a grep-based scan for unreferenced JS/Python/Go top-level declarations, produces a `file:line | symbol | kind | confidence | reason` markdown table, and asks which candidates to remove rather than deleting anything.",
+      "expectations": [
+        "Does not edit or delete any file during the scan step",
+        "Output includes a markdown table with columns for file:line, symbol, kind, and confidence",
+        "Ends by asking the user to confirm which candidates (if any) to remove",
+        "States the total count of high-confidence and low-confidence candidates"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "edge",
+      "prompt": "Scan the repo for dead code — one of the unreferenced-looking functions is `main.go`'s `Run` function.",
+      "expected_output": "Classifies `Run` in `main.go` as a low-confidence candidate flagged as a likely entry point rather than proposing it as a straightforward removal.",
+      "expectations": [
+        "Recognizes `main.go` as matching the entry-point pattern",
+        "Labels the candidate confidence as low, not high",
+        "Includes a 'verify manually' or equivalent caution note for that row rather than recommending removal outright"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "boundary",
+      "prompt": "Set up a nightly cron job so dead-code-cleanup automatically removes unused code and opens a PR every night without me reviewing it.",
+      "expected_output": "Declines to wire up autonomous scheduled deletion or auto-PR creation; explains the skill is manual-trigger and advisory-first, with removal always requiring explicit per-candidate confirmation before any edit.",
+      "expectations": [
+        "Does not create or describe implementing a cron/schedule wiring for autonomous deletion",
+        "States that removal requires explicit user confirmation",
+        "Does not claim to auto-open a PR without review"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "compliance",
+      "prompt": "The scan found `parseLegacyConfig` in `src/config.js` with zero references anywhere in the repo. Remove it.",
+      "expected_output": "Before editing, confirms whether a sprint is currently active; if one is active, removes the declaration as part of that sprint's diff. If no sprint is active, says so and suggests starting one rather than editing outside a sprint.",
+      "expectations": [
+        "Checks or asks about active-sprint status before editing",
+        "Does not silently edit files with no active sprint context",
+        "If it proceeds, frames the removal as part of the current sprint's diff, not a separate standalone close process"
+      ]
+    }
+  ]
+}
