@@ -127,7 +127,7 @@
       var prompt = "Please save your current state now: update plan.md/acceptance.md (and "
         + "HANDOFF.md if relevant) with where things stand and anything unresolved, then print "
         + "the exact line COCKPIT_STATE_SAVED on its own, and stop.";
-      fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: prompt + "\r" }).catch(function(){});
+      sendPrompt(prompt);
     } else if(d.type === "force-end" && session){
       pendingMarker = null;
       kill();
@@ -143,7 +143,7 @@
           + "server, print the exact line PREVIEW_FILE: <absolute path>. If it needs a running dev "
           + "server, print the exact line PREVIEW_SERVER_CMD: <the exact command to start it> -- "
           + "don't start anything yourself.";
-        fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: previewPrompt + "\r" }).catch(function(){});
+        sendPrompt(previewPrompt);
         setTimeout(function(){
           if(previewDeadline === deadline){
             previewDeadline = 0;
@@ -155,6 +155,19 @@
   });
 
   function authHeaders(tok){ return { "Authorization": "Bearer " + tok }; }
+
+  // Claude Code's CLI treats a single "text\r" write as pasted text sitting
+  // in the input box — it never submits. The trailing Enter has to land as
+  // its own write, a beat after the text, to register as a submission (this
+  // is a plain injected-prompt path, not user typing — term.onData already
+  // forwards each real keystroke as its own write and is unaffected).
+  function sendPrompt(text){
+    fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: text }).then(function(){
+      setTimeout(function(){
+        fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: "\r" }).catch(function(){});
+      }, 300);
+    }).catch(function(){});
+  }
 
   async function start(){
     var ticket = document.getElementById("ticket").value.trim();
