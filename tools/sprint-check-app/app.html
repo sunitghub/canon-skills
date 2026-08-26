@@ -4390,6 +4390,8 @@ window.addEventListener('message', (e) => {
     renderPreviewMessage("Couldn't determine how to preview this ticket's deliverable — the agent didn't respond with a recognized marker within 60s.");
   } else if (d.type === 'preview-rejected') {
     renderPreviewMessage('The reported preview path was rejected (must resolve to a location inside the project).');
+  } else if (d.type === 'preview-no-session') {
+    renderPreviewMessage('No active sprint session — start or resume the sprint, then try Preview again.');
   }
 });
 

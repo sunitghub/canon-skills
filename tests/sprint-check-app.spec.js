@@ -3619,6 +3619,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       'server-cmd': "window.parent.postMessage({source:'canon-cockpit', type:'preview-server-cmd', cmd:'npm run dev'}, '*');",
       timeout: "window.parent.postMessage({source:'canon-cockpit', type:'preview-timeout'}, '*');",
       rejected: "window.parent.postMessage({source:'canon-cockpit', type:'preview-rejected'}, '*');",
+      'no-session': "window.parent.postMessage({source:'canon-cockpit', type:'preview-no-session'}, '*');",
     }[respondWith];
     return `<!doctype html><html><body><script>
       window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
@@ -3691,6 +3692,20 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await page.waitForTimeout(100);
       await page.locator('#ck-preview-label').click();
       await expect(page.locator('#ck-preview-body')).toContainText("couldn't determine", { ignoreCase: true });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite "Asking…"', async ({ page }) => {
+    const id = `t-pvnosess-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'no-session' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview-body')).toContainText('No active sprint session');
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
