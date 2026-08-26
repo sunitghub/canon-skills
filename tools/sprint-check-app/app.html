@@ -1447,12 +1447,13 @@
     .ck-rail-icons .ck-rail-icon { color: var(--text-muted); font-size: 15px; }
     .ck-rail-icons .ck-rail-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-progress, #60a5fa); }
     .ck-section-label {
+      flex: 1 1 auto;
       font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-muted);
       text-transform: uppercase; margin: 0;
     }
     .ck-section-count {
-      margin-left: 5px; font-weight: 700; letter-spacing: 0; text-transform: none;
-      color: var(--accent);
+      font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none;
+      color: var(--accent); flex-shrink: 0;
     }
     .ck-ticket-card {
       background: var(--surface-raised); border: 1px solid var(--border);
@@ -1496,7 +1497,7 @@
     }
     .ck-accordion-section:last-child { margin-bottom: 0; }
     .ck-accordion-header {
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; align-items: center; gap: 6px;
       cursor: pointer; border-radius: 6px; border: 1px solid transparent;
       padding: 4px 6px; margin: -4px -6px 4px;
       transition: background .15s, border-color .15s, box-shadow .15s;
@@ -1772,7 +1773,8 @@
           </div>
           <div class="ck-accordion-section collapsed" id="ck-accept-section">
             <div class="ck-accordion-header" data-accordion="ck-accept-section">
-              <div class="ck-section-label">Acceptance<span class="ck-section-count" id="ck-accept-count"></span></div>
+              <div class="ck-section-label">Acceptance</div>
+              <span class="ck-section-count" id="ck-accept-count"></span>
               <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <div class="ck-accordion-body">
@@ -1781,7 +1783,8 @@
           </div>
           <div class="ck-accordion-section collapsed" id="ck-testplan-section">
             <div class="ck-accordion-header" data-accordion="ck-testplan-section">
-              <div class="ck-section-label">Test Plan<span class="ck-section-count" id="ck-testplan-count"></span></div>
+              <div class="ck-section-label">Test Plan</div>
+              <span class="ck-section-count" id="ck-testplan-count"></span>
               <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <div class="ck-accordion-body">
