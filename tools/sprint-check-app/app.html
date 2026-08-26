@@ -4682,11 +4682,10 @@ async function mountCockpitTerminal(t) {
     return;
   }
   cockpitState.addr = addr;
-  // autostart the sprint only for a fresh OPEN ticket; Resume loads the terminal
-  // with the Start control available (the daemon/sprint ACTIVE guard prevents a
-  // true double-run).
-  const autostart = t.status === 'open' ? '1' : '0';
-  iframe.src = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=${autostart}`;
+  // Never autostart: the terminal always loads idle with Start sprint pulsing,
+  // for both a fresh OPEN ticket and a Resume — a launch should always be a
+  // deliberate click, not something that fires the moment the panel opens.
+  iframe.src = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=0`;
   iframe.style.visibility = 'visible';
   msg.textContent = '';
 }
