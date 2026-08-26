@@ -201,7 +201,12 @@
             var text = new TextDecoder().decode(bytes);
             var lines = text.split(/\r?\n/);
             for(var li=0; li<lines.length; li++){
-              var clean = lines[li].replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").trim();
+              // Claude Code's own CLI rendering wraps an otherwise-bare marker
+              // line in chrome (a leading "●"/">" bullet, markdown emphasis,
+              // trailing backticks) — strip that before comparing, or an
+              // exact/prefix match almost never fires on real output.
+              var clean = lines[li].replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").trim()
+                .replace(/^[\s*_`>#•●○◦▸▹‣·-]+/, "").replace(/[\s*_`]+$/, "");
               // Whole-line exact match only — a coincidental substring
               // mid-sentence (the agent describing what it's about to do)
               // must not count.
