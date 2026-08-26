@@ -131,20 +131,26 @@
     } else if(d.type === "force-end" && session){
       pendingMarker = null;
       kill();
-    } else if(d.type === "preview-request" && session){
-      var deadline = Date.now() + PREVIEW_TIMEOUT_MS;
-      previewDeadline = deadline;
-      var previewPrompt = "If this ticket's deliverable is a single static HTML file needing no "
-        + "server, print the exact line PREVIEW_FILE: <absolute path>. If it needs a running dev "
-        + "server, print the exact line PREVIEW_SERVER_CMD: <the exact command to start it> -- "
-        + "don't start anything yourself.";
-      fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: previewPrompt + "\r" }).catch(function(){});
-      setTimeout(function(){
-        if(previewDeadline === deadline){
-          previewDeadline = 0;
-          try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-timeout" }, "*"); }catch(e){}
-        }
-      }, PREVIEW_TIMEOUT_MS);
+    } else if(d.type === "preview-request"){
+      if(!session){
+        // No live session to ask (e.g. a resumed ticket sitting idle pre-Start) —
+        // reply immediately, since nothing else will ever arm the timeout below.
+        try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-no-session" }, "*"); }catch(e){}
+      } else {
+        var deadline = Date.now() + PREVIEW_TIMEOUT_MS;
+        previewDeadline = deadline;
+        var previewPrompt = "If this ticket's deliverable is a single static HTML file needing no "
+          + "server, print the exact line PREVIEW_FILE: <absolute path>. If it needs a running dev "
+          + "server, print the exact line PREVIEW_SERVER_CMD: <the exact command to start it> -- "
+          + "don't start anything yourself.";
+        fetch("/session/"+session+"/input", { method:"POST", headers: authHeaders(sessTok), body: previewPrompt + "\r" }).catch(function(){});
+        setTimeout(function(){
+          if(previewDeadline === deadline){
+            previewDeadline = 0;
+            try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-timeout" }, "*"); }catch(e){}
+          }
+        }, PREVIEW_TIMEOUT_MS);
+      }
     }
   });
 
