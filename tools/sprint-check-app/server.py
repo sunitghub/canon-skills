@@ -2,10 +2,12 @@
 """sprint-check local HTTP server — stdlib only, no pip required."""
 
 import base64
+import fnmatch
 import json
 import os
 import random
 import re
+import shutil
 import socket
 import string
 import subprocess
@@ -282,6 +284,128 @@ def load_git() -> dict:
     total_commits_raw = run(['git', 'rev-list', '--count', 'HEAD'], cwd)
     total_commits = int(total_commits_raw) if total_commits_raw.isdigit() else None
     return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log, 'total_commits': total_commits}
+
+# ── Worktrees (t-cd06) ───────────────────────────────────────────────────
+
+# Same allow-list style as _BASE_REF_RE below; additionally rejects a leading
+# '-' (would be read as a flag by `git worktree add`'s argv) and '..' (path
+# traversal once the name is joined into the sibling directory path).
+_BRANCH_NAME_RE = re.compile(r'^[A-Za-z0-9._/-]+$')
+
+def _valid_branch_name(name: str) -> bool:
+    return bool(name) and bool(_BRANCH_NAME_RE.match(name)) and not name.startswith('-') and '..' not in name
+
+def list_worktrees() -> list[dict]:
+    """Parse `git worktree list --porcelain` — the single source of truth for
+    the cockpit sidebar's WORKTREE section (t-cd06's resolved design): no
+    cockpit-owned registry, so a worktree created outside cockpit still shows
+    up."""
+    raw = run(['git', 'worktree', 'list', '--porcelain'], PROJECT_ROOT)
+    entries: list[dict] = []
+    cur: dict = {}
+    for line in raw.splitlines():
+        if line.startswith('worktree '):
+            if cur:
+                entries.append(cur)
+            cur = {'path': line[len('worktree '):]}
+        elif line.startswith('branch '):
+            ref = line[len('branch '):]
+            cur['branch'] = ref[len('refs/heads/'):] if ref.startswith('refs/heads/') else ref
+        elif line.startswith('HEAD '):
+            cur['head'] = line[len('HEAD '):]
+        elif line == 'detached':
+            cur['detached'] = True
+    if cur:
+        entries.append(cur)
+    try:
+        main_root = str(PROJECT_ROOT.resolve())
+    except Exception:
+        main_root = str(PROJECT_ROOT)
+    for e in entries:
+        try:
+            e['is_main'] = str(Path(e['path']).resolve()) == main_root
+        except Exception:
+            e['is_main'] = False
+    return entries
+
+def worktree_lock_status(ticket_id: str) -> dict:
+    """Advisory-only read of .tickets/<id>/.cockpit-cwd (t-cd06 amendment) — the
+    daemon owns writing that file and already ignores a locked ticket's
+    requested cwd; this just lets the board warn before the choice is made
+    for an in_progress ticket's first resume, since a worktree checkout only
+    carries committed history."""
+    cwd_path = TICKETS_DIR / ticket_id / '.cockpit-cwd'
+    cwd = None
+    if cwd_path.is_file():
+        cwd = cwd_path.read_text(encoding='utf-8', errors='replace').strip() or None
+    dirty = bool(run(['git', 'status', '--porcelain'], PROJECT_ROOT).strip())
+    return {'locked': cwd is not None, 'cwd': cwd, 'main_dirty': dirty}
+
+def _worktreeinclude_patterns() -> list[str]:
+    p = PROJECT_ROOT / '.worktreeinclude'
+    if not p.is_file():
+        return []
+    patterns = []
+    for line in p.read_text(encoding='utf-8', errors='replace').splitlines():
+        line = line.strip()
+        if line and not line.startswith('#'):
+            patterns.append(line)
+    return patterns
+
+def _copy_worktreeinclude_files(dest: Path) -> list[str]:
+    """Copies gitignored files matching `.worktreeinclude` patterns into a
+    freshly created worktree — a worktree is a fresh checkout, so a gitignored
+    file like `.env` (never committed) is otherwise absent from it. Matches
+    Claude Code's and Codex's own `.worktreeinclude` convention: only a file
+    that is BOTH pattern-matched AND actually gitignored is copied, so tracked
+    files are never duplicated. Simple `fnmatch` glob matching (not a full
+    gitignore-pattern engine) — covers the documented use case (bare
+    filenames, simple globs) but not every gitignore syntax edge case."""
+    patterns = _worktreeinclude_patterns()
+    if not patterns:
+        return []
+    ignored_raw = run(['git', 'ls-files', '--others', '--ignored', '--exclude-standard'], PROJECT_ROOT)
+    copied = []
+    for relpath in ignored_raw.splitlines():
+        relpath = relpath.strip()
+        if not relpath:
+            continue
+        if any(fnmatch.fnmatch(relpath, pat) or fnmatch.fnmatch(Path(relpath).name, pat) for pat in patterns):
+            src = PROJECT_ROOT / relpath
+            dst = dest / relpath
+            try:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
+                copied.append(relpath)
+            except OSError:
+                pass  # best-effort — a copy failure never blocks worktree creation
+    return copied
+
+def create_worktree(branch: str) -> dict:
+    """`git worktree add` as a sibling checkout, nebula's own convention:
+    `<repo>/../<repo-name>-worktrees/<branch-with-slashes-as-dashes>`. Falls
+    back to checking out an existing branch (no `-b`) if it already exists,
+    per the ticket's resolved design. Always an argv list, never a shell
+    string. Caller (do_POST) validates `branch` against `_valid_branch_name`
+    and 400s before this runs — malformed input never reaches here."""
+    sibling_root = PROJECT_ROOT.parent / f'{PROJECT_ROOT.name}-worktrees'
+    path = sibling_root / branch.replace('/', '-')
+    if path.exists():
+        return {'ok': False, 'error': 'path already exists'}
+    sibling_root.mkdir(parents=True, exist_ok=True)
+    try:
+        subprocess.run(['git', 'worktree', 'add', str(path), '-b', branch],
+                        cwd=PROJECT_ROOT, check=True, capture_output=True, text=True, timeout=15)
+    except subprocess.CalledProcessError:
+        try:
+            subprocess.run(['git', 'worktree', 'add', str(path), branch],
+                            cwd=PROJECT_ROOT, check=True, capture_output=True, text=True, timeout=15)
+        except subprocess.CalledProcessError as e2:
+            return {'ok': False, 'error': (e2.stderr or str(e2)).strip()[:500]}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)[:500]}
+    copied = _copy_worktreeinclude_files(path)
+    return {'ok': True, 'path': str(path), 'branch': branch, 'worktreeinclude_copied': copied}
 
 # ── Commit detail ─────────────────────────────────────────────────────────
 
@@ -887,6 +1011,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(load_why(file_))
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
+        elif path == '/api/worktrees':
+            self.send_json(list_worktrees())
         else:
             m = re.match(r'^/api/commit/([0-9a-f]{4,40})$', path)
             if m:
@@ -916,6 +1042,9 @@ class Handler(BaseHTTPRequestHandler):
             m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
             if m:
                 self.send_json(get_headless_run_state(m.group(1))); return
+            m = re.match(r'^/api/worktree-lock/(t-[a-z0-9]{4})$', path)
+            if m:
+                self.send_json(worktree_lock_status(m.group(1))); return
             self.send_error(404)
 
     def do_POST(self):
@@ -967,6 +1096,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/cockpit':
             self.send_json(ensure_cockpit()); return
+
+        if path == '/api/worktrees':
+            branch = str(payload.get('branch', ''))
+            if not _valid_branch_name(branch):
+                self.send_error(400); return
+            self.send_json(create_worktree(branch)); return
 
         if path == '/api/tickets':
             t = create_ticket(

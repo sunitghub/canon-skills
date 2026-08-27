@@ -36,8 +36,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -50,6 +52,12 @@ var webFS embed.FS
 
 var ticketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 
+// cwdPrefillRe bounds the ?cwd= query param safe to embed in a JS string
+// literal on the (token-less, loopback-only) /cockpit page — no quotes,
+// backslashes, or newlines. /session/start re-validates the real value
+// independently; this only prevents script injection into the prefill.
+var cwdPrefillRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+
 type config struct {
 	addr              string        // loopback bind address
 	token             string        // daemon boot token (gates /session/start)
@@ -59,6 +67,7 @@ type config struct {
 	sessionReapTTL    time.Duration // grace period after natural exit before a session entry is reaped
 	stateDir          string        // daemon-owned dir for daemon.json + per-session hook settings
 	idleTimeout       time.Duration // t-2e7e: reap a session after this much PTY inactivity (default 5m, nebula's own default)
+	idleTimeoutMain   time.Duration // t-cd06: longer idle timeout for a main-checkout session (default 30m) — nebula's own 5m default assumes a disposable worktree; the main checkout has no such disposability, so it keeps a longer but still-bounded safety net rather than running forever unreaped
 	idleCheckInterval time.Duration // t-2e7e: how often to scan for idle sessions (default 30s)
 	saveFallback      time.Duration // t-2e7e: force-kill if the save marker never appears within this long (default 60s)
 }
@@ -86,6 +95,7 @@ type session struct {
 	pty          pty.Pty
 	cmd          *pty.Cmd
 	hookDir      string // daemon-owned ephemeral --settings dir; removed when the session ends
+	cwd          string // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
 
 	mu            sync.Mutex
 	buf           []byte
@@ -128,6 +138,9 @@ func newServer(cfg config) *server {
 	}
 	if cfg.idleTimeout <= 0 {
 		cfg.idleTimeout = 5 * time.Minute
+	}
+	if cfg.idleTimeoutMain <= 0 {
+		cfg.idleTimeoutMain = 30 * time.Minute
 	}
 	if cfg.idleCheckInterval <= 0 {
 		cfg.idleCheckInterval = 30 * time.Second
@@ -202,10 +215,19 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("autostart") == "1" {
 		autostart = "1"
 	}
+	// t-cd06: ?cwd= prefills the WORKTREE selection the board made. This route
+	// has no token (only loopback-origin guard), so the value is validated the
+	// same conservative way as ticket above before it's embedded in a JS string
+	// literal — /session/start re-validates it independently regardless.
+	cwd := r.URL.Query().Get("cwd")
+	if cwd != "" && (!filepath.IsAbs(cwd) || !cwdPrefillRe.MatchString(cwd)) {
+		cwd = ""
+	}
 	page := strings.ReplaceAll(string(raw), "__COCKPIT_TOKEN__", s.cfg.token)
 	page = strings.ReplaceAll(page, "__COCKPIT_TICKET__", ticket)
 	page = strings.ReplaceAll(page, "__COCKPIT_EMBED__", embed)
 	page = strings.ReplaceAll(page, "__COCKPIT_AUTOSTART__", autostart)
+	page = strings.ReplaceAll(page, "__COCKPIT_CWD__", cwd)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	io.WriteString(w, page)
@@ -273,6 +295,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	var body struct {
 		Ticket string `json:"ticket"`
+		Cwd    string `json:"cwd"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -289,7 +312,18 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ticket not found in project", http.StatusBadRequest)
 		return
 	}
-	se, err := s.spawn(body.Ticket)
+	// t-cd06: the daemon re-validates cwd itself against a live `git worktree
+	// list` — it never trusts whatever cockpit.html relayed, mirroring
+	// previewRootFor's "daemon never trusts the client" precedent (t-b19b).
+	// For an already in_progress ticket, the persisted cwd from its first
+	// start wins over whatever the client sent — a live conversation must
+	// never be reattached in a different directory than it started in.
+	cwd, ok := s.resolveSpawnCwdForTicket(body.Ticket, body.Cwd)
+	if !ok {
+		http.Error(w, "cwd not allowed", http.StatusBadRequest)
+		return
+	}
+	se, err := s.spawn(body.Ticket, cwd)
 	if err != nil {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -305,7 +339,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 // treats unrecognized positionals as free-text prompt content and submits only
 // the first, so the ticket id was silently dropped (verified live, t-842b).
 // Still an argv slice, never a shell string; no token is in the argv of the child.
-func (s *server) spawn(ticket string) (*session, error) {
+func (s *server) spawn(ticket, cwd string) (*session, error) {
 	p, err := pty.New()
 	if err != nil {
 		return nil, err
@@ -336,17 +370,20 @@ func (s *server) spawn(ticket string) (*session, error) {
 		args = append(args, "--session-id", claudeSessionID, "sprint start "+ticket)
 	}
 	c := p.Command(s.cfg.sprintBin, args...)
-	c.Dir = s.cfg.projectRoot
+	c.Dir = cwd
 	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
 	if err := c.Start(); err != nil {
 		p.Close()
 		os.RemoveAll(hookDir)
 		return nil, err
 	}
+	// t-cd06: best-effort, non-fatal — a logging failure (disk full, read-only
+	// fs) must never block a real spawn that already succeeded.
+	s.logWorktreeDecision(ticket, cwd)
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
-		hookDir: hookDir,
-		pty:     p, cmd: c, max: s.cfg.scrollback, status: "running",
+		hookDir: hookDir, cwd: cwd,
+		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
@@ -654,6 +691,24 @@ func (s *server) startIdleReaper() {
 	}()
 }
 
+// idleTimeoutFor picks the idle-reap timeout tier for a session's cwd
+// (t-cd06): nebula's own 5m default assumes the session runs in a
+// disposable worktree, safe to auto-kill without a second thought. The main
+// checkout has no such disposability, so it keeps a longer but still-bounded
+// safety net (idleTimeoutMain) rather than running unreaped forever — a
+// deliberate compromise, not an exemption, so cockpit never regresses to
+// leaking indefinitely-idle agent processes on the main checkout.
+func (s *server) idleTimeoutFor(cwd string) time.Duration {
+	resolvedRoot, err := filepath.EvalSymlinks(s.cfg.projectRoot)
+	if err != nil {
+		resolvedRoot = s.cfg.projectRoot
+	}
+	if cwd == "" || pathsEqual(cwd, resolvedRoot) || pathsEqual(cwd, s.cfg.projectRoot) {
+		return s.cfg.idleTimeoutMain
+	}
+	return s.cfg.idleTimeout
+}
+
 func (s *server) reapIdleSessions() {
 	s.mu.Lock()
 	candidates := make([]*session, 0, len(s.sessions))
@@ -663,7 +718,7 @@ func (s *server) reapIdleSessions() {
 	s.mu.Unlock()
 	for _, se := range candidates {
 		se.mu.Lock()
-		idle := time.Since(se.lastActivity) > s.cfg.idleTimeout
+		idle := time.Since(se.lastActivity) > s.idleTimeoutFor(se.cwd)
 		blocked := se.status == "needs-you"
 		exited := se.exited
 		alreadyReaping := se.reaping
@@ -688,13 +743,24 @@ func (s *server) reapIdleSessions() {
 func (s *server) saveAndEndIdle(se *session) {
 	prompt := "Please save your current state now: update plan.md/acceptance.md (and " +
 		"HANDOFF.md if relevant) with where things stand and anything unresolved, then " +
-		"print the exact line " + cockpitSaveMarker + " on its own, and stop.\r"
+		"print the exact line " + cockpitSaveMarker + " on its own, and stop."
 	se.mu.Lock()
 	sentAt := len(se.buf)            // only output written AFTER the prompt counts — buf may hold an
 	humanBaseline := se.humanInputAt // unrelated earlier line matching the marker verbatim (e.g. from a
 	se.mu.Unlock()                   // prior conversation about this very feature) that must never trigger a false kill.
+	// t-cd06: text and Enter must be two SEPARATE writes, not one write with
+	// a trailing \r — live-reproduced: a single write landed as an unsubmitted
+	// draft sitting in the composer (bracketed-paste-style handling swallows
+	// an embedded \r), requiring a human to press Enter manually to unstick
+	// it. cockpit.html's own client-triggered sendPrompt already does this
+	// correctly (text, then a separate \r ~300ms later); this mirrors it.
 	if _, err := se.pty.Write([]byte(prompt)); err != nil {
 		s.killSession(se) // can't even write to it — nothing more to wait for
+		return
+	}
+	time.Sleep(300 * time.Millisecond)
+	if _, err := se.pty.Write([]byte("\r")); err != nil {
+		s.killSession(se)
 		return
 	}
 	deadline := time.NewTimer(s.cfg.saveFallback)
@@ -932,6 +998,132 @@ func (s *server) ticketsDir() string {
 		dir = parent
 	}
 	return filepath.Join(s.cfg.projectRoot, ".tickets")
+}
+
+// listWorktrees returns the absolute path of every worktree `git` knows about
+// for projectRoot (main checkout included), parsed from `git worktree list
+// --porcelain`'s "worktree <path>" lines — the ticket's own resolved design
+// names this the single source of truth, deliberately not a cockpit-owned
+// registry.
+func (s *server) listWorktrees() ([]string, error) {
+	out, err := exec.Command("git", "-C", s.cfg.projectRoot, "worktree", "list", "--porcelain").Output()
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if p, ok := strings.CutPrefix(line, "worktree "); ok {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
+}
+
+// pathsEqual compares two already-resolved absolute paths. Windows paths are
+// case-insensitive; POSIX paths are not.
+func pathsEqual(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+// resolveSpawnCwd validates a client-supplied cwd against projectRoot or a
+// live `git worktree list` re-check — the daemon never trusts the client
+// string alone, mirroring previewRootFor's "daemon re-validates itself"
+// precedent (t-b19b). An empty cwd resolves to projectRoot (today's
+// behavior, unchanged).
+func (s *server) resolveSpawnCwd(cwd string) (string, bool) {
+	if cwd == "" {
+		return s.cfg.projectRoot, true
+	}
+	if !filepath.IsAbs(cwd) {
+		return "", false
+	}
+	resolvedCwd, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return "", false // doesn't exist or can't be resolved — never assume safe
+	}
+	resolvedRoot, err := filepath.EvalSymlinks(s.cfg.projectRoot)
+	if err != nil {
+		resolvedRoot = s.cfg.projectRoot
+	}
+	if pathsEqual(resolvedCwd, resolvedRoot) {
+		return resolvedCwd, true
+	}
+	worktrees, err := s.listWorktrees()
+	if err != nil {
+		return "", false
+	}
+	for _, wt := range worktrees {
+		resolvedWt, err := filepath.EvalSymlinks(wt)
+		if err != nil {
+			continue
+		}
+		if pathsEqual(resolvedWt, resolvedCwd) {
+			return resolvedCwd, true
+		}
+	}
+	return "", false
+}
+
+// resolveSpawnCwdForTicket persists the resolved cwd to
+// .tickets/<id>/.cockpit-cwd, mirroring resolveClaudeSessionID's pattern: an
+// already in_progress ticket reads its persisted cwd back and reuses it
+// regardless of what the client requested, so a live claude conversation is
+// never reattached in a different directory than it started in and the
+// WORKTREE picker never needs to be re-asked mid-sprint. A ticket freshly
+// (re)opened from open/closed re-resolves and re-persists, same as a fresh
+// (non-resumed) claude session id.
+func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd string) (string, bool) {
+	cwdPath := filepath.Join(s.ticketsDir(), ticket, ".cockpit-cwd")
+	if s.ticketStatus(ticket) == "in_progress" {
+		if b, err := os.ReadFile(cwdPath); err == nil {
+			if existing := strings.TrimSpace(string(b)); existing != "" {
+				if _, err := os.Stat(existing); err == nil {
+					return existing, true // already validated when first written
+				}
+				// persisted worktree no longer exists on disk (removed between
+				// sessions) — fall through and re-resolve from the request instead
+				// of spawning into a directory that's gone.
+			}
+		}
+	}
+	resolved, ok := s.resolveSpawnCwd(requestedCwd)
+	if !ok {
+		return "", false
+	}
+	_ = os.WriteFile(cwdPath, []byte(resolved+"\n"), 0o600)
+	return resolved, true
+}
+
+// logWorktreeDecision appends one line to .tickets/<id>/Decisions.md recording
+// which worktree (or the main checkout) a sprint start used. Lives inside
+// spawn() — the single code path every /session/start call goes through,
+// regardless of client — so it can't be bypassed by hitting the endpoint
+// directly instead of going through the board UI. Best-effort: a write
+// failure is logged to stderr and never blocks the spawn that already
+// succeeded.
+func (s *server) logWorktreeDecision(ticket, cwd string) {
+	label := "main checkout"
+	if resolvedRoot, err := filepath.EvalSymlinks(s.cfg.projectRoot); err == nil {
+		if !pathsEqual(cwd, resolvedRoot) && !pathsEqual(cwd, s.cfg.projectRoot) {
+			label = cwd
+		}
+	} else if cwd != s.cfg.projectRoot {
+		label = cwd
+	}
+	line := fmt.Sprintf("- %s: sprint start used %s\n", time.Now().UTC().Format("2006-01-02"), label)
+	path := filepath.Join(s.ticketsDir(), ticket, "Decisions.md")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cockpit: worktree decision log unavailable: %v\n", err)
+		return
+	}
+	defer f.Close()
+	if _, err := f.WriteString(line); err != nil {
+		fmt.Fprintf(os.Stderr, "cockpit: worktree decision log write failed: %v\n", err)
+	}
 }
 
 var ticketStatusRe = regexp.MustCompile(`(?m)^status:\s*(\S+)`)
@@ -1174,10 +1366,13 @@ func main() {
 		os.Exit(2)
 	}
 	cfg := config{
-		addr:        *addr,
-		token:       envOr("COCKPIT_TOKEN", randToken()),
-		sprintBin:   envOr("COCKPIT_SPRINT_BIN", "claude"),
-		projectRoot: envOr("COCKPIT_PROJECT_ROOT", mustGetwd()),
+		addr:              *addr,
+		token:             envOr("COCKPIT_TOKEN", randToken()),
+		sprintBin:         envOr("COCKPIT_SPRINT_BIN", "claude"),
+		projectRoot:       envOr("COCKPIT_PROJECT_ROOT", mustGetwd()),
+		idleTimeout:       envDurationOr("COCKPIT_IDLE_TIMEOUT", 0),
+		idleTimeoutMain:   envDurationOr("COCKPIT_IDLE_TIMEOUT_MAIN", 0),
+		idleCheckInterval: envDurationOr("COCKPIT_IDLE_CHECK_INTERVAL", 0),
 	}
 	s := newServer(cfg)
 
@@ -1227,6 +1422,24 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// envDurationOr reads a Go duration string (e.g. "10s", "2m") from the named
+// env var, falling back to def (0 means "let newServer apply its own
+// default") on an unset or malformed value. t-cd06: lets an operator
+// shorten idleTimeout/idleTimeoutMain to observe idle-reap live without
+// waiting the real 5m/30m default.
+func envDurationOr(k string, def time.Duration) time.Duration {
+	v := os.Getenv(k)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid %s %q: %v\n", k, v, err)
+		return def
+	}
+	return d
 }
 
 func mustGetwd() string { d, _ := os.Getwd(); return d }

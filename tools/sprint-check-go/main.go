@@ -31,6 +31,7 @@ var (
 	headingRe        = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
 	modelMentionRe   = regexp.MustCompile(`(?i)\(model:\s*([^)]+)\)`)
 	baseRefRe        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+	branchNameRe     = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
 	imageExts        = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
 	safeVisualName   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 	projectRoot      string
@@ -168,6 +169,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, loadWhy(r.URL.Query().Get("file")))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
+	case "/api/worktrees":
+		sendJSON(w, listWorktrees())
 	default:
 		if regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`).MatchString(path) {
 			serveFile(w, filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(path, "/"))), mime.TypeByExtension(filepath.Ext(path)))
@@ -213,6 +216,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
 			sendJSON(w, getHeadlessRunState(m[1]))
+			return
+		}
+		if m := regexp.MustCompile(`^/api/worktree-lock/(t-[a-z0-9]{4})$`).FindStringSubmatch(path); m != nil {
+			sendJSON(w, worktreeLockStatus(m[1]))
 			return
 		}
 		http.NotFound(w, r)
@@ -267,6 +274,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/cockpit" {
 		sendJSON(w, ensureCockpit())
+		return
+	}
+	if path == "/api/worktrees" {
+		branch := stringValue(payload, "branch", "")
+		if !validBranchName(branch) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, createWorktree(branch))
 		return
 	}
 	if path == "/api/tickets" {
@@ -1201,6 +1217,170 @@ func openBrowser(u string) {
 		cmd = exec.Command("xdg-open", u)
 	}
 	_ = cmd.Start()
+}
+
+// t-cd06: mirrors server.py's list_worktrees/create_worktree for API parity
+// (tests/sprint-check-api-parity.sh) between the two board-server implementations.
+
+func validBranchName(name string) bool {
+	return name != "" && branchNameRe.MatchString(name) && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..")
+}
+
+func listWorktrees() []map[string]any {
+	raw := runGit("worktree", "list", "--porcelain")
+	var entries []map[string]any
+	var cur map[string]any
+	flush := func() {
+		if cur != nil {
+			entries = append(entries, cur)
+		}
+	}
+	for _, line := range strings.Split(raw, "\n") {
+		switch {
+		case strings.HasPrefix(line, "worktree "):
+			flush()
+			cur = map[string]any{"path": strings.TrimPrefix(line, "worktree ")}
+		case strings.HasPrefix(line, "branch ") && cur != nil:
+			ref := strings.TrimPrefix(line, "branch ")
+			cur["branch"] = strings.TrimPrefix(ref, "refs/heads/")
+		case strings.HasPrefix(line, "HEAD ") && cur != nil:
+			cur["head"] = strings.TrimPrefix(line, "HEAD ")
+		case line == "detached" && cur != nil:
+			cur["detached"] = true
+		}
+	}
+	flush()
+	mainRoot := projectRoot
+	if resolved, err := filepath.EvalSymlinks(projectRoot); err == nil {
+		mainRoot = resolved
+	}
+	for _, e := range entries {
+		resolved, err := filepath.EvalSymlinks(fmt.Sprint(e["path"]))
+		e["is_main"] = err == nil && resolved == mainRoot
+	}
+	if entries == nil {
+		entries = []map[string]any{}
+	}
+	return entries
+}
+
+// worktreeLockStatus is an advisory-only read of .tickets/<id>/.cockpit-cwd
+// (t-cd06 amendment) — the daemon owns writing that file and already ignores
+// a locked ticket's requested cwd; this just lets the board warn before the
+// choice is made for an in_progress ticket's first resume, since a worktree
+// checkout only carries committed history.
+func worktreeLockStatus(ticketID string) map[string]any {
+	cwdPath := filepath.Join(ticketsDir, ticketID, ".cockpit-cwd")
+	var cwd any
+	if b, err := os.ReadFile(cwdPath); err == nil {
+		if trimmed := strings.TrimSpace(string(b)); trimmed != "" {
+			cwd = trimmed
+		}
+	}
+	dirty := strings.TrimSpace(runGit("status", "--porcelain")) != ""
+	return map[string]any{"locked": cwd != nil, "cwd": cwd, "main_dirty": dirty}
+}
+
+// createWorktree assumes branch already passed validBranchName (checked by
+// the caller, which 400s on malformed input before this runs — mirrors
+// server.py's create_worktree/_valid_branch_name split).
+func createWorktree(branch string) map[string]any {
+	siblingRoot := filepath.Join(filepath.Dir(projectRoot), filepath.Base(projectRoot)+"-worktrees")
+	path := filepath.Join(siblingRoot, strings.ReplaceAll(branch, "/", "-"))
+	if exists(path) {
+		return map[string]any{"ok": false, "error": "path already exists"}
+	}
+	if err := os.MkdirAll(siblingRoot, 0o755); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	run := func(args ...string) error {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = projectRoot
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("%s", strings.TrimSpace(stderr.String()))
+		}
+		return nil
+	}
+	if err := run("worktree", "add", path, "-b", branch); err != nil {
+		if err2 := run("worktree", "add", path, branch); err2 != nil {
+			msg := err2.Error()
+			if len(msg) > 500 {
+				msg = msg[:500]
+			}
+			return map[string]any{"ok": false, "error": msg}
+		}
+	}
+	copied := copyWorktreeIncludeFiles(path)
+	return map[string]any{"ok": true, "path": path, "branch": branch, "worktreeinclude_copied": copied}
+}
+
+func worktreeIncludePatterns() []string {
+	data, err := os.ReadFile(filepath.Join(projectRoot, ".worktreeinclude"))
+	if err != nil {
+		return nil
+	}
+	var patterns []string
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			patterns = append(patterns, line)
+		}
+	}
+	return patterns
+}
+
+// copyWorktreeIncludeFiles mirrors server.py's _copy_worktreeinclude_files —
+// see its docstring for the full rationale (Claude Code's / Codex's own
+// .worktreeinclude convention: copy a gitignored file into a fresh worktree
+// only when it's both pattern-matched and actually gitignored).
+func copyWorktreeIncludeFiles(dest string) []string {
+	patterns := worktreeIncludePatterns()
+	if len(patterns) == 0 {
+		return nil
+	}
+	ignored := runGit("ls-files", "--others", "--ignored", "--exclude-standard")
+	var copied []string
+	for _, relpath := range strings.Split(ignored, "\n") {
+		relpath = strings.TrimSpace(relpath)
+		if relpath == "" {
+			continue
+		}
+		matched := false
+		base := filepath.Base(relpath)
+		for _, pat := range patterns {
+			if ok, _ := filepath.Match(pat, relpath); ok {
+				matched = true
+				break
+			}
+			if ok, _ := filepath.Match(pat, base); ok {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			continue
+		}
+		src := filepath.Join(projectRoot, relpath)
+		dst := filepath.Join(dest, relpath)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			continue // best-effort — a copy failure never blocks worktree creation
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			continue
+		}
+		info, err := os.Stat(src)
+		mode := os.FileMode(0o644)
+		if err == nil {
+			mode = info.Mode()
+		}
+		if os.WriteFile(dst, data, mode) == nil {
+			copied = append(copied, relpath)
+		}
+	}
+	return copied
 }
 
 func runGit(args ...string) string {

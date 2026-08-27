@@ -13,7 +13,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -123,7 +125,17 @@ func newTestServerWithAddr(t *testing.T, bin string) (*httptest.Server, string, 
 
 func startSession(t *testing.T, base, ticket, token string) *http.Response {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"ticket": ticket})
+	return startSessionCwd(t, base, ticket, "", token)
+}
+
+// startSessionCwd is startSession plus a t-cd06 `cwd` field on the request body.
+func startSessionCwd(t *testing.T, base, ticket, cwd, token string) *http.Response {
+	t.Helper()
+	m := map[string]string{"ticket": ticket}
+	if cwd != "" {
+		m["cwd"] = cwd
+	}
+	body, _ := json.Marshal(m)
 	req, _ := http.NewRequest(http.MethodPost, base+"/session/start", bytes.NewReader(body))
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -133,6 +145,54 @@ func startSession(t *testing.T, base, ticket, token string) *http.Response {
 		t.Fatal(err)
 	}
 	return resp
+}
+
+// fakeSprintCwd is fakeSprint's script minus the argv capture, plus a `pwd`
+// capture — used by t-cd06's cwd-routing tests, which only care where the
+// child actually ran, not what it was called with.
+func fakeSprintCwd(t *testing.T) (bin, cwdFile string) {
+	t.Helper()
+	dir := t.TempDir()
+	cwdFile = filepath.Join(dir, "cwd.txt")
+	bin = filepath.Join(dir, "fake-sprint-cwd.sh")
+	script := "#!/bin/sh\n" +
+		"pwd > \"" + cwdFile + "\"\n" +
+		"printf 'READY\\n'\n" +
+		"cat\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// gitWorktreeFixture git-inits root, commits an empty tree so worktrees can be
+// added, then adds one real worktree at a sibling path. Returns the resolved
+// (symlink-evaluated) absolute path of that worktree, matching the form
+// resolveSpawnCwd compares against.
+func gitWorktreeFixture(t *testing.T, root string) (worktreePath string) {
+	t.Helper()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("config", "user.email", "test@example.com")
+	run("config", "user.name", "test")
+	run("commit", "--allow-empty", "-q", "-m", "init")
+	wt := filepath.Join(filepath.Dir(root), filepath.Base(root)+"-worktree")
+	run("worktree", "add", "-q", wt, "-b", "feat/test")
+	resolved, err := filepath.EvalSymlinks(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		exec.Command("git", "-C", root, "worktree", "remove", "-f", wt).Run()
+	})
+	return resolved
 }
 
 func TestTicketValidationAndInjection(t *testing.T) {
@@ -1305,7 +1365,7 @@ func TestIdleReapSparesNeedsYouSession(t *testing.T) {
 	seedTicketDir(t, root, "t-ab12")
 	s := newServer(config{
 		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
-		idleTimeout: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
 	})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
@@ -1338,7 +1398,7 @@ func TestIdleReapKillsIdleSessionAfterSaveMarker(t *testing.T) {
 	seedTicketDir(t, root, "t-ab12")
 	s := newServer(config{
 		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
-		idleTimeout: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
 		saveFallback: 3 * time.Second,
 	})
 	ts := httptest.NewServer(s.handler())
@@ -1369,7 +1429,7 @@ func TestIdleReapFallbackKillsWhenMarkerNeverAppears(t *testing.T) {
 	seedTicketDir(t, root, "t-ab12")
 	s := newServer(config{
 		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
-		idleTimeout: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
 		saveFallback: 200 * time.Millisecond,
 	})
 	ts := httptest.NewServer(s.handler())
@@ -1429,7 +1489,7 @@ func TestIdleReapIgnoresMarkerPredatingTheSavePrompt(t *testing.T) {
 		// race past it before the stale marker is flushed — a 150ms budget was
 		// reviewer-caught as flaky under load (reproduced: 3/3 failures running 3
 		// copies concurrently under -race). 2s comfortably exceeds observed worst-case.
-		idleTimeout: 2 * time.Second, idleCheckInterval: 50 * time.Millisecond,
+		idleTimeout: 2 * time.Second, idleTimeoutMain: 2 * time.Second, idleCheckInterval: 50 * time.Millisecond,
 		// saveFallback deliberately longer than saveAndEndIdle's fixed 500ms poll
 		// interval, so the "early" check below lands after at least one real poll
 		// (where a whole-buffer-scan bug would already have false-killed) but well
@@ -1494,7 +1554,7 @@ func TestIdleReapAbortsWhenHumanReturnsMidSave(t *testing.T) {
 	// the original kill" from "never aborted at all."
 	s := newServer(config{
 		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
-		idleTimeout: time.Second, idleCheckInterval: 100 * time.Millisecond,
+		idleTimeout: time.Second, idleTimeoutMain: time.Second, idleCheckInterval: 100 * time.Millisecond,
 		saveFallback: 4 * time.Second,
 	})
 	ts := httptest.NewServer(s.handler())
@@ -1716,4 +1776,318 @@ func TestPreviewRootRejectsPathOutsideProjectRoot(t *testing.T) {
 	if r1.StatusCode != http.StatusBadRequest {
 		t.Fatalf("path outside projectRoot: want 400, got %d", r1.StatusCode)
 	}
+}
+
+// t-cd06: an omitted cwd must keep spawning in projectRoot, unchanged.
+func TestSpawnCwdDefaultsToProjectRoot(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	got := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second))
+	resolvedRoot, _ := filepath.EvalSymlinks(root)
+	if got != resolvedRoot {
+		t.Fatalf("cwd = %q, want projectRoot %q", got, resolvedRoot)
+	}
+}
+
+// t-cd06: a cwd that exact-matches a real `git worktree list` entry is
+// accepted and the child actually runs there.
+func TestSpawnCwdAcceptsRealWorktree(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("want 200, got %d: %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+
+	got := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second))
+	if got != wt {
+		t.Fatalf("cwd = %q, want worktree %q", got, wt)
+	}
+}
+
+// t-cd06: the daemon must never trust a client-supplied cwd it cannot
+// independently verify against `git worktree list` — an arbitrary directory
+// must be rejected and no process spawned.
+func TestSpawnRejectsCwdNotInWorktreeList(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	gitWorktreeFixture(t, root) // real repo, but the forged path below isn't a listed worktree
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	forged := t.TempDir()
+	resp := startSessionCwd(t, ts.URL, "t-ab12", forged, bootTok)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("forged cwd: want 400, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if _, err := os.Stat(cwdFile); err == nil {
+		t.Fatal("a rejected cwd still spawned a process (cwd file exists)")
+	}
+}
+
+// t-cd06: .tickets resolution must stay anchored to projectRoot regardless of
+// which worktree the session's cwd points at.
+func TestTicketsDirUnaffectedByWorktreeCwd(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+
+	if got := s.ticketsDir(); filepath.Clean(got) != filepath.Join(root, ".tickets") {
+		t.Fatalf("ticketsDir() = %q before any spawn, want %q", got, filepath.Join(root, ".tickets"))
+	}
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if got := s.ticketsDir(); filepath.Clean(got) != filepath.Join(root, ".tickets") {
+		t.Fatalf("ticketsDir() = %q after worktree spawn, want unchanged %q", got, filepath.Join(root, ".tickets"))
+	}
+}
+
+// t-cd06: every /session/start call, whatever cwd it used, appends exactly
+// one Decisions.md line via spawn() — the one path a direct POST can't route
+// around.
+func TestSpawnLogsWorktreeDecision(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+
+	decisionsPath := filepath.Join(root, ".tickets", "t-ab12", "Decisions.md")
+	got := waitFile(t, decisionsPath, 2*time.Second)
+	if !strings.Contains(got, wt) {
+		t.Fatalf("Decisions.md = %q, want it to mention worktree %q", got, wt)
+	}
+	if n := strings.Count(got, "\n"); n != 1 {
+		t.Fatalf("Decisions.md has %d lines, want exactly 1", n)
+	}
+}
+
+// t-cd06: the board's worktree selection round-trips through /cockpit's
+// ?cwd= prefill into the page's PREFILL_CWD JS variable — the page has no
+// token (loopback-origin guard only), so a malformed value must be dropped,
+// not embedded verbatim into a JS string literal.
+func TestCockpitCwdPrefill(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base := newTestServer(t, bin)
+
+	get := func(qs string) string {
+		t.Helper()
+		resp, err := http.Get(base + "/cockpit?" + qs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return string(body)
+	}
+
+	valid := "/tmp/canon-worktrees/feat-x"
+	page := get("cwd=" + url.QueryEscape(valid))
+	if !strings.Contains(page, `var PREFILL_CWD = "`+valid+`";`) {
+		t.Fatalf("valid cwd not embedded verbatim in PREFILL_CWD")
+	}
+
+	// A relative path, and a value carrying a quote (JS-injection attempt),
+	// must both be dropped to an empty prefill rather than embedded.
+	for _, bad := range []string{"relative/path", `/tmp/x";alert(1);//`} {
+		page = get("cwd=" + url.QueryEscape(bad))
+		if strings.Contains(page, bad) {
+			t.Fatalf("malformed cwd %q was embedded verbatim: page contains it", bad)
+		}
+		if !strings.Contains(page, `var PREFILL_CWD = "";`) {
+			t.Fatalf("malformed cwd %q: want empty PREFILL_CWD fallback", bad)
+		}
+	}
+}
+
+// t-cd06: envDurationOr — a set, valid env var wins; unset or malformed
+// falls back to the default (0 meaning "let newServer apply its own").
+func TestEnvDurationOr(t *testing.T) {
+	const key = "COCKPIT_TEST_DURATION_ENV"
+	cases := []struct {
+		name, envVal string
+		def, want    time.Duration
+	}{
+		{"unset falls back to default", "", 5 * time.Minute, 5 * time.Minute},
+		{"valid value wins over default", "10s", 5 * time.Minute, 10 * time.Second},
+		{"malformed value falls back to default", "not-a-duration", 5 * time.Minute, 5 * time.Minute},
+		{"zero default with unset env stays zero", "", 0, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.envVal == "" {
+				os.Unsetenv(key)
+			} else {
+				t.Setenv(key, c.envVal)
+			}
+			if got := envDurationOr(key, c.def); got != c.want {
+				t.Errorf("envDurationOr(%q, %v) = %v, want %v", c.envVal, c.def, got, c.want)
+			}
+		})
+	}
+}
+
+// t-cd06: a worktree-rooted session reaps at the short (worktree) idle
+// timeout, matching nebula's own "disposable checkout" default; a
+// main-checkout session with the SAME configured worktree timeout survives
+// well past it, only subject to the longer idleTimeoutMain safety net —
+// proving the tiering actually keys off cwd, not just leaving the timeout
+// unconditionally longer for everyone.
+func TestIdleReapUsesShorterTimeoutForWorktreeThanMainCheckout(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 5 * time.Second, idleCheckInterval: 20 * time.Millisecond,
+		saveFallback: 100 * time.Millisecond,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	mainResp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var mainOut struct{ Session, Token string }
+	json.NewDecoder(mainResp.Body).Decode(&mainOut)
+	mainResp.Body.Close()
+
+	wtResp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	var wtOut struct{ Session, Token string }
+	json.NewDecoder(wtResp.Body).Decode(&wtOut)
+	wtResp.Body.Close()
+
+	// idleTimeout (50ms) + saveFallback (100ms) + generous margin — well
+	// under idleTimeoutMain (5s), so surviving this proves the main-checkout
+	// session got the LONGER tier, not just a slow reaper tick.
+	deadline := time.Now().Add(2 * time.Second)
+	worktreeReaped := false
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, wtStillThere := s.sessions[wtOut.Session]
+		_, mainStillThere := s.sessions[mainOut.Session]
+		s.mu.Unlock()
+		if !wtStillThere {
+			worktreeReaped = true
+		}
+		if !mainStillThere {
+			t.Fatal("main-checkout session was reaped at the short worktree timeout — tiering is not keying off cwd")
+		}
+		if worktreeReaped {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !worktreeReaped {
+		t.Fatal("worktree session was never reaped at the short timeout")
+	}
+}
+
+// t-cd06: resuming an in_progress ticket must reuse the worktree its first
+// start resolved, persisted to .cockpit-cwd (mirrors .cockpit-session-id) —
+// never whatever (or nothing) the client sent on the resume request. This
+// closes the gap the ticket's own resolved design didn't cover: without it, a
+// live claude conversation could be reattached in a different directory than
+// it started in.
+func TestSpawnResumeReusesPersistedCwd(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "open")
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("first start: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	got := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second))
+	if got != wt {
+		t.Fatalf("first start cwd = %q, want worktree %q", got, wt)
+	}
+
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	if err := os.Truncate(cwdFile, 0); err != nil {
+		t.Fatal(err)
+	}
+	// Resume request sends no cwd at all — the persisted one must still win.
+	resp2 := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("resume: %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+	got2 := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second))
+	if got2 != wt {
+		t.Fatalf("resume cwd = %q, want persisted worktree %q", got2, wt)
+	}
+}
+
+// t-cd06: a Decisions.md write failure must never block a spawn that already
+// succeeded — logging is best-effort.
+func TestSpawnSucceedsWhenDecisionsLogUnwritable(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	// Read-only ticket dir: OpenFile(O_CREATE) for Decisions.md fails, but the
+	// spawn itself must still succeed.
+	if err := os.Chmod(filepath.Join(root, ".tickets", "t-ab12"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(filepath.Join(root, ".tickets", "t-ab12"), 0o755) })
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 even with unwritable Decisions.md, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
 }
