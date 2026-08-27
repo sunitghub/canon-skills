@@ -76,6 +76,7 @@
   var PREFILL = "__COCKPIT_TICKET__";
   var EMBED = "__COCKPIT_EMBED__";
   var AUTOSTART = "__COCKPIT_AUTOSTART__";
+  var PREFILL_CWD = "__COCKPIT_CWD__"; // t-cd06: worktree path the board selected, or "" for main checkout
   var session = null, sessTok = null, previewTok = null, streamAbort = null;
 
   var term = new Terminal({
@@ -182,7 +183,7 @@
     document.getElementById("startBtn").classList.remove("pulse");
     setStatus("running","starting…");
     try{
-      var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket}) });
+      var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket, cwd:PREFILL_CWD}) });
       if(!r.ok){ setStatus("error","start failed ("+r.status+")"); term.writeln("\r\n\x1b[31mstart failed: "+r.status+"\x1b[0m"); return; }
       var j = await r.json();
       session = j.session; sessTok = j.token; previewTok = j.previewToken; activeTicket = ticket;

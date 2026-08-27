@@ -62,4 +62,39 @@ assert_grep 'renderCockpitAcceptance' "$APP"
 assert_grep 'rail-collapsed' "$APP"
 assert_grep 'embed=1' "$APP"
 
+# t-cd06: WORKTREE accordion in the cockpit rail — single-select rows sourced
+# from /api/worktrees, gating the terminal mount behind an explicit pick for a
+# fresh OPEN start (Resume never re-asks; the daemon persists cwd itself).
+assert_grep 'id="ck-worktree-section"' "$APP"
+assert_grep 'id="ck-worktree"' "$APP"
+assert_grep 'function renderCockpitWorktree' "$APP"
+assert_grep 'function selectCockpitWorktree' "$APP"
+assert_grep 'function maybeMountCockpitTerminal' "$APP"
+assert_grep "fetch\\('/api/worktrees'\\)" "$APP"
+assert_grep "cockpitState.worktreeCwd" "$APP"
+if grep -q "worktreeCwd = (t.status === 'open') ? '' : ''" "$APP"; then
+  fail "a fresh OPEN start must gate on worktreeCwd === null, not default-select a row"
+fi
+
+# t-cd06 amendment: warn once before an in_progress ticket's first (unlocked)
+# non-main worktree pick, since a worktree checkout only carries committed
+# history and the pick locks in for every future Resume.
+assert_grep "async function selectCockpitWorktree" "$APP"
+assert_grep "api/worktree-lock/" "$APP"
+assert_grep "lock.main_dirty" "$APP"
+
+# t-cd06: reopening an already-locked in_progress ticket must show its real
+# worktree as selected, not default the picker to Main checkout — the daemon
+# uses the locked cwd regardless of what's displayed.
+assert_grep "lock.locked && lock.cwd" "$APP"
+
+# t-cd06: subtle "Working in: <label>" reminder, since the radio selection
+# alone is easy to miss when scanning back to this rail.
+assert_grep 'id="ck-worktree-note"' "$APP"
+assert_grep "function updateWorktreeNote" "$APP"
+
+# t-cd06: Status is read independently of the WORKTREE accordion — it must
+# also surface the locked worktree, not just HANDOFF.md's saved-state prose.
+assert_grep "Running in" "$APP"
+
 printf 'sprint-check-app: ok\n'

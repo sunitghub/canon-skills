@@ -1448,7 +1448,7 @@
     .ck-rail-icons .ck-rail-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-progress, #60a5fa); }
     .ck-section-label {
       flex: 1 1 auto;
-      font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-muted);
+      font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-body);
       text-transform: uppercase; margin: 0;
     }
     .ck-section-count {
@@ -1483,6 +1483,52 @@
       border-color: var(--border-hover); background: var(--surface-hover);
     }
     .ck-add-hint { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+
+    /* WORKTREE accordion (t-cd06): single-select rows, radio-style — Main
+       checkout first, then live `git worktree list` entries, then + New. */
+    .ck-worktree-row {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; margin: 0 0 6px 0;
+    }
+    .ck-worktree-row:hover { border-color: var(--border-hover); background: var(--surface-hover); }
+    .ck-worktree-row:last-child { margin-bottom: 0; }
+    .ck-worktree-row.selected { border-color: var(--accent); }
+    .ck-worktree-radio {
+      width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+      border: 1px solid var(--border);
+    }
+    .ck-worktree-row.selected .ck-worktree-radio {
+      border-color: var(--accent); background: var(--accent);
+      box-shadow: inset 0 0 0 3px var(--surface-raised);
+    }
+    .ck-worktree-labels { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .ck-worktree-label { font-size: 12px; color: var(--text-body); }
+    .ck-worktree-row.selected .ck-worktree-label { color: var(--text); font-weight: 600; }
+    .ck-worktree-sub {
+      font-family: var(--mono, monospace); font-size: 10px; color: var(--text-muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ck-worktree-new { display: flex; align-items: center; gap: 8px; }
+    .ck-worktree-new-plus {
+      color: var(--text-body); font-size: 12px; font-weight: 600;
+      flex-shrink: 0; cursor: pointer; white-space: nowrap;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 10px;
+    }
+    .ck-worktree-new-plus:hover {
+      color: var(--accent); border-color: var(--accent); background: var(--accent-dim);
+    }
+    .ck-worktree-new-plus:disabled { opacity: 0.5; cursor: default; }
+    .ck-worktree-active-note {
+      font-size: 12px; font-weight: 600; color: var(--accent); margin: 0 0 8px 0; min-height: 15px;
+    }
+    .ck-worktree-new input {
+      flex: 1 1 auto; min-width: 0; font-family: var(--mono, monospace); font-size: 11px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
+      padding: 4px 8px; color: var(--text);
+    }
+    .ck-worktree-new input:focus { outline: none; border-color: var(--accent); }
 
     /* Accordion sections (t-96a8): Acceptance + Test Plan, each its own
        polished card (subtle inset highlight + drop shadow, --card-shadow),
@@ -1752,6 +1798,15 @@
           <div class="ck-ticket-card">
             <div class="ck-tc-id" id="ck-tc-id"></div>
             <div class="ck-tc-title" id="ck-tc-title"></div>
+          </div>
+          <div class="ck-accordion-section" id="ck-worktree-section">
+            <div class="ck-accordion-header" data-accordion="ck-worktree-section">
+              <div class="ck-section-label">Worktree</div>
+              <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="ck-accordion-body">
+              <div class="ck-worktree" id="ck-worktree"></div>
+            </div>
           </div>
           <div class="ck-accordion-section" id="ck-state-section">
             <div class="ck-accordion-header" data-accordion="ck-state-section">
@@ -4373,7 +4428,9 @@ async function moveCard(t, newStatus) {
 // rail only ever reads acceptance.md, never writes to it. Since nothing here
 // writes, there is no whole-document checkbox index to compute or keep in
 // sync — the earlier toggle-write path's index-offset math is gone with it.
-const cockpitState = { id: null, addr: null, status: null };
+// worktreeCwd: null = no row selected yet (OPEN-ticket Start stays gated,
+// t-cd06), '' = Main checkout selected, otherwise an absolute worktree path.
+const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null };
 let cockpitPollTimer = null;
 
 // t-f6b6: the board and the daemon page are different origins (different
@@ -4487,6 +4544,7 @@ function teardownCockpit() {
   if (iframe) iframe.src = 'about:blank'; // drop the SSE stream held by the embed
   if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
   cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
+  cockpitState.worktreeCwd = null;
   renderNeedsYouBadge();
   resetPreview();
   loadData().then(render).catch(() => renderBoard());
@@ -4533,6 +4591,10 @@ async function openCockpit(id) {
   if (!t) return;
   cockpitState.id = id;
   cockpitState.status = null;
+  // t-cd06: resuming an in_progress ticket reuses its persisted worktree
+  // server-side (the daemon owns that, not the board) — only a fresh OPEN
+  // start needs an explicit row picked before the terminal is allowed to mount.
+  cockpitState.worktreeCwd = (t.status === 'open') ? null : '';
   renderNeedsYouBadge();
   resetPreview();
   state.selectedId = id;
@@ -4546,7 +4608,8 @@ async function openCockpit(id) {
   renderCockpitPlan(t);
   await renderCockpitDocs(t);
   await renderCockpitState(t);
-  await mountCockpitTerminal(t);
+  await renderCockpitWorktree(t);
+  await maybeMountCockpitTerminal(t);
   // Poll while open — a running agent edits acceptance.md as it works, and
   // the rail should reflect that without the human having to close/reopen.
   if (cockpitPollTimer) clearInterval(cockpitPollTimer);
@@ -4657,7 +4720,185 @@ async function renderCockpitState(t) {
     if (r.ok) raw = (await r.json()).raw || '';
   } catch {}
   const bullet = findHandoffStateForTicket(raw, t.id);
-  box.innerHTML = bullet ? formatStateAsParagraphs(bullet, t) : '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>';
+
+  // t-cd06: the locked worktree is durable (.tickets/<id>/.cockpit-cwd) but
+  // previously only surfaced in the WORKTREE accordion above — show it here
+  // too, since Status is read independently and HANDOFF.md itself has no
+  // idea which directory the session actually runs in.
+  let worktreeLine = '';
+  try {
+    const wr = await fetch(`/api/worktree-lock/${encodeURIComponent(t.id)}`);
+    if (wr.ok) {
+      const lock = await wr.json();
+      if (lock.locked && lock.cwd) {
+        // Short label, not the full absolute path (that forced the rail to
+        // be stretched wider just to read it) — the path is still available
+        // as a hover tooltip for anyone who wants it.
+        let label = lock.cwd;
+        try {
+          const wtr = await fetch('/api/worktrees');
+          if (wtr.ok) {
+            const entries = await wtr.json();
+            const match = entries.find(e => e.path === lock.cwd);
+            if (match) label = match.is_main ? 'Main checkout (current)' : (match.branch || '(detached)');
+          }
+        } catch {}
+        worktreeLine = `<div class="ck-worktree-sub" style="margin-bottom:8px;" title="${esc(lock.cwd)}">Running in: ${esc(label)}</div>`;
+      }
+    }
+  } catch {}
+
+  box.innerHTML = worktreeLine + (bullet ? formatStateAsParagraphs(bullet, t) : '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>');
+}
+
+// t-cd06: WORKTREE accordion — single-select rows sourced live from
+// `git worktree list --porcelain` (no cockpit-owned registry, per the
+// ticket's resolved design), plus a "+ New" row that creates one. Only
+// re-rendered on cockpit open, not on the 5s poll — the list rarely changes
+// mid-session and re-rendering would clobber an in-progress "+ New" typing.
+async function renderCockpitWorktree(t) {
+  const box = document.getElementById('ck-worktree');
+  let entries = [];
+  try {
+    const r = await fetch('/api/worktrees');
+    if (r.ok) entries = await r.json();
+  } catch {}
+
+  const rowHTML = (cwd, label, sub, extraAttr) => {
+    const selected = cockpitState.worktreeCwd === cwd;
+    return `<div class="ck-worktree-row${selected ? ' selected' : ''}" data-cwd="${esc(cwd)}"${extraAttr || ''}>
+      <div class="ck-worktree-radio"></div>
+      <div class="ck-worktree-labels">
+        <div class="ck-worktree-label">${esc(label)}</div>
+        ${sub ? `<div class="ck-worktree-sub">${esc(sub)}</div>` : ''}
+      </div>
+    </div>`;
+  };
+
+  const mainEntry = entries.find(e => e.is_main);
+  const others = entries.filter(e => !e.is_main);
+
+  // t-cd06: an already-locked in_progress ticket's real worktree must show
+  // as selected here — the daemon uses the locked cwd regardless of what's
+  // displayed, so defaulting the picker to Main checkout on every reopen was
+  // actively misleading about which directory the session actually runs in.
+  if (t.status === 'in_progress') {
+    try {
+      const r = await fetch(`/api/worktree-lock/${encodeURIComponent(t.id)}`);
+      if (r.ok) {
+        const lock = await r.json();
+        if (lock.locked && lock.cwd) {
+          cockpitState.worktreeCwd = (mainEntry && lock.cwd === mainEntry.path) ? '' : lock.cwd;
+        }
+      }
+    } catch {}
+  }
+
+  let html = `<div class="ck-worktree-active-note" id="ck-worktree-note"></div>`;
+  html += rowHTML('', 'Main checkout (current)', mainEntry ? mainEntry.path : '');
+  for (const e of others) {
+    html += rowHTML(e.path, e.branch || '(detached)', e.path);
+  }
+  html += `<div class="ck-worktree-new">
+    <button type="button" class="ck-worktree-new-plus" title="Enter a branch name, then click to create the worktree">+ New</button>
+    <input id="ck-worktree-new-input" placeholder="sprint/${esc(t.id)}" spellcheck="false" autocomplete="off">
+  </div>`;
+  box.innerHTML = html;
+  updateWorktreeNote();
+
+  box.querySelectorAll('.ck-worktree-row').forEach(row => {
+    row.addEventListener('click', () => selectCockpitWorktree(t, row.dataset.cwd));
+  });
+  const input = document.getElementById('ck-worktree-new-input');
+  const btn = box.querySelector('.ck-worktree-new-plus');
+  // Branch names already visible as a row — block resubmitting one of these
+  // before it ever reaches the confirm dialog, rather than letting the
+  // server's "path already exists" round-trip surface as a generic alert.
+  const existingBranches = new Set(others.map(e => e.branch).filter(Boolean));
+  // Require a real, deliberately-typed branch name — no falling back to the
+  // placeholder's suggested default on an empty field (that silently created
+  // an unwanted worktree in testing).
+  btn.disabled = true;
+  input.addEventListener('input', () => {
+    const v = input.value.trim();
+    btn.disabled = v.length <= 3 || existingBranches.has(v);
+  });
+  const create = async () => {
+    const branch = input.value.trim();
+    if (branch.length <= 3) return;
+    if (existingBranches.has(branch)) {
+      alert(`"${branch}" already has a worktree — select it from the list above instead.`);
+      return;
+    }
+    if (!confirm(`Create a new git worktree for branch "${branch}"?`)) return;
+    input.disabled = true;
+    btn.disabled = true;
+    try {
+      const r = await fetch('/api/worktrees', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ branch })
+      });
+      const d = await r.json();
+      if (!r.ok || !d.ok) {
+        alert('Could not create worktree: ' + (d && d.error ? d.error : `HTTP ${r.status}`));
+        input.disabled = false;
+        btn.disabled = false;
+        return;
+      }
+      await renderCockpitWorktree(t);
+      selectCockpitWorktree(t, d.path);
+    } catch (err) {
+      alert('Could not create worktree: ' + err);
+      input.disabled = false;
+      btn.disabled = false;
+    }
+  };
+  btn.addEventListener('click', create);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') create(); });
+}
+
+// t-cd06 amendment: an in_progress ticket's FIRST worktree pick (no
+// .cockpit-cwd yet) silently locks in a directory its prior conversation
+// turns never saw, and a worktree checkout only carries committed history —
+// warn once, here, before that choice takes effect. A fresh OPEN ticket has
+// no prior conversation state to lose, and a ticket that's already locked
+// can't be redirected anyway (the daemon ignores the requested cwd), so
+// neither case needs the confirm.
+async function selectCockpitWorktree(t, cwd) {
+  if (cwd !== '' && t.status === 'in_progress') {
+    // Fail SAFE, not open: if the lock-status check errors or 404s, treat it
+    // as unlocked/unknown-dirty and still warn — silently skipping the
+    // confirm on a fetch failure would defeat the point of the check at
+    // exactly the moment it can't be verified.
+    let lock = { locked: false, main_dirty: null };
+    try {
+      const r = await fetch(`/api/worktree-lock/${encodeURIComponent(t.id)}`);
+      if (r.ok) lock = await r.json();
+    } catch {}
+    if (!lock.locked) {
+      const risk = lock.main_dirty === true
+        ? 'The main checkout has uncommitted changes that will NOT carry over — a worktree only has committed history.'
+        : lock.main_dirty === false
+          ? 'A worktree only has this repo\'s committed history — any future uncommitted work in the main checkout will not be shared with it.'
+          : 'A worktree only has this repo\'s committed history — uncommitted work does not carry over between checkouts.';
+      if (!confirm(`${risk}\n\nThis also locks this ticket to that worktree for every future Resume. Continue?`)) return;
+    }
+  }
+  cockpitState.worktreeCwd = cwd;
+  document.querySelectorAll('#ck-worktree .ck-worktree-row').forEach(row => {
+    row.classList.toggle('selected', row.dataset.cwd === cwd);
+  });
+  updateWorktreeNote();
+  maybeMountCockpitTerminal(t);
+}
+
+// Subtle reminder of which worktree the session actually runs in, since the
+// radio selection alone is easy to miss when scanning back to this rail.
+function updateWorktreeNote() {
+  const note = document.getElementById('ck-worktree-note');
+  if (!note) return;
+  const selectedLabel = document.querySelector('#ck-worktree .ck-worktree-row.selected .ck-worktree-label');
+  note.textContent = selectedLabel ? `Working in: ${selectedLabel.textContent}` : '';
 }
 
 // The ticket id/title prefix is already shown in the ck-ticket-card above —
@@ -4695,7 +4936,24 @@ function renderCockpitTestPlan(content, t) {
   countEl.textContent = n ? `(${n})` : '';
 }
 
-async function mountCockpitTerminal(t) {
+// t-cd06: a fresh OPEN start gates the terminal behind an explicit WORKTREE
+// row pick (cockpitState.worktreeCwd === null means nothing picked yet) — the
+// terminal is where the daemon's own Start control lives, so not mounting it
+// yet is what "Start sprint stays disabled" means in practice. A Resume
+// mounts immediately: the daemon reuses its persisted cwd for an in_progress
+// ticket regardless of what the board sends.
+async function maybeMountCockpitTerminal(t) {
+  const msg = document.getElementById('ck-term-msg');
+  const iframe = document.getElementById('ck-iframe');
+  if (cockpitState.worktreeCwd === null) {
+    iframe.style.visibility = 'hidden';
+    msg.textContent = 'Select a worktree above to continue — Start sprint is disabled until a row is selected.';
+    return;
+  }
+  await mountCockpitTerminal(t, cockpitState.worktreeCwd);
+}
+
+async function mountCockpitTerminal(t, cwd) {
   const msg = document.getElementById('ck-term-msg');
   const iframe = document.getElementById('ck-iframe');
   msg.textContent = 'Starting the cockpit daemon…';
@@ -4715,7 +4973,9 @@ async function mountCockpitTerminal(t) {
   // Never autostart: the terminal always loads idle with Start sprint pulsing,
   // for both a fresh OPEN ticket and a Resume — a launch should always be a
   // deliberate click, not something that fires the moment the panel opens.
-  iframe.src = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=0`;
+  let url = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=0`;
+  if (cwd) url += `&cwd=${encodeURIComponent(cwd)}`;
+  iframe.src = url;
   iframe.style.visibility = 'visible';
   msg.textContent = '';
 }
