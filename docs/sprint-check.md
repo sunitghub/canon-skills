@@ -190,7 +190,21 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   check a box that isn't actually verified. The rail **polls** every 5s while
   the cockpit is open, so edits the running agent (or anyone else) makes to
   `acceptance.md` show up without closing/reopening the cockpit.
+- **Worktree picker (P3.2, `t-cd06`):** the rail's **WORKTREE** accordion lets a
+  sprint start inside a fresh or existing git worktree instead of always the
+  main checkout — rows for **Main checkout (current)**, every real entry from
+  `git worktree list --porcelain` (no cockpit-owned registry), and **+ New**
+  (creates a sibling `<repo>-worktrees/<branch>` checkout via `git worktree
+  add`, nebula's own convention). A fresh OPEN start gates the terminal —
+  the daemon's own Start control — behind an explicit row pick; Resume doesn't
+  need to re-ask, since the daemon persists the resolved cwd per ticket
+  (`.tickets/<id>/.cockpit-cwd`) and reuses it automatically (falling back to
+  re-resolving if that worktree was since deleted). A `.worktreeinclude`
+  file at the project root (same convention as Claude Code's/Codex's own) copies
+  matching gitignored files (e.g. `.env`) into a freshly created worktree. Idle-reap
+  is tiered by cwd: a worktree session keeps the 5-minute default, a main-checkout
+  session gets a longer 30-minute safety net instead of never reaping.
 - **Scope:** P1 (this daemon + standalone `cockpit` launcher), P3 (the board
-  integration above), and P3.1 (the rail accordion) are done. The preview pane
-  and further visual polish are follow-up work — see `Future/Terminal-In-Board/`
-  and tickets `t-8a63`/`t-ddc8`/`t-96a8`.
+  integration above), P3.1 (the rail accordion), and P3.2 (the worktree picker
+  above) are done. The preview pane and further visual polish are follow-up
+  work — see `Future/Terminal-In-Board/` and tickets `t-8a63`/`t-ddc8`/`t-96a8`.
