@@ -4726,29 +4726,36 @@ async function renderCockpitState(t) {
   // too, since Status is read independently and HANDOFF.md itself has no
   // idea which directory the session actually runs in.
   let worktreeLine = '';
-  try {
-    const wr = await fetch(`/api/worktree-lock/${encodeURIComponent(t.id)}`);
-    if (wr.ok) {
-      const lock = await wr.json();
-      if (lock.locked && lock.cwd) {
-        // Short label, not the full absolute path (that forced the rail to
-        // be stretched wider just to read it) — the path is still available
-        // as a hover tooltip for anyone who wants it.
-        let label = lock.cwd;
-        try {
-          const wtr = await fetch('/api/worktrees');
-          if (wtr.ok) {
-            const entries = await wtr.json();
-            const match = entries.find(e => e.path === lock.cwd);
-            if (match) label = match.is_main ? 'Main checkout (current)' : (match.branch || '(detached)');
-          }
-        } catch {}
-        worktreeLine = `<div class="ck-worktree-sub" style="margin-bottom:8px;" title="${esc(lock.cwd)}">Running in: ${esc(label)}</div>`;
+  const lock = await fetchWorktreeLock(t.id);
+  if (lock.locked && lock.cwd) {
+    // Short label, not the full absolute path (that forced the rail to be
+    // stretched wider just to read it) — the path is still available as a
+    // hover tooltip for anyone who wants it.
+    let label = lock.cwd;
+    try {
+      const wtr = await fetch('/api/worktrees');
+      if (wtr.ok) {
+        const entries = await wtr.json();
+        const match = entries.find(e => e.path === lock.cwd);
+        if (match) label = match.is_main ? 'Main checkout (current)' : (match.branch || '(detached)');
       }
-    }
-  } catch {}
+    } catch {}
+    worktreeLine = `<div class="ck-worktree-sub" style="margin-bottom:8px;" title="${esc(lock.cwd)}">Running in: ${esc(label)}</div>`;
+  }
 
   box.innerHTML = worktreeLine + (bullet ? formatStateAsParagraphs(bullet, t) : '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>');
+}
+
+// t-cd06: shared by every /api/worktree-lock caller below (init-selection,
+// the switch-worktree confirm, and the Status line) — one fetch shape, one
+// fail-safe default, so a request failure never silently degrades to
+// "treat as unlocked" in one caller and "skip the check" in another.
+async function fetchWorktreeLock(ticketId) {
+  try {
+    const r = await fetch(`/api/worktree-lock/${encodeURIComponent(ticketId)}`);
+    if (r.ok) return await r.json();
+  } catch {}
+  return { locked: false, cwd: null, main_dirty: null };
 }
 
 // t-cd06: WORKTREE accordion — single-select rows sourced live from
@@ -4783,15 +4790,10 @@ async function renderCockpitWorktree(t) {
   // displayed, so defaulting the picker to Main checkout on every reopen was
   // actively misleading about which directory the session actually runs in.
   if (t.status === 'in_progress') {
-    try {
-      const r = await fetch(`/api/worktree-lock/${encodeURIComponent(t.id)}`);
-      if (r.ok) {
-        const lock = await r.json();
-        if (lock.locked && lock.cwd) {
-          cockpitState.worktreeCwd = (mainEntry && lock.cwd === mainEntry.path) ? '' : lock.cwd;
-        }
-      }
-    } catch {}
+    const lock = await fetchWorktreeLock(t.id);
+    if (lock.locked && lock.cwd) {
+      cockpitState.worktreeCwd = (mainEntry && lock.cwd === mainEntry.path) ? '' : lock.cwd;
+    }
   }
 
   let html = `<div class="ck-worktree-active-note" id="ck-worktree-note"></div>`;
@@ -4866,15 +4868,10 @@ async function renderCockpitWorktree(t) {
 // neither case needs the confirm.
 async function selectCockpitWorktree(t, cwd) {
   if (cwd !== '' && t.status === 'in_progress') {
-    // Fail SAFE, not open: if the lock-status check errors or 404s, treat it
-    // as unlocked/unknown-dirty and still warn — silently skipping the
-    // confirm on a fetch failure would defeat the point of the check at
-    // exactly the moment it can't be verified.
-    let lock = { locked: false, main_dirty: null };
-    try {
-      const r = await fetch(`/api/worktree-lock/${encodeURIComponent(t.id)}`);
-      if (r.ok) lock = await r.json();
-    } catch {}
+    // Fail SAFE, not open: fetchWorktreeLock defaults to unlocked/unknown-dirty
+    // on any error, so a fetch failure still warns rather than silently
+    // skipping the confirm at exactly the moment it can't be verified.
+    const lock = await fetchWorktreeLock(t.id);
     if (!lock.locked) {
       const risk = lock.main_dirty === true
         ? 'The main checkout has uncommitted changes that will NOT carry over — a worktree only has committed history.'
