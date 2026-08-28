@@ -64,7 +64,8 @@ assert_grep 'embed=1' "$APP"
 
 # t-cd06: WORKTREE accordion in the cockpit rail — single-select rows sourced
 # from /api/worktrees, gating the terminal mount behind an explicit pick for a
-# fresh OPEN start (Resume never re-asks; the daemon persists cwd itself).
+# fresh OPEN start (Resume doesn't need to re-ask; the daemon persists cwd
+# itself, falling back to re-resolving if that worktree was since deleted).
 assert_grep 'id="ck-worktree-section"' "$APP"
 assert_grep 'id="ck-worktree"' "$APP"
 assert_grep 'function renderCockpitWorktree' "$APP"
