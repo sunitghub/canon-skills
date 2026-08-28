@@ -30,8 +30,7 @@ var (
 	fieldRe          = regexp.MustCompile(`(?m)^(\w+):\s*(.+)$`)
 	headingRe        = regexp.MustCompile(`(?m)^#{1,6}\s+(.+)$`)
 	modelMentionRe   = regexp.MustCompile(`(?i)\(model:\s*([^)]+)\)`)
-	baseRefRe        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
-	branchNameRe     = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+	baseRefRe        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`) // also used for worktree branch names — same git-ref-name charset
 	imageExts        = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
 	safeVisualName   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 	projectRoot      string
@@ -1223,7 +1222,7 @@ func openBrowser(u string) {
 // (tests/sprint-check-api-parity.sh) between the two board-server implementations.
 
 func validBranchName(name string) bool {
-	return name != "" && branchNameRe.MatchString(name) && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..")
+	return name != "" && baseRefRe.MatchString(name) && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..")
 }
 
 func listWorktrees() []map[string]any {

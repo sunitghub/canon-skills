@@ -287,13 +287,12 @@ def load_git() -> dict:
 
 # ── Worktrees (t-cd06) ───────────────────────────────────────────────────
 
-# Same allow-list style as _BASE_REF_RE below; additionally rejects a leading
-# '-' (would be read as a flag by `git worktree add`'s argv) and '..' (path
-# traversal once the name is joined into the sibling directory path).
-_BRANCH_NAME_RE = re.compile(r'^[A-Za-z0-9._/-]+$')
-
 def _valid_branch_name(name: str) -> bool:
-    return bool(name) and bool(_BRANCH_NAME_RE.match(name)) and not name.startswith('-') and '..' not in name
+    # Reuses _BASE_REF_RE's allow-list (same git-ref-name charset, defined
+    # below); additionally rejects a leading '-' (would be read as a flag by
+    # `git worktree add`'s argv) and '..' (path traversal once the name is
+    # joined into the sibling directory path).
+    return bool(name) and bool(_BASE_REF_RE.match(name)) and not name.startswith('-') and '..' not in name
 
 def list_worktrees() -> list[dict]:
     """Parse `git worktree list --porcelain` — the single source of truth for
