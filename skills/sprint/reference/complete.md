@@ -184,7 +184,13 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    subagent's Bash file-writing is refused outright** (permission boundary, not heredoc
    failure): do not retry or re-dispatch with a broader-permission `subagent_type`. Check
    whether the expected report file exists after dispatch; if not, save the returned report
-   text yourself before continuing.
+   text yourself before continuing; (g) **run `git status --porcelain` immediately after every
+   subagent dispatch completes**, before reading its report — a gate is read-only by contract
+   (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own `.tickets/<id>/`
+   files is out-of-scope by definition. `t-1781` twice caught a fresh-context evaluator
+   corrupting the real `tools/sprint-headless` script this way (denied touching it when asked;
+   `git diff --stat` proved otherwise) — this check is what catches that automatically instead
+   of by luck. Restore (`git checkout -- <path>`) before proceeding if it fires.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` **or** `bugfix` (anchored to that field, so the word appearing

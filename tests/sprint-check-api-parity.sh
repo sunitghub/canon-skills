@@ -59,24 +59,21 @@ WORK="$(mktemp -d)"
 GO_BIN="$(mktemp -d)/sprint-check-go-bin"
 PY_PID=""
 GO_PID=""
-SPRINT_HEADLESS_BACKUP=""
-SPRINT_HEADLESS_EVAL_BACKUP=""
+# SPRINT_HEADLESS_BIN/SPRINT_HEADLESS_EVAL_BIN point both servers at throwaway
+# temp stubs from the moment they start (t-1781) — the headless-run parity
+# section below only ever rewrites these temp files' *content*, never the
+# real tools/sprint-headless(-eval). Prior approach swapped the real file in
+# place and relied on this trap-bound cleanup to restore it, which can't
+# survive an uncatchable kill (SIGKILL) of this script mid-run — exactly how
+# two evaluator subagent dispatches corrupted the real file (see research.md).
+SPRINT_HEADLESS_BIN="$(mktemp)"
+SPRINT_HEADLESS_EVAL_BIN="$(mktemp)"
+chmod +x "$SPRINT_HEADLESS_BIN" "$SPRINT_HEADLESS_EVAL_BIN"
+export SPRINT_HEADLESS_BIN SPRINT_HEADLESS_EVAL_BIN
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
-  # Restore the real tools/sprint-headless(-eval) if the headless-run parity
-  # section below swapped in stubs — must run even on failure, so this lives in
-  # the trap-bound cleanup, not a linear post-check restore that set -e would skip.
-  if [[ -n "$SPRINT_HEADLESS_BACKUP" ]]; then
-    cp "$SPRINT_HEADLESS_BACKUP" "$ROOT/tools/sprint-headless"
-    chmod +x "$ROOT/tools/sprint-headless"
-    rm -f "$SPRINT_HEADLESS_BACKUP"
-  fi
-  if [[ -n "$SPRINT_HEADLESS_EVAL_BACKUP" ]]; then
-    cp "$SPRINT_HEADLESS_EVAL_BACKUP" "$ROOT/tools/sprint-headless-eval"
-    chmod +x "$ROOT/tools/sprint-headless-eval"
-    rm -f "$SPRINT_HEADLESS_EVAL_BACKUP"
-  fi
+  rm -f "$SPRINT_HEADLESS_BIN" "$SPRINT_HEADLESS_EVAL_BIN"
   rm -rf "$WORK" "$(dirname "$GO_BIN")"
 }
 trap cleanup EXIT
@@ -436,35 +433,30 @@ PY
 reset_visuals
 
 # ── /api/ticket/<id>/headless-run parity (t-200b): trigger + poll shape ─────
-# Both servers reference tools/sprint-headless via a path relative to their
-# own file location (never $PATH) — temporarily swap the real script for a
-# stub so this never makes a real claude -p call. Restored by cleanup()
-# above even on failure, since set -e would skip a linear restore here.
+# Both servers were started with SPRINT_HEADLESS_BIN/SPRINT_HEADLESS_EVAL_BIN
+# already pointed at the temp stubs above — just fill in their content so
+# this never makes a real claude -p call. No real tools/ file is touched.
 
-SPRINT_HEADLESS_BACKUP="$(mktemp)"
-cp "$ROOT/tools/sprint-headless" "$SPRINT_HEADLESS_BACKUP"
-cat > "$ROOT/tools/sprint-headless" <<'EOF'
+cat > "$SPRINT_HEADLESS_BIN" <<'EOF'
 #!/usr/bin/env bash
 sleep 1
 echo "STUB-TOOL: full-pipeline"
 echo "HEADLESS_VERDICT: PASS"
 exit 0
 EOF
-chmod +x "$ROOT/tools/sprint-headless"
+chmod +x "$SPRINT_HEADLESS_BIN"
 
 # Stub sprint-headless-eval too, with a distinct marker, so the gate-mode
 # dispatch selection (t-4e57) can be asserted: a gate:eval ticket must invoke
 # this tool, a full ticket must invoke sprint-headless above.
-SPRINT_HEADLESS_EVAL_BACKUP="$(mktemp)"
-cp "$ROOT/tools/sprint-headless-eval" "$SPRINT_HEADLESS_EVAL_BACKUP"
-cat > "$ROOT/tools/sprint-headless-eval" <<'EOF'
+cat > "$SPRINT_HEADLESS_EVAL_BIN" <<'EOF'
 #!/usr/bin/env bash
 sleep 1
 echo "STUB-TOOL: eval-only"
 echo "HEADLESS_VERDICT: PASS"
 exit 0
 EOF
-chmod +x "$ROOT/tools/sprint-headless-eval"
+chmod +x "$SPRINT_HEADLESS_EVAL_BIN"
 
 py_idle="$(curl -s "http://127.0.0.1:$PY_PORT/api/ticket/t-mock/headless-run")"
 go_idle="$(curl -s "http://127.0.0.1:$GO_PORT/api/ticket/t-mock/headless-run")"
@@ -632,15 +624,6 @@ cmp -s "$WORK/.github/workflows/canon-gate.yml" "$ROOT/tools/canon-gate-template
 [[ "$py_written" == "$go_written" ]] || fail "sprint-check-api-parity: FAIL — server.py and main.go wrote different canon-gate.yml content"
 [[ "$py_written" == "$(cat "$ROOT/tools/canon-gate-template.yml")" ]] || fail "sprint-check-api-parity: FAIL — server.py-written canon-gate.yml differs from the shipped template"
 rm -rf "$WORK/.github"
-
-cp "$SPRINT_HEADLESS_BACKUP" "$ROOT/tools/sprint-headless"
-chmod +x "$ROOT/tools/sprint-headless"
-rm -f "$SPRINT_HEADLESS_BACKUP"
-SPRINT_HEADLESS_BACKUP=""
-cp "$SPRINT_HEADLESS_EVAL_BACKUP" "$ROOT/tools/sprint-headless-eval"
-chmod +x "$ROOT/tools/sprint-headless-eval"
-rm -f "$SPRINT_HEADLESS_EVAL_BACKUP"
-SPRINT_HEADLESS_EVAL_BACKUP=""
 
 # ── /api/ticket-feature parity (t-f89a): same fixture .feature, both servers,
 # identical text; traversal/non-feature/missing rejected identically ──────────

@@ -2249,17 +2249,45 @@ test.describe('board modal', () => {
   });
 
   test.describe('headless grading trigger (t-200b)', () => {
-    // These tests temporarily replace the real tools/sprint-headless with a
-    // stub so no real `claude -p` call is ever made, matching
-    // tests/sprint-check-api-parity.sh's own approach for the same reason.
-    // Restored in a finally block per test — never left swapped even on
-    // failure, since these tests run serially within this single file/worker.
-    const SPRINT_HEADLESS_PATH = path.join(PROJECT_ROOT, 'tools', 'sprint-headless');
+    // These tests need `server.py` to invoke a stub instead of the real
+    // `claude -p`-driving tools/sprint-headless. Point a *dedicated* server
+    // (own process, own SPRINT_HEADLESS_BIN env) at a throwaway temp file
+    // instead of overwriting the real tools/sprint-headless in place — the
+    // prior approach relied on a same-process finally to restore the real
+    // file, which can't survive an uncatchable kill mid-test (t-1781: this
+    // is exactly how two evaluator subagent dispatches corrupted the real
+    // file). Now nothing under tools/ is ever touched by this suite.
+    let headlessServerProcess;
+    let headlessBase;
+    const STUB_PATH = path.join(require('os').tmpdir(), `sprint-headless-stub-${process.pid}.sh`);
+
+    test.beforeAll(async ({ request }) => {
+      fs.writeFileSync(STUB_PATH, '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
+      const port = await new Promise((resolve) => {
+        const srv = net.createServer();
+        srv.listen(0, '127.0.0.1', () => {
+          const p = srv.address().port;
+          srv.close(() => resolve(p));
+        });
+      });
+      headlessServerProcess = spawn('python3', [path.join(PROJECT_ROOT, 'tools', 'sprint-check-app', 'server.py'), String(port)], {
+        cwd: PROJECT_ROOT,
+        env: { ...process.env, SPRINT_HEADLESS_BIN: STUB_PATH },
+        stdio: 'ignore',
+      });
+      headlessBase = `http://127.0.0.1:${port}`;
+      await expect.poll(async () => {
+        try { return (await request.get(`${headlessBase}/api/tickets`)).status(); } catch { return 0; }
+      }, { timeout: 5000 }).toBe(200);
+    });
+
+    test.afterAll(() => {
+      if (headlessServerProcess) headlessServerProcess.kill();
+      fs.rmSync(STUB_PATH, { force: true });
+    });
 
     function installStub(scriptBody) {
-      const backup = fs.readFileSync(SPRINT_HEADLESS_PATH, 'utf8');
-      fs.writeFileSync(SPRINT_HEADLESS_PATH, scriptBody, { mode: 0o755 });
-      return () => fs.writeFileSync(SPRINT_HEADLESS_PATH, backup, { mode: 0o755 });
+      fs.writeFileSync(STUB_PATH, scriptBody, { mode: 0o755 });
     }
 
     function ciTicket(id) {
@@ -2274,11 +2302,11 @@ test.describe('board modal', () => {
     test('trigger, poll, and show a PASS verdict with real output', async ({ page }) => {
       const id = 't-hlp1';
       ciTicket(id);
-      const restore = installStub([
+      installStub([
         '#!/usr/bin/env bash', 'sleep 1', 'echo "stub pass output"', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
       ].join('\n'));
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         await page.locator('#board-search').fill(id);
         await page.waitForTimeout(200);
@@ -2291,7 +2319,6 @@ test.describe('board modal', () => {
         await page.locator('.headless-view-output').click();
         await expect(page.locator('.headless-output')).toContainText('stub pass output');
       } finally {
-        restore();
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
@@ -2299,13 +2326,13 @@ test.describe('board modal', () => {
     test('a claude -p failure surfaces its real error text, not a generic message', async ({ page }) => {
       const id = 't-hlf1';
       ciTicket(id);
-      const restore = installStub([
+      installStub([
         '#!/usr/bin/env bash',
         'echo "Error: claude -p invocation failed (exit 1). Hard-failing." >&2',
         'exit 1', '',
       ].join('\n'));
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         await page.locator('#board-search').fill(id);
         await page.waitForTimeout(200);
@@ -2316,7 +2343,6 @@ test.describe('board modal', () => {
         await page.locator('.headless-view-output').click();
         await expect(page.locator('.headless-output')).toContainText('claude -p invocation failed');
       } finally {
-        restore();
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
@@ -2324,11 +2350,11 @@ test.describe('board modal', () => {
     test('elapsed time increases while a slow run is in progress', async ({ page }) => {
       const id = 't-hle1';
       ciTicket(id);
-      const restore = installStub([
+      installStub([
         '#!/usr/bin/env bash', 'sleep 8', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
       ].join('\n'));
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         await page.locator('#board-search').fill(id);
         await page.waitForTimeout(200);
@@ -2342,7 +2368,6 @@ test.describe('board modal', () => {
         expect(laterText).not.toBe(firstText);
         expect(laterText).toContain('Running');
       } finally {
-        restore();
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
@@ -2350,13 +2375,13 @@ test.describe('board modal', () => {
     test('a second trigger while one is running does not start a second subprocess', async ({ page }) => {
       const id = 't-hld1';
       ciTicket(id);
-      const restore = installStub([
+      installStub([
         '#!/usr/bin/env bash',
         'echo "$$-$(date +%s%N)" >> "' + path.join(PROJECT_ROOT, '.tickets', id, 'run-markers.txt') + '"',
         'sleep 5', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
       ].join('\n'));
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         const first = await page.evaluate(async (ticketId) => {
           const r = await fetch(`/api/ticket/${ticketId}/headless-run`, {
@@ -2381,7 +2406,6 @@ test.describe('board modal', () => {
           : [];
         expect(markers.length).toBe(1);
       } finally {
-        restore();
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
@@ -2389,11 +2413,11 @@ test.describe('board modal', () => {
     test('step flow (t-1262): idle/running/done states, click-to-expand descriptions', async ({ page }) => {
       const id = 't-hls1';
       ciTicket(id);
-      const restore = installStub([
+      installStub([
         '#!/usr/bin/env bash', 'sleep 2', 'echo "stub output"', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
       ].join('\n'));
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         await page.locator('#board-search').fill(id);
         await page.waitForTimeout(200);
@@ -2423,7 +2447,6 @@ test.describe('board modal', () => {
         await expect(steps.nth(2)).toHaveClass(/done/, { timeout: 10000 });
         await expect(steps.nth(1)).toHaveClass(/done/);
       } finally {
-        restore();
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
@@ -2431,11 +2454,11 @@ test.describe('board modal', () => {
     test('step flow shows a fail-colored final step on a FAIL verdict', async ({ page }) => {
       const id = 't-hls2';
       ciTicket(id);
-      const restore = installStub([
+      installStub([
         '#!/usr/bin/env bash', 'echo "stub fail output"', 'echo "HEADLESS_VERDICT: FAIL"', 'exit 1',
       ].join('\n'));
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         await page.locator('#board-search').fill(id);
         await page.waitForTimeout(200);
@@ -2445,7 +2468,6 @@ test.describe('board modal', () => {
         await page.locator('#m-headless-run').click();
         await expect(page.locator('#m-headless .headless-step').nth(2)).toHaveClass(/fail/, { timeout: 10000 });
       } finally {
-        restore();
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
@@ -2454,7 +2476,7 @@ test.describe('board modal', () => {
       const id = 't-hls3';
       ciTicket(id);
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         await page.locator('#board-search').fill(id);
         await page.waitForTimeout(200);
@@ -2473,11 +2495,11 @@ test.describe('board modal', () => {
     test('card-level run button pulses while a run is in progress, and clears after it completes (t-dd51)', async ({ page }) => {
       const id = 't-hlr1';
       ciTicket(id);
-      const restore = installStub([
+      installStub([
         '#!/usr/bin/env bash', 'sleep 12', 'echo "HEADLESS_VERDICT: PASS"', 'exit 0', '',
       ].join('\n'));
       try {
-        await page.goto(BASE);
+        await page.goto(headlessBase);
         await page.waitForLoadState('networkidle');
         await page.evaluate(async (ticketId) => {
           await fetch(`/api/ticket/${ticketId}/headless-run`, {
@@ -2490,7 +2512,6 @@ test.describe('board modal', () => {
         await expect(runBtn).toHaveClass(/running/, { timeout: 20000 });
         await expect(runBtn).not.toHaveClass(/running/, { timeout: 20000 });
       } finally {
-        restore();
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
     });
