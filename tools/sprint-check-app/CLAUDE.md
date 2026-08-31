@@ -22,6 +22,14 @@ Put a badge's initial hidden state in an inline `style="display:none"` HTML attr
 
 Client-side drop gates in `app.html` depend on server-computed fields from `server.py`. When writing acceptance criteria for a gate, name the exact server field — not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is testable; "blocked when acceptance has unchecked items" is ambiguous and can mask a wrong field being used (see t-0b5c).
 
+## Stubbing external binaries in tests
+
+Never swap a real script under `tools/` in place to stub it for a test (a same-process
+`finally`/`trap` restore can't survive an uncatchable kill mid-test — see `t-1781`). Point
+`server.py`/`main.go` at a temp stub via an env-var override instead — `COCKPIT_DAEMON_BIN`,
+`SPRINT_HEADLESS_BIN`, `SPRINT_HEADLESS_EVAL_BIN` are the existing pattern to follow for any
+new one.
+
 ## Architecture
 
 Single-file app (`app.html`) served by a Python stdlib HTTP server (`server.py`). No build step. All JS, CSS, and HTML are inline. Edit `app.html` directly.
