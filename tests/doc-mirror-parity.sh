@@ -175,4 +175,18 @@ for file in "$SPRINT_SKILL" "$COMPLETE" "$HOWITWORKS" "$AGENTS"; do
   grep -qF "$EVALUATOR_FLOOR" "$file" || fail "doc-mirror-parity: $label is missing the gate-floor invariant verbatim (\"$EVALUATOR_FLOOR\") — the demo-mode/evaluator-floor wording has drifted across the workflow docs"
 done
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md)"
+# ── Check J: the destructive-git-command guardrail (t-00e9) is triplicated in
+# shared-gate-protocol.md, eval.md, and review.md — same reasoning as Check F
+# (each gate doc is dispatched to a fresh subagent independently, so the rule
+# must be self-contained in each, not referenced). Live-reproduced trigger: a
+# dispatched evaluator ran `git checkout` on an unrelated file to make its own
+# pre-existing-failure test run green, silently discarding the user's
+# uncommitted work.
+NO_DESTRUCTIVE_GIT='never run git checkout, git reset, or git clean to make an unrelated failure disappear'
+
+for file in "$SHARED" "$EVAL" "$REVIEW"; do
+  label="$(basename "$file")"
+  grep -qF "$NO_DESTRUCTIVE_GIT" "$file" || fail "doc-mirror-parity: $label is missing the destructive-git-command guardrail verbatim (\"$NO_DESTRUCTIVE_GIT\") — the gate-safety wording has diverged across the gate docs"
+done
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md)"

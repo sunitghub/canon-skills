@@ -50,6 +50,18 @@ harness, not something to replicate manually here — run the suite's own comman
 timeout-kill mid-run) and report what it shows; never hand-write a replacement file into `tools/`
 yourself as a substitute.
 
+**Never run `git checkout`, `git reset`, `git clean`, or any other command that discards
+uncommitted changes** — in-scope or out-of-scope, ever (t-00e9, live-reproduced: a dispatched
+evaluator hit a pre-existing, unrelated test failure and "fixed" it by running `git checkout --
+<path>`, silently discarding the user's own uncommitted work just to make its own test run
+green). A pre-existing failure caused by files outside this ticket's own changed-files list is
+out-of-scope — report it as such. The rule: never run git checkout, git reset, or git clean to make an unrelated failure disappear.
+If the full test suite can't run cleanly because of unrelated repo state, prefer running only
+the ticket's own named `## Test Plan` commands instead of the whole suite. (This rule is intentionally
+self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `review.md` are
+dispatched to fresh subagents independently; the invariant phrase is locked across all three by
+`tests/doc-mirror-parity.sh` Check J. Keep it in sync.)
+
 ## Report-writing safety (Windows Git Bash)
 
 One-heredoc reports have failed on live Windows Git-Bash with `unexpected EOF while looking for matching \`''` — prose (contractions, possessives) plus quoted source citations (e.g. JS string literals) can push the total literal `'` count in one heredoc body to odd, which an outer quoting layer mishandles. Root cause not fully traced (live-reproduced only) — treat as defensive mitigation, not proven fix.

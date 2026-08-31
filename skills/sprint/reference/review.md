@@ -22,7 +22,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Inputs` — applies ver
 
 ## Tools
 
-Read `skills/sprint/reference/shared-gate-protocol.md ## Tools` — applies here. Your report file is `review-notes.md`.
+Read `skills/sprint/reference/shared-gate-protocol.md ## Tools` — applies here. Your report file is `review-notes.md`. The rule: never run git checkout, git reset, or git clean to make an unrelated failure disappear — a pre-existing failure outside this ticket's own changed-files list is out-of-scope; report it as such instead (t-00e9).
 
 ## Evidence is not success
 
