@@ -24,14 +24,42 @@ SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 WORK="$(mktemp -d)"
 GO_BIN=""
 PY_PID=""; GO_PID=""; PY_PID2=""; GO_PID2=""
+PY_SD=""; PY_SD2=""; GO_SD=""; GO_SD2=""
+
+# kill_stub_daemon <state-dir> — resolves the stub cockpit-daemon's PID from
+# its own published daemon.json {addr} and kills it directly (t-677f). The
+# daemon is spawned detached by server.py/main.go (start_new_session=True),
+# so this script never gets a `$!` for it, and its real argv is bare
+# `python3 -` (heredoc-fed stdin script) — `pkill -f "$WORK"` can never match
+# that, since the unique tempdir path is only visible to the process via the
+# COCKPIT_STATE_DIR *environment* variable, never argv. Resolving the real
+# listening port and killing that exact PID is also strictly more robust
+# than argv-substring matching would be (immune to a false-positive match on
+# an unrelated process). Gated on daemon.json existing and lsof being
+# available — skip silently otherwise, matching sweep_stale_stub_processes's
+# own "skip on doubt" convention.
+kill_stub_daemon() {
+  local sd="$1" addr port pid
+  [[ -f "$sd/daemon.json" ]] || return 0
+  command -v lsof >/dev/null 2>&1 || return 0
+  addr="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('addr',''))" "$sd/daemon.json" 2>/dev/null)" || return 0
+  port="${addr##*:}"
+  [[ -n "$port" ]] || return 0
+  for pid in $(lsof -ti "tcp:$port" 2>/dev/null || true); do
+    kill "$pid" 2>/dev/null || true
+  done
+}
+
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
   [[ -n "$PY_PID2" ]] && kill "$PY_PID2" 2>/dev/null || true
   [[ -n "$GO_PID2" ]] && kill "$GO_PID2" 2>/dev/null || true
-  # kill any stub daemon http servers this test spawned (detached, so matched by
-  # their unique state-dir path in argv)
-  pkill -f "$WORK" 2>/dev/null || true
+  # kill each stub daemon http server this test spawned, by resolved PID
+  kill_stub_daemon "$PY_SD"
+  kill_stub_daemon "$PY_SD2"
+  kill_stub_daemon "$GO_SD"
+  kill_stub_daemon "$GO_SD2"
   [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
   rm -rf "$WORK"
 }
