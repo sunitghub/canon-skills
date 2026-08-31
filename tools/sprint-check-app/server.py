@@ -759,9 +759,17 @@ def write_visual(ticket_id: str, filename: str, data_b64: str) -> dict:
 # location, never via $PATH — the server process's own location is always
 # known, regardless of the invoking user's shell setup (t-9737/t-d351/t-af61
 # class of PATH-resolution problems doesn't apply here).
+#
+# SPRINT_HEADLESS_BIN/SPRINT_HEADLESS_EVAL_BIN override (tests point at a
+# stub); mirrors COCKPIT_DAEMON_BIN (t-1781) — the real corruption mechanism
+# this override replaces was a test harness overwriting the real on-disk
+# script in place, restored via a same-process finally/trap that can't
+# survive an uncatchable kill mid-test (see research.md).
 
-SPRINT_HEADLESS = Path(__file__).resolve().parent.parent / 'sprint-headless'
-SPRINT_HEADLESS_EVAL = Path(__file__).resolve().parent.parent / 'sprint-headless-eval'
+SPRINT_HEADLESS = Path(os.environ.get('SPRINT_HEADLESS_BIN')
+                        or Path(__file__).resolve().parent.parent / 'sprint-headless')
+SPRINT_HEADLESS_EVAL = Path(os.environ.get('SPRINT_HEADLESS_EVAL_BIN')
+                             or Path(__file__).resolve().parent.parent / 'sprint-headless-eval')
 CANON_GATE_TEMPLATE = Path(__file__).resolve().parent.parent / 'canon-gate-template.yml'
 
 # ── Cockpit daemon integration (t-ddc8) ─────────────────────────────────────

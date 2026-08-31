@@ -41,6 +41,15 @@ You will receive:
 
 Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report — findings go there only.
 
+**Never write into `tools/` outside this ticket's own files** (t-1781, live-reproduced twice: a
+gate dispatch corrupted the real `tools/sprint-headless` script with a test-stub-shaped
+replacement while verifying a headless/CI-grading criterion). If a Test Plan item needs to run a
+test suite that itself swaps a real file in `tools/` for a stub, that is a bug in the test
+harness, not something to replicate manually here — run the suite's own command as written
+(prefer a background/backgrounded invocation over a long foreground one that risks a hard
+timeout-kill mid-run) and report what it shows; never hand-write a replacement file into `tools/`
+yourself as a substitute.
+
 ## Report-writing safety (Windows Git Bash)
 
 One-heredoc reports have failed on live Windows Git-Bash with `unexpected EOF while looking for matching \`''` — prose (contractions, possessives) plus quoted source citations (e.g. JS string literals) can push the total literal `'` count in one heredoc body to odd, which an outer quoting layer mishandles. Root cause not fully traced (live-reproduced only) — treat as defensive mitigation, not proven fix.

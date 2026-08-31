@@ -38,6 +38,7 @@ var (
 	handoffFile      string
 	appHTML          string
 	sprintHeadless   string
+	canonGateTmpl    string
 	cockpitDaemonBin string
 	cockpitSprintBin string
 	headlessRuns     = map[string]map[string]any{}
@@ -79,6 +80,7 @@ func main() {
 	}
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
+	canonGateTmpl = resolveCanonGateTemplate(toolsDir, projectRoot, cwd)
 	cockpitDaemonBin = resolveCockpitDaemon(toolsDir, projectRoot, cwd)
 	// Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test
 	// stub); otherwise empty, so the daemon's own default ("claude", t-842b)
@@ -956,8 +958,7 @@ func writeCIWorkflow() map[string]any {
 	if _, err := os.Stat(dest); err == nil {
 		return map[string]any{"ok": false, "reason": "exists", "path": rel}
 	}
-	tmpl := filepath.Join(filepath.Dir(sprintHeadless), "canon-gate-template.yml")
-	data, err := os.ReadFile(tmpl)
+	data, err := os.ReadFile(canonGateTmpl)
 	if err != nil {
 		return map[string]any{"ok": false, "reason": err.Error(), "path": rel}
 	}
@@ -1424,13 +1425,41 @@ func resolveAppHTML(toolsDir, root string, extraRoots ...string) string {
 	return candidates[0]
 }
 
+// resolveSprintHeadless finds the sprint-headless binary. SPRINT_HEADLESS_BIN
+// overrides (used by tests to point at a stub, t-1781 — replaces a prior
+// pattern of overwriting the real on-disk script in place); default is the
+// real script under toolsDir/root.
 func resolveSprintHeadless(toolsDir, root string, extraRoots ...string) string {
+	if b := os.Getenv("SPRINT_HEADLESS_BIN"); b != "" {
+		return b
+	}
 	candidates := []string{
 		filepath.Join(toolsDir, "sprint-headless"),
 		filepath.Join(root, "tools", "sprint-headless"),
 	}
 	for _, extraRoot := range extraRoots {
 		candidates = append(candidates, filepath.Join(extraRoot, "tools", "sprint-headless"))
+	}
+	for _, candidate := range candidates {
+		if exists(candidate) {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
+// resolveCanonGateTemplate finds canon-gate-template.yml. Deliberately
+// independent of SPRINT_HEADLESS_BIN (t-1781) — that override only redirects
+// which binary gets *executed*, it must not also redirect where this sibling
+// static asset is read from (a stub path outside tools/ has no such file
+// next to it).
+func resolveCanonGateTemplate(toolsDir, root string, extraRoots ...string) string {
+	candidates := []string{
+		filepath.Join(toolsDir, "canon-gate-template.yml"),
+		filepath.Join(root, "tools", "canon-gate-template.yml"),
+	}
+	for _, extraRoot := range extraRoots {
+		candidates = append(candidates, filepath.Join(extraRoot, "tools", "canon-gate-template.yml"))
 	}
 	for _, candidate := range candidates {
 		if exists(candidate) {
@@ -1584,9 +1613,14 @@ func ticketGate(ticketID string) string {
 
 func runHeadless(ticketID, baseRef string) {
 	// Pick the eval-only tool when the ticket's gate is "eval", else the full pipeline.
+	// SPRINT_HEADLESS_EVAL_BIN overrides (t-1781), mirroring SPRINT_HEADLESS_BIN above.
 	tool := sprintHeadless
 	if ticketGate(ticketID) == "eval" {
-		tool = filepath.Join(filepath.Dir(sprintHeadless), "sprint-headless-eval")
+		if b := os.Getenv("SPRINT_HEADLESS_EVAL_BIN"); b != "" {
+			tool = b
+		} else {
+			tool = filepath.Join(filepath.Dir(sprintHeadless), "sprint-headless-eval")
+		}
 	}
 	output, err := exec.Command(tool, ticketID, "--base-ref", baseRef).CombinedOutput()
 	exitCode := 0
