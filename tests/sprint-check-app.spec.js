@@ -3504,6 +3504,45 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
+  test('Save & End resolves immediately if the session already ended while the modal sat open (t-8efc)', async ({ page }) => {
+    const id = `t-lcrace-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      // Never replies to save-and-end (huge delay) — if the click handler
+      // still waits on the iframe instead of re-checking status, this test
+      // would only pass by timing out at endDelayMs, not by resolving fast.
+      // A separate timer simulates the daemon's idle-reap 'exit' landing
+      // (via the real 'status' postMessage channel) while the modal is open
+      // but before Save & End is clicked.
+      const html = `<!doctype html><html><body><script>
+        window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+        setTimeout(function(){
+          window.parent.postMessage({source:'canon-cockpit', type:'status', status:'done'}, '*');
+        }, 150);
+        window.addEventListener('message', function(e){
+          var d = e.data;
+          if(d && d.source === 'canon-cockpit' && d.type === 'save-and-end'){
+            setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, 60000);
+          }
+        });
+      </script></body></html>`;
+      await openResumedCockpit(page, id, html);
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      const modal = page.locator('#ck-leave-confirm');
+      await expect(modal).toHaveClass(/open/);
+      // Let the delayed 'status: done' land while the modal is still open.
+      await page.waitForTimeout(200);
+      await expect(modal).toHaveClass(/open/); // still open — idle-reap doesn't touch the modal itself
+      await page.locator('#ck-leave-save').click();
+      // Resolves right away — no 'Saving state…' wait, no need for the
+      // (never-firing, 60s) fake reply or the 90s production fallback.
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 1000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a forged ended message not actually from the iframe is ignored', async ({ page }) => {
     const id = `t-lcforge-${Date.now()}`;
     try {

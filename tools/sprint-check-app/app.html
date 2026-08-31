@@ -4556,6 +4556,18 @@ document.getElementById('ck-leave-save').addEventListener('click', () => {
   const iframe = document.getElementById('ck-iframe');
   const statusEl = document.getElementById('ck-leave-confirm-status');
   const saveBtn = document.getElementById('ck-leave-save');
+  // t-8efc: the modal's liveness check runs once, at open time. If the
+  // automatic idle-reap ends the session while the modal is still sitting
+  // open, cockpitState.status already advances to non-live (the daemon's
+  // exit event drives this via the existing 'status' postMessage) — but
+  // nothing re-reads it until now. Without this check, save-and-end fires
+  // into an already-dead session and hangs the full 90s fallback for
+  // nothing.
+  if (!sessionIsLive()) {
+    closeLeaveConfirm();
+    teardownCockpit();
+    return;
+  }
   document.getElementById('ck-leave-leave').disabled = true;
   // Cancel must not be clickable mid-save either — closeLeaveConfirm() only
   // hides the modal, it doesn't abort the pending save-and-end sequence, so
