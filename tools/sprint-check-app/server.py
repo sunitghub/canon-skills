@@ -357,12 +357,17 @@ def worktree_unlock(ticket_id: str) -> dict:
     that can't see .tickets/ (t-e5ff). Advisory + reversible: the file
     regenerates on the next start; a running session is unaffected (the cwd was
     read at spawn time). Idempotent: unlocking an already-unlocked ticket is
-    ok:true, unlocked:false."""
+    ok:true, unlocked:false. A real delete failure (permissions, read-only fs)
+    is reported as ok:false rather than left to surface as an uncaught 500
+    (review finding, t-fe3c) — matches main.go's explicit error return."""
     cwd_path = TICKETS_DIR / ticket_id / '.cockpit-cwd'
-    existed = cwd_path.is_file()
-    if existed:
+    if not cwd_path.is_file():
+        return {'ok': True, 'unlocked': False}
+    try:
         cwd_path.unlink()
-    return {'ok': True, 'unlocked': existed}
+    except OSError as e:
+        return {'ok': False, 'error': str(e)}
+    return {'ok': True, 'unlocked': True}
 
 def _worktreeinclude_patterns() -> list[str]:
     p = PROJECT_ROOT / '.worktreeinclude'
