@@ -323,6 +323,20 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "cwd not allowed", http.StatusBadRequest)
 		return
 	}
+	// t-e5ff: a git worktree materializes only *tracked* files, so when
+	// `.tickets/` is gitignored the ticket dir is absent in a non-main worktree
+	// cwd — a sprint spawned there lands somewhere it can't see its own ticket.
+	// For any cwd other than the main checkout, require the ticket dir to be
+	// physically present at that cwd. The main checkout is already validated
+	// against projectRoot above and physically holds `.tickets/` even when it's
+	// gitignored, so it is exempt. The board blocks this in the UI too, but the
+	// daemon never trusts the client (t-b19b/t-cd06).
+	if resolvedRoot, rerr := filepath.EvalSymlinks(s.cfg.projectRoot); rerr != nil || !pathsEqual(cwd, resolvedRoot) {
+		if fi, serr := os.Stat(filepath.Join(cwd, ".tickets", body.Ticket)); serr != nil || !fi.IsDir() {
+			http.Error(w, "ticket not visible in this worktree (.tickets/ is gitignored) — start from the main checkout", http.StatusBadRequest)
+			return
+		}
+	}
 	se, err := s.spawn(body.Ticket, cwd)
 	if err != nil {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)

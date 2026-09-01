@@ -78,6 +78,10 @@ run_checks() {
   main_count="$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); print(sum(1 for e in d if e.get('is_main')))" "$list_json")"
   [[ "$main_count" == "1" ]] || fail "$label: expected exactly one is_main worktree, got: $list_json"
 
+  # t-e5ff: with .tickets/ NOT gitignored (fixture default), every worktree can
+  # see tickets -> tickets_visible is true on every entry.
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert all(e.get('tickets_visible') is True for e in d), d" "$list_json"
+
   # invalid branch name -> 400, no worktree created.
   local bad_code
   bad_code="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/worktrees" \
@@ -180,6 +184,37 @@ d = json.loads(sys.argv[1])
 assert d['locked'] is True and d['cwd'] == '/some/worktree/path', d
 " "$lock_json"
   rm -rf "$WORK/.tickets/t-lok1"
+
+  # t-e5ff: when .tickets/ IS gitignored AND untracked, a git worktree can't
+  # materialize it, so a non-main worktree reports tickets_visible:false while
+  # the main checkout (which physically holds .tickets/) stays true. A *tracked*
+  # .tickets is never ignored (git materializes it in worktrees), so the fixture
+  # must untrack it to reproduce the real case. Save/restore fixture state so the
+  # other backend's run starts identically.
+  local vis_json vis_path
+  vis_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktrees" \
+    -H 'Content-Type: application/json' -d '{"branch":"feat/vis-check"}')"
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['ok'] is True, d" "$vis_json"
+  vis_path="$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['path'])" "$vis_json")"
+  cp "$WORK/.gitignore" "$WORK/.gitignore.e5ffbak"
+  printf '.tickets/\n' >> "$WORK/.gitignore"
+  git -C "$WORK" rm -r --cached --quiet .tickets >/dev/null 2>&1 || true
+  local vis_list
+  vis_list="$(curl -s "http://127.0.0.1:$port/api/worktrees")"
+  python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+main = [e for e in d if e.get('is_main')]
+others = [e for e in d if not e.get('is_main')]
+assert main and main[0].get('tickets_visible') is True, ('main should stay visible', d)
+assert others and all(e.get('tickets_visible') is False for e in others), ('non-main should be invisible when .tickets/ gitignored+untracked', d)
+" "$vis_list"
+  # restore: put .gitignore back first (so .tickets is addable again), re-track it.
+  mv "$WORK/.gitignore.e5ffbak" "$WORK/.gitignore"
+  git -C "$WORK" add .tickets >/dev/null 2>&1 || true
+  git -C "$WORK" worktree remove -f "$vis_path" >/dev/null 2>&1 || true
+  git -C "$WORK" branch -D feat/vis-check >/dev/null 2>&1 || true
+  git -C "$WORK" worktree prune >/dev/null 2>&1 || true
 }
 
 run_checks "$PY_PORT" "server.py"
