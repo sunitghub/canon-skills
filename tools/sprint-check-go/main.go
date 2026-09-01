@@ -1310,7 +1310,14 @@ func worktreeLockStatus(ticketID string) map[string]any {
 // server.py, where unlink()'s exception isn't swallowed either.
 func worktreeUnlock(ticketID string) map[string]any {
 	cwdPath := filepath.Join(ticketsDir, ticketID, ".cockpit-cwd")
-	if _, err := os.Stat(cwdPath); err != nil {
+	// Gate on "regular file", not just "stat succeeds" — matches Python's
+	// is_file() exactly (false for a directory). .cockpit-cwd is only ever
+	// written as a regular file by the daemon, but this closes a residual
+	// cross-backend edge asymmetry the reviewer flagged (t-fe3c): without it,
+	// a directory at this path would silently attempt os.Remove on the Go side
+	// while Python reports unlocked:false without touching it.
+	info, err := os.Stat(cwdPath)
+	if err != nil || info.IsDir() {
 		return map[string]any{"ok": true, "unlocked": false}
 	}
 	if err := os.Remove(cwdPath); err != nil {
