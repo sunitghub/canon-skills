@@ -1255,6 +1255,11 @@ func writeTicketStatus(t *testing.T, root, ticket, status string) {
 func TestResolveClaudeSessionID(t *testing.T) {
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
+	// Hermetic claude store: resume-eligibility now depends on a conversation
+	// file existing under CLAUDE_CONFIG_DIR (t-77d7), so pin it away from the
+	// developer's real ~/.claude.
+	claudeDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeDir)
 	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
 
 	// No ticket.md at all → fresh, and the id gets persisted.
@@ -1278,11 +1283,64 @@ func TestResolveClaudeSessionID(t *testing.T) {
 		t.Fatalf("expected a fresh id on status:open, got resuming=%v id=%q (was %q)", resuming, id2, id1)
 	}
 
-	// status: in_progress with a persisted id → resume that exact id.
+	// status: in_progress with a persisted id BUT no conversation file yet →
+	// ghost id (minted before claude ever wrote a turn). Must NOT resume; must
+	// reuse the same id for a fresh start rather than hand claude a --resume it
+	// will reject (t-77d7).
 	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	idGhost, resuming := s.resolveClaudeSessionID("t-ab12")
+	if resuming {
+		t.Fatalf("expected fresh start for a ghost id (no conversation file), got resuming")
+	}
+	if idGhost != id2 {
+		t.Fatalf("ghost fallback must reuse the persisted id %q, got %q", id2, idGhost)
+	}
+
+	// Now the conversation file exists → resume that exact id.
+	writeClaudeConversation(t, claudeDir, id2)
 	id3, resuming := s.resolveClaudeSessionID("t-ab12")
 	if !resuming || id3 != id2 {
 		t.Fatalf("expected resume of %q, got resuming=%v id=%q", id2, resuming, id3)
+	}
+}
+
+// writeClaudeConversation creates a fake persisted claude conversation for sid
+// under configDir, mirroring claude's real layout
+// (<configDir>/projects/<encoded-cwd>/<sid>.jsonl). The project-dir name is
+// arbitrary: claudeConversationExists globs by session id across all projects,
+// so the encoded cwd doesn't matter to the check.
+func writeClaudeConversation(t *testing.T, configDir, sid string) {
+	t.Helper()
+	dir := filepath.Join(configDir, "projects", "-some-proj")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, sid+".jsonl"), []byte(`{"sessionId":"`+sid+`"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestClaudeConversationExists(t *testing.T) {
+	configDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
+
+	// Empty id is never resumable.
+	if claudeConversationExists("") {
+		t.Fatal("empty sid must not be resumable")
+	}
+	// No file yet.
+	sid := "c9b27a3d-6e6b-442d-a75d-274506f3fd86"
+	if claudeConversationExists(sid) {
+		t.Fatalf("sid %q must not be resumable before its conversation exists", sid)
+	}
+	// After the conversation file lands, it is resumable.
+	writeClaudeConversation(t, configDir, sid)
+	if !claudeConversationExists(sid) {
+		t.Fatalf("sid %q must be resumable once its .jsonl exists", sid)
+	}
+	// A different id is still not resumable — the check is id-specific.
+	if claudeConversationExists("00000000-0000-4000-8000-000000000000") {
+		t.Fatal("an unrelated id must not be reported resumable")
 	}
 }
 
@@ -1307,6 +1365,12 @@ func TestSpawnResumesPersistedSessionOnlyWhenInProgress(t *testing.T) {
 	// Flip to in_progress (as the real sprint skill would) and spawn again —
 	// must resume the SAME id via --resume, never --fork-session.
 	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	// Resume is now gated on a persisted conversation existing (t-77d7); pin a
+	// hermetic claude store and plant the conversation for firstID so the real
+	// resume path is exercised rather than the ghost-id fresh-start fallback.
+	claudeDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeDir)
+	writeClaudeConversation(t, claudeDir, firstID)
 	if err := os.Truncate(argvFile, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -1322,6 +1386,47 @@ func TestSpawnResumesPersistedSessionOnlyWhenInProgress(t *testing.T) {
 	}
 	if strings.Contains(argv2, "--fork-session") {
 		t.Fatalf("resume argv must never include --fork-session: %q", argv2)
+	}
+}
+
+// TestSpawnStartsFreshWhenPersistedSessionHasNoConversation is the t-77d7
+// regression: an in_progress ticket whose persisted id names no resumable
+// conversation (minted before claude ever wrote a turn) must start FRESH via
+// --session-id + the sprint-start prompt, never `--resume <id>` — which claude
+// rejects with "No conversation found with session ID".
+func TestSpawnStartsFreshWhenPersistedSessionHasNoConversation(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root := t.TempDir()
+	// in_progress with a persisted id, but the claude store is empty (hermetic).
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	if err := os.MkdirAll(filepath.Join(root, ".tickets", "t-ab12"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ghostID := "c9b27a3d-6e6b-442d-a75d-274506f3fd86"
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-session-id"), []byte(ghostID+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir()) // empty store → no conversation for ghostID
+
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	argv := waitFile(t, argvFile, 3*time.Second)
+
+	if strings.Contains(argv, "--resume") {
+		t.Fatalf("ghost id must not trigger --resume: %q", argv)
+	}
+	// Fresh start reuses the SAME persisted id (not a newly minted one).
+	usedID := assertFreshSpawnArgv(t, argv, "sprint start t-ab12")
+	if usedID != ghostID {
+		t.Fatalf("fresh fallback must reuse the persisted id %q, got %q", ghostID, usedID)
 	}
 }
 

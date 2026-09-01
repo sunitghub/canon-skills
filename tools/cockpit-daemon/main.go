@@ -1149,18 +1149,52 @@ func (s *server) ticketStatus(ticket string) string {
 // starts clean, so a stale, unrelated conversation is never silently resumed
 // onto later work. The id is persisted to the ticket's own folder (not the
 // daemon's state dir) so it survives a daemon restart.
+//
+// A persisted id is necessary but not sufficient to resume (t-77d7): a fresh
+// spawn mints the id and flips the ticket to in_progress *before* claude
+// writes any conversation, so a session killed before its first turn leaves an
+// id naming a conversation that never existed. `claude --resume <id>` then
+// fails hard ("No conversation found with session ID"). Resume only when a
+// persisted conversation for the id actually exists; otherwise reuse the same
+// id for a fresh --session-id start rather than handing claude a --resume it
+// will reject.
 func (s *server) resolveClaudeSessionID(ticket string) (id string, resuming bool) {
 	idPath := filepath.Join(s.ticketsDir(), ticket, ".cockpit-session-id")
 	if s.ticketStatus(ticket) == "in_progress" {
 		if b, err := os.ReadFile(idPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
-				return existing, true
+				return existing, claudeConversationExists(existing)
 			}
 		}
 	}
 	id = newUUIDv4()
 	_ = os.WriteFile(idPath, []byte(id+"\n"), 0o600)
 	return id, false
+}
+
+// claudeConversationExists reports whether claude holds a persisted, resumable
+// conversation for sid. Claude stores each conversation at
+// <configDir>/projects/<encoded-cwd>/<sid>.jsonl, where the filename is exactly
+// the session id — so a config-dir-wide glob answers "is this resumable?"
+// without reproducing claude's fragile cwd->dir encoding. sid is a
+// daemon-minted UUID v4 (hex + '-' only), so it carries no glob metacharacters.
+// Honors CLAUDE_CONFIG_DIR (claude's own override), defaulting to ~/.claude;
+// any lookup failure is reported as "not resumable" so a missing store can
+// never block a spawn — it only forces a fresh start.
+func claudeConversationExists(sid string) bool {
+	if sid == "" {
+		return false
+	}
+	dir := os.Getenv("CLAUDE_CONFIG_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return false
+		}
+		dir = filepath.Join(home, ".claude")
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, "projects", "*", sid+".jsonl"))
+	return err == nil && len(matches) > 0
 }
 
 // sweepStaleHookDirs removes leftover per-session hook dirs at boot. cleanup()
