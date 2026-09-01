@@ -2934,6 +2934,56 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('a worktree that can\'t see .tickets shows a warning bubble and mounts no terminal, legible in dark and light (t-e5ff)', async ({ page }) => {
+    const id = `t-ckwt-${Date.now()}`;
+    const blockedCwd = '/tmp/wt-e5ff/feat-x';
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      // Stub the worktree list: main visible, the feat worktree not (tickets_visible:false).
+      await page.route('**/api/worktrees', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true },
+          { path: blockedCwd, branch: 'feat/x', is_main: false, tickets_visible: false },
+        ]),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      const startBtn = page.locator(`.card[data-id="${id}"] .card-start`);
+      await expect(startBtn).toHaveText('▶ Start');
+      await startBtn.click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // The WORKTREE accordion is expanded by default; the bubble renders after
+      // /api/worktrees resolves — wait for it. It is present because a
+      // tickets_visible:false worktree exists.
+      const warn = page.locator('.ck-worktree-warn');
+      await expect(warn).toBeVisible();
+      await expect(warn).toContainText('.tickets/ is gitignored');
+
+      // Selecting the blocked worktree must NOT mount the terminal iframe (so no
+      // Start-sprint button is ever presented for it).
+      await page.locator(`.ck-worktree-row[data-cwd="${blockedCwd}"]`).click();
+      await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
+      await expect(page.locator('#ck-term-msg')).toContainText('gitignored');
+
+      // Legible in both themes: distinct, non-transparent tinted background.
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      const darkBg = await warn.evaluate(el => getComputedStyle(el).backgroundColor);
+      await page.screenshot({ path: '/tmp/e5ff-dark.png' });
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      const lightBg = await warn.evaluate(el => getComputedStyle(el).backgroundColor);
+      await page.screenshot({ path: '/tmp/e5ff-light.png' });
+      expect(lightBg).toBe('rgb(254, 226, 226)'); // #fee2e2, the light-mode block tint
+      expect(darkBg).not.toBe(lightBg);
+      expect(darkBg).not.toBe('rgba(0, 0, 0, 0)'); // not transparent in dark
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('card affordance is status-gated: Start on open, Resume on in-progress, none on closed', async ({ page }) => {
     const stamp = Date.now();
     const openId = `t-ckopen-${stamp}`;

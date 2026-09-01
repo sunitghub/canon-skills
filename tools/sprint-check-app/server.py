@@ -325,6 +325,15 @@ def list_worktrees() -> list[dict]:
             e['is_main'] = str(Path(e['path']).resolve()) == main_root
         except Exception:
             e['is_main'] = False
+    # t-e5ff: a git worktree materializes only tracked files, so when `.tickets/`
+    # is gitignored a non-main worktree can't see any ticket dir — a sprint
+    # started there can't find its own ticket. `git check-ignore .tickets` prints
+    # the path (exit 0) when ignored, empty (exit 1, run() -> '') otherwise; a
+    # non-git dir also yields '' -> treated as visible so the common
+    # single-checkout case is never blocked.
+    tickets_ignored = bool(run(['git', 'check-ignore', '.tickets'], PROJECT_ROOT))
+    for e in entries:
+        e['tickets_visible'] = bool(e.get('is_main')) or not tickets_ignored
     return entries
 
 def worktree_lock_status(ticket_id: str) -> dict:

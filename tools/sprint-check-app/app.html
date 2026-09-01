@@ -1530,6 +1530,21 @@
     }
     .ck-worktree-new input:focus { outline: none; border-color: var(--accent); }
 
+    /* t-e5ff: persistent danger bubble shown below the worktree rows when a
+       listed worktree can't see .tickets/ (gitignored). Mirrors the
+       #drop-toast.block palette so dark/light both stay legible. */
+    .ck-worktree-warn {
+      margin: 8px 0 0 0; padding: 8px 10px; border-radius: 8px;
+      font-size: 11px; line-height: 1.45;
+      border: 1px solid rgba(248,113,113,.35); color: var(--col-discarded);
+      background: rgba(248,113,113,.07);
+    }
+    .ck-worktree-warn strong { font-weight: 700; }
+    .ck-worktree-warn code { font-family: var(--mono, monospace); font-size: 10px; }
+    html[data-theme="light"] .ck-worktree-warn {
+      border-color: #dc2626; color: #7f1d1d; background: #fee2e2;
+    }
+
     /* Accordion sections (t-96a8): Acceptance + Test Plan, each its own
        polished card (subtle inset highlight + drop shadow, --card-shadow),
        independently collapsible — both start collapsed; toggling one never
@@ -4797,6 +4812,16 @@ async function renderCockpitWorktree(t) {
   const mainEntry = entries.find(e => e.is_main);
   const others = entries.filter(e => !e.is_main);
 
+  // t-e5ff: track which worktree cwds can actually see the ticket. The daemon
+  // reports tickets_visible=false for a non-main worktree when .tickets/ is
+  // gitignored (git only materializes tracked files there). Default to visible
+  // when the field is absent (older daemon) so we never over-block. The main
+  // checkout uses cwd '' in this rail and is always visible.
+  cockpitState.worktreeVisibleByCwd = {};
+  cockpitState.worktreeVisibleByCwd[''] = !mainEntry || mainEntry.tickets_visible !== false;
+  for (const e of others) cockpitState.worktreeVisibleByCwd[e.path] = e.tickets_visible !== false;
+  const anyBlocked = others.some(e => e.tickets_visible === false);
+
   // t-cd06: an already-locked in_progress ticket's real worktree must show
   // as selected here — the daemon uses the locked cwd regardless of what's
   // displayed, so defaulting the picker to Main checkout on every reopen was
@@ -4817,6 +4842,11 @@ async function renderCockpitWorktree(t) {
     <button type="button" class="ck-worktree-new-plus" title="Enter a branch name, then click to create the worktree">+ New</button>
     <input id="ck-worktree-new-input" placeholder="sprint/${esc(t.id)}" spellcheck="false" autocomplete="off">
   </div>`;
+  if (anyBlocked) {
+    html += `<div class="ck-worktree-warn" role="alert">
+      <strong>.tickets/ is gitignored</strong> — a git worktree only carries tracked files, so a worktree can't see this ticket and a sprint started there can't find it. Use the <strong>Main checkout</strong>, or track <code>.tickets/</code> in git.
+    </div>`;
+  }
   box.innerHTML = html;
   updateWorktreeNote();
 
@@ -4957,6 +4987,16 @@ async function maybeMountCockpitTerminal(t) {
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
     msg.textContent = 'Select a worktree above to continue — Start sprint is disabled until a row is selected.';
+    return;
+  }
+  // t-e5ff: a worktree that can't see .tickets/<id> can't run the sprint. Don't
+  // mount the terminal (the daemon's Start control lives there — no iframe means
+  // no Start button), and explain why. The daemon also refuses this cwd, but
+  // this keeps the user from ever reaching a dead session.
+  const visByCwd = cockpitState.worktreeVisibleByCwd || {};
+  if (visByCwd[cockpitState.worktreeCwd] === false) {
+    iframe.style.visibility = 'hidden';
+    msg.textContent = ".tickets/ is gitignored, so this worktree can't see the ticket — Start sprint is disabled here. Use the Main checkout, or track .tickets/ in git.";
     return;
   }
   await mountCockpitTerminal(t, cockpitState.worktreeCwd);

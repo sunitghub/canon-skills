@@ -1913,6 +1913,7 @@ func TestSpawnCwdAcceptsRealWorktree(t *testing.T) {
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
 	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12") // t-e5ff: the worktree must physically hold the ticket dir to be startable
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
@@ -1962,6 +1963,7 @@ func TestTicketsDirUnaffectedByWorktreeCwd(t *testing.T) {
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
 	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12") // t-e5ff: the worktree must physically hold the ticket dir to be startable
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 
 	if got := s.ticketsDir(); filepath.Clean(got) != filepath.Join(root, ".tickets") {
@@ -1989,6 +1991,7 @@ func TestSpawnLogsWorktreeDecision(t *testing.T) {
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
 	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12") // t-e5ff: the worktree must physically hold the ticket dir to be startable
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
@@ -2007,6 +2010,43 @@ func TestSpawnLogsWorktreeDecision(t *testing.T) {
 	}
 	if n := strings.Count(got, "\n"); n != 1 {
 		t.Fatalf("Decisions.md has %d lines, want exactly 1", n)
+	}
+}
+
+// t-e5ff: a git worktree only materializes tracked files, so when .tickets/ is
+// gitignored the ticket dir is absent in the worktree cwd. handleStart must
+// refuse (400) and spawn nothing there, rather than launch an agent that can't
+// see its own ticket — while the SAME ticket still starts from the main
+// checkout, which physically holds .tickets/ even when it is gitignored.
+func TestStartRejectsWorktreeMissingTicketDir(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")  // ticket exists in the MAIN checkout only
+	wt := gitWorktreeFixture(t, root) // worktree deliberately does NOT get .tickets/t-ab12
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusBadRequest {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("worktree missing ticket dir: want 400, got %d: %s", resp.StatusCode, body)
+	}
+	resp.Body.Close()
+	if _, err := os.Stat(cwdFile); err == nil {
+		t.Fatal("a refused worktree spawn still ran a process (cwd file exists)")
+	}
+
+	// Control: the same ticket from the main checkout (empty cwd) still spawns.
+	resp2 := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp2.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp2.Body)
+		t.Fatalf("main checkout control: want 200, got %d: %s", resp2.StatusCode, body)
+	}
+	resp2.Body.Close()
+	if got := strings.TrimSpace(waitFile(t, cwdFile, 2*time.Second)); got == "" {
+		t.Fatal("main-checkout spawn did not run")
 	}
 }
 
@@ -2086,6 +2126,7 @@ func TestIdleReapUsesShorterTimeoutForWorktreeThanMainCheckout(t *testing.T) {
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
 	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12") // t-e5ff: the worktree must physically hold the ticket dir to be startable
 	s := newServer(config{
 		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
 		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 5 * time.Second, idleCheckInterval: 20 * time.Millisecond,
@@ -2142,6 +2183,7 @@ func TestSpawnResumeReusesPersistedCwd(t *testing.T) {
 	root := t.TempDir()
 	writeTicketStatus(t, root, "t-ab12", "open")
 	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12") // t-e5ff: the worktree must physically hold the ticket dir to be startable
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)

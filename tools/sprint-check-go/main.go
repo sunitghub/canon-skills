@@ -1258,6 +1258,16 @@ func listWorktrees() []map[string]any {
 		resolved, err := filepath.EvalSymlinks(fmt.Sprint(e["path"]))
 		e["is_main"] = err == nil && resolved == mainRoot
 	}
+	// t-e5ff: parity with server.py — a git worktree materializes only tracked
+	// files, so when `.tickets/` is gitignored a non-main worktree can't see any
+	// ticket dir. `git check-ignore .tickets` prints the path when ignored, empty
+	// otherwise (runGit ignores exit status); a non-git dir yields empty ->
+	// treated as visible so the common single-checkout case is never blocked.
+	ticketsIgnored := runGit("check-ignore", ".tickets") != ""
+	for _, e := range entries {
+		isMain, _ := e["is_main"].(bool)
+		e["tickets_visible"] = isMain || !ticketsIgnored
+	}
 	if entries == nil {
 		entries = []map[string]any{}
 	}
