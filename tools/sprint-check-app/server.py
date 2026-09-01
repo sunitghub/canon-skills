@@ -349,6 +349,21 @@ def worktree_lock_status(ticket_id: str) -> dict:
     dirty = bool(run(['git', 'status', '--porcelain'], PROJECT_ROOT).strip())
     return {'locked': cwd is not None, 'cwd': cwd, 'main_dirty': dirty}
 
+def worktree_unlock(ticket_id: str) -> dict:
+    """Clear a ticket's .cockpit-cwd lock (t-fe3c). The daemon reuses that
+    persisted cwd for every start of an in_progress ticket and ignores the
+    client's request, so deleting it is the only way to redirect a ticket to a
+    different worktree (or the main checkout) — e.g. one locked to a worktree
+    that can't see .tickets/ (t-e5ff). Advisory + reversible: the file
+    regenerates on the next start; a running session is unaffected (the cwd was
+    read at spawn time). Idempotent: unlocking an already-unlocked ticket is
+    ok:true, unlocked:false."""
+    cwd_path = TICKETS_DIR / ticket_id / '.cockpit-cwd'
+    existed = cwd_path.is_file()
+    if existed:
+        cwd_path.unlink()
+    return {'ok': True, 'unlocked': existed}
+
 def _worktreeinclude_patterns() -> list[str]:
     p = PROJECT_ROOT / '.worktreeinclude'
     if not p.is_file():
@@ -1118,6 +1133,13 @@ class Handler(BaseHTTPRequestHandler):
             if not _valid_branch_name(branch):
                 self.send_error(400); return
             self.send_json(create_worktree(branch)); return
+
+        m = re.match(r'^/api/worktree-unlock/([^/]+)$', path)
+        if m:
+            tid = m.group(1)
+            if not re.match(r'^t-[a-z0-9]{4}$', tid):
+                self.send_error(400); return
+            self.send_json(worktree_unlock(tid)); return
 
         if path == '/api/tickets':
             t = create_ticket(

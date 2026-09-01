@@ -183,6 +183,24 @@ import json, sys
 d = json.loads(sys.argv[1])
 assert d['locked'] is True and d['cwd'] == '/some/worktree/path', d
 " "$lock_json"
+
+  # t-fe3c: POST /api/worktree-unlock/<id> clears the lock (deletes .cockpit-cwd),
+  # is idempotent, and 400s a malformed id — identically on both backends.
+  # (do_POST/handlePost require a JSON body on every POST, so send {}.)
+  local unlock_json
+  unlock_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktree-unlock/t-lok1" -H 'Content-Type: application/json' -d '{}')"
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d=={'ok':True,'unlocked':True}, d" "$unlock_json"
+  [[ ! -f "$WORK/.tickets/t-lok1/.cockpit-cwd" ]] || fail "$label: unlock did not delete .cockpit-cwd"
+  lock_json="$(curl -s "http://127.0.0.1:$port/api/worktree-lock/t-lok1")"
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['locked'] is False and d['cwd'] is None, d" "$lock_json"
+  # idempotent: unlocking again is ok:true, unlocked:false (not an error).
+  unlock_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktree-unlock/t-lok1" -H 'Content-Type: application/json' -d '{}')"
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d=={'ok':True,'unlocked':False}, d" "$unlock_json"
+  # malformed ticket id -> 400, no filesystem touch (valid body, so the 400 is from id-validation).
+  local unlock_bad
+  unlock_bad="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/worktree-unlock/not-an-id" -H 'Content-Type: application/json' -d '{}')"
+  [[ "$unlock_bad" == "400" ]] || fail "$label: unlock with malformed id must 400, got $unlock_bad"
+
   rm -rf "$WORK/.tickets/t-lok1"
 
   # t-e5ff: when .tickets/ IS gitignored AND untracked, a git worktree can't

@@ -1545,6 +1545,18 @@
       border-color: #dc2626; color: #7f1d1d; background: #fee2e2;
     }
 
+    /* t-fe3c: Unlock button in the worktree rail — reuses theme tokens so it
+       stays legible in both dark and light, matching the rail's other buttons. */
+    .ck-worktree-unlock {
+      margin: 8px 0 0 0; width: 100%;
+      color: var(--text-body); font-size: 12px; font-weight: 600; cursor: pointer;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px;
+    }
+    .ck-worktree-unlock:hover {
+      color: var(--accent); border-color: var(--accent); background: var(--accent-dim);
+    }
+
     /* Accordion sections (t-96a8): Acceptance + Test Plan, each its own
        polished card (subtle inset highlight + drop shadow, --card-shadow),
        independently collapsible — both start collapsed; toggling one never
@@ -4826,8 +4838,9 @@ async function renderCockpitWorktree(t) {
   // as selected here — the daemon uses the locked cwd regardless of what's
   // displayed, so defaulting the picker to Main checkout on every reopen was
   // actively misleading about which directory the session actually runs in.
+  let lock = { locked: false, cwd: null };
   if (t.status === 'in_progress') {
-    const lock = await fetchWorktreeLock(t.id);
+    lock = await fetchWorktreeLock(t.id);
     if (lock.locked && lock.cwd) {
       cockpitState.worktreeCwd = (mainEntry && lock.cwd === mainEntry.path) ? '' : lock.cwd;
     }
@@ -4847,12 +4860,40 @@ async function renderCockpitWorktree(t) {
       <strong>.tickets/ is gitignored</strong> — a git worktree only carries tracked files, so a worktree can't see this ticket and a sprint started there can't find it. Use the <strong>Main checkout</strong>, or track <code>.tickets/</code> in git.
     </div>`;
   }
+  // t-fe3c: when the ticket is locked to a worktree, offer to clear that lock so
+  // the next Start/Resume uses the picked worktree (the daemon otherwise reuses
+  // the saved cwd and ignores the picker). Confirmed with an explanation on click.
+  if (lock.locked) {
+    html += `<button type="button" class="ck-worktree-unlock" id="ck-worktree-unlock" title="Clear this ticket's saved worktree so the next Start/Resume uses the worktree you pick">Unlock worktree</button>`;
+  }
   box.innerHTML = html;
   updateWorktreeNote();
 
   box.querySelectorAll('.ck-worktree-row').forEach(row => {
     row.addEventListener('click', () => selectCockpitWorktree(t, row.dataset.cwd));
   });
+  const unlockBtn = document.getElementById('ck-worktree-unlock');
+  if (unlockBtn) {
+    unlockBtn.addEventListener('click', async () => {
+      const lockedPath = lock.cwd || 'a worktree';
+      const msg = `This ticket is locked to:\n\n  ${lockedPath}\n\n`
+        + `The cockpit reuses that directory for every Resume and ignores the worktree selected here. `
+        + `Unlocking clears the saved worktree so the next Start/Resume uses the one you pick (e.g. the Main checkout). `
+        + `A currently-running session keeps its directory until the next start.\n\n`
+        + `Unlock this ticket's worktree?`;
+      if (!confirm(msg)) return;
+      try {
+        const r = await fetch(`/api/worktree-unlock/${encodeURIComponent(t.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) { alert('Could not unlock: ' + (d && d.error ? d.error : `HTTP ${r.status}`)); return; }
+      } catch (err) { alert('Could not unlock: ' + err); return; }
+      // Lock cleared → drop the stale pre-selection, re-render (picker + t-e5ff
+      // bubble re-evaluate), and refresh the terminal panel to the new state.
+      cockpitState.worktreeCwd = null;
+      await renderCockpitWorktree(t);
+      maybeMountCockpitTerminal(t);
+    });
+  }
   const input = document.getElementById('ck-worktree-new-input');
   const btn = box.querySelector('.ck-worktree-new-plus');
   // Branch names already visible as a row — block resubmitting one of these
