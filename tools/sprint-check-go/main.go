@@ -1304,15 +1304,19 @@ func worktreeLockStatus(ticketID string) map[string]any {
 // start of an in_progress ticket and ignores the client's request, so deleting
 // it is the only way to redirect a ticket to a different worktree (or the main
 // checkout) — e.g. one locked to a worktree that can't see .tickets/ (t-e5ff).
-// Advisory + reversible; a running session is unaffected. Idempotent.
+// Advisory + reversible; a running session is unaffected. Idempotent. A real
+// delete failure (permissions, read-only fs) is reported as ok:false rather
+// than silently claimed as success (review finding, t-fe3c) — matches
+// server.py, where unlink()'s exception isn't swallowed either.
 func worktreeUnlock(ticketID string) map[string]any {
 	cwdPath := filepath.Join(ticketsDir, ticketID, ".cockpit-cwd")
-	existed := false
-	if _, err := os.Stat(cwdPath); err == nil {
-		existed = true
-		_ = os.Remove(cwdPath)
+	if _, err := os.Stat(cwdPath); err != nil {
+		return map[string]any{"ok": true, "unlocked": false}
 	}
-	return map[string]any{"ok": true, "unlocked": existed}
+	if err := os.Remove(cwdPath); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true, "unlocked": true}
 }
 
 // createWorktree assumes branch already passed validBranchName (checked by
