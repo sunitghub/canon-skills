@@ -2984,6 +2984,62 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('a locked ticket shows an Unlock button; cancel keeps the lock, confirm clears it and re-renders (t-fe3c)', async ({ page }) => {
+    const id = `t-ckul-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      let unlocked = false;
+      let unlockPosts = 0;
+      await page.route('**/api/worktrees', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(unlocked
+          ? { locked: false, cwd: null, main_dirty: false }
+          : { locked: true, cwd: '/tmp/wt-fe3c/feat-x', main_dirty: false }),
+      }));
+      await page.route('**/api/worktree-unlock/**', route => {
+        unlockPosts++; unlocked = true;
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, unlocked: true }) });
+      });
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // Locked ticket → Unlock button present.
+      const unlockBtn = page.locator('#ck-worktree-unlock');
+      await expect(unlockBtn).toBeVisible();
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      await page.screenshot({ path: '/tmp/fe3c-dark.png' });
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      await page.screenshot({ path: '/tmp/fe3c-light.png' });
+
+      // Cancel the confirm → no request, button stays, lock intact.
+      page.once('dialog', d => d.dismiss());
+      await unlockBtn.click();
+      expect(unlockPosts).toBe(0);
+      await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
+
+      // Confirm → the dialog explains (names the locked dir), posts unlock, and
+      // the re-render (lock now false) removes the button.
+      page.once('dialog', d => { expect(d.message()).toContain('locked to'); d.accept(); });
+      await page.locator('#ck-worktree-unlock').click();
+      await expect(page.locator('#ck-worktree-unlock')).toHaveCount(0);
+      expect(unlockPosts).toBe(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('card affordance is status-gated: Start on open, Resume on in-progress, none on closed', async ({ page }) => {
     const stamp = Date.now();
     const openId = `t-ckopen-${stamp}`;

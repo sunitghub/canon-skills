@@ -286,6 +286,14 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, createWorktree(branch))
 		return
 	}
+	if m := regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`).FindStringSubmatch(path); m != nil {
+		if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(m[1]) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, worktreeUnlock(m[1]))
+		return
+	}
 	if path == "/api/tickets" {
 		sendJSON(w, createTicket(
 			stringValue(payload, "title", "Untitled"),
@@ -1289,6 +1297,22 @@ func worktreeLockStatus(ticketID string) map[string]any {
 	}
 	dirty := strings.TrimSpace(runGit("status", "--porcelain")) != ""
 	return map[string]any{"locked": cwd != nil, "cwd": cwd, "main_dirty": dirty}
+}
+
+// worktreeUnlock clears a ticket's .cockpit-cwd lock (t-fe3c) — parity with
+// server.py's worktree_unlock. The daemon reuses that persisted cwd for every
+// start of an in_progress ticket and ignores the client's request, so deleting
+// it is the only way to redirect a ticket to a different worktree (or the main
+// checkout) — e.g. one locked to a worktree that can't see .tickets/ (t-e5ff).
+// Advisory + reversible; a running session is unaffected. Idempotent.
+func worktreeUnlock(ticketID string) map[string]any {
+	cwdPath := filepath.Join(ticketsDir, ticketID, ".cockpit-cwd")
+	existed := false
+	if _, err := os.Stat(cwdPath); err == nil {
+		existed = true
+		_ = os.Remove(cwdPath)
+	}
+	return map[string]any{"ok": true, "unlocked": existed}
 }
 
 // createWorktree assumes branch already passed validBranchName (checked by
