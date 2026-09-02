@@ -670,4 +670,37 @@ if "Scenario: parity" not in d.get("content", ""):
 PY
 rm -rf "$WORK/.tickets/t-mock/features"
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"
+# ── /api/worktrees ticket_present parity (t-2a1c): ticket-scoped physical
+# presence of .tickets/<id> per worktree, mirroring the daemon's handleStart
+# stat. Create a real sibling worktree — a checkout of HEAD, whose commits are
+# empty so nothing under .tickets/ is materialized — so the non-main entry is
+# ticket_present:false while the main checkout (which physically holds
+# .tickets/t-mock on disk, untracked) is exempt → true. Without ?ticket the
+# field must be absent (backward-compatible), identically in both backends.
+WT_PARENT="$(mktemp -d)"
+WT="$WT_PARENT/parity-wt"
+git -C "$WORK" worktree add -q "$WT" -b parity-wt
+py_wt="$(curl -s "http://127.0.0.1:$PY_PORT/api/worktrees?ticket=t-mock")"
+go_wt="$(curl -s "http://127.0.0.1:$GO_PORT/api/worktrees?ticket=t-mock")"
+py_wt_noticket="$(curl -s "http://127.0.0.1:$PY_PORT/api/worktrees")"
+go_wt_noticket="$(curl -s "http://127.0.0.1:$GO_PORT/api/worktrees")"
+python3 - "$py_wt" "$go_wt" "$py_wt_noticket" "$go_wt_noticket" <<'PY'
+import json, sys
+py, go, py_no, go_no = (json.loads(a) for a in sys.argv[1:5])
+if py != go:
+    print(f"sprint-check-api-parity: FAIL — /api/worktrees?ticket payload mismatch\n  py={py}\n  go={go}"); sys.exit(1)
+main = [e for e in py if e.get("is_main")]
+other = [e for e in py if not e.get("is_main")]
+if not main or main[0].get("ticket_present") is not True:
+    print(f"sprint-check-api-parity: FAIL — main checkout should report ticket_present=true: {main}"); sys.exit(1)
+if not other or any(e.get("ticket_present") is not False for e in other):
+    print(f"sprint-check-api-parity: FAIL — sibling worktree (no committed .tickets/) should report ticket_present=false: {other}"); sys.exit(1)
+if py_no != go_no:
+    print(f"sprint-check-api-parity: FAIL — /api/worktrees (no ticket) payload mismatch\n  py={py_no}\n  go={go_no}"); sys.exit(1)
+if any("ticket_present" in e for e in py_no):
+    print(f"sprint-check-api-parity: FAIL — ticket_present must be absent when no ticket is passed: {py_no}"); sys.exit(1)
+PY
+git -C "$WORK" worktree remove --force "$WT" 2>/dev/null || true
+rm -rf "$WT_PARENT"
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"

@@ -2941,7 +2941,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
       // Stub the worktree list: main visible, the feat worktree not (tickets_visible:false).
-      await page.route('**/api/worktrees', route => route.fulfill({
+      await page.route('**/api/worktrees**', route => route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify([
           { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true },
@@ -2994,7 +2994,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubCockpit(page);
       let unlocked = false;
       let unlockPosts = 0;
-      await page.route('**/api/worktrees', route => route.fulfill({
+      await page.route('**/api/worktrees**', route => route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true }]),
       }));
@@ -3035,6 +3035,67 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#ck-worktree-unlock').click();
       await expect(page.locator('#ck-worktree-unlock')).toHaveCount(0);
       expect(unlockPosts).toBe(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a ticket locked to a worktree that lacks it mounts no terminal even with Main selected; unlock + pick Main mounts it (t-2a1c)', async ({ page }) => {
+    const id = `t-ckep-${Date.now()}`;
+    // The user's exact scenario: .tickets/ un-ignored but uncommitted, so the
+    // worktree is check-ignore "visible" (tickets_visible:true) yet physically
+    // lacks .tickets/<id> (ticket_present:false); the ticket is locked to it.
+    const lockedCwd = '/tmp/wt-2a1c/test-1';
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      let unlocked = false;
+      // Ticket-scoped worktree list: main present, the locked worktree NOT
+      // present (but check-ignore visible — the divergence this ticket fixes).
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: lockedCwd, branch: 'test-1', is_main: false, tickets_visible: true, ticket_present: false },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(unlocked
+          ? { locked: false, cwd: null, main_dirty: false }
+          : { locked: true, cwd: lockedCwd, main_dirty: false }),
+      }));
+      await page.route('**/api/worktree-unlock/**', route => {
+        unlocked = true;
+        route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, unlocked: true }) });
+      });
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // Locked to a worktree that can't see the ticket → no terminal mounts
+      // (so no Start button), with a lock-aware, actionable message — even
+      // though check-ignore would call the worktree "visible".
+      await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
+      await expect(page.locator('#ck-term-msg')).toContainText("locked to a worktree that doesn't contain it");
+      await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
+
+      // Unlock → re-render clears the lock; nothing is selected yet.
+      page.once('dialog', d => d.accept());
+      await page.locator('#ck-worktree-unlock').click();
+      await expect(page.locator('#ck-worktree-unlock')).toHaveCount(0);
+      await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
+
+      // Pick the Main checkout (row cwd="") → effective cwd is present → mounts.
+      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      await expect(page.locator('#ck-iframe')).toHaveAttribute('src', /\/cockpit\?ticket=.*embed=1/);
+      await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'visible');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }

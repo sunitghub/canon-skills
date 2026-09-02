@@ -171,7 +171,11 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
 	case "/api/worktrees":
-		sendJSON(w, listWorktrees())
+		wtTicket := r.URL.Query().Get("ticket")
+		if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(wtTicket) {
+			wtTicket = ""
+		}
+		sendJSON(w, listWorktrees(wtTicket))
 	default:
 		if regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`).MatchString(path) {
 			serveFile(w, filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(path, "/"))), mime.TypeByExtension(filepath.Ext(path)))
@@ -1234,7 +1238,7 @@ func validBranchName(name string) bool {
 	return name != "" && baseRefRe.MatchString(name) && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..")
 }
 
-func listWorktrees() []map[string]any {
+func listWorktrees(ticketID string) []map[string]any {
 	raw := runGit("worktree", "list", "--porcelain")
 	var entries []map[string]any
 	var cur map[string]any
@@ -1275,6 +1279,21 @@ func listWorktrees() []map[string]any {
 	for _, e := range entries {
 		isMain, _ := e["is_main"].(bool)
 		e["tickets_visible"] = isMain || !ticketsIgnored
+	}
+	// t-2a1c: parity with server.py — ticket-scoped physical presence mirroring
+	// the daemon's handleStart guard (stat <cwd>/.tickets/<id>, must be a dir),
+	// so the board gates Start on the EFFECTIVE run cwd, not just check-ignore.
+	// Only computed when a ticket id is given; the main checkout is exempt (it
+	// physically holds .tickets/ even when gitignored). Field absent otherwise.
+	if ticketID != "" {
+		for _, e := range entries {
+			if isMain, _ := e["is_main"].(bool); isMain {
+				e["ticket_present"] = true
+				continue
+			}
+			fi, err := os.Stat(filepath.Join(fmt.Sprint(e["path"]), ".tickets", ticketID))
+			e["ticket_present"] = err == nil && fi.IsDir()
+		}
 	}
 	if entries == nil {
 		entries = []map[string]any{}
