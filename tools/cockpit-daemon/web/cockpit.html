@@ -184,7 +184,18 @@
     setStatus("running","starting…");
     try{
       var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket, cwd:PREFILL_CWD}) });
-      if(!r.ok){ setStatus("error","start failed ("+r.status+")"); term.writeln("\r\n\x1b[31mstart failed: "+r.status+"\x1b[0m"); return; }
+      if(!r.ok){
+        // t-2a1c: surface the daemon's own message (e.g. "ticket not visible in
+        // this worktree") instead of a bare status code, and point at the fix.
+        var detail = "";
+        try { detail = (await r.text()).trim(); } catch(e){}
+        setStatus("error","start failed ("+r.status+")");
+        term.writeln("\r\n\x1b[31mstart failed ("+r.status+")"+(detail ? ": "+detail : "")+"\x1b[0m");
+        if(r.status===400 && /not visible in this worktree/i.test(detail)){
+          term.writeln("\x1b[33mThis ticket is locked to a worktree that doesn't contain it. In the board's WORKTREE panel, click \u201CUnlock worktree\u201D to run in the Main checkout, or commit .tickets/ into that worktree.\x1b[0m");
+        }
+        return;
+      }
       var j = await r.json();
       session = j.session; sessTok = j.token; previewTok = j.previewToken; activeTicket = ticket;
       // A second Start while this one is live would spawn a parallel session

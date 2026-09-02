@@ -294,7 +294,7 @@ def _valid_branch_name(name: str) -> bool:
     # joined into the sibling directory path).
     return bool(name) and bool(_BASE_REF_RE.match(name)) and not name.startswith('-') and '..' not in name
 
-def list_worktrees() -> list[dict]:
+def list_worktrees(ticket_id: str = '') -> list[dict]:
     """Parse `git worktree list --porcelain` — the single source of truth for
     the cockpit sidebar's WORKTREE section (t-cd06's resolved design): no
     cockpit-owned registry, so a worktree created outside cockpit still shows
@@ -334,6 +334,22 @@ def list_worktrees() -> list[dict]:
     tickets_ignored = bool(run(['git', 'check-ignore', '.tickets'], PROJECT_ROOT))
     for e in entries:
         e['tickets_visible'] = bool(e.get('is_main')) or not tickets_ignored
+    # t-2a1c: ticket-scoped physical presence, mirroring the daemon's own
+    # handleStart guard (`stat <cwd>/.tickets/<id>`, must be a dir) so the
+    # board can gate the Start button on the EFFECTIVE run cwd, not just the
+    # project-level check-ignore signal. Only computed when a ticket id is
+    # given; the main checkout is exempt (it physically holds `.tickets/` even
+    # when gitignored — same exemption the daemon applies). Absent field when
+    # no ticket id is passed, keeping the field backward-compatible.
+    if ticket_id:
+        for e in entries:
+            if e.get('is_main'):
+                e['ticket_present'] = True
+            else:
+                try:
+                    e['ticket_present'] = (Path(e['path']) / '.tickets' / ticket_id).is_dir()
+                except Exception:
+                    e['ticket_present'] = False
     return entries
 
 def worktree_lock_status(ticket_id: str) -> dict:
@@ -1048,7 +1064,10 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
         elif path == '/api/worktrees':
-            self.send_json(list_worktrees())
+            wt_ticket = parse_qs(parsed.query).get('ticket', [''])[0]
+            if not re.match(r'^t-[a-z0-9]{4}$', wt_ticket):
+                wt_ticket = ''
+            self.send_json(list_worktrees(wt_ticket))
         else:
             m = re.match(r'^/api/commit/([0-9a-f]{4,40})$', path)
             if m:
