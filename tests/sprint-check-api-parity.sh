@@ -700,6 +700,20 @@ if py_no != go_no:
 if any("ticket_present" in e for e in py_no):
     print(f"sprint-check-api-parity: FAIL — ticket_present must be absent when no ticket is passed: {py_no}"); sys.exit(1)
 PY
+# Trailing-newline param parity (t-2a1c reviewer finding): `?ticket=t-abcd%0A`
+# must be rejected identically — Python's `$` matches before a final \n but Go
+# RE2's does not, so re.fullmatch is used server-side. Both backends must omit
+# ticket_present here (invalid id → treated as no ticket).
+py_wt_nl="$(curl -s "http://127.0.0.1:$PY_PORT/api/worktrees?ticket=t-abcd%0A")"
+go_wt_nl="$(curl -s "http://127.0.0.1:$GO_PORT/api/worktrees?ticket=t-abcd%0A")"
+python3 - "$py_wt_nl" "$go_wt_nl" <<'PY'
+import json, sys
+py, go = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+if py != go:
+    print(f"sprint-check-api-parity: FAIL — /api/worktrees?ticket=<trailing-newline> payload mismatch\n  py={py}\n  go={go}"); sys.exit(1)
+if any("ticket_present" in e for e in py):
+    print(f"sprint-check-api-parity: FAIL — a trailing-newline ?ticket must be rejected (no ticket_present), got: {py}"); sys.exit(1)
+PY
 git -C "$WORK" worktree remove --force "$WT" 2>/dev/null || true
 rm -rf "$WT_PARENT"
 

@@ -1065,7 +1065,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(cockpit_discover())
         elif path == '/api/worktrees':
             wt_ticket = parse_qs(parsed.query).get('ticket', [''])[0]
-            if not re.match(r'^t-[a-z0-9]{4}$', wt_ticket):
+            # re.fullmatch (not re.match with $) so a trailing newline is
+            # rejected — Python's `$` matches before a final \n but Go RE2's
+            # does not, so `?ticket=t-abcd\n` would otherwise diverge (server.py
+            # would compute ticket_present, main.go would omit it). t-2a1c.
+            if not re.fullmatch(r't-[a-z0-9]{4}', wt_ticket):
                 wt_ticket = ''
             self.send_json(list_worktrees(wt_ticket))
         else:
