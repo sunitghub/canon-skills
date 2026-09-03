@@ -61,6 +61,8 @@ right-sizing, snippet, and evidence principles apply.
 
    `date +%s` and `$RANDOM` are chosen because they work identically in Git Bash on Windows — do not substitute `uuidgen`, PowerShell, or any other tool even on a Windows path; live-reproduced failure: an evaluator subagent second-guessed this instruction on a Windows machine, tried PowerShell GUID generation then `uuidgen` (neither works in Git Bash), and wrote a malformed run-id that would have hard-failed the close gate.
 
+   The timestamp must be epoch **seconds** (`date +%s`, 10 digits) — **never milliseconds / a JS `Date.now()` value** (13 digits). The close gate matches within a ±60 min window, so a millisecond value is ~1000× off and would otherwise miss the window; the gate now defensively normalizes a ≥13-digit prefix down to seconds (`t-bdfb`), but emit seconds directly regardless.
+
 2. **Derive changed files.** Follow `skills/sprint/reference/shared-gate-protocol.md ## Base-ref derivation` — use the explicit `Base ref` if passed, otherwise derive via `git merge-base HEAD origin/main`, with the same two-tier fallback for missing remotes/repos.
 
 3. **Read ticket artifacts.** Read `.tickets/<id>/acceptance.md` and `.tickets/<id>/plan.md`. These are your ground truth — what was promised, what approach was approved.

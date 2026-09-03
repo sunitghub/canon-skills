@@ -327,6 +327,16 @@ _gate_eval_report_authentic() {
     echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix. See eval.md step 1: generate it with 'date +%s'/'\$RANDOM', never uuidgen/PowerShell."
     return 1
   fi
+  # t-bdfb: some evaluators emit a JS Date.now() *millisecond* timestamp instead
+  # of `date +%s` *seconds* (eval.md step 1). A seconds epoch is 10 digits (and
+  # stays so until year 2286); a millisecond epoch is 13. Normalize a >=13-digit
+  # prefix to seconds so the ±60 min match below still works. The run-id is a
+  # correlation handle, not a security token (t-690a) — matched only by a time
+  # window — so normalizing its units changes no authenticity property. Pure-bash
+  # integer arithmetic, Git-Bash-safe (t-f04f).
+  if (( ${#run_epoch} >= 13 )); then
+    run_epoch=$(( run_epoch / 1000 ))
+  fi
   local matched=0 line ts entry_epoch diff
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue

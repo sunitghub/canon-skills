@@ -459,6 +459,49 @@ assert_grep "^status: closed$" ".tickets/$fresh_id/ticket.md"
 assert_grep "^status: closed$" ".tickets/$id/ticket.md"
 [[ ! -f .tickets/ACTIVE ]] || fail "expected ACTIVE to be cleared after sprint complete"
 
+# t-bdfb: a MILLISECOND run-id (13-digit, JS Date.now() style) must normalize to
+# seconds (÷1000) and still match a real subagent entry within the ±60 min
+# window — some evaluators emit Date.now() instead of `date +%s`.
+ms_start_output="$("$SPRINT" start "millisecond run-id tolerance test")"
+ms_id="$(printf '%s\n' "$ms_start_output" | awk '/Sprint started:/ { print $3 }')"
+cat > ".tickets/$ms_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+cat > ".tickets/$ms_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] item
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | pass |
+EOF
+cat > ".tickets/$ms_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+# 1000000000000 ms ÷ 1000 = 1000000000 s (2001-09-09T01:46:40Z)
+cat > ".tickets/$ms_id/eval-report.md" <<'EOF'
+evaluator-run-id: 1000000000000-mstest
+## Verdict
+pass: all criteria met
+EOF
+# matching seconds entry 30 min after the normalized epoch (within ±60 min)
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-ms","agent_type":"general-purpose","transcript_path":"/tmp/evalms.jsonl"}
+EOF
+ms_complete_output="$("$SPRINT" complete 2>&1 || true)"
+[[ "$ms_complete_output" == *"no matching subagent entry"* ]] && fail "millisecond run-id should normalize to seconds and match: $ms_complete_output"
+assert_contains "$ms_complete_output" "Sprint completed: $ms_id"
+
 
 # ── eval_override (t-c0e6, t-7cd5): human-hand-edit-only, deliberately coarse
 # tkt create seeds every new ticket with "eval_override: false" (t-7cd5) so the
