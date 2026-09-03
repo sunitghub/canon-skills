@@ -333,8 +333,12 @@ _gate_eval_report_authentic() {
   # prefix to seconds so the ±60 min match below still works. The run-id is a
   # correlation handle, not a security token (t-690a) — matched only by a time
   # window — so normalizing its units changes no authenticity property. Pure-bash
-  # integer arithmetic, Git-Bash-safe (t-f04f).
-  if (( ${#run_epoch} >= 13 )); then
+  # integer arithmetic, Git-Bash-safe (t-f04f). Force base-10 (10#) so a
+  # pathological leading-zero prefix can't be misparsed as octal by $(( )) and
+  # abort with an internal error instead of a clean fail-closed message.
+  local run_len=${#run_epoch}
+  run_epoch=$(( 10#$run_epoch ))
+  if (( run_len >= 13 )); then
     run_epoch=$(( run_epoch / 1000 ))
   fi
   local matched=0 line ts entry_epoch diff
