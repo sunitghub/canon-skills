@@ -4618,6 +4618,7 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
   saveBtn.disabled = true;
   statusEl.textContent = 'Ending…';
   let done = false;
+  let closed = false;
   const finish = (msg) => {
     if (done) return; done = true;
     cockpitState._onEnded = null;
@@ -4625,10 +4626,13 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
     closeLeaveConfirm();
     teardownCockpit();
   };
-  // t-98d8: an already-closed ticket has no in-progress state worth a full agent
-  // save turn — skip the save-state prompt and end cleanly via force-end. Status
-  // is fetched fresh (isTicketClosed), failing safe to the save path on error.
-  const closed = await isTicketClosed(cockpitState.id);
+  // t-98d8: arm the ended-handler and the fallback BEFORE the async status
+  // fetch below, not after — otherwise an idle-reap 'ended' landing during the
+  // fetch window arrives while _onEnded is still null (teardownCockpit clears
+  // it) and is dropped, leaving the flow to resolve only via the 90s fallback.
+  // `closed` is read lazily by this closure, so it reflects the fetch result if
+  // 'ended' fires after it, and defaults to the (harmless) save-and-end message
+  // if it fires during the fetch.
   cockpitState._onEnded = () => finish(closed ? 'Ended — ticket already closed, no state to save.' : 'Saved and ended.');
   // Overridable so tests don't wait 90 real seconds; production leaves it unset.
   const fallbackMs = window.__cockpitSaveFallbackMs || 90000;
@@ -4640,6 +4644,11 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
     setTimeout(() => finish('Timed out waiting for save — ended anyway. It may be incomplete.'), 3000);
   }, fallbackMs);
+  // t-98d8: an already-closed ticket has no in-progress state worth a full agent
+  // save turn — skip the save-state prompt and end cleanly via force-end. Status
+  // is fetched fresh (isTicketClosed), failing safe to the save path on error.
+  closed = await isTicketClosed(cockpitState.id);
+  if (done) return; // idle-reap already ended us during the fetch — nothing to send
   if (closed) {
     statusEl.textContent = 'Ticket already closed — ending…';
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
