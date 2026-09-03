@@ -3567,8 +3567,10 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         var d = e.data;
         if(!d || d.source !== 'canon-cockpit') return;
         if(d.type === 'save-and-end'){
+          window.parent.postMessage({source:'canon-cockpit', type:'__received', received:'save-and-end'}, '*');
           setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, ${endDelayMs});
         } else if(d.type === 'force-end'){
+          window.parent.postMessage({source:'canon-cockpit', type:'__received', received:'force-end'}, '*');
           window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
         }
       });
@@ -3687,6 +3689,39 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
       // Once the fake page's delayed 'ended' arrives, teardown proceeds.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Save & End on an already-closed ticket skips the save prompt and force-ends (t-98d8)', async ({ page }) => {
+    const id = `t-lcclosed-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      // endDelayMs 5000: if the short-circuit fails and we fall into save-and-end,
+      // the fake page delays 5s before 'ended' — so the 3s teardown assertion (and
+      // the force-end capture) both catch it; a pass can't be a timing fluke.
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 5000 }));
+      await page.waitForTimeout(100);
+      // Simulate `sprint complete` run in the terminal: ticket.md closes on disk
+      // while the session stays live. The board's in-memory state stays stale, so
+      // the handler must fetch status fresh.
+      writeTicket(id, 'closed');
+      // Capture which end-message the iframe received (echoed by fakeCockpitPage).
+      await page.evaluate(() => {
+        window.__received = [];
+        window.addEventListener('message', (e) => {
+          if (e.data && e.data.type === '__received') window.__received.push(e.data.received);
+        });
+      });
+      await page.locator('#ck-back').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await page.locator('#ck-leave-save').click();
+      // Closed ticket → force-end (immediate kill), never the save-state turn.
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
+      const received = await page.evaluate(() => window.__received);
+      expect(received).toContain('force-end');
+      expect(received).not.toContain('save-and-end');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }

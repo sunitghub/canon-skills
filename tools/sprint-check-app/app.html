@@ -4579,7 +4579,21 @@ function teardownCockpit() {
 
 document.getElementById('ck-leave-cancel').addEventListener('click', closeLeaveConfirm);
 document.getElementById('ck-leave-leave').addEventListener('click', () => { closeLeaveConfirm(); teardownCockpit(); });
-document.getElementById('ck-leave-save').addEventListener('click', () => {
+// t-98d8: fresh ticket-status read for the Save & End short-circuit. The cockpit
+// poll never reloads /api/tickets and `sprint complete` runs in the terminal, so
+// the in-memory `state` can be stale exactly when this matters. Fail safe: any
+// fetch/parse error returns false, so the normal save-and-end path runs.
+async function isTicketClosed(id) {
+  try {
+    const r = await fetch('/api/tickets?all=1');
+    if (!r.ok) return false;
+    const tickets = await r.json();
+    const t = (tickets || []).find(x => x && x.id === id);
+    return !!t && t.status === 'closed';
+  } catch { return false; }
+}
+
+document.getElementById('ck-leave-save').addEventListener('click', async () => {
   const iframe = document.getElementById('ck-iframe');
   const statusEl = document.getElementById('ck-leave-confirm-status');
   const saveBtn = document.getElementById('ck-leave-save');
@@ -4602,7 +4616,7 @@ document.getElementById('ck-leave-save').addEventListener('click', () => {
   // marker/timeout fires, with no dialog left open to explain why.
   document.getElementById('ck-leave-cancel').disabled = true;
   saveBtn.disabled = true;
-  statusEl.textContent = 'Saving state…';
+  statusEl.textContent = 'Ending…';
   let done = false;
   const finish = (msg) => {
     if (done) return; done = true;
@@ -4611,7 +4625,11 @@ document.getElementById('ck-leave-save').addEventListener('click', () => {
     closeLeaveConfirm();
     teardownCockpit();
   };
-  cockpitState._onEnded = () => finish('Saved and ended.');
+  // t-98d8: an already-closed ticket has no in-progress state worth a full agent
+  // save turn — skip the save-state prompt and end cleanly via force-end. Status
+  // is fetched fresh (isTicketClosed), failing safe to the save path on error.
+  const closed = await isTicketClosed(cockpitState.id);
+  cockpitState._onEnded = () => finish(closed ? 'Ended — ticket already closed, no state to save.' : 'Saved and ended.');
   // Overridable so tests don't wait 90 real seconds; production leaves it unset.
   const fallbackMs = window.__cockpitSaveFallbackMs || 90000;
   setTimeout(() => {
@@ -4622,7 +4640,13 @@ document.getElementById('ck-leave-save').addEventListener('click', () => {
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
     setTimeout(() => finish('Timed out waiting for save — ended anyway. It may be incomplete.'), 3000);
   }, fallbackMs);
-  iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'save-and-end' }, 'http://' + cockpitState.addr);
+  if (closed) {
+    statusEl.textContent = 'Ticket already closed — ending…';
+    iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
+  } else {
+    statusEl.textContent = 'Saving state…';
+    iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'save-and-end' }, 'http://' + cockpitState.addr);
+  }
 });
 
 async function openCockpit(id) {
