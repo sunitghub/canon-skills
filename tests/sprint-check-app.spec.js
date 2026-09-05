@@ -4070,3 +4070,148 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     }
   });
 });
+
+// Drives the REAL compiled cockpit-daemon end-to-end and asserts the actual
+// RENDERED output of a served app-under-test — the gap the 'cockpit preview
+// pane (t-b19b)' tests above leave. Those post synthetic messages via
+// fakePreviewCockpitPage and assert only the iframe src/sandbox attributes;
+// they never render real served bytes. t-b19b's own rendered-output proof was
+// a MANUAL live smoke test (its acceptance.md "Live smoke test" line). This
+// automates that headlessly: spawn the daemon with a harmless stub command
+// (never a real claude/agent), serve a real fixture through the actual
+// GET /session/<id>/preview/<relpath> endpoint, load it into a sandboxed
+// iframe that mirrors app.html's renderPreviewFile exactly, and assert the
+// rendered DOM + computed style inside the opaque-origin frame.
+test.describe('cockpit rendered-output preview (t-8f9d)', () => {
+  const os = require('os');
+  const DAEMON_SRC = path.join(PROJECT_ROOT, 'tools', 'cockpit-daemon');
+  const TICKET = 't-pv01';
+  const hasGo = (() => {
+    try { execFileSync('go', ['version'], { stdio: 'ignore' }); return true; } catch { return false; }
+  })();
+
+  // go build (warm cache) + daemon spawn can exceed the default 30s hook budget.
+  test.describe.configure({ timeout: 120_000 });
+
+  let work, daemonBin, stateDir, daemonProc, bootToken;
+
+  test.beforeAll(() => {
+    test.skip(!hasGo, 'go toolchain not available — cannot build cockpit-daemon');
+    work = fs.mkdtempSync(path.join(os.tmpdir(), 'ck-render-'));
+
+    // A real ticket dir — the daemon's /session/start refuses a ticket that
+    // doesn't physically exist in the project (t-842b).
+    fs.mkdirSync(path.join(work, '.tickets', TICKET), { recursive: true });
+    fs.writeFileSync(path.join(work, '.tickets', TICKET, 'ticket.md'), [
+      '---', `id: ${TICKET}`, 'status: open', 'type: task', 'priority: 3',
+      'created: 2026-08-24T00:00:00Z', '---', '', `# ${TICKET} render fixture`, '',
+    ].join('\n'));
+
+    // Fixture app-under-test. The rendered assertion uses an INLINE <style> so
+    // it proves genuine rendering independent of the sibling-asset token quirk
+    // documented below. A sibling ./style.css is also written, used to pin the
+    // real subresource contract (token required) at the request level.
+    const appDir = path.join(work, 'preview-app');
+    fs.mkdirSync(appDir, { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'index.html'),
+      '<!doctype html><html><head><meta charset="utf-8">' +
+      '<style>#marker { color: rgb(0, 128, 0); }</style></head>' +
+      '<body><h1 id="marker">canon-preview-rendered-ok</h1></body></html>');
+    fs.writeFileSync(path.join(appDir, 'style.css'), '#marker { color: rgb(0, 128, 0); }\n');
+
+    // Harmless stub in place of `claude` — stays alive so the PTY session
+    // persists for the duration of the test; never spawns a real agent.
+    const stub = path.join(work, 'stub-agent.sh');
+    fs.writeFileSync(stub, '#!/usr/bin/env bash\nexec sleep 60\n', { mode: 0o755 });
+
+    // Build and spawn the REAL daemon on an ephemeral loopback port.
+    daemonBin = path.join(work, 'cockpit-daemon-test');
+    execFileSync('go', ['build', '-o', daemonBin, '.'], { cwd: DAEMON_SRC, stdio: 'inherit' });
+    stateDir = path.join(work, 'state');
+    bootToken = 'test-boot-token-t8f9d';
+    daemonProc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
+      env: {
+        ...process.env,
+        COCKPIT_TOKEN: bootToken,
+        COCKPIT_SPRINT_BIN: stub,
+        COCKPIT_PROJECT_ROOT: work,
+        COCKPIT_STATE_DIR: stateDir,
+      },
+      stdio: 'ignore',
+    });
+  });
+
+  test.afterAll(() => {
+    if (daemonProc) daemonProc.kill('SIGKILL');
+    if (work) fs.rmSync(work, { recursive: true, force: true });
+  });
+
+  async function daemonAddr() {
+    const p = path.join(stateDir, 'daemon.json');
+    for (let i = 0; i < 120; i++) {
+      try {
+        const j = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (j.addr) return j.addr;
+      } catch { /* not written yet */ }
+      await new Promise(r => setTimeout(r, 50));
+    }
+    throw new Error('daemon.json addr never appeared');
+  }
+
+  test('renders a real served app-under-test through the real daemon preview endpoint', async ({ page, request }) => {
+    const base = `http://${await daemonAddr()}`;
+
+    // 1. Start a real session (real daemon, stub agent). Returns the session id,
+    //    the session token, and the narrow previewToken.
+    const startRes = await request.post(`${base}/session/start`, {
+      headers: { Authorization: `Bearer ${bootToken}` },
+      data: { ticket: TICKET },
+    });
+    expect(startRes.status()).toBe(200);
+    const started = await startRes.json();
+    expect(started.session).toBeTruthy();
+    expect(started.previewToken).toBeTruthy();
+
+    // 2. Point the session's preview root at the fixture app dir (real session
+    //    token — previewToken is read-only and cannot set the root).
+    const prRes = await request.post(`${base}/session/${started.session}/preview-root`, {
+      headers: { Authorization: `Bearer ${started.token}` },
+      data: { path: path.join(work, 'preview-app', 'index.html') },
+    });
+    expect(prRes.status()).toBe(204);
+
+    // 3. Render it exactly as app.html's renderPreviewFile does: a sandboxed
+    //    iframe (allow-scripts, NO allow-same-origin → opaque origin) whose src
+    //    is the real daemon preview endpoint on its own port (cross-origin).
+    const previewUrl = `${base}/session/${encodeURIComponent(started.session)}/preview/index.html?token=${encodeURIComponent(started.previewToken)}`;
+    await page.setContent(
+      `<!doctype html><html><body><iframe id="pv" sandbox="allow-scripts" ` +
+      `src="${previewUrl}" style="width:600px;height:400px;border:0"></iframe></body></html>`
+    );
+
+    // 4. Assert the RENDERED output inside the frame — not the src attribute.
+    //    The heading text proves the served HTML actually reached the DOM of an
+    //    opaque-origin (sandbox allow-scripts, no allow-same-origin) frame; the
+    //    computed color proves the inline CSS was parsed and applied — i.e. real
+    //    rendering, headlessly, through the real daemon endpoint.
+    const frame = page.frameLocator('#pv');
+    await expect(frame.locator('#marker')).toHaveText('canon-preview-rendered-ok');
+    const color = await frame.locator('#marker').evaluate(el => getComputedStyle(el).color);
+    expect(color).toBe('rgb(0, 128, 0)');
+
+    // 5. Sibling-asset contract (discovered limitation, t-8f9d). A relative
+    //    subresource (`./style.css`) requested by the frame resolves to
+    //    `.../preview/style.css` WITHOUT the `?token=` — URL resolution drops
+    //    the query — so the daemon 401s it. The endpoint serves a sibling only
+    //    when the token is supplied explicitly (which a real browser never does
+    //    for relative assets). Pinned here so the contract is explicit and a
+    //    future fix that propagates the token would update this assertion.
+    //    (t-b19b's Go httptest passed the token explicitly and its Playwright
+    //    tests were mocked, so neither exercised this real-browser path.)
+    const noTok = await request.get(`${base}/session/${started.session}/preview/style.css`);
+    expect(noTok.status()).toBe(401);
+    const withTok = await request.get(`${base}/session/${started.session}/preview/style.css?token=${encodeURIComponent(started.previewToken)}`);
+    expect(withTok.status()).toBe(200);
+    expect(await withTok.text()).toContain('#marker');
+  });
+});
