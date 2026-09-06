@@ -4061,6 +4061,58 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
+
+  // t-bc04: status badge next to the ticket id (topbar + rail), colored per status.
+  test('status badge shows the ticket status next to the id (t-bc04)', async ({ page }) => {
+    const idP = `t-uibp${Date.now().toString().slice(-4)}`;
+    try {
+      writeTicket(idP, 'in_progress');
+      await openResumedCockpit(page, idP, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await expect(page.locator('#ck-status')).toHaveText('in progress');
+      await expect(page.locator('#ck-status')).toHaveClass(/st-progress/);
+      await expect(page.locator('#ck-tc-status')).toHaveText('in progress');
+      await expect(page.locator('#ck-tc-status')).toHaveClass(/st-progress/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idP), { recursive: true, force: true });
+    }
+  });
+
+  test('preview pane is resizable and collapse still works (t-bc04)', async ({ page }) => {
+    const id = `t-uir${Date.now().toString().slice(-4)}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await page.goto(BASE);
+      await page.evaluate(() => localStorage.removeItem('ck-preview-w')); // clean baseline
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click(); // expand
+      await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
+      const widthOf = () => page.locator('#ck-preview').evaluate(el => el.getBoundingClientRect().width);
+      const before = await widthOf();
+      // Drive the left-edge handle deterministically (synthetic mouse events on the
+      // real handler): mousedown on the handle, then mousemove left by 150px → widen.
+      await page.evaluate(() => {
+        const h = document.getElementById('ck-preview-resize');
+        const r = h.getBoundingClientRect();
+        const cx = r.x + r.width / 2, cy = r.y + r.height / 2;
+        h.dispatchEvent(new MouseEvent('mousedown', { clientX: cx, clientY: cy, bubbles: true }));
+        document.dispatchEvent(new MouseEvent('mousemove', { clientX: cx - 150, clientY: cy, bubbles: true }));
+        document.dispatchEvent(new MouseEvent('mouseup', { clientX: cx - 150, clientY: cy, bubbles: true }));
+      });
+      const after = await widthOf();
+      expect(after).toBeGreaterThan(before + 40);          // widened
+      expect(after).toBeLessThanOrEqual(Math.round(await page.evaluate(() => window.innerWidth * 0.7)) + 2); // clamped
+      await page.locator('#ck-preview-collapse').click();  // collapse still works
+      await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
+      expect(await widthOf()).toBeLessThan(60);            // ~40px collapsed
+      await page.locator('#ck-preview-label').click();     // expand restores resized width
+      expect(await widthOf()).toBeGreaterThan(before + 40);
+    } finally {
+      await page.evaluate(() => localStorage.removeItem('ck-preview-w')).catch(() => {});
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
 });
 
 // Drives the REAL compiled cockpit-daemon end-to-end and asserts the actual
