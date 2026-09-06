@@ -440,3 +440,55 @@ func TestSafeTicketDocAllowsFreshWriteThroughRealExistingParent(t *testing.T) {
 		t.Fatalf("safeTicketDoc = %q, unexpected path", p)
 	}
 }
+
+
+// t-e40a: the shipped, git-tracked tools/cockpit-daemon-win.exe must be the
+// first Windows candidate (the board couldn't find the daemon on a stock
+// Windows clone because the resolver only looked for cockpit-daemon/cockpit-daemon.exe).
+func TestCockpitDaemonCandidates(t *testing.T) {
+	td := filepath.FromSlash("/x/tools")
+	root := filepath.FromSlash("/proj")
+
+	win := cockpitDaemonCandidates(td, root, "windows")
+	if len(win) == 0 || win[0] != filepath.Join(td, "cockpit-daemon-win.exe") {
+		t.Fatalf("windows first candidate = %v, want %s", win, filepath.Join(td, "cockpit-daemon-win.exe"))
+	}
+	// dev build must still appear as a fallback
+	dev := filepath.Join(td, "cockpit-daemon", "cockpit-daemon.exe")
+	foundDev := false
+	for _, c := range win {
+		if c == dev {
+			foundDev = true
+		}
+	}
+	if !foundDev {
+		t.Fatalf("windows candidates missing dev fallback %s: %v", dev, win)
+	}
+
+	for _, goos := range []string{"darwin", "linux"} {
+		u := cockpitDaemonCandidates(td, root, goos)
+		want := filepath.Join(td, "cockpit-daemon", "cockpit-daemon")
+		if len(u) == 0 || u[0] != want {
+			t.Fatalf("%s first candidate = %v, want %s", goos, u, want)
+		}
+		for _, c := range u {
+			if filepath.Base(c) == "cockpit-daemon-win.exe" {
+				t.Fatalf("%s must not offer a -win.exe candidate: %v", goos, u)
+			}
+		}
+	}
+
+	// extraRoots contribute their own tools/ dirs on every platform.
+	er := filepath.FromSlash("/wt")
+	got := cockpitDaemonCandidates(td, root, "windows", er)
+	wantExtra := filepath.Join(er, "tools", "cockpit-daemon-win.exe")
+	foundExtra := false
+	for _, c := range got {
+		if c == wantExtra {
+			foundExtra = true
+		}
+	}
+	if !foundExtra {
+		t.Fatalf("extraRoot tools dir missing from candidates: %v", got)
+	}
+}

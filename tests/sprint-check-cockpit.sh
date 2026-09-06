@@ -15,6 +15,26 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; th
   exit 0
 fi
 
+# t-e40a: _resolve_cockpit_daemon must prefer the shipped tools/cockpit-daemon-win.exe
+# on Windows (nt), keep the Unix path on posix, and honor COCKPIT_DAEMON_BIN first.
+# Parity with sprint-check-go's cockpitDaemonCandidates (covered by TestCockpitDaemonCandidates).
+python3 - "$ROOT" <<'PY'
+import sys, os
+sys.path.insert(0, os.path.join(sys.argv[1], "tools", "sprint-check-app"))
+import server
+nt = server._resolve_cockpit_daemon(os_name="nt")
+assert nt.endswith(os.path.join("tools", "cockpit-daemon-win.exe")), f"nt resolver: {nt}"
+posix = server._resolve_cockpit_daemon(os_name="posix")
+assert posix.endswith(os.path.join("cockpit-daemon", "cockpit-daemon")), f"posix resolver: {posix}"
+assert not posix.endswith("cockpit-daemon-win.exe"), f"posix must not pick -win.exe: {posix}"
+os.environ["COCKPIT_DAEMON_BIN"] = "/tmp/stub-daemon"
+try:
+    assert server._resolve_cockpit_daemon(os_name="nt") == "/tmp/stub-daemon", "override must win"
+finally:
+    del os.environ["COCKPIT_DAEMON_BIN"]
+print("sprint-check-cockpit: daemon-resolver (t-e40a) ok")
+PY
+
 # t-2a71: reap any stub daemon leaked by a prior run this script's own
 # trap-on-EXIT couldn't reach (e.g. the process was SIGKILLed, or its parent
 # shell never ran its exit machinery at all) — before creating this run's own.
