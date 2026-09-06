@@ -2299,3 +2299,26 @@ func TestSpawnSucceedsWhenDecisionsLogUnwritable(t *testing.T) {
 	}
 	resp.Body.Close()
 }
+
+// t-35b3: the spawn command must resolve against PATH to an absolute path
+// before it reaches the PTY (go-pty's Windows lookExtensions otherwise resolves
+// a bare name relative to Cmd.Dir, so a PATH-installed claude is never found).
+func TestResolveSpawnBin(t *testing.T) {
+	// A real, PATH-resolvable binary → absolute path. `go` ran this test, so it
+	// is on PATH; fall back to the current test executable's own name otherwise.
+	bare := "go"
+	if _, err := exec.LookPath(bare); err != nil {
+		bare = filepath.Base(os.Args[0])
+	}
+	got := resolveSpawnBin(bare)
+	if !filepath.IsAbs(got) {
+		t.Fatalf("resolveSpawnBin(%q) = %q, want an absolute PATH-resolved path", bare, got)
+	}
+
+	// A genuinely missing command → returned unchanged, so the caller's error
+	// still names the command meaningfully.
+	missing := "canon-definitely-not-a-real-binary-xyzzy"
+	if got := resolveSpawnBin(missing); got != missing {
+		t.Fatalf("resolveSpawnBin(%q) = %q, want the raw value back on a LookPath miss", missing, got)
+	}
+}

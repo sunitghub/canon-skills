@@ -345,6 +345,24 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken})
 }
 
+// resolveSpawnBin resolves the spawn command against PATH to an absolute path
+// before it reaches the PTY. This matters on Windows: the daemon sets Cmd.Dir,
+// and go-pty's Windows lookExtensions resolves a *bare* command name relative
+// to Dir (filepath.Join(Dir, name)) rather than searching %PATH% — so a
+// PATH-installed `claude` is never found while a working dir is set (t-35b3,
+// live-reproduced: `where claude` succeeds yet Start fails with
+// `<cwd>\claude ... not found in %PATH%`). exec.LookPath searches PATH+PATHEXT
+// and returns an absolute path, which go-pty's volume-name branch resolves
+// regardless of Dir. On a genuine miss, fall back to the raw value so the
+// resulting error still names the command. No-op effect on macOS (go-pty's Unix
+// path already resolves on PATH; an absolute path stays valid).
+func resolveSpawnBin(bin string) string {
+	if lp, err := exec.LookPath(bin); err == nil {
+		return lp
+	}
+	return bin
+}
+
 // spawn launches an interactive `claude` session on the ticket in a PTY.
 //
 // The prompt is ONE argv element — exactly what a human would type at the
@@ -383,7 +401,7 @@ func (s *server) spawn(ticket, cwd string) (*session, error) {
 	} else {
 		args = append(args, "--session-id", claudeSessionID, "sprint start "+ticket)
 	}
-	c := p.Command(s.cfg.sprintBin, args...)
+	c := p.Command(resolveSpawnBin(s.cfg.sprintBin), args...)
 	c.Dir = cwd
 	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
 	if err := c.Start(); err != nil {
