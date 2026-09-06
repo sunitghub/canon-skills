@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -361,6 +362,15 @@ func resolveSpawnBin(bin string) string {
 		return lp
 	}
 	return bin
+}
+
+// taskkillTreeArgs builds the Windows `taskkill` argv that terminates a process
+// AND its children (`/T` = tree, `/F` = force). Kept build-tag-free in main.go
+// (used only by kill_windows.go's killProcess) so the Windows tree-kill argv is
+// unit-testable on any host (t-902f). Unix reaps the whole process group instead
+// (kill_unix.go); this is the Windows equivalent — no orphaned children.
+func taskkillTreeArgs(pid int) []string {
+	return []string{"/PID", strconv.Itoa(pid), "/T", "/F"}
 }
 
 // spawn launches an interactive `claude` session on the ticket in a PTY.
