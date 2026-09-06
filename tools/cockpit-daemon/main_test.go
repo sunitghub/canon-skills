@@ -2322,3 +2322,29 @@ func TestResolveSpawnBin(t *testing.T) {
 		t.Fatalf("resolveSpawnBin(%q) = %q, want the raw value back on a LookPath miss", missing, got)
 	}
 }
+
+// t-902f: the Windows kill path must terminate the process TREE (children
+// included), not just the top process. This asserts the argv killProcess passes
+// to taskkill on Windows — testable on any host since the helper is build-tag-free.
+func TestTaskkillTreeArgs(t *testing.T) {
+	got := taskkillTreeArgs(12345)
+	want := []string{"/PID", "12345", "/T", "/F"}
+	if len(got) != len(want) {
+		t.Fatalf("taskkillTreeArgs len = %d %v, want %d %v", len(got), got, len(want), want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("taskkillTreeArgs[%d] = %q, want %q (full: %v)", i, got[i], want[i], got)
+		}
+	}
+	// /T (tree) is the load-bearing flag — its absence is exactly the orphan bug.
+	hasT := false
+	for _, a := range got {
+		if a == "/T" {
+			hasT = true
+		}
+	}
+	if !hasT {
+		t.Fatalf("taskkillTreeArgs missing /T (tree kill): %v", got)
+	}
+}
