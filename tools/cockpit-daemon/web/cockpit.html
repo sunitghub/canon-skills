@@ -37,6 +37,9 @@
   .btn-start.pulse{animation:pulse 1.4s ease-in-out infinite}
   .status.needsyou{color:var(--red)}
   .model{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  /* t-0d67: like .model but NOT hidden in embed mode — the board frames the
+     cockpit with embed=1, and the "last used · model" hint must stay visible. */
+  .agent-hint{font-family:var(--mono);font-size:11px;color:var(--faint)}
   #term-wrap{flex:1;min-height:0;background:var(--panel2);padding:8px}
   #terminal{height:100%}
   .hint{color:var(--faint);font-size:12px;padding:24px;font-family:var(--mono)}
@@ -66,7 +69,7 @@
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
     </div>
     <div class="spacer"></div>
-    <span class="model" id="agentHint"></span>
+    <span class="agent-hint" id="agentHint"></span>
     <span class="model" id="model">model: from plan.md</span>
     <span class="status"><span class="dot" id="dot"></span><span id="statusText">idle</span></span>
   </header>
