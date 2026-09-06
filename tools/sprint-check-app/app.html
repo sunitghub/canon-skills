@@ -4512,14 +4512,19 @@ function renderPreviewFile(session, previewToken, relpath) {
     renderPreviewMessage("Couldn't load the preview (missing session details).");
     return;
   }
-  const url = `http://${cockpitState.addr}/session/${encodeURIComponent(session)}/preview/${encodeURIComponent(relpath)}?token=${encodeURIComponent(previewToken)}`;
+  // t-8fbc: the previewToken is a PATH segment (…/preview/<token>/<relpath>),
+  // not a ?token= query, so a relative sibling asset (./style.css) requested by
+  // the served page keeps the token — a query string is dropped on relative URL
+  // resolution, a path prefix is not.
+  const url = `http://${cockpitState.addr}/session/${encodeURIComponent(session)}/preview/${encodeURIComponent(previewToken)}/${encodeURIComponent(relpath)}`;
   const body = document.getElementById('ck-preview-body');
   body.innerHTML = '';
   const iframe = document.createElement('iframe');
   // allow-scripts only, deliberately no allow-same-origin — the previewed
   // app-under-test is untrusted content; this keeps it at an opaque origin
   // so it can't reach real daemon endpoints even if it reads its own token
-  // straight off location.search (see t-b19b plan.md's Pre-mortem).
+  // straight off location.pathname (see t-b19b plan.md's Pre-mortem). Moving
+  // the token from location.search to location.pathname is identical exposure.
   iframe.setAttribute('sandbox', 'allow-scripts');
   iframe.src = url;
   body.appendChild(iframe);

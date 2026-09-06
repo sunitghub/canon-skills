@@ -453,11 +453,15 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleStatus(w, r, se)
 		return
 	}
-	// t-b19b: authenticated via a query-param previewToken, never se.token — an
-	// <iframe src> navigation can't carry an Authorization header, and this is
-	// the one route a browser loads by direct GET rather than fetch().
-	if relpath, ok := strings.CutPrefix(action, "preview/"); ok {
-		s.handlePreview(w, r, se, relpath)
+	// t-b19b/t-8fbc: authenticated via a path-segment previewToken, never
+	// se.token — an <iframe src> navigation can't carry an Authorization header,
+	// and this is the one route a browser loads by direct GET rather than
+	// fetch(). The token is the FIRST segment after "preview/"
+	// (/session/<sid>/preview/<token>/<relpath>) rather than a ?token= query so
+	// that a relative subresource request (./style.css) keeps it — a query
+	// string is dropped on relative resolution, a path prefix is not (t-8fbc).
+	if tokenAndPath, ok := strings.CutPrefix(action, "preview/"); ok {
+		s.handlePreview(w, r, se, tokenAndPath)
 		return
 	}
 	if !secureEqual(bearer(r), se.token) {
@@ -901,16 +905,25 @@ func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *s
 }
 
 // handlePreview serves a file from the session's validated preview root.
-// GET-only, previewToken-only (query param — an <iframe src> can't carry an
-// Authorization header). http.FileServer(http.Dir(root)) already refuses to
-// serve anything above root via "../" in relpath; root itself was already
-// validated to be under projectRoot at /preview-root time.
-func (s *server) handlePreview(w http.ResponseWriter, r *http.Request, se *session, relpath string) {
+// GET-only. The previewToken is the FIRST path segment of tokenAndPath
+// (/session/<sid>/preview/<token>/<relpath>), never a query param (t-8fbc): a
+// relative subresource (./style.css) from the served page drops a query string
+// on URL resolution but preserves the path prefix, so the token rides along and
+// sibling assets resolve. Same secrecy as the old query form — the untrusted
+// app can read the token off location either way, and it stays a read-only,
+// this-root-only capability (constant-time compared). http.FileServer(http.Dir(root))
+// already refuses to serve anything above root via "../" in relpath; root itself
+// was already validated to be under projectRoot at /preview-root time.
+func (s *server) handlePreview(w http.ResponseWriter, r *http.Request, se *session, tokenAndPath string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !secureEqual(r.URL.Query().Get("token"), se.previewToken) {
+	// Split "<token>/<relpath>" on the first slash. A request with no relpath
+	// (e.g. .../preview/<token> or .../preview/<token>/ after the index redirect)
+	// yields relpath "" → served as the directory index by http.FileServer.
+	token, relpath, _ := strings.Cut(tokenAndPath, "/")
+	if !secureEqual(token, se.previewToken) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
