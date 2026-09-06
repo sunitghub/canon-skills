@@ -1542,29 +1542,47 @@ func resolveCanonGateTemplate(toolsDir, root string, extraRoots ...string) strin
 // helpers — parity-tested by tests/sprint-check-api-parity.sh.
 
 // resolveCockpitDaemon finds the cockpit-daemon binary. COCKPIT_DAEMON_BIN
-// overrides (used by tests to point at a stub); default is the built binary
-// next to the tools dir.
+// overrides (used by tests to point at a stub); otherwise the first existing of
+// cockpitDaemonCandidates, falling back to the first candidate for the
+// (not-found) error path.
 func resolveCockpitDaemon(toolsDir, root string, extraRoots ...string) string {
 	if b := os.Getenv("COCKPIT_DAEMON_BIN"); b != "" {
 		return b
 	}
-	name := "cockpit-daemon"
-	if runtime.GOOS == "windows" {
-		name = "cockpit-daemon.exe"
-	}
-	candidates := []string{
-		filepath.Join(toolsDir, "cockpit-daemon", name),
-		filepath.Join(root, "tools", "cockpit-daemon", name),
-	}
-	for _, extraRoot := range extraRoots {
-		candidates = append(candidates, filepath.Join(extraRoot, "tools", "cockpit-daemon", name))
-	}
+	candidates := cockpitDaemonCandidates(toolsDir, root, runtime.GOOS, extraRoots...)
 	for _, candidate := range candidates {
 		if exists(candidate) {
 			return candidate
 		}
 	}
 	return candidates[0]
+}
+
+// cockpitDaemonCandidates returns the ordered daemon-binary paths to try for a
+// given GOOS. On Windows the shipped, git-tracked tools/cockpit-daemon-win.exe
+// (built by scripts/build-zip.sh, mirroring the sprint-check-win.exe convention)
+// comes FIRST, then the dev build tools/cockpit-daemon/cockpit-daemon.exe. On
+// Unix it is the built tools/cockpit-daemon/cockpit-daemon. goos is a parameter
+// (not runtime.GOOS) so the Windows ordering is unit-testable on any host.
+func cockpitDaemonCandidates(toolsDir, root, goos string, extraRoots ...string) []string {
+	toolsDirs := []string{toolsDir, filepath.Join(root, "tools")}
+	for _, er := range extraRoots {
+		toolsDirs = append(toolsDirs, filepath.Join(er, "tools"))
+	}
+	var candidates []string
+	if goos == "windows" {
+		for _, td := range toolsDirs { // shipped prebuilt first
+			candidates = append(candidates, filepath.Join(td, "cockpit-daemon-win.exe"))
+		}
+		for _, td := range toolsDirs { // dev build fallback
+			candidates = append(candidates, filepath.Join(td, "cockpit-daemon", "cockpit-daemon.exe"))
+		}
+	} else {
+		for _, td := range toolsDirs {
+			candidates = append(candidates, filepath.Join(td, "cockpit-daemon", "cockpit-daemon"))
+		}
+	}
+	return candidates
 }
 
 // cockpitStateDir is where the board expects the daemon to publish daemon.json.
