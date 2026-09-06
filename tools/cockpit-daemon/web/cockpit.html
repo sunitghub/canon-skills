@@ -15,6 +15,7 @@
   .brand .sq{width:18px;height:18px;border-radius:5px;background:var(--accent);display:inline-block}
   .start{display:flex;align-items:center;gap:8px;margin-left:6px}
   .start input{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-family:var(--mono);font-size:13px;width:120px}
+  .start select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 8px;font-family:var(--mono);font-size:13px}
   button{border:0;border-radius:8px;padding:7px 12px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--ui)}
   button:disabled{opacity:.4;cursor:not-allowed}
   .btn-start{background:var(--accent);color:#fff}
@@ -57,10 +58,15 @@
     <div class="brand"><span class="sq"></span> canon <span style="color:var(--faint)">cockpit</span></div>
     <div class="start">
       <input id="ticket" placeholder="t-xxxx" spellcheck="false" autocomplete="off">
+      <select id="agentSel" title="Agent to launch on Start">
+        <option value="claude">Claude Code</option>
+        <option value="pi">Pi</option>
+      </select>
       <button class="btn-start" id="startBtn">▶ Start sprint</button>
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
     </div>
     <div class="spacer"></div>
+    <span class="model" id="agentHint"></span>
     <span class="model" id="model">model: from plan.md</span>
     <span class="status"><span class="dot" id="dot"></span><span id="statusText">idle</span></span>
   </header>
@@ -77,6 +83,14 @@
   var EMBED = "__COCKPIT_EMBED__";
   var AUTOSTART = "__COCKPIT_AUTOSTART__";
   var PREFILL_CWD = "__COCKPIT_CWD__"; // t-cd06: worktree path the board selected, or "" for main checkout
+  var AGENT = "__COCKPIT_AGENT__" || "claude"; // t-0d67: default picker selection (last-used)
+  var AGENT_HINT = "__COCKPIT_AGENT_HINT__";   // e.g. "Last used: Claude Code · model: sonnet"
+  (function initAgentPicker(){
+    var sel = document.getElementById("agentSel");
+    if(sel && (AGENT === "claude" || AGENT === "pi")) sel.value = AGENT;
+    var h = document.getElementById("agentHint");
+    if(h) h.textContent = AGENT_HINT;
+  })();
   var session = null, sessTok = null, previewTok = null, streamAbort = null;
 
   var term = new Terminal({
@@ -90,7 +104,7 @@
   fit.fit();
   // Say plainly what Start does: a real agent session with this project's own
   // tool permissions, not a read-only status view (t-842b pre-mortem #4).
-  term.writeln("\x1b[38;5;244mcanon cockpit — enter a ticket id and press Start to launch a real \x1b[1minteractive claude session\x1b[0m\x1b[38;5;244m on it (\x1b[1msprint start <id>\x1b[0m\x1b[38;5;244m).\x1b[0m");
+  term.writeln("\x1b[38;5;244mcanon cockpit — enter a ticket id and press Start to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m on it (\x1b[1msprint start <id>\x1b[0m\x1b[38;5;244m).\x1b[0m");
   term.writeln("\x1b[38;5;244mIt runs with this project's own permission settings — it can write files and run commands, and prompts you here when they require approval.\x1b[0m");
 
   var dotEl = document.getElementById("dot"), statusEl = document.getElementById("statusText");
@@ -183,7 +197,8 @@
     document.getElementById("startBtn").classList.remove("pulse");
     setStatus("running","starting…");
     try{
-      var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket, cwd:PREFILL_CWD}) });
+      var agent = (document.getElementById("agentSel") || {}).value || AGENT || "claude";
+      var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket, cwd:PREFILL_CWD, agent:agent}) });
       if(!r.ok){
         // t-2a1c: surface the daemon's own message (e.g. "ticket not visible in
         // this worktree") instead of a bare status code, and point at the fix.

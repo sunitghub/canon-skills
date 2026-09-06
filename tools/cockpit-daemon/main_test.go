@@ -2348,3 +2348,115 @@ func TestTaskkillTreeArgs(t *testing.T) {
 		t.Fatalf("taskkillTreeArgs missing /T (tree kill): %v", got)
 	}
 }
+
+// t-0d67: the client-supplied agent choice must be validated against the fixed
+// {claude, pi} allowlist ("" → claude), never resolving an arbitrary program.
+func TestAgentKindAllowlist(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+		ok   bool
+	}{
+		{"", "claude", true},
+		{"claude", "claude", true},
+		{"pi", "pi", true},
+		{"bogus", "", false},
+		{"Claude", "", false}, // case-sensitive
+		{"pi ", "", false},    // no trimming — exact match only
+	}
+	for _, c := range cases {
+		got, ok := agentKind(c.in)
+		if got != c.want || ok != c.ok {
+			t.Fatalf("agentKind(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.want, c.ok)
+		}
+	}
+}
+
+// t-0d67: claude argv stays byte-identical to pre-t-0d67; pi uses documented
+// flags only (positional prompt fresh, -c on resume).
+func TestAgentSpawnArgs(t *testing.T) {
+	eq := func(name string, got, want []string) {
+		t.Helper()
+		if len(got) != len(want) {
+			t.Fatalf("%s: got %v, want %v", name, got, want)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s[%d]: got %q, want %q (full %v)", name, i, got[i], want[i], got)
+			}
+		}
+	}
+	eq("claude fresh",
+		agentSpawnArgs("claude", "t-ab12", false, "SID", "sonnet", "/tmp/s.json"),
+		[]string{"--model", "sonnet", "--settings", "/tmp/s.json", "--session-id", "SID", "sprint start t-ab12"})
+	eq("claude fresh minimal",
+		agentSpawnArgs("claude", "t-ab12", false, "SID", "", ""),
+		[]string{"--session-id", "SID", "sprint start t-ab12"})
+	eq("claude resume",
+		agentSpawnArgs("claude", "t-ab12", true, "SID", "", ""),
+		[]string{"--resume", "SID"})
+	eq("pi fresh",
+		agentSpawnArgs("pi", "t-ab12", false, "", "", ""),
+		[]string{"sprint start t-ab12"})
+	eq("pi resume",
+		agentSpawnArgs("pi", "t-ab12", true, "", "", ""),
+		[]string{"-c"})
+}
+
+func readAgentFile(t *testing.T, root, ticket string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(root, ".tickets", ticket, ".cockpit-agent"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func startSessionAgent(t *testing.T, base, ticket, agent, token string) int {
+	t.Helper()
+	m := map[string]string{"ticket": ticket}
+	if agent != "" {
+		m["agent"] = agent
+	}
+	body, _ := json.Marshal(m)
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/start", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	return resp.StatusCode
+}
+
+// t-0d67: /session/start validates the agent (400 on bogus) and persists the
+// last-used kind to .cockpit-agent on success; pi spawns via COCKPIT_PI_BIN.
+func TestHandleStartAgent(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	seedTicketDir(t, root, "t-ab13")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	if code := startSessionAgent(t, ts.URL, "t-ab12", "bogus", bootTok); code != http.StatusBadRequest {
+		t.Fatalf("bogus agent: want 400, got %d", code)
+	}
+	if code := startSessionAgent(t, ts.URL, "t-ab12", "claude", bootTok); code != http.StatusOK {
+		t.Fatalf("claude: want 200, got %d", code)
+	}
+	if got := readAgentFile(t, root, "t-ab12"); got != "claude" {
+		t.Fatalf(".cockpit-agent = %q, want claude", got)
+	}
+
+	// pi resolves to the stub via COCKPIT_PI_BIN, so it spawns without real pi.
+	t.Setenv("COCKPIT_PI_BIN", bin)
+	if code := startSessionAgent(t, ts.URL, "t-ab13", "pi", bootTok); code != http.StatusOK {
+		t.Fatalf("pi: want 200, got %d", code)
+	}
+	if got := readAgentFile(t, root, "t-ab13"); got != "pi" {
+		t.Fatalf(".cockpit-agent = %q, want pi", got)
+	}
+}
