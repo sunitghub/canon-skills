@@ -3612,7 +3612,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
   }
 
-  test('leaving while running shows the confirm dialog with all three choices', async ({ page }) => {
+  test('leaving while running shows the confirm dialog with Save & End and Cancel (no Leave running)', async ({ page }) => {
     const id = `t-lcrun-${Date.now()}`;
     try {
       writeTicket(id, 'in_progress');
@@ -3622,7 +3622,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       const modal = page.locator('#ck-leave-confirm');
       await expect(modal).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-save')).toBeEnabled();
-      await expect(page.locator('#ck-leave-leave')).toBeVisible();
+      await expect(page.locator('#ck-leave-leave')).toHaveCount(0);
       await expect(page.locator('#ck-leave-cancel')).toBeVisible();
       // Cancel leaves everything untouched.
       await page.locator('#ck-leave-cancel').click();
@@ -3656,20 +3656,6 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.waitForTimeout(100);
       await page.locator('#ck-back').click();
       await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
-      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
-
-  test('Leave running proceeds immediately, no save prompt sent', async ({ page }) => {
-    const id = `t-lcleave-${Date.now()}`;
-    try {
-      writeTicket(id, 'in_progress');
-      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
-      await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
-      await page.locator('#ck-leave-leave').click();
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
@@ -3822,10 +3808,9 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.waitForTimeout(100);
       await page.locator('#ck-back').click();
       await page.locator('#ck-leave-save').click();
-      // Mid-save: Cancel and Leave running must not be clickable — closeLeaveConfirm()
+      // Mid-save: Cancel must not be clickable — closeLeaveConfirm()
       // alone doesn't abort the pending save-and-end sequence.
       await expect(page.locator('#ck-leave-cancel')).toBeDisabled();
-      await expect(page.locator('#ck-leave-leave')).toBeDisabled();
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -3838,8 +3823,8 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       writeTicket(id1, 'in_progress');
       writeTicket(id2, 'in_progress');
       // Session 1: force a quick fallback so its save-and-end actually completes
-      // and tears down, leaving Cancel/Leave-running's disabled=true behind in
-      // the DOM (openLeaveConfirm is the only thing that resets them).
+      // and tears down, leaving Cancel's disabled=true behind in the DOM
+      // (openLeaveConfirm is the only thing that resets it).
       await openResumedCockpit(page, id1, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
       await page.evaluate(() => { window.__cockpitSaveFallbackMs = 200; });
       await page.waitForTimeout(100);
@@ -3856,7 +3841,6 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.locator('#ck-back').click();
       await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-cancel')).toBeEnabled();
-      await expect(page.locator('#ck-leave-leave')).toBeEnabled();
       await expect(page.locator('#ck-leave-save')).toBeEnabled();
       await expect(page.locator('#ck-leave-confirm-status')).toHaveText('');
     } finally {
@@ -3893,9 +3877,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // A fresh reopen must never inherit a prior session's stale badge state.
       await postFromIframe('needs-you');
       await expect(badge).toBeVisible();
+      // "Leave running" was removed (t-a852) — a needs-you session must be
+      // resolved before it can be left, so flip to running, then Save & End
+      // closes it (fake daemon replies 'ended').
+      await postFromIframe('running');
       await page.locator('#ck-back').click();
-      await page.locator('#ck-leave-leave').click();
-      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      await page.locator('#ck-leave-save').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
       await reopenCockpitNoReload(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       await page.waitForTimeout(100);
       await expect(badge).toBeHidden();
@@ -3934,6 +3922,8 @@ test.describe('cockpit preview pane (t-b19b)', () => {
         if(!d || d.source !== 'canon-cockpit') return;
         if(d.type === 'preview-request'){
           setTimeout(function(){ ${respond} }, ${delayMs});
+        } else if(d.type === 'save-and-end' || d.type === 'force-end'){
+          window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
         }
       });
     </script></body></html>`;
@@ -4058,8 +4048,10 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(1);
 
       await page.locator('#ck-back').click();
-      await page.locator('#ck-leave-leave').click();
-      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      // "Leave running" was removed (t-a852); close the live session via Save & End
+      // (the fake preview page replies 'ended').
+      await page.locator('#ck-leave-save').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
 
       await reopenCockpitNoReload(page, id2, fakePreviewCockpitPage({ respondWith: 'server-cmd' }));
       await page.waitForTimeout(100);

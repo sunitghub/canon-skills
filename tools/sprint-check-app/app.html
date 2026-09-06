@@ -1906,13 +1906,12 @@
     <div class="ck-leave-confirm">
       <div class="ck-leave-confirm-title">A sprint session is still running</div>
       <div class="ck-leave-confirm-body" id="ck-leave-confirm-body">
-        Leaving now without ending it will orphan the process — it keeps running with no way to
-        reconnect from here.
+        Save &amp; End saves this sprint's state to HANDOFF and ends the session. Cancel to keep
+        working here.
       </div>
       <div class="ck-leave-confirm-status" id="ck-leave-confirm-status"></div>
       <div class="ck-leave-confirm-actions">
         <button class="ck-leave-btn ck-leave-btn-save" id="ck-leave-save" type="button">Save &amp; End</button>
-        <button class="ck-leave-btn ck-leave-btn-leave" id="ck-leave-leave" type="button">Leave running</button>
         <button class="ck-leave-btn ck-leave-btn-cancel" id="ck-leave-cancel" type="button">Cancel</button>
       </div>
     </div>
@@ -4557,13 +4556,12 @@ function sessionIsLive() {
 function openLeaveConfirm() {
   const needsYou = cockpitState.status === 'needs-you';
   // Reset every control fresh — a prior session's in-flight save could have
-  // left "Leave running"/"Cancel" disabled and stale status text behind.
+  // left "Cancel" disabled and stale status text behind.
   document.getElementById('ck-leave-save').disabled = needsYou;
-  document.getElementById('ck-leave-leave').disabled = false;
   document.getElementById('ck-leave-cancel').disabled = false;
   document.getElementById('ck-leave-confirm-body').textContent = needsYou
-    ? 'The agent is waiting on you right now — resolve the current prompt first, or leave it running.'
-    : 'Leaving now without ending it will orphan the process — it keeps running with no way to reconnect from here.';
+    ? 'The agent is waiting on you right now — Cancel to go back and resolve the prompt, then you can Save & End.'
+    : "Save & End saves this sprint's state to HANDOFF and ends the session. Cancel to keep working here.";
   document.getElementById('ck-leave-confirm-status').textContent = '';
   document.getElementById('ck-leave-confirm').classList.add('open');
 }
@@ -4585,7 +4583,6 @@ function teardownCockpit() {
 }
 
 document.getElementById('ck-leave-cancel').addEventListener('click', closeLeaveConfirm);
-document.getElementById('ck-leave-leave').addEventListener('click', () => { closeLeaveConfirm(); teardownCockpit(); });
 // t-98d8: fresh ticket-status read for the Save & End short-circuit. The cockpit
 // poll never reloads /api/tickets and `sprint complete` runs in the terminal, so
 // the in-memory `state` can be stale exactly when this matters. Fail safe: any
@@ -4616,7 +4613,6 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
     teardownCockpit();
     return;
   }
-  document.getElementById('ck-leave-leave').disabled = true;
   // Cancel must not be clickable mid-save either — closeLeaveConfirm() only
   // hides the modal, it doesn't abort the pending save-and-end sequence, so
   // a "successful" cancel would tear the cockpit down anyway once the
