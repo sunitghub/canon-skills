@@ -1471,6 +1471,8 @@
     }
     .ck-state p { margin: 0 0 8px 0; }
     .ck-state p:last-child { margin-bottom: 0; }
+    /* t-8ff0: label marking a Current Focus fallback (not per-ticket state). */
+    .ck-state-source { font-size: 11px; color: var(--text-muted); margin: 0 0 6px 0; }
     /* Each checklist entry as its own card, scoped to the cockpit rail only
        — the shared .doc-bullet class is used elsewhere (ticket modal) where
        this treatment doesn't apply. */
@@ -4786,6 +4788,23 @@ function findHandoffStateForTicket(raw, ticketId) {
   return matched;
 }
 
+// t-8ff0: decide what the STATUS panel shows for a ticket. Prefer the id-matched
+// ## In Progress bullet (findHandoffStateForTicket, unchanged — multi-ticket
+// HANDOFFs). When none names the ticket, fall back to ## Current Focus — but only
+// when this ticket is the active sprint (canon is single-active-sprint, so Current
+// Focus IS about it) OR Current Focus names the id, so an UNRELATED ticket's focus
+// is never shown. Returns { text, source: 'in-progress' | 'current-focus' | null }.
+function handoffDisplayState(raw, ticketId, isActive) {
+  const bullet = findHandoffStateForTicket(raw, ticketId);
+  if (bullet) return { text: bullet, source: 'in-progress' };
+  const focus = raw ? sectionContent(raw, 'Current Focus') : '';
+  if (focus) {
+    const idRe = new RegExp('\\b' + ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+    if (isActive || idRe.test(focus)) return { text: focus, source: 'current-focus' };
+  }
+  return { text: null, source: null };
+}
+
 // Renders this ticket's HANDOFF.md state bullet, if any — a fresh fetch each
 // call (not the page-load-cached state.handoff) so it reflects a save the
 // live agent just made, not a stale snapshot from when the cockpit opened.
@@ -4796,7 +4815,7 @@ async function renderCockpitState(t) {
     const r = await fetch('/api/handoff');
     if (r.ok) raw = (await r.json()).raw || '';
   } catch {}
-  const bullet = findHandoffStateForTicket(raw, t.id);
+  const st = handoffDisplayState(raw, t.id, t.status === 'in_progress');
 
   // t-cd06: the locked worktree is durable (.tickets/<id>/.cockpit-cwd) but
   // previously only surfaced in the WORKTREE accordion above — show it here
@@ -4820,7 +4839,16 @@ async function renderCockpitState(t) {
     worktreeLine = `<div class="ck-worktree-sub" style="margin-bottom:8px;" title="${esc(lock.cwd)}">Running in: ${esc(label)}</div>`;
   }
 
-  box.innerHTML = worktreeLine + (bullet ? formatStateAsParagraphs(bullet, t) : '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>');
+  let stateHtml;
+  if (st.source === 'in-progress') {
+    stateHtml = formatStateAsParagraphs(st.text, t);
+  } else if (st.source === 'current-focus') {
+    // t-8ff0: labeled so the project focus is never mistaken for per-ticket state.
+    stateHtml = '<div class="ck-state-source">Current focus (no per-ticket state yet):</div>' + formatStateAsParagraphs(st.text, t);
+  } else {
+    stateHtml = '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>';
+  }
+  box.innerHTML = worktreeLine + stateHtml;
 }
 
 // t-cd06: shared by every /api/worktree-lock caller below (init-selection,
