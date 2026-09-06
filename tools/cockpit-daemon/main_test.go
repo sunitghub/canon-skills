@@ -1803,8 +1803,9 @@ func TestPreviewRootAndServe(t *testing.T) {
 		t.Fatalf("preview-root: want 204, got %d", r1.StatusCode)
 	}
 
-	// GET the reported file via previewToken (query param, not header).
-	r2, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/index.html?token=" + out.PreviewToken)
+	// GET the reported file via previewToken as a PATH segment (t-8fbc), not a
+	// query param: /session/<sid>/preview/<token>/<relpath>.
+	r2, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/" + out.PreviewToken + "/index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1815,8 +1816,9 @@ func TestPreviewRootAndServe(t *testing.T) {
 	}
 
 	// A SIBLING file must also resolve — the whole directory is served, not
-	// just the one reported file.
-	r3, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/style.css?token=" + out.PreviewToken)
+	// just the one reported file. With the token in the path, a relative
+	// subresource keeps it (the whole point of t-8fbc).
+	r3, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/" + out.PreviewToken + "/style.css")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1827,7 +1829,7 @@ func TestPreviewRootAndServe(t *testing.T) {
 	}
 
 	// Wrong/missing token is rejected.
-	r4, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/index.html?token=wrong")
+	r4, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/wrong/index.html")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1849,6 +1851,65 @@ func TestPreviewRootAndServe(t *testing.T) {
 		if rr.StatusCode != http.StatusUnauthorized {
 			t.Fatalf("previewToken used against /%s: want 401, got %d", action, rr.StatusCode)
 		}
+	}
+}
+
+// t-8fbc: the index.html -> ./ redirect http.FileServer issues must land on a
+// URL that still carries the token path segment, or a directory-style preview
+// (…/preview/<token>/ serving index.html) breaks. A no-follow client asserts the
+// 301 target is the relative "./" (which a browser resolves against the full
+// request path, keeping the token prefix), and a follow client confirms the
+// end-to-end GET returns the index body.
+func TestPreviewIndexRedirectPreservesToken(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	appDir := filepath.Join(root, "examples", "foo")
+	if err := os.MkdirAll(appDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	indexFile := filepath.Join(appDir, "index.html")
+	os.WriteFile(indexFile, []byte("<html>idx</html>"), 0o644)
+
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token, PreviewToken string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	body, _ := json.Marshal(map[string]string{"path": indexFile})
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/preview-root", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r1, _ := http.DefaultClient.Do(req)
+	r1.Body.Close()
+
+	// No-follow client: the /index.html request must 301 to relative "./".
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	rr, err := noFollow.Get(ts.URL + "/session/" + out.Session + "/preview/" + out.PreviewToken + "/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rr.Body.Close()
+	if rr.StatusCode != http.StatusMovedPermanently {
+		t.Fatalf("index.html: want 301, got %d", rr.StatusCode)
+	}
+	if loc := rr.Header.Get("Location"); loc != "./" {
+		t.Fatalf("redirect Location: want \"./\" (relative, keeps token prefix), got %q", loc)
+	}
+
+	// The resolved directory URL (…/preview/<token>/) serves the index.
+	rd, err := http.Get(ts.URL + "/session/" + out.Session + "/preview/" + out.PreviewToken + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bd, _ := io.ReadAll(rd.Body)
+	rd.Body.Close()
+	if rd.StatusCode != http.StatusOK || string(bd) != "<html>idx</html>" {
+		t.Fatalf("preview dir index: status=%d body=%q", rd.StatusCode, bd)
 	}
 }
 

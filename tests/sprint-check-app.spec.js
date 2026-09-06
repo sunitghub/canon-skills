@@ -3970,7 +3970,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
       const iframe = page.locator('#ck-preview-body iframe');
       await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
-      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/index.html?token=ptok1');
+      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/ptok1/index.html');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -4079,9 +4079,11 @@ test.describe('cockpit preview pane (t-b19b)', () => {
 // a MANUAL live smoke test (its acceptance.md "Live smoke test" line). This
 // automates that headlessly: spawn the daemon with a harmless stub command
 // (never a real claude/agent), serve a real fixture through the actual
-// GET /session/<id>/preview/<relpath> endpoint, load it into a sandboxed
+// GET /session/<id>/preview/<token>/<relpath> endpoint, load it into a sandboxed
 // iframe that mirrors app.html's renderPreviewFile exactly, and assert the
-// rendered DOM + computed style inside the opaque-origin frame.
+// rendered DOM + computed style inside the opaque-origin frame. The fixture
+// styles via a RELATIVE ./style.css, so the green computed color also proves
+// the t-8fbc fix (path-segment token) lets relative sibling assets load.
 test.describe('cockpit rendered-output preview (t-8f9d)', () => {
   const os = require('os');
   const DAEMON_SRC = path.join(PROJECT_ROOT, 'tools', 'cockpit-daemon');
@@ -4107,15 +4109,16 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
       'created: 2026-08-24T00:00:00Z', '---', '', `# ${TICKET} render fixture`, '',
     ].join('\n'));
 
-    // Fixture app-under-test. The rendered assertion uses an INLINE <style> so
-    // it proves genuine rendering independent of the sibling-asset token quirk
-    // documented below. A sibling ./style.css is also written, used to pin the
-    // real subresource contract (token required) at the request level.
+    // Fixture app-under-test. index.html pulls its style from a RELATIVE sibling
+    // (./style.css) — so the rendered #marker color only turns green if that
+    // sibling actually loaded in the browser. Pre-t-8fbc this failed (the
+    // subresource dropped the ?token= and 401'd); with the path-segment token
+    // the relative request carries the token and the sibling renders.
     const appDir = path.join(work, 'preview-app');
     fs.mkdirSync(appDir, { recursive: true });
     fs.writeFileSync(path.join(appDir, 'index.html'),
       '<!doctype html><html><head><meta charset="utf-8">' +
-      '<style>#marker { color: rgb(0, 128, 0); }</style></head>' +
+      '<link rel="stylesheet" href="./style.css"></head>' +
       '<body><h1 id="marker">canon-preview-rendered-ok</h1></body></html>');
     fs.writeFileSync(path.join(appDir, 'style.css'), '#marker { color: rgb(0, 128, 0); }\n');
 
@@ -4183,35 +4186,31 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     // 3. Render it exactly as app.html's renderPreviewFile does: a sandboxed
     //    iframe (allow-scripts, NO allow-same-origin → opaque origin) whose src
     //    is the real daemon preview endpoint on its own port (cross-origin).
-    const previewUrl = `${base}/session/${encodeURIComponent(started.session)}/preview/index.html?token=${encodeURIComponent(started.previewToken)}`;
+    //    t-8fbc: the previewToken is a PATH segment (…/preview/<token>/<relpath>),
+    //    so the relative ./style.css subresource keeps the token and loads.
+    const previewUrl = `${base}/session/${encodeURIComponent(started.session)}/preview/${encodeURIComponent(started.previewToken)}/index.html`;
     await page.setContent(
       `<!doctype html><html><body><iframe id="pv" sandbox="allow-scripts" ` +
       `src="${previewUrl}" style="width:600px;height:400px;border:0"></iframe></body></html>`
     );
 
     // 4. Assert the RENDERED output inside the frame — not the src attribute.
-    //    The heading text proves the served HTML actually reached the DOM of an
+    //    The heading text proves the served HTML reached the DOM of an
     //    opaque-origin (sandbox allow-scripts, no allow-same-origin) frame; the
-    //    computed color proves the inline CSS was parsed and applied — i.e. real
-    //    rendering, headlessly, through the real daemon endpoint.
+    //    computed color proves the RELATIVE sibling ./style.css was fetched with
+    //    the token (path segment) and applied — the t-8fbc fix, end-to-end.
     const frame = page.frameLocator('#pv');
     await expect(frame.locator('#marker')).toHaveText('canon-preview-rendered-ok');
     const color = await frame.locator('#marker').evaluate(el => getComputedStyle(el).color);
     expect(color).toBe('rgb(0, 128, 0)');
 
-    // 5. Sibling-asset contract (discovered limitation, t-8f9d). A relative
-    //    subresource (`./style.css`) requested by the frame resolves to
-    //    `.../preview/style.css` WITHOUT the `?token=` — URL resolution drops
-    //    the query — so the daemon 401s it. The endpoint serves a sibling only
-    //    when the token is supplied explicitly (which a real browser never does
-    //    for relative assets). Pinned here so the contract is explicit and a
-    //    future fix that propagates the token would update this assertion.
-    //    (t-b19b's Go httptest passed the token explicitly and its Playwright
-    //    tests were mocked, so neither exercised this real-browser path.)
-    const noTok = await request.get(`${base}/session/${started.session}/preview/style.css`);
-    expect(noTok.status()).toBe(401);
-    const withTok = await request.get(`${base}/session/${started.session}/preview/style.css?token=${encodeURIComponent(started.previewToken)}`);
-    expect(withTok.status()).toBe(200);
-    expect(await withTok.text()).toContain('#marker');
+    // 5. Auth preserved: a wrong token in the path segment is rejected 401, and
+    //    the sibling served with the correct path token is 200 (the fixed
+    //    contract — t-8fbc replaced the old ?token= query form entirely).
+    const wrongTok = await request.get(`${base}/session/${started.session}/preview/wrongtoken/style.css`);
+    expect(wrongTok.status()).toBe(401);
+    const rightTok = await request.get(`${base}/session/${started.session}/preview/${encodeURIComponent(started.previewToken)}/style.css`);
+    expect(rightTok.status()).toBe(200);
+    expect(await rightTok.text()).toContain('#marker');
   });
 });
