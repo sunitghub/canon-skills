@@ -470,20 +470,6 @@ func agentDisplayModel(m string) string {
 	return m
 }
 
-// lastAgentKind reads the ticket's last-used agent from
-// .tickets/<id>/.cockpit-agent (daemon-owned, like .cockpit-session-id/.cockpit-cwd),
-// defaulting to claude when absent/unrecognized. Drives the Start picker default + hint.
-func (s *server) lastAgentKind(ticket string) string {
-	b, err := os.ReadFile(filepath.Join(s.ticketsDir(), ticket, ".cockpit-agent"))
-	if err != nil {
-		return "claude"
-	}
-	if k, ok := agentKind(strings.TrimSpace(string(b))); ok {
-		return k
-	}
-	return "claude"
-}
-
 // persistAgentKind records the last-used agent for the ticket, writing only when
 // it changed (t-0d67). Deterministic (called by the daemon at spawn), never
 // dependent on Save & End / agent-written HANDOFF. Best-effort: a write failure
