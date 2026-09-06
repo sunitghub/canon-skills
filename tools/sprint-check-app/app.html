@@ -1594,9 +1594,28 @@
       text-align: center; pointer-events: none;
     }
     .ck-preview {
-      width: 360px; flex-shrink: 0; border-left: 1px solid var(--border);
-      background: var(--surface); display: flex; flex-direction: column;
+      width: var(--ck-preview-w, 360px); flex-shrink: 0; border-left: 1px solid var(--border);
+      background: var(--surface); display: flex; flex-direction: column; position: relative;
     }
+    /* t-bc04: left-edge drag handle to resize the preview pane. Absolutely
+       positioned on the left border; hidden while collapsed. */
+    .ck-preview-resize {
+      position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 3;
+    }
+    .ck-preview-resize:hover { background: var(--accent); opacity: .4; }
+    .ck-preview.collapsed .ck-preview-resize { display: none; }
+    /* t-bc04: ticket status badge next to the id (topbar + rail), colored to
+       match the board columns. */
+    .ck-status-badge {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+      padding: 2px 7px; border-radius: 999px; white-space: nowrap; display: inline-block;
+    }
+    .ck-status-badge:empty { display: none; }
+    .ck-status-badge.st-open { background: var(--col-open); color: #0b0f14; }
+    .ck-status-badge.st-progress { background: var(--col-progress); color: #0b0f14; }
+    .ck-status-badge.st-done { background: var(--col-done); color: var(--col-done-contrast, #04210f); }
+    .ck-status-badge.st-discarded { background: var(--col-discarded); color: #0b0f14; }
+    .ck-tc-idrow { display: flex; align-items: center; gap: 6px; }
     .ck-preview.collapsed { width: 40px; }
     .ck-preview.collapsed .ck-preview-full { display: none; }
     .ck-preview-collapsed-label {
@@ -1810,6 +1829,7 @@
         ← Board
       </button>
       <span class="ck-id" id="ck-id"></span>
+      <span class="ck-status-badge" id="ck-status"></span>
       <span class="ck-title" id="ck-title"></span>
       <span class="spacer"></span>
       <span class="ck-needs-you-badge" id="ck-needs-you-badge" title="Agent is waiting on you" style="display:none">!</span>
@@ -1823,7 +1843,7 @@
         <div class="ck-rail-resize" id="ck-rail-resize" title="Drag to resize"></div>
         <div class="ck-rail-full">
           <div class="ck-ticket-card">
-            <div class="ck-tc-id" id="ck-tc-id"></div>
+            <div class="ck-tc-idrow"><span class="ck-tc-id" id="ck-tc-id"></span><span class="ck-status-badge" id="ck-tc-status"></span></div>
             <div class="ck-tc-title" id="ck-tc-title"></div>
           </div>
           <div class="ck-accordion-section" id="ck-worktree-section">
@@ -1884,6 +1904,7 @@
         <div class="ck-term-msg" id="ck-term-msg"></div>
       </div>
       <div class="ck-preview collapsed" id="ck-preview">
+        <div class="ck-preview-resize" id="ck-preview-resize" title="Drag to resize"></div>
         <div class="ck-preview-full">
           <div class="ck-preview-header">
             <span>Preview</span>
@@ -4659,6 +4680,65 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
   }
 });
 
+// t-bc04: ticket status badge (topbar #ck-status + rail #ck-tc-status), colored
+// to match the board's status columns (--col-* vars). Live-updates via the poll.
+function statusBadgeInfo(status) {
+  switch (status) {
+    case 'in_progress': return { label: 'in progress', cls: 'st-progress' };
+    case 'closed':      return { label: 'closed',      cls: 'st-done' };
+    case 'cancelled':   return { label: 'discarded',   cls: 'st-discarded' };
+    case 'archived':    return { label: 'archived',    cls: 'st-discarded' };
+    case 'open':        return { label: 'open',        cls: 'st-open' };
+    default:            return { label: status || '',  cls: 'st-open' };
+  }
+}
+function renderCockpitStatusBadge(t) {
+  const info = statusBadgeInfo(t && t.status);
+  for (const id of ['ck-status', 'ck-tc-status']) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = info.label;
+    el.className = 'ck-status-badge ' + info.cls;
+  }
+}
+
+// t-bc04: clamp the preview width to a sane range so a stale/huge persisted
+// value can't wedge the pane off-screen.
+function clampPreviewW(w) {
+  const max = Math.min(Math.round(window.innerWidth * 0.7), 900);
+  return Math.max(280, Math.min(w, max));
+}
+let _ckPreviewResizeWired = false;
+// t-bc04: apply the persisted width and wire the left-edge drag handle (once).
+// Width is driven by the --ck-preview-w CSS var (not an inline width), so the
+// more-specific `.ck-preview.collapsed{width:40px}` rule still wins on collapse.
+function ensurePreviewResize() {
+  const pv = document.getElementById('ck-preview');
+  const handle = document.getElementById('ck-preview-resize');
+  if (!pv || !handle) return;
+  const stored = parseInt(localStorage.getItem('ck-preview-w') || '', 10);
+  if (!isNaN(stored)) pv.style.setProperty('--ck-preview-w', clampPreviewW(stored) + 'px');
+  if (_ckPreviewResizeWired) return;
+  _ckPreviewResizeWired = true;
+  let startX = 0, startW = 0, dragging = false;
+  handle.addEventListener('mousedown', (e) => {
+    dragging = true; startX = e.clientX; startW = pv.getBoundingClientRect().width;
+    document.body.style.userSelect = 'none';
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    // Panel is on the right (border-left): dragging left widens it.
+    pv.style.setProperty('--ck-preview-w', clampPreviewW(startW + (startX - e.clientX)) + 'px');
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+    localStorage.setItem('ck-preview-w', String(clampPreviewW(Math.round(pv.getBoundingClientRect().width))));
+  });
+}
+
 async function openCockpit(id) {
   const t = findTicketById(id);
   if (!t) return;
@@ -4675,6 +4755,8 @@ async function openCockpit(id) {
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-tc-id').textContent = displayTicketId(t);
   document.getElementById('ck-tc-title').textContent = t.title || '';
+  renderCockpitStatusBadge(t);
+  ensurePreviewResize();
   document.getElementById('cockpit').classList.remove('rail-collapsed');
   document.getElementById('cockpit-overlay').classList.add('open');
   renderCockpitModel(t);
@@ -4692,6 +4774,7 @@ async function openCockpit(id) {
     renderCockpitPlan(ct);
     renderCockpitDocs(ct);
     renderCockpitState(ct);
+    renderCockpitStatusBadge(ct);
   }, 5000);
 }
 
