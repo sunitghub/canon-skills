@@ -224,11 +224,31 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 	if cwd != "" && (!filepath.IsAbs(cwd) || !cwdPrefillRe.MatchString(cwd)) {
 		cwd = ""
 	}
+	// t-0d67: Start picker default + "last used" hint. Only meaningful once the
+	// ticket has been started before (a .cockpit-agent exists); a fresh ticket
+	// defaults to claude with no hint. The model is shown only where canon knows
+	// it — claude's plan.md Gate model; pi runs its own default.
+	agentDefault := "claude"
+	agentHint := ""
+	if ticket != "" {
+		if b, err := os.ReadFile(filepath.Join(s.ticketsDir(), ticket, ".cockpit-agent")); err == nil {
+			if k, ok := agentKind(strings.TrimSpace(string(b))); ok {
+				agentDefault = k
+				if k == "pi" {
+					agentHint = "Last used: Pi \u00b7 model: pi default"
+				} else {
+					agentHint = "Last used: Claude Code \u00b7 model: " + agentDisplayModel(s.gateModel(ticket))
+				}
+			}
+		}
+	}
 	page := strings.ReplaceAll(string(raw), "__COCKPIT_TOKEN__", s.cfg.token)
 	page = strings.ReplaceAll(page, "__COCKPIT_TICKET__", ticket)
 	page = strings.ReplaceAll(page, "__COCKPIT_EMBED__", embed)
 	page = strings.ReplaceAll(page, "__COCKPIT_AUTOSTART__", autostart)
 	page = strings.ReplaceAll(page, "__COCKPIT_CWD__", cwd)
+	page = strings.ReplaceAll(page, "__COCKPIT_AGENT__", agentDefault)
+	page = strings.ReplaceAll(page, "__COCKPIT_AGENT_HINT__", agentHint)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	io.WriteString(w, page)
@@ -297,6 +317,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Ticket string `json:"ticket"`
 		Cwd    string `json:"cwd"`
+		Agent  string `json:"agent"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -304,6 +325,14 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ticketRe.MatchString(body.Ticket) {
 		http.Error(w, "invalid ticket id", http.StatusBadRequest)
+		return
+	}
+	// t-0d67: the agent choice is client-supplied — validate against the fixed
+	// {claude, pi} allowlist here, so the daemon never resolves an arbitrary
+	// program. "" defaults to claude (back-compatible).
+	kind, ok := agentKind(body.Agent)
+	if !ok {
+		http.Error(w, "invalid agent", http.StatusBadRequest)
 		return
 	}
 	// Shape-valid is not enough: with no such ticket in the project, spawn()'s
@@ -338,11 +367,14 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	se, err := s.spawn(body.Ticket, cwd)
+	se, err := s.spawn(body.Ticket, cwd, kind)
 	if err != nil {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Record the last-used agent for the picker's default + hint (only when
+	// changed). After a successful spawn, so a failed start never records.
+	s.persistAgentKind(body.Ticket, kind)
 	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken})
 }
 
@@ -373,6 +405,97 @@ func taskkillTreeArgs(pid int) []string {
 	return []string{"/PID", strconv.Itoa(pid), "/T", "/F"}
 }
 
+// agentKind normalizes and validates the client-supplied agent choice for the
+// cockpit (t-0d67). "" defaults to claude (back-compatible). Only claude and pi
+// are allowed — the daemon must never resolve an arbitrary client-supplied
+// program, so an unknown value is rejected (ok=false → handleStart 400s).
+func agentKind(a string) (string, bool) {
+	switch a {
+	case "", "claude":
+		return "claude", true
+	case "pi":
+		return "pi", true
+	default:
+		return "", false
+	}
+}
+
+// agentSpawnArgs builds the PTY command args (after the program) for the chosen
+// agent (t-0d67). claude is byte-identical to the pre-t-0d67 argv:
+// [--model <m>] [--settings <path>] then (--resume <id>) or (--session-id <id>
+// "sprint start <ticket>"). pi uses documented flags only (option B): a positional
+// "sprint start <ticket>" for a fresh start, and `-c` (continue most recent
+// session in the cwd) when the ticket is already in_progress (a resume). pi takes
+// no claude-only --settings/--session-id/--model (no shell hooks; needs-you is a
+// Phase-2 pi extension). Pure/side-effect-free so it is unit-testable on any host.
+func agentSpawnArgs(kind, ticket string, resuming bool, claudeSessionID, gateModel, settingsPath string) []string {
+	prompt := "sprint start " + ticket
+	if kind == "pi" {
+		if resuming {
+			return []string{"-c"}
+		}
+		return []string{prompt}
+	}
+	var args []string
+	if gateModel != "" {
+		args = append(args, "--model", gateModel)
+	}
+	if settingsPath != "" {
+		args = append(args, "--settings", settingsPath)
+	}
+	if resuming {
+		args = append(args, "--resume", claudeSessionID)
+	} else {
+		args = append(args, "--session-id", claudeSessionID, prompt)
+	}
+	return args
+}
+
+// agentDisplayModel sanitizes a model string for injection into cockpit.html's
+// "last used" hint (t-0d67). The value comes from plan.md's `Gate model:`, a
+// repo file — keep only a conservative charset so it can never break out of the
+// injected JS string literal; empty/over-long/odd values fall back to "default".
+func agentDisplayModel(m string) string {
+	m = strings.TrimSpace(m)
+	if m == "" || len(m) > 40 {
+		return "default"
+	}
+	for _, r := range m {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '_' || r == '-' || r == ':' || r == '/'
+		if !ok {
+			return "default"
+		}
+	}
+	return m
+}
+
+// lastAgentKind reads the ticket's last-used agent from
+// .tickets/<id>/.cockpit-agent (daemon-owned, like .cockpit-session-id/.cockpit-cwd),
+// defaulting to claude when absent/unrecognized. Drives the Start picker default + hint.
+func (s *server) lastAgentKind(ticket string) string {
+	b, err := os.ReadFile(filepath.Join(s.ticketsDir(), ticket, ".cockpit-agent"))
+	if err != nil {
+		return "claude"
+	}
+	if k, ok := agentKind(strings.TrimSpace(string(b))); ok {
+		return k
+	}
+	return "claude"
+}
+
+// persistAgentKind records the last-used agent for the ticket, writing only when
+// it changed (t-0d67). Deterministic (called by the daemon at spawn), never
+// dependent on Save & End / agent-written HANDOFF. Best-effort: a write failure
+// must never block a spawn that already succeeded.
+func (s *server) persistAgentKind(ticket, kind string) {
+	p := filepath.Join(s.ticketsDir(), ticket, ".cockpit-agent")
+	if b, err := os.ReadFile(p); err == nil && strings.TrimSpace(string(b)) == kind {
+		return
+	}
+	_ = os.WriteFile(p, []byte(kind+"\n"), 0o644)
+}
+
 // spawn launches an interactive `claude` session on the ticket in a PTY.
 //
 // The prompt is ONE argv element — exactly what a human would type at the
@@ -381,37 +504,44 @@ func taskkillTreeArgs(pid int) []string {
 // treats unrecognized positionals as free-text prompt content and submits only
 // the first, so the ticket id was silently dropped (verified live, t-842b).
 // Still an argv slice, never a shell string; no token is in the argv of the child.
-func (s *server) spawn(ticket, cwd string) (*session, error) {
+func (s *server) spawn(ticket, cwd, kind string) (*session, error) {
 	p, err := pty.New()
 	if err != nil {
 		return nil, err
 	}
 	sid, tok, statusTok, previewTok := randToken()[:16], randToken(), randToken(), randToken()
 	var args []string
-	if m := s.gateModel(ticket); m != "" {
-		args = append(args, "--model", m)
-	}
-	// The Notification hook goes in via --settings, which loads ADDITIONAL
-	// settings (verified: the project's own permissions.ask rules still fire), so
-	// the daemon never writes into the target project. Losing the hook costs the
-	// status signal, never the spawn.
-	hookDir, err := s.writeHookSettings(sid, statusTok)
-	switch {
-	case err == nil:
-		args = append(args, "--settings", filepath.Join(hookDir, "settings.json"))
-	case !errors.Is(err, errNoDaemonAddr):
-		fmt.Fprintf(os.Stderr, "cockpit: needs-you status unavailable: %v\n", err)
-	}
-	// t-2e7e: pin/resume a claude session id. Never --fork-session alongside
-	// --resume — that mints a NEW id instead of continuing the real
-	// conversation, defeating the whole point.
-	claudeSessionID, resuming := s.resolveClaudeSessionID(ticket)
-	if resuming {
-		args = append(args, "--resume", claudeSessionID)
+	var hookDir string
+	// t-0d67: agent-aware spawn. claude keeps its exact pre-t-0d67 argv (--model,
+	// --settings Notification hook, --session-id/--resume). pi uses documented
+	// flags only and no shell hooks.
+	program := s.cfg.sprintBin // claude default / COCKPIT_SPRINT_BIN override
+	if kind == "pi" {
+		program = envOr("COCKPIT_PI_BIN", "pi")
+		// Resume (pi -c) when the ticket is already in_progress; else a fresh
+		// positional "sprint start <ticket>". Option B — see agentSpawnArgs.
+		args = agentSpawnArgs("pi", ticket, s.ticketStatus(ticket) == "in_progress", "", "", "")
 	} else {
-		args = append(args, "--session-id", claudeSessionID, "sprint start "+ticket)
+		// The Notification hook goes in via --settings, which loads ADDITIONAL
+		// settings (verified: the project's own permissions.ask rules still fire), so
+		// the daemon never writes into the target project. Losing the hook costs the
+		// status signal, never the spawn.
+		var herr error
+		hookDir, herr = s.writeHookSettings(sid, statusTok)
+		settingsPath := ""
+		switch {
+		case herr == nil:
+			settingsPath = filepath.Join(hookDir, "settings.json")
+		case !errors.Is(herr, errNoDaemonAddr):
+			fmt.Fprintf(os.Stderr, "cockpit: needs-you status unavailable: %v\n", herr)
+		}
+		// t-2e7e: pin/resume a claude session id. Never --fork-session alongside
+		// --resume — that mints a NEW id instead of continuing the real
+		// conversation, defeating the whole point.
+		claudeSessionID, resuming := s.resolveClaudeSessionID(ticket)
+		args = agentSpawnArgs("claude", ticket, resuming, claudeSessionID, s.gateModel(ticket), settingsPath)
 	}
-	c := p.Command(resolveSpawnBin(s.cfg.sprintBin), args...)
+	c := p.Command(resolveSpawnBin(program), args...)
 	c.Dir = cwd
 	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
 	if err := c.Start(); err != nil {
