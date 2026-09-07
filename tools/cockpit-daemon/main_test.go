@@ -2136,6 +2136,24 @@ func TestCockpitCwdPrefill(t *testing.T) {
 		t.Fatalf("valid cwd not embedded verbatim in PREFILL_CWD")
 	}
 
+	// t-7590: a Windows drive-letter worktree path (forward slashes, exactly as
+	// the board sends it) must pass the prefill allowlist. The missing colon
+	// previously rejected every Windows abs path, so handleCockpit dropped the
+	// worktree cwd to "" and the daemon spawned in main regardless of the pick.
+	// Asserted on the regex directly so it holds on any test host (filepath.IsAbs
+	// for a C:/ path is false off-Windows, so the full round-trip can't run here).
+	winPath := "C:/Users/agentops/Documents/ToDo-worktrees/test-t-5d6t"
+	if !cwdPrefillRe.MatchString(winPath) {
+		t.Fatalf("cwdPrefillRe rejects Windows worktree path %q — redirect silently dropped on Windows", winPath)
+	}
+
+	// End-to-end through handleCockpit with a colon in an absolute path
+	// (Unix-absolute so filepath.IsAbs passes on the test host too).
+	colonAbs := "/tmp/canon:worktrees/feat-x"
+	if page := get("cwd=" + url.QueryEscape(colonAbs)); !strings.Contains(page, `var PREFILL_CWD = "`+colonAbs+`";`) {
+		t.Fatalf("colon-bearing abs cwd not embedded verbatim in PREFILL_CWD")
+	}
+
 	// A relative path, and a value carrying a quote (JS-injection attempt),
 	// must both be dropped to an empty prefill rather than embedded.
 	for _, bad := range []string{"relative/path", `/tmp/x";alert(1);//`} {
