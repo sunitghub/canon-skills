@@ -80,6 +80,7 @@ type config struct {
 	idleTimeoutMain   time.Duration // t-cd06: longer idle timeout for a main-checkout session (default 30m) — nebula's own 5m default assumes a disposable worktree; the main checkout has no such disposability, so it keeps a longer but still-bounded safety net rather than running forever unreaped
 	idleCheckInterval time.Duration // t-2e7e: how often to scan for idle sessions (default 30s)
 	saveFallback      time.Duration // t-2e7e: force-kill if the save marker never appears within this long (default 60s)
+	saveQuiesce       time.Duration // t-2c9e: after a watched state file changes, conclude "saved" once writes quiesce for this long (default 2s) — mtime-bump != save-complete, so this debounce avoids killing mid-multi-file-write
 }
 
 type server struct {
@@ -157,6 +158,9 @@ func newServer(cfg config) *server {
 	}
 	if cfg.saveFallback <= 0 {
 		cfg.saveFallback = 60 * time.Second
+	}
+	if cfg.saveQuiesce <= 0 {
+		cfg.saveQuiesce = 2 * time.Second
 	}
 	s := &server{cfg: cfg, sessions: map[string]*session{}}
 	s.startIdleReaper()
@@ -640,6 +644,8 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleResize(w, r, se)
 	case "kill":
 		s.handleKill(w, r, se)
+	case "save-and-end":
+		s.handleSaveAndEnd(w, r, se)
 	case "preview-root":
 		s.handlePreviewRoot(w, r, se)
 	default:
@@ -760,6 +766,34 @@ func (s *server) handleKill(w http.ResponseWriter, r *http.Request, se *session)
 	}
 	s.killSession(se)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleSaveAndEnd (t-2c9e) drives the daemon-side Save & End for an attached
+// client: inject the save prompt, then end on the PTY marker, file-settle, or
+// the fallback — so a full-screen TUI (pi) that never yields a clean marker
+// line still ends promptly instead of waiting out the board's 90s fallback.
+// Returns 202 immediately; the client ends on the "saved" SSE frame (or the
+// stream closing on kill). Guarded by se.reaping so it can't double-run or race
+// the idle reaper.
+func (s *server) handleSaveAndEnd(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if se.isExited() {
+		http.Error(w, "session has exited", http.StatusGone)
+		return
+	}
+	se.mu.Lock()
+	already := se.reaping
+	if !already {
+		se.reaping = true
+	}
+	se.mu.Unlock()
+	if !already {
+		go s.saveAndEnd(se)
+	}
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // killSession is the shared teardown handleKill and the idle reaper
@@ -910,7 +944,7 @@ func (s *server) reapIdleSessions() {
 		if !idle || blocked || exited || alreadyReaping {
 			continue
 		}
-		go s.saveAndEndIdle(se)
+		go s.saveAndEnd(se)
 	}
 }
 
@@ -921,7 +955,15 @@ func (s *server) reapIdleSessions() {
 // bounded fallback force-kills if the marker never appears — same shape as
 // the client-side version's own fallback, so an idle-but-unresponsive
 // session can't block the reaper forever.
-func (s *server) saveAndEndIdle(se *session) {
+// saveAndEnd mirrors t-f6b6's client-side Save & End, moved server-side so it
+// works with zero browser attached: the daemon owns the PTY directly, so no
+// HTTP round-trip to itself is needed. Shared by the idle reaper and the
+// interactive POST /session/<id>/save-and-end (t-2c9e). Writes the save prompt,
+// then ends on the FIRST of: the PTY marker (claude fast path), file-settle (a
+// watched state file changed then quiesced — agent-agnostic, covers pi), or the
+// bounded fallback. A real human POST /input aborts. The caller sets se.reaping
+// before launching this (guards against a second concurrent run).
+func (s *server) saveAndEnd(se *session) {
 	prompt := "Please save your current state now: update plan.md/acceptance.md (and " +
 		"HANDOFF.md if relevant) with where things stand and anything unresolved, then " +
 		"print the exact line " + cockpitSaveMarker + " on its own, and stop."
@@ -929,6 +971,16 @@ func (s *server) saveAndEndIdle(se *session) {
 	sentAt := len(se.buf)            // only output written AFTER the prompt counts — buf may hold an
 	humanBaseline := se.humanInputAt // unrelated earlier line matching the marker verbatim (e.g. from a
 	se.mu.Unlock()                   // prior conversation about this very feature) that must never trigger a false kill.
+	// t-2c9e: snapshot baseline stamps of the watched state files at prompt
+	// injection — a change vs THIS baseline is what marks "the agent saved", so
+	// an unrelated earlier edit never false-fires. File-settle makes detection
+	// agent-agnostic (pi never emits a clean marker line the claude-tuned parser
+	// survives); the PTY marker below stays as claude's fast path.
+	watched := s.watchedSaveFiles(se)
+	baseline := snapshotStamps(watched)
+	prev := baseline
+	lastChange := time.Now()
+	sawChange := false
 	// t-cd06: text and Enter must be two SEPARATE writes, not one write with
 	// a trailing \r — live-reproduced: a single write landed as an unsubmitted
 	// draft sitting in the composer (bracketed-paste-style handling swallows
@@ -978,11 +1030,89 @@ func (s *server) saveAndEndIdle(se *session) {
 				return
 			}
 			if found {
-				s.killSession(se)
+				s.endSaved(se) // claude fast path: the clean sentinel line
+				return
+			}
+			// t-2c9e: file-settle — a watched state file changed vs baseline,
+			// then writes quiesced for saveQuiesce (mtime-bump != save-complete,
+			// so the debounce avoids killing mid-multi-file-write). Agent-agnostic:
+			// covers pi, whose TUI never yields a clean marker line.
+			cur := snapshotStamps(watched)
+			if !stampsEqual(cur, prev) {
+				lastChange = time.Now()
+				prev = cur
+			}
+			if !stampsEqual(cur, baseline) {
+				sawChange = true
+			}
+			if sawChange && time.Since(lastChange) >= s.cfg.saveQuiesce {
+				s.endSaved(se)
 				return
 			}
 		}
 	}
+}
+
+// t-2c9e: file-settle detection of a completed Save & End, agent-agnostic.
+
+// fileStamp captures the mtime AND size of a watched file so a same-tick write
+// (coarse mtime resolution) is still seen as a change via the size delta. Zero
+// value = the file is absent (its later appearance is itself a change).
+type fileStamp struct{ mtime, size int64 }
+
+// watchedSaveFiles is the worktree-aware set whose change marks a completed save
+// (t-2c9e): HANDOFF.md at the session cwd root, plus the ticket's plan/acceptance
+// under .tickets/<id>/ (both folder and flat layouts — a nonexistent variant is
+// simply never observed changing). Reads the tree the session runs in (se.cwd),
+// not the daemon's own ticketsDir, so a worktree session is watched correctly.
+func (s *server) watchedSaveFiles(se *session) []string {
+	root := se.cwd
+	if root == "" {
+		root = s.cfg.projectRoot
+	}
+	td := filepath.Join(root, ".tickets")
+	return []string{
+		filepath.Join(root, "HANDOFF.md"),
+		filepath.Join(td, se.ticket, "plan.md"),
+		filepath.Join(td, se.ticket, "acceptance.md"),
+		filepath.Join(td, se.ticket+"-plan.md"),
+		filepath.Join(td, se.ticket+"-acceptance.md"),
+	}
+}
+
+func snapshotStamps(paths []string) map[string]fileStamp {
+	m := make(map[string]fileStamp, len(paths))
+	for _, p := range paths {
+		if fi, err := os.Stat(p); err == nil {
+			m[p] = fileStamp{mtime: fi.ModTime().UnixNano(), size: fi.Size()}
+		} else {
+			m[p] = fileStamp{}
+		}
+	}
+	return m
+}
+
+func stampsEqual(a, b map[string]fileStamp) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
+}
+
+// endSaved broadcasts a "saved" SSE frame so an attached client ends promptly,
+// then tears the session down. Best-effort: a brief pause lets the stream flush
+// the frame before killSession closes the PTY and drops subscribers.
+func (s *server) endSaved(se *session) {
+	se.mu.Lock()
+	se.broadcastLocked(frame{event: "saved"})
+	se.mu.Unlock()
+	time.Sleep(100 * time.Millisecond)
+	s.killSession(se)
 }
 
 var ansiCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
