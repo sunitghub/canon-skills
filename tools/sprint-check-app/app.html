@@ -100,6 +100,8 @@
                     box-shadow: 0 0 10px 1px rgba(0,255,255,.35), 0 0 2px rgba(0,255,255,.5); }
     .header-sep   { color: var(--border-hover); font-size: 16px; }
     .header-project { font-size: 13px; color: var(--text-muted); }
+    .header-version { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono','Fira Code',monospace; opacity: .7; margin-left: 2px; }
+    .header-version:empty { display: none; }
     .header-right { display: flex; align-items: center; gap: 14px; }
     .header-branch {
       display: flex; align-items: center; gap: 5px; font-size: 12px;
@@ -1696,6 +1698,7 @@
       </div>
       <span class="header-sep">/</span>
       <span class="header-project" id="h-project">—</span>
+      <span class="header-version" id="h-version" title="board build"></span>
     </div>
     <div class="header-right">
       <div class="header-branch">
@@ -2441,6 +2444,20 @@ async function loadData() {
 function setDot(s) {
   const el = document.getElementById('refresh-dot');
   el.className = 'refresh-dot' + (s !== 'live' ? ' ' + s : '');
+}
+
+// t-99fa: show which board build is running (and the cockpit-daemon build in the
+// tooltip) so "is this the binary with my fix?" is answerable at a glance.
+async function fetchVersion() {
+  try {
+    const r = await fetch('/api/version');
+    if (!r.ok) return;
+    const d = await r.json();
+    const el = document.getElementById('h-version');
+    if (!el || !d || !d.version) return;
+    el.textContent = d.version;
+    el.title = 'board build: ' + d.version + (d.daemon ? '\ncockpit-daemon build: ' + d.daemon : '');
+  } catch {}
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -6258,6 +6275,7 @@ document.getElementById('btn-ci-setup')?.addEventListener('click', async () => {
 // ── Boot ──────────────────────────────────────────────────────────────────
 
 loadData();
+fetchVersion();
 setInterval(loadData, 8000);
 </script>
 

@@ -492,3 +492,48 @@ func TestCockpitDaemonCandidates(t *testing.T) {
 		t.Fatalf("extraRoot tools dir missing from candidates: %v", got)
 	}
 }
+
+// t-99fa: /api/version returns {version, daemon}; version reflects the build
+// var (stamped via -ldflags), daemon is "" when no daemon binary is resolved.
+func TestVersionEndpoint(t *testing.T) {
+	setupTestProject(t)
+	oldVer, oldBin := version, cockpitDaemonBin
+	version = "testver123"
+	cockpitDaemonBin = "" // daemonVersion() → "" without a resolvable daemon bin
+	defer func() { version = oldVer; cockpitDaemonBin = oldBin }()
+
+	req := httptest.NewRequest("GET", "http://127.0.0.1/api/version", nil)
+	rec := httptest.NewRecorder()
+	handle(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("/api/version status = %d", rec.Code)
+	}
+	var v map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v["version"] != "testver123" {
+		t.Fatalf("version = %q, want testver123", v["version"])
+	}
+	if _, ok := v["daemon"]; !ok {
+		t.Fatal("/api/version missing daemon key")
+	}
+	if v["daemon"] != "" {
+		t.Fatalf("daemon = %q, want empty when no daemon bin", v["daemon"])
+	}
+}
+
+// t-99fa: daemonVersion returns "" (not a crash) when the daemon binary path is
+// empty or unresolvable.
+func TestDaemonVersionEmpty(t *testing.T) {
+	old := cockpitDaemonBin
+	defer func() { cockpitDaemonBin = old }()
+	cockpitDaemonBin = ""
+	if got := daemonVersion(); got != "" {
+		t.Fatalf("daemonVersion() = %q, want empty", got)
+	}
+	cockpitDaemonBin = filepath.Join(t.TempDir(), "does-not-exist")
+	if got := daemonVersion(); got != "" {
+		t.Fatalf("daemonVersion() with missing bin = %q, want empty", got)
+	}
+}

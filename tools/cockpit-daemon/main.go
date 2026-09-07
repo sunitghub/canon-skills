@@ -178,6 +178,11 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "ok")
 	})
+	// t-99fa: unauthenticated build-version readout (like /healthz) so the board
+	// can show which daemon build is running. Same value as `--version`.
+	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, version)
+	})
 	mux.HandleFunc("/cockpit", s.guard(s.handleCockpit))
 	if sub, err := fs.Sub(webFS, "web"); err == nil {
 		mux.Handle("/web/", s.guardHandler(http.StripPrefix("/web/", http.FileServer(http.FS(sub)))))
@@ -1562,9 +1567,19 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // ── main ───────────────────────────────────────────────────────────────────
 
+// version is the build id, stamped via -ldflags "-X main.version=<sha>" by
+// scripts/build-zip.sh (short SHA of the last commit touching
+// tools/cockpit-daemon). A plain `go build` leaves it "dev". t-99fa.
+var version = "dev"
+
 func main() {
+	versionFlag := flag.Bool("version", false, "print build version and exit")
 	addr := flag.String("addr", envOr("COCKPIT_ADDR", "127.0.0.1:8455"), "loopback bind address")
 	flag.Parse()
+	if *versionFlag {
+		fmt.Println(version)
+		return
+	}
 
 	if !strings.HasPrefix(*addr, "127.0.0.1:") && !strings.HasPrefix(*addr, "localhost:") && !strings.HasPrefix(*addr, "[::1]:") {
 		fmt.Fprintln(os.Stderr, "refusing non-loopback bind:", *addr)
@@ -1593,7 +1608,7 @@ func main() {
 	if err := writeStateFile(s.cfg.stateDir, ln.Addr().String(), cfg.token); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: state file:", err)
 	}
-	fmt.Fprintf(os.Stderr, "cockpit-daemon listening on %s\n", ln.Addr().String())
+	fmt.Fprintf(os.Stderr, "cockpit-daemon %s listening on %s\n", version, ln.Addr().String())
 	srv := &http.Server{Handler: s.handler()}
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)

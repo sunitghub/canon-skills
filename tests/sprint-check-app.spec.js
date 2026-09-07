@@ -47,6 +47,20 @@ test.describe('board modal', () => {
     await expect(tour).toContainText('## Wrapup Gates');
   });
 
+  test('board header shows the build version from /api/version (t-99fa)', async ({ page }) => {
+    await page.route('**/api/version', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ version: 'ver9f9a', daemon: 'dae1234' }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const v = page.locator('#h-version');
+    await expect(v).toHaveText('ver9f9a');
+    const title = await v.getAttribute('title');
+    expect(title).toContain('ver9f9a');   // board build in the tooltip
+    expect(title).toContain('dae1234');   // cockpit-daemon build in the tooltip
+  });
+
   test('sidebar shows total commit count badge next to Recent Commits', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');

@@ -52,11 +52,33 @@ type docInfo struct {
 
 type ticket map[string]any
 
+// version is the build id, stamped via -ldflags "-X main.version=<sha>" by
+// scripts/build-zip.sh (short SHA of the last commit touching
+// tools/sprint-check-go). A plain `go build` leaves it "dev". t-99fa.
+var version = "dev"
+
+// daemonVersion returns the cockpit-daemon binary's build id via `--version`,
+// or "" if the binary isn't resolved or can't report one. Best-effort — a
+// stale daemon binary is otherwise invisible in the board UI (t-99fa).
+func daemonVersion() string {
+	if cockpitDaemonBin == "" {
+		return ""
+	}
+	out, err := exec.Command(cockpitDaemonBin, "--version").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "help", "--help", "-h":
 			usage()
+			return
+		case "version", "--version", "-v":
+			fmt.Println(version)
 			return
 		}
 	}
@@ -96,7 +118,7 @@ func main() {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := &http.Server{Addr: addr, Handler: mux}
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
-	fmt.Fprintf(os.Stderr, "sprint-check  %s  (project: %s)\n", url, filepath.Base(projectRoot))
+	fmt.Fprintf(os.Stderr, "sprint-check %s  %s  (project: %s)\n", version, url, filepath.Base(projectRoot))
 	fmt.Fprintf(os.Stderr, "tickets: %s\n", ticketsDir)
 
 	if os.Getenv("SPRINT_CHECK_NO_BROWSER") != "1" {
@@ -170,6 +192,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, loadWhy(r.URL.Query().Get("file")))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
+	case "/api/version":
+		sendJSON(w, map[string]string{"version": version, "daemon": daemonVersion()})
 	case "/api/worktrees":
 		wtTicket := r.URL.Query().Get("ticket")
 		if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(wtTicket) {
