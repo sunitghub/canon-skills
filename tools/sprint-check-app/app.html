@@ -4494,7 +4494,7 @@ async function moveCard(t, newStatus) {
 // sync — the earlier toggle-write path's index-offset math is gone with it.
 // worktreeCwd: null = no row selected yet (OPEN-ticket Start stays gated,
 // t-cd06), '' = Main checkout selected, otherwise an absolute worktree path.
-const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null };
+const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null, actualCwd: null };
 let cockpitPollTimer = null;
 
 // t-f6b6: the board and the daemon page are different origins (different
@@ -4513,6 +4513,8 @@ window.addEventListener('message', (e) => {
   if (d.type === 'status') {
     cockpitState.status = d.status;
     renderNeedsYouBadge();
+  } else if (d.type === 'started') {
+    applyActualWorkingCwd(d.cwd);
   } else if (d.type === 'ended' && cockpitState._onEnded) {
     cockpitState._onEnded();
   } else if (d.type === 'preview-file') {
@@ -4613,6 +4615,7 @@ function teardownCockpit() {
   if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
   cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
   cockpitState.worktreeCwd = null;
+  cockpitState.actualCwd = null;
   renderNeedsYouBadge();
   resetPreview();
   loadData().then(render).catch(() => renderBoard());
@@ -5169,6 +5172,52 @@ function updateWorktreeNote() {
   if (!note) return;
   const selectedLabel = document.querySelector('#ck-worktree .ck-worktree-row.selected .ck-worktree-label');
   note.textContent = selectedLabel ? `Working in: ${selectedLabel.textContent}` : '';
+}
+
+// t-7590: normalize a filesystem path for comparison across the daemon
+// (EvalSymlinks output, native separators) and the board's own `git worktree
+// list` — Windows mixes `\` and `/` and is case-insensitive, so compare on a
+// lowercased, forward-slashed, trailing-slash-stripped key.
+function cockpitPathKey(p) {
+  if (!p) return '';
+  return String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+}
+
+// t-7590: after a real Start, set "Working in:" from the cwd the DAEMON actually
+// resolved (echoed by /session/start), not the optimistic pre-Start selection.
+// If the resolved cwd doesn't match the worktree row the user picked, show a
+// loud mismatch warning instead of silently claiming the wrong tree — the whole
+// point of the ticket (a locked/stale .cockpit-cwd or an empty request can send
+// the session somewhere other than the selection).
+function applyActualWorkingCwd(cwd) {
+  const note = document.getElementById('ck-worktree-note');
+  if (!note) return;
+  cockpitState.actualCwd = cwd || '';
+  const mainKey = cockpitPathKey(cockpitState.worktreeMainPath || '');
+  const actualKey = cockpitPathKey(cwd);
+  // Resolve a human label: match a rendered row by its data-cwd, else fall back
+  // to the path's basename; main resolves to the main-checkout row label.
+  let label = '';
+  const rows = document.querySelectorAll('#ck-worktree .ck-worktree-row');
+  for (const row of rows) {
+    const rowKey = cockpitPathKey(row.dataset.cwd || (row.dataset.cwd === '' ? cockpitState.worktreeMainPath : ''));
+    if ((row.dataset.cwd === '' && actualKey === mainKey) || (row.dataset.cwd && rowKey === actualKey)) {
+      const lbl = row.querySelector('.ck-worktree-label');
+      if (lbl) label = lbl.textContent;
+      break;
+    }
+  }
+  if (!label) label = (actualKey === mainKey) ? 'Main checkout' : (String(cwd).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd);
+
+  // Expected = the currently-selected row's cwd (worktreeCwd: '' means main).
+  const selKey = cockpitState.worktreeCwd === '' ? mainKey : cockpitPathKey(cockpitState.worktreeCwd);
+  if (actualKey && selKey && actualKey !== selKey) {
+    note.innerHTML = `Working in: <strong>${esc(label)}</strong>`
+      + `<div class="ck-worktree-warn">⚠ The session is running in <code>${esc(cwd)}</code>, `
+      + `not the worktree you selected. Kill it, then Unlock and pick the worktree again to redirect.</div>`;
+  } else {
+    note.textContent = `Working in: ${label}`;
+  }
 }
 
 // The ticket id/title prefix is already shown in the ck-ticket-card above —

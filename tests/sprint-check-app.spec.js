@@ -2998,6 +2998,52 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('after Start, "Working in:" reflects the daemon-resolved cwd and warns on a wrong-tree mismatch (t-7590)', async ({ page }) => {
+    const id = `t-ckcwd-${Date.now()}`;
+    const wtPath = '/tmp/wt-7590/verify2';
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: wtPath, branch: 'verify2', is_main: false, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toBeVisible();
+
+      // User selected the verify2 worktree AND the daemon reports it actually
+      // spawned there → label shows verify2, no mismatch warning.
+      await page.evaluate((wt) => { cockpitState.worktreeCwd = wt; applyActualWorkingCwd(wt); }, wtPath);
+      await expect(page.locator('#ck-worktree-note')).toContainText('Working in:');
+      await expect(page.locator('#ck-worktree-note')).toContainText('verify2');
+      await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toHaveCount(0);
+
+      // verify2 still selected, but the daemon reports it actually spawned in
+      // MAIN (the wrong-tree bug) → loud warning naming the real cwd.
+      await page.evaluate((root) => { applyActualWorkingCwd(root); }, PROJECT_ROOT);
+      const warn = page.locator('#ck-worktree-note .ck-worktree-warn');
+      await expect(warn).toBeVisible();
+      await expect(warn).toContainText(PROJECT_ROOT);
+      await expect(warn).toContainText('not the worktree you selected');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a locked ticket shows an Unlock button; cancel keeps the lock, confirm clears it and re-renders (t-fe3c)', async ({ page }) => {
     const id = `t-ckul-${Date.now()}`;
     try {

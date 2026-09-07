@@ -380,7 +380,12 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// Record the last-used agent for the picker's default + hint (only when
 	// changed). After a successful spawn, so a failed start never records.
 	s.persistAgentKind(body.Ticket, kind)
-	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken})
+	// t-7590: echo the cwd the daemon actually resolved and spawned in (may
+	// differ from what the client requested — a locked in_progress ticket
+	// reuses its persisted .cockpit-cwd, an empty request resolves to the main
+	// checkout). The board displays this as the authoritative "Working in:" so a
+	// wrong-tree run can never hide behind an optimistic pre-Start label.
+	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd})
 }
 
 // resolveSpawnBin resolves the spawn command against PATH to an absolute path

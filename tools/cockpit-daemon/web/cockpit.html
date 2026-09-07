@@ -216,6 +216,10 @@
       }
       var j = await r.json();
       session = j.session; sessTok = j.token; previewTok = j.previewToken; activeTicket = ticket;
+      // t-7590: report the cwd the daemon actually resolved (not PREFILL_CWD,
+      // which may have been ignored/overridden) so the board's "Working in:"
+      // reflects reality and can flag a wrong-tree mismatch.
+      try{ window.parent.postMessage({ source: "canon-cockpit", type: "started", cwd: (j.cwd || "") }, "*"); }catch(e){}
       // A second Start while this one is live would spawn a parallel session
       // on the same ticket — no daemon-side guard against it (t-2zoa, live).
       document.getElementById("startBtn").disabled = true;

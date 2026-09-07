@@ -2276,6 +2276,48 @@ func TestSpawnResumeReusesPersistedCwd(t *testing.T) {
 	}
 }
 
+// t-7590: /session/start must echo the cwd the daemon actually resolved and
+// spawned in — for a worktree request and for the main checkout — so the board
+// can display the real "Working in:" folder and flag a wrong-tree mismatch,
+// instead of trusting the optimistic pre-Start selection.
+func TestStartEchoesResolvedCwd(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "open")
+	seedTicketDir(t, root, "t-ab12") // present in main checkout
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12") // t-e5ff: physically present in the worktree
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	decodeCwd := func(resp *http.Response) string {
+		t.Helper()
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("start: %d", resp.StatusCode)
+		}
+		var out struct{ Session, Token, PreviewToken, Cwd string }
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			t.Fatalf("decode start response: %v", err)
+		}
+		return out.Cwd
+	}
+
+	// A worktree request echoes the worktree path.
+	if got := decodeCwd(startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)); got != wt {
+		t.Fatalf("worktree start echoed cwd = %q, want %q", got, wt)
+	}
+
+	// An empty request resolves to the main checkout — echoed as the daemon's
+	// projectRoot (resolveSpawnCwd returns it verbatim for the "" request; that
+	// is the directory the child actually spawns in).
+	if got := decodeCwd(startSession(t, ts.URL, "t-ab12", bootTok)); got != root {
+		t.Fatalf("main-checkout start echoed cwd = %q, want %q", got, root)
+	}
+}
+
 // t-cd06: a Decisions.md write failure must never block a spawn that already
 // succeeded — logging is best-effort.
 func TestSpawnSucceedsWhenDecisionsLogUnwritable(t *testing.T) {
