@@ -60,6 +60,54 @@ _remove_dir_link() {
   fi
 }
 
+# t-f99b: the skill mirror (.claude/skills, .agents/skills) is a LOCAL link to
+# canon's skills — it must never be committed. On Windows a junction is
+# git-visible (git tracks its CONTENTS as files), so a consumer `git add -A`
+# would commit stale copies that a worktree/old checkout then serves (this
+# masked t-720c). Ensure the project gitignores the mirror dirs, and untrack the
+# mirror if a prior commit already captured it. Only the two mirror dirs, never
+# the parent .claude/.agents (which may hold other tracked config). No-op when
+# the project isn't a git work tree.
+_ensure_mirror_gitignored() {
+  local project_dir="$1"
+  git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  local gi="$project_dir/.gitignore" entry rel
+  for entry in "/.claude/skills/" "/.agents/skills/"; do
+    if ! grep -qxF "$entry" "$gi" 2>/dev/null; then
+      printf '%s\n' "$entry" >> "$gi"
+      echo "  [gitignore] $entry"
+    fi
+    rel="${entry#/}"; rel="${rel%/}"
+    if [ -n "$(git -C "$project_dir" ls-files -- "$rel" 2>/dev/null | head -1)" ]; then
+      git -C "$project_dir" rm -r --cached --quiet -- "$rel" >/dev/null 2>&1 || true
+      echo "  [gitignore] untracked previously-committed mirror: $rel"
+    fi
+  done
+}
+
+# t-f99b: create the skills link inside a git worktree so it resolves to CURRENT
+# canon (never a stale committed copy). Called by the board's createWorktree
+# (via `skills.sh link-worktree <path>`) — a git worktree, being gitignored, has
+# no mirror of its own otherwise. Skips a real (project-local) skills dir.
+link_worktree() {
+  local wt_dir target link
+  wt_dir="$(cd "${1:-}" 2>/dev/null && pwd)" || { echo "link-worktree: no such dir: ${1:-}" >&2; return 1; }
+  target="$SKILLS_ROOT/skills"
+  for link in "$wt_dir/.claude/skills" "$wt_dir/.agents/skills"; do
+    if _is_dir_link "$link"; then
+      [ "$(_read_dir_link "$link")" = "$target" ] && continue
+      _create_dir_link "$target" "$link"
+    elif [ -e "$link" ]; then
+      continue   # a real dir (project-local skills) — leave it alone
+    else
+      mkdir -p "$(dirname "$link")"
+      _create_dir_link "$target" "$link"
+    fi
+    echo "  [worktree-link] $link -> $target"
+  done
+  _ensure_mirror_gitignored "$wt_dir"
+}
+
 register_project() {
   local project_dir
   project_dir="$(cd "$1" 2>/dev/null && pwd)" || return 0
@@ -105,6 +153,8 @@ upsert_skills_symlinks() {
       echo "  [symlink]  created: $link"
     fi
   done
+  # t-f99b: never let the (Windows-junction-visible) mirror get committed → stale worktrees.
+  _ensure_mirror_gitignored "$project_dir"
 }
 
 remove_skills_symlinks() {

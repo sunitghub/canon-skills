@@ -460,7 +460,32 @@ def create_worktree(branch: str) -> dict:
     except Exception as e:
         return {'ok': False, 'error': str(e)[:500]}
     copied = _copy_worktreeinclude_files(path)
+    _link_skills_into_worktree(path)
     return {'ok': True, 'path': str(path), 'branch': branch, 'worktreeinclude_copied': copied}
+
+def _link_skills_into_worktree(path: Path) -> None:
+    """t-f99b: create the canon skills link inside a freshly-created worktree so
+    it resolves to CURRENT canon. The skill mirror is gitignored (never
+    committed), so a git worktree has no mirror otherwise. Inline (not a
+    `skills.sh` shell-out) to match sprint-check-go and avoid a `bash`-on-PATH
+    dependency on Windows. Best-effort; non-fatal."""
+    tools = Path(__file__).resolve().parent.parent   # tools/
+    target = tools.parent / 'skills'                  # <canon>/skills
+    if not target.exists():
+        return
+    for rel in ('.agents/skills', '.claude/skills'):
+        link = path / rel
+        if link.exists():
+            continue
+        link.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if os.name == 'nt':
+                subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(target)],
+                               check=False, capture_output=True)
+            else:
+                os.symlink(target, link)
+        except OSError:
+            pass
 
 # ── Commit detail ─────────────────────────────────────────────────────────
 

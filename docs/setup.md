@@ -115,6 +115,8 @@ cd ~/.canon && git pull
 
 Hook scripts update immediately — called by path. Skill content updates automatically via symlinks (`.claude/skills → ~/.canon/skills` and `.agents/skills → ~/.canon/skills`, for Codex/Pi) — every project picks up changes on the next session.
 
+`add`/`refresh` also add `/.claude/skills/` and `/.agents/skills/` to your project's `.gitignore` — the skill dirs are **local links to canon, never committed**. This matters on Windows, where the link is a directory *junction* that git sees as a real folder: committing it would freeze a copy of the skills, and any `git worktree` or older checkout would then serve **stale** skill guidance (a canon fix would look absent). If your repo already committed the mirror, `add`/`refresh` untracks it (`git rm --cached`, files untouched) so it stops drifting. Git worktrees are auto-linked to current canon when the board (`sprint-check`) creates them; for a worktree made by hand, run `skills.sh link-worktree <path>`.
+
 To repair symlinks after an upgrade:
 
 ```bash
