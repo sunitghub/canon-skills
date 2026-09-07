@@ -252,6 +252,20 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, worktreeLockStatus(m[1]))
 			return
 		}
+		if m := regexp.MustCompile(`^/api/cockpit-docs/(t-[a-z0-9]{4})$`).FindStringSubmatch(path); m != nil {
+			cwd := r.URL.Query().Get("cwd")
+			if cwd == "" {
+				http.Error(w, "cwd required", http.StatusBadRequest)
+				return
+			}
+			docs, ok := cockpitDocs(m[1], cwd)
+			if !ok {
+				http.Error(w, "cwd not a registered worktree", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, docs)
+			return
+		}
 		http.NotFound(w, r)
 	}
 }
@@ -1326,7 +1340,64 @@ func listWorktrees(ticketID string) []map[string]any {
 	return entries
 }
 
-// worktreeLockStatus is an advisory-only read of .tickets/<id>/.cockpit-cwd
+// cockpitDocs (t-1357) reads a cockpit ticket's plan.md / acceptance.md /
+// HANDOFF.md from the WORKTREE the session runs in, not the board's main
+// checkout. A worktree sprint writes those on its own branch, so the main
+// .tickets/<id>/ shows only the committed ticket.md; the cockpit rail should
+// reflect the tree the agent is actually editing. Returns ok=false (caller ->
+// 400) when cwd is not a real registered worktree — the board never reads an
+// arbitrary client-supplied directory (same trust model as the daemon's
+// resolveSpawnCwd). Read-only; each doc path is contained under <cwd>/.tickets.
+// Must stay behaviorally identical to server.py's cockpit_docs — see
+// tests/sprint-check-api-parity.sh.
+func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
+	cwdReal, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return nil, false
+	}
+	isWorktree := false
+	for _, e := range listWorktrees("") {
+		if wt, err := filepath.EvalSymlinks(fmt.Sprint(e["path"])); err == nil && wt == cwdReal {
+			isWorktree = true
+			break
+		}
+	}
+	if !isWorktree {
+		return nil, false
+	}
+	tickets := filepath.Join(cwdReal, ".tickets")
+	read := func(rel string) any {
+		p := filepath.Join(tickets, filepath.FromSlash(rel))
+		if r, err := filepath.Rel(tickets, p); err != nil || strings.HasPrefix(r, "..") {
+			return nil
+		}
+		if resolved, err := filepath.EvalSymlinks(p); err == nil {
+			if r2, err2 := filepath.Rel(tickets, resolved); err2 != nil || strings.HasPrefix(r2, "..") {
+				return nil
+			}
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return nil
+		}
+		return string(b)
+	}
+	var plan, acceptance any
+	if fi, err := os.Stat(filepath.Join(tickets, ticketID)); err == nil && fi.IsDir() {
+		plan = read(ticketID + "/plan.md")
+		acceptance = read(ticketID + "/acceptance.md")
+	} else {
+		plan = read(ticketID + "-plan.md")
+		acceptance = read(ticketID + "-acceptance.md")
+	}
+	var handoff any
+	if b, err := os.ReadFile(filepath.Join(cwdReal, "HANDOFF.md")); err == nil {
+		handoff = string(b)
+	}
+	return map[string]any{"plan": plan, "acceptance": acceptance, "handoff": handoff}, true
+}
+
+
 // (t-cd06 amendment) — the daemon owns writing that file and already ignores
 // a locked ticket's requested cwd; this just lets the board warn before the
 // choice is made for an in_progress ticket's first resume, since a worktree

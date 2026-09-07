@@ -3078,6 +3078,53 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('cockpit rail shows the WORKTREE plan/acceptance when the session runs in a worktree (t-1357)', async ({ page }) => {
+    const id = `t-ckwd-${Date.now()}`;
+    const wtPath = '/tmp/wt-1357/sprint-x';
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] MAIN-checkout criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'MAIN approach body', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: wtPath, branch: 'sprint-x', is_main: false, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      // Locked to the worktree → the rail's effective cwd is the worktree.
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }),
+      }));
+      // The worktree's docs differ from main's — the rail must show THESE.
+      await page.route('**/api/cockpit-docs/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          plan: '# Plan\n\n## Approach\nWORKTREE-ONLY approach body',
+          acceptance: '# Acceptance\n\n## Criteria\n- [ ] worktree-only criterion\n\n## Test Plan\n- [ ] wt test',
+          handoff: '## Current Focus\nWORKTREE focus line.',
+        }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await page.locator('.ck-accordion-header[data-accordion="ck-plan-section"]').click();
+      await expect(page.locator('#ck-plan')).toContainText('WORKTREE-ONLY approach body');
+      await expect(page.locator('#ck-plan')).not.toContainText('MAIN approach body');
+
+      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
+      await expect(page.locator('#ck-accept')).toContainText('worktree-only criterion');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a locked ticket shows an Unlock button; cancel keeps the lock, confirm clears it and re-renders (t-fe3c)', async ({ page }) => {
     const id = `t-ckul-${Date.now()}`;
     try {

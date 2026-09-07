@@ -396,6 +396,53 @@ def worktree_unlock(ticket_id: str) -> dict:
             unlocked = True
     return {'ok': True, 'unlocked': unlocked}
 
+def cockpit_docs(ticket_id: str, cwd: str):
+    """t-1357: read a cockpit ticket's plan.md / acceptance.md / HANDOFF.md from
+    the WORKTREE the session runs in, not the board's main checkout. A worktree
+    sprint writes those on its own branch, so the main `.tickets/<id>/` shows
+    only the committed `ticket.md`; the cockpit rail should reflect the tree the
+    agent is actually editing.
+
+    Returns None (caller -> 400) when `cwd` is not a real registered worktree —
+    the board never reads an arbitrary client-supplied directory (same trust
+    model as the daemon's resolveSpawnCwd). Read-only; every doc path is
+    contained under <cwd>/.tickets (same posture as _safe_ticket_doc). Must stay
+    behaviorally identical to main.go's cockpitDocs — see
+    tests/sprint-check-api-parity.sh."""
+    try:
+        cwd_real = Path(cwd).resolve()
+    except Exception:
+        return None
+    worktrees = set()
+    for e in list_worktrees():
+        try:
+            worktrees.add(Path(e['path']).resolve())
+        except Exception:
+            pass
+    if cwd_real not in worktrees:
+        return None
+    tickets = cwd_real / '.tickets'
+
+    def _read(rel: str):
+        target = tickets / rel
+        try:
+            target.resolve().relative_to(tickets.resolve())
+        except ValueError:
+            return None
+        if not target.is_file():
+            return None
+        return target.read_text(encoding='utf-8', errors='replace')
+
+    if (tickets / ticket_id).is_dir():
+        plan = _read(f'{ticket_id}/plan.md')
+        acceptance = _read(f'{ticket_id}/acceptance.md')
+    else:
+        plan = _read(f'{ticket_id}-plan.md')
+        acceptance = _read(f'{ticket_id}-acceptance.md')
+    handoff_path = cwd_real / 'HANDOFF.md'
+    handoff = handoff_path.read_text(encoding='utf-8', errors='replace') if handoff_path.is_file() else None
+    return {'plan': plan, 'acceptance': acceptance, 'handoff': handoff}
+
 def _worktreeinclude_patterns() -> list[str]:
     p = PROJECT_ROOT / '.worktreeinclude'
     if not p.is_file():
@@ -1170,6 +1217,15 @@ class Handler(BaseHTTPRequestHandler):
             m = re.match(r'^/api/worktree-lock/(t-[a-z0-9]{4})$', path)
             if m:
                 self.send_json(worktree_lock_status(m.group(1))); return
+            m = re.match(r'^/api/cockpit-docs/(t-[a-z0-9]{4})$', path)
+            if m:
+                cwd = parse_qs(parsed.query).get('cwd', [''])[0]
+                if not cwd:
+                    self.send_error(400); return
+                docs = cockpit_docs(m.group(1), cwd)
+                if docs is None:
+                    self.send_error(400); return
+                self.send_json(docs); return
             self.send_error(404)
 
     def do_POST(self):

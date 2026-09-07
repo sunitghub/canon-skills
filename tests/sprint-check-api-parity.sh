@@ -714,6 +714,39 @@ if py != go:
 if any("ticket_present" in e for e in py):
     print(f"sprint-check-api-parity: FAIL — a trailing-newline ?ticket must be rejected (no ticket_present), got: {py}"); sys.exit(1)
 PY
+
+# ── /api/cockpit-docs parity (t-1357): plan/acceptance/HANDOFF read from the
+# WORKTREE the session runs in, not the main checkout. Write those files ONLY
+# into the sibling worktree; both backends must return them for that cwd, and
+# reject a cwd that isn't a registered worktree (never read an arbitrary path).
+mkdir -p "$WT/.tickets/t-mock"
+printf '# Plan (worktree)\nWorktree plan body\n' > "$WT/.tickets/t-mock/plan.md"
+printf '# Acceptance (worktree)\n' > "$WT/.tickets/t-mock/acceptance.md"
+printf '## Current Focus\nWorktree handoff focus.\n' > "$WT/HANDOFF.md"
+WT_ENC="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "$WT")"
+py_cd="$(curl -s "http://127.0.0.1:$PY_PORT/api/cockpit-docs/t-mock?cwd=$WT_ENC")"
+go_cd="$(curl -s "http://127.0.0.1:$GO_PORT/api/cockpit-docs/t-mock?cwd=$WT_ENC")"
+python3 - "$py_cd" "$go_cd" <<'PY'
+import json, sys
+py, go = json.loads(sys.argv[1]), json.loads(sys.argv[2])
+if py != go:
+    print(f"sprint-check-api-parity: FAIL — /api/cockpit-docs payload mismatch\n  py={py}\n  go={go}"); sys.exit(1)
+if "Worktree plan body" not in (py.get("plan") or ""):
+    print(f"sprint-check-api-parity: FAIL — cockpit-docs did not return the worktree plan.md: {py}"); sys.exit(1)
+if "Acceptance (worktree)" not in (py.get("acceptance") or ""):
+    print(f"sprint-check-api-parity: FAIL — cockpit-docs did not return the worktree acceptance.md: {py}"); sys.exit(1)
+if "Worktree handoff focus" not in (py.get("handoff") or ""):
+    print(f"sprint-check-api-parity: FAIL — cockpit-docs did not return the worktree HANDOFF.md: {py}"); sys.exit(1)
+PY
+# reject a non-registered-worktree cwd (/tmp) and a missing cwd → 400 in both backends
+for port in "$PY_PORT" "$GO_PORT"; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/cockpit-docs/t-mock?cwd=%2Ftmp")"
+  [[ "$code" == "400" ]] || fail "sprint-check-api-parity: FAIL — cockpit-docs accepted a non-worktree cwd on port $port (status $code)"
+  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/cockpit-docs/t-mock")"
+  [[ "$code" == "400" ]] || fail "sprint-check-api-parity: FAIL — cockpit-docs accepted a missing cwd on port $port (status $code)"
+done
+rm -rf "$WT/.tickets" "$WT/HANDOFF.md"
+
 git -C "$WORK" worktree remove --force "$WT" 2>/dev/null || true
 rm -rf "$WT_PARENT"
 
