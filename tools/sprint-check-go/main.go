@@ -41,6 +41,7 @@ var (
 	canonGateTmpl    string
 	cockpitDaemonBin string
 	cockpitSprintBin string
+	toolsDir         string // t-f99b: canon tools dir (for the skills link target: <toolsDir>/../skills)
 	headlessRuns     = map[string]map[string]any{}
 	headlessRunsMu   sync.Mutex
 )
@@ -96,7 +97,7 @@ func main() {
 	cwd := mustGetwd()
 	projectRoot = findProjectRoot(envOr("SPRINT_CHECK_ROOT", cwd))
 	exe, _ := os.Executable()
-	toolsDir := filepath.Dir(exe)
+	toolsDir = filepath.Dir(exe)
 	if strings.HasSuffix(filepath.ToSlash(toolsDir), "/sprint-check-bin") {
 		toolsDir = filepath.Dir(toolsDir)
 	}
@@ -1411,7 +1412,36 @@ func createWorktree(branch string) map[string]any {
 		}
 	}
 	copied := copyWorktreeIncludeFiles(path)
+	linkSkillsIntoWorktree(path)
 	return map[string]any{"ok": true, "path": path, "branch": branch, "worktreeinclude_copied": copied}
+}
+
+// linkSkillsIntoWorktree creates the canon skills link inside a freshly-created
+// worktree so it resolves to CURRENT canon (t-f99b). The skill mirror is
+// gitignored (never committed), so a git worktree has no mirror of its own —
+// without this, an agent there finds no skills, or (pre-fix) a stale committed
+// copy. Done INLINE rather than shelling out to `skills.sh link-worktree`
+// because the board may run without `bash` on PATH on Windows (the platform this
+// bug affects), where a shell-out would silently no-op. Best-effort; non-fatal.
+func linkSkillsIntoWorktree(path string) {
+	target := filepath.Join(toolsDir, "..", "skills")
+	if !exists(target) {
+		return
+	}
+	for _, rel := range []string{".agents/skills", ".claude/skills"} {
+		link := filepath.Join(path, filepath.FromSlash(rel))
+		if exists(link) {
+			continue
+		}
+		_ = os.MkdirAll(filepath.Dir(link), 0o755)
+		if runtime.GOOS == "windows" {
+			// Junction (no elevated rights); mklink needs cmd. MSYS path issues
+			// don't apply here (Go exec, not Git Bash).
+			_ = exec.Command("cmd", "/c", "mklink", "/J", link, target).Run()
+		} else {
+			_ = os.Symlink(target, link)
+		}
+	}
 }
 
 func worktreeIncludePatterns() []string {

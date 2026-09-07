@@ -73,6 +73,7 @@ case "$cmd" in
   help)    cmd_help    "$@" ;;
   init)    cmd_init    "$@" ;;
   uninstall) cmd_uninstall "$@" ;;
+  link-worktree) link_worktree "$@" ;;
   catalog|lint|delete)
     echo "Error: '$cmd' is a contributor command — use canon-dev.sh instead."
     echo "  canon-dev.sh $cmd $*"
