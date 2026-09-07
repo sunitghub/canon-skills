@@ -4506,7 +4506,7 @@ async function moveCard(t, newStatus) {
 // sync — the earlier toggle-write path's index-offset math is gone with it.
 // worktreeCwd: null = no row selected yet (OPEN-ticket Start stays gated,
 // t-cd06), '' = Main checkout selected, otherwise an absolute worktree path.
-const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null, actualCwd: null };
+const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null };
 let cockpitPollTimer = null;
 
 // t-f6b6: the board and the daemon page are different origins (different
@@ -4628,6 +4628,7 @@ function teardownCockpit() {
   cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
   cockpitState.worktreeCwd = null;
   cockpitState.actualCwd = null;
+  cockpitState.worktreeDocs = null;
   renderNeedsYouBadge();
   resetPreview();
   loadData().then(render).catch(() => renderBoard());
@@ -4793,16 +4794,23 @@ async function openCockpit(id) {
   document.getElementById('cockpit-overlay').classList.add('open');
   renderCockpitModel(t);
   renderCockpitPlan(t);
+  await renderCockpitWorktree(t);
+  // t-1357: once the worktree lock/main path are known, pull the active
+  // ticket's docs from the worktree the session runs in (if any) so the rail
+  // reflects that tree, not the main checkout. Then (re)render the doc panels.
+  await fetchCockpitWorktreeDocs(t);
+  renderCockpitModel(t);
+  renderCockpitPlan(t);
   await renderCockpitDocs(t);
   await renderCockpitState(t);
-  await renderCockpitWorktree(t);
   await maybeMountCockpitTerminal(t);
   // Poll while open — a running agent edits acceptance.md as it works, and
   // the rail should reflect that without the human having to close/reopen.
   if (cockpitPollTimer) clearInterval(cockpitPollTimer);
-  cockpitPollTimer = setInterval(() => {
+  cockpitPollTimer = setInterval(async () => {
     const ct = findTicketById(cockpitState.id);
     if (!ct) return;
+    await fetchCockpitWorktreeDocs(ct);
     renderCockpitPlan(ct);
     renderCockpitDocs(ct);
     renderCockpitState(ct);
@@ -4816,18 +4824,48 @@ function closeCockpit() {
   teardownCockpit();
 }
 
+// t-1357: when the cockpit session runs in a WORKTREE, its plan/acceptance/
+// HANDOFF live on the worktree's branch — the board's main .tickets/<id>/ shows
+// only the committed ticket.md. Pull those docs from the effective worktree so
+// the rail reflects the tree the agent is editing. Effective cwd = the daemon-
+// resolved actual cwd (post-Start, t-7590) else the persisted lock cwd. Skips
+// (clears the cache → main-checkout path) for the main checkout or when there's
+// no worktree. Fails safe: any error clears the cache.
+async function fetchCockpitWorktreeDocs(t) {
+  let eff = cockpitState.actualCwd;
+  if (!eff) {
+    const lock = cockpitState.worktreeLock || {};
+    if (lock.locked && lock.cwd) eff = lock.cwd;
+  }
+  const mainPath = cockpitState.worktreeMainPath;
+  if (!eff || (mainPath && cockpitPathKey(eff) === cockpitPathKey(mainPath))) {
+    cockpitState.worktreeDocs = null;
+    return;
+  }
+  try {
+    const r = await fetch(`/api/cockpit-docs/${encodeURIComponent(t.id)}?cwd=${encodeURIComponent(eff)}`);
+    cockpitState.worktreeDocs = r.ok ? await r.json() : null;
+  } catch {
+    cockpitState.worktreeDocs = null;
+  }
+}
+
 // Model chip is read-only, sourced from plan.md's `Gate model:` (or the default).
 async function renderCockpitModel(t) {
   const el = document.getElementById('ck-model');
   el.textContent = 'model: from plan.md';
-  const planDoc = (t.docs || []).find(d => docSlug(t, d.file) === 'plan');
-  if (!planDoc) return;
-  try {
-    const r = await fetch(`/api/doc/${encodeURIComponent(planDoc.file)}`);
-    if (!r.ok) return;
-    const gm = parseGateModel((await r.json()).content || '');
-    if (gm.filled && gm.value) el.textContent = `model: ${gm.value} · plan.md`;
-  } catch {}
+  let planContent = (cockpitState.worktreeDocs || {}).plan; // t-1357: worktree plan wins
+  if (planContent == null) {
+    const planDoc = (t.docs || []).find(d => docSlug(t, d.file) === 'plan');
+    if (!planDoc) return;
+    try {
+      const r = await fetch(`/api/doc/${encodeURIComponent(planDoc.file)}`);
+      if (!r.ok) return;
+      planContent = (await r.json()).content || '';
+    } catch { return; }
+  }
+  const gm = parseGateModel(planContent || '');
+  if (gm.filled && gm.value) el.textContent = `model: ${gm.value} · plan.md`;
 }
 
 // Renders the full plan.md content read-only — same doc the model chip
@@ -4835,6 +4873,11 @@ async function renderCockpitModel(t) {
 // but here the whole file is visible so that line's actual context is too.
 async function renderCockpitPlan(t) {
   const box = document.getElementById('ck-plan');
+  const wdPlan = (cockpitState.worktreeDocs || {}).plan; // t-1357: worktree plan wins
+  if (wdPlan != null) {
+    box.innerHTML = wdPlan ? md(wdPlan, t.id) : '<div class="ck-add-hint">No plan.md yet for this ticket.</div>';
+    return;
+  }
   const planDoc = (t.docs || []).find(d => docSlug(t, d.file) === 'plan');
   if (!planDoc) { box.innerHTML = '<div class="ck-add-hint">No plan.md yet for this ticket.</div>'; return; }
   try {
@@ -4855,6 +4898,8 @@ function ckAcceptanceDoc(t) {
 // below so a poll tick (or cockpit open) issues one fetch, not two, against
 // the same doc. Returns null if the ticket has no acceptance.md at all.
 async function fetchAcceptanceContent(t) {
+  const wdAcc = (cockpitState.worktreeDocs || {}).acceptance; // t-1357: worktree acceptance wins
+  if (wdAcc != null) return wdAcc;
   const docFile = ckAcceptanceDoc(t);
   if (!docFile) return null;
   try {
@@ -4920,10 +4965,15 @@ function handoffDisplayState(raw, ticketId, isActive) {
 async function renderCockpitState(t) {
   const box = document.getElementById('ck-state');
   let raw = '';
-  try {
-    const r = await fetch('/api/handoff');
-    if (r.ok) raw = (await r.json()).raw || '';
-  } catch {}
+  const wdHandoff = (cockpitState.worktreeDocs || {}).handoff; // t-1357: worktree HANDOFF wins
+  if (wdHandoff != null) {
+    raw = wdHandoff;
+  } else {
+    try {
+      const r = await fetch('/api/handoff');
+      if (r.ok) raw = (await r.json()).raw || '';
+    } catch {}
+  }
   const st = handoffDisplayState(raw, t.id, t.status === 'in_progress');
 
   // t-cd06: the locked worktree is durable (.tickets/<id>/.cockpit-cwd) but
