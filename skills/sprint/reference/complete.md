@@ -164,6 +164,25 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      `model` field (its model picker is session-level), so don't assume the downgrade takes
      effect under Codex without testing live first — an explicit `Gate model:` override or
      full-tier review is the safe default there.
+   - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
+     sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
+     Bash:
+     `pi -p --no-session --model "<current session model>" --exclude-tools edit,write "<gate prompt>"`.
+     `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
+     reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
+     explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
+     *config-default* model (verified: it reported `claude-opus-4-6…` regardless of a `kimi-k3`
+     interactive session), and pi exposes no `PI_MODEL`/`PI_PROVIDER` env to read it from — so the
+     dispatching agent supplies its own current model. `--exclude-tools edit,write` gives the
+     read-only + Bash profile the gate contract requires (built-in tool names are lowercase:
+     `read,bash,edit,write,grep,find,ls`). Record that same model on the `eval`/`reviewer` row.
+     **Never** run a pi session's gate by shelling out to the `claude` CLI or onto a different model.
+     This rule is **harness-scoped**: for a pi session the close gates run on the **pi session
+     model**, full stop — `AGENTS.md`'s general `review → Opus` tier is **not** the close-gate rule
+     (that tier is the *default this section overrides*; a model must not grab it here). Left to the
+     model this dispatch is non-deterministic (a strong Claude model reconstructs it; a weaker/
+     non-Claude model may shell out to `claude`, switch to the config-default model, and fail) — so
+     follow this recipe verbatim rather than deriving one.
 
    **Shared gate mechanics (reviewer + evaluator).** Four rules, stated once: (a) close
    confirmation authorizes spawning either subagent — never ask separately; (b) both derive
