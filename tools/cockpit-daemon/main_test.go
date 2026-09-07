@@ -1560,6 +1560,125 @@ func TestIdleReapFallbackKillsWhenMarkerNeverAppears(t *testing.T) {
 	t.Fatal("idle session with an unresponsive fake agent was never fallback-killed")
 }
 
+// fakeAgentThatTouches simulates a full-screen TUI (pi) that saves state on the
+// prompt but NEVER emits a clean marker line the claude-tuned parser survives:
+// on the save prompt it touches a watched state file (plan.md, relative to its
+// cwd) and prints only non-marker chatter. The ONLY way a session with this
+// agent can end before saveFallback is the t-2c9e file-settle path.
+func fakeAgentThatTouches(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-touches.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r line; do\n" +
+		"  case \"$line\" in\n" +
+		"    *'save your current state'*) touch .tickets/t-ab12/plan.md ; printf 'saved to files (no clean marker)\\n' ;;\n" +
+		"  esac\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// t-2c9e: the interactive Save & End endpoint ends a session that saved its
+// state to disk WITHOUT a clean marker line (the pi case) — via file-settle,
+// well before the fallback. saveFallback is set large so a pass can only come
+// from file-settle, not the fallback timer.
+func TestSaveAndEndFileSettleEndsSession(t *testing.T) {
+	bin := fakeAgentThatTouches(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour, // no idle-reap interference
+		saveFallback: 30 * time.Second, saveQuiesce: 200 * time.Millisecond,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	// Trigger the interactive daemon-side Save & End.
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.StatusCode != http.StatusAccepted {
+		t.Fatalf("save-and-end: want 202, got %d", r.StatusCode)
+	}
+	r.Body.Close()
+
+	// Ends via file-settle (touch + ~200ms quiesce + poll) — must be well under
+	// the 30s fallback. 8s is generous margin over the 500ms poll cadence.
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			return // ended via file-settle — success
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("save-and-end did not end the session via file-settle before the deadline (fallback was 30s)")
+}
+
+// t-2c9e: the save-and-end endpoint is gated by the session token (like /input),
+// not the boot token or the status token.
+func TestSaveAndEndEndpointRequiresToken(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token, PreviewToken string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	for _, tok := range []string{"", "nope", bootTok} {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+		if tok != "" {
+			req.Header.Set("Authorization", "Bearer "+tok)
+		}
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := r.StatusCode
+		r.Body.Close()
+		if got != http.StatusUnauthorized {
+			t.Fatalf("save-and-end with token %q: want 401, got %d", tok, got)
+		}
+	}
+	// The real session token is accepted.
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.StatusCode
+	r.Body.Close()
+	if got != http.StatusAccepted {
+		t.Fatalf("save-and-end with session token: want 202, got %d", got)
+	}
+}
+
 // fakeAgentWithStaleMarker prints the exact marker line unprompted, early in
 // its own output (simulating an unrelated earlier mention of this feature's
 // own marker string), then goes unresponsive like fakeAgentThatIgnores. Used

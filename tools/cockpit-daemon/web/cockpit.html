@@ -146,12 +146,12 @@
     var d = e.data;
     if(!d || d.source !== "canon-cockpit") return;
     if(d.type === "save-and-end" && session){
-      pendingMarker = "COCKPIT_STATE_SAVED";
-      markerBuf = "";
-      var prompt = "Please save your current state now: update plan.md/acceptance.md (and "
-        + "HANDOFF.md if relevant) with where things stand and anything unresolved, then print "
-        + "the exact line COCKPIT_STATE_SAVED on its own, and stop.";
-      sendPrompt(prompt);
+      // t-2c9e: the daemon owns Save & End detection now — it injects the save
+      // prompt and ends on the PTY marker, on the watched state files settling
+      // (agent-agnostic; pi's full-screen TUI never yields a clean marker line
+      // the claude-tuned parser survives), or on the fallback. We just trigger
+      // it and end on the "saved" SSE frame (handled in attachStream).
+      fetch("/session/"+session+"/save-and-end", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});
     } else if(d.type === "force-end" && session){
       pendingMarker = null;
       kill();
@@ -248,6 +248,12 @@
           if(line.indexOf("event:")===0) ev = line.slice(6).trim();
           else if(line.indexOf("data: ")===0) data += line.slice(6);
         });
+        if(ev==="saved"){
+          // t-2c9e: the daemon detected Save & End completion (marker or the
+          // state files settling) and is ending the session — tell the board.
+          try{ window.parent.postMessage({ source: "canon-cockpit", type: "ended" }, "*"); }catch(e){}
+          continue;
+        }
         if(ev==="out" && data){
           var bytes = Uint8Array.from(atob(data), function(c){return c.charCodeAt(0);});
           term.write(bytes);
