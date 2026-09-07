@@ -1679,6 +1679,98 @@ func TestSaveAndEndEndpointRequiresToken(t *testing.T) {
 	}
 }
 
+// fakeAgentThatWritesBurst simulates a multi-file save in progress: on the save
+// prompt it touches a watched file repeatedly (every ~300ms for ~3s) then stops.
+// Used to prove the t-2c9e debounce HOLDS through continued writes — the core
+// safety property: the session must NOT be killed mid-write (which would
+// truncate a multi-file save); it may only end after writes quiesce.
+func fakeAgentThatWritesBurst(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-burst.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r line; do\n" +
+		"  case \"$line\" in\n" +
+		"    *'save your current state'*)\n" +
+		"      i=0\n" +
+		"      while [ $i -lt 10 ]; do touch .tickets/t-ab12/plan.md; sleep 0.3; i=$((i+1)); done\n" +
+		"      printf 'burst done (no marker)\\n' ;;\n" +
+		"  esac\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// t-2c9e core safety: while the agent is actively writing the state files, the
+// debounce must keep the session ALIVE (a mid-write kill would truncate a
+// multi-file save). The session may end only AFTER writes quiesce.
+func TestSaveAndEndDebounceHoldsThroughContinuedWrites(t *testing.T) {
+	bin := fakeAgentThatWritesBurst(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: 30 * time.Second, saveQuiesce: 1 * time.Second,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+
+	alive := func() bool {
+		s.mu.Lock()
+		_, ok := s.sessions[out.Session]
+		s.mu.Unlock()
+		return ok
+	}
+
+	// Wait for the first write (the burst has begun), then sleep PAST one full
+	// quiesce window (1s) while writes are still ongoing (~3s burst). If the
+	// debounce is correct, continued writes keep resetting it → still alive. A
+	// broken/first-write-fires debounce would have killed it by now.
+	planPath := filepath.Join(root, ".tickets", "t-ab12", "plan.md")
+	wDeadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(wDeadline) {
+		if _, err := os.Stat(planPath); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if _, err := os.Stat(planPath); err != nil {
+		t.Fatal("burst agent never wrote plan.md")
+	}
+	time.Sleep(1500 * time.Millisecond) // > saveQuiesce, still inside the ~3s burst
+	if !alive() {
+		t.Fatal("session ended DURING the continuous-write burst — debounce fired mid-save (would truncate a multi-file write)")
+	}
+
+	// Once the burst stops and writes quiesce (~1s), it must end — under 30s fallback.
+	deadline := time.Now().Add(12 * time.Second)
+	for time.Now().Before(deadline) {
+		if !alive() {
+			return // ended after quiesce — success
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("session never ended after the write burst quiesced (file-settle should have fired post-burst)")
+}
+
 // fakeAgentWithStaleMarker prints the exact marker line unprompted, early in
 // its own output (simulating an unrelated earlier mention of this feature's
 // own marker string), then goes unresponsive like fakeAgentThatIgnores. Used
