@@ -177,6 +177,8 @@ assert d['locked'] is False and d['cwd'] is None and d['main_dirty'] is True, d
   # purpose — writing this very file into the fixture's own .tickets/ makes
   # the working tree dirty as a side effect of the test, not the endpoint.)
   echo "/some/worktree/path" > "$WORK/.tickets/t-lok1/.cockpit-cwd"
+  # t-9203: unlock must clear the saved session id too, not just the cwd.
+  echo "11111111-2222-3333-4444-555555555555" > "$WORK/.tickets/t-lok1/.cockpit-session-id"
   lock_json="$(curl -s "http://127.0.0.1:$port/api/worktree-lock/t-lok1")"
   python3 -c "
 import json, sys
@@ -191,6 +193,7 @@ assert d['locked'] is True and d['cwd'] == '/some/worktree/path', d
   unlock_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktree-unlock/t-lok1" -H 'Content-Type: application/json' -d '{}')"
   python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d=={'ok':True,'unlocked':True}, d" "$unlock_json"
   [[ ! -f "$WORK/.tickets/t-lok1/.cockpit-cwd" ]] || fail "$label: unlock did not delete .cockpit-cwd"
+  [[ ! -f "$WORK/.tickets/t-lok1/.cockpit-session-id" ]] || fail "$label: unlock did not delete .cockpit-session-id (t-9203)"
   lock_json="$(curl -s "http://127.0.0.1:$port/api/worktree-lock/t-lok1")"
   python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['locked'] is False and d['cwd'] is None, d" "$lock_json"
   # idempotent: unlocking again is ok:true, unlocked:false (not an error).

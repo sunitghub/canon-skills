@@ -1318,8 +1318,8 @@ func worktreeLockStatus(ticketID string) map[string]any {
 	return map[string]any{"locked": cwd != nil, "cwd": cwd, "main_dirty": dirty}
 }
 
-// worktreeUnlock clears a ticket's .cockpit-cwd lock (t-fe3c) — parity with
-// server.py's worktree_unlock. The daemon reuses that persisted cwd for every
+// worktreeUnlock clears a ticket's worktree lock — both .cockpit-cwd and
+// .cockpit-session-id (t-fe3c; t-9203) — parity with server.py's worktree_unlock. The daemon reuses that persisted cwd for every
 // start of an in_progress ticket and ignores the client's request, so deleting
 // it is the only way to redirect a ticket to a different worktree (or the main
 // checkout) — e.g. one locked to a worktree that can't see .tickets/ (t-e5ff).
@@ -1328,21 +1328,31 @@ func worktreeLockStatus(ticketID string) map[string]any {
 // than silently claimed as success (review finding, t-fe3c) — matches
 // server.py, where unlink()'s exception isn't swallowed either.
 func worktreeUnlock(ticketID string) map[string]any {
-	cwdPath := filepath.Join(ticketsDir, ticketID, ".cockpit-cwd")
-	// Gate on "regular file", not just "stat succeeds" — matches Python's
-	// is_file() exactly (false for a directory). .cockpit-cwd is only ever
-	// written as a regular file by the daemon, but this closes a residual
-	// cross-backend edge asymmetry the reviewer flagged (t-fe3c): without it,
-	// a directory at this path would silently attempt os.Remove on the Go side
-	// while Python reports unlocked:false without touching it.
-	info, err := os.Stat(cwdPath)
-	if err != nil || info.IsDir() {
-		return map[string]any{"ok": true, "unlocked": false}
+	// t-9203: clear BOTH .cockpit-cwd AND .cockpit-session-id. Clearing the cwd
+	// alone lets the next start re-resolve the directory, but the persisted
+	// session id would still make claude --resume (or pi continue) the prior
+	// conversation *in the new directory* — the cross-dir reattach the daemon's
+	// invariant forbids. Dropping the session id too means the next Start is a
+	// genuinely fresh session in the worktree the user picks next.
+	// Gate each on "regular file" (not just stat success) — matches Python's
+	// is_file() (false for a directory), so a directory at either path yields
+	// unlocked:false without an os.Remove attempt (parity, t-fe3c).
+	paths := []string{
+		filepath.Join(ticketsDir, ticketID, ".cockpit-cwd"),
+		filepath.Join(ticketsDir, ticketID, ".cockpit-session-id"),
 	}
-	if err := os.Remove(cwdPath); err != nil {
-		return map[string]any{"ok": false, "error": err.Error()}
+	unlocked := false
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if err := os.Remove(p); err != nil {
+			return map[string]any{"ok": false, "error": err.Error()}
+		}
+		unlocked = true
 	}
-	return map[string]any{"ok": true, "unlocked": true}
+	return map[string]any{"ok": true, "unlocked": unlocked}
 }
 
 // createWorktree assumes branch already passed validBranchName (checked by

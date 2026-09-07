@@ -5035,9 +5035,11 @@ async function renderCockpitWorktree(t) {
     unlockBtn.addEventListener('click', async () => {
       const lockedPath = lock.cwd || 'a worktree';
       const msg = `This ticket is locked to:\n\n  ${lockedPath}\n\n`
-        + `The cockpit reuses that directory for every Resume and ignores the worktree selected here. `
-        + `Unlocking clears the saved worktree so the next Start/Resume uses the one you pick (e.g. the Main checkout). `
-        + `A currently-running session keeps its directory until the next start.\n\n`
+        + `The cockpit reuses that directory for every Start/Resume and ignores the worktree selected here. `
+        + `Unlocking clears the saved worktree AND the saved session, so the next Start begins a `
+        + `fresh session in the worktree you pick next (e.g. the Main checkout) — it does not resume `
+        + `the current conversation in a different directory. `
+        + `A currently-running session keeps its directory until it ends.\n\n`
         + `Unlock this ticket's worktree?`;
       if (!confirm(msg)) return;
       try {
@@ -5108,12 +5110,25 @@ async function renderCockpitWorktree(t) {
 // can't be redirected anyway (the daemon ignores the requested cwd), so
 // neither case needs the confirm.
 async function selectCockpitWorktree(t, cwd) {
-  if (cwd !== '' && t.status === 'in_progress') {
+  if (t.status === 'in_progress') {
     // Fail SAFE, not open: fetchWorktreeLock defaults to unlocked/unknown-dirty
     // on any error, so a fetch failure still warns rather than silently
     // skipping the confirm at exactly the moment it can't be verified.
     const lock = await fetchWorktreeLock(t.id);
-    if (!lock.locked) {
+    if (lock.locked) {
+      // t-9203: while locked, the daemon reuses the locked cwd and IGNORES the
+      // picker — so switching here would only mislead ("Working in:" would claim
+      // a worktree the session isn't actually running in, the wrong-tree danger).
+      // Require an explicit Unlock first. cockpitState.worktreeCwd was set to the
+      // effective locked cwd on render, so any different pick is a real switch.
+      if (cwd !== cockpitState.worktreeCwd) {
+        alert(`This ticket is locked to:\n\n  ${lock.cwd || 'a worktree'}\n\n`
+          + `The running/next session uses that directory and the worktree picker is `
+          + `ignored until you unlock. Click "Unlock worktree" to switch — it starts a `
+          + `fresh session in the worktree you pick next.`);
+        return;
+      }
+    } else if (cwd !== '') {
       const risk = lock.main_dirty === true
         ? 'The main checkout has uncommitted changes that will NOT carry over — a worktree only has committed history.'
         : lock.main_dirty === false

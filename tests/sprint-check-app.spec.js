@@ -3031,10 +3031,54 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       // Confirm → the dialog explains (names the locked dir), posts unlock, and
       // the re-render (lock now false) removes the button.
-      page.once('dialog', d => { expect(d.message()).toContain('locked to'); d.accept(); });
+      page.once('dialog', d => { expect(d.message()).toContain('locked to'); expect(d.message()).toContain('fresh session'); d.accept(); });
       await page.locator('#ck-worktree-unlock').click();
       await expect(page.locator('#ck-worktree-unlock')).toHaveCount(0);
       expect(unlockPosts).toBe(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('while locked, picking a different worktree is blocked and directs to Unlock (t-9203)', async ({ page }) => {
+    const id = `t-ck92-${Date.now()}`;
+    const lockedCwd = '/tmp/wt-9203/feat-x';
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      // Two worktrees: the main checkout and the feat-x worktree the ticket is locked to.
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true },
+          { path: lockedCwd, branch: 'feat-x', is_main: false, tickets_visible: true },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: true, cwd: lockedCwd, main_dirty: false }),
+      }));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-worktree-unlock')).toBeVisible(); // locked → Unlock present
+
+      // Clicking the Main row (data-cwd="") while locked must be BLOCKED with an
+      // alert directing to Unlock — not silently switch (the wrong-tree danger).
+      // The alert fires after an async lock fetch, so wait for the dialog event.
+      const dialogPromise = page.waitForEvent('dialog');
+      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      const dialog = await dialogPromise;
+      expect(dialog.message()).toContain('Unlock worktree');
+      await dialog.accept();
+      // The Main row must NOT become the selection — the effective cwd stays the lock.
+      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).not.toHaveClass(/selected/);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }

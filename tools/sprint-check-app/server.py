@@ -366,24 +366,35 @@ def worktree_lock_status(ticket_id: str) -> dict:
     return {'locked': cwd is not None, 'cwd': cwd, 'main_dirty': dirty}
 
 def worktree_unlock(ticket_id: str) -> dict:
-    """Clear a ticket's .cockpit-cwd lock (t-fe3c). The daemon reuses that
-    persisted cwd for every start of an in_progress ticket and ignores the
-    client's request, so deleting it is the only way to redirect a ticket to a
-    different worktree (or the main checkout) — e.g. one locked to a worktree
-    that can't see .tickets/ (t-e5ff). Advisory + reversible: the file
-    regenerates on the next start; a running session is unaffected (the cwd was
-    read at spawn time). Idempotent: unlocking an already-unlocked ticket is
-    ok:true, unlocked:false. A real delete failure (permissions, read-only fs)
-    is reported as ok:false rather than left to surface as an uncaught 500
-    (review finding, t-fe3c) — matches main.go's explicit error return."""
-    cwd_path = TICKETS_DIR / ticket_id / '.cockpit-cwd'
-    if not cwd_path.is_file():
-        return {'ok': True, 'unlocked': False}
-    try:
-        cwd_path.unlink()
-    except OSError as e:
-        return {'ok': False, 'error': str(e)}
-    return {'ok': True, 'unlocked': True}
+    """Clear a ticket's worktree lock (t-fe3c). The daemon reuses the persisted
+    cwd for every start of an in_progress ticket and ignores the client's
+    request, so clearing it is the only way to redirect a ticket to a different
+    worktree (or the main checkout) — e.g. one locked to a worktree that can't
+    see .tickets/ (t-e5ff). Advisory + reversible: the files regenerate on the
+    next start; a running session is unaffected (the cwd was read at spawn time).
+
+    t-9203: clear BOTH .cockpit-cwd AND .cockpit-session-id. Clearing the cwd
+    alone lets the next start re-resolve the directory, but the persisted
+    session id would still make claude `--resume` (or pi continue) the prior
+    conversation *in the new directory* — exactly the cross-dir reattach the
+    daemon's invariant forbids. Dropping the session id too means the next Start
+    is a genuinely fresh session in the worktree you pick next.
+
+    Idempotent: unlocking an already-unlocked ticket is ok:true, unlocked:false.
+    A real delete failure (permissions, read-only fs) is reported as ok:false
+    rather than surfaced as an uncaught 500 (review finding, t-fe3c) — matches
+    main.go's explicit error return."""
+    paths = [TICKETS_DIR / ticket_id / '.cockpit-cwd',
+             TICKETS_DIR / ticket_id / '.cockpit-session-id']
+    unlocked = False
+    for p in paths:
+        if p.is_file():
+            try:
+                p.unlink()
+            except OSError as e:
+                return {'ok': False, 'error': str(e)}
+            unlocked = True
+    return {'ok': True, 'unlocked': unlocked}
 
 def _worktreeinclude_patterns() -> list[str]:
     p = PROJECT_ROOT / '.worktreeinclude'
