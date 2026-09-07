@@ -57,7 +57,16 @@ var ticketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
 // literal on the (token-less, loopback-only) /cockpit page — no quotes,
 // backslashes, or newlines. /session/start re-validates the real value
 // independently; this only prevents script injection into the prefill.
-var cwdPrefillRe = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+//
+// t-7590: the colon is REQUIRED for Windows — every absolute path there starts
+// with a drive letter (`C:/Users/...`), and the board sends worktree paths with
+// forward slashes (git's own separator). Without `:` the regex rejected every
+// Windows worktree cwd, `handleCockpit` dropped it to "", and the daemon
+// silently spawned in the main checkout regardless of the selection — the
+// redirect never worked on Windows. Backslashes stay excluded (JS-string escape
+// hazard, and unnecessary since the board normalizes to forward slashes); a
+// quote is still rejected, so JS injection remains impossible.
+var cwdPrefillRe = regexp.MustCompile(`^[A-Za-z0-9._:/-]+$`)
 
 type config struct {
 	addr              string        // loopback bind address
