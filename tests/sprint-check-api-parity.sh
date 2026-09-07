@@ -746,6 +746,14 @@ for port in "$PY_PORT" "$GO_PORT"; do
   [[ "$code" == "400" ]] || fail "sprint-check-api-parity: FAIL — cockpit-docs accepted a missing cwd on port $port (status $code)"
 done
 rm -rf "$WT/.tickets" "$WT/HANDOFF.md"
+# stale worktree parity (t-1357): dir removed from disk but still registered in
+# `git worktree list` must 400 identically in both backends (Python resolve
+# strict / Go EvalSymlinks both fail on the missing path).
+rm -rf "$WT"
+for port in "$PY_PORT" "$GO_PORT"; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/cockpit-docs/t-mock?cwd=$WT_ENC")"
+  [[ "$code" == "400" ]] || fail "sprint-check-api-parity: FAIL — cockpit-docs did not 400 for a stale (removed) worktree on port $port (status $code)"
+done
 
 git -C "$WORK" worktree remove --force "$WT" 2>/dev/null || true
 rm -rf "$WT_PARENT"

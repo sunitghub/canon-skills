@@ -410,8 +410,10 @@ def cockpit_docs(ticket_id: str, cwd: str):
     behaviorally identical to main.go's cockpitDocs — see
     tests/sprint-check-api-parity.sh."""
     try:
-        cwd_real = Path(cwd).resolve()
-    except Exception:
+        cwd_real = Path(cwd).resolve(strict=True)  # strict: a removed-from-disk
+        # worktree -> FileNotFoundError -> None (400), matching main.go's
+        # filepath.EvalSymlinks failure (parity, t-1357 reviewer finding).
+    except (OSError, RuntimeError):
         return None
     worktrees = set()
     for e in list_worktrees():
