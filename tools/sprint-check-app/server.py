@@ -863,6 +863,18 @@ def _resolve_cockpit_daemon(os_name: str = os.name) -> str:
             return str(c)
     return str(candidates[0])
 
+def board_version() -> dict:
+    """t-99fa: build id of this board + the resolved cockpit-daemon, so the UI
+    shows which build is running. Parity with sprint-check-go's /api/version
+    shape ({"version","daemon"}). The board version is the short SHA of the last
+    commit touching server.py in the canon checkout this file lives in (not the
+    served project); fallback "dev". The daemon version comes from `--version`
+    (best-effort, "" if unbuilt/unavailable)."""
+    server_dir = Path(__file__).resolve().parent
+    ver = run(['git', 'log', '-1', '--format=%h', '--', 'server.py'], server_dir) or 'dev'
+    daemon = run([_resolve_cockpit_daemon(), '--version'], server_dir)
+    return {'version': ver, 'daemon': daemon}
+
 def _resolve_cockpit_sprint_bin() -> str:
     """Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test
     stub); otherwise empty, so the daemon's own default ("claude", t-842b)
@@ -1090,6 +1102,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(load_why(file_))
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
+        elif path == '/api/version':
+            self.send_json(board_version())
         elif path == '/api/worktrees':
             wt_ticket = parse_qs(parsed.query).get('ticket', [''])[0]
             # re.fullmatch (not re.match with $) so a trailing newline is

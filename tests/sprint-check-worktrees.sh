@@ -204,6 +204,17 @@ assert d['locked'] is True and d['cwd'] == '/some/worktree/path', d
   unlock_bad="$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$port/api/worktree-unlock/not-an-id" -H 'Content-Type: application/json' -d '{}')"
   [[ "$unlock_bad" == "400" ]] || fail "$label: unlock with malformed id must 400, got $unlock_bad"
 
+  # t-99fa: GET /api/version returns {version, daemon} on BOTH backends (shape parity).
+  local ver_json
+  ver_json="$(curl -s "http://127.0.0.1:$port/api/version")"
+  python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+assert isinstance(d, dict) and 'version' in d and 'daemon' in d, ('bad /api/version shape', d)
+assert isinstance(d['version'], str) and d['version'], ('empty version', d)
+assert isinstance(d['daemon'], str), ('daemon must be a string', d)
+" "$ver_json" || fail "$label: /api/version shape mismatch: $ver_json"
+
   rm -rf "$WORK/.tickets/t-lok1"
 
   # t-e5ff: when .tickets/ IS gitignored AND untracked, a git worktree can't
