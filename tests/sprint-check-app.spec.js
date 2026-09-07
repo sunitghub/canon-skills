@@ -3044,6 +3044,40 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('cockpit ticket context is not duplicated: rail card is canonical; topbar shows it only when the rail is collapsed (t-4272)', async ({ page }) => {
+    const id = `t-ckdedup-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // Rail expanded (default): the rail card carries id/status/title; the
+      // duplicate topbar copy is hidden.
+      await expect(page.locator('#ck-tc-id')).toBeVisible();
+      await expect(page.locator('#ck-tc-status')).toBeVisible();
+      await expect(page.locator('#ck-id')).toBeHidden();
+      await expect(page.locator('#ck-status')).toBeHidden();
+      await expect(page.locator('#ck-title')).toBeHidden();
+
+      // Collapse the rail: the topbar context becomes the visible fallback so
+      // ticket context is never lost.
+      await page.locator('#ck-rail-toggle').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/rail-collapsed/);
+      await expect(page.locator('#ck-id')).toBeVisible();
+      await expect(page.locator('#ck-status')).toBeVisible();
+      await expect(page.locator('#ck-title')).toBeVisible();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a locked ticket shows an Unlock button; cancel keeps the lock, confirm clears it and re-renders (t-fe3c)', async ({ page }) => {
     const id = `t-ckul-${Date.now()}`;
     try {

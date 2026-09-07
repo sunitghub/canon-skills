@@ -1618,6 +1618,18 @@
     .ck-status-badge.st-done { background: var(--col-done); color: var(--col-done-contrast, #04210f); }
     .ck-status-badge.st-discarded { background: var(--col-discarded); color: #0b0f14; }
     .ck-tc-idrow { display: flex; align-items: center; gap: 6px; }
+    /* t-4272: the rail card (#ck-tc-id/#ck-tc-status/#ck-tc-title) is the single
+       canonical ticket-context. Hide the duplicate topbar copy while the rail is
+       expanded; reveal it only when the rail is collapsed, so context is never
+       lost. The "← Board" back button always shows. */
+    #cockpit:not(.rail-collapsed) .ck-topbar .ck-id,
+    #cockpit:not(.rail-collapsed) .ck-topbar #ck-status,
+    #cockpit:not(.rail-collapsed) .ck-topbar .ck-title { display: none; }
+    /* t-4272: the open badge used the muted --col-open slate (also used by the
+       board columns), which read as dull. Give the badge its own brighter,
+       legible slate per theme WITHOUT touching --col-open (board unchanged). */
+    .ck-status-badge.st-open { background: #cbd5e1; color: #0b1220; }
+    html[data-theme="light"] .ck-status-badge.st-open { background: #475569; color: #f8fafc; }
     .ck-preview.collapsed { width: 40px; }
     .ck-preview.collapsed .ck-preview-full { display: none; }
     .ck-preview-collapsed-label {
