@@ -167,7 +167,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
      sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
      Bash:
-     `pi -p --no-session --model "<current session model>" --exclude-tools edit,write "<gate prompt>"`.
+     `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --model "<current session model>" --exclude-tools edit,write "<gate prompt>"`.
      `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
      reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
      explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
@@ -175,7 +175,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      interactive session), and pi exposes no `PI_MODEL`/`PI_PROVIDER` env to read it from — so the
      dispatching agent supplies its own current model. `--exclude-tools edit,write` gives the
      read-only + Bash profile the gate contract requires (built-in tool names are lowercase:
-     `read,bash,edit,write,grep,find,ls`). Record that same model on the `eval`/`reviewer` row.
+     `read,bash,edit,write,grep,find,ls`). The **hardened flags `--no-context-files --no-skills --no-prompt-templates` keep the `pi -p` gate hermetic** — it must not auto-load the project's context files, skills, or prompt templates: a fresh gate that inherited the project's own skills (including this `sprint` skill) would let it *reconstruct* the intended behavior instead of independently grading what shipped, defeating the no-implementation-history / no-project-context contract (these three flags are the hardened form observed in kimi's live VM dispatch — re-verify live on the VM, there is no pi in the evaluator here). **Also pass an explicit `Base ref: <fork-point>` in the gate prompt's Inputs** (per `shared-gate-protocol.md ## Inputs`) rather than relying on the subagent's own `git merge-base HEAD origin/main`: a `pi -p` subprocess derives its base ref live, so an `origin/main` advance mid-run can converge merge-base to HEAD and empty the diff (the t-3864 hazard) — an explicit fork-point base ref avoids it. Record that same model on the `eval`/`reviewer` row.
      **Never** run a pi session's gate by shelling out to the `claude` CLI or onto a different model.
      This rule is **harness-scoped**: for a pi session the close gates run on the **pi session
      model**, full stop — `AGENTS.md`'s general `review → Opus` tier is **not** the close-gate rule
