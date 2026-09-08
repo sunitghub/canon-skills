@@ -90,7 +90,7 @@ _ensure_mirror_gitignored() {
 # (via `skills.sh link-worktree <path>`) — a git worktree, being gitignored, has
 # no mirror of its own otherwise. Skips a real (project-local) skills dir.
 link_worktree() {
-  local wt_dir target link
+  local wt_dir target link rel
   wt_dir="$(cd "${1:-}" 2>/dev/null && pwd)" || { echo "link-worktree: no such dir: ${1:-}" >&2; return 1; }
   target="$SKILLS_ROOT/skills"
   for link in "$wt_dir/.claude/skills" "$wt_dir/.agents/skills"; do
@@ -98,7 +98,19 @@ link_worktree() {
       [ "$(_read_dir_link "$link")" = "$target" ] && continue
       _create_dir_link "$target" "$link"
     elif [ -e "$link" ]; then
-      continue   # a real dir (project-local skills) — leave it alone
+      # t-9e55: a materialized real dir. If it's a git-TRACKED committed canon
+      # mirror (carries the sprint/SKILL.md marker), REPLACE it so the worktree
+      # serves CURRENT canon — `git worktree add` materializes the stale committed
+      # copy before this runs, so the old code skipped and served stale skills.
+      # _ensure_mirror_gitignored (below) untracks it. PRESERVE a genuine
+      # project-local skills dir (untracked, or lacking the canon marker).
+      rel="${link#"$wt_dir"/}"
+      if [ -n "$(git -C "$wt_dir" ls-files -- "$rel" 2>/dev/null | head -1)" ] && [ -f "$link/sprint/SKILL.md" ]; then
+        rm -rf "$link"
+        _create_dir_link "$target" "$link"
+        echo "  [worktree-link] replaced committed mirror: $link -> $target"
+      fi
+      continue   # replaced above, or a genuine project-local dir — leave it alone
     else
       mkdir -p "$(dirname "$link")"
       _create_dir_link "$target" "$link"
