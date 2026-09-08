@@ -5051,6 +5051,18 @@ async function renderCockpitWorktree(t) {
   const mainEntry = entries.find(e => e.is_main);
   const others = entries.filter(e => !e.is_main);
 
+  // t-816e (deferred t-4272): resolve a locked cwd to a friendly label so the
+  // Unlock button + confirm can NAME the worktree, not just show a raw path.
+  // Matches by cockpitPathKey (symlink/format-robust, per t-3e58/t-eed3).
+  const worktreeLabelForCwd = (cwd) => {
+    if (!cwd) return 'a worktree';
+    const key = cockpitPathKey(cwd);
+    if (mainEntry && key === cockpitPathKey(mainEntry.path)) return 'Main checkout';
+    const hit = others.find(e => cockpitPathKey(e.path) === key);
+    if (hit) return hit.branch || '(detached)';
+    return String(cwd).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd;
+  };
+
   // t-e5ff: track which worktree cwds can actually see the ticket. The daemon
   // reports tickets_visible=false for a non-main worktree when .tickets/ is
   // gitignored (git only materializes tracked files there). Default to visible
@@ -5106,7 +5118,9 @@ async function renderCockpitWorktree(t) {
   // the next Start/Resume uses the picked worktree (the daemon otherwise reuses
   // the saved cwd and ignores the picker). Confirmed with an explanation on click.
   if (lock.locked) {
-    html += `<button type="button" class="ck-worktree-unlock" id="ck-worktree-unlock" title="Clear this ticket's saved worktree so the next Start/Resume uses the worktree you pick">Unlock worktree</button>`;
+    // t-816e: name the locked worktree on the button itself, not just in a hover title.
+    const lockedLabel = worktreeLabelForCwd(lock.cwd);
+    html += `<button type="button" class="ck-worktree-unlock" id="ck-worktree-unlock" title="This ticket is locked to ${esc(lockedLabel)} — clear the saved worktree so the next Start/Resume uses the one you pick">Unlock worktree (${esc(lockedLabel)})</button>`;
   }
   box.innerHTML = html;
   updateWorktreeNote();
@@ -5117,8 +5131,10 @@ async function renderCockpitWorktree(t) {
   const unlockBtn = document.getElementById('ck-worktree-unlock');
   if (unlockBtn) {
     unlockBtn.addEventListener('click', async () => {
+      // t-816e: name the worktree (branch label) alongside the raw path.
+      const lockedLabel = worktreeLabelForCwd(lock.cwd);
       const lockedPath = lock.cwd || 'a worktree';
-      const msg = `This ticket is locked to:\n\n  ${lockedPath}\n\n`
+      const msg = `This ticket is locked to:\n\n  ${lockedLabel} (${lockedPath})\n\n`
         + `The cockpit reuses that directory for every Start/Resume and ignores the worktree selected here. `
         + `Unlocking clears the saved worktree AND the saved session, so the next Start begins a `
         + `fresh session in the worktree you pick next (e.g. the Main checkout) — it does not resume `

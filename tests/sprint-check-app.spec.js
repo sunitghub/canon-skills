@@ -3223,6 +3223,51 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('the Unlock button and confirm name the locked worktree branch (t-816e)', async ({ page }) => {
+    const id = `t-ckul816-${Date.now()}`;
+    const lockedCwd = '/tmp/wt-816e/feat-unlockme';
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      // The locked worktree IS in the list (branch feat/unlockme) → the label
+      // resolves to the branch, not a bare path/basename.
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: lockedCwd, branch: 'feat/unlockme', is_main: false, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: true, cwd: lockedCwd, main_dirty: false }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // The button names the locked worktree branch.
+      const unlockBtn = page.locator('#ck-worktree-unlock');
+      await expect(unlockBtn).toBeVisible();
+      await expect(unlockBtn).toContainText('feat/unlockme');
+
+      // The confirm dialog names the branch too, and keeps the t-fe3c phrases.
+      let msg = '';
+      page.once('dialog', d => { msg = d.message(); d.dismiss(); });
+      await unlockBtn.click();
+      expect(msg).toContain('feat/unlockme');
+      expect(msg).toContain('locked to');
+      expect(msg).toContain('fresh session');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a locked ticket shows an Unlock button; cancel keeps the lock, confirm clears it and re-renders (t-fe3c)', async ({ page }) => {
     const id = `t-ckul-${Date.now()}`;
     try {
