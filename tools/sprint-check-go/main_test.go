@@ -537,3 +537,94 @@ func TestDaemonVersionEmpty(t *testing.T) {
 		t.Fatalf("daemonVersion() with missing bin = %q, want empty", got)
 	}
 }
+
+// t-9e55: committed canon mirror detection + replacement in a worktree.
+func gitInitRepo(t *testing.T, dir string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"-C", dir, "init", "-q"},
+		{"-C", dir, "config", "user.email", "t@t"},
+		{"-C", dir, "config", "user.name", "t"},
+	} {
+		if err := exec.Command("git", args...).Run(); err != nil {
+			t.Skipf("git unavailable: %v", err)
+		}
+	}
+}
+
+func gitCommitAll(t *testing.T, dir, msg string) {
+	t.Helper()
+	if err := exec.Command("git", "-C", dir, "add", "-A").Run(); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	if err := exec.Command("git", "-C", dir, "commit", "-qm", msg).Run(); err != nil {
+		t.Fatalf("git commit: %v", err)
+	}
+}
+
+func TestIsCommittedCanonMirror(t *testing.T) {
+	// tracked + sprint/SKILL.md marker → true
+	wt := t.TempDir()
+	gitInitRepo(t, wt)
+	writeFile(t, filepath.Join(wt, ".agents/skills/sprint/SKILL.md"), "STALE")
+	gitCommitAll(t, wt, "mirror")
+	if !isCommittedCanonMirror(wt, ".agents/skills", filepath.Join(wt, ".agents/skills")) {
+		t.Fatal("tracked mirror carrying sprint/SKILL.md must be detected as a committed canon mirror")
+	}
+
+	// tracked, no marker → false (genuine project-local skills)
+	wt2 := t.TempDir()
+	gitInitRepo(t, wt2)
+	writeFile(t, filepath.Join(wt2, ".agents/skills/myproj/x.md"), "LOCAL")
+	gitCommitAll(t, wt2, "local")
+	if isCommittedCanonMirror(wt2, ".agents/skills", filepath.Join(wt2, ".agents/skills")) {
+		t.Fatal("tracked dir lacking the sprint/SKILL.md marker must not be treated as a canon mirror")
+	}
+
+	// untracked real dir → false
+	wt3 := t.TempDir()
+	gitInitRepo(t, wt3)
+	writeFile(t, filepath.Join(wt3, ".agents/skills/sprint/SKILL.md"), "STALE")
+	if isCommittedCanonMirror(wt3, ".agents/skills", filepath.Join(wt3, ".agents/skills")) {
+		t.Fatal("an untracked skills dir must not be treated as a committed canon mirror")
+	}
+}
+
+func TestLinkSkillsIntoWorktreeReplacesCommittedMirror(t *testing.T) {
+	// Point toolsDir at a fake canon so target = <fake>/skills resolves.
+	fake := t.TempDir()
+	writeFile(t, filepath.Join(fake, "skills/sprint/SKILL.md"), "CURRENT-CANON")
+	saved := toolsDir
+	toolsDir = filepath.Join(fake, "tools")
+	defer func() { toolsDir = saved }()
+
+	wt := t.TempDir()
+	gitInitRepo(t, wt)
+	writeFile(t, filepath.Join(wt, ".agents/skills/sprint/SKILL.md"), "STALE") // committed mirror → replace
+	writeFile(t, filepath.Join(wt, ".claude/skills/myproj/x.md"), "LOCAL")      // committed, no marker → preserve
+	gitCommitAll(t, wt, "mixed")
+
+	linkSkillsIntoWorktree(wt)
+
+	// .agents/skills replaced with a symlink resolving to current (fake) canon
+	agents := filepath.Join(wt, ".agents/skills")
+	if fi, err := os.Lstat(agents); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf(".agents/skills should be a symlink after replace (err=%v)", err)
+	}
+	b, err := os.ReadFile(filepath.Join(agents, "sprint", "SKILL.md"))
+	if err != nil || strings.TrimSpace(string(b)) != "CURRENT-CANON" {
+		t.Fatalf(".agents/skills should resolve to current canon, got %q (err=%v)", string(b), err)
+	}
+	if out, _ := gitInDirOutput(wt, "ls-files", "--", ".agents/skills"); strings.TrimSpace(out) != "" {
+		t.Fatalf("replaced mirror should be untracked, ls-files: %q", out)
+	}
+
+	// .claude/skills (no marker) preserved as a real dir with its content
+	claude := filepath.Join(wt, ".claude/skills")
+	if fi, err := os.Lstat(claude); err != nil || fi.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf(".claude/skills (project-local, no marker) should be preserved as a real dir (err=%v)", err)
+	}
+	if b2, _ := os.ReadFile(filepath.Join(claude, "myproj", "x.md")); strings.TrimSpace(string(b2)) != "LOCAL" {
+		t.Fatalf(".claude/skills project-local content lost, got %q", string(b2))
+	}
+}

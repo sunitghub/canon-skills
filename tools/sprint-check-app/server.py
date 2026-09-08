@@ -554,7 +554,19 @@ def _link_skills_into_worktree(path: Path) -> None:
     for rel in ('.agents/skills', '.claude/skills'):
         link = path / rel
         if link.exists():
-            continue
+            # t-9e55: REPLACE a git-tracked committed canon mirror (carries the
+            # sprint/SKILL.md marker) so the worktree serves CURRENT canon —
+            # `git worktree add` materializes the stale committed copy before this
+            # runs, so the old skip served stale skills. Untrack it in the
+            # worktree's own index (main untouched; durable cross-checkout fix is
+            # the consumer's `skills.sh refresh` + commit). PRESERVE a genuine
+            # project-local skills dir / an already-correct link.
+            if _is_committed_canon_mirror(path, rel, link):
+                subprocess.run(['git', '-C', str(path), 'rm', '-r', '--cached', '--quiet', '--', rel],
+                               check=False, capture_output=True)
+                shutil.rmtree(link, ignore_errors=True)
+            else:
+                continue
         link.parent.mkdir(parents=True, exist_ok=True)
         try:
             if os.name == 'nt':
@@ -564,6 +576,18 @@ def _link_skills_into_worktree(path: Path) -> None:
                 os.symlink(target, link)
         except OSError:
             pass
+
+def _is_committed_canon_mirror(worktree: Path, rel: str, link: Path) -> bool:
+    """t-9e55: True iff the materialized mirror path is the git-tracked committed
+    canon mirror t-f99b forbids — tracked in the worktree's index AND carrying the
+    canon marker (sprint/SKILL.md). A genuine project-local skills dir (untracked,
+    or lacking the marker) returns False and is preserved. Parity with
+    sprint-check-go's isCommittedCanonMirror and project.sh's link_worktree."""
+    out = subprocess.run(['git', '-C', str(worktree), 'ls-files', '--', rel],
+                         capture_output=True, text=True)
+    if out.returncode != 0 or not out.stdout.strip():
+        return False
+    return (link / 'sprint' / 'SKILL.md').exists()
 
 # ── Commit detail ─────────────────────────────────────────────────────────
 
