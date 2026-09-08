@@ -5036,7 +5036,9 @@ async function renderCockpitWorktree(t) {
   } catch {}
 
   const rowHTML = (cwd, label, sub, extraAttr) => {
-    const selected = cockpitState.worktreeCwd === cwd;
+    // t-3e58: normalized compare (see selectCockpitWorktree) so a re-render keeps
+    // the highlight even when worktreeCwd and this row's cwd differ in format.
+    const selected = cockpitPathKey(cockpitState.worktreeCwd) === cockpitPathKey(cwd);
     return `<div class="ck-worktree-row${selected ? ' selected' : ''}" data-cwd="${esc(cwd)}"${extraAttr || ''}>
       <div class="ck-worktree-radio"></div>
       <div class="ck-worktree-labels">
@@ -5173,7 +5175,14 @@ async function renderCockpitWorktree(t) {
         return;
       }
       await renderCockpitWorktree(t);
-      selectCockpitWorktree(t, d.path);
+      // t-3e58: select via the matching rendered row's own data-cwd (resolved by
+      // normalized key) so cockpitState.worktreeCwd holds the canonical value a
+      // manual click would set — the POST create-response d.path may differ in
+      // format from the GET-list data-cwd on Windows.
+      const createdKey = cockpitPathKey(d.path);
+      const createdRow = [...document.querySelectorAll('#ck-worktree .ck-worktree-row')]
+        .find(row => cockpitPathKey(row.dataset.cwd) === createdKey);
+      selectCockpitWorktree(t, createdRow ? createdRow.dataset.cwd : d.path);
     } catch (err) {
       alert('Could not create worktree: ' + err);
       input.disabled = false;
@@ -5221,7 +5230,10 @@ async function selectCockpitWorktree(t, cwd) {
   }
   cockpitState.worktreeCwd = cwd;
   document.querySelectorAll('#ck-worktree .ck-worktree-row').forEach(row => {
-    row.classList.toggle('selected', row.dataset.cwd === cwd);
+    // t-3e58: compare by normalized key, not raw ===. The create-response path
+    // and the rendered data-cwd can differ in format on Windows (\ vs /, case,
+    // trailing sep), so an exact match misses and the new row never highlights.
+    row.classList.toggle('selected', cockpitPathKey(row.dataset.cwd) === cockpitPathKey(cwd));
   });
   updateWorktreeNote();
   maybeMountCockpitTerminal(t);
