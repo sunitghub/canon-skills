@@ -3090,6 +3090,58 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('a symlinked cwd does not raise a false "Working in" mismatch warning, but a genuine wrong-tree still does (t-eed3)', async ({ page }) => {
+    const id = `t-cksym-${Date.now()}`;
+    const selWt = '/tmp/wt-eed3/x';               // board's selected worktree (unresolved, e.g. macOS /tmp)
+    const resolvedWt = '/private/tmp/wt-eed3/x';   // daemon EvalSymlinks'd actual + requested (same real dir)
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: selWt, branch: 'x', is_main: false, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${selWt}"]`)).toBeVisible();
+
+      // Symlink case: the board selected /tmp/x; the daemon reports it spawned in
+      // /private/tmp/x AND echoes the resolved requested /private/tmp/x. Same real
+      // dir → actual matches `requested` → NO mismatch warning (t-eed3).
+      await page.evaluate(({ sel, resolved }) => {
+        cockpitState.worktreeCwd = sel;
+        applyActualWorkingCwd(resolved, resolved);
+      }, { sel: selWt, resolved: resolvedWt });
+      await expect(page.locator('#ck-worktree-note')).toContainText('Working in:');
+      await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toHaveCount(0);
+
+      // Genuine wrong-tree: the board selected /tmp/x (requested /tmp/x) but the
+      // daemon spawned in MAIN → actual differs from both selected and requested
+      // → the t-7590 warning still fires.
+      await page.evaluate(({ root, sel }) => {
+        cockpitState.worktreeCwd = sel;
+        applyActualWorkingCwd(root, sel);
+      }, { root: PROJECT_ROOT, sel: selWt });
+      await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toBeVisible();
+      await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toContainText('not the worktree you selected');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('cockpit ticket context is not duplicated: rail card is canonical; topbar shows it only when the rail is collapsed (t-4272)', async ({ page }) => {
     const id = `t-ckdedup-${Date.now()}`;
     try {

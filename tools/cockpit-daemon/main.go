@@ -398,7 +398,22 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// reuses its persisted .cockpit-cwd, an empty request resolves to the main
 	// checkout). The board displays this as the authoritative "Working in:" so a
 	// wrong-tree run can never hide behind an optimistic pre-Start label.
-	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd})
+	//
+	// t-eed3: also echo `requested` = the RESOLVED form of what the client asked
+	// for, computed the same way resolveSpawnCwd resolves it (empty → projectRoot;
+	// non-empty → EvalSymlinks, fallback raw). The board can't resolve symlinks in
+	// JS, so it compares `cwd` (actual) against this daemon-resolved `requested`
+	// like-for-like: a same-directory-different-symlink (e.g. /tmp vs /private/tmp
+	// on macOS) then matches and no longer raises a spurious mismatch warning,
+	// while a genuine wrong-tree run (actual differs from both selected and
+	// requested) still warns.
+	reqEcho := body.Cwd
+	if reqEcho == "" {
+		reqEcho = s.cfg.projectRoot
+	} else if rr, rerr := filepath.EvalSymlinks(reqEcho); rerr == nil {
+		reqEcho = rr
+	}
+	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd, "requested": reqEcho})
 }
 
 // resolveSpawnBin resolves the spawn command against PATH to an absolute path

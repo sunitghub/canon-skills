@@ -219,7 +219,9 @@
       // t-7590: report the cwd the daemon actually resolved (not PREFILL_CWD,
       // which may have been ignored/overridden) so the board's "Working in:"
       // reflects reality and can flag a wrong-tree mismatch.
-      try{ window.parent.postMessage({ source: "canon-cockpit", type: "started", cwd: (j.cwd || "") }, "*"); }catch(e){}
+      // t-eed3: also relay the daemon-resolved `requested` cwd so the board can
+      // compare like-for-like and suppress a symlink-only false mismatch.
+      try{ window.parent.postMessage({ source: "canon-cockpit", type: "started", cwd: (j.cwd || ""), requested: (j.requested || "") }, "*"); }catch(e){}
       // A second Start while this one is live would spawn a parallel session
       // on the same ticket — no daemon-side guard against it (t-2zoa, live).
       document.getElementById("startBtn").disabled = true;
