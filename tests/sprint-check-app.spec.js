@@ -3044,6 +3044,52 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('a newly-created worktree row auto-selects even when create-response and list paths differ in format (t-3e58)', async ({ page }) => {
+    const id = `t-ck3e58-${Date.now()}`;
+    // The daemon materializes Windows-style backslash paths in the POST create
+    // response, while `git worktree list` (GET) reports forward slashes — same
+    // dir, different format. Reproduced here on any OS to exercise the string
+    // mismatch that made the new row fail to auto-highlight.
+    const createPath = 'C:\\Users\\me\\p-worktrees\\feat-3e58';   // POST /api/worktrees response
+    const listPath = 'C:/Users/me/p-worktrees/feat-3e58';         // GET /api/worktrees rendered data-cwd
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      let created = false;
+      await page.route('**/api/worktrees**', route => {
+        if (route.request().method() === 'POST') {
+          created = true;
+          return route.fulfill({
+            status: 200, contentType: 'application/json',
+            body: JSON.stringify({ ok: true, path: createPath, branch: 'feat/3e58' }),
+          });
+        }
+        const entries = [{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }];
+        if (created) entries.push({ path: listPath, branch: 'feat/3e58', is_main: false, tickets_visible: true, ticket_present: true });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(entries) });
+      });
+      // create() confirms twice (a window.confirm to create); auto-accept.
+      page.on('dialog', d => d.accept());
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      await page.locator('#ck-worktree-new-input').fill('feat/3e58');
+      await page.locator('.ck-worktree-new-plus').click();
+
+      // The new row (rendered with the forward-slash data-cwd) must auto-select
+      // despite the backslash create-response path — the whole point of t-3e58.
+      const newRow = page.locator(`.ck-worktree-row[data-cwd="${listPath}"]`);
+      await expect(newRow).toHaveClass(/selected/);
+      // and nothing else is left selected
+      await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('cockpit ticket context is not duplicated: rail card is canonical; topbar shows it only when the rail is collapsed (t-4272)', async ({ page }) => {
     const id = `t-ckdedup-${Date.now()}`;
     try {
