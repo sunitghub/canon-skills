@@ -352,6 +352,35 @@ def list_worktrees(ticket_id: str = '') -> list[dict]:
                     e['ticket_present'] = False
     return entries
 
+def _is_canon_runtime_path(path: str) -> bool:
+    """True for canon's own per-machine runtime files under .tickets/ that
+    churn every session (t-2f53): .tickets/ACTIVE and any .tickets/**/.cockpit-*
+    (.cockpit-cwd/.cockpit-agent/.cockpit-session-id). These must not count as
+    user 'uncommitted changes' in the worktree carry-over warning. Path is a
+    git-porcelain path (repo-root-relative, forward-slashed)."""
+    p = path.strip().strip('"').replace('\\', '/')
+    if p == '.tickets/ACTIVE':
+        return True
+    if p.startswith('.tickets/') and p.rsplit('/', 1)[-1].startswith('.cockpit-'):
+        return True
+    return False
+
+def _main_dirty_ignoring_runtime() -> bool:
+    """main_dirty for the worktree carry-over warning, ignoring canon-owned
+    runtime files (t-2f53). --untracked-files=all so a fresh/untracked runtime
+    file lists individually (default porcelain collapses a fully-untracked dir
+    to '?? dir/', hiding it); a deleted tracked runtime file lists individually
+    regardless. A porcelain line is 'XY <path>' (2 status chars + space), so the
+    path starts at index 3."""
+    status = run(['git', 'status', '--porcelain', '--untracked-files=all'], PROJECT_ROOT)
+    for line in status.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:] if len(line) > 3 else line
+        if not _is_canon_runtime_path(path):
+            return True
+    return False
+
 def worktree_lock_status(ticket_id: str) -> dict:
     """Advisory-only read of .tickets/<id>/.cockpit-cwd (t-cd06 amendment) — the
     daemon owns writing that file and already ignores a locked ticket's
@@ -362,7 +391,7 @@ def worktree_lock_status(ticket_id: str) -> dict:
     cwd = None
     if cwd_path.is_file():
         cwd = cwd_path.read_text(encoding='utf-8', errors='replace').strip() or None
-    dirty = bool(run(['git', 'status', '--porcelain'], PROJECT_ROOT).strip())
+    dirty = _main_dirty_ignoring_runtime()
     return {'locked': cwd is not None, 'cwd': cwd, 'main_dirty': dirty}
 
 def worktree_unlock(ticket_id: str) -> dict:

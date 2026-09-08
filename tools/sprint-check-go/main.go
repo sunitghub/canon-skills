@@ -1398,6 +1398,50 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 }
 
 
+// isCanonRuntimePath reports whether a git-porcelain path (repo-root-relative,
+// forward-slashed) is one of canon's own per-machine runtime files under
+// .tickets/ that churn every session (t-2f53): .tickets/ACTIVE and any
+// .tickets/**/.cockpit-* (.cockpit-cwd/.cockpit-agent/.cockpit-session-id).
+// These must not count as user "uncommitted changes" in the carry-over warning.
+// Parity with server.py's _is_canon_runtime_path.
+func isCanonRuntimePath(path string) bool {
+	p := strings.ReplaceAll(strings.Trim(strings.TrimSpace(path), "\""), "\\", "/")
+	if p == ".tickets/ACTIVE" {
+		return true
+	}
+	if strings.HasPrefix(p, ".tickets/") {
+		base := p[strings.LastIndex(p, "/")+1:]
+		if strings.HasPrefix(base, ".cockpit-") {
+			return true
+		}
+	}
+	return false
+}
+
+// mainDirtyIgnoringRuntime computes main_dirty for the worktree carry-over
+// warning, ignoring canon-owned runtime files (t-2f53). --untracked-files=all
+// so a fresh/untracked runtime file lists individually (default porcelain
+// collapses a fully-untracked dir to "?? dir/", hiding it); a deleted tracked
+// runtime file lists individually regardless. A porcelain line is "XY <path>"
+// (2 status chars + space), so the path starts at index 3. Parity with
+// server.py's _main_dirty_ignoring_runtime.
+func mainDirtyIgnoringRuntime() bool {
+	status := runGit("status", "--porcelain", "--untracked-files=all")
+	for _, line := range strings.Split(status, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		path := line
+		if len(line) > 3 {
+			path = line[3:]
+		}
+		if !isCanonRuntimePath(path) {
+			return true
+		}
+	}
+	return false
+}
+
 // (t-cd06 amendment) — the daemon owns writing that file and already ignores
 // a locked ticket's requested cwd; this just lets the board warn before the
 // choice is made for an in_progress ticket's first resume, since a worktree
@@ -1410,7 +1454,7 @@ func worktreeLockStatus(ticketID string) map[string]any {
 			cwd = trimmed
 		}
 	}
-	dirty := strings.TrimSpace(runGit("status", "--porcelain")) != ""
+	dirty := mainDirtyIgnoringRuntime()
 	return map[string]any{"locked": cwd != nil, "cwd": cwd, "main_dirty": dirty}
 }
 
