@@ -2547,6 +2547,60 @@ func TestStartEchoesResolvedCwd(t *testing.T) {
 	}
 }
 
+// t-eed3: /session/start also echoes `requested` = the RESOLVED form of the
+// client-requested cwd, so the board can compare it against `cwd` (actual)
+// like-for-like and suppress a symlink-only false "wrong-tree" warning. When the
+// daemon honors the request, requested == cwd (both resolved) — which is exactly
+// what makes the board's actual-vs-requested compare match on a symlinked path.
+func TestStartEchoesRequestedResolvedCwd(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "open")
+	seedTicketDir(t, root, "t-ab12")
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	decode := func(resp *http.Response) (string, string) {
+		t.Helper()
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("start: %d", resp.StatusCode)
+		}
+		var out struct{ Cwd, Requested string }
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			t.Fatalf("decode start response: %v", err)
+		}
+		return out.Cwd, out.Requested
+	}
+
+	// Worktree request: requested is the EvalSymlinks-resolved worktree path, and
+	// it equals the actual spawn cwd — so a symlinked cwd can't diverge the two.
+	wantResolved, err := filepath.EvalSymlinks(wt)
+	if err != nil {
+		t.Fatalf("EvalSymlinks(%q): %v", wt, err)
+	}
+	cwd, req := decode(startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok))
+	if req != wantResolved {
+		t.Fatalf("worktree start echoed requested = %q, want resolved %q", req, wantResolved)
+	}
+	if req != cwd {
+		t.Fatalf("requested %q != actual cwd %q — a symlink false positive would slip through", req, cwd)
+	}
+
+	// Empty request: requested is the main checkout (projectRoot), matching cwd.
+	cwd2, req2 := decode(startSession(t, ts.URL, "t-ab12", bootTok))
+	if req2 != root {
+		t.Fatalf("main-checkout start echoed requested = %q, want %q", req2, root)
+	}
+	if req2 != cwd2 {
+		t.Fatalf("main requested %q != actual cwd %q", req2, cwd2)
+	}
+}
+
 // t-cd06: a Decisions.md write failure must never block a spawn that already
 // succeeded — logging is best-effort.
 func TestSpawnSucceedsWhenDecisionsLogUnwritable(t *testing.T) {
