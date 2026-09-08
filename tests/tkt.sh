@@ -19,6 +19,21 @@ assert_grep "^type: task$" ".tickets/$id/ticket.md"
 assert_grep "^priority: 1$" ".tickets/$id/ticket.md"
 assert_grep "^# Write tests$" ".tickets/$id/ticket.md"
 
+# t-2f53: ensure_tickets_dir seeds a .tickets/.gitignore for canon's own
+# per-machine runtime files (so a project that tracks .tickets/ never commits
+# them). The first `tkt create` above already ensured the dir.
+assert_file_exists ".tickets/.gitignore"
+assert_grep "^\.cockpit-\*$" ".tickets/.gitignore"
+assert_grep "^ACTIVE$" ".tickets/.gitignore"
+
+# ...and it must never clobber a user's existing .tickets/.gitignore.
+preserve_project="$(make_project)"
+mkdir -p "$preserve_project/.tickets"
+printf 'custom-user-rule\n' > "$preserve_project/.tickets/.gitignore"
+( cd "$preserve_project" && "$TKT" create "Preserve gitignore" >/dev/null )
+assert_eq "custom-user-rule" "$(cat "$preserve_project/.tickets/.gitignore")"
+rm -rf "$preserve_project"
+
 start_output="$("$TKT" start "$id")"
 assert_contains "$start_output" "$id: in_progress"
 assert_eq "$id" "$(tr -d '[:space:]' < .tickets/ACTIVE)"

@@ -39,6 +39,19 @@ ensure_tickets_dir() {
   local dir
   dir="$(tickets_dir)"
   mkdir -p "$dir"
+  # t-2f53: seed a .tickets/.gitignore (if absent) so canon's own per-machine
+  # runtime files never get tracked in projects that DO track .tickets/. In
+  # canon's own repo .tickets/ is gitignored wholesale, so this is a harmless
+  # no-op here. Non-destructive: git ignore never untracks already-committed
+  # files (those need a one-time `git rm --cached` — see docs/setup.md). Never
+  # clobber a user's existing .tickets/.gitignore.
+  if [[ ! -e "$dir/.gitignore" ]]; then
+    cat > "$dir/.gitignore" <<'EOF'
+# canon runtime files — per-machine session state, never commit (t-2f53)
+.cockpit-*
+ACTIVE
+EOF
+  fi
   echo "$dir"
 }
 

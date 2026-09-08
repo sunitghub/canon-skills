@@ -173,18 +173,31 @@ assert d['locked'] is False and d['cwd'] is None and d['main_dirty'] is True, d
   rm -f "$WORK/scratch-dirty.txt"
 
   # locked: a .cockpit-cwd file (the daemon's own write, simulated here) flips
-  # locked:true and surfaces the exact path. (main_dirty is untested here on
-  # purpose — writing this very file into the fixture's own .tickets/ makes
-  # the working tree dirty as a side effect of the test, not the endpoint.)
+  # locked:true and surfaces the exact path.
   echo "/some/worktree/path" > "$WORK/.tickets/t-lok1/.cockpit-cwd"
   # t-9203: unlock must clear the saved session id too, not just the cwd.
   echo "11111111-2222-3333-4444-555555555555" > "$WORK/.tickets/t-lok1/.cockpit-session-id"
+  # t-2f53: canon-owned runtime files (.cockpit-*, .tickets/ACTIVE) must NOT
+  # count as user 'uncommitted changes' — main_dirty stays false even though
+  # these files churn the working tree of a project that tracks .tickets/.
+  echo "t-lok1" > "$WORK/.tickets/ACTIVE"
   lock_json="$(curl -s "http://127.0.0.1:$port/api/worktree-lock/t-lok1")"
   python3 -c "
 import json, sys
 d = json.loads(sys.argv[1])
 assert d['locked'] is True and d['cwd'] == '/some/worktree/path', d
+assert d['main_dirty'] is False, ('runtime-only churn must not be dirty', d)
 " "$lock_json"
+  # ...but a real (non-runtime) change still flips main_dirty true, even with
+  # the runtime files present (proves the filter doesn't mask real work).
+  echo real > "$WORK/real-change.txt"
+  lock_json="$(curl -s "http://127.0.0.1:$port/api/worktree-lock/t-lok1")"
+  python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+assert d['main_dirty'] is True, ('a real change must be dirty', d)
+" "$lock_json"
+  rm -f "$WORK/real-change.txt" "$WORK/.tickets/ACTIVE"
 
   # t-fe3c: POST /api/worktree-unlock/<id> clears the lock (deletes .cockpit-cwd),
   # is idempotent, and 400s a malformed id — identically on both backends.

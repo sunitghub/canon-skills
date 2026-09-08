@@ -71,6 +71,23 @@ must be committed for two reasons:
 If you started from a template that gitignores `.tickets/`, remove that line so your agent's planning
 and specs travel with the repo.
 
+**Runtime files are the exception — don't commit those.** canon writes a few per-machine files under
+`.tickets/` that change every session and must never be tracked: `.tickets/ACTIVE` (the active-sprint
+pointer) and the cockpit's `.tickets/<id>/.cockpit-*` files (`.cockpit-cwd`, `.cockpit-agent`,
+`.cockpit-session-id`). `tkt` auto-seeds a `.tickets/.gitignore` covering them (`.cockpit-*`, `ACTIVE`)
+the first time it ensures the tickets directory exists — so on a project that tracks `.tickets/`, the
+ticket docs are committed while the runtime churn is ignored. Commit that `.gitignore`. If your repo
+**already committed** any runtime files (e.g. from before this was seeded), untrack them once — they
+stay on disk, they just stop being versioned:
+
+```bash
+git rm -r --cached --ignore-unmatch '.tickets/**/.cockpit-*' '.tickets/ACTIVE'
+git commit -m "stop tracking canon runtime files"
+```
+
+Leaving them tracked otherwise causes the cockpit's worktree carry-over check to false-warn about
+"uncommitted changes" whenever canon writes or deletes one of its own runtime files (t-2f53).
+
 ## Skill lifecycle
 
 See **[standards/skill-setup-std.md](../standards/skill-setup-std.md)** for the lint → eval → register order of operations.
