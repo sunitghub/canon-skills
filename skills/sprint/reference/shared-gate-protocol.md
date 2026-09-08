@@ -34,7 +34,7 @@ rules, canon's frame that **"the tests pass" is a claim, and it needs its own ev
 
 You will receive:
 - Ticket ID (e.g. `t-d53d`)
-- The model you are running on, as designated by the caller — exactly `haiku`, the exact session model id (e.g. `claude-sonnet-5`), or the exact value of an explicit `Gate model:` override, never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself.
+- The model you are running on, as designated by the caller — exactly `haiku`, the exact session model id (e.g. `claude-sonnet-5`), or the exact value of an explicit `Gate model:` override, never a paraphrase like "session default" or a parenthetical addition. Record it verbatim in your report; do not infer or reformat it yourself. **HARD RULE (t-072d): the report body MUST carry a `Model: <designation>` line** — it is not optional and it is mechanically enforced at close (`sprint complete` blocks a `eval-report.md`, or an existing `review-notes.md`, that has no `^Model:` line). The caller is required to pass this designation in the dispatch prompt; if it is somehow absent, still emit the `Model:` line with the model you are actually running on rather than dropping it.
 - Base ref (optional — only present for a headless CI dispatch grading an existing PR/diff; absent for a normal interactive sprint close, in which case the standard `git merge-base HEAD origin/main` derivation below applies unchanged).
 
 ## Tools

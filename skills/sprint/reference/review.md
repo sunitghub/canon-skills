@@ -58,7 +58,7 @@ right-sizing, snippet, and evidence principles apply.
    - **Unnecessary complexity** — abstractions, layers, or indirection added without a clear reason
    - **Standards violations** — anything that conflicts with `standards/efficiency.md` (no comments unless WHY is non-obvious, no feature flags, no backwards-compat shims, no mocking what can be integration-tested cheaply, no reformatting adjacent code)
 
-5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above:
+5. **Save findings.** Save via Bash to `.tickets/<id>/review-notes.md` — write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above. **HARD RULE (t-072d): the `Model:` line below is mandatory — `sprint complete` blocks the close if a `review-notes.md` that exists has no `^Model:` line. Do not drop it, even if you write the rest of the report free-form.**
 
 ```markdown
 # Review Notes
