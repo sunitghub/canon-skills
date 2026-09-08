@@ -393,6 +393,7 @@ EOF
 cat > ".tickets/$id/eval-report.md" <<'EOF'
 # Eval Report
 evaluator-run-id: 1000000000-99999
+Model: test-model
 ## Criteria
 | Criterion | Status | Evidence |
 |---|---|---|
@@ -440,6 +441,7 @@ test
 EOF
 cat > ".tickets/$fresh_id/eval-report.md" <<'EOF'
 evaluator-run-id: 1000000000-absent-test
+Model: test-model
 ## Verdict
 pass: all criteria met
 EOF
@@ -491,6 +493,7 @@ EOF
 # 1000000000000 ms ÷ 1000 = 1000000000 s (2001-09-09T01:46:40Z)
 cat > ".tickets/$ms_id/eval-report.md" <<'EOF'
 evaluator-run-id: 1000000000000-mstest
+Model: test-model
 ## Verdict
 pass: all criteria met
 EOF
@@ -501,6 +504,74 @@ EOF
 ms_complete_output="$("$SPRINT" complete 2>&1 || true)"
 [[ "$ms_complete_output" == *"no matching subagent entry"* ]] && fail "millisecond run-id should normalize to seconds and match: $ms_complete_output"
 assert_contains "$ms_complete_output" "Sprint completed: $ms_id"
+
+# ── t-072d: HARD RULE — the report-body `Model:` line is mandatory ───────────
+model_start_output="$("$SPRINT" start "Model line HARD RULE test")"
+model_id="$(printf '%s\n' "$model_start_output" | awk '/Sprint started:/ { print $3 }')"
+cat > ".tickets/$model_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+cat > ".tickets/$model_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] item
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | pass |
+EOF
+cat > ".tickets/$model_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-model","agent_type":"general-purpose","transcript_path":"/tmp/model.jsonl"}
+EOF
+# eval-report has run-id + matching jsonl + pass verdict, but NO Model line → blocked
+cat > ".tickets/$model_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-modeltest
+## Verdict
+pass: all criteria met
+EOF
+model_missing_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$model_missing_output" "eval-report.md is missing the 'Model:' line"
+
+# add the Model line → eval-report gate satisfied (no review-notes.md yet → its gate is a no-op)
+cat > ".tickets/$model_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-modeltest
+Model: test-model
+## Verdict
+pass: all criteria met
+EOF
+# a review-notes.md that EXISTS but has no Model line must also block
+cat > ".tickets/$model_id/review-notes.md" <<'EOF'
+# Review Notes
+## Verdict
+YES
+EOF
+review_missing_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$review_missing_output" "review-notes.md is missing the 'Model:' line"
+
+# add the Model line to review-notes → both gates satisfied → closes
+cat > ".tickets/$model_id/review-notes.md" <<'EOF'
+# Review Notes
+Model: test-model
+## Verdict
+YES
+EOF
+model_complete_output="$("$SPRINT" complete)"
+assert_contains "$model_complete_output" "Sprint completed: $model_id"
+assert_grep "^status: closed$" ".tickets/$model_id/ticket.md"
 
 
 # ── eval_override (t-c0e6, t-7cd5): human-hand-edit-only, deliberately coarse
@@ -551,6 +622,7 @@ EOF
 cat > ".tickets/$override_id/eval-report.md" <<'EOF'
 # Eval Report
 evaluator-run-id: 1000000000-override1
+Model: test-model
 ## Verdict
 fail: one criterion partial
 EOF

@@ -306,6 +306,22 @@ _gate_eval_report_exists() {
   fi
 }
 
+# _gate_eval_report_model <id> <tdir> — HARD RULE (t-072d): the report body must
+# carry the templated `Model: <designation>` line so every close records which
+# model graded it. Enforced here (inside _gate_eval_report, after the trivial-tier
+# early return) so it never fires on a trivial sprint. Regressed silently across
+# t-2c9e..t-3864 when subagents wrote free-form reports and dropped the line — the
+# model still showed in the Wrapup Gates table (orchestrator-written), so nothing
+# caught it. See eval.md's report template and shared-gate-protocol.md ## Inputs.
+_gate_eval_report_model() {
+  local id="$1" tdir="$2" report="$tdir/eval-report.md"
+  if ! grep -qE '^Model:[[:space:]]+\S' "$report"; then
+    echo "Sprint $id cannot close: eval-report.md is missing the 'Model:' line (HARD RULE)."
+    echo "The evaluator must record the model it ran on, verbatim, per eval.md's report template (e.g. 'Model: claude-opus-4.8')."
+    return 1
+  fi
+}
+
 # _gate_eval_report_authentic <id> <tdir> — the evaluator-run-id must have a
 # valid timestamp prefix and a matching entry in .claude/subagent-runs.jsonl
 # within a ±60 min window. Fail closed, not open: a missing jsonl or
@@ -398,6 +414,21 @@ _gate_eval_report() {
   _gate_eval_report_exists     "$id" "$tdir" || return 1
   _gate_eval_report_authentic  "$id" "$tdir" || return 1
   _gate_eval_report_verdict    "$id" "$tdir" || return 1
+  _gate_eval_report_model      "$id" "$tdir" || return 1
+}
+
+# _gate_review_notes_model <id> <tdir> — HARD RULE (t-072d): if the advisory
+# reviewer ran, its report must record the model too. Fires ONLY when
+# review-notes.md exists, so reviewer-skipped tiers (bugfix/demo/trivial, which
+# write no review-notes.md) are unaffected — no tier detection needed here.
+_gate_review_notes_model() {
+  local id="$1" tdir="$2" report="$tdir/review-notes.md"
+  [[ -f "$report" ]] || return 0
+  if ! grep -qE '^Model:[[:space:]]+\S' "$report"; then
+    echo "Sprint $id cannot close: review-notes.md is missing the 'Model:' line (HARD RULE)."
+    echo "The reviewer must record the model it ran on, verbatim, per review.md's report template (e.g. 'Model: claude-opus-4.8')."
+    return 1
+  fi
 }
 
 # eval_override (t-c0e6) is deliberately coarse: it checks only that a human set the
@@ -444,6 +475,7 @@ cmd_complete() {
   _gate_visual_embed        "$id" "$tdir/plan.md" "$acceptance" || exit 1
   _gate_plan_signoff        "$id" "$tdir/plan.md"        || exit 1
   _gate_eval_report         "$id" "$tdir"                || exit 1
+  _gate_review_notes_model  "$id" "$tdir"                || exit 1
 
   TKT_SPRINT_GATE_PASSED=1 "$TKT_BIN" close "$id"
   echo "Sprint completed: $id"

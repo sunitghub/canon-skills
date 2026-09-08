@@ -195,7 +195,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    — the exact value applied above (an explicit `Gate model:` value, `haiku` if the
    structural check classified this low-risk, or the exact session model id, e.g.
    `claude-sonnet-5`), never a paraphrase — same value as the Wrapup Gates table's
-   `(model: <model>)` suffix; (e) **what to pass for `<id>` in `subagent-log.sh`:** the gate
+   `(model: <model>)` suffix — **and the orchestrator MUST state that model designation in each gate's dispatch prompt (its Inputs), because the report-body `Model:` line is a HARD RULE the CLI enforces at close (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when `review-notes.md` exists) — t-072d**; (e) **what to pass for `<id>` in `subagent-log.sh`:** the gate
    matches only on the log entry's timestamp, never on `agent_id` — so a harness-provided
    dispatch id is not required. Use whichever is available: (1) a trailing `agentId: <id>`
    token if the raw Agent-call result exposes one, (2) otherwise a stable synthetic id such as
