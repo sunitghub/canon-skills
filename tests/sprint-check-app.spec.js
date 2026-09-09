@@ -3090,6 +3090,48 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('a fresh OPEN cockpit selects no worktree row until one is picked (t-470d)', async ({ page }) => {
+    const id = `t-ck470d-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      // Main + one other worktree, both able to see the ticket. The point of the
+      // test is the SELECTION state, not visibility gating.
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: '/tmp/wt-470d/feat', branch: 'feat/470d', is_main: false, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // The worktree rows have rendered (Main + feat).
+      await expect(page.locator('.ck-worktree-row')).toHaveCount(2);
+      // t-470d: on a fresh OPEN start (cockpitState.worktreeCwd === null, nothing
+      // picked yet) NO row is selected — the Main row must not falsely highlight.
+      // The terminal is correspondingly gated ("Select a worktree above").
+      await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(0);
+      await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
+      await expect(page.locator('#ck-term-msg')).toContainText('Select a worktree above');
+
+      // After the user clicks the Main checkout row (data-cwd=""), it — and only
+      // it — becomes selected.
+      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
+      await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
+      // …and the null-gate is released: the terminal-mount path runs, so the
+      // "Select a worktree above" message is gone (worktreeCwd is now '').
+      await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a symlinked cwd does not raise a false "Working in" mismatch warning, but a genuine wrong-tree still does (t-eed3)', async ({ page }) => {
     const id = `t-cksym-${Date.now()}`;
     const selWt = '/tmp/wt-eed3/x';               // board's selected worktree (unresolved, e.g. macOS /tmp)

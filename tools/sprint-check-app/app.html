@@ -5038,7 +5038,13 @@ async function renderCockpitWorktree(t) {
   const rowHTML = (cwd, label, sub, extraAttr) => {
     // t-3e58: normalized compare (see selectCockpitWorktree) so a re-render keeps
     // the highlight even when worktreeCwd and this row's cwd differ in format.
-    const selected = cockpitPathKey(cockpitState.worktreeCwd) === cockpitPathKey(cwd);
+    // t-470d: require an actual selection first — cockpitPathKey maps BOTH null
+    // ("nothing picked yet", the fresh-OPEN sentinel maybeMountCockpitTerminal
+    // gates on) and '' (the Main row) to '', so without the null guard the Main
+    // row rendered selected on a fresh OPEN start while the terminal stayed gated
+    // ("Select a worktree above") — a contradictory highlight. No row is selected
+    // until worktreeCwd is set by selectCockpitWorktree (or the in_progress lock).
+    const selected = cockpitState.worktreeCwd !== null && cockpitPathKey(cockpitState.worktreeCwd) === cockpitPathKey(cwd);
     return `<div class="ck-worktree-row${selected ? ' selected' : ''}" data-cwd="${esc(cwd)}"${extraAttr || ''}>
       <div class="ck-worktree-radio"></div>
       <div class="ck-worktree-labels">
