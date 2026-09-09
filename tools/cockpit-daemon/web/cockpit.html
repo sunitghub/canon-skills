@@ -135,9 +135,11 @@
   // (see the message listener below).
   var STATUS_MAP = { running: "running", needsyou: "needs-you", done: "done", error: "error", "": "ended" };
   function setStatus(cls, text){
+    lastStatusCls = cls || "";
     dotEl.className = "dot " + (cls||"");
     statusWrap.className = "status" + (cls === "needsyou" ? " needsyou" : "");
     statusEl.textContent = text;
+    if(typeof sbUpdateControls === "function") sbUpdateControls();
     try{
       window.parent.postMessage({ source: "canon-cockpit", type: "status", status: STATUS_MAP[cls] || cls }, "*");
     }catch(e){}
@@ -207,19 +209,47 @@
   var staleBanner = document.getElementById("staleBanner");
   var sbMsg = document.getElementById("sbMsg");
   var sbRestart = document.getElementById("sbRestart");
+  var sbBaseMsg = "";        // the stale message without any busy suffix
+  var lastStatusCls = "";    // mirrors setStatus's cls so the banner knows if a session is live
   function sbFmtTime(unix){ try { return new Date(unix*1000).toLocaleTimeString(); } catch(e){ return String(unix); } }
+  function sbSessionLive(){ return lastStatusCls === "running" || lastStatusCls === "needsyou"; }
+  function sbEnsureForce(){
+    if(!document.getElementById("sbForce")){
+      var fb = document.createElement("button");
+      fb.id = "sbForce"; fb.className = "sb-force"; fb.textContent = "Force restart";
+      fb.addEventListener("click", function(){
+        if(window.confirm("Force restart ends the running agent session. Continue?")) sbDoRestart(true);
+      });
+      staleBanner.appendChild(fb);
+    }
+  }
+  function sbRemoveForce(){ var f = document.getElementById("sbForce"); if(f) f.remove(); }
+  // Reflect session-busy state on the controls: a live session DISABLES the
+  // plain Restart (never blind-kill a running agent) and offers Force restart
+  // behind a confirm; idle re-enables the plain Restart. The daemon's 409 is the
+  // backstop guarantee if a session starts between render and click.
+  function sbUpdateControls(){
+    if(!staleBanner || staleBanner.hidden) return;
+    if(sbSessionLive()){
+      sbRestart.disabled = true;
+      sbMsg.textContent = sbBaseMsg + " — finish or Kill the running session first.";
+      sbEnsureForce();
+    } else {
+      sbRestart.disabled = false;
+      sbMsg.textContent = sbBaseMsg;
+      sbRemoveForce();
+    }
+  }
   function showStaleBanner(info){
     if(!info || !info.stale){ staleBanner.hidden = true; return; }
     var rb = info.running_build || {}, lb = info.latest_build || {};
     var rlabel = rb.version ? rb.version : "unknown";
     var rt = rb.exe_mtime ? sbFmtTime(rb.exe_mtime) : "?";
     var lt = lb.exe_mtime ? sbFmtTime(lb.exe_mtime) : "?";
-    sbMsg.textContent = "\u26A0 Cockpit daemon is out of date (running " + rlabel
-      + ", built " + rt + "; latest built " + lt + ") \u2014 restart to update.";
-    var f = document.getElementById("sbForce"); if(f) f.remove();
+    sbBaseMsg = "\u26A0 Cockpit daemon out of date (running " + rlabel + ", built " + rt + "; latest built " + lt + ")";
     sbRestart.textContent = "Restart";
-    sbRestart.disabled = false;
     staleBanner.hidden = false;
+    sbUpdateControls();
   }
   function sbDoRestart(force){
     sbRestart.disabled = true;
@@ -227,18 +257,12 @@
       .then(function(r){
         if(r.status === 200){
           sbMsg.textContent = "Restarting cockpit daemon\u2026";
+          sbRemoveForce();
           try{ window.parent.postMessage({ source:"canon-cockpit", type:"daemon-restarting" }, "*"); }catch(e){}
         } else if(r.status === 409){
-          sbMsg.textContent = "A session is running \u2014 finish or Kill it first, or force restart (ends the session).";
-          sbRestart.disabled = false;
-          if(!document.getElementById("sbForce")){
-            var fb = document.createElement("button");
-            fb.id = "sbForce"; fb.className = "sb-force"; fb.textContent = "Force restart";
-            fb.addEventListener("click", function(){
-              if(window.confirm("Force restart ends the running agent session. Continue?")) sbDoRestart(true);
-            });
-            staleBanner.appendChild(fb);
-          }
+          // A session became live between render and click — reflect busy state.
+          lastStatusCls = "running";
+          sbUpdateControls();
         } else {
           sbMsg.textContent = "Restart failed (" + r.status + ").";
           sbRestart.disabled = false;

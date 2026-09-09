@@ -4642,73 +4642,114 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   const DAEMON_SRC = path.join(__dirname, '..', 'tools', 'cockpit-daemon');
   test.describe.configure({ timeout: 120_000 });
 
-  let work, daemonBin, stateDir, daemonProc, bootToken;
-  let goOk = false;
+  let work, daemonBin, bootToken, goOk = false;
+  const daemons = []; // every spawned daemon, killed in afterAll
 
   test.beforeAll(() => {
     // Probe go here (worker process), not at module load: Playwright collects in
     // one process and runs bodies in workers, whose env may lack a spawnable go.
-    // On failure, set a flag and return — each test then skips (test.skip inside
-    // a test body reliably aborts; inside a hook it does not).
     try { execFileSync('go', ['version'], { stdio: 'ignore' }); goOk = true; }
     catch { goOk = false; return; }
     work = fs.mkdtempSync(path.join(os.tmpdir(), 'ck-stale-'));
     daemonBin = path.join(work, 'cockpit-daemon-test');
     execFileSync('go', ['build', '-o', daemonBin, '.'], { cwd: DAEMON_SRC, stdio: 'inherit' });
-    stateDir = path.join(work, 'state');
     bootToken = 'test-boot-token-t74d6';
+    // A real ticket dir so the busy-state test can start a session (the daemon
+    // refuses /session/start for a ticket that doesn't physically exist).
+    fs.mkdirSync(path.join(work, '.tickets', 't-bnr1'), { recursive: true });
+    fs.writeFileSync(path.join(work, '.tickets', 't-bnr1', 'ticket.md'),
+      ['---', 'id: t-bnr1', 'status: open', 'type: task', 'priority: 3', 'created: 2026-08-24T00:00:00Z', '---', '', '# banner fixture', ''].join('\n'));
     const stub = path.join(work, 'stub-agent.sh');
     fs.writeFileSync(stub, '#!/usr/bin/env bash\nexec sleep 60\n', { mode: 0o755 });
-    daemonProc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
-      env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
-      stdio: 'ignore',
-    });
   });
 
   test.afterAll(() => {
-    if (daemonProc) daemonProc.kill('SIGKILL');
+    for (const d of daemons) { try { d.kill('SIGKILL'); } catch { /* already gone */ } }
     if (work) fs.rmSync(work, { recursive: true, force: true });
   });
 
-  async function daemonAddr() {
+  // Spawn a fresh daemon (own state dir) so each test's restart/shutdown is
+  // isolated; return its bound addr.
+  async function startDaemon() {
+    const stateDir = fs.mkdtempSync(path.join(work, 'state-'));
+    const stub = path.join(work, 'stub-agent.sh');
+    const proc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
+      env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
+      stdio: 'ignore',
+    });
+    daemons.push(proc);
     const p = path.join(stateDir, 'daemon.json');
     for (let i = 0; i < 120; i++) {
-      try { const j = JSON.parse(fs.readFileSync(p, 'utf8')); if (j.addr) return j.addr; } catch { /* not yet */ }
+      try { const j = JSON.parse(fs.readFileSync(p, 'utf8')); if (j.addr) return { addr: j.addr, proc }; } catch { /* not yet */ }
       await new Promise(r => setTimeout(r, 50));
     }
     throw new Error('daemon.json addr never appeared');
   }
 
   const relay = (info) => (i) => window.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: i }, '*');
+  const STALE = { stale: true, running_build: { version: 'oldbuild', exe_mtime: 1000 }, latest_build: { exe_mtime: 2000 } };
 
-  test('shows the banner when the board reports a stale daemon, hides it when fresh', async ({ page }) => {
+  test('shows the banner (with running build id) when stale, hides it when fresh', async ({ page }) => {
     test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
-    const base = `http://${await daemonAddr()}`;
-    await page.goto(`${base}/cockpit?embed=1`);
-    const banner = page.locator('#staleBanner');
-    await expect(banner).toBeHidden();
+    const { addr, proc } = await startDaemon();
+    try {
+      await page.goto(`http://${addr}/cockpit?embed=1`);
+      const banner = page.locator('#staleBanner');
+      await expect(banner).toBeHidden();
 
-    await page.evaluate(relay(), { stale: true, running_build: { version: 'oldbuild', exe_mtime: 1000 }, latest_build: { exe_mtime: 2000 } });
-    await expect(banner).toBeVisible();
-    await expect(page.locator('#sbMsg')).toContainText('out of date');
-    await expect(page.locator('#sbMsg')).toContainText('oldbuild');
+      await page.evaluate(relay(), STALE);
+      await expect(banner).toBeVisible();
+      await expect(page.locator('#sbMsg')).toContainText('out of date');
+      await expect(page.locator('#sbMsg')).toContainText('oldbuild');   // running build id
+      await expect(page.locator('#sbMsg')).toContainText('latest built'); // latest shown too
+      // idle → plain Restart enabled, no Force button.
+      await expect(page.locator('#sbRestart')).toBeEnabled();
+      await expect(page.locator('#sbForce')).toHaveCount(0);
 
-    // A subsequent non-stale report hides it again.
-    await page.evaluate(relay(), { stale: false, running_build: { version: 'oldbuild', exe_mtime: 2000 }, latest_build: { exe_mtime: 2000 } });
-    await expect(banner).toBeHidden();
+      // A subsequent non-stale report clears the banner (the board relays this
+      // after remounting a fresh daemon).
+      await page.evaluate(relay(), { stale: false, running_build: { version: 'oldbuild', exe_mtime: 2000 }, latest_build: { exe_mtime: 2000 } });
+      await expect(banner).toBeHidden();
+    } finally { proc.kill('SIGKILL'); }
+  });
+
+  test('with a live session the plain Restart is disabled and Force restart is confirmed', async ({ page }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const { addr, proc } = await startDaemon();
+    try {
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      // Start a real (stub) session so the page's status becomes "running".
+      await page.locator('#startBtn').click();
+      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+
+      await page.evaluate(relay(), STALE);
+      await expect(page.locator('#staleBanner')).toBeVisible();
+      // Busy: plain Restart disabled with the finish-or-Kill message; Force shown.
+      await expect(page.locator('#sbRestart')).toBeDisabled();
+      await expect(page.locator('#sbMsg')).toContainText('finish or Kill the running session first');
+      await expect(page.locator('#sbForce')).toBeVisible();
+
+      // Force restart requires a confirm, then calls /shutdown?force=1 → 200.
+      let confirmed = false;
+      page.on('dialog', d => { confirmed = true; d.accept(); });
+      await page.locator('#sbForce').click();
+      await expect(page.locator('#sbMsg')).toContainText('Restarting', { timeout: 5000 });
+      expect(confirmed).toBe(true);
+    } finally { proc.kill('SIGKILL'); }
   });
 
   test('Restart on an idle daemon calls /shutdown and reports restarting', async ({ page }) => {
     test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
-    const base = `http://${await daemonAddr()}`;
-    await page.goto(`${base}/cockpit?embed=1`);
-    await page.evaluate(relay(), { stale: true, running_build: { version: 'oldbuild', exe_mtime: 1000 }, latest_build: { exe_mtime: 2000 } });
-    await expect(page.locator('#staleBanner')).toBeVisible();
+    const { addr, proc } = await startDaemon();
+    try {
+      await page.goto(`http://${addr}/cockpit?embed=1`);
+      await page.evaluate(relay(), STALE);
+      await expect(page.locator('#staleBanner')).toBeVisible();
+      await expect(page.locator('#sbRestart')).toBeEnabled();
 
-    // Idle daemon (no session started) → /shutdown returns 200 → banner reports
-    // restarting. (This terminates this describe's own daemon, which is fine —
-    // afterAll's SIGKILL on an already-exited process is a no-op.)
-    await page.locator('#sbRestart').click();
-    await expect(page.locator('#sbMsg')).toContainText('Restarting', { timeout: 5000 });
+      // Idle daemon (no session) → /shutdown 200 → banner reports restarting.
+      await page.locator('#sbRestart').click();
+      await expect(page.locator('#sbMsg')).toContainText('Restarting', { timeout: 5000 });
+    } finally { proc.kill('SIGKILL'); }
   });
 });
