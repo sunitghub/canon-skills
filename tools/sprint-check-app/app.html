@@ -4830,6 +4830,21 @@ async function openCockpit(id) {
     renderCockpitDocs(ct);
     renderCockpitState(ct);
     renderCockpitStatusBadge(ct);
+    // t-74d6: re-check daemon staleness on the poll (GET /api/cockpit = discover,
+    // never relaunch) and re-relay to the iframe, so a daemon that drifts while
+    // the cockpit is already open surfaces the banner without a remount.
+    if (cockpitState.addr) {
+      try {
+        const cr = await fetch('/api/cockpit');
+        const cd = await cr.json();
+        if (cd && cd.running) {
+          const bi = { stale: !!cd.stale, running_build: cd.running_build || null, latest_build: cd.latest_build || null };
+          cockpitState.buildInfo = bi;
+          const ifr = document.getElementById('ck-iframe');
+          if (ifr && ifr.contentWindow) ifr.contentWindow.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: bi }, 'http://' + cockpitState.addr);
+        }
+      } catch {}
+    }
   }, 5000);
 }
 
