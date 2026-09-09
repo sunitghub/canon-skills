@@ -1847,7 +1847,63 @@ func cockpitDiscover() map[string]any {
 	if addr != "" {
 		addrAny = addr
 	}
-	return map[string]any{"running": ok, "addr": addrAny}
+	out := map[string]any{"running": ok, "addr": addrAny}
+	if ok {
+		for k, v := range cockpitBuildStatus(addr) {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// cockpitBinaryMtime is the on-disk daemon binary's mtime (unix) — the "latest"
+// build the board would launch. 0 if unresolvable. (t-74d6)
+func cockpitBinaryMtime() int64 {
+	st, err := os.Stat(cockpitDaemonBin)
+	if err != nil {
+		return 0
+	}
+	return st.ModTime().Unix()
+}
+
+// cockpitRunningBuild fetches the RUNNING daemon's unauthenticated /version JSON
+// ({version, exe_mtime}). nil if unreachable or not JSON (a daemon predating
+// this build). The board never reads the daemon token; /version needs none.
+func cockpitRunningBuild(addr string) map[string]any {
+	if addr == "" {
+		return nil
+	}
+	client := &http.Client{Timeout: 400 * time.Millisecond}
+	resp, err := client.Get("http://" + addr + "/version")
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+	var v struct {
+		Version  string `json:"version"`
+		ExeMtime int64  `json:"exe_mtime"`
+	}
+	if json.NewDecoder(resp.Body).Decode(&v) != nil {
+		return nil
+	}
+	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime}
+}
+
+// cockpitBuildStatus reports {stale, running_build, latest_build} for a healthy
+// daemon. Stale when the running exec-mtime differs from the on-disk binary's,
+// or when the daemon exposes no JSON /version. Parity with server.py's
+// _cockpit_build_status — the drift signal is the exec-mtime, NOT the version
+// string (local `dev` builds all match). (t-74d6)
+func cockpitBuildStatus(addr string) map[string]any {
+	latestMtime := cockpitBinaryMtime()
+	latest := map[string]any{"exe_mtime": latestMtime}
+	running := cockpitRunningBuild(addr)
+	if running == nil {
+		return map[string]any{"stale": true, "running_build": nil, "latest_build": latest}
+	}
+	rm, _ := running["exe_mtime"].(int64)
+	stale := latestMtime != 0 && rm != latestMtime
+	return map[string]any{"stale": stale, "running_build": running, "latest_build": latest}
 }
 
 // ensureCockpit returns a running daemon's addr, launching one on demand if
@@ -1855,7 +1911,11 @@ func cockpitDiscover() map[string]any {
 // project root + sprint bin are passed via env, never argv.
 func ensureCockpit() map[string]any {
 	if addr, ok := discoverCockpitAddr(); ok {
-		return map[string]any{"running": true, "addr": addr, "launched": false}
+		out := map[string]any{"running": true, "addr": addr, "launched": false}
+		for k, v := range cockpitBuildStatus(addr) {
+			out[k] = v
+		}
+		return out
 	}
 	if !exists(cockpitDaemonBin) {
 		return map[string]any{"running": false, "addr": nil, "error": "cockpit daemon binary not found"}
@@ -1881,7 +1941,11 @@ func ensureCockpit() map[string]any {
 	go func() { _ = cmd.Wait() }()
 	for i := 0; i < 50; i++ {
 		if addr, ok := discoverCockpitAddr(); ok {
-			return map[string]any{"running": true, "addr": addr, "launched": true}
+			out := map[string]any{"running": true, "addr": addr, "launched": true}
+			for k, v := range cockpitBuildStatus(addr) {
+				out[k] = v
+			}
+			return out
 		}
 		time.Sleep(100 * time.Millisecond)
 	}

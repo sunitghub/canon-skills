@@ -1036,14 +1036,55 @@ def _discover_cockpit_addr() -> tuple[str, bool]:
 
 def cockpit_discover() -> dict:
     addr, ok = _discover_cockpit_addr()
-    return {'running': ok, 'addr': addr or None}
+    out = {'running': ok, 'addr': addr or None}
+    if ok:
+        out.update(_cockpit_build_status(addr))
+    return out
+
+# t-74d6: detect a version-drifted (stale) running daemon. The board reuses a
+# detached daemon by liveness alone (see ensure_cockpit), so after the binary is
+# rebuilt the old daemon keeps serving until restarted. The board never holds
+# the daemon token, but /version is unauthenticated — so the board CAN read the
+# running build and compare it to the on-disk binary. The signal is the
+# executable's mtime, NOT the version string: local `dev` builds all share one
+# string, so a string compare could never flag a rebuilt-in-place daemon.
+def _cockpit_binary_mtime() -> int:
+    try:
+        return int(os.path.getmtime(COCKPIT_DAEMON_BIN))
+    except Exception:
+        return 0
+
+def _cockpit_running_build(addr: str) -> dict | None:
+    """The RUNNING daemon's /version (unauthenticated JSON: version + exe_mtime).
+    None if unreachable or not JSON (a daemon predating this build)."""
+    if not addr:
+        return None
+    try:
+        with urllib.request.urlopen(f'http://{addr}/version', timeout=0.4) as r:
+            data = json.loads(r.read().decode('utf-8'))
+        return {'version': str(data.get('version', '')),
+                'exe_mtime': int(data.get('exe_mtime', 0))}
+    except Exception:
+        return None
+
+def _cockpit_build_status(addr: str) -> dict:
+    """{stale, running_build, latest_build} for a healthy daemon at addr. Stale
+    when the running exec-mtime differs from the on-disk binary's, or when the
+    running daemon exposes no JSON /version (too old to report the signal)."""
+    latest_mtime = _cockpit_binary_mtime()
+    latest = {'exe_mtime': latest_mtime}
+    running = _cockpit_running_build(addr)
+    if running is None:
+        return {'stale': True, 'running_build': None, 'latest_build': latest}
+    stale = latest_mtime != 0 and running.get('exe_mtime', 0) != latest_mtime
+    return {'stale': stale, 'running_build': running, 'latest_build': latest}
 
 def ensure_cockpit() -> dict:
     """Return a running daemon's addr, launching one on demand if none is
     healthy. The spawn argv is fixed; project root + sprint bin go via env."""
     addr, ok = _discover_cockpit_addr()
     if ok:
-        return {'running': True, 'addr': addr, 'launched': False}
+        return {'running': True, 'addr': addr, 'launched': False, **_cockpit_build_status(addr)}
     if not (COCKPIT_DAEMON_BIN and os.path.exists(COCKPIT_DAEMON_BIN)):
         return {'running': False, 'addr': None, 'error': 'cockpit daemon binary not found'}
     state_dir = _cockpit_state_dir()
@@ -1067,7 +1108,7 @@ def ensure_cockpit() -> dict:
     for _ in range(50):
         addr, ok = _discover_cockpit_addr()
         if ok:
-            return {'running': True, 'addr': addr, 'launched': True}
+            return {'running': True, 'addr': addr, 'launched': True, **_cockpit_build_status(addr)}
         time.sleep(0.1)
     return {'running': False, 'addr': None, 'error': 'daemon did not become ready'}
 

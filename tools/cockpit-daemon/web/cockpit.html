@@ -53,6 +53,18 @@
      mode (t-ddc8) — this page's #model span is a static, never-updated
      placeholder, so hide it in embed to avoid a second, dead "model:" chip */
   body.embed .model{display:none}
+  /* t-74d6: stale-daemon banner — the board detects a version-drifted daemon
+     and relays it in; the Restart button calls the token-gated /shutdown. */
+  .stale-banner{display:flex;align-items:center;gap:10px;padding:7px 12px;
+    background:rgba(234,179,8,.12);border-bottom:1px solid var(--yellow);
+    color:var(--yellow);font-size:12px;font-family:var(--mono)}
+  .stale-banner[hidden]{display:none}
+  .stale-banner .sb-msg{flex:1}
+  .stale-banner button{border:0;border-radius:6px;padding:5px 10px;font-size:12px;
+    font-weight:600;cursor:pointer}
+  .stale-banner button:disabled{opacity:.5;cursor:default}
+  .stale-banner .sb-restart{background:var(--accent);color:#fff}
+  .stale-banner .sb-force{background:var(--red);color:#fff}
 </style>
 </head>
 <body>
@@ -73,6 +85,10 @@
     <span class="model" id="model">model: from plan.md</span>
     <span class="status"><span class="dot" id="dot"></span><span id="statusText">idle</span></span>
   </header>
+  <div id="staleBanner" class="stale-banner" hidden>
+    <span class="sb-msg" id="sbMsg"></span>
+    <button class="sb-restart" id="sbRestart">Restart</button>
+  </div>
   <div id="term-wrap"><div id="terminal"></div></div>
 </div>
 
@@ -176,10 +192,61 @@
           }
         }, PREVIEW_TIMEOUT_MS);
       }
+    } else if(d.type === "daemon-build"){
+      showStaleBanner(d.info);
     }
   });
 
   function authHeaders(tok){ return { "Authorization": "Bearer " + tok }; }
+
+  // ── t-74d6: stale-daemon banner ──────────────────────────────────────────
+  // The board (which can stat the on-disk binary) detects a version-drifted
+  // daemon and relays {stale, running_build, latest_build} in via postMessage.
+  // Restart calls the token-gated /shutdown (this page holds the boot token);
+  // the daemon refuses 409 while a session is live unless Force is confirmed.
+  var staleBanner = document.getElementById("staleBanner");
+  var sbMsg = document.getElementById("sbMsg");
+  var sbRestart = document.getElementById("sbRestart");
+  function sbFmtTime(unix){ try { return new Date(unix*1000).toLocaleTimeString(); } catch(e){ return String(unix); } }
+  function showStaleBanner(info){
+    if(!info || !info.stale){ staleBanner.hidden = true; return; }
+    var rb = info.running_build || {}, lb = info.latest_build || {};
+    var rlabel = rb.version ? rb.version : "unknown";
+    var rt = rb.exe_mtime ? sbFmtTime(rb.exe_mtime) : "?";
+    var lt = lb.exe_mtime ? sbFmtTime(lb.exe_mtime) : "?";
+    sbMsg.textContent = "\u26A0 Cockpit daemon is out of date (running " + rlabel
+      + ", built " + rt + "; latest built " + lt + ") \u2014 restart to update.";
+    var f = document.getElementById("sbForce"); if(f) f.remove();
+    sbRestart.textContent = "Restart";
+    sbRestart.disabled = false;
+    staleBanner.hidden = false;
+  }
+  function sbDoRestart(force){
+    sbRestart.disabled = true;
+    fetch("/shutdown" + (force ? "?force=1" : ""), { method:"POST", headers: authHeaders(TOKEN) })
+      .then(function(r){
+        if(r.status === 200){
+          sbMsg.textContent = "Restarting cockpit daemon\u2026";
+          try{ window.parent.postMessage({ source:"canon-cockpit", type:"daemon-restarting" }, "*"); }catch(e){}
+        } else if(r.status === 409){
+          sbMsg.textContent = "A session is running \u2014 finish or Kill it first, or force restart (ends the session).";
+          sbRestart.disabled = false;
+          if(!document.getElementById("sbForce")){
+            var fb = document.createElement("button");
+            fb.id = "sbForce"; fb.className = "sb-force"; fb.textContent = "Force restart";
+            fb.addEventListener("click", function(){
+              if(window.confirm("Force restart ends the running agent session. Continue?")) sbDoRestart(true);
+            });
+            staleBanner.appendChild(fb);
+          }
+        } else {
+          sbMsg.textContent = "Restart failed (" + r.status + ").";
+          sbRestart.disabled = false;
+        }
+      })
+      .catch(function(){ sbMsg.textContent = "Restart request failed."; sbRestart.disabled = false; });
+  }
+  sbRestart.addEventListener("click", function(){ sbDoRestart(false); });
 
   // Claude Code's CLI treats a single "text\r" write as pasted text sitting
   // in the input box — it never submits. The trailing Enter has to land as

@@ -2785,3 +2785,170 @@ func TestHandleStartAgent(t *testing.T) {
 		t.Fatalf(".cockpit-agent = %q, want pi", got)
 	}
 }
+
+// ── t-74d6: version exec-mtime + gated /shutdown ────────────────────────────
+
+func liveSessionCount(s *server) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := 0
+	for _, se := range s.sessions {
+		se.mu.Lock()
+		if !se.exited {
+			n++
+		}
+		se.mu.Unlock()
+	}
+	return n
+}
+
+func waitLiveSessions(t *testing.T, s *server, want int) {
+	t.Helper()
+	for i := 0; i < 100; i++ {
+		if liveSessionCount(s) == want {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d live sessions (have %d)", want, liveSessionCount(s))
+}
+
+// TestVersionReportsExecMtime: /version is JSON carrying the version string AND
+// the daemon executable's startup mtime (the drift signal), and needs no token.
+func TestVersionReportsExecMtime(t *testing.T) {
+	old := execMtime
+	execMtime = 1700000000
+	defer func() { execMtime = old }()
+
+	_, base := newTestServer(t, "/bin/true")
+	resp, err := http.Get(base + "/version") // no Authorization header on purpose
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("/version status = %d, want 200", resp.StatusCode)
+	}
+	var v struct {
+		Version  string `json:"version"`
+		ExeMtime int64  `json:"exe_mtime"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		t.Fatalf("decode /version JSON: %v", err)
+	}
+	if v.ExeMtime != 1700000000 {
+		t.Fatalf("exe_mtime = %d, want 1700000000", v.ExeMtime)
+	}
+	if v.Version == "" {
+		t.Fatal("version field empty")
+	}
+}
+
+// TestShutdownRequiresToken: /shutdown is boot-token gated.
+func TestShutdownRequiresToken(t *testing.T) {
+	_, base := newTestServer(t, "/bin/true")
+	req, _ := http.NewRequest(http.MethodPost, base+"/shutdown", nil) // no token
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated /shutdown = %d, want 401", resp.StatusCode)
+	}
+}
+
+// TestShutdownRefusesWhenBusy: a live session ⇒ 409, session preserved, no exit.
+func TestShutdownRefusesWhenBusy(t *testing.T) {
+	oldExit := shutdownExit
+	called := make(chan struct{}, 1)
+	shutdownExit = func() { called <- struct{}{} }
+	defer func() { shutdownExit = oldExit }()
+
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	startSession(t, base, "t-ab12", bootTok).Body.Close()
+	waitLiveSessions(t, s, 1)
+
+	req, _ := http.NewRequest(http.MethodPost, base+"/shutdown", nil)
+	req.Header.Set("Authorization", "Bearer "+bootTok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("busy /shutdown = %d, want 409", resp.StatusCode)
+	}
+	if n := liveSessionCount(s); n != 1 {
+		t.Fatalf("live sessions after refused shutdown = %d, want 1 (session must be preserved)", n)
+	}
+	select {
+	case <-called:
+		t.Fatal("shutdownExit was called on a refused (409) shutdown")
+	case <-time.After(300 * time.Millisecond):
+	}
+}
+
+// TestShutdownIdleExits: no live session ⇒ 200 + the exit path fires.
+func TestShutdownIdleExits(t *testing.T) {
+	oldExit := shutdownExit
+	called := make(chan struct{}, 1)
+	shutdownExit = func() { called <- struct{}{} }
+	defer func() { shutdownExit = oldExit }()
+
+	_, base := newTestServer(t, "/bin/true")
+	req, _ := http.NewRequest(http.MethodPost, base+"/shutdown", nil)
+	req.Header.Set("Authorization", "Bearer "+bootTok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("idle /shutdown = %d, want 200", resp.StatusCode)
+	}
+	var v struct {
+		OK bool `json:"ok"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil || !v.OK {
+		t.Fatalf("idle /shutdown body ok=false or bad JSON (err=%v)", err)
+	}
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdownExit not called after an idle shutdown")
+	}
+}
+
+// TestShutdownForceEndsSessions: ?force=1 ends live sessions then exits.
+func TestShutdownForceEndsSessions(t *testing.T) {
+	oldExit := shutdownExit
+	called := make(chan struct{}, 1)
+	shutdownExit = func() { called <- struct{}{} }
+	defer func() { shutdownExit = oldExit }()
+
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	startSession(t, base, "t-ab12", bootTok).Body.Close()
+	waitLiveSessions(t, s, 1)
+
+	req, _ := http.NewRequest(http.MethodPost, base+"/shutdown?force=1", nil)
+	req.Header.Set("Authorization", "Bearer "+bootTok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("force /shutdown = %d, want 200", resp.StatusCode)
+	}
+	if n := liveSessionCount(s); n != 0 {
+		t.Fatalf("live sessions after force shutdown = %d, want 0", n)
+	}
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdownExit not called after a force shutdown")
+	}
+}

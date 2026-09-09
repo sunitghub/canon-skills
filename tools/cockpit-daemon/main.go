@@ -192,10 +192,21 @@ func (s *server) handler() http.Handler {
 		io.WriteString(w, "ok")
 	})
 	// t-99fa: unauthenticated build-version readout (like /healthz) so the board
-	// can show which daemon build is running. Same value as `--version`.
+	// can show which daemon build is running. t-74d6: also report the mtime of
+	// this daemon's own executable, captured at startup — the board compares it
+	// to the on-disk binary's mtime to detect a version-drifted (stale) daemon.
+	// A plain version string is insufficient: local `dev` builds all report the
+	// same string, so a string compare could never flag a rebuilt-in-place binary.
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, version)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "exe_mtime": execMtime})
 	})
+	// t-74d6: authorized, gated daemon shutdown so the board can replace a stale
+	// build. Boot-token gated (checked inside handleShutdown), refuses while a
+	// session is live unless ?force=1 — never a blind kill. Guarded for loopback
+	// like the rest; the cockpit page (which holds the token) calls it, not the
+	// token-free board.
+	mux.HandleFunc("/shutdown", s.guard(s.handleShutdown))
 	mux.HandleFunc("/cockpit", s.guard(s.handleCockpit))
 	if sub, err := fs.Sub(webFS, "web"); err == nil {
 		mux.Handle("/web/", s.guardHandler(http.StripPrefix("/web/", http.FileServer(http.FS(sub)))))
@@ -831,6 +842,66 @@ func (s *server) killSession(se *session) {
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
+}
+
+// handleShutdown terminates the daemon process so the board can replace a
+// version-drifted (stale) build with a freshly-launched one (t-74d6). It is
+// boot-token gated (same credential as /session/*) and refuses (409) while any
+// live session is attached, unless ?force=1 is passed — the cockpit page only
+// sends force behind an explicit user confirm. This is an explicit, authorized,
+// gated teardown; it does NOT weaken the detached-survival model (a daemon
+// still outlives the board/browser on its own).
+func (s *server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.token == "" || !secureEqual(bearer(r), s.cfg.token) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	force := r.URL.Query().Get("force") == "1"
+	// Snapshot the live (not-yet-exited) sessions.
+	s.mu.Lock()
+	live := make([]*session, 0, len(s.sessions))
+	for _, se := range s.sessions {
+		se.mu.Lock()
+		exited := se.exited
+		se.mu.Unlock()
+		if !exited {
+			live = append(live, se)
+		}
+	}
+	s.mu.Unlock()
+	if len(live) > 0 && !force {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": false, "error": "active session", "sessions": len(live),
+		})
+		return
+	}
+	for _, se := range live {
+		s.killSession(se) // force path only (live is empty otherwise)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "sessions_ended": len(live)})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	// Exit after the response drains. os.Exit skips no critical cleanup here (the
+	// board clears daemon.json on relaunch; sessions were killed above). The small
+	// delay avoids the exit racing the HTTP write (pre-mortem: board would see a
+	// connection error instead of 200). Indirected through shutdownExit so tests
+	// can assert the path without terminating the test process.
+	go shutdownExit()
+}
+
+// shutdownExit performs the actual process exit for handleShutdown. It is a
+// package var so tests can replace it (os.Exit would kill the test runner).
+var shutdownExit = func() {
+	time.Sleep(150 * time.Millisecond)
+	os.Exit(0)
 }
 
 // ── session I/O ────────────────────────────────────────────────────────────
@@ -1731,6 +1802,24 @@ func writeJSON(w http.ResponseWriter, v any) {
 // tools/cockpit-daemon). A plain `go build` leaves it "dev". t-99fa.
 var version = "dev"
 
+// execMtime is the Unix mtime of this daemon's own executable, captured once at
+// startup (see main). The board compares it to the on-disk binary's mtime to
+// detect a stale/version-drifted running daemon (t-74d6) — robust even for
+// `dev` builds where the version string never changes.
+var execMtime int64
+
+func executableMtime() int64 {
+	exe, err := os.Executable()
+	if err != nil {
+		return 0
+	}
+	st, err := os.Stat(exe)
+	if err != nil {
+		return 0
+	}
+	return st.ModTime().Unix()
+}
+
 func main() {
 	versionFlag := flag.Bool("version", false, "print build version and exit")
 	addr := flag.String("addr", envOr("COCKPIT_ADDR", "127.0.0.1:8455"), "loopback bind address")
@@ -1739,6 +1828,7 @@ func main() {
 		fmt.Println(version)
 		return
 	}
+	execMtime = executableMtime()
 
 	if !strings.HasPrefix(*addr, "127.0.0.1:") && !strings.HasPrefix(*addr, "localhost:") && !strings.HasPrefix(*addr, "[::1]:") {
 		fmt.Fprintln(os.Stderr, "refusing non-loopback bind:", *addr)

@@ -4628,3 +4628,87 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     expect(await rightTok.text()).toContain('#marker');
   });
 });
+
+// t-74d6: the cockpit page renders a stale-daemon banner when the board relays
+// {stale, running_build, latest_build} via the canon-cockpit postMessage
+// channel, and its Restart button calls the token-gated /shutdown. Drives the
+// REAL daemon page (loaded directly, not framed — window.parent === window, so
+// a self-postMessage satisfies the listener's source/origin checks).
+test.describe('cockpit stale-daemon banner (t-74d6)', () => {
+  const os = require('os');
+  // Anchor to the canon repo (this spec lives in <repo>/tests) rather than
+  // PROJECT_ROOT — under SPRINT_CHECK_TEST_ROOT the board root is a fixture dir
+  // that has no tools/cockpit-daemon, which would make the build cwd invalid.
+  const DAEMON_SRC = path.join(__dirname, '..', 'tools', 'cockpit-daemon');
+  test.describe.configure({ timeout: 120_000 });
+
+  let work, daemonBin, stateDir, daemonProc, bootToken;
+  let goOk = false;
+
+  test.beforeAll(() => {
+    // Probe go here (worker process), not at module load: Playwright collects in
+    // one process and runs bodies in workers, whose env may lack a spawnable go.
+    // On failure, set a flag and return — each test then skips (test.skip inside
+    // a test body reliably aborts; inside a hook it does not).
+    try { execFileSync('go', ['version'], { stdio: 'ignore' }); goOk = true; }
+    catch { goOk = false; return; }
+    work = fs.mkdtempSync(path.join(os.tmpdir(), 'ck-stale-'));
+    daemonBin = path.join(work, 'cockpit-daemon-test');
+    execFileSync('go', ['build', '-o', daemonBin, '.'], { cwd: DAEMON_SRC, stdio: 'inherit' });
+    stateDir = path.join(work, 'state');
+    bootToken = 'test-boot-token-t74d6';
+    const stub = path.join(work, 'stub-agent.sh');
+    fs.writeFileSync(stub, '#!/usr/bin/env bash\nexec sleep 60\n', { mode: 0o755 });
+    daemonProc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
+      env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
+      stdio: 'ignore',
+    });
+  });
+
+  test.afterAll(() => {
+    if (daemonProc) daemonProc.kill('SIGKILL');
+    if (work) fs.rmSync(work, { recursive: true, force: true });
+  });
+
+  async function daemonAddr() {
+    const p = path.join(stateDir, 'daemon.json');
+    for (let i = 0; i < 120; i++) {
+      try { const j = JSON.parse(fs.readFileSync(p, 'utf8')); if (j.addr) return j.addr; } catch { /* not yet */ }
+      await new Promise(r => setTimeout(r, 50));
+    }
+    throw new Error('daemon.json addr never appeared');
+  }
+
+  const relay = (info) => (i) => window.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: i }, '*');
+
+  test('shows the banner when the board reports a stale daemon, hides it when fresh', async ({ page }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const base = `http://${await daemonAddr()}`;
+    await page.goto(`${base}/cockpit?embed=1`);
+    const banner = page.locator('#staleBanner');
+    await expect(banner).toBeHidden();
+
+    await page.evaluate(relay(), { stale: true, running_build: { version: 'oldbuild', exe_mtime: 1000 }, latest_build: { exe_mtime: 2000 } });
+    await expect(banner).toBeVisible();
+    await expect(page.locator('#sbMsg')).toContainText('out of date');
+    await expect(page.locator('#sbMsg')).toContainText('oldbuild');
+
+    // A subsequent non-stale report hides it again.
+    await page.evaluate(relay(), { stale: false, running_build: { version: 'oldbuild', exe_mtime: 2000 }, latest_build: { exe_mtime: 2000 } });
+    await expect(banner).toBeHidden();
+  });
+
+  test('Restart on an idle daemon calls /shutdown and reports restarting', async ({ page }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const base = `http://${await daemonAddr()}`;
+    await page.goto(`${base}/cockpit?embed=1`);
+    await page.evaluate(relay(), { stale: true, running_build: { version: 'oldbuild', exe_mtime: 1000 }, latest_build: { exe_mtime: 2000 } });
+    await expect(page.locator('#staleBanner')).toBeVisible();
+
+    // Idle daemon (no session started) → /shutdown returns 200 → banner reports
+    // restarting. (This terminates this describe's own daemon, which is fine —
+    // afterAll's SIGKILL on an already-exited process is a no-op.)
+    await page.locator('#sbRestart').click();
+    await expect(page.locator('#sbMsg')).toContainText('Restarting', { timeout: 5000 });
+  });
+});
