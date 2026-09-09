@@ -56,7 +56,36 @@ type ticket map[string]any
 // version is the build id, stamped via -ldflags "-X main.version=<sha>" by
 // scripts/build-zip.sh (short SHA of the last commit touching
 // tools/sprint-check-go). A plain `go build` leaves it "dev". t-99fa.
+// t-5c20: `main.version` now carries the semantic version (repo-root VERSION);
+// the SHA moved to `main.commit`. canonVersion() prefers the runtime VERSION
+// file (present in a canon install) and falls back to the stamped value.
 var version = "dev"
+
+// commit is the build provenance short SHA, stamped via -X main.commit (t-5c20).
+var commit = "dev"
+
+// canonVersion returns the semantic version: the repo-root VERSION file
+// (resolved relative to the canon tools dir, present in a real install), else
+// the stamped `version`, else "dev".
+func canonVersion() string {
+	if toolsDir != "" {
+		if b, err := os.ReadFile(filepath.Join(toolsDir, "..", "VERSION")); err == nil {
+			if v := strings.TrimSpace(string(b)); v != "" {
+				return v
+			}
+		}
+	}
+	return version
+}
+
+// versionString renders "<semver> (<sha>)" when a real commit is stamped.
+func versionString() string {
+	v := canonVersion()
+	if commit != "" && commit != "dev" {
+		return v + " (" + commit + ")"
+	}
+	return v
+}
 
 // daemonVersion returns the cockpit-daemon binary's build id via `--version`,
 // or "" if the binary isn't resolved or can't report one. Best-effort — a
@@ -79,7 +108,7 @@ func main() {
 			usage()
 			return
 		case "version", "--version", "-v":
-			fmt.Println(version)
+			fmt.Println(versionString())
 			return
 		}
 	}
@@ -194,7 +223,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
 	case "/api/version":
-		sendJSON(w, map[string]string{"version": version, "daemon": daemonVersion()})
+		sendJSON(w, map[string]string{"version": canonVersion(), "commit": commit, "daemon": daemonVersion()})
 	case "/api/worktrees":
 		wtTicket := r.URL.Query().Get("ticket")
 		if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(wtTicket) {

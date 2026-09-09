@@ -222,7 +222,10 @@ PY_PORT="$(free_port)"
 GO_PORT="$(free_port)"
 
 mkdir -p "$(dirname "$GO_BIN")"
-(cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
+# t-5c20: stamp the semver (VERSION file) so the Go board's /api/version matches
+# server.py's runtime VERSION read (Go's toolsDir is a temp dir here, so its
+# runtime VERSION lookup misses and falls back to this stamped value).
+(cd "$ROOT" && GO111MODULE=off go build -ldflags "-X main.version=$(tr -d ' \t\n\r' < "$ROOT/VERSION")" -o "$GO_BIN" ./tools/sprint-check-go)
 
 SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
 PY_PID=$!
@@ -814,4 +817,22 @@ ck_cmp false || fail "sprint-check-api-parity: FAIL — /api/cockpit stale-false
 kill "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
 rm -f "$CK_STATE/daemon.json"
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"
+# ── /api/version parity (t-5c20) ───────────────────────────────────────────
+# Same shape {version, commit, daemon} in both backends, and an IDENTICAL
+# semantic `version` (the VERSION file). `commit` is per-component provenance
+# (build-time vs runtime, t-99fa) — not required to match.
+pyv="$(curl -s "http://127.0.0.1:$PY_PORT/api/version")"
+gov="$(curl -s "http://127.0.0.1:$GO_PORT/api/version")"
+python3 - "$pyv" "$gov" "$(tr -d ' \t\n\r' < "$ROOT/VERSION")" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/version parity"
+import json, sys
+py, go, semver = json.loads(sys.argv[1]), json.loads(sys.argv[2]), sys.argv[3]
+for k in ('version', 'commit', 'daemon'):
+    if k not in py or k not in go:
+        print(f"/api/version missing key {k}\n  py={py}\n  go={go}"); sys.exit(1)
+if py['version'] != go['version']:
+    print(f"/api/version semver mismatch py={py['version']} go={go['version']}"); sys.exit(1)
+if py['version'] != semver:
+    print(f"/api/version semver {py['version']} != VERSION file {semver}"); sys.exit(1)
+PY
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); /api/version shares shape {version,commit,daemon} + identical semver from VERSION; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"

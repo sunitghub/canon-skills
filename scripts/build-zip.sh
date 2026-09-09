@@ -78,15 +78,18 @@ fi
 
 # ── Binary: sprint-check-win.exe (Windows board server) ─────────────────────
 if command -v go >/dev/null 2>&1; then
-  # t-99fa: stamp the build version = short SHA of the last commit touching the
+  # t-99fa: stamp the build id = short SHA of the last commit touching the
   # binary's source dir. Deterministic given source → byte-identical when source
   # is unchanged → no per-commit .exe churn (respects t-b612's no-churn goal).
+  # t-5c20: `main.version` now carries the semantic version (repo-root VERSION),
+  # the human identifier; the SHA moves to `main.commit` (build provenance).
   SCV="$(git -C "$REPO_ROOT" log -1 --format=%h -- tools/sprint-check-go 2>/dev/null || echo dev)"
+  SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"
   GOOS=windows GOARCH=amd64 go build \
-    -ldflags "-X main.version=$SCV" \
+    -ldflags "-X main.version=$SEMVER -X main.commit=$SCV" \
     -o "$REPO_ROOT/tools/sprint-check-win.exe" \
     "$REPO_ROOT/tools/sprint-check-go/main.go"
-  echo "dist: sprint-check-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/sprint-check-win.exe" | cut -f1)) [version $SCV]"
+  echo "dist: sprint-check-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/sprint-check-win.exe" | cut -f1)) [v$SEMVER ($SCV)]"
 else
   echo "dist: sprint-check-win.exe skipped (go absent)"
 fi
@@ -109,14 +112,16 @@ fi
 # metadata entirely rather than chase a "flaky" rebuild that was actually
 # fully deterministic given its real (constantly-changing) input.
 if command -v go >/dev/null 2>&1; then
-  # t-99fa: version = short SHA of the last commit touching tools/cockpit-daemon
+  # t-99fa: build id = short SHA of the last commit touching tools/cockpit-daemon
   # (deterministic given source → no per-commit churn; complements -buildvcs=false).
+  # t-5c20: `main.version` carries the semver (repo VERSION); SHA → `main.commit`.
   CDV="$(git -C "$REPO_ROOT" log -1 --format=%h -- tools/cockpit-daemon 2>/dev/null || echo dev)"
+  SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"
   ( cd "$REPO_ROOT/tools/cockpit-daemon" && GOOS=windows GOARCH=amd64 go build \
       -buildvcs=false \
-      -ldflags "-X main.version=$CDV" \
+      -ldflags "-X main.version=$SEMVER -X main.commit=$CDV" \
       -o "$REPO_ROOT/tools/cockpit-daemon-win.exe" . )
-  echo "dist: cockpit-daemon-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/cockpit-daemon-win.exe" | cut -f1)) [version $CDV]"
+  echo "dist: cockpit-daemon-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/cockpit-daemon-win.exe" | cut -f1)) [v$SEMVER ($CDV)]"
 else
   echo "dist: cockpit-daemon-win.exe skipped (go absent)"
 fi

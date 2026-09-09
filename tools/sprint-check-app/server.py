@@ -991,16 +991,23 @@ def _resolve_cockpit_daemon(os_name: str = os.name) -> str:
     return str(candidates[0])
 
 def board_version() -> dict:
-    """t-99fa: build id of this board + the resolved cockpit-daemon, so the UI
-    shows which build is running. Parity with sprint-check-go's /api/version
-    shape ({"version","daemon"}). The board version is the short SHA of the last
-    commit touching server.py in the canon checkout this file lives in (not the
-    served project); fallback "dev". The daemon version comes from `--version`
-    (best-effort, "" if unbuilt/unavailable)."""
+    """t-99fa/t-5c20: build identity of this board + the resolved cockpit-daemon.
+    Shape (parity with sprint-check-go's /api/version): {version, commit, daemon}.
+    `version` = the repo-root VERSION file semver (the human identifier);
+    `commit` = short SHA of the last commit touching server.py (provenance, may
+    differ from the Go binary's stamped commit — build-time vs runtime, t-99fa);
+    `daemon` = the cockpit-daemon's `--version` string (best-effort, "" if
+    unbuilt). Fallbacks: "dev"."""
     server_dir = Path(__file__).resolve().parent
-    ver = run(['git', 'log', '-1', '--format=%h', '--', 'server.py'], server_dir) or 'dev'
+    # t-5c20: the semantic version is the repo-root VERSION file (the human id);
+    # the SHA is provenance only.
+    try:
+        semver = (Path(__file__).resolve().parents[2] / 'VERSION').read_text(encoding='utf-8').strip() or 'dev'
+    except Exception:
+        semver = 'dev'
+    commit = run(['git', 'log', '-1', '--format=%h', '--', 'server.py'], server_dir) or 'dev'
     daemon = run([_resolve_cockpit_daemon(), '--version'], server_dir)
-    return {'version': ver, 'daemon': daemon}
+    return {'version': semver, 'commit': commit, 'daemon': daemon}
 
 def _resolve_cockpit_sprint_bin() -> str:
     """Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test

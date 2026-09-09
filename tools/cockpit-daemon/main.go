@@ -199,7 +199,7 @@ func (s *server) handler() http.Handler {
 	// same string, so a string compare could never flag a rebuilt-in-place binary.
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "exe_mtime": execMtime})
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime})
 	})
 	// t-74d6: authorized, gated daemon shutdown so the board can replace a stale
 	// build. Boot-token gated (checked inside handleShutdown), refuses while a
@@ -1802,6 +1802,20 @@ func writeJSON(w http.ResponseWriter, v any) {
 // tools/cockpit-daemon). A plain `go build` leaves it "dev". t-99fa.
 var version = "dev"
 
+// commit is the build provenance (short SHA of the last commit touching this
+// binary's source dir), stamped via -ldflags "-X main.commit=<sha>" by
+// scripts/build-zip.sh. `version` carries the semantic version (t-5c20).
+var commit = "dev"
+
+// versionString renders the human build id: "<semver> (<sha>)" when a real
+// commit is stamped, else just the semver/`dev`.
+func versionString() string {
+	if commit != "" && commit != "dev" {
+		return version + " (" + commit + ")"
+	}
+	return version
+}
+
 // execMtime is the Unix mtime of this daemon's own executable, captured once at
 // startup (see main). The board compares it to the on-disk binary's mtime to
 // detect a stale/version-drifted running daemon (t-74d6) — robust even for
@@ -1825,7 +1839,7 @@ func main() {
 	addr := flag.String("addr", envOr("COCKPIT_ADDR", "127.0.0.1:8455"), "loopback bind address")
 	flag.Parse()
 	if *versionFlag {
-		fmt.Println(version)
+		fmt.Println(versionString())
 		return
 	}
 	execMtime = executableMtime()
