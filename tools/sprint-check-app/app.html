@@ -4540,6 +4540,20 @@ window.addEventListener('message', (e) => {
     renderPreviewMessage('The reported preview path was rejected (must resolve to a location inside the project).');
   } else if (d.type === 'preview-no-session') {
     renderPreviewMessage('No active sprint session — start or resume the sprint, then try Preview again.');
+  } else if (d.type === 'daemon-restarting') {
+    // t-74d6: the stale daemon is exiting (its /shutdown returned 200). Give it
+    // a moment to fully exit, then re-ensure — ensure_cockpit finds the old
+    // daemon.json addr unhealthy, clears it, and launches a fresh build — and
+    // remount the terminal at the new addr.
+    const msgEl = document.getElementById('ck-term-msg');
+    const ifr = document.getElementById('ck-iframe');
+    if (ifr) ifr.style.visibility = 'hidden';
+    if (msgEl) msgEl.textContent = 'Restarting cockpit daemon…';
+    cockpitState.addr = null;
+    setTimeout(() => {
+      const ct = findTicketById(cockpitState.id) || { id: cockpitState.id, status: 'open' };
+      maybeMountCockpitTerminal(ct);
+    }, 500);
   }
 });
 
@@ -5418,7 +5432,12 @@ async function mountCockpitTerminal(t, cwd) {
   try {
     const r = await fetch('/api/cockpit', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
     const d = await r.json();
-    if (d && d.running && d.addr) addr = d.addr; else err = (d && d.error) || 'daemon unavailable';
+    if (d && d.running && d.addr) {
+      addr = d.addr;
+      // t-74d6: the board detects a version-drifted daemon (running exec-mtime
+      // vs on-disk binary); relay it to the cockpit page for the stale banner.
+      cockpitState.buildInfo = { stale: !!d.stale, running_build: d.running_build || null, latest_build: d.latest_build || null };
+    } else err = (d && d.error) || 'daemon unavailable';
   } catch { err = 'request failed'; }
   if (!addr) {
     msg.textContent = 'Could not start the cockpit daemon (' + err + '). Build tools/cockpit-daemon and retry.';
@@ -5431,6 +5450,10 @@ async function mountCockpitTerminal(t, cwd) {
   // deliberate click, not something that fires the moment the panel opens.
   let url = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=0`;
   if (cwd) url += `&cwd=${encodeURIComponent(cwd)}`;
+  // t-74d6: once the cockpit page loads, relay the daemon build status so it can
+  // render (or hide) the stale banner. Sent on load so the listener is ready.
+  const bi = cockpitState.buildInfo || { stale: false, running_build: null, latest_build: null };
+  iframe.onload = () => { try { iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: bi }, 'http://' + addr); } catch (e) {} };
   iframe.src = url;
   iframe.style.visibility = 'visible';
   msg.textContent = '';

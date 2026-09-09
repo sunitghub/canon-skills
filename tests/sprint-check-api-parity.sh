@@ -57,6 +57,12 @@ fi
 
 WORK="$(mktemp -d)"
 GO_BIN="$(mktemp -d)/sprint-check-go-bin"
+# t-74d6: a controlled cockpit state dir + fake on-disk daemon binary so the
+# stale-detection parity case is deterministic (independent of any real daemon
+# the dev machine may have running in the default /tmp/canon-cockpit-board).
+CK_STATE="$(mktemp -d)"
+CK_BIN="$(mktemp)"
+CK_STUB_PID=""
 PY_PID=""
 GO_PID=""
 # SPRINT_HEADLESS_BIN/SPRINT_HEADLESS_EVAL_BIN point both servers at throwaway
@@ -73,8 +79,9 @@ export SPRINT_HEADLESS_BIN SPRINT_HEADLESS_EVAL_BIN
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
-  rm -f "$SPRINT_HEADLESS_BIN" "$SPRINT_HEADLESS_EVAL_BIN"
-  rm -rf "$WORK" "$(dirname "$GO_BIN")"
+  [[ -n "$CK_STUB_PID" ]] && kill "$CK_STUB_PID" 2>/dev/null || true
+  rm -f "$SPRINT_HEADLESS_BIN" "$SPRINT_HEADLESS_EVAL_BIN" "$CK_BIN"
+  rm -rf "$WORK" "$(dirname "$GO_BIN")" "$CK_STATE"
 }
 trap cleanup EXIT
 
@@ -217,11 +224,11 @@ GO_PORT="$(free_port)"
 mkdir -p "$(dirname "$GO_BIN")"
 (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
 
-SPRINT_CHECK_ROOT="$WORK" python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
+SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
 PY_PID=$!
 disown "$PY_PID" 2>/dev/null || true
 
-SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
 GO_PID=$!
 disown "$GO_PID" 2>/dev/null || true
 
@@ -758,4 +765,53 @@ done
 git -C "$WORK" worktree remove --force "$WT" 2>/dev/null || true
 rm -rf "$WT_PARENT"
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"
+# ── /api/cockpit stale-detection parity (t-74d6) ───────────────────────────
+# A stub daemon serves /healthz + /version{version,exe_mtime}; daemon.json in
+# CK_STATE points both boards at it. Each board compares the stub's exe_mtime to
+# CK_BIN's on-disk mtime — setting CK_BIN's mtime unequal/equal flips stale
+# true/false. Both backends must agree on stale + running_build + latest_build.
+CK_STUB_PORT="$(free_port)"
+python3 - "$CK_STUB_PORT" 1000000000 <<'PY' >/dev/null 2>&1 &
+import sys, json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+PORT, M = int(sys.argv[1]), int(sys.argv[2])
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/healthz':
+            self.send_response(200); self.end_headers(); self.wfile.write(b'ok')
+        elif self.path == '/version':
+            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(json.dumps({'version': 'stub', 'exe_mtime': M}).encode())
+        else:
+            self.send_response(404); self.end_headers()
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', PORT), H).serve_forever()
+PY
+CK_STUB_PID=$!
+for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$CK_STUB_PORT/healthz" && break; sleep 0.1; done
+printf '{"addr":"127.0.0.1:%s","token":"x"}' "$CK_STUB_PORT" > "$CK_STATE/daemon.json"
+
+ck_cmp() {
+  local want="$1" py go
+  py="$(curl -s "http://127.0.0.1:$PY_PORT/api/cockpit")"
+  go="$(curl -s "http://127.0.0.1:$GO_PORT/api/cockpit")"
+  python3 - "$py" "$go" "$want" <<'PY'
+import json, sys
+py, go, want = json.loads(sys.argv[1]), json.loads(sys.argv[2]), sys.argv[3] == 'true'
+for k in ('stale', 'running_build', 'latest_build'):
+    if py.get(k) != go.get(k):
+        print(f"/api/cockpit {k} mismatch\n  py={py}\n  go={go}"); sys.exit(1)
+if py.get('stale') is not want:
+    print(f"/api/cockpit stale={py.get('stale')}, want {want}\n  py={py}"); sys.exit(1)
+PY
+}
+
+python3 -c "import os,sys; os.utime(sys.argv[1], (1500000000, 1500000000))" "$CK_BIN"
+ck_cmp true  || fail "sprint-check-api-parity: FAIL — /api/cockpit stale-true parity"
+python3 -c "import os,sys; os.utime(sys.argv[1], (1000000000, 1000000000))" "$CK_BIN"
+ck_cmp false || fail "sprint-check-api-parity: FAIL — /api/cockpit stale-false parity"
+
+kill "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
+rm -f "$CK_STATE/daemon.json"
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"
