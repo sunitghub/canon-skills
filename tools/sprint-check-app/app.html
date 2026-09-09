@@ -1334,6 +1334,12 @@
       color: var(--text-muted);
     }
     .tour-divider { border: none; border-top: 1px solid var(--border-muted); margin: 18px 0; }
+    /* t-5c20: Versions block at the top of the "?" panel */
+    .tour-versions { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 2px; }
+    .tour-version-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 12px; }
+    .tour-version-row .tvk { color: var(--text-muted); }
+    .tour-version-row .tvv { font-family: var(--mono, monospace); color: var(--text); text-align: right; word-break: break-all; }
+    #tv-canon { color: var(--accent); font-weight: 600; }
     /* Collapsible screenshot sections */
     .tour-demo { margin-bottom: 12px; }
     .tour-demo summary {
@@ -2113,6 +2119,14 @@
     </div>
     <div class="tour-body">
 
+      <div class="tour-section-title">Versions</div>
+      <div class="tour-versions" id="tour-versions">
+        <div class="tour-version-row"><span class="tvk">canon</span><span class="tvv" id="tv-canon">—</span></div>
+        <div class="tour-version-row"><span class="tvk">Board build</span><span class="tvv" id="tv-board">—</span></div>
+        <div class="tour-version-row"><span class="tvk">cockpit-daemon</span><span class="tvv" id="tv-daemon">—</span></div>
+      </div>
+      <hr class="tour-divider">
+
       <div class="tour-section-title">What's inside</div>
 
       <div class="tour-feature">
@@ -2459,17 +2473,23 @@ function setDot(s) {
   el.className = 'refresh-dot' + (s !== 'live' ? ' ' + s : '');
 }
 
-// t-99fa: show which board build is running (and the cockpit-daemon build in the
-// tooltip) so "is this the binary with my fix?" is answerable at a glance.
+// t-99fa/t-5c20: header shows the human semantic version (canon vX.Y.Z); the
+// per-component build details (board commit, cockpit-daemon build) live in the
+// "?" tour panel's Versions section, not a cramped tooltip.
 async function fetchVersion() {
   try {
     const r = await fetch('/api/version');
     if (!r.ok) return;
     const d = await r.json();
+    const semver = (d && d.version) ? d.version : 'dev';
     const el = document.getElementById('h-version');
-    if (!el || !d || !d.version) return;
-    el.textContent = d.version;
-    el.title = 'board build: ' + d.version + (d.daemon ? '\ncockpit-daemon build: ' + d.daemon : '');
+    if (el) { el.textContent = 'canon v' + semver; el.removeAttribute('title'); }
+    const canonEl = document.getElementById('tv-canon');
+    if (canonEl) canonEl.textContent = 'v' + semver + (d && d.commit && d.commit !== 'dev' ? ' (' + d.commit + ')' : '');
+    const boardEl = document.getElementById('tv-board');
+    if (boardEl) boardEl.textContent = (d && d.commit) ? d.commit : '—';
+    const dmnEl = document.getElementById('tv-daemon');
+    if (dmnEl) dmnEl.textContent = (d && d.daemon) ? d.daemon : 'not built';
   } catch {}
 }
 

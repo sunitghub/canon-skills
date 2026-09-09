@@ -47,18 +47,25 @@ test.describe('board modal', () => {
     await expect(tour).toContainText('## Wrapup Gates');
   });
 
-  test('board header shows the build version from /api/version (t-99fa)', async ({ page }) => {
+  test('header shows the semantic version; the "?" panel lists all component versions at the top (t-99fa/t-5c20)', async ({ page }) => {
     await page.route('**/api/version', route => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ version: 'ver9f9a', daemon: 'dae1234' }),
+      body: JSON.stringify({ version: '0.1.0', commit: 'abc1234', daemon: '0.1.0 (def5678)' }),
     }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
-    const v = page.locator('#h-version');
-    await expect(v).toHaveText('ver9f9a');
-    const title = await v.getAttribute('title');
-    expect(title).toContain('ver9f9a');   // board build in the tooltip
-    expect(title).toContain('dae1234');   // cockpit-daemon build in the tooltip
+    // Header shows the human semantic version — not a bare git hash.
+    await expect(page.locator('#h-version')).toHaveText('canon v0.1.0');
+    // Versions block is the FIRST section in the "?" tour panel body and lists
+    // every component (canon semver + board build + cockpit-daemon build).
+    await expect(page.locator('.tour-body > .tour-section-title').first()).toHaveText('Versions');
+    await expect(page.locator('#tv-canon')).toHaveText('v0.1.0 (abc1234)');
+    await expect(page.locator('#tv-board')).toHaveText('abc1234');
+    await expect(page.locator('#tv-daemon')).toHaveText('0.1.0 (def5678)');
+    // The "?" button opens the panel.
+    await page.locator('#tour-btn').click();
+    await expect(page.locator('#tour-overlay')).toHaveClass(/open/);
+    await expect(page.locator('#tour-versions')).toBeVisible();
   });
 
   test('sidebar shows total commit count badge next to Recent Commits', async ({ page }) => {

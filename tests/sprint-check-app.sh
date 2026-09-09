@@ -98,4 +98,13 @@ assert_grep "function updateWorktreeNote" "$APP"
 # also surface the locked worktree, not just HANDOFF.md's saved-state prose.
 assert_grep "Running in" "$APP"
 
+# t-5c20: semantic version in the header + a Versions block at the top of the
+# "?" tour panel; the repo-root VERSION file is the source of truth.
+[[ -f "$ROOT/VERSION" ]] || fail "repo-root VERSION file is missing (t-5c20)"
+assert_grep 'id="tour-versions"' "$APP"
+assert_grep 'id="tv-canon"' "$APP"
+assert_grep 'id="tv-board"' "$APP"
+assert_grep 'id="tv-daemon"' "$APP"
+assert_grep "'canon v'" "$APP"
+
 printf 'sprint-check-app: ok\n'
