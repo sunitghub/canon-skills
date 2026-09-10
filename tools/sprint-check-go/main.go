@@ -1978,7 +1978,9 @@ func cockpitRestart(force bool) map[string]any {
 		}
 	}
 	out := ensureCockpit()
-	out["restarted"] = true
+	// Honest signal: only "restarted" if a fresh daemon actually launched — if the
+	// kill didn't take and ensureCockpit reused the live one, say so (reviewer t-44d9).
+	out["restarted"] = boolValue(out["launched"])
 	return out
 }
 
