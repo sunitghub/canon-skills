@@ -1204,11 +1204,16 @@ func (s *server) endSaved(se *session) {
 var ansiCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 
 // containsMarkerLine matches a whole trimmed line exactly — a coincidental
-// substring mid-sentence (the agent describing what it's about to do) must
-// never count, same discipline as t-f6b6's client-side marker matcher.
+// substring mid-sentence (the agent describing what it's about to do, incl. the
+// echoed save prompt) must never count, same discipline as t-f6b6's client-side
+// matcher. t-2lv7: split on "\r" OR "\n" — Claude Code's TUI positions every row
+// with a bare "\r" + cursor-move escape and NEVER a "\n", so splitting on "\n"
+// alone left the whole buffer as one line and the marker was never isolated,
+// stalling Save & End until the fallback timeout ("saves forever"). Mirrors the
+// cockpit.html fix.
 func containsMarkerLine(buf []byte, marker string) bool {
 	clean := ansiCSIRe.ReplaceAllString(string(buf), "")
-	for _, line := range strings.Split(clean, "\n") {
+	for _, line := range strings.FieldsFunc(clean, func(r rune) bool { return r == '\n' || r == '\r' }) {
 		if strings.TrimSpace(line) == marker {
 			return true
 		}

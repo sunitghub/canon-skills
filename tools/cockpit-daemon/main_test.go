@@ -2952,3 +2952,33 @@ func TestShutdownForceEndsSessions(t *testing.T) {
 		t.Fatal("shutdownExit not called after a force shutdown")
 	}
 }
+
+// t-2lv7: Claude Code's TUI positions rows with a bare "\r" + cursor-move escapes
+// and NO "\n", and lays out gaps with column jumps rather than spaces. Splitting
+// on "\n" alone left the whole buffer as one line so COCKPIT_STATE_SAVED was never
+// isolated, stalling Save & End until the fallback timeout. These are the real
+// framings captured from a live claude session.
+func TestContainsMarkerLineClaudeFraming(t *testing.T) {
+	m := cockpitSaveMarker
+	cases := []struct {
+		name string
+		buf  string
+		want bool
+	}{
+		{"claude cursor-jump, CR only, no LF",
+			"\x1b[2C\x1b[2B" + m + "\r\x1b[2B\x1b[38;2;153;153;153m\u273bBaked for 8s", true},
+		{"claude leading space + column jump + erase, CR only",
+			"\x1b[2B \x1b[3G" + m + "\x1b[K\r\x1b[2B\u273bBaked", true},
+		{"plain newline-terminated (pi/simple shells)",
+			"some output\n" + m + "\nmore", true},
+		{"echoed save-prompt substring must not match",
+			"\x1b[2B  print the exact line " + m + " on its own, and stop.\r", false},
+		{"absent",
+			"\x1b[2Bnothing here\rstill nothing\r", false},
+	}
+	for _, c := range cases {
+		if got := containsMarkerLine([]byte(c.buf), m); got != c.want {
+			t.Errorf("%s: containsMarkerLine = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
