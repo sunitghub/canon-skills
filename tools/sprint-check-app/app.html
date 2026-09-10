@@ -5696,7 +5696,12 @@ async function mountCockpitTerminal(t, cwd) {
   // for both a fresh OPEN ticket and a Resume — a launch should always be a
   // deliberate click, not something that fires the moment the panel opens.
   let url = `http://${addr}/cockpit?ticket=${encodeURIComponent(t.id)}&embed=1&autostart=0`;
-  if (cwd) url += `&cwd=${encodeURIComponent(cwd)}`;
+  // t-fc91: a shared daemon (t-391a) resolves an empty cwd to ITS launch project,
+  // not this board's — so the Main checkout ('') must name this board's own project
+  // root, else a second project's ticket resolves against the wrong project ("ticket
+  // not found") and would spawn in the wrong directory. Worktrees pass their own path.
+  const effectiveCwd = cwd || state.gitRoot;
+  if (effectiveCwd) url += `&cwd=${encodeURIComponent(effectiveCwd)}`;
   // t-74d6: once the cockpit page loads, relay the daemon build status so it can
   // render (or hide) the stale banner. Sent on load so the listener is ready.
   const bi = cockpitState.buildInfo || { stale: false, running_build: null, latest_build: null };
