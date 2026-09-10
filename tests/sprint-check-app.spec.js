@@ -609,23 +609,34 @@ test.describe('board modal', () => {
       body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false }),
     }));
     let mode = 'noop';
-    await page.route('**/api/cockpit-restart', r => r.fulfill({
-      status: 200, contentType: 'application/json',
-      body: JSON.stringify(mode === 'noop'
-        ? { ok: true, running: true, restarted: false }   // ensure_cockpit reused the old daemon
-        : { ok: false, busy: true, sessions: 1 }),         // busy → confirm
-    }));
+    await page.route('**/api/cockpit-restart', r => {
+      if (mode === 'error') { r.abort(); return; } // simulate network failure → fetch throws
+      const body = mode === 'noop' ? { ok: true, running: true, restarted: false } // reused old daemon
+        : mode === 'fail' ? { ok: false, running: false }                          // couldn't start
+        : { ok: false, busy: true, sessions: 1 };                                  // busy → confirm
+      r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     const pill = page.locator('#h-version');
     const toast = page.locator('#drop-toast');
 
-    await pill.click(); // no-op restart → block toast, not silent
+    await pill.click(); // (b) no-op restart → block toast, not silent
     await expect(toast).toContainText('not restarted');
     await expect(toast).toHaveClass(/block/);
 
-    mode = 'busy';
-    page.on('dialog', d => d.dismiss()); // decline the confirm
+    mode = 'fail'; // (c) daemon not running / couldn't start
+    await pill.click();
+    await expect(toast).toContainText('start the cockpit daemon');
+    await expect(toast).toHaveClass(/block/);
+
+    mode = 'error'; // (d) board unreachable → catch
+    await pill.click();
+    await expect(toast).toContainText('reach the board');
+    await expect(toast).toHaveClass(/block/);
+
+    mode = 'busy'; // (e) busy → decline the confirm → cancelled notice
+    page.on('dialog', d => d.dismiss());
     await pill.click();
     await expect(toast).toContainText('Restart cancelled');
   });
