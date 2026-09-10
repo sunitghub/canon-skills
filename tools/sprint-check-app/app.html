@@ -4969,8 +4969,11 @@ function renderCockpitStatusBadge(t) {
 // t-bc04: clamp the preview width to a sane range so a stale/huge persisted
 // value can't wedge the pane off-screen.
 function clampPreviewW(w) {
-  const max = Math.min(Math.round(window.innerWidth * 0.7), 900);
-  return Math.max(280, Math.min(w, max));
+  // Allow the preview to grow to most of the window (splitter can move far
+  // left); keep a thin terminal sliver visible. No fixed px ceiling — the old
+  // 900px cap was the wall that made the splitter feel stuck on wide screens.
+  const max = Math.round(window.innerWidth * 0.92);
+  return Math.max(240, Math.min(w, max));
 }
 let _ckPreviewResizeWired = false;
 // t-bc04: apply the persisted width and wire the left-edge drag handle (once).
