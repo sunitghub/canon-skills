@@ -351,6 +351,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, ensureCockpit())
 		return
 	}
+	if path == "/api/cockpit-restart" {
+		sendJSON(w, cockpitRestart(boolValue(payload["force"])))
+		return
+	}
 	if path == "/api/worktrees" {
 		branch := stringValue(payload, "branch", "")
 		if !validBranchName(branch) {
@@ -1932,6 +1936,50 @@ func cockpitSessions() []map[string]any {
 		return empty
 	}
 	return sessions
+}
+
+// readDaemonPID reads the daemon's own pid from daemon.json (t-44d9) so the board
+// can force-restart it via OS process control — never the boot token (t-ddc8).
+func readDaemonPID() int {
+	raw, err := os.ReadFile(filepath.Join(cockpitStateDir(), "daemon.json"))
+	if err != nil {
+		return 0
+	}
+	var st struct {
+		Pid string `json:"pid"`
+	}
+	if json.Unmarshal(raw, &st) != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(st.Pid)
+	return n
+}
+
+// cockpitRestart force-restarts the cockpit daemon (t-44d9): warn (busy) when
+// sessions are live unless force, then cross-platform pid-kill — unix SIGTERM
+// (the daemon's graceful handler reaps agent children); Windows `taskkill /T`
+// (tree-kill reaps children directly) — and relaunch via ensureCockpit. Uses OS
+// process control, never the boot token (t-ddc8 preserved).
+func cockpitRestart(force bool) map[string]any {
+	if n := len(cockpitSessions()); n > 0 && !force {
+		return map[string]any{"ok": false, "busy": true, "sessions": n}
+	}
+	if pid := readDaemonPID(); pid > 0 {
+		if runtime.GOOS == "windows" {
+			_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
+		} else {
+			_ = exec.Command("kill", "-TERM", strconv.Itoa(pid)).Run()
+		}
+		for i := 0; i < 50; i++ {
+			if _, ok := discoverCockpitAddr(); !ok {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
+	out := ensureCockpit()
+	out["restarted"] = true
+	return out
 }
 
 // cockpitBinaryMtime is the on-disk daemon binary's mtime (unix) — the "latest"

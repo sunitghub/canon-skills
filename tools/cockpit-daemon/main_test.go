@@ -3128,3 +3128,50 @@ func TestSessionsEndpoint(t *testing.T) {
 		t.Fatalf("/sessions leaked a token field: %s", body)
 	}
 }
+
+// t-44d9: daemon.json carries the daemon's own pid so the board can force-restart it.
+func TestStateFileIncludesPid(t *testing.T) {
+	dir := t.TempDir()
+	if err := writeStateFile(dir, "127.0.0.1:1234", "tok"); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := os.ReadFile(filepath.Join(dir, "daemon.json"))
+	var st map[string]string
+	if err := json.Unmarshal(raw, &st); err != nil {
+		t.Fatalf("decode daemon.json: %v", err)
+	}
+	if st["pid"] != fmt.Sprint(os.Getpid()) {
+		t.Fatalf("daemon.json pid = %q, want %d", st["pid"], os.Getpid())
+	}
+	if st["addr"] != "127.0.0.1:1234" || st["token"] != "tok" {
+		t.Fatalf("daemon.json addr/token wrong: %v", st)
+	}
+}
+
+// t-44d9: the SIGTERM/SIGINT graceful teardown kills every session (reaping its
+// child) and clears daemon.json — so a board force-restart never orphans an agent.
+func TestShutdownAllSessionsReapsAndClears(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	initGitRepo(t, root)
+	seedTicketDir(t, root, "t-ab12")
+	stateDir := t.TempDir()
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: stateDir})
+	t.Cleanup(func() { killAllSessions(s) })
+	if err := writeStateFile(stateDir, "127.0.0.1:1", bootTok); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.spawn("t-ab12", root, root, "claude"); err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	if len(s.sessions) == 0 {
+		t.Fatal("expected a live session before teardown")
+	}
+	s.shutdownAllSessions()
+	if len(s.sessions) != 0 {
+		t.Fatalf("sessions not reaped: %d remain", len(s.sessions))
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "daemon.json")); !os.IsNotExist(err) {
+		t.Fatalf("daemon.json not removed after shutdownAllSessions")
+	}
+}

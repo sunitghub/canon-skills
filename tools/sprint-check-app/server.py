@@ -1074,6 +1074,47 @@ def cockpit_sessions() -> list:
     except Exception:
         return []
 
+def _read_daemon_pid():
+    """t-44d9: the daemon's own pid from daemon.json (written by the daemon), so
+    the board can force-restart it without holding the boot token (t-ddc8)."""
+    try:
+        raw = Path(_cockpit_state_dir(), 'daemon.json').read_text(encoding='utf-8')
+        pid = json.loads(raw).get('pid')
+        return int(pid) if pid else None
+    except Exception:
+        return None
+
+def cockpit_restart(force: bool = False) -> dict:
+    """t-44d9: force-restart the cockpit daemon. Warns (busy) when sessions are
+    live unless force. Cross-platform pid-kill — unix SIGTERM (the daemon's
+    graceful handler reaps agent children); Windows `taskkill /T` (tree-kill
+    reaps children directly) — then relaunch via ensure_cockpit. Uses OS process
+    control, never the boot token (t-ddc8 preserved)."""
+    n = len(cockpit_sessions())
+    if n > 0 and not force:
+        return {'ok': False, 'busy': True, 'sessions': n}
+    pid = _read_daemon_pid()
+    if pid:
+        try:
+            if os.name == 'nt':
+                subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                subprocess.run(['kill', '-TERM', str(pid)],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        # Wait for it to exit (its handler clears daemon.json / stops answering).
+        for _ in range(50):
+            _, ok = _discover_cockpit_addr()
+            if not ok:
+                break
+            time.sleep(0.1)
+    # ensure_cockpit clears any stale daemon.json and launches a fresh daemon.
+    out = ensure_cockpit()
+    out['restarted'] = True
+    return out
+
 # t-74d6: detect a version-drifted (stale) running daemon. The board reuses a
 # detached daemon by liveness alone (see ensure_cockpit), so after the binary is
 # rebuilt the old daemon keeps serving until restarted. The board never holds
@@ -1408,6 +1449,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/cockpit':
             self.send_json(ensure_cockpit()); return
+        if path == '/api/cockpit-restart':
+            self.send_json(cockpit_restart(bool(payload.get('force', False)))); return
 
         if path == '/api/worktrees':
             branch = str(payload.get('branch', ''))
