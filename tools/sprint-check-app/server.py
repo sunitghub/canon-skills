@@ -1112,7 +1112,9 @@ def cockpit_restart(force: bool = False) -> dict:
             time.sleep(0.1)
     # ensure_cockpit clears any stale daemon.json and launches a fresh daemon.
     out = ensure_cockpit()
-    out['restarted'] = True
+    # Honest signal: only "restarted" if a NEW daemon was actually launched — if
+    # the kill didn't take and ensure_cockpit reused the live one, say so (reviewer t-44d9).
+    out['restarted'] = bool(out.get('launched'))
     return out
 
 # t-74d6: detect a version-drifted (stale) running daemon. The board reuses a
