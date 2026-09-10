@@ -2563,10 +2563,24 @@ async function restartDaemon() {
     let res = await post(false);
     if (res && res.busy) {
       const n = res.sessions || 0;
-      if (!confirm(`${n} cockpit session${n === 1 ? '' : 's'} running — restarting the daemon will end ${n === 1 ? 'it' : 'them all'}. Restart now?`)) return;
+      if (!confirm(`${n} cockpit session${n === 1 ? '' : 's'} running — restarting the daemon will end ${n === 1 ? 'it' : 'them all'}. Restart now?`)) {
+        showToast('Restart cancelled', 'warn');
+        return;
+      }
       res = await post(true);
     }
-  } catch {}
+    // t-d83e: report the outcome — a silent re-poll made a no-op restart (e.g. an
+    // old daemon with no pid that ensure_cockpit just reuses) look like a success.
+    if (res && res.restarted) {
+      showToast('✓ Cockpit daemon restarted', 'warn');
+    } else if (res && res.running) {
+      showToast('⚠ Daemon not restarted — likely an older build (no pid in daemon.json); kill it once, then retry', 'block');
+    } else {
+      showToast('⚠ Couldn\u2019t start the cockpit daemon', 'block');
+    }
+  } catch {
+    showToast('⚠ Couldn\u2019t reach the board to restart the daemon', 'block');
+  }
   await refreshDaemonHealth();
 }
 
