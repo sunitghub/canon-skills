@@ -536,10 +536,6 @@ func agentDisplayModel(m string) string {
 // it changed (t-0d67). Deterministic (called by the daemon at spawn), never
 // dependent on Save & End / agent-written HANDOFF. Best-effort: a write failure
 // must never block a spawn that already succeeded.
-func (s *server) persistAgentKind(ticket, kind string) {
-	s.persistAgentKindIn(s.cfg.projectRoot, ticket, kind)
-}
-
 // persistAgentKindIn records the last-used agent under an arbitrary project root (t-391a).
 func (s *server) persistAgentKindIn(root, ticket, kind string) {
 	p := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-agent")
@@ -1489,10 +1485,6 @@ func (s *server) ticketsDirIn(root string) string {
 // --porcelain`'s "worktree <path>" lines — the ticket's own resolved design
 // names this the single source of truth, deliberately not a cockpit-owned
 // registry.
-func (s *server) listWorktrees() ([]string, error) {
-	return s.listWorktreesIn(s.cfg.projectRoot)
-}
-
 // listWorktreesIn lists git worktrees for an arbitrary root (t-391a). The FIRST
 // entry is always the main checkout — the tree where a gitignored `.tickets/`
 // actually lives — so it doubles as "the project root for this cwd".
@@ -1657,10 +1649,6 @@ var ticketStatusRe = regexp.MustCompile(`(?m)^status:\s*(\S+)`)
 // ticketStatus reads the `status:` frontmatter field from a ticket's own
 // ticket.md. Empty string (never an error) if the file or field is absent —
 // callers treat that the same as "not in_progress" (t-2e7e).
-func (s *server) ticketStatus(ticket string) string {
-	return s.ticketStatusIn(s.cfg.projectRoot, ticket)
-}
-
 // ticketStatusIn reads a ticket's status from an arbitrary project root (t-391a).
 func (s *server) ticketStatusIn(root, ticket string) string {
 	b, err := os.ReadFile(filepath.Join(s.ticketsDirIn(root), ticket, "ticket.md"))
