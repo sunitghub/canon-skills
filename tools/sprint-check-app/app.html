@@ -122,6 +122,8 @@
     .header-version.daemon-stale   { background: rgba(239,68,68,.18); color: #ef4444; border-color: rgba(239,68,68,.45); animation: pulse 1.6s ease-in-out infinite; }
     .header-version.daemon-off     { background: var(--surface-raised); color: var(--text-muted); border-color: var(--border); }
     .header-version.daemon-toggle:hover { filter: brightness(1.15); }
+    /* Light mode: the inner fill is near-white, so darken the healthy text for contrast. */
+    html[data-theme="light"] .header-version.daemon-healthy { color: #15803d; }
     .header-right { display: flex; align-items: center; gap: 14px; }
     .header-branch {
       display: flex; align-items: center; gap: 5px; font-size: 12px;
