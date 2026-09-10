@@ -600,6 +600,34 @@ test.describe('board modal', () => {
     expect(restartCalls[0].force).toBe(false); // first probes → busy
     expect(restartCalls[1].force).toBe(true);  // confirm → force
     expect(dialogMsg).toContain('2 cockpit sessions'); // multi-session warning names the count
+    await expect(page.locator('#drop-toast')).toContainText('restarted'); // t-d83e: outcome reported
+  });
+
+  test('restart pill reports outcome: no-op warns, cancel notifies (t-d83e)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false }),
+    }));
+    let mode = 'noop';
+    await page.route('**/api/cockpit-restart', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(mode === 'noop'
+        ? { ok: true, running: true, restarted: false }   // ensure_cockpit reused the old daemon
+        : { ok: false, busy: true, sessions: 1 }),         // busy → confirm
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const pill = page.locator('#h-version');
+    const toast = page.locator('#drop-toast');
+
+    await pill.click(); // no-op restart → block toast, not silent
+    await expect(toast).toContainText('not restarted');
+    await expect(toast).toHaveClass(/block/);
+
+    mode = 'busy';
+    page.on('dialog', d => d.dismiss()); // decline the confirm
+    await pill.click();
+    await expect(toast).toContainText('Restart cancelled');
   });
 
   test('"No description." placeholder is gone', async ({ page }) => {
