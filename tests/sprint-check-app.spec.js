@@ -673,6 +673,34 @@ test.describe('board modal', () => {
     await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
   });
 
+  test('sidebar daemon shows the live session count with pluralization (t-9745)', async ({ page }) => {
+    let sessions = [{}, {}]; // 2 sessions
+    let running = true;
+    await page.route('**/api/cockpit-sessions', r => r.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(sessions),
+    }));
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running, addr: '127.0.0.1:1', stale: false }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const count = page.locator('#daemon-session-count');
+    await expect(count).toHaveText('· 2 sessions');
+
+    sessions = [{}]; // singular
+    await page.evaluate(() => refreshDaemonHealth());
+    await expect(count).toHaveText('· 1 session');
+
+    sessions = []; // none
+    await page.evaluate(() => refreshDaemonHealth());
+    await expect(count).toHaveText('· no sessions');
+
+    running = false; // daemon down → no count
+    await page.evaluate(() => refreshDaemonHealth());
+    await expect(count).toHaveText('');
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
