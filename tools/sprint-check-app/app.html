@@ -1689,6 +1689,18 @@
        already shows a blue status dot/badge, so blue here would just repeat
        a color already on the card instead of adding a distinct signal. */
     .card-start.resume { background: var(--col-done); color: var(--col-done-contrast); }
+    /* t-391a: cross-project cockpit sessions panel */
+    .cockpit-sessions { margin: 8px 0 4px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    .cockpit-sessions-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 6px; }
+    .cockpit-sessions-list { display: flex; flex-direction: column; gap: 4px; }
+    .cockpit-session-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .cockpit-session-row:hover { background: var(--accent-dim); border-color: var(--accent); }
+    .cockpit-session-row .cs-ticket { font-family: var(--mono, monospace); font-weight: 600; }
+    .cockpit-session-row .cs-project { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cockpit-session-row .cs-agent { color: var(--text-muted); }
+    .cockpit-session-row .cs-status { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
+    .cockpit-session-row .cs-status.running { background: var(--col-progress); color: #0b0f14; }
+    .cockpit-session-row .cs-status.needs-you { background: #f59e0b; color: #0b0f14; }
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */
@@ -1827,6 +1839,7 @@
         <div id="drop-toast"></div>
       </div>
       <div class="why-results" id="why-results"></div>
+      <div class="cockpit-sessions" id="cockpit-sessions" hidden></div>
       <div id="board"></div>
       <div class="board-empty-search" id="board-empty-search"></div>
     </section>
@@ -2823,6 +2836,48 @@ function render() {
   renderHeader();
   renderSidebar();
   renderBoard();
+  refreshCockpitSessions();
+}
+
+// t-391a: the "Cockpit sessions" panel lists active sessions across ALL projects
+// the one daemon serves (nebula's model — one daemon, many projects). Read-only
+// fetch of /api/cockpit-sessions (token-free, like /api/cockpit); clicking a row
+// opens/attaches that session in the cockpit overlay, where the tokened Kill /
+// Save & End live. No token-free kill is added — the board never holds the daemon
+// token (t-ddc8). Basename split uses [\\/] so a Windows project path renders too.
+async function refreshCockpitSessions() {
+  const panel = document.getElementById('cockpit-sessions');
+  if (!panel) return;
+  let sessions = [];
+  try {
+    const r = await fetch('/api/cockpit-sessions');
+    if (r.ok) sessions = await r.json();
+  } catch (e) { /* daemon absent → empty panel */ }
+  if (!Array.isArray(sessions) || sessions.length === 0) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+    return;
+  }
+  const rows = sessions.map(s => {
+    const ticket = String(s.ticket || '');
+    const project = String(s.project_root || '');
+    const agent = String(s.agent || '');
+    const status = String(s.status || 'running');
+    const projName = project.split(/[\\/]/).filter(Boolean).pop() || project;
+    const statusCls = status === 'needs-you' ? 'needs-you' : 'running';
+    return `<div class="cockpit-session-row" data-ticket="${esc(ticket)}" title="${esc(project)}">`
+      + `<span class="cs-ticket">${esc(ticket)}</span>`
+      + `<span class="cs-project">${esc(projName)}</span>`
+      + `<span class="cs-agent">${esc(agent)}</span>`
+      + `<span class="cs-status ${statusCls}">${esc(status)}</span>`
+      + `</div>`;
+  }).join('');
+  panel.innerHTML = `<div class="cockpit-sessions-title">Cockpit sessions \u00b7 ${sessions.length}</div>`
+    + `<div class="cockpit-sessions-list">${rows}</div>`;
+  panel.hidden = false;
+  panel.querySelectorAll('.cockpit-session-row').forEach(row => {
+    row.addEventListener('click', () => openCockpit(row.dataset.ticket));
+  });
 }
 
 function renderHeader() {

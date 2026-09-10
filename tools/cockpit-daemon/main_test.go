@@ -2982,3 +2982,149 @@ func TestContainsMarkerLineClaudeFraming(t *testing.T) {
 		}
 	}
 }
+
+// initGitRepo makes dir a minimal git working tree (t-391a tests). Shared by the
+// cross-project / project-derivation / sessions tests so the init sequence isn't
+// duplicated.
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"config", "user.email", "t@example.com"},
+		{"config", "user.name", "test"},
+		{"commit", "--allow-empty", "-q", "-m", "init"},
+	} {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		if out, err := c.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// t-391a: one daemon serves tickets from ANY project. A daemon launched rooted
+// at project X must start a ticket that exists only in project Y when the client
+// cwd points at Y — the pre-fix "ticket not found in project" bug (the daemon
+// checked the ticket under its launch projectRoot, not the cwd's project).
+func TestStartCrossProjectViaCwd(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	rootX := t.TempDir()
+	initGitRepo(t, rootX)
+	seedTicketDir(t, rootX, "t-aaaa")
+	writeTicketStatus(t, rootX, "t-aaaa", "open")
+	rootY := t.TempDir()
+	initGitRepo(t, rootY)
+	seedTicketDir(t, rootY, "t-bbbb")
+	writeTicketStatus(t, rootY, "t-bbbb", "open")
+
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: rootX, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	// Ticket in Y, cwd=Y: must succeed though the daemon's launch root is X.
+	resp := startSessionCwd(t, ts.URL, "t-bbbb", rootY, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		t.Fatalf("cross-project start = %d, want 200 (%s)", resp.StatusCode, b)
+	}
+	resp.Body.Close()
+
+	// A ticket in NEITHER project (cwd=Y) is still rejected.
+	resp2 := startSessionCwd(t, ts.URL, "t-cccc", rootY, bootTok)
+	if resp2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("unknown-ticket start = %d, want 400", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+}
+
+// t-391a: resolveProjectForCwd re-validates the client cwd (never trust the
+// client string) — absolute + exists + a real git working tree.
+func TestResolveProjectForCwd(t *testing.T) {
+	root := t.TempDir()
+	initGitRepo(t, root)
+	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+
+	if got, ok := s.resolveProjectForCwd(""); !ok || got != root {
+		t.Fatalf("empty cwd = (%q,%v), want (%q,true verbatim)", got, ok, root)
+	}
+	if _, ok := s.resolveProjectForCwd("relative/path"); ok {
+		t.Fatal("relative cwd accepted, want rejected")
+	}
+	if _, ok := s.resolveProjectForCwd(filepath.Join(root, "does-not-exist")); ok {
+		t.Fatal("nonexistent cwd accepted, want rejected")
+	}
+	if _, ok := s.resolveProjectForCwd(t.TempDir()); ok {
+		t.Fatal("non-git cwd accepted, want rejected")
+	}
+	got, ok := s.resolveProjectForCwd(root)
+	wantResolved, _ := filepath.EvalSymlinks(root)
+	if !ok || !pathsEqual(got, wantResolved) {
+		t.Fatalf("git cwd = (%q,%v), want (%q,true)", got, ok, wantResolved)
+	}
+}
+
+// t-391a: GET /sessions is unauthenticated-but-guarded (loopback + Origin-checked,
+// like /version so the token-free board can read it), lists active sessions with
+// the documented shape, and never leaks a token.
+func TestSessionsEndpoint(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	initGitRepo(t, root)
+	seedTicketDir(t, root, "t-aaaa")
+	writeTicketStatus(t, root, "t-aaaa", "open")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	get := func(origin string) (*http.Response, []byte) {
+		t.Helper()
+		req, _ := http.NewRequest("GET", ts.URL+"/sessions", nil)
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, _ := io.ReadAll(r.Body)
+		r.Body.Close()
+		return r, b
+	}
+
+	// Token-free loopback read works (the board holds no token) → 200, empty.
+	if r, b := get(""); r.StatusCode != http.StatusOK {
+		t.Fatalf("/sessions (no session) = %d, want 200 (%s)", r.StatusCode, b)
+	}
+	// A cross-origin browser read is still blocked by guard().
+	if r, _ := get("http://evil.example"); r.StatusCode != http.StatusForbidden {
+		t.Fatalf("/sessions cross-origin = %d, want 403", r.StatusCode)
+	}
+
+	startSessionCwd(t, ts.URL, "t-aaaa", root, bootTok).Body.Close()
+
+	r2, body := get("")
+	if r2.StatusCode != http.StatusOK {
+		t.Fatalf("/sessions = %d (%s)", r2.StatusCode, body)
+	}
+	var sessions []map[string]any
+	if err := json.Unmarshal(body, &sessions); err != nil {
+		t.Fatalf("decode /sessions: %v (%s)", err, body)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("want 1 session, got %d (%s)", len(sessions), body)
+	}
+	if sessions[0]["ticket"] != "t-aaaa" {
+		t.Fatalf("ticket = %v, want t-aaaa", sessions[0]["ticket"])
+	}
+	for _, k := range []string{"project_root", "cwd", "agent", "status", "started"} {
+		if _, present := sessions[0][k]; !present {
+			t.Fatalf("/sessions row missing key %q: %s", k, body)
+		}
+	}
+	if strings.Contains(string(body), "token") {
+		t.Fatalf("/sessions leaked a token field: %s", body)
+	}
+}
