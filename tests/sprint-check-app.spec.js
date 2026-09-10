@@ -701,6 +701,33 @@ test.describe('board modal', () => {
     await expect(count).toHaveText('');
   });
 
+  test('Main checkout sends this board\u2019s project root as the cockpit cwd (t-fc91)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    // Main checkout (cwd '') must carry THIS board's project root — not be omitted
+    // (else a shared daemon resolves it to its launch project → wrong project).
+    const mainSrc = await page.evaluate(async () => {
+      state.gitRoot = '/Users/me/canon';
+      await mountCockpitTerminal({ id: 't-ab12' }, '');
+      return document.getElementById('ck-iframe').src;
+    });
+    expect(mainSrc).toContain('ticket=t-ab12');
+    expect(mainSrc).toContain('cwd=' + encodeURIComponent('/Users/me/canon'));
+
+    // A selected worktree still sends its own path unchanged.
+    const wtSrc = await page.evaluate(async () => {
+      state.gitRoot = '/Users/me/canon';
+      await mountCockpitTerminal({ id: 't-ab12' }, '/Users/me/wt/sprint-x');
+      return document.getElementById('ck-iframe').src;
+    });
+    expect(wtSrc).toContain('cwd=' + encodeURIComponent('/Users/me/wt/sprint-x'));
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
