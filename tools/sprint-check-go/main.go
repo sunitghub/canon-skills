@@ -379,6 +379,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			boolValue(payload["eval_override"]),
 			stringValue(payload, "gate", "full"),
 			boolValue(payload["demo"]),
+			stringValue(payload, "skills", ""),
 		))
 		return
 	}
@@ -971,7 +972,7 @@ func writeVisual(ticketID, filename, dataB64 string) map[string]any {
 	return map[string]any{"ok": true, "filename": name}
 }
 
-func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string, demo bool) ticket {
+func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string, demo bool, skills string) ticket {
 	os.MkdirAll(ticketsDir, 0755)
 	existing := map[string]bool{}
 	for _, p := range ticketPaths() {
@@ -1019,11 +1020,30 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	if demo {
 		demoLine = "demo: true\n"
 	}
+	// t-354b: maintenance skills (chore multi-select) — csv, allowlisted to the
+	// three repo-hygiene skills (parity with server.py create_ticket). Order-
+	// preserving dedupe; absent line = none (same present/absent convention).
+	skillsLine := ""
+	{
+		allowed := map[string]bool{"context-check": true, "context-doctor": true, "dead-code-cleanup": true}
+		seen := map[string]bool{}
+		var picked []string
+		for _, s := range strings.Split(skills, ",") {
+			s = strings.TrimSpace(s)
+			if allowed[s] && !seen[s] {
+				seen[s] = true
+				picked = append(picked, s)
+			}
+		}
+		if len(picked) > 0 {
+			skillsLine = "skills: " + strings.Join(picked, ",") + "\n"
+		}
+	}
 	evalLine := "eval_override: false"
 	if evalOverride {
 		evalLine = "eval_override: true"
 	}
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, gateLine, demoLine, evalLine, strings.TrimSpace(body))
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, gateLine, demoLine, skillsLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	os.WriteFile(path, []byte(text), 0644)
 	t, _ := parseTicket(path)

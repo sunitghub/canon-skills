@@ -563,6 +563,21 @@ for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
   if grep -q '^gate:' "$WORK/.tickets/$fid/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label full create wrote a gate line ($fid)"; fi
 done
 
+# ── create-with-skills parity (t-354b): POST /api/tickets writes an allowlisted, deduped skills line; absent otherwise ──
+py_sk_id=""; go_sk_id=""
+for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
+  label="${be%%:*}"; port="${be##*:}"
+  sid="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"skills create","type":"chore","skills":"context-check,dead-code-cleanup,bogus,context-check"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  grep -q '^skills: context-check,dead-code-cleanup$' "$WORK/.tickets/$sid/ticket.md" || fail "sprint-check-api-parity: FAIL — $label create with skills did not write the allowlisted/deduped 'skills:' line ($sid)"
+  grep -q 'bogus' "$WORK/.tickets/$sid/ticket.md" && fail "sprint-check-api-parity: FAIL — $label leaked a non-allowlisted skill ($sid)"
+  ns="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"noskills create","type":"chore"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  if grep -q '^skills:' "$WORK/.tickets/$ns/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label create without skills wrote a skills line ($ns)"; fi
+  if [[ "$label" == "server.py" ]]; then py_sk_id="$sid"; else go_sk_id="$sid"; fi
+done
+py_sfm="$(grep '^skills:' "$WORK/.tickets/$py_sk_id/ticket.md")"
+go_sfm="$(grep '^skills:' "$WORK/.tickets/$go_sk_id/ticket.md")"
+[[ "$py_sfm" == "$go_sfm" ]] || fail "sprint-check-api-parity: FAIL — skills frontmatter mismatch: py=[$py_sfm] go=[$go_sfm]"
+
 # ── create-with-demo parity (t-dfaa): POST /api/tickets writes demo: true; absent otherwise ──
 py_demo_id=""; go_demo_id=""
 for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do

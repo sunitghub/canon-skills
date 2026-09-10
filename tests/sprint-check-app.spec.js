@@ -473,6 +473,62 @@ test.describe('board modal', () => {
     }
   });
 
+  test('New-Ticket Maintenance multi-select is Chore-gated and writes skills frontmatter (t-354b)', async ({ page }) => {
+    let createdId = '';
+    const title = `maint skills ${Date.now()}`;
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+
+      const skillsRow = page.locator('#c-skills-row');
+      // Default type is Task → the Maintenance row is hidden.
+      await expect(skillsRow).toBeHidden();
+
+      // Selecting Chore reveals exactly the three repo-hygiene skills, no skill-eval.
+      await page.locator('#c-types .create-pill[data-type="chore"]').click();
+      await expect(skillsRow).toBeVisible();
+      await expect(page.locator('#c-skills .create-pill')).toHaveCount(3);
+      await expect(page.locator('#c-skills')).toContainText('context-check');
+      await expect(page.locator('#c-skills')).toContainText('context-doctor');
+      await expect(page.locator('#c-skills')).toContainText('dead-code-cleanup');
+      await expect(page.locator('#c-skills')).not.toContainText('skill-eval');
+
+      // Switching away hides it again (and clears the selection).
+      await page.locator('#c-types .create-pill[data-type="task"]').click();
+      await expect(skillsRow).toBeHidden();
+
+      // Back to Chore, pick two skills, and confirm they register as active.
+      await page.locator('#c-types .create-pill[data-type="chore"]').click();
+      const cc = page.locator('#c-skills .create-pill[data-skill="context-check"]');
+      const dc = page.locator('#c-skills .create-pill[data-skill="dead-code-cleanup"]');
+      await cc.click();
+      await dc.click();
+      await expect(cc).toHaveClass(/\bactive\b/);
+      await expect(dc).toHaveClass(/\bactive\b/);
+
+      // Fill the title LAST and submit immediately, so the type-detect debounce
+      // (350ms) can't fire before submit() has captured the payload.
+      let postBody = '';
+      page.on('request', req => {
+        if (req.method() === 'POST' && req.url().endsWith('/api/tickets')) postBody = req.postData() || '';
+      });
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      expect(postBody, `POST body was: ${postBody}`).toContain('context-check');
+      const tm = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
+      expect(tm).toContain('type: chore');
+      expect(tm).toContain('skills: context-check,dead-code-cleanup');
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
