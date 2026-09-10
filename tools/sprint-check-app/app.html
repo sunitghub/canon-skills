@@ -108,12 +108,15 @@
       color: #34d399; font-weight: 600;
       border: 1px solid transparent;
       /* green→gold gradient border via the padding-box/border-box double-fill
-         trick (border-image ignores border-radius); soft golden glow. */
+         trick (border-image ignores border-radius). The inner fill MUST be
+         opaque (surface-raised) so the bright border gradient shows ONLY in the
+         1px ring, not through the whole pill; a faint green tint sits on top. */
       background-image:
-        linear-gradient(rgba(34,197,94,.12), rgba(34,197,94,.12)),
+        linear-gradient(rgba(34,197,94,.14), rgba(34,197,94,.14)),
+        linear-gradient(var(--surface-raised), var(--surface-raised)),
         linear-gradient(100deg, #22c55e 0%, #86efac 42%, #d4af37 100%);
       background-origin: border-box;
-      background-clip: padding-box, border-box;
+      background-clip: padding-box, padding-box, border-box;
       box-shadow: 0 0 7px rgba(212,175,55,.38);
     }
     .header-version.daemon-stale   { background: rgba(239,68,68,.18); color: #ef4444; border-color: rgba(239,68,68,.45); animation: pulse 1.6s ease-in-out infinite; }
