@@ -104,7 +104,18 @@
     .header-version:empty { display: none; }
     /* t-44d9: the version badge doubles as a daemon-health pill — click to force-restart. */
     .header-version.daemon-toggle { cursor: pointer; opacity: 1; padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; }
-    .header-version.daemon-healthy { background: rgba(34,197,94,.15); color: #22c55e; border-color: rgba(34,197,94,.35); }
+    .header-version.daemon-healthy {
+      color: #34d399; font-weight: 600;
+      border: 1px solid transparent;
+      /* green→gold gradient border via the padding-box/border-box double-fill
+         trick (border-image ignores border-radius); soft golden glow. */
+      background-image:
+        linear-gradient(rgba(34,197,94,.12), rgba(34,197,94,.12)),
+        linear-gradient(100deg, #22c55e 0%, #86efac 42%, #d4af37 100%);
+      background-origin: border-box;
+      background-clip: padding-box, border-box;
+      box-shadow: 0 0 7px rgba(212,175,55,.38);
+    }
     .header-version.daemon-stale   { background: rgba(239,68,68,.18); color: #ef4444; border-color: rgba(239,68,68,.45); animation: pulse 1.6s ease-in-out infinite; }
     .header-version.daemon-off     { background: var(--surface-raised); color: var(--text-muted); border-color: var(--border); }
     .header-version.daemon-toggle:hover { filter: brightness(1.15); }
