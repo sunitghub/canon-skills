@@ -5984,6 +5984,7 @@ async function uploadVisual(ticketId, filename, base64) {
   let evalOverride = false;
   let gateEval = false;
   let demoEnabled = false;
+  let demoUserToggled = false; // t-2201: once the user clicks the Demo pill, stop auto-managing it
   let selectedSkills = []; // t-354b: Maintenance skills, only meaningful when type=chore
   let templateUntouched = true;
   let stagedVisuals = [];
@@ -6015,8 +6016,18 @@ async function uploadVisual(ticketId, filename, base64) {
   ciBtn.addEventListener('click', () => { ciEnabled = !ciEnabled; ciBtn.classList.toggle('active', ciEnabled); syncGate(); });
   gateBtn.addEventListener('click', () => { if (!ciEnabled) return; gateEval = !gateEval; gateBtn.classList.toggle('active', gateEval); });
   evalBtn.addEventListener('click', () => { evalOverride = !evalOverride; evalBtn.classList.toggle('active', evalOverride); });
-  // Demo is independent of CI (no gate coupling).
-  demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); });
+  // Demo is independent of CI (no gate coupling). t-2201: a manual click takes
+  // ownership of the pill, so auto-Demo stops managing it for the session.
+  demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); demoUserToggled = true; });
+
+  // t-2201: auto-elect Demo/Docs for a report-first Upkeep chore (any skill
+  // selected), unless the user has taken manual control of the pill this session.
+  function autoSyncDemo() {
+    if (demoUserToggled) return;
+    const want = selectedSkills.length > 0;
+    demoEnabled = want;
+    demoBtn.classList.toggle('active', want);
+  }
 
   // t-354b: Maintenance-skills multi-select — only shown when Type = Chore.
   const skillsRow = document.getElementById('c-skills-row');
@@ -6027,6 +6038,7 @@ async function uploadVisual(ticketId, filename, base64) {
       const i = selectedSkills.indexOf(s);
       if (i >= 0) selectedSkills.splice(i, 1); else selectedSkills.push(s);
       btn.classList.toggle('active', selectedSkills.includes(s));
+      autoSyncDemo(); // t-2201: report-first Upkeep → auto-elect Demo (overridable)
     });
   });
   // Show the row only for a Chore ticket; leaving Chore hides it AND clears the
@@ -6039,12 +6051,13 @@ async function uploadVisual(ticketId, filename, base64) {
     if (!isChore) {
       selectedSkills = [];
       skillsEl.querySelectorAll('.create-pill').forEach(b => b.classList.remove('active'));
+      autoSyncDemo(); // t-2201: leaving Chore drops the auto-set Demo (unless user-toggled)
     }
   }
 
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; selectedSkills = []; stagedVisuals = [];
+    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; demoUserToggled = false; selectedSkills = []; stagedVisuals = [];
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
     gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
     titleEl.value = ''; detectEl.textContent = '';

@@ -43,7 +43,8 @@
       "expectations": [
         "Checks or asks about active-sprint status before editing",
         "Does not silently edit files with no active sprint context",
-        "If it proceeds, frames the removal as part of the current sprint's diff, not a separate standalone close process"
+        "If it proceeds, frames the removal as part of the current sprint's diff, not a separate standalone close process",
+        "Surfaces the working-tree state before applying the removal (uncommitted-change awareness) and offers commit-first / proceed-anyway / cancel rather than hard-blocking on a dirty tree"
       ]
     }
   ]
