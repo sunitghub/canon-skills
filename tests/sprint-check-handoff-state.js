@@ -25,7 +25,7 @@ sandbox.window = sandbox; sandbox.globalThis = sandbox;
 const ctx = vm.createContext(sandbox);
 for (const s of scripts) { try { vm.runInContext(s, ctx, { timeout: 5000 }); } catch (_) { /* hoisted fns still bound */ } }
 
-const { handoffDisplayState, findHandoffStateForTicket, sectionContent } = ctx;
+const { handoffDisplayState, findHandoffStateForTicket, sectionContent, handoffNextSteps } = ctx;
 let fails = 0;
 function ok(name, cond, detail) {
   if (cond) { console.log('  ok   ' + name); }
@@ -96,6 +96,25 @@ const { formatStateAsParagraphs } = ctx;
   ok('(g) Current Focus fallback renders visible <p> with the focus text',
     /<p>/.test(html) && /Create plain HTML\/CSS\/JS ToDo app/.test(html), html);
 }
+
+// t-6ecc: handoffNextSteps — the actionable "## Next Steps" surfaced in STATUS.
+ok('handoffNextSteps loaded from app.html', typeof handoffNextSteps === 'function');
+const WITH_STEPS = [
+  '## Current Focus', 'Building the ToDo app', '',
+  '## In Progress', '- generic', '',
+  '## Next Steps', '1. Run `sprint complete` to close t-pdry.', '',
+].join('\n');
+// (h) active sprint → returns the Next Steps text.
+ok('(h) next steps returned for the active sprint',
+  /Run `sprint complete`/.test(handoffNextSteps(WITH_STEPS, 't-pdry', true)), handoffNextSteps(WITH_STEPS, 't-pdry', true));
+// (i) not active + id NOT named in the section → '' (never another ticket's steps).
+ok('(i) not active + id not named → no steps',
+  handoffNextSteps(WITH_STEPS, 't-zzzz', false) === '', handoffNextSteps(WITH_STEPS, 't-zzzz', false));
+// (j) not active but the section names the id → returned.
+ok('(j) not active but section names the id → returned',
+  /Run `sprint complete`/.test(handoffNextSteps(WITH_STEPS, 't-pdry', false)), handoffNextSteps(WITH_STEPS, 't-pdry', false));
+// (k) no ## Next Steps section → ''.
+ok('(k) missing Next Steps section → empty', handoffNextSteps(LIVE, 't-pdry', true) === '', handoffNextSteps(LIVE, 't-pdry', true));
 
 if (fails) { console.log(`\nsprint-check-handoff-state: ${fails} FAILED`); process.exit(1); }
 console.log('sprint-check-handoff-state: ok');
