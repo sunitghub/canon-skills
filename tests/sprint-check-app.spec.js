@@ -569,7 +569,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('daemon health pill reflects /api/cockpit + click force-restarts with busy-confirm (t-44d9)', async ({ page }) => {
+  test('sidebar daemon control: dot states, busy-confirm restart, auto-open on unhealthy; header static (t-b421)', async ({ page }) => {
     let health = { running: true, addr: '127.0.0.1:1', stale: false };
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(health),
@@ -586,24 +586,38 @@ test.describe('board modal', () => {
     });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
-    const pill = page.locator('#h-version');
-    await expect(pill).toHaveClass(/daemon-healthy/); // green when healthy
+    const dot = page.locator('#daemon-dot');
+    await expect(dot).toHaveClass(/healthy/); // green when healthy
+    await expect(page.locator('#daemon-status-label')).toHaveText('Healthy');
+    // header version is static — no clickable pill
+    await expect(page.locator('#h-version')).not.toHaveClass(/daemon-toggle/);
 
-    // Flip to stale and force an immediate re-poll (avoid the 10s interval).
+    // Collapse the sidebar, then flip to unhealthy + re-poll → dot/rail alert + auto-open once.
+    await page.locator('#sidebar-toggle').click();
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
     health = { running: true, addr: '127.0.0.1:1', stale: true };
     await page.evaluate(() => refreshDaemonHealth());
-    await expect(pill).toHaveClass(/daemon-stale/); // red when stale
+    await expect(dot).toHaveClass(/stale/); // red when stale
+    await expect(page.locator('#daemon-rail-icon')).toHaveClass(/daemon-alert/); // rail pulses
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/); // auto-opened once
 
-    page.on('dialog', d => { dialogMsg = d.message(); d.accept(); }); // accept busy-confirm
-    await pill.click();
+    // Restart works from the sidebar button; busy-confirm names the session count.
+    page.on('dialog', d => { dialogMsg = d.message(); d.accept(); });
+    await page.locator('#daemon-restart').click();
     await expect.poll(() => restartCalls.length).toBeGreaterThanOrEqual(2);
     expect(restartCalls[0].force).toBe(false); // first probes → busy
     expect(restartCalls[1].force).toBe(true);  // confirm → force
-    expect(dialogMsg).toContain('2 cockpit sessions'); // multi-session warning names the count
-    await expect(page.locator('#drop-toast')).toContainText('restarted'); // t-d83e: outcome reported
+    expect(dialogMsg).toContain('2 cockpit sessions');
+    await expect(page.locator('#drop-toast')).toContainText('restarted'); // outcome reported
+
+    // A header click must NOT trigger a restart.
+    const before = restartCalls.length;
+    await page.locator('#h-version').click();
+    await page.waitForTimeout(150);
+    expect(restartCalls.length).toBe(before);
   });
 
-  test('restart pill reports outcome: no-op warns, cancel notifies (t-d83e)', async ({ page }) => {
+  test('sidebar restart reports outcome: no-op / couldn\u2019t-start / unreachable / cancel (t-b421)', async ({ page }) => {
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
       body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false }),
@@ -618,26 +632,26 @@ test.describe('board modal', () => {
     });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
-    const pill = page.locator('#h-version');
+    const btn = page.locator('#daemon-restart'); // always available (dot is healthy here)
     const toast = page.locator('#drop-toast');
 
-    await pill.click(); // (b) no-op restart → block toast, not silent
+    await btn.click(); // (b) no-op restart → block toast, not silent
     await expect(toast).toContainText('not restarted');
     await expect(toast).toHaveClass(/block/);
 
     mode = 'fail'; // (c) daemon not running / couldn't start
-    await pill.click();
+    await btn.click();
     await expect(toast).toContainText('start the cockpit daemon');
     await expect(toast).toHaveClass(/block/);
 
     mode = 'error'; // (d) board unreachable → catch
-    await pill.click();
+    await btn.click();
     await expect(toast).toContainText('reach the board');
     await expect(toast).toHaveClass(/block/);
 
     mode = 'busy'; // (e) busy → decline the confirm → cancelled notice
     page.on('dialog', d => d.dismiss());
-    await pill.click();
+    await btn.click();
     await expect(toast).toContainText('Restart cancelled');
   });
 
