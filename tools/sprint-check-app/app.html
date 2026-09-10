@@ -1713,7 +1713,7 @@
     .card-start.resume { background: var(--col-done); color: var(--col-done-contrast); }
     /* t-391a: cross-project cockpit sessions panel */
     .cockpit-sessions { margin: 8px 0 4px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
-    .cockpit-sessions-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 6px; }
+    .cockpit-sessions-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text); margin-bottom: 6px; }
     .cockpit-sessions-list { display: flex; flex-direction: column; gap: 4px; }
     .cockpit-session-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; }
     .cockpit-session-row:hover { background: var(--accent-dim); border-color: var(--accent); }
@@ -2998,11 +2998,10 @@ async function refreshCockpitSessions() {
     const project = String(s.project_root || '');
     const agent = String(s.agent || '');
     const status = String(s.status || 'running');
-    const projName = project.split(/[\\/]/).filter(Boolean).pop() || project;
     const statusCls = status === 'needs-you' ? 'needs-you' : 'running';
     return `<div class="cockpit-session-row" data-ticket="${esc(ticket)}" title="${esc(project)}">`
       + `<span class="cs-ticket">${esc(ticket)}</span>`
-      + `<span class="cs-project">${esc(projName)}</span>`
+      + `<span class="cs-project">${esc(project)}</span>`
       + `<span class="cs-agent">${esc(agent)}</span>`
       + `<span class="cs-status ${statusCls}">${esc(status)}</span>`
       + `</div>`;
