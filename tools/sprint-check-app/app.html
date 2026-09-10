@@ -4939,7 +4939,7 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
     statusEl.textContent = 'Ticket already closed — ending…';
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
   } else {
-    statusEl.textContent = 'Saving state…';
+    statusEl.textContent = 'Saving state — the agent is writing HANDOFF (one agent turn, may take a moment)…';
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'save-and-end' }, 'http://' + cockpitState.addr);
   }
 });
