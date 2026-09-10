@@ -2084,6 +2084,14 @@
           <button class="create-pill" id="c-demo" type="button" title="Demo/Docs/UX light-close: for live demos AND docs/research/UX-mockup (.md/.pen) work — sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.">Demo/Docs/UX</button>
         </div>
       </div>
+      <div class="create-row" id="c-skills-row" style="display:none">
+        <span class="create-label">Maintenance</span>
+        <div class="create-pills" id="c-skills">
+          <button class="create-pill" type="button" data-skill="context-check" title="Audit always-on context load for bloat/redundancy (report)">context-check</button>
+          <button class="create-pill" type="button" data-skill="context-doctor" title="Audit agent context vs the context-engineering lessons; writes claude-optimization.md">context-doctor</button>
+          <button class="create-pill" type="button" data-skill="dead-code-cleanup" title="Scan for unreferenced symbols; advisory-first — deletes only on explicit confirmation">dead-code-cleanup</button>
+        </div>
+      </div>
       <div class="editor-toolbar open" id="c-editor-toolbar">
         <button class="editor-tool" type="button" data-insert="checkbox" title="Checkbox" aria-label="Add checkbox">
           <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
@@ -5976,6 +5984,7 @@ async function uploadVisual(ticketId, filename, base64) {
   let evalOverride = false;
   let gateEval = false;
   let demoEnabled = false;
+  let selectedSkills = []; // t-354b: Maintenance skills, only meaningful when type=chore
   let templateUntouched = true;
   let stagedVisuals = [];
 
@@ -6009,9 +6018,33 @@ async function uploadVisual(ticketId, filename, base64) {
   // Demo is independent of CI (no gate coupling).
   demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); });
 
+  // t-354b: Maintenance-skills multi-select — only shown when Type = Chore.
+  const skillsRow = document.getElementById('c-skills-row');
+  const skillsEl  = document.getElementById('c-skills');
+  skillsEl.querySelectorAll('.create-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const s = btn.dataset.skill;
+      const i = selectedSkills.indexOf(s);
+      if (i >= 0) selectedSkills.splice(i, 1); else selectedSkills.push(s);
+      btn.classList.toggle('active', selectedSkills.includes(s));
+    });
+  });
+  // Show the row only for a Chore ticket; leaving Chore hides it AND clears the
+  // selection so a hidden control can never smuggle skills into a non-chore ticket.
+  function syncSkillsRow() {
+    const isChore = selectedType === 'chore';
+    // Inline display (not the [hidden] attr): `.create-row { display: flex }`
+    // outranks the UA `[hidden]` rule, so the attribute wouldn't actually hide it.
+    skillsRow.style.display = isChore ? '' : 'none';
+    if (!isChore) {
+      selectedSkills = [];
+      skillsEl.querySelectorAll('.create-pill').forEach(b => b.classList.remove('active'));
+    }
+  }
+
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
+    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; selectedSkills = []; stagedVisuals = [];
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
     gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
     titleEl.value = ''; detectEl.textContent = '';
@@ -6039,6 +6072,7 @@ async function uploadVisual(ticketId, filename, base64) {
         renderTypePills();
       });
     });
+    syncSkillsRow();
   }
 
   function renderPriPills() {
@@ -6085,7 +6119,7 @@ async function uploadVisual(ticketId, filename, base64) {
     try {
       const ticket = await fetch('/api/tickets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled }),
+        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, skills: selectedType === 'chore' ? selectedSkills.join(',') : '' }),
       }).then(r => r.json());
 
       if (stagedVisuals.length) {

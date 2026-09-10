@@ -33,6 +33,21 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      above; it is not a substitute for that classification. A request that also
      touches code is a full sprint regardless of keywords. See `SKILL.md`'s
      "Demo / Docs / UX (light close)" section.
+   - **Maintenance-skills chore (t-354b).** If the active ticket's `ticket.md`
+     frontmatter carries a `skills:` line (a Chore created via the board's
+     Maintenance multi-select or `tkt create --skills`, allowlisted to
+     `context-check`, `context-doctor`, `dead-code-cleanup`), the sprint's
+     **planned work IS running those skills**: read each named skill's
+     `SKILL.md` and follow it, and seed `acceptance.md ## Criteria` with each
+     skill's expected output (e.g. "`context-doctor` writes `claude-optimization.md`
+     with a Summary table"; "`dead-code-cleanup` reports candidates and removes
+     only those the user confirms"). **Close tier follows what actually changed,
+     never the "maintenance" label** (same invariant as bugfix/demo): a run whose
+     whole output is reports/`.md` takes the Demo/Docs light-close (the binding
+     evaluator still grades the report), while a `dead-code-cleanup` that actually
+     **deletes code** is a normal-tier close with the binding evaluator mandatory.
+     `dead-code-cleanup` is advisory-first — never delete without explicit user
+     confirmation.
 
 4. **Planning files.** Both files were already seeded by step 1 (skeleton `## Criteria`/`## Test Plan`/`## QA` in `acceptance.md`, skeleton `## Sign-off`/`## Approach`/`## Files`/`## Decisions` in `plan.md`) — fill them in now, before the brief. The approval gate in step 11 blocks code, not planning file content.
    - `acceptance.md` — specific, binary conditions that define "done" under `## Criteria` and `## Test Plan`. For criteria that depend on a server field, computed value, or internal state: name the exact field or condition, not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is verifiable; "blocked when items are unchecked" is ambiguous — two similar-sounding conditions can map to different fields and the evaluator cannot distinguish them without live execution. `## QA`'s "Tested locally" box also blocks close if left unchecked — check it once you've actually verified the change, not before. This "not before" discipline applies to every box in `## Criteria`, `## Test Plan`, and `## QA`, not just this one: tick each box at the moment its evidence exists, never in bulk. A single find-replace across the checklist converts unverified items into claims silently, and `sprint complete` cannot tell the difference — it gates on boxes being *checked*, not on them being *true*. Live-reproduced (overtone-app `t-f413`): three items were bulk-ticked, including "verified across all 25 nodes", which the evaluator later falsified against a capture containing 15.

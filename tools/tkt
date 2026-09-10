@@ -153,19 +153,38 @@ current_id() {
 }
 
 cmd_create() {
-  local title="" type="task" priority="2" description=""
+  local title="" type="task" priority="2" description="" skills=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -t|--type)        type="$2";        shift 2 ;;
       -p|--priority)    priority="$2";    shift 2 ;;
       -d|--description) description="$2"; shift 2 ;;
+      -s|--skills)      skills="$2";      shift 2 ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$title" ]] && title="$1"; shift ;;
     esac
   done
 
   [[ -z "$title" ]] && { echo "Error: title required" >&2; exit 1; }
+
+  # t-354b: maintenance skills (csv) — allowlisted to the three repo-hygiene
+  # skills, order-preserving dedupe (parity with server.py/sprint-check-go).
+  local skills_line="" picked=() _s _parts=()
+  if [[ -n "$skills" ]]; then
+    IFS=',' read -ra _parts <<< "$skills"   # split on comma; IFS restored after
+    for _s in ${_parts[@]+"${_parts[@]}"}; do
+      _s="$(printf '%s' "$_s" | tr -d '[:space:]')"
+      case "$_s" in
+        context-check|context-doctor|dead-code-cleanup)
+          [[ " ${picked[*]-} " == *" $_s "* ]] || picked+=("$_s") ;;
+      esac
+    done
+    if [[ ${#picked[@]} -gt 0 ]]; then
+      local _joined; printf -v _joined '%s,' "${picked[@]}"; _joined="${_joined%,}"
+      skills_line="skills: $_joined"
+    fi
+  fi
 
   local dir id ticket_dir file created
   dir="$(ensure_tickets_dir)"
@@ -187,6 +206,7 @@ cmd_create() {
     printf "created: %s\n" "$created"
     printf "type: %s\n" "$type"
     printf "priority: %s\n" "$priority"
+    [[ -n "$skills_line" ]] && printf "%s\n" "$skills_line"
     printf "eval_override: false\n"
     printf "eval_fail_count: 0\n"
     printf -- "---\n"

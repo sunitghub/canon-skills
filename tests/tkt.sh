@@ -19,6 +19,14 @@ assert_grep "^type: task$" ".tickets/$id/ticket.md"
 assert_grep "^priority: 1$" ".tickets/$id/ticket.md"
 assert_grep "^# Write tests$" ".tickets/$id/ticket.md"
 
+# t-354b: --skills writes an allowlisted, order-preserving, deduped skills line.
+sid="$("$TKT" create "maint" -t chore --skills "context-check, dead-code-cleanup ,bogus,context-check")"
+assert_grep "^skills: context-check,dead-code-cleanup$" ".tickets/$sid/ticket.md"
+grep -q "bogus" ".tickets/$sid/ticket.md" && fail "tkt --skills leaked a non-allowlisted skill" || true
+# ...and no --skills → no skills line.
+nsid="$("$TKT" create "plain" -t task)"
+grep -q "^skills:" ".tickets/$nsid/ticket.md" && fail "tkt create without --skills wrote a skills line" || true
+
 # t-2f53: ensure_tickets_dir seeds a .tickets/.gitignore for canon's own
 # per-machine runtime files (so a project that tracks .tickets/ never commits
 # them). The first `tkt create` above already ensured the dir.
