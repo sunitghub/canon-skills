@@ -2594,7 +2594,7 @@ async function refreshDaemonHealth() {
         if (sr.ok) {
           const sessions = await sr.json();
           const n = Array.isArray(sessions) ? sessions.length : 0;
-          countEl.textContent = n === 0 ? '· no sessions' : `· ${n} session${n === 1 ? '' : 's'}`;
+          countEl.textContent = n === 0 ? '· no active agent sessions' : `· ${n} active agent session${n === 1 ? '' : 's'}`;
         }
       } catch {}
     }
