@@ -3171,8 +3171,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(panel).toBeVisible();
       await expect(panel.locator('.cockpit-session-row')).toHaveCount(2);
       await expect(panel).toContainText(idA);
+      // t-7ea8: the row shows the full project directory path, not just the basename.
+      await expect(panel).toContainText('/Users/me/projA');
       await expect(panel).toContainText('projA');
-      // Windows project basename renders too — the panel splits on [\\/] (DRY Mac/Win).
+      // Windows project path renders too (full path incl. basename).
       await expect(panel).toContainText('projB');
       await expect(panel.locator('.cs-status.needs-you')).toHaveText('needs-you');
 
