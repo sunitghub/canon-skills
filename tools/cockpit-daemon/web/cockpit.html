@@ -155,8 +155,6 @@
   // trailing incomplete line over to the next frame instead of matching
   // per-frame, or a marker that straddles a read boundary never matches.
   var markerBuf = "";
-  var PREVIEW_FILE_PREFIX = "PREVIEW_FILE: ";
-  var PREVIEW_SERVER_CMD_PREFIX = "PREVIEW_SERVER_CMD: ";
   var PREVIEW_TIMEOUT_MS = 60000;
   window.addEventListener("message", function(e){
     if(e.source !== window.parent) return;
@@ -356,15 +354,27 @@
             // matched here; the trailing partial line carries over.
             markerBuf += new TextDecoder().decode(bytes);
             if(markerBuf.length > 16384) markerBuf = markerBuf.slice(-16384);
-            var lines = markerBuf.split(/\r?\n/);
-            markerBuf = lines.pop();
-            for(var li=0; li<lines.length; li++){
-              // Claude Code's own CLI rendering wraps an otherwise-bare marker
-              // line in chrome (a leading "⏺" U+23FA bullet — NOT the visually
-              // similar "●" U+25CF — "/">" bullet, markdown emphasis, trailing
-              // backticks) — strip that before comparing, or an exact/prefix
-              // match almost never fires on real output.
-              var clean = lines[li].replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").trim()
+            // Claude Code's TUI (Ink) does NOT emit newline-terminated lines:
+            // it positions every screen row with a bare "\r" + a cursor-move
+            // escape (e.g. "\x1b[2B" = down 2) and NEVER a "\n", and it renders
+            // the gap between a label and its value as a cursor COLUMN jump
+            // ("PREVIEW_FILE:\x1b[17G/Users/…") rather than a literal space. So
+            // (1) splitting on /\r?\n/ found zero complete lines — everything
+            // stayed in the "trailing partial" and was never compared, and
+            // (2) even a compared line read "PREVIEW_FILE:/Users/…" with no
+            // space, missing a `"PREVIEW_FILE: "` prefix check. Fix: strip ANSI
+            // (CSI) + OSC hyperlinks first, split on \r OR \n (so a CR-only TUI
+            // and a real CRLF/newline both row-split, incl. Windows CRLF), and
+            // re-scan the whole buffer each frame (redraws repeat the marker, so
+            // first-match-wins under the previewDeadline/pendingMarker guards).
+            var flat = markerBuf
+              .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "") // OSC (e.g. \x1b]8;…\x07 hyperlinks)
+              .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");        // CSI (colors, cursor moves, erases)
+            var rows = flat.split(/[\r\n]+/);
+            for(var li=0; li<rows.length; li++){
+              // Strip leading chrome (bullets ⏺/●/•, markdown, quote/list
+              // markers) and trailing backticks/space before comparing.
+              var clean = rows[li].trim()
                 .replace(/^[\s*_`>#•●⏺○◦▸▹‣·-]+/, "").replace(/[\s*_`]+$/, "");
               // Whole-line exact match only — a coincidental substring
               // mid-sentence (the agent describing what it's about to do)
@@ -376,36 +386,46 @@
                 });
                 break;
               }
-              // Prefix match, not exact — PREVIEW_FILE/PREVIEW_SERVER_CMD
-              // carry a variable payload after the fixed prefix.
-              if(previewDeadline && clean.indexOf(PREVIEW_FILE_PREFIX) === 0){
-                previewDeadline = 0;
-                var filePath = clean.slice(PREVIEW_FILE_PREFIX.length).trim();
-                // The daemon re-validates this path itself (symlink-safe
-                // containment under projectRoot) before this page relays
-                // anything to the board — cockpit.html has no privileged
-                // position to assert the path is safe on its own.
-                fetch("/session/"+session+"/preview-root", {
-                  method: "POST",
-                  headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)),
-                  body: JSON.stringify({ path: filePath })
-                }).then(function(pr){
-                  if(pr.ok){
-                    var relpath = filePath.split(/[\\/]/).pop();
-                    try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-file", session: session, previewToken: previewTok, relpath: relpath }, "*"); }catch(e){}
-                  } else {
+              // Tolerant marker match: the label, optional whitespace (Claude
+              // renders it as a cursor jump → often zero spaces after ANSI
+              // strip), then an ABSOLUTE path. Requiring absolute — POSIX "/…",
+              // Windows drive "C:\…"/"C:/…", or UNC "\\host\share" — is what
+              // lets us safely scan every row: the echoed prompt line's literal
+              // "<absolute path>" placeholder starts with "<" and can never
+              // match, so it's ignored. The daemon still re-validates the path
+              // (symlink-safe containment under projectRoot); cockpit.html has
+              // no privileged position to assert safety on its own.
+              if(previewDeadline){
+                var mFile = clean.match(/^PREVIEW_FILE:\s*((?:\/|\\\\|[A-Za-z]:[\\/]).*\S)$/);
+                if(mFile){
+                  previewDeadline = 0;
+                  var filePath = mFile[1].replace(/[`'"\s]+$/, "");
+                  fetch("/session/"+session+"/preview-root", {
+                    method: "POST",
+                    headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)),
+                    body: JSON.stringify({ path: filePath })
+                  }).then(function(pr){
+                    if(pr.ok){
+                      // Basename via both separators so a Windows path splits too.
+                      var relpath = filePath.split(/[\\/]/).pop();
+                      try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-file", session: session, previewToken: previewTok, relpath: relpath }, "*"); }catch(e){}
+                    } else {
+                      try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-rejected" }, "*"); }catch(e){}
+                    }
+                  }).catch(function(){
                     try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-rejected" }, "*"); }catch(e){}
-                  }
-                }).catch(function(){
-                  try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-rejected" }, "*"); }catch(e){}
-                });
-                break;
-              }
-              if(previewDeadline && clean.indexOf(PREVIEW_SERVER_CMD_PREFIX) === 0){
-                previewDeadline = 0;
-                var serverCmd = clean.slice(PREVIEW_SERVER_CMD_PREFIX.length).trim();
-                try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-server-cmd", cmd: serverCmd }, "*"); }catch(e){}
-                break;
+                  });
+                  break;
+                }
+                // Server command: any non-empty value that isn't the "<…>"
+                // placeholder from the echoed prompt.
+                var mCmd = clean.match(/^PREVIEW_SERVER_CMD:\s*([^<\s].*\S|[^<\s])$/);
+                if(mCmd){
+                  previewDeadline = 0;
+                  var serverCmd = mCmd[1].replace(/[`'"\s]+$/, "");
+                  try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-server-cmd", cmd: serverCmd }, "*"); }catch(e){}
+                  break;
+                }
               }
             }
           }

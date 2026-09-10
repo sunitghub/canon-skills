@@ -1638,6 +1638,11 @@
     .ck-status-badge.st-open { background: #cbd5e1; color: #0b1220; }
     html[data-theme="light"] .ck-status-badge.st-open { background: #475569; color: #f8fafc; }
     .ck-preview.collapsed { width: 40px; }
+    /* t-2lv7: .ck-preview-full wraps the header + body and must itself fill the
+       pane as a flex column — without this it stays auto-height, so the body's
+       flex:1 has no definite height and a mounted preview iframe (height:100%)
+       collapses to the ~150px HTML default ("tiny upper section"). */
+    .ck-preview-full { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .ck-preview.collapsed .ck-preview-full { display: none; }
     .ck-preview-collapsed-label {
       display: none; writing-mode: vertical-rl; transform: rotate(180deg);
