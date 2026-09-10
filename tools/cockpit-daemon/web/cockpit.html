@@ -122,9 +122,17 @@
   term.loadAddon(fit);
   term.open(document.getElementById("terminal"));
   fit.fit();
-  // Say plainly what Start does: a real agent session with this project's own
-  // tool permissions, not a read-only status view (t-842b pre-mortem #4).
-  term.writeln("\x1b[38;5;244mcanon cockpit — enter a ticket id and press Start to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m on it (\x1b[1msprint start <id>\x1b[0m\x1b[38;5;244m).\x1b[0m");
+  // t-842b: say plainly what Start does — a real agent session with this
+  // project's own tool permissions, not a read-only status view. The message is
+  // context-aware: framed by the board (EMBED), the ticket is already chosen and
+  // the button is "Start sprint" — there is no ticket id to enter, so don't tell
+  // the user to enter one. Standalone, the page's own ticket-id input applies.
+  if (EMBED === "1") {
+    var who = PREFILL ? "\x1b[1m" + PREFILL + "\x1b[0m\x1b[38;5;244m" : "this ticket";
+    term.writeln("\x1b[38;5;244mcanon cockpit — press \x1b[1m\u25B6 Start sprint\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m for " + who + ".\x1b[0m");
+  } else {
+    term.writeln("\x1b[38;5;244mcanon cockpit — enter a ticket id and press Start to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m on it (\x1b[1msprint start <id>\x1b[0m\x1b[38;5;244m).\x1b[0m");
+  }
   term.writeln("\x1b[38;5;244mIt runs with this project's own permission settings — it can write files and run commands, and prompts you here when they require approval.\x1b[0m");
 
   var dotEl = document.getElementById("dot"), statusEl = document.getElementById("statusText");
