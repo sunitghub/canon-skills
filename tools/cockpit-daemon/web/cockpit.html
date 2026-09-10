@@ -40,6 +40,15 @@
   /* t-0d67: like .model but NOT hidden in embed mode — the board frames the
      cockpit with embed=1, and the "last used · model" hint must stay visible. */
   .agent-hint{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  /* t-<font>: per-browser terminal font stepper — stays visible in embed mode
+     so each machine (macOS Retina vs Windows scaling render px differently)
+     can tune the size once; the choice persists in localStorage. */
+  .fontctl{display:flex;align-items:center;gap:4px;margin:0 8px}
+  .fontctl button{border:1px solid var(--border);background:var(--panel2);color:var(--text);
+    border-radius:6px;padding:2px 8px;font-size:12px;font-weight:700;line-height:1.4;
+    cursor:pointer;font-family:var(--ui)}
+  .fontctl button:hover{border-color:var(--accent)}
+  .fontctl .fc-val{font-family:var(--mono);font-size:11px;color:var(--faint);min-width:16px;text-align:center}
   #term-wrap{flex:1;min-height:0;background:var(--panel2);padding:8px}
   #terminal{height:100%}
   .hint{color:var(--faint);font-size:12px;padding:24px;font-family:var(--mono)}
@@ -82,6 +91,11 @@
     </div>
     <div class="spacer"></div>
     <span class="agent-hint" id="agentHint"></span>
+    <span class="fontctl" title="Terminal font size">
+      <button id="fontDec" type="button" title="Smaller terminal font">A−</button>
+      <span class="fc-val" id="fontVal"></span>
+      <button id="fontInc" type="button" title="Larger terminal font">A+</button>
+    </span>
     <span class="model" id="model">model: from plan.md</span>
     <span class="status"><span class="dot" id="dot"></span><span id="statusText">idle</span></span>
   </header>
@@ -112,9 +126,20 @@
   })();
   var session = null, sessTok = null, previewTok = null, streamAbort = null;
 
+  // Terminal font is per-browser adjustable (macOS Retina vs Windows scaling
+  // render the same px very differently, so no single hard-coded size fits both
+  // machines). Default 14; the A−/A+ stepper persists a choice in localStorage.
+  var TERM_FONT_MIN = 10, TERM_FONT_MAX = 26, TERM_FONT_DEFAULT = 14;
+  function readTermFont(){
+    var v = parseInt(localStorage.getItem("ck-term-fontsize") || "", 10);
+    if(isNaN(v)) return TERM_FONT_DEFAULT;
+    return Math.max(TERM_FONT_MIN, Math.min(TERM_FONT_MAX, v));
+  }
+  var termFont = readTermFont();
+
   var term = new Terminal({
     fontFamily: "JetBrains Mono, ui-monospace, Menlo, monospace",
-    fontSize: 16, lineHeight: 1.2, fontWeight: 500, fontWeightBold: 700,
+    fontSize: termFont, lineHeight: 1.2, fontWeight: 500, fontWeightBold: 700,
     cursorBlink: true,
     theme: { background: "#0d131c", foreground: "#e6edf3", cursor: "#3b82f6" }
   });
@@ -122,6 +147,25 @@
   term.loadAddon(fit);
   term.open(document.getElementById("terminal"));
   fit.fit();
+  // Live font control: apply to the running terminal, persist, and reflow so
+  // the PTY is told the new column/row count.
+  function setTermFont(n){
+    n = Math.max(TERM_FONT_MIN, Math.min(TERM_FONT_MAX, Math.round(n)));
+    termFont = n;
+    term.options.fontSize = n;
+    var vEl = document.getElementById("fontVal");
+    if(vEl) vEl.textContent = String(n);
+    try{ localStorage.setItem("ck-term-fontsize", String(n)); }catch(e){}
+    try{ fit.fit(); }catch(e){}
+  }
+  (function wireFontCtl(){
+    var dec = document.getElementById("fontDec");
+    var inc = document.getElementById("fontInc");
+    if(dec) dec.addEventListener("click", function(){ setTermFont(termFont - 1); });
+    if(inc) inc.addEventListener("click", function(){ setTermFont(termFont + 1); });
+    var vEl = document.getElementById("fontVal");
+    if(vEl) vEl.textContent = String(termFont);
+  })();
   // t-842b: say plainly what Start does — a real agent session with this
   // project's own tool permissions, not a read-only status view. The message is
   // context-aware: framed by the board (EMBED), the ticket is already chosen and
