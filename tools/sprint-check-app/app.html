@@ -34,6 +34,7 @@
       --col-progress:   #60a5fa;
       --col-done:       #4ade80;
       --col-done-contrast: #04210f;
+      --badge-fg:       #0b0f14;
       --col-discarded:  #f87171;
 
       --sidebar-w: 240px;
@@ -70,6 +71,7 @@
       --col-progress:   #2563eb;
       --col-done:       #16a34a;
       --col-done-contrast: #ffffff;
+      --badge-fg:       #ffffff;
       --col-discarded:  #dc2626;
     }
 
@@ -1643,9 +1645,9 @@
     }
     .ck-status-badge:empty { display: none; }
     .ck-status-badge.st-open { background: var(--col-open); color: #0b0f14; }
-    .ck-status-badge.st-progress { background: var(--col-progress); color: #0b0f14; }
+    .ck-status-badge.st-progress { background: var(--col-progress); color: var(--badge-fg); }
     .ck-status-badge.st-done { background: var(--col-done); color: var(--col-done-contrast, #04210f); }
-    .ck-status-badge.st-discarded { background: var(--col-discarded); color: #0b0f14; }
+    .ck-status-badge.st-discarded { background: var(--col-discarded); color: var(--badge-fg); }
     .ck-tc-idrow { display: flex; align-items: center; gap: 6px; padding-right: 18px; } /* t-6ecc: clear the top-right rail collapse toggle */
     /* t-4272: the rail card (#ck-tc-id/#ck-tc-status/#ck-tc-title) is the single
        canonical ticket-context. Hide the duplicate topbar copy while the rail is
@@ -1721,10 +1723,8 @@
     .cockpit-session-row .cs-project { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .cockpit-session-row .cs-agent { color: var(--text-muted); }
     .cockpit-session-row .cs-status { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
-    .cockpit-session-row .cs-status.running { background: var(--col-progress); color: #0b0f14; }
+    .cockpit-session-row .cs-status.running { background: var(--col-progress); color: var(--badge-fg); }
     .cockpit-session-row .cs-status.needs-you { background: #f59e0b; color: #0b0f14; }
-    /* Light mode: --col-progress is a saturated blue (#2563eb) — dark text is low-contrast; use white. */
-    html[data-theme="light"] .cockpit-session-row .cs-status.running { color: #fff; }
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */

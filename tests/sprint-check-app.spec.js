@@ -701,6 +701,27 @@ test.describe('board modal', () => {
     await expect(count).toHaveText('');
   });
 
+  test('status badges use light text on saturated fills in light mode via --badge-fg (t-2d8e)', async ({ page }) => {
+    await page.route('**/api/cockpit-sessions', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ session: 's1', ticket: 't-2lv7', project_root: '/Users/me/p', cwd: '/Users/me/p', agent: 'claude', status: 'running', started: '2026-09-10T00:00:00Z' }]),
+    }));
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const badge = page.locator('.cockpit-session-row .cs-status.running').first();
+    await expect(badge).toBeVisible();
+    // Dark theme (default :root): dark ink on the light-blue fill.
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await expect(badge).toHaveCSS('color', 'rgb(11, 15, 20)');
+    // Light theme: white on the saturated blue fill (shared --badge-fg).
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+    await expect(badge).toHaveCSS('color', 'rgb(255, 255, 255)');
+  });
+
   test('Main checkout sends this board\u2019s project root as the cockpit cwd (t-fc91)', async ({ page }) => {
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
