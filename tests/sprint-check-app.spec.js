@@ -694,7 +694,7 @@ test.describe('board modal', () => {
 
     sessions = []; // none
     await page.evaluate(() => refreshDaemonHealth());
-    await expect(count).toHaveText('· no active agent sessions');
+    await expect(count).toHaveText('· No active agent sessions');
 
     running = false; // daemon down → no count
     await page.evaluate(() => refreshDaemonHealth());
