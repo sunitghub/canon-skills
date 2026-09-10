@@ -1,13 +1,15 @@
 ---
 name: dead-code-cleanup
-description: Scans a repo for likely-unreferenced top-level symbols (JS/TS exports, Python def/class, Go exported func) and reports them as removal candidates. Use when asked to find dead code, unused exports, or unreferenced functions, or to clean up a codebase. Advisory-first — never deletes without explicit confirmation.
+description: Scans a repo for likely-unreferenced top-level symbols (JS/TS exports, Python def/class, Go exported func), reports them as removal candidates, and writes a structured `dead-code-report.md` (summary + high/low-confidence candidate tables). Use when asked to find dead code, unused exports, or unreferenced functions, or to clean up a codebase. Advisory-first — never deletes without explicit confirmation.
 category: dev
 tags: [cleanup, code-quality, dead-code, verification]
 ---
 
 # Dead Code Cleanup
 
-Finds code that nothing calls and reports it — it does not delete anything on its own.
+Finds code that nothing calls and reports it — it does not delete anything on its own. The scan
+edits no existing file; it writes a structured `dead-code-report.md` (confirm-first) and, only on
+per-candidate confirmation, removes code as a normal gated edit.
 Complements `mutation-test` (which checks whether *existing* tests have teeth): this skill checks
 whether the code those tests cover is still reachable at all.
 
@@ -46,20 +48,47 @@ review/eval gates like any other change — this skill never bypasses them.
      config names directly. These are likely public API surface or process entry points invoked
      by name from outside grep's reach — flag them, don't bury them, but don't recommend removal.
 
-4. **Report.** Advisory table, one row per candidate — do not edit any file during the scan:
+4. **Report.** The scan itself edits no file. Print the Summary inline, then — **confirm-first**,
+   mirroring `context-check`/`context-doctor` — write a structured `dead-code-report.md` at the
+   repo root: ask `Write dead-code-report.md to the repo root? (y to confirm)`, overwrite if present
+   (a point-in-time snapshot, not a log). Structure:
 
    ```markdown
    # Dead Code Report
 
-   | File:line | Symbol | Kind | Confidence | Reason |
-   |---|---|---|---|---|
-   | src/foo.js:12 | oldHelper | function | high | no references found in scope |
-   | cli/index.py:1 | main | function | low | entry-point file — verify manually |
+   _Scope: <path> · Generated: <ISO date>_
 
-   N high-confidence candidates, M low-confidence. Advisory only — nothing removed yet.
+   ## Summary
+
+   | Metric | Count |
+   |---|---|
+   | High-confidence candidates | N |
+   | Low-confidence (entry-point) | M |
+   | Languages scanned | js, py, go |
+
+   Advisory only — nothing removed. Confirm candidates to remove; removals go through the sprint's gates.
+
+   ## High-confidence candidates
+
+   | File:line | Symbol | Kind | Reason |
+   |---|---|---|---|
+   | src/foo.js:12 | oldHelper | function | no references found in scope |
+
+   ## Low-confidence — verify manually
+
+   | File:line | Symbol | Kind | Reason |
+   |---|---|---|---|
+   | cli/index.py:1 | main | function | entry-point file — likely invoked by name |
+
+   ## Caveats
+
+   - Dynamic dispatch/reflection, barrel re-exports, string-only references, CLI entry points, and
+     test-runner conventions can hide real callers — spot-check before removing (see Gotchas).
    ```
 
-   If zero candidates found, say so — that's a real (clean) result, not a no-op.
+   Render `None.` under a candidate section with no rows. If **both** tables are empty, still write
+   the report (both `None.`) and say so — a clean result, not a no-op. The `Kind` column is the
+   declaration type (`function`/`class`/…); confidence is expressed by which table a row lands in.
 
 ## Confirm-then-remove loop
 
