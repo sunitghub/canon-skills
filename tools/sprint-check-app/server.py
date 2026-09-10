@@ -1048,6 +1048,21 @@ def cockpit_discover() -> dict:
         out.update(_cockpit_build_status(addr))
     return out
 
+def cockpit_sessions() -> list:
+    """t-391a: proxy the daemon's unauthenticated /sessions — the active cockpit
+    sessions across EVERY project the one daemon serves (nebula's model). Addr-only
+    discovery, no token (mirrors cockpit_discover / the /version reads). Returns []
+    when no healthy daemon or on any error, so the board renders an empty panel."""
+    addr, ok = _discover_cockpit_addr()
+    if not ok:
+        return []
+    try:
+        with urllib.request.urlopen(f'http://{addr}/sessions', timeout=0.6) as r:
+            data = json.loads(r.read().decode('utf-8'))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
 # t-74d6: detect a version-drifted (stale) running daemon. The board reuses a
 # detached daemon by liveness alone (see ensure_cockpit), so after the binary is
 # rebuilt the old daemon keeps serving until restarted. The board never holds
@@ -1277,6 +1292,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(load_why(file_))
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
+        elif path == '/api/cockpit-sessions':
+            self.send_json(cockpit_sessions())
         elif path == '/api/version':
             self.send_json(board_version())
         elif path == '/api/worktrees':

@@ -2921,6 +2921,42 @@ test.describe('cockpit in board (t-ddc8)', () => {
     if (plan) fs.writeFileSync(path.join(dir, 'plan.md'), plan.join('\n'));
   }
 
+  test('Cockpit sessions panel lists sessions across projects; clicking a row opens that session (t-391a)', async ({ page }) => {
+    const idA = `t-cspan-${Date.now()}`;
+    try {
+      writeTicket(idA, 'in_progress', {
+        acceptanceCriteria: ['- [ ] a criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/cockpit-sessions', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { session: 's1', ticket: idA, project_root: '/Users/me/projA', cwd: '/Users/me/projA', agent: 'claude', status: 'running', started: '2026-09-10T00:00:00Z' },
+          { session: 's2', ticket: 't-othr', project_root: 'C:\\Users\\me\\projB', cwd: 'C:\\Users\\me\\projB', agent: 'pi', status: 'needs-you', started: '2026-09-10T00:00:00Z' },
+        ]),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      const panel = page.locator('#cockpit-sessions');
+      await expect(panel).toBeVisible();
+      await expect(panel.locator('.cockpit-session-row')).toHaveCount(2);
+      await expect(panel).toContainText(idA);
+      await expect(panel).toContainText('projA');
+      // Windows project basename renders too — the panel splits on [\\/] (DRY Mac/Win).
+      await expect(panel).toContainText('projB');
+      await expect(panel.locator('.cs-status.needs-you')).toHaveText('needs-you');
+
+      // Clicking the row opens that session in the cockpit overlay (attach — the
+      // tokened Kill/Save & End live there; no token-free board kill, t-ddc8).
+      await panel.locator(`.cockpit-session-row[data-ticket="${idA}"]`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idA), { recursive: true, force: true });
+    }
+  });
+
   test('Resume on an in-progress card enters cockpit mode; acceptance renders; Esc returns', async ({ page }) => {
     const id = `t-ckres-${Date.now()}`;
     try {

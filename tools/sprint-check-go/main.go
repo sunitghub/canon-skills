@@ -222,6 +222,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, loadWhy(r.URL.Query().Get("file")))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
+	case "/api/cockpit-sessions":
+		sendJSON(w, cockpitSessions())
 	case "/api/version":
 		sendJSON(w, map[string]string{"version": canonVersion(), "commit": commit, "daemon": daemonVersion()})
 	case "/api/worktrees":
@@ -1883,6 +1885,33 @@ func cockpitDiscover() map[string]any {
 		}
 	}
 	return out
+}
+
+// cockpitSessions proxies the daemon's unauthenticated /sessions (t-391a) — the
+// active cockpit sessions across EVERY project the one daemon serves (nebula's
+// model). Addr-only discovery, no token (mirrors cockpitDiscover). Returns a
+// non-nil empty slice when no healthy daemon or on any error, so the board (and
+// the parity check) always sees a JSON array.
+func cockpitSessions() []map[string]any {
+	empty := []map[string]any{}
+	addr, ok := discoverCockpitAddr()
+	if !ok || addr == "" {
+		return empty
+	}
+	client := &http.Client{Timeout: 600 * time.Millisecond}
+	resp, err := client.Get("http://" + addr + "/sessions")
+	if err != nil {
+		return empty
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return empty
+	}
+	var sessions []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&sessions); err != nil || sessions == nil {
+		return empty
+	}
+	return sessions
 }
 
 // cockpitBinaryMtime is the on-disk daemon binary's mtime (unix) — the "latest"

@@ -107,6 +107,9 @@ type session struct {
 	cmd          *pty.Cmd
 	hookDir      string // daemon-owned ephemeral --settings dir; removed when the session ends
 	cwd          string // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
+	projectRoot  string // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
+	agent        string // t-391a: agent kind ("claude"/"pi") for the /sessions listing
+	started      time.Time // t-391a: spawn time for the /sessions listing
 
 	mu            sync.Mutex
 	buf           []byte
@@ -212,6 +215,7 @@ func (s *server) handler() http.Handler {
 		mux.Handle("/web/", s.guardHandler(http.StripPrefix("/web/", http.FileServer(http.FS(sub)))))
 	}
 	mux.HandleFunc("/session/start", s.guard(s.handleStart))
+	mux.HandleFunc("/sessions", s.guard(s.handleSessions))
 	mux.HandleFunc("/session/", s.guard(s.handleSession))
 	return mux
 }
@@ -364,10 +368,21 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid agent", http.StatusBadRequest)
 		return
 	}
-	// Shape-valid is not enough: with no such ticket in the project, spawn()'s
-	// fixed "sprint start <id>" prompt resolves to nothing, and the spawned
-	// agent goes hunting for context instead of failing clearly (t-842b).
-	if fi, err := os.Stat(filepath.Join(s.ticketsDir(), body.Ticket)); err != nil || !fi.IsDir() {
+	// t-391a: derive the project from the (re-validated) client cwd so ONE
+	// daemon serves tickets from ANY project (nebula's model), not only the
+	// launch-time COCKPIT_PROJECT_ROOT. resolveProjectForCwd re-validates the
+	// cwd (abs, exists, a real git working tree) — the daemon never trusts the
+	// client string (t-b19b/t-cd06) — and returns the MAIN checkout (where a
+	// gitignored .tickets/ lives).
+	projectRoot, ok := s.resolveProjectForCwd(body.Cwd)
+	if !ok {
+		http.Error(w, "cwd not allowed", http.StatusBadRequest)
+		return
+	}
+	// Shape-valid is not enough: with no such ticket in the resolved project,
+	// spawn()'s fixed "sprint start <id>" prompt resolves to nothing, and the
+	// spawned agent goes hunting for context instead of failing clearly (t-842b).
+	if fi, err := os.Stat(filepath.Join(s.ticketsDirIn(projectRoot), body.Ticket)); err != nil || !fi.IsDir() {
 		http.Error(w, "ticket not found in project", http.StatusBadRequest)
 		return
 	}
@@ -377,7 +392,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// For an already in_progress ticket, the persisted cwd from its first
 	// start wins over whatever the client sent — a live conversation must
 	// never be reattached in a different directory than it started in.
-	cwd, ok := s.resolveSpawnCwdForTicket(body.Ticket, body.Cwd)
+	cwd, ok := s.resolveSpawnCwdForTicket(body.Ticket, body.Cwd, projectRoot)
 	if !ok {
 		http.Error(w, "cwd not allowed", http.StatusBadRequest)
 		return
@@ -385,25 +400,23 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// t-e5ff: a git worktree materializes only *tracked* files, so when
 	// `.tickets/` is gitignored the ticket dir is absent in a non-main worktree
 	// cwd — a sprint spawned there lands somewhere it can't see its own ticket.
-	// For any cwd other than the main checkout, require the ticket dir to be
-	// physically present at that cwd. The main checkout is already validated
-	// against projectRoot above and physically holds `.tickets/` even when it's
-	// gitignored, so it is exempt. The board blocks this in the UI too, but the
-	// daemon never trusts the client (t-b19b/t-cd06).
-	if resolvedRoot, rerr := filepath.EvalSymlinks(s.cfg.projectRoot); rerr != nil || !pathsEqual(cwd, resolvedRoot) {
+	// For any cwd other than the project's main checkout, require the ticket dir
+	// to be physically present at that cwd. The main checkout already passed the
+	// existence check above.
+	if !pathsEqual(cwd, projectRoot) {
 		if fi, serr := os.Stat(filepath.Join(cwd, ".tickets", body.Ticket)); serr != nil || !fi.IsDir() {
 			http.Error(w, "ticket not visible in this worktree (.tickets/ is gitignored) — start from the main checkout", http.StatusBadRequest)
 			return
 		}
 	}
-	se, err := s.spawn(body.Ticket, cwd, kind)
+	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
 	if err != nil {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 	// Record the last-used agent for the picker's default + hint (only when
 	// changed). After a successful spawn, so a failed start never records.
-	s.persistAgentKind(body.Ticket, kind)
+	s.persistAgentKindIn(projectRoot, body.Ticket, kind)
 	// t-7590: echo the cwd the daemon actually resolved and spawned in (may
 	// differ from what the client requested — a locked in_progress ticket
 	// reuses its persisted .cockpit-cwd, an empty request resolves to the main
@@ -524,7 +537,12 @@ func agentDisplayModel(m string) string {
 // dependent on Save & End / agent-written HANDOFF. Best-effort: a write failure
 // must never block a spawn that already succeeded.
 func (s *server) persistAgentKind(ticket, kind string) {
-	p := filepath.Join(s.ticketsDir(), ticket, ".cockpit-agent")
+	s.persistAgentKindIn(s.cfg.projectRoot, ticket, kind)
+}
+
+// persistAgentKindIn records the last-used agent under an arbitrary project root (t-391a).
+func (s *server) persistAgentKindIn(root, ticket, kind string) {
+	p := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-agent")
 	if b, err := os.ReadFile(p); err == nil && strings.TrimSpace(string(b)) == kind {
 		return
 	}
@@ -539,7 +557,7 @@ func (s *server) persistAgentKind(ticket, kind string) {
 // treats unrecognized positionals as free-text prompt content and submits only
 // the first, so the ticket id was silently dropped (verified live, t-842b).
 // Still an argv slice, never a shell string; no token is in the argv of the child.
-func (s *server) spawn(ticket, cwd, kind string) (*session, error) {
+func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) {
 	p, err := pty.New()
 	if err != nil {
 		return nil, err
@@ -555,7 +573,7 @@ func (s *server) spawn(ticket, cwd, kind string) (*session, error) {
 		program = envOr("COCKPIT_PI_BIN", "pi")
 		// Resume (pi -c) when the ticket is already in_progress; else a fresh
 		// positional "sprint start <ticket>". Option B — see agentSpawnArgs.
-		args = agentSpawnArgs("pi", ticket, s.ticketStatus(ticket) == "in_progress", "", "", "")
+		args = agentSpawnArgs("pi", ticket, s.ticketStatusIn(projectRoot, ticket) == "in_progress", "", "", "")
 	} else {
 		// The Notification hook goes in via --settings, which loads ADDITIONAL
 		// settings (verified: the project's own permissions.ask rules still fire), so
@@ -573,8 +591,8 @@ func (s *server) spawn(ticket, cwd, kind string) (*session, error) {
 		// t-2e7e: pin/resume a claude session id. Never --fork-session alongside
 		// --resume — that mints a NEW id instead of continuing the real
 		// conversation, defeating the whole point.
-		claudeSessionID, resuming := s.resolveClaudeSessionID(ticket)
-		args = agentSpawnArgs("claude", ticket, resuming, claudeSessionID, s.gateModel(ticket), settingsPath)
+		claudeSessionID, resuming := s.resolveClaudeSessionIDIn(projectRoot, ticket)
+		args = agentSpawnArgs("claude", ticket, resuming, claudeSessionID, s.gateModelIn(projectRoot, ticket), settingsPath)
 	}
 	c := p.Command(resolveSpawnBin(program), args...)
 	c.Dir = cwd
@@ -586,10 +604,11 @@ func (s *server) spawn(ticket, cwd, kind string) (*session, error) {
 	}
 	// t-cd06: best-effort, non-fatal — a logging failure (disk full, read-only
 	// fs) must never block a real spawn that already succeeded.
-	s.logWorktreeDecision(ticket, cwd)
+	s.logWorktreeDecision(ticket, cwd, projectRoot)
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
-		hookDir: hookDir, cwd: cwd,
+		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot,
+		agent: kind, started: time.Now(),
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
@@ -611,6 +630,45 @@ func (s *server) spawn(ticket, cwd, kind string) (*session, error) {
 	go se.readLoop()
 	go func() { _ = c.Wait() }() // reap on exit/kill so no zombie child is left
 	return se, nil
+}
+
+// handleSessions lists the daemon's active sessions across ALL projects it
+// serves (t-391a — nebula's model: one daemon, many projects, so the board
+// renders a session list rather than a daemon roster). Unauthenticated like
+// /version — the token-free board must read it (t-ddc8: the boot token stays
+// daemon-side; the board never holds it), but still behind guard() so it's
+// loopback-only and Origin-checked (no cross-origin browser read). Returns
+// ticket/project/cwd/agent/status/started only — never any token, so exposing
+// it token-free leaks nothing a local `ps` couldn't already show.
+func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	type sessionInfo struct {
+		Session     string `json:"session"`
+		Ticket      string `json:"ticket"`
+		ProjectRoot string `json:"project_root"`
+		Cwd         string `json:"cwd"`
+		Agent       string `json:"agent"`
+		Status      string `json:"status"`
+		Started     string `json:"started"`
+	}
+	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
+	s.mu.Lock()
+	out := make([]sessionInfo, 0, len(s.sessions))
+	for _, se := range s.sessions {
+		se.mu.Lock()
+		exited := se.exited
+		info := sessionInfo{
+			Session: se.sid, Ticket: se.ticket, ProjectRoot: se.projectRoot,
+			Cwd: se.cwd, Agent: se.agent, Status: se.status,
+			Started: se.started.UTC().Format(time.RFC3339),
+		}
+		se.mu.Unlock()
+		if !exited {
+			out = append(out, info)
+		}
+	}
+	s.mu.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
 }
 
 // handleSession routes /session/{sid}/{stream|input|resize|kill|status}.
@@ -1277,7 +1335,15 @@ func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *s
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	root, ok := previewRootFor(body.Path, s.cfg.projectRoot)
+	// t-391a: preview containment is scoped to THIS session's project root
+	// (git toplevel of its cwd), not the launch global — so one daemon serving
+	// many projects still confines each preview to its own project. Falls back
+	// to the launch global if unset (older/directly-constructed sessions).
+	projectRoot := se.projectRoot
+	if projectRoot == "" {
+		projectRoot = s.cfg.projectRoot
+	}
+	root, ok := previewRootFor(body.Path, projectRoot)
 	if !ok {
 		http.Error(w, "path not allowed", http.StatusBadRequest)
 		return
@@ -1395,7 +1461,14 @@ func (s *server) writeHookSettings(sid, statusToken string) (string, error) {
 // subdirectory would otherwise make every Gate model: override a silent no-op —
 // indistinguishable from "no plan.md yet", since both are just a read error.
 func (s *server) ticketsDir() string {
-	dir := s.cfg.projectRoot
+	return s.ticketsDirIn(s.cfg.projectRoot)
+}
+
+// ticketsDirIn resolves the .tickets dir for an arbitrary project root by
+// walking up from it (t-391a: per-request project scoping — one daemon serves
+// many projects). ticketsDir() is the launch-default wrapper.
+func (s *server) ticketsDirIn(root string) string {
+	dir := root
 	for dir != "" && dir != "/" {
 		for _, marker := range []string{".tickets", ".git"} {
 			if fi, err := os.Stat(filepath.Join(dir, marker)); err == nil && fi.IsDir() {
@@ -1408,7 +1481,7 @@ func (s *server) ticketsDir() string {
 		}
 		dir = parent
 	}
-	return filepath.Join(s.cfg.projectRoot, ".tickets")
+	return filepath.Join(root, ".tickets")
 }
 
 // listWorktrees returns the absolute path of every worktree `git` knows about
@@ -1417,7 +1490,14 @@ func (s *server) ticketsDir() string {
 // names this the single source of truth, deliberately not a cockpit-owned
 // registry.
 func (s *server) listWorktrees() ([]string, error) {
-	out, err := exec.Command("git", "-C", s.cfg.projectRoot, "worktree", "list", "--porcelain").Output()
+	return s.listWorktreesIn(s.cfg.projectRoot)
+}
+
+// listWorktreesIn lists git worktrees for an arbitrary root (t-391a). The FIRST
+// entry is always the main checkout — the tree where a gitignored `.tickets/`
+// actually lives — so it doubles as "the project root for this cwd".
+func (s *server) listWorktreesIn(root string) ([]string, error) {
+	out, err := exec.Command("git", "-C", root, "worktree", "list", "--porcelain").Output()
 	if err != nil {
 		return nil, err
 	}
@@ -1430,6 +1510,41 @@ func (s *server) listWorktrees() ([]string, error) {
 	return paths, nil
 }
 
+// resolveProjectForCwd derives the project root for a client-supplied cwd so a
+// single daemon can serve tickets from ANY project (t-391a, nebula's model),
+// not just the launch-time COCKPIT_PROJECT_ROOT. The daemon never trusts the
+// client string: the cwd must be absolute, exist (EvalSymlinks), and be a real
+// git working tree. The returned root is that tree's MAIN checkout (the first
+// `git worktree list` entry) — where a gitignored `.tickets/` lives — so a
+// linked-worktree cwd still resolves to the parent repo that holds the ticket,
+// preserving the t-e5ff "not visible in this worktree" flow. Empty cwd falls
+// back to cfg.projectRoot (backward compatible). Reuses the OS-aware
+// EvalSymlinks/pathsEqual helpers — no per-OS path branch (DRY, Mac/Win).
+func (s *server) resolveProjectForCwd(cwd string) (string, bool) {
+	if cwd == "" {
+		// Verbatim (not EvalSymlinks'd): the "" request resolves to the launch
+		// projectRoot and must echo it unchanged, matching the actual spawn cwd
+		// and the `requested` echo (t-7590/t-eed3). Containment/ticket checks
+		// EvalSymlinks internally, so a symlinked root is still handled.
+		return s.cfg.projectRoot, true
+	}
+	if !filepath.IsAbs(cwd) {
+		return "", false
+	}
+	resolved, err := filepath.EvalSymlinks(cwd)
+	if err != nil {
+		return "", false
+	}
+	wts, err := s.listWorktreesIn(resolved)
+	if err != nil || len(wts) == 0 {
+		return "", false // not a git working tree — never assume a project
+	}
+	if main, err := filepath.EvalSymlinks(wts[0]); err == nil {
+		return main, true
+	}
+	return wts[0], true
+}
+
 // pathsEqual compares two already-resolved absolute paths. Windows paths are
 // case-insensitive; POSIX paths are not.
 func pathsEqual(a, b string) bool {
@@ -1439,14 +1554,14 @@ func pathsEqual(a, b string) bool {
 	return a == b
 }
 
-// resolveSpawnCwd validates a client-supplied cwd against projectRoot or a
-// live `git worktree list` re-check — the daemon never trusts the client
-// string alone, mirroring previewRootFor's "daemon re-validates itself"
-// precedent (t-b19b). An empty cwd resolves to projectRoot (today's
-// behavior, unchanged).
-func (s *server) resolveSpawnCwd(cwd string) (string, bool) {
+// resolveSpawnCwd validates a client-supplied cwd against the given project
+// root or a live `git worktree list` re-check — the daemon never trusts the
+// client string alone (t-b19b). An empty cwd resolves to the project root.
+// t-391a: projectRoot is now per-request (resolveProjectForCwd), not the launch
+// global, so one daemon validates cwds for any project.
+func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 	if cwd == "" {
-		return s.cfg.projectRoot, true
+		return projectRoot, true
 	}
 	if !filepath.IsAbs(cwd) {
 		return "", false
@@ -1455,14 +1570,14 @@ func (s *server) resolveSpawnCwd(cwd string) (string, bool) {
 	if err != nil {
 		return "", false // doesn't exist or can't be resolved — never assume safe
 	}
-	resolvedRoot, err := filepath.EvalSymlinks(s.cfg.projectRoot)
+	resolvedRoot, err := filepath.EvalSymlinks(projectRoot)
 	if err != nil {
-		resolvedRoot = s.cfg.projectRoot
+		resolvedRoot = projectRoot
 	}
 	if pathsEqual(resolvedCwd, resolvedRoot) {
 		return resolvedCwd, true
 	}
-	worktrees, err := s.listWorktrees()
+	worktrees, err := s.listWorktreesIn(projectRoot)
 	if err != nil {
 		return "", false
 	}
@@ -1486,9 +1601,9 @@ func (s *server) resolveSpawnCwd(cwd string) (string, bool) {
 // WORKTREE picker never needs to be re-asked mid-sprint. A ticket freshly
 // (re)opened from open/closed re-resolves and re-persists, same as a fresh
 // (non-resumed) claude session id.
-func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd string) (string, bool) {
-	cwdPath := filepath.Join(s.ticketsDir(), ticket, ".cockpit-cwd")
-	if s.ticketStatus(ticket) == "in_progress" {
+func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot string) (string, bool) {
+	cwdPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-cwd")
+	if s.ticketStatusIn(projectRoot, ticket) == "in_progress" {
 		if b, err := os.ReadFile(cwdPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
 				if _, err := os.Stat(existing); err == nil {
@@ -1500,7 +1615,7 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd string) (string, 
 			}
 		}
 	}
-	resolved, ok := s.resolveSpawnCwd(requestedCwd)
+	resolved, ok := s.resolveSpawnCwd(requestedCwd, projectRoot)
 	if !ok {
 		return "", false
 	}
@@ -1515,17 +1630,17 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd string) (string, 
 // directly instead of going through the board UI. Best-effort: a write
 // failure is logged to stderr and never blocks the spawn that already
 // succeeded.
-func (s *server) logWorktreeDecision(ticket, cwd string) {
+func (s *server) logWorktreeDecision(ticket, cwd, projectRoot string) {
 	label := "main checkout"
-	if resolvedRoot, err := filepath.EvalSymlinks(s.cfg.projectRoot); err == nil {
-		if !pathsEqual(cwd, resolvedRoot) && !pathsEqual(cwd, s.cfg.projectRoot) {
+	if resolvedRoot, err := filepath.EvalSymlinks(projectRoot); err == nil {
+		if !pathsEqual(cwd, resolvedRoot) && !pathsEqual(cwd, projectRoot) {
 			label = cwd
 		}
-	} else if cwd != s.cfg.projectRoot {
+	} else if cwd != projectRoot {
 		label = cwd
 	}
 	line := fmt.Sprintf("- %s: sprint start used %s\n", time.Now().UTC().Format("2006-01-02"), label)
-	path := filepath.Join(s.ticketsDir(), ticket, "Decisions.md")
+	path := filepath.Join(s.ticketsDirIn(projectRoot), ticket, "Decisions.md")
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cockpit: worktree decision log unavailable: %v\n", err)
@@ -1543,7 +1658,12 @@ var ticketStatusRe = regexp.MustCompile(`(?m)^status:\s*(\S+)`)
 // ticket.md. Empty string (never an error) if the file or field is absent —
 // callers treat that the same as "not in_progress" (t-2e7e).
 func (s *server) ticketStatus(ticket string) string {
-	b, err := os.ReadFile(filepath.Join(s.ticketsDir(), ticket, "ticket.md"))
+	return s.ticketStatusIn(s.cfg.projectRoot, ticket)
+}
+
+// ticketStatusIn reads a ticket's status from an arbitrary project root (t-391a).
+func (s *server) ticketStatusIn(root, ticket string) string {
+	b, err := os.ReadFile(filepath.Join(s.ticketsDirIn(root), ticket, "ticket.md"))
 	if err != nil {
 		return ""
 	}
@@ -1570,8 +1690,14 @@ func (s *server) ticketStatus(ticket string) string {
 // id for a fresh --session-id start rather than handing claude a --resume it
 // will reject.
 func (s *server) resolveClaudeSessionID(ticket string) (id string, resuming bool) {
-	idPath := filepath.Join(s.ticketsDir(), ticket, ".cockpit-session-id")
-	if s.ticketStatus(ticket) == "in_progress" {
+	return s.resolveClaudeSessionIDIn(s.cfg.projectRoot, ticket)
+}
+
+// resolveClaudeSessionIDIn is resolveClaudeSessionID scoped to an arbitrary
+// project root (t-391a).
+func (s *server) resolveClaudeSessionIDIn(root, ticket string) (id string, resuming bool) {
+	idPath := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-session-id")
+	if s.ticketStatusIn(root, ticket) == "in_progress" {
 		if b, err := os.ReadFile(idPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
 				return existing, claudeConversationExists(existing)
@@ -1769,7 +1895,12 @@ func parseGateModel(content string) string {
 // default model and saying so. ticket has already passed ticketRe, so it cannot
 // traverse out of .tickets/.
 func (s *server) gateModel(ticket string) string {
-	plan := filepath.Join(s.ticketsDir(), ticket, "plan.md")
+	return s.gateModelIn(s.cfg.projectRoot, ticket)
+}
+
+// gateModelIn is gateModel scoped to an arbitrary project root (t-391a).
+func (s *server) gateModelIn(root, ticket string) string {
+	plan := filepath.Join(s.ticketsDirIn(root), ticket, "plan.md")
 	b, err := os.ReadFile(plan)
 	if err != nil {
 		return ""
