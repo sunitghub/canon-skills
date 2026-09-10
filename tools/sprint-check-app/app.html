@@ -1723,6 +1723,8 @@
     .cockpit-session-row .cs-status { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
     .cockpit-session-row .cs-status.running { background: var(--col-progress); color: #0b0f14; }
     .cockpit-session-row .cs-status.needs-you { background: #f59e0b; color: #0b0f14; }
+    /* Light mode: --col-progress is a saturated blue (#2563eb) — dark text is low-contrast; use white. */
+    html[data-theme="light"] .cockpit-session-row .cs-status.running { color: #fff; }
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */
