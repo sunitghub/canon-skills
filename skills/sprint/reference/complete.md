@@ -45,6 +45,21 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    risk** — the one documented place a gate reduction is flag-driven rather than diff-driven,
    the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
    `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
+
+   **Upkeep report-only guard (t-2201) — HARD, structural.** If `ticket.md` also carries a
+   `skills:` line (an *auto-Demo'd maintenance chore* — `t-354b`), the demo light-close is valid
+   **only if the sprint's diff is report-only**: `git diff --name-only $(git merge-base HEAD
+   origin/main) HEAD` (the same command the Model-tier check uses; canon gitignores `.tickets/`,
+   so its docs never count) must yield **only `.md` files**. If **any** non-`.md` (code) file
+   changed — e.g. a confirmed `dead-code-cleanup` removal landed in this ticket — the demo
+   light-close does **NOT** apply: run the **normal-tier** close instead (full wrapup + the
+   advisory `reviewer` + the full-session-model evaluator). This is **diff-derived, never the
+   agent's judgment, and only ever *tightens*** — an auto-Demo maintenance label can never lower a
+   gate on a code change; a code diff always forces the full close (honoring the north-star and
+   `dead-code-cleanup`'s own rule that confirmed removals go through the existing gates). A genuine
+   live-demo ticket (no `skills:` line) is unaffected — its `demo` is a deliberate human time-box
+   election, not an auto-elected maintenance default.
+
    It is paid for by being **loud** — a demo close must never look like a full close:
    - Every demo-skipped gate's `## Wrapup Gates` row reads `skipped | demo mode` (e.g.
      `code-simplifier | skipped | demo mode`). `security-review` and `eval` read `ran`.

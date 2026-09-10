@@ -529,6 +529,46 @@ test.describe('board modal', () => {
     }
   });
 
+  test('Upkeep selection auto-checks Demo, and a manual untick sticks (t-2201)', async ({ page }) => {
+    let createdId = '';
+    const title = `upkeep demo ${Date.now()}`;
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      // Phase 1 — auto-Demo carries through to the created ticket's frontmatter.
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-types .create-pill[data-type="chore"]').click();
+      const demo = page.locator('#c-demo');
+      await expect(demo).not.toHaveClass(/\bactive\b/);
+      await page.locator('#c-skills .create-pill[data-skill="context-check"]').click();
+      await expect(demo).toHaveClass(/\bactive\b/); // auto-elected
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      const tm = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
+      expect(tm).toContain('demo: true');
+      expect(tm).toContain('skills: context-check');
+
+      // Phase 2 — a manual untick takes ownership; a later skill click must not re-check.
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-types .create-pill[data-type="chore"]').click();
+      const demo2 = page.locator('#c-demo');
+      await page.locator('#c-skills .create-pill[data-skill="context-check"]').click();
+      await expect(demo2).toHaveClass(/\bactive\b/);
+      await demo2.click(); // user unticks
+      await expect(demo2).not.toHaveClass(/\bactive\b/);
+      await page.locator('#c-skills .create-pill[data-skill="context-doctor"]').click();
+      await expect(demo2).not.toHaveClass(/\bactive\b/); // stays off
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');

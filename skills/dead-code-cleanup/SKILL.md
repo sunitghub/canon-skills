@@ -66,7 +66,13 @@ review/eval gates like any other change — this skill never bypasses them.
 After the report:
 
 1. Ask the user which candidates (if any) to remove — accept a batch selection, not just one at
-   a time.
+   a time. **Before applying any removal, surface the working-tree state** — check
+   `git status --porcelain`; if there are uncommitted changes, tell the user the removals will be
+   added to their current diff and offer **commit-first / proceed-anyway / cancel**. This is an
+   *informed confirmation, not a hard clean-tree gate*: git makes every removal revertible
+   per-file (`git restore <file>`) whether or not the tree was clean, so never block on a dirty
+   tree — just make the undo choice visible (t-2201). A clean tree only buys a tidier isolated
+   diff, which the user may or may not want.
 2. For each confirmed candidate, remove the declaration (and now-orphaned code it alone made
    reachable, if obviously scoped to it) with a normal edit.
 3. The removal becomes part of whatever sprint is active. It is graded by that sprint's own
