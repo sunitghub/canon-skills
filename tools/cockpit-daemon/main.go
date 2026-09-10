@@ -37,12 +37,14 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	pty "github.com/aymanbagabas/go-pty"
@@ -956,6 +958,23 @@ func (s *server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 var shutdownExit = func() {
 	time.Sleep(150 * time.Millisecond)
 	os.Exit(0)
+}
+
+// shutdownAllSessions kills every session (killSession reaps each child process
+// group via kill_unix/kill_windows) and clears daemon.json — the graceful
+// teardown the SIGTERM/SIGINT handler runs (t-44d9) so a board force-restart
+// (pid SIGTERM) never orphans an agent, mirroring handleShutdown's force path.
+func (s *server) shutdownAllSessions() {
+	s.mu.Lock()
+	sessions := make([]*session, 0, len(s.sessions))
+	for _, se := range s.sessions {
+		sessions = append(sessions, se)
+	}
+	s.mu.Unlock()
+	for _, se := range sessions {
+		s.killSession(se)
+	}
+	os.Remove(filepath.Join(s.cfg.stateDir, "daemon.json"))
 }
 
 // ── session I/O ────────────────────────────────────────────────────────────
@@ -1996,6 +2015,18 @@ func main() {
 		fmt.Fprintln(os.Stderr, "warning: state file:", err)
 	}
 	fmt.Fprintf(os.Stderr, "cockpit-daemon %s listening on %s\n", version, ln.Addr().String())
+	// t-44d9: graceful teardown on SIGTERM/SIGINT so a board force-restart (a
+	// pid SIGTERM) reaps every session's child process group via killSession
+	// instead of orphaning the agent, then clears daemon.json before exit. (On
+	// Windows the board uses `taskkill /T`, a tree-kill that reaps children
+	// directly; this handler is the unix graceful path.)
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		s.shutdownAllSessions()
+		os.Exit(0)
+	}()
 	srv := &http.Server{Handler: s.handler()}
 	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintln(os.Stderr, err)
@@ -2010,7 +2041,9 @@ func writeStateFile(dir, addr, token string) error {
 		return err
 	}
 	f := filepath.Join(dir, "daemon.json")
-	data, _ := json.Marshal(map[string]string{"addr": addr, "token": token})
+	// t-44d9: include the daemon's pid so the board can force-restart it (kill +
+	// relaunch) cross-platform without holding the boot token (t-ddc8 preserved).
+	data, _ := json.Marshal(map[string]string{"addr": addr, "token": token, "pid": strconv.Itoa(os.Getpid())})
 	return os.WriteFile(f, data, 0o600)
 }
 

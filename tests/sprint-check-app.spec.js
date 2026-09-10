@@ -569,6 +569,39 @@ test.describe('board modal', () => {
     }
   });
 
+  test('daemon health pill reflects /api/cockpit + click force-restarts with busy-confirm (t-44d9)', async ({ page }) => {
+    let health = { running: true, addr: '127.0.0.1:1', stale: false };
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(health),
+    }));
+    const restartCalls = [];
+    let dialogMsg = '';
+    await page.route('**/api/cockpit-restart', r => {
+      const body = JSON.parse(r.request().postData() || '{}');
+      restartCalls.push(body);
+      r.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(body.force ? { running: true, restarted: true } : { ok: false, busy: true, sessions: 2 }),
+      });
+    });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const pill = page.locator('#h-version');
+    await expect(pill).toHaveClass(/daemon-healthy/); // green when healthy
+
+    // Flip to stale and force an immediate re-poll (avoid the 10s interval).
+    health = { running: true, addr: '127.0.0.1:1', stale: true };
+    await page.evaluate(() => refreshDaemonHealth());
+    await expect(pill).toHaveClass(/daemon-stale/); // red when stale
+
+    page.on('dialog', d => { dialogMsg = d.message(); d.accept(); }); // accept busy-confirm
+    await pill.click();
+    await expect.poll(() => restartCalls.length).toBeGreaterThanOrEqual(2);
+    expect(restartCalls[0].force).toBe(false); // first probes → busy
+    expect(restartCalls[1].force).toBe(true);  // confirm → force
+    expect(dialogMsg).toContain('2 cockpit sessions'); // multi-session warning names the count
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
