@@ -5,10 +5,11 @@
       "id": 1,
       "case_type": "control",
       "prompt": "Find dead code in this repo and report candidates for removal.",
-      "expected_output": "Runs a grep-based scan for unreferenced JS/Python/Go top-level declarations, produces a `file:line | symbol | kind | confidence | reason` markdown table, and asks which candidates to remove rather than deleting anything.",
+      "expected_output": "Runs a grep-based scan for unreferenced JS/Python/Go top-level declarations, prints a Summary inline, and (confirm-first) writes a structured `dead-code-report.md` at the repo root with a `## Summary` table, separate `## High-confidence candidates` and `## Low-confidence — verify manually` tables, and a `## Caveats` section — asking which candidates to remove rather than deleting anything.",
       "expectations": [
-        "Does not edit or delete any file during the scan step",
-        "Output includes a markdown table with columns for file:line, symbol, kind, and confidence",
+        "Does not edit or delete any existing file during the scan step",
+        "Produces a structured report with a Summary table plus separate high-confidence and low-confidence candidate tables (file:line, symbol, kind, reason)",
+        "Offers to write dead-code-report.md confirm-first (asks before writing / overwriting the report file), matching context-check/context-doctor",
         "Ends by asking the user to confirm which candidates (if any) to remove",
         "States the total count of high-confidence and low-confidence candidates"
       ]
