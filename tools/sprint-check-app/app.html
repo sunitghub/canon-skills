@@ -1814,7 +1814,7 @@
           <div class="sidebar-label">Cockpit daemon</div>
           <div class="daemon-status">
             <span class="daemon-dot" id="daemon-dot"></span>
-            <span class="daemon-status-label" id="daemon-status-label">Checking\u2026</span>
+            <span class="daemon-status-label" id="daemon-status-label">Checking…</span>
           </div>
           <button class="daemon-restart-btn" id="daemon-restart" type="button">Restart</button>
         </div>
@@ -2560,6 +2560,7 @@ async function fetchVersion() {
 // clickable pill superseded).
 let _daemonPrevStale = false;   // last observed stale state (for transition detection)
 let _daemonAutoOpened = false;  // opened for the current unhealthy episode? (don't re-nag)
+let _daemonFirstPoll = true;    // seed prev-state on first poll → never auto-open on load
 async function refreshDaemonHealth() {
   const dot = document.getElementById('daemon-dot');
   const label = document.getElementById('daemon-status-label');
@@ -2580,13 +2581,16 @@ async function refreshDaemonHealth() {
     dot.classList.add('healthy');
     label.textContent = 'Healthy';
   }
-  // Auto-open ONCE on a genuine healthy/off → unhealthy transition.
-  if (stale && !_daemonPrevStale && !_daemonAutoOpened) {
+  // Auto-open ONCE on a genuine healthy/off → unhealthy transition — but NEVER on
+  // the first poll (load-into-stale is the common fresh-pull case; the red dot +
+  // rail pulse already flag it without hijacking the user's persisted layout).
+  if (stale && !_daemonPrevStale && !_daemonAutoOpened && !_daemonFirstPoll) {
     _daemonAutoOpened = true;
     if (window.expandSidebarTo) window.expandSidebarTo('s-daemon');
   }
   if (!stale) _daemonAutoOpened = false; // re-arm only after it recovers
   _daemonPrevStale = stale;
+  _daemonFirstPoll = false;
 }
 
 // t-44d9: force-restart the daemon via the board's token-free /api/cockpit-restart.

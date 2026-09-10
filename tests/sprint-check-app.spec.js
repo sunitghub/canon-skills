@@ -655,6 +655,24 @@ test.describe('board modal', () => {
     await expect(toast).toContainText('Restart cancelled');
   });
 
+  test('sidebar daemon: no auto-open on load into an already-stale daemon (t-b421)', async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('sprint-check-sidebar-collapsed', 'true'));
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: true }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    // Stale is still flagged (dot + rail pulse) …
+    await expect(page.locator('#daemon-dot')).toHaveClass(/stale/);
+    await expect(page.locator('#daemon-rail-icon')).toHaveClass(/daemon-alert/);
+    // … but the user's persisted collapse is respected — no auto-open on load.
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
+    // Re-poll while still stale → still no open (transition-only, not per-poll).
+    await page.evaluate(() => refreshDaemonHealth());
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
