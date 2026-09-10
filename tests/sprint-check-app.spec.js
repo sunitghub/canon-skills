@@ -686,15 +686,15 @@ test.describe('board modal', () => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
     const count = page.locator('#daemon-session-count');
-    await expect(count).toHaveText('· 2 sessions');
+    await expect(count).toHaveText('· 2 active agent sessions');
 
     sessions = [{}]; // singular
     await page.evaluate(() => refreshDaemonHealth());
-    await expect(count).toHaveText('· 1 session');
+    await expect(count).toHaveText('· 1 active agent session');
 
     sessions = []; // none
     await page.evaluate(() => refreshDaemonHealth());
-    await expect(count).toHaveText('· no sessions');
+    await expect(count).toHaveText('· no active agent sessions');
 
     running = false; // daemon down → no count
     await page.evaluate(() => refreshDaemonHealth());
