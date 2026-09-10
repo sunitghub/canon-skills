@@ -1428,11 +1428,15 @@
     /* Docked to the rail's own right edge (an IDE-sidebar-style collapse
        handle) rather than a generic topbar button far from what it
        controls — moves with the rail as its width transitions. */
+    /* t-6ecc: top-right corner collapse toggle, mirroring the Preview's top-right
+       control (was a mid-right-edge handle at top:50%). Compact button; sits above
+       the ticket card (which gets id-row right padding to clear it); stays visible
+       when the rail collapses to 44px (it's outside .ck-rail-full). */
     .ck-rail-handle {
-      position: absolute; top: 50%; right: 2px; transform: translateY(-50%);
-      width: 16px; height: 32px; padding: 0; border: 1px solid var(--border);
-      border-radius: 0 6px 6px 0; background: var(--surface-raised); color: var(--text-muted);
-      display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 3;
+      position: absolute; top: 8px; right: 6px;
+      width: 20px; height: 20px; padding: 0; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--surface-raised); color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 4;
     }
     .ck-rail-handle:hover { color: var(--text); background: var(--surface-hover); }
     .ck-rail-handle svg { transition: transform .18s ease; }
@@ -1624,7 +1628,7 @@
     .ck-status-badge.st-progress { background: var(--col-progress); color: #0b0f14; }
     .ck-status-badge.st-done { background: var(--col-done); color: var(--col-done-contrast, #04210f); }
     .ck-status-badge.st-discarded { background: var(--col-discarded); color: #0b0f14; }
-    .ck-tc-idrow { display: flex; align-items: center; gap: 6px; }
+    .ck-tc-idrow { display: flex; align-items: center; gap: 6px; padding-right: 18px; } /* t-6ecc: clear the top-right rail collapse toggle */
     /* t-4272: the rail card (#ck-tc-id/#ck-tc-status/#ck-tc-title) is the single
        canonical ticket-context. Hide the duplicate topbar copy while the rail is
        expanded; reveal it only when the rail is collapsed, so context is never
@@ -5077,6 +5081,19 @@ function handoffDisplayState(raw, ticketId, isActive) {
   return { text: null, source: null };
 }
 
+// t-6ecc: the actionable "## Next Steps" list, shown in the STATUS panel alongside
+// Current Focus (Current Focus is context; Next Steps is the action). Same id-scoping
+// discipline as handoffDisplayState's Current-Focus fallback — only when this ticket is
+// the active sprint OR the section names its id, so an unrelated ticket's steps are
+// never shown. Returns the section text, or '' when absent/out-of-scope.
+function handoffNextSteps(raw, ticketId, isActive) {
+  const steps = raw ? sectionContent(raw, 'Next Steps') : '';
+  if (!steps) return '';
+  if (isActive) return steps;
+  const idRe = new RegExp('\\b' + ticketId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b');
+  return idRe.test(steps) ? steps : '';
+}
+
 // Renders this ticket's HANDOFF.md state bullet, if any — a fresh fetch each
 // call (not the page-load-cached state.handoff) so it reflects a save the
 // live agent just made, not a stale snapshot from when the cockpit opened.
@@ -5125,7 +5142,12 @@ async function renderCockpitState(t) {
   } else {
     stateHtml = '<div class="ck-add-hint">No saved state yet for this ticket in HANDOFF.md.</div>';
   }
-  box.innerHTML = worktreeLine + stateHtml;
+  // t-6ecc: surface the actionable "## Next Steps" alongside Current Focus.
+  const nextSteps = handoffNextSteps(raw, t.id, t.status === 'in_progress');
+  const nextHtml = nextSteps
+    ? '<div class="ck-state-source" style="margin-top:10px;">Next steps:</div>' + formatStateAsParagraphs(nextSteps, t)
+    : '';
+  box.innerHTML = worktreeLine + stateHtml + nextHtml;
 }
 
 // t-cd06: shared by every /api/worktree-lock caller below (init-selection,

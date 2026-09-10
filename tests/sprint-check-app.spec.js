@@ -3053,6 +3053,44 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('collapse toggle is top-anchored + STATUS shows HANDOFF Next Steps (t-6ecc)', async ({ page }) => {
+    const id = `t-6ecc-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] a criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/handoff', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ raw: `# Handoff\n## Current Focus\n${id} — build it\n\n## Next Steps\n1. Run \`sprint complete\` to close ${id}.\n` }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // (1) the rail collapse toggle sits near the TOP of the rail (not vertically centered).
+      const toggle = page.locator('#ck-rail-toggle');
+      await expect(toggle).toBeVisible();
+      const tb = await toggle.boundingBox();
+      const rail = await page.locator('.ck-rail').boundingBox();
+      expect(tb.y - rail.y).toBeLessThan(40);
+      // and it still toggles rail-collapsed
+      await toggle.click();
+      await expect(page.locator('#cockpit')).toHaveClass(/rail-collapsed/);
+      await toggle.click();
+      await expect(page.locator('#cockpit')).not.toHaveClass(/rail-collapsed/);
+
+      // (2) STATUS surfaces the HANDOFF ## Next Steps (Status accordion is open by default).
+      await expect(page.locator('#ck-state')).toContainText('Next steps');
+      await expect(page.locator('#ck-state')).toContainText('sprint complete');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('Resume on an in-progress card enters cockpit mode; acceptance renders; Esc returns', async ({ page }) => {
     const id = `t-ckres-${Date.now()}`;
     try {
