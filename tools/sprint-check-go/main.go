@@ -2272,12 +2272,18 @@ func registrySave(entries []registryProject) error {
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		return err
 	}
-	// indent=2 + trailing newline to match server.py's json.dumps(...indent=2)+"\n".
-	body, err := json.MarshalIndent(entries, "", "  ")
-	if err != nil {
+	// Match server.py's json.dumps(ensure_ascii=False, indent=2)+"\n" byte-for-byte.
+	// json.MarshalIndent HTML-escapes & < > (→ \u0026 …); Python does not, so a
+	// path/description containing those chars would diverge (t-9917 review finding).
+	// json.Encoder with SetEscapeHTML(false) + SetIndent produces the literal chars.
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(entries); err != nil { // Encode already appends a trailing "\n"
 		return err
 	}
-	body = append(body, '\n')
+	body := buf.Bytes()
 	if err := os.WriteFile(registryFile(), body, 0o600); err != nil {
 		return err
 	}

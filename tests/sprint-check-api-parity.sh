@@ -858,8 +858,8 @@ PY
 # + on-disk projects.json byte-for-byte, then DELETE and confirm empty on both.
 REGPROJ="$WORK/regproj"
 mkdir -p "$REGPROJ/.git"
-py_add="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ\",\"description\":\"reg parity\"}" "http://127.0.0.1:$PY_PORT/api/projects")"
-go_add="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ\",\"description\":\"reg parity\"}" "http://127.0.0.1:$GO_PORT/api/projects")"
+py_add="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ\",\"description\":\"reg & parity < test >\"}" "http://127.0.0.1:$PY_PORT/api/projects")"
+go_add="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ\",\"description\":\"reg & parity < test >\"}" "http://127.0.0.1:$GO_PORT/api/projects")"
 # Compare SEMANTICALLY: server.py (json.dumps) and main.go (json.Marshal) differ
 # only in whitespace across every endpoint; the byte-parity contract is the
 # on-disk projects.json (checked below), matching how the other parity blocks compare.

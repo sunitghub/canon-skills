@@ -136,6 +136,8 @@
 
 <script>
   function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+  // Attribute/JS-string-safe: also escapes " and ' (text-node serialization does not).
+  function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
   function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('canon-theme',h.dataset.theme);}catch(e){}}
   (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
   function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
@@ -166,16 +168,20 @@
     grid.innerHTML=shown.map(p=>`
       <div class="card">
         <h3>${esc(p.name)}</h3>
-        <div class="path" title="${esc(p.path)}">${esc(p.path)}</div>
+        <div class="path" title="${escAttr(p.path)}">${esc(p.path)}</div>
         <div class="desc">${esc(p.description||'')}</div>
         <div class="foot2">
           <span class="added">Added <b>${esc(p.added||'')}</b></span>
           <div class="actions">
-            <button class="dereg" title="Deregister" onclick="dereg('${esc(p.id)}','${esc(p.name)}')">&#10005;</button>
-            <button class="go" title="Open (coming in a later phase)" onclick="toast('Opening projects into a tab arrives in a later phase.')">&#8250;</button>
+            <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
+            <button class="go" title="Open (coming in a later phase)">&#8250;</button>
           </div>
         </div>
       </div>`).join('');
+    // Delegated handlers (no inline onclick with interpolated user data — avoids
+    // JS-string/attribute injection from a maliciously-named registered path).
+    grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
+    grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>toast('Opening projects into a tab arrives in a later phase.')));
   }
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
