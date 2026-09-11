@@ -232,7 +232,12 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	case "/api/projects":
 		sendJSON(w, registryLoad())
 	case "/api/tickets":
-		tickets := loadTickets()
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		tickets := loadTickets(root)
 		if !queryHasAll(r.URL.RawQuery) {
 			filtered := make([]ticket, 0, len(tickets))
 			for _, t := range tickets {
@@ -244,11 +249,33 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, tickets)
 	case "/api/handoff":
-		sendJSON(w, loadHandoff())
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, loadHandoff(root))
 	case "/api/git":
-		sendJSON(w, loadGit())
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, loadGit(root))
 	case "/api/why":
-		sendJSON(w, loadWhy(r.URL.Query().Get("file")))
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, loadWhy(r.URL.Query().Get("file"), root))
+	case "/api/project-stats":
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, projectStats(root))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
 	case "/api/cockpit-sessions":
@@ -267,12 +294,22 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if m := regexp.MustCompile(`^/api/commit/([0-9a-f]{4,40})$`).FindStringSubmatch(path); m != nil {
-			sendJSON(w, loadCommit(m[1]))
+			root, ok := effectiveRoot(r)
+			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, loadCommit(m[1], root))
 			return
 		}
 		if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
-			content, ok := readDoc(unescape(m[1]))
+			root, ok := effectiveRoot(r)
 			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			content, dok := readDoc(unescape(m[1]), root)
+			if !dok {
 				http.NotFound(w, r)
 				return
 			}
@@ -509,17 +546,18 @@ func parseTicket(path string) (ticket, error) {
 	return t, nil
 }
 
-func ticketPaths() []string {
-	if st, err := os.Stat(ticketsDir); err != nil || !st.IsDir() {
+func ticketPaths(root string) []string {
+	td := ticketsDirForRoot(root)
+	if st, err := os.Stat(td); err != nil || !st.IsDir() {
 		return nil
 	}
 	var paths []string
 	seen := map[string]bool{}
-	filepath.WalkDir(ticketsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || path == ticketsDir {
+	filepath.WalkDir(td, func(path string, d os.DirEntry, err error) error {
+		if err != nil || path == td {
 			return nil
 		}
-		rel, _ := filepath.Rel(ticketsDir, path)
+		rel, _ := filepath.Rel(td, path)
 		if d.IsDir() {
 			if strings.Count(rel, string(os.PathSeparator)) >= 1 {
 				return filepath.SkipDir
@@ -532,7 +570,7 @@ func ticketPaths() []string {
 		}
 		return nil
 	})
-	files, _ := filepath.Glob(filepath.Join(ticketsDir, "*.md"))
+	files, _ := filepath.Glob(filepath.Join(td, "*.md"))
 	for _, f := range files {
 		stem := strings.TrimSuffix(filepath.Base(f), filepath.Ext(f))
 		if seen[stem] || regexp.MustCompile(`^.+-(blueprint|acceptance|plan|decisions|qa|notes)$`).MatchString(stem) {
@@ -580,13 +618,13 @@ func typeOutcomeStats(tickets []ticket) map[string]map[string]int {
 	return stats
 }
 
-func loadTickets() []ticket {
+func loadTickets(root string) []ticket {
 	// Must stay a non-nil slice — Go's encoding/json marshals a nil slice as
 	// `null`, not `[]`, unlike server.py's load_tickets (always `tickets = []`);
 	// the frontend's renderHeader crashes on `null.filter(...)` when zero
 	// tickets exist, which aborts the whole board render (t-626d).
 	tickets := []ticket{}
-	for _, p := range ticketPaths() {
+	for _, p := range ticketPaths(root) {
 		if t, err := parseTicket(p); err == nil {
 			tickets = append(tickets, t)
 		}
@@ -620,8 +658,12 @@ func loadTickets() []ticket {
 	return tickets
 }
 
-func loadHandoff() map[string]any {
-	raw, err := os.ReadFile(handoffFile)
+func loadHandoff(root string) map[string]any {
+	hf := handoffFile
+	if root != "" {
+		hf = filepath.Join(root, "HANDOFF.md")
+	}
+	raw, err := os.ReadFile(hf)
 	if err != nil {
 		return map[string]any{"focus": nil, "raw": ""}
 	}
@@ -650,8 +692,8 @@ func loadHandoff() map[string]any {
 	return map[string]any{"focus": focusAny, "raw": text}
 }
 
-func loadGit() map[string]any {
-	status := runGit("status", "--porcelain")
+func loadGit(root string) map[string]any {
+	status := runGitIn(root, "status", "--porcelain")
 	modified := 0
 	for _, line := range strings.Split(status, "\n") {
 		if strings.TrimSpace(line) != "" {
@@ -659,7 +701,7 @@ func loadGit() map[string]any {
 		}
 	}
 	log := []map[string]string{}
-	for _, line := range strings.Split(runGit("log", "--oneline", "-40"), "\n") {
+	for _, line := range strings.Split(runGitIn(root, "log", "--oneline", "-40"), "\n") {
 		parts := strings.SplitN(line, " ", 2)
 		if len(parts) == 2 && !strings.HasPrefix(parts[1], "chore: auto-update handoff") && !strings.HasPrefix(parts[1], "chore: auto-handoff") {
 			log = append(log, map[string]string{"hash": parts[0], "message": parts[1]})
@@ -668,19 +710,20 @@ func loadGit() map[string]any {
 			}
 		}
 	}
-	branch := runGit("rev-parse", "--abbrev-ref", "HEAD")
+	branch := runGitIn(root, "rev-parse", "--abbrev-ref", "HEAD")
 	if branch == "" {
 		branch = "main"
 	}
 	var totalCommits any
-	if n, err := strconv.Atoi(strings.TrimSpace(runGit("rev-list", "--count", "HEAD"))); err == nil {
+	if n, err := strconv.Atoi(strings.TrimSpace(runGitIn(root, "rev-list", "--count", "HEAD"))); err == nil {
 		totalCommits = n
 	}
-	return map[string]any{"branch": branch, "project": filepath.Base(projectRoot), "root": projectRoot, "modified": modified, "log": log, "total_commits": totalCommits}
+	cwd := rootOr(root)
+	return map[string]any{"branch": branch, "project": filepath.Base(cwd), "root": cwd, "modified": modified, "log": log, "total_commits": totalCommits}
 }
 
-func loadCommit(hash string) map[string]any {
-	msg := runGit("log", "-1", "--format=%B", hash)
+func loadCommit(hash string, root string) map[string]any {
+	msg := runGitIn(root, "log", "-1", "--format=%B", hash)
 	lines := strings.Split(msg, "\n")
 	subject := ""
 	if len(lines) > 0 {
@@ -690,7 +733,7 @@ func loadCommit(hash string) map[string]any {
 	if len(lines) > 2 {
 		body = strings.TrimSpace(strings.Join(lines[2:], "\n"))
 	}
-	files := nonEmpty(strings.Split(runGit("diff-tree", "--no-commit-id", "-r", "--name-only", hash), "\n"))
+	files := nonEmpty(strings.Split(runGitIn(root, "diff-tree", "--no-commit-id", "-r", "--name-only", hash), "\n"))
 	related := map[string]bool{}
 	for _, m := range regexp.MustCompile(`\b([A-Za-z]+-[a-z0-9]{3,})\b`).FindAllStringSubmatch(msg, -1) {
 		related[m[1]] = true
@@ -701,11 +744,11 @@ func loadCommit(hash string) map[string]any {
 			related[strings.TrimSuffix(filepath.Base(f), ".md")] = true
 		}
 	}
-	return map[string]any{"hash": hash, "subject": subject, "body": body, "author": runGit("log", "-1", "--format=%an", hash), "date": firstN(runGit("log", "-1", "--format=%ci", hash), 10), "files": files, "related_ticket_ids": sortedKeys(related)}
+	return map[string]any{"hash": hash, "subject": subject, "body": body, "author": runGitIn(root, "log", "-1", "--format=%an", hash), "date": firstN(runGitIn(root, "log", "-1", "--format=%ci", hash), 10), "files": files, "related_ticket_ids": sortedKeys(related)}
 }
 
-func basenameCandidates(basename string) []string {
-	out := runGit("log", "--all", "--name-only", "--format=")
+func basenameCandidates(basename string, root string) []string {
+	out := runGitIn(root, "log", "--all", "--name-only", "--format=")
 	seen := map[string]bool{}
 	for _, line := range nonEmpty(strings.Split(out, "\n")) {
 		if filepath.Base(line) == basename {
@@ -715,7 +758,7 @@ func basenameCandidates(basename string) []string {
 	return sortedKeys(seen)
 }
 
-func loadWhy(file string) map[string]any {
+func loadWhy(file string, root string) map[string]any {
 	target := strings.TrimSpace(file)
 	if target == "" {
 		return map[string]any{"file": "", "results": []any{}, "message": "Enter a file path."}
@@ -724,19 +767,19 @@ func loadWhy(file string) map[string]any {
 		return map[string]any{"file": target, "results": []any{}, "message": "Use a project-relative file path."}
 	}
 	queryTarget := target
-	subjects := runGit("log", "--follow", "--format=%s", "--", queryTarget)
+	subjects := runGitIn(root, "log", "--follow", "--format=%s", "--", queryTarget)
 	var resolvedPath string
 	var alternatives []string
 	if subjects == "" {
 		basename := filepath.Base(target)
 		candidates := []string{}
 		if basename != "" && basename != "." {
-			candidates = basenameCandidates(basename)
+			candidates = basenameCandidates(basename, root)
 		}
 		if len(candidates) == 1 {
 			queryTarget = candidates[0]
 			resolvedPath = queryTarget
-			subjects = runGit("log", "--follow", "--format=%s", "--", queryTarget)
+			subjects = runGitIn(root, "log", "--follow", "--format=%s", "--", queryTarget)
 		} else if len(candidates) > 1 {
 			type ranked struct {
 				count int
@@ -744,7 +787,7 @@ func loadWhy(file string) map[string]any {
 			}
 			var items []ranked
 			for _, c := range candidates {
-				out := runGit("log", "--oneline", "--", c)
+				out := runGitIn(root, "log", "--oneline", "--", c)
 				n := 0
 				if out != "" {
 					n = len(strings.Split(strings.TrimSpace(out), "\n"))
@@ -760,7 +803,7 @@ func loadWhy(file string) map[string]any {
 				}
 				alternatives = append(alternatives, item.path)
 			}
-			subjects = runGit("log", "--follow", "--format=%s", "--", queryTarget)
+			subjects = runGitIn(root, "log", "--follow", "--format=%s", "--", queryTarget)
 		}
 	}
 	if subjects == "" {
@@ -769,7 +812,7 @@ func loadWhy(file string) map[string]any {
 	known := map[string]bool{}
 	byID := map[string]ticket{}
 	byPath := map[string]string{}
-	for _, p := range ticketPaths() {
+	for _, p := range ticketPaths(root) {
 		if t, err := parseTicket(p); err == nil {
 			id := fmt.Sprint(t["id"])
 			known[id] = true
@@ -947,7 +990,7 @@ func writeDoc(docFile, content string) bool {
 	p, ok := safeTicketDoc(docFile)
 	if !ok {
 		var legacyOK bool
-		p, legacyOK = legacyDocTarget(docFile)
+		p, legacyOK = legacyDocTarget(docFile, "")
 		if !legacyOK {
 			return false
 		}
@@ -1017,7 +1060,7 @@ func writeVisual(ticketID, filename, dataB64 string) map[string]any {
 func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string, demo bool, skills string) ticket {
 	os.MkdirAll(ticketsDir, 0755)
 	existing := map[string]bool{}
-	for _, p := range ticketPaths() {
+	for _, p := range ticketPaths("") {
 		stem := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
 		existing[stem] = true
 		if filepath.Base(p) == "ticket.md" {
@@ -1138,7 +1181,7 @@ func findTicketPath(id string) string {
 			return c
 		}
 	}
-	for _, p := range ticketPaths() {
+	for _, p := range ticketPaths("") {
 		if t, err := parseTicket(p); err == nil && fmt.Sprint(t["id"]) == id {
 			return p
 		}
@@ -1146,10 +1189,10 @@ func findTicketPath(id string) string {
 	return ""
 }
 
-func readDoc(docFile string) (string, bool) {
-	p, ok := safeTicketDoc(docFile)
+func readDoc(docFile string, root string) (string, bool) {
+	p, ok := safeTicketDoc2(docFile, root)
 	if !ok || !exists(p) {
-		if legacy, legacyOK := legacyDocTarget(docFile); legacyOK {
+		if legacy, legacyOK := legacyDocTarget(docFile, root); legacyOK {
 			p = legacy
 		} else {
 			return "", false
@@ -1163,6 +1206,15 @@ func readDoc(docFile string) (string, bool) {
 // (tools/sprint-check-app/server.py) — enforced by tests/sprint-check-api-parity.sh,
 // not shared code. Change one, change the other, then re-run that test.
 func safeTicketDoc(docFile string, exts ...string) (string, bool) {
+	return safeTicketDocIn(docFile, "", exts...)
+}
+
+func safeTicketDoc2(docFile string, root string) (string, bool) {
+	return safeTicketDocIn(docFile, root)
+}
+
+func safeTicketDocIn(docFile string, root string, exts ...string) (string, bool) {
+	td := ticketsDirForRoot(root)
 	if len(exts) == 0 {
 		exts = []string{".md"}
 	}
@@ -1178,12 +1230,12 @@ func safeTicketDoc(docFile string, exts ...string) (string, bool) {
 	if filepath.IsAbs(clean) || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) || !extOK {
 		return "", false
 	}
-	p := filepath.Join(ticketsDir, clean)
-	rel, err := filepath.Rel(ticketsDir, p)
+	p := filepath.Join(td, clean)
+	rel, err := filepath.Rel(td, p)
 	if err != nil || strings.HasPrefix(rel, "..") {
 		return "", false
 	}
-	if !containedAfterSymlinks(p) {
+	if !containedAfterSymlinksIn(p, td) {
 		return "", false
 	}
 	return p, true
@@ -1207,7 +1259,7 @@ func safeTicketDoc(docFile string, exts ...string) (string, bool) {
 // spuriously fail; it always bottoms out at an existing entity — worst case
 // ticketsDir itself, which always exists in practice — so EvalSymlinks on
 // whatever the walk finds should never fail for a legitimate write.
-func containedAfterSymlinks(p string) bool {
+func containedAfterSymlinksIn(p string, td string) bool {
 	target := p
 	for {
 		if _, err := os.Lstat(target); err == nil {
@@ -1223,26 +1275,27 @@ func containedAfterSymlinks(p string) bool {
 	if err != nil {
 		return false // exists per Lstat but can't be resolved — reject, never assume safe
 	}
-	root, err := filepath.EvalSymlinks(ticketsDir)
+	root, err := filepath.EvalSymlinks(td)
 	if err != nil {
-		root = ticketsDir
+		root = td
 	}
 	rel, err := filepath.Rel(root, resolved)
 	return err == nil && !strings.HasPrefix(rel, "..")
 }
 
-func legacyDocTarget(docFile string) (string, bool) {
+func legacyDocTarget(docFile string, root string) (string, bool) {
+	td := ticketsDirForRoot(root)
 	safe := filepath.Base(filepath.FromSlash(docFile))
 	if filepath.Ext(safe) != ".md" {
 		return "", false
 	}
 	if m := regexp.MustCompile(`^([A-Za-z]+-[A-Za-z0-9]+)-(.+)\.md$`).FindStringSubmatch(safe); m != nil {
-		folderTicket := filepath.Join(ticketsDir, m[1], "ticket.md")
+		folderTicket := filepath.Join(td, m[1], "ticket.md")
 		if exists(folderTicket) {
-			return filepath.Join(ticketsDir, m[1], m[2]+".md"), true
+			return filepath.Join(td, m[1], m[2]+".md"), true
 		}
 	}
-	return filepath.Join(ticketsDir, safe), true
+	return filepath.Join(td, safe), true
 }
 
 func section(text, heading string) string {
@@ -2352,6 +2405,73 @@ func registryRemove(id string) map[string]any {
 		registrySave(kept)
 	}
 	return map[string]any{"ok": true, "removed": removed}
+}
+
+// ── Per-request project scoping (t-a55a, Phase 2a) ─────────────────────────
+// Mirror of server.py's effective_root/project_stats. Read endpoints accept
+// ?project=<registry-id>; effectiveRoot resolves it to that registered
+// project's path (trust boundary: registered id only, never a raw path).
+// Returns (root, ok) — ok=false means an unknown id → caller sends 400. An
+// absent param yields (projectRoot, true) — today's behavior unchanged.
+
+func effectiveRoot(r *http.Request) (string, bool) {
+	pid := strings.TrimSpace(r.URL.Query().Get("project"))
+	if pid == "" {
+		return projectRoot, true
+	}
+	for _, e := range registryLoad() {
+		if e.ID == pid {
+			return e.Path, true
+		}
+	}
+	return "", false
+}
+
+func ticketsDirForRoot(root string) string {
+	if root == "" {
+		return ticketsDir
+	}
+	return filepath.Join(root, ".tickets")
+}
+
+func rootOr(root string) string {
+	if root == "" {
+		return projectRoot
+	}
+	return root
+}
+
+func runGitIn(root string, args ...string) string {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = rootOr(root)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	_ = cmd.Run()
+	return strings.TrimSpace(out.String())
+}
+
+func projectStats(root string) map[string]any {
+	updated := ""
+	if iso := runGitIn(root, "log", "-1", "--format=%cI"); iso != "" {
+		if when, err := time.Parse(time.RFC3339, strings.TrimSpace(iso)); err == nil {
+			secs := int(time.Since(when).Seconds())
+			switch {
+			case secs < 60:
+				updated = "just now"
+			case secs < 3600:
+				updated = fmt.Sprintf("%dm ago", secs/60)
+			case secs < 86400:
+				updated = fmt.Sprintf("%dh ago", secs/3600)
+			default:
+				updated = fmt.Sprintf("%dd ago", secs/86400)
+			}
+		}
+	}
+	ticketCount := 0
+	if matches, err := filepath.Glob(filepath.Join(ticketsDirForRoot(root), "*", "ticket.md")); err == nil {
+		ticketCount = len(matches)
+	}
+	return map[string]any{"updated": updated, "ticket_count": ticketCount}
 }
 
 func envOr(name, fallback string) string {
