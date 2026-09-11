@@ -1,6 +1,6 @@
 ---
 name: context-doctor
-description: Audits a repo's agent context — system prompt, CLAUDE.md/AGENTS.md, skills, and references — against the seven context-engineering lessons for modern Claude models, then writes claude-optimization.md with a Summary table. Use to right-size an agent setup, cutting over-constraint, redundancy, always-upfront context, and conflicting instructions.
+description: Audits a repo's agent context — system prompt, CLAUDE.md/AGENTS.md, skills, and references — against context-engineering lessons for Claude 4/5 models (model detected from the running session, or set via --model), then writes claude-optimization.md with a Summary table. Use to right-size an agent setup, cutting over-constraint, redundancy, always-upfront context, and conflicting instructions.
 category: agent-ops
 tags: [context, prompt, skills, audit, optimization]
 ---
@@ -28,6 +28,24 @@ or after a CLAUDE.md/skills grow large.
 
 Not for: running or testing the target app (static read only), general code review, or a single
 sprint diff.
+
+## Target model
+
+Two checkup modes, gating which Fable-5-specific checks run:
+
+- **`5`** (default) — full checkup: the seven lenses below, plus four Fable-5-specific checks
+  (reasoning-extraction avoidance, effort-default guidance, checkpoint/pause discipline,
+  progress-claim grounding).
+- **`4`** — the seven lenses only, plus the two checks that are model-agnostic (checkpoint/pause
+  discipline, progress-claim grounding). Skip reasoning-extraction avoidance and effort-default
+  guidance — those are Fable-5-only failure modes and would be false positives for a repo targeting
+  Opus 4.8.
+
+Detect the default from the running session's own model identity (stated in the system prompt).
+Override with `--model 4` or `--model 5` when the repo's target differs from the session model —
+e.g. auditing on Sonnet 5 a repo whose skills are written for an Opus 4.8 production deploy. State
+which mode was used, and how it was determined (detected vs. `--model` override), in the report
+header.
 
 ## Operating constraints
 
@@ -101,6 +119,39 @@ Rate each: **aligned** (follows the lesson), **advisory** (minor drift, worth tr
      reasoning reconciling them. Quote both sides.
    - `action` for any direct contradiction; `advisory` for tension worth clarifying.
 
+## Model-agnostic checks (both `4` and `5`)
+
+8. **Checkpoint/pause discipline.** Instructions that make Claude stop or ask permission more than
+   the task needs.
+   - Check for guidance that would block on "Want me to…?"/"Shall I…?" for reversible, in-scope
+     actions, or that omits when pausing is actually warranted (destructive/irreversible actions,
+     real scope changes, input only the user can provide).
+   - `action` when a skill/CLAUDE.md lacks any checkpoint guidance for a long-running or autonomous
+     workflow; `advisory` when guidance exists but is vague.
+
+9. **Progress-claim grounding.** Long-run status reporting that isn't tied to verifiable evidence.
+   - Check whether workflows that report progress (multi-step skills, autonomous loops) instruct
+     grounding each claim in a tool result from the session, and stating explicitly what wasn't
+     verified.
+   - `advisory` unless the repo has evidence of prior fabricated status reports, then `action`.
+
+## Fable-5-specific checks (`5` only)
+
+10. **Reasoning-extraction avoidance.** Instructions that ask Claude to echo, transcribe, or explain
+    its internal reasoning as response text.
+    - Check skills/CLAUDE.md for "explain your reasoning", "show your work", or similar asked of the
+      *response* (not `thinking` blocks). This can trigger Fable 5's `reasoning_extraction` refusal
+      category, causing fallbacks to Opus 4.8.
+    - `action` when found — do not raise this check in `4` mode; it is not a failure mode for
+      Opus 4.8.
+
+11. **Effort-default guidance.** Whether effort-level usage matches Fable 5's cost/latency curve.
+    - Check for blanket `xhigh` usage on routine work, or no effort guidance at all on a repo doing
+      capability-sensitive work. Recommend `high` as default, `xhigh` for the most
+      capability-sensitive workloads, `medium`/`low` for routine work.
+    - `advisory` — these are tuning recommendations specific to Fable 5, not a correctness bug; do
+      not raise this check in `4` mode, since Opus 4.8's effort/quality tradeoff differs.
+
 ## Summary and verdict
 
 Open the report with a Summary table — one row per lens:
@@ -126,6 +177,7 @@ Do not write without `y`. On confirmation, write `claude-optimization.md` at the
 
 ```
 context-doctor run: MM-DD-YYYY hh:mm
+Audited against: Claude <4|5> context-engineering guidance (<detected from session | --model override>)
 
 ## Context optimization: <repo-name>
 Scope: <artifacts inspected; which were absent>
@@ -139,6 +191,12 @@ Scope: <artifacts inspected; which were absent>
 | Memory: manual → durable | ... | ... | ... |
 | Specs → rich references | ... | ... | ... |
 | Conflicting instructions | ... | ... | ... |
+| Checkpoint/pause discipline | ... | ... | ... |
+| Progress-claim grounding | ... | ... | ... |
+| Reasoning-extraction avoidance (5 only) | ... | ... | ... |
+| Effort-default guidance (5 only) | ... | ... | ... |
+
+Omit the last two rows entirely in `4` mode — don't print them as "n/a".
 
 ### Details
 <one short paragraph per lens rated advisory/action, each with file:line evidence>
