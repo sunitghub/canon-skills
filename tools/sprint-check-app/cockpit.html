@@ -21,7 +21,7 @@
   .topbrand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.2px}
   .topbrand .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:16px}
   .topbrand small{font-weight:600;color:var(--card-stat);font-size:11px;margin-left:5px;letter-spacing:.02em}
-  .topbar .n{font-size:12px;font-weight:500;background:var(--accent-dim);color:var(--accent);border-radius:14px;padding:2px 9px}
+  .topbar .n{font-size:12px;font-weight:700;background:var(--accent-dim);color:var(--card-stat);border:1px solid var(--accent);border-radius:14px;padding:2px 10px;letter-spacing:.01em}
   .topfilter{margin-left:24px}
   .topfilter select{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 34px 9px 13px;color:var(--text-body);font-size:13px;min-width:230px;cursor:pointer;
     appearance:none;-webkit-appearance:none;
@@ -52,7 +52,8 @@
   .main{overflow:hidden;display:flex;flex-direction:column}
   /* Tab bar: pinned Projects + closable project tabs */
   .tabstrip{display:flex;align-items:center;gap:4px;height:40px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
-  .tab{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px 8px 0 0;font-size:13px;color:var(--text-muted);cursor:pointer;position:relative;top:1px;border:1px solid transparent;border-bottom:none;white-space:nowrap}
+  .tab{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px 8px 0 0;font-size:13px;color:var(--text-muted);cursor:pointer;position:relative;top:1px;border:1px solid transparent;border-bottom:none;white-space:nowrap;transition:color .12s ease,background .12s ease}
+  .tab:not(.active):hover{color:var(--text);background:var(--border-muted)}
   .tab.active{background:var(--bg);color:var(--text);border-color:var(--border);border-bottom-color:var(--bg)}
   .tab.pinned{font-weight:600}
   .tab .live{width:6px;height:6px;border-radius:50%;background:var(--col-done)}
