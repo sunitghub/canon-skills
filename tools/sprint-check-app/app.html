@@ -1380,6 +1380,19 @@
 
     /* ── Cockpit (t-ddc8) — one-window mode: board collapses, embedded agent
        terminal + inline acceptance rail + collapsed preview slot ───────────── */
+    /* ── Canon Cockpit project-tab embed (t-6a74, Phase 3) ─────────────────
+       When the board is embedded as a Cockpit ?project= tab (html.canon-proj-embed,
+       set from window.__canonProject), hide the shell-provided chrome (version,
+       daemon section, theme toggle, ? Help) and the brand text — keep the icon +
+       show the folder path. Keep ⚙ CI (per-project). Scoped to this marker ONLY,
+       so the standalone board and the t-ddc8 body.embed agent terminal are untouched. */
+    html.canon-proj-embed #h-version,
+    html.canon-proj-embed #s-daemon,
+    html.canon-proj-embed #theme-toggle,
+    html.canon-proj-embed #tour-btn,
+    html.canon-proj-embed .brand-text,
+    html.canon-proj-embed .header-sep { display: none !important; }
+
     #cockpit-overlay {
       position: fixed; inset: 0; z-index: 60; background: var(--bg);
       display: none; flex-direction: column;
@@ -1754,7 +1767,7 @@
             <text x="3" y="14.5" font-family="'JetBrains Mono','Fira Code',monospace" font-size="13" font-weight="700" fill="#00FFFF">❯</text>
           </svg>
         </div>
-        sprint-check
+        <span class="brand-text">sprint-check</span>
       </div>
       <span class="header-sep">/</span>
       <span class="header-project" id="h-project">—</span>
@@ -2305,6 +2318,10 @@
 (function(){
   const _project = new URLSearchParams(location.search).get('project') || '';
   if (!_project) return; // standalone board — leave fetch untouched
+  // t-6a74 (Phase 3): mark the embedded project-tab context so shell-provided
+  // chrome (version/daemon/theme/help) can be hidden and the breadcrumb swapped
+  // to the folder path. Distinct from the t-ddc8 `body.embed` agent-terminal mode.
+  document.documentElement.classList.add('canon-proj-embed');
   // Read endpoints that resolve via effective_root on the server.
   const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats)/;
   const _fetch = window.fetch.bind(window);
@@ -3054,7 +3071,10 @@ async function refreshCockpitSessions() {
 
 function renderHeader() {
   const { git, tickets } = state;
-  setText('h-project',  git?.project || 'project');
+  // t-6a74: in a Cockpit project tab, show the full folder path instead of the
+  // project name (brand text + version are hidden via html.canon-proj-embed).
+  const _embed = document.documentElement.classList.contains('canon-proj-embed');
+  setText('h-project',  _embed ? (git?.root || git?.project || 'project') : (git?.project || 'project'));
   document.getElementById('h-project').title = git?.root || '';
   state.gitRoot = git?.root || '';
   setText('h-branch',   git?.branch  || '—');
