@@ -186,6 +186,7 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      Reason cell — that fragment was retired by a later decision (the entry itself stays because
      its other topics are live), so do not surface it as a live constraint or resurrect it.
    - Read `tools/handoff.md` (same resolution as step 1's `tools/ticket.md` — plain relative path in canon itself, or via `command -v sprint`'s directory in a consumer project, or `where sprint` on Windows if `command -v` returns nothing), then: `HANDOFF.md` — create from template if absent, otherwise read current state and discoveries
+   - `LEARNINGS.md` at repo root, if present — pending/promoted findings from past sprints (see `skills/learnings-sweep/SKILL.md`). Absent is a valid result: no sprint has produced a keeper yet.
    - Active sprint files
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold
 

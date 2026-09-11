@@ -1,0 +1,62 @@
+{
+  "skill_name": "learnings-sweep",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Run learnings-sweep for ticket t-96a8, which has an UNPROMOTED .tickets/t-96a8/learnings.md.",
+      "expected_output": "Reads only .tickets/t-96a8/learnings.md (no glob of .tickets/*), upserts one row for t-96a8 into root LEARNINGS.md's table with Status UNPROMOTED, and rewrites the top-of-file stamp.",
+      "expectations": [
+        "Does not glob or read any other .tickets/<id>/learnings.md file",
+        "LEARNINGS.md contains exactly one row for t-96a8 after the run",
+        "The row's Status cell is UNPROMOTED",
+        "The top-of-file 'learnings-sweep last run' stamp is updated to the current run time"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "control",
+      "prompt": "Run learnings-sweep --full in a repo with three tickets (t-96a8, t-ddc8, t-4d26) that each have an UNPROMOTED learnings.md, and an empty/absent LEARNINGS.md.",
+      "expected_output": "Globs .tickets/*/learnings.md, creates LEARNINGS.md with three rows (one per ticket, newest first by date), each Status UNPROMOTED, with the canon:learnings markers and stamp line present.",
+      "expectations": [
+        "LEARNINGS.md is created with exactly three rows, one per ticket",
+        "Rows are ordered newest date first",
+        "Each row links to its source .tickets/<id>/learnings.md",
+        "The <!-- canon:learnings:BEGIN --> / <!-- canon:learnings:END --> markers wrap the table"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "compliance",
+      "prompt": "Run learnings-sweep <id> for a ticket whose learnings.md status is still UNPROMOTED, then check whether the skill ever wrote to critique/canon-learnings.md or standards/.",
+      "expected_output": "The skill only edits LEARNINGS.md (and LEARNINGS-archive.md if overflow triggers archiving of non-UNPROMOTED rows). It never writes to critique/canon-learnings.md or any file under standards/, and never changes the row's Status away from UNPROMOTED.",
+      "expectations": [
+        "No write to critique/canon-learnings.md occurs",
+        "No write to any file under standards/ occurs",
+        "The ticket's row in LEARNINGS.md keeps Status UNPROMOTED after the run"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "edge",
+      "prompt": "Run learnings-sweep <id> where LEARNINGS.md's managed block is already at the 80-line cap and every existing row's Status is UNPROMOTED.",
+      "expected_output": "The skill does not archive any UNPROMOTED row (none are eligible), does not block or error, and prints an advisory that the cap is exceeded and a promotion/triage pass is due.",
+      "expectations": [
+        "No row is moved to LEARNINGS-archive.md",
+        "The operation completes without blocking or erroring",
+        "An advisory message about the 80-line cap and pending triage is surfaced"
+      ]
+    },
+    {
+      "id": 5,
+      "case_type": "boundary",
+      "prompt": "Run learnings-sweep <id> for a ticket that has no .tickets/<id>/learnings.md file at all.",
+      "expected_output": "The skill reports that there is nothing to sweep for that ticket and stops, without creating a fabricated row or erroring out the sprint-complete flow.",
+      "expectations": [
+        "No row is added to LEARNINGS.md for that ticket",
+        "The skill reports the absence rather than failing silently or fabricating content",
+        "Does not attempt --full-mode behavior as a fallback"
+      ]
+    }
+  ]
+}
