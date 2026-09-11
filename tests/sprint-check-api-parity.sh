@@ -909,6 +909,41 @@ for port in "$PY_PORT" "$GO_PORT"; do
   [[ "$n1" == "2" && "$n2" == "1" ]] || fail "sprint-check-api-parity: FAIL — project-scoped /api/tickets wrong on port $port (regproj=$n1 want 2, regproj2=$n2 want 1)"
 done
 
+# scoped /api/handoff, /api/git, /api/doc, /api/why parity (T2): seed regproj with a
+# HANDOFF + a ticket doc, then assert each read endpoint returns semantically-equal
+# data across backends for ?project=$reg_id (the backends differ only in JSON whitespace).
+( cd "$REGPROJ" && git init -q && git config user.email t@t && git config user.name t && git add -A && git commit -qm init )
+printf '# Handoff\n## Current Focus\nRegproj focus line for parity.\n' > "$REGPROJ/HANDOFF.md"
+printf '# Acceptance\n## Criteria\n- [ ] regproj doc parity\n' > "$REGPROJ/.tickets/t-aaa1/acceptance.md"
+scoped_parity() {
+  local ep="$1"
+  local py="$(curl -s "http://127.0.0.1:$PY_PORT$ep?project=$reg_id" 2>/dev/null)"
+  local go="$(curl -s "http://127.0.0.1:$GO_PORT$ep?project=$reg_id" 2>/dev/null)"
+  python3 - "$py" "$go" "$ep" <<'PY' || fail "sprint-check-api-parity: FAIL — scoped read parity mismatch"
+import json,sys
+py,go,ep=sys.argv[1],sys.argv[2],sys.argv[3]
+try:
+    if json.loads(py)!=json.loads(go): print("scoped parity differ for",ep); sys.exit(1)
+except Exception as e:
+    print("scoped parity parse error for",ep,e,"py=",py[:200],"go=",go[:200]); sys.exit(1)
+PY
+}
+scoped_parity "/api/handoff"
+scoped_parity "/api/git"
+scoped_parity "/api/why"   # ?project + no file → both return the "Enter a file path" shape
+# /api/doc needs the doc path in the URL; assert both backends return regproj's own doc
+py_doc="$(curl -s "http://127.0.0.1:$PY_PORT/api/doc/t-aaa1/acceptance.md?project=$reg_id")"
+go_doc="$(curl -s "http://127.0.0.1:$GO_PORT/api/doc/t-aaa1/acceptance.md?project=$reg_id")"
+python3 - "$py_doc" "$go_doc" <<'PY' || fail "sprint-check-api-parity: FAIL — scoped /api/doc parity mismatch"
+import json,sys
+py,go=json.loads(sys.argv[1]),json.loads(sys.argv[2])
+assert py==go, f"doc differ {py} {go}"
+assert "regproj doc parity" in py.get("content",""), f"doc not regproj-scoped: {py}"
+PY
+# /api/git scoped to regproj must report regproj as the project (not the server default)
+py_gitproj="$(curl -s "http://127.0.0.1:$PY_PORT/api/git?project=$reg_id" | python3 -c 'import sys,json;print(json.load(sys.stdin)["project"])')"
+[[ "$py_gitproj" == "regproj" ]] || fail "sprint-check-api-parity: FAIL — scoped /api/git project should be regproj, got $py_gitproj"
+
 # project-stats ticket_count parity + per-project
 py_s1="$(curl -s "http://127.0.0.1:$PY_PORT/api/project-stats?project=$reg_id")"
 go_s1="$(curl -s "http://127.0.0.1:$GO_PORT/api/project-stats?project=$reg_id")"
