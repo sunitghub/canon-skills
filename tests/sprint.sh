@@ -931,3 +931,140 @@ assert_eq "0" "$st_rc"
 assert_contains "$st_nobase" "suggested tier: normal"
 assert_contains "$st_nobase" "no git baseline"
 rm -rf "$st_d6"
+
+# ── t-eabb: not-run is a first-class, non-coercible verdict ──────────────────
+# _gate_eval_report_consistency: a `pass:` verdict contradicted by the report's
+# own `not-run`/`partial` status row must block close. Structural self-consistency
+# check (report's verdict token vs its own status tokens), not a semantic re-derive.
+consist_start_output="$("$SPRINT" start "not-run consistency gate test")"
+consist_id="$(printf '%s\n' "$consist_start_output" | awk '/Sprint started:/ { print $3 }')"
+cat > ".tickets/$consist_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+cat > ".tickets/$consist_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] item
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | pass |
+EOF
+cat > ".tickets/$consist_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-consist","agent_type":"general-purpose","transcript_path":"/tmp/consist.jsonl"}
+EOF
+
+# T1: pass: verdict + a `not-run` status row → blocked (naming the contradiction)
+cat > ".tickets/$consist_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-consist1
+Model: test-model
+## Test Plan
+| Item | Status | Notes |
+|---|---|---|
+| render the DOM and assert | not-run | no browser in eval env |
+## Verdict
+pass: all criteria met
+EOF
+notrun_verdict_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$notrun_verdict_output" "verdict is 'pass:' but a status row is graded 'not-run' or 'partial'"
+
+# T2: pass: verdict + a `partial` status row → blocked
+cat > ".tickets/$consist_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-consist2
+Model: test-model
+## Criteria
+| Criterion | Status | Evidence |
+|---|---|---|
+| feature works end to end | partial | only the happy path is wired |
+## Verdict
+pass: all criteria met
+EOF
+partial_verdict_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$partial_verdict_output" "verdict is 'pass:' but a status row is graded 'not-run' or 'partial'"
+
+# T7: CRLF eval-report (Windows Git Bash) with pass: + not-run → still blocked
+printf '# Eval Report\r\nevaluator-run-id: 1000000000-consist3\r\nModel: test-model\r\n## Test Plan\r\n| Item | Status | Notes |\r\n|---|---|---|\r\n| run the suite | not-run | interpreter missing |\r\n## Verdict\r\npass: all criteria met\r\n' > ".tickets/$consist_id/eval-report.md"
+crlf_verdict_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$crlf_verdict_output" "verdict is 'pass:' but a status row is graded 'not-run' or 'partial'"
+
+# Final close: a `pass:` report whose status tables contain ONLY real tokens
+# closes — and a `pass / fail / partial` TEMPLATE placeholder row must NOT trip the
+# gate (only a bare whitespace-bounded token counts). This one successful close
+# proves both T3 (a pass report with status tables closes) and the false-positive guard.
+cat > ".tickets/$consist_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-consist5
+Model: test-model
+## Criteria
+| Criterion | Status | Evidence |
+|---|---|---|
+| example row | pass / fail / partial | placeholder text, must not trip |
+| real row | pass | acceptance.md:3 |
+## Test Plan
+| Item | Status | Notes |
+|---|---|---|
+| npm test | pass | ran green |
+## Verdict
+pass: all criteria met
+EOF
+consist_complete_output="$("$SPRINT" complete)"
+assert_contains "$consist_complete_output" "Sprint completed: $consist_id"
+[[ "$consist_complete_output" == *"status row is graded"* ]] && fail "template placeholder 'pass / fail / partial' must not trip the not-run consistency gate: $consist_complete_output"
+assert_grep "^status: closed$" ".tickets/$consist_id/ticket.md"
+
+# T4: a fail: verdict WITH a not-run row is unchanged — _gate_eval_report_verdict
+# blocks it first (no pass:), and the consistency gate is a no-op on the non-pass path.
+consist2_start_output="$("$SPRINT" start "not-run fail-path unchanged test")"
+consist2_id="$(printf '%s\n' "$consist2_start_output" | awk '/Sprint started:/ { print $3 }')"
+cat > ".tickets/$consist2_id/plan.md" <<'EOF'
+# Plan
+## Sign-off
+- [x] Plan approved
+## Approach
+test
+EOF
+cat > ".tickets/$consist2_id/acceptance.md" <<'EOF'
+# Acceptance
+## Criteria
+- [x] item
+## Test Plan
+- [x] npm test
+## Wrapup Gates
+| Gate | Status | Reason |
+|------|--------|--------|
+| eval | ran | fail |
+EOF
+cat > ".tickets/$consist2_id/summary.md" <<'EOF'
+# Summary
+| Item | Status |
+|---|---|
+| done | delivered |
+EOF
+cat > ".tickets/$consist2_id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-consist6
+Model: test-model
+## Test Plan
+| Item | Status | Notes |
+|---|---|---|
+| render check | not-run | no browser |
+## Verdict
+fail: one item could not run
+EOF
+consist2_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$consist2_output" "eval-report.md verdict is not pass"
+[[ -f .tickets/ACTIVE ]] && "$TKT" close "$consist2_id" --no-sprint >/dev/null

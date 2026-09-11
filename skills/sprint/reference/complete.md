@@ -344,9 +344,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    Read `.tickets/<id>/eval-report.md` after the subagent completes and close its handle per
    the shared gate mechanics above. Surface any `fail` findings to the user before proceeding
-   — this includes any report where individual criteria/test-plan items graded `partial`,
-   since `eval.md` requires the verdict line to be `fail:` whenever a partial exists (there is
-   no separate non-blocking `partial:` verdict). Do not advance to step 4 if the evaluator
+   — this includes any report where individual criteria/test-plan items graded `partial`
+   **or `not-run`**, since `eval.md` requires the verdict line to be `fail:` whenever a partial
+   or not-run exists (there is no separate non-blocking `partial:`/`not-run:` verdict — `not-run`
+   means a load-bearing check could not execute, distinct from `fail` but equally blocking, and
+   `_gate_eval_report_consistency` mechanically rejects a `pass:` verdict contradicted by any
+   such row). Do not advance to step 4 if the evaluator
    verdict is `fail` — **unless** `ticket.md` has `eval_override: true` set and
    `acceptance.md` records at least one dated waiver (the coarse check `_gate_eval_report`
    also enforces mechanically). Read this field; never write `true` to it — `tkt create` seeds

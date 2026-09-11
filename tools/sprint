@@ -402,6 +402,34 @@ _gate_eval_report_verdict() {
   fi
 }
 
+# _gate_eval_report_consistency <id> <tdir> — structural self-consistency backstop
+# (t-eabb). Makes `not-run` a first-class, non-coercible verdict: a `pass:` verdict
+# must not be contradicted by the report's own status tables. If any criterion or
+# test-plan row is graded `not-run` (a load-bearing check that could NOT execute) or
+# `partial` (incomplete), eval.md's verdict rule requires the verdict line to be
+# `fail:` — a pass cannot stand while a check's result is unknown or incomplete. This
+# catches the accidental coercion where an honest `not-run`/`partial` row sits under a
+# `pass:` verdict; it does not claim to defeat deliberate forgery (an evaluator could
+# omit the row) — honest path easy, dishonest path loud (t-277d/t-6098). Structural
+# only: the report's own verdict token vs its own status tokens, never a semantic
+# re-derivation of the work (t-c0e6). Runs only on the `pass:` path — a non-pass
+# verdict is already handled by _gate_eval_report_verdict (block, or the eval_override
+# dated-waiver path, which has no `pass:` line), so this never double-blocks the
+# waiver. Pure-bash grep, Git-Bash/CRLF-safe: the status token is matched pipe-bounded
+# mid-line so a trailing \r never breaks it, and no python3/uuidgen/PowerShell is used
+# (t-f04f). `| pass / fail / partial |` template placeholders do NOT match — the cell
+# must be whitespace + a single token + whitespace.
+_gate_eval_report_consistency() {
+  local id="$1" tdir="$2" report="$tdir/eval-report.md"
+  grep -qE '^pass:' "$report" || return 0
+  if grep -qE '\|[[:space:]]*(not-run|partial)[[:space:]]*\|' "$report"; then
+    echo "Sprint $id cannot close: eval-report.md verdict is 'pass:' but a status row is graded 'not-run' or 'partial'."
+    echo "Per eval.md's verdict rule, any not-run (a check that could not execute) or partial forces the verdict to 'fail:' — a pass cannot stand while a check's result is unknown or incomplete."
+    grep -nE '\|[[:space:]]*(not-run|partial)[[:space:]]*\|' "$report" | head -3
+    return 1
+  fi
+}
+
 _gate_eval_report() {
   local id="$1" tdir="$2"
   local plan="$tdir/plan.md"
@@ -411,10 +439,11 @@ _gate_eval_report() {
   if _acceptance_section "Sign-off" "$plan" 2>/dev/null | sed 's/\*//g' | grep -qiE '^[[:space:]]*tier[[:space:]]*:[[:space:]]*trivial\b'; then
     return 0
   fi
-  _gate_eval_report_exists     "$id" "$tdir" || return 1
-  _gate_eval_report_authentic  "$id" "$tdir" || return 1
-  _gate_eval_report_verdict    "$id" "$tdir" || return 1
-  _gate_eval_report_model      "$id" "$tdir" || return 1
+  _gate_eval_report_exists      "$id" "$tdir" || return 1
+  _gate_eval_report_authentic   "$id" "$tdir" || return 1
+  _gate_eval_report_verdict     "$id" "$tdir" || return 1
+  _gate_eval_report_consistency "$id" "$tdir" || return 1
+  _gate_eval_report_model       "$id" "$tdir" || return 1
 }
 
 # _gate_review_notes_model <id> <tdir> — HARD RULE (t-072d): if the advisory
