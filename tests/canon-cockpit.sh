@@ -74,4 +74,22 @@ grep -q "__canonProject" <<<"$board" || fail "canon-cockpit: app.html missing th
 grep -q "urlTheme" <<<"$board" || fail "canon-cockpit: app.html does not honor shell-passed ?theme"
 grep -q "&theme=" <<<"$page" || fail "canon-cockpit: project iframe src does not carry the shell theme"
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper)"
+# ── Phase 3: embedded-board chrome stripped + folder-path breadcrumb (t-6a74) ─
+# The marker is applied client-side from __canonProject; assert the mechanism +
+# the marker-scoped hide CSS + folder-path logic are present in the served board.
+grep -q "canon-proj-embed" <<<"$board" || fail "canon-cockpit: app.html missing canon-proj-embed marker mechanism"
+grep -q "classList.add('canon-proj-embed')" <<<"$board" || fail "canon-cockpit: canon-proj-embed not applied from __canonProject context"
+grep -qF 'class="brand-text"' <<<"$board" || fail "canon-cockpit: brand text not wrapped in .brand-text (can't hide separately from icon)"
+# hide rules present for version/daemon/theme/help, scoped to the marker
+for sel in "#h-version" "#s-daemon" "#theme-toggle" "#tour-btn" ".brand-text"; do
+  grep -qF "html.canon-proj-embed $sel" <<<"$board" || fail "canon-cockpit: missing embed hide rule for $sel"
+done
+# CI button is KEPT (must NOT be in the hide list)
+grep -qF "html.canon-proj-embed #btn-ci-setup" <<<"$board" && fail "canon-cockpit: #btn-ci-setup must NOT be hidden in embed (CI kept per t-6a74)"
+# folder-path breadcrumb: embedded shows git.root
+grep -q "canon-proj-embed" <<<"$board" && grep -qE "git\??\.root" <<<"$board" || fail "canon-cockpit: embedded breadcrumb does not use git.root folder path"
+# must scope to canon-proj-embed, NOT the t-ddc8 body.embed agent-terminal mode
+grep -qE "html\.canon-proj-embed #h-version" <<<"$board" || fail "canon-cockpit: hide rules must key on canon-proj-embed"
+grep -qE "body\.embed #h-version|body\.embed #s-daemon" <<<"$board" && fail "canon-cockpit: must NOT hide chrome via body.embed (that's the t-ddc8 agent mode)"
+
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed)"
