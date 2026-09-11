@@ -888,6 +888,50 @@ if json.loads(sys.argv[1]) != json.loads(sys.argv[2]): sys.exit(1)
 PY
 
 reg_id="$(printf '%s' "$py_list" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")"
+
+# ── Phase 2a: project-scoped reads + stats + unknown-id 400 (t-a55a) ─────────
+# regproj (registered above, id=reg_id) gets 2 tickets; a 2nd project gets 1.
+# Assert /api/tickets?project=<id> is scoped per project, project-stats parity,
+# and an unknown id → 400, on BOTH backends.
+mkdir -p "$REGPROJ/.tickets/t-aaa1" "$REGPROJ/.tickets/t-aaa2"
+printf '# t\n' > "$REGPROJ/.tickets/t-aaa1/ticket.md"
+printf '# t\n' > "$REGPROJ/.tickets/t-aaa2/ticket.md"
+REGPROJ2="$WORK/regproj2"; mkdir -p "$REGPROJ2/.git/x" "$REGPROJ2/.tickets/t-bbb1"
+printf '# t\n' > "$REGPROJ2/.tickets/t-bbb1/ticket.md"
+curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ2\",\"description\":\"p2\"}" "http://127.0.0.1:$PY_PORT/api/projects" >/dev/null
+curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ2\",\"description\":\"p2\"}" "http://127.0.0.1:$GO_PORT/api/projects" >/dev/null
+reg_id2="$(curl -s "http://127.0.0.1:$PY_PORT/api/projects" | python3 -c "import sys,json;d=json.load(sys.stdin);print([e['id'] for e in d if e['path'].endswith('regproj2')][0])")"
+
+# scoped /api/tickets: regproj=2, regproj2=1 (both backends agree)
+for port in "$PY_PORT" "$GO_PORT"; do
+  n1="$(curl -s "http://127.0.0.1:$port/api/tickets?project=$reg_id" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')"
+  n2="$(curl -s "http://127.0.0.1:$port/api/tickets?project=$reg_id2" | python3 -c 'import sys,json;print(len(json.load(sys.stdin)))')"
+  [[ "$n1" == "2" && "$n2" == "1" ]] || fail "sprint-check-api-parity: FAIL — project-scoped /api/tickets wrong on port $port (regproj=$n1 want 2, regproj2=$n2 want 1)"
+done
+
+# project-stats ticket_count parity + per-project
+py_s1="$(curl -s "http://127.0.0.1:$PY_PORT/api/project-stats?project=$reg_id")"
+go_s1="$(curl -s "http://127.0.0.1:$GO_PORT/api/project-stats?project=$reg_id")"
+python3 - "$py_s1" "$go_s1" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/project-stats parity/shape"
+import json,sys
+a,b=json.loads(sys.argv[1]),json.loads(sys.argv[2])
+assert a==b, f"stats differ {a} {b}"
+assert a["ticket_count"]==2, f"ticket_count {a} want 2"
+assert "updated" in a
+PY
+
+# unknown project id → 400 on both backends, for a scoped read
+for port in "$PY_PORT" "$GO_PORT"; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/api/tickets?project=deadbeef0000")"
+  [[ "$code" == "400" ]] || fail "sprint-check-api-parity: FAIL — unknown project id should 400 on port $port (got $code)"
+done
+
+# no-param /api/tickets unchanged (still returns the server's default-project list)
+py_np="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PY_PORT/api/tickets")"
+[[ "$py_np" == "200" ]] || fail "sprint-check-api-parity: FAIL — no-param /api/tickets should still 200 (got $py_np)"
+
+curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$PY_PORT/api/projects/$reg_id2" >/dev/null
+curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$GO_PORT/api/projects/$reg_id2" >/dev/null
 curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$PY_PORT/api/projects/$reg_id" >/dev/null
 curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$GO_PORT/api/projects/$reg_id" >/dev/null
 py_after="$(curl -s "http://127.0.0.1:$PY_PORT/api/projects")"

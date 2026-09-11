@@ -38,16 +38,31 @@
   .brand{display:flex;align-items:center;gap:9px;padding:0 18px 16px;font-weight:700;font-size:16px}
   .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:14px}
   .brand small{font-weight:500;color:var(--text-dim);font-size:10px;margin-left:auto}
-  .navlabel{font-size:10px;letter-spacing:.12em;color:var(--text-dim);text-transform:uppercase;padding:12px 18px 6px}
-  .nav a{display:flex;align-items:center;gap:10px;padding:8px 18px;color:var(--text-body);text-decoration:none;font-size:13px;border-left:2px solid transparent;cursor:pointer}
-  .nav a.active{color:var(--text);background:var(--accent-dim);border-left-color:var(--accent)}
+  .navlabel{font-size:10px;letter-spacing:.12em;color:var(--text-muted);text-transform:uppercase;padding:12px 18px 6px;font-weight:600}
+  .nav a{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--text-body);text-decoration:none;font-size:14px;border-left:3px solid transparent;cursor:pointer;transition:background .12s ease,color .12s ease}
+  .nav a:hover{color:var(--text);background:var(--border-muted)}
+  .nav a.active{color:var(--card-stat);font-weight:700;background:linear-gradient(90deg,var(--accent-dim),transparent);border-left-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent-dim)}
+  .nav a.active .ic{opacity:1;color:var(--accent)}
   .nav a .ic{width:16px;text-align:center;opacity:.85}
   .nav a .badge{margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);border-radius:9px;padding:1px 7px}
   .spacer{flex:1}
   .foot{padding:6px 12px 0;display:flex;gap:8px}
   .foot button{flex:1;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px;font-size:12px;cursor:pointer}
   .foot button:hover{color:var(--text);border-color:var(--border-hover)}
-  .main{padding:24px 30px;overflow:auto}
+  .main{overflow:hidden;display:flex;flex-direction:column}
+  /* Tab bar: pinned Projects + closable project tabs */
+  .tabstrip{display:flex;align-items:center;gap:4px;height:40px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
+  .tab{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px 8px 0 0;font-size:13px;color:var(--text-muted);cursor:pointer;position:relative;top:1px;border:1px solid transparent;border-bottom:none;white-space:nowrap}
+  .tab.active{background:var(--bg);color:var(--text);border-color:var(--border);border-bottom-color:var(--bg)}
+  .tab.pinned{font-weight:600}
+  .tab .live{width:6px;height:6px;border-radius:50%;background:var(--col-done)}
+  .tab .tx{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:10px;color:var(--text-dim);margin-left:2px}
+  .tab .tx:hover{color:var(--col-discarded);background:rgba(248,113,113,.12)}
+  .views{flex:1;position:relative;overflow:hidden}
+  .view{position:absolute;inset:0;overflow:auto;display:none}
+  .view.active{display:block}
+  #view-projects{padding:24px 30px}
+  .view iframe{width:100%;height:100%;border:0;display:block;background:var(--bg)}
   .vhead{display:flex;align-items:center;margin-bottom:20px}
   .vhead h1{font-size:21px;font-weight:700;letter-spacing:-.4px}
   .vhead .n{margin-left:9px;font-size:12px;background:var(--accent-dim);color:var(--accent);border-radius:14px;padding:2px 9px}
@@ -57,15 +72,18 @@
   .btn.primary{background:var(--accent);color:#fff;border:none;display:inline-flex;gap:7px;align-items:center}
   .btn.primary:hover{filter:brightness(1.08)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:15px 16px}
-  .card:hover{border-color:var(--border-hover)}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:15px 16px;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+  .card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 28px -8px rgba(0,0,0,.5),0 0 0 3px var(--accent-dim)}
   .card h3{font-size:15px;font-weight:600}
   .card .path{font-size:11px;color:var(--text-muted);font-family:ui-monospace,monospace;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card .desc{font-size:12.5px;color:var(--text-body);margin:9px 0 12px;min-height:20px}
-  .card .foot2{display:flex;align-items:center;gap:8px}
-  .card .added{font-size:11px;color:var(--text-muted)}
-  .card .added b{color:var(--card-stat);font-weight:700}
-  .card .actions{margin-left:auto;display:flex;gap:7px}
+  .card .cardfoot{display:flex;align-items:flex-end;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted)}
+  /* vertical meta column with an accent bar marker (no clock icon) */
+  .card .meta{flex:1;padding-left:12px;border-left:3px solid var(--accent);display:grid;grid-template-columns:auto auto;justify-content:start;column-gap:28px;row-gap:3px;align-content:center}
+  .card .metarow{display:contents}
+  .card .metarow .k{color:var(--text-muted);font-size:12px}
+  .card .metarow .v{color:var(--card-stat);font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
+  .card .actions{display:flex;gap:7px;flex-shrink:0}
   .go{width:34px;height:34px;border-radius:8px;border:none;background:var(--col-done);color:#04210f;font-size:16px;font-weight:700;cursor:pointer}
   .go:hover{filter:brightness(1.08)}
   .dereg{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer}
@@ -112,8 +130,15 @@
       </div>
     </aside>
     <main class="main">
-      <div id="grid" class="grid"></div>
-      <div class="note">Phase 1: registry + launcher. Opening a project into a tab, the embedded board, and moving the daemon panel/help into this shell arrive in later phases.</div>
+      <div id="tabstrip" class="tabstrip">
+        <div class="tab pinned active" data-tab="projects" onclick="activateTab('projects')">&#9638; Projects</div>
+      </div>
+      <div id="views" class="views">
+        <section id="view-projects" class="view active">
+          <div id="grid" class="grid"></div>
+          <div class="note">Read-only project tabs (Phase 2a). Drag-to-update, ticket create/edit, and the in-tab agent session arrive in Phase 2b.</div>
+        </section>
+      </div>
     </main>
   </div>
 </div>
@@ -138,13 +163,97 @@
   function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
   // Attribute/JS-string-safe: also escapes " and ' (text-node serialization does not).
   function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
-  function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('canon-theme',h.dataset.theme);}catch(e){}}
+  function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('canon-theme',h.dataset.theme);}catch(e){}
+    // push the new theme into every open project board iframe (t-a55a)
+    document.querySelectorAll('.view iframe').forEach(f=>{try{f.contentWindow.postMessage({type:'canon-theme',theme:h.dataset.theme},location.origin);}catch(e){}});
+  }
   (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
   function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+
+  // ── Tabs (t-a55a) ────────────────────────────────────────────────────────
+  // Pinned Projects tab + closable, folder-named project tabs. Each project tab
+  // is an <iframe src="/?project=<id>"> (read-only board). State {openIds,active}
+  // persists to localStorage; restore drops ids no longer registered.
+  const LS_TABS='canon-cockpit-tabs';
+  let openTabs=[];            // [{id,name}]
+  let activeTab='projects';
+  let knownIds=new Set();     // registered project ids (for restore filtering)
+
+  function saveTabs(){
+    try{localStorage.setItem(LS_TABS,JSON.stringify({openIds:openTabs.map(t=>t.id),active:activeTab}));}catch(e){}
+  }
+  function updateActiveCount(){
+    const n=openTabs.length;
+    const el=document.getElementById('ncount');
+    if(el) el.textContent = n===0 ? 'None open' : (n+' active');
+  }
+  function renderTabs(){
+    const strip=document.getElementById('tabstrip');
+    // keep the pinned Projects tab (first child), rebuild the rest
+    strip.querySelectorAll('.tab.project').forEach(n=>n.remove());
+    for(const t of openTabs){
+      const el=document.createElement('div');
+      el.className='tab project'+(activeTab===t.id?' active':'');
+      el.dataset.tab=t.id;
+      el.innerHTML='<span class="live"></span> '+esc(t.name)+' <span class="tx" title="Close tab">&#10005;</span>';
+      el.addEventListener('click',(ev)=>{ if(ev.target.classList.contains('tx')){closeTab(t.id);} else {activateTab(t.id);} });
+      strip.appendChild(el);
+    }
+    strip.querySelector('.tab.pinned').classList.toggle('active',activeTab==='projects');
+    updateActiveCount();
+  }
+  function currentTheme(){ return document.documentElement.dataset.theme==='light'?'light':'dark'; }
+  function ensureView(id,name){
+    const views=document.getElementById('views');
+    let v=document.getElementById('view-'+id);
+    if(!v){
+      v=document.createElement('section');
+      v.className='view'; v.id='view-'+id;
+      const f=document.createElement('iframe');
+      f.src='/?project='+encodeURIComponent(id)+'&theme='+currentTheme();
+      f.title=name||id;
+      v.appendChild(f);
+      views.appendChild(v);
+    }
+    return v;
+  }
+  function activateTab(id){
+    activeTab=id;
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    const v=document.getElementById('view-'+id) || document.getElementById('view-projects');
+    v.classList.add('active');
+    renderTabs();
+    saveTabs();
+  }
+  function openProject(id,name){
+    if(!openTabs.some(t=>t.id===id)){ openTabs.push({id,name}); ensureView(id,name); }
+    activateTab(id);
+  }
+  function closeTab(id){
+    openTabs=openTabs.filter(t=>t.id!==id);
+    const v=document.getElementById('view-'+id); if(v) v.remove();
+    if(activeTab===id) activeTab='projects';
+    activateTab(activeTab);
+  }
+  function restoreTabs(){
+    let saved=null;
+    try{saved=JSON.parse(localStorage.getItem(LS_TABS)||'null');}catch(e){}
+    if(!saved||!Array.isArray(saved.openIds)) return;
+    // drop ids no longer registered (deregistered while closed)
+    const byId=new Map(window._projects.map(p=>[p.id,p]));
+    for(const id of saved.openIds){
+      const p=byId.get(id);
+      if(p && !openTabs.some(t=>t.id===id)){ openTabs.push({id:p.id,name:p.name}); ensureView(p.id,p.name); }
+    }
+    if(saved.active && (saved.active==='projects' || byId.has(saved.active))) activeTab=saved.active;
+    renderTabs(); activateTab(activeTab);
+  }
 
   async function load(){
     let projects=[];
     try{const r=await fetch('/api/projects');projects=await r.json();}catch(e){}
+    window._projects=projects;
+    knownIds=new Set(projects.map(p=>p.id));
     document.getElementById('pcount').textContent=projects.length;
 
     // Populate the topbar filter dropdown (preserve current selection).
@@ -157,8 +266,7 @@
     // Apply the filter to what's shown.
     const sel=filter.value;
     const shown=sel?projects.filter(p=>p.id===sel):projects;
-    document.getElementById('ncount').textContent=
-      sel?(shown.length+' of '+projects.length):(projects.length+' registered');
+    updateActiveCount(); // topbar badge shows OPEN-TAB count (registered count is in the sidebar)
 
     const grid=document.getElementById('grid');
     if(!projects.length){
@@ -170,18 +278,36 @@
         <h3>${esc(p.name)}</h3>
         <div class="path" title="${escAttr(p.path)}">${esc(p.path)}</div>
         <div class="desc">${esc(p.description||'')}</div>
-        <div class="foot2">
-          <span class="added">Added <b>${esc(p.added||'')}</b></span>
+        <div class="cardfoot">
+          <div class="meta" data-stats="${escAttr(p.id)}">
+            <div class="metarow"><span class="k">Updated</span><span class="v" data-f="updated">…</span></div>
+            <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
+            <div class="metarow"><span class="k">Added</span><span class="v">${esc(p.added||'')}</span></div>
+          </div>
           <div class="actions">
             <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
-            <button class="go" title="Open (coming in a later phase)">&#8250;</button>
+            <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
           </div>
         </div>
       </div>`).join('');
     // Delegated handlers (no inline onclick with interpolated user data — avoids
     // JS-string/attribute injection from a maliciously-named registered path).
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
-    grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>toast('Opening projects into a tab arrives in a later phase.')));
+    grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name)));
+    shown.forEach(p=>fillCardStats(p.id));
+  }
+
+  async function fillCardStats(id){
+    const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
+    if(!el) return;
+    const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]');
+    try{
+      const r=await fetch('/api/project-stats?project='+encodeURIComponent(id));
+      if(!r.ok) throw 0;
+      const s=await r.json();
+      up.textContent=s.updated||'—';
+      ct.textContent=(s.ticket_count!=null?s.ticket_count:'—');
+    }catch(e){ up.textContent='—'; ct.textContent='—'; }
   }
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
@@ -204,12 +330,14 @@
     if(!confirm('Deregister "'+name+'"?\n\nThis removes it from the Cockpit list only — your project files are not touched.'))return;
     try{
       await fetch('/api/projects/'+encodeURIComponent(id),{method:'DELETE'});
+      if(openTabs.some(t=>t.id===id)) closeTab(id); // close its tab if open
       toast('Deregistered '+name);load();
     }catch(e){toast('Could not deregister.');}
   }
 
   fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
-  load();
+  // Initial load, then restore any previously-open project tabs (once).
+  load().then(()=>{ restoreTabs(); });
 </script>
 </body>
 </html>
