@@ -121,6 +121,57 @@ def registry_remove(pid: str) -> dict:
         _registry_save(kept)
     return {'ok': True, 'removed': removed}
 
+# ── Per-request project scoping (t-a55a, Phase 2a) ─────────────────────────
+# The board is single-project at process start (PROJECT_ROOT). To render a
+# chosen project inside a Cockpit tab, read endpoints accept an optional
+# ?project=<registry-id>; effective_root resolves it to that registered
+# project's path. Trust boundary: it resolves ONLY to a REGISTERED id, never
+# to a raw client path (mirrors cockpit-docs's worktree validation). Absent →
+# the process PROJECT_ROOT (today's behavior, byte-unchanged).
+
+class UnknownProject(Exception):
+    """Raised when ?project=<id> is not a registered project — caller → 400."""
+
+def effective_root(query: dict) -> Path:
+    """Resolve the project root for this request from a parsed query dict
+    (parse_qs form: {'project': ['<id>']}). Absent → PROJECT_ROOT. Unknown id
+    → UnknownProject (never a raw path)."""
+    vals = query.get('project') if isinstance(query, dict) else None
+    pid = (vals[0] if vals else '').strip()
+    if not pid:
+        return PROJECT_ROOT
+    for e in _registry_load():
+        if e.get('id') == pid:
+            return Path(e['path'])
+    raise UnknownProject(pid)
+
+def tickets_dir_for(root: Path) -> Path:
+    return root / '.tickets'
+
+def project_stats(root: Path) -> dict:
+    """Per-project card stats (t-a55a): last git commit time (relative) +
+    number of ticket dirs under .tickets/. Read-only; used by the Projects
+    cards. `updated` is a relative string ('3d ago') or '' if no git/commits."""
+    updated = ''
+    iso = run(['git', 'log', '-1', '--format=%cI'], root)
+    if iso:
+        try:
+            from datetime import datetime, timezone
+            when = datetime.fromisoformat(iso.strip())
+            now = datetime.now(when.tzinfo or timezone.utc)
+            secs = int((now - when).total_seconds())
+            if secs < 60: updated = 'just now'
+            elif secs < 3600: updated = f'{secs // 60}m ago'
+            elif secs < 86400: updated = f'{secs // 3600}h ago'
+            else: updated = f'{secs // 86400}d ago'
+        except Exception:
+            updated = ''
+    tdir = tickets_dir_for(root)
+    ticket_count = 0
+    if tdir.is_dir():
+        ticket_count = sum(1 for p in tdir.glob('*/ticket.md'))
+    return {'updated': updated, 'ticket_count': ticket_count}
+
 # ── Ticket parsing ────────────────────────────────────────────────────────
 
 _FRONTMATTER = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL)
@@ -144,13 +195,14 @@ def _doc_name(path: Path) -> str:
 # Must stay behaviorally identical to main.go's safeTicketDoc/containedAfterSymlinks
 # (tools/sprint-check-go/main.go) — enforced by tests/sprint-check-api-parity.sh, not
 # shared code. Change one, change the other, then re-run that test.
-def _safe_ticket_doc(doc_file: str, exts: tuple[str, ...] = ('.md',)) -> Path | None:
+def _safe_ticket_doc(doc_file: str, exts: tuple[str, ...] = ('.md',), root: Path = None) -> Path | None:
+    tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
     p = Path(doc_file)
     if p.is_absolute() or '..' in p.parts or p.suffix.lower() not in exts:
         return None
-    target = TICKETS_DIR / p
+    target = tdir / p
     try:
-        target.resolve().relative_to(TICKETS_DIR.resolve())
+        target.resolve().relative_to(tdir.resolve())
     except ValueError:
         return None
     return target
@@ -255,15 +307,16 @@ def parse_ticket(path: Path) -> dict:
     fields['docs'] = docs
     return fields
 
-def ticket_paths() -> list[Path]:
-    if not TICKETS_DIR.is_dir():
+def ticket_paths(root: Path = None) -> list[Path]:
+    tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
+    if not tdir.is_dir():
         return []
     paths = []
     seen: set[str] = set()
-    for ticket in sorted(TICKETS_DIR.glob('*/ticket.md')):
+    for ticket in sorted(tdir.glob('*/ticket.md')):
         paths.append(ticket)
         seen.add(ticket.parent.name)
-    for f in sorted(TICKETS_DIR.glob('*.md')):
+    for f in sorted(tdir.glob('*.md')):
         if f.stem in seen:
             continue
         if re.match(r'^.+-(blueprint|acceptance|plan|decisions|qa|notes)$', f.stem):
@@ -271,14 +324,15 @@ def ticket_paths() -> list[Path]:
         paths.append(f)
     return paths
 
-def legacy_doc_target(doc_file: str) -> Path | None:
+def legacy_doc_target(doc_file: str, root: Path = None) -> Path | None:
     safe = Path(doc_file).name
     if not safe.endswith('.md'):
         return None
+    tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
     m = re.match(r'^([A-Za-z]+-[A-Za-z0-9]+)-(.+)\.md$', safe)
-    if m and (TICKETS_DIR / m.group(1) / 'ticket.md').is_file():
-        return TICKETS_DIR / m.group(1) / f'{m.group(2)}.md'
-    return TICKETS_DIR / safe
+    if m and (tdir / m.group(1) / 'ticket.md').is_file():
+        return tdir / m.group(1) / f'{m.group(2)}.md'
+    return tdir / safe
 
 def _eval_fail_count(ticket: dict) -> int:
     try:
@@ -301,9 +355,9 @@ def _type_outcome_stats(tickets: list) -> dict:
             entry['clean'] += 1
     return stats
 
-def load_tickets() -> list:
+def load_tickets(root: Path = None) -> list:
     tickets = []
-    for f in ticket_paths():
+    for f in ticket_paths(root):
         try:
             tickets.append(parse_ticket(f))
         except Exception:
@@ -324,10 +378,11 @@ def load_tickets() -> list:
 
 # ── HANDOFF.md parsing ────────────────────────────────────────────────────
 
-def load_handoff() -> dict:
-    if not HANDOFF_FILE.exists():
+def load_handoff(root: Path = None) -> dict:
+    handoff_file = (root / 'HANDOFF.md') if root is not None else HANDOFF_FILE
+    if not handoff_file.exists():
         return {'focus': None, 'raw': ''}
-    raw = HANDOFF_FILE.read_text(encoding='utf-8', errors='replace')
+    raw = handoff_file.read_text(encoding='utf-8', errors='replace')
     # Extract "## Current Focus" section (first paragraph after the heading)
     focus = None
     m = re.search(r'##\s+Current Focus\s*\n+([\s\S]+?)(?:\n##|\Z)', raw)
@@ -352,8 +407,8 @@ def run(cmd: list, cwd: Path) -> str:
     except Exception:
         return ''
 
-def load_git() -> dict:
-    cwd = PROJECT_ROOT
+def load_git(root: Path = None) -> dict:
+    cwd = root if root is not None else PROJECT_ROOT
     branch   = run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd) or 'main'
     project  = cwd.name
     status   = run(['git', 'status', '--porcelain'], cwd)
@@ -677,8 +732,8 @@ def _is_committed_canon_mirror(worktree: Path, rel: str, link: Path) -> bool:
 
 # ── Commit detail ─────────────────────────────────────────────────────────
 
-def load_commit(hash_: str) -> dict:
-    cwd = PROJECT_ROOT
+def load_commit(hash_: str, root: Path = None) -> dict:
+    cwd = root if root is not None else PROJECT_ROOT
     msg    = run(['git', 'log', '-1', '--format=%B', hash_], cwd)
     author = run(['git', 'log', '-1', '--format=%an', hash_], cwd)
     date   = run(['git', 'log', '-1', '--format=%ci', hash_], cwd)
@@ -702,8 +757,8 @@ def load_commit(hash_: str) -> dict:
         'files': file_list, 'related_ticket_ids': sorted(related),
     }
 
-def _ticket_by_id(ticket_id: str) -> tuple[Path, dict] | None:
-    for path in ticket_paths():
+def _ticket_by_id(ticket_id: str, root: Path = None) -> tuple[Path, dict] | None:
+    for path in ticket_paths(root):
         try:
             ticket = parse_ticket(path)
         except Exception:
@@ -712,9 +767,9 @@ def _ticket_by_id(ticket_id: str) -> tuple[Path, dict] | None:
             return path, ticket
     return None
 
-def _known_ticket_ids() -> set[str]:
+def _known_ticket_ids(root: Path = None) -> set[str]:
     ids = set()
-    for path in ticket_paths():
+    for path in ticket_paths(root):
         try:
             ticket_id = str(parse_ticket(path).get('id', ''))
         except Exception:
@@ -750,7 +805,7 @@ def _basename_candidates(basename: str, cwd: Path) -> list[str]:
     matches = {line for line in out.splitlines() if line.strip() and Path(line).name == basename}
     return sorted(matches)
 
-def load_why(file_: str) -> dict:
+def load_why(file_: str, root: Path = None) -> dict:
     target = file_.strip()
     if not target:
         return {'file': '', 'results': [], 'message': 'Enter a file path.'}
@@ -759,7 +814,7 @@ def load_why(file_: str) -> dict:
     if p.is_absolute() or '..' in p.parts:
         return {'file': target, 'results': [], 'message': 'Use a project-relative file path.'}
 
-    cwd = PROJECT_ROOT
+    cwd = root if root is not None else PROJECT_ROOT
     query_target = target
     log_subjects = run(['git', 'log', '--follow', '--format=%s', '--', query_target], cwd)
     resolved_path = None
@@ -789,7 +844,7 @@ def load_why(file_: str) -> dict:
         if ticket_id not in matched_ids:
             matched_ids.append(ticket_id)
 
-    known_ids = _known_ticket_ids()
+    known_ids = _known_ticket_ids(root)
     for ticket_id in re.findall(r'\b[a-zA-Z]+-[a-z0-9]{3,}\b', log_subjects):
         if ticket_id in known_ids:
             add_unique(ticket_id)
@@ -806,7 +861,7 @@ def load_why(file_: str) -> dict:
         }
         scored = []
         if words:
-            for path in ticket_paths():
+            for path in ticket_paths(root):
                 try:
                     ticket = parse_ticket(path)
                 except Exception:
@@ -825,7 +880,7 @@ def load_why(file_: str) -> dict:
 
     results = []
     for ticket_id in capped_ids:
-        found = _ticket_by_id(ticket_id)
+        found = _ticket_by_id(ticket_id, root)
         if not found:
             continue
         path, ticket = found
@@ -924,11 +979,11 @@ def write_body(ticket_id: str, new_body: str) -> bool:
     path.write_text(updated, encoding='utf-8')
     return True
 
-def read_doc(doc_file: str) -> str | None:
+def read_doc(doc_file: str, root: Path = None) -> str | None:
     """Read a companion doc file safely from TICKETS_DIR."""
-    p = _safe_ticket_doc(doc_file)
+    p = _safe_ticket_doc(doc_file, root=root)
     if p is None or not p.is_file():
-        p = legacy_doc_target(doc_file)
+        p = legacy_doc_target(doc_file, root)
     if p is None or not p.is_file():
         return None
     return p.read_text(encoding='utf-8', errors='replace')
@@ -1425,17 +1480,37 @@ class Handler(BaseHTTPRequestHandler):
             img = PROJECT_ROOT / path.lstrip('/')
             self.send_image(img); return
         elif path == '/api/tickets':
-            tickets = load_tickets()
+            try:
+                eroot = effective_root(parse_qs(parsed.query))
+            except UnknownProject:
+                self.send_error(400); return
+            tickets = load_tickets(eroot)
             if 'all=1' not in parsed.query:
                 tickets = [t for t in tickets if t.get('status') != 'archived']
             self.send_json(tickets)
         elif path == '/api/handoff':
-            self.send_json(load_handoff())
+            try:
+                self.send_json(load_handoff(effective_root(parse_qs(parsed.query))))
+            except UnknownProject:
+                self.send_error(400)
         elif path == '/api/git':
-            self.send_json(load_git())
+            try:
+                self.send_json(load_git(effective_root(parse_qs(parsed.query))))
+            except UnknownProject:
+                self.send_error(400)
         elif path == '/api/why':
-            file_ = parse_qs(parsed.query).get('file', [''])[0]
-            self.send_json(load_why(file_))
+            q = parse_qs(parsed.query)
+            file_ = q.get('file', [''])[0]
+            try:
+                self.send_json(load_why(file_, effective_root(q)))
+            except UnknownProject:
+                self.send_error(400)
+        elif path == '/api/project-stats':
+            try:
+                eroot = effective_root(parse_qs(parsed.query))
+            except UnknownProject:
+                self.send_error(400); return
+            self.send_json(project_stats(eroot))
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
         elif path == '/api/cockpit-sessions':
@@ -1454,10 +1529,18 @@ class Handler(BaseHTTPRequestHandler):
         else:
             m = re.match(r'^/api/commit/([0-9a-f]{4,40})$', path)
             if m:
-                self.send_json(load_commit(m.group(1))); return
+                try:
+                    eroot = effective_root(parse_qs(parsed.query))
+                except UnknownProject:
+                    self.send_error(400); return
+                self.send_json(load_commit(m.group(1), eroot)); return
             m = re.match(r'^/api/doc/(.+)$', path)
             if m:
-                content = read_doc(unquote(m.group(1)))
+                try:
+                    eroot = effective_root(parse_qs(parsed.query))
+                except UnknownProject:
+                    self.send_error(400); return
+                content = read_doc(unquote(m.group(1)), eroot)
                 if content is None:
                     self.send_error(404); return
                 self.send_json({'content': content})

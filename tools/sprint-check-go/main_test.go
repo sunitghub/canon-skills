@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -80,7 +81,7 @@ created: 2026-01-01T00:00:00Z
 # Old closed work
 `)
 
-	tickets := loadTickets()
+	tickets := loadTickets("")
 	if len(tickets) != 2 {
 		t.Fatalf("expected 2 tickets, got %d", len(tickets))
 	}
@@ -157,7 +158,7 @@ created: 2026-06-27
 `)
 	writeFile(t, filepath.Join(ticketsDir, "t-abcd", "acceptance.md"), "legacy mapped acceptance\n")
 
-	content, ok := readDoc("t-abcd-acceptance.md")
+	content, ok := readDoc("t-abcd-acceptance.md", "")
 	if !ok || content != "legacy mapped acceptance\n" {
 		t.Fatalf("readDoc legacy fallback = (%q, %v)", content, ok)
 	}
@@ -197,7 +198,7 @@ created: 2026-06-27
 	runCmd(t, root, "git", "add", ".")
 	runCmd(t, root, "git", "commit", "-m", "refact invoice renderer paths")
 
-	result := loadWhy("src/invoice.js")
+	result := loadWhy("src/invoice.js", "")
 	results := result["results"].([]map[string]any)
 	if len(results) != 1 {
 		t.Fatalf("results length = %d, want 1: %#v", len(results), result)
@@ -758,6 +759,68 @@ func TestRegistryJSONShapeMatchesPython(t *testing.T) {
 		t.Fatalf("expected 2-space incremental indent (4-space field indent in an array), got:\n%s", s)
 	}
 }
+
+// TestEffectiveRootAndProjectStats (t-a55a): ?project resolves a registered
+// id to its path, unknown → ok=false (→400), absent → projectRoot; projectStats
+// reports the per-project ticket count + a non-empty relative "updated".
+func TestEffectiveRootAndProjectStats(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", filepath.Join(home, ".canon"))
+	gitRun := func(dir string, args ...string) {
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		_ = c.Run()
+	}
+	mk := func(desc string, tickets int) string {
+		p := t.TempDir()
+		gitRun(p, "init")
+		gitRun(p, "config", "user.email", "t@t")
+		gitRun(p, "config", "user.name", "t")
+		os.WriteFile(filepath.Join(p, "f"), []byte("x"), 0644)
+		gitRun(p, "add", "-A")
+		gitRun(p, "commit", "-m", "init")
+		for i := 0; i < tickets; i++ {
+			d := filepath.Join(p, ".tickets", "t-"+strings.Repeat("a", 3)+strconvItoa(i))
+			os.MkdirAll(d, 0755)
+			os.WriteFile(filepath.Join(d, "ticket.md"), []byte("# t"), 0644)
+		}
+		registryAdd(p, desc)
+		return p
+	}
+	pA := mk("projA", 3)
+	_ = mk("projB", 1)
+
+	var idA string
+	for _, e := range registryLoad() {
+		if filepath.Base(e.Path) == filepath.Base(pA) {
+			idA = e.ID
+		}
+	}
+	if idA == "" {
+		t.Fatal("could not find registered projA id")
+	}
+
+	if got, ok := effectiveRoot(httptest.NewRequest("GET", "/api/tickets?project="+idA, nil)); !ok || filepath.Base(got) != filepath.Base(pA) {
+		t.Fatalf("effectiveRoot(idA) = %q,%v; want projA", got, ok)
+	}
+	if _, ok := effectiveRoot(httptest.NewRequest("GET", "/api/tickets?project=deadbeef0000", nil)); ok {
+		t.Fatal("effectiveRoot(unknown) should be ok=false → 400")
+	}
+	projectRoot = home
+	if got, ok := effectiveRoot(httptest.NewRequest("GET", "/api/tickets", nil)); !ok || got != home {
+		t.Fatalf("effectiveRoot(absent) = %q,%v; want projectRoot", got, ok)
+	}
+
+	stats := projectStats(pA)
+	if stats["ticket_count"].(int) != 3 {
+		t.Fatalf("projectStats.ticket_count = %v; want 3", stats["ticket_count"])
+	}
+	if u, _ := stats["updated"].(string); u == "" {
+		t.Fatal("projectStats.updated should be non-empty for a repo with a commit")
+	}
+}
+
+func strconvItoa(i int) string { return strconv.Itoa(i) }
 
 // TestRegistryDoesNotHTMLEscape pins that & < > are written literally (not
 // \u0026 etc.) so the on-disk JSON stays byte-identical to Python's
