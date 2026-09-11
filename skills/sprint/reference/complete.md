@@ -460,6 +460,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `critique/canon-learnings.md` or `standards/`). It proposes, never promotes, and is never
    auto-fired — surface it, don't run it unasked.
 
+   If the user runs `tkt learn <id>` and it confirms/writes `.tickets/<id>/learnings.md`, follow it
+   with `learnings-sweep <id>` (single-ticket mode — see `skills/learnings-sweep/SKILL.md`): it
+   upserts that one row into root `LEARNINGS.md` so the pending queue stays current without a
+   repo-wide scan. This is pure aggregation, not promotion — it never changes a row's `Status` away
+   from `UNPROMOTED`, so it does not violate the non-self-promote rule above.
+
 9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses
    because a required file is missing or checklist items remain unchecked, report the blockers
    and stop.

@@ -30,6 +30,11 @@ tkt show <id>                 # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
 ```
 
+After `tkt learn <id>` writes a candidate, the `learnings-sweep` skill (not a `tkt` subcommand —
+see `skills/learnings-sweep/SKILL.md`) upserts one row into root `LEARNINGS.md`, an always-current
+index across tickets. `sprint complete` calls it automatically in single-ticket mode; run
+`learnings-sweep --full` by hand to backfill or reconcile the whole repo.
+
 ## Sprint Artifacts
 
 Core sprint-ticket artifacts (see `standards/ticket-layout.md` for the authoritative full field contract and doc lifecycle):
