@@ -2294,6 +2294,42 @@
 <script>
 'use strict';
 
+// ── Canon Cockpit project scoping (t-a55a) ────────────────────────────────
+// When the board is embedded in a Cockpit tab it is loaded as /?project=<id>.
+// Thread that id onto the board's READ /api/ calls so every panel shows the
+// tab's project. One fetch wrapper covers all ~44 call sites (pre-mortem #1:
+// missing one would leak another project's data). Only READ endpoints are
+// scoped — writes stay on the server's default project this phase (read-only
+// tab), matching the backend (Phase 2b scopes writes). Absent param → no-op,
+// so the standalone single-project board is byte-unchanged.
+(function(){
+  const _project = new URLSearchParams(location.search).get('project') || '';
+  if (!_project) return; // standalone board — leave fetch untouched
+  // Read endpoints that resolve via effective_root on the server.
+  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats)/;
+  const _fetch = window.fetch.bind(window);
+  window.fetch = function(input, init){
+    try {
+      // Only scope reads. Method defaults to GET; a write (POST/PUT/DELETE)
+      // to a shared path like /api/tickets (create) must NOT be scoped.
+      const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+      let url = typeof input === 'string' ? input : (input && input.url);
+      if (method === 'GET' && typeof url === 'string' && READ_RE.test(url)) {
+        const u = new URL(url, location.origin);
+        if (!u.searchParams.has('project')) {
+          u.searchParams.set('project', _project);
+          url = u.pathname + u.search;
+          if (typeof input === 'string') input = url;
+          else input = new Request(url, input);
+        }
+      }
+    } catch (e) { /* fall through to unmodified fetch */ }
+    return _fetch(input, init);
+  };
+  // expose for the shell/debug
+  window.__canonProject = _project;
+})();
+
 // ── Config ───────────────────────────────────────────────────────────────
 
 const COLUMNS = [
@@ -6717,7 +6753,10 @@ function setText(id, val) {
   const html = document.documentElement;
   const stored = localStorage.getItem('sprint-check-theme');
   const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-  const isDark = stored ? stored === 'dark' : prefersDark;
+  // t-a55a: when embedded in a Cockpit tab, honor the shell-passed ?theme so the
+  // board matches the Cockpit's theme (the shell uses its own key/param).
+  const urlTheme = new URLSearchParams(location.search).get('theme');
+  const isDark = urlTheme ? (urlTheme !== 'light') : (stored ? stored === 'dark' : prefersDark);
 
   function apply(dark) {
     if (dark) {
@@ -6732,6 +6771,12 @@ function setText(id, val) {
 
   apply(isDark);
   btn.addEventListener('click', () => apply(html.getAttribute('data-theme') === 'light'));
+  // Let the Cockpit shell push live theme changes into this iframe.
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'canon-theme' && (e.data.theme === 'dark' || e.data.theme === 'light')) {
+      apply(e.data.theme === 'dark');
+    }
+  });
 })();
 
 // Set up CI gate — one click writes .github/workflows/canon-gate.yml (refuse-on-exists).

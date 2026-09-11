@@ -51,11 +51,27 @@ n="$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u | wc -l | tr -d ' 
 
 # ── T5: /cockpit landing serves the Projects page with key elements ───────────
 page="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/cockpit")"
-echo "$page" | grep -q "<title>Canon Cockpit</title>" || fail "canon-cockpit: /cockpit missing Canon Cockpit title"
-echo "$page" | grep -q "Add Project" || fail "canon-cockpit: /cockpit missing Add Project"
-echo "$page" | grep -q "projFilter" || fail "canon-cockpit: /cockpit missing project filter dropdown"
-echo "$page" | grep -q "escAttr" || fail "canon-cockpit: /cockpit missing quote-safe escAttr (XSS guard)"
+grep -q "<title>Canon Cockpit</title>" <<<"$page" || fail "canon-cockpit: /cockpit missing Canon Cockpit title"
+grep -q "Add Project" <<<"$page" || fail "canon-cockpit: /cockpit missing Add Project"
+grep -q "projFilter" <<<"$page" || fail "canon-cockpit: /cockpit missing project filter dropdown"
+grep -q "escAttr" <<<"$page" || fail "canon-cockpit: /cockpit missing quote-safe escAttr (XSS guard)"
 # the page must NOT use inline onclick with interpolated user data (uses data-attr + listeners)
-echo "$page" | grep -q "onclick=\"dereg(" && fail "canon-cockpit: /cockpit still has inline onclick with interpolated data (XSS risk)"
+grep -q "onclick=\"dereg(" <<<"$page" && fail "canon-cockpit: /cockpit still has inline onclick with interpolated data (XSS risk)"
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping)"
+# ── Phase 2a: tab bar + iframe + persistence + card stats (t-a55a) ───────────
+grep -q 'class="tab pinned active"' <<<"$page" || fail "canon-cockpit: /cockpit missing pinned (non-dismissable) Projects tab"
+grep -q 'data-tab="projects"' <<<"$page" || fail "canon-cockpit: /cockpit Projects tab not wired"
+grep -q "openProject(" <<<"$page" || fail "canon-cockpit: /cockpit green > not wired to openProject"
+grep -q "function closeTab" <<<"$page" || fail "canon-cockpit: /cockpit missing closeTab"
+grep -qE "f\.src=.?/\?project=" <<<"$page" || fail "canon-cockpit: /cockpit project tab iframe not pointed at /?project="
+grep -q "canon-cockpit-tabs" <<<"$page" || fail "canon-cockpit: /cockpit missing localStorage tab persistence key"
+grep -q "byId.get(id)" <<<"$page" || fail "canon-cockpit: /cockpit restore does not drop deregistered projects"
+grep -q "/api/project-stats?project=" <<<"$page" || fail "canon-cockpit: /cockpit card stats not project-scoped"
+
+# app.html (the embedded board) must carry the project-scoping fetch wrapper
+board="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/?project=x")"
+grep -q "__canonProject" <<<"$board" || fail "canon-cockpit: app.html missing the ?project fetch wrapper"
+grep -q "urlTheme" <<<"$board" || fail "canon-cockpit: app.html does not honor shell-passed ?theme"
+grep -q "&theme=" <<<"$page" || fail "canon-cockpit: project iframe src does not carry the shell theme"
+
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper)"
