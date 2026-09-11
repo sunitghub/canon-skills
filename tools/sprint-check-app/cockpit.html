@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<!-- Canon Cockpit — Projects landing (t-9917, Phase 1). Served at /cockpit by
+     both server.py and sprint-check-go (parity). Minimal by design: lists the
+     project registry, Add Project, deregister. Tabs / embedded board / the
+     daemon-in-shell / app.html modularization are LATER phases (see t-06cc
+     mockups). Self-contained single file; no build step. -->
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canon Cockpit</title>
+<style>
+  html[data-theme="dark"]{--bg:#0d0d10;--panel:#141419;--border:#2c2c40;--border-hover:#3d3d54;--border-muted:#202030;--text:#e0e0ec;--text-body:#a5a5bc;--text-muted:#86869e;--text-dim:#40405c;--accent:#7c6af7;--accent-dim:rgba(124,106,247,0.12);--col-done:#4ade80;--col-discarded:#f87171;--card-stat:#c7bfff;--scrim:rgba(0,0,0,.6)}
+  html[data-theme="light"]{--bg:#f2f2f7;--panel:#fff;--border:#dcdce8;--border-hover:#c0c0d4;--border-muted:#e8e8f2;--text:#1a1a2e;--text-body:#424269;--text-muted:#52527a;--text-dim:#b8b8d0;--accent:#6c5cf7;--accent-dim:rgba(108,92,247,0.10);--col-done:#16a34a;--col-discarded:#dc2626;--card-stat:#5a3ff0;--scrim:rgba(20,20,40,.35)}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
+  .app{display:flex;flex-direction:column;min-height:100vh}
+
+  /* Full-width top bar — its own horizontal section (Canon Cockpit | filter | + Add) */
+  .topbar{display:flex;align-items:center;gap:20px;height:64px;padding:0 24px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .topbrand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.2px}
+  .topbrand .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:16px}
+  .topbrand small{font-weight:600;color:var(--card-stat);font-size:11px;margin-left:5px;letter-spacing:.02em}
+  .topbar .n{font-size:12px;font-weight:500;background:var(--accent-dim);color:var(--accent);border-radius:14px;padding:2px 9px}
+  .topfilter{margin-left:24px}
+  .topfilter select{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 34px 9px 13px;color:var(--text-body);font-size:13px;min-width:230px;cursor:pointer;
+    appearance:none;-webkit-appearance:none;
+    background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%);
+    background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+  .topfilter select:hover{border-color:var(--border-hover)}
+  .topspacer{flex:1}
+
+  .below{display:grid;grid-template-columns:230px 1fr;flex:1;min-height:0}
+  .side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0}
+  /* subtle gap between the top bar and the content area (the Fire Insights cue) */
+  .side{box-shadow:inset 0 6px 8px -8px rgba(0,0,0,.5)}
+  .main{box-shadow:inset 0 6px 8px -8px rgba(0,0,0,.5)}
+  .brand{display:flex;align-items:center;gap:9px;padding:0 18px 16px;font-weight:700;font-size:16px}
+  .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:14px}
+  .brand small{font-weight:500;color:var(--text-dim);font-size:10px;margin-left:auto}
+  .navlabel{font-size:10px;letter-spacing:.12em;color:var(--text-dim);text-transform:uppercase;padding:12px 18px 6px}
+  .nav a{display:flex;align-items:center;gap:10px;padding:8px 18px;color:var(--text-body);text-decoration:none;font-size:13px;border-left:2px solid transparent;cursor:pointer}
+  .nav a.active{color:var(--text);background:var(--accent-dim);border-left-color:var(--accent)}
+  .nav a .ic{width:16px;text-align:center;opacity:.85}
+  .nav a .badge{margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);border-radius:9px;padding:1px 7px}
+  .spacer{flex:1}
+  .foot{padding:6px 12px 0;display:flex;gap:8px}
+  .foot button{flex:1;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px;font-size:12px;cursor:pointer}
+  .foot button:hover{color:var(--text);border-color:var(--border-hover)}
+  .main{padding:24px 30px;overflow:auto}
+  .vhead{display:flex;align-items:center;margin-bottom:20px}
+  .vhead h1{font-size:21px;font-weight:700;letter-spacing:-.4px}
+  .vhead .n{margin-left:9px;font-size:12px;background:var(--accent-dim);color:var(--accent);border-radius:14px;padding:2px 9px}
+  .vhead .r{margin-left:auto}
+  .btn{border-radius:8px;padding:9px 15px;font-size:13px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--text-body)}
+  .btn:hover{color:var(--text);border-color:var(--border-hover)}
+  .btn.primary{background:var(--accent);color:#fff;border:none;display:inline-flex;gap:7px;align-items:center}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:15px 16px}
+  .card:hover{border-color:var(--border-hover)}
+  .card h3{font-size:15px;font-weight:600}
+  .card .path{font-size:11px;color:var(--text-muted);font-family:ui-monospace,monospace;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .desc{font-size:12.5px;color:var(--text-body);margin:9px 0 12px;min-height:20px}
+  .card .foot2{display:flex;align-items:center;gap:8px}
+  .card .added{font-size:11px;color:var(--text-muted)}
+  .card .added b{color:var(--card-stat);font-weight:700}
+  .card .actions{margin-left:auto;display:flex;gap:7px}
+  .go{width:34px;height:34px;border-radius:8px;border:none;background:var(--col-done);color:#04210f;font-size:16px;font-weight:700;cursor:pointer}
+  .go:hover{filter:brightness(1.08)}
+  .dereg{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer}
+  .dereg:hover{color:var(--col-discarded);border-color:var(--col-discarded)}
+  .empty{border:1.5px dashed var(--border-hover);border-radius:12px;padding:40px;text-align:center;color:var(--text-muted)}
+  .scrim{position:fixed;inset:0;background:var(--scrim);display:none;place-items:center;z-index:20}
+  .scrim.show{display:grid}
+  .modal{width:440px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px}
+  .modal h2{font-size:16px;margin-bottom:16px}
+  .modal label{font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.08em;display:block;margin:12px 0 5px}
+  .modal input,.modal textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:9px 11px;color:var(--text);font-size:13px;font-family:inherit}
+  .modal textarea{resize:vertical;min-height:52px}
+  .modal .err{color:var(--col-discarded);font-size:12px;margin-top:8px;min-height:16px}
+  .modal .mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .note{margin-top:22px;font-size:11px;color:var(--text-dim)}
+  .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;display:none}
+  .toast.show{display:block}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="topbrand"><span class="logo">&#9670;</span> Canon Cockpit <small id="ver"></small></div>
+    <div class="topfilter">
+      <select id="projFilter" onchange="load()">
+        <option value="">All projects</option>
+      </select>
+    </div>
+    <div class="topspacer"></div>
+    <span class="n" id="ncount" style="margin-right:14px"></span>
+    <button class="btn primary" onclick="openAdd()">+ Add Project</button>
+  </div>
+
+  <div class="below">
+    <aside class="side">
+      <div class="navlabel">Workspace</div>
+      <nav class="nav">
+        <a class="active"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
+      </nav>
+      <div class="spacer"></div>
+      <div class="foot">
+        <button onclick="toggleTheme()">&#127761; Theme</button>
+        <button title="Help (coming soon)">? Help</button>
+      </div>
+    </aside>
+    <main class="main">
+      <div id="grid" class="grid"></div>
+      <div class="note">Phase 1: registry + launcher. Opening a project into a tab, the embedded board, and moving the daemon panel/help into this shell arrive in later phases.</div>
+    </main>
+  </div>
+</div>
+
+<div class="scrim" id="addModal">
+  <div class="modal">
+    <h2>Add Project</h2>
+    <label>Project folder (absolute path to a git repo)</label>
+    <input id="addPath" placeholder="/Users/you/Developer/my-project" autocomplete="off">
+    <label>Description</label>
+    <textarea id="addDesc" placeholder="What is this project?"></textarea>
+    <div class="err" id="addErr"></div>
+    <div class="mfoot">
+      <button class="btn" onclick="closeAdd()">Cancel</button>
+      <button class="btn primary" onclick="submitAdd()">Add Project</button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
+  function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('canon-theme',h.dataset.theme);}catch(e){}}
+  (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
+  function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+
+  async function load(){
+    let projects=[];
+    try{const r=await fetch('/api/projects');projects=await r.json();}catch(e){}
+    document.getElementById('pcount').textContent=projects.length;
+
+    // Populate the topbar filter dropdown (preserve current selection).
+    const filter=document.getElementById('projFilter');
+    const cur=filter.value;
+    filter.innerHTML='<option value="">All projects</option>'+
+      projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    if(projects.some(p=>p.id===cur)) filter.value=cur;
+
+    // Apply the filter to what's shown.
+    const sel=filter.value;
+    const shown=sel?projects.filter(p=>p.id===sel):projects;
+    document.getElementById('ncount').textContent=
+      sel?(shown.length+' of '+projects.length):(projects.length+' registered');
+
+    const grid=document.getElementById('grid');
+    if(!projects.length){
+      grid.innerHTML='<div class="empty">No projects registered yet.<br>Click <strong>+ Add Project</strong> to register a git repo.</div>';
+      return;
+    }
+    grid.innerHTML=shown.map(p=>`
+      <div class="card">
+        <h3>${esc(p.name)}</h3>
+        <div class="path" title="${esc(p.path)}">${esc(p.path)}</div>
+        <div class="desc">${esc(p.description||'')}</div>
+        <div class="foot2">
+          <span class="added">Added <b>${esc(p.added||'')}</b></span>
+          <div class="actions">
+            <button class="dereg" title="Deregister" onclick="dereg('${esc(p.id)}','${esc(p.name)}')">&#10005;</button>
+            <button class="go" title="Open (coming in a later phase)" onclick="toast('Opening projects into a tab arrives in a later phase.')">&#8250;</button>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
+  function closeAdd(){document.getElementById('addModal').classList.remove('show');}
+  async function submitAdd(){
+    const path=document.getElementById('addPath').value.trim();
+    const description=document.getElementById('addDesc').value;
+    const err=document.getElementById('addErr');
+    err.textContent='';
+    if(!path){err.textContent='Path is required.';return;}
+    try{
+      const r=await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,description})});
+      const res=await r.json();
+      if(!res.ok){err.textContent=res.error||'Could not add project.';return;}
+      closeAdd();toast('Added '+(res.project&&res.project.name||'project'));load();
+    }catch(e){err.textContent='Request failed.';}
+  }
+
+  async function dereg(id,name){
+    if(!confirm('Deregister "'+name+'"?\n\nThis removes it from the Cockpit list only — your project files are not touched.'))return;
+    try{
+      await fetch('/api/projects/'+encodeURIComponent(id),{method:'DELETE'});
+      toast('Deregistered '+name);load();
+    }catch(e){toast('Could not deregister.');}
+  }
+
+  fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
+  load();
+</script>
+</body>
+</html>

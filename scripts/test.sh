@@ -28,6 +28,7 @@ tests=(
   "$ROOT/tests/helpers-sweep.sh"
   "$ROOT/tests/sprint-check-app.sh"
   "$ROOT/tests/sprint-check-api-parity.sh"
+  "$ROOT/tests/registry.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
   "$ROOT/tests/gate-model-parity.sh"
   "$ROOT/tests/jtbd-routing.sh"

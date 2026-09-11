@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# canon-cockpit — the single-window Canon Cockpit shell (t-9917, Phase 1).
+# Launch ONCE; it opens the Cockpit landing (registered projects). A second
+# launch does NOT start a second server — it just opens the already-running
+# window's URL (single-instance on a fixed port).
+#
+# Unlike `sprint-check` (one board per project, per cwd), canon-cockpit is
+# project-agnostic: it serves the shell + the project registry, and you open
+# projects from within it. See tools/sprint-check-app/server.py registry_*.
+
+set -euo pipefail
+
+# Resolve symlinks so SCRIPT_DIR points to the real file location.
+_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+SERVER="$SCRIPT_DIR/sprint-check-app/server.py"
+
+usage() {
+  cat <<'EOF'
+canon-cockpit — the single-window Canon Cockpit shell
+
+Usage:
+  canon-cockpit          Open the Cockpit (registered projects); single-instance
+  canon-cockpit <port>   Use a specific port (default 8899)
+  canon-cockpit --help   Show this help
+
+Launch once and work from within it. A second launch focuses the running
+window instead of starting a second server. Set CANON_COCKPIT_PORT to change
+the default port.
+EOF
+}
+
+# ── Port helpers (shared shape with sprint-check) ──────────────────────────
+
+_port_in_use() {
+  local port="$1"
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1
+  elif command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | grep -q ":${port}[^0-9]"
+  else
+    ! python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+try:
+    s.bind(('127.0.0.1', int(sys.argv[1]))); s.close()
+except OSError:
+    sys.exit(1)
+" "$port" 2>/dev/null
+  fi
+}
+
+open_browser() {
+  local url="$1"
+  if command -v xdg-open >/dev/null 2>&1; then
+    xdg-open "$url" &
+  elif command -v wslview >/dev/null 2>&1; then
+    wslview "$url" &
+  elif [[ -f /proc/version ]] && grep -qi microsoft /proc/version 2>/dev/null; then
+    powershell.exe /c "start '$url'" &
+  elif command -v open >/dev/null 2>&1; then
+    open "$url"
+  else
+    echo "Open in your browser: $url" >&2
+  fi
+}
+
+main() {
+  case "${1:-}" in
+    help|--help|-h) usage; exit 0 ;;
+    "") : ;;
+    [0-9]*) PORT_ARG="$1" ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
+  esac
+
+  local port="${PORT_ARG:-${CANON_COCKPIT_PORT:-8899}}"
+  local url="http://127.0.0.1:$port/cockpit"
+
+  # Single-instance: if something is already serving that port, assume it's the
+  # Cockpit and just open its URL — never start a second server.
+  if _port_in_use "$port"; then
+    echo "Canon Cockpit already running on port $port — opening it." >&2
+    open_browser "$url"
+    exit 0
+  fi
+
+  if [[ ! -f "$SERVER" ]]; then
+    echo "Error: server.py not found at $SERVER" >&2
+    exit 1
+  fi
+
+  python3 "$SERVER" "$port" &
+  SERVER_PID=$!
+  trap 'kill "$SERVER_PID" 2>/dev/null; exit 0' INT TERM EXIT
+  sleep 0.4
+  open_browser "$url"
+  wait "$SERVER_PID"
+}
+
+main "$@"

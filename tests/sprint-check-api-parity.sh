@@ -227,11 +227,14 @@ mkdir -p "$(dirname "$GO_BIN")"
 # runtime VERSION lookup misses and falls back to this stamped value).
 (cd "$ROOT" && GO111MODULE=off go build -ldflags "-X main.version=$(tr -d ' \t\n\r' < "$ROOT/VERSION")" -o "$GO_BIN" ./tools/sprint-check-go)
 
-SPRINT_CHECK_ROOT="$WORK" COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
+PY_CANON="$WORK/canon-py"
+GO_CANON="$WORK/canon-go"
+
+SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$PY_CANON" COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" python3 "$SERVER_PY" "$PY_PORT" >/dev/null 2>&1 &
 PY_PID=$!
 disown "$PY_PID" 2>/dev/null || true
 
-SPRINT_CHECK_ROOT="$WORK" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$GO_CANON" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
 GO_PID=$!
 disown "$GO_PID" 2>/dev/null || true
 
@@ -850,4 +853,45 @@ if py['version'] != semver:
     print(f"/api/version semver {py['version']} != VERSION file {semver}"); sys.exit(1)
 PY
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); /api/version shares shape {version,commit,daemon} + identical semver from VERSION; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists, for $WORK fixture)"
+# ── /api/projects registry parity (t-9917) ─────────────────────────────────
+# Add the SAME git dir to both backends, compare the POST responses + GET list
+# + on-disk projects.json byte-for-byte, then DELETE and confirm empty on both.
+REGPROJ="$WORK/regproj"
+mkdir -p "$REGPROJ/.git"
+py_add="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ\",\"description\":\"reg parity\"}" "http://127.0.0.1:$PY_PORT/api/projects")"
+go_add="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$REGPROJ\",\"description\":\"reg parity\"}" "http://127.0.0.1:$GO_PORT/api/projects")"
+# Compare SEMANTICALLY: server.py (json.dumps) and main.go (json.Marshal) differ
+# only in whitespace across every endpoint; the byte-parity contract is the
+# on-disk projects.json (checked below), matching how the other parity blocks compare.
+python3 - "$py_add" "$go_add" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/projects add response mismatch"
+import json, sys
+if json.loads(sys.argv[1]) != json.loads(sys.argv[2]): sys.exit(1)
+PY
+
+py_list="$(curl -s "http://127.0.0.1:$PY_PORT/api/projects")"
+go_list="$(curl -s "http://127.0.0.1:$GO_PORT/api/projects")"
+python3 - "$py_list" "$go_list" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/projects list mismatch"
+import json, sys
+if json.loads(sys.argv[1]) != json.loads(sys.argv[2]): sys.exit(1)
+PY
+
+if ! diff -q "$PY_CANON/cockpit/projects.json" "$GO_CANON/cockpit/projects.json" >/dev/null; then
+  fail "sprint-check-api-parity: FAIL — projects.json differs between backends"
+fi
+
+mkdir -p "$WORK/regplain"
+py_err="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$WORK/regplain\",\"description\":\"x\"}" "http://127.0.0.1:$PY_PORT/api/projects")"
+go_err="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$WORK/regplain\",\"description\":\"x\"}" "http://127.0.0.1:$GO_PORT/api/projects")"
+python3 - "$py_err" "$go_err" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/projects non-git error mismatch"
+import json, sys
+if json.loads(sys.argv[1]) != json.loads(sys.argv[2]): sys.exit(1)
+PY
+
+reg_id="$(printf '%s' "$py_list" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")"
+curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$PY_PORT/api/projects/$reg_id" >/dev/null
+curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$GO_PORT/api/projects/$reg_id" >/dev/null
+py_after="$(curl -s "http://127.0.0.1:$PY_PORT/api/projects")"
+go_after="$(curl -s "http://127.0.0.1:$GO_PORT/api/projects")"
+[[ "$py_after" == "[]" && "$go_after" == "[]" ]] || fail "sprint-check-api-parity: FAIL — /api/projects not empty after delete: py=$py_after go=$go_after"
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); /api/version shares shape {version,commit,daemon} + identical semver from VERSION; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists; /api/projects add/list/delete + on-disk projects.json byte-identical + non-git error parity, for $WORK fixture)"
