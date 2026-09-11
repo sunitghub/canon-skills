@@ -646,3 +646,115 @@ func TestLinkSkillsIntoWorktreeReplacesCommittedMirror(t *testing.T) {
 		t.Fatalf(".claude/skills project-local content lost, got %q", string(b2))
 	}
 }
+
+// ── Canon Cockpit registry (t-9917) ───────────────────────────────────────
+
+func TestRegistryIDStable(t *testing.T) {
+	a := registryID("/Users/x/proj")
+	b := registryID("/Users/x/proj")
+	if a != b {
+		t.Fatalf("id not stable: %s != %s", a, b)
+	}
+	if len(a) != 12 {
+		t.Fatalf("id length = %d, want 12", len(a))
+	}
+	if registryID("/Users/x/proj") == registryID("/Users/x/other") {
+		t.Fatal("different paths produced the same id")
+	}
+	if !regexp.MustCompile(`^[0-9a-f]{12}$`).MatchString(a) {
+		t.Fatalf("id not 12 lowercase hex: %s", a)
+	}
+}
+
+func TestRegistryAddListRemove(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", filepath.Join(home, ".canon"))
+
+	// a valid git dir
+	proj := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(proj, ".git"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := registryLoad(); len(got) != 0 {
+		t.Fatalf("expected empty registry, got %d", len(got))
+	}
+
+	res := registryAdd(proj, "a demo project")
+	if ok, _ := res["ok"].(bool); !ok {
+		t.Fatalf("add failed: %v", res)
+	}
+	entries := registryLoad()
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(entries))
+	}
+	// filepath.EvalSymlinks resolves the temp dir; name is its basename.
+	if entries[0].Description != "a demo project" {
+		t.Fatalf("description mismatch: %q", entries[0].Description)
+	}
+
+	// re-add same path → duplicate error, still 1 entry
+	if res := registryAdd(proj, "again"); res["ok"].(bool) {
+		t.Fatal("re-add should fail as duplicate")
+	}
+	if len(registryLoad()) != 1 {
+		t.Fatal("duplicate add changed the registry")
+	}
+
+	// non-git dir → error
+	nongit := t.TempDir()
+	if res := registryAdd(nongit, "x"); res["ok"].(bool) {
+		t.Fatal("non-git dir should be rejected")
+	}
+	// missing path → error
+	if res := registryAdd(filepath.Join(home, "nope"), "x"); res["ok"].(bool) {
+		t.Fatal("missing path should be rejected")
+	}
+	// empty path → error
+	if res := registryAdd("", "x"); res["ok"].(bool) {
+		t.Fatal("empty path should be rejected")
+	}
+
+	// remove by id
+	id := entries[0].ID
+	if res := registryRemove(id); !res["removed"].(bool) {
+		t.Fatal("remove should report removed=true")
+	}
+	if len(registryLoad()) != 0 {
+		t.Fatal("registry not empty after remove")
+	}
+	// remove unknown → no-op success
+	if res := registryRemove("deadbeef0000"); res["removed"].(bool) {
+		t.Fatal("removing unknown id should report removed=false")
+	}
+}
+
+// TestRegistryJSONShapeMatchesPython pins the on-disk JSON so it stays
+// byte-identical to server.py's json.dumps(indent=2)+"\n" (parity contract).
+func TestRegistryJSONShapeMatchesPython(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", filepath.Join(home, ".canon"))
+	proj := t.TempDir()
+	os.MkdirAll(filepath.Join(proj, ".git"), 0755)
+	registryAdd(proj, "desc")
+	raw, err := os.ReadFile(registryFile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	// 2-space indent, field order id,path,name,description,added, trailing \n
+	if !strings.HasSuffix(s, "\n") {
+		t.Fatal("registry file must end with a newline (parity with Python)")
+	}
+	idIdx := strings.Index(s, `"id"`)
+	pathIdx := strings.Index(s, `"path"`)
+	nameIdx := strings.Index(s, `"name"`)
+	descIdx := strings.Index(s, `"description"`)
+	addedIdx := strings.Index(s, `"added"`)
+	if !(idIdx < pathIdx && pathIdx < nameIdx && nameIdx < descIdx && descIdx < addedIdx) {
+		t.Fatalf("field order must be id,path,name,description,added — got:\n%s", s)
+	}
+	if !strings.Contains(s, "\n    \"id\"") { // array→object nesting = 4-space indent on fields
+		t.Fatalf("expected 2-space incremental indent (4-space field indent in an array), got:\n%s", s)
+	}
+}

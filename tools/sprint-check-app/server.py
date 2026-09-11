@@ -3,6 +3,7 @@
 
 import base64
 import fnmatch
+import hashlib
 import json
 import os
 import random
@@ -34,6 +35,91 @@ PROJECT_ROOT = find_project_root(Path(os.environ.get('SPRINT_CHECK_ROOT', Path.c
 TICKETS_DIR  = PROJECT_ROOT / '.tickets'
 HANDOFF_FILE = PROJECT_ROOT / 'HANDOFF.md'
 APP_HTML     = Path(__file__).parent / 'app.html'
+COCKPIT_HTML = Path(__file__).parent / 'cockpit.html'
+
+# ── Canon Cockpit project registry (t-9917) ───────────────────────────────
+# One shared registry of projects the Cockpit shell can open. Stored as a JSON
+# array at ~/.canon/cockpit/projects.json — paths + descriptions only, no
+# secrets (DECISIONS t-06cc: no encryption). Mirrored byte-for-byte in
+# sprint-check-go/main.go; the id hash + JSON field order are pinned so the two
+# backends stay parity-locked (tests/sprint-check-api-parity.sh).
+
+def _registry_dir() -> Path:
+    return Path(os.environ.get('CANON_HOME', Path.home() / '.canon')) / 'cockpit'
+
+def _registry_file() -> Path:
+    return _registry_dir() / 'projects.json'
+
+def _registry_id(abs_path: str) -> str:
+    """Stable short id = first 12 hex of sha256(resolved abs path)."""
+    return hashlib.sha256(abs_path.encode('utf-8')).hexdigest()[:12]
+
+def _registry_load() -> list:
+    f = _registry_file()
+    try:
+        data = json.loads(f.read_text(encoding='utf-8'))
+        return data if isinstance(data, list) else []
+    except (FileNotFoundError, ValueError):
+        return []
+
+def _registry_save(entries: list) -> None:
+    d = _registry_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass
+    f = _registry_file()
+    # Field order pinned to match main.go's struct marshal order (id, path,
+    # name, description, added) so parity byte-compares hold.
+    f.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    try:
+        os.chmod(f, 0o600)
+    except OSError:
+        pass
+
+def registry_list() -> list:
+    return _registry_load()
+
+def registry_add(path: str, description: str) -> dict:
+    """Add a project. Validates: existing dir + git repo + not already
+    registered. Returns {ok, error?, project?}. Never writes any file other
+    than the registry itself; `path` is stored as data, never opened for write."""
+    raw = (path or '').strip()
+    if not raw:
+        return {'ok': False, 'error': 'path is required'}
+    try:
+        abs_path = str(Path(raw).expanduser().resolve(strict=True))
+    except (FileNotFoundError, RuntimeError, OSError):
+        return {'ok': False, 'error': 'path does not exist'}
+    if not Path(abs_path).is_dir():
+        return {'ok': False, 'error': 'path is not a directory'}
+    if not (Path(abs_path) / '.git').exists():
+        return {'ok': False, 'error': 'path is not a git repository'}
+    pid = _registry_id(abs_path)
+    entries = _registry_load()
+    if any(e.get('id') == pid for e in entries):
+        return {'ok': False, 'error': 'project already registered'}
+    project = {
+        'id': pid,
+        'path': abs_path,
+        'name': Path(abs_path).name,
+        'description': (description or '').strip(),
+        'added': date.today().isoformat(),
+    }
+    entries.append(project)
+    _registry_save(entries)
+    return {'ok': True, 'project': project}
+
+def registry_remove(pid: str) -> dict:
+    """Deregister by id — registry-only, never touches the project repo.
+    Unknown id is a no-op success."""
+    entries = _registry_load()
+    kept = [e for e in entries if e.get('id') != pid]
+    removed = len(kept) != len(entries)
+    if removed:
+        _registry_save(kept)
+    return {'ok': True, 'removed': removed}
 
 # ── Ticket parsing ────────────────────────────────────────────────────────
 
@@ -1329,6 +1415,12 @@ class Handler(BaseHTTPRequestHandler):
         path = parsed.path.rstrip('/')
         if path in ('', '/'):
             self.send_html(APP_HTML)
+        elif path == '/cockpit':
+            # Canon Cockpit shell landing (t-9917). Falls back to the board if
+            # the landing file is absent, so an older checkout still serves.
+            self.send_html(COCKPIT_HTML if COCKPIT_HTML.exists() else APP_HTML)
+        elif path == '/api/projects':
+            self.send_json(registry_list())
         elif re.match(r'^/meta/screenshots/[a-zA-Z0-9_-]+\.(png|gif|jpg|jpeg|webp)$', path):
             img = PROJECT_ROOT / path.lstrip('/')
             self.send_image(img); return
@@ -1415,6 +1507,10 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.send_error(400); return
 
+        if path == '/api/projects':
+            result = registry_add(str(payload.get('path', '')), str(payload.get('description', '')))
+            self.send_json(result, status=200 if result.get('ok') else 400); return
+
         m = re.match(r'^/api/ticket/([^/]+)/status$', path)
         if m:
             ok = write_status(m.group(1), str(payload.get('status', '')))
@@ -1482,6 +1578,18 @@ class Handler(BaseHTTPRequestHandler):
             )
             self.send_json(t); return
 
+        self.send_error(404)
+
+    def do_DELETE(self):
+        if not self._host_ok():
+            self.send_error(403); return
+        path = urlparse(self.path).path
+        origin = self.headers.get('Origin', '')
+        if origin and not origin.startswith('http://127.0.0.1') and not origin.startswith('http://localhost'):
+            self.send_error(403); return
+        m = re.match(r'^/api/projects/([0-9a-f]{12})$', path)
+        if m:
+            self.send_json(registry_remove(m.group(1))); return
         self.send_error(404)
 
     def do_OPTIONS(self):

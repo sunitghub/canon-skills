@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +39,7 @@ var (
 	ticketsDir       string
 	handoffFile      string
 	appHTML          string
+	cockpitHTML      string
 	sprintHeadless   string
 	canonGateTmpl    string
 	cockpitDaemonBin string
@@ -131,6 +134,7 @@ func main() {
 		toolsDir = filepath.Dir(toolsDir)
 	}
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
+	cockpitHTML = filepath.Join(filepath.Dir(appHTML), "cockpit.html")
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
 	canonGateTmpl = resolveCanonGateTemplate(toolsDir, projectRoot, cwd)
 	cockpitDaemonBin = resolveCockpitDaemon(toolsDir, projectRoot, cwd)
@@ -190,6 +194,10 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		handlePost(w, r)
 		return
 	}
+	if r.Method == http.MethodDelete {
+		handleDelete(w, r)
+		return
+	}
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -197,11 +205,32 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 }
 
+func handleDelete(w http.ResponseWriter, r *http.Request) {
+	origin := r.Header.Get("Origin")
+	if origin != "" && !strings.HasPrefix(origin, "http://127.0.0.1") && !strings.HasPrefix(origin, "http://localhost") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if m := regexp.MustCompile(`^/api/projects/([0-9a-f]{12})$`).FindStringSubmatch(r.URL.Path); m != nil {
+		sendJSON(w, registryRemove(m[1]))
+		return
+	}
+	http.NotFound(w, r)
+}
+
 func handleGet(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimRight(r.URL.Path, "/")
 	switch path {
 	case "", "/":
 		serveFile(w, appHTML, "text/html; charset=utf-8")
+	case "/cockpit":
+		if exists(cockpitHTML) {
+			serveFile(w, cockpitHTML, "text/html; charset=utf-8")
+		} else {
+			serveFile(w, appHTML, "text/html; charset=utf-8")
+		}
+	case "/api/projects":
+		sendJSON(w, registryLoad())
 	case "/api/tickets":
 		tickets := loadTickets()
 		if !queryHasAll(r.URL.RawQuery) {
@@ -314,6 +343,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	if path == "/api/projects" {
+		res := registryAdd(stringValue(payload, "path", ""), stringValue(payload, "description", ""))
+		status := http.StatusOK
+		if ok, _ := res["ok"].(bool); !ok {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/status$`).FindStringSubmatch(path); m != nil {
 		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], fmt.Sprint(payload["status"]))})
 		return
@@ -2176,6 +2214,138 @@ func sendJSON(w http.ResponseWriter, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.Write(body)
+}
+
+func sendJSONStatus(w http.ResponseWriter, data any, status int) {
+	body, _ := json.Marshal(data)
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	w.WriteHeader(status)
+	w.Write(body)
+}
+
+// ── Canon Cockpit project registry (t-9917) ───────────────────────────────
+// Byte-for-byte mirror of server.py's registry: ~/.canon/cockpit/projects.json,
+// a JSON array of {id,path,name,description,added}. id = first 12 hex of
+// sha256(resolved abs path). Field order pinned via the struct tags below to
+// match server.py's json.dumps order so parity byte-compares hold. Paths +
+// descriptions only, no secrets (DECISIONS t-06cc: no encryption).
+
+type registryProject struct {
+	ID          string `json:"id"`
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Added       string `json:"added"`
+}
+
+func registryDir() string {
+	home := os.Getenv("CANON_HOME")
+	if home == "" {
+		h, _ := os.UserHomeDir()
+		home = filepath.Join(h, ".canon")
+	}
+	return filepath.Join(home, "cockpit")
+}
+
+func registryFile() string { return filepath.Join(registryDir(), "projects.json") }
+
+func registryID(absPath string) string {
+	sum := sha256.Sum256([]byte(absPath))
+	return hex.EncodeToString(sum[:])[:12]
+}
+
+func registryLoad() []registryProject {
+	data, err := os.ReadFile(registryFile())
+	if err != nil {
+		return []registryProject{}
+	}
+	var entries []registryProject
+	if json.Unmarshal(data, &entries) != nil {
+		return []registryProject{}
+	}
+	return entries
+}
+
+func registrySave(entries []registryProject) error {
+	d := registryDir()
+	if err := os.MkdirAll(d, 0o700); err != nil {
+		return err
+	}
+	// indent=2 + trailing newline to match server.py's json.dumps(...indent=2)+"\n".
+	body, err := json.MarshalIndent(entries, "", "  ")
+	if err != nil {
+		return err
+	}
+	body = append(body, '\n')
+	if err := os.WriteFile(registryFile(), body, 0o600); err != nil {
+		return err
+	}
+	return nil
+}
+
+func registryAdd(path, description string) map[string]any {
+	raw := strings.TrimSpace(path)
+	if raw == "" {
+		return map[string]any{"ok": false, "error": "path is required"}
+	}
+	if strings.HasPrefix(raw, "~") {
+		if h, err := os.UserHomeDir(); err == nil {
+			raw = filepath.Join(h, strings.TrimPrefix(raw, "~"))
+		}
+	}
+	abs, err := filepath.Abs(raw)
+	if err != nil {
+		return map[string]any{"ok": false, "error": "path does not exist"}
+	}
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return map[string]any{"ok": false, "error": "path does not exist"}
+	}
+	info, err := os.Stat(resolved)
+	if err != nil {
+		return map[string]any{"ok": false, "error": "path does not exist"}
+	}
+	if !info.IsDir() {
+		return map[string]any{"ok": false, "error": "path is not a directory"}
+	}
+	if !exists(filepath.Join(resolved, ".git")) {
+		return map[string]any{"ok": false, "error": "path is not a git repository"}
+	}
+	id := registryID(resolved)
+	entries := registryLoad()
+	for _, e := range entries {
+		if e.ID == id {
+			return map[string]any{"ok": false, "error": "project already registered"}
+		}
+	}
+	p := registryProject{
+		ID:          id,
+		Path:        resolved,
+		Name:        filepath.Base(resolved),
+		Description: strings.TrimSpace(description),
+		Added:       time.Now().Format("2006-01-02"),
+	}
+	entries = append(entries, p)
+	if err := registrySave(entries); err != nil {
+		return map[string]any{"ok": false, "error": "could not write registry"}
+	}
+	return map[string]any{"ok": true, "project": p}
+}
+
+func registryRemove(id string) map[string]any {
+	entries := registryLoad()
+	kept := make([]registryProject, 0, len(entries))
+	for _, e := range entries {
+		if e.ID != id {
+			kept = append(kept, e)
+		}
+	}
+	removed := len(kept) != len(entries)
+	if removed {
+		registrySave(kept)
+	}
+	return map[string]any{"ok": true, "removed": removed}
 }
 
 func envOr(name, fallback string) string {

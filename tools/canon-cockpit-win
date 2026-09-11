@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# canon-cockpit-win — run the Go board as the Canon Cockpit shell from source.
+# Windows path (mirrors sprint-check-win). The shipped canon-cockpit-win.cmd
+# runs the compiled sprint-check-win.exe instead; this source runner needs Go.
+#
+# The Go board serves /cockpit (the shell landing) + the project registry, the
+# same as server.py. Single-instance is handled by the .cmd/launcher opening the
+# URL; from source this simply starts the server on the fixed port.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "Error: Go is required to run canon-cockpit-win from source." >&2
+  exit 1
+fi
+
+PORT="${1:-${CANON_COCKPIT_PORT:-8899}}"
+cd "$ROOT"
+exec env GO111MODULE=off go run ./tools/sprint-check-go "$PORT"
