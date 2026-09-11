@@ -119,7 +119,7 @@ Model: <the model designation received in Inputs>
 pass: <one sentence> — OR — fail: <one sentence>
 ```
 
-The verdict line is binary — there is no `partial:` line. If any criterion or test-plan item graded `partial` in the tables above, the verdict line must be `fail:`, summarizing what's partial; `pass:` requires every criterion and test-plan item to be `pass`. This is what makes the close gate (which only accepts `^pass:`) fail closed on partial work instead of silently letting it through.
+The verdict line is binary — there is no `partial:` or `not-run:` line. If any criterion or test-plan item graded `partial` **or `not-run`** in the tables above, the verdict line must be `fail:`, summarizing what's partial or could-not-run; `pass:` requires every criterion and test-plan item to be `pass` — no `partial`, no `not-run`. `not-run` is **distinct from `fail`** — it means a load-bearing check *could not execute* (missing interpreter/dependency, un-renderable, un-runnable), not that it ran and failed — but it is **equally blocking**: a check whose result is unknown is not evidence of success, so it can never be silently coerced to `pass`. This is what makes the close gate (which only accepts `^pass:`, and separately rejects a `pass:` verdict contradicted by any `not-run`/`partial` status row — see `_gate_eval_report_consistency` in `tools/sprint`) fail closed on partial or un-run work instead of silently letting it through. Reserve `not-run` for a genuinely un-executable check and say why in Findings; if a re-run could resolve it, the fresh evaluator re-dispatch (step 1 overwrites this report with a new run-id each time) is the safe re-attempt.
 
 Return the verdict line in your response to the caller.
 
@@ -148,4 +148,4 @@ Tool health is not the contract. The relevant question is whether the missing or
 - If `acceptance.md` has no items under `## Criteria` or `## Test Plan`, report that as a fail — the ticket was closed with an incomplete acceptance doc.
 - `## QA`'s "Tested locally" checkbox is not yours to grade — it is the implementing agent's own attestation, checked once the change has actually been run, and verified separately by the human at `sprint complete`'s step 5 (Acceptance check). Do not fail or pass a report based on that checkbox's state.
 - Do not read files outside the changed-files list — you may pull in pre-existing code and misattribute it to this sprint.
-- `partial` is not a soft pass. Sprint complete must surface partials to the user the same as fails.
+- `partial` is not a soft pass, and neither is `not-run`. Sprint complete must surface both to the user the same as fails, and the verdict line must be `fail:` whenever either appears.
