@@ -758,3 +758,25 @@ func TestRegistryJSONShapeMatchesPython(t *testing.T) {
 		t.Fatalf("expected 2-space incremental indent (4-space field indent in an array), got:\n%s", s)
 	}
 }
+
+// TestRegistryDoesNotHTMLEscape pins that & < > are written literally (not
+// \u0026 etc.) so the on-disk JSON stays byte-identical to Python's
+// json.dumps(ensure_ascii=False) (t-9917 review finding: Go's default
+// MarshalIndent HTML-escapes and would diverge).
+func TestRegistryDoesNotHTMLEscape(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", filepath.Join(home, ".canon"))
+	proj := t.TempDir()
+	os.MkdirAll(filepath.Join(proj, ".git"), 0755)
+	registryAdd(proj, "a & b < c > d")
+	raw, _ := os.ReadFile(registryFile())
+	s := string(raw)
+	if !strings.Contains(s, "a & b < c > d") {
+		t.Fatalf("description must be stored with literal & < >, got:\n%s", s)
+	}
+	for _, bad := range []string{`\u0026`, `\u003c`, `\u003e`} {
+		if strings.Contains(s, bad) {
+			t.Fatalf("registry JSON must NOT HTML-escape (found %s) — breaks Python parity:\n%s", bad, s)
+		}
+	}
+}
