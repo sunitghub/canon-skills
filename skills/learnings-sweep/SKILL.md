@@ -8,9 +8,26 @@ tags: [learnings, sprint, memory, aggregation]
 # Learnings Sweep
 
 Aggregation only — never promotion. Distinct from `tkt learn` (writes one ticket's candidate) and
-from moving a keeper into `critique/canon-learnings.md`/`standards/` (a non-builder's separate,
-later act). This skill only keeps root `LEARNINGS.md` a current, compact index of what `tkt learn`
-has produced across tickets — it never changes a row's `Status` away from `UNPROMOTED`.
+from moving a keeper into `critique/canon-learnings.md`, `standards/`, or `CLAUDE.md`/`AGENTS.md`
+(a non-builder's separate, later act — see Promotion destinations below). This skill only keeps
+root `LEARNINGS.md` a current, compact index of what `tkt learn` has produced across tickets — it
+never changes a row's `Status` away from `UNPROMOTED`.
+
+## Promotion destinations (not this skill's job — context for what "promote" means)
+
+A non-builder promoting a keeper from `LEARNINGS.md` chooses among three places, in order of
+preference:
+
+1. **`critique/canon-learnings.md`** — narrative critique log, the default for most keepers.
+2. **`standards/`** — a formal, reusable standard the keeper generalizes into.
+3. **`CLAUDE.md`/`AGENTS.md`** — rarely. These are always-loaded into every session's context, so
+   every line costs tokens on every turn regardless of relevance (the same progressive-disclosure
+   concern `context-doctor`'s lens 3 checks for). Reserve this destination for a lesson that must
+   apply on every session, not just the ones that happen to touch the relevant area — anything
+   narrower belongs in `standards/` or a scoped reference file instead.
+
+This skill never makes that choice — it only keeps the candidate queue current so a non-builder has
+something to choose from.
 
 ## When to use
 

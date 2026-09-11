@@ -457,8 +457,15 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    recorded findings in step 3 — suggest running `tkt learn <id>`: it distills those close
    artifacts into an **UNPROMOTED** `.tickets/<id>/learnings.md` candidate for a *non-builder*
    (fresh agent or human) to promote later into the durable store (canon:
-   `critique/canon-learnings.md` or `standards/`). It proposes, never promotes, and is never
-   auto-fired — surface it, don't run it unasked.
+   `critique/canon-learnings.md`, `standards/`, or — rarely, since it's always-loaded context on
+   every session, so reserve it for something that must apply universally — `CLAUDE.md`/`AGENTS.md`).
+   It proposes, never promotes, and is never auto-fired — surface it, don't run it unasked.
+
+   Distinct from step 7's **Conventions** check above: that's live, same-session, builder-authored
+   capture of a structural pattern noticed while context is fresh (no non-builder gate needed,
+   since it's mechanical, not an evaluative judgment call). This step is for judgment calls —
+   deviations and evaluator findings — that specifically need someone with no stake in the sprint
+   to decide are worth keeping.
 
    If the user runs `tkt learn <id>` and it confirms/writes `.tickets/<id>/learnings.md`, follow it
    with `learnings-sweep <id>` (single-ticket mode — see `skills/learnings-sweep/SKILL.md`): it
