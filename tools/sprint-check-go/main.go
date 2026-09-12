@@ -380,6 +380,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	// t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
+	// absent → process default). Resolved before any route (mirrors server.py's
+	// do_POST ordering) so an unknown ?project 400s identically on both backends.
+	// Passed to the editable-tab write fns below; /api/projects ignores it.
+	eroot, erootOK := effectiveRoot(r)
+	if !erootOK {
+		http.Error(w, "unknown project", http.StatusBadRequest)
+		return
+	}
 	if path == "/api/projects" {
 		res := registryAdd(stringValue(payload, "path", ""), stringValue(payload, "description", ""))
 		status := http.StatusOK
@@ -387,13 +396,6 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusBadRequest
 		}
 		sendJSONStatus(w, res, status)
-		return
-	}
-	// t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
-	// absent → process default). Passed to the editable-tab write fns below.
-	eroot, erootOK := effectiveRoot(r)
-	if !erootOK {
-		http.Error(w, "unknown project", http.StatusBadRequest)
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/status$`).FindStringSubmatch(path); m != nil {
@@ -1552,7 +1554,6 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 	}
 	return map[string]any{"plan": plan, "acceptance": acceptance, "handoff": handoff}, true
 }
-
 
 // isCanonRuntimePath reports whether a git-porcelain path (repo-root-relative,
 // forward-slashed) is one of canon's own per-machine runtime files under
