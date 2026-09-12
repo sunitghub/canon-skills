@@ -1661,8 +1661,9 @@ func (s *server) logSessionStart(ticket, cwd, projectRoot string) {
 	path := filepath.Join(s.ticketsDirIn(projectRoot), ticket, "cockpit-sessions.md")
 
 	if existing, err := os.ReadFile(path); err == nil {
-		lines := strings.Split(strings.TrimRight(string(existing), "\n"), "\n")
-		if last := lines[len(lines)-1]; last == strings.TrimSuffix(line, "\n") {
+		lines := strings.Split(strings.TrimRight(string(existing), "\r\n"), "\n")
+		last := strings.TrimSuffix(lines[len(lines)-1], "\r")
+		if last == strings.TrimSuffix(line, "\n") {
 			return // same date + same label as the last entry — skip the duplicate
 		}
 	}

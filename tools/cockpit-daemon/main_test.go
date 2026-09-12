@@ -2355,6 +2355,39 @@ func TestSpawnLogsSessionStartDedupsSameDay(t *testing.T) {
 	}
 }
 
+// t-022f (reviewer finding): a pre-existing CRLF-terminated last line (e.g.
+// hand-edited on Windows) must still dedup correctly, not just an LF one.
+func TestSpawnLogsSessionStartDedupsCRLF(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	sessionsPath := filepath.Join(root, ".tickets", "t-ab12", "cockpit-sessions.md")
+	today := time.Now().UTC().Format("2006-01-02")
+	seeded := "- " + today + ": sprint start used main checkout\r\n"
+	if err := os.WriteFile(sessionsPath, []byte(seeded), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	time.Sleep(100 * time.Millisecond)
+
+	got, err := os.ReadFile(sessionsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != seeded {
+		t.Fatalf("a same-day, same-label start after a CRLF-terminated seed changed the file: got %q, want unchanged %q", got, seeded)
+	}
+}
+
 // t-e5ff: a git worktree only materializes tracked files, so when .tickets/ is
 // gitignored the ticket dir is absent in the worktree cwd. handleStart must
 // refuse (400) and spawn nothing there, rather than launch an agent that can't
