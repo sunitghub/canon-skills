@@ -917,7 +917,7 @@ func TestBrowseDirs(t *testing.T) {
 	os.Mkdir(filepath.Join(d, "sub1"), 0755)
 	os.Mkdir(filepath.Join(d, "sub2"), 0755)
 	os.WriteFile(filepath.Join(d, "afile.txt"), []byte("x"), 0644)
-	r := browseDirs(d)
+	r := browseDirs(d, false)
 	if r["error"] != nil {
 		t.Fatalf("unexpected error: %v", r)
 	}
@@ -938,14 +938,36 @@ func TestBrowseDirs(t *testing.T) {
 		t.Fatal("parent should be set for a non-root dir")
 	}
 	// home default
-	if browseDirs("")["error"] != nil {
+	if browseDirs("", false)["error"] != nil {
 		t.Fatal("empty path should default to home, not error")
 	}
 	// a file path and a nonexistent path → clean error
-	if browseDirs(filepath.Join(d, "afile.txt"))["error"] == nil {
+	if browseDirs(filepath.Join(d, "afile.txt"), false)["error"] == nil {
 		t.Fatal("a file path should return an error")
 	}
-	if browseDirs("/no/such/dir/xyz123")["error"] == nil {
+	if browseDirs("/no/such/dir/xyz123", false)["error"] == nil {
 		t.Fatal("a nonexistent path should return an error")
+	}
+}
+
+// TestBrowseDirsHidden (t-340d): dotfolders hidden by default, shown with showHidden.
+func TestBrowseDirsHidden(t *testing.T) {
+	d := t.TempDir()
+	os.Mkdir(filepath.Join(d, "visible"), 0755)
+	os.Mkdir(filepath.Join(d, ".hiddendir"), 0755)
+	names := func(res map[string]any) []string {
+		out := []string{}
+		for _, e := range res["entries"].([]map[string]any) {
+			out = append(out, e["name"].(string))
+		}
+		return out
+	}
+	def := names(browseDirs(d, false))
+	if len(def) != 1 || def[0] != "visible" {
+		t.Fatalf("default should hide dotfolders, got %v", def)
+	}
+	all := names(browseDirs(d, true))
+	if len(all) != 2 {
+		t.Fatalf("showHidden should include .hiddendir, got %v", all)
 	}
 }

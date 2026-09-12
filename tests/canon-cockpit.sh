@@ -236,5 +236,9 @@ grep -qF "/api/browse-dirs?path=" <<<"$page" || fail "canon-cockpit: navigator m
 grep -qF "function loadBrowse" <<<"$page" || fail "canon-cockpit: missing loadBrowse handler"
 grep -qF 'onclick="useBrowseDir()"' <<<"$page" || fail "canon-cockpit: missing the 'Use this folder' action"
 grep -qF "getElementById('addPath').value=_browseCwd" <<<"$page" || fail "canon-cockpit: 'Use this folder' must fill the path input with the chosen folder"
+# t-340d: Show-hidden toggle hides dotfolders by default, opt-in via &hidden=1
+grep -qF 'id="dirnav-hidden"' <<<"$page" || fail "canon-cockpit: navigator missing the Show-hidden toggle"
+grep -qiF "Show hidden" <<<"$page" || fail "canon-cockpit: navigator missing the 'Show hidden' label"
+grep -qF "&hidden=1" <<<"$page" || fail "canon-cockpit: loadBrowse must pass &hidden=1 when Show-hidden is checked"
 
 echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs)"

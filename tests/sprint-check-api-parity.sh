@@ -1001,7 +1001,7 @@ py_np="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PY_PORT/api/t
 # ── t-1b88: /api/browse-dirs (Add-Project folder picker) parity ──────────────
 # A fixture dir with a subdir + a file: the listing must include the SUBDIR only
 # (never the file, never file contents), semantically identical on both backends.
-BROWSEFIX="$WORK/browsefix"; mkdir -p "$BROWSEFIX/alpha" "$BROWSEFIX/beta"; printf 'x' > "$BROWSEFIX/afile.txt"
+BROWSEFIX="$WORK/browsefix"; mkdir -p "$BROWSEFIX/alpha" "$BROWSEFIX/beta" "$BROWSEFIX/.hiddendir"; printf 'x' > "$BROWSEFIX/afile.txt"
 py_bd="$(curl -s "http://127.0.0.1:$PY_PORT/api/browse-dirs?path=$BROWSEFIX")"
 go_bd="$(curl -s "http://127.0.0.1:$GO_PORT/api/browse-dirs?path=$BROWSEFIX")"
 python3 - "$py_bd" "$go_bd" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/browse-dirs listing mismatch"
@@ -1009,9 +1009,21 @@ import json,sys
 a,b=json.loads(sys.argv[1]),json.loads(sys.argv[2])
 assert a==b, f"browse-dirs differ:\n{a}\n{b}"
 names=[e["name"] for e in a["entries"]]
-assert names==["alpha","beta"], f"want dirs-only [alpha,beta], got {names}"
+assert names==["alpha","beta"], f"want dirs-only [alpha,beta] (dotfolders hidden by default), got {names}"
 assert "afile.txt" not in names, "browse-dirs must never list files"
+assert ".hiddendir" not in names, "browse-dirs must hide dotfolders by default (t-340d)"
 assert a["parent"], "parent should be set for a non-root dir"
+PY
+# t-340d: ?hidden=1 includes dotfolders, identically on both backends
+py_bh="$(curl -s "http://127.0.0.1:$PY_PORT/api/browse-dirs?path=$BROWSEFIX&hidden=1")"
+go_bh="$(curl -s "http://127.0.0.1:$GO_PORT/api/browse-dirs?path=$BROWSEFIX&hidden=1")"
+python3 - "$py_bh" "$go_bh" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/browse-dirs ?hidden=1 mismatch"
+import json,sys
+a,b=json.loads(sys.argv[1]),json.loads(sys.argv[2])
+assert a==b, f"browse-dirs hidden differ:\n{a}\n{b}"
+names=[e["name"] for e in a["entries"]]
+assert names==[".hiddendir","alpha","beta"], f"?hidden=1 should include the dotfolder, got {names}"
+assert "afile.txt" not in names, "still never lists files even with hidden=1"
 PY
 # a file path and a nonexistent path → clean error on BOTH backends (no listing)
 for ep in "$BROWSEFIX/afile.txt" "/no/such/dir/xyz123"; do
