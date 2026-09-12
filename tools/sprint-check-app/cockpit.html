@@ -129,6 +129,24 @@
   .note{margin-top:22px;font-size:11px;color:var(--text-dim)}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;display:none}
   .toast.show{display:block}
+  /* Help/tour overlay (t-c5e7) — slide-in from the right */
+  .help-overlay{position:fixed;inset:0;background:var(--scrim);opacity:0;pointer-events:none;transition:opacity .18s ease;z-index:40}
+  .help-overlay.open{opacity:1;pointer-events:auto}
+  .help-panel{position:absolute;top:0;right:0;height:100%;width:400px;max-width:88vw;background:var(--panel);border-left:1px solid var(--border);box-shadow:-8px 0 30px -10px rgba(0,0,0,.5);transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column}
+  .help-overlay.open .help-panel{transform:translateX(0)}
+  .help-head{display:flex;align-items:flex-start;gap:10px;padding:20px 22px 14px;border-bottom:1px solid var(--border)}
+  .help-title{font-size:17px;font-weight:700}
+  .help-sub{font-size:12px;color:var(--text-muted);margin-top:2px}
+  .help-close{margin-left:auto;width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:13px;flex-shrink:0}
+  .help-close:hover{color:var(--text);border-color:var(--border-hover)}
+  .help-body{padding:16px 22px;overflow:auto}
+  .help-sect{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);font-weight:700;margin:16px 0 5px}
+  .help-sect:first-child{margin-top:0}
+  .help-body p{font-size:13px;color:var(--text-body);margin:0}
+  .help-body code{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:1px 5px;font-size:12px}
+  .help-divider{border:none;border-top:1px solid var(--border-muted);margin:18px 0 4px}
+  .help-versions .hvrow{display:flex;justify-content:space-between;padding:6px 0;font-size:12px}
+  .help-versions .hvk{color:var(--text-muted)} .help-versions .hvv{color:var(--card-stat);font-weight:700;font-family:ui-monospace,monospace}
 </style>
 </head>
 <body>
@@ -155,7 +173,7 @@
       <div class="spacer"></div>
       <div class="foot">
         <button id="theme-btn" onclick="toggleTheme()">&#127769; Dark</button>
-        <button title="Help (coming soon)">? Help</button>
+        <button id="help-btn" onclick="openHelp()">? Help</button>
       </div>
     </aside>
     <main class="main">
@@ -221,6 +239,46 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<!-- Canon Cockpit shell Help/tour (t-c5e7) — slide-in overlay, modeled on the board's tour -->
+<div class="help-overlay" id="help-overlay">
+  <div class="help-panel">
+    <div class="help-head">
+      <div>
+        <div class="help-title">Canon Cockpit</div>
+        <div class="help-sub">one window for every canon project · local · no account</div>
+      </div>
+      <button class="help-close" id="help-close" title="Close">&#10005;</button>
+    </div>
+    <div class="help-body">
+      <div class="help-sect">One window</div>
+      <p>Launch <code>canon-cockpit</code> once. Running it again just focuses this window — everything opens <em>inside</em> it, no more a browser tab per project.</p>
+
+      <div class="help-sect">Projects</div>
+      <p>Register a git repo with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
+
+      <div class="help-sect">Tabs</div>
+      <p>Open projects become folder-named tabs beside the pinned <b>Projects</b> tab; close a tab with its <b>&#10005;</b>. The embedded board is read-only in this phase.</p>
+
+      <div class="help-sect">Admin</div>
+      <p>The <b>Admin</b> view shows the cockpit daemon (health, version, uptime, Restart) and every active agent session across all projects.</p>
+
+      <div class="help-sect">Theme</div>
+      <p>The footer toggle flips dark / light and applies to the shell and every open board.</p>
+
+      <div class="help-sect">Coming next</div>
+      <p>Editing tickets from inside a project tab (writes) and running an agent session in-tab arrive in upcoming phases.</p>
+
+      <hr class="help-divider">
+      <div class="help-sect">Versions</div>
+      <div class="help-versions">
+        <div class="hvrow"><span class="hvk">canon</span><span class="hvv" id="hv-canon">&mdash;</span></div>
+        <div class="hvrow"><span class="hvk">Board build</span><span class="hvv" id="hv-board">&mdash;</span></div>
+        <div class="hvrow"><span class="hvk">cockpit-daemon</span><span class="hvv" id="hv-daemon">&mdash;</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
   function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
   // Attribute/JS-string-safe: also escapes " and ' (text-node serialization does not).
@@ -239,6 +297,34 @@
   (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
   document.addEventListener('DOMContentLoaded',syncThemeBtn);
   function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+
+  // ── Help/tour overlay (t-c5e7) ────────────────────────────────────────────
+  let _helpVersionsLoaded=false;
+  function openHelp(){
+    document.getElementById('help-overlay').classList.add('open');
+    if(!_helpVersionsLoaded){ _helpVersionsLoaded=true; loadHelpVersions(); }
+  }
+  function closeHelp(){ document.getElementById('help-overlay').classList.remove('open'); }
+  async function loadHelpVersions(){
+    try{ const v=await (await fetch('/api/version')).json();
+      if(v&&v.version) document.getElementById('hv-canon').textContent='v'+v.version;
+      if(v&&v.commit) document.getElementById('hv-board').textContent=v.commit;
+      if(v&&v.daemon) document.getElementById('hv-daemon').textContent=v.daemon;
+    }catch(e){}
+    // daemon build (best-effort) from /api/cockpit running_build
+    try{ const ck=await (await fetch('/api/cockpit')).json();
+      const rb=ck&&ck.running_build;
+      if(rb&&rb.version) document.getElementById('hv-daemon').textContent=rb.version+(rb.exe_mtime?'':'');
+    }catch(e){}
+  }
+  document.addEventListener('DOMContentLoaded',()=>{
+    const hc=document.getElementById('help-close'); if(hc) hc.addEventListener('click',closeHelp);
+    const ov=document.getElementById('help-overlay');
+    if(ov) ov.addEventListener('click',e=>{ if(e.target===ov) closeHelp(); });
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){ const ov=document.getElementById('help-overlay'); if(ov&&ov.classList.contains('open')){ closeHelp(); } }
+  });
 
   // ── Tabs (t-a55a) ────────────────────────────────────────────────────────
   // Pinned Projects tab + closable, folder-named project tabs. Each project tab
@@ -475,7 +561,7 @@
 
   fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
   // Initial load, then restore any previously-open project tabs (once).
-  load().then(()=>{ restoreTabs(); if(location.hash==='#admin') showView('admin'); });
+  load().then(()=>{ restoreTabs(); if(location.hash==='#admin') showView('admin'); if(location.hash==='#help') openHelp(); });
 </script>
 </body>
 </html>
