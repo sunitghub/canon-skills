@@ -677,15 +677,18 @@
     activateTab(id);
     if(opts.nudge) maybeNudgeSkill(id,name);   // t-5c3c: only on explicit open, never on restore
   }
+  async function hasSprintSkill(id){
+    try{ const s=await fetch('/api/project-stats?project='+encodeURIComponent(id)); if(s.ok) return ((await s.json()).skills||[]).includes('sprint'); }catch(e){}
+    return false;   // fetch failed → assume sprintless (fail toward showing/keeping the nudge)
+  }
   // t-5c3c: soft nudge — when a project opened via the card lacks the sprint
   // skill, show an inline banner offering to register it. The board still opens;
   // Dismiss hides it for this open (reopening nudges again). Never a hard block.
   async function maybeNudgeSkill(id,name){
     const v=document.getElementById('view-'+id);
     if(!v || v.querySelector('.skill-nudge')) return;
-    let skills=[];
-    try{ const s=await fetch('/api/project-stats?project='+encodeURIComponent(id)); if(s.ok) skills=(await s.json()).skills||[]; }catch(e){}
-    if(!Array.isArray(skills) || skills.includes('sprint')) return;   // has it (or unknown) → no nudge
+    if(await hasSprintSkill(id)) return;
+    if(v.querySelector('.skill-nudge')) return;   // re-check post-await: a concurrent open may have inserted one
     const proj=(window._projects||[]).find(p=>p.id===id)||{};
     const bar=document.createElement('div');
     bar.className='skill-nudge';
@@ -701,8 +704,7 @@
     x.addEventListener('click',()=>{ bar.remove(); v.classList.remove('has-nudge'); });
     reg.addEventListener('click',async()=>{
       await registerSkill(id, name, proj.path||'', 'sprint');  // reuses the themed cockpitConfirm flow
-      // remove the banner only if sprint is actually registered now
-      try{ const s=await fetch('/api/project-stats?project='+encodeURIComponent(id)); const sk=s.ok?((await s.json()).skills||[]):[]; if(sk.includes('sprint')){ bar.remove(); v.classList.remove('has-nudge'); } }catch(e){}
+      if(await hasSprintSkill(id)){ bar.remove(); v.classList.remove('has-nudge'); }
     });
   }
   function _removeTab(id){

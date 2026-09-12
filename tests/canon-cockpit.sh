@@ -258,7 +258,9 @@ grep -qE "function openProject\(id,name,opts\)" <<<"$page" || fail "canon-cockpi
 grep -qF "function maybeNudgeSkill" <<<"$page" || fail "canon-cockpit: missing maybeNudgeSkill handler"
 grep -qF "bar.className='skill-nudge'" <<<"$page" || fail "canon-cockpit: missing the .skill-nudge banner markup"
 # gated strictly on the project lacking the sprint skill (no false nudge)
-grep -qE "skills\.includes\('sprint'\)" <<<"$page" || fail "canon-cockpit: nudge must gate on skills.includes('sprint')"
+grep -qF "function hasSprintSkill" <<<"$page" || fail "canon-cockpit: missing hasSprintSkill helper"
+grep -qE "\.skills *\|\| *\[\]\)\.includes\('sprint'\)" <<<"$page" || fail "canon-cockpit: hasSprintSkill must check skills.includes('sprint')"
+grep -qF "if(await hasSprintSkill(id)) return;" <<<"$page" || fail "canon-cockpit: nudge must gate on hasSprintSkill(id)"
 # explicit open passes {nudge:true}; tab-restore must NOT (no startup banner storm)
 grep -qF "openProject(b.dataset.open,b.dataset.name,{nudge:true})" <<<"$page" || fail "canon-cockpit: card '>' open must pass {nudge:true}"
 # "nudge:true" must appear only at the card '>' open call site — never in restoreTabs
