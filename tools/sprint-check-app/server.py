@@ -1280,7 +1280,8 @@ def _cockpit_running_build(addr: str) -> dict | None:
         with urllib.request.urlopen(f'http://{addr}/version', timeout=0.4) as r:
             data = json.loads(r.read().decode('utf-8'))
         return {'version': str(data.get('version', '')),
-                'exe_mtime': int(data.get('exe_mtime', 0))}
+                'exe_mtime': int(data.get('exe_mtime', 0)),
+                'uptime_secs': int(data.get('uptime_secs', 0))}
     except Exception:
         return None
 

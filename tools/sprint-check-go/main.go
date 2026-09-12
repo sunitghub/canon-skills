@@ -2099,13 +2099,14 @@ func cockpitRunningBuild(addr string) map[string]any {
 	}
 	defer resp.Body.Close()
 	var v struct {
-		Version  string `json:"version"`
-		ExeMtime int64  `json:"exe_mtime"`
+		Version    string `json:"version"`
+		ExeMtime   int64  `json:"exe_mtime"`
+		UptimeSecs int64  `json:"uptime_secs"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&v) != nil {
 		return nil
 	}
-	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime}
+	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs}
 }
 
 // cockpitBuildStatus reports {stale, running_build, latest_build} for a healthy

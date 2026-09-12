@@ -39,11 +39,12 @@
   .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:14px}
   .brand small{font-weight:500;color:var(--text-dim);font-size:10px;margin-left:auto}
   .navlabel{font-size:10px;letter-spacing:.12em;color:var(--text-muted);text-transform:uppercase;padding:12px 18px 6px;font-weight:600}
-  .nav a{display:flex;align-items:center;gap:10px;padding:9px 18px;color:var(--text-body);text-decoration:none;font-size:14px;border-left:3px solid transparent;cursor:pointer;transition:background .12s ease,color .12s ease}
+  .nav a{display:flex;align-items:center;gap:12px;padding:11px 18px;color:var(--text-body);text-decoration:none;font-size:14px;border-left:3px solid transparent;cursor:pointer;transition:background .12s ease,color .12s ease}
   .nav a:hover{color:var(--text);background:var(--border-muted)}
-  .nav a.active{color:var(--card-stat);font-weight:700;background:linear-gradient(90deg,var(--accent-dim),transparent);border-left-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent-dim)}
-  .nav a.active .ic{opacity:1;color:var(--accent)}
-  .nav a .ic{width:16px;text-align:center;opacity:.85}
+  .nav a:hover .ic{color:var(--text);border-color:var(--border-hover)}
+  .nav a.active{color:var(--card-stat);font-weight:700;background:linear-gradient(90deg,var(--accent-dim),transparent);border-left-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent-dim),0 2px 12px -4px var(--accent)}
+  .nav a.active .ic{color:#fff;background:var(--accent);border-color:var(--accent);box-shadow:0 2px 10px -2px var(--accent)}
+  .nav a .ic{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;border:1px solid var(--border);background:var(--panel);font-size:15px;color:var(--text-muted);flex-shrink:0;transition:.12s}
   .nav a .badge{margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);border-radius:9px;padding:1px 7px}
   .spacer{flex:1}
   .foot{padding:6px 12px 0;display:flex;gap:8px}
@@ -54,7 +55,7 @@
   .tabstrip{display:flex;align-items:center;gap:4px;height:40px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
   .tab{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px 8px 0 0;font-size:13px;color:var(--text-muted);cursor:pointer;position:relative;top:1px;border:1px solid transparent;border-bottom:none;white-space:nowrap;transition:color .12s ease,background .12s ease}
   .tab:not(.active):hover{color:var(--text);background:var(--border-muted)}
-  .tab.active{background:var(--bg);color:var(--text);border-color:var(--border);border-bottom-color:var(--bg)}
+  .tab.active{background:var(--bg);color:var(--text);border-color:var(--accent);border-bottom-color:var(--bg);box-shadow:0 -2px 12px -4px var(--accent),inset 0 2px 0 var(--accent)}
   .tab.pinned{font-weight:600}
   .tab .live{width:6px;height:6px;border-radius:50%;background:var(--col-done)}
   .tab .tx{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:10px;color:var(--text-dim);margin-left:2px}
@@ -63,6 +64,32 @@
   .view{position:absolute;inset:0;overflow:auto;display:none}
   .view.active{display:block}
   #view-projects{padding:24px 30px}
+  #view-admin{padding:24px 30px}
+  .admin-wrap{max-width:620px}
+  .admin-h1{font-size:21px;font-weight:700;letter-spacing:-.4px;margin-bottom:20px}
+  .dpanel{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:26px;display:flex;gap:24px;align-items:center;margin-bottom:16px}
+  .dsvg{flex-shrink:0;width:104px;height:104px;display:grid;place-items:center;background:radial-gradient(circle at center,var(--accent-dim),transparent 70%);border-radius:16px}
+  .dgrid{flex:1}
+  .dtitle{display:flex;align-items:center;gap:9px;font-size:18px;font-weight:700;margin-bottom:16px}
+  .dstatus{margin-left:auto;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+  .dstatus.healthy{color:var(--col-done)} .dstatus.stale{color:var(--amber,#fbbf24)} .dstatus.down{color:var(--text-muted)}
+  .dstatus::before{content:"";width:9px;height:9px;border-radius:50%;background:currentColor}
+  .drow{display:flex;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border-muted);font-size:15px}
+  .drow .k{color:var(--text-muted)} .drow .v{font-weight:700;font-family:ui-monospace,monospace;color:var(--text)}
+  .drestart{margin-top:16px;width:100%;background:var(--accent);color:#fff;border:none;border-radius:9px;padding:12px;font-size:14px;font-weight:600;cursor:pointer}
+  .drestart:hover{filter:brightness(1.08)}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+  .tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+  .tile .n{font-size:24px;font-weight:700;letter-spacing:-.5px}
+  .tile .n.a{color:var(--accent)} .tile .n.g{color:var(--col-done)} .tile .n.b{color:var(--col-progress)}
+  .tile .l{color:var(--text-muted);font-size:11.5px;margin-top:2px}
+  .sessions{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 4px}
+  .slabel{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);padding:10px 14px 6px}
+  .srow{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--border-muted)}
+  .srow .sd{width:7px;height:7px;border-radius:50%;background:var(--col-done)}
+  .srow .sp{color:var(--text-muted);font-family:ui-monospace,monospace;font-size:11px}
+  .srow .sa{margin-left:auto;font-size:11px;color:var(--text-muted)}
+  .srow .snone{color:var(--text-muted);padding:6px 4px}
   .view iframe{width:100%;height:100%;border:0;display:block;background:var(--bg)}
   .vhead{display:flex;align-items:center;margin-bottom:20px}
   .vhead h1{font-size:21px;font-weight:700;letter-spacing:-.4px}
@@ -122,7 +149,8 @@
     <aside class="side">
       <div class="navlabel">Workspace</div>
       <nav class="nav">
-        <a class="active"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
+        <a id="nav-projects" class="active" onclick="showView('projects')"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
+        <a id="nav-admin" onclick="showView('admin')"><span class="ic">&#9881;</span> Admin</a>
       </nav>
       <div class="spacer"></div>
       <div class="foot">
@@ -138,6 +166,39 @@
         <section id="view-projects" class="view active">
           <div id="grid" class="grid"></div>
           <div class="note">Read-only project tabs (Phase 2a). Drag-to-update, ticket create/edit, and the in-tab agent session arrive in Phase 2b.</div>
+        </section>
+        <section id="view-admin" class="view">
+          <div class="admin-wrap">
+            <h1 class="admin-h1">Admin</h1>
+            <div class="dpanel">
+              <div class="dsvg">
+                <svg width="76" height="76" viewBox="0 0 76 76" fill="none">
+                  <circle cx="38" cy="38" r="33" stroke="var(--accent)" stroke-width="1.5" opacity=".28"><animate attributeName="r" values="33;35;33" dur="4s" repeatCount="indefinite"/></circle>
+                  <circle cx="38" cy="38" r="23" stroke="var(--col-done)" stroke-width="1.5" opacity=".5"/>
+                  <g><animateTransform attributeName="transform" type="rotate" from="0 38 38" to="360 38 38" dur="8s" repeatCount="indefinite"/><circle cx="38" cy="15" r="3.5" fill="var(--col-progress)"/></g>
+                  <g><animateTransform attributeName="transform" type="rotate" from="120 38 38" to="480 38 38" dur="8s" repeatCount="indefinite"/><circle cx="38" cy="15" r="3" fill="var(--col-done)"/></g>
+                  <circle cx="38" cy="38" r="11" fill="var(--accent)"/>
+                  <circle cx="38" cy="38" r="11" fill="var(--accent)"><animate attributeName="r" values="11;15;11" dur="2.4s" repeatCount="indefinite"/><animate attributeName="opacity" values="1;.35;1" dur="2.4s" repeatCount="indefinite"/></circle>
+                </svg>
+              </div>
+              <div class="dgrid">
+                <div class="dtitle">Cockpit Daemon <span class="dstatus" id="ad-status">…</span></div>
+                <div class="drow"><span class="k">Current version</span><span class="v" id="ad-version">—</span></div>
+                <div class="drow"><span class="k">Uptime</span><span class="v" id="ad-uptime">—</span></div>
+                <button class="drestart" id="ad-restart">&#8635; Restart Daemon</button>
+              </div>
+            </div>
+            <div class="tiles">
+              <div class="tile"><div class="n a" id="ad-tile-projects">—</div><div class="l">Registered projects</div></div>
+              <div class="tile"><div class="n g" id="ad-tile-agents">—</div><div class="l">Running agents</div></div>
+              <div class="tile"><div class="n b" id="ad-tile-sprints">—</div><div class="l">Active projects</div></div>
+            </div>
+            <div class="sessions">
+              <div class="slabel">Active agent sessions (all projects)</div>
+              <div id="ad-sessions"></div>
+            </div>
+            <div class="note">Admin reuses the daemon's existing endpoints (health/version/sessions/restart). CI setup stays per-project.</div>
+          </div>
         </section>
       </div>
     </main>
@@ -188,6 +249,72 @@
     const el=document.getElementById('ncount');
     if(el) el.textContent = n===0 ? 'None open' : (n+' active');
   }
+
+  // ── Views: Projects vs Admin (t-5dc2) ─────────────────────────────────────
+  function showView(v){
+    const proj=v==='projects';
+    document.getElementById('view-projects').classList.toggle('active',proj && activeTab==='projects');
+    document.getElementById('view-admin').classList.toggle('active',!proj);
+    document.getElementById('nav-projects').classList.toggle('active',proj);
+    document.getElementById('nav-admin').classList.toggle('active',!proj);
+    if(proj){ activateTab(activeTab==='projects'?'projects':activeTab); }
+    else { document.querySelectorAll('.view').forEach(x=>x.classList.remove('active')); document.getElementById('view-admin').classList.add('active'); loadAdmin(); }
+  }
+
+  function fmtUptime(secs){
+    secs=parseInt(secs||0,10); if(!secs||secs<0) return '—';
+    const h=Math.floor(secs/3600), m=Math.floor((secs%3600)/60);
+    if(h>0) return h+'h '+m+'m';
+    if(m>0) return m+'m';
+    return secs+'s';
+  }
+
+  async function loadAdmin(){
+    const projects=window._projects||[];
+    const setTxt=(id,val)=>{const e=document.getElementById(id); if(e) e.textContent=val;};
+    setTxt('ad-projects',projects.length);            // panel row removed — no-op if absent
+    setTxt('ad-tile-projects',projects.length);
+    // daemon health + version + uptime from /api/cockpit (+ /api/version)
+    let ck={}; try{ ck=await (await fetch('/api/cockpit')).json(); }catch(e){}
+    const st=document.getElementById('ad-status');
+    if(!ck.running){ st.className='dstatus down'; st.textContent='Not running'; }
+    else if(ck.stale){ st.className='dstatus stale'; st.textContent='Out of date'; }
+    else { st.className='dstatus healthy'; st.textContent='Healthy'; }
+    let ver='—';
+    try{ const v=await (await fetch('/api/version')).json(); if(v&&v.version) ver='v'+v.version+(v.commit?(' ('+v.commit+')'):''); }catch(e){}
+    document.getElementById('ad-version').textContent=ver;
+    const up=(ck.running_build&&ck.running_build.uptime_secs);
+    document.getElementById('ad-uptime').textContent=ck.running?fmtUptime(up):'—';
+    // sessions (cross-project) → running agents count + list
+    let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
+    if(!Array.isArray(sessions)) sessions=[];
+    document.getElementById('ad-agents')&&(document.getElementById('ad-agents').textContent=sessions.length);
+    document.getElementById('ad-tile-agents').textContent=sessions.length;
+    const box=document.getElementById('ad-sessions');
+    box.innerHTML = sessions.length ? sessions.map(s=>{
+      const proot=String(s.project_root||''), name=proot.split(/[\\/]/).filter(Boolean).pop()||proot;
+      return `<div class="srow"><span class="sd"></span><b>${esc(name)}</b><span class="sp">${esc(proot)}${s.ticket?(' \u00b7 '+esc(String(s.ticket))):''}</span><span class="sa">${esc(String(s.agent||''))}</span></div>`;
+    }).join('') : '<div class="srow snone">No active agent sessions.</div>';
+    // Active projects = projects currently open in a tab (shell state).
+    document.getElementById('ad-tile-sprints').textContent = openTabs.length;
+  }
+
+  // Restart reuses the daemon's token-free /api/cockpit-restart (busy-confirm + re-poll).
+  document.addEventListener('DOMContentLoaded',()=>{
+    const rb=document.getElementById('ad-restart');
+    if(rb) rb.addEventListener('click',restartDaemon);
+  });
+  async function restartDaemon(){
+    let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
+    const n=Array.isArray(sessions)?sessions.length:0;
+    if(n>0 && !confirm('Restart the Cockpit daemon?\n\n'+n+' active agent session'+(n===1?'':'s')+' across all projects will be ended.')) return;
+    try{
+      const r=await fetch('/api/cockpit-restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({force:n>0})});
+      const res=await r.json();
+      toast(res&&res.restarted ? '✓ Daemon restarted' : (res&&res.running ? 'Daemon still running (older build?)' : "Couldn't restart daemon"));
+    }catch(e){ toast("Couldn't reach the board"); }
+    setTimeout(loadAdmin,600);
+  }
   function renderTabs(){
     const strip=document.getElementById('tabstrip');
     // keep the pinned Projects tab (first child), rebuild the rest
@@ -223,6 +350,10 @@
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     const v=document.getElementById('view-'+id) || document.getElementById('view-projects');
     v.classList.add('active');
+    // activating any tab means we're in the Projects workspace, not Admin (t-5dc2)
+    const np=document.getElementById('nav-projects'), na=document.getElementById('nav-admin');
+    if(np) np.classList.add('active');
+    if(na) na.classList.remove('active');
     renderTabs();
     saveTabs();
   }
@@ -338,7 +469,7 @@
 
   fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
   // Initial load, then restore any previously-open project tabs (once).
-  load().then(()=>{ restoreTabs(); });
+  load().then(()=>{ restoreTabs(); if(location.hash==='#admin') showView('admin'); });
 </script>
 </body>
 </html>
