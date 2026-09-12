@@ -314,7 +314,7 @@
     // daemon build (best-effort) from /api/cockpit running_build
     try{ const ck=await (await fetch('/api/cockpit')).json();
       const rb=ck&&ck.running_build;
-      if(rb&&rb.version) document.getElementById('hv-daemon').textContent=rb.version+(rb.exe_mtime?'':'');
+      if(rb&&rb.version) document.getElementById('hv-daemon').textContent=rb.version;
     }catch(e){}
   }
   document.addEventListener('DOMContentLoaded',()=>{
