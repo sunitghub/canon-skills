@@ -1,8 +1,8 @@
 package main
 
 import (
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -461,7 +461,6 @@ func TestSafeTicketDocAllowsFreshWriteThroughRealExistingParent(t *testing.T) {
 	}
 }
 
-
 // t-e40a: the shipped, git-tracked tools/cockpit-daemon-win.exe must be the
 // first Windows candidate (the board couldn't find the daemon on a stock
 // Windows clone because the resolver only looked for cockpit-daemon/cockpit-daemon.exe).
@@ -621,7 +620,7 @@ func TestLinkSkillsIntoWorktreeReplacesCommittedMirror(t *testing.T) {
 	wt := t.TempDir()
 	gitInitRepo(t, wt)
 	writeFile(t, filepath.Join(wt, ".agents/skills/sprint/SKILL.md"), "STALE") // committed mirror → replace
-	writeFile(t, filepath.Join(wt, ".claude/skills/myproj/x.md"), "LOCAL")      // committed, no marker → preserve
+	writeFile(t, filepath.Join(wt, ".claude/skills/myproj/x.md"), "LOCAL")     // committed, no marker → preserve
 	gitCommitAll(t, wt, "mixed")
 
 	linkSkillsIntoWorktree(wt)
