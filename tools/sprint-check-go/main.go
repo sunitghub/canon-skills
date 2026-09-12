@@ -2546,7 +2546,9 @@ func registerSkill(root, skill string) map[string]any {
 	cmd := exec.Command(bash, skillsShPath(), "add", "sprint", root)
 	cmd.Dir = root
 	cmd.Stdin = nil // non-interactive (skills.sh auto-skips its tty prompts)
+	timedOut := false
 	timer := time.AfterFunc(60*time.Second, func() {
+		timedOut = true
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 		}
@@ -2554,14 +2556,20 @@ func registerSkill(root, skill string) map[string]any {
 	out, err := cmd.CombinedOutput()
 	timer.Stop()
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
-			msg = "skills.sh failed"
+		// Parity with server.py: a completed-but-nonzero run → {error}; a launch
+		// failure or our timeout kill → {unsupported} (same as no-bash), so the
+		// UI shows the copy-paste command rather than an error toast.
+		if _, isExit := err.(*exec.ExitError); isExit && !timedOut {
+			msg := strings.TrimSpace(string(out))
+			if msg == "" {
+				msg = "skills.sh failed"
+			}
+			if len(msg) > 400 {
+				msg = msg[:400]
+			}
+			return map[string]any{"ok": false, "error": msg, "cmd": hint}
 		}
-		if len(msg) > 400 {
-			msg = msg[:400]
-		}
-		return map[string]any{"ok": false, "error": msg, "cmd": hint}
+		return map[string]any{"ok": false, "unsupported": true, "cmd": hint}
 	}
 	return map[string]any{"ok": true, "skills": registeredSkills(root)}
 }
