@@ -398,6 +398,13 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSONStatus(w, res, status)
 		return
 	}
+	// t-7485: register the fixed `sprint` skill into the tab's project. eroot is
+	// the registry-resolved root (unknown id already 400'd above); the skill name
+	// is a constant — no client path/skill reaches the shell-out.
+	if path == "/api/register-skill" {
+		sendJSON(w, registerSkill(eroot, "sprint"))
+		return
+	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/status$`).FindStringSubmatch(path); m != nil {
 		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], fmt.Sprint(payload["status"]), eroot)})
 		return
@@ -2483,7 +2490,80 @@ func projectStats(root string) map[string]any {
 	if matches, err := filepath.Glob(filepath.Join(ticketsDirForRoot(root), "*", "ticket.md")); err == nil {
 		ticketCount = len(matches)
 	}
-	return map[string]any{"updated": updated, "ticket_count": ticketCount}
+	return map[string]any{"updated": updated, "ticket_count": ticketCount, "skills": registeredSkills(root)}
+}
+
+// t-7485: parse the project's AGENTS.md "Active canon skills" (AI-SKILLS) table —
+// byte-parity with server.py's registered_skills. Pure read, no subprocess.
+// Returns a non-nil empty slice when absent so JSON marshals to [] (not null),
+// matching Python's []. Names in AGENTS.md table order.
+var aiSkillsBlockRe = regexp.MustCompile(`(?s)<!--\s*AI-SKILLS:BEGIN\s*-->(.*?)<!--\s*AI-SKILLS:END\s*-->`)
+
+func registeredSkills(root string) []string {
+	names := []string{}
+	raw, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		return names
+	}
+	m := aiSkillsBlockRe.FindSubmatch(raw)
+	if m == nil {
+		return names
+	}
+	for _, line := range strings.Split(string(m[1]), "\n") {
+		if !strings.HasPrefix(line, "| ") { // skips the |---| separator and non-rows
+			continue
+		}
+		cells := strings.Split(line, "|") // ["", " name ", " category ", " source ", ""]
+		if len(cells) < 2 {
+			continue
+		}
+		name := strings.TrimSpace(cells[1])
+		if name == "" || strings.EqualFold(name, "skill") { // skip header
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func skillsShPath() string { return envOr("SKILLS_SH_BIN", filepath.Join(toolsDir, "skills.sh")) }
+
+// registerSkill registers the fixed literal `sprint` skill into `root` via a
+// non-interactive, timeout-bounded `bash skills.sh add sprint <root>` (argv list,
+// no shell string). Byte-parity with server.py's register_skill. Only 'sprint' is
+// accepted — the trust boundary is a constant skill name + a registry-resolved
+// root, never a client path. Degrades to {ok:false,unsupported:true,cmd} where
+// bash/skills.sh is unavailable.
+func registerSkill(root, skill string) map[string]any {
+	if skill != "sprint" {
+		return map[string]any{"ok": false, "error": "only the sprint skill can be registered from the Cockpit"}
+	}
+	hint := fmt.Sprintf("%s add sprint %s", skillsShPath(), root)
+	bash, berr := exec.LookPath("bash")
+	if berr != nil || !exists(skillsShPath()) {
+		return map[string]any{"ok": false, "unsupported": true, "cmd": hint}
+	}
+	cmd := exec.Command(bash, skillsShPath(), "add", "sprint", root)
+	cmd.Dir = root
+	cmd.Stdin = nil // non-interactive (skills.sh auto-skips its tty prompts)
+	timer := time.AfterFunc(60*time.Second, func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	})
+	out, err := cmd.CombinedOutput()
+	timer.Stop()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = "skills.sh failed"
+		}
+		if len(msg) > 400 {
+			msg = msg[:400]
+		}
+		return map[string]any{"ok": false, "error": msg, "cmd": hint}
+	}
+	return map[string]any{"ok": true, "skills": registeredSkills(root)}
 }
 
 func envOr(name, fallback string) string {

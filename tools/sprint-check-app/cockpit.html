@@ -100,7 +100,7 @@
   .btn:hover{color:var(--text);border-color:var(--border-hover)}
   .btn.primary{background:var(--accent);color:#fff;border:none;display:inline-flex;gap:7px;align-items:center}
   .btn.primary:hover{filter:brightness(1.08)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:15px 16px;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
   .card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 28px -8px rgba(0,0,0,.5),0 0 0 3px var(--accent-dim)}
   .card h3{font-size:15px;font-weight:600}
@@ -117,6 +117,8 @@
   .go:hover{filter:brightness(1.08)}
   .dereg{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer}
   .dereg:hover{color:var(--col-discarded);border-color:var(--col-discarded)}
+  .regskill{align-self:center;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--accent);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .regskill:hover{background:var(--accent);color:#fff}
   .empty{border:1.5px dashed var(--border-hover);border-radius:12px;padding:40px;text-align:center;color:var(--text-muted)}
   .scrim{position:fixed;inset:0;background:var(--scrim);display:none;place-items:center;z-index:20}
   .scrim.show{display:grid}
@@ -612,9 +614,11 @@
           <div class="meta" data-stats="${escAttr(p.id)}">
             <div class="metarow"><span class="k">Updated</span><span class="v" data-f="updated">…</span></div>
             <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
+            <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
             <div class="metarow"><span class="k">Added</span><span class="v">${esc(p.added||'')}</span></div>
           </div>
           <div class="actions">
+            <button class="regskill" title="Register the sprint skill in this project" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ sprint</button>
             <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
             <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
           </div>
@@ -624,20 +628,42 @@
     // JS-string/attribute injection from a maliciously-named registered path).
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
     grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name)));
+    grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSprint(b.dataset.id,b.dataset.name,b.dataset.path)));
     shown.forEach(p=>fillCardStats(p.id));
   }
 
   async function fillCardStats(id){
     const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
     if(!el) return;
-    const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]');
+    const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]'), sk=el.querySelector('[data-f="skills"]');
     try{
       const r=await fetch('/api/project-stats?project='+encodeURIComponent(id));
       if(!r.ok) throw 0;
       const s=await r.json();
       up.textContent=s.updated||'—';
       ct.textContent=(s.ticket_count!=null?s.ticket_count:'—');
-    }catch(e){ up.textContent='—'; ct.textContent='—'; }
+      const skills=Array.isArray(s.skills)?s.skills:[];
+      if(sk) sk.textContent = skills.length ? skills.join(', ') : '—';
+      // t-7485: offer to register sprint only when it's not already registered.
+      const card=el.closest('.card');
+      const reg=card&&card.querySelector('.regskill');
+      if(reg) reg.style.display = skills.includes('sprint') ? 'none' : '';
+    }catch(e){ up.textContent='—'; ct.textContent='—'; if(sk) sk.textContent='—'; }
+  }
+
+  // t-7485: register the sprint skill into a project from its card. Confirms the
+  // side effects, POSTs to the registered-id-only endpoint, then refreshes. If the
+  // host can't run it (no bash/skills.sh — e.g. Windows Go binary), surfaces the
+  // exact copy-paste command instead of failing silently.
+  async function registerSprint(id,name,path){
+    if(!confirm('Register the canon “sprint” skill in “'+name+'”?\n\nThis wires the sprint workflow into the project — it updates AGENTS.md/CLAUDE.md, installs a git pre-commit hook, creates .tickets/, and links the skills dir. Safe to re-run.')) return;
+    try{
+      const r=await fetch('/api/register-skill?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      const res=await r.json().catch(()=>({}));
+      if(res&&res.ok){ toast('✓ Registered sprint in '+name); load(); return; }
+      if(res&&res.unsupported){ window.prompt('Run this in a terminal to register sprint:', res.cmd||('skills.sh add sprint '+path)); return; }
+      toast((res&&res.error)?('Could not register: '+res.error):'Could not register sprint');
+    }catch(e){ toast('Request failed'); }
   }
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}

@@ -189,4 +189,15 @@ grep -qF "canon-cockpit-shell" <<<"$board" || fail "canon-cockpit: app.html miss
 grep -qF "e.origin !== location.origin" <<<"$board" || fail "canon-cockpit: shell→board listener not origin-checked (same-origin)"
 grep -qF "ckLeaveSaveAndEnd" <<<"$board" || fail "canon-cockpit: shell→board listener must reuse the vetted ckLeaveSaveAndEnd flow"
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge)"
+# ── t-7485: per-project registered-skills line + register-sprint from the card ─
+grep -qF 'data-f="skills"' <<<"$page" || fail "canon-cockpit: card missing the Skills meta row (data-f=\"skills\")"
+grep -qE "s\.skills|\.skills" <<<"$page" || fail "canon-cockpit: fillCardStats must read the project-stats skills field"
+grep -qF 'class="regskill"' <<<"$page" || fail "canon-cockpit: missing the Register-sprint button"
+grep -qF "skills.includes('sprint')" <<<"$page" || fail "canon-cockpit: register button must be gated on whether sprint is already registered"
+grep -qF "function registerSprint" <<<"$page" || fail "canon-cockpit: missing registerSprint handler"
+grep -qE "querySelectorAll\('\.regskill'\)" <<<"$page" || fail "canon-cockpit: register button not wired via a delegated handler"
+grep -qF "/api/register-skill?project=" <<<"$page" || fail "canon-cockpit: registerSprint must POST to /api/register-skill?project=<id>"
+grep -qF "confirm(" <<<"$page" || fail "canon-cockpit: registerSprint must confirm before the mutating register"
+grep -qF "unsupported" <<<"$page" || fail "canon-cockpit: registerSprint must surface the copy-paste command on unsupported hosts"
+
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485 per-project Skills row + registered-id-only Register-sprint action)"

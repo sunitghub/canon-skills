@@ -880,3 +880,29 @@ func TestScopedWritesTargetProject(t *testing.T) {
 		t.Fatal("unknown project id should be ok=false (→400)")
 	}
 }
+
+// TestRegisteredSkills (t-7485): parse the AGENTS.md AI-SKILLS table; byte-parity
+// with server.py registered_skills (names in table order; [] when absent).
+func TestRegisteredSkills(t *testing.T) {
+	dir := t.TempDir()
+	// no AGENTS.md → empty (non-nil) slice
+	if got := registeredSkills(dir); len(got) != 0 {
+		t.Fatalf("no AGENTS.md should yield no skills, got %v", got)
+	}
+	agents := "# X\n<!-- AI-SKILLS:BEGIN -->\n## Active canon skills\n\n" +
+		"| Skill | Category | Source |\n|-------|----------|--------|\n" +
+		"| sprint | dev | /x/skills/sprint/SKILL.md |\n" +
+		"| context-check | dev | /x/skills/context-check/SKILL.md |\n" +
+		"<!-- AI-SKILLS:END -->\n"
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte(agents), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := registeredSkills(dir)
+	if len(got) != 2 || got[0] != "sprint" || got[1] != "context-check" {
+		t.Fatalf("want [sprint context-check] in table order, got %v", got)
+	}
+	// registerSkill rejects any non-sprint skill (fixed trust boundary)
+	if res := registerSkill(dir, "wrapup"); res["ok"] != false {
+		t.Fatalf("non-sprint skill must be rejected, got %v", res)
+	}
+}

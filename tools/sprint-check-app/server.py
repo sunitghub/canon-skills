@@ -148,6 +148,35 @@ def effective_root(query: dict) -> Path:
 def tickets_dir_for(root: Path) -> Path:
     return root / '.tickets'
 
+# t-7485: parse the project's AGENTS.md "Active canon skills" (AI-SKILLS) table —
+# the source of truth skills.sh maintains — to report which skills a project has
+# registered. Pure read (no subprocess), so it behaves identically on the Go/Windows
+# binary. Mirrors tools/skills/lib.sh registered_skill_rows/skill_row_name.
+_AISKILLS_BLOCK = re.compile(r'<!--\s*AI-SKILLS:BEGIN\s*-->(.*?)<!--\s*AI-SKILLS:END\s*-->', re.DOTALL)
+
+def registered_skills(root: Path) -> list:
+    """Names of canon skills registered on `root`, in AGENTS.md table order.
+    Missing AGENTS.md or block → []."""
+    try:
+        text = (root / 'AGENTS.md').read_text(encoding='utf-8')
+    except Exception:
+        return []
+    m = _AISKILLS_BLOCK.search(text)
+    if not m:
+        return []
+    names = []
+    for line in m.group(1).splitlines():
+        if not line.startswith('| '):   # skips the |---| separator (starts '|-') and non-rows
+            continue
+        cells = line.split('|')          # ['', ' name ', ' category ', ' source ', '']
+        if len(cells) < 2:
+            continue
+        name = cells[1].strip()
+        if not name or name.lower() == 'skill':   # skip the header row
+            continue
+        names.append(name)
+    return names
+
 def project_stats(root: Path) -> dict:
     """Per-project card stats (t-a55a): last git commit time (relative) +
     number of ticket dirs under .tickets/. Read-only; used by the Projects
@@ -170,7 +199,7 @@ def project_stats(root: Path) -> dict:
     ticket_count = 0
     if tdir.is_dir():
         ticket_count = sum(1 for p in tdir.glob('*/ticket.md'))
-    return {'updated': updated, 'ticket_count': ticket_count}
+    return {'updated': updated, 'ticket_count': ticket_count, 'skills': registered_skills(root)}
 
 # ── Ticket parsing ────────────────────────────────────────────────────────
 
@@ -1109,6 +1138,32 @@ SPRINT_HEADLESS = Path(os.environ.get('SPRINT_HEADLESS_BIN')
 SPRINT_HEADLESS_EVAL = Path(os.environ.get('SPRINT_HEADLESS_EVAL_BIN')
                              or Path(__file__).resolve().parent.parent / 'sprint-headless-eval')
 CANON_GATE_TEMPLATE = Path(__file__).resolve().parent.parent / 'canon-gate-template.yml'
+SKILLS_SH = Path(os.environ.get('SKILLS_SH_BIN') or Path(__file__).resolve().parent.parent / 'skills.sh')
+
+def register_skill(root: Path, skill: str = 'sprint') -> dict:
+    """t-7485: register a canon skill into `root` by shelling out to skills.sh
+    (argv list, non-interactive, timeout-bounded). Only the fixed literal
+    'sprint' is registerable from the Cockpit — the trust boundary is a
+    constant skill name + a registry-resolved root, never a client-supplied
+    skill/path. Degrades to {ok:False, unsupported:True, cmd:<hint>} where
+    bash or skills.sh isn't available (e.g. a Windows host without Git-Bash),
+    so the UI can show a copy-paste command instead of failing silently."""
+    if skill != 'sprint':
+        return {'ok': False, 'error': 'only the sprint skill can be registered from the Cockpit'}
+    hint = f'{SKILLS_SH} add sprint {root}'
+    bash = shutil.which('bash')
+    if not bash or not SKILLS_SH.exists():
+        return {'ok': False, 'unsupported': True, 'cmd': hint}
+    try:
+        p = subprocess.run([bash, str(SKILLS_SH), 'add', 'sprint', str(root)],
+                           cwd=str(root), stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, timeout=60)
+    except Exception as e:
+        return {'ok': False, 'unsupported': True, 'cmd': hint, 'error': str(e)[:200]}
+    if p.returncode != 0:
+        return {'ok': False, 'error': (p.stderr or p.stdout or 'skills.sh failed').strip()[:400], 'cmd': hint}
+    return {'ok': True, 'skills': registered_skills(root)}
+
 
 # ── Cockpit daemon integration (t-ddc8) ─────────────────────────────────────
 # The board never owns a PTY (t-1262 lesson): it discovers/launches the shipped
@@ -1605,6 +1660,13 @@ class Handler(BaseHTTPRequestHandler):
         if path == '/api/projects':
             result = registry_add(str(payload.get('path', '')), str(payload.get('description', '')))
             self.send_json(result, status=200 if result.get('ok') else 400); return
+
+        # t-7485: register the canon `sprint` skill into the tab's project. The
+        # target dir is the registry-resolved eroot (never a raw client path;
+        # unknown id already 400'd above), and the skill is the fixed literal
+        # 'sprint' — no client-supplied skill/path reaches the shell-out.
+        if path == '/api/register-skill':
+            self.send_json(register_skill(eroot)); return
 
         m = re.match(r'^/api/ticket/([^/]+)/status$', path)
         if m:
