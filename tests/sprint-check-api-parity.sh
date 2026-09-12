@@ -81,9 +81,17 @@ export SPRINT_HEADLESS_BIN SPRINT_HEADLESS_EVAL_BIN
 # real onboarding (which would write a git hook + touch ~/.config/canon). The
 # stub only appends/upserts the AGENTS.md AI-SKILLS row, idempotently.
 SKILLS_SH_BIN="$WORK/stub-skills.sh"
+ASSUME_YES_LOG="$WORK/assume-yes.log"
+export ASSUME_YES_LOG
 cat > "$SKILLS_SH_BIN" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+# t-b47a: record whether the caller set SKILLS_SH_ASSUME_YES, so the
+# register-skill endpoint parity block below can assert both backends pass
+# it to every invocation (the actual auto-yes prompt behavior is covered by
+# tests/skills-assume-yes.sh against the real skills.sh — this just proves
+# the board threads the flag through).
+echo "${SKILLS_SH_ASSUME_YES:-<unset>}" >> "$ASSUME_YES_LOG"
 [ "${1:-}" = "add" ] || exit 0
 skill="${2:-sprint}"; dir="${3:-$PWD}"; af="$dir/AGENTS.md"
 grep -q "^| $skill " "$af" 2>/dev/null && exit 0    # idempotent: row already present
@@ -1097,6 +1105,10 @@ grep -q "^| sprint " "$REGPROJ2/AGENTS.md" || fail "sprint-check-api-parity: FAI
 # idempotent: a second POST (via the Go backend) keeps exactly one sprint row
 curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$GO_PORT/api/register-skill?project=$reg_id2" >/dev/null
 [[ "$(grep -c '^| sprint ' "$REGPROJ2/AGENTS.md")" == "1" ]] || fail "sprint-check-api-parity: FAIL — register-skill not idempotent (duplicate sprint rows)"
+# t-b47a: both backends must pass SKILLS_SH_ASSUME_YES=1 to the skills.sh
+# subprocess (proves the flag is actually threaded through, not just present
+# in source) — the two calls above logged one line each.
+[[ "$(cat "$ASSUME_YES_LOG")" == $'1\n1' ]] || fail "sprint-check-api-parity: FAIL — SKILLS_SH_ASSUME_YES not set to 1 on both backends (log: $(cat "$ASSUME_YES_LOG" | tr '\n' ','))"
 # project-stats now reports the newly-registered skill on both backends
 for port in "$PY_PORT" "$GO_PORT"; do
   sk="$(curl -s "http://127.0.0.1:$port/api/project-stats?project=$reg_id2" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("skills"))')"

@@ -2620,7 +2620,15 @@ func registerSkill(root, skill string) map[string]any {
 	}
 	cmd := exec.Command(bash, skillsShPath(), "add", skill, root)
 	cmd.Dir = root
-	cmd.Stdin = nil // non-interactive (skills.sh auto-skips its tty prompts)
+	cmd.Stdin = nil
+	// t-b47a: Stdin=nil alone does NOT make skills.sh's setup prompts
+	// non-interactive — they read from /dev/tty directly, independent of
+	// stdin, so a long-lived board process still finds its launch terminal's
+	// controlling tty and prompts there, unanswered. SKILLS_SH_ASSUME_YES
+	// tells the three project-scoped prompts (AGENTS.md bridge, model-tiers
+	// note, subagent-log.sh permission) to apply their recommended default
+	// immediately instead of waiting on that prompt.
+	cmd.Env = append(os.Environ(), "SKILLS_SH_ASSUME_YES=1")
 	timedOut := false
 	timer := time.AfterFunc(60*time.Second, func() {
 		timedOut = true

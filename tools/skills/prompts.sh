@@ -1,6 +1,33 @@
 #!/usr/bin/env bash
 # tools/skills/prompts.sh — shared /dev/tty prompt helpers used across commands
 
+# _prompt_or_auto_yes <question> — decides whether to apply a recommended,
+# opt-out setup action (append an import line, add a permission rule, ...).
+#
+# TTY *availability* is not evidence the right human is present to answer:
+# a long-lived server (canon-cockpit/sprint-check) keeps its launch terminal
+# as its controlling tty for its whole run, so a subprocess it shells out to
+# in response to an unrelated HTTP request can still open /dev/tty even
+# though nobody there is watching for this specific prompt (t-b47a). A
+# caller acting on behalf of an API/browser-driven request must say so
+# explicitly via SKILLS_SH_ASSUME_YES, which applies the recommended
+# default immediately with no I/O at all — never inferred from the
+# environment. Absent that, behavior is unchanged: a real human running
+# `skills.sh add` directly still gets the interactive prompt.
+_prompt_or_auto_yes() {
+  local question="$1"
+  if [ -n "${SKILLS_SH_ASSUME_YES:-}" ]; then
+    return 0
+  fi
+  if ! { : <> /dev/tty; } 2>/dev/null; then
+    return 1
+  fi
+  printf "%s [y/N] (auto-skips in 15s) " "$question" > /dev/tty
+  local answer
+  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 1; }
+  [[ "$answer" =~ ^[Yy]$ ]]
+}
+
 offer_tkt_path() {
   local tools_dir="$SKILLS_ROOT/tools"
   local rc_file="$HOME/.zshrc"
@@ -31,17 +58,12 @@ offer_model_tiers_note() {
   if grep -qF "<!-- MODEL-TIERS:BEGIN -->" "$target" 2>/dev/null; then
     return 0
   fi
-  if ! { : <> /dev/tty; } 2>/dev/null; then
-    return 0
-  fi
-  printf "Update AGENTS.md with model-per-task note? [y/N] (auto-skips in 15s) " > /dev/tty
-  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
-  if [[ "$answer" =~ ^[Yy]$ ]]; then
+  if _prompt_or_auto_yes "Update AGENTS.md with model-per-task note?"; then
     {
       echo ""
       awk '/<!-- MODEL-TIERS:BEGIN -->/{flag=1} flag; /<!-- MODEL-TIERS:END -->/{flag=0}' "$source_agents"
     } >> "$target"
-    echo "AGENTS.md updated with model-per-task note." > /dev/tty
+    echo "AGENTS.md updated with model-per-task note."
   fi
 }
 
@@ -124,14 +146,10 @@ offer_subagent_log_permission() {
   fi
   [ "$status" = "present" ] && return 0
 
-  if ! { : <> /dev/tty; } 2>/dev/null; then
+  if ! _prompt_or_auto_yes "Add a Bash permission rule for subagent-log.sh to $settings, so sprint close stops prompting for it?"; then
     echo "  [skip]  add \"$rule\" to permissions.allow in $settings to stop repeated subagent-log.sh prompts at sprint close"
     return 0
   fi
-
-  printf "Add a Bash permission rule for subagent-log.sh to %s, so sprint close stops prompting for it? [y/N] (auto-skips in 15s) " "$settings" > /dev/tty
-  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
-  [[ "$answer" =~ ^[Yy]$ ]] || return 0
 
   mkdir -p "$(dirname "$settings")"
   if python3 - "$settings" "$rule" <<'PYEOF'
@@ -153,9 +171,9 @@ with open(path, "w") as f:
     f.write("\n")
 PYEOF
   then
-    echo "  [ok]     $settings — added $rule" > /dev/tty
+    echo "  [ok]     $settings — added $rule"
   else
-    echo "  [fail]   could not update $settings — left untouched" > /dev/tty
+    echo "  [fail]   could not update $settings — left untouched"
   fi
 }
 
