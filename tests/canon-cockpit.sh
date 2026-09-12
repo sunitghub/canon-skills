@@ -152,4 +152,41 @@ for kw in "One window" "Admin" "Coming next"; do
 done
 grep -qF "/api/version" <<<"$page" || fail "canon-cockpit: Help should read /api/version for the Versions block"
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints)"
+# ── Phase 2b-iii: in-tab agent session + refresh/close guard (t-0db3) ─────────
+# (a) In-tab agent session reuses the board's Resume/cockpit path: canon-proj-embed
+#     must NOT hide the Resume affordance or the cockpit overlay (Part A). The board
+#     ($board) is /?project=<id>-scoped so the agent runs against the tab's project.
+for hidden in "card-start" "#cockpit-overlay" "\.resume"; do
+  grep -qE "html\.canon-proj-embed [^{]*${hidden}" <<<"$board" && fail "canon-cockpit: canon-proj-embed must NOT hide the in-tab agent affordance ($hidden)"
+done
+grep -q "canon-proj-embed" <<<"$board" || fail "canon-cockpit: board embed marker missing (Part A relies on the ?project tab)"
+# (b) Live-session detection: the shell polls /api/cockpit-sessions and matches a
+#     session's project_root to the tab's project path.
+grep -qF "/api/cockpit-sessions" <<<"$page" || fail "canon-cockpit: 2b-iii live detection must poll /api/cockpit-sessions"
+grep -qF "project_root" <<<"$page" || fail "canon-cockpit: 2b-iii must match session project_root to the tab"
+grep -qE "liveTabIds" <<<"$page" || fail "canon-cockpit: 2b-iii missing the live-tab set"
+grep -qE "function pollSessions|pollSessions *=" <<<"$page" || fail "canon-cockpit: 2b-iii missing the session poller"
+# (c) Guarded closeTab: warns when live, closes immediately when idle (never a
+#     silent orphan/kill). Assert closeTab checks liveTabIds before removing.
+#     (flatten newlines — BSD grep has no -P/-z multiline).
+page_flat="$(printf '%s' "$page" | tr '\n' ' ')"
+grep -qE "function closeTab\(id\)\{ *if\(liveTabIds\.has" <<<"$page_flat" || fail "canon-cockpit: closeTab must consult liveTabIds (guard) before removing a tab"
+grep -qF 'id="closeWarn"' <<<"$page" || fail "canon-cockpit: missing close-tab warning modal"
+for act in "Keep working" "End without saving" "Save &amp; End"; do
+  grep -qF "$act" <<<"$page" || fail "canon-cockpit: close-warn modal missing action '$act'"
+done
+grep -qF "confirmCloseTab" <<<"$page" || fail "canon-cockpit: close-warn actions not wired to confirmCloseTab"
+# (d) Save & End / End reuse the board via a shell→iframe postMessage (no new daemon surface).
+grep -qF "canon-cockpit-shell" <<<"$page" || fail "canon-cockpit: Save&End/End must post as source 'canon-cockpit-shell'"
+grep -qE "postMessage\(\{source:'canon-cockpit-shell'" <<<"$page" || fail "canon-cockpit: confirmCloseTab must postMessage to the board iframe"
+# (e) beforeunload is SCOPED: guarded by live-tab presence, never unconditional.
+grep -qF "beforeunload" <<<"$page" || fail "canon-cockpit: missing beforeunload refresh guard"
+grep -qE "addEventListener\('beforeunload', *function\(e\)\{ *if\(liveTabIds\.size" <<<"$page_flat" || fail "canon-cockpit: beforeunload must be gated by liveTabIds.size (not a blanket trap)"
+
+# app.html: the shell→board bridge listener must be ORIGIN-CHECKED (same-origin only)
+# and only drive the existing Save & End / end flow — no new daemon capability.
+grep -qF "canon-cockpit-shell" <<<"$board" || fail "canon-cockpit: app.html missing the shell→board control listener"
+grep -qF "e.origin !== location.origin" <<<"$board" || fail "canon-cockpit: shell→board listener not origin-checked (same-origin)"
+grep -qF "ckLeaveSaveAndEnd" <<<"$board" || fail "canon-cockpit: shell→board listener must reuse the vetted ckLeaveSaveAndEnd flow"
+
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge)"

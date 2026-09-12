@@ -57,7 +57,8 @@
   .tab:not(.active):hover{color:var(--text);background:var(--border-muted)}
   .tab.active{background:var(--bg);color:var(--text);border-color:var(--accent);border-bottom-color:var(--bg);box-shadow:0 -2px 12px -4px var(--accent),inset 0 2px 0 var(--accent)}
   .tab.pinned{font-weight:600}
-  .tab .live{width:6px;height:6px;border-radius:50%;background:var(--col-done)}
+  .tab .live{width:6px;height:6px;border-radius:50%;background:var(--col-done);display:none}
+  .tab .live.on{display:inline-block;box-shadow:0 0 6px var(--col-done)}
   .tab .tx{width:16px;height:16px;border-radius:5px;display:grid;place-items:center;font-size:10px;color:var(--text-dim);margin-left:2px}
   .tab .tx:hover{color:var(--col-discarded);background:rgba(248,113,113,.12)}
   .views{flex:1;position:relative;overflow:hidden}
@@ -126,6 +127,17 @@
   .modal textarea{resize:vertical;min-height:52px}
   .modal .err{color:var(--col-discarded);font-size:12px;margin-top:8px;min-height:16px}
   .modal .mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  /* Close-tab warning (t-0db3) — live agent session; never orphan/kill silently */
+  .cmodal{width:440px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;text-align:center}
+  .cmodal .ci{width:44px;height:44px;border-radius:50%;background:var(--accent-dim);color:var(--col-done);display:grid;place-items:center;font-size:18px;margin:0 auto 12px}
+  .cmodal h2{font-size:16px;margin-bottom:8px}
+  .cmodal p{font-size:13px;color:var(--text-body);margin-bottom:18px;line-height:1.5}
+  .cmodal .cfoot{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+  .cmodal .btn{border-radius:8px;padding:9px 14px;font-size:12.5px;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-body)}
+  .cmodal .btn:hover{color:var(--text);border-color:var(--border-hover)}
+  .cmodal .btn.ghost{color:var(--text-muted)}
+  .cmodal .btn.ghost:hover{color:var(--col-discarded);border-color:var(--col-discarded)}
+  .cmodal .btn.primary{background:var(--accent);color:#fff;border:none;font-weight:600}
   .note{margin-top:22px;font-size:11px;color:var(--text-dim)}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;display:none}
   .toast.show{display:block}
@@ -237,6 +249,22 @@
     </div>
   </div>
 </div>
+
+<!-- Close-tab warning (t-0db3): the tab has a LIVE agent session. Never orphan or
+     kill it silently — offer Save & End / End without saving / Keep working.
+     Shown only for a live tab; an idle tab closes straight to Projects. -->
+<div class="scrim" id="closeWarn">
+  <div class="cmodal">
+    <div class="ci">&#9654;</div>
+    <h2>Agent still running in this tab</h2>
+    <p id="closeWarnMsg">This tab has a live agent session. Closing it will end the session. Save the sprint state first, or keep working.</p>
+    <div class="cfoot">
+      <button class="btn" onclick="hideCloseWarn()">Keep working</button>
+      <button class="btn ghost" onclick="confirmCloseTab(false)">End without saving</button>
+      <button class="btn primary" onclick="confirmCloseTab(true)">Save &amp; End</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <!-- Canon Cockpit shell Help/tour (t-c5e7) — slide-in overlay, modeled on the board's tour -->
@@ -323,7 +351,11 @@
     if(ov) ov.addEventListener('click',e=>{ if(e.target===ov) closeHelp(); });
   });
   document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){ const ov=document.getElementById('help-overlay'); if(ov&&ov.classList.contains('open')){ closeHelp(); } }
+    if(e.key==='Escape'){
+      const cw=document.getElementById('closeWarn');
+      if(cw&&cw.classList.contains('show')){ hideCloseWarn(); return; }
+      const ov=document.getElementById('help-overlay'); if(ov&&ov.classList.contains('open')){ closeHelp(); }
+    }
   });
 
   // ── Tabs (t-a55a) ────────────────────────────────────────────────────────
@@ -334,6 +366,72 @@
   let openTabs=[];            // [{id,name}]
   let activeTab='projects';
   let knownIds=new Set();     // registered project ids (for restore filtering)
+  let liveTabIds=new Set();   // t-0db3: open tab ids whose project has a live agent session
+  let pendingCloseId=null;    // tab awaiting the close-warn decision
+  let closingTabs=new Set();  // tabs told to Save&End/End — removed once their session ends
+
+  // ── Live agent-session guard (t-0db3) ──────────────────────────────────────
+  // Detect which open tabs have a running agent by polling the existing
+  // /api/cockpit-sessions (daemon truth across all projects) and matching a
+  // session's project_root to the tab's registered project path. No cross-origin
+  // messaging needed for detection. Drives the tab .live dot + the close/refresh
+  // guard. Idle tabs are never trapped.
+  function _normPath(p){ return String(p||'').replace(/[\\/]+$/,''); }
+  async function pollSessions(){
+    let sessions=[];
+    try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
+    if(!Array.isArray(sessions)) sessions=[];
+    const liveRoots=new Set(sessions.map(s=>_normPath(s&&s.project_root)).filter(Boolean));
+    const byId=new Map((window._projects||[]).map(p=>[p.id,_normPath(p.path)]));
+    const next=new Set();
+    for(const t of openTabs){ const path=byId.get(t.id); if(path && liveRoots.has(path)) next.add(t.id); }
+    // only re-render if the live set actually changed
+    const changed = next.size!==liveTabIds.size || [...next].some(id=>!liveTabIds.has(id));
+    liveTabIds=next;
+    // A tab awaiting close (Save&End/End) is removed once its session has ended
+    // — the daemon finished the save/end turn, so no orphan and no premature
+    // iframe teardown.
+    for(const id of [...closingTabs]){ if(!next.has(id)){ closingTabs.delete(id); _removeTab(id); } }
+    if(changed) renderTabs();
+  }
+  function startSessionPoll(){ pollSessions(); setInterval(pollSessions, 5000); }
+
+  function openCloseWarn(id){
+    pendingCloseId=id;
+    const t=openTabs.find(x=>x.id===id);
+    const msg=document.getElementById('closeWarnMsg');
+    if(msg && t) msg.textContent='“'+t.name+'” has a live agent session. Closing it will end the session. Save the sprint state first, or keep working.';
+    document.getElementById('closeWarn').classList.add('show');
+  }
+  function hideCloseWarn(){ pendingCloseId=null; document.getElementById('closeWarn').classList.remove('show'); }
+  // Save & End (save=true) or End without saving (save=false): drive the board's
+  // EXISTING daemon save-and-end / end flow via a same-origin postMessage into the
+  // tab's board iframe (the board owns the terminal + session token). The daemon
+  // stays the sole PTY owner — the shell never talks to the daemon session API.
+  function confirmCloseTab(save){
+    const id=pendingCloseId;
+    document.getElementById('closeWarn').classList.remove('show');
+    pendingCloseId=null;
+    if(!id) return;
+    const v=document.getElementById('view-'+id);
+    const ifr=v&&v.querySelector('iframe');
+    if(!(ifr&&ifr.contentWindow)){ _removeTab(id); return; }  // no board frame — just close
+    try{ ifr.contentWindow.postMessage({source:'canon-cockpit-shell', type: save?'save-and-end':'end'}, location.origin); }catch(e){}
+    // Do NOT remove the tab yet — the board runs the save/end turn against the
+    // daemon (up to ~90s) inside this iframe; tearing it down now would orphan
+    // the session (the exact bug this guard prevents). Mark it closing; the
+    // poller removes the tab once its daemon session actually ends.
+    closingTabs.add(id);
+    toast(save?'Saving & ending session…':'Ending session…');
+    setTimeout(pollSessions, 800);
+  }
+
+  // Scoped refresh/close guard: prompt the browser's leave confirmation ONLY when
+  // at least one open tab has a live agent session. With no live tab, refresh and
+  // close stay seamless (never a blanket trap); tabs restore from localStorage.
+  window.addEventListener('beforeunload', function(e){
+    if(liveTabIds.size>0){ e.preventDefault(); e.returnValue=''; return ''; }
+  });
 
   function saveTabs(){
     try{localStorage.setItem(LS_TABS,JSON.stringify({openIds:openTabs.map(t=>t.id),active:activeTab}));}catch(e){}
@@ -415,7 +513,8 @@
       const el=document.createElement('div');
       el.className='tab project'+(activeTab===t.id?' active':'');
       el.dataset.tab=t.id;
-      el.innerHTML='<span class="live"></span> '+esc(t.name)+' <span class="tx" title="Close tab">&#10005;</span>';
+      const liveCls = liveTabIds.has(t.id) ? ' on' : '';
+      el.innerHTML='<span class="live'+liveCls+'"></span> '+esc(t.name)+' <span class="tx" title="Close tab">&#10005;</span>';
       el.addEventListener('click',(ev)=>{ if(ev.target.classList.contains('tx')){closeTab(t.id);} else {activateTab(t.id);} });
       strip.appendChild(el);
     }
@@ -453,11 +552,18 @@
     if(!openTabs.some(t=>t.id===id)){ openTabs.push({id,name}); ensureView(id,name); }
     activateTab(id);
   }
-  function closeTab(id){
+  function _removeTab(id){
     openTabs=openTabs.filter(t=>t.id!==id);
     const v=document.getElementById('view-'+id); if(v) v.remove();
     if(activeTab===id) activeTab='projects';
     activateTab(activeTab);
+  }
+  // t-0db3: closing a tab with a LIVE agent session warns first (Save & End /
+  // End without saving / Keep working) — never a silent orphan/kill (t-f6b6
+  // lineage). An idle tab closes straight to Projects, as before.
+  function closeTab(id){
+    if(liveTabIds.has(id)){ openCloseWarn(id); return; }
+    _removeTab(id);
   }
   function restoreTabs(){
     let saved=null;
@@ -561,7 +667,7 @@
 
   fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
   // Initial load, then restore any previously-open project tabs (once).
-  load().then(()=>{ restoreTabs(); if(location.hash==='#admin') showView('admin'); if(location.hash==='#help') openHelp(); });
+  load().then(()=>{ restoreTabs(); startSessionPoll(); if(location.hash==='#admin') showView('admin'); if(location.hash==='#help') openHelp(); });
 </script>
 </body>
 </html>
