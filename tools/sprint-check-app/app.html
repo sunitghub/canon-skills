@@ -4946,7 +4946,12 @@ async function isTicketClosed(id) {
   } catch { return false; }
 }
 
-document.getElementById('ck-leave-save').addEventListener('click', async () => {
+document.getElementById('ck-leave-save').addEventListener('click', () => ckLeaveSaveAndEnd(false));
+// t-0db3: extracted so the Canon Cockpit shell's close-tab guard can drive the
+// SAME vetted flow via postMessage. skipSave=true = "End without saving" (routes
+// through the daemon's force-end, same as the already-closed short-circuit) — a
+// clean daemon end, never a silent orphan/kill.
+async function ckLeaveSaveAndEnd(skipSave) {
   const iframe = document.getElementById('ck-iframe');
   const statusEl = document.getElementById('ck-leave-confirm-status');
   const saveBtn = document.getElementById('ck-leave-save');
@@ -4985,7 +4990,7 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
   // `closed` is read lazily by this closure, so it reflects the fetch result if
   // 'ended' fires after it, and defaults to the (harmless) save-and-end message
   // if it fires during the fetch.
-  cockpitState._onEnded = () => finish(closed ? 'Ended — ticket already closed, no state to save.' : 'Saved and ended.');
+  cockpitState._onEnded = () => finish(closed ? 'Ended — ticket already closed, no state to save.' : (skipSave ? 'Ended without saving.' : 'Saved and ended.'));
   // Overridable so tests don't wait 90 real seconds; production leaves it unset.
   const fallbackMs = window.__cockpitSaveFallbackMs || 90000;
   setTimeout(() => {
@@ -5001,13 +5006,31 @@ document.getElementById('ck-leave-save').addEventListener('click', async () => {
   // is fetched fresh (isTicketClosed), failing safe to the save path on error.
   closed = await isTicketClosed(cockpitState.id);
   if (done) return; // idle-reap already ended us during the fetch — nothing to send
-  if (closed) {
-    statusEl.textContent = 'Ticket already closed — ending…';
+  if (closed || skipSave) {
+    statusEl.textContent = closed ? 'Ticket already closed — ending…' : 'Ending without saving…';
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
   } else {
     statusEl.textContent = 'Saving state — the agent is writing HANDOFF (one agent turn, may take a moment)…';
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'save-and-end' }, 'http://' + cockpitState.addr);
   }
+}
+
+// t-0db3: Canon Cockpit shell → board control bridge. When this board is embedded
+// as a shell project tab, the shell's close-tab guard asks it to Save & End / End
+// the tab's live agent session. SAME-ORIGIN ONLY (the shell and this board are
+// served by the same board server; the daemon terminal is a DIFFERENT origin and
+// is handled by the daemon-iframe listener above). We only ever invoke the board's
+// own existing, vetted controls — this exposes NO new daemon capability.
+window.addEventListener('message', (e) => {
+  if (window.parent === window) return;                 // standalone board — no shell
+  if (e.origin !== location.origin) return;             // reject cross-origin senders
+  if (e.source !== window.parent) return;               // only our embedding shell
+  const d = e.data;
+  if (!d || d.source !== 'canon-cockpit-shell') return;
+  if (d.type !== 'save-and-end' && d.type !== 'end') return;
+  if (!sessionIsLive()) return;                         // nothing live to end (shell poller reconciles)
+  openLeaveConfirm();                                   // reuse the vetted flow's state setup
+  ckLeaveSaveAndEnd(d.type === 'end');                  // end === skip the save turn
 });
 
 // t-bc04: ticket status badge (topbar #ck-status + rail #ck-tc-status), colored
