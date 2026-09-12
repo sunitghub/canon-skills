@@ -102,7 +102,7 @@ grep -qF 'id="view-admin"' <<<"$page" || fail "canon-cockpit: missing #view-admi
 grep -qF 'id="ad-version"' <<<"$page" || fail "canon-cockpit: Admin missing Current version row"
 grep -qF 'id="ad-uptime"' <<<"$page" || fail "canon-cockpit: Admin missing Uptime row"
 grep -qF 'id="ad-restart"' <<<"$page" || fail "canon-cockpit: Admin missing Restart button"
-for tile in ad-tile-projects ad-tile-agents ad-tile-sprints; do
+for tile in ad-tile-projects ad-tile-agents ad-tile-active; do
   grep -qF "id=\"$tile\"" <<<"$page" || fail "canon-cockpit: Admin missing tile $tile"
 done
 grep -qF "Active projects" <<<"$page" || fail "canon-cockpit: Admin third tile should be 'Active projects'"
@@ -116,5 +116,12 @@ done
 
 # daemon /version exposes uptime_secs (t-5dc2): assert the board passes it through
 grep -qF "uptime_secs" <<<"$page" || fail "canon-cockpit: cockpit.html does not read uptime_secs"
+
+# t-5dc2: every --col-* referenced in cockpit.html must be defined (undefined token → unstyled).
+# Note: `grep -- ` so a "--col-*" pattern isn't parsed as options.
+CKHTML="$ROOT/tools/sprint-check-app/cockpit.html"
+for tok in $(grep -oE 'var\(--col-[a-z]+\)' "$CKHTML" | sed 's/var(//;s/)//' | sort -u); do
+  grep -qF -- "${tok}:" "$CKHTML" || fail "canon-cockpit: cockpit.html uses ${tok} but never defines it"
+done
 
 echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed)"
