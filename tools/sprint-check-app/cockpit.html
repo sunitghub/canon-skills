@@ -159,6 +159,11 @@
   .cmodal .btn.ghost{color:var(--text-muted)}
   .cmodal .btn.ghost:hover{color:var(--col-discarded);border-color:var(--col-discarded)}
   .cmodal .btn.primary{background:var(--accent);color:#fff;border:none;font-weight:600}
+  .cmodal .btn.danger{background:var(--col-discarded);color:#2a0a0a;border:none;font-weight:600}
+  .cmodal .btn.danger:hover{filter:brightness(1.08)}
+  .cc-code{display:flex;gap:8px;align-items:center;margin:0 0 16px}
+  .cc-code input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:ui-monospace,monospace;font-size:12px}
+  .cc-code .btn{flex-shrink:0;font-size:12px;padding:8px 12px}
   .note{margin-top:22px;font-size:11px;color:var(--text-dim)}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;display:none}
   .toast.show{display:block}
@@ -301,6 +306,24 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<!-- Reusable canon-styled confirm (t-5849) — replaces native confirm()/prompt().
+     Driven by cockpitConfirm({title,body,okLabel,cancelLabel,danger,okOnly,code}). -->
+<div class="scrim" id="cconfirm">
+  <div class="cmodal">
+    <div class="ci" id="cc-icon">!</div>
+    <h2 id="cc-title"></h2>
+    <p id="cc-body"></p>
+    <div class="cc-code" id="cc-code-wrap" style="display:none">
+      <input id="cc-code" readonly>
+      <button type="button" class="btn" id="cc-copy">Copy</button>
+    </div>
+    <div class="cfoot">
+      <button type="button" class="btn ghost" id="cc-cancel">Cancel</button>
+      <button type="button" class="btn primary" id="cc-ok">OK</button>
+    </div>
+  </div>
+</div>
+
 <!-- Canon Cockpit shell Help/tour (t-c5e7) — slide-in overlay, modeled on the board's tour -->
 <div class="help-overlay" id="help-overlay">
   <div class="help-panel">
@@ -359,6 +382,53 @@
   (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
   document.addEventListener('DOMContentLoaded',syncThemeBtn);
   function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
+
+  // ── Reusable canon-styled confirm (t-5849) ─────────────────────────────────
+  // Replaces native confirm()/prompt(). Returns a Promise<bool> (true=OK).
+  // opts: {title, body, okLabel, cancelLabel, danger, okOnly, code}.
+  let _ccResolve=null;
+  function _ccClose(val){
+    const s=document.getElementById('cconfirm');
+    if(!s.classList.contains('show')) return;
+    s.classList.remove('show');
+    document.removeEventListener('keydown',_ccKey,true);
+    const r=_ccResolve; _ccResolve=null;
+    if(r) r(val);
+  }
+  function _ccKey(e){
+    if(!document.getElementById('cconfirm').classList.contains('show')) return;
+    if(e.key==='Escape'){ e.stopPropagation(); _ccClose(false); }
+    else if(e.key==='Enter'){ e.stopPropagation(); _ccClose(true); }
+  }
+  function cockpitConfirm(opts){
+    opts=opts||{};
+    const s=document.getElementById('cconfirm');
+    document.getElementById('cc-title').textContent=opts.title||'Are you sure?';
+    document.getElementById('cc-body').textContent=opts.body||'';
+    const ok=document.getElementById('cc-ok'), cancel=document.getElementById('cc-cancel');
+    ok.textContent=opts.okLabel||'OK';
+    ok.className='btn '+(opts.danger?'danger':'primary');
+    cancel.textContent=opts.cancelLabel||'Cancel';
+    cancel.style.display=opts.okOnly?'none':'';
+    // optional read-only copyable command field (replaces the old prompt())
+    const wrap=document.getElementById('cc-code-wrap'), code=document.getElementById('cc-code');
+    if(opts.code){ code.value=opts.code; wrap.style.display=''; } else { code.value=''; wrap.style.display='none'; }
+    s.classList.add('show');
+    ok.focus();
+    document.addEventListener('keydown',_ccKey,true);
+    return new Promise(res=>{ _ccResolve=res; });
+  }
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('cc-ok').addEventListener('click',()=>_ccClose(true));
+    document.getElementById('cc-cancel').addEventListener('click',()=>_ccClose(false));
+    document.getElementById('cconfirm').addEventListener('click',e=>{ if(e.target.id==='cconfirm') _ccClose(false); });
+    const copyBtn=document.getElementById('cc-copy');
+    if(copyBtn) copyBtn.addEventListener('click',()=>{
+      const v=document.getElementById('cc-code').value;
+      try{ navigator.clipboard.writeText(v); toast('Copied'); }
+      catch(e){ const i=document.getElementById('cc-code'); i.focus(); i.select(); }
+    });
+  });
 
   // ── Help/tour overlay (t-c5e7) ────────────────────────────────────────────
   let _helpVersionsLoaded=false;
@@ -540,7 +610,7 @@
   async function restartDaemon(){
     let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
     const n=Array.isArray(sessions)?sessions.length:0;
-    if(n>0 && !confirm('Restart the Cockpit daemon?\n\n'+n+' active agent session'+(n===1?'':'s')+' across all projects will be ended.')) return;
+    if(n>0 && !(await cockpitConfirm({title:'Restart the Cockpit daemon?', body:n+' active agent session'+(n===1?'':'s')+' across all projects will be ended.', okLabel:'Restart', danger:true}))) return;
     try{
       const r=await fetch('/api/cockpit-restart',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({force:n>0})});
       const res=await r.json();
@@ -714,12 +784,12 @@
   async function registerSkill(id,name,path,skill){
     skill=skill||'sprint';
     const detail = REG_SKILL_DETAIL[skill] || ('registers the “'+skill+'” skill');
-    if(!confirm('Register the canon “'+skill+'” skill in “'+name+'”?\n\nThis '+detail+'. Safe to re-run.')) return;
+    if(!(await cockpitConfirm({title:'Register the “'+skill+'” skill in “'+name+'”?', body:'This '+detail+'. Safe to re-run.', okLabel:'Register'}))) return;
     try{
       const r=await fetch('/api/register-skill?project='+encodeURIComponent(id)+'&skill='+encodeURIComponent(skill),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
       const res=await r.json().catch(()=>({}));
       if(res&&res.ok){ toast('✓ Registered '+skill+' in '+name); load(); return; }
-      if(res&&res.unsupported){ window.prompt('Run this in a terminal to register '+skill+':', res.cmd||('skills.sh add '+skill+' '+path)); return; }
+      if(res&&res.unsupported){ await cockpitConfirm({title:'Register '+skill+' manually', body:'This host can’t run it — run this in a terminal, then reopen the project:', code: res.cmd||('skills.sh add '+skill+' '+path), okOnly:true, okLabel:'Done'}); return; }
       toast((res&&res.error)?('Could not register: '+res.error):('Could not register '+skill));
     }catch(e){ toast('Request failed'); }
   }
@@ -778,7 +848,7 @@
   }
 
   async function dereg(id,name){
-    if(!confirm('Deregister "'+name+'"?\n\nThis removes it from the Cockpit list only — your project files are not touched.'))return;
+    if(!(await cockpitConfirm({title:'Deregister “'+name+'”?', body:'This removes it from the Cockpit list only — your project files are not touched.', okLabel:'Deregister', danger:true}))) return;
     try{
       await fetch('/api/projects/'+encodeURIComponent(id),{method:'DELETE'});
       if(openTabs.some(t=>t.id===id)) closeTab(id); // close its tab if open
