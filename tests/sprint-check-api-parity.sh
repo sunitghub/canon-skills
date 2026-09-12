@@ -76,6 +76,25 @@ SPRINT_HEADLESS_BIN="$(mktemp)"
 SPRINT_HEADLESS_EVAL_BIN="$(mktemp)"
 chmod +x "$SPRINT_HEADLESS_BIN" "$SPRINT_HEADLESS_EVAL_BIN"
 export SPRINT_HEADLESS_BIN SPRINT_HEADLESS_EVAL_BIN
+# t-7485: hermetic stub for `skills.sh add sprint <dir>` so the register-skill
+# endpoint's argv shell-out is exercised in BOTH backends WITHOUT running the
+# real onboarding (which would write a git hook + touch ~/.config/canon). The
+# stub only appends/upserts the AGENTS.md AI-SKILLS row, idempotently.
+SKILLS_SH_BIN="$WORK/stub-skills.sh"
+cat > "$SKILLS_SH_BIN" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "${1:-}" = "add" ] || exit 0
+skill="${2:-sprint}"; dir="${3:-$PWD}"; af="$dir/AGENTS.md"
+grep -q "^| $skill " "$af" 2>/dev/null && exit 0    # idempotent: row already present
+if grep -q "AI-SKILLS:BEGIN" "$af" 2>/dev/null; then
+  tmp="$(mktemp)"; awk -v r="| $skill | dev | /x/skills/$skill/SKILL.md |" '/AI-SKILLS:END/{print r} {print}' "$af" > "$tmp" && mv "$tmp" "$af"
+else
+  printf '<!-- AI-SKILLS:BEGIN -->\n## Active canon skills\n\n| Skill | Category | Source |\n|-------|----------|--------|\n| %s | dev | /x/skills/%s/SKILL.md |\n<!-- AI-SKILLS:END -->\n' "$skill" "$skill" >> "$af"
+fi
+STUB
+chmod +x "$SKILLS_SH_BIN"
+export SKILLS_SH_BIN
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
@@ -945,6 +964,10 @@ py_gitproj="$(curl -s "http://127.0.0.1:$PY_PORT/api/git?project=$reg_id" | pyth
 [[ "$py_gitproj" == "regproj" ]] || fail "sprint-check-api-parity: FAIL — scoped /api/git project should be regproj, got $py_gitproj"
 
 # project-stats ticket_count parity + per-project
+# project-stats ticket_count parity + per-project + t-7485 skills field.
+# Seed regproj's AGENTS.md with an AI-SKILLS table so `skills` is exercised
+# (both backends read the same on-disk file → identical list).
+printf '# regproj\n<!-- AI-SKILLS:BEGIN -->\n## Active canon skills\n\n| Skill | Category | Source |\n|-------|----------|--------|\n| sprint | dev | /x/skills/sprint/SKILL.md |\n<!-- AI-SKILLS:END -->\n' > "$REGPROJ/AGENTS.md"
 py_s1="$(curl -s "http://127.0.0.1:$PY_PORT/api/project-stats?project=$reg_id")"
 go_s1="$(curl -s "http://127.0.0.1:$GO_PORT/api/project-stats?project=$reg_id")"
 python3 - "$py_s1" "$go_s1" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/project-stats parity/shape"
@@ -953,6 +976,16 @@ a,b=json.loads(sys.argv[1]),json.loads(sys.argv[2])
 assert a==b, f"stats differ {a} {b}"
 assert a["ticket_count"]==2, f"ticket_count {a} want 2"
 assert "updated" in a
+assert a.get("skills")==["sprint"], f'skills should be ["sprint"], got {a.get("skills")}'
+PY
+# t-7485: a project with no AGENTS.md → skills: [] on BOTH backends (parity).
+py_s2="$(curl -s "http://127.0.0.1:$PY_PORT/api/project-stats?project=$reg_id2")"
+go_s2="$(curl -s "http://127.0.0.1:$GO_PORT/api/project-stats?project=$reg_id2")"
+python3 - "$py_s2" "$go_s2" <<'PY' || fail "sprint-check-api-parity: FAIL — skills empty-case parity ([] not null)"
+import json,sys
+a,b=json.loads(sys.argv[1]),json.loads(sys.argv[2])
+assert a==b, f"stats differ {a} {b}"
+assert a.get("skills")==[], f'no-AGENTS.md project should have skills [], got {a.get("skills")}'
 PY
 
 # unknown project id → 400 on both backends, for a scoped read
@@ -991,6 +1024,29 @@ for port in "$PY_PORT" "$GO_PORT"; do
   wcode="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
           -d '{"status":"open"}' "http://127.0.0.1:$port/api/ticket/$cid/status?project=deadbeef0000")"
   [[ "$wcode" == "400" ]] || fail "sprint-check-api-parity: FAIL — scoped write with unknown id should 400 on port $port (got $wcode)"
+done
+
+# ── t-7485: register-skill endpoint parity ───────────────────────────────────
+# Unknown ?project → 400 on both backends (registered-id-only). Then a real
+# POST (via the hermetic SKILLS_SH_BIN stub) into regproj2 registers `sprint`:
+# the AGENTS.md AI-SKILLS row appears and a re-POST is idempotent. Both backends
+# behave identically. (regproj2's AGENTS.md was absent → skills:[] asserted above.)
+for port in "$PY_PORT" "$GO_PORT"; do
+  rcode="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+          -d '{}' "http://127.0.0.1:$port/api/register-skill?project=deadbeef0000")"
+  [[ "$rcode" == "400" ]] || fail "sprint-check-api-parity: FAIL — register-skill unknown id should 400 on port $port (got $rcode)"
+done
+# register sprint into regproj2 (was skills:[]) and assert the row lands + ok:true
+reg_ok="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$PY_PORT/api/register-skill?project=$reg_id2" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("ok"))')"
+[[ "$reg_ok" == "True" ]] || fail "sprint-check-api-parity: FAIL — register-skill did not report ok (got $reg_ok)"
+grep -q "^| sprint " "$REGPROJ2/AGENTS.md" || fail "sprint-check-api-parity: FAIL — register-skill did not add the sprint row to regproj2 AGENTS.md"
+# idempotent: a second POST (via the Go backend) keeps exactly one sprint row
+curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$GO_PORT/api/register-skill?project=$reg_id2" >/dev/null
+[[ "$(grep -c '^| sprint ' "$REGPROJ2/AGENTS.md")" == "1" ]] || fail "sprint-check-api-parity: FAIL — register-skill not idempotent (duplicate sprint rows)"
+# project-stats now reports the newly-registered skill on both backends
+for port in "$PY_PORT" "$GO_PORT"; do
+  sk="$(curl -s "http://127.0.0.1:$port/api/project-stats?project=$reg_id2" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("skills"))')"
+  [[ "$sk" == "['sprint']" ]] || fail "sprint-check-api-parity: FAIL — post-register skills wrong on port $port (got $sk)"
 done
 
 curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$PY_PORT/api/projects/$reg_id2" >/dev/null
