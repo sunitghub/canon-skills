@@ -124,4 +124,17 @@ for tok in $(grep -oE 'var\(--col-[a-z]+\)' "$CKHTML" | sed 's/var(//;s/)//' | s
   grep -qF -- "${tok}:" "$CKHTML" || fail "canon-cockpit: cockpit.html uses ${tok} but never defines it"
 done
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed)"
+# ── Help/tour overlay (t-c5e7) ───────────────────────────────────────────────
+grep -qF 'id="help-overlay"' <<<"$page" || fail "canon-cockpit: missing Help overlay"
+grep -qF 'id="help-btn"' <<<"$page" || fail "canon-cockpit: Help button not given an id (still a stub?)"
+grep -qF "openHelp()" <<<"$page" || fail "canon-cockpit: Help button not wired to openHelp"
+grep -qF "Help (coming soon)" <<<"$page" && fail "canon-cockpit: Help is still a 'coming soon' stub"
+grep -qF 'id="help-close"' <<<"$page" || fail "canon-cockpit: Help overlay missing a close control"
+grep -qF "closeHelp" <<<"$page" || fail "canon-cockpit: Help overlay missing close handler"
+grep -qF "hv-canon" <<<"$page" || fail "canon-cockpit: Help missing the Versions block"
+for kw in "One window" "Admin" "Coming next"; do
+  grep -qF "$kw" <<<"$page" || fail "canon-cockpit: Help content missing section '$kw'"
+done
+grep -qF "/api/version" <<<"$page" || fail "canon-cockpit: Help should read /api/version for the Versions block"
+
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints)"
