@@ -909,3 +909,43 @@ func TestRegisteredSkills(t *testing.T) {
 		t.Fatalf("path-shaped skill must be rejected, got %v", res)
 	}
 }
+
+// TestBrowseDirs (t-1b88): dirs-only listing (files excluded), home default,
+// clean error on a file/nonexistent path — parity with server.py browse_dirs.
+func TestBrowseDirs(t *testing.T) {
+	d := t.TempDir()
+	os.Mkdir(filepath.Join(d, "sub1"), 0755)
+	os.Mkdir(filepath.Join(d, "sub2"), 0755)
+	os.WriteFile(filepath.Join(d, "afile.txt"), []byte("x"), 0644)
+	r := browseDirs(d)
+	if r["error"] != nil {
+		t.Fatalf("unexpected error: %v", r)
+	}
+	ents := r["entries"].([]map[string]any)
+	names := []string{}
+	for _, e := range ents {
+		names = append(names, e["name"].(string))
+	}
+	if len(names) != 2 || names[0] != "sub1" || names[1] != "sub2" {
+		t.Fatalf("want [sub1 sub2] dirs-only, got %v", names)
+	}
+	for _, n := range names {
+		if n == "afile.txt" {
+			t.Fatal("browseDirs must not list files")
+		}
+	}
+	if r["parent"] == nil {
+		t.Fatal("parent should be set for a non-root dir")
+	}
+	// home default
+	if browseDirs("")["error"] != nil {
+		t.Fatal("empty path should default to home, not error")
+	}
+	// a file path and a nonexistent path → clean error
+	if browseDirs(filepath.Join(d, "afile.txt"))["error"] == nil {
+		t.Fatal("a file path should return an error")
+	}
+	if browseDirs("/no/such/dir/xyz123")["error"] == nil {
+		t.Fatal("a nonexistent path should return an error")
+	}
+}

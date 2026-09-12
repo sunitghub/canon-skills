@@ -998,6 +998,33 @@ done
 py_np="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PY_PORT/api/tickets")"
 [[ "$py_np" == "200" ]] || fail "sprint-check-api-parity: FAIL — no-param /api/tickets should still 200 (got $py_np)"
 
+# ── t-1b88: /api/browse-dirs (Add-Project folder picker) parity ──────────────
+# A fixture dir with a subdir + a file: the listing must include the SUBDIR only
+# (never the file, never file contents), semantically identical on both backends.
+BROWSEFIX="$WORK/browsefix"; mkdir -p "$BROWSEFIX/alpha" "$BROWSEFIX/beta"; printf 'x' > "$BROWSEFIX/afile.txt"
+py_bd="$(curl -s "http://127.0.0.1:$PY_PORT/api/browse-dirs?path=$BROWSEFIX")"
+go_bd="$(curl -s "http://127.0.0.1:$GO_PORT/api/browse-dirs?path=$BROWSEFIX")"
+python3 - "$py_bd" "$go_bd" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/browse-dirs listing mismatch"
+import json,sys
+a,b=json.loads(sys.argv[1]),json.loads(sys.argv[2])
+assert a==b, f"browse-dirs differ:\n{a}\n{b}"
+names=[e["name"] for e in a["entries"]]
+assert names==["alpha","beta"], f"want dirs-only [alpha,beta], got {names}"
+assert "afile.txt" not in names, "browse-dirs must never list files"
+assert a["parent"], "parent should be set for a non-root dir"
+PY
+# a file path and a nonexistent path → clean error on BOTH backends (no listing)
+for ep in "$BROWSEFIX/afile.txt" "/no/such/dir/xyz123"; do
+  pe="$(curl -s "http://127.0.0.1:$PY_PORT/api/browse-dirs?path=$ep" | python3 -c 'import sys,json;print("error" in json.load(sys.stdin))')"
+  ge="$(curl -s "http://127.0.0.1:$GO_PORT/api/browse-dirs?path=$ep" | python3 -c 'import sys,json;print("error" in json.load(sys.stdin))')"
+  [[ "$pe" == "True" && "$ge" == "True" ]] || fail "sprint-check-api-parity: FAIL — browse-dirs should error on '$ep' (py=$pe go=$ge)"
+done
+# absent path → home default (a path, no error) on both
+for port in "$PY_PORT" "$GO_PORT"; do
+  hp="$(curl -s "http://127.0.0.1:$port/api/browse-dirs" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(bool(d.get("path")) and "error" not in d)')"
+  [[ "$hp" == "True" ]] || fail "sprint-check-api-parity: FAIL — browse-dirs absent path should return home listing on port $port"
+done
+
 # ── Phase 2b-ii: project-scoped WRITES land in the tab's project (t-8485) ────
 # create/status/doc with ?project=$reg_id (regproj) must write regproj's .tickets,
 # NOT regproj2 and NOT the server's default project — on BOTH backends. Then a
