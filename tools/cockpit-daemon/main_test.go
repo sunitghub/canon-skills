@@ -2844,6 +2844,30 @@ func TestVersionReportsExecMtime(t *testing.T) {
 	}
 }
 
+// TestVersionReportsUptime: /version carries uptime_secs (seconds since daemon
+// boot), token-free, so the Cockpit Admin panel can show daemon uptime (t-5dc2).
+func TestVersionReportsUptime(t *testing.T) {
+	oldStart := startTime
+	startTime = time.Now().Add(-90 * time.Second) // pretend the daemon booted 90s ago
+	defer func() { startTime = oldStart }()
+
+	_, base := newTestServer(t, "/bin/true")
+	resp, err := http.Get(base + "/version")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var v struct {
+		UptimeSecs int64 `json:"uptime_secs"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&v); err != nil {
+		t.Fatalf("decode /version JSON: %v", err)
+	}
+	if v.UptimeSecs < 89 {
+		t.Fatalf("uptime_secs = %d, want >= 89 (booted ~90s ago)", v.UptimeSecs)
+	}
+}
+
 // TestShutdownRequiresToken: /shutdown is boot-token gated.
 func TestShutdownRequiresToken(t *testing.T) {
 	_, base := newTestServer(t, "/bin/true")

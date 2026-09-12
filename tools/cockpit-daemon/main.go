@@ -204,7 +204,7 @@ func (s *server) handler() http.Handler {
 	// same string, so a string compare could never flag a rebuilt-in-place binary.
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime})
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds())})
 	})
 	// t-74d6: authorized, gated daemon shutdown so the board can replace a stale
 	// build. Boot-token gated (checked inside handleShutdown), refuses while a
@@ -1965,6 +1965,10 @@ func versionString() string {
 // detect a stale/version-drifted running daemon (t-74d6) — robust even for
 // `dev` builds where the version string never changes.
 var execMtime int64
+
+// startTime is captured once at daemon boot; /version reports uptime_secs =
+// seconds since this, so the Cockpit Admin panel can show daemon uptime (t-5dc2).
+var startTime = time.Now()
 
 func executableMtime() int64 {
 	exe, err := os.Executable()
