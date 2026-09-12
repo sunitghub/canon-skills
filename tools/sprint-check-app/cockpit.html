@@ -402,6 +402,7 @@
   }
   function cockpitConfirm(opts){
     opts=opts||{};
+    if(_ccResolve){ const prev=_ccResolve; _ccResolve=null; prev(false); }  // resolve any orphaned prior confirm
     const s=document.getElementById('cconfirm');
     document.getElementById('cc-title').textContent=opts.title||'Are you sure?';
     document.getElementById('cc-body').textContent=opts.body||'';
