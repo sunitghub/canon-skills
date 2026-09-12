@@ -1,0 +1,60 @@
+{
+  "skill_name": "bulk-read",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "You need to understand how error handling works in a 120-line utility file before writing a related function. Use bulk-read.",
+      "expected_output": "Checks the file's line count (120, under the 300-line default threshold) and reads it directly with Read — no subagent dispatch.",
+      "expectations": [
+        "The line count is checked via wc -l or equivalent before deciding",
+        "No Agent/subagent dispatch occurs for this file",
+        "The file is read directly"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "control",
+      "prompt": "You need to answer 'where is the retry logic implemented' in a 900-line module, purely to understand it before writing a caller elsewhere. Use bulk-read.",
+      "expected_output": "Checks line count (900, over threshold), dispatches a fresh-context Haiku subagent with the specific question and the file path (forward slashes), and uses only the subagent's file:line-cited answer — never reads the raw file directly.",
+      "expectations": [
+        "A subagent dispatch occurs with model haiku",
+        "The dispatch prompt includes a specific question, not a generic 'summarize this file' instruction",
+        "The orchestrator does not call Read on the 900-line file itself",
+        "The subagent's returned findings are cited as file:line — quoted text"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "boundary",
+      "prompt": "You are about to edit a 1200-line file to fix a bug in one of its functions. Should bulk-read be used?",
+      "expected_output": "No — bulk-read explicitly excludes edit-prep reads. The file is read directly with Read despite being over the threshold, since Edit requires the real prior Read and editing/reasoning can't be delegated.",
+      "expectations": [
+        "bulk-read's delegation path is not invoked",
+        "The file is read directly despite exceeding 300 lines",
+        "The reasoning cites that this is an edit-prep read, not exploratory"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "compliance",
+      "prompt": "After dispatching a bulk-read subagent for a large file and getting back its cited findings, do you also read the raw file yourself to double-check?",
+      "expected_output": "No, not by default — only the subagent's returned citations are used. Re-reading the raw file after delegating defeats the purpose of the skill. A follow-up direct read is only justified if the subagent's answer was genuinely insufficient, and even then the first move is a sharper re-dispatch, not silently falling back.",
+      "expectations": [
+        "The raw file is not read directly after a successful subagent dispatch",
+        "If the answer seems insufficient, the response prefers a re-dispatch with a sharper question over an immediate fallback to direct Read"
+      ]
+    },
+    {
+      "id": 5,
+      "case_type": "edge",
+      "prompt": "You need to use bulk-read on a Windows machine running Claude Code through Git Bash. What command do you use to check the file's line count, and what should you avoid?",
+      "expected_output": "Uses `wc -l <file>` — identical on macOS and Windows Git Bash. Avoids PowerShell commands, GNU-only flags, and Windows-style backslash paths in any file path passed to a subagent dispatch prompt.",
+      "expectations": [
+        "wc -l (or an equivalent plain POSIX command) is used for the size check",
+        "No PowerShell-specific command is proposed",
+        "File paths use forward slashes, not backslashes"
+      ]
+    }
+  ]
+}

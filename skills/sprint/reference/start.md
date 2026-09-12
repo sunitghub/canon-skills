@@ -191,7 +191,9 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
    - Closed tickets in `.tickets/` that touched files this sprint will modify — note any whose behavior must still hold
 
 6. **Normal path.** For normal-tier work:
-   - Inspect the files and callers needed for the requested change.
+   - Inspect the files and callers needed for the requested change. For a large file you need to
+     *understand* rather than edit, use `skills/bulk-read/SKILL.md` instead of reading it directly
+     — a size-gated, citation-only subagent dispatch that keeps raw content out of your own context.
    - Write a brief `research.md` — a few bullets of findings and constraints — before drafting `## Approach`. Keep it short; this is not the full orient protocol (see step 7 for why this file matters even when planning stays in the same session). Bullets may carry the optional priority glyph from `tools/handoff.md` (`## Priority and dates`) so the load-bearing constraints stand out.
    - Fill in `## Approach` in `plan.md` and `## Test Plan` in `acceptance.md` (not `plan.md` — `plan.md`'s skeleton has no Test Plan heading, and every grading step reads/grades it from `acceptance.md`). Both headings already exist from step 1's skeleton — this is filling them in, not creating them.
    - **Perspective check.** Before drafting the brief, ask one challenge question from each lens: (a) *user* — will the behavior change match what they expect? (b) *security* — does this touch auth, input validation, or trust boundaries? (c) *architect* — does this add surface that canon's minimalism principle would resist? Surface any concern in the brief. **This check is not normal-tier-only: high-risk sprints run the same three-lens perspective check during orient (step 7), before presenting the research summary. It is complementary to grill (step 8), not subsumed by it — grill resolves implementation gray areas within the approved scope, while the perspective check challenges the change itself from the user/security/architect lenses.**
