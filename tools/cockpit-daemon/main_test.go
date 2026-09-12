@@ -2255,10 +2255,11 @@ func TestTicketsDirUnaffectedByWorktreeCwd(t *testing.T) {
 	}
 }
 
-// t-cd06: every /session/start call, whatever cwd it used, appends exactly
-// one Decisions.md line via spawn() — the one path a direct POST can't route
-// around.
-func TestSpawnLogsWorktreeDecision(t *testing.T) {
+// t-022f: every /session/start call, whatever cwd it used, appends exactly
+// one cockpit-sessions.md line via spawn() — the one path a direct POST can't
+// route around — and never touches Decisions.md (t-cd06's original target,
+// which collided with the board's real Decisions tab).
+func TestSpawnLogsSessionStart(t *testing.T) {
 	bin, _ := fakeSprintCwd(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
@@ -2275,13 +2276,82 @@ func TestSpawnLogsWorktreeDecision(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	decisionsPath := filepath.Join(root, ".tickets", "t-ab12", "Decisions.md")
-	got := waitFile(t, decisionsPath, 2*time.Second)
+	sessionsPath := filepath.Join(root, ".tickets", "t-ab12", "cockpit-sessions.md")
+	got := waitFile(t, sessionsPath, 2*time.Second)
 	if !strings.Contains(got, wt) {
-		t.Fatalf("Decisions.md = %q, want it to mention worktree %q", got, wt)
+		t.Fatalf("cockpit-sessions.md = %q, want it to mention worktree %q", got, wt)
 	}
 	if n := strings.Count(got, "\n"); n != 1 {
-		t.Fatalf("Decisions.md has %d lines, want exactly 1", n)
+		t.Fatalf("cockpit-sessions.md has %d lines, want exactly 1", n)
+	}
+
+	decisionsPath := filepath.Join(root, ".tickets", "t-ab12", "Decisions.md")
+	if _, err := os.Stat(decisionsPath); err == nil {
+		t.Fatalf("Decisions.md must not be created by session-start logging, but it exists")
+	}
+}
+
+// t-022f: two starts on the same day, same worktree label, collapse to one
+// line instead of piling up identical entries on repeated resumes.
+func TestSpawnLogsSessionStartDedupsSameDay(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	sessionsPath := filepath.Join(root, ".tickets", "t-ab12", "cockpit-sessions.md")
+
+	resp1 := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp1.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp1.StatusCode)
+	}
+	resp1.Body.Close()
+	first := waitFile(t, sessionsPath, 2*time.Second)
+
+	resp2 := startSession(t, ts.URL, "t-ab12", bootTok)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 on second start, got %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+	time.Sleep(100 * time.Millisecond) // let the (skipped) write settle
+
+	got, err := os.ReadFile(sessionsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != first {
+		t.Fatalf("second same-day, same-label start changed the file: got %q, want unchanged %q", got, first)
+	}
+	if n := strings.Count(string(got), "\n"); n != 1 {
+		t.Fatalf("cockpit-sessions.md has %d lines after two same-day starts, want exactly 1 (deduped)", n)
+	}
+
+	// A different label (a worktree) on the same day must still append.
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12")
+	resp3 := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp3.StatusCode != http.StatusOK {
+		t.Fatalf("want 200 on worktree start, got %d", resp3.StatusCode)
+	}
+	resp3.Body.Close()
+	deadline := time.Now().Add(2 * time.Second)
+	var got3 string
+	for time.Now().Before(deadline) {
+		b, _ := os.ReadFile(sessionsPath)
+		got3 = string(b)
+		if strings.Count(got3, "\n") >= 2 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !strings.Contains(got3, wt) {
+		t.Fatalf("cockpit-sessions.md = %q, want it to also mention worktree %q after a different-label start", got3, wt)
+	}
+	if n := strings.Count(got3, "\n"); n != 2 {
+		t.Fatalf("cockpit-sessions.md has %d lines after a different-label start, want exactly 2", n)
 	}
 }
 
@@ -2601,14 +2671,14 @@ func TestStartEchoesRequestedResolvedCwd(t *testing.T) {
 	}
 }
 
-// t-cd06: a Decisions.md write failure must never block a spawn that already
-// succeeded — logging is best-effort.
-func TestSpawnSucceedsWhenDecisionsLogUnwritable(t *testing.T) {
+// t-cd06/t-022f: a cockpit-sessions.md write failure must never block a spawn
+// that already succeeded — logging is best-effort.
+func TestSpawnSucceedsWhenSessionLogUnwritable(t *testing.T) {
 	bin, _ := fakeSprintCwd(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
-	// Read-only ticket dir: OpenFile(O_CREATE) for Decisions.md fails, but the
-	// spawn itself must still succeed.
+	// Read-only ticket dir: OpenFile(O_CREATE) for cockpit-sessions.md fails,
+	// but the spawn itself must still succeed.
 	if err := os.Chmod(filepath.Join(root, ".tickets", "t-ab12"), 0o555); err != nil {
 		t.Fatal(err)
 	}
@@ -2620,7 +2690,7 @@ func TestSpawnSucceedsWhenDecisionsLogUnwritable(t *testing.T) {
 
 	resp := startSession(t, ts.URL, "t-ab12", bootTok)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("want 200 even with unwritable Decisions.md, got %d", resp.StatusCode)
+		t.Fatalf("want 200 even with unwritable cockpit-sessions.md, got %d", resp.StatusCode)
 	}
 	resp.Body.Close()
 }

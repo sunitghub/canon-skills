@@ -602,7 +602,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	}
 	// t-cd06: best-effort, non-fatal — a logging failure (disk full, read-only
 	// fs) must never block a real spawn that already succeeded.
-	s.logWorktreeDecision(ticket, cwd, projectRoot)
+	s.logSessionStart(ticket, cwd, projectRoot)
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
 		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot,
@@ -1635,14 +1635,20 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot stri
 	return resolved, true
 }
 
-// logWorktreeDecision appends one line to .tickets/<id>/Decisions.md recording
-// which worktree (or the main checkout) a sprint start used. Lives inside
+// logSessionStart appends one line to .tickets/<id>/cockpit-sessions.md
+// recording which worktree (or the main checkout) a sprint start used —
+// renamed from logWorktreeDecision (t-022f): this is a mechanical
+// session-start audit trail, not a "decision", and writing it to Decisions.md
+// collided with the board's real Decisions tab (doc tabs are generated from
+// any *.md file in a ticket dir, named after the filename — see
+// server.py/_doc_name and sprint-check-go's parity glob). Lives inside
 // spawn() — the single code path every /session/start call goes through,
 // regardless of client — so it can't be bypassed by hitting the endpoint
 // directly instead of going through the board UI. Best-effort: a write
 // failure is logged to stderr and never blocks the spawn that already
-// succeeded.
-func (s *server) logWorktreeDecision(ticket, cwd, projectRoot string) {
+// succeeded. Consecutive same-day, same-label starts collapse to one line so
+// repeated resumes don't pile up identical entries (t-022f).
+func (s *server) logSessionStart(ticket, cwd, projectRoot string) {
 	label := "main checkout"
 	if resolvedRoot, err := filepath.EvalSymlinks(projectRoot); err == nil {
 		if !pathsEqual(cwd, resolvedRoot) && !pathsEqual(cwd, projectRoot) {
@@ -1652,15 +1658,23 @@ func (s *server) logWorktreeDecision(ticket, cwd, projectRoot string) {
 		label = cwd
 	}
 	line := fmt.Sprintf("- %s: sprint start used %s\n", time.Now().UTC().Format("2006-01-02"), label)
-	path := filepath.Join(s.ticketsDirIn(projectRoot), ticket, "Decisions.md")
+	path := filepath.Join(s.ticketsDirIn(projectRoot), ticket, "cockpit-sessions.md")
+
+	if existing, err := os.ReadFile(path); err == nil {
+		lines := strings.Split(strings.TrimRight(string(existing), "\n"), "\n")
+		if last := lines[len(lines)-1]; last == strings.TrimSuffix(line, "\n") {
+			return // same date + same label as the last entry — skip the duplicate
+		}
+	}
+
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "cockpit: worktree decision log unavailable: %v\n", err)
+		fmt.Fprintf(os.Stderr, "cockpit: session log unavailable: %v\n", err)
 		return
 	}
 	defer f.Close()
 	if _, err := f.WriteString(line); err != nil {
-		fmt.Fprintf(os.Stderr, "cockpit: worktree decision log write failed: %v\n", err)
+		fmt.Fprintf(os.Stderr, "cockpit: session log write failed: %v\n", err)
 	}
 }
 
