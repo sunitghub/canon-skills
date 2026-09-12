@@ -152,10 +152,11 @@ def tickets_dir_for(root: Path) -> Path:
 # Lists ONLY subdirectory names/paths (never files, never file contents) so the
 # browser UI can navigate to a folder and hand back its absolute path (a web page
 # can't obtain an absolute path itself). Loopback + Origin gated by the caller.
-def browse_dirs(path: str) -> dict:
+def browse_dirs(path: str, show_hidden: bool = False) -> dict:
     """Resolve `path` (empty → home; '~' expanded) and list its immediate
     subdirectories. Returns {path, parent, entries:[{name,path}]} or {error}.
-    Directory-names-only — files are never listed and never opened."""
+    Directory-names-only — files are never listed and never opened. Dotfolders
+    (name starting with '.') are omitted unless show_hidden (t-340d)."""
     raw = (path or '').strip()
     try:
         base = (Path(raw).expanduser() if raw else Path.home()).resolve()
@@ -167,6 +168,8 @@ def browse_dirs(path: str) -> dict:
     try:
         with os.scandir(base) as it:
             for e in it:
+                if not show_hidden and e.name.startswith('.'):
+                    continue  # t-340d: hide dotfolders by default
                 try:
                     if e.is_dir(follow_symlinks=True):
                         entries.append({'name': e.name, 'path': str(base / e.name)})
@@ -1604,8 +1607,10 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(400); return
             self.send_json(project_stats(eroot))
         elif path == '/api/browse-dirs':
-            # t-1b88: read-only dir listing for the Add-Project Browse picker.
-            self.send_json(browse_dirs(parse_qs(parsed.query).get('path', [''])[0]))
+            # t-1b88/t-340d: read-only dir listing for the Add-Project Browse picker.
+            _q = parse_qs(parsed.query)
+            _hidden = (_q.get('hidden', [''])[0] or '').lower() in ('1', 'true')
+            self.send_json(browse_dirs(_q.get('path', [''])[0], _hidden))
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
         elif path == '/api/cockpit-sessions':

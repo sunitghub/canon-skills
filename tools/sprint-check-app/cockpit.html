@@ -138,8 +138,11 @@
   .browse-btn{white-space:nowrap;flex-shrink:0}
   .dirnav{margin-top:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);overflow:hidden}
   .dirnav-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border-muted)}
-  .dirnav-path{flex:1;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+  .dirnav-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border-muted)}
+  .dirnav-path{flex:1;min-width:0;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
   .dirnav-use{white-space:nowrap;flex-shrink:0;font-size:12px;padding:5px 10px}
+  .modal .dirnav-hidden-lbl{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text-muted);white-space:nowrap;flex-shrink:0;cursor:pointer;text-transform:none;letter-spacing:normal;margin:0}
+  .dirnav-hidden-lbl input{cursor:pointer;margin:0}
   .dirnav-list{max-height:220px;overflow:auto}
   .dirnav-row{padding:7px 12px;font-size:12.5px;color:var(--text-body);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .dirnav-row:hover{background:var(--panel);color:var(--text)}
@@ -264,6 +267,9 @@
     <div class="dirnav" id="dirnav" style="display:none">
       <div class="dirnav-head">
         <span class="dirnav-path" id="dirnav-path" title="">…</span>
+      </div>
+      <div class="dirnav-controls">
+        <label class="dirnav-hidden-lbl"><input type="checkbox" id="dirnav-hidden" onchange="loadBrowse(_browseCwd)"> Show hidden</label>
         <button type="button" class="btn dirnav-use" onclick="useBrowseDir()">Use this folder</button>
       </div>
       <div class="dirnav-list" id="dirnav-list"></div>
@@ -735,8 +741,9 @@
   async function loadBrowse(path){
     const list=document.getElementById('dirnav-list');
     list.innerHTML='<div class="dirnav-empty">…</div>';
+    const showHidden=!!(document.getElementById('dirnav-hidden')&&document.getElementById('dirnav-hidden').checked);
     let d={};
-    try{ d=await (await fetch('/api/browse-dirs?path='+encodeURIComponent(path||''))).json(); }catch(e){ d={error:'request failed'}; }
+    try{ d=await (await fetch('/api/browse-dirs?path='+encodeURIComponent(path||'')+(showHidden?'&hidden=1':''))).json(); }catch(e){ d={error:'request failed'}; }
     if(d.error){ list.innerHTML='<div class="dirnav-empty">'+esc(d.error)+'</div>'; return; }
     _browseCwd=d.path||'';
     const p=document.getElementById('dirnav-path'); p.textContent=_browseCwd; p.title=_browseCwd;

@@ -277,8 +277,9 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, projectStats(root))
 	case "/api/browse-dirs":
-		// t-1b88: read-only dir listing for the Add-Project Browse picker.
-		sendJSON(w, browseDirs(r.URL.Query().Get("path")))
+		// t-1b88/t-340d: read-only dir listing for the Add-Project Browse picker.
+		h := strings.ToLower(r.URL.Query().Get("hidden"))
+		sendJSON(w, browseDirs(r.URL.Query().Get("path"), h == "1" || h == "true"))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
 	case "/api/cockpit-sessions":
@@ -2481,7 +2482,7 @@ func runGitIn(root string, args ...string) string {
 // t-1b88: read-only directory browser backing the Add-Project "Browse" picker —
 // byte-parity with server.py's browse_dirs. Lists ONLY subdirectory names/paths
 // (never files, never file contents). Empty path → home; '~' expanded.
-func browseDirs(path string) map[string]any {
+func browseDirs(path string, showHidden bool) map[string]any {
 	base := strings.TrimSpace(path)
 	if base == "" {
 		if h, err := os.UserHomeDir(); err == nil {
@@ -2511,6 +2512,9 @@ func browseDirs(path string) map[string]any {
 	}
 	entries := []map[string]any{}
 	for _, e := range ents {
+		if !showHidden && strings.HasPrefix(e.Name(), ".") {
+			continue // t-340d: hide dotfolders by default
+		}
 		isDir := e.IsDir()
 		if !isDir && e.Type()&os.ModeSymlink != 0 { // follow a symlink to a dir
 			if st, err := os.Stat(filepath.Join(abs, e.Name())); err == nil && st.IsDir() {
