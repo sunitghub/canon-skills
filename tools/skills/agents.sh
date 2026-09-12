@@ -61,15 +61,11 @@ ensure_claude_bridge() {
     return 0
   fi
 
-  if ! { : <> /dev/tty; } 2>/dev/null; then
-    echo "  [CLAUDE.md]  exists without @AGENTS.md — Claude Code won't see canon skill instructions until you add it: echo '$import_line' >> $claude_file"
-    return 0
-  fi
-  printf "CLAUDE.md exists but doesn't import AGENTS.md — Claude Code won't see canon skills otherwise. Add '@AGENTS.md'? [y/N] (auto-skips in 15s) " > /dev/tty
-  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
-  if [[ "$answer" =~ ^[Yy]$ ]]; then
+  if _prompt_or_auto_yes "CLAUDE.md exists but doesn't import AGENTS.md — Claude Code won't see canon skills otherwise. Add '@AGENTS.md'?"; then
     { echo ""; echo "$import_line"; } >> "$claude_file"
-    echo "  [CLAUDE.md]  added @AGENTS.md import" > /dev/tty
+    echo "  [CLAUDE.md]  added @AGENTS.md import"
+  else
+    echo "  [CLAUDE.md]  exists without @AGENTS.md — Claude Code won't see canon skill instructions until you add it: echo '$import_line' >> $claude_file"
   fi
 }
 

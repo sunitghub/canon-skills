@@ -1198,8 +1198,16 @@ def register_skill(root: Path, skill: str = 'sprint') -> dict:
     if not bash or not SKILLS_SH.exists():
         return {'ok': False, 'unsupported': True, 'cmd': hint}
     try:
+        # t-b47a: stdin=DEVNULL alone does NOT make skills.sh's setup prompts
+        # non-interactive — they read from /dev/tty directly, a POSIX facility
+        # independent of stdin, so a long-lived server subprocess still finds
+        # its launch terminal's controlling tty and prompts there, unanswered.
+        # SKILLS_SH_ASSUME_YES tells the three project-scoped prompts (AGENTS.md
+        # bridge, model-tiers note, subagent-log.sh permission) to apply their
+        # recommended default immediately instead of waiting on that prompt.
+        env = {**os.environ, 'SKILLS_SH_ASSUME_YES': '1'}
         p = subprocess.run([bash, str(SKILLS_SH), 'add', skill, str(root)],
-                           cwd=str(root), stdin=subprocess.DEVNULL,
+                           cwd=str(root), stdin=subprocess.DEVNULL, env=env,
                            capture_output=True, text=True, timeout=60)
     except Exception as e:
         return {'ok': False, 'unsupported': True, 'cmd': hint, 'error': str(e)[:200]}
