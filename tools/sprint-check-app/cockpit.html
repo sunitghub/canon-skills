@@ -10,8 +10,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Canon Cockpit</title>
 <style>
-  html[data-theme="dark"]{--bg:#0d0d10;--panel:#141419;--border:#2c2c40;--border-hover:#3d3d54;--border-muted:#202030;--text:#e0e0ec;--text-body:#a5a5bc;--text-muted:#86869e;--text-dim:#40405c;--accent:#7c6af7;--accent-dim:rgba(124,106,247,0.12);--col-done:#4ade80;--col-discarded:#f87171;--card-stat:#c7bfff;--scrim:rgba(0,0,0,.6)}
-  html[data-theme="light"]{--bg:#f2f2f7;--panel:#fff;--border:#dcdce8;--border-hover:#c0c0d4;--border-muted:#e8e8f2;--text:#1a1a2e;--text-body:#424269;--text-muted:#52527a;--text-dim:#b8b8d0;--accent:#6c5cf7;--accent-dim:rgba(108,92,247,0.10);--col-done:#16a34a;--col-discarded:#dc2626;--card-stat:#5a3ff0;--scrim:rgba(20,20,40,.35)}
+  html[data-theme="dark"]{--bg:#0d0d10;--panel:#141419;--border:#2c2c40;--border-hover:#3d3d54;--border-muted:#202030;--text:#e0e0ec;--text-body:#a5a5bc;--text-muted:#86869e;--text-dim:#40405c;--accent:#7c6af7;--accent-dim:rgba(124,106,247,0.12);--col-done:#4ade80;--col-progress:#60a5fa;--col-discarded:#f87171;--card-stat:#c7bfff;--scrim:rgba(0,0,0,.6)}
+  html[data-theme="light"]{--bg:#f2f2f7;--panel:#fff;--border:#dcdce8;--border-hover:#c0c0d4;--border-muted:#e8e8f2;--text:#1a1a2e;--text-body:#424269;--text-muted:#52527a;--text-dim:#b8b8d0;--accent:#6c5cf7;--accent-dim:rgba(108,92,247,0.10);--col-done:#16a34a;--col-progress:#2563eb;--col-discarded:#dc2626;--card-stat:#5a3ff0;--scrim:rgba(20,20,40,.35)}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
   .app{display:flex;flex-direction:column;min-height:100vh}
@@ -191,7 +191,7 @@
             <div class="tiles">
               <div class="tile"><div class="n a" id="ad-tile-projects">—</div><div class="l">Registered projects</div></div>
               <div class="tile"><div class="n g" id="ad-tile-agents">—</div><div class="l">Running agents</div></div>
-              <div class="tile"><div class="n b" id="ad-tile-sprints">—</div><div class="l">Active projects</div></div>
+              <div class="tile"><div class="n b" id="ad-tile-active">—</div><div class="l">Active projects</div></div>
             </div>
             <div class="sessions">
               <div class="slabel">Active agent sessions (all projects)</div>
@@ -272,7 +272,6 @@
   async function loadAdmin(){
     const projects=window._projects||[];
     const setTxt=(id,val)=>{const e=document.getElementById(id); if(e) e.textContent=val;};
-    setTxt('ad-projects',projects.length);            // panel row removed — no-op if absent
     setTxt('ad-tile-projects',projects.length);
     // daemon health + version + uptime from /api/cockpit (+ /api/version)
     let ck={}; try{ ck=await (await fetch('/api/cockpit')).json(); }catch(e){}
@@ -288,7 +287,6 @@
     // sessions (cross-project) → running agents count + list
     let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
     if(!Array.isArray(sessions)) sessions=[];
-    document.getElementById('ad-agents')&&(document.getElementById('ad-agents').textContent=sessions.length);
     document.getElementById('ad-tile-agents').textContent=sessions.length;
     const box=document.getElementById('ad-sessions');
     box.innerHTML = sessions.length ? sessions.map(s=>{
@@ -296,7 +294,7 @@
       return `<div class="srow"><span class="sd"></span><b>${esc(name)}</b><span class="sp">${esc(proot)}${s.ticket?(' \u00b7 '+esc(String(s.ticket))):''}</span><span class="sa">${esc(String(s.agent||''))}</span></div>`;
     }).join('') : '<div class="srow snone">No active agent sessions.</div>';
     // Active projects = projects currently open in a tab (shell state).
-    document.getElementById('ad-tile-sprints').textContent = openTabs.length;
+    document.getElementById('ad-tile-active').textContent = openTabs.length;
   }
 
   // Restart reuses the daemon's token-free /api/cockpit-restart (busy-confirm + re-poll).
