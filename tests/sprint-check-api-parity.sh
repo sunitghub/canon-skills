@@ -1049,10 +1049,13 @@ for port in "$PY_PORT" "$GO_PORT"; do
   [[ "$sk" == "['sprint']" ]] || fail "sprint-check-api-parity: FAIL — post-register skills wrong on port $port (got $sk)"
 done
 
-# t-96c3: the register allowlist now also covers `efficiency`; an out-of-allowlist
-# skill is rejected (no row written), identically on both backends.
-eff_ok="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$GO_PORT/api/register-skill?project=$reg_id2&skill=efficiency" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("ok"))')"
-[[ "$eff_ok" == "True" ]] || fail "sprint-check-api-parity: FAIL — register-skill skill=efficiency should succeed (got $eff_ok)"
+# t-96c3: the register allowlist now also covers `efficiency`; assert success on
+# BOTH backends (idempotent — the row persists), and that an out-of-allowlist
+# skill is rejected (no row written), identically on both.
+for port in "$PY_PORT" "$GO_PORT"; do
+  eff_ok="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$port/api/register-skill?project=$reg_id2&skill=efficiency" | python3 -c 'import sys,json;print(json.load(sys.stdin).get("ok"))')"
+  [[ "$eff_ok" == "True" ]] || fail "sprint-check-api-parity: FAIL — register-skill skill=efficiency should succeed on port $port (got $eff_ok)"
+done
 grep -q "^| efficiency " "$REGPROJ2/AGENTS.md" || fail "sprint-check-api-parity: FAIL — register-skill skill=efficiency did not add the efficiency row"
 for port in "$PY_PORT" "$GO_PORT"; do
   # an out-of-allowlist skill → ok:false and NO row written
