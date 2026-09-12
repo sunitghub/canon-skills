@@ -154,7 +154,7 @@
       </nav>
       <div class="spacer"></div>
       <div class="foot">
-        <button onclick="toggleTheme()">&#127761; Theme</button>
+        <button id="theme-btn" onclick="toggleTheme()">&#127769; Dark</button>
         <button title="Help (coming soon)">? Help</button>
       </div>
     </aside>
@@ -225,11 +225,19 @@
   function esc(s){const d=document.createElement('div');d.textContent=s==null?'':String(s);return d.innerHTML;}
   // Attribute/JS-string-safe: also escapes " and ' (text-node serialization does not).
   function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+  function syncThemeBtn(){
+    const b=document.getElementById('theme-btn'); if(!b) return;
+    const light=document.documentElement.dataset.theme==='light';
+    // show the CURRENT theme (icon + label), matching the board's convention
+    b.innerHTML = light ? '&#9728;&#65039; Light' : '&#127769; Dark';
+  }
   function toggleTheme(){const h=document.documentElement;h.dataset.theme=h.dataset.theme==='dark'?'light':'dark';try{localStorage.setItem('canon-theme',h.dataset.theme);}catch(e){}
+    syncThemeBtn();
     // push the new theme into every open project board iframe (t-a55a)
     document.querySelectorAll('.view iframe').forEach(f=>{try{f.contentWindow.postMessage({type:'canon-theme',theme:h.dataset.theme},location.origin);}catch(e){}});
   }
   (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
+  document.addEventListener('DOMContentLoaded',syncThemeBtn);
   function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
 
   // ── Tabs (t-a55a) ────────────────────────────────────────────────────────
