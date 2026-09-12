@@ -64,6 +64,15 @@
   .views{flex:1;position:relative;overflow:hidden}
   .view{position:absolute;inset:0;overflow:auto;display:none}
   .view.active{display:block}
+  /* t-5c3c: when a nudge banner is present, stack it above the board iframe */
+  .view.active.has-nudge{display:flex;flex-direction:column}
+  .view.has-nudge iframe{flex:1;height:auto;min-height:0}
+  .skill-nudge{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
+  .skill-nudge .sn-msg{flex:1;min-width:0}
+  .skill-nudge .sn-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
+  .skill-nudge .sn-reg{font-size:12px;padding:6px 12px}
+  .skill-nudge .sn-x{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
+  .skill-nudge .sn-x:hover{color:var(--text);border-color:var(--border-hover)}
   #view-projects{padding:24px 30px}
   #view-admin{padding:24px 30px}
   .admin-wrap{max-width:620px}
@@ -662,9 +671,39 @@
     renderTabs();
     saveTabs();
   }
-  function openProject(id,name){
+  function openProject(id,name,opts){
+    opts=opts||{};
     if(!openTabs.some(t=>t.id===id)){ openTabs.push({id,name}); ensureView(id,name); }
     activateTab(id);
+    if(opts.nudge) maybeNudgeSkill(id,name);   // t-5c3c: only on explicit open, never on restore
+  }
+  // t-5c3c: soft nudge — when a project opened via the card lacks the sprint
+  // skill, show an inline banner offering to register it. The board still opens;
+  // Dismiss hides it for this open (reopening nudges again). Never a hard block.
+  async function maybeNudgeSkill(id,name){
+    const v=document.getElementById('view-'+id);
+    if(!v || v.querySelector('.skill-nudge')) return;
+    let skills=[];
+    try{ const s=await fetch('/api/project-stats?project='+encodeURIComponent(id)); if(s.ok) skills=(await s.json()).skills||[]; }catch(e){}
+    if(!Array.isArray(skills) || skills.includes('sprint')) return;   // has it (or unknown) → no nudge
+    const proj=(window._projects||[]).find(p=>p.id===id)||{};
+    const bar=document.createElement('div');
+    bar.className='skill-nudge';
+    const msg=document.createElement('span'); msg.className='sn-msg';
+    msg.textContent='This project doesn’t have the canon “sprint” skill registered.';
+    const actions=document.createElement('span'); actions.className='sn-actions';
+    const reg=document.createElement('button'); reg.className='btn primary sn-reg'; reg.textContent='Register sprint';
+    const x=document.createElement('button'); x.className='sn-x'; x.title='Dismiss'; x.textContent='✕';
+    actions.appendChild(reg); actions.appendChild(x);
+    bar.appendChild(msg); bar.appendChild(actions);
+    v.classList.add('has-nudge');
+    v.insertBefore(bar, v.firstChild);
+    x.addEventListener('click',()=>{ bar.remove(); v.classList.remove('has-nudge'); });
+    reg.addEventListener('click',async()=>{
+      await registerSkill(id, name, proj.path||'', 'sprint');  // reuses the themed cockpitConfirm flow
+      // remove the banner only if sprint is actually registered now
+      try{ const s=await fetch('/api/project-stats?project='+encodeURIComponent(id)); const sk=s.ok?((await s.json()).skills||[]):[]; if(sk.includes('sprint')){ bar.remove(); v.classList.remove('has-nudge'); } }catch(e){}
+    });
   }
   function _removeTab(id){
     openTabs=openTabs.filter(t=>t.id!==id);
@@ -744,7 +783,7 @@
     // Delegated handlers (no inline onclick with interpolated user data — avoids
     // JS-string/attribute injection from a maliciously-named registered path).
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
-    grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name)));
+    grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
     grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill)));
     shown.forEach(p=>fillCardStats(p.id));
   }
