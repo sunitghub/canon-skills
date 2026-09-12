@@ -2324,20 +2324,31 @@
   document.documentElement.classList.add('canon-proj-embed');
   // Read endpoints that resolve via effective_root on the server.
   const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats)/;
+  // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
+  // these so drag-status / create / edit-body / edit-doc / demo / visual done
+  // inside a project tab target THAT project. Deliberately EXCLUDES the OUT set
+  // (cockpit / cockpit-restart / version / worktrees / worktree-* / ci-workflow /
+  // headless-run) and /api/projects (registry add) — those stay unscoped.
+  const WRITE_RE = /^\/api\/(tickets$|tickets\?|ticket\/[^/]+\/(status|body|demo|visual)|doc\/)/;
   const _fetch = window.fetch.bind(window);
   window.fetch = function(input, init){
     try {
-      // Only scope reads. Method defaults to GET; a write (POST/PUT/DELETE)
-      // to a shared path like /api/tickets (create) must NOT be scoped.
       const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
       let url = typeof input === 'string' ? input : (input && input.url);
-      if (method === 'GET' && typeof url === 'string' && READ_RE.test(url)) {
-        const u = new URL(url, location.origin);
-        if (!u.searchParams.has('project')) {
-          u.searchParams.set('project', _project);
-          url = u.pathname + u.search;
-          if (typeof input === 'string') input = url;
-          else input = new Request(url, input);
+      if (typeof url === 'string') {
+        // Match on the pathname (WRITE_RE uses `tickets$` etc., so compare path only).
+        const path = url.split('?')[0];
+        const isRead  = method === 'GET' && READ_RE.test(path);
+        const isWrite = (method === 'POST' || method === 'PUT') &&
+                        (WRITE_RE.test(path) || path === '/api/tickets');
+        if (isRead || isWrite) {
+          const u = new URL(url, location.origin);
+          if (!u.searchParams.has('project')) {
+            u.searchParams.set('project', _project);
+            url = u.pathname + u.search;
+            if (typeof input === 'string') input = url;
+            else input = new Request(url, input);
+          }
         }
       }
     } catch (e) { /* fall through to unmodified fetch */ }

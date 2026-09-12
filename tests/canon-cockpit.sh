@@ -74,6 +74,21 @@ grep -q "__canonProject" <<<"$board" || fail "canon-cockpit: app.html missing th
 grep -q "urlTheme" <<<"$board" || fail "canon-cockpit: app.html does not honor shell-passed ?theme"
 grep -q "&theme=" <<<"$page" || fail "canon-cockpit: project iframe src does not carry the shell theme"
 
+# ── Phase 2b-ii: the wrapper scopes WRITE POSTs, not just reads (t-8485) ──────
+# A WRITE_RE covering the editable-tab write set (status/body/demo/visual + doc)
+# must be present, and the wrapper must scope POST/PUT (not only GET). The OUT
+# set (cockpit/version/worktrees/ci/headless) must NOT appear in WRITE_RE.
+grep -q "WRITE_RE" <<<"$board" || fail "canon-cockpit: app.html missing WRITE_RE (write POSTs not scoped)"
+write_re_line="$(grep -m1 "const WRITE_RE" <<<"$board")"
+for tok in status body demo visual doc tickets; do
+  grep -q "$tok" <<<"$write_re_line" || fail "canon-cockpit: WRITE_RE missing the '$tok' write path"
+done
+for bad in cockpit version worktree ci-workflow headless; do
+  grep -q "$bad" <<<"$write_re_line" && fail "canon-cockpit: WRITE_RE must NOT scope OUT-set path '$bad'"
+done
+# the wrapper must act on writes, not GET-only (method POST/PUT branch present)
+grep -qE "method *=== *'POST'|method *=== *\"POST\"" <<<"$board" || fail "canon-cockpit: fetch wrapper is still GET-only (does not scope POST writes)"
+
 # ── Phase 3: embedded-board chrome stripped + folder-path breadcrumb (t-6a74) ─
 # The marker is applied client-side from __canonProject; assert the mechanism +
 # the marker-scoped hide CSS + folder-path logic are present in the served board.
