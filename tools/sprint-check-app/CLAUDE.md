@@ -38,3 +38,5 @@ Single-file app (`app.html`) served by a Python stdlib HTTP server (`server.py`)
 - `GET /api/tickets` — all tickets except `archived`; add `?all=1` to include archived
 - `POST /api/ticket/<id>/status` — update ticket status
 - `GET /api/handoff`, `/api/git`, `/api/why?file=<path>` — sidebar data
+
+Per-ticket doc tabs (Description/Decisions/Acceptance/Plan/...) are **generated generically** from any `*.md` file in `.tickets/<id>/` except `ticket.md` — the tab name is just the filename title-cased (`server.py:332`'s `_doc_name`, `sprint-check-go/main.go:534` parity). There is no special-cased "Decisions" (or any other) tab — writing a new `.tickets/<id>/foo-bar.md` file automatically produces a "Foo Bar" tab with zero board code changes (t-022f).
