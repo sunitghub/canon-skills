@@ -901,10 +901,25 @@ fi
 mkdir -p "$WORK/regplain"
 py_err="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$WORK/regplain\",\"description\":\"x\"}" "http://127.0.0.1:$PY_PORT/api/projects")"
 go_err="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$WORK/regplain\",\"description\":\"x\"}" "http://127.0.0.1:$GO_PORT/api/projects")"
-python3 - "$py_err" "$go_err" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/projects non-git error mismatch"
+# t-07c8: a non-git dir now REGISTERS with a non-blocking warning (git relaxed),
+# identically on both backends — was the non-git error-parity check.
+python3 - "$py_err" "$go_err" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/projects non-git ok+warning mismatch"
 import json, sys
-if json.loads(sys.argv[1]) != json.loads(sys.argv[2]): sys.exit(1)
+a,b=json.loads(sys.argv[1]),json.loads(sys.argv[2])
+assert a==b, f"non-git add differ {a} {b}"
+assert a.get("ok") is True, f"non-git should now register (ok:true), got {a}"
+assert a.get("warning")=="Path is not a git repository!", f"expected git warning, got {a.get('warning')}"
 PY
+# deregister regplain from BOTH registries so it doesn't pollute the rest of the suite
+for port in "$PY_PORT" "$GO_PORT"; do
+  pid_plain="$(curl -s "http://127.0.0.1:$port/api/projects" | python3 -c "import sys,json;print(next((e['id'] for e in json.load(sys.stdin) if e['path'].endswith('regplain')),''))")"
+  [ -n "$pid_plain" ] && curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$port/api/projects/$pid_plain" >/dev/null
+done
+# t-07c8: served HTML carries Cache-Control: no-store on both backends
+for port in "$PY_PORT" "$GO_PORT"; do
+  cc="$(curl -s -D - -o /dev/null "http://127.0.0.1:$port/cockpit" | grep -io 'cache-control: no-store' | head -1)"
+  [ -n "$cc" ] || fail "sprint-check-api-parity: FAIL — /cockpit missing Cache-Control: no-store on port $port"
+done
 
 reg_id="$(printf '%s' "$py_list" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")"
 

@@ -54,9 +54,13 @@ r2 = srv.registry_add(proj, "again")
 check(r2.get("ok") is False and "already" in r2.get("error",""), f"re-add should be duplicate error: {r2}")
 check(len(srv.registry_list()) == 1, "duplicate add must not grow the registry")
 
-# error: non-git dir
+# t-07c8: non-git dir now REGISTERS with a non-blocking warning (git relaxed)
 r3 = srv.registry_add(nongit, "x")
-check(r3.get("ok") is False and "git" in r3.get("error",""), f"non-git dir should be rejected: {r3}")
+check(r3.get("ok") is True and "git" in (r3.get("warning") or "").lower(), f"non-git dir should register with a warning: {r3}")
+check(len(srv.registry_list()) == 2, f"non-git registered → two entries, got {len(srv.registry_list())}")
+# deregister the non-git entry so the single-entry remove flow below still holds
+srv.registry_remove(r3["project"]["id"])
+check(len(srv.registry_list()) == 1, "back to one entry after removing the non-git project")
 
 # error: missing dir
 r4 = srv.registry_add(os.path.join(work, "does-not-exist"), "x")
