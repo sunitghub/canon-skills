@@ -901,8 +901,11 @@ func TestRegisteredSkills(t *testing.T) {
 	if len(got) != 2 || got[0] != "sprint" || got[1] != "context-check" {
 		t.Fatalf("want [sprint context-check] in table order, got %v", got)
 	}
-	// registerSkill rejects any non-sprint skill (fixed trust boundary)
+	// registerSkill accepts only the fixed allowlist {sprint, efficiency} (t-96c3)
 	if res := registerSkill(dir, "wrapup"); res["ok"] != false {
-		t.Fatalf("non-sprint skill must be rejected, got %v", res)
+		t.Fatalf("skill outside the allowlist must be rejected, got %v", res)
+	}
+	if res := registerSkill(dir, "../evil"); res["ok"] != false {
+		t.Fatalf("path-shaped skill must be rejected, got %v", res)
 	}
 }

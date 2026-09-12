@@ -189,15 +189,26 @@ grep -qF "canon-cockpit-shell" <<<"$board" || fail "canon-cockpit: app.html miss
 grep -qF "e.origin !== location.origin" <<<"$board" || fail "canon-cockpit: shell→board listener not origin-checked (same-origin)"
 grep -qF "ckLeaveSaveAndEnd" <<<"$board" || fail "canon-cockpit: shell→board listener must reuse the vetted ckLeaveSaveAndEnd flow"
 
-# ── t-7485: per-project registered-skills line + register-sprint from the card ─
+# ── t-7485 + t-96c3: per-project Skills line + register (efficiency/sprint) ────
 grep -qF 'data-f="skills"' <<<"$page" || fail "canon-cockpit: card missing the Skills meta row (data-f=\"skills\")"
 grep -qE "s\.skills|\.skills" <<<"$page" || fail "canon-cockpit: fillCardStats must read the project-stats skills field"
-grep -qF 'class="regskill"' <<<"$page" || fail "canon-cockpit: missing the Register-sprint button"
-grep -qF "skills.includes('sprint')" <<<"$page" || fail "canon-cockpit: register button must be gated on whether sprint is already registered"
-grep -qF "function registerSprint" <<<"$page" || fail "canon-cockpit: missing registerSprint handler"
-grep -qE "querySelectorAll\('\.regskill'\)" <<<"$page" || fail "canon-cockpit: register button not wired via a delegated handler"
-grep -qF "/api/register-skill?project=" <<<"$page" || fail "canon-cockpit: registerSprint must POST to /api/register-skill?project=<id>"
-grep -qF "confirm(" <<<"$page" || fail "canon-cockpit: registerSprint must confirm before the mutating register"
-grep -qF "unsupported" <<<"$page" || fail "canon-cockpit: registerSprint must surface the copy-paste command on unsupported hosts"
+grep -qF 'class="regskill"' <<<"$page" || fail "canon-cockpit: missing the Register-skill button"
+# t-96c3: the register buttons are generated from a single IMPORTANT_SKILLS source
+grep -qE "const IMPORTANT_SKILLS *= *\['efficiency', *'sprint'\]" <<<"$page" || fail "canon-cockpit: register buttons must derive from IMPORTANT_SKILLS=['efficiency','sprint']"
+grep -qF "IMPORTANT_SKILLS.map(" <<<"$page" || fail "canon-cockpit: register buttons must be generated from IMPORTANT_SKILLS (DRY, not hardcoded)"
+grep -qF "!skills.includes(b.dataset.skill)" <<<"$page" || fail "canon-cockpit: each register button must be gated on whether that skill is already registered"
+grep -qF "function registerSkill" <<<"$page" || fail "canon-cockpit: missing registerSkill handler"
+grep -qE "querySelectorAll\('\.regskill'\)" <<<"$page" || fail "canon-cockpit: register buttons not wired via a delegated handler"
+grep -qF "/api/register-skill?project=" <<<"$page" || fail "canon-cockpit: registerSkill must POST to /api/register-skill?project=<id>&skill=<skill>"
+grep -qF "&skill=" <<<"$page" || fail "canon-cockpit: registerSkill must pass the chosen skill"
+grep -qF "confirm(" <<<"$page" || fail "canon-cockpit: registerSkill must confirm before the mutating register"
+grep -qF "unsupported" <<<"$page" || fail "canon-cockpit: registerSkill must surface the copy-paste command on unsupported hosts"
+# t-96c3: card meta reordered — Added is the FIRST meta row (before Updated)
+page_flat="$(printf '%s' "$page" | tr '\n' ' ')"
+grep -qE 'class="k">Added<.*class="k">Updated<.*class="k">Total Tickets<.*class="k">Skills<' <<<"$page_flat" || fail "canon-cockpit: meta rows must be ordered Added, Updated, Total Tickets, Skills"
+# t-96c3: subtle divider between meta and actions + larger action buttons + red X border
+grep -qF 'class="card-divider"' <<<"$page" || fail "canon-cockpit: card missing the divider between meta and actions"
+grep -qE "\.go\{[^}]*width:40px" <<<"$page" || fail "canon-cockpit: action buttons should be enlarged (40px)"
+grep -qE "\.dereg\{[^}]*col-discarded" <<<"$page" || fail "canon-cockpit: the ✕ (dereg) should carry a red border at rest"
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485 per-project Skills row + registered-id-only Register-sprint action)"
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕)"

@@ -400,9 +400,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	// t-7485: register the fixed `sprint` skill into the tab's project. eroot is
 	// the registry-resolved root (unknown id already 400'd above); the skill name
-	// is a constant — no client path/skill reaches the shell-out.
+	// t-7485/t-96c3: register a canon skill into the tab's project. eroot is the
+	// registry-resolved root (unknown id already 400'd above); the skill comes
+	// from the client but registerSkill validates it against a fixed allowlist.
 	if path == "/api/register-skill" {
-		sendJSON(w, registerSkill(eroot, "sprint"))
+		skill := r.URL.Query().Get("skill")
+		if skill == "" {
+			skill = stringValue(payload, "skill", "sprint")
+		}
+		sendJSON(w, registerSkill(eroot, skill))
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/status$`).FindStringSubmatch(path); m != nil {
@@ -2535,15 +2541,15 @@ func skillsShPath() string { return envOr("SKILLS_SH_BIN", filepath.Join(toolsDi
 // root, never a client path. Degrades to {ok:false,unsupported:true,cmd} where
 // bash/skills.sh is unavailable.
 func registerSkill(root, skill string) map[string]any {
-	if skill != "sprint" {
-		return map[string]any{"ok": false, "error": "only the sprint skill can be registered from the Cockpit"}
+	if skill != "sprint" && skill != "efficiency" { // fixed allowlist (t-96c3); never an arbitrary client value
+		return map[string]any{"ok": false, "error": "only sprint / efficiency can be registered from the Cockpit"}
 	}
-	hint := fmt.Sprintf("%s add sprint %s", skillsShPath(), root)
+	hint := fmt.Sprintf("%s add %s %s", skillsShPath(), skill, root)
 	bash, berr := exec.LookPath("bash")
 	if berr != nil || !exists(skillsShPath()) {
 		return map[string]any{"ok": false, "unsupported": true, "cmd": hint}
 	}
-	cmd := exec.Command(bash, skillsShPath(), "add", "sprint", root)
+	cmd := exec.Command(bash, skillsShPath(), "add", skill, root)
 	cmd.Dir = root
 	cmd.Stdin = nil // non-interactive (skills.sh auto-skips its tty prompts)
 	timedOut := false

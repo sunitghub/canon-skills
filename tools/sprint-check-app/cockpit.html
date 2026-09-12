@@ -10,7 +10,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Canon Cockpit</title>
 <style>
-  html[data-theme="dark"]{--bg:#0d0d10;--panel:#141419;--border:#2c2c40;--border-hover:#3d3d54;--border-muted:#202030;--text:#e0e0ec;--text-body:#a5a5bc;--text-muted:#86869e;--text-dim:#40405c;--accent:#7c6af7;--accent-dim:rgba(124,106,247,0.12);--col-done:#4ade80;--col-progress:#60a5fa;--col-discarded:#f87171;--card-stat:#c7bfff;--scrim:rgba(0,0,0,.6)}
+  html[data-theme="dark"]{--bg:#1b2330;--panel:#232d3c;--border:#313d50;--border-hover:#3f4d63;--border-muted:#2a3547;--text:#e6ebf2;--text-body:#a7b0c0;--text-muted:#828da1;--text-dim:#4a566b;--accent:#7c6af7;--accent-dim:rgba(124,106,247,0.14);--col-done:#4ade80;--col-progress:#60a5fa;--col-discarded:#f87171;--card-stat:#c7bfff;--scrim:rgba(0,0,0,.6)}
   html[data-theme="light"]{--bg:#f2f2f7;--panel:#fff;--border:#dcdce8;--border-hover:#c0c0d4;--border-muted:#e8e8f2;--text:#1a1a2e;--text-body:#424269;--text-muted:#52527a;--text-dim:#b8b8d0;--accent:#6c5cf7;--accent-dim:rgba(108,92,247,0.10);--col-done:#16a34a;--col-progress:#2563eb;--col-discarded:#dc2626;--card-stat:#5a3ff0;--scrim:rgba(20,20,40,.35)}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
@@ -100,24 +100,26 @@
   .btn:hover{color:var(--text);border-color:var(--border-hover)}
   .btn.primary{background:var(--accent);color:#fff;border:none;display:inline-flex;gap:7px;align-items:center}
   .btn.primary:hover{filter:brightness(1.08)}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:15px 16px;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
   .card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 28px -8px rgba(0,0,0,.5),0 0 0 3px var(--accent-dim)}
-  .card h3{font-size:15px;font-weight:600}
-  .card .path{font-size:11px;color:var(--text-muted);font-family:ui-monospace,monospace;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .card .desc{font-size:12.5px;color:var(--text-body);margin:9px 0 12px;min-height:20px}
-  .card .cardfoot{display:flex;align-items:flex-end;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted)}
+  .card h3{font-size:16px;font-weight:600}
+  .card .path{font-size:11.5px;color:var(--text-muted);font-family:ui-monospace,monospace;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .card .desc{font-size:13.5px;color:var(--text-body);margin:9px 0 12px;min-height:20px}
+  .card .cardfoot{display:flex;flex-direction:column;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted)}
   /* vertical meta column with an accent bar marker (no clock icon) */
-  .card .meta{flex:1;padding-left:12px;border-left:3px solid var(--accent);display:grid;grid-template-columns:auto auto;justify-content:start;column-gap:28px;row-gap:3px;align-content:center}
+  .card .meta{padding-left:12px;border-left:3px solid var(--accent);display:grid;grid-template-columns:auto auto;justify-content:start;column-gap:28px;row-gap:4px;align-content:center}
   .card .metarow{display:contents}
-  .card .metarow .k{color:var(--text-muted);font-size:12px}
-  .card .metarow .v{color:var(--card-stat);font-weight:700;font-size:12px;font-variant-numeric:tabular-nums}
-  .card .actions{display:flex;gap:7px;flex-shrink:0}
-  .go{width:34px;height:34px;border-radius:8px;border:none;background:var(--col-done);color:#04210f;font-size:16px;font-weight:700;cursor:pointer}
+  .card .metarow .k{color:var(--text-muted);font-size:13px}
+  .card .metarow .v{color:var(--card-stat);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
+  .card .regbtns{display:flex;gap:8px;flex-wrap:wrap;padding-left:12px}
+  .card .card-divider{height:1px;background:var(--border-muted)}
+  .card .actions{display:flex;gap:10px;justify-content:flex-end}
+  .go{width:40px;height:40px;border-radius:9px;border:none;background:var(--col-done);color:#04210f;font-size:19px;font-weight:700;cursor:pointer}
   .go:hover{filter:brightness(1.08)}
-  .dereg{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer}
-  .dereg:hover{color:var(--col-discarded);border-color:var(--col-discarded)}
-  .regskill{align-self:center;height:34px;padding:0 10px;border-radius:8px;border:1px solid var(--accent);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .dereg{width:40px;height:40px;border-radius:9px;border:1px solid color-mix(in srgb, var(--col-discarded) 45%, transparent);background:transparent;color:var(--col-discarded);font-size:15px;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}
+  .dereg:hover{color:#fff;background:var(--col-discarded);border-color:var(--col-discarded);transform:translateY(-1px);box-shadow:0 4px 14px -4px var(--col-discarded)}
+  .regskill{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--accent);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
   .regskill:hover{background:var(--accent);color:#fff}
   .empty{border:1.5px dashed var(--border-hover);border-radius:12px;padding:40px;text-align:center;color:var(--text-muted)}
   .scrim{position:fixed;inset:0;background:var(--scrim);display:none;place-items:center;z-index:20}
@@ -365,6 +367,15 @@
   // is an <iframe src="/?project=<id>"> (read-only board). State {openIds,active}
   // persists to localStorage; restore drops ids no longer registered.
   const LS_TABS='canon-cockpit-tabs';
+  // t-96c3: the "important" onboarding skills the card offers to register, in
+  // display order. Single source of truth — the card buttons are generated from
+  // this (mirrors the server-side REGISTERABLE_SKILLS allowlist).
+  const IMPORTANT_SKILLS=['efficiency','sprint'];
+  // Per-skill confirm() copy for the register action (co-located with the list).
+  const REG_SKILL_DETAIL={
+    sprint:'wires the sprint workflow into the project — updates AGENTS.md/CLAUDE.md, installs a git pre-commit hook, creates .tickets/, and links the skills dir',
+    efficiency:'adds canon’s coding/efficiency standards to the project — updates AGENTS.md/CLAUDE.md and links the skills dir'
+  };
   let openTabs=[];            // [{id,name}]
   let activeTab='projects';
   let knownIds=new Set();     // registered project ids (for restore filtering)
@@ -612,13 +623,16 @@
         <div class="desc">${esc(p.description||'')}</div>
         <div class="cardfoot">
           <div class="meta" data-stats="${escAttr(p.id)}">
+            <div class="metarow"><span class="k">Added</span><span class="v">${esc(p.added||'')}</span></div>
             <div class="metarow"><span class="k">Updated</span><span class="v" data-f="updated">…</span></div>
             <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
             <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
-            <div class="metarow"><span class="k">Added</span><span class="v">${esc(p.added||'')}</span></div>
           </div>
+          <div class="regbtns" data-reg="${escAttr(p.id)}" style="display:none">
+            ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
+          </div>
+          <div class="card-divider"></div>
           <div class="actions">
-            <button class="regskill" title="Register the sprint skill in this project" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ sprint</button>
             <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
             <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
           </div>
@@ -628,7 +642,7 @@
     // JS-string/attribute injection from a maliciously-named registered path).
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
     grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name)));
-    grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSprint(b.dataset.id,b.dataset.name,b.dataset.path)));
+    grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill)));
     shown.forEach(p=>fillCardStats(p.id));
   }
 
@@ -644,25 +658,37 @@
       ct.textContent=(s.ticket_count!=null?s.ticket_count:'—');
       const skills=Array.isArray(s.skills)?s.skills:[];
       if(sk) sk.textContent = skills.length ? skills.join(', ') : '—';
-      // t-7485: offer to register sprint only when it's not already registered.
+      // t-96c3: offer a register button for each "important" skill (efficiency,
+      // sprint) NOT yet registered; hide the row when both are present.
       const card=el.closest('.card');
-      const reg=card&&card.querySelector('.regskill');
-      if(reg) reg.style.display = skills.includes('sprint') ? 'none' : '';
+      const reg=card&&card.querySelector('.regbtns');
+      if(reg){
+        let any=false;
+        reg.querySelectorAll('.regskill').forEach(b=>{
+          const show=!skills.includes(b.dataset.skill);
+          b.style.display = show ? '' : 'none';
+          any = any || show;
+        });
+        reg.style.display = any ? '' : 'none';
+      }
     }catch(e){ up.textContent='—'; ct.textContent='—'; if(sk) sk.textContent='—'; }
   }
 
-  // t-7485: register the sprint skill into a project from its card. Confirms the
-  // side effects, POSTs to the registered-id-only endpoint, then refreshes. If the
+  // t-7485/t-96c3: register one of the "important" skills (sprint / efficiency)
+  // into a project from its card. Confirms the side effects, POSTs to the
+  // registered-id-only endpoint with the chosen skill, then refreshes. If the
   // host can't run it (no bash/skills.sh — e.g. Windows Go binary), surfaces the
   // exact copy-paste command instead of failing silently.
-  async function registerSprint(id,name,path){
-    if(!confirm('Register the canon “sprint” skill in “'+name+'”?\n\nThis wires the sprint workflow into the project — it updates AGENTS.md/CLAUDE.md, installs a git pre-commit hook, creates .tickets/, and links the skills dir. Safe to re-run.')) return;
+  async function registerSkill(id,name,path,skill){
+    skill=skill||'sprint';
+    const detail = REG_SKILL_DETAIL[skill] || ('registers the “'+skill+'” skill');
+    if(!confirm('Register the canon “'+skill+'” skill in “'+name+'”?\n\nThis '+detail+'. Safe to re-run.')) return;
     try{
-      const r=await fetch('/api/register-skill?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+      const r=await fetch('/api/register-skill?project='+encodeURIComponent(id)+'&skill='+encodeURIComponent(skill),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
       const res=await r.json().catch(()=>({}));
-      if(res&&res.ok){ toast('✓ Registered sprint in '+name); load(); return; }
-      if(res&&res.unsupported){ window.prompt('Run this in a terminal to register sprint:', res.cmd||('skills.sh add sprint '+path)); return; }
-      toast((res&&res.error)?('Could not register: '+res.error):'Could not register sprint');
+      if(res&&res.ok){ toast('✓ Registered '+skill+' in '+name); load(); return; }
+      if(res&&res.unsupported){ window.prompt('Run this in a terminal to register '+skill+':', res.cmd||('skills.sh add '+skill+' '+path)); return; }
+      toast((res&&res.error)?('Could not register: '+res.error):('Could not register '+skill));
     }catch(e){ toast('Request failed'); }
   }
 
