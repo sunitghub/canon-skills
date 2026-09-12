@@ -83,6 +83,11 @@ Use when `plan.md` identifies **2 or more independent subsystems** — subsystem
 
 **How to run:**
 
+This is the same citation-only idea as `skills/bulk-read/SKILL.md`, at a coarser grain — whole
+subsystems here instead of a single file, triggered by subsystem count rather than a line-count
+threshold. Use `bulk-read` directly when you just need one large file understood, not a whole
+subsystem traced.
+
 Spawn one Explore subagent per subsystem in a single message (parallel). Each subagent receives:
 - The subsystem name
 - Its known entry point(s) from `plan.md`
