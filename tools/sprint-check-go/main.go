@@ -2288,6 +2288,9 @@ func serveFile(w http.ResponseWriter, path, contentType string) {
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+	if strings.HasPrefix(contentType, "text/html") {
+		w.Header().Set("Cache-Control", "no-store") // t-07c8: always serve fresh (local dev tool)
+	}
 	w.Write(body)
 }
 
@@ -2375,7 +2378,7 @@ func registrySave(entries []registryProject) error {
 func registryAdd(path, description string) map[string]any {
 	raw := strings.TrimSpace(path)
 	if raw == "" {
-		return map[string]any{"ok": false, "error": "path is required"}
+		return map[string]any{"ok": false, "error": "Path is required."}
 	}
 	if strings.HasPrefix(raw, "~") {
 		if h, err := os.UserHomeDir(); err == nil {
@@ -2384,27 +2387,29 @@ func registryAdd(path, description string) map[string]any {
 	}
 	abs, err := filepath.Abs(raw)
 	if err != nil {
-		return map[string]any{"ok": false, "error": "path does not exist"}
+		return map[string]any{"ok": false, "error": "Path does not exist."}
 	}
 	resolved, err := filepath.EvalSymlinks(abs)
 	if err != nil {
-		return map[string]any{"ok": false, "error": "path does not exist"}
+		return map[string]any{"ok": false, "error": "Path does not exist."}
 	}
 	info, err := os.Stat(resolved)
 	if err != nil {
-		return map[string]any{"ok": false, "error": "path does not exist"}
+		return map[string]any{"ok": false, "error": "Path does not exist."}
 	}
 	if !info.IsDir() {
-		return map[string]any{"ok": false, "error": "path is not a directory"}
+		return map[string]any{"ok": false, "error": "Path is not a directory."}
 	}
+	warning := ""
 	if !exists(filepath.Join(resolved, ".git")) {
-		return map[string]any{"ok": false, "error": "path is not a git repository"}
+		// t-07c8: git relaxed to a non-blocking warning — register anyway.
+		warning = "Path is not a git repository!"
 	}
 	id := registryID(resolved)
 	entries := registryLoad()
 	for _, e := range entries {
 		if e.ID == id {
-			return map[string]any{"ok": false, "error": "project already registered"}
+			return map[string]any{"ok": false, "error": "Project already registered."}
 		}
 	}
 	p := registryProject{
@@ -2416,9 +2421,13 @@ func registryAdd(path, description string) map[string]any {
 	}
 	entries = append(entries, p)
 	if err := registrySave(entries); err != nil {
-		return map[string]any{"ok": false, "error": "could not write registry"}
+		return map[string]any{"ok": false, "error": "Could not write registry."}
 	}
-	return map[string]any{"ok": true, "project": p}
+	res := map[string]any{"ok": true, "project": p}
+	if warning != "" {
+		res["warning"] = warning
+	}
+	return res
 }
 
 func registryRemove(id string) map[string]any {

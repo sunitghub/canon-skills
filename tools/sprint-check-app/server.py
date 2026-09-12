@@ -82,24 +82,28 @@ def registry_list() -> list:
     return _registry_load()
 
 def registry_add(path: str, description: str) -> dict:
-    """Add a project. Validates: existing dir + git repo + not already
-    registered. Returns {ok, error?, project?}. Never writes any file other
-    than the registry itself; `path` is stored as data, never opened for write."""
+    """Add a project. Validates: existing dir + not already registered. Git is
+    advisory (t-07c8): a non-git dir still registers, with a `warning`. Returns
+    {ok, error?, warning?, project?}. Never writes any file other than the
+    registry itself; `path` is stored as data, never opened for write."""
     raw = (path or '').strip()
     if not raw:
-        return {'ok': False, 'error': 'path is required'}
+        return {'ok': False, 'error': 'Path is required.'}
     try:
         abs_path = str(Path(raw).expanduser().resolve(strict=True))
     except (FileNotFoundError, RuntimeError, OSError):
-        return {'ok': False, 'error': 'path does not exist'}
+        return {'ok': False, 'error': 'Path does not exist.'}
     if not Path(abs_path).is_dir():
-        return {'ok': False, 'error': 'path is not a directory'}
+        return {'ok': False, 'error': 'Path is not a directory.'}
+    warning = None
     if not (Path(abs_path) / '.git').exists():
-        return {'ok': False, 'error': 'path is not a git repository'}
+        # t-07c8: git relaxed to a non-blocking warning — register anyway; the
+        # board just shows empty git state for a non-git project.
+        warning = 'Path is not a git repository!'
     pid = _registry_id(abs_path)
     entries = _registry_load()
     if any(e.get('id') == pid for e in entries):
-        return {'ok': False, 'error': 'project already registered'}
+        return {'ok': False, 'error': 'Project already registered.'}
     project = {
         'id': pid,
         'path': abs_path,
@@ -109,7 +113,10 @@ def registry_add(path: str, description: str) -> dict:
     }
     entries.append(project)
     _registry_save(entries)
-    return {'ok': True, 'project': project}
+    result = {'ok': True, 'project': project}
+    if warning:
+        result['warning'] = warning
+    return result
 
 def registry_remove(pid: str) -> dict:
     """Deregister by id — registry-only, never touches the project repo.
@@ -1540,6 +1547,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', len(body))
+        self.send_header('Cache-Control', 'no-store')  # t-07c8: always serve fresh (local dev tool)
         self.send_header('Connection', 'close')
         self.end_headers()
         self.wfile.write(body)

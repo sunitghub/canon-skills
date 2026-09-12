@@ -702,11 +702,16 @@ func TestRegistryAddListRemove(t *testing.T) {
 		t.Fatal("duplicate add changed the registry")
 	}
 
-	// non-git dir → error
+	// t-07c8: non-git dir now registers with a non-blocking warning (git relaxed)
 	nongit := t.TempDir()
-	if res := registryAdd(nongit, "x"); res["ok"].(bool) {
-		t.Fatal("non-git dir should be rejected")
+	ngres := registryAdd(nongit, "x")
+	if !ngres["ok"].(bool) {
+		t.Fatalf("non-git dir should now register (ok:true), got %v", ngres)
 	}
+	if w, _ := ngres["warning"].(string); !strings.Contains(strings.ToLower(w), "git") {
+		t.Fatalf("non-git dir should register with a git warning, got %v", ngres)
+	}
+	registryRemove(ngres["project"].(registryProject).ID) // keep the rest of the test single-entry
 	// missing path → error
 	if res := registryAdd(filepath.Join(home, "nope"), "x"); res["ok"].(bool) {
 		t.Fatal("missing path should be rejected")

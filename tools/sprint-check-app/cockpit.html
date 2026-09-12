@@ -769,7 +769,11 @@
       const r=await fetch('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path,description})});
       const res=await r.json();
       if(!res.ok){err.textContent=res.error||'Could not add project.';return;}
-      closeAdd();toast('Added '+(res.project&&res.project.name||'project'));load();
+      const nm=(res.project&&res.project.name)||'project';
+      closeAdd();
+      // t-07c8: a non-git folder registers with a non-blocking warning.
+      toast(res.warning ? ('⚠ Added '+nm+' — '+res.warning) : ('Added '+nm));
+      load();
     }catch(e){err.textContent='Request failed.';}
   }
 
