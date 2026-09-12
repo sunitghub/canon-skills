@@ -211,4 +211,20 @@ grep -qF 'class="card-divider"' <<<"$page" || fail "canon-cockpit: card missing 
 grep -qE "\.go\{[^}]*width:40px" <<<"$page" || fail "canon-cockpit: action buttons should be enlarged (40px)"
 grep -qE "\.dereg\{[^}]*col-discarded" <<<"$page" || fail "canon-cockpit: the ✕ (dereg) should carry a red border at rest"
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕)"
+# ── t-65b0: board (app.html) blue-grey dark theme + embed rail hide + card fold-in ─
+board_flat="$(printf '%s' "$board" | tr '\n' ' ')"
+# dark :root repaletted to blue-grey (not the old near-black), accent kept purple
+grep -qE '\-\-bg: *#1b2330' <<<"$board_flat" || fail "canon-cockpit: app.html dark --bg should be the blue-grey #1b2330"
+grep -qF "#0d0d10" <<<"$board" && fail "canon-cockpit: app.html still carries the old near-black #0d0d10 dark --bg"
+grep -qE '\-\-accent: *#7c6af7' <<<"$board_flat" || fail "canon-cockpit: app.html --accent must stay purple #7c6af7"
+# light theme untouched (its --bg is still #f2f2f7)
+grep -qF "#f2f2f7" <<<"$board" || fail "canon-cockpit: app.html light --bg (#f2f2f7) must be unchanged"
+# embed-only: the collapsed-sidebar quick-jump rail is hidden in a project tab, but the markup still exists for standalone
+grep -qE "html\.canon-proj-embed \.sidebar-icon-rail *\{ *display: *none" <<<"$board" || fail "canon-cockpit: the icon rail must be hidden in the embedded tab (canon-proj-embed)"
+grep -qF 'class="sidebar-icon-rail"' <<<"$board" || fail "canon-cockpit: the standalone icon rail markup must still be present"
+# card fold-in (cockpit.html): bottom-row register buttons + right-aligned actions + tooltips
+grep -qF 'class="cardbottom"' <<<"$page" || fail "canon-cockpit: card missing the .cardbottom row (register buttons + actions)"
+grep -qE "\.card \.actions\{[^}]*margin-left:auto" <<<"$page" || fail "canon-cockpit: card actions must be right-aligned via margin-left:auto"
+grep -qF 'title="Register the ${sk} skill in this project"' <<<"$page" || fail "canon-cockpit: register buttons must carry a hover title tooltip"
+
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips)"

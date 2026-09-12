@@ -101,20 +101,21 @@
   .btn.primary{background:var(--accent);color:#fff;border:none;display:inline-flex;gap:7px;align-items:center}
   .btn.primary:hover{filter:brightness(1.08)}
   .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));gap:16px}
-  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease}
   .card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 10px 28px -8px rgba(0,0,0,.5),0 0 0 3px var(--accent-dim)}
   .card h3{font-size:16px;font-weight:600}
   .card .path{font-size:11.5px;color:var(--text-muted);font-family:ui-monospace,monospace;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .card .desc{font-size:13.5px;color:var(--text-body);margin:9px 0 12px;min-height:20px}
-  .card .cardfoot{display:flex;flex-direction:column;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted)}
+  .card .cardfoot{display:flex;flex-direction:column;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted);flex:1}
   /* vertical meta column with an accent bar marker (no clock icon) */
   .card .meta{padding-left:12px;border-left:3px solid var(--accent);display:grid;grid-template-columns:auto auto;justify-content:start;column-gap:28px;row-gap:4px;align-content:center}
   .card .metarow{display:contents}
   .card .metarow .k{color:var(--text-muted);font-size:13px}
   .card .metarow .v{color:var(--card-stat);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
-  .card .regbtns{display:flex;gap:8px;flex-wrap:wrap;padding-left:12px}
-  .card .card-divider{height:1px;background:var(--border-muted)}
-  .card .actions{display:flex;gap:10px;justify-content:flex-end}
+  .card .regbtns{display:flex;gap:8px;flex-wrap:wrap}
+  .card .card-divider{height:1px;background:var(--border-muted);margin-top:auto}
+  .card .cardbottom{display:flex;align-items:center;gap:10px}
+  .card .actions{display:flex;gap:10px;margin-left:auto}
   .go{width:40px;height:40px;border-radius:9px;border:none;background:var(--col-done);color:#04210f;font-size:19px;font-weight:700;cursor:pointer}
   .go:hover{filter:brightness(1.08)}
   .dereg{width:40px;height:40px;border-radius:9px;border:1px solid color-mix(in srgb, var(--col-discarded) 45%, transparent);background:transparent;color:var(--col-discarded);font-size:15px;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}
@@ -628,13 +629,15 @@
             <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
             <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
           </div>
-          <div class="regbtns" data-reg="${escAttr(p.id)}" style="display:none">
-            ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
-          </div>
           <div class="card-divider"></div>
-          <div class="actions">
-            <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
-            <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
+          <div class="cardbottom">
+            <div class="regbtns" data-reg="${escAttr(p.id)}" style="display:none">
+              ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Register the ${sk} skill in this project" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
+            </div>
+            <div class="actions">
+              <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
+              <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
+            </div>
           </div>
         </div>
       </div>`).join('');
