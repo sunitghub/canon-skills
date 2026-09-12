@@ -1139,23 +1139,26 @@ SPRINT_HEADLESS_EVAL = Path(os.environ.get('SPRINT_HEADLESS_EVAL_BIN')
                              or Path(__file__).resolve().parent.parent / 'sprint-headless-eval')
 CANON_GATE_TEMPLATE = Path(__file__).resolve().parent.parent / 'canon-gate-template.yml'
 SKILLS_SH = Path(os.environ.get('SKILLS_SH_BIN') or Path(__file__).resolve().parent.parent / 'skills.sh')
+# t-96c3: the Cockpit only registers the two "important" onboarding skills from a
+# card. A fixed server-side allowlist keeps the trust boundary a constant even
+# though the client now chooses WHICH of the two — no arbitrary skill reaches the
+# shell-out.
+REGISTERABLE_SKILLS = ('sprint', 'efficiency')
 
 def register_skill(root: Path, skill: str = 'sprint') -> dict:
-    """t-7485: register a canon skill into `root` by shelling out to skills.sh
-    (argv list, non-interactive, timeout-bounded). Only the fixed literal
-    'sprint' is registerable from the Cockpit — the trust boundary is a
-    constant skill name + a registry-resolved root, never a client-supplied
-    skill/path. Degrades to {ok:False, unsupported:True, cmd:<hint>} where
-    bash or skills.sh isn't available (e.g. a Windows host without Git-Bash),
-    so the UI can show a copy-paste command instead of failing silently."""
-    if skill != 'sprint':
-        return {'ok': False, 'error': 'only the sprint skill can be registered from the Cockpit'}
-    hint = f'{SKILLS_SH} add sprint {root}'
+    """t-7485/t-96c3: register a canon skill into `root` by shelling out to
+    skills.sh (argv list, non-interactive, timeout-bounded). `skill` must be in
+    the fixed REGISTERABLE_SKILLS allowlist — never an arbitrary client value —
+    and the dir is registry-resolved. Degrades to {ok:False, unsupported:True,
+    cmd:<hint>} where bash or skills.sh isn't available."""
+    if skill not in REGISTERABLE_SKILLS:
+        return {'ok': False, 'error': f'only {" / ".join(REGISTERABLE_SKILLS)} can be registered from the Cockpit'}
+    hint = f'{SKILLS_SH} add {skill} {root}'
     bash = shutil.which('bash')
     if not bash or not SKILLS_SH.exists():
         return {'ok': False, 'unsupported': True, 'cmd': hint}
     try:
-        p = subprocess.run([bash, str(SKILLS_SH), 'add', 'sprint', str(root)],
+        p = subprocess.run([bash, str(SKILLS_SH), 'add', skill, str(root)],
                            cwd=str(root), stdin=subprocess.DEVNULL,
                            capture_output=True, text=True, timeout=60)
     except Exception as e:
@@ -1661,12 +1664,13 @@ class Handler(BaseHTTPRequestHandler):
             result = registry_add(str(payload.get('path', '')), str(payload.get('description', '')))
             self.send_json(result, status=200 if result.get('ok') else 400); return
 
-        # t-7485: register the canon `sprint` skill into the tab's project. The
-        # target dir is the registry-resolved eroot (never a raw client path;
-        # unknown id already 400'd above), and the skill is the fixed literal
-        # 'sprint' — no client-supplied skill/path reaches the shell-out.
+        # t-7485/t-96c3: register a canon skill into the tab's project. The target
+        # dir is the registry-resolved eroot (never a raw client path; unknown id
+        # already 400'd above). The skill comes from the client but is validated in
+        # register_skill against the fixed REGISTERABLE_SKILLS allowlist.
         if path == '/api/register-skill':
-            self.send_json(register_skill(eroot)); return
+            skill = (parse_qs(parsed.query).get('skill', [''])[0] or str(payload.get('skill', '')) or 'sprint')
+            self.send_json(register_skill(eroot, skill)); return
 
         m = re.match(r'^/api/ticket/([^/]+)/status$', path)
         if m:
