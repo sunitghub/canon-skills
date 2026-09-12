@@ -132,6 +132,19 @@
   .modal textarea{resize:vertical;min-height:52px}
   .modal .err{color:var(--col-discarded);font-size:12px;margin-top:8px;min-height:16px}
   .modal .mfoot{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  /* Add-Project folder browser (t-1b88) */
+  .modal .pathrow{display:flex;gap:8px;align-items:center}
+  .modal .pathrow #addPath{flex:1}
+  .browse-btn{white-space:nowrap;flex-shrink:0}
+  .dirnav{margin-top:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);overflow:hidden}
+  .dirnav-head{display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border-muted)}
+  .dirnav-path{flex:1;font-family:ui-monospace,monospace;font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
+  .dirnav-use{white-space:nowrap;flex-shrink:0;font-size:12px;padding:5px 10px}
+  .dirnav-list{max-height:220px;overflow:auto}
+  .dirnav-row{padding:7px 12px;font-size:12.5px;color:var(--text-body);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .dirnav-row:hover{background:var(--panel);color:var(--text)}
+  .dirnav-row.up{color:var(--text-muted)}
+  .dirnav-empty{padding:10px 12px;font-size:12px;color:var(--text-dim)}
   /* Close-tab warning (t-0db3) — live agent session; never orphan/kill silently */
   .cmodal{width:440px;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:22px;text-align:center}
   .cmodal .ci{width:44px;height:44px;border-radius:50%;background:var(--accent-dim);color:var(--col-done);display:grid;place-items:center;font-size:18px;margin:0 auto 12px}
@@ -244,7 +257,17 @@
   <div class="modal">
     <h2>Add Project</h2>
     <label>Project folder (absolute path to a git repo)</label>
-    <input id="addPath" placeholder="/Users/you/Developer/my-project" autocomplete="off">
+    <div class="pathrow">
+      <input id="addPath" placeholder="/Users/you/Developer/my-project" autocomplete="off">
+      <button type="button" class="btn browse-btn" onclick="toggleBrowse()">Browse…</button>
+    </div>
+    <div class="dirnav" id="dirnav" style="display:none">
+      <div class="dirnav-head">
+        <span class="dirnav-path" id="dirnav-path" title="">…</span>
+        <button type="button" class="btn dirnav-use" onclick="useBrowseDir()">Use this folder</button>
+      </div>
+      <div class="dirnav-list" id="dirnav-list"></div>
+    </div>
     <label>Description</label>
     <textarea id="addDesc" placeholder="What is this project?"></textarea>
     <div class="err" id="addErr"></div>
@@ -695,8 +718,40 @@
     }catch(e){ toast('Request failed'); }
   }
 
-  function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
-  function closeAdd(){document.getElementById('addModal').classList.remove('show');}
+  function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';hideBrowse();document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
+  function closeAdd(){document.getElementById('addModal').classList.remove('show');hideBrowse();}
+
+  // ── Add-Project folder browser (t-1b88) ────────────────────────────────────
+  // A web page can't read an absolute path, so navigate via the loopback
+  // /api/browse-dirs (directory names only) and hand the chosen path back to the
+  // text input. The text input still works for typing a known path.
+  let _browseCwd='';
+  function hideBrowse(){ const n=document.getElementById('dirnav'); if(n) n.style.display='none'; }
+  function toggleBrowse(){
+    const n=document.getElementById('dirnav');
+    if(n.style.display==='none'){ n.style.display=''; loadBrowse(document.getElementById('addPath').value.trim()); }
+    else { n.style.display='none'; }
+  }
+  async function loadBrowse(path){
+    const list=document.getElementById('dirnav-list');
+    list.innerHTML='<div class="dirnav-empty">…</div>';
+    let d={};
+    try{ d=await (await fetch('/api/browse-dirs?path='+encodeURIComponent(path||''))).json(); }catch(e){ d={error:'request failed'}; }
+    if(d.error){ list.innerHTML='<div class="dirnav-empty">'+esc(d.error)+'</div>'; return; }
+    _browseCwd=d.path||'';
+    const p=document.getElementById('dirnav-path'); p.textContent=_browseCwd; p.title=_browseCwd;
+    let rows='';
+    if(d.parent) rows+='<div class="dirnav-row up" data-path="'+escAttr(d.parent)+'">↰ ..</div>';
+    rows+=(d.entries||[]).map(e=>'<div class="dirnav-row" data-path="'+escAttr(e.path)+'">📁 '+esc(e.name)+'</div>').join('');
+    list.innerHTML=rows||'<div class="dirnav-empty">No subfolders.</div>';
+    list.querySelectorAll('.dirnav-row').forEach(r=>r.addEventListener('click',()=>loadBrowse(r.dataset.path)));
+  }
+  function useBrowseDir(){
+    if(_browseCwd){ document.getElementById('addPath').value=_browseCwd; }
+    hideBrowse();
+    document.getElementById('addPath').focus();
+  }
+
   async function submitAdd(){
     const path=document.getElementById('addPath').value.trim();
     const description=document.getElementById('addDesc').value;

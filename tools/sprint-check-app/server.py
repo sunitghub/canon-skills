@@ -148,6 +148,36 @@ def effective_root(query: dict) -> Path:
 def tickets_dir_for(root: Path) -> Path:
     return root / '.tickets'
 
+# t-1b88: read-only directory browser backing the Add-Project "Browse" picker.
+# Lists ONLY subdirectory names/paths (never files, never file contents) so the
+# browser UI can navigate to a folder and hand back its absolute path (a web page
+# can't obtain an absolute path itself). Loopback + Origin gated by the caller.
+def browse_dirs(path: str) -> dict:
+    """Resolve `path` (empty → home; '~' expanded) and list its immediate
+    subdirectories. Returns {path, parent, entries:[{name,path}]} or {error}.
+    Directory-names-only — files are never listed and never opened."""
+    raw = (path or '').strip()
+    try:
+        base = (Path(raw).expanduser() if raw else Path.home()).resolve()
+    except (RuntimeError, OSError):
+        return {'error': 'invalid path'}
+    if not base.is_dir():
+        return {'error': 'not a directory'}
+    entries = []
+    try:
+        with os.scandir(base) as it:
+            for e in it:
+                try:
+                    if e.is_dir(follow_symlinks=True):
+                        entries.append({'name': e.name, 'path': str(base / e.name)})
+                except OSError:
+                    continue  # unreadable entry — skip, never fail the whole listing
+    except (PermissionError, OSError):
+        return {'error': 'cannot read directory'}
+    entries.sort(key=lambda x: x['name'].lower())
+    parent = str(base.parent) if base.parent != base else None
+    return {'path': str(base), 'parent': parent, 'entries': entries}
+
 # t-7485: parse the project's AGENTS.md "Active canon skills" (AI-SKILLS) table —
 # the source of truth skills.sh maintains — to report which skills a project has
 # registered. Pure read (no subprocess), so it behaves identically on the Go/Windows
@@ -1573,6 +1603,9 @@ class Handler(BaseHTTPRequestHandler):
             except UnknownProject:
                 self.send_error(400); return
             self.send_json(project_stats(eroot))
+        elif path == '/api/browse-dirs':
+            # t-1b88: read-only dir listing for the Add-Project Browse picker.
+            self.send_json(browse_dirs(parse_qs(parsed.query).get('path', [''])[0]))
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
         elif path == '/api/cockpit-sessions':

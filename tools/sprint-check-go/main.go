@@ -276,6 +276,9 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, projectStats(root))
+	case "/api/browse-dirs":
+		// t-1b88: read-only dir listing for the Add-Project Browse picker.
+		sendJSON(w, browseDirs(r.URL.Query().Get("path")))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
 	case "/api/cockpit-sessions":
@@ -2473,6 +2476,59 @@ func runGitIn(root string, args ...string) string {
 	cmd.Stdout = &out
 	_ = cmd.Run()
 	return strings.TrimSpace(out.String())
+}
+
+// t-1b88: read-only directory browser backing the Add-Project "Browse" picker —
+// byte-parity with server.py's browse_dirs. Lists ONLY subdirectory names/paths
+// (never files, never file contents). Empty path → home; '~' expanded.
+func browseDirs(path string) map[string]any {
+	base := strings.TrimSpace(path)
+	if base == "" {
+		if h, err := os.UserHomeDir(); err == nil {
+			base = h
+		} else {
+			base = string(filepath.Separator)
+		}
+	} else if base == "~" || strings.HasPrefix(base, "~"+string(filepath.Separator)) {
+		if h, err := os.UserHomeDir(); err == nil {
+			base = h + base[1:]
+		}
+	}
+	abs, err := filepath.Abs(base)
+	if err != nil {
+		return map[string]any{"error": "invalid path"}
+	}
+	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+		abs = resolved
+	}
+	fi, err := os.Stat(abs)
+	if err != nil || !fi.IsDir() {
+		return map[string]any{"error": "not a directory"}
+	}
+	ents, err := os.ReadDir(abs)
+	if err != nil {
+		return map[string]any{"error": "cannot read directory"}
+	}
+	entries := []map[string]any{}
+	for _, e := range ents {
+		isDir := e.IsDir()
+		if !isDir && e.Type()&os.ModeSymlink != 0 { // follow a symlink to a dir
+			if st, err := os.Stat(filepath.Join(abs, e.Name())); err == nil && st.IsDir() {
+				isDir = true
+			}
+		}
+		if isDir {
+			entries = append(entries, map[string]any{"name": e.Name(), "path": filepath.Join(abs, e.Name())})
+		}
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return strings.ToLower(entries[i]["name"].(string)) < strings.ToLower(entries[j]["name"].(string))
+	})
+	var parent any
+	if p := filepath.Dir(abs); p != abs {
+		parent = p
+	}
+	return map[string]any{"path": abs, "parent": parent, "entries": entries}
 }
 
 func projectStats(root string) map[string]any {
