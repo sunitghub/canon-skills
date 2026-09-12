@@ -906,16 +906,17 @@ def load_why(file_: str, root: Path = None) -> dict:
 
 # ── Status write ──────────────────────────────────────────────────────────
 
-def _find_ticket_path(ticket_id: str) -> Path | None:
-    if not TICKETS_DIR.is_dir():
+def _find_ticket_path(ticket_id: str, root: Path = None) -> Path | None:
+    tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
+    if not tdir.is_dir():
         return None
-    folder_ticket = TICKETS_DIR / ticket_id / 'ticket.md'
+    folder_ticket = tdir / ticket_id / 'ticket.md'
     if folder_ticket.is_file():
         return folder_ticket
-    flat_ticket = TICKETS_DIR / f'{ticket_id}.md'
+    flat_ticket = tdir / f'{ticket_id}.md'
     if flat_ticket.is_file():
         return flat_ticket
-    for f in ticket_paths():
+    for f in ticket_paths(root):
         try:
             if parse_ticket(f).get('id') == ticket_id:
                 return f
@@ -923,10 +924,11 @@ def _find_ticket_path(ticket_id: str) -> Path | None:
             pass
     return None
 
-def _update_active(canonical_id: str, new_status: str) -> None:
+def _update_active(canonical_id: str, new_status: str, root: Path = None) -> None:
     """Mirrors tkt's set_active/clear_active_if: in_progress claims ACTIVE,
     any other status clears it if this ticket currently holds it."""
-    active_file = TICKETS_DIR / 'ACTIVE'
+    tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
+    active_file = tdir / 'ACTIVE'
     if new_status == 'in_progress':
         active_file.write_text(canonical_id + '\n', encoding='utf-8')
         return
@@ -935,8 +937,8 @@ def _update_active(canonical_id: str, new_status: str) -> None:
         if current == canonical_id:
             active_file.unlink()
 
-def write_status(ticket_id: str, new_status: str) -> bool:
-    path = _find_ticket_path(ticket_id)
+def write_status(ticket_id: str, new_status: str, root: Path = None) -> bool:
+    path = _find_ticket_path(ticket_id, root)
     if not path:
         return False
     text = path.read_text(encoding='utf-8', errors='replace')
@@ -945,15 +947,15 @@ def write_status(ticket_id: str, new_status: str) -> bool:
         return False
     path.write_text(updated, encoding='utf-8')
     canonical_id = parse_ticket(path).get('id', ticket_id)
-    _update_active(canonical_id, new_status)
+    _update_active(canonical_id, new_status, root)
     return True
 
-def write_demo(ticket_id: str, want: bool) -> bool:
+def write_demo(ticket_id: str, want: bool, root: Path = None) -> bool:
     """Toggle the boolean `demo` frontmatter field on an existing ticket. ON ensures a
     `demo: true` line (appended as the last frontmatter field); OFF removes any `demo:` line
     (absent = false, matching `tkt demo`). Returns True if the ticket exists (idempotent).
     Kept byte-for-byte identical to main.go's writeDemo — parity-tested (t-64a0)."""
-    path = _find_ticket_path(ticket_id)
+    path = _find_ticket_path(ticket_id, root)
     if not path:
         return False
     text = path.read_text(encoding='utf-8', errors='replace')
@@ -968,9 +970,9 @@ def write_demo(ticket_id: str, want: bool) -> bool:
         path.write_text(updated, encoding='utf-8')
     return True
 
-def write_body(ticket_id: str, new_body: str) -> bool:
+def write_body(ticket_id: str, new_body: str, root: Path = None) -> bool:
     """Replace the body (everything after frontmatter) of a ticket."""
-    path = _find_ticket_path(ticket_id)
+    path = _find_ticket_path(ticket_id, root)
     if not path:
         return False
     text = path.read_text(encoding='utf-8', errors='replace')
@@ -988,10 +990,11 @@ def read_doc(doc_file: str, root: Path = None) -> str | None:
         return None
     return p.read_text(encoding='utf-8', errors='replace')
 
-def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full', demo: bool = False, skills: str = '') -> dict:
+def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', root: Path = None) -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
-    TICKETS_DIR.mkdir(exist_ok=True)
-    existing = {p.stem for p in ticket_paths()} | {p.name for p in TICKETS_DIR.iterdir() if p.is_dir()}
+    tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
+    tdir.mkdir(exist_ok=True)
+    existing = {p.stem for p in ticket_paths(root)} | {p.name for p in tdir.iterdir() if p.is_dir()}
     chars = string.ascii_lowercase + string.digits
     while True:
         ticket_id = 't-' + ''.join(random.choices(chars, k=4))
@@ -1031,17 +1034,17 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str,
     fm_lines.append('---\n')
     fm = '\n'.join(fm_lines)
     full = fm + '\n' + body.strip() + '\n' if body.strip() else fm
-    ticket_dir = TICKETS_DIR / ticket_id
+    ticket_dir = tdir / ticket_id
     ticket_dir.mkdir()
     path = ticket_dir / 'ticket.md'
     path.write_text(full, encoding='utf-8')
     return parse_ticket(path)
 
-def write_doc(doc_file: str, content: str) -> bool:
+def write_doc(doc_file: str, content: str, root: Path = None) -> bool:
     """Write a companion doc under TICKETS_DIR."""
-    p = _safe_ticket_doc(doc_file)
+    p = _safe_ticket_doc(doc_file, root=root)
     if p is None:
-        p = legacy_doc_target(doc_file)
+        p = legacy_doc_target(doc_file, root)
     if p is None:
         return False
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -1053,7 +1056,7 @@ def write_doc(doc_file: str, content: str) -> bool:
 MAX_VISUAL_BYTES = 8 * 1024 * 1024
 _SAFE_VISUAL_NAME = re.compile(r'^[A-Za-z0-9_.-]+$')
 
-def _dedupe_visual_name(ticket_id: str, filename: str) -> str | None:
+def _dedupe_visual_name(ticket_id: str, filename: str, root: Path = None) -> str | None:
     """Return a collision-free filename under .tickets/<id>/visuals/, auto-suffixing
     before the extension (never overwrites). None if filename is unsafe."""
     stem, ext = os.path.splitext(filename)
@@ -1062,7 +1065,7 @@ def _dedupe_visual_name(ticket_id: str, filename: str) -> str | None:
     candidate = filename
     n = 2
     while True:
-        target = _safe_ticket_doc(f'{ticket_id}/visuals/{candidate}', exts=IMAGE_EXTS)
+        target = _safe_ticket_doc(f'{ticket_id}/visuals/{candidate}', exts=IMAGE_EXTS, root=root)
         if target is None:
             return None
         if not target.is_file():
@@ -1070,7 +1073,7 @@ def _dedupe_visual_name(ticket_id: str, filename: str) -> str | None:
         candidate = f'{stem}-{n}{ext}'
         n += 1
 
-def write_visual(ticket_id: str, filename: str, data_b64: str) -> dict:
+def write_visual(ticket_id: str, filename: str, data_b64: str, root: Path = None) -> dict:
     """Decode a base64-encoded image and write it to .tickets/<id>/visuals/,
     auto-suffixing on filename collision. {'ok': False} on any validation failure."""
     try:
@@ -1079,10 +1082,10 @@ def write_visual(ticket_id: str, filename: str, data_b64: str) -> dict:
         return {'ok': False}
     if not raw or len(raw) > MAX_VISUAL_BYTES:
         return {'ok': False}
-    name = _dedupe_visual_name(ticket_id, filename)
+    name = _dedupe_visual_name(ticket_id, filename, root)
     if name is None:
         return {'ok': False}
-    target = _safe_ticket_doc(f'{ticket_id}/visuals/{name}', exts=IMAGE_EXTS)
+    target = _safe_ticket_doc(f'{ticket_id}/visuals/{name}', exts=IMAGE_EXTS, root=root)
     if target is None:
         return {'ok': False}
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -1581,7 +1584,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok():
             self.send_error(403); return
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         origin = self.headers.get('Origin', '')
         if origin and not origin.startswith('http://127.0.0.1') and not origin.startswith('http://localhost'):
             self.send_error(403); return
@@ -1591,32 +1595,39 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.send_error(400); return
 
+        # t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
+        # absent → process default). Passed to the editable-tab write fns below.
+        try:
+            eroot = effective_root(parse_qs(parsed.query))
+        except UnknownProject:
+            self.send_error(400); return
+
         if path == '/api/projects':
             result = registry_add(str(payload.get('path', '')), str(payload.get('description', '')))
             self.send_json(result, status=200 if result.get('ok') else 400); return
 
         m = re.match(r'^/api/ticket/([^/]+)/status$', path)
         if m:
-            ok = write_status(m.group(1), str(payload.get('status', '')))
+            ok = write_status(m.group(1), str(payload.get('status', '')), eroot)
             self.send_json({'ok': ok}); return
 
         m = re.match(r'^/api/ticket/([^/]+)/body$', path)
         if m:
-            ok = write_body(m.group(1), str(payload.get('body', '')))
+            ok = write_body(m.group(1), str(payload.get('body', '')), eroot)
             self.send_json({'ok': ok}); return
 
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/visual$', path)
         if m:
-            self.send_json(write_visual(m.group(1), str(payload.get('filename', '')), str(payload.get('data', '')))); return
+            self.send_json(write_visual(m.group(1), str(payload.get('filename', '')), str(payload.get('data', '')), eroot)); return
 
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/demo$', path)
         if m:
-            ok = write_demo(m.group(1), bool(payload.get('demo', False)))
+            ok = write_demo(m.group(1), bool(payload.get('demo', False)), eroot)
             self.send_json({'ok': ok}); return
 
         m = re.match(r'^/api/doc/(.+)$', path)
         if m:
-            ok = write_doc(unquote(m.group(1)), str(payload.get('content', '')))
+            ok = write_doc(unquote(m.group(1)), str(payload.get('content', '')), eroot)
             self.send_json({'ok': ok}); return
 
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
@@ -1659,6 +1670,7 @@ class Handler(BaseHTTPRequestHandler):
                 gate     = 'eval' if str(payload.get('gate', '')).lower() == 'eval' else 'full',
                 demo     = bool(payload.get('demo', False)),
                 skills   = str(payload.get('skills', '')),
+                root     = eroot,
             )
             self.send_json(t); return
 

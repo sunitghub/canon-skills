@@ -389,24 +389,31 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSONStatus(w, res, status)
 		return
 	}
+	// t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
+	// absent → process default). Passed to the editable-tab write fns below.
+	eroot, erootOK := effectiveRoot(r)
+	if !erootOK {
+		http.Error(w, "unknown project", http.StatusBadRequest)
+		return
+	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/status$`).FindStringSubmatch(path); m != nil {
-		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], fmt.Sprint(payload["status"]))})
+		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], fmt.Sprint(payload["status"]), eroot)})
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/body$`).FindStringSubmatch(path); m != nil {
-		sendJSON(w, map[string]bool{"ok": writeBody(m[1], fmt.Sprint(payload["body"]))})
+		sendJSON(w, map[string]bool{"ok": writeBody(m[1], fmt.Sprint(payload["body"]), eroot)})
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/visual$`).FindStringSubmatch(path); m != nil {
-		sendJSON(w, writeVisual(m[1], stringValue(payload, "filename", ""), stringValue(payload, "data", "")))
+		sendJSON(w, writeVisual(m[1], stringValue(payload, "filename", ""), stringValue(payload, "data", ""), eroot))
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`).FindStringSubmatch(path); m != nil {
-		sendJSON(w, map[string]bool{"ok": writeDemo(m[1], boolValue(payload["demo"]))})
+		sendJSON(w, map[string]bool{"ok": writeDemo(m[1], boolValue(payload["demo"]), eroot)})
 		return
 	}
 	if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
-		sendJSON(w, map[string]bool{"ok": writeDoc(unescape(m[1]), fmt.Sprint(payload["content"]))})
+		sendJSON(w, map[string]bool{"ok": writeDoc(unescape(m[1]), fmt.Sprint(payload["content"]), eroot)})
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
@@ -459,6 +466,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			stringValue(payload, "gate", "full"),
 			boolValue(payload["demo"]),
 			stringValue(payload, "skills", ""),
+			eroot,
 		))
 		return
 	}
@@ -904,12 +912,12 @@ func capWithMore(items []string, maxN int) ([]string, int) {
 	return items[:maxN], len(items) - maxN
 }
 
-func writeStatus(id, status string) bool {
-	ok := replaceTicket(id, func(text string) string {
+func writeStatus(id, status string, root string) bool {
+	ok := replaceTicket(id, root, func(text string) string {
 		return regexp.MustCompile(`(?m)^(status:\s*)(\S+)$`).ReplaceAllString(text, "${1}"+status)
 	})
 	if ok {
-		updateActive(canonicalTicketID(id), status)
+		updateActive(canonicalTicketID(id, root), status, root)
 	}
 	return ok
 }
@@ -918,8 +926,8 @@ func writeStatus(id, status string) bool {
 // `demo: true` line (appended as the last frontmatter field); OFF removes any `demo:` line
 // (absent = false, matching `tkt demo`). Returns true if the ticket exists (idempotent).
 // Kept byte-for-byte identical to server.py's write_demo — parity-tested (t-64a0).
-func writeDemo(id string, want bool) bool {
-	path := findTicketPath(id)
+func writeDemo(id string, want bool, root string) bool {
+	path := findTicketPath(id, root)
 	if path == "" {
 		return false
 	}
@@ -951,8 +959,8 @@ func writeDemo(id string, want bool) bool {
 	return true
 }
 
-func canonicalTicketID(id string) string {
-	if p := findTicketPath(id); p != "" {
+func canonicalTicketID(id string, root string) string {
+	if p := findTicketPath(id, root); p != "" {
 		if t, err := parseTicket(p); err == nil {
 			if canonical, ok := t["id"]; ok {
 				return fmt.Sprint(canonical)
@@ -964,8 +972,8 @@ func canonicalTicketID(id string) string {
 
 // updateActive mirrors tkt's set_active/clear_active_if: in_progress claims
 // ACTIVE, any other status clears it if this ticket currently holds it.
-func updateActive(canonicalID, status string) {
-	activePath := filepath.Join(ticketsDir, "ACTIVE")
+func updateActive(canonicalID, status string, root string) {
+	activePath := filepath.Join(ticketsDirForRoot(root), "ACTIVE")
 	if status == "in_progress" {
 		os.WriteFile(activePath, []byte(canonicalID+"\n"), 0644)
 		return
@@ -977,8 +985,8 @@ func updateActive(canonicalID, status string) {
 	}
 }
 
-func writeBody(id, body string) bool {
-	return replaceTicket(id, func(text string) string {
+func writeBody(id, body string, root string) bool {
+	return replaceTicket(id, root, func(text string) string {
 		if m := frontmatterRe.FindStringIndex(text); m != nil {
 			return text[:m[1]] + strings.TrimSpace(body) + "\n"
 		}
@@ -986,11 +994,11 @@ func writeBody(id, body string) bool {
 	})
 }
 
-func writeDoc(docFile, content string) bool {
-	p, ok := safeTicketDoc(docFile)
+func writeDoc(docFile, content string, root string) bool {
+	p, ok := safeTicketDoc2(docFile, root)
 	if !ok {
 		var legacyOK bool
-		p, legacyOK = legacyDocTarget(docFile, "")
+		p, legacyOK = legacyDocTarget(docFile, root)
 		if !legacyOK {
 			return false
 		}
@@ -1007,7 +1015,7 @@ const maxVisualBytes = 8 * 1024 * 1024
 
 // dedupeVisualName returns a collision-free filename under .tickets/<id>/visuals/,
 // auto-suffixing before the extension (never overwrites). "" if filename is unsafe.
-func dedupeVisualName(ticketID, filename string) string {
+func dedupeVisualName(ticketID, filename string, root string) string {
 	ext := strings.ToLower(filepath.Ext(filename))
 	stem := strings.TrimSuffix(filename, filepath.Ext(filename))
 	extOK := false
@@ -1022,7 +1030,7 @@ func dedupeVisualName(ticketID, filename string) string {
 	}
 	candidate := filename
 	for n := 2; ; n++ {
-		target, ok := safeTicketDoc(ticketID+"/visuals/"+candidate, imageExts...)
+		target, ok := safeTicketDocIn(ticketID+"/visuals/"+candidate, root, imageExts...)
 		if !ok {
 			return ""
 		}
@@ -1035,16 +1043,16 @@ func dedupeVisualName(ticketID, filename string) string {
 
 // writeVisual decodes a base64-encoded image and writes it to
 // .tickets/<id>/visuals/, auto-suffixing on filename collision.
-func writeVisual(ticketID, filename, dataB64 string) map[string]any {
+func writeVisual(ticketID, filename, dataB64 string, root string) map[string]any {
 	raw, err := base64.StdEncoding.DecodeString(dataB64)
 	if err != nil || len(raw) == 0 || len(raw) > maxVisualBytes {
 		return map[string]any{"ok": false}
 	}
-	name := dedupeVisualName(ticketID, filename)
+	name := dedupeVisualName(ticketID, filename, root)
 	if name == "" {
 		return map[string]any{"ok": false}
 	}
-	target, ok := safeTicketDoc(ticketID+"/visuals/"+name, imageExts...)
+	target, ok := safeTicketDocIn(ticketID+"/visuals/"+name, root, imageExts...)
 	if !ok {
 		return map[string]any{"ok": false}
 	}
@@ -1057,17 +1065,18 @@ func writeVisual(ticketID, filename, dataB64 string) map[string]any {
 	return map[string]any{"ok": true, "filename": name}
 }
 
-func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string, demo bool, skills string) ticket {
-	os.MkdirAll(ticketsDir, 0755)
+func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string, demo bool, skills string, root string) ticket {
+	td := ticketsDirForRoot(root)
+	os.MkdirAll(td, 0755)
 	existing := map[string]bool{}
-	for _, p := range ticketPaths("") {
+	for _, p := range ticketPaths(root) {
 		stem := strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
 		existing[stem] = true
 		if filepath.Base(p) == "ticket.md" {
 			existing[filepath.Base(filepath.Dir(p))] = true
 		}
 	}
-	if entries, err := os.ReadDir(ticketsDir); err == nil {
+	if entries, err := os.ReadDir(td); err == nil {
 		for _, entry := range entries {
 			if entry.IsDir() {
 				existing[entry.Name()] = true
@@ -1091,7 +1100,7 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	if status == "" || status == "<nil>" {
 		status = "open"
 	}
-	dir := filepath.Join(ticketsDir, id)
+	dir := filepath.Join(td, id)
 	os.MkdirAll(dir, 0755)
 	ciLine := ""
 	if ci {
@@ -1158,8 +1167,8 @@ func writeCIWorkflow() map[string]any {
 	return map[string]any{"ok": true, "path": rel}
 }
 
-func replaceTicket(id string, fn func(string) string) bool {
-	path := findTicketPath(id)
+func replaceTicket(id string, root string, fn func(string) string) bool {
+	path := findTicketPath(id, root)
 	if path == "" {
 		return false
 	}
@@ -1174,14 +1183,15 @@ func replaceTicket(id string, fn func(string) string) bool {
 	return os.WriteFile(path, []byte(next), 0644) == nil
 }
 
-func findTicketPath(id string) string {
-	candidates := []string{filepath.Join(ticketsDir, id, "ticket.md"), filepath.Join(ticketsDir, id+".md")}
+func findTicketPath(id string, root string) string {
+	td := ticketsDirForRoot(root)
+	candidates := []string{filepath.Join(td, id, "ticket.md"), filepath.Join(td, id+".md")}
 	for _, c := range candidates {
 		if _, err := os.Stat(c); err == nil {
 			return c
 		}
 	}
-	for _, p := range ticketPaths("") {
+	for _, p := range ticketPaths(root) {
 		if t, err := parseTicket(p); err == nil && fmt.Sprint(t["id"]) == id {
 			return p
 		}

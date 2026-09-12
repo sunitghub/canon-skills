@@ -965,6 +965,34 @@ done
 py_np="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PY_PORT/api/tickets")"
 [[ "$py_np" == "200" ]] || fail "sprint-check-api-parity: FAIL — no-param /api/tickets should still 200 (got $py_np)"
 
+# ── Phase 2b-ii: project-scoped WRITES land in the tab's project (t-8485) ────
+# create/status/doc with ?project=$reg_id (regproj) must write regproj's .tickets,
+# NOT regproj2 and NOT the server's default project — on BOTH backends. Then a
+# scoped write with an unknown id → 400, and a no-param create still targets the
+# default project. Each backend has its own on-disk regproj tree ($REGPROJ is
+# under $WORK, shared, so we assert per-backend via the id echoed back + on-disk).
+for port in "$PY_PORT" "$GO_PORT"; do
+  # scoped create → new ticket dir appears under regproj/.tickets
+  before="$(ls "$REGPROJ/.tickets" | wc -l | tr -d ' ')"
+  cid="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+        -d '{"title":"scoped write","type":"task","status":"open"}' \
+        "http://127.0.0.1:$port/api/tickets?project=$reg_id" | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')"
+  [[ -f "$REGPROJ/.tickets/$cid/ticket.md" ]] || fail "sprint-check-api-parity: FAIL — scoped create did not land in regproj on port $port (id=$cid)"
+  [[ ! -e "$REGPROJ2/.tickets/$cid" ]] || fail "sprint-check-api-parity: FAIL — scoped create leaked into regproj2 on port $port"
+  # scoped status flip → writes regproj's ACTIVE
+  curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+       -d '{"status":"in_progress"}' "http://127.0.0.1:$port/api/ticket/$cid/status?project=$reg_id" >/dev/null
+  [[ "$(cat "$REGPROJ/.tickets/ACTIVE" 2>/dev/null | tr -d '[:space:]')" == "$cid" ]] || fail "sprint-check-api-parity: FAIL — scoped status did not write regproj ACTIVE on port $port"
+  # scoped doc write → under regproj/.tickets/<cid>/plan.md
+  curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+       -d '{"content":"# Scoped plan\nport-'"$port"'"}' "http://127.0.0.1:$port/api/doc/$cid/plan.md?project=$reg_id" >/dev/null
+  grep -q "Scoped plan" "$REGPROJ/.tickets/$cid/plan.md" || fail "sprint-check-api-parity: FAIL — scoped doc write did not land in regproj on port $port"
+  # unknown project id → 400 on a scoped WRITE too
+  wcode="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' \
+          -d '{"status":"open"}' "http://127.0.0.1:$port/api/ticket/$cid/status?project=deadbeef0000")"
+  [[ "$wcode" == "400" ]] || fail "sprint-check-api-parity: FAIL — scoped write with unknown id should 400 on port $port (got $wcode)"
+done
+
 curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$PY_PORT/api/projects/$reg_id2" >/dev/null
 curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$GO_PORT/api/projects/$reg_id2" >/dev/null
 curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$PY_PORT/api/projects/$reg_id" >/dev/null

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"encoding/json"
 	"net/http/httptest"
 	"os"
@@ -162,7 +163,7 @@ created: 2026-06-27
 	if !ok || content != "legacy mapped acceptance\n" {
 		t.Fatalf("readDoc legacy fallback = (%q, %v)", content, ok)
 	}
-	if !writeDoc("t-abcd-plan.md", "legacy mapped plan") {
+	if !writeDoc("t-abcd-plan.md", "legacy mapped plan", "") {
 		t.Fatal("writeDoc returned false")
 	}
 	raw, err := os.ReadFile(filepath.Join(ticketsDir, "t-abcd-plan.md"))
@@ -213,7 +214,7 @@ created: 2026-06-27
 
 func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("", "", "", 2, "", false, false, "full", false, "")
+	created := createTicket("", "", "", 2, "", false, false, "full", false, "", "")
 	id := created["id"].(string)
 	if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(id) {
 		t.Fatalf("id = %q, want t-[a-z0-9]{4}", id)
@@ -235,7 +236,7 @@ func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 func TestCreateTicketGate(t *testing.T) {
 	setupTestProject(t)
 	// eval mode writes the gate line and surfaces it in the ticket JSON
-	ev := createTicket("eval gate", "task", "open", 2, "", true, false, "eval", false, "")
+	ev := createTicket("eval gate", "task", "open", 2, "", true, false, "eval", false, "", "")
 	if ev["gate"] != "eval" {
 		t.Fatalf("gate JSON = %v, want eval", ev["gate"])
 	}
@@ -244,7 +245,7 @@ func TestCreateTicketGate(t *testing.T) {
 		t.Fatalf("ticket.md missing 'gate: eval':\n%s", raw)
 	}
 	// full mode (default) writes no gate line
-	full := createTicket("full gate", "task", "open", 2, "", true, false, "full", false, "")
+	full := createTicket("full gate", "task", "open", 2, "", true, false, "full", false, "", "")
 	raw2, _ := os.ReadFile(filepath.Join(ticketsDir, full["id"].(string), "ticket.md"))
 	if strings.Contains(string(raw2), "gate:") {
 		t.Fatalf("full-mode ticket.md should have no gate line:\n%s", raw2)
@@ -254,7 +255,7 @@ func TestCreateTicketGate(t *testing.T) {
 // t-354b: createTicket writes an allowlisted, order-preserving, deduped skills line.
 func TestCreateTicketSkills(t *testing.T) {
 	setupTestProject(t)
-	c := createTicket("maint", "chore", "open", 2, "", false, false, "full", false, "context-check,dead-code-cleanup,bogus,context-check")
+	c := createTicket("maint", "chore", "open", 2, "", false, false, "full", false, "context-check,dead-code-cleanup,bogus,context-check", "")
 	raw, _ := os.ReadFile(filepath.Join(ticketsDir, c["id"].(string), "ticket.md"))
 	if !strings.Contains(string(raw), "skills: context-check,dead-code-cleanup") {
 		t.Fatalf("ticket.md missing expected skills line:\n%s", raw)
@@ -262,7 +263,7 @@ func TestCreateTicketSkills(t *testing.T) {
 	if strings.Contains(string(raw), "bogus") {
 		t.Fatalf("non-allowlisted skill leaked into frontmatter:\n%s", raw)
 	}
-	none := createTicket("plain", "task", "open", 2, "", false, false, "full", false, "")
+	none := createTicket("plain", "task", "open", 2, "", false, false, "full", false, "", "")
 	raw2, _ := os.ReadFile(filepath.Join(ticketsDir, none["id"].(string), "ticket.md"))
 	if strings.Contains(string(raw2), "skills:") {
 		t.Fatalf("no-skills ticket should have no skills line:\n%s", raw2)
@@ -271,10 +272,10 @@ func TestCreateTicketSkills(t *testing.T) {
 
 func TestWriteStatusUpdatesActive(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("Active test", "task", "open", 2, "", false, false, "full", false, "")
+	created := createTicket("Active test", "task", "open", 2, "", false, false, "full", false, "", "")
 	id := created["id"].(string)
 
-	if !writeStatus(id, "in_progress") {
+	if !writeStatus(id, "in_progress", "") {
 		t.Fatal("writeStatus(in_progress) returned false")
 	}
 	activePath := filepath.Join(ticketsDir, "ACTIVE")
@@ -286,7 +287,7 @@ func TestWriteStatusUpdatesActive(t *testing.T) {
 		t.Fatalf("ACTIVE = %q, want %q", got, id)
 	}
 
-	if !writeStatus(id, "open") {
+	if !writeStatus(id, "open", "") {
 		t.Fatal("writeStatus(open) returned false")
 	}
 	if _, err := os.Stat(activePath); !os.IsNotExist(err) {
@@ -841,5 +842,42 @@ func TestRegistryDoesNotHTMLEscape(t *testing.T) {
 		if strings.Contains(s, bad) {
 			t.Fatalf("registry JSON must NOT HTML-escape (found %s) — breaks Python parity:\n%s", bad, s)
 		}
+	}
+}
+
+// TestScopedWritesTargetProject (t-8485): create/status/doc with a registered
+// ?project root land in THAT project's .tickets, not the process default.
+func TestScopedWritesTargetProject(t *testing.T) {
+	setupTestProject(t) // sets ticketsDir = default project
+	home := t.TempDir()
+	t.Setenv("CANON_HOME", filepath.Join(home, ".canon"))
+	B := t.TempDir()
+	os.MkdirAll(filepath.Join(B, ".git"), 0755)
+	os.MkdirAll(filepath.Join(B, ".tickets"), 0755)
+	broot, _ := filepath.EvalSymlinks(B)
+
+	tk := createTicket("Scoped", "task", "open", 2, "body", false, false, "full", false, "", broot)
+	id := fmt.Sprint(tk["id"])
+	if _, err := os.Stat(filepath.Join(broot, ".tickets", id, "ticket.md")); err != nil {
+		t.Fatalf("scoped create did not land in project B: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ticketsDir, id)); err == nil {
+		t.Fatal("scoped create leaked into the default project")
+	}
+	if !writeStatus(id, "in_progress", broot) {
+		t.Fatal("scoped writeStatus returned false")
+	}
+	active, _ := os.ReadFile(filepath.Join(broot, ".tickets", "ACTIVE"))
+	if strings.TrimSpace(string(active)) != id {
+		t.Fatalf("scoped status did not write project B's ACTIVE (got %q)", strings.TrimSpace(string(active)))
+	}
+	if !writeDoc(id+"/plan.md", "# Plan\nx", broot) {
+		t.Fatal("scoped writeDoc returned false")
+	}
+	if _, err := os.Stat(filepath.Join(broot, ".tickets", id, "plan.md")); err != nil {
+		t.Fatalf("scoped writeDoc did not land in project B: %v", err)
+	}
+	if _, ok := effectiveRoot(httptest.NewRequest("GET", "/api/tickets?project=deadbeef0000", nil)); ok {
+		t.Fatal("unknown project id should be ok=false (→400)")
 	}
 }
