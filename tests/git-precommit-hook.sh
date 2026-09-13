@@ -156,4 +156,12 @@ nogit_output="$("$SKILLS" add sprint "$nogit_project" 2>&1)"
 assert_contains "$nogit_output" "not a git repo"
 [[ ! -d "$nogit_project/.git" ]] || fail "expected no .git to be created"
 
+# ── Remove uninstalls the hook (t-0bcd) ─────────────────────────────────────
+remove_project="$(make_project)"
+trap 'rm -rf "$project" "$conflict_project" "$behavior_project" "$nogit_project" "$remove_project"' EXIT
+"$SKILLS" add sprint "$remove_project" >/dev/null
+assert_file_exists "$remove_project/.git/hooks/pre-commit"
+"$SKILLS" remove sprint "$remove_project" >/dev/null
+[[ ! -f "$remove_project/.git/hooks/pre-commit" ]] || fail "expected .git/hooks/pre-commit to be removed by skills.sh remove"
+
 printf 'git-precommit-hook: ok\n'

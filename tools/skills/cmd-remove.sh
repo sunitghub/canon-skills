@@ -30,6 +30,7 @@ cmd_remove() {
       skills_table_prune_if_empty "$agents_file"
     fi
     [ "$skill" = "efficiency" ] && offer_remove_model_tiers_note "$project_dir"
+    [[ "$skill" == "ticket" || "$skill" == "sprint-check" || "$skill" == "sprint" ]] && _uninstall_git_precommit "$project_dir"
     echo "Unregistered: $skill"
     if [ -z "$(registered_skill_names "$agents_file" 2>/dev/null)" ] && \
        ! grep -qF "$SKILLS_ROOT" "$claude_file" 2>/dev/null && \
@@ -49,6 +50,7 @@ cmd_remove() {
   echo "Unregistered: $skill"
 
   [ "$skill" = "sprint" ] && offer_remove_subagent_log_permission "$project_dir"
+  [[ "$skill" == "ticket" || "$skill" == "sprint-check" || "$skill" == "sprint" ]] && _uninstall_git_precommit "$project_dir"
 
   remove_skills_symlinks "$project_dir" "$skill_file"
 
