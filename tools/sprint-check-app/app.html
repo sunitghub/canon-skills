@@ -150,24 +150,6 @@
       cursor: pointer; transition: background .1s, color .1s;
     }
     .rail-icon:hover { background: var(--surface-hover); color: var(--text); }
-    /* t-b421: sidebar Cockpit-daemon status control */
-    .daemon-status { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
-    .daemon-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
-    .daemon-dot.healthy { background: #22c55e; box-shadow: 0 0 6px rgba(34,197,94,.6); }
-    .daemon-dot.stale   { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,.6); animation: pulse 1.4s ease-in-out infinite; }
-    .daemon-dot.off     { background: var(--text-dim); box-shadow: none; }
-    .daemon-status-label { font-size: 12px; color: var(--text); }
-    .daemon-session-count { font-size: 11px; color: var(--text-muted); }
-    .daemon-session-count strong { font-size: 13px; font-weight: 700; color: var(--text); }
-    .daemon-restart-btn {
-      width: 100%; padding: 5px 8px; font-size: 12px; font-weight: 600;
-      color: var(--text); background: var(--surface-raised);
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      cursor: pointer; transition: background .1s, border-color .1s;
-    }
-    .daemon-restart-btn:hover { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.55); color: #ef4444; }
-    /* Collapsed rail: the daemon icon pulses red when the daemon is unhealthy. */
-    .rail-icon.daemon-alert { color: #ef4444; animation: pulse 1.4s ease-in-out infinite; }
     .rail-icon svg {
       width: 14px; height: 14px; stroke: currentColor; fill: none;
       stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
@@ -1383,18 +1365,16 @@
     /* ── Canon Cockpit project-tab embed (t-6a74, Phase 3) ─────────────────
        When the board is embedded as a Cockpit ?project= tab (html.canon-proj-embed,
        set from window.__canonProject), hide the shell-provided chrome (version,
-       daemon section, theme toggle, ? Help) and the brand text — keep the icon +
-       show the folder path. Keep ⚙ CI (per-project). Scoped to this marker ONLY,
-       so the standalone board and the t-ddc8 body.embed agent terminal are untouched. */
+       theme toggle, ? Help) and the brand text — keep the icon + show the folder
+       path. Keep ⚙ CI (per-project). Scoped to this marker ONLY, so the standalone
+       board and the t-ddc8 body.embed agent terminal are untouched. */
     html.canon-proj-embed #h-version,
-    html.canon-proj-embed #s-daemon,
     html.canon-proj-embed #theme-toggle,
     html.canon-proj-embed #tour-btn,
     html.canon-proj-embed .brand-text,
     html.canon-proj-embed .header-sep { display: none !important; }
     /* t-65b0: the collapsed-sidebar quick-jump icon rail is redundant in a Cockpit
-       tab (the shell owns nav, and some target sections like #s-daemon are hidden
-       above) — hide it here; the standalone board keeps it. */
+       tab (the shell owns nav) — hide it here; the standalone board keeps it. */
     html.canon-proj-embed .sidebar-icon-rail { display: none !important; }
 
     #cockpit-overlay {
@@ -1811,9 +1791,6 @@
       </div>
       <!-- Icon rail: visible only when sidebar is collapsed -->
       <div class="sidebar-icon-rail" id="sidebar-rail">
-        <div class="rail-icon" id="daemon-rail-icon" data-section="s-daemon" title="Cockpit daemon">
-          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><line x1="7" y1="7.5" x2="7.01" y2="7.5"/><line x1="7" y1="16.5" x2="7.01" y2="16.5"/></svg>
-        </div>
         <div class="rail-icon" data-section="s-wip" title="Now Working On">
           <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
         </div>
@@ -1831,16 +1808,6 @@
         </div>
       </div>
       <div class="sidebar-content">
-        <div class="sidebar-section" id="s-daemon">
-          <div class="sidebar-label">Cockpit daemon</div>
-          <div class="daemon-status">
-            <span class="daemon-dot" id="daemon-dot"></span>
-            <span class="daemon-status-label" id="daemon-status-label">Checking…</span>
-            <span class="daemon-session-count" id="daemon-session-count"></span>
-          </div>
-          <button class="daemon-restart-btn" id="daemon-restart" type="button" title="Restart the cockpit daemon (confirms first only if live sessions are running)">Restart</button>
-        </div>
-
         <div class="sidebar-section" id="s-wip">
           <div class="sidebar-label">Now Working On</div>
           <div id="s-wip-items"></div>
@@ -2621,98 +2588,6 @@ async function fetchVersion() {
     const dmnEl = document.getElementById('tv-daemon');
     if (dmnEl) dmnEl.textContent = (d && d.daemon) ? d.daemon : 'not built';
   } catch {}
-}
-
-// t-b421: daemon health lives in the sidebar "Cockpit daemon" control (dot +
-// label + Restart), not the header. `refreshDaemonHealth` polls /api/cockpit and
-// paints the dot (green healthy / red-pulsing stale / gray off) + the collapsed
-// rail-icon alert; on a healthy→unhealthy TRANSITION it auto-opens the sidebar
-// once (transition-only, dismissible — the exe-mtime staleness signal is
-// unreliable, so it must not nag). The header version is static (t-44d9's
-// clickable pill superseded).
-let _daemonPrevStale = false;   // last observed stale state (for transition detection)
-let _daemonAutoOpened = false;  // opened for the current unhealthy episode? (don't re-nag)
-let _daemonFirstPoll = true;    // seed prev-state on first poll → never auto-open on load
-async function refreshDaemonHealth() {
-  const dot = document.getElementById('daemon-dot');
-  const label = document.getElementById('daemon-status-label');
-  const rail = document.getElementById('daemon-rail-icon');
-  const countEl = document.getElementById('daemon-session-count');
-  if (!dot || !label) return;
-  let d = null;
-  try { const r = await fetch('/api/cockpit'); if (r.ok) d = await r.json(); } catch {}
-  const stale = !!(d && d.running && d.stale);
-  dot.classList.remove('healthy', 'stale', 'off');
-  if (rail) rail.classList.toggle('daemon-alert', stale);
-  if (!d || !d.running) {
-    dot.classList.add('off');
-    label.textContent = 'Not running';
-  } else if (stale) {
-    dot.classList.add('stale');
-    label.textContent = 'Unhealthy — out of date';
-  } else {
-    dot.classList.add('healthy');
-    label.textContent = 'Healthy';
-  }
-  // t-9745: show the live session count (cross-project — what a restart would end)
-  // after the status word; blank it when the daemon is down or the fetch fails.
-  if (countEl) {
-    countEl.textContent = '';
-    if (d && d.running) {
-      try {
-        const sr = await fetch('/api/cockpit-sessions');
-        if (sr.ok) {
-          const sessions = await sr.json();
-          const n = Array.isArray(sessions) ? sessions.length : 0;
-          countEl.innerHTML = n === 0
-            ? '· <strong>No</strong> active agent sessions'
-            : `· <strong>${n}</strong> active agent session${n === 1 ? '' : 's'}`;
-        }
-      } catch {}
-    }
-  }
-  // Auto-open ONCE on a genuine healthy/off → unhealthy transition — but NEVER on
-  // the first poll (load-into-stale is the common fresh-pull case; the red dot +
-  // rail pulse already flag it without hijacking the user's persisted layout).
-  if (stale && !_daemonPrevStale && !_daemonAutoOpened && !_daemonFirstPoll) {
-    _daemonAutoOpened = true;
-    if (window.expandSidebarTo) window.expandSidebarTo('s-daemon');
-  }
-  if (!stale) _daemonAutoOpened = false; // re-arm only after it recovers
-  _daemonPrevStale = stale;
-  _daemonFirstPoll = false;
-}
-
-// t-44d9: force-restart the daemon via the board's token-free /api/cockpit-restart.
-// Warns (and requires confirm) when sessions are live, naming the count so a
-// multi-session restart is never silent.
-async function restartDaemon() {
-  const post = (force) => fetch('/api/cockpit-restart', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force }),
-  }).then(r => r.json());
-  try {
-    let res = await post(false);
-    if (res && res.busy) {
-      const n = res.sessions || 0;
-      if (!confirm(`${n} cockpit session${n === 1 ? '' : 's'} running — restarting the daemon will end ${n === 1 ? 'it' : 'them all'}. Restart now?`)) {
-        showToast('Restart cancelled', 'warn');
-        return;
-      }
-      res = await post(true);
-    }
-    // t-d83e: report the outcome — a silent re-poll made a no-op restart (e.g. an
-    // old daemon with no pid that ensure_cockpit just reuses) look like a success.
-    if (res && res.restarted) {
-      showToast('✓ Cockpit daemon restarted', 'warn');
-    } else if (res && res.running) {
-      showToast('⚠ Daemon not restarted — likely an older build (no pid in daemon.json); kill it once, then retry', 'block');
-    } else {
-      showToast('⚠ Couldn\u2019t start the cockpit daemon', 'block');
-    }
-  } catch {
-    showToast('⚠ Couldn\u2019t reach the board to restart the daemon', 'block');
-  }
-  await refreshDaemonHealth();
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -6544,9 +6419,6 @@ function setText(id, val) {
   document.querySelectorAll('.rail-icon').forEach(icon => {
     icon.addEventListener('click', () => expandAndScrollTo(icon.dataset.section));
   });
-  // t-b421: expose so the daemon-health poll can auto-open the sidebar on a
-  // healthy→unhealthy transition.
-  window.expandSidebarTo = expandAndScrollTo;
 
   // Drag-to-resize
   let dragging = false, startX = 0, startW = 0;
@@ -6859,11 +6731,6 @@ document.getElementById('btn-ci-setup')?.addEventListener('click', async () => {
 loadData();
 fetchVersion();
 setInterval(loadData, 8000);
-// t-44d9: daemon-health pill on the version badge + always-available force-restart.
-// t-b421: daemon health + restart live in the sidebar control (header is static).
-refreshDaemonHealth();
-setInterval(refreshDaemonHealth, 10000);
-document.getElementById('daemon-restart')?.addEventListener('click', restartDaemon);
 </script>
 
 </body>
