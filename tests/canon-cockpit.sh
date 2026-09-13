@@ -95,8 +95,10 @@ grep -qE "method *=== *'POST'|method *=== *\"POST\"" <<<"$board" || fail "canon-
 grep -q "canon-proj-embed" <<<"$board" || fail "canon-cockpit: app.html missing canon-proj-embed marker mechanism"
 grep -q "classList.add('canon-proj-embed')" <<<"$board" || fail "canon-cockpit: canon-proj-embed not applied from __canonProject context"
 grep -qF 'class="brand-text"' <<<"$board" || fail "canon-cockpit: brand text not wrapped in .brand-text (can't hide separately from icon)"
-# hide rules present for version/daemon/theme/help, scoped to the marker
-for sel in "#h-version" "#s-daemon" "#theme-toggle" "#tour-btn" ".brand-text"; do
+# hide rules present for version/theme/help, scoped to the marker (t-8d98: #s-daemon
+# removed from app.html entirely — the sidebar daemon widget moved to this Cockpit
+# shell's own Admin panel, so there's nothing left to hide-on-embed)
+for sel in "#h-version" "#theme-toggle" "#tour-btn" ".brand-text"; do
   grep -qF "html.canon-proj-embed $sel" <<<"$board" || fail "canon-cockpit: missing embed hide rule for $sel"
 done
 # CI button is KEPT (must NOT be in the hide list)
@@ -105,7 +107,7 @@ grep -qF "html.canon-proj-embed #btn-ci-setup" <<<"$board" && fail "canon-cockpi
 grep -q "canon-proj-embed" <<<"$board" && grep -qE "git\??\.root" <<<"$board" || fail "canon-cockpit: embedded breadcrumb does not use git.root folder path"
 # must scope to canon-proj-embed, NOT the t-ddc8 body.embed agent-terminal mode
 grep -qE "html\.canon-proj-embed #h-version" <<<"$board" || fail "canon-cockpit: hide rules must key on canon-proj-embed"
-grep -qE "body\.embed #h-version|body\.embed #s-daemon" <<<"$board" && fail "canon-cockpit: must NOT hide chrome via body.embed (that's the t-ddc8 agent mode)"
+grep -qE "body\.embed #h-version" <<<"$board" && fail "canon-cockpit: must NOT hide chrome via body.embed (that's the t-ddc8 agent mode)"
 
 # ── Phase 2b-i: shell Admin panel (t-5dc2) ───────────────────────────────────
 # Admin nav item + view, daemon panel (status/version/uptime/restart), 3 tiles
