@@ -1832,10 +1832,11 @@ def main():
     sock.bind(('127.0.0.1', port))
     sock.listen(32)
 
-    # t-6693: no http:// scheme here — a bare URL gets auto-linkified by some
-    # terminals (Windows Terminal) into a false, competing "click here" next to
-    # the launcher's own real destination link (e.g. .../cockpit).
-    print(f'sprint-check  listening on localhost:{port}  (project: {PROJECT_ROOT.name})', file=sys.stderr)
+    # t-6693: no http:// scheme (some terminals auto-linkify it into a false,
+    # competing link next to the launcher's real .../cockpit one), and labeled
+    # "Canon Cockpit" not "sprint-check" — post-t-4700 every supported launcher
+    # funnels into the one shared instance; there's no standalone board mode left.
+    print(f'Canon Cockpit  listening on localhost:{port}  (project: {PROJECT_ROOT.name})', file=sys.stderr)
     print(f'tickets: {TICKETS_DIR}', file=sys.stderr)
 
     # Minimal server stub that BaseHTTPRequestHandler expects
