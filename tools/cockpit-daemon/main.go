@@ -1472,9 +1472,9 @@ func (s *server) writeHookSettings(sid, statusToken string) (string, error) {
 }
 
 // ticketsDir resolves `.tickets` by walking up from projectRoot, mirroring
-// tools/ticket-root.sh's tickets_dir(). `tools/cockpit` sets
-// COCKPIT_PROJECT_ROOT to $PWD, so launching `cockpit t-xxxx` from a
-// subdirectory would otherwise make every Gate model: override a silent no-op —
+// tools/ticket-root.sh's tickets_dir(). The board server's spawn() sets
+// COCKPIT_PROJECT_ROOT from its own resolved project root, so a mismatch here
+// would otherwise make every Gate model: override a silent no-op —
 // indistinguishable from "no plan.md yet", since both are just a read error.
 func (s *server) ticketsDir() string {
 	return s.ticketsDirIn(s.cfg.projectRoot)
