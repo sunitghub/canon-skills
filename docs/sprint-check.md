@@ -120,21 +120,17 @@ Each dimension is rated HIGH, MEDIUM, or LOW. The ratings aren't advisory: **eve
 
 **Regression carryover.** `sprint start` also scans `.tickets/` for closed tickets that touched the same files this sprint will modify, and adds one regression test per match. Past work that passed stays passing — the test obligation rides along automatically, so a later change can't silently break behavior an earlier ticket established.
 
-## Cockpit — start & drive an agent in the browser (experimental, P1)
+## Cockpit — start & drive an agent in the browser
 
-`cockpit` opens a single-window surface where you launch and drive a sprint agent
-without leaving the browser — no second terminal.
+Every card on the board shows **▶ Start** (OPEN) or **▶ Resume** (IN_PROGRESS) —
+click it to switch the board itself into cockpit mode and launch or resume a
+sprint agent without leaving the browser — no second terminal.
 
-```bash
-cockpit            # open the cockpit
-cockpit t-8a63     # open it with a ticket prefilled in the Start control
-```
-
-- **What it does (P1):** a background daemon (`tools/cockpit-daemon`) owns a real
+- **What it does:** a background daemon (`tools/cockpit-daemon`) owns a real
   **PTY** running an interactive `claude` session on the ticket, and serves an
-  embedded terminal (xterm.js) at `/cockpit`. Click **Start sprint** (or prefill a
-  ticket) → the agent runs in-page; you type to it there. The agent keeps running
-  if you close the tab and reattaches (scrollback replayed) when you reopen;
+  embedded terminal (xterm.js). Click **Start sprint** (or **Resume**) → the
+  agent runs in-page; you type to it there. The agent keeps running if you
+  close the tab and reattaches (scrollback replayed) when you reopen;
   **Kill** stops it cleanly with no orphaned process.
 - **It is a real agent, with this project's own permissions.** The daemon execs
   `claude` with the ticket as a single prompt argument (`sprint start <id>`) —
@@ -174,25 +170,23 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   deliberately deferred.
 - **Prerequisite:** `claude` must be on `PATH`. If it isn't, Start fails with the
   exec error surfaced in the terminal rather than hanging.
-- **Board-integrated cockpit mode (P3):** every card shows **▶ Start** (OPEN) or
-  **▶ Resume** (IN_PROGRESS) — click it to switch the board itself into cockpit
-  mode: the kanban lanes collapse to a left ticket rail and an embedded
-  terminal takes the center. The board never owns a PTY — it discovers a
-  running `cockpit-daemon` via `daemon.json`, or launches one on demand
-  (`/api/cockpit` in both `server.py` and `main.go`), with no secret ever
-  passed via argv. **Esc / "← Board"** returns to the kanban view; only one
-  sprint may be active at a time, so Start is disabled on other cards while a
-  session is live. The rail can collapse to a 44px icon strip to maximize the
-  terminal; the app-under-test preview slot is present but collapsed (richness
-  is follow-up work, `t-b19b`).
-- **Rail accordion (P3.1):** the ticket rail shows **Acceptance** and **Test
+- **Cockpit mode:** the kanban lanes collapse to a left ticket rail and an
+  embedded terminal takes the center. The board never owns
+  a PTY — it discovers a running `cockpit-daemon` via `daemon.json`, or
+  launches one on demand (`/api/cockpit` in both `server.py` and `main.go`),
+  with no secret ever passed via argv. **Esc / "← Board"** returns to the
+  kanban view; only one sprint may be active at a time, so Start is disabled
+  on other cards while a session is live. The rail can collapse to a 44px icon
+  strip to maximize the terminal; the app-under-test preview slot is present
+  but collapsed (richness is follow-up work, `t-b19b`).
+- **Rail accordion:** the ticket rail shows **Acceptance** and **Test
   Plan** as independent, collapsible accordion sections (both start collapsed).
   Both are **view-only** — no click-to-toggle, no write path to
   `acceptance.md` — so a human watching the agent work can't inadvertently
   check a box that isn't actually verified. The rail **polls** every 5s while
   the cockpit is open, so edits the running agent (or anyone else) makes to
   `acceptance.md` show up without closing/reopening the cockpit.
-- **Worktree picker (P3.2, `t-cd06`):** the rail's **WORKTREE** accordion lets a
+- **Worktree picker (`t-cd06`):** the rail's **WORKTREE** accordion lets a
   sprint start inside a fresh or existing git worktree instead of always the
   main checkout — rows for **Main checkout (current)**, every real entry from
   `git worktree list --porcelain` (no cockpit-owned registry), and **+ New**
@@ -206,7 +200,6 @@ cockpit t-8a63     # open it with a ticket prefilled in the Start control
   matching gitignored files (e.g. `.env`) into a freshly created worktree. Idle-reap
   is tiered by cwd: a worktree session keeps the 5-minute default, a main-checkout
   session gets a longer 30-minute safety net instead of never reaping.
-- **Scope:** P1 (this daemon + standalone `cockpit` launcher), P3 (the board
-  integration above), P3.1 (the rail accordion), and P3.2 (the worktree picker
-  above) are done. The preview pane and further visual polish are follow-up
+- **Scope:** the board integration above, the rail accordion, and the worktree
+  picker are done. The preview pane and further visual polish are follow-up
   work — see `Future/Terminal-In-Board/` and tickets `t-8a63`/`t-ddc8`/`t-96a8`.
