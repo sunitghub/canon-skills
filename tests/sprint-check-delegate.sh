@@ -43,7 +43,9 @@ trap cleanup EXIT
 SRV_PID=$!
 
 for i in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/projects" && break; sleep 0.1; done
-sleep 0.3   # let the register + open_browser calls land after the server answers
+# poll for the register + open_browser calls to land after the server answers,
+# instead of a fixed sleep (flaky under load — reviewer-caught, t-4700)
+for i in $(seq 1 50); do [[ -s "$SC_OPEN_LOG" ]] && break; sleep 0.1; done
 
 n="$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u | wc -l | tr -d ' ')"
 [[ "$n" == "1" ]] || fail "sprint-check-delegate: expected exactly 1 listener after cold start, found $n"
