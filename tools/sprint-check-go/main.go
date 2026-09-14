@@ -153,7 +153,11 @@ func main() {
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	server := &http.Server{Addr: addr, Handler: mux}
 	url := fmt.Sprintf("http://127.0.0.1:%d", port)
-	fmt.Fprintf(os.Stderr, "sprint-check %s  %s  (project: %s)\n", version, url, filepath.Base(projectRoot))
+	// t-6693: banner uses addr (no scheme), not url — a bare http:// line gets
+	// auto-linkified by some terminals (Windows Terminal) into a false,
+	// competing "click here" next to the launcher's own real destination link
+	// (e.g. .../cockpit). url is still used below for the actual browser-open.
+	fmt.Fprintf(os.Stderr, "sprint-check %s  listening on %s  (project: %s)\n", version, addr, filepath.Base(projectRoot))
 	fmt.Fprintf(os.Stderr, "tickets: %s\n", ticketsDir)
 
 	if os.Getenv("SPRINT_CHECK_NO_BROWSER") != "1" {
