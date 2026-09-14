@@ -709,8 +709,9 @@ def cockpit_docs(ticket_id: str, cwd: str):
     handoff = handoff_path.read_text(encoding='utf-8', errors='replace') if handoff_path.is_file() else None
     return {'plan': plan, 'acceptance': acceptance, 'handoff': handoff}
 
-def _worktreeinclude_patterns() -> list[str]:
-    p = PROJECT_ROOT / '.worktreeinclude'
+def _worktreeinclude_patterns(root: Path = None) -> list[str]:
+    root = root if root is not None else PROJECT_ROOT
+    p = root / '.worktreeinclude'
     if not p.is_file():
         return []
     patterns = []
@@ -720,7 +721,7 @@ def _worktreeinclude_patterns() -> list[str]:
             patterns.append(line)
     return patterns
 
-def _copy_worktreeinclude_files(dest: Path) -> list[str]:
+def _copy_worktreeinclude_files(dest: Path, root: Path = None) -> list[str]:
     """Copies gitignored files matching `.worktreeinclude` patterns into a
     freshly created worktree — a worktree is a fresh checkout, so a gitignored
     file like `.env` (never committed) is otherwise absent from it. Matches
@@ -729,17 +730,18 @@ def _copy_worktreeinclude_files(dest: Path) -> list[str]:
     files are never duplicated. Simple `fnmatch` glob matching (not a full
     gitignore-pattern engine) — covers the documented use case (bare
     filenames, simple globs) but not every gitignore syntax edge case."""
-    patterns = _worktreeinclude_patterns()
+    root = root if root is not None else PROJECT_ROOT
+    patterns = _worktreeinclude_patterns(root)
     if not patterns:
         return []
-    ignored_raw = run(['git', 'ls-files', '--others', '--ignored', '--exclude-standard'], PROJECT_ROOT)
+    ignored_raw = run(['git', 'ls-files', '--others', '--ignored', '--exclude-standard'], root)
     copied = []
     for relpath in ignored_raw.splitlines():
         relpath = relpath.strip()
         if not relpath:
             continue
         if any(fnmatch.fnmatch(relpath, pat) or fnmatch.fnmatch(Path(relpath).name, pat) for pat in patterns):
-            src = PROJECT_ROOT / relpath
+            src = root / relpath
             dst = dest / relpath
             try:
                 dst.parent.mkdir(parents=True, exist_ok=True)
@@ -775,7 +777,7 @@ def create_worktree(branch: str, root: Path = None) -> dict:
             return {'ok': False, 'error': (e2.stderr or str(e2)).strip()[:500]}
     except Exception as e:
         return {'ok': False, 'error': str(e)[:500]}
-    copied = _copy_worktreeinclude_files(path)
+    copied = _copy_worktreeinclude_files(path, root)
     _link_skills_into_worktree(path)
     return {'ok': True, 'path': str(path), 'branch': branch, 'worktreeinclude_copied': copied}
 
