@@ -1730,7 +1730,7 @@ func createWorktree(branch, root string) map[string]any {
 			return map[string]any{"ok": false, "error": msg}
 		}
 	}
-	copied := copyWorktreeIncludeFiles(path)
+	copied := copyWorktreeIncludeFiles(path, root)
 	linkSkillsIntoWorktree(path)
 	return map[string]any{"ok": true, "path": path, "branch": branch, "worktreeinclude_copied": copied}
 }
@@ -1802,8 +1802,8 @@ func gitInDirOutput(dir string, args ...string) (string, error) {
 	return out.String(), err
 }
 
-func worktreeIncludePatterns() []string {
-	data, err := os.ReadFile(filepath.Join(projectRoot, ".worktreeinclude"))
+func worktreeIncludePatterns(root string) []string {
+	data, err := os.ReadFile(filepath.Join(root, ".worktreeinclude"))
 	if err != nil {
 		return nil
 	}
@@ -1821,12 +1821,12 @@ func worktreeIncludePatterns() []string {
 // see its docstring for the full rationale (Claude Code's / Codex's own
 // .worktreeinclude convention: copy a gitignored file into a fresh worktree
 // only when it's both pattern-matched and actually gitignored).
-func copyWorktreeIncludeFiles(dest string) []string {
-	patterns := worktreeIncludePatterns()
+func copyWorktreeIncludeFiles(dest, root string) []string {
+	patterns := worktreeIncludePatterns(root)
 	if len(patterns) == 0 {
 		return nil
 	}
-	ignored := runGit("ls-files", "--others", "--ignored", "--exclude-standard")
+	ignored := runGitIn(root, "ls-files", "--others", "--ignored", "--exclude-standard")
 	var copied []string
 	for _, relpath := range strings.Split(ignored, "\n") {
 		relpath = strings.TrimSpace(relpath)
@@ -1848,7 +1848,7 @@ func copyWorktreeIncludeFiles(dest string) []string {
 		if !matched {
 			continue
 		}
-		src := filepath.Join(projectRoot, relpath)
+		src := filepath.Join(root, relpath)
 		dst := filepath.Join(dest, relpath)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			continue // best-effort — a copy failure never blocks worktree creation
