@@ -83,6 +83,68 @@ same agent to check its own work. canon makes that structurally impossible.
    a cheaper model when every changed file is low-risk — decided by a structural check on file paths,
    never by the agent's own judgment of its own work.
 
+## The Board
+
+`sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
+
+<details>
+<summary><strong>Demo</strong> <sub>— click to expand</sub></summary>
+
+A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.html`](docs/index.html).
+
+### Screenshots / clips
+
+#### Board
+
+<a href="docs/index.html#board"><img src="meta/screenshots/board-demo.gif" alt="Board demo clip" width="680"></a>
+
+#### CI gate & Eval-only mode
+
+<img src="meta/screenshots/ci-gate-setup.png" alt="sprint-check board header with the ⚙ CI 'Set up CI gate' button and a toast confirming .github/workflows/canon-gate.yml was written — one click generates the PR-grading workflow" width="680">
+
+<sub>New tickets can be marked <strong>Eval-only</strong> (evaluator-only headless grading) alongside <strong>CI</strong>; the ⚙ CI button writes a ticket-driven, gate-aware <code>canon-gate.yml</code> so opened PRs are graded automatically.</sub>
+
+#### Eval Report — run by a fresh agent with no implementation history
+
+<img src="meta/screenshots/Eval.jpg" alt="Eval Report tab — criterion-by-criterion pass/fail with file:line evidence from a fresh evaluator agent" width="680">
+
+#### Acceptance & Wrapup Gates
+
+<img src="meta/screenshots/Acceptancs-Wrapup.jpg" alt="Acceptance tab showing all criteria checked, test plan, QA sign-off, and Wrapup Gates table" width="680">
+
+#### Sprint Summary — Plan vs. Actual
+
+<img src="meta/screenshots/summary-tab-dark.png" alt="Closed ticket Summary tab showing plan-vs-actual table with delivered/waived/deferred status per criterion" width="680">
+
+Every acceptance criterion, its outcome, and any deviations — permanently on the ticket.
+
+</details>
+
+The distinction that matters: context files inject knowledge but gate nothing, and external trackers keep state outside the repo where it drifts. canon keeps state in your repo (`.tickets/`) *and* governs it with a mechanical close gate — so what the repo holds is **checked** memory, not just recall.
+
+**[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
+
+**[Headless CI grading →](docs/headless-ci.md)** — run reviewer/evaluator/security-review against an open PR unattended, via `claude -p`.
+
+## The Cockpit — run the agent inside the board
+
+`sprint-check` isn't only a viewer: it can run the coding agent itself, in an embedded terminal — the **cockpit** — so plan → build → close happens without leaving the board.
+
+[![The Cockpit landing — every registered project as a card, opened as tabs side by side with a live open-project count.](meta/screenshots/cockpit-projects.png)](docs/sprint-check.md)
+
+- **Run the agent in the board.** Pick a ticket, choose the agent — **Claude Code** or **Pi** — and it runs the sprint in an embedded terminal, with the live **STATUS / PLAN / ACCEPTANCE** rail beside it. The model comes from the ticket's `plan.md` (or the session default).
+- **A local daemon that outlives the tab.** A small **cockpit daemon** owns the terminal, so a browser refresh never kills a running agent — and **one daemon serves all your projects**. The **Admin** page shows daemon health, version, uptime, a one-click **Restart**, and every **active agent session** across projects with its directory.
+- **Worktree-aware.** Run in the main checkout or a git worktree — the cockpit spawns the agent in the directory you pick and shows *"Working in: …"*.
+- **Save & End.** One click saves the sprint's state to `HANDOFF.md` and ends the session cleanly — no orphaned agent left behind.
+
+<img src="meta/screenshots/cockpit-workspace.png" alt="A project's full board — kanban, search, git branch and status — open right inside the same Cockpit window as a tab." width="680">
+
+<img src="meta/screenshots/cockpit-auto-save.png" alt="Auto-save in the background — the cockpit periodically checks the agent in and appends its status to HANDOFF.md, so Status stays current even between manual Save &amp; End clicks." width="680">
+
+<img src="meta/screenshots/cockpit-admin.png" alt="The Admin panel — daemon health, version, uptime split by shell vs. daemon, and every active agent session in one list." width="680">
+
+The daemon is **loopback-only and session-token-gated**, and the board never holds that token — it starts, attaches, and restarts sessions over `localhost` only, never exposing agent control off-machine.
+
 ## What it actually caught
 
 Claims about process are cheap. Here is what the gates found across two sprints on a real project —
@@ -160,71 +222,6 @@ That domain punishes a harness differently. Correctness is *semantic*: a plausib
 answer can still be wrong because a threshold came from the wrong source. Domain conventions are
 non-negotiable in ways no linter knows about. And the failure mode isn't a crash — it's an answer that
 looks authoritative and isn't. Adversarial review earns its cost fastest exactly there.
-
-## The Board
-
-`sprint-check` reads your `.tickets/` folder, `HANDOFF.md`, and `git log`, and opens a local kanban board in your browser. No account, no remote, no commit — the work is already there. It shows git state, current focus, recent commits, ticket status, and sprint docs at a glance, and tickets link to commits automatically.
-
-<details>
-<summary><strong>Demo</strong> <sub>— click to expand</sub></summary>
-
-A full, README-linked tour with refreshed dark-mode clips lives in [`docs/index.html`](docs/index.html).
-
-### Screenshots / clips
-
-#### Board
-
-<a href="docs/index.html#board"><img src="meta/screenshots/board-demo.gif" alt="Board demo clip" width="680"></a>
-
-#### CI gate & Eval-only mode
-
-<img src="meta/screenshots/ci-gate-setup.png" alt="sprint-check board header with the ⚙ CI 'Set up CI gate' button and a toast confirming .github/workflows/canon-gate.yml was written — one click generates the PR-grading workflow" width="680">
-
-<sub>New tickets can be marked <strong>Eval-only</strong> (evaluator-only headless grading) alongside <strong>CI</strong>; the ⚙ CI button writes a ticket-driven, gate-aware <code>canon-gate.yml</code> so opened PRs are graded automatically.</sub>
-
-#### Eval Report — run by a fresh agent with no implementation history
-
-<img src="meta/screenshots/Eval.jpg" alt="Eval Report tab — criterion-by-criterion pass/fail with file:line evidence from a fresh evaluator agent" width="680">
-
-#### Acceptance & Wrapup Gates
-
-<img src="meta/screenshots/Acceptancs-Wrapup.jpg" alt="Acceptance tab showing all criteria checked, test plan, QA sign-off, and Wrapup Gates table" width="680">
-
-#### Sprint Summary — Plan vs. Actual
-
-<img src="meta/screenshots/summary-tab-dark.png" alt="Closed ticket Summary tab showing plan-vs-actual table with delivered/waived/deferred status per criterion" width="680">
-
-Every acceptance criterion, its outcome, and any deviations — permanently on the ticket.
-
-</details>
-
-The distinction that matters: context files inject knowledge but gate nothing, and external trackers keep state outside the repo where it drifts. canon keeps state in your repo (`.tickets/`) *and* governs it with a mechanical close gate — so what the repo holds is **checked** memory, not just recall.
-
-**[Full feature tour →](docs/sprint-check.md)** — dark mode, ticket detail, in-place doc editing, commit intelligence, drag-to-update, completeness checks.
-
-**[Headless CI grading →](docs/headless-ci.md)** — run reviewer/evaluator/security-review against an open PR unattended, via `claude -p`.
-
-## The Cockpit — run the agent inside the board
-
-`sprint-check` isn't only a viewer: it can run the coding agent itself, in an embedded terminal — the **cockpit** — so plan → build → close happens without leaving the board.
-
-[![The Cockpit landing — every registered project as a card, opened as tabs side by side with a live open-project count.](meta/screenshots/cockpit-projects.png)](docs/sprint-check.md)
-
-- **Run the agent in the board.** Pick a ticket, choose the agent — **Claude Code** or **Pi** — and it runs the sprint in an embedded terminal, with the live **STATUS / PLAN / ACCEPTANCE** rail beside it. The model comes from the ticket's `plan.md` (or the session default).
-- **A local daemon that outlives the tab.** A small **cockpit daemon** owns the terminal, so a browser refresh never kills a running agent — and **one daemon serves all your projects**. The **Admin** page shows daemon health, version, uptime, a one-click **Restart**, and every **active agent session** across projects with its directory.
-- **Worktree-aware.** Run in the main checkout or a git worktree — the cockpit spawns the agent in the directory you pick and shows *"Working in: …"*.
-- **Save & End.** One click saves the sprint's state to `HANDOFF.md` and ends the session cleanly — no orphaned agent left behind.
-
-<img src="meta/screenshots/cockpit-workspace.png" alt="A project's full board — kanban, search, git branch and status — open right inside the same Cockpit window as a tab." width="680">
-
-<p align="center">
-  <img src="meta/screenshots/cockpit-agent.jpg" alt="The cockpit's embedded agent terminal running a sprint, with the agent picker (Claude Code / Pi) open and the ticket's worktree + STATUS/PLAN/ACCEPTANCE rail on the left" width="420">
-  <img src="meta/screenshots/cockpit-save-end.jpg" alt="The cockpit Save & End dialog — saves the sprint's state to HANDOFF and ends the session, or cancel to keep working" width="420">
-</p>
-
-<img src="meta/screenshots/cockpit-admin.png" alt="The Admin panel — daemon health, version, uptime split by shell vs. daemon, and every active agent session in one list." width="680">
-
-The daemon is **loopback-only and session-token-gated**, and the board never holds that token — it starts, attaches, and restarts sessions over `localhost` only, never exposing agent control off-machine.
 
 ## The Two Commands
 
