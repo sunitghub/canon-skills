@@ -1832,7 +1832,10 @@ def main():
     sock.bind(('127.0.0.1', port))
     sock.listen(32)
 
-    print(f'sprint-check  http://localhost:{port}  (project: {PROJECT_ROOT.name})', file=sys.stderr)
+    # t-6693: no http:// scheme here — a bare URL gets auto-linkified by some
+    # terminals (Windows Terminal) into a false, competing "click here" next to
+    # the launcher's own real destination link (e.g. .../cockpit).
+    print(f'sprint-check  listening on localhost:{port}  (project: {PROJECT_ROOT.name})', file=sys.stderr)
     print(f'tickets: {TICKETS_DIR}', file=sys.stderr)
 
     # Minimal server stub that BaseHTTPRequestHandler expects
