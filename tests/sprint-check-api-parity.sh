@@ -846,9 +846,19 @@ ck_cmp() {
   python3 - "$py" "$go" "$want" <<'PY'
 import json, sys
 py, go, want = json.loads(sys.argv[1]), json.loads(sys.argv[2]), sys.argv[3] == 'true'
-for k in ('stale', 'running_build', 'latest_build'):
+# t-f938: full key-set diff, not just three named fields — a field landing on only
+# one backend (e.g. a new uptime/status field) must fail here, not ship silently.
+ALLOWED_DIFF = {'shell_uptime_secs'}  # each backend's own process uptime — expected to differ
+py_keys, go_keys = set(py), set(go)
+if py_keys != go_keys:
+    print(f"/api/cockpit key-set mismatch — py-only={py_keys - go_keys} go-only={go_keys - py_keys}\n  py={py}\n  go={go}"); sys.exit(1)
+for k in py_keys - ALLOWED_DIFF:
     if py.get(k) != go.get(k):
         print(f"/api/cockpit {k} mismatch\n  py={py}\n  go={go}"); sys.exit(1)
+for k in ALLOWED_DIFF & py_keys:
+    for label, val in (('py', py.get(k)), ('go', go.get(k))):
+        if not isinstance(val, int) or isinstance(val, bool) or val < 0:
+            print(f"/api/cockpit {k} ({label}) not a non-negative int: {val!r}"); sys.exit(1)
 if py.get('stale') is not want:
     print(f"/api/cockpit stale={py.get('stale')}, want {want}\n  py={py}"); sys.exit(1)
 PY
