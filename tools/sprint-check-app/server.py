@@ -31,6 +31,8 @@ def find_project_root(start: Path) -> Path:
         d = d.parent
     return start.resolve()
 
+SHELL_START_TIME = time.time()  # t-ade9: this server process's own start, for Cockpit Uptime
+
 PROJECT_ROOT = find_project_root(Path(os.environ.get('SPRINT_CHECK_ROOT', Path.cwd())))
 TICKETS_DIR  = PROJECT_ROOT / '.tickets'
 HANDOFF_FILE = PROJECT_ROOT / 'HANDOFF.md'
@@ -1304,7 +1306,8 @@ def _discover_cockpit_addr() -> tuple[str, bool]:
 
 def cockpit_discover() -> dict:
     addr, ok = _discover_cockpit_addr()
-    out = {'running': ok, 'addr': addr or None}
+    out = {'running': ok, 'addr': addr or None,
+           'shell_uptime_secs': int(time.time() - SHELL_START_TIME)}
     if ok:
         out.update(_cockpit_build_status(addr))
     return out
