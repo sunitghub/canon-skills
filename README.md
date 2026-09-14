@@ -208,17 +208,21 @@ The distinction that matters: context files inject knowledge but gate nothing, a
 
 `sprint-check` isn't only a viewer: it can run the coding agent itself, in an embedded terminal — the **cockpit** — so plan → build → close happens without leaving the board.
 
-[![The cockpit board — a sidebar Cockpit-daemon health pill with a Restart button and live active-agent-session count, a Cockpit sessions panel listing the running session with its project path, beside the kanban](meta/screenshots/cockpit-board.jpg)](docs/sprint-check.md)
+[![The Cockpit landing — every registered project as a card, opened as tabs side by side with a live open-project count.](meta/screenshots/cockpit-projects.png)](docs/sprint-check.md)
 
 - **Run the agent in the board.** Pick a ticket, choose the agent — **Claude Code** or **Pi** — and it runs the sprint in an embedded terminal, with the live **STATUS / PLAN / ACCEPTANCE** rail beside it. The model comes from the ticket's `plan.md` (or the session default).
-- **A local daemon that outlives the tab.** A small **cockpit daemon** owns the terminal, so a browser refresh never kills a running agent — and **one daemon serves all your projects**. The sidebar **Cockpit daemon** control shows a health pill (🟢 healthy · 🔴 out-of-date · ⚪ not running), a one-click **Restart**, and the live **active-agent-session count**; the **Cockpit sessions** panel lists every running session across projects, with its directory.
+- **A local daemon that outlives the tab.** A small **cockpit daemon** owns the terminal, so a browser refresh never kills a running agent — and **one daemon serves all your projects**. The **Admin** page shows daemon health, version, uptime, a one-click **Restart**, and every **active agent session** across projects with its directory.
 - **Worktree-aware.** Run in the main checkout or a git worktree — the cockpit spawns the agent in the directory you pick and shows *"Working in: …"*.
 - **Save & End.** One click saves the sprint's state to `HANDOFF.md` and ends the session cleanly — no orphaned agent left behind.
+
+<img src="meta/screenshots/cockpit-workspace.png" alt="A project's full board — kanban, search, git branch and status — open right inside the same Cockpit window as a tab." width="680">
 
 <p align="center">
   <img src="meta/screenshots/cockpit-agent.jpg" alt="The cockpit's embedded agent terminal running a sprint, with the agent picker (Claude Code / Pi) open and the ticket's worktree + STATUS/PLAN/ACCEPTANCE rail on the left" width="420">
   <img src="meta/screenshots/cockpit-save-end.jpg" alt="The cockpit Save & End dialog — saves the sprint's state to HANDOFF and ends the session, or cancel to keep working" width="420">
 </p>
+
+<img src="meta/screenshots/cockpit-admin.png" alt="The Admin panel — daemon health, version, uptime split by shell vs. daemon, and every active agent session in one list." width="680">
 
 The daemon is **loopback-only and session-token-gated**, and the board never holds that token — it starts, attaches, and restarts sessions over `localhost` only, never exposing agent control off-machine.
 
