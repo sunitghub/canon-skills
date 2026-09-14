@@ -47,6 +47,7 @@ var (
 	toolsDir         string // t-f99b: canon tools dir (for the skills link target: <toolsDir>/../skills)
 	headlessRuns     = map[string]map[string]any{}
 	headlessRunsMu   sync.Mutex
+	shellStartTime   = time.Now() // t-ade9: this server process's own start, for Cockpit Uptime
 )
 
 type docInfo struct {
@@ -2021,7 +2022,8 @@ func cockpitDiscover() map[string]any {
 	if addr != "" {
 		addrAny = addr
 	}
-	out := map[string]any{"running": ok, "addr": addrAny}
+	out := map[string]any{"running": ok, "addr": addrAny,
+		"shell_uptime_secs": int64(time.Since(shellStartTime).Seconds())}
 	if ok {
 		for k, v := range cockpitBuildStatus(addr) {
 			out[k] = v

@@ -1123,10 +1123,11 @@ func (s *server) reapIdleSessions() {
 // bounded fallback. A real human POST /input aborts. The caller sets se.reaping
 // before launching this (guards against a second concurrent run).
 func (s *server) saveAndEnd(se *session) {
-	prompt := "Please save your current state now: append a brief status to HANDOFF.md " +
-		"(where things stand and anything unresolved). Don't re-read plan.md or acceptance.md " +
-		"unless something is unresolved that they don't already capture — only then update them. " +
-		"Then print the exact line " + cockpitSaveMarker + " on its own, and stop."
+	prompt := "Please save your current state now. If anything changed since the last HANDOFF.md " +
+		"entry, append a brief status (where things stand and anything unresolved) — otherwise skip " +
+		"the write; a repeated 'nothing changed' entry isn't worth logging. Don't re-read plan.md or " +
+		"acceptance.md unless something is unresolved that they don't already capture — only then " +
+		"update them. Then print the exact line " + cockpitSaveMarker + " on its own, and stop."
 	se.mu.Lock()
 	sentAt := len(se.buf)            // only output written AFTER the prompt counts — buf may hold an
 	humanBaseline := se.humanInputAt // unrelated earlier line matching the marker verbatim (e.g. from a

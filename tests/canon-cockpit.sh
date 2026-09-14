@@ -117,7 +117,11 @@ grep -qF 'id="nav-admin"' <<<"$page" || fail "canon-cockpit: missing Admin nav i
 grep -qF "showView('admin')" <<<"$page" || fail "canon-cockpit: Admin nav not wired to showView"
 grep -qF 'id="view-admin"' <<<"$page" || fail "canon-cockpit: missing #view-admin section"
 grep -qF 'id="ad-version"' <<<"$page" || fail "canon-cockpit: Admin missing Current version row"
-grep -qF 'id="ad-uptime"' <<<"$page" || fail "canon-cockpit: Admin missing Uptime row"
+grep -qF 'id="ad-uptime"' <<<"$page" || fail "canon-cockpit: Admin missing Daemon Uptime row"
+grep -qF "Daemon Uptime" <<<"$page" || fail "canon-cockpit: Admin Uptime row not relabeled Daemon Uptime (t-ade9)"
+grep -qF 'id="ad-shell-uptime"' <<<"$page" || fail "canon-cockpit: Admin missing Cockpit Uptime row (t-ade9)"
+grep -qF "Cockpit Uptime" <<<"$page" || fail "canon-cockpit: Admin missing Cockpit Uptime label (t-ade9)"
+grep -qF "shell_uptime_secs" <<<"$page" || fail "canon-cockpit: Admin should read shell_uptime_secs from /api/cockpit (t-ade9)"
 grep -qF 'id="ad-restart"' <<<"$page" || fail "canon-cockpit: Admin missing Restart button"
 for tile in ad-tile-projects ad-tile-agents ad-tile-active; do
   grep -qF "id=\"$tile\"" <<<"$page" || fail "canon-cockpit: Admin missing tile $tile"
