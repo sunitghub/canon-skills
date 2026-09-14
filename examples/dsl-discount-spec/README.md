@@ -87,7 +87,8 @@ Deliberately small. The point of this workshop is the spec/verification loop, no
 1. Install canon's sprint skill if you haven't: `~/.canon/tools/skills.sh add sprint` (see
    [`docs/setup.md`](../../docs/setup.md) for the full install guide).
 2. Start the board so you can watch ticket state as you go: `sprint-check` (or `sprint-check-win` on
-   Windows), then open the URL it prints (defaults to `http://127.0.0.1:8423`, auto-increments if busy).
+   Windows) — it opens your project's tab in the shared Canon Cockpit window
+   (`http://127.0.0.1:8899/cockpit`).
 3. Have your agent (Claude Code, Codex, or another canon-compatible agent) open in a terminal at a
    fresh project folder outside this `canon` repo (e.g. `~/DiscountApplyDemo`). Copy this example's
    `.gitignore` into it.

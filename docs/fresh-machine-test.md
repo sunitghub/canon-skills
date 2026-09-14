@@ -131,9 +131,11 @@ cd ~/test-project
 sprint-check
 ```
 
-Expected: Python server starts on port 8423, browser opens to `http://127.0.0.1:8423`, board loads showing the active ticket.
+Expected: `sprint-check` starts (or joins) the shared Canon Cockpit server on
+port 8899, browser opens to `http://127.0.0.1:8899/cockpit#open=<id>`, and the
+project's tab loads showing the active ticket.
 
-On headless Linux, the URL is printed instead of auto-opened. `curl -s http://127.0.0.1:8423 | grep -q sprint-check` confirms the server responds.
+On headless Linux, the URL is printed instead of auto-opened. `curl -s http://127.0.0.1:8899/cockpit | grep -q "Canon Cockpit"` confirms the server responds.
 
 ---
 
@@ -245,7 +247,7 @@ sprint-check
 With `wslu` installed: browser opens via `wslview`. Without it, the URL is printed — open it manually in a Windows browser, or verify with:
 
 ```bash
-curl -s http://127.0.0.1:8423 | grep -q sprint-check && echo "board ok"
+curl -s http://127.0.0.1:8899/cockpit | grep -q "Canon Cockpit" && echo "board ok"
 ```
 
 ### Agent walkthrough

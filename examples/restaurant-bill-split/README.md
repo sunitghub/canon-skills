@@ -35,7 +35,7 @@ to the total bill.
 You need canon installed and the board running:
 
 1. Install canon and register the sprint skill in your project — see the **[setup guide](../../docs/setup.md)** (`skills.sh add sprint`).
-2. Start the board in a terminal: `sprint-check` (macOS/Linux) or `sprint-check-win` (Windows). It opens `http://127.0.0.1:8423` — that's the board the screenshots below show.
+2. Start the board in a terminal: `sprint-check` (macOS/Linux) or `sprint-check-win` (Windows). It opens your project's tab in the shared Canon Cockpit window (`http://127.0.0.1:8899/cockpit`) — that's the board the screenshots below show.
 3. Start your agent (Claude Code / Codex) in the project.
 
 > The two walkthroughs below cover the same arc: **"Beginner-friendly workflow"** is the step-by-step path to follow; **"Suggested demonstration sequence"** is a condensed recap for instructors.

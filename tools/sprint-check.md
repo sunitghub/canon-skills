@@ -26,7 +26,12 @@ skills.sh add sprint /path/to/your/project
 sprint-check
 ```
 
-The board opens in your default browser at `http://127.0.0.1:<port>`. Press `Ctrl+C` to stop.
+`sprint-check` opens your project's tab inside the shared **Canon Cockpit**
+window (`http://127.0.0.1:<port>/cockpit`) rather than starting a private
+server of its own — every project you run it from lands in that same window.
+If no Cockpit instance is running yet, this invocation starts one and blocks
+in this terminal (`Ctrl+C` to stop it); if one is already running, this
+command just opens the tab and returns immediately.
 
 ## Board
 
@@ -132,4 +137,4 @@ Click `+ New` in the header. As you type the title, the type (Feature / Task / B
 - Dark/light mode toggle in the header — preference persisted in localStorage
 - `sprint-check` runs on macOS, Linux, and WSL with Python 3 stdlib only, no pip required
 - `sprint-check-win` runs the Go server for Windows/Git Bash users
-- Port defaults to 8423, increments automatically if busy
+- Cockpit port defaults to 8899 (`CANON_COCKPIT_PORT` to change it) — shared across every project, not per-project
