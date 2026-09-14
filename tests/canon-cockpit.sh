@@ -265,9 +265,14 @@ grep -qE "\.skills *\|\| *\[\]\)\.includes\('sprint'\)" <<<"$page" || fail "cano
 grep -qF "if(await hasSprintSkill(id)) return;" <<<"$page" || fail "canon-cockpit: nudge must gate on hasSprintSkill(id)"
 # explicit open passes {nudge:true}; tab-restore must NOT (no startup banner storm)
 grep -qF "openProject(b.dataset.open,b.dataset.name,{nudge:true})" <<<"$page" || fail "canon-cockpit: card '>' open must pass {nudge:true}"
-# "nudge:true" must appear only at the card '>' open call site — never in restoreTabs
+# "nudge:true" must appear only at explicit-open call sites (card '>' open,
+# and the #open=<id> deep link used by `sprint-check`, t-4700) — never in
+# restoreTabs, which must stay silent on tab restore (no startup banner storm).
+grep -q "function restoreTabs" <<<"$page" || fail "canon-cockpit: missing restoreTabs"
+restore_body="$(sed -n '/function restoreTabs(){/,/^  }/p' <<<"$page")"
+grep -q "nudge:true" <<<"$restore_body" && fail "canon-cockpit: restoreTabs must not nudge"
 nudge_true_count="$(grep -c "nudge:true" <<<"$page")"
-[[ "$nudge_true_count" == "1" ]] || fail "canon-cockpit: expected exactly 1 use of nudge:true (card open only), got $nudge_true_count — restoreTabs must not nudge"
+[[ "$nudge_true_count" == "2" ]] || fail "canon-cockpit: expected exactly 2 uses of nudge:true (card open + #open= deep link), got $nudge_true_count"
 # Register reuses the existing registerSkill/cockpitConfirm flow; Dismiss clears the banner
 grep -qE "registerSkill\(id, *name, *proj\.path" <<<"$page" || fail "canon-cockpit: nudge Register button must reuse registerSkill(id,name,path,'sprint')"
 grep -qF "bar.remove(); v.classList.remove('has-nudge')" <<<"$page" || fail "canon-cockpit: nudge Dismiss/Register-success must remove the banner and has-nudge class"

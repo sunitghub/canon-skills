@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# sprint-check — local kanban dashboard for canon projects
-# Starts a Python HTTP server and opens the board in the default browser.
+# sprint-check — open the current project's board inside Canon Cockpit
+# (t-4700). No longer starts a private per-project server on its own port —
+# it delegates into the single canon-cockpit instance (starting it if none is
+# running), registers the current project if needed, and deep-links into that
+# project's tab. See tools/canon-cockpit for the single-instance shell itself.
 
 set -euo pipefail
 
@@ -13,69 +16,42 @@ while [ -L "$_SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 SERVER="$SCRIPT_DIR/sprint-check-app/server.py"
+# shellcheck source=cockpit-launch-lib.sh
+source "$SCRIPT_DIR/cockpit-launch-lib.sh"
 
 usage() {
   cat <<'EOF'
-sprint-check — local kanban dashboard for canon projects
+sprint-check — open the current project's board in Canon Cockpit
 
 Usage:
   sprint-check        Open the dashboard for the current project
+  sprint-check <port> Use a specific port for the shared Cockpit instance
   sprint-check --help Show this help
 
-The dashboard reads .tickets/, HANDOFF.md, and git history from the current
-project. It starts a local Python stdlib HTTP server and opens the board in
-your default browser.
+Reads .tickets/, HANDOFF.md, and git history from the current project.
+Delegates into the single canon-cockpit instance (starting it if none is
+running yet) rather than opening a private server of its own — this keeps
+every project's board inside one shared window instead of scattered across
+separate processes/ports. Set CANON_COCKPIT_PORT to change the default port
+(8899).
 EOF
 }
 
-# ── Port selection ─────────────────────────────────────────────────────────
-
-_port_in_use() {
-  local port="$1"
-  if command -v lsof >/dev/null 2>&1; then
-    lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1
-  elif command -v ss >/dev/null 2>&1; then
-    ss -ltn 2>/dev/null | grep -q ":${port}[^0-9]"
+# Opens the browser straight at this project's tab once the cockpit server on
+# $1 is answering, registering the project first if needed. Best-effort: a
+# failed register still opens the bare /cockpit landing rather than failing
+# the whole command.
+open_project_tab() {
+  local port="$1" root="$2"
+  local id
+  id="$(cockpit_register_project "$port" "$root" 2>/dev/null || true)"
+  if [[ -n "$id" ]]; then
+    open_browser "http://127.0.0.1:$port/cockpit#open=$id"
   else
-    ! python3 -c "
-import socket, sys
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-try:
-    s.bind(('127.0.0.1', int(sys.argv[1]))); s.close()
-except OSError:
-    sys.exit(1)
-" "$port" 2>/dev/null
+    echo "Could not register this project with Cockpit — opening the Projects list." >&2
+    open_browser "http://127.0.0.1:$port/cockpit"
   fi
 }
-
-find_free_port() {
-  local port="${1:-8423}"
-  while _port_in_use "$port"; do
-    ((port++))
-  done
-  echo "$port"
-}
-
-# ── Browser open (cross-platform) ─────────────────────────────────────────
-
-open_browser() {
-  local url="$1"
-  if command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$url" &
-  elif command -v wslview >/dev/null 2>&1; then
-    wslview "$url" &
-  elif [[ -f /proc/version ]] && grep -qi microsoft /proc/version 2>/dev/null; then
-    # WSL without wslview — use Windows
-    powershell.exe /c "start '$url'" &
-  elif command -v open >/dev/null 2>&1; then
-    open "$url"
-  else
-    echo "Open in your browser: $url" >&2
-  fi
-}
-
-# ── Main ───────────────────────────────────────────────────────────────────
 
 main() {
   PORT=""
@@ -96,32 +72,38 @@ main() {
       ;;
   esac
 
+  local port="${PORT:-${CANON_COCKPIT_PORT:-8899}}"
+  local root
+  root="${SPRINT_CHECK_ROOT:-$PWD}"
+  # -P: resolve symlinks so this matches the registry's resolved path exactly
+  # (Path.resolve() server-side, e.g. macOS /tmp -> /private/tmp) — a plain
+  # `pwd` mismatch here would make the "already registered" lookup miss.
+  root="$(cd -P "$root" && pwd -P)"
+
+  if _port_in_use "$port"; then
+    echo "Opening this project in the running Canon Cockpit (port $port)." >&2
+    open_project_tab "$port" "$root"
+    exit 0
+  fi
+
   if [[ ! -f "$SERVER" ]]; then
     echo "Error: server.py not found at $SERVER" >&2
     exit 1
   fi
 
-  if [[ -z "$PORT" ]]; then
-    PORT="$(find_free_port 8423)"
-  fi
-  URL="http://127.0.0.1:$PORT"
-
-  # Export project root for the server
-  export SPRINT_CHECK_ROOT="${SPRINT_CHECK_ROOT:-$PWD}"
-
-  # Start server in background
-  python3 "$SERVER" "$PORT" &
+  # No cockpit instance running yet — start it (same foreground lifecycle as
+  # running `canon-cockpit` directly: it lives as long as this shell).
+  python3 "$SERVER" "$port" &
   SERVER_PID=$!
-
-  # Clean up on exit
   trap 'kill "$SERVER_PID" 2>/dev/null; exit 0' INT TERM EXIT
 
-  # Brief pause so the server is ready before the browser hits it
-  sleep 0.4
+  for _ in $(seq 1 50); do
+    _port_in_use "$port" && break
+    sleep 0.1
+  done
 
-  open_browser "$URL"
+  open_project_tab "$port" "$root"
 
-  # Wait for server process
   wait "$SERVER_PID"
 }
 

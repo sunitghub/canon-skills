@@ -21,6 +21,9 @@ if %ERRORLEVEL%==0 (
   exit /b 0
 )
 
+rem t-4700: suppress the exe's own browser-open (it would otherwise also open
+rem the bare root ~400ms later, alongside the /cockpit URL opened below).
+set "SPRINT_CHECK_NO_BROWSER=1"
 start "" "%URL%"
 "%EXE%" %PORT%
 exit /b %ERRORLEVEL%
