@@ -296,7 +296,12 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(wtTicket) {
 			wtTicket = ""
 		}
-		sendJSON(w, listWorktrees(wtTicket))
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, listWorktrees(wtTicket, root))
 	default:
 		if regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`).MatchString(path) {
 			serveFile(w, filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(path, "/"))), mime.TypeByExtension(filepath.Ext(path)))
@@ -355,7 +360,12 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if m := regexp.MustCompile(`^/api/worktree-lock/(t-[a-z0-9]{4})$`).FindStringSubmatch(path); m != nil {
-			sendJSON(w, worktreeLockStatus(m[1]))
+			root, ok := effectiveRoot(r)
+			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, worktreeLockStatus(m[1], root))
 			return
 		}
 		if m := regexp.MustCompile(`^/api/cockpit-docs/(t-[a-z0-9]{4})$`).FindStringSubmatch(path); m != nil {
@@ -467,7 +477,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		sendJSON(w, createWorktree(branch))
+		sendJSON(w, createWorktree(branch, eroot))
 		return
 	}
 	if m := regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`).FindStringSubmatch(path); m != nil {
@@ -475,7 +485,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		sendJSON(w, worktreeUnlock(m[1]))
+		sendJSON(w, worktreeUnlock(m[1], eroot))
 		return
 	}
 	if path == "/api/tickets" {
@@ -1457,8 +1467,12 @@ func validBranchName(name string) bool {
 	return name != "" && baseRefRe.MatchString(name) && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..")
 }
 
-func listWorktrees(ticketID string) []map[string]any {
-	raw := runGit("worktree", "list", "--porcelain")
+// t-1780: root scopes this to the requesting tab's own project (empty ->
+// rootOr falls back to the shell's own boot-time projectRoot). Without it,
+// every caller saw the shell's launch project regardless of which registered
+// project's tab actually asked.
+func listWorktrees(ticketID, root string) []map[string]any {
+	raw := runGitIn(root, "worktree", "list", "--porcelain")
 	var entries []map[string]any
 	var cur map[string]any
 	flush := func() {
@@ -1481,8 +1495,8 @@ func listWorktrees(ticketID string) []map[string]any {
 		}
 	}
 	flush()
-	mainRoot := projectRoot
-	if resolved, err := filepath.EvalSymlinks(projectRoot); err == nil {
+	mainRoot := rootOr(root)
+	if resolved, err := filepath.EvalSymlinks(mainRoot); err == nil {
 		mainRoot = resolved
 	}
 	for _, e := range entries {
@@ -1494,7 +1508,7 @@ func listWorktrees(ticketID string) []map[string]any {
 	// ticket dir. `git check-ignore .tickets` prints the path when ignored, empty
 	// otherwise (runGit ignores exit status); a non-git dir yields empty ->
 	// treated as visible so the common single-checkout case is never blocked.
-	ticketsIgnored := runGit("check-ignore", ".tickets") != ""
+	ticketsIgnored := runGitIn(root, "check-ignore", ".tickets") != ""
 	for _, e := range entries {
 		isMain, _ := e["is_main"].(bool)
 		e["tickets_visible"] = isMain || !ticketsIgnored
@@ -1535,8 +1549,11 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 	if err != nil {
 		return nil, false
 	}
+	// t-1780: run from cwdReal itself, not the global projectRoot — `git
+	// worktree list` reports every sibling of whichever repo it's run inside,
+	// so this is correct for any project without a separate ?project= lookup.
 	isWorktree := false
-	for _, e := range listWorktrees("") {
+	for _, e := range listWorktrees("", cwdReal) {
 		if wt, err := filepath.EvalSymlinks(fmt.Sprint(e["path"])); err == nil && wt == cwdReal {
 			isWorktree = true
 			break
@@ -1603,9 +1620,10 @@ func isCanonRuntimePath(path string) bool {
 // collapses a fully-untracked dir to "?? dir/", hiding it); a deleted tracked
 // runtime file lists individually regardless. A porcelain line is "XY <path>"
 // (2 status chars + space), so the path starts at index 3. Parity with
-// server.py's _main_dirty_ignoring_runtime.
-func mainDirtyIgnoringRuntime() bool {
-	status := runGit("status", "--porcelain", "--untracked-files=all")
+// server.py's _main_dirty_ignoring_runtime. t-1780: root scopes this to the
+// requesting tab's own project.
+func mainDirtyIgnoringRuntime(root string) bool {
+	status := runGitIn(root, "status", "--porcelain", "--untracked-files=all")
 	for _, line := range strings.Split(status, "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -1625,15 +1643,16 @@ func mainDirtyIgnoringRuntime() bool {
 // a locked ticket's requested cwd; this just lets the board warn before the
 // choice is made for an in_progress ticket's first resume, since a worktree
 // checkout only carries committed history.
-func worktreeLockStatus(ticketID string) map[string]any {
-	cwdPath := filepath.Join(ticketsDir, ticketID, ".cockpit-cwd")
+// t-1780: root scopes this to the requesting tab's own project.
+func worktreeLockStatus(ticketID, root string) map[string]any {
+	cwdPath := filepath.Join(ticketsDirForRoot(root), ticketID, ".cockpit-cwd")
 	var cwd any
 	if b, err := os.ReadFile(cwdPath); err == nil {
 		if trimmed := strings.TrimSpace(string(b)); trimmed != "" {
 			cwd = trimmed
 		}
 	}
-	dirty := mainDirtyIgnoringRuntime()
+	dirty := mainDirtyIgnoringRuntime(root)
 	return map[string]any{"locked": cwd != nil, "cwd": cwd, "main_dirty": dirty}
 }
 
@@ -1646,7 +1665,10 @@ func worktreeLockStatus(ticketID string) map[string]any {
 // delete failure (permissions, read-only fs) is reported as ok:false rather
 // than silently claimed as success (review finding, t-fe3c) — matches
 // server.py, where unlink()'s exception isn't swallowed either.
-func worktreeUnlock(ticketID string) map[string]any {
+// t-1780: root scopes this to the requesting tab's own project — a stale
+// global ticketsDir meant unlocking a non-primary project's ticket looked in
+// the wrong project's .tickets/ and silently no-op'd.
+func worktreeUnlock(ticketID, root string) map[string]any {
 	// t-9203: clear BOTH .cockpit-cwd AND .cockpit-session-id. Clearing the cwd
 	// alone lets the next start re-resolve the directory, but the persisted
 	// session id would still make claude --resume (or pi continue) the prior
@@ -1656,9 +1678,10 @@ func worktreeUnlock(ticketID string) map[string]any {
 	// Gate each on "regular file" (not just stat success) — matches Python's
 	// is_file() (false for a directory), so a directory at either path yields
 	// unlocked:false without an os.Remove attempt (parity, t-fe3c).
+	td := ticketsDirForRoot(root)
 	paths := []string{
-		filepath.Join(ticketsDir, ticketID, ".cockpit-cwd"),
-		filepath.Join(ticketsDir, ticketID, ".cockpit-session-id"),
+		filepath.Join(td, ticketID, ".cockpit-cwd"),
+		filepath.Join(td, ticketID, ".cockpit-session-id"),
 	}
 	unlocked := false
 	for _, p := range paths {
@@ -1676,9 +1699,11 @@ func worktreeUnlock(ticketID string) map[string]any {
 
 // createWorktree assumes branch already passed validBranchName (checked by
 // the caller, which 400s on malformed input before this runs — mirrors
-// server.py's create_worktree/_valid_branch_name split).
-func createWorktree(branch string) map[string]any {
-	siblingRoot := filepath.Join(filepath.Dir(projectRoot), filepath.Base(projectRoot)+"-worktrees")
+// server.py's create_worktree/_valid_branch_name split). t-1780: root scopes
+// this to the requesting tab's own project.
+func createWorktree(branch, root string) map[string]any {
+	root = rootOr(root)
+	siblingRoot := filepath.Join(filepath.Dir(root), filepath.Base(root)+"-worktrees")
 	path := filepath.Join(siblingRoot, strings.ReplaceAll(branch, "/", "-"))
 	if exists(path) {
 		return map[string]any{"ok": false, "error": "path already exists"}
@@ -1688,7 +1713,7 @@ func createWorktree(branch string) map[string]any {
 	}
 	run := func(args ...string) error {
 		cmd := exec.Command("git", args...)
-		cmd.Dir = projectRoot
+		cmd.Dir = root
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {

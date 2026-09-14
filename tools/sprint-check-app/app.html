@@ -2293,14 +2293,16 @@
   // chrome (version/daemon/theme/help) can be hidden and the breadcrumb swapped
   // to the folder path. Distinct from the t-ddc8 `body.embed` agent-terminal mode.
   document.documentElement.classList.add('canon-proj-embed');
-  // Read endpoints that resolve via effective_root on the server.
-  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats)/;
+  // Read endpoints that resolve via effective_root on the server. t-1780:
+  // worktrees/worktree-lock now scope too — a shared multi-project instance
+  // otherwise showed the shell's launch-time project's worktrees under any tab.
+  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/)/;
   // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
-  // these so drag-status / create / edit-body / edit-doc / demo / visual done
-  // inside a project tab target THAT project. Deliberately EXCLUDES the OUT set
-  // (cockpit / cockpit-restart / version / worktrees / worktree-* / ci-workflow /
+  // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
+  // create/unlock done inside a project tab target THAT project. Deliberately
+  // EXCLUDES the OUT set (cockpit / cockpit-restart / version / ci-workflow /
   // headless-run) and /api/projects (registry add) — those stay unscoped.
-  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/)/;
+  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/)/;
   const _fetch = window.fetch.bind(window);
   window.fetch = function(input, init){
     try {

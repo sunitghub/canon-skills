@@ -506,12 +506,18 @@ def _valid_branch_name(name: str) -> bool:
     # joined into the sibling directory path).
     return bool(name) and bool(_BASE_REF_RE.match(name)) and not name.startswith('-') and '..' not in name
 
-def list_worktrees(ticket_id: str = '') -> list[dict]:
+def list_worktrees(ticket_id: str = '', root: Path = None) -> list[dict]:
     """Parse `git worktree list --porcelain` — the single source of truth for
     the cockpit sidebar's WORKTREE section (t-cd06's resolved design): no
     cockpit-owned registry, so a worktree created outside cockpit still shows
-    up."""
-    raw = run(['git', 'worktree', 'list', '--porcelain'], PROJECT_ROOT)
+    up.
+
+    t-1780: `root` scopes this to the requesting tab's own project — absent
+    (older callers) falls back to the shell's own boot-time PROJECT_ROOT.
+    Without it, every caller saw the shell's launch project regardless of
+    which registered project's tab actually asked."""
+    root = root if root is not None else PROJECT_ROOT
+    raw = run(['git', 'worktree', 'list', '--porcelain'], root)
     entries: list[dict] = []
     cur: dict = {}
     for line in raw.splitlines():
@@ -529,9 +535,9 @@ def list_worktrees(ticket_id: str = '') -> list[dict]:
     if cur:
         entries.append(cur)
     try:
-        main_root = str(PROJECT_ROOT.resolve())
+        main_root = str(root.resolve())
     except Exception:
-        main_root = str(PROJECT_ROOT)
+        main_root = str(root)
     for e in entries:
         try:
             e['is_main'] = str(Path(e['path']).resolve()) == main_root
@@ -543,7 +549,7 @@ def list_worktrees(ticket_id: str = '') -> list[dict]:
     # the path (exit 0) when ignored, empty (exit 1, run() -> '') otherwise; a
     # non-git dir also yields '' -> treated as visible so the common
     # single-checkout case is never blocked.
-    tickets_ignored = bool(run(['git', 'check-ignore', '.tickets'], PROJECT_ROOT))
+    tickets_ignored = bool(run(['git', 'check-ignore', '.tickets'], root))
     for e in entries:
         e['tickets_visible'] = bool(e.get('is_main')) or not tickets_ignored
     # t-2a1c: ticket-scoped physical presence, mirroring the daemon's own
@@ -577,14 +583,17 @@ def _is_canon_runtime_path(path: str) -> bool:
         return True
     return False
 
-def _main_dirty_ignoring_runtime() -> bool:
+def _main_dirty_ignoring_runtime(root: Path = None) -> bool:
     """main_dirty for the worktree carry-over warning, ignoring canon-owned
     runtime files (t-2f53). --untracked-files=all so a fresh/untracked runtime
     file lists individually (default porcelain collapses a fully-untracked dir
     to '?? dir/', hiding it); a deleted tracked runtime file lists individually
     regardless. A porcelain line is 'XY <path>' (2 status chars + space), so the
-    path starts at index 3."""
-    status = run(['git', 'status', '--porcelain', '--untracked-files=all'], PROJECT_ROOT)
+    path starts at index 3.
+
+    t-1780: `root` scopes this to the requesting tab's own project."""
+    root = root if root is not None else PROJECT_ROOT
+    status = run(['git', 'status', '--porcelain', '--untracked-files=all'], root)
     for line in status.splitlines():
         if not line.strip():
             continue
@@ -593,20 +602,24 @@ def _main_dirty_ignoring_runtime() -> bool:
             return True
     return False
 
-def worktree_lock_status(ticket_id: str) -> dict:
+def worktree_lock_status(ticket_id: str, root: Path = None) -> dict:
     """Advisory-only read of .tickets/<id>/.cockpit-cwd (t-cd06 amendment) — the
     daemon owns writing that file and already ignores a locked ticket's
     requested cwd; this just lets the board warn before the choice is made
     for an in_progress ticket's first resume, since a worktree checkout only
-    carries committed history."""
-    cwd_path = TICKETS_DIR / ticket_id / '.cockpit-cwd'
+    carries committed history.
+
+    t-1780: `root` scopes this to the requesting tab's own project — absent
+    (older callers) falls back to the shell's own boot-time PROJECT_ROOT."""
+    root = root if root is not None else PROJECT_ROOT
+    cwd_path = tickets_dir_for(root) / ticket_id / '.cockpit-cwd'
     cwd = None
     if cwd_path.is_file():
         cwd = cwd_path.read_text(encoding='utf-8', errors='replace').strip() or None
-    dirty = _main_dirty_ignoring_runtime()
+    dirty = _main_dirty_ignoring_runtime(root)
     return {'locked': cwd is not None, 'cwd': cwd, 'main_dirty': dirty}
 
-def worktree_unlock(ticket_id: str) -> dict:
+def worktree_unlock(ticket_id: str, root: Path = None) -> dict:
     """Clear a ticket's worktree lock (t-fe3c). The daemon reuses the persisted
     cwd for every start of an in_progress ticket and ignores the client's
     request, so clearing it is the only way to redirect a ticket to a different
@@ -624,9 +637,15 @@ def worktree_unlock(ticket_id: str) -> dict:
     Idempotent: unlocking an already-unlocked ticket is ok:true, unlocked:false.
     A real delete failure (permissions, read-only fs) is reported as ok:false
     rather than surfaced as an uncaught 500 (review finding, t-fe3c) — matches
-    main.go's explicit error return."""
-    paths = [TICKETS_DIR / ticket_id / '.cockpit-cwd',
-             TICKETS_DIR / ticket_id / '.cockpit-session-id']
+    main.go's explicit error return.
+
+    t-1780: `root` scopes this to the requesting tab's own project — a stale
+    global TICKETS_DIR meant unlocking a non-primary project's ticket looked in
+    the wrong project's .tickets/ and silently no-op'd."""
+    root = root if root is not None else PROJECT_ROOT
+    td = tickets_dir_for(root)
+    paths = [td / ticket_id / '.cockpit-cwd',
+             td / ticket_id / '.cockpit-session-id']
     unlocked = False
     for p in paths:
         if p.is_file():
@@ -656,8 +675,12 @@ def cockpit_docs(ticket_id: str, cwd: str):
         # filepath.EvalSymlinks failure (parity, t-1357 reviewer finding).
     except (OSError, RuntimeError):
         return None
+    # t-1780: run from cwd_real itself, not the global PROJECT_ROOT — `git
+    # worktree list` reports every sibling of whichever repo it's run inside,
+    # so this self-contained call is correct for any project without needing
+    # a separate ?project= lookup.
     worktrees = set()
-    for e in list_worktrees():
+    for e in list_worktrees(root=cwd_real):
         try:
             worktrees.add(Path(e['path']).resolve())
         except Exception:
@@ -726,25 +749,28 @@ def _copy_worktreeinclude_files(dest: Path) -> list[str]:
                 pass  # best-effort — a copy failure never blocks worktree creation
     return copied
 
-def create_worktree(branch: str) -> dict:
+def create_worktree(branch: str, root: Path = None) -> dict:
     """`git worktree add` as a sibling checkout, nebula's own convention:
     `<repo>/../<repo-name>-worktrees/<branch-with-slashes-as-dashes>`. Falls
     back to checking out an existing branch (no `-b`) if it already exists,
     per the ticket's resolved design. Always an argv list, never a shell
     string. Caller (do_POST) validates `branch` against `_valid_branch_name`
-    and 400s before this runs — malformed input never reaches here."""
-    sibling_root = PROJECT_ROOT.parent / f'{PROJECT_ROOT.name}-worktrees'
+    and 400s before this runs — malformed input never reaches here.
+
+    t-1780: `root` scopes this to the requesting tab's own project."""
+    root = root if root is not None else PROJECT_ROOT
+    sibling_root = root.parent / f'{root.name}-worktrees'
     path = sibling_root / branch.replace('/', '-')
     if path.exists():
         return {'ok': False, 'error': 'path already exists'}
     sibling_root.mkdir(parents=True, exist_ok=True)
     try:
         subprocess.run(['git', 'worktree', 'add', str(path), '-b', branch],
-                        cwd=PROJECT_ROOT, check=True, capture_output=True, text=True, timeout=15)
+                        cwd=root, check=True, capture_output=True, text=True, timeout=15)
     except subprocess.CalledProcessError:
         try:
             subprocess.run(['git', 'worktree', 'add', str(path), branch],
-                            cwd=PROJECT_ROOT, check=True, capture_output=True, text=True, timeout=15)
+                            cwd=root, check=True, capture_output=True, text=True, timeout=15)
         except subprocess.CalledProcessError as e2:
             return {'ok': False, 'error': (e2.stderr or str(e2)).strip()[:500]}
     except Exception as e:
@@ -1644,7 +1670,11 @@ class Handler(BaseHTTPRequestHandler):
             # would compute ticket_present, main.go would omit it). t-2a1c.
             if not re.fullmatch(r't-[a-z0-9]{4}', wt_ticket):
                 wt_ticket = ''
-            self.send_json(list_worktrees(wt_ticket))
+            try:
+                eroot = effective_root(parse_qs(parsed.query))
+            except UnknownProject:
+                self.send_error(400); return
+            self.send_json(list_worktrees(wt_ticket, root=eroot))
         else:
             m = re.match(r'^/api/commit/([0-9a-f]{4,40})$', path)
             if m:
@@ -1684,7 +1714,11 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(get_headless_run_state(m.group(1))); return
             m = re.match(r'^/api/worktree-lock/(t-[a-z0-9]{4})$', path)
             if m:
-                self.send_json(worktree_lock_status(m.group(1))); return
+                try:
+                    eroot = effective_root(parse_qs(parsed.query))
+                except UnknownProject:
+                    self.send_error(400); return
+                self.send_json(worktree_lock_status(m.group(1), root=eroot)); return
             m = re.match(r'^/api/cockpit-docs/(t-[a-z0-9]{4})$', path)
             if m:
                 cwd = parse_qs(parsed.query).get('cwd', [''])[0]
@@ -1772,14 +1806,14 @@ class Handler(BaseHTTPRequestHandler):
             branch = str(payload.get('branch', ''))
             if not _valid_branch_name(branch):
                 self.send_error(400); return
-            self.send_json(create_worktree(branch)); return
+            self.send_json(create_worktree(branch, root=eroot)); return
 
         m = re.match(r'^/api/worktree-unlock/([^/]+)$', path)
         if m:
             tid = m.group(1)
             if not re.match(r'^t-[a-z0-9]{4}$', tid):
                 self.send_error(400); return
-            self.send_json(worktree_unlock(tid)); return
+            self.send_json(worktree_unlock(tid, root=eroot)); return
 
         if path == '/api/tickets':
             t = create_ticket(
