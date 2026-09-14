@@ -14,7 +14,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 </div>
 
-[![sprint-check board — searchable local kanban with status-aware cards and repo context](meta/screenshots/Board-1.jpg)](docs/index.html)
+[![The Cockpit board — searchable local kanban with status-aware cards and repo context, running inside Canon Cockpit's own shell.](meta/screenshots/cockpit-board.png)](docs/index.html)
 
 <div align="center"><em>Your agent plans in the repo, and a second agent checks its work.</em></div>
 
