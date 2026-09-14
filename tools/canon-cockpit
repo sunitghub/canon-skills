@@ -19,6 +19,8 @@ while [ -L "$_SOURCE" ]; do
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
 SERVER="$SCRIPT_DIR/sprint-check-app/server.py"
+# shellcheck source=cockpit-launch-lib.sh
+source "$SCRIPT_DIR/cockpit-launch-lib.sh"
 
 usage() {
   cat <<'EOF'
@@ -33,42 +35,6 @@ Launch once and work from within it. A second launch focuses the running
 window instead of starting a second server. Set CANON_COCKPIT_PORT to change
 the default port.
 EOF
-}
-
-# ── Port helpers (shared shape with sprint-check) ──────────────────────────
-
-_port_in_use() {
-  local port="$1"
-  if command -v lsof >/dev/null 2>&1; then
-    lsof -iTCP:"$port" -sTCP:LISTEN -t >/dev/null 2>&1
-  elif command -v ss >/dev/null 2>&1; then
-    ss -ltn 2>/dev/null | grep -q ":${port}[^0-9]"
-  else
-    ! python3 -c "
-import socket, sys
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
-try:
-    s.bind(('127.0.0.1', int(sys.argv[1]))); s.close()
-except OSError:
-    sys.exit(1)
-" "$port" 2>/dev/null
-  fi
-}
-
-open_browser() {
-  local url="$1"
-  if command -v xdg-open >/dev/null 2>&1; then
-    xdg-open "$url" &
-  elif command -v wslview >/dev/null 2>&1; then
-    wslview "$url" &
-  elif [[ -f /proc/version ]] && grep -qi microsoft /proc/version 2>/dev/null; then
-    powershell.exe /c "start '$url'" &
-  elif command -v open >/dev/null 2>&1; then
-    open "$url"
-  else
-    echo "Open in your browser: $url" >&2
-  fi
 }
 
 main() {

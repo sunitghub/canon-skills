@@ -898,8 +898,19 @@
   }
 
   fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
+  // t-4700: `#open=<id>` deep-links straight into a project's tab — used by
+  // `sprint-check` so it opens the project instead of the bare landing page.
+  function openFromHash(){
+    const m=/^#open=(.+)$/.exec(location.hash);
+    if(!m) return false;
+    const id=decodeURIComponent(m[1]);
+    const p=(window._projects||[]).find(p=>p.id===id);
+    if(!p) return false;
+    openProject(id,p.name,{nudge:true});
+    return true;
+  }
   // Initial load, then restore any previously-open project tabs (once).
-  load().then(()=>{ restoreTabs(); startSessionPoll(); if(location.hash==='#admin') showView('admin'); if(location.hash==='#help') openHelp(); });
+  load().then(()=>{ restoreTabs(); startSessionPoll(); if(!openFromHash()){ if(location.hash==='#admin') showView('admin'); if(location.hash==='#help') openHelp(); } });
 </script>
 </body>
 </html>
