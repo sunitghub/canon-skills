@@ -1304,6 +1304,45 @@ func TestResolveClaudeSessionID(t *testing.T) {
 	}
 }
 
+// t-66b2: copilot's resume signal is ticket status only, no config-dir
+// existence check (unlike claude's ghost-id handling above) — ticket in_progress
+// + a persisted id is sufficient to resume. Own file, isolated from claude's.
+func TestResolveCopilotSessionID(t *testing.T) {
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+
+	// No ticket.md status yet → fresh, id persisted to the copilot-specific file.
+	id1, resuming := s.resolveCopilotSessionIDIn(root, "t-ab12")
+	if resuming {
+		t.Fatal("expected fresh (no status file), got resuming")
+	}
+	if !testUUIDRe.MatchString(id1) {
+		t.Fatalf("id1 not a valid UUID: %q", id1)
+	}
+	persisted, err := os.ReadFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-copilot-session-id"))
+	if err != nil || strings.TrimSpace(string(persisted)) != id1 {
+		t.Fatalf("id1 not persisted correctly: %v %q", err, persisted)
+	}
+
+	// status: in_progress + persisted id → resume, no existence check needed.
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	id2, resuming := s.resolveCopilotSessionIDIn(root, "t-ab12")
+	if !resuming || id2 != id1 {
+		t.Fatalf("expected resume of %q, got resuming=%v id=%q", id1, resuming, id2)
+	}
+
+	// A prior claude session id for the same ticket must never leak into
+	// copilot's resume — the two files are deliberately separate (t-66b2).
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-session-id"), []byte("claude-only-id\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id3, resuming := s.resolveCopilotSessionIDIn(root, "t-ab12")
+	if !resuming || id3 != id1 || id3 == "claude-only-id" {
+		t.Fatalf("expected copilot resume to stay on its own id %q, got resuming=%v id=%q", id1, resuming, id3)
+	}
+}
+
 // writeClaudeConversation creates a fake persisted claude conversation for sid
 // under configDir, mirroring claude's real layout
 // (<configDir>/projects/<encoded-cwd>/<sid>.jsonl). The project-dir name is
