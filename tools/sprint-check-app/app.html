@@ -5218,12 +5218,14 @@ async function renderCockpitState(t) {
     // Short label, not the full absolute path (that forced the rail to be
     // stretched wider just to read it) — the path is still available as a
     // hover tooltip for anyone who wants it.
+    // t-f15b: cockpitPathKey compare (see the WORKTREE-panel selection logic
+    // below for why a raw === silently fails on Windows).
     let label = lock.cwd;
     try {
       const wtr = await fetch('/api/worktrees');
       if (wtr.ok) {
         const entries = await wtr.json();
-        const match = entries.find(e => e.path === lock.cwd);
+        const match = entries.find(e => cockpitPathKey(e.path) === cockpitPathKey(lock.cwd));
         if (match) label = match.is_main ? 'Main checkout (current)' : (match.branch || '(detached)');
       }
     } catch {}
@@ -5332,11 +5334,14 @@ async function renderCockpitWorktree(t) {
   // as selected here — the daemon uses the locked cwd regardless of what's
   // displayed, so defaulting the picker to Main checkout on every reopen was
   // actively misleading about which directory the session actually runs in.
+  // t-f15b: cockpitPathKey (not raw ===) — lock.cwd is daemon-native (backslashes
+  // on Windows), mainEntry.path is git's own forward-slash-normalized report;
+  // a raw compare silently fails on Windows and left the Main row unselected.
   let lock = { locked: false, cwd: null };
   if (t.status === 'in_progress') {
     lock = await fetchWorktreeLock(t.id);
     if (lock.locked && lock.cwd) {
-      cockpitState.worktreeCwd = (mainEntry && lock.cwd === mainEntry.path) ? '' : lock.cwd;
+      cockpitState.worktreeCwd = (mainEntry && cockpitPathKey(lock.cwd) === cockpitPathKey(mainEntry.path)) ? '' : lock.cwd;
     }
   }
   // t-2a1c: remember the lock so maybeMountCockpitTerminal can gate on the
@@ -5624,7 +5629,9 @@ async function maybeMountCockpitTerminal(t) {
   let effectiveCwd = cockpitState.worktreeCwd;
   if (isLocked) {
     const mainPath = cockpitState.worktreeMainPath;
-    effectiveCwd = (mainPath && lock.cwd === mainPath) ? '' : lock.cwd;
+    // t-f15b: cockpitPathKey compare (raw === silently fails on Windows — see
+    // renderCockpitWorktree's identical fix above for the full why).
+    effectiveCwd = (mainPath && cockpitPathKey(lock.cwd) === cockpitPathKey(mainPath)) ? '' : lock.cwd;
   }
   const presentByCwd = cockpitState.worktreePresentByCwd || {};
   if (presentByCwd[effectiveCwd] === false) {

@@ -3359,6 +3359,48 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('a locked in_progress ticket selects the Main row and shows its friendly label even when the persisted lock path differs only in slash format (t-f15b, Windows)', async ({ page }) => {
+    const id = `t-ckf15b-${Date.now()}`;
+    // Simulate the daemon's native-OS-separator lock path (Windows backslashes)
+    // for the SAME directory /api/worktrees reports with forward slashes — the
+    // exact mismatch a raw === comparison misses (t-f15b). No existing test
+    // caught this because every prior fixture used an identical string for
+    // both sides.
+    const winStyleLock = PROJECT_ROOT.replace(/\//g, '\\');
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: true, cwd: winStyleLock, main_dirty: false }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // The Main row must render selected despite the slash-format mismatch.
+      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
+      await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
+
+      // The Status rail resolves the friendly label, not the raw backslash path.
+      await expect(page.locator('#ck-state')).toContainText('Running in: Main checkout (current)');
+      await expect(page.locator('#ck-state')).not.toContainText(winStyleLock);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('a symlinked cwd does not raise a false "Working in" mismatch warning, but a genuine wrong-tree still does (t-eed3)', async ({ page }) => {
     const id = `t-cksym-${Date.now()}`;
     const selWt = '/tmp/wt-eed3/x';               // board's selected worktree (unresolved, e.g. macOS /tmp)
