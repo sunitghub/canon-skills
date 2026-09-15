@@ -2872,10 +2872,10 @@ func TestAgentSpawnArgs(t *testing.T) {
 		[]string{"-c"})
 	eq("copilot fresh",
 		agentSpawnArgs("copilot", "t-ab12", false, "SID", "gpt-5.4", ""),
-		[]string{"--model", "gpt-5.4", "--session-id", "SID", "sprint start t-ab12"})
+		[]string{"--model", "gpt-5.4", "--session-id", "SID", "--interactive", "sprint start t-ab12"})
 	eq("copilot fresh minimal",
 		agentSpawnArgs("copilot", "t-ab12", false, "SID", "", ""),
-		[]string{"--session-id", "SID", "sprint start t-ab12"})
+		[]string{"--session-id", "SID", "--interactive", "sprint start t-ab12"})
 	eq("copilot resume",
 		agentSpawnArgs("copilot", "t-ab12", true, "SID", "", ""),
 		[]string{"--resume=SID"})

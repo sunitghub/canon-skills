@@ -498,12 +498,16 @@ func agentKind(a string) (string, bool) {
 // (continue most recent session in the cwd) when the ticket is already
 // in_progress (a resume) — no claude-only --settings/--session-id/--model (no
 // shell hooks; needs-you is a Phase-2 pi extension). copilot mirrors claude's
-// optional-flag shape (verified against `copilot --help`): [--model <m>] then
-// (--resume=<id>) or (--session-id <id> "sprint start <ticket>") — no
-// --settings equivalent (copilot hooks are file-configured, not per-invocation,
-// and it has no Notification-hook-equivalent event regardless; needs-you falls
-// back to the same PTY-quiescence path pi already uses). Pure/side-effect-free
-// so it is unit-testable on any host.
+// optional-flag shape: [--model <m>] then (--resume=<id>) or (--session-id <id>
+// --interactive <prompt>) — no --settings equivalent (copilot hooks are
+// file-configured, not per-invocation, and it has no Notification-hook-equivalent
+// event regardless; needs-you falls back to the same PTY-quiescence path pi
+// already uses). copilot takes 0 positional arguments (verified live against
+// `copilot --help`, t-842b's claude-positional trick does not carry over): the
+// fresh-start prompt must go through -i/--interactive, not a bare positional —
+// a bare positional fails with "error: too many arguments. Expected 0
+// arguments but got 1". Pure/side-effect-free so it is unit-testable on any
+// host.
 func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, settingsPath string) []string {
 	prompt := "sprint start " + ticket
 	if kind == "pi" {
@@ -512,8 +516,9 @@ func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, se
 		}
 		return []string{prompt}
 	}
-	// claude and copilot share this shape; only --settings (claude-only) and the
-	// --resume flag's syntax (space-separated vs. copilot's --resume=<id>) differ.
+	// claude and copilot share this shape; only --settings (claude-only), the
+	// --resume flag's syntax (space-separated vs. copilot's --resume=<id>), and
+	// the fresh-start prompt (positional vs. copilot's --interactive) differ.
 	var args []string
 	if gateModel != "" {
 		args = append(args, "--model", gateModel)
@@ -522,6 +527,8 @@ func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, se
 		args = append(args, "--settings", settingsPath)
 	}
 	switch {
+	case !resuming && kind == "copilot":
+		args = append(args, "--session-id", sessionID, "--interactive", prompt)
 	case !resuming:
 		args = append(args, "--session-id", sessionID, prompt)
 	case kind == "copilot":
