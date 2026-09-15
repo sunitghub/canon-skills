@@ -2788,9 +2788,11 @@ func TestAgentKindAllowlist(t *testing.T) {
 		{"", "claude", true},
 		{"claude", "claude", true},
 		{"pi", "pi", true},
+		{"copilot", "copilot", true},
 		{"bogus", "", false},
-		{"Claude", "", false}, // case-sensitive
-		{"pi ", "", false},    // no trimming — exact match only
+		{"Claude", "", false},  // case-sensitive
+		{"pi ", "", false},     // no trimming — exact match only
+		{"Copilot", "", false}, // case-sensitive
 	}
 	for _, c := range cases {
 		got, ok := agentKind(c.in)
@@ -2829,6 +2831,15 @@ func TestAgentSpawnArgs(t *testing.T) {
 	eq("pi resume",
 		agentSpawnArgs("pi", "t-ab12", true, "", "", ""),
 		[]string{"-c"})
+	eq("copilot fresh",
+		agentSpawnArgs("copilot", "t-ab12", false, "SID", "gpt-5.4", ""),
+		[]string{"--model", "gpt-5.4", "--session-id", "SID", "sprint start t-ab12"})
+	eq("copilot fresh minimal",
+		agentSpawnArgs("copilot", "t-ab12", false, "SID", "", ""),
+		[]string{"--session-id", "SID", "sprint start t-ab12"})
+	eq("copilot resume",
+		agentSpawnArgs("copilot", "t-ab12", true, "SID", "", ""),
+		[]string{"--resume=SID"})
 }
 
 func readAgentFile(t *testing.T, root, ticket string) string {
@@ -2859,11 +2870,13 @@ func startSessionAgent(t *testing.T, base, ticket, agent, token string) int {
 
 // t-0d67: /session/start validates the agent (400 on bogus) and persists the
 // last-used kind to .cockpit-agent on success; pi spawns via COCKPIT_PI_BIN.
+// copilot (t-66b2) spawns via COCKPIT_COPILOT_BIN, same shape as pi.
 func TestHandleStartAgent(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
 	seedTicketDir(t, root, "t-ab13")
+	seedTicketDir(t, root, "t-ab14")
 	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
@@ -2886,6 +2899,15 @@ func TestHandleStartAgent(t *testing.T) {
 	}
 	if got := readAgentFile(t, root, "t-ab13"); got != "pi" {
 		t.Fatalf(".cockpit-agent = %q, want pi", got)
+	}
+
+	// copilot resolves to the stub via COCKPIT_COPILOT_BIN, so it spawns without real copilot.
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	if code := startSessionAgent(t, ts.URL, "t-ab14", "copilot", bootTok); code != http.StatusOK {
+		t.Fatalf("copilot: want 200, got %d", code)
+	}
+	if got := readAgentFile(t, root, "t-ab14"); got != "copilot" {
+		t.Fatalf(".cockpit-agent = %q, want copilot", got)
 	}
 }
 

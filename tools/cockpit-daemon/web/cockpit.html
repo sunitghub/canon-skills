@@ -85,6 +85,7 @@
       <select id="agentSel" title="Agent to launch on Start">
         <option value="claude">Claude Code</option>
         <option value="pi">Pi</option>
+        <option value="copilot">Copilot CLI</option>
       </select>
       <button class="btn-start" id="startBtn">▶ Start sprint</button>
       <button class="btn-kill" id="killBtn" disabled>Kill</button>
@@ -120,7 +121,7 @@
   var AGENT_HINT = "__COCKPIT_AGENT_HINT__";   // e.g. "Last used: Claude Code · model: sonnet"
   (function initAgentPicker(){
     var sel = document.getElementById("agentSel");
-    if(sel && (AGENT === "claude" || AGENT === "pi")) sel.value = AGENT;
+    if(sel && (AGENT === "claude" || AGENT === "pi" || AGENT === "copilot")) sel.value = AGENT;
     var h = document.getElementById("agentHint");
     if(h) h.textContent = AGENT_HINT;
   })();
