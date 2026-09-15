@@ -109,6 +109,7 @@
   .srow .selapsed{font-family:ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--card-stat);background:var(--accent-dim);border-radius:6px;padding:2px 7px;font-variant-numeric:tabular-nums}
   .srow .snone{color:var(--text-muted);padding:6px 4px}
   /* ---- Upkeep (t-7ae6): project picker + report cards + single report viewer ---- */
+  .up-wrap{max-width:1080px}
   .up-h1{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
   .up-sub{color:var(--text-muted);font-size:13.5px;margin:0 0 20px;max-width:62ch}
   .projrow{display:flex;align-items:center;gap:8px;margin-bottom:22px;flex-wrap:wrap}
@@ -345,6 +346,7 @@
           </div>
         </section>
         <section id="view-upkeep" class="view">
+          <div class="up-wrap">
           <h1 class="up-h1">Upkeep</h1>
           <p class="up-sub">Report-first repo hygiene, run on demand — no ticket, no sprint gate. Pick a project, run a check, read the report.</p>
           <div class="projrow" id="up-projrow"></div>
@@ -364,6 +366,7 @@
                 <div class="up-prose" id="up-rp-body"><div class="up-empty">No report selected yet.</div></div>
               </div>
             </div>
+          </div>
           </div>
         </section>
       </div>

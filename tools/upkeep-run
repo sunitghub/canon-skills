@@ -91,7 +91,7 @@ RESULT_JSON="$(claude -p "$PROMPT" \
   --output-format json \
   --permission-mode dontAsk \
   --model "$MODEL" \
-  --allowedTools "Read" "Grep" "Glob" "LS" "Write" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git status:*)" "Bash(grep:*)" "Bash(find:*)" "Bash(wc:*)")"
+  --allowedTools "Read" "Grep" "Glob" "LS" "Write" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git status:*)" "Bash(wc:*)")"
 INVOKE_STATUS=$?
 set -e
 
