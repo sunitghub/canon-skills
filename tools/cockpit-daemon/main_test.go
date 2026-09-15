@@ -1755,6 +1755,136 @@ func TestSaveAndEndFileSettleEndsSession(t *testing.T) {
 	t.Fatal("save-and-end did not end the session via file-settle before the deadline (fallback was 30s)")
 }
 
+// fakeAgentStuckUnauthenticated never exits and, on receiving the save prompt,
+// re-prints copilot's real "not logged in" text instead of acting on it —
+// touches no file, emits no clean marker (t-af51's exact reported shape).
+func fakeAgentStuckUnauthenticated(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-stuck.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r line; do\n" +
+		"  case \"$line\" in\n" +
+		"    *'save your current state'*) printf 'Please use /login to sign in to use Copilot.\\n' ;;\n" +
+		"  esac\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// t-af51: a copilot session stuck at its own "not logged in" prompt never
+// exits, never touches a watched file, never emits the save marker — without
+// the copilotNeedsLogin short-circuit, saveAndEnd would wait out the full
+// (large, here) saveFallback. saveQuiesce/idle intervals set large too, so a
+// pass can only come from the login-detection short-circuit, not another path.
+func TestSaveAndEndDetectsCopilotNotLoggedIn(t *testing.T) {
+	bin := fakeAgentStuckUnauthenticated(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionWithAgent(t, ts.URL, "t-ab12", "copilot", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.StatusCode != http.StatusAccepted {
+		t.Fatalf("save-and-end: want 202, got %d", r.StatusCode)
+	}
+	r.Body.Close()
+
+	// Must end via the login short-circuit within a handful of 500ms poll
+	// ticks — 8s margin, well under the 30s fallback and saveQuiesce=1h
+	// (so file-settle/marker paths cannot be what ends it).
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			return // ended via the login-detection short-circuit — success
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("save-and-end did not short-circuit on copilot's not-logged-in output before the deadline (fallback was 30s)")
+}
+
+// t-af51: the login-text short-circuit is scoped to agent=="copilot" — a
+// claude session printing the exact same words must NOT be short-circuited,
+// proving the scoping guard is real, not decorative. saveFallback is small
+// (2s) so the test finishes quickly, ending via the normal fallback path.
+func TestSaveAndEndDoesNotShortCircuitNonCopilotAgent(t *testing.T) {
+	bin := fakeAgentStuckUnauthenticated(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: 2 * time.Second, saveQuiesce: time.Hour,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSession(t, ts.URL, "t-ab12", bootTok) // default agent: claude
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.StatusCode != http.StatusAccepted {
+		t.Fatalf("save-and-end: want 202, got %d", r.StatusCode)
+	}
+	r.Body.Close()
+
+	// Must survive at least 1s (well past the 500ms poll cadence) — if the
+	// scoping guard were missing, the session would end almost immediately
+	// just like the copilot test above.
+	time.Sleep(1 * time.Second)
+	s.mu.Lock()
+	_, stillThere := s.sessions[out.Session]
+	s.mu.Unlock()
+	if !stillThere {
+		t.Fatal("claude session was short-circuited on copilot's login text — the agent==\"copilot\" scoping guard is not working")
+	}
+}
+
+// startSessionWithAgent is startSession plus an agent field on the request body.
+func startSessionWithAgent(t *testing.T, base, ticket, agent, token string) *http.Response {
+	t.Helper()
+	m := map[string]string{"ticket": ticket, "agent": agent}
+	body, _ := json.Marshal(m)
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/start", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
 // t-2c9e: the save-and-end endpoint is gated by the session token (like /input),
 // not the boot token or the status token.
 func TestSaveAndEndEndpointRequiresToken(t *testing.T) {
