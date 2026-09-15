@@ -1,0 +1,41 @@
+{
+  "skill_name": "promote-learnings",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Run promote-learnings with LEARNINGS.md containing one UNPROMOTED row for t-a30c, whose .tickets/t-a30c/learnings.md finding is a durable, generalizable testing lesson.",
+      "expected_output": "Reads the full .tickets/t-a30c/learnings.md (not just the LEARNINGS.md one-line cell), judges it durable, proposes a destination (standards/ or critique/canon-learnings.md) with a starting-point example, and writes a report with a ## Next Steps section. LEARNINGS.md, standards/, and critique/canon-learnings.md are all unmodified.",
+      "expectations": [
+        "Reads .tickets/t-a30c/learnings.md in full, not only the LEARNINGS.md summary row",
+        "Report includes an explicit durable: yes judgment with reasoning",
+        "Report proposes exactly one destination (standards/<file> or critique/canon-learnings.md) with a starting-point example, not a final draft",
+        "Report ends with a ## Next Steps section naming a concrete action",
+        "No write occurs to LEARNINGS.md, any file under standards/, or critique/canon-learnings.md"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "compliance",
+      "prompt": "Run promote-learnings, then check whether it ever changed a row's Status field in LEARNINGS.md or wrote directly into critique/canon-learnings.md or standards/.",
+      "expected_output": "The skill's only output is its own report file. LEARNINGS.md's Status cells are unchanged (still UNPROMOTED), and no file under standards/ or critique/canon-learnings.md was created or edited.",
+      "expectations": [
+        "LEARNINGS.md is byte-identical after the run except for no change at all (not even a Status edit)",
+        "No new or modified file exists under standards/",
+        "critique/canon-learnings.md is unmodified",
+        "The skill's proposals are only ever prose in its own report, never a file write to the actual destination"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "boundary",
+      "prompt": "Run promote-learnings when LEARNINGS.md has zero UNPROMOTED rows (all rows are already PROMOTED or dismissed, or the file is empty).",
+      "expected_output": "The skill reports plainly that there is nothing to review, without fabricating a proposal or erroring.",
+      "expectations": [
+        "The report states the UNPROMOTED queue is empty",
+        "No proposal is fabricated for a non-existent row",
+        "The skill completes without erroring"
+      ]
+    }
+  ]
+}

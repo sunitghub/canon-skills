@@ -47,6 +47,9 @@ var (
 	toolsDir         string // t-f99b: canon tools dir (for the skills link target: <toolsDir>/../skills)
 	headlessRuns     = map[string]map[string]any{}
 	headlessRunsMu   sync.Mutex
+	upkeepRunBin     string // t-7ae6
+	upkeepRuns       = map[upkeepKey]map[string]any{}
+	upkeepRunsMu     sync.Mutex
 	shellStartTime   = time.Now() // t-ade9: this server process's own start, for Cockpit Uptime
 )
 
@@ -137,6 +140,7 @@ func main() {
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	cockpitHTML = filepath.Join(filepath.Dir(appHTML), "cockpit.html")
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
+	upkeepRunBin = resolveUpkeepRunBin(toolsDir, projectRoot, cwd)
 	canonGateTmpl = resolveCanonGateTemplate(toolsDir, projectRoot, cwd)
 	cockpitDaemonBin = resolveCockpitDaemon(toolsDir, projectRoot, cwd)
 	// Passes through an explicit COCKPIT_SPRINT_BIN override (e.g. a test
@@ -359,6 +363,34 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, getHeadlessRunState(m[1]))
 			return
 		}
+		if path == "/api/upkeep/status" {
+			skill := r.URL.Query().Get("skill")
+			if !upkeepSkills[skill] {
+				http.Error(w, "unknown skill", http.StatusBadRequest)
+				return
+			}
+			root, ok := effectiveRoot(r)
+			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, getUpkeepRunState(root, skill))
+			return
+		}
+		if path == "/api/upkeep/report" {
+			skill := r.URL.Query().Get("skill")
+			if !upkeepSkills[skill] {
+				http.Error(w, "unknown skill", http.StatusBadRequest)
+				return
+			}
+			root, ok := effectiveRoot(r)
+			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, getUpkeepReport(root, skill))
+			return
+		}
 		if m := regexp.MustCompile(`^/api/worktree-lock/(t-[a-z0-9]{4})$`).FindStringSubmatch(path); m != nil {
 			root, ok := effectiveRoot(r)
 			if !ok {
@@ -457,6 +489,19 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, startHeadlessRun(m[1], baseRef))
+		return
+	}
+	if path == "/api/upkeep/run" {
+		skill := stringValue(payload, "skill", "")
+		if !upkeepSkills[skill] {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		model := stringValue(payload, "model", "")
+		if model == "" {
+			model = "claude-haiku-4-5-20251001"
+		}
+		sendJSON(w, startUpkeepRun(eroot, skill, model))
 		return
 	}
 	if path == "/api/ci-workflow" {
@@ -1938,6 +1983,28 @@ func resolveSprintHeadless(toolsDir, root string, extraRoots ...string) string {
 	return candidates[0]
 }
 
+// resolveUpkeepRunBin finds the upkeep-run script (t-7ae6), mirroring
+// resolveSprintHeadless's override/candidate-search shape exactly.
+// UPKEEP_RUN_BIN overrides (tests point at a stub).
+func resolveUpkeepRunBin(toolsDir, root string, extraRoots ...string) string {
+	if b := os.Getenv("UPKEEP_RUN_BIN"); b != "" {
+		return b
+	}
+	candidates := []string{
+		filepath.Join(toolsDir, "upkeep-run"),
+		filepath.Join(root, "tools", "upkeep-run"),
+	}
+	for _, extraRoot := range extraRoots {
+		candidates = append(candidates, filepath.Join(extraRoot, "tools", "upkeep-run"))
+	}
+	for _, candidate := range candidates {
+		if exists(candidate) {
+			return candidate
+		}
+	}
+	return candidates[0]
+}
+
 // resolveCanonGateTemplate finds canon-gate-template.yml. Deliberately
 // independent of SPRINT_HEADLESS_BIN (t-1781) — that override only redirects
 // which binary gets *executed*, it must not also redirect where this sibling
@@ -2336,6 +2403,146 @@ func getHeadlessRunState(ticketID string) map[string]any {
 		result["elapsed"] = time.Since(state["started_at"].(time.Time)).Seconds()
 	}
 	return result
+}
+
+// ── Upkeep (t-7ae6): headless, read-only per-project report runner ─────────
+// Mirrors runHeadless/startHeadlessRun/getHeadlessRunState's shape exactly,
+// keyed by (root, skill) instead of ticket id — parity with server.py.
+
+type upkeepKey struct{ root, skill string }
+
+var upkeepSkills = map[string]bool{
+	"context-check": true, "context-doctor": true, "dead-code-cleanup": true, "promote-learnings": true,
+}
+
+var upkeepReportRe = regexp.MustCompile(`(?m)^UPKEEP_REPORT: (.+)$`)
+
+func upkeepStatePath(root string) string {
+	return filepath.Join(root, ".reports", "upkeepRuns.json")
+}
+
+func upkeepStateLoad(root string) map[string]map[string]any {
+	data, err := os.ReadFile(upkeepStatePath(root))
+	if err != nil {
+		return map[string]map[string]any{}
+	}
+	var state map[string]map[string]any
+	if json.Unmarshal(data, &state) != nil {
+		return map[string]map[string]any{}
+	}
+	return state
+}
+
+func upkeepStateSave(root, skill string, entry map[string]any) {
+	p := upkeepStatePath(root)
+	_ = os.MkdirAll(filepath.Dir(p), 0o755)
+	state := upkeepStateLoad(root)
+	state[skill] = entry
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(p, data, 0o644) // best-effort — in-memory upkeepRuns is authoritative for this process
+}
+
+func runUpkeep(root, skill, model string) {
+	key := upkeepKey{root, skill}
+	output, err := exec.Command(upkeepRunBin, skill, "--root", root, "--model", model).CombinedOutput()
+	exitCode := 0
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			output = []byte(fmt.Sprintf("Error: could not start upkeep-run: %v", err))
+			exitCode = 1
+		}
+	}
+	reportPath := ""
+	if m := upkeepReportRe.FindStringSubmatch(string(output)); m != nil {
+		reportPath = strings.TrimSpace(m[1])
+	}
+	status := "done"
+	if exitCode != 0 || reportPath == "" {
+		status = "error"
+	}
+	finishedAt := time.Now()
+	upkeepRunsMu.Lock()
+	upkeepRuns[key]["status"] = status
+	upkeepRuns[key]["output"] = string(output)
+	upkeepRuns[key]["exit_code"] = exitCode
+	upkeepRuns[key]["report_path"] = reportPath
+	upkeepRuns[key]["finished_at"] = finishedAt
+	upkeepRunsMu.Unlock()
+	upkeepStateSave(root, skill, map[string]any{
+		"status": status, "report_path": reportPath,
+		"finished_at": finishedAt.Unix(), "model": model,
+	})
+}
+
+func startUpkeepRun(root, skill, model string) map[string]any {
+	if !upkeepSkills[skill] {
+		return map[string]any{"ok": false, "error": "unknown skill " + skill}
+	}
+	key := upkeepKey{root, skill}
+	upkeepRunsMu.Lock()
+	if existing, ok := upkeepRuns[key]; ok && existing["status"] == "running" {
+		upkeepRunsMu.Unlock()
+		state := getUpkeepRunState(root, skill)
+		state["ok"] = false
+		state["busy"] = true
+		return state
+	}
+	upkeepRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now()}
+	upkeepRunsMu.Unlock()
+	go runUpkeep(root, skill, model)
+	state := getUpkeepRunState(root, skill)
+	state["ok"] = true
+	return state
+}
+
+func getUpkeepRunState(root, skill string) map[string]any {
+	key := upkeepKey{root, skill}
+	upkeepRunsMu.Lock()
+	state, ok := upkeepRuns[key]
+	upkeepRunsMu.Unlock()
+	if ok {
+		result := map[string]any{
+			"status": state["status"], "exit_code": state["exit_code"],
+			"report_path": state["report_path"], "finished_at": state["finished_at"],
+		}
+		if state["status"] == "running" {
+			result["elapsed"] = time.Since(state["started_at"].(time.Time)).Seconds()
+		}
+		return result
+	}
+	if persisted, ok := upkeepStateLoad(root)[skill]; ok {
+		return map[string]any{
+			"status": persisted["status"], "exit_code": nil,
+			"report_path": persisted["report_path"], "finished_at": persisted["finished_at"],
+			"model": persisted["model"],
+		}
+	}
+	return map[string]any{"status": "idle", "report_path": ""}
+}
+
+func getUpkeepReport(root, skill string) map[string]any {
+	state := getUpkeepRunState(root, skill)
+	reportPath, _ := state["report_path"].(string)
+	if reportPath == "" {
+		return map[string]any{"ok": false, "error": "no report yet"}
+	}
+	// Containment: the report must live under this root's own .reports/ dir —
+	// never trust a path merely because it round-tripped through our own state.
+	reportsDir, err1 := filepath.Abs(filepath.Join(root, ".reports"))
+	absReport, err2 := filepath.Abs(reportPath)
+	if err1 != nil || err2 != nil || !strings.HasPrefix(absReport, reportsDir+string(filepath.Separator)) {
+		return map[string]any{"ok": false, "error": "report path outside .reports/"}
+	}
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true, "path": reportPath, "content": string(data)}
 }
 
 func serveFile(w http.ResponseWriter, path, contentType string) {
