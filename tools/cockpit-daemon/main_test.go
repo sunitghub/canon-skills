@@ -2006,6 +2006,160 @@ func TestSaveAndEndDetectsCopilotNotLoggedIn(t *testing.T) {
 	t.Fatal("save-and-end did not short-circuit on copilot's not-logged-in output before the deadline (fallback was 30s)")
 }
 
+// fakeAgentPreLoginStuck prints copilot's real "not logged in" text ONCE, at
+// spawn — before any save prompt is ever sent — then never repeats it, even
+// when it receives the save prompt (t-acc5's exact reported shape: the
+// realistic sequence, unlike fakeAgentStuckUnauthenticated above which only
+// prints the text IN RESPONSE TO the save prompt).
+func fakeAgentPreLoginStuck(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-prelogin-stuck.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'Please use /login to sign in to use Copilot.\\n'\n" +
+		"while IFS= read -r line; do :; done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// t-acc5: the realistic case t-af51 missed — copilot shows "not logged in" at
+// spawn, well before Save & End is ever clicked, and never repeats itself in
+// response to the save prompt. Without the pre-check (scanning a tail of
+// se.buf as it stands before writing the prompt), this would wait out the
+// full saveFallback exactly like the live-reproduced Windows VM bug.
+func TestSaveAndEndDetectsPreExistingCopilotNotLoggedIn(t *testing.T) {
+	bin := fakeAgentPreLoginStuck(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionWithAgent(t, ts.URL, "t-ab12", "copilot", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	// Give the fake binary a moment to print its one-shot login line BEFORE
+	// Save & End is invoked — this is the whole point of the test.
+	time.Sleep(200 * time.Millisecond)
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.StatusCode != http.StatusAccepted {
+		t.Fatalf("save-and-end: want 202, got %d", r.StatusCode)
+	}
+	r.Body.Close()
+
+	// Must end almost immediately (the pre-check fires before the prompt is
+	// even written) — well under the 30s fallback and saveQuiesce=1h.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			return // ended via the pre-check short-circuit — success
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("save-and-end did not short-circuit on a PRE-EXISTING not-logged-in state before the deadline (fallback was 30s)")
+}
+
+// fakeAgentRecoveredLogin prints copilot's login text once at spawn, then
+// (simulating a mid-session `/login`) floods enough real output to push that
+// mention well outside copilotLoginTailWindow, then behaves like a normal
+// healthy session that saves via file-settle when asked.
+func fakeAgentRecoveredLogin(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-recovered.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'Please use /login to sign in to use Copilot.\\n'\n" +
+		// Flood well past copilotLoginTailWindow (4096 bytes) so the early
+		// mention is pushed out of the tail the pre-check scans.
+		"i=0; while [ $i -lt 200 ]; do printf 'working on the task, line %d of real output...\\n' \"$i\"; i=$((i+1)); done\n" +
+		"while IFS= read -r line; do\n" +
+		"  case \"$line\" in\n" +
+		"    *'save your current state'*) touch .tickets/t-ab12/plan.md ; printf 'saved to files (no clean marker)\\n' ;;\n" +
+		"  esac\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// t-acc5: a session that mentioned the login text early but has since
+// recovered (ran /login, did substantial real work) must NOT be
+// short-circuited by that stale early mention — proves the tail-window
+// scoping is a real guard against false positives, not just a detection
+// widening with no safety limit.
+func TestSaveAndEndDoesNotFalsePositiveOnStaleLoginMention(t *testing.T) {
+	bin := fakeAgentRecoveredLogin(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: 6 * time.Second, saveQuiesce: 200 * time.Millisecond,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionWithAgent(t, ts.URL, "t-ab12", "copilot", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+
+	// Let the flood of "real work" output finish before Save & End.
+	time.Sleep(300 * time.Millisecond)
+
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.StatusCode != http.StatusAccepted {
+		t.Fatalf("save-and-end: want 202, got %d", r.StatusCode)
+	}
+	r.Body.Close()
+
+	// Must end via file-settle (the healthy path), not an immediate
+	// short-circuit — if it ends in well under saveQuiesce's 200ms, the
+	// pre-check false-fired on the stale early mention.
+	minHealthyEnd := time.Now().Add(150 * time.Millisecond)
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			if time.Now().Before(minHealthyEnd) {
+				t.Fatal("session ended suspiciously fast — the pre-check likely false-fired on the stale early login mention")
+			}
+			return // ended via file-settle — success, not a false positive
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("save-and-end did not end via file-settle before the deadline (fallback was 6s)")
+}
+
 // t-af51: the login-text short-circuit is scoped to agent=="copilot" — a
 // claude session printing the exact same words must NOT be short-circuited,
 // proving the scoping guard is real, not decorative. saveFallback is small

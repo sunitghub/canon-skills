@@ -1176,7 +1176,29 @@ func (s *server) saveAndEnd(se *session) {
 	se.mu.Lock()
 	sentAt := len(se.buf)            // only output written AFTER the prompt counts — buf may hold an
 	humanBaseline := se.humanInputAt // unrelated earlier line matching the marker verbatim (e.g. from a
-	se.mu.Unlock()                   // prior conversation about this very feature) that must never trigger a false kill.
+	buf := se.buf                    // prior conversation about this very feature) that must never trigger a false kill.
+	se.mu.Unlock()
+	// t-acc5: an unauthenticated copilot session shows "not logged in" at SPAWN,
+	// well before Save & End is ever clicked — it won't repeat that text just
+	// because we write more keystrokes into its dead PTY, so t-af51's
+	// sentAt-scoped poll-loop check (below) never sees it. Check a bounded
+	// recent TAIL of the buffer as it stands right now, before even writing
+	// the doomed prompt — not sentAt-scoped (the state predates this attempt),
+	// and not the full buffer either (a healthy session that ran /login mid-
+	// session and kept working would still have the old text far earlier in
+	// scrollback; a small tail is generous for a genuinely-stuck session,
+	// whose entire recent output IS just that one message, while real
+	// subsequent work pushes a stale mention well outside it).
+	if se.agent == "copilot" {
+		tail := buf
+		if len(tail) > copilotLoginTailWindow {
+			tail = tail[len(tail)-copilotLoginTailWindow:]
+		}
+		if copilotNeedsLogin(tail) {
+			s.killSession(se)
+			return
+		}
+	}
 	// t-2c9e: snapshot baseline stamps of the watched state files at prompt
 	// injection — a change vs THIS baseline is what marks "the agent saved", so
 	// an unrelated earlier edit never false-fires. File-settle makes detection
@@ -1350,6 +1372,15 @@ func containsMarkerLine(buf []byte, marker string) bool {
 	}
 	return false
 }
+
+// copilotLoginTailWindow bounds how much of the recent buffer saveAndEnd's
+// pre-check (t-acc5) scans for copilotNeedsLogin — see its call site for why
+// this must be a tail window, not the full buffer or a sentAt-scoped slice.
+// Scrollback caps at 256KB by default; 4KB is a small, deliberately narrow
+// fraction of it — comfortably larger than the observed real login message
+// plus its surrounding menu text, while far smaller than what a healthy
+// session doing real subsequent work would accumulate.
+const copilotLoginTailWindow = 4096
 
 // copilotNeedsLogin detects copilot's stable "not logged in" output (t-af51):
 // unlike a resume-id ghost session (t-f15b), there is no proactive pre-spawn
