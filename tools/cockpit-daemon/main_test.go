@@ -1304,12 +1304,18 @@ func TestResolveClaudeSessionID(t *testing.T) {
 	}
 }
 
-// t-66b2: copilot's resume signal is ticket status only, no config-dir
-// existence check (unlike claude's ghost-id handling above) — ticket in_progress
-// + a persisted id is sufficient to resume. Own file, isolated from claude's.
+// t-f15b (mirroring claude's t-77d7): copilot's resume signal is ticket
+// status PLUS a real on-disk session (copilotSessionExists) — ticket
+// in_progress + a persisted id is necessary but not sufficient; a ghost id
+// (minted before copilot ever created a session, e.g. a crashed spawn) must
+// fall back to fresh rather than retry a --resume copilot will reject. Own
+// file, isolated from claude's (t-66b2).
 func TestResolveCopilotSessionID(t *testing.T) {
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
+	// Hermetic copilot store, pinned away from the developer's real ~/.copilot.
+	copilotHome := t.TempDir()
+	t.Setenv("COPILOT_HOME", copilotHome)
 	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
 
 	// No ticket.md status yet → fresh, id persisted to the copilot-specific file.
@@ -1325,8 +1331,22 @@ func TestResolveCopilotSessionID(t *testing.T) {
 		t.Fatalf("id1 not persisted correctly: %v %q", err, persisted)
 	}
 
-	// status: in_progress + persisted id → resume, no existence check needed.
+	// status: in_progress with a persisted id BUT no session-state dir yet →
+	// ghost id (minted before copilot ever wrote a session, matching the
+	// pre-t-f15b/t-66b2 argv-crash scenario). Must NOT resume; must reuse the
+	// same id for a fresh start rather than hand copilot a --resume it will
+	// reject with "No session, task, or name matched".
 	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	idGhost, resuming := s.resolveCopilotSessionIDIn(root, "t-ab12")
+	if resuming {
+		t.Fatalf("expected fresh start for a ghost id (no session-state dir), got resuming")
+	}
+	if idGhost != id1 {
+		t.Fatalf("ghost fallback must reuse the persisted id %q, got %q", id1, idGhost)
+	}
+
+	// Now the session-state dir exists (copilot actually created it) → resume.
+	writeCopilotSessionState(t, copilotHome, id1)
 	id2, resuming := s.resolveCopilotSessionIDIn(root, "t-ab12")
 	if !resuming || id2 != id1 {
 		t.Fatalf("expected resume of %q, got resuming=%v id=%q", id1, resuming, id2)
@@ -1340,6 +1360,71 @@ func TestResolveCopilotSessionID(t *testing.T) {
 	id3, resuming := s.resolveCopilotSessionIDIn(root, "t-ab12")
 	if !resuming || id3 != id1 || id3 == "claude-only-id" {
 		t.Fatalf("expected copilot resume to stay on its own id %q, got resuming=%v id=%q", id1, resuming, id3)
+	}
+}
+
+// writeCopilotSessionState creates a fake real copilot session directory for
+// sid under home, mirroring copilot's real layout
+// (<home>/session-state/<sid>/, verified live against an actual `copilot`
+// install — see research.md). The directory just needs to exist; copilotSessionExists
+// only checks presence, not contents.
+func writeCopilotSessionState(t *testing.T, home, sid string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(home, "session-state", sid), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCopilotSessionExists(t *testing.T) {
+	home := t.TempDir()
+
+	// Empty id/home are never resumable.
+	if copilotSessionExists(home, "") {
+		t.Fatal("empty sid must not be resumable")
+	}
+	if copilotSessionExists("", "some-id") {
+		t.Fatal("empty home must not be resumable")
+	}
+	// No session-state dir yet (the crashed-spawn / ghost-id case).
+	sid := "c9b27a3d-6e6b-442d-a75d-274506f3fd86"
+	if copilotSessionExists(home, sid) {
+		t.Fatalf("sid %q must not be resumable before its session-state dir exists", sid)
+	}
+	// After the real session-state dir lands, it is resumable.
+	writeCopilotSessionState(t, home, sid)
+	if !copilotSessionExists(home, sid) {
+		t.Fatalf("sid %q must be resumable once its session-state dir exists", sid)
+	}
+	// A different id is still not resumable — the check is id-specific.
+	if copilotSessionExists(home, "00000000-0000-4000-8000-000000000000") {
+		t.Fatal("an unrelated id must not be reported resumable")
+	}
+	// A plain FILE named after the id (not a directory) must not count.
+	fileSid := "1f6f6f0e-6f0a-4b0a-9c0a-6f0a4b0a9c0a"
+	if err := os.MkdirAll(filepath.Join(home, "session-state"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "session-state", fileSid), []byte("not a dir"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if copilotSessionExists(home, fileSid) {
+		t.Fatal("a plain file (not a directory) must not count as a real session")
+	}
+}
+
+func TestCopilotHomeDir(t *testing.T) {
+	t.Setenv("COPILOT_HOME", "/custom/copilot/home")
+	if got := copilotHomeDir(); got != "/custom/copilot/home" {
+		t.Fatalf("COPILOT_HOME override not honored: got %q", got)
+	}
+	t.Setenv("COPILOT_HOME", "")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home dir resolvable in this environment")
+	}
+	want := filepath.Join(home, ".copilot")
+	if got := copilotHomeDir(); got != want {
+		t.Fatalf("default copilot home: got %q, want %q", got, want)
 	}
 }
 

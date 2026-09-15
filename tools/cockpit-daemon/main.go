@@ -1769,16 +1769,24 @@ func (s *server) resolveClaudeSessionIDIn(root, ticket string) (id string, resum
 // (.cockpit-copilot-session-id), not claude's .cockpit-session-id — sharing
 // would let a ticket that switched agents hand copilot a UUID claude minted
 // (or vice versa), which either agent's --resume/--session-id would mishandle.
-// Resume signal is the ticket's own in_progress status only, no filesystem
-// existence check against a session store (copilot's store isn't
-// ~/.claude/projects/*, so claudeConversationExists doesn't apply here — same
-// simpler signal pi's resume already uses).
+//
+// A persisted id is necessary but not sufficient to resume (t-f15b, mirroring
+// claude's t-77d7): a fresh spawn persists the id before copilot has created
+// anything, so a session that crashed before its first turn (e.g. the
+// pre-t-f15b/t-66b2 argv bug) leaves an id naming a session that never
+// existed — copilot then rejects --resume=<id> hard ("No session, task, or
+// name matched"). copilotSessionExists checks copilot's own on-disk
+// session-state directory (verified live) before trusting the persisted id,
+// same shape as claudeConversationExists above; unlike a stale claude id,
+// a stale copilot one is simply retried as a fresh --session-id start rather
+// than minting a brand new UUID, since the ticket-scoped file already names
+// one nothing else could be resuming.
 func (s *server) resolveCopilotSessionIDIn(root, ticket string) (id string, resuming bool) {
 	idPath := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-copilot-session-id")
 	if s.ticketStatusIn(root, ticket) == "in_progress" {
 		if b, err := os.ReadFile(idPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
-				return existing, true
+				return existing, copilotSessionExists(copilotHomeDir(), existing)
 			}
 		}
 	}
@@ -1810,6 +1818,36 @@ func claudeConversationExists(sid string) bool {
 	}
 	matches, err := filepath.Glob(filepath.Join(dir, "projects", "*", sid+".jsonl"))
 	return err == nil && len(matches) > 0
+}
+
+// copilotHomeDir resolves copilot's own state directory (t-f15b), honoring its
+// documented COPILOT_HOME override (`copilot help environment`), defaulting to
+// ~/.copilot — the same override/default shape claude's CLAUDE_CONFIG_DIR gets
+// above.
+func copilotHomeDir() string {
+	if dir := os.Getenv("COPILOT_HOME"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".copilot")
+}
+
+// copilotSessionExists reports whether copilot holds a real, resumable session
+// for sid (t-f15b). Unlike claude's per-conversation JSONL files under
+// projects/*, copilot keys a real session's state directly by id at
+// <home>/session-state/<sid>/ — verified live: a crashed spawn (bad argv, the
+// pre-t-f15b/t-66b2 bug) creates no such directory at all, while a real
+// completed turn does, and --resume=<sid> only succeeds once it exists. No
+// glob needed (copilot doesn't shard by cwd the way claude does).
+func copilotSessionExists(home, sid string) bool {
+	if home == "" || sid == "" {
+		return false
+	}
+	fi, err := os.Stat(filepath.Join(home, "session-state", sid))
+	return err == nil && fi.IsDir()
 }
 
 // sweepStaleHookDirs removes leftover per-session hook dirs at boot. cleanup()
