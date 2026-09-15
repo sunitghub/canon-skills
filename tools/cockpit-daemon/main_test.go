@@ -1363,6 +1363,186 @@ func TestResolveCopilotSessionID(t *testing.T) {
 	}
 }
 
+// fakeCopilotDeadResume mirrors a real copilot install where the persisted id
+// passes copilotSessionExists's directory check (session-state/<id>/ exists)
+// but copilot itself rejects the --resume (t-6ce0's live-reproduced gap: the
+// directory can exist without a matching row in copilot's real session-store.db
+// index). --resume=<id> prints the exact real error text and exits immediately;
+// any other invocation (the fresh-start retry) behaves like a normal
+// long-running session.
+func fakeCopilotDeadResume(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-copilot-dead-resume.sh")
+	script := "#!/bin/sh\n" +
+		"case \"$*\" in\n" +
+		"  *--resume=*)\n" +
+		"    printf 'Error: No session, task, or name matched .\\n'\n" +
+		"    exit 1\n" +
+		"    ;;\n" +
+		"esac\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r line; do :; done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// fakeCopilotHealthyResume behaves like a real, successfully-resumed session
+// regardless of --resume vs fresh-start argv — used to prove a LEGITIMATE
+// resume is never touched by the new grace-check/retry logic.
+func fakeCopilotHealthyResume(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-copilot-healthy.sh")
+	script := "#!/bin/sh\nprintf 'READY\\n'\nwhile IFS= read -r line; do :; done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// startSessionWithAgentBody is startSession plus an explicit agent field,
+// returning the parsed {Session, Token} rather than just a status code
+// (startSessionAgent, t-0d67, only returns the status code).
+func startSessionWithAgentBody(t *testing.T, base, ticket, agent, token string) (sid, tok string, status int) {
+	t.Helper()
+	m := map[string]string{"ticket": ticket, "agent": agent}
+	body, _ := json.Marshal(m)
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/start", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct{ Session, Token string }
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return out.Session, out.Token, resp.StatusCode
+}
+
+// t-6ce0: a copilot resume that copilotSessionExists's directory check
+// wrongly trusted (the exact live-reproduced gap — a session-state directory
+// exists with no matching session-store.db row) is transparently retried as a
+// fresh start, all within the one POST /session/start call. The client must
+// only ever see the working, second session.
+func TestHandleStartRecoversFromDeadCopilotResume(t *testing.T) {
+	bin := fakeCopilotDeadResume(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	copilotHome := t.TempDir()
+	t.Setenv("COPILOT_HOME", copilotHome)
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	// Seed a persisted id whose session-state dir exists (passes the
+	// proactive check) but has no real backing session — the live-reproduced
+	// gap. staleID is deliberately the id fakeCopilotDeadResume rejects.
+	staleID := "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
+	idPath := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-copilot-session-id")
+	if err := os.WriteFile(idPath, []byte(staleID+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeCopilotSessionState(t, copilotHome, staleID)
+
+	sid, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "copilot", bootTok)
+	if status != http.StatusOK {
+		t.Fatalf("start: want 200, got %d", status)
+	}
+	if sid == "" {
+		t.Fatal("expected a session id back — the client must see the recovered session, not the failed one")
+	}
+	// The returned session must actually be alive (the retried fresh start),
+	// not the dead one — poll for it to still be registered a moment later.
+	time.Sleep(200 * time.Millisecond)
+	s.mu.Lock()
+	_, stillThere := s.sessions[sid]
+	s.mu.Unlock()
+	if !stillThere {
+		t.Fatal("recovered session did not survive — recovery returned a dead session")
+	}
+	// The id file must now hold a DIFFERENT id than the stale one, so the next
+	// start also takes the fresh-start path (no repeat failure, no loop).
+	newID, err := os.ReadFile(idPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(newID)) == staleID {
+		t.Fatal(".cockpit-copilot-session-id was not replaced after recovery")
+	}
+}
+
+// t-6ce0: a LEGITIMATE copilot resume (the process stays alive) must never be
+// touched by the grace-check — same session returned, id file unchanged.
+func TestHandleStartDoesNotRetryHealthyCopilotResume(t *testing.T) {
+	bin := fakeCopilotHealthyResume(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	copilotHome := t.TempDir()
+	t.Setenv("COPILOT_HOME", copilotHome)
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	realID := "11111111-2222-4333-8444-555555555555"
+	idPath := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-copilot-session-id")
+	if err := os.WriteFile(idPath, []byte(realID+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeCopilotSessionState(t, copilotHome, realID)
+
+	start := time.Now()
+	sid, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "copilot", bootTok)
+	elapsed := time.Since(start)
+	if status != http.StatusOK || sid == "" {
+		t.Fatalf("start: want 200 + session id, got %d %q", status, sid)
+	}
+	// A healthy resume never exits, so the grace-check must run the FULL
+	// window before giving up and returning it — proves the wait actually
+	// happened (not skipped), while still returning the original session.
+	if elapsed < copilotResumeGraceWindow {
+		t.Fatalf("expected the full %v grace window for a still-running resume, took %v", copilotResumeGraceWindow, elapsed)
+	}
+	got, err := os.ReadFile(idPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(got)) != realID {
+		t.Fatalf(".cockpit-copilot-session-id changed for a healthy resume: got %q, want %q", got, realID)
+	}
+}
+
+// t-6ce0: claude/pi (and any copilot FRESH start) must never enter the
+// grace-check at all — proves the copilotResumeAttempt scoping is a real
+// guard, not decorative. If claude were subjected to the same grace-check by
+// mistake, this start would take at least copilotResumeGraceWindow to return.
+func TestHandleStartNeverGraceChecksNonCopilotAgent(t *testing.T) {
+	sprintBin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir()) // empty store — resolveClaudeSessionID falls back to a fresh start
+	s := newServer(config{token: bootTok, sprintBin: sprintBin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	start := time.Now()
+	sid, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "claude", bootTok)
+	elapsed := time.Since(start)
+	if status != http.StatusOK || sid == "" {
+		t.Fatalf("start: want 200 + session id, got %d %q", status, sid)
+	}
+	if elapsed >= copilotResumeGraceWindow {
+		t.Fatalf("claude start took %v — as long as the copilot grace window; the scoping guard is not working", elapsed)
+	}
+}
+
 // writeCopilotSessionState creates a fake real copilot session directory for
 // sid under home, mirroring copilot's real layout
 // (<home>/session-state/<sid>/, verified live against an actual `copilot`
