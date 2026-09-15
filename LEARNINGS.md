@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-15-2026 14:42
+learnings-sweep last run: 09-15-2026 15:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-15 | [t-f15b](.tickets/t-f15b/learnings.md) | An acceptance.md test-count claim ("121/121 pass") arithmetically undercounted the real run (113 passed/8 failed/7 did-not-run = 128) and never disclosed the did-not-run set — grade against real command output, not the doc's own summary framing, even when the underlying verdict doesn't change. | UNPROMOTED |
 | 2026-09-15 | [t-a30c](.tickets/t-a30c/learnings.md) | A Test Plan line must be re-runnable by a fresh evaluator, not a narrative attestation of a past manual click — one forced a mechanical `fail:` (correct `not-run` grading) despite every criterion and reproducible test passing; fix was removing the line, not the code. | UNPROMOTED |
 | 2026-09-12 | [t-145c](.tickets/t-145c/learnings.md) | Windows Git Bash verification of `wc -l`/subagent dispatch was deferred — no Windows machine available this session; treat as unverified until tested live, not assumed identical to macOS. | UNPROMOTED |
 | 2026-08-24 | [t-96a8](.tickets/t-96a8/learnings.md) | Read-only eval-gate instances can't execute Playwright/shell tests or capture screenshots, forcing `partial` grades even when source-level evidence is strong — re-dispatch with full tool access to close the gap. | UNPROMOTED |
