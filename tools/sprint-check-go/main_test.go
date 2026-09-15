@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func setupTestProject(t *testing.T) string {
@@ -974,5 +975,118 @@ func TestBrowseDirsHidden(t *testing.T) {
 	all := names(browseDirs(d, true))
 	if len(all) != 2 {
 		t.Fatalf("showHidden should include .hiddendir, got %v", all)
+	}
+}
+
+// writeStubScript (t-7ae6) writes an executable script at dir/name that prints
+// stdout, exits with the given code. Mirrors this file's existing pattern for
+// stubbing external binaries via an env-var override — never overwrite the
+// real on-disk script in place (t-1781).
+func writeStubScript(t *testing.T, dir, name, stdout string, exitCode int) string {
+	t.Helper()
+	p := filepath.Join(dir, name)
+	body := fmt.Sprintf("#!/bin/sh\nprintf '%%s' '%s'\nexit %d\n", stdout, exitCode)
+	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestResolveUpkeepRunBin(t *testing.T) {
+	t.Setenv("UPKEEP_RUN_BIN", "/custom/upkeep-run")
+	if got := resolveUpkeepRunBin("/tools", "/root"); got != "/custom/upkeep-run" {
+		t.Fatalf("env override not honored: got %q", got)
+	}
+	t.Setenv("UPKEEP_RUN_BIN", "")
+	toolsDirD := t.TempDir()
+	p := filepath.Join(toolsDirD, "upkeep-run")
+	os.WriteFile(p, []byte("#!/bin/sh\n"), 0o755)
+	if got := resolveUpkeepRunBin(toolsDirD, "/nonexistent-root"); got != p {
+		t.Fatalf("expected toolsDir candidate %q, got %q", p, got)
+	}
+}
+
+func TestGetUpkeepRunStateIdle(t *testing.T) {
+	root := t.TempDir()
+	upkeepRuns = map[upkeepKey]map[string]any{}
+	state := getUpkeepRunState(root, "context-check")
+	if state["status"] != "idle" {
+		t.Fatalf("expected idle for a never-run skill, got %v", state)
+	}
+}
+
+// TestStartUpkeepRunDoubleSpawnGuard: a second start while one is "running"
+// for the same (root, skill) must not spawn a second process — mirrors
+// startHeadlessRun's own guard, same shape, different key.
+func TestStartUpkeepRunDoubleSpawnGuard(t *testing.T) {
+	root := t.TempDir()
+	upkeepRuns = map[upkeepKey]map[string]any{}
+	key := upkeepKey{root, "context-check"}
+	upkeepRuns[key] = map[string]any{"status": "running", "started_at": time.Now()}
+	result := startUpkeepRun(root, "context-check", "claude-haiku-4-5-20251001")
+	if result["busy"] != true {
+		t.Fatalf("expected busy:true when already running, got %v", result)
+	}
+}
+
+func TestStartUpkeepRunUnknownSkill(t *testing.T) {
+	root := t.TempDir()
+	result := startUpkeepRun(root, "not-a-real-skill", "claude-haiku-4-5-20251001")
+	if result["ok"] != false {
+		t.Fatalf("expected ok:false for an unknown skill, got %v", result)
+	}
+}
+
+// TestRunUpkeepEndToEnd runs the real dispatch machinery against a stub
+// upkeep-run binary (never the real claude -p — this test asserts the Go
+// wiring, not a live model call) that prints the UPKEEP_REPORT sentinel line,
+// and confirms the resulting state + persisted .reports/upkeepRuns.json both
+// reflect it.
+func TestRunUpkeepEndToEnd(t *testing.T) {
+	root := t.TempDir()
+	os.MkdirAll(filepath.Join(root, ".reports"), 0o755)
+	reportPath := filepath.Join(root, ".reports", "context-check_test.md")
+	os.WriteFile(reportPath, []byte("# Report\n"), 0o644)
+	stubDir := t.TempDir()
+	upkeepRunBin = writeStubScript(t, stubDir, "upkeep-run", "UPKEEP_REPORT: "+reportPath+"\n", 0)
+	// runUpkeep assumes its map entry already exists — startUpkeepRun normally
+	// initializes it before launching the goroutine that calls this.
+	upkeepRuns = map[upkeepKey]map[string]any{
+		{root, "context-check"}: {"status": "running", "started_at": time.Now()},
+	}
+
+	runUpkeep(root, "context-check", "claude-haiku-4-5-20251001")
+
+	state := getUpkeepRunState(root, "context-check")
+	if state["status"] != "done" {
+		t.Fatalf("expected status done, got %v", state)
+	}
+	if state["report_path"] != reportPath {
+		t.Fatalf("expected report_path %q, got %v", reportPath, state["report_path"])
+	}
+	persisted := upkeepStateLoad(root)
+	if persisted["context-check"] == nil {
+		t.Fatal("expected .reports/upkeepRuns.json to have a context-check entry")
+	}
+
+	report := getUpkeepReport(root, "context-check")
+	if report["ok"] != true || report["content"] != "# Report\n" {
+		t.Fatalf("expected report content to be served, got %v", report)
+	}
+}
+
+// TestGetUpkeepReportRejectsPathOutsideReports: a report_path that doesn't
+// live under this root's own .reports/ must be refused, even if it somehow
+// ended up in state — the containment check must not just trust the state.
+func TestGetUpkeepReportRejectsPathOutsideReports(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "not-in-reports.md")
+	os.WriteFile(outside, []byte("secret"), 0o644)
+	upkeepRuns = map[upkeepKey]map[string]any{
+		{root, "context-check"}: {"status": "done", "report_path": outside},
+	}
+	report := getUpkeepReport(root, "context-check")
+	if report["ok"] != false {
+		t.Fatalf("expected the out-of-.reports/ path to be refused, got %v", report)
 	}
 }

@@ -160,6 +160,34 @@ for tok in $(grep -oE 'var\(--col-[a-z]+\)' "$CKHTML" | sed 's/var(//;s/)//' | s
   grep -qF -- "${tok}:" "$CKHTML" || fail "canon-cockpit: cockpit.html uses ${tok} but never defines it"
 done
 
+# ── Phase 2b-iv: Upkeep view (t-7ae6) ─────────────────────────────────────────
+grep -qF 'id="nav-upkeep"' <<<"$page" || fail "canon-cockpit: missing Upkeep nav item"
+grep -qF "showView('upkeep')" <<<"$page" || fail "canon-cockpit: Upkeep nav not wired to showView"
+grep -qF 'id="view-upkeep"' <<<"$page" || fail "canon-cockpit: missing #view-upkeep section"
+grep -qF 'id="up-projrow"' <<<"$page" || fail "canon-cockpit: Upkeep missing project picker row"
+grep -qF 'id="up-grid"' <<<"$page" || fail "canon-cockpit: Upkeep missing report card grid"
+grep -qF 'id="up-detail"' <<<"$page" || fail "canon-cockpit: Upkeep missing the single report-detail panel"
+for skill in "context-check" "context-doctor" "dead-code-cleanup" "promote-learnings"; do
+  grep -qF "$skill" <<<"$page" || fail "canon-cockpit: Upkeep missing skill $skill"
+done
+for ep in "/api/upkeep/run" "/api/upkeep/status" "/api/upkeep/report"; do
+  grep -qF "$ep" <<<"$page" || fail "canon-cockpit: Upkeep should call $ep"
+done
+# t-7ae6 grill #1/#2: Agent picker only enables Claude; Pi/Copilot are visibly
+# present but disabled ("(soon)"), never silently omitted.
+grep -qF "Pi (soon)" <<<"$page" || fail "canon-cockpit: Upkeep Agent picker should show Pi disabled, not omit it"
+grep -qF "Copilot (soon)" <<<"$page" || fail "canon-cockpit: Upkeep Agent picker should show Copilot disabled, not omit it"
+# Model defaults to Haiku 4.5, Sonnet 5 is the only other option.
+grep -qF "Haiku 4.5" <<<"$page" || fail "canon-cockpit: Upkeep Model picker missing Haiku 4.5 default"
+grep -qF "Sonnet 5" <<<"$page" || fail "canon-cockpit: Upkeep Model picker missing Sonnet 5 option"
+# t-7ae6 grill #2: universal read-only — the client must never claim to write
+# to any of these shared files itself (the dispatch prompt enforces this
+# server-side via tools/upkeep-run; this just guards against a future client
+# regression that adds a direct write call).
+for forbidden in "standards/" "critique/canon-learnings.md"; do
+  grep -qE "fetch.*$forbidden" <<<"$page" && fail "canon-cockpit: Upkeep client must never write to $forbidden directly"
+done
+
 # ── Help/tour overlay (t-c5e7) ───────────────────────────────────────────────
 grep -qF 'id="help-overlay"' <<<"$page" || fail "canon-cockpit: missing Help overlay"
 grep -qF 'id="help-btn"' <<<"$page" || fail "canon-cockpit: Help button not given an id (still a stub?)"
@@ -296,4 +324,4 @@ nudge_true_count="$(grep -c "nudge:true" <<<"$page")"
 grep -qE "registerSkill\(id, *name, *proj\.path" <<<"$page" || fail "canon-cockpit: nudge Register button must reuse registerSkill(id,name,path,'sprint')"
 grep -qF "bar.remove(); v.classList.remove('has-nudge')" <<<"$page" || fail "canon-cockpit: nudge Dismiss/Register-success must remove the banner and has-nudge class"
 
-echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs; t-340d hide dotfolders by default + Show-hidden toggle; t-07c8 git relaxed to a warning + no-store HTML; t-5849 canon-styled cockpitConfirm replaces native confirm/prompt; t-5c3c soft nudge to register sprint skill on explicit project open, session-scoped dismiss, no restore-time banner storm)"
+echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iv Upkeep view — nav/view/project-picker/report-grid/single-detail-panel present, all 4 skills, Agent picker shows Pi/Copilot disabled not omitted, Model defaults Haiku 4.5, client never writes directly to standards/ or critique/canon-learnings.md; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs; t-340d hide dotfolders by default + Show-hidden toggle; t-07c8 git relaxed to a warning + no-store HTML; t-5849 canon-styled cockpitConfirm replaces native confirm/prompt; t-5c3c soft nudge to register sprint skill on explicit project open, session-scoped dismiss, no restore-time banner storm)"

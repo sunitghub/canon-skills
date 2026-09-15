@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# upkeep-run — headless, read-only dispatch of one Upkeep skill against a
+# project root, via `claude -p` (same invocation shape as sprint-headless).
+#
+# Usage: upkeep-run <skill> --root <path> [--model <id>]
+#
+# Unlike sprint-headless, this never grades a diff and never touches
+# .tickets/ — it's a standalone report generator. The wrapper prompt (built
+# here, not left to the skill's own interactive assumptions) enforces the
+# t-7ae6 grill resolutions:
+#   1. auto-answers 'Y' to the skill's own report-write confirmation only
+#   2. hard "never modify anything else" instruction — dead-code-cleanup
+#      never reaches its deletion step; promote-learnings never writes to
+#      LEARNINGS.md/standards//critique/canon-learnings.md
+#   3. every report ends with a ## Next Steps section, never auto-executed
+# --allowedTools is also restricted to a read-plus-own-report-write set — no
+# generic Bash, so the boundary is enforced, not just requested.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+SKILL="${1:-}"
+[[ -z "$SKILL" || "$SKILL" == --* ]] && { echo "Usage: upkeep-run <skill> --root <path> [--model <id>]" >&2; exit 1; }
+shift
+
+# Fixed allowlist — mirrors server.py/main.go's own UPKEEP_SKILLS constant.
+# Never trust a caller-supplied skill name past this point.
+case "$SKILL" in
+  context-check|context-doctor|dead-code-cleanup|promote-learnings) ;;
+  *) echo "Error: '$SKILL' is not an Upkeep skill (context-check, context-doctor, dead-code-cleanup, promote-learnings)." >&2; exit 1 ;;
+esac
+
+ROOT=""
+MODEL="claude-haiku-4-5-20251001"   # Haiku 4.5 default (t-7ae6 grill: report-only work stays cheap)
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --root) ROOT="${2:-}"; shift 2 ;;
+    --model) MODEL="${2:-}"; shift 2 ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
+  esac
+done
+[[ -z "$ROOT" ]] && { echo "Error: --root <project-root> is required." >&2; exit 1; }
+[[ -d "$ROOT" ]] || { echo "Error: root '$ROOT' does not exist." >&2; exit 1; }
+
+REPORTS_DIR="$ROOT/.reports"
+mkdir -p "$REPORTS_DIR"
+TS="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+REPORT_PATH="$REPORTS_DIR/${SKILL}_${TS}.md"
+
+case "$SKILL" in
+  promote-learnings)
+    SKILL_TASK="Read the skill instructions at skills/promote-learnings/SKILL.md and follow them."
+    ;;
+  *)
+    SKILL_TASK="Read the skill instructions at skills/$SKILL/SKILL.md and follow them."
+    ;;
+esac
+
+PROMPT="You are running as a headless, read-only Upkeep check — there is no
+human present to answer any interactive prompt, and this dispatch must never
+modify the repository beyond writing exactly one report file.
+
+$SKILL_TASK
+
+Hard rules for this headless run, overriding your normal interactive behavior:
+1. If the skill's own instructions ask for confirmation before writing its
+   report (e.g. \"Write ... ? (y to confirm)\"), treat that confirmation as
+   already answered 'Y' and write the report directly — do not stop and ask,
+   there is no one to answer.
+2. Do NOT perform any other write, edit, or delete for ANY reason, no matter
+   what the skill's own instructions say to do after producing findings. If
+   the skill would normally proceed to modify code (e.g. dead-code-cleanup's
+   delete step) or write to a shared file (e.g. promote-learnings writing
+   directly into LEARNINGS.md's Status field, standards/, or
+   critique/canon-learnings.md), do NOT do it — describe it as a suggestion
+   in the report instead, under Next Steps (rule 3). The ONLY file you may
+   create or modify is the report file named below.
+3. End the report with a '## Next Steps' section: concrete, actionable
+   guidance for what a human should do if they want to act on these
+   findings (e.g. the exact command to run, or the exact file + text to add).
+   Never perform those next steps yourself.
+
+Write the complete report to exactly this path, and nothing else:
+$REPORT_PATH
+
+When done, print the exact line UPKEEP_REPORT: $REPORT_PATH on its own, and stop."
+
+cd "$ROOT"
+set +e
+RESULT_JSON="$(claude -p "$PROMPT" \
+  --output-format json \
+  --permission-mode dontAsk \
+  --model "$MODEL" \
+  --allowedTools "Read" "Grep" "Glob" "LS" "Write" "Bash(git diff:*)" "Bash(git log:*)" "Bash(git status:*)" "Bash(grep:*)" "Bash(find:*)" "Bash(wc:*)")"
+INVOKE_STATUS=$?
+set -e
+
+if [[ "$INVOKE_STATUS" -ne 0 ]]; then
+  echo "Error: claude -p invocation failed (exit $INVOKE_STATUS)." >&2
+  echo "$RESULT_JSON" >&2
+  exit 1
+fi
+
+if [[ ! -f "$REPORT_PATH" ]]; then
+  echo "Error: dispatch completed but no report was written to $REPORT_PATH" >&2
+  echo "$RESULT_JSON" >&2
+  exit 1
+fi
+
+echo "UPKEEP_REPORT: $REPORT_PATH"

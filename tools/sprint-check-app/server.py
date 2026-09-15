@@ -1573,6 +1573,128 @@ def get_headless_run_state(ticket_id: str) -> dict:
             result['elapsed'] = time.time() - state['started_at']
     return result
 
+# ── Upkeep (t-7ae6): headless, read-only per-project report runner ─────────
+# Mirrors the _HEADLESS_RUNS thread+subprocess+dict shape above exactly, keyed
+# by (root, skill) instead of ticket id — the only background-job pattern in
+# this codebase, reused rather than inventing a second one.
+UPKEEP_SKILLS = ('context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings')
+UPKEEP_RUN_BIN = Path(os.environ.get('UPKEEP_RUN_BIN')
+                       or Path(__file__).resolve().parent.parent / 'upkeep-run')
+_UPKEEP_RUNS: dict[tuple, dict] = {}
+_UPKEEP_LOCK = threading.Lock()
+
+def _upkeep_state_path(root: Path) -> Path:
+    return root / '.reports' / 'upkeepRuns.json'
+
+def _upkeep_state_load(root: Path) -> dict:
+    try:
+        return json.loads(_upkeep_state_path(root).read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+
+def _upkeep_state_save(root: Path, skill: str, entry: dict) -> None:
+    p = _upkeep_state_path(root)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    state = _upkeep_state_load(root)
+    state[skill] = entry
+    try:
+        p.write_text(json.dumps(state, indent=2), encoding='utf-8')
+    except Exception:
+        pass  # best-effort — the in-memory _UPKEEP_RUNS state is authoritative for this process
+
+def _run_upkeep(root: Path, skill: str, model: str) -> None:
+    """Runs in a background thread; updates _UPKEEP_RUNS[(root, skill)] and the
+    persisted .reports/upkeepRuns.json on completion. Never touches any file
+    but the one report upkeep-run itself writes (enforced by that script's own
+    prompt + restricted --allowedTools, not just requested here)."""
+    key = (str(root), skill)
+    try:
+        proc = subprocess.Popen(
+            [str(UPKEEP_RUN_BIN), skill, '--root', str(root), '--model', model],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, cwd=root,
+        )
+        output, _ = proc.communicate()
+        exit_code = proc.returncode
+    except Exception as e:
+        output = f'Error: could not start upkeep-run: {e}'
+        exit_code = 1
+    report_path = ''
+    m = re.search(r'^UPKEEP_REPORT: (.+)$', output, re.MULTILINE)
+    if m:
+        report_path = m.group(1).strip()
+    finished_at = time.time()
+    with _UPKEEP_LOCK:
+        state = _UPKEEP_RUNS.setdefault(key, {})
+        state['status'] = 'done' if (exit_code == 0 and report_path) else 'error'
+        state['output'] = output
+        state['exit_code'] = exit_code
+        state['report_path'] = report_path
+        state['finished_at'] = finished_at
+    _upkeep_state_save(root, skill, {
+        'status': state['status'], 'report_path': report_path,
+        'finished_at': finished_at, 'model': model,
+    })
+
+def start_upkeep_run(root: Path, skill: str, model: str) -> dict:
+    """Starts a background Upkeep run unless one is already in progress for
+    this (root, skill) pair — double-spawn guard, same shape as
+    start_headless_run. Never calls get_upkeep_run_state while _UPKEEP_LOCK is
+    held (threading.Lock is not reentrant)."""
+    if skill not in UPKEEP_SKILLS:
+        return {'ok': False, 'error': f'unknown skill {skill!r}'}
+    key = (str(root), skill)
+    already_running = False
+    with _UPKEEP_LOCK:
+        existing = _UPKEEP_RUNS.get(key)
+        if existing and existing.get('status') == 'running':
+            already_running = True
+        else:
+            _UPKEEP_RUNS[key] = {'status': 'running', 'output': '', 'exit_code': None, 'started_at': time.time()}
+    if already_running:
+        return {'ok': False, 'busy': True, **get_upkeep_run_state(root, skill)}
+    threading.Thread(target=_run_upkeep, args=(root, skill, model), daemon=True).start()
+    return {'ok': True, **get_upkeep_run_state(root, skill)}
+
+def get_upkeep_run_state(root: Path, skill: str) -> dict:
+    """In-memory state if this process has ever run `skill` for `root`,
+    else falls back to the persisted .reports/upkeepRuns.json entry (survives
+    a board restart), else 'idle' (never run)."""
+    key = (str(root), skill)
+    with _UPKEEP_LOCK:
+        state = _UPKEEP_RUNS.get(key)
+        if state:
+            result = {'status': state['status'], 'exit_code': state.get('exit_code'),
+                       'report_path': state.get('report_path', ''), 'finished_at': state.get('finished_at')}
+            if state['status'] == 'running':
+                result['elapsed'] = time.time() - state['started_at']
+            return result
+    persisted = _upkeep_state_load(root).get(skill)
+    if persisted:
+        return {'status': persisted.get('status', 'idle'), 'exit_code': None,
+                'report_path': persisted.get('report_path', ''), 'finished_at': persisted.get('finished_at'),
+                'model': persisted.get('model')}
+    return {'status': 'idle', 'report_path': ''}
+
+def get_upkeep_report(root: Path, skill: str) -> dict:
+    """Serves the current report's raw markdown for `skill`, read fresh from
+    disk every call (never cached) — the report file itself is the source of
+    truth, this just resolves which one is 'current' for the (root, skill)."""
+    state = get_upkeep_run_state(root, skill)
+    report_path = state.get('report_path', '')
+    if not report_path:
+        return {'ok': False, 'error': 'no report yet'}
+    p = Path(report_path)
+    # Containment: the report must live under this root's own .reports/ dir —
+    # never trust a path merely because it round-tripped through our own state.
+    try:
+        p.resolve().relative_to((root / '.reports').resolve())
+    except (ValueError, OSError):
+        return {'ok': False, 'error': 'report path outside .reports/'}
+    try:
+        return {'ok': True, 'path': report_path, 'content': p.read_text(encoding='utf-8', errors='replace')}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
 # ── HTTP handler ──────────────────────────────────────────────────────────
 
 class Handler(BaseHTTPRequestHandler):
@@ -1736,6 +1858,26 @@ class Handler(BaseHTTPRequestHandler):
             m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)
             if m:
                 self.send_json(get_headless_run_state(m.group(1))); return
+            if path == '/api/upkeep/status':
+                q = parse_qs(parsed.query)
+                skill = q.get('skill', [''])[0]
+                if skill not in UPKEEP_SKILLS:
+                    self.send_error(400); return
+                try:
+                    eroot = effective_root(q)
+                except UnknownProject:
+                    self.send_error(400); return
+                self.send_json(get_upkeep_run_state(eroot, skill)); return
+            if path == '/api/upkeep/report':
+                q = parse_qs(parsed.query)
+                skill = q.get('skill', [''])[0]
+                if skill not in UPKEEP_SKILLS:
+                    self.send_error(400); return
+                try:
+                    eroot = effective_root(q)
+                except UnknownProject:
+                    self.send_error(400); return
+                self.send_json(get_upkeep_report(eroot, skill)); return
             m = re.match(r'^/api/worktree-lock/(t-[a-z0-9]{4})$', path)
             if m:
                 try:
@@ -1817,6 +1959,13 @@ class Handler(BaseHTTPRequestHandler):
             if not _BASE_REF_RE.match(base_ref):
                 self.send_error(400); return
             self.send_json(start_headless_run(m.group(1), base_ref)); return
+
+        if path == '/api/upkeep/run':
+            skill = str(payload.get('skill', ''))
+            if skill not in UPKEEP_SKILLS:
+                self.send_error(400); return
+            model = str(payload.get('model', '')) or 'claude-haiku-4-5-20251001'
+            self.send_json(start_upkeep_run(eroot, skill, model)); return
 
         if path == '/api/ci-workflow':
             self.send_json(write_ci_workflow()); return

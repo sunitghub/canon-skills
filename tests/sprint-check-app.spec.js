@@ -4926,3 +4926,108 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     } finally { proc.kill('SIGKILL'); }
   });
 });
+
+test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
+  // These test the shell page (tools/sprint-check-app/cockpit.html, served at
+  // /cockpit by THIS board's own server), not app.html and not the separate
+  // cockpit-daemon binary's own same-named cockpit.html served at a daemon addr.
+  const PROJECTS = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-15' }];
+
+  async function stubUpkeep(page, { status = { status: 'idle', report_path: '' }, report = null } = {}) {
+    await page.route('**/api/projects', route => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS),
+    }));
+    await page.route('**/api/upkeep/status*', route => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(status),
+    }));
+    if (report) {
+      await page.route('**/api/upkeep/report*', route => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify(report),
+      }));
+    }
+  }
+
+  test('Upkeep nav item is present and switches to its own view', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('#nav-upkeep')).toContainText('Upkeep');
+    await page.locator('#nav-upkeep').click();
+    await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
+    await expect(page.locator('#view-projects')).not.toHaveClass(/active/);
+    await expect(page.locator('#nav-upkeep')).toHaveClass(/active/);
+    await expect(page.locator('#nav-projects')).not.toHaveClass(/active/);
+    // All 4 skills render as cards.
+    for (const id of ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings']) {
+      await expect(page.locator('#up-card-' + id)).toBeVisible();
+    }
+  });
+
+  test('clicking a Projects tab clears the Upkeep nav active state (t-5dc2 3-way switch)', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-upkeep').click();
+    await expect(page.locator('#nav-upkeep')).toHaveClass(/active/);
+    await page.locator('#nav-projects').click();
+    await expect(page.locator('#nav-upkeep')).not.toHaveClass(/active/);
+    await expect(page.locator('#nav-projects')).toHaveClass(/active/);
+  });
+
+  test('clicking Run posts the project as a URL query param, not just the JSON body (t-7ae6 live-caught bug)', async ({ page }) => {
+    await stubUpkeep(page);
+    let capturedUrl = '';
+    await page.route('**/api/upkeep/run*', route => {
+      capturedUrl = route.request().url();
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: 'running' }) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-upkeep').click();
+    await page.locator('#up-card-context-check button:has-text("Run")').click();
+    await expect(page.locator('#cc-ok')).toBeVisible();
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => capturedUrl).toContain('project=proj-a');
+  });
+
+  test('a running skill disables its Agent/Model selects and Run button, and polling clears it', async ({ page }) => {
+    let pollCount = 0;
+    await page.route('**/api/projects', route => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS),
+    }));
+    await page.route('**/api/upkeep/status*', route => {
+      pollCount++;
+      const running = pollCount <= 1; // first read: running; poll tick: done
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify(running
+          ? { status: 'running', report_path: '', elapsed: 1 }
+          : { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 }),
+      });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-upkeep').click();
+    await expect(page.locator('#up-card-context-check .up-status.run')).toBeVisible();
+    await expect(page.locator('#up-card-context-check .rc-select').first()).toBeDisabled();
+    await expect(page.locator('#up-card-context-check')).toContainText('locked while running');
+    // Poll interval is 3s in the client; wait long enough for one tick to land.
+    await expect(page.locator('#up-card-context-check .up-status.ok, #up-card-context-check .up-status.run')).toHaveCount(1, { timeout: 6000 });
+  });
+
+  test('View report renders findings as amber callouts and bold text, read from the report endpoint', async ({ page }) => {
+    await stubUpkeep(page, {
+      status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 },
+      report: { ok: true, path: '/tmp/proj-a/.reports/context-check_x.md',
+        content: '# Report\n\n**Summary:** all clear.\n\n## Findings\n\n- `AGENTS.md:1` a finding.\n\n## Next Steps\n\nDo the thing.\n' },
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-upkeep').click();
+    await page.locator('#up-card-context-check button:has-text("View report")').click();
+    await expect(page.locator('#up-detail')).toHaveClass(/open/);
+    await expect(page.locator('#up-rp-body strong')).toContainText('Summary:');
+    await expect(page.locator('#up-rp-body ul.up-findings li')).toContainText('AGENTS.md:1');
+    await expect(page.locator('#up-rp-body')).toContainText('Next Steps');
+  });
+});
