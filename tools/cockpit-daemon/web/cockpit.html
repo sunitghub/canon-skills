@@ -221,7 +221,18 @@
       // (agent-agnostic; pi's full-screen TUI never yields a clean marker line
       // the claude-tuned parser survives), or on the fallback. We just trigger
       // it and end on the "saved" SSE frame (handled in attachStream).
-      fetch("/session/"+session+"/save-and-end", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});
+      // A non-OK response (410: the daemon already saw the agent exit, e.g. it
+      // crashed on launch before this Save & End was even clicked) means there
+      // is no live agent to write HANDOFF — tell the parent we're done right
+      // away instead of leaving it to spin for the full save-fallback + its own
+      // 90s client-side timeout waiting for a marker that will never come.
+      fetch("/session/"+session+"/save-and-end", { method:"POST", headers: authHeaders(sessTok) })
+        .then(function(r){
+          if(!r.ok){
+            try{ window.parent.postMessage({ source: "canon-cockpit", type: "ended" }, "*"); }catch(e){}
+          }
+        })
+        .catch(function(){});
     } else if(d.type === "force-end" && session){
       pendingMarker = null;
       kill();
@@ -489,7 +500,21 @@
           if(st === "needs-you") setStatus("needsyou","needs you · "+activeTicket);
           else setStatus("running","running · "+activeTicket);
         }
-        else if(ev==="exit"){ setStatus("done","finished"); document.getElementById("startBtn").disabled = false; document.getElementById("killBtn").disabled = true; }
+        else if(ev==="exit"){
+          setStatus("done","finished");
+          document.getElementById("startBtn").disabled = false;
+          document.getElementById("killBtn").disabled = true;
+          // A Save & End in flight needs the parent told we're done here too —
+          // the daemon's own save-fallback force-kills without ever finding the
+          // marker/file-settle (saveAndEnd's deadline.C branch calls killSession
+          // directly, never endSaved, so no "saved" frame goes out) — otherwise
+          // the leave-confirm modal only recovers via its own separate 90s
+          // client-side timer instead of reacting the moment the daemon ends.
+          // The parent (app.html) only acts on this when a save/end is actually
+          // in flight (cockpitState._onEnded is null otherwise), so posting it
+          // unconditionally on every natural exit is harmless.
+          try{ window.parent.postMessage({ source: "canon-cockpit", type: "ended" }, "*"); }catch(e){}
+        }
       }
     }
   }
