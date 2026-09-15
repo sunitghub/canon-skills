@@ -471,6 +471,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, cockpitRestart(boolValue(payload["force"])))
 		return
 	}
+	if path == "/api/cockpit-stop" {
+		sendJSON(w, cockpitStop(boolValue(payload["force"])))
+		return
+	}
 	if path == "/api/worktrees" {
 		branch := stringValue(payload, "branch", "")
 		if !validBranchName(branch) {
@@ -2105,33 +2109,59 @@ func readDaemonPID() int {
 	return n
 }
 
+// killDaemonPID is the cross-platform pid-kill shared by cockpitRestart/
+// cockpitStop (t-44d9/t-a30c): unix SIGTERM (the daemon's graceful handler
+// reaps agent children); Windows `taskkill /T` (tree-kill reaps children
+// directly). Waits for it to exit (its handler clears daemon.json / stops
+// answering). OS process control only, never the boot token (t-ddc8 preserved).
+func killDaemonPID(pid int) {
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
+	} else {
+		_ = exec.Command("kill", "-TERM", strconv.Itoa(pid)).Run()
+	}
+	for i := 0; i < 50; i++ {
+		if _, ok := discoverCockpitAddr(); !ok {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 // cockpitRestart force-restarts the cockpit daemon (t-44d9): warn (busy) when
-// sessions are live unless force, then cross-platform pid-kill — unix SIGTERM
-// (the daemon's graceful handler reaps agent children); Windows `taskkill /T`
-// (tree-kill reaps children directly) — and relaunch via ensureCockpit. Uses OS
-// process control, never the boot token (t-ddc8 preserved).
+// sessions are live unless force, then killDaemonPID and relaunch via
+// ensureCockpit.
 func cockpitRestart(force bool) map[string]any {
 	if n := len(cockpitSessions()); n > 0 && !force {
 		return map[string]any{"ok": false, "busy": true, "sessions": n}
 	}
 	if pid := readDaemonPID(); pid > 0 {
-		if runtime.GOOS == "windows" {
-			_ = exec.Command("taskkill", "/PID", strconv.Itoa(pid), "/T", "/F").Run()
-		} else {
-			_ = exec.Command("kill", "-TERM", strconv.Itoa(pid)).Run()
-		}
-		for i := 0; i < 50; i++ {
-			if _, ok := discoverCockpitAddr(); !ok {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
+		killDaemonPID(pid)
 	}
 	out := ensureCockpit()
 	// Honest signal: only "restarted" if a fresh daemon actually launched — if the
 	// kill didn't take and ensureCockpit reused the live one, say so (reviewer t-44d9).
 	out["restarted"] = boolValue(out["launched"])
 	return out
+}
+
+// cockpitStop stops the cockpit daemon WITHOUT relaunching it (t-a30c) — saves
+// a manual Ctrl-C in the terminal it was started from. Same busy-confirm gate
+// and pid-kill as cockpitRestart, minus the ensureCockpit() relaunch. The
+// daemon still comes back on demand next time a cockpit tab is opened
+// (ensureCockpit), so this is not a permanent kill switch. Never touches the
+// daemon's token-gated /shutdown — OS process control only (t-ddc8).
+func cockpitStop(force bool) map[string]any {
+	if n := len(cockpitSessions()); n > 0 && !force {
+		return map[string]any{"ok": false, "busy": true, "sessions": n}
+	}
+	pid := readDaemonPID()
+	if pid <= 0 {
+		return map[string]any{"ok": true, "stopped": false, "running": false}
+	}
+	killDaemonPID(pid)
+	_, running := discoverCockpitAddr()
+	return map[string]any{"ok": true, "stopped": !running, "running": running}
 }
 
 // cockpitBinaryMtime is the on-disk daemon binary's mtime (unix) — the "latest"

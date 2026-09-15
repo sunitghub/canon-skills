@@ -1365,38 +1365,60 @@ def _read_daemon_pid():
     except Exception:
         return None
 
+def _kill_daemon_pid(pid: int) -> None:
+    """Cross-platform pid-kill shared by cockpit_restart/cockpit_stop (t-44d9/t-a30c):
+    unix SIGTERM (the daemon's graceful handler reaps agent children); Windows
+    `taskkill /T` (tree-kill reaps children directly). Waits for it to exit
+    (its handler clears daemon.json / stops answering). OS process control
+    only, never the boot token (t-ddc8 preserved)."""
+    try:
+        if os.name == 'nt':
+            subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(['kill', '-TERM', str(pid)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+    for _ in range(50):
+        _, ok = _discover_cockpit_addr()
+        if not ok:
+            break
+        time.sleep(0.1)
+
 def cockpit_restart(force: bool = False) -> dict:
     """t-44d9: force-restart the cockpit daemon. Warns (busy) when sessions are
-    live unless force. Cross-platform pid-kill — unix SIGTERM (the daemon's
-    graceful handler reaps agent children); Windows `taskkill /T` (tree-kill
-    reaps children directly) — then relaunch via ensure_cockpit. Uses OS process
-    control, never the boot token (t-ddc8 preserved)."""
+    live unless force, then pid-kills (_kill_daemon_pid) and relaunches via
+    ensure_cockpit."""
     n = len(cockpit_sessions())
     if n > 0 and not force:
         return {'ok': False, 'busy': True, 'sessions': n}
     pid = _read_daemon_pid()
     if pid:
-        try:
-            if os.name == 'nt':
-                subprocess.run(['taskkill', '/PID', str(pid), '/T', '/F'],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            else:
-                subprocess.run(['kill', '-TERM', str(pid)],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-        # Wait for it to exit (its handler clears daemon.json / stops answering).
-        for _ in range(50):
-            _, ok = _discover_cockpit_addr()
-            if not ok:
-                break
-            time.sleep(0.1)
+        _kill_daemon_pid(pid)
     # ensure_cockpit clears any stale daemon.json and launches a fresh daemon.
     out = ensure_cockpit()
     # Honest signal: only "restarted" if a NEW daemon was actually launched — if
     # the kill didn't take and ensure_cockpit reused the live one, say so (reviewer t-44d9).
     out['restarted'] = bool(out.get('launched'))
     return out
+
+def cockpit_stop(force: bool = False) -> dict:
+    """t-a30c: stop the cockpit daemon WITHOUT relaunching it — saves a manual
+    Ctrl-C in the terminal it was started from. Same busy-confirm gate and
+    pid-kill as cockpit_restart, minus the ensure_cockpit() relaunch. The
+    daemon still comes back on demand next time a cockpit tab is opened
+    (ensure_cockpit), so this is not a permanent kill switch. Never touches
+    the daemon's token-gated /shutdown — OS process control only (t-ddc8)."""
+    n = len(cockpit_sessions())
+    if n > 0 and not force:
+        return {'ok': False, 'busy': True, 'sessions': n}
+    pid = _read_daemon_pid()
+    if not pid:
+        return {'ok': True, 'stopped': False, 'running': False}
+    _kill_daemon_pid(pid)
+    _, running = _discover_cockpit_addr()
+    return {'ok': True, 'stopped': not running, 'running': running}
 
 # t-74d6: detect a version-drifted (stale) running daemon. The board reuses a
 # detached daemon by liveness alone (see ensure_cockpit), so after the binary is
@@ -1803,6 +1825,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(ensure_cockpit()); return
         if path == '/api/cockpit-restart':
             self.send_json(cockpit_restart(bool(payload.get('force', False)))); return
+        if path == '/api/cockpit-stop':
+            self.send_json(cockpit_stop(bool(payload.get('force', False)))); return
 
         if path == '/api/worktrees':
             branch = str(payload.get('branch', ''))

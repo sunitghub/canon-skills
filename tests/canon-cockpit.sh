@@ -131,17 +131,24 @@ grep -qF 'id="ad-shell-uptime"' <<<"$page" || fail "canon-cockpit: Admin missing
 grep -qF "Cockpit Uptime" <<<"$page" || fail "canon-cockpit: Admin missing Cockpit Uptime label (t-ade9)"
 grep -qF "shell_uptime_secs" <<<"$page" || fail "canon-cockpit: Admin should read shell_uptime_secs from /api/cockpit (t-ade9)"
 grep -qF 'id="ad-restart"' <<<"$page" || fail "canon-cockpit: Admin missing Restart button"
+grep -qF 'id="ad-stop"' <<<"$page" || fail "canon-cockpit: Admin missing Stop button (t-a30c)"
 for tile in ad-tile-projects ad-tile-agents ad-tile-active; do
   grep -qF "id=\"$tile\"" <<<"$page" || fail "canon-cockpit: Admin missing tile $tile"
 done
 grep -qF "Active projects" <<<"$page" || fail "canon-cockpit: Admin third tile should be 'Active projects'"
 grep -qF 'id="ad-sessions"' <<<"$page" || fail "canon-cockpit: Admin missing sessions list"
 grep -qF "/api/cockpit-restart" <<<"$page" || fail "canon-cockpit: Admin Restart not wired to /api/cockpit-restart"
+grep -qF "/api/cockpit-stop" <<<"$page" || fail "canon-cockpit: Admin Stop not wired to /api/cockpit-stop (t-a30c)"
 grep -qF "running_build" <<<"$page" || fail "canon-cockpit: Admin uptime should read cockpit.running_build.uptime_secs"
-# Admin must NOT introduce a NEW /api route — only reuse existing ones
-for ep in "/api/cockpit" "/api/cockpit-sessions" "/api/cockpit-restart" "/api/version" "/api/projects"; do
+# t-a30c: Admin's Stop is a genuinely new capability (stop WITHOUT relaunch,
+# distinct from Restart's kill+relaunch) — /api/cockpit-stop is a deliberate
+# addition here, not a violation of Admin reusing existing endpoints below.
+for ep in "/api/cockpit" "/api/cockpit-sessions" "/api/cockpit-restart" "/api/cockpit-stop" "/api/version" "/api/projects"; do
   grep -qF "$ep" <<<"$page" || fail "canon-cockpit: Admin should use existing endpoint $ep"
 done
+# Stop button must never call the daemon's token-gated /shutdown or reference
+# a boot token — OS pid-kill only, preserving the t-ddc8 boundary (t-a30c).
+grep -qF "/shutdown" <<<"$page" && fail "canon-cockpit: Admin Stop must not call the daemon's /shutdown (t-ddc8)"
 
 # daemon /version exposes uptime_secs (t-5dc2): assert the board passes it through
 grep -qF "uptime_secs" <<<"$page" || fail "canon-cockpit: cockpit.html does not read uptime_secs"
