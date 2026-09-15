@@ -140,6 +140,7 @@ if command -v go >/dev/null 2>&1; then
   SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"
   GOEXE="$(go env GOEXE)"
   ( cd "$REPO_ROOT/tools/cockpit-daemon" && go build \
+      -buildvcs=false \
       -ldflags "-X main.version=$SEMVER -X main.commit=$CDV" \
       -o "$REPO_ROOT/tools/cockpit-daemon/cockpit-daemon$GOEXE" . )
   echo "dist: cockpit-daemon$GOEXE (native) rebuilt [v$SEMVER ($CDV)]"
