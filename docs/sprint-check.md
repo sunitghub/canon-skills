@@ -53,7 +53,11 @@ Click any commit in the sidebar to see what changed and which ticket it likely b
 
 `+ New` opens a form pre-filled with a structured template. The title suggests a type automatically — feature, task, bug, chore, or epic — while leaving type, priority, and description editable before `Create`. The ticket lands in `.tickets/<id>/ticket.md`, immediately visible to your agent.
 
-Selecting **Chore** reveals an **Upkeep** multi-select (`context-check`, `context-doctor`, `dead-code-cleanup`); the chosen skills are written to the ticket's frontmatter as `skills: <csv>` (or via `tkt create --skills a,b`), and `sprint start` on that ticket runs each selected skill as the sprint's work. The close tier follows what actually changed — a run whose output is only reports/`.md` takes the light close, while a `dead-code-cleanup` that deletes code is a normal-tier close with the binding evaluator; the "maintenance" label never skips the evaluator.
+A ticket can also carry maintenance skills via `tkt create --skills a,b` (or by hand-setting `skills: <csv>` in `ticket.md`'s frontmatter); `sprint start` on that ticket runs each selected skill as the sprint's work. The close tier follows what actually changed — a run whose output is only reports/`.md` takes the light close, while a `dead-code-cleanup` that deletes code is a normal-tier close with the binding evaluator; the "maintenance" label never skips the evaluator. For a quick, ticket-free check instead, see **Upkeep Dashboard** below.
+
+## Upkeep Dashboard
+
+The **Upkeep** sidebar tab runs `context-check`, `context-doctor`, `dead-code-cleanup`, or `promote-learnings` headlessly against any registered project — no ticket, no sprint gate, always read-only (a run only ever writes its own `.reports/<skill>_<timestamp>.md`; it never modifies or deletes anything else, even when `dead-code-cleanup` finds a confirmed-dead symbol). Pick a project, pick a model (Haiku 4.5 default, Sonnet 5 available), click **Run** — a confirmation dialog names the model and notes the dispatch is a real LLM call that will incur API cost. Each report ends with its own **Next Steps**: the exact follow-up command or file edit a human would run to act on the findings, never auto-executed.
 
 ## Ticket Completeness
 
