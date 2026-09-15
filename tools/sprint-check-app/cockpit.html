@@ -142,7 +142,7 @@
   .rc-select:disabled{opacity:.45;cursor:not-allowed}
   .rc-config-note{font-size:10.5px;color:var(--text-dim);margin-left:2px}
   .rc-actions{display:flex;gap:8px;margin-top:auto}
-  .btn.wide{flex:1;justify-content:center}
+  .rc-actions .btn{padding:7px 15px;font-size:12.5px}
   .up-detail{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden}
   .up-detail-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;cursor:pointer;user-select:none}
   .up-detail-eyebrow{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:3px}
@@ -775,9 +775,9 @@
     const modelSel = `<select class="rc-select" id="up-model-${s.id}" title="Model"${running?' disabled':''}>`
       + '<option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option><option value="claude-sonnet-5">Sonnet 5</option></select>';
     const runBtn = st.status==='idle' || !st.report_path
-      ? `<button class="btn primary wide" onclick="upRun('${s.id}')"${running?' disabled':''}>&#9654; Run</button>`
-      : `<button class="btn wide" onclick="upRun('${s.id}')"${running?' disabled':''}>&#8635; Run again</button>
-         <button class="btn primary wide" onclick="upViewReport('${s.id}')">View report</button>`;
+      ? `<button class="btn primary" onclick="upRun('${s.id}')"${running?' disabled':''}>&#9654; Run</button>`
+      : `<button class="btn" onclick="upRun('${s.id}')"${running?' disabled':''}>&#8635; Run again</button>
+         <button class="btn primary" onclick="upViewReport('${s.id}')">View report</button>`;
     return `<div class="rcard" id="up-card-${s.id}">
       <div class="rc-when mono">${esc(whenLine)}</div>
       <div class="rc-top">
