@@ -13,8 +13,12 @@
 #      never reaches its deletion step; promote-learnings never writes to
 #      LEARNINGS.md/standards//critique/canon-learnings.md
 #   3. every report ends with a ## Next Steps section, never auto-executed
-# --allowedTools is also restricted to a read-plus-own-report-write set — no
-# generic Bash, so the boundary is enforced, not just requested.
+# --allowedTools is also restricted to a read-plus-write set — no Edit, no
+# generic Bash, no delete-capable command, so destructive actions are
+# tool-level blocked, not just requested. Write itself is NOT path-scoped
+# (Claude Code's --allowedTools has no path-glob form for Write — verified
+# live: `Write(<path>/**)` silently denies every write, including inside the
+# allowed path) — the one-report-file constraint stays prompt-enforced only.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
