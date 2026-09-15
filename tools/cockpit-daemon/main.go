@@ -1204,6 +1204,12 @@ func (s *server) saveAndEnd(se *session) {
 				newOutput = newOutput[sentAt:]
 			} // else: buf was trimmed to max size since sentAt — scan it all, no valid offset
 			found := containsMarkerLine(newOutput, cockpitSaveMarker)
+			// t-af51: an unauthenticated copilot session idles forever at its own
+			// prompt — never exits, never touches a watched file, never emits the
+			// marker — so without this it always waits out the full saveFallback.
+			// Scoped to copilot only: never risk a false-positive short-circuit on
+			// claude/pi output that happens to contain similar words.
+			stuckUnauthenticated := se.agent == "copilot" && copilotNeedsLogin(newOutput)
 			exited := se.exited
 			// A real human POST /input during the wait (not PTY output/echo,
 			// which could just be the agent talking to itself) means someone
@@ -1219,6 +1225,10 @@ func (s *server) saveAndEnd(se *session) {
 				return // already gone naturally — nothing left to kill
 			}
 			if humanReturned {
+				return
+			}
+			if stuckUnauthenticated {
+				s.killSession(se) // never salvageable — don't wait out saveFallback
 				return
 			}
 			if found {
@@ -1325,6 +1335,20 @@ func containsMarkerLine(buf []byte, marker string) bool {
 		}
 	}
 	return false
+}
+
+// copilotNeedsLogin detects copilot's stable "not logged in" output (t-af51):
+// unlike a resume-id ghost session (t-f15b), there is no proactive pre-spawn
+// check for copilot's auth state, so PTY-output matching is the only signal
+// available. An unauthenticated copilot process never exits and never touches
+// a watched file or emits the save marker — it just idles at its own prompt —
+// so without this check saveAndEnd always waits out the full saveFallback.
+// Substring (not whole-line) match, since copilot's message may render inside
+// a decorated/boxed line rather than a bare one; two independently-worded
+// substrings so a minor CLI copy change doesn't fully break detection.
+func copilotNeedsLogin(buf []byte) bool {
+	clean := ansiCSIRe.ReplaceAllString(string(buf), "")
+	return strings.Contains(clean, "You must be logged in") || strings.Contains(clean, "Please use /login")
 }
 
 // ── preview pane (t-b19b) ────────────────────────────────────────────────
