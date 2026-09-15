@@ -1605,8 +1605,10 @@ def _upkeep_state_save(root: Path, skill: str, entry: dict) -> None:
 def _run_upkeep(root: Path, skill: str, model: str) -> None:
     """Runs in a background thread; updates _UPKEEP_RUNS[(root, skill)] and the
     persisted .reports/upkeepRuns.json on completion. Never touches any file
-    but the one report upkeep-run itself writes (enforced by that script's own
-    prompt + restricted --allowedTools, not just requested here)."""
+    but the one report upkeep-run itself writes — destructive actions (delete,
+    generic Bash) are tool-blocked via that script's own --allowedTools, but
+    the single-report-file constraint itself is prompt-enforced only (Claude
+    Code's --allowedTools has no path-glob form for Write)."""
     key = (str(root), skill)
     try:
         proc = subprocess.Popen(
