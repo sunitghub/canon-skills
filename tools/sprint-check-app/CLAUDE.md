@@ -40,3 +40,5 @@ Single-file app (`app.html`) served by a Python stdlib HTTP server (`server.py`)
 - `GET /api/handoff`, `/api/git`, `/api/why?file=<path>` — sidebar data
 
 Per-ticket doc tabs (Description/Decisions/Acceptance/Plan/...) are **generated generically** from any `*.md` file in `.tickets/<id>/` except `ticket.md` — the tab name is just the filename title-cased (`server.py:332`'s `_doc_name`, `sprint-check-go/main.go:534` parity). There is no special-cased "Decisions" (or any other) tab — writing a new `.tickets/<id>/foo-bar.md` file automatically produces a "Foo Bar" tab with zero board code changes (t-022f).
+
+`cockpit.html`'s reusable `cockpitConfirm()` dialog (`#cconfirm`) has exactly one markup instance, always wrapped in `.cmodal` — a `.cmodal`-scoped CSS rule applies to it too, not just the close-tab warning modal it looks like it's scoped for. Check DOM nesting before assuming a `.cmodal`-scoped rule doesn't reach `#cc-ok`/`#cc-cancel` (t-a30c).
