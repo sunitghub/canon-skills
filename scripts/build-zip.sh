@@ -125,3 +125,24 @@ if command -v go >/dev/null 2>&1; then
 else
   echo "dist: cockpit-daemon-win.exe skipped (go absent)"
 fi
+
+# ── Binary: tools/cockpit-daemon/cockpit-daemon (native host build) ────────
+# t-af51 follow-up: server.py's _resolve_cockpit_daemon() runs THIS binary
+# directly on macOS/Linux (the Windows .exe above is only ever resolved on a
+# Windows host) — without a stamped rebuild here, a plain `go build` leaves
+# main.version/main.commit at their zero-value "dev" default, so the Admin
+# Versions panel never shows a real build id for a non-Windows dev machine.
+# Gitignored (tools/cockpit-daemon/.gitignore) — native binaries aren't
+# portable across platforms/architectures, so this stays local-only, unlike
+# the committed cross-compiled Windows exe above.
+if command -v go >/dev/null 2>&1; then
+  CDV="$(git -C "$REPO_ROOT" log -1 --format=%h -- tools/cockpit-daemon 2>/dev/null || echo dev)"
+  SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"
+  GOEXE="$(go env GOEXE)"
+  ( cd "$REPO_ROOT/tools/cockpit-daemon" && go build \
+      -ldflags "-X main.version=$SEMVER -X main.commit=$CDV" \
+      -o "$REPO_ROOT/tools/cockpit-daemon/cockpit-daemon$GOEXE" . )
+  echo "dist: cockpit-daemon$GOEXE (native) rebuilt [v$SEMVER ($CDV)]"
+else
+  echo "dist: cockpit-daemon (native) skipped (go absent)"
+fi
