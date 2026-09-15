@@ -40,5 +40,3 @@ Vulnerability-Policy.md
 # canon-gate.yml written by a headless-CI-gate test run against this example
 # project — a test artifact, never a real workflow for the example itself.
 examples/restaurant-bill-split/.github/
-/.claude/skills/
-/.agents/skills/
