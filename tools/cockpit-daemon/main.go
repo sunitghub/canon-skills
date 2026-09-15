@@ -107,10 +107,10 @@ type session struct {
 	previewToken string
 	pty          pty.Pty
 	cmd          *pty.Cmd
-	hookDir      string // daemon-owned ephemeral --settings dir; removed when the session ends
-	cwd          string // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
-	projectRoot  string // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
-	agent        string // t-391a: agent kind ("claude"/"pi") for the /sessions listing
+	hookDir      string    // daemon-owned ephemeral --settings dir; removed when the session ends
+	cwd          string    // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
+	projectRoot  string    // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
+	agent        string    // t-391a: agent kind ("claude"/"pi") for the /sessions listing
 	started      time.Time // t-391a: spawn time for the /sessions listing
 
 	mu            sync.Mutex
@@ -269,9 +269,12 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 		if b, err := os.ReadFile(filepath.Join(s.ticketsDir(), ticket, ".cockpit-agent")); err == nil {
 			if k, ok := agentKind(strings.TrimSpace(string(b))); ok {
 				agentDefault = k
-				if k == "pi" {
+				switch k {
+				case "pi":
 					agentHint = "Last used: Pi \u00b7 model: pi default"
-				} else {
+				case "copilot":
+					agentHint = "Last used: Copilot CLI \u00b7 model: " + agentDisplayModel(s.gateModel(ticket))
+				default:
 					agentHint = "Last used: Claude Code \u00b7 model: " + agentDisplayModel(s.gateModel(ticket))
 				}
 			}
@@ -470,29 +473,38 @@ func taskkillTreeArgs(pid int) []string {
 }
 
 // agentKind normalizes and validates the client-supplied agent choice for the
-// cockpit (t-0d67). "" defaults to claude (back-compatible). Only claude and pi
-// are allowed — the daemon must never resolve an arbitrary client-supplied
-// program, so an unknown value is rejected (ok=false → handleStart 400s).
+// cockpit (t-0d67; copilot added t-66b2). "" defaults to claude (back-compatible).
+// Only claude, pi, and copilot are allowed — the daemon must never resolve an
+// arbitrary client-supplied program, so an unknown value is rejected (ok=false →
+// handleStart 400s).
 func agentKind(a string) (string, bool) {
 	switch a {
 	case "", "claude":
 		return "claude", true
 	case "pi":
 		return "pi", true
+	case "copilot":
+		return "copilot", true
 	default:
 		return "", false
 	}
 }
 
 // agentSpawnArgs builds the PTY command args (after the program) for the chosen
-// agent (t-0d67). claude is byte-identical to the pre-t-0d67 argv:
-// [--model <m>] [--settings <path>] then (--resume <id>) or (--session-id <id>
-// "sprint start <ticket>"). pi uses documented flags only (option B): a positional
-// "sprint start <ticket>" for a fresh start, and `-c` (continue most recent
-// session in the cwd) when the ticket is already in_progress (a resume). pi takes
-// no claude-only --settings/--session-id/--model (no shell hooks; needs-you is a
-// Phase-2 pi extension). Pure/side-effect-free so it is unit-testable on any host.
-func agentSpawnArgs(kind, ticket string, resuming bool, claudeSessionID, gateModel, settingsPath string) []string {
+// agent (t-0d67; copilot added t-66b2). claude is byte-identical to the
+// pre-t-0d67 argv: [--model <m>] [--settings <path>] then (--resume <id>) or
+// (--session-id <id> "sprint start <ticket>"). pi uses documented flags only
+// (option B): a positional "sprint start <ticket>" for a fresh start, and `-c`
+// (continue most recent session in the cwd) when the ticket is already
+// in_progress (a resume) — no claude-only --settings/--session-id/--model (no
+// shell hooks; needs-you is a Phase-2 pi extension). copilot mirrors claude's
+// optional-flag shape (verified against `copilot --help`): [--model <m>] then
+// (--resume=<id>) or (--session-id <id> "sprint start <ticket>") — no
+// --settings equivalent (copilot hooks are file-configured, not per-invocation,
+// and it has no Notification-hook-equivalent event regardless; needs-you falls
+// back to the same PTY-quiescence path pi already uses). Pure/side-effect-free
+// so it is unit-testable on any host.
+func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, settingsPath string) []string {
 	prompt := "sprint start " + ticket
 	if kind == "pi" {
 		if resuming {
@@ -500,6 +512,8 @@ func agentSpawnArgs(kind, ticket string, resuming bool, claudeSessionID, gateMod
 		}
 		return []string{prompt}
 	}
+	// claude and copilot share this shape; only --settings (claude-only) and the
+	// --resume flag's syntax (space-separated vs. copilot's --resume=<id>) differ.
 	var args []string
 	if gateModel != "" {
 		args = append(args, "--model", gateModel)
@@ -507,10 +521,13 @@ func agentSpawnArgs(kind, ticket string, resuming bool, claudeSessionID, gateMod
 	if settingsPath != "" {
 		args = append(args, "--settings", settingsPath)
 	}
-	if resuming {
-		args = append(args, "--resume", claudeSessionID)
-	} else {
-		args = append(args, "--session-id", claudeSessionID, prompt)
+	switch {
+	case !resuming:
+		args = append(args, "--session-id", sessionID, prompt)
+	case kind == "copilot":
+		args = append(args, "--resume="+sessionID)
+	default:
+		args = append(args, "--resume", sessionID)
 	}
 	return args
 }
@@ -565,14 +582,21 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	var hookDir string
 	// t-0d67: agent-aware spawn. claude keeps its exact pre-t-0d67 argv (--model,
 	// --settings Notification hook, --session-id/--resume). pi uses documented
-	// flags only and no shell hooks.
+	// flags only and no shell hooks. copilot (t-66b2) mirrors claude's argv shape
+	// but has no --settings equivalent (no Notification-hook-equivalent event
+	// exists to wire up regardless — see resolveCopilotSessionIDIn/agentSpawnArgs).
 	program := s.cfg.sprintBin // claude default / COCKPIT_SPRINT_BIN override
-	if kind == "pi" {
+	switch kind {
+	case "pi":
 		program = envOr("COCKPIT_PI_BIN", "pi")
 		// Resume (pi -c) when the ticket is already in_progress; else a fresh
 		// positional "sprint start <ticket>". Option B — see agentSpawnArgs.
 		args = agentSpawnArgs("pi", ticket, s.ticketStatusIn(projectRoot, ticket) == "in_progress", "", "", "")
-	} else {
+	case "copilot":
+		program = envOr("COCKPIT_COPILOT_BIN", "copilot")
+		copilotSessionID, resuming := s.resolveCopilotSessionIDIn(projectRoot, ticket)
+		args = agentSpawnArgs("copilot", ticket, resuming, copilotSessionID, s.gateModelIn(projectRoot, ticket), "")
+	default:
 		// The Notification hook goes in via --settings, which loads ADDITIONAL
 		// settings (verified: the project's own permissions.ask rules still fire), so
 		// the daemon never writes into the target project. Losing the hook costs the
@@ -1725,6 +1749,29 @@ func (s *server) resolveClaudeSessionIDIn(root, ticket string) (id string, resum
 		if b, err := os.ReadFile(idPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
 				return existing, claudeConversationExists(existing)
+			}
+		}
+	}
+	id = newUUIDv4()
+	_ = os.WriteFile(idPath, []byte(id+"\n"), 0o600)
+	return id, false
+}
+
+// resolveCopilotSessionIDIn mints/persists a session id for copilot (t-66b2),
+// scoped to an arbitrary project root. Deliberately its own file
+// (.cockpit-copilot-session-id), not claude's .cockpit-session-id — sharing
+// would let a ticket that switched agents hand copilot a UUID claude minted
+// (or vice versa), which either agent's --resume/--session-id would mishandle.
+// Resume signal is the ticket's own in_progress status only, no filesystem
+// existence check against a session store (copilot's store isn't
+// ~/.claude/projects/*, so claudeConversationExists doesn't apply here — same
+// simpler signal pi's resume already uses).
+func (s *server) resolveCopilotSessionIDIn(root, ticket string) (id string, resuming bool) {
+	idPath := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-copilot-session-id")
+	if s.ticketStatusIn(root, ticket) == "in_progress" {
+		if b, err := os.ReadFile(idPath); err == nil {
+			if existing := strings.TrimSpace(string(b)); existing != "" {
+				return existing, true
 			}
 		}
 	}

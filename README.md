@@ -132,7 +132,7 @@ The distinction that matters: context files inject knowledge but gate nothing, a
 
 [![The Cockpit landing — every registered project as a card, opened as tabs side by side with a live open-project count.](meta/screenshots/cockpit-projects.png)](docs/sprint-check.md)
 
-- **Run the agent in the board.** Pick a ticket, choose the agent — **Claude Code** or **Pi** — and it runs the sprint in an embedded terminal, with the live **STATUS / PLAN / ACCEPTANCE** rail beside it. The model comes from the ticket's `plan.md` (or the session default).
+- **Run the agent in the board.** Pick a ticket, choose the agent — **Claude Code**, **Pi**, or **Copilot CLI** — and it runs the sprint in an embedded terminal, with the live **STATUS / PLAN / ACCEPTANCE** rail beside it. The model comes from the ticket's `plan.md` (or the session default).
 - **A local daemon that outlives the tab.** A small **cockpit daemon** owns the terminal, so a browser refresh never kills a running agent — and **one daemon serves all your projects**. The **Admin** page shows daemon health, version, uptime, a one-click **Restart**, and every **active agent session** across projects with its directory.
 - **Worktree-aware.** Run in the main checkout or a git worktree — the cockpit spawns the agent in the directory you pick and shows *"Working in: …"*.
 - **Save & End.** One click saves the sprint's state to `HANDOFF.md` and ends the session cleanly — no orphaned agent left behind.
