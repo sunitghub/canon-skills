@@ -110,7 +110,7 @@ type session struct {
 	hookDir      string    // daemon-owned ephemeral --settings dir; removed when the session ends
 	cwd          string    // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
 	projectRoot  string    // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
-	agent        string    // t-391a: agent kind ("claude"/"pi") for the /sessions listing
+	agent        string    // t-391a: agent kind ("claude"/"pi"/"copilot") for the /sessions listing
 	started      time.Time // t-391a: spawn time for the /sessions listing
 
 	mu            sync.Mutex
