@@ -112,6 +112,11 @@ type session struct {
 	projectRoot  string    // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
 	agent        string    // t-391a: agent kind ("claude"/"pi"/"copilot") for the /sessions listing
 	started      time.Time // t-391a: spawn time for the /sessions listing
+	// copilotResumeAttempt is true iff this spawn used copilot's --resume=<id>
+	// (t-6ce0) — read-only after spawn(), same convention as agent/cwd above.
+	// handleStart uses it to grace-check for a dead-resume failure and retry
+	// fresh before the client ever sees this session.
+	copilotResumeAttempt bool
 
 	mu            sync.Mutex
 	buf           []byte
@@ -419,6 +424,13 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if se.copilotResumeAttempt {
+		se, err = s.recoverCopilotResumeIfFailed(se, body.Ticket, cwd, projectRoot)
+		if err != nil {
+			http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
 	// Record the last-used agent for the picker's default + hint (only when
 	// changed). After a successful spawn, so a failed start never records.
 	s.persistAgentKindIn(projectRoot, body.Ticket, kind)
@@ -593,6 +605,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// but has no --settings equivalent (no Notification-hook-equivalent event
 	// exists to wire up regardless — see resolveCopilotSessionIDIn/agentSpawnArgs).
 	program := s.cfg.sprintBin // claude default / COCKPIT_SPRINT_BIN override
+	copilotResuming := false   // t-6ce0: surfaced onto the session below
 	switch kind {
 	case "pi":
 		program = envOr("COCKPIT_PI_BIN", "pi")
@@ -602,6 +615,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	case "copilot":
 		program = envOr("COCKPIT_COPILOT_BIN", "copilot")
 		copilotSessionID, resuming := s.resolveCopilotSessionIDIn(projectRoot, ticket)
+		copilotResuming = resuming
 		args = agentSpawnArgs("copilot", ticket, resuming, copilotSessionID, s.gateModelIn(projectRoot, ticket), "")
 	default:
 		// The Notification hook goes in via --settings, which loads ADDITIONAL
@@ -637,7 +651,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
 		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot,
-		agent: kind, started: time.Now(),
+		agent: kind, started: time.Now(), copilotResumeAttempt: copilotResuming,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
@@ -1351,6 +1365,19 @@ func copilotNeedsLogin(buf []byte) bool {
 	return strings.Contains(clean, "You must be logged in") || strings.Contains(clean, "Please use /login")
 }
 
+// copilotResumeFailed detects copilot's stable "dead resume id" output
+// (t-6ce0): copilotSessionExists only stats <COPILOT_HOME>/session-state/<id>,
+// but that directory can exist without a matching row in copilot's real
+// resumability index (session-store.db, a genuine SQLite database, confirmed
+// live) — e.g. a crash after copilot creates working-state scaffolding but
+// before it commits the session row. Unlike copilotNeedsLogin's permanent
+// hang, a dead --resume attempt exits almost immediately with this text, so
+// the caller (handleStart) can detect it and retry fresh within one request.
+func copilotResumeFailed(buf []byte) bool {
+	clean := ansiCSIRe.ReplaceAllString(string(buf), "")
+	return strings.Contains(clean, "No session, task, or name matched")
+}
+
 // ── preview pane (t-b19b) ────────────────────────────────────────────────
 //
 // Serves the containing directory of whatever file the agent reports via a
@@ -1817,6 +1844,51 @@ func (s *server) resolveCopilotSessionIDIn(root, ticket string) (id string, resu
 	id = newUUIDv4()
 	_ = os.WriteFile(idPath, []byte(id+"\n"), 0o600)
 	return id, false
+}
+
+// copilotResumeGraceWindow/copilotResumeGracePoll bound how long
+// recoverCopilotResumeIfFailed waits for a dead --resume attempt to reveal
+// itself (t-6ce0). The one real measurement (live reproduction) exits well
+// under 1s; 2s leaves comfortable margin for a loaded/slow machine without
+// making a genuinely successful resume — which never exits in this window at
+// all — feel delayed.
+const (
+	copilotResumeGraceWindow = 2 * time.Second
+	copilotResumeGracePoll   = 100 * time.Millisecond
+)
+
+// recoverCopilotResumeIfFailed grace-checks a just-spawned copilot --resume
+// attempt (t-6ce0): copilotSessionExists's directory stat is necessary but not
+// sufficient — copilot's real resumability index is a SQLite database
+// (session-store.db, confirmed live), so a stale/incomplete session-state
+// directory can pass the proactive check yet still be rejected by copilot
+// itself ("No session, task, or name matched"). Unlike copilotNeedsLogin's
+// permanent hang, this failure exits almost immediately, so the correction
+// happens entirely here, before the client ever receives a session id/token —
+// on detection, a fresh UUID is persisted (so the natural next
+// resolveCopilotSessionIDIn read takes the fresh-start branch on its own, no
+// special-cased bypass needed) and spawn is retried once. If the window
+// passes without a confirmed match, se is returned unchanged — this can only
+// ever ADD a bounded wait to a copilot resume attempt, never affect any other
+// spawn path.
+func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectRoot string) (*session, error) {
+	deadline := time.Now().Add(copilotResumeGraceWindow)
+	for time.Now().Before(deadline) {
+		se.mu.Lock()
+		exited := se.exited
+		buf := append([]byte(nil), se.buf...)
+		se.mu.Unlock()
+		if exited {
+			if copilotResumeFailed(buf) {
+				idPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-copilot-session-id")
+				_ = os.WriteFile(idPath, []byte(newUUIDv4()+"\n"), 0o600)
+				return s.spawn(ticket, cwd, projectRoot, "copilot")
+			}
+			return se, nil // exited for an unrelated reason — not this ticket's concern
+		}
+		time.Sleep(copilotResumeGracePoll)
+	}
+	return se, nil // still running past the window — treat as a legitimate resume
 }
 
 // claudeConversationExists reports whether claude holds a persisted, resumable
