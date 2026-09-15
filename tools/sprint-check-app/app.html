@@ -6107,7 +6107,6 @@ async function uploadVisual(ticketId, filename, base64) {
   let evalOverride = false;
   let gateEval = false;
   let demoEnabled = false;
-  let demoUserToggled = false; // t-2201: once the user clicks the Demo pill, stop auto-managing it
   let templateUntouched = true;
   let stagedVisuals = [];
 
@@ -6138,13 +6137,12 @@ async function uploadVisual(ticketId, filename, base64) {
   ciBtn.addEventListener('click', () => { ciEnabled = !ciEnabled; ciBtn.classList.toggle('active', ciEnabled); syncGate(); });
   gateBtn.addEventListener('click', () => { if (!ciEnabled) return; gateEval = !gateEval; gateBtn.classList.toggle('active', gateEval); });
   evalBtn.addEventListener('click', () => { evalOverride = !evalOverride; evalBtn.classList.toggle('active', evalOverride); });
-  // Demo is independent of CI (no gate coupling). t-2201: a manual click takes
-  // ownership of the pill, so auto-Demo stops managing it for the session.
-  demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); demoUserToggled = true; });
+  // Demo is independent of CI (no gate coupling).
+  demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); });
 
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; demoUserToggled = false; stagedVisuals = [];
+    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
     gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
     titleEl.value = ''; detectEl.textContent = '';
