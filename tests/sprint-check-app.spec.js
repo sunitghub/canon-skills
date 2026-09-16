@@ -4203,7 +4203,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   // A minimal fake /cockpit page implementing only the postMessage contract
   // real cockpit.html speaks — no real PTY, no real claude process. Isolates
   // testing of the BOARD side's confirm/save/timeout logic.
-  function fakeCockpitPage({ initialStatus = 'running', endDelayMs = 50 } = {}) {
+  function fakeCockpitPage({ initialStatus = 'running', endDelayMs = 50, forceEndDelayMs = 0 } = {}) {
     return `<!doctype html><html><body><script>
       window.parent.postMessage({source:'canon-cockpit', type:'status', status:${JSON.stringify(initialStatus)}}, '*');
       window.addEventListener('message', function(e){
@@ -4214,7 +4214,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
           setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, ${endDelayMs});
         } else if(d.type === 'force-end'){
           window.parent.postMessage({source:'canon-cockpit', type:'__received', received:'force-end'}, '*');
-          window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
+          setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, ${forceEndDelayMs});
         }
       });
     </script></body></html>`;
@@ -4317,6 +4317,39 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
       // Once the fake page's delayed 'ended' arrives, teardown proceeds.
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('End without saving closes the modal immediately, before the daemon confirms (t-76dc)', async ({ page }) => {
+    const id = `t-lcskip-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      // forceEndDelayMs 400: the daemon takes a moment to confirm — long enough
+      // that a synchronous-close assertion right after the click can't be a
+      // timing fluke (it must be optimistic, not just fast).
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', forceEndDelayMs: 400 }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      const modal = page.locator('#ck-leave-confirm');
+      await expect(modal).toHaveClass(/open/);
+      const srcBeforeClick = await page.locator('#ck-iframe').evaluate(el => el.src);
+      await page.locator('#ck-leave-skip').click();
+      // Closes immediately — does not wait for the daemon's 'ended' reply.
+      await expect(modal).not.toHaveClass(/open/);
+      // The cockpit panel itself and the iframe's src are UNTOUCHED at this
+      // point — teardownCockpit() must not have run yet, since the daemon
+      // hasn't confirmed. This is the actual safety property: the SSE stream
+      // stays alive so a slow/failed kill can still be reported.
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      const srcRightAfterClick = await page.locator('#ck-iframe').evaluate(el => el.src);
+      expect(srcRightAfterClick).toBe(srcBeforeClick);
+      // The terminal is hidden behind a status message while waiting.
+      await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
+      await expect(page.locator('#ck-term-msg')).toHaveText('Ending without saving…');
+      // Once the daemon's delayed 'ended' actually arrives, teardown proceeds.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });

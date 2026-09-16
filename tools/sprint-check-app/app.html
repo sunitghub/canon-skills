@@ -4851,20 +4851,35 @@ async function ckLeaveSaveAndEnd(skipSave) {
     teardownCockpit();
     return;
   }
-  // Cancel must not be clickable mid-save either — closeLeaveConfirm() only
-  // hides the modal, it doesn't abort the pending save-and-end sequence, so
-  // a "successful" cancel would tear the cockpit down anyway once the
-  // marker/timeout fires, with no dialog left open to explain why.
-  document.getElementById('ck-leave-cancel').disabled = true;
-  document.getElementById('ck-leave-skip').disabled = true;
-  saveBtn.disabled = true;
-  statusEl.textContent = 'Ending…';
+  // t-76dc: "End without saving" writes nothing, so unlike Save & End it can
+  // dismiss its modal immediately — matching cockpit.html's confirmCloseTab,
+  // which closes its own warning modal right away without ever touching the
+  // iframe's src, so the SSE stream (the only channel that can report a
+  // slow/failed kill) keeps running underneath. teardownCockpit() itself is
+  // NOT called yet here — only once cockpitState._onEnded actually fires
+  // below, same as before — so a slow/failed kill is still never silently
+  // orphaned, only the confirm dialog closes early.
+  const termMsg = document.getElementById('ck-term-msg');
+  if (skipSave) {
+    closeLeaveConfirm();
+    iframe.style.visibility = 'hidden';
+    termMsg.textContent = 'Ending without saving…';
+  } else {
+    // Cancel must not be clickable mid-save either — closeLeaveConfirm() only
+    // hides the modal, it doesn't abort the pending save-and-end sequence, so
+    // a "successful" cancel would tear the cockpit down anyway once the
+    // marker/timeout fires, with no dialog left open to explain why.
+    document.getElementById('ck-leave-cancel').disabled = true;
+    document.getElementById('ck-leave-skip').disabled = true;
+    saveBtn.disabled = true;
+    statusEl.textContent = 'Ending…';
+  }
   let done = false;
   let closed = false;
   const finish = (msg) => {
     if (done) return; done = true;
     cockpitState._onEnded = null;
-    statusEl.textContent = msg;
+    if (!skipSave) statusEl.textContent = msg; // modal already closed for skipSave
     closeLeaveConfirm();
     teardownCockpit();
   };
@@ -4892,7 +4907,7 @@ async function ckLeaveSaveAndEnd(skipSave) {
   closed = await isTicketClosed(cockpitState.id);
   if (done) return; // idle-reap already ended us during the fetch — nothing to send
   if (closed || skipSave) {
-    statusEl.textContent = closed ? 'Ticket already closed — ending…' : 'Ending without saving…';
+    if (!skipSave) statusEl.textContent = 'Ticket already closed — ending…'; // skipSave's modal is already closed
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
   } else {
     statusEl.textContent = 'Saving state — the agent is writing HANDOFF (one agent turn, may take a moment)…';
