@@ -1892,7 +1892,10 @@ func (s *server) resolveCopilotSessionIDIn(root, ticket string) (id string, resu
 // making a genuinely successful resume — which never exits in this window at
 // all — feel delayed.
 const (
-	copilotResumeGraceWindow = 2 * time.Second
+	// t-a4ed: TEMPORARILY widened from 2s to measure the real failure latency
+	// live (evidence showed the 2s window closing before Copilot ever printed
+	// anything past its TUI-init escape burst). Revert to 2s once measured.
+	copilotResumeGraceWindow = 20 * time.Second
 	copilotResumeGracePoll   = 100 * time.Millisecond
 )
 
