@@ -1909,12 +1909,21 @@ func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectR
 		exited := se.exited
 		buf := append([]byte(nil), se.buf...)
 		se.mu.Unlock()
+		// t-2e84: check the failure text FIRST, independent of se.exited — that
+		// flag is only set inside readLoop() when the PTY read returns EOF,
+		// which can lag the real OS process exit (live-reproduced on Windows:
+		// Task Manager showed copilot.exe spawn and disappear, but se.exited
+		// never flipped within the grace window, so the retry never fired even
+		// though the failure text was already sitting in the buffer). The text
+		// alone is sufficient proof — a process that printed it isn't going to
+		// un-print it or recover on its own, regardless of exit-signal timing.
+		if copilotResumeFailed(buf) {
+			s.killSession(se) // idempotent even if the process already exited naturally
+			idPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-copilot-session-id")
+			_ = os.WriteFile(idPath, []byte(newUUIDv4()+"\n"), 0o600)
+			return s.spawn(ticket, cwd, projectRoot, "copilot")
+		}
 		if exited {
-			if copilotResumeFailed(buf) {
-				idPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-copilot-session-id")
-				_ = os.WriteFile(idPath, []byte(newUUIDv4()+"\n"), 0o600)
-				return s.spawn(ticket, cwd, projectRoot, "copilot")
-			}
 			return se, nil // exited for an unrelated reason — not this ticket's concern
 		}
 		time.Sleep(copilotResumeGracePoll)
