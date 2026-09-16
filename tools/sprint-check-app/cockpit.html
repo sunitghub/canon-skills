@@ -697,8 +697,12 @@
   // ── Views: Projects vs Admin vs Upkeep (t-5dc2, t-7ae6) ───────────────────
   function showView(v){
     if(v==='projects'){
+      // Explicit click on the sidebar's Projects nav must always land on the
+      // grid, even when a per-project tab (e.g. an open "ToDo" tab) is
+      // currently active — previously this re-activated whatever tab was
+      // already showing, a no-op that looked like the click did nothing.
       // activateTab manages view/nav state itself (incl. clearing nav-admin/nav-upkeep).
-      activateTab(activeTab==='projects'?'projects':activeTab);
+      activateTab('projects');
       return;
     }
     document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
