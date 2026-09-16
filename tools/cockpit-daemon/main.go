@@ -424,14 +424,6 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if kind == "copilot" {
-		// t-a4ed: TEMPORARY diagnostic — confirms whether copilotResumeAttempt
-		// was actually true for this spawn. Revert before closing this ticket.
-		if f, ferr := os.OpenFile(filepath.Join(s.ticketsDirIn(projectRoot), body.Ticket, ".cockpit-resume-debug.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); ferr == nil {
-			fmt.Fprintf(f, "=== handleStart %s: copilotResumeAttempt=%v ===\n", time.Now().Format(time.RFC3339Nano), se.copilotResumeAttempt)
-			f.Close()
-		}
-	}
 	if se.copilotResumeAttempt {
 		se, err = s.recoverCopilotResumeIfFailed(se, body.Ticket, cwd, projectRoot)
 		if err != nil {
@@ -1887,15 +1879,17 @@ func (s *server) resolveCopilotSessionIDIn(root, ticket string) (id string, resu
 
 // copilotResumeGraceWindow/copilotResumeGracePoll bound how long
 // recoverCopilotResumeIfFailed waits for a dead --resume attempt to reveal
-// itself (t-6ce0). The one real measurement (live reproduction) exits well
-// under 1s; 2s leaves comfortable margin for a loaded/slow machine without
-// making a genuinely successful resume — which never exits in this window at
-// all — feel delayed.
+// itself (t-6ce0). t-2e84's original 2s budget was set from a single macOS
+// measurement ("well under 1s") — live Windows capture (t-a4ed) showed a dead
+// --resume attempt spends its first ~2s writing nothing but a TUI-init escape
+// burst (alternate-screen/cursor-hide sequences, zero visible text) while it
+// makes what's likely a real network round-trip to GitHub's backend before it
+// can determine the id is dead; the actual "No session, task, or name
+// matched" text didn't land until ~2.9s in. 6s leaves real margin above that
+// measurement without making a genuinely successful resume — which never
+// exits in this window at all — feel delayed.
 const (
-	// t-a4ed: TEMPORARILY widened from 2s to measure the real failure latency
-	// live (evidence showed the 2s window closing before Copilot ever printed
-	// anything past its TUI-init escape burst). Revert to 2s once measured.
-	copilotResumeGraceWindow = 20 * time.Second
+	copilotResumeGraceWindow = 6 * time.Second
 	copilotResumeGracePoll   = 100 * time.Millisecond
 )
 
@@ -1914,34 +1908,12 @@ const (
 // ever ADD a bounded wait to a copilot resume attempt, never affect any other
 // spawn path.
 func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectRoot string) (*session, error) {
-	// t-a4ed: TEMPORARY diagnostic — dumps every poll iteration's raw state to
-	// a file the user can open directly (stderr is discarded, DEVNULL, when the
-	// daemon is launched from the board). Revert before closing this ticket.
-	debugPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-resume-debug.log")
-	debugf := func(format string, a ...any) {
-		f, err := os.OpenFile(debugPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-		if err != nil {
-			return
-		}
-		fmt.Fprintf(f, format, a...)
-		f.Close()
-	}
-	debugf("=== recoverCopilotResumeIfFailed start %s ===\n", time.Now().Format(time.RFC3339Nano))
-	iter := 0
 	deadline := time.Now().Add(copilotResumeGraceWindow)
 	for time.Now().Before(deadline) {
-		iter++
 		se.mu.Lock()
 		exited := se.exited
 		buf := append([]byte(nil), se.buf...)
 		se.mu.Unlock()
-		clean := ansiCSIRe.ReplaceAllString(string(buf), "")
-		tail := clean
-		if len(tail) > 300 {
-			tail = tail[len(tail)-300:]
-		}
-		debugf("iter=%d exited=%v buf_len=%d clean_len=%d matched=%v tail=%q\n",
-			iter, exited, len(buf), len(clean), copilotResumeFailed(buf), tail)
 		// t-2e84: check the failure text FIRST, independent of se.exited — that
 		// flag is only set inside readLoop() when the PTY read returns EOF,
 		// which can lag the real OS process exit (live-reproduced on Windows:
@@ -1951,19 +1923,16 @@ func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectR
 		// alone is sufficient proof — a process that printed it isn't going to
 		// un-print it or recover on its own, regardless of exit-signal timing.
 		if copilotResumeFailed(buf) {
-			debugf("=== matched at iter=%d — killing and retrying fresh ===\n", iter)
 			s.killSession(se) // idempotent even if the process already exited naturally
 			idPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-copilot-session-id")
 			_ = os.WriteFile(idPath, []byte(newUUIDv4()+"\n"), 0o600)
 			return s.spawn(ticket, cwd, projectRoot, "copilot")
 		}
 		if exited {
-			debugf("=== exited at iter=%d without a match — returning unchanged ===\n", iter)
 			return se, nil // exited for an unrelated reason — not this ticket's concern
 		}
 		time.Sleep(copilotResumeGracePoll)
 	}
-	debugf("=== deadline exceeded after %d iters — treating as legitimate resume ===\n", iter)
 	return se, nil // still running past the window — treat as a legitimate resume
 }
 
