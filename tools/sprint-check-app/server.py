@@ -1598,8 +1598,29 @@ def get_headless_run_state(ticket_id: str) -> dict:
 # by (root, skill) instead of ticket id — the only background-job pattern in
 # this codebase, reused rather than inventing a second one.
 UPKEEP_SKILLS = ('context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings')
-UPKEEP_RUN_BIN = Path(os.environ.get('UPKEEP_RUN_BIN')
-                       or Path(__file__).resolve().parent.parent / 'upkeep-run')
+
+def _resolve_upkeep_run_bin(os_name: str) -> Path:
+    """t-1776: upkeep-run is a bash script with no Windows-native entry point.
+    subprocess.Popen on Windows calls CreateProcess directly on an explicit
+    path -- unlike a bare command name typed at a cmd.exe prompt, it does NOT
+    search PATHEXT for a runnable extension, so launching the bare script
+    fails outright (no shebang interpretation on Windows either). Prefer the
+    Git-for-Windows-locating tools/upkeep-run.cmd wrapper (mirrors
+    sprint.cmd's exact pattern) when present; env override always wins first.
+    os_name is a parameter (not read inline) so the Windows branch is
+    testable on any host -- same shape as _resolve_cockpit_daemon_bin above."""
+    override = os.environ.get('UPKEEP_RUN_BIN')
+    if override:
+        return Path(override)
+    tools = Path(__file__).resolve().parent.parent
+    bash_script = tools / 'upkeep-run'
+    if os_name == 'nt':
+        cmd_wrapper = tools / 'upkeep-run.cmd'
+        if cmd_wrapper.exists():
+            return cmd_wrapper
+    return bash_script
+
+UPKEEP_RUN_BIN = _resolve_upkeep_run_bin(os.name)
 _UPKEEP_RUNS: dict[tuple, dict] = {}
 _UPKEEP_LOCK = threading.Lock()
 
@@ -1652,9 +1673,15 @@ def _run_upkeep(root: Path, skill: str, model: str) -> None:
         state['exit_code'] = exit_code
         state['report_path'] = report_path
         state['finished_at'] = finished_at
+    # t-1776: bound the persisted tail (not the full capture) so a future
+    # failure is self-diagnosing from upkeepRuns.json alone, without
+    # inflating it unboundedly across repeated runs — one entry per skill,
+    # overwritten each run, same 2KB budget as the in-memory capture's
+    # useful tail (a real crash/launch-failure message is short).
+    output_tail = output[-2048:] if output else ''
     _upkeep_state_save(root, skill, {
         'status': state['status'], 'report_path': report_path,
-        'finished_at': finished_at, 'model': model,
+        'finished_at': finished_at, 'model': model, 'output': output_tail,
     })
 
 def start_upkeep_run(root: Path, skill: str, model: str) -> dict:

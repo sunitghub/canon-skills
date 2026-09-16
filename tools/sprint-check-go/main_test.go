@@ -513,6 +513,59 @@ func TestCockpitDaemonCandidates(t *testing.T) {
 	}
 }
 
+// t-1776: upkeep-run is a bash script with no Windows-native entry point --
+// exec.Command on an explicit path doesn't consult PATHEXT the way it would
+// for a bare command name, so the bash script must never be Windows' first
+// candidate; the .cmd wrapper (mirroring sprint.cmd) must come first there,
+// and never appear at all on non-Windows.
+func TestUpkeepRunBinCandidates(t *testing.T) {
+	td := filepath.FromSlash("/x/tools")
+	root := filepath.FromSlash("/proj")
+
+	win := upkeepRunBinCandidates(td, root, "windows")
+	wantWinFirst := filepath.Join(td, "upkeep-run.cmd")
+	if len(win) == 0 || win[0] != wantWinFirst {
+		t.Fatalf("windows first candidate = %v, want %s", win, wantWinFirst)
+	}
+	bashFallback := filepath.Join(td, "upkeep-run")
+	foundBash := false
+	for _, c := range win {
+		if c == bashFallback {
+			foundBash = true
+		}
+	}
+	if !foundBash {
+		t.Fatalf("windows candidates missing bash fallback %s: %v", bashFallback, win)
+	}
+
+	for _, goos := range []string{"darwin", "linux"} {
+		u := upkeepRunBinCandidates(td, root, goos)
+		want := filepath.Join(td, "upkeep-run")
+		if len(u) == 0 || u[0] != want {
+			t.Fatalf("%s first candidate = %v, want %s", goos, u, want)
+		}
+		for _, c := range u {
+			if filepath.Base(c) == "upkeep-run.cmd" {
+				t.Fatalf("%s must not offer a .cmd candidate: %v", goos, u)
+			}
+		}
+	}
+
+	// extraRoots contribute their own tools/ dirs on every platform.
+	er := filepath.FromSlash("/wt")
+	got := upkeepRunBinCandidates(td, root, "windows", er)
+	wantExtra := filepath.Join(er, "tools", "upkeep-run.cmd")
+	foundExtra := false
+	for _, c := range got {
+		if c == wantExtra {
+			foundExtra = true
+		}
+	}
+	if !foundExtra {
+		t.Fatalf("extraRoot tools dir missing from candidates: %v", got)
+	}
+}
+
 // t-99fa: /api/version returns {version, daemon}; version reflects the build
 // var (stamped via -ldflags), daemon is "" when no daemon binary is resolved.
 func TestVersionEndpoint(t *testing.T) {

@@ -25,6 +25,7 @@ tests=(
   "$ROOT/tests/example-paths.sh"
   "$ROOT/tests/sprint-check-server.sh"
   "$ROOT/tests/sprint-check-cockpit.sh"
+  "$ROOT/tests/sprint-check-upkeep.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"
   "$ROOT/tests/helpers-sweep.sh"
   "$ROOT/tests/sprint-check-app.sh"
