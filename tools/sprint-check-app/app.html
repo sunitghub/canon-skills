@@ -4840,6 +4840,15 @@ async function ckLeaveSaveAndEnd(skipSave) {
   const iframe = document.getElementById('ck-iframe');
   const statusEl = document.getElementById('ck-leave-confirm-status');
   const saveBtn = document.getElementById('ck-leave-save');
+  // t-9eda: check reentry FIRST, before the liveness check below — a prior
+  // end sequence still in flight (its own finish() hasn't cleared this yet)
+  // must always no-op, regardless of what sessionIsLive() would say at this
+  // instant. Checking liveness first would let a stale/flipped status route
+  // a reentrant call into the teardown branch instead of a no-op, silently
+  // tearing down state the first invocation still owns — reintroducing the
+  // exact bug this ticket fixes. A second invocation is already handled by
+  // the first sequence; there is nothing new to do here.
+  if (cockpitState._ending) return;
   // t-8efc: the modal's liveness check runs once, at open time. If the
   // automatic idle-reap ends the session while the modal is still sitting
   // open, cockpitState.status already advances to non-live (the daemon's
@@ -4852,12 +4861,6 @@ async function ckLeaveSaveAndEnd(skipSave) {
     teardownCockpit();
     return;
   }
-  // t-9eda: a prior end sequence is still in flight (its own finish() hasn't
-  // cleared this yet) — a second invocation would overwrite cockpitState
-  // ._onEnded and orphan the first invocation's fallback timer, which later
-  // fires against already-torn-down state. Silent no-op: the first sequence
-  // is already handling the end, nothing new to do here.
-  if (cockpitState._ending) return;
   cockpitState._ending = true;
   // t-76dc: "End without saving" writes nothing, so unlike Save & End it can
   // dismiss its modal immediately — matching cockpit.html's confirmCloseTab,
