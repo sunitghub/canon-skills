@@ -1059,6 +1059,43 @@ func TestResolveUpkeepRunBin(t *testing.T) {
 	}
 }
 
+// t-1776: a failed run's output must be persisted AND surfaced via
+// getUpkeepRunState — the whole point of persisting it is that a caller can
+// see WHY a run failed, not just someone opening upkeepRuns.json by hand
+// (reviewer finding). Also confirms the 2048-byte tail cap actually bounds a
+// long output, not just that a short one round-trips.
+func TestRunUpkeepPersistsAndSurfacesBoundedOutput(t *testing.T) {
+	root := setupTestProject(t)
+	longMsg := strings.Repeat("X", 5000)
+	stub := writeStubScript(t, t.TempDir(), "stub-upkeep-run", longMsg, 1)
+	oldBin := upkeepRunBin
+	upkeepRunBin = stub
+	defer func() { upkeepRunBin = oldBin }()
+
+	// runUpkeep assumes startUpkeepRun already seeded this map entry (it
+	// normally runs as a goroutine startUpkeepRun launches) — seed it the
+	// same way here so this synchronous, direct call doesn't panic on a nil
+	// map write.
+	key := upkeepKey{root, "context-check"}
+	upkeepRunsMu.Lock()
+	upkeepRuns[key] = map[string]any{"status": "running", "output": "", "exit_code": nil, "started_at": time.Now()}
+	upkeepRunsMu.Unlock()
+
+	runUpkeep(root, "context-check", "claude-haiku-4-5-20251001")
+
+	state := getUpkeepRunState(root, "context-check")
+	out, _ := state["output"].(string)
+	if len(out) != 2048 {
+		t.Fatalf("getUpkeepRunState output not bounded to 2048 bytes: got %d", len(out))
+	}
+
+	persisted := upkeepStateLoad(root)["context-check"]
+	pout, _ := persisted["output"].(string)
+	if len(pout) != 2048 {
+		t.Fatalf("persisted output not bounded to 2048 bytes: got %d", len(pout))
+	}
+}
+
 func TestGetUpkeepRunStateIdle(t *testing.T) {
 	root := t.TempDir()
 	upkeepRuns = map[upkeepKey]map[string]any{}

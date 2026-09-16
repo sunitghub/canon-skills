@@ -77,7 +77,47 @@ entry = state.get("context-check")
 assert entry is not None, f"no context-check entry: {state}"
 assert entry.get("status") == "error", f"expected status error: {entry}"
 assert "something went wrong" in entry.get("output", ""), f"output field missing/wrong: {entry}"
+
+# get_upkeep_run_state must surface the field too — the whole point of
+# persisting it is a dashboard API caller can see WHY a run failed, not just
+# someone opening upkeepRuns.json by hand (t-1776 reviewer finding).
+api_state = server.get_upkeep_run_state(proj_root, "context-check")
+assert "something went wrong" in api_state.get("output", ""), f"get_upkeep_run_state dropped output: {api_state}"
 print("sprint-check-upkeep: output persistence (t-1776) ok")
 PY
 
-echo "sprint-check-upkeep: ok (resolver prefers .cmd on Windows, bash script elsewhere, env override wins; failed-run output persisted to upkeepRuns.json bounded to the configured tail)"
+# Truncation boundary: output longer than the 2048-byte cap must actually be
+# bounded, not just present — a short-string round-trip alone can't tell the
+# two apart (reviewer nitpick).
+STUB_LONG="$WORKDIR/stub-upkeep-run-long"
+cat > "$STUB_LONG" <<'SH'
+#!/usr/bin/env bash
+python3 -c "print('X' * 5000, end='')"
+exit 1
+SH
+chmod +x "$STUB_LONG"
+
+python3 - "$ROOT" "$WORKDIR" "$STUB_LONG" <<'PY'
+import sys, os, json
+root_repo, workdir, stub = sys.argv[1], sys.argv[2], sys.argv[3]
+sys.path.insert(0, os.path.join(root_repo, "tools", "sprint-check-app"))
+os.environ["UPKEEP_RUN_BIN"] = stub
+import importlib
+import server
+importlib.reload(server)
+
+from pathlib import Path
+proj_root = Path(workdir) / "proj-long"
+proj_root.mkdir()
+server._run_upkeep(proj_root, "context-check", "claude-haiku-4-5-20251001")
+
+state = json.loads((proj_root / ".reports" / "upkeepRuns.json").read_text())
+persisted_output = state["context-check"]["output"]
+assert len(persisted_output) == 2048, f"persisted output not bounded to 2048 bytes: {len(persisted_output)}"
+
+api_state = server.get_upkeep_run_state(proj_root, "context-check")
+assert len(api_state["output"]) == 2048, f"API-returned output not bounded to 2048 bytes: {len(api_state['output'])}"
+print("sprint-check-upkeep: truncation boundary (t-1776) ok")
+PY
+
+echo "sprint-check-upkeep: ok (resolver prefers .cmd on Windows, bash script elsewhere, env override wins; failed-run output persisted to upkeepRuns.json AND surfaced via get_upkeep_run_state, bounded to the configured 2048-byte tail)"

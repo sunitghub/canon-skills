@@ -2562,9 +2562,16 @@ func getUpkeepRunState(root, skill string) map[string]any {
 	state, ok := upkeepRuns[key]
 	upkeepRunsMu.Unlock()
 	if ok {
+		// t-1776: surface the same bounded tail the persisted entry gets, so a
+		// failure is diagnosable from the dashboard, not just upkeepRuns.json.
+		out, _ := state["output"].(string)
+		if len(out) > 2048 {
+			out = out[len(out)-2048:]
+		}
 		result := map[string]any{
 			"status": state["status"], "exit_code": state["exit_code"],
 			"report_path": state["report_path"], "finished_at": state["finished_at"],
+			"output": out,
 		}
 		if state["status"] == "running" {
 			result["elapsed"] = time.Since(state["started_at"].(time.Time)).Seconds()
@@ -2575,7 +2582,7 @@ func getUpkeepRunState(root, skill string) map[string]any {
 		return map[string]any{
 			"status": persisted["status"], "exit_code": nil,
 			"report_path": persisted["report_path"], "finished_at": persisted["finished_at"],
-			"model": persisted["model"],
+			"model": persisted["model"], "output": persisted["output"],
 		}
 	}
 	return map[string]any{"status": "idle", "report_path": ""}
