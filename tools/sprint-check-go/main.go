@@ -1994,19 +1994,39 @@ func resolveUpkeepRunBin(toolsDir, root string, extraRoots ...string) string {
 	if b := os.Getenv("UPKEEP_RUN_BIN"); b != "" {
 		return b
 	}
-	candidates := []string{
-		filepath.Join(toolsDir, "upkeep-run"),
-		filepath.Join(root, "tools", "upkeep-run"),
-	}
-	for _, extraRoot := range extraRoots {
-		candidates = append(candidates, filepath.Join(extraRoot, "tools", "upkeep-run"))
-	}
+	candidates := upkeepRunBinCandidates(toolsDir, root, runtime.GOOS, extraRoots...)
 	for _, candidate := range candidates {
 		if exists(candidate) {
 			return candidate
 		}
 	}
 	return candidates[0]
+}
+
+// upkeepRunBinCandidates returns the ordered upkeep-run paths to try for a
+// given GOOS (t-1776). upkeep-run is a bash script with no Windows-native
+// entry point; exec.Command on an explicit path (not a bare name) does NOT
+// consult PATHEXT the way it would for a bare command, so launching the bash
+// script directly fails outright on Windows. tools/upkeep-run.cmd (mirrors
+// sprint.cmd's Git-for-Windows-locating pattern) is tried FIRST on Windows,
+// then the bash script as a fallback. goos is a parameter (not runtime.GOOS)
+// so the Windows ordering is unit-testable on any host — same idiom as
+// cockpitDaemonCandidates above.
+func upkeepRunBinCandidates(toolsDir, root, goos string, extraRoots ...string) []string {
+	toolsDirs := []string{toolsDir, filepath.Join(root, "tools")}
+	for _, er := range extraRoots {
+		toolsDirs = append(toolsDirs, filepath.Join(er, "tools"))
+	}
+	var candidates []string
+	if goos == "windows" {
+		for _, td := range toolsDirs { // .cmd wrapper first
+			candidates = append(candidates, filepath.Join(td, "upkeep-run.cmd"))
+		}
+	}
+	for _, td := range toolsDirs { // bash script (the only option on non-Windows)
+		candidates = append(candidates, filepath.Join(td, "upkeep-run"))
+	}
+	return candidates
 }
 
 // resolveCanonGateTemplate finds canon-gate-template.yml. Deliberately
@@ -2502,9 +2522,16 @@ func runUpkeep(root, skill, model string) {
 	upkeepRuns[key]["report_path"] = reportPath
 	upkeepRuns[key]["finished_at"] = finishedAt
 	upkeepRunsMu.Unlock()
+	// t-1776: bound the persisted tail (parity with server.py's cockpit_set_debug-
+	// style budgeting elsewhere) so a future failure is self-diagnosing from
+	// upkeepRuns.json alone without inflating it unboundedly across runs.
+	outputTail := string(output)
+	if len(outputTail) > 2048 {
+		outputTail = outputTail[len(outputTail)-2048:]
+	}
 	upkeepStateSave(root, skill, map[string]any{
 		"status": status, "report_path": reportPath,
-		"finished_at": finishedAt.Unix(), "model": model,
+		"finished_at": finishedAt.Unix(), "model": model, "output": outputTail,
 	})
 }
 
