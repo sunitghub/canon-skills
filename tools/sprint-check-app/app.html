@@ -4668,7 +4668,7 @@ async function moveCard(t, newStatus) {
 // sync — the earlier toggle-write path's index-offset math is gone with it.
 // worktreeCwd: null = no row selected yet (OPEN-ticket Start stays gated,
 // t-cd06), '' = Main checkout selected, otherwise an absolute worktree path.
-const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null };
+const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, _ending: false };
 let cockpitPollTimer = null;
 
 // t-f6b6: the board and the daemon page are different origins (different
@@ -4806,6 +4806,7 @@ function teardownCockpit() {
   if (iframe) iframe.src = 'about:blank'; // drop the SSE stream held by the embed
   if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
   cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
+  cockpitState._ending = false; // t-9eda: defense-in-depth — every reset path clears it
   cockpitState.worktreeCwd = null;
   cockpitState.actualCwd = null;
   cockpitState.worktreeDocs = null;
@@ -4851,6 +4852,13 @@ async function ckLeaveSaveAndEnd(skipSave) {
     teardownCockpit();
     return;
   }
+  // t-9eda: a prior end sequence is still in flight (its own finish() hasn't
+  // cleared this yet) — a second invocation would overwrite cockpitState
+  // ._onEnded and orphan the first invocation's fallback timer, which later
+  // fires against already-torn-down state. Silent no-op: the first sequence
+  // is already handling the end, nothing new to do here.
+  if (cockpitState._ending) return;
+  cockpitState._ending = true;
   // t-76dc: "End without saving" writes nothing, so unlike Save & End it can
   // dismiss its modal immediately — matching cockpit.html's confirmCloseTab,
   // which closes its own warning modal right away without ever touching the
@@ -4879,6 +4887,7 @@ async function ckLeaveSaveAndEnd(skipSave) {
   const finish = (msg) => {
     if (done) return; done = true;
     cockpitState._onEnded = null;
+    cockpitState._ending = false;
     if (!skipSave) statusEl.textContent = msg; // modal already closed for skipSave
     closeLeaveConfirm();
     teardownCockpit();
@@ -4928,6 +4937,7 @@ window.addEventListener('message', (e) => {
   const d = e.data;
   if (!d || d.source !== 'canon-cockpit-shell') return;
   if (d.type !== 'save-and-end' && d.type !== 'end') return;
+  if (cockpitState._ending) return;                     // t-9eda: already ending — ckLeaveSaveAndEnd would no-op anyway
   if (!sessionIsLive()) return;                         // nothing live to end (shell poller reconciles)
   openLeaveConfirm();                                   // reuse the vetted flow's state setup
   ckLeaveSaveAndEnd(d.type === 'end');                  // end === skip the save turn
@@ -5058,6 +5068,12 @@ async function openCockpit(id) {
 
 // t-f6b6: never tear down silently while a session is live — confirm first.
 function closeCockpit() {
+  // t-9eda: an end sequence is already in flight (t-76dc's optimistic dismiss
+  // means the modal can be gone while cockpitState.status still reads live) —
+  // reopening the modal here would just invite a confusing second click;
+  // ckLeaveSaveAndEnd's own guard would no-op it anyway, but skipping the
+  // reopen avoids showing a dialog for a session that's already ending.
+  if (cockpitState._ending) return;
   if (sessionIsLive()) { openLeaveConfirm(); return; }
   teardownCockpit();
 }
