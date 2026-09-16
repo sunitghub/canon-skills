@@ -2965,7 +2965,7 @@ function renderHeader() {
   const _embed = document.documentElement.classList.contains('canon-proj-embed');
   setText('h-project',  _embed ? (git?.root || git?.project || 'project') : (git?.project || 'project'));
   document.getElementById('h-project').title = git?.root || '';
-  state.gitRoot = git?.root || '';
+  state.gitRoot = cockpitForwardSlash(git?.root) || '';
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
   setText('h-open',     tickets.filter(t => t.status === 'open').length);
@@ -5529,6 +5529,18 @@ function cockpitPathKey(p) {
   return String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
 
+// t-1da3: forward-slash a real path VALUE (not a comparison key — no
+// lowercasing/trailing-slash-stripping, both wrong for something that will
+// actually be sent as a path). Worktree cwd values are already forward-slash
+// by construction (git worktree list --porcelain's own output format,
+// server.py:578); state.gitRoot (Main checkout) is the one source that isn't
+// — it comes from Python's str(Path), native OS separators on Windows. The
+// daemon's cwdPrefillRe (main.go, t-7590) deliberately assumes every cwd it
+// receives is already forward-slashed; this is what keeps that true.
+function cockpitForwardSlash(p) {
+  return p ? String(p).replace(/\\/g, '/') : p;
+}
+
 // t-7590: after a real Start, set "Working in:" from the cwd the DAEMON actually
 // resolved (echoed by /session/start), not the optimistic pre-Start selection.
 // If the resolved cwd doesn't match the worktree row the user picked, show a
@@ -5698,8 +5710,8 @@ async function mountCockpitTerminal(t, cwd) {
       const gr = await fetch('/api/git');
       const gd = await gr.json();
       if (gd && gd.root) {
-        effectiveCwd = gd.root;
-        state.gitRoot = gd.root; // benefits any later call in this session too
+        effectiveCwd = cockpitForwardSlash(gd.root);
+        state.gitRoot = effectiveCwd; // benefits any later call in this session too
       }
     } catch { /* fall through to the fail-safe below */ }
   }
