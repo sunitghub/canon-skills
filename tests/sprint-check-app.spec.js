@@ -570,6 +570,57 @@ test.describe('board modal', () => {
     expect(result.msg).toContain("Could not verify this project's root");
   });
 
+  test('a Windows-native git.root is normalized to forward slashes when state.gitRoot is set (t-1da3)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+    }));
+    // t-1da3: server.py's load_git() returns str(Path) -- native OS separators,
+    // backslashes on Windows -- unlike worktree cwd values (git worktree list
+    // --porcelain's own forward-slashed output). The daemon's cwdPrefillRe
+    // (t-7590) deliberately assumes every cwd it receives is already
+    // forward-slashed; a raw Windows path here previously reset it to "".
+    // Routed BEFORE goto so the page's own initial loadData() call (which sets
+    // state.gitRoot via renderHeader()) exercises the real assignment path,
+    // not a test-only shortcut.
+    await page.route('**/api/git', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ branch: 'main', project: 'ToDo', root: 'C:\\Users\\agentops\\Documents\\ToDo', modified: 0, log: [] }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    const result = await page.evaluate(async () => {
+      const gitRootAfterLoad = state.gitRoot;
+      await mountCockpitTerminal({ id: 't-ab12' }, '');
+      return { gitRootAfterLoad, src: document.getElementById('ck-iframe').src };
+    });
+    expect(result.gitRootAfterLoad).toBe('C:/Users/agentops/Documents/ToDo');
+    expect(result.src).toContain('cwd=' + encodeURIComponent('C:/Users/agentops/Documents/ToDo'));
+    expect(result.src).not.toContain(encodeURIComponent('\\'));
+  });
+
+  test('a POSIX git.root is unaffected by the forward-slash normalization (t-1da3)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+    }));
+    await page.route('**/api/git', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ branch: 'main', project: 'canon', root: '/Users/me/canon', modified: 0, log: [] }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    const result = await page.evaluate(async () => {
+      const gitRootAfterLoad = state.gitRoot;
+      await mountCockpitTerminal({ id: 't-ab12' }, '');
+      return { gitRootAfterLoad, src: document.getElementById('ck-iframe').src };
+    });
+    expect(result.gitRootAfterLoad).toBe('/Users/me/canon');
+    expect(result.src).toContain('cwd=' + encodeURIComponent('/Users/me/canon'));
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
