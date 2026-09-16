@@ -153,6 +153,13 @@ grep -qF "/shutdown" <<<"$page" && fail "canon-cockpit: Admin Stop must not call
 # daemon /version exposes uptime_secs (t-5dc2): assert the board passes it through
 grep -qF "uptime_secs" <<<"$page" || fail "canon-cockpit: cockpit.html does not read uptime_secs"
 
+# t-ffb9: Admin panel debug-logging toggle — wired to /api/cockpit-debug,
+# reflects debug_enabled from running_build (never trusts only client state),
+# and never calls the daemon's token-gated /shutdown or references a token.
+grep -qF 'id="ad-debug-toggle"' <<<"$page" || fail "canon-cockpit: Admin missing debug-logging toggle"
+grep -qF "/api/cockpit-debug" <<<"$page" || fail "canon-cockpit: Admin debug toggle not wired to /api/cockpit-debug"
+grep -qF "debug_enabled" <<<"$page" || fail "canon-cockpit: Admin debug toggle should read debug_enabled from running_build"
+
 # t-5dc2: every --col-* referenced in cockpit.html must be defined (undefined token → unstyled).
 # Note: `grep -- ` so a "--col-*" pattern isn't parsed as options.
 CKHTML="$ROOT/tools/sprint-check-app/cockpit.html"

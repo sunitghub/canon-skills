@@ -516,6 +516,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, cockpitRestart(boolValue(payload["force"])))
 		return
 	}
+	if path == "/api/cockpit-debug" {
+		sendJSON(w, cockpitSetDebug(boolValue(payload["enabled"])))
+		return
+	}
 	if path == "/api/cockpit-stop" {
 		sendJSON(w, cockpitStop(boolValue(payload["force"])))
 		return
@@ -2255,14 +2259,39 @@ func cockpitRunningBuild(addr string) map[string]any {
 	}
 	defer resp.Body.Close()
 	var v struct {
-		Version    string `json:"version"`
-		ExeMtime   int64  `json:"exe_mtime"`
-		UptimeSecs int64  `json:"uptime_secs"`
+		Version      string `json:"version"`
+		ExeMtime     int64  `json:"exe_mtime"`
+		UptimeSecs   int64  `json:"uptime_secs"`
+		DebugEnabled bool   `json:"debug_enabled"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&v) != nil {
 		return nil
 	}
-	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs}
+	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled}
+}
+
+// cockpitSetDebug forwards the Admin panel's debug-logging toggle to the
+// daemon's POST /admin/debug (t-ffb9). Token-free, mirroring
+// cockpitRunningBuild above — the board never holds the daemon's token
+// (t-ddc8); the daemon's own loopback-only bind is what gates this endpoint,
+// not per-request auth. Parity with server.py's cockpit_set_debug.
+func cockpitSetDebug(enabled bool) map[string]any {
+	addr, ok := discoverCockpitAddr()
+	if !ok {
+		return map[string]any{"ok": false, "error": "daemon unavailable"}
+	}
+	body, _ := json.Marshal(map[string]bool{"enabled": enabled})
+	client := &http.Client{Timeout: 600 * time.Millisecond}
+	resp, err := client.Post("http://"+addr+"/admin/debug", "application/json", bytes.NewReader(body))
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	defer resp.Body.Close()
+	var out struct {
+		Enabled bool `json:"enabled"`
+	}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return map[string]any{"ok": true, "enabled": out.Enabled}
 }
 
 // cockpitBuildStatus reports {stale, running_build, latest_build} for a healthy
