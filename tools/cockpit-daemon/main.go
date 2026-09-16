@@ -229,7 +229,7 @@ func (s *server) handler() http.Handler {
 		var body struct {
 			Enabled bool `json:"enabled"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
