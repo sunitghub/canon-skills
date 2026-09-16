@@ -1403,6 +1403,10 @@
     .ck-leave-btn-cancel:hover { color: var(--text); }
     .ck-leave-btn-cancel:disabled { opacity: .4; cursor: not-allowed; }
     .ck-leave-btn-cancel:disabled:hover { color: var(--text-muted); }
+    .ck-leave-btn-skip { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .ck-leave-btn-skip:hover { color: var(--col-discarded); border-color: var(--col-discarded); }
+    .ck-leave-btn-skip:disabled { opacity: .4; cursor: not-allowed; }
+    .ck-leave-btn-skip:disabled:hover { color: var(--text-muted); border-color: var(--border); }
     .ck-topbar {
       display: flex; align-items: center; gap: 12px; padding: 8px 14px;
       background: var(--surface); border-bottom: 1px solid var(--border);
@@ -1986,12 +1990,14 @@
     <div class="ck-leave-confirm">
       <div class="ck-leave-confirm-title">A sprint session is still running</div>
       <div class="ck-leave-confirm-body" id="ck-leave-confirm-body">
-        Save &amp; End saves this sprint's state to HANDOFF and ends the session. Cancel to keep
+        Save &amp; End saves this sprint's state to HANDOFF and ends the session. End without
+        saving skips that and ends immediately — use it if the save is stuck. Cancel to keep
         working here.
       </div>
       <div class="ck-leave-confirm-status" id="ck-leave-confirm-status"></div>
       <div class="ck-leave-confirm-actions">
         <button class="ck-leave-btn ck-leave-btn-save" id="ck-leave-save" type="button">Save &amp; End</button>
+        <button class="ck-leave-btn ck-leave-btn-skip" id="ck-leave-skip" type="button">End without saving</button>
         <button class="ck-leave-btn ck-leave-btn-cancel" id="ck-leave-cancel" type="button">Cancel</button>
       </div>
     </div>
@@ -4778,10 +4784,14 @@ function openLeaveConfirm() {
   // Reset every control fresh — a prior session's in-flight save could have
   // left "Cancel" disabled and stale status text behind.
   document.getElementById('ck-leave-save').disabled = needsYou;
+  // End without saving never needs the agent's cooperation (it force-ends via
+  // the daemon, same as the closed-ticket short-circuit) — stays enabled even
+  // while needs-you blocks the normal Save & End path.
+  document.getElementById('ck-leave-skip').disabled = false;
   document.getElementById('ck-leave-cancel').disabled = false;
   document.getElementById('ck-leave-confirm-body').textContent = needsYou
-    ? 'The agent is waiting on you right now — Cancel to go back and resolve the prompt, then you can Save & End.'
-    : "Save & End saves this sprint's state to HANDOFF and ends the session. Cancel to keep working here.";
+    ? 'The agent is waiting on you right now — Cancel to go back and resolve the prompt, then you can Save & End, or End without saving.'
+    : "Save & End saves this sprint's state to HANDOFF and ends the session. End without saving skips that and ends immediately — use it if the save is stuck. Cancel to keep working here.";
   document.getElementById('ck-leave-confirm-status').textContent = '';
   document.getElementById('ck-leave-confirm').classList.add('open');
 }
@@ -4820,6 +4830,7 @@ async function isTicketClosed(id) {
 }
 
 document.getElementById('ck-leave-save').addEventListener('click', () => ckLeaveSaveAndEnd(false));
+document.getElementById('ck-leave-skip').addEventListener('click', () => ckLeaveSaveAndEnd(true));
 // t-0db3: extracted so the Canon Cockpit shell's close-tab guard can drive the
 // SAME vetted flow via postMessage. skipSave=true = "End without saving" (routes
 // through the daemon's force-end, same as the already-closed short-circuit) — a
@@ -4845,6 +4856,7 @@ async function ckLeaveSaveAndEnd(skipSave) {
   // a "successful" cancel would tear the cockpit down anyway once the
   // marker/timeout fires, with no dialog left open to explain why.
   document.getElementById('ck-leave-cancel').disabled = true;
+  document.getElementById('ck-leave-skip').disabled = true;
   saveBtn.disabled = true;
   statusEl.textContent = 'Ending…';
   let done = false;
