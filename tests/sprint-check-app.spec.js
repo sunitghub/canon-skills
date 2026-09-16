@@ -4323,6 +4323,40 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
+  test('re-clicking Back mid-teardown does not reopen the modal or restart the end sequence (t-9eda)', async ({ page }) => {
+    const id = `t-lcreend-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      // forceEndDelayMs 2000: comfortable real-wall-clock margin for the two
+      // clicks + assertions below to happen before the daemon confirms —
+      // cockpitState.status still reads 'running' in this window (only the
+      // 'ended' postMessage, not 'status', reports the real end).
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', forceEndDelayMs: 2000 }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      const modal = page.locator('#ck-leave-confirm');
+      await expect(modal).toHaveClass(/open/);
+      await page.locator('#ck-leave-skip').click();
+      await expect(modal).not.toHaveClass(/open/);
+      // Re-click Back while the daemon still hasn't confirmed — must be a
+      // no-op (cockpitState._ending guards closeCockpit), not a reopened modal.
+      await page.locator('#ck-back').click();
+      await page.waitForTimeout(50);
+      // Immediate, non-retrying check — the daemon's 2s delay means a real
+      // reopened modal would still be sitting open right now; a retrying
+      // assertion would (wrongly) pass once the real end sequence closes
+      // everything ~2s later, masking a transient reopen in between.
+      const modalOpenRightNow = await page.locator('#ck-leave-confirm').evaluate(el => el.classList.contains('open'));
+      expect(modalOpenRightNow).toBe(false);
+      const overlayOpenRightNow = await page.locator('#cockpit-overlay').evaluate(el => el.classList.contains('open'));
+      expect(overlayOpenRightNow).toBe(true); // still ending, not torn down yet
+      // The original end sequence still completes normally, exactly once.
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 4000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('End without saving closes the modal immediately, before the daemon confirms (t-76dc)', async ({ page }) => {
     const id = `t-lcskip-${Date.now()}`;
     try {
