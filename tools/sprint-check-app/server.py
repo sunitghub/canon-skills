@@ -1713,7 +1713,10 @@ def get_upkeep_run_state(root: Path, skill: str) -> dict:
         state = _UPKEEP_RUNS.get(key)
         if state:
             result = {'status': state['status'], 'exit_code': state.get('exit_code'),
-                       'report_path': state.get('report_path', ''), 'finished_at': state.get('finished_at')}
+                       'report_path': state.get('report_path', ''), 'finished_at': state.get('finished_at'),
+                       # t-1776: surface the same bounded tail the persisted entry gets, so a
+                       # failure is diagnosable from the dashboard, not just upkeepRuns.json.
+                       'output': state.get('output', '')[-2048:]}
             if state['status'] == 'running':
                 result['elapsed'] = time.time() - state['started_at']
             return result
@@ -1721,7 +1724,7 @@ def get_upkeep_run_state(root: Path, skill: str) -> dict:
     if persisted:
         return {'status': persisted.get('status', 'idle'), 'exit_code': None,
                 'report_path': persisted.get('report_path', ''), 'finished_at': persisted.get('finished_at'),
-                'model': persisted.get('model')}
+                'model': persisted.get('model'), 'output': persisted.get('output', '')}
     return {'status': 'idle', 'report_path': ''}
 
 def get_upkeep_report(root: Path, skill: str) -> dict:

@@ -789,7 +789,13 @@
 
   function upStatusPill(st){
     if(st.status==='running') return '<span class="up-status run">Running…</span>';
-    if(st.status==='error') return '<span class="up-status err">Error</span>';
+    if(st.status==='error'){
+      // t-1776: surface the failure's own output as a tooltip — the whole
+      // point of persisting it was so a failure is diagnosable from the
+      // dashboard, not just by opening upkeepRuns.json by hand.
+      const tip = st.output ? esc(st.output.slice(-2048)) : 'No output captured.';
+      return `<span class="up-status err" title="${tip}">Error</span>`;
+    }
     if(st.status==='idle' || !st.report_path) return '<span class="up-status never">Never run</span>';
     return '<span class="up-status ok">Done</span>';
   }
