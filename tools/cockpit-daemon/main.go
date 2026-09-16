@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -110,6 +111,7 @@ type session struct {
 	hookDir      string    // daemon-owned ephemeral --settings dir; removed when the session ends
 	cwd          string    // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
 	projectRoot  string    // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
+	ticketsDir   string    // t-ffb9: s.ticketsDirIn(projectRoot), resolved once at spawn() — lets debugf (a session method, no *server access) find .tickets/<ticket>/ without re-walking
 	agent        string    // t-391a: agent kind ("claude"/"pi"/"copilot") for the /sessions listing
 	started      time.Time // t-391a: spawn time for the /sessions listing
 	// copilotResumeAttempt is true iff this spawn used copilot's --resume=<id>
@@ -209,7 +211,31 @@ func (s *server) handler() http.Handler {
 	// same string, so a string compare could never flag a rebuilt-in-place binary.
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds())})
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds()), "debug_enabled": debugEnabled.Load()})
+	})
+	// t-ffb9: toggles verbose session-lifecycle logging (see debugf). Deliberately
+	// token-free like /version/healthz, NOT s.guard-wrapped like /session/* or
+	// /shutdown — the board (server.py) never holds the daemon's token by design
+	// (t-ddc8), so an authenticated proxy isn't possible without a much larger
+	// architecture change. This adds no new capability beyond flipping a
+	// diagnostic switch (no session control, no data exposure); the daemon's
+	// existing loopback-only bind is what actually gates every token-free
+	// endpoint, this one included.
+	mux.HandleFunc("/admin/debug", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		debugEnabled.Store(body.Enabled)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"enabled": debugEnabled.Load()})
 	})
 	// t-74d6: authorized, gated daemon shutdown so the board can replace a stale
 	// build. Boot-token gated (checked inside handleShutdown), refuses while a
@@ -650,12 +676,13 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.logSessionStart(ticket, cwd, projectRoot)
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
-		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot,
+		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: s.ticketsDirIn(projectRoot),
 		agent: kind, started: time.Now(), copilotResumeAttempt: copilotResuming,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
+	se.debugf("spawn agent=%s ticket=%s cwd=%s resuming=%v", kind, ticket, cwd, copilotResuming)
 	// Natural exit (no explicit /kill) leaves the entry in s.sessions so a quick
 	// reattach can still replay scrollback; reap it after a grace TTL so a
 	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
@@ -936,6 +963,7 @@ func (s *server) killSession(se *session) {
 	}
 	se.killed = true
 	se.mu.Unlock()
+	se.debugf("kill invoked")
 	killProcess(se.cmd) // platform-specific: no orphaned children
 	se.pty.Close()
 	se.markDone()
@@ -1046,7 +1074,9 @@ func (se *session) readLoop() {
 	se.mu.Lock()
 	se.exited = true
 	killed := se.killed
+	bufLen := len(se.buf)
 	se.mu.Unlock()
+	se.debugf("exit killed=%v buf_len=%d", killed, bufLen)
 	se.markDone()
 	se.cleanup()
 	if !killed && se.onNaturalExit != nil {
@@ -1074,6 +1104,53 @@ func (se *session) cleanup() {
 	if se.hookDir != "" {
 		os.RemoveAll(se.hookDir)
 	}
+}
+
+// debugEnabled (t-ffb9) gates verbose session-lifecycle logging, toggled via
+// POST /admin/debug and reflected in GET /version's debug_enabled field.
+// Resets to false on every process start — no persistence by design (a
+// forgotten-on toggle should never survive an unrelated daemon restart).
+var debugEnabled atomic.Bool
+
+// debugLogMaxBytes caps .cockpit-debug.log at a fixed size — lifecycle events
+// are small and bounded per entry, but an unattended long-running session
+// with many spawn/kill cycles could still accumulate indefinitely with no
+// rotation otherwise (t-ffb9 pre-mortem). Mirrors se.max's own scrollback
+// truncation: keep only the tail once the cap is exceeded.
+const debugLogMaxBytes = 512 * 1024
+
+// debugf appends a timestamped lifecycle-event line to this session's
+// .cockpit-debug.log when debugEnabled is on; a silent no-op otherwise, so
+// every call site can call it unconditionally (t-ffb9) — the same shape as a
+// logging library's Debug() call. Lifecycle events only (spawn/kill/exit/
+// resume outcomes) — deliberately never raw PTY buffer content, per the
+// ticket's Grill decision. Best-effort: a write failure is silently
+// swallowed, matching logSessionStart's existing non-fatal file-write
+// convention — diagnostics must never block or crash a real session.
+func (se *session) debugf(format string, a ...any) {
+	if !debugEnabled.Load() {
+		return
+	}
+	dir := filepath.Join(se.ticketsDir, se.ticket)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	path := filepath.Join(dir, ".cockpit-debug.log")
+	line := fmt.Sprintf("%s "+format+"\n", append([]any{time.Now().Format(time.RFC3339Nano)}, a...)...)
+	existing, _ := os.ReadFile(path)
+	_ = os.WriteFile(path, appendDebugLogLine(existing, []byte(line), debugLogMaxBytes), 0o600)
+}
+
+// appendDebugLogLine is debugf's pure size-capping logic, split out so it's
+// unit-testable without writing debugLogMaxBytes (512KB) of real lifecycle
+// events through a spawned session. Keeps only the tail once the combined
+// size would exceed maxBytes — mirrors se.max's own scrollback truncation.
+func appendDebugLogLine(existing, line []byte, maxBytes int) []byte {
+	combined := append(existing, line...)
+	if len(combined) > maxBytes {
+		combined = combined[len(combined)-maxBytes:]
+	}
+	return combined
 }
 
 func (se *session) isExited() bool {
@@ -1908,6 +1985,7 @@ const (
 // ever ADD a bounded wait to a copilot resume attempt, never affect any other
 // spawn path.
 func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectRoot string) (*session, error) {
+	se.debugf("resume-check started")
 	deadline := time.Now().Add(copilotResumeGraceWindow)
 	for time.Now().Before(deadline) {
 		se.mu.Lock()
@@ -1923,16 +2001,19 @@ func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectR
 		// alone is sufficient proof — a process that printed it isn't going to
 		// un-print it or recover on its own, regardless of exit-signal timing.
 		if copilotResumeFailed(buf) {
+			se.debugf("resume-check matched dead-resume text — killing and retrying fresh")
 			s.killSession(se) // idempotent even if the process already exited naturally
 			idPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-copilot-session-id")
 			_ = os.WriteFile(idPath, []byte(newUUIDv4()+"\n"), 0o600)
 			return s.spawn(ticket, cwd, projectRoot, "copilot")
 		}
 		if exited {
+			se.debugf("resume-check exited without a match — treating as unrelated")
 			return se, nil // exited for an unrelated reason — not this ticket's concern
 		}
 		time.Sleep(copilotResumeGracePoll)
 	}
+	se.debugf("resume-check deadline exceeded — treating as legitimate resume")
 	return se, nil // still running past the window — treat as a legitimate resume
 }
 

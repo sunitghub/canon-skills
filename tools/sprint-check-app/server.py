@@ -1443,9 +1443,29 @@ def _cockpit_running_build(addr: str) -> dict | None:
             data = json.loads(r.read().decode('utf-8'))
         return {'version': str(data.get('version', '')),
                 'exe_mtime': int(data.get('exe_mtime', 0)),
-                'uptime_secs': int(data.get('uptime_secs', 0))}
+                'uptime_secs': int(data.get('uptime_secs', 0)),
+                'debug_enabled': bool(data.get('debug_enabled', False))}
     except Exception:
         return None
+
+def cockpit_set_debug(enabled: bool) -> dict:
+    """t-ffb9: forward the Admin panel's debug-logging toggle to the daemon's
+    POST /admin/debug. Token-free like cockpit_sessions/_cockpit_running_build
+    above (the board never holds the daemon's token, t-ddc8) -- the daemon's
+    own loopback-only bind is what gates this, not per-request auth."""
+    addr, ok = _discover_cockpit_addr()
+    if not ok:
+        return {'ok': False, 'error': 'daemon unavailable'}
+    try:
+        req = urllib.request.Request(
+            f'http://{addr}/admin/debug', method='POST',
+            data=json.dumps({'enabled': enabled}).encode('utf-8'),
+            headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=0.6) as r:
+            data = json.loads(r.read().decode('utf-8'))
+        return {'ok': True, 'enabled': bool(data.get('enabled', enabled))}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
 
 def _cockpit_build_status(addr: str) -> dict:
     """{stale, running_build, latest_build} for a healthy daemon at addr. Stale
@@ -1978,6 +1998,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(cockpit_restart(bool(payload.get('force', False)))); return
         if path == '/api/cockpit-stop':
             self.send_json(cockpit_stop(bool(payload.get('force', False)))); return
+        if path == '/api/cockpit-debug':
+            self.send_json(cockpit_set_debug(bool(payload.get('enabled', False)))); return
 
         if path == '/api/worktrees':
             branch = str(payload.get('branch', ''))

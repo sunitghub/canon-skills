@@ -4049,3 +4049,126 @@ func TestShutdownAllSessionsReapsAndClears(t *testing.T) {
 		t.Fatalf("daemon.json not removed after shutdownAllSessions")
 	}
 }
+
+// ── t-ffb9: Admin-panel debug toggle ────────────────────────────────────────
+
+// TestAdminDebugTogglesFlagAndVersionReflectsIt: POST /admin/debug flips the
+// package-level flag, GET /version reports it back, and neither call needs a
+// token (unlike /session/* or /shutdown) — the deliberate design decision
+// that the board never holds the daemon's token (t-ddc8).
+func TestAdminDebugTogglesFlagAndVersionReflectsIt(t *testing.T) {
+	defer debugEnabled.Store(false) // don't leak state into other tests in this package
+	s := newServer(config{token: bootTok, projectRoot: t.TempDir(), stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+
+	getVersion := func() map[string]any {
+		resp, err := http.Get(ts.URL + "/version")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var out map[string]any
+		_ = json.NewDecoder(resp.Body).Decode(&out)
+		return out
+	}
+	if v := getVersion(); v["debug_enabled"] != false {
+		t.Fatalf("expected debug_enabled=false by default, got %v", v["debug_enabled"])
+	}
+
+	toggle := func(enabled bool) {
+		body, _ := json.Marshal(map[string]bool{"enabled": enabled})
+		// No Authorization header — this endpoint is deliberately token-free.
+		resp, err := http.Post(ts.URL+"/admin/debug", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST /admin/debug: want 200, got %d", resp.StatusCode)
+		}
+	}
+	toggle(true)
+	if v := getVersion(); v["debug_enabled"] != true {
+		t.Fatalf("expected debug_enabled=true after toggle on, got %v", v["debug_enabled"])
+	}
+	toggle(false)
+	if v := getVersion(); v["debug_enabled"] != false {
+		t.Fatalf("expected debug_enabled=false after toggle off, got %v", v["debug_enabled"])
+	}
+}
+
+// TestDebugLoggingOffByDefaultWritesNoFile: with the flag at its default
+// (off), a full spawn+kill cycle must never create .cockpit-debug.log.
+func TestDebugLoggingOffByDefaultWritesNoFile(t *testing.T) {
+	debugEnabled.Store(false)
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	initGitRepo(t, root)
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	t.Cleanup(func() { killAllSessions(s) })
+
+	se, err := s.spawn("t-ab12", root, root, "claude")
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	s.killSession(se)
+
+	logPath := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-debug.log")
+	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
+		t.Fatalf(".cockpit-debug.log was created with debug logging off (err=%v)", err)
+	}
+}
+
+// TestDebugLoggingWritesLifecycleEventsWhenEnabled: with the flag on, spawn
+// and kill each append a lifecycle-event line — and the log contains no raw
+// PTY buffer content, only the metadata markers debugf actually writes
+// (t-ffb9's Grill decision: lifecycle events only, never raw content).
+func TestDebugLoggingWritesLifecycleEventsWhenEnabled(t *testing.T) {
+	debugEnabled.Store(true)
+	defer debugEnabled.Store(false)
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	initGitRepo(t, root)
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	t.Cleanup(func() { killAllSessions(s) })
+
+	se, err := s.spawn("t-ab12", root, root, "claude")
+	if err != nil {
+		t.Fatalf("spawn: %v", err)
+	}
+	s.killSession(se)
+
+	logPath := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-debug.log")
+	got, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf(".cockpit-debug.log was not created with debug logging on: %v", err)
+	}
+	content := string(got)
+	if !strings.Contains(content, "spawn agent=claude ticket=t-ab12") {
+		t.Fatalf("missing spawn lifecycle line: %q", content)
+	}
+	if !strings.Contains(content, "kill invoked") {
+		t.Fatalf("missing kill lifecycle line: %q", content)
+	}
+}
+
+// TestAppendDebugLogLineTruncatesToTail: the pure size-capping logic keeps
+// only the tail once the cap is exceeded, without needing to actually write
+// debugLogMaxBytes (512KB) of real lifecycle events through a spawned session.
+func TestAppendDebugLogLineTruncatesToTail(t *testing.T) {
+	existing := []byte("0123456789") // 10 bytes
+	line := []byte("ABCDE")          // + 5 bytes = 15 combined
+	got := appendDebugLogLine(existing, line, 8)
+	want := "789ABCDE" // the last 8 bytes of "0123456789ABCDE"
+	if string(got) != want {
+		t.Fatalf("expected tail %q, got %q", want, got)
+	}
+	// Well under the cap: no truncation at all.
+	small := appendDebugLogLine([]byte("ab"), []byte("cd"), 100)
+	if string(small) != "abcd" {
+		t.Fatalf("expected no truncation under the cap, got %q", small)
+	}
+}
