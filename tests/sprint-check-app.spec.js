@@ -521,6 +521,55 @@ test.describe('board modal', () => {
     expect(wtSrc).toContain('cwd=' + encodeURIComponent('/Users/me/wt/sprint-x'));
   });
 
+  test('a stale/empty state.gitRoot triggers a fresh /api/git verification before Main checkout mounts (t-0a73)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+    }));
+    await page.route('**/api/git', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ branch: 'main', project: 'todo', root: '/Users/agentops/ToDo', modified: 0, log: [] }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    // t-0a73: state.gitRoot empty here simulates loadData()'s catch branch
+    // substituting MOCK.git (no `root` field) after a transient fetch failure
+    // — the exact live-reproduced cause. Must NOT send an empty cwd; must
+    // fetch a fresh, real root and use it instead.
+    const src = await page.evaluate(async () => {
+      state.gitRoot = '';
+      await mountCockpitTerminal({ id: 't-ab12' }, '');
+      return document.getElementById('ck-iframe').src;
+    });
+    expect(src).toContain('cwd=' + encodeURIComponent('/Users/agentops/ToDo'));
+  });
+
+  test('Main checkout refuses to mount (fail-safe) when no real project root can be verified (t-0a73)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+    }));
+    await page.route('**/api/git', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ branch: 'main', project: 'todo', modified: 0, log: [] }), // no `root`
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    const result = await page.evaluate(async () => {
+      state.gitRoot = '';
+      const before = document.getElementById('ck-iframe').src;
+      await mountCockpitTerminal({ id: 't-ab12' }, '');
+      return { src: document.getElementById('ck-iframe').src, before, msg: document.getElementById('ck-term-msg').textContent };
+    });
+    // The iframe must never be pointed at a doomed empty-cwd session — src
+    // stays unchanged from its pre-call value, and the fail-safe message
+    // explains why instead of silently misrouting to the daemon's default.
+    expect(result.src).toBe(result.before);
+    expect(result.msg).toContain("Could not verify this project's root");
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');

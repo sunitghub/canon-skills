@@ -5686,8 +5686,32 @@ async function mountCockpitTerminal(t, cwd) {
   // not this board's — so the Main checkout ('') must name this board's own project
   // root, else a second project's ticket resolves against the wrong project ("ticket
   // not found") and would spawn in the wrong directory. Worktrees pass their own path.
-  const effectiveCwd = cwd || state.gitRoot;
-  if (effectiveCwd) url += `&cwd=${encodeURIComponent(effectiveCwd)}`;
+  let effectiveCwd = cwd || state.gitRoot;
+  if (!effectiveCwd) {
+    // t-0a73: state.gitRoot can be stale/empty here — e.g. loadData()'s catch
+    // branch silently substitutes MOCK.git (no `root` field) on ANY transient
+    // fetch failure, live-reproduced right after a fresh daemon/board restart.
+    // Never trust a cached value for an operation this consequential (spawning
+    // a real agent) — verify fresh, right at the point of use, before falling
+    // back to the dangerous empty-string shortcut.
+    try {
+      const gr = await fetch('/api/git');
+      const gd = await gr.json();
+      if (gd && gd.root) {
+        effectiveCwd = gd.root;
+        state.gitRoot = gd.root; // benefits any later call in this session too
+      }
+    } catch { /* fall through to the fail-safe below */ }
+  }
+  if (!effectiveCwd) {
+    // Fail safe, not fail open: sending '' here would resolve against the
+    // shared daemon's arbitrary launch-time project (t-fc91), not this one —
+    // silently reintroducing the exact bug this check exists to prevent.
+    msg.textContent = "Could not verify this project's root — check your connection and try again.";
+    iframe.style.visibility = 'hidden';
+    return;
+  }
+  url += `&cwd=${encodeURIComponent(effectiveCwd)}`;
   // t-74d6: once the cockpit page loads, relay the daemon build status so it can
   // render (or hide) the stale banner. Sent on load so the listener is ready.
   const bi = cockpitState.buildInfo || { stale: false, running_build: null, latest_build: null };
