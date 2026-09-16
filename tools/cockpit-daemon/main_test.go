@@ -1476,6 +1476,79 @@ func TestHandleStartRecoversFromDeadCopilotResume(t *testing.T) {
 	}
 }
 
+// fakeCopilotDeadResumeSlowExit prints the dead-resume error immediately, like
+// fakeCopilotDeadResume, but then stays alive for well longer than
+// copilotResumeGraceWindow before ever exiting — simulating t-2e84's
+// live-reproduced Windows gap, where the daemon's own se.exited flag (set only
+// inside readLoop() on PTY EOF) can lag the real process state. Within the
+// grace window, se.exited is guaranteed still false here, while the failure
+// text is already in the buffer — exactly the scenario the old exited-gated
+// check missed.
+func fakeCopilotDeadResumeSlowExit(t *testing.T) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-copilot-dead-resume-slow.sh")
+	script := "#!/bin/sh\n" +
+		"case \"$*\" in\n" +
+		"  *--resume=*)\n" +
+		"    printf 'Error: No session, task, or name matched .\\n'\n" +
+		"    sleep 5\n" +
+		"    exit 1\n" +
+		"    ;;\n" +
+		"esac\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r line; do :; done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// t-2e84: recovery must act on the failure text alone, without waiting for
+// se.exited — a process that has printed the dead-resume error but hasn't
+// been observed as exited yet (matching the live-reproduced Windows gap,
+// simulated here via fakeCopilotDeadResumeSlowExit's deliberately slow exit)
+// must still be recovered well within the grace window, not left to time out.
+func TestHandleStartRecoversBeforeExitIsObserved(t *testing.T) {
+	bin := fakeCopilotDeadResumeSlowExit(t)
+	root := t.TempDir()
+	writeTicketStatus(t, root, "t-ab12", "in_progress")
+	copilotHome := t.TempDir()
+	t.Setenv("COPILOT_HOME", copilotHome)
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	staleID := "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff"
+	idPath := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-copilot-session-id")
+	if err := os.WriteFile(idPath, []byte(staleID+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeCopilotSessionState(t, copilotHome, staleID)
+
+	start := time.Now()
+	sid, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "copilot", bootTok)
+	elapsed := time.Since(start)
+	if status != http.StatusOK || sid == "" {
+		t.Fatalf("start: want 200 + session id, got %d %q", status, sid)
+	}
+	// Must recover well within copilotResumeGraceWindow (2s) — comfortably
+	// less than the fake binary's 5s sleep, proving recovery didn't wait for
+	// (or need) the slow-exiting process to actually exit first.
+	if elapsed >= copilotResumeGraceWindow {
+		t.Fatalf("recovery took %v — as long as the full grace window; it waited for exit instead of acting on the buffer content", elapsed)
+	}
+	newID, err := os.ReadFile(idPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(newID)) == staleID {
+		t.Fatal(".cockpit-copilot-session-id was not replaced — recovery did not fire before exit was observed")
+	}
+}
+
 // t-6ce0: a LEGITIMATE copilot resume (the process stays alive) must never be
 // touched by the grace-check — same session returned, id file unchanged.
 func TestHandleStartDoesNotRetryHealthyCopilotResume(t *testing.T) {
