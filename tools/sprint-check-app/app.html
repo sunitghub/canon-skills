@@ -5657,6 +5657,7 @@ async function maybeMountCockpitTerminal(t) {
 }
 
 async function mountCockpitTerminal(t, cwd) {
+  console.log('MOUNT DEBUG (entry): cwd param =', JSON.stringify(cwd), '| state.gitRoot =', JSON.stringify(state.gitRoot)); // TEMP t-0a73 diagnostic
   const msg = document.getElementById('ck-term-msg');
   const iframe = document.getElementById('ck-iframe');
   msg.textContent = 'Starting the cockpit daemon…';
@@ -5711,6 +5712,7 @@ async function mountCockpitTerminal(t, cwd) {
     iframe.style.visibility = 'hidden';
     return;
   }
+  console.log('MOUNT DEBUG (final): effectiveCwd =', JSON.stringify(effectiveCwd), '| url =', url); // TEMP t-0a73 diagnostic
   url += `&cwd=${encodeURIComponent(effectiveCwd)}`;
   // t-74d6: once the cockpit page loads, relay the daemon build status so it can
   // render (or hide) the stale banner. Sent on load so the listener is ready.
