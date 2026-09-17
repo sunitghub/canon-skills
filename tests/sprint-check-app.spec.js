@@ -3052,12 +3052,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }));
   }
 
-  function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false } = {}) {
+  function writeTicket(id, status, { acceptanceCriteria = null, plan = null, ci = false, demo = false, worktreePreference = '' } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), [
       '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
       `ci: ${ci}`, `demo: ${demo}`,
+      ...(worktreePreference ? [`worktree_preference: ${worktreePreference}`] : []),
       'created: 2026-08-24T00:00:00Z', '---', '', `# Cockpit test ${id}`, '',
     ].join('\n'));
     if (acceptanceCriteria) {
@@ -3744,6 +3745,149 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('New Ticket modal Worktree row: +New sets worktree_preference on the created ticket (t-644a)', async ({ page }) => {
+    await page.route('**/api/worktrees**', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true }]),
+    }));
+    const title = `Worktree pref test ${Date.now()}`;
+    let createdId = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await expect(page.locator('#c-worktree-row')).toBeVisible();
+      await page.locator('#c-worktree-pills .create-pill[data-wt="new"]').click();
+      await page.locator('#c-wt-new-input').fill('sprint/feat-644a');
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      const raw = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
+      expect(raw).toContain('worktree_preference: sprint/feat-644a');
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
+  test('rail pre-fill: worktree_preference matching an existing worktree pre-selects its radio (t-644a)', async ({ page }) => {
+    const id = `t-wtpre-${Date.now()}`;
+    const wtPath = '/tmp/wt-644a/feat-x';
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+        worktreePreference: 'feat-x',
+      });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: wtPath, branch: 'feat-x', is_main: false, tickets_visible: true, ticket_present: true },
+        ]),
+      }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      // No .cockpit-cwd binding yet (worktree-lock reports unlocked) → the row
+      // matching worktree_preference pre-selects, not Main.
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('IN PROGRESS card shows a read-only worktree chip when bound; empty when unbound (t-644a)', async ({ page }) => {
+    const boundId = `t-wtchip-a-${Date.now()}`;
+    const unboundId = `t-wtchip-b-${Date.now()}`;
+    const wtPath = '/tmp/wt-644a/chip-x';
+    try {
+      writeTicket(boundId, 'in_progress');
+      writeTicket(unboundId, 'in_progress');
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true },
+          { path: wtPath, branch: 'chip-x', is_main: false },
+        ]),
+      }));
+      await page.route(`**/api/worktree-lock/${boundId}`, route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }),
+      }));
+      await page.route(`**/api/worktree-lock/${unboundId}`, route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator(`.card[data-id="${boundId}"] .card-wt-chip`)).toHaveText('chip-x');
+      await expect(page.locator(`.card[data-id="${unboundId}"] .card-wt-chip`)).toHaveText('');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', boundId), { recursive: true, force: true });
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', unboundId), { recursive: true, force: true });
+    }
+  });
+
+  test('non-git project hides the New Ticket Worktree row; it reappears once git becomes available (t-644a)', async ({ page }) => {
+    let gitBody = { branch: '', project: 'nogit', modified: 0, log: [] }; // no total_commits -> non-git
+    await page.route('**/api/git', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(gitBody),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    await page.locator('#btn-create').click();
+    await page.waitForSelector('#create-modal', { timeout: 3000 });
+    await expect(page.locator('#c-worktree-row')).toBeHidden();
+    await page.locator('#c-cancel').click();
+    await expect(page.locator('#create-overlay')).not.toHaveClass(/open/);
+
+    // Live re-check, not cached at registration: flip the mocked /api/git
+    // response and re-run the same poll loadData() already runs on a timer.
+    gitBody = { branch: 'main', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], total_commits: 5 };
+    await page.evaluate(() => loadData());
+    await page.waitForTimeout(100);
+    await page.locator('#btn-create').click();
+    await page.waitForSelector('#create-modal', { timeout: 3000 });
+    await expect(page.locator('#c-worktree-row')).toBeVisible();
+  });
+
+  test('non-git project hides the rail worktree accordion and the board chip (t-644a)', async ({ page }) => {
+    const id = `t-wtnogit-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      await stubCockpit(page);
+      await page.route('**/api/git', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ branch: '', project: 'nogit', modified: 0, log: [] }), // no total_commits
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator(`.card[data-id="${id}"] .card-wt-chip`)).toHaveText('');
+
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-worktree-section')).toBeHidden();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('card affordance is status-gated: Start on open, Resume on in-progress, none on closed', async ({ page }) => {
     const stamp = Date.now();
     const openId = `t-ckopen-${stamp}`;
@@ -3792,7 +3936,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('single active: Start is disabled on an open card while another sprint is in progress', async ({ page }) => {
+  test('per-worktree tickets (t-644a/t-01a4): Start on an open card stays enabled while another ticket is in progress', async ({ page }) => {
     const stamp = Date.now();
     const openId = `t-ck1open-${stamp}`;
     const progId = `t-ck1prog-${stamp}`;
@@ -3802,10 +3946,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(openId);
-      // An in-progress ticket exists (progId, plus possibly others) → open Start is disabled.
+      // The one-active-ticket gate is now scoped per worktree on the backend
+      // (t-01a4), not repo-wide — the client must never pre-disable Start just
+      // because another ticket is in_progress; a real per-worktree conflict
+      // (if any) surfaces from the actual Start attempt's own response.
       const startBtn = page.locator(`.card[data-id="${openId}"] .card-start`);
-      await expect(startBtn).toBeDisabled();
-      await expect(startBtn).toHaveClass(/disabled/);
+      await expect(startBtn).toBeEnabled();
+      await expect(startBtn).not.toHaveClass(/disabled/);
     } finally {
       for (const id of [openId, progId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
