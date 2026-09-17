@@ -19,9 +19,36 @@
 # (Claude Code's --allowedTools has no path-glob form for Write — verified
 # live: `Write(<path>/**)` silently denies every write, including inside the
 # allowed path) — the one-report-file constraint stays prompt-enforced only.
+#
+# Integrity pin (t-92f4): the instruction payload below is the target
+# project's own skills/$SKILL/SKILL.md (read relative to --root, which may be
+# a different, less-trusted checkout than this tool's own canon install —
+# e.g. a bad clone, a compromised fork, a bad merge). Before that file's
+# content is ever handed to `claude -p` as instructions, its hash is checked
+# against upkeep-skill-hashes.json, which ships beside THIS script in the
+# trusted canon install (never inside --root). A mismatch refuses the run
+# rather than executing tampered instructions unattended. This closes one
+# specific gap, not the whole Write boundary above: run
+# tools/update-upkeep-hashes.sh after an intentional edit to one of the four
+# skills, in the same commit as that edit.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HASH_MANIFEST="$SCRIPT_DIR/upkeep-skill-hashes.json"
+
+# Portable sha256 hex of a file — same idiom as gate-cache.sh's
+# _gate_cache_sha (sourced there for cache keys; duplicated here as a
+# standalone one-liner rather than sourcing an unrelated caching library).
+_upkeep_sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d' ' -f1
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$1" | cut -d' ' -f1
+  else
+    echo "upkeep-run: no sha256sum or shasum found — cannot verify skill integrity" >&2
+    return 1
+  fi
+}
 
 SKILL="${1:-}"
 [[ -z "$SKILL" || "$SKILL" == --* ]] && { echo "Usage: upkeep-run <skill> --root <path> [--model <id>]" >&2; exit 1; }
@@ -45,6 +72,18 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -z "$ROOT" ]] && { echo "Error: --root <project-root> is required." >&2; exit 1; }
 [[ -d "$ROOT" ]] || { echo "Error: root '$ROOT' does not exist." >&2; exit 1; }
+
+SKILL_FILE="$ROOT/skills/$SKILL/SKILL.md"
+[[ -f "$SKILL_FILE" ]] || { echo "Error: '$SKILL_FILE' not found." >&2; exit 1; }
+[[ -f "$HASH_MANIFEST" ]] || { echo "Error: '$HASH_MANIFEST' not found — cannot verify skill integrity." >&2; exit 1; }
+PINNED_HASH="$(grep -o "\"$SKILL\"[[:space:]]*:[[:space:]]*\"[a-f0-9]*\"" "$HASH_MANIFEST" | grep -o '[a-f0-9]\{64\}')"
+[[ -n "$PINNED_HASH" ]] || { echo "Error: '$SKILL' has no entry in $HASH_MANIFEST." >&2; exit 1; }
+ACTUAL_HASH="$(_upkeep_sha256_file "$SKILL_FILE")"
+if [[ "$ACTUAL_HASH" != "$PINNED_HASH" ]]; then
+  echo "Error: $SKILL_FILE does not match its pinned hash in $HASH_MANIFEST — refusing headless run." >&2
+  echo "If this is an intentional edit, run tools/update-upkeep-hashes.sh and commit the updated manifest." >&2
+  exit 1
+fi
 
 REPORTS_DIR="$ROOT/.reports"
 mkdir -p "$REPORTS_DIR"
