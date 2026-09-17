@@ -5392,9 +5392,10 @@ async function renderCockpitWorktree(t) {
     html += rowHTML(e.path, e.branch || '(detached)', e.path);
   }
   html += `<div class="ck-worktree-new">
-    <button type="button" class="ck-worktree-new-plus" title="Enter a branch name, then click to create the worktree">+ New</button>
-    <input id="ck-worktree-new-input" placeholder="sprint/${esc(t.id)}" spellcheck="false" autocomplete="off">
-  </div>`;
+    <button type="button" class="ck-worktree-new-plus" title="Edit the branch name, then click to create the worktree">+ New</button>
+    <input id="ck-worktree-new-input" value="sprint/${esc(t.id)}" spellcheck="false" autocomplete="off">
+  </div>
+  <div class="ck-add-hint">Edit the name, then Create — an untouched suggestion never creates a worktree by itself.</div>`;
   if (anyBlocked) {
     html += `<div class="ck-worktree-warn" role="alert">
       <strong>.tickets/ is gitignored</strong> — a git worktree only carries tracked files, so a worktree can't see this ticket and a sprint started there can't find it. Use the <strong>Main checkout</strong>, or track <code>.tickets/</code> in git.
@@ -5451,9 +5452,14 @@ async function renderCockpitWorktree(t) {
   // server's "path already exists" round-trip surface as a generic alert.
   const existingBranches = new Set(others.map(e => e.branch).filter(Boolean));
   // Require a real, deliberately-typed branch name — no falling back to the
-  // placeholder's suggested default on an empty field (that silently created
-  // an unwanted worktree in testing).
+  // pre-filled suggestion on an untouched field (that silently created an
+  // unwanted worktree in testing). The suggestion is a real `value` now, not
+  // a placeholder (t-c6fa: clicking in gives you editable text, not an empty
+  // field to retype from scratch) — but the button only enables on a real
+  // `input` event, which setting `value` via markup never fires, so an
+  // untouched field is exactly as inert as an empty one always was.
   btn.disabled = true;
+  input.addEventListener('focus', () => input.select());
   input.addEventListener('input', () => {
     const v = input.value.trim();
     btn.disabled = v.length <= 3 || existingBranches.has(v);

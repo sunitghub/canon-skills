@@ -1799,9 +1799,30 @@ func TestSpawnResumesPersistedSessionOnlyWhenInProgress(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("start: %d", resp.StatusCode)
 	}
+	var firstOut struct{ Session, Token string }
+	if err := json.NewDecoder(resp.Body).Decode(&firstOut); err != nil {
+		t.Fatal(err)
+	}
 	resp.Body.Close()
 	argv := waitFile(t, argvFile, 3*time.Second)
 	firstID := assertFreshSpawnArgv(t, argv, "sprint start t-ab12")
+
+	// t-c6fa: end the first session before spawning again -- a real second
+	// Start/Resume only ever happens after the prior session has ended (the
+	// single-pane UI never lets a live session's own card be re-clicked), and
+	// since t-c6fa the daemon now ATTACHES to a same-ticket session that's
+	// still live rather than spawning a second one -- leaving it live here
+	// would attach instead of exercising the fresh-vs-resume decision below.
+	killReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+firstOut.Session+"/kill", nil)
+	killReq.Header.Set("Authorization", "Bearer "+firstOut.Token)
+	kr, err := http.DefaultClient.Do(killReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kr.Body.Close()
+	if kr.StatusCode != http.StatusNoContent {
+		t.Fatalf("kill first session: want 204, got %d", kr.StatusCode)
+	}
 
 	// Flip to in_progress (as the real sprint skill would) and spawn again —
 	// must resume the SAME id via --resume, never --fork-session.
