@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-17-2026 15:50
+learnings-sweep last run: 09-17-2026 19:45
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-17 | [t-644a](.tickets/t-644a/learnings.md) | Session sub-tabs looked like "mirror cockpit.html's ensureView one layer down" (N iframes) until `openCockpit()` was read in full — the real scope was making a whole per-session state machine (poll loop, needs-you, Save&End) per-tab-aware; read the full existing implementation before estimating scope on a change that extends a single-instance pattern to multiple instances. | UNPROMOTED |
 | 2026-09-17 | [t-01a4](.tickets/t-01a4/learnings.md) | A fresh evaluator independently re-reproduced a reviewer-caught fix from scratch (rebuilt the exact original repro, confirmed the fix live) rather than trusting the ticket's own description of it being fixed — the fresh-context gate's value is in re-deriving claims, not reading them, even for a fix made mid-sprint in response to an earlier finding. | UNPROMOTED |
 | 2026-09-17 | [t-c6fa](.tickets/t-c6fa/learnings.md) | A binding evaluator PASS and an advisory reviewer NO can legitimately coexist (scope drift that doesn't contradict any acceptance criterion) — `sprint complete` must still surface the reviewer's own separate NO verdict to the human closer, not let a clean eval report imply every gate was clean. | UNPROMOTED |
 | 2026-09-15 | [t-f15b](.tickets/t-f15b/learnings.md) | An acceptance.md test-count claim ("121/121 pass") arithmetically undercounted the real run (113 passed/8 failed/7 did-not-run = 128) and never disclosed the did-not-run set — grade against real command output, not the doc's own summary framing, even when the underlying verdict doesn't change. | UNPROMOTED |
