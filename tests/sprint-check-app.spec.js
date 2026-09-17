@@ -3795,6 +3795,40 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('New Ticket modal Worktree +New: suggests a branch name from the title, stops once edited directly', async ({ page }) => {
+    await page.route('**/api/worktrees**', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true }]),
+    }));
+    let createdId = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await page.locator('#c-worktree-pills .create-pill[data-wt="new"]').click();
+      await expect(page.locator('#c-wt-new-input')).toHaveValue('');
+
+      await page.locator('#c-title').fill('Fix login bug on Safari');
+      await expect(page.locator('#c-wt-new-input')).toHaveValue('sprint/fix-login-bug-on-safari', { timeout: 1000 });
+
+      // Editing the field directly stops further auto-updates from the title.
+      await page.locator('#c-wt-new-input').fill('sprint/my-custom-name');
+      await page.locator('#c-title').fill('Fix login bug on Safari and Chrome');
+      await page.waitForTimeout(450);
+      await expect(page.locator('#c-wt-new-input')).toHaveValue('sprint/my-custom-name');
+
+      await page.locator('#c-submit').click();
+      const card = page.locator('.card', { hasText: 'Fix login bug on Safari and Chrome' });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      const raw = fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8');
+      expect(raw).toContain('worktree_preference: sprint/my-custom-name');
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
   test('rail pre-fill: worktree_preference matching an existing worktree pre-selects its radio (t-644a)', async ({ page }) => {
     const id = `t-wtpre-${Date.now()}`;
     const wtPath = '/tmp/wt-644a/feat-x';

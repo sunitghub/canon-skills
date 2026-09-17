@@ -6548,6 +6548,12 @@ async function uploadVisual(ticketId, filename, base64) {
   // convention matching demo/ci/gate).
   let wtMode = 'main';
   let wtNewValue = '';
+  // Once the user types into the worktree field directly, stop overwriting
+  // it with a fresh title-derived suggestion — respect their edit.
+  let wtNewTouched = false;
+  function slugifyBranch(title) {
+    return title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+  }
   function worktreePreferenceValue() {
     if (wtMode === 'main') return '';
     if (wtMode === 'new') return wtNewValue.trim();
@@ -6562,10 +6568,17 @@ async function uploadVisual(ticketId, filename, base64) {
     html += `<button class="create-pill${wtMode === 'new' ? ' active' : ''}" type="button" title="Type a branch name -- not created yet, just remembered for first Start" data-wt="new">+ New</button>`;
     wtEl.innerHTML = html;
     if (wtMode === 'new') {
+      // No ticket id exists yet at create time (unlike the rail's own +New,
+      // which suggests sprint/<id>) -- derive a suggestion from the title
+      // instead, same live-suggestion spirit.
+      if (!wtNewTouched && !wtNewValue) {
+        const title = titleEl.value.trim();
+        if (title) wtNewValue = 'sprint/' + slugifyBranch(title);
+      }
       wtEl.insertAdjacentHTML('beforeend', `<input id="c-wt-new-input" class="create-input" style="width:auto;flex:1;min-width:120px" placeholder="sprint/branch-name" value="${esc(wtNewValue)}" spellcheck="false" autocomplete="off">`);
       const input = document.getElementById('c-wt-new-input');
       input.addEventListener('focus', () => input.select());
-      input.addEventListener('input', () => { wtNewValue = input.value; });
+      input.addEventListener('input', () => { wtNewValue = input.value; wtNewTouched = true; });
     }
     wtEl.querySelectorAll('.create-pill').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -6588,7 +6601,7 @@ async function uploadVisual(ticketId, filename, base64) {
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
     ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
-    wtMode = 'main'; wtNewValue = '';
+    wtMode = 'main'; wtNewValue = ''; wtNewTouched = false;
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
     gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
     refreshWorktreeRow();
@@ -6644,6 +6657,14 @@ async function uploadVisual(ticketId, filename, base64) {
     clearTimeout(detectTimer);
     detectTimer = setTimeout(() => {
       const title = titleEl.value.trim();
+      // Live branch-name suggestion, independent of the type-detect early
+      // return below -- keeps updating (or clearing back) as the title
+      // changes, right up until the user edits the worktree field itself.
+      if (wtMode === 'new' && !wtNewTouched) {
+        wtNewValue = title ? 'sprint/' + slugifyBranch(title) : '';
+        const wtInput = document.getElementById('c-wt-new-input');
+        if (wtInput) wtInput.value = wtNewValue;
+      }
       if (!title) { detectEl.textContent = ''; return; }
       const { type, reason } = detectTicketType(title);
       detectEl.textContent = `Detected: ${titleCase(type)} — ${reason}`;
