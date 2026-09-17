@@ -27,10 +27,17 @@
 # content is ever handed to `claude -p` as instructions, its hash is checked
 # against upkeep-skill-hashes.json, which ships beside THIS script in the
 # trusted canon install (never inside --root). A mismatch refuses the run
-# rather than executing tampered instructions unattended. This closes one
-# specific gap, not the whole Write boundary above: run
+# rather than executing tampered instructions unattended. Run
 # tools/update-upkeep-hashes.sh after an intentional edit to one of the four
 # skills, in the same commit as that edit.
+#
+# Boundary — what this does NOT cover: it does not provide OS-level write
+# sandboxing (the Write-is-not-path-scoped gap above is unchanged; a skill
+# that passes this check can still write anywhere via Write's own prompt-only
+# constraint), and it does not defend against a malicious committer with
+# push rights (they could update the manifest and the skill together in one
+# commit) — it only catches SKILL.md drifting from the manifest after a
+# clone, which a legitimate committer's own regen step never triggers.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
