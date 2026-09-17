@@ -2102,6 +2102,10 @@
         <span class="create-label">Priority</span>
         <div class="create-pills" id="c-priorities"></div>
       </div>
+      <div class="create-row" id="c-worktree-row" style="display:none">
+        <span class="create-label">Worktree</span>
+        <div class="create-pills" id="c-worktree-pills"></div>
+      </div>
       <div class="create-row">
         <span class="create-label">Options</span>
         <div class="create-pills">
@@ -2883,7 +2887,10 @@ function md(raw, ticketId) {
       return `<span class="doc-bullet${done ? '' : ' doc-check-open'}" data-src-idx="${si}"><span class="doc-check-marker${done ? '' : ' open'}">${done ? '✓' : ''}</span><span>${text}</span></span>`;
     })
     .replace(/^- (.+)$/gm,  '<span class="doc-bullet"><span class="doc-bullet-marker">·</span><span>$1</span></span>')
-    .replace(/((?:\|[^\n]+(?:\n|$))+)/g, block => {
+    // Blank lines between table rows are a common LLM-markdown quirk — swallow
+    // them with \n+ so the block still groups as one table; row extraction
+    // below already filters blank lines out via `.filter(r => r.trim())`.
+    .replace(/((?:\|[^\n]+(?:\n+|$))+)/g, block => {
       const rows = block.trim().split('\n').filter(r => r.trim());
       if (rows.length < 2) return block;
       const [headerRow, sepRow, ...bodyRows] = rows;
@@ -2966,6 +2973,13 @@ function renderHeader() {
   setText('h-project',  _embed ? (git?.root || git?.project || 'project') : (git?.project || 'project'));
   document.getElementById('h-project').title = git?.root || '';
   state.gitRoot = cockpitForwardSlash(git?.root) || '';
+  // t-644a: the board's own established non-git tell — total_commits is only
+  // a number when `git rev-list --count HEAD` actually succeeded (server.py's
+  // load_git); already used above for the commits-total badge. Reused here to
+  // gate every worktree-preference surface (modal row, rail accordion, board
+  // chip) live, not cached at registration — reappears the moment git init
+  // happens and this project's header next re-renders.
+  state.isGitProject = typeof git?.total_commits === 'number';
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
   setText('h-open',     tickets.filter(t => t.status === 'open').length);
@@ -3414,14 +3428,16 @@ function cardHTML(t, idx) {
   const animStyle = (idx !== undefined) ? ` style="--i:${idx}"` : '';
   const pri = t.priority ?? 2;
   const priLabel = ['P0 critical','P1 high','P2 normal','P3 low','P4 backlog'][pri] ?? `P${pri}`;
-  // Cockpit Start/Resume (t-ddc8): status-gated + single-active. Only one sprint
-  // may run at a time (the CLI's ACTIVE lock); the UI reflects that by disabling
-  // Start on OPEN cards while any ticket is in_progress.
-  const activeExists = (state.tickets || []).some(x => x.status === 'in_progress');
+  // Cockpit Start/Resume: t-644a removed the old repo-wide pre-block here —
+  // cmd_start's real gate (t-01a4) is per-worktree now, so a ticket anywhere
+  // else being in_progress no longer means THIS one can't start; only the
+  // daemon/CLI's own actual same-worktree conflict does, surfaced as a real
+  // error from the Start attempt itself (see cockpit.html's own start()
+  // error handling) rather than guessed at ahead of time from a global count
+  // the board has no way to evaluate per-worktree without asking the daemon.
   let startBtn = '';
   if (t.status === 'open') {
-    const dis = activeExists;
-    startBtn = `<button class="card-start${dis ? ' disabled' : ''}" data-id="${esc(t.id)}"${dis ? ' disabled title="Another sprint is active — finish it before starting a new one"' : ' title="Start this sprint in the cockpit"'}>▶ Start</button>`;
+    startBtn = `<button class="card-start" data-id="${esc(t.id)}" title="Start this sprint in the cockpit">▶ Start</button>`;
   } else if (t.status === 'in_progress') {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
   }
@@ -3439,6 +3455,7 @@ function cardHTML(t, idx) {
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
         ${startBtn}
         <p class="card-title">${esc(t.title)}</p>
+        ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
       </div>
       <div class="card-footer">
         <div class="card-meta-col">
@@ -5386,6 +5403,20 @@ async function renderCockpitWorktree(t) {
   // EFFECTIVE run cwd (the daemon reuses this locked cwd and ignores the picker).
   cockpitState.worktreeLock = lock;
 
+  // t-644a: pre-fill from a worktree_preference declared at New Ticket time —
+  // only when not already locked (a real binding always wins) and nothing has
+  // been explicitly picked yet this session. If the preference matches an
+  // EXISTING worktree, pre-select that row; otherwise it names a branch that
+  // doesn't exist yet, so pre-fill the +New input instead of pre-selecting a
+  // row that isn't there. An absent preference changes nothing (existing gate
+  // behavior: nothing pre-selected until the user picks).
+  let wtNewDefault = `sprint/${t.id}`;
+  if (!lock.locked && cockpitState.worktreeCwd === null && t.worktree_preference) {
+    const match = others.find(e => e.branch === t.worktree_preference);
+    if (match) cockpitState.worktreeCwd = match.path;
+    else wtNewDefault = t.worktree_preference;
+  }
+
   let html = `<div class="ck-worktree-active-note" id="ck-worktree-note"></div>`;
   html += rowHTML('', 'Main checkout (current)', mainEntry ? mainEntry.path : '');
   for (const e of others) {
@@ -5393,7 +5424,7 @@ async function renderCockpitWorktree(t) {
   }
   html += `<div class="ck-worktree-new">
     <button type="button" class="ck-worktree-new-plus" title="Edit the branch name, then click to create the worktree">+ New</button>
-    <input id="ck-worktree-new-input" value="sprint/${esc(t.id)}" spellcheck="false" autocomplete="off">
+    <input id="ck-worktree-new-input" value="${esc(wtNewDefault)}" spellcheck="false" autocomplete="off">
   </div>
   <div class="ck-add-hint">Edit the name, then Create — an untouched suggestion never creates a worktree by itself.</div>`;
   if (anyBlocked) {
@@ -6186,6 +6217,8 @@ async function uploadVisual(ticketId, filename, base64) {
   const detectEl = document.getElementById('c-detect');
   const typesEl  = document.getElementById('c-types');
   const priEl    = document.getElementById('c-priorities');
+  const wtRow    = document.getElementById('c-worktree-row');
+  const wtEl     = document.getElementById('c-worktree-pills');
   const bodyEl   = document.getElementById('c-body');
   const queueEl  = document.getElementById('c-queue');
 
@@ -6228,11 +6261,57 @@ async function uploadVisual(ticketId, filename, base64) {
   // Demo is independent of CI (no gate coupling).
   demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); });
 
+  // t-644a: a declared preference only, applied later at first Start (see
+  // renderCockpitWorktree's pre-fill) -- nothing is created on disk from this
+  // modal. wtMode is 'main' | an existing branch name | 'new'; worktreePreference()
+  // derives the actual string sent on submit ('' = no line, present/absent
+  // convention matching demo/ci/gate).
+  let wtMode = 'main';
+  let wtNewValue = '';
+  function worktreePreferenceValue() {
+    if (wtMode === 'main') return '';
+    if (wtMode === 'new') return wtNewValue.trim();
+    return wtMode; // an existing branch name, selected as-is
+  }
+  function renderWorktreePills() {
+    const existing = (state.worktreeListCache || []).filter(w => !w.is_main).map(w => w.branch).filter(Boolean);
+    let html = `<button class="create-pill${wtMode === 'main' ? ' active' : ''}" data-wt="main">Main checkout</button>`;
+    for (const b of existing) {
+      html += `<button class="create-pill${wtMode === b ? ' active' : ''}" data-wt="${esc(b)}">${esc(b)}</button>`;
+    }
+    html += `<button class="create-pill${wtMode === 'new' ? ' active' : ''}" type="button" title="Type a branch name -- not created yet, just remembered for first Start" data-wt="new">+ New</button>`;
+    wtEl.innerHTML = html;
+    if (wtMode === 'new') {
+      wtEl.insertAdjacentHTML('beforeend', `<input id="c-wt-new-input" class="create-input" style="width:auto;flex:1;min-width:120px" placeholder="sprint/branch-name" value="${esc(wtNewValue)}" spellcheck="false" autocomplete="off">`);
+      const input = document.getElementById('c-wt-new-input');
+      input.addEventListener('focus', () => input.select());
+      input.addEventListener('input', () => { wtNewValue = input.value; });
+    }
+    wtEl.querySelectorAll('.create-pill').forEach(btn => {
+      btn.addEventListener('click', () => {
+        wtMode = btn.dataset.wt;
+        renderWorktreePills();
+        if (wtMode === 'new') document.getElementById('c-wt-new-input')?.focus();
+      });
+    });
+  }
+  async function refreshWorktreeRow() {
+    if (!state.isGitProject) { wtRow.style.display = 'none'; return; }
+    wtRow.style.display = '';
+    try {
+      const r = await fetch('/api/worktrees');
+      state.worktreeListCache = r.ok ? await r.json() : [];
+    } catch { state.worktreeListCache = []; }
+    renderWorktreePills();
+  }
+
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
     ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
+    wtMode = 'main'; wtNewValue = '';
     ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
     gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
+    refreshWorktreeRow();
     titleEl.value = ''; detectEl.textContent = '';
     bodyEl.value = TYPE_TEMPLATES['task'] || '';
     queueEl.textContent = '→ will open in: Open';
@@ -6304,7 +6383,7 @@ async function uploadVisual(ticketId, filename, base64) {
     try {
       const ticket = await fetch('/api/tickets', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled }),
+        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, worktree_preference: worktreePreferenceValue() }),
       }).then(r => r.json());
 
       if (stagedVisuals.length) {
