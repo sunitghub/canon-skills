@@ -4980,11 +4980,16 @@ function unmountTab(id) {
       // stale until re-rendered for the tab we just switched to.
       const nextTicket = findTicketById(nextId);
       if (nextTicket) renderCockpitRail(nextTicket);
+      // The ticket vanished from state.tickets between that tab opening and
+      // this switch (e.g. archived/deleted elsewhere while backgrounded) —
+      // don't leave the previous tab's stale labels on screen.
+      else { document.getElementById('ck-id').textContent = nextId; document.getElementById('ck-title').textContent = ''; }
     } else {
       activeTabId = null;
       cockpitState = null;
       document.getElementById('cockpit-overlay').classList.remove('open');
       if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
+      renderNeedsYouBadge(); // null cockpitState -> hides it; no other path re-renders this once the last tab closes
     }
   }
   renderTabStrip();
@@ -5007,11 +5012,8 @@ function teardownCockpit(id) {
   id = id || activeTabId;
   if (!id || !cockpitTabs[id]) return;
   const wasActive = id === activeTabId;
-  unmountTab(id);
-  if (wasActive) {
-    renderNeedsYouBadge();
-    resetPreview();
-  }
+  unmountTab(id); // already re-renders the needs-you badge for whichever path it takes (switch or last-tab-closed)
+  if (wasActive) resetPreview();
   loadData().then(render).catch(() => renderBoard());
 }
 
