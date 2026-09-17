@@ -568,6 +568,16 @@
     /* Card body — title zone */
     .card-body { padding: 10px 11px 8px; }
     .card-body::after { content: ''; display: table; clear: both; }
+
+    /* Read-only worktree chip on an IN PROGRESS card (t-644a) — no dropdown/Unlock;
+       empty text-content when unbound or non-git renders nothing visible. */
+    .card-wt-chip:not(:empty) {
+      display: inline-block; float: right; margin: 0 0 4px 8px;
+      font-size: 9px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      color: var(--text-muted); background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 2px 6px; max-width: 120px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .card-title {
       font-size: 13px; font-weight: 600; color: var(--text);
       line-height: 1.5; overflow-wrap: anywhere; margin: 0;
@@ -3369,6 +3379,35 @@ function renderBoard() {
       moveCard(t, newStatus);
     });
   });
+
+  renderCardWorktreeChips();
+}
+
+// t-644a: read-only worktree chip on each IN PROGRESS card, sourced from
+// /api/worktree-lock/<id> (.cockpit-cwd) + /api/worktrees (branch names).
+// Gated on state.isGitProject, same live /api/git check every other worktree
+// surface uses — a non-git project never fetches, so the chip stays empty
+// (and invisible, see .card-wt-chip:not(:empty) above).
+async function renderCardWorktreeChips() {
+  if (!state.isGitProject) return;
+  const chips = Array.from(document.querySelectorAll('.card-wt-chip[data-id]'));
+  if (!chips.length) return;
+  let entries = [];
+  try {
+    const r = await fetch('/api/worktrees');
+    if (r.ok) entries = await r.json();
+  } catch {}
+  await Promise.all(chips.map(async chip => {
+    const id = chip.dataset.id;
+    const lock = await fetchWorktreeLock(id);
+    if (!lock.locked || !lock.cwd) return;
+    const norm = p => (p || '').replace(/\/+$/, '');
+    const match = entries.find(e => norm(e.path) === norm(lock.cwd));
+    const label = match ? (match.is_main ? 'main' : (match.branch || 'main')) : 'main';
+    if (!document.body.contains(chip)) return; // board may have re-rendered mid-fetch
+    chip.textContent = label;
+    chip.title = 'Worktree: ' + label;
+  }));
 }
 
 let _toastTimer = null;
@@ -5322,6 +5361,12 @@ async function fetchWorktreeLock(ticketId) {
 // re-rendered on cockpit open, not on the 5s poll — the list rarely changes
 // mid-session and re-rendering would clobber an in-progress "+ New" typing.
 async function renderCockpitWorktree(t) {
+  // t-644a: hide the whole accordion section for a non-git project — same
+  // live state.isGitProject check the New Ticket modal's Worktree row uses,
+  // not cached at registration so it reappears once git init happens.
+  const section = document.getElementById('ck-worktree-section');
+  if (section) section.style.display = state.isGitProject ? '' : 'none';
+  if (!state.isGitProject) return;
   const box = document.getElementById('ck-worktree');
   let entries = [];
   try {
@@ -5410,8 +5455,13 @@ async function renderCockpitWorktree(t) {
   // doesn't exist yet, so pre-fill the +New input instead of pre-selecting a
   // row that isn't there. An absent preference changes nothing (existing gate
   // behavior: nothing pre-selected until the user picks).
+  // t-644a fix: line 5075 sets worktreeCwd='' (Main) for every non-open
+  // ticket before this function runs, so a `worktreeCwd === null` guard here
+  // never fires for the common unlocked-in_progress case (a board-side status
+  // flip that hasn't gone through tkt's in_progress write, so no
+  // .cockpit-cwd exists yet) — gate on the lock itself instead.
   let wtNewDefault = `sprint/${t.id}`;
-  if (!lock.locked && cockpitState.worktreeCwd === null && t.worktree_preference) {
+  if (!lock.locked && t.worktree_preference) {
     const match = others.find(e => e.branch === t.worktree_preference);
     if (match) cockpitState.worktreeCwd = match.path;
     else wtNewDefault = t.worktree_preference;
