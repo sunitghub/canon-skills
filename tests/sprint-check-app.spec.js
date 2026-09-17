@@ -504,8 +504,15 @@ test.describe('board modal', () => {
 
     // Main checkout (cwd '') must carry THIS board's project root — not be omitted
     // (else a shared daemon resolves it to its launch project → wrong project).
+    // t-8a2a: mountCockpitTerminal now acts on the ACTIVE tab's own iframe —
+    // stand one up directly (same as openCockpit's "new tab" branch would)
+    // before calling it, since this test drives the function in isolation.
     const mainSrc = await page.evaluate(async () => {
       state.gitRoot = '/Users/me/canon';
+      const iframe = document.createElement('iframe');
+      document.getElementById('ck-term').appendChild(iframe);
+      cockpitTabs['t-ab12'] = newCockpitTabState('t-ab12', iframe);
+      setActiveTab('t-ab12');
       await mountCockpitTerminal({ id: 't-ab12' }, '');
       return document.getElementById('ck-iframe').src;
     });
@@ -539,6 +546,10 @@ test.describe('board modal', () => {
     // fetch a fresh, real root and use it instead.
     const src = await page.evaluate(async () => {
       state.gitRoot = '';
+      const iframe = document.createElement('iframe');
+      document.getElementById('ck-term').appendChild(iframe);
+      cockpitTabs['t-ab12'] = newCockpitTabState('t-ab12', iframe);
+      setActiveTab('t-ab12');
       await mountCockpitTerminal({ id: 't-ab12' }, '');
       return document.getElementById('ck-iframe').src;
     });
@@ -559,6 +570,10 @@ test.describe('board modal', () => {
 
     const result = await page.evaluate(async () => {
       state.gitRoot = '';
+      const iframe = document.createElement('iframe');
+      document.getElementById('ck-term').appendChild(iframe);
+      cockpitTabs['t-ab12'] = newCockpitTabState('t-ab12', iframe);
+      setActiveTab('t-ab12');
       const before = document.getElementById('ck-iframe').src;
       await mountCockpitTerminal({ id: 't-ab12' }, '');
       return { src: document.getElementById('ck-iframe').src, before, msg: document.getElementById('ck-term-msg').textContent };
@@ -592,6 +607,10 @@ test.describe('board modal', () => {
 
     const result = await page.evaluate(async () => {
       const gitRootAfterLoad = state.gitRoot;
+      const iframe = document.createElement('iframe');
+      document.getElementById('ck-term').appendChild(iframe);
+      cockpitTabs['t-ab12'] = newCockpitTabState('t-ab12', iframe);
+      setActiveTab('t-ab12');
       await mountCockpitTerminal({ id: 't-ab12' }, '');
       return { gitRootAfterLoad, src: document.getElementById('ck-iframe').src };
     });
@@ -614,6 +633,10 @@ test.describe('board modal', () => {
 
     const result = await page.evaluate(async () => {
       const gitRootAfterLoad = state.gitRoot;
+      const iframe = document.createElement('iframe');
+      document.getElementById('ck-term').appendChild(iframe);
+      cockpitTabs['t-ab12'] = newCockpitTabState('t-ab12', iframe);
+      setActiveTab('t-ab12');
       await mountCockpitTerminal({ id: 't-ab12' }, '');
       return { gitRootAfterLoad, src: document.getElementById('ck-iframe').src };
     });
@@ -4185,18 +4208,18 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('closing the cockpit clears the poll timer; reopening never stacks a second one (t-96a8)', async ({ page }) => {
+  test('the shared poll timer starts once per open tab (not per switch) and clears only when the last tab closes (t-96a8/t-8a2a)', async ({ page }) => {
     const id = `t-cktimer-${Date.now()}`;
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
       await stubCockpit(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
-      // Drive openCockpit/closeCockpit directly (not via click+re-render) so
-      // this test isolates the timer-lifecycle invariant from board re-render
-      // timing. window.openCockpit/closeCockpit exist because app.html's
-      // script is a plain (non-module) <script> — top-level function
-      // declarations attach to window.
+      // Drive openCockpit/closeCockpit/closeTab directly (not via click+
+      // re-render) so this test isolates the timer-lifecycle invariant from
+      // board re-render timing. window.openCockpit etc. exist because
+      // app.html's script is a plain (non-module) <script> — top-level
+      // function declarations attach to window.
       await page.evaluate(id => {
         window.__setIntervalCalls = 0;
         window.__clearIntervalCalls = 0;
@@ -4207,19 +4230,31 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       await page.evaluate(id => window.openCockpit(id), id);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      // t-8a2a: "← Board" never touches the shared timer — the tab (and its
+      // poll) keeps running hidden in the background.
       await page.evaluate(() => window.closeCockpit());
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
       await page.waitForLoadState('networkidle');
 
+      // Reopening the SAME already-open tab is a switch, not a fresh mount —
+      // must not stack a second setInterval.
       await page.evaluate(id => window.openCockpit(id), id);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
-      const calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
-      // One setInterval per open (2 opens); at least one clearInterval per
-      // close — proving openCockpit's own guard actually cleared the prior
-      // timer rather than stacking a second one silently.
-      expect(calls.set).toBe(2);
+      let calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
+      expect(calls.set).toBe(1);
+      expect(calls.clear).toBe(0);
+
+      // Closing the tab itself (the only one open) is what actually stops it.
+      await page.evaluate(id => window.closeTab(id), id);
+      calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
       expect(calls.clear).toBeGreaterThanOrEqual(1);
+
+      // A fresh open after the last tab closed starts a new timer again —
+      // proving the clear above was real, not a no-op.
+      await page.evaluate(id => window.openCockpit(id), id);
+      calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
+      expect(calls.set).toBe(2);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -4408,7 +4443,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       await page.waitForTimeout(100); // let the status postMessage land
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       const modal = page.locator('#ck-leave-confirm');
       await expect(modal).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-save')).toBeEnabled();
@@ -4429,7 +4464,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'needs-you' }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-save')).toBeDisabled();
       await expect(page.locator('#ck-leave-confirm-body')).toContainText('waiting on you');
@@ -4444,7 +4479,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'done' }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
     } finally {
@@ -4458,7 +4493,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 400 }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       // Still open immediately after clicking — the fake page hasn't replied yet.
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
@@ -4480,14 +4515,14 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // 'ended' postMessage, not 'status', reports the real end).
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', forceEndDelayMs: 2000 }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       const modal = page.locator('#ck-leave-confirm');
       await expect(modal).toHaveClass(/open/);
       await page.locator('#ck-leave-skip').click();
       await expect(modal).not.toHaveClass(/open/);
       // Re-click Back while the daemon still hasn't confirmed — must be a
       // no-op (cockpitState._ending guards closeCockpit), not a reopened modal.
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await page.waitForTimeout(50);
       // Immediate, non-retrying check — the daemon's 2s delay means a real
       // reopened modal would still be sitting open right now; a retrying
@@ -4513,7 +4548,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // timing fluke (it must be optimistic, not just fast).
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', forceEndDelayMs: 400 }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       const modal = page.locator('#ck-leave-confirm');
       await expect(modal).toHaveClass(/open/);
       const srcBeforeClick = await page.locator('#ck-iframe').evaluate(el => el.src);
@@ -4557,7 +4592,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
           if (e.data && e.data.type === '__received') window.__received.push(e.data.received);
         });
       });
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
       await page.locator('#ck-leave-save').click();
       // Closed ticket → force-end (immediate kill), never the save-state turn.
@@ -4594,7 +4629,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       </script></body></html>`;
       await openResumedCockpit(page, id, html);
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       const modal = page.locator('#ck-leave-confirm');
       await expect(modal).toHaveClass(/open/);
       // Let the delayed 'status: done' land while the modal is still open.
@@ -4616,7 +4651,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // endDelayMs huge: the real reply must never be what completes this test.
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
       // Forged message sent from the TOP frame itself, not the iframe — wrong
@@ -4648,7 +4683,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await openResumedCockpit(page, id, html);
       await page.evaluate(() => { window.__cockpitSaveFallbackMs = 300; });
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
     } finally {
@@ -4663,7 +4698,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // Never replies at all — the save just sits "in flight" for this test's purposes.
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       // Mid-save: Cancel must not be clickable — closeLeaveConfirm()
       // alone doesn't abort the pending save-and-end sequence.
@@ -4685,7 +4720,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await openResumedCockpit(page, id1, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 60000 }));
       await page.evaluate(() => { window.__cockpitSaveFallbackMs = 200; });
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       await expect(page.locator('#ck-leave-cancel')).toBeDisabled();
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
@@ -4695,7 +4730,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // leftover "Saving state…" text.
       await reopenCockpitNoReload(page, id2, fakeCockpitPage({ initialStatus: 'running' }));
       await page.waitForTimeout(100);
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-cancel')).toBeEnabled();
       await expect(page.locator('#ck-leave-save')).toBeEnabled();
@@ -4738,7 +4773,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       // resolved before it can be left, so flip to running, then Save & End
       // closes it (fake daemon replies 'ended').
       await postFromIframe('running');
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
       await reopenCockpitNoReload(page, id, fakeCockpitPage({ initialStatus: 'running' }));
@@ -4746,6 +4781,316 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(badge).toBeHidden();
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+});
+
+test.describe('session sub-tabs (t-8a2a)', () => {
+  function writeTicket(id, status) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), [
+      '---', `id: ${id}`, `status: ${status}`, 'type: feature', 'priority: 2',
+      'created: 2026-08-24T00:00:00Z', '---', '', `# Sub-tab test ${id}`, '',
+    ].join('\n'));
+  }
+
+  // Mirrors the real daemon-served terminal page's own #killBtn contract
+  // (tools/cockpit-daemon/web/cockpit.html) closely enough to exercise it:
+  // a real POST to /session/<sid>/kill on click, plus the same status/ended
+  // postMessage contract every other fake cockpit page in this file speaks.
+  function fakeCockpitPageWithKill(sid, { initialStatus = 'running' } = {}) {
+    return `<!doctype html><html><body>
+      <button id="killBtn" type="button">Kill</button>
+      <script>
+        window.parent.postMessage({source:'canon-cockpit', type:'status', status:${JSON.stringify(initialStatus)}}, '*');
+        document.getElementById('killBtn').addEventListener('click', function(){
+          fetch('/session/${sid}/kill', { method: 'POST' }).catch(function(){});
+          window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
+        });
+        window.addEventListener('message', function(e){
+          var d = e.data;
+          if(!d || d.source !== 'canon-cockpit') return;
+          if(d.type === 'save-and-end' || d.type === 'force-end'){
+            window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
+          }
+          // Echo every received canon-cockpit message back up, tagged
+          // distinctly — lets a test assert what THIS tab's own iframe
+          // received without needing to monkey-patch a cross-origin window
+          // (contentWindow.postMessage can't be redefined from the parent).
+          window.parent.postMessage({source:'canon-cockpit', type:'__echo', originalType: d.type}, '*');
+        });
+      </script>
+    </body></html>`;
+  }
+
+  async function stubCockpitTabs(page) {
+    await page.route('**/api/cockpit', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+    }));
+  }
+
+  test('closing a tab sends no kill request; the daemon page\'s own Kill button still does (t-8a2a mitigation test)', async ({ page }) => {
+    const id = `t-8a2akill-${Date.now()}`;
+    let killRequests = 0;
+    try {
+      writeTicket(id, 'in_progress');
+      await stubCockpitTabs(page);
+      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPageWithKill(id) }));
+      await page.route('**/session/*/kill', route => {
+        killRequests++;
+        route.fulfill({ status: 200, contentType: 'application/json', body: '{}' });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+
+      // Close via the tab strip's "×" — must send NO kill request. The
+      // strip renders in two containers (board + topbar); scope to the
+      // topbar one, the visible copy while the overlay is open.
+      await page.locator(`#ck-tab-strip-topbar .ck-tab-pill-close[data-tab-id="${id}"]`).click();
+      await page.waitForTimeout(300);
+      expect(killRequests).toBe(0);
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+
+      // Positive control: reopening and clicking the daemon page's own Kill
+      // button *does* send a real kill request — proves the assertion above
+      // isn't passing by accident (e.g. a broken selector firing neither).
+      await page.locator('#board-search').fill('');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      await page.frameLocator('#ck-iframe').locator('#killBtn').click();
+      await page.waitForTimeout(300);
+      expect(killRequests).toBe(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('starting a second ticket adds a tab without disturbing the first (persistently mounted, no reconnect)', async ({ page }) => {
+    const id1 = `t-8a2amulti1-${Date.now()}`;
+    const id2 = `t-8a2amulti2-${Date.now()}`;
+    let terminalRequests = 0;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      await stubCockpitTabs(page);
+      await page.route('**/cockpit?**', route => {
+        terminalRequests++;
+        route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPageWithKill('shared') });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id1);
+      await page.locator(`.card[data-id="${id1}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      const firstIframeHandle = await page.locator('#ck-iframe').elementHandle();
+
+      // Back to board to start the second ticket — the overlay covers the
+      // board while open, matching the real click-through UX.
+      await page.locator('#ck-back').click();
+      await page.locator('#board-search').fill('');
+      await page.locator('#board-search').fill(id2);
+      await page.locator(`.card[data-id="${id2}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+
+      await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2);
+      expect(terminalRequests).toBe(2); // one real mount per NEW tab
+
+      // Switch back to the first tab — its iframe DOM node is the exact same
+      // element as before (never destroyed/re-src'd), and switching issues no
+      // new terminal request.
+      await page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id1}"]`).click();
+      await expect(page.locator('#ck-id')).toHaveText(id1);
+      const iframeStillSame = await page.evaluate(el => el === document.getElementById('ck-iframe'), firstIframeHandle);
+      expect(iframeStillSame).toBe(true);
+      expect(terminalRequests).toBe(2);
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('"End Session" opens Save & End for the active tab only; a second open tab is unaffected', async ({ page }) => {
+    const id1 = `t-8a2aend1-${Date.now()}`;
+    const id2 = `t-8a2aend2-${Date.now()}`;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      await stubCockpitTabs(page);
+      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPageWithKill('shared') }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id1);
+      await page.locator(`.card[data-id="${id1}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+
+      await page.locator('#ck-back').click();
+      await page.locator('#board-search').fill('');
+      await page.locator('#board-search').fill(id2);
+      await page.locator(`.card[data-id="${id2}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2);
+
+      // "← Board" and tab-close never open the modal — only End Session does.
+      await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      await page.locator('#ck-end-session').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await page.locator('#ck-leave-skip').click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 3000 });
+
+      // Ending tab 2's session removed only that tab; tab 1 is unaffected.
+      await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(1);
+      await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id1}"]`)).toBeVisible();
+      await expect(page.locator('#ck-id')).toHaveText(id1);
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('"← Board" with 2 tabs open only hides the overlay — no session ends, reopening restores either tab', async ({ page }) => {
+    const id1 = `t-8a2aback1-${Date.now()}`;
+    const id2 = `t-8a2aback2-${Date.now()}`;
+    let killOrEndRequests = 0;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      await stubCockpitTabs(page);
+      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPageWithKill('shared') }));
+      await page.route('**/session/*/kill', route => { killOrEndRequests++; route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }); });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id1);
+      await page.locator(`.card[data-id="${id1}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#board-search').fill('');
+      await page.locator('#board-search').fill(id2);
+      await page.locator(`.card[data-id="${id2}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      expect(killOrEndRequests).toBe(0);
+      // The board's own tab strip still shows both open tabs.
+      await expect(page.locator('#ck-tab-strip .ck-tab-pill')).toHaveCount(2);
+
+      // Reopening either tab restores its view without reconnecting (no
+      // /cockpit route hit again — that would only happen on a real remount).
+      // Overlay is closed here, so the board's own strip is the visible copy.
+      await page.locator(`#ck-tab-strip .ck-tab-pill[data-tab-id="${id1}"]`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-id')).toHaveText(id1);
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('the shared poll relays daemon-build to a background tab without rendering its rail', async ({ page }) => {
+    const id1 = `t-8a2apoll1-${Date.now()}`;
+    const id2 = `t-8a2apoll2-${Date.now()}`;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      await stubCockpitTabs(page);
+      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPageWithKill('shared') }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id1);
+      await page.locator(`.card[data-id="${id1}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#board-search').fill('');
+      await page.locator('#board-search').fill(id2);
+      await page.locator(`.card[data-id="${id2}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      // Now tab 1 (id1) is backgrounded, tab 2 (id2) is active.
+
+      // Can't monkey-patch a cross-origin iframe's own contentWindow.postMessage
+      // from the parent — instead capture what the PARENT receives back: the
+      // fake page's own listener (fakeCockpitPageWithKill) echoes every
+      // canon-cockpit message it gets as a distinct '__echo' message.
+      await page.evaluate(() => {
+        window.__echoes = [];
+        window.addEventListener('message', (e) => {
+          if (e.data && e.data.source === 'canon-cockpit' && e.data.type === '__echo') window.__echoes.push(e.data.originalType);
+        });
+      });
+
+      // The real timer already started when tab 1 opened (ensureCockpitPollTimer
+      // is idempotent and only runs once) — wait a real tick rather than
+      // reaching for internals; 5.5s covers the 5000ms interval with margin.
+      await page.waitForTimeout(5500);
+
+      const echoes = await page.evaluate(() => window.__echoes);
+      // Two tabs are open — a relay reaching only the active one (the old
+      // single-session behavior) would echo once; reaching both (this
+      // ticket's claim) echoes at least twice in one tick.
+      expect(echoes.filter(t => t === 'daemon-build').length).toBeGreaterThanOrEqual(2);
+      // The rail itself stays on the active tab (id2) throughout — the poll
+      // never swaps it to render the backgrounded tab's own content.
+      await expect(page.locator('#ck-id')).toHaveText(id2);
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a background tab\'s needs-you status renders in the tab strip', async ({ page }) => {
+    const id1 = `t-8a2aneedsyou1-${Date.now()}`;
+    const id2 = `t-8a2aneedsyou2-${Date.now()}`;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      await stubCockpitTabs(page);
+      await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPageWithKill('shared') }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(id1);
+      await page.locator(`.card[data-id="${id1}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      await page.locator('#ck-back').click();
+      await page.locator('#board-search').fill('');
+      await page.locator('#board-search').fill(id2);
+      await page.locator(`.card[data-id="${id2}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.waitForTimeout(100);
+      // Tab 1 (id1) is now backgrounded.
+
+      // Must originate FROM the background tab's own iframe context (its
+      // window.parent.postMessage), not a postMessage sent INTO it from the
+      // parent — the board's listener only trusts e.source === that tab's
+      // own contentWindow. data-tab-id is stable regardless of active state
+      // (unlike id="ck-iframe", which only ever names the active tab).
+      await page.frameLocator(`iframe[data-tab-id="${id1}"]`).locator('body').evaluate(() => {
+        window.parent.postMessage({ source: 'canon-cockpit', type: 'status', status: 'needs-you' }, '*');
+      });
+      await page.waitForTimeout(100);
+
+      await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id1}"] .ck-tab-pill-needsyou`)).toBeVisible();
+      // The topbar badge stays scoped to the ACTIVE tab (id2), which never
+      // received a needs-you status.
+      await expect(page.locator('#ck-needs-you-badge')).toBeHidden();
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
 });
@@ -4904,7 +5249,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await page.locator('#ck-preview-label').click();
       await expect(page.locator('#ck-preview-body iframe')).toHaveCount(1);
 
-      await page.locator('#ck-back').click();
+      await page.locator('#ck-end-session').click();
       // "Leave running" was removed (t-a852); close the live session via Save & End
       // (the fake preview page replies 'ended').
       await page.locator('#ck-leave-save').click();

@@ -1450,6 +1450,36 @@
       background: #f4a300; color: #1a1a1f; font-weight: 800; font-size: 13px;
       animation: pulse 1.4s ease-in-out infinite;
     }
+    /* t-8a2a: session sub-tabs — one pill per open ticket, on the board (visible
+       when the overlay is closed) and mirrored in the topbar (visible while a
+       session is open), same renderTabStrip() call filling both containers. */
+    .ck-tab-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    .ck-tab-strip:empty { display: none; }
+    .ck-tab-strip-topbar { flex: 0 1 auto; margin: 0; overflow: hidden; }
+    .ck-tab-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: 999px;
+      padding: 4px 6px 4px 10px; font-size: 12px; color: var(--text-muted); cursor: pointer;
+      max-width: 220px;
+    }
+    .ck-tab-pill:hover { border-color: var(--accent); color: var(--text); }
+    .ck-tab-pill.active { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
+    .ck-tab-pill-id { font-family: var(--mono, monospace); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ck-tab-pill-needsyou {
+      width: 7px; height: 7px; border-radius: 50%; background: #f4a300; flex-shrink: 0;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    .ck-tab-pill-close {
+      display: flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%; border: 0; background: transparent;
+      color: var(--text-dim); font-size: 13px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    }
+    .ck-tab-pill-close:hover { background: var(--surface-hover); color: var(--col-discarded); }
+    .ck-end-session {
+      background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border);
+      border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+    }
+    .ck-end-session:hover { color: var(--text); border-color: var(--accent); }
     .ck-body { flex: 1; min-height: 0; display: flex; }
     .ck-rail {
       position: relative;
@@ -1875,6 +1905,7 @@
       </div>
       <div class="why-results" id="why-results"></div>
       <div class="cockpit-sessions" id="cockpit-sessions" hidden></div>
+      <div class="ck-tab-strip" id="ck-tab-strip" hidden></div>
       <div id="board"></div>
       <div class="board-empty-search" id="board-empty-search"></div>
     </section>
@@ -1906,8 +1937,10 @@
       <span class="ck-id" id="ck-id"></span>
       <span class="ck-status-badge" id="ck-status"></span>
       <span class="ck-title" id="ck-title"></span>
+      <div class="ck-tab-strip ck-tab-strip-topbar" id="ck-tab-strip-topbar" hidden></div>
       <span class="spacer"></span>
       <span class="ck-needs-you-badge" id="ck-needs-you-badge" title="Agent is waiting on you" style="display:none">!</span>
+      <button class="ck-end-session" id="ck-end-session" type="button" title="Save state and end this session">End Session</button>
       <span class="ck-model" id="ck-model">model: from plan.md</span>
     </div>
     <div class="ck-body">
@@ -1974,8 +2007,7 @@
           <span class="ck-rail-dot"></span>
         </div>
       </div>
-      <div class="ck-term">
-        <iframe id="ck-iframe" title="Agent terminal" style="visibility:hidden"></iframe>
+      <div class="ck-term" id="ck-term">
         <div class="ck-term-msg" id="ck-term-msg"></div>
       </div>
       <div class="ck-preview collapsed" id="ck-preview">
@@ -4724,8 +4756,65 @@ async function moveCard(t, newStatus) {
 // sync — the earlier toggle-write path's index-offset math is gone with it.
 // worktreeCwd: null = no row selected yet (OPEN-ticket Start stays gated,
 // t-cd06), '' = Main checkout selected, otherwise an absolute worktree path.
-const cockpitState = { id: null, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, _ending: false };
+//
+// t-8a2a: multi-session support. cockpitTabs holds one state object per open
+// ticket (keyed by ticket id), each carrying its own iframeEl + everything
+// cockpitState used to hold alone. cockpitState is now just a REFERENCE to
+// cockpitTabs[activeTabId] — reassigned by setActiveTab(), never copied — so
+// every existing `cockpitState.X` read/write below keeps working unchanged
+// against whichever tab is currently active, with zero call-site rewrites.
+// Only functions that must reach a BACKGROUND tab's own state (the message
+// listener, the shared poll loop) address cockpitTabs[id] directly.
+const cockpitTabs = {};
+let activeTabId = null;
+let cockpitState = null;
 let cockpitPollTimer = null;
+
+function newCockpitTabState(id, iframeEl) {
+  return { id, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, _ending: false, iframeEl, pendingMessage: '' };
+}
+
+// Sets the terminal status message AND remembers it on the active tab, so
+// switching tabs can restore the right text into the one shared #ck-term-msg
+// element (see setActiveTab) instead of leaking the last-active tab's text.
+function setTermMessage(text) {
+  const el = document.getElementById('ck-term-msg');
+  if (el) el.textContent = text;
+  if (cockpitState) cockpitState.pendingMessage = text;
+}
+
+// The iframe belonging to whichever tab is currently active — replaces the
+// old single #ck-iframe lookup at every call site that only ever acts on the
+// active tab (mount/terminal-status functions; the message listener is the
+// one exception, since it must resolve the SOURCE tab, not just the active one).
+function activeIframe() {
+  return cockpitState ? cockpitState.iframeEl : null;
+}
+
+// Switches which tab is "active": reassigns cockpitState to point at it,
+// toggles which tab's iframe is visible in the DOM (never re-src'd — no
+// reconnect), and restores that tab's own pending terminal message into the
+// one shared #ck-term-msg element.
+//
+// The active tab's iframe also gets id="ck-iframe" (cleared on every other
+// tab's iframe) — this is what "singular rail, driven by the active tab"
+// (grill #1) means for the terminal DOM node itself, and it's why every
+// pre-t-8a2a call site (and Playwright test) that looked up #ck-iframe still
+// resolves correctly with zero changes: there's still exactly one #ck-iframe
+// in the DOM, it just now migrates between tabs on switch.
+function setActiveTab(id) {
+  activeTabId = id;
+  cockpitState = cockpitTabs[id] || null;
+  for (const [tid, tab] of Object.entries(cockpitTabs)) {
+    if (!tab.iframeEl) continue;
+    const isActive = tid === id;
+    tab.iframeEl.style.display = isActive ? '' : 'none';
+    if (isActive) tab.iframeEl.id = 'ck-iframe';
+    else tab.iframeEl.removeAttribute('id');
+  }
+  const msgEl = document.getElementById('ck-term-msg');
+  if (msgEl) msgEl.textContent = (cockpitState && cockpitState.pendingMessage) || '';
+}
 
 // t-f6b6: the board and the daemon page are different origins (different
 // port), so the only channel for "is a session live" and "please save state
@@ -4733,50 +4822,65 @@ let cockpitPollTimer = null;
 // every INCOMING message's origin/source before acting on it (outbound is
 // fine with "*": no secret ever rides in these payloads, just status labels
 // and a fixed command name).
+// t-8a2a: multiple iframes exist now (one per open tab), so this must resolve
+// WHICH tab a message came from — not just check against a single global
+// iframe — or a background tab's status/needs-you/ended updates go missing.
 window.addEventListener('message', (e) => {
-  const iframe = document.getElementById('ck-iframe');
-  if (!iframe || !cockpitState.addr) return;
-  if (e.source !== iframe.contentWindow) return;
-  if (e.origin !== 'http://' + cockpitState.addr) return;
+  let sourceId = null, tab = null;
+  for (const [tid, tb] of Object.entries(cockpitTabs)) {
+    if (tb.iframeEl && e.source === tb.iframeEl.contentWindow) { sourceId = tid; tab = tb; break; }
+  }
+  if (!tab || !tab.addr) return;
+  if (e.origin !== 'http://' + tab.addr) return;
   const d = e.data;
   if (!d || d.source !== 'canon-cockpit') return;
+  const isActive = sourceId === activeTabId;
   if (d.type === 'status') {
-    cockpitState.status = d.status;
-    renderNeedsYouBadge();
+    tab.status = d.status;
+    if (isActive) renderNeedsYouBadge();
+    renderTabStrip();
   } else if (d.type === 'started') {
-    applyActualWorkingCwd(d.cwd, d.requested);
-  } else if (d.type === 'ended' && cockpitState._onEnded) {
-    cockpitState._onEnded();
+    // applyActualWorkingCwd renders rail DOM that belongs to the active tab
+    // only (grill #1) — a background tab just remembers its own cwd for when
+    // it becomes active later.
+    if (isActive) applyActualWorkingCwd(d.cwd, d.requested);
+    else tab.actualCwd = d.cwd || '';
+  } else if (d.type === 'ended' && tab._onEnded) {
+    tab._onEnded();
   } else if (d.type === 'preview-file') {
-    renderPreviewFile(d.session, d.previewToken, d.relpath);
+    if (isActive) renderPreviewFile(d.session, d.previewToken, d.relpath);
   } else if (d.type === 'preview-server-cmd') {
-    renderPreviewServerCmd(d.cmd);
+    if (isActive) renderPreviewServerCmd(d.cmd);
   } else if (d.type === 'preview-timeout') {
-    renderPreviewMessage("Couldn't determine how to preview this ticket's deliverable — the agent didn't respond with a recognized marker within 60s.");
+    if (isActive) renderPreviewMessage("Couldn't determine how to preview this ticket's deliverable — the agent didn't respond with a recognized marker within 60s.");
   } else if (d.type === 'preview-rejected') {
-    renderPreviewMessage('The reported preview path was rejected (must resolve to a location inside the project).');
+    if (isActive) renderPreviewMessage('The reported preview path was rejected (must resolve to a location inside the project).');
   } else if (d.type === 'preview-no-session') {
-    renderPreviewMessage('No active sprint session — start or resume the sprint, then try Preview again.');
+    if (isActive) renderPreviewMessage('No active sprint session — start or resume the sprint, then try Preview again.');
   } else if (d.type === 'daemon-restarting') {
     // t-74d6: the stale daemon is exiting (its /shutdown returned 200). Give it
     // a moment to fully exit, then re-ensure — ensure_cockpit finds the old
     // daemon.json addr unhealthy, clears it, and launches a fresh build — and
-    // remount the terminal at the new addr.
-    const msgEl = document.getElementById('ck-term-msg');
-    const ifr = document.getElementById('ck-iframe');
-    if (ifr) ifr.style.visibility = 'hidden';
-    if (msgEl) msgEl.textContent = 'Restarting cockpit daemon…';
-    cockpitState.addr = null;
-    setTimeout(() => {
-      const ct = findTicketById(cockpitState.id) || { id: cockpitState.id, status: 'open' };
-      maybeMountCockpitTerminal(ct);
-    }, 500);
+    // remount the terminal at the new addr. A background tab just remembers it
+    // needs a remount, applied next time it becomes active (see openCockpit).
+    if (tab.iframeEl) tab.iframeEl.style.visibility = 'hidden';
+    tab.addr = null;
+    if (isActive) {
+      setTermMessage('Restarting cockpit daemon…');
+      setTimeout(() => {
+        const ct = findTicketById(sourceId) || { id: sourceId, status: 'open' };
+        maybeMountCockpitTerminal(ct);
+      }, 500);
+    } else {
+      tab.pendingMessage = 'Restarting cockpit daemon…';
+      tab.needsRemount = true;
+    }
   }
 });
 
 function renderNeedsYouBadge() {
   document.getElementById('ck-needs-you-badge').style.display =
-    cockpitState.status === 'needs-you' ? 'flex' : 'none';
+    (cockpitState && cockpitState.status === 'needs-you') ? 'flex' : 'none';
 }
 
 // ── Preview pane (t-b19b) ───────────────────────────────────────────────────
@@ -4820,8 +4924,8 @@ function renderPreviewServerCmd(cmd) {
 }
 
 function requestPreview() {
-  const iframe = document.getElementById('ck-iframe');
-  if (!iframe || !iframe.contentWindow || !cockpitState.addr) return;
+  const iframe = activeIframe();
+  if (!iframe || !iframe.contentWindow || !cockpitState || !cockpitState.addr) return;
   renderPreviewMessage('Asking the agent how to preview this ticket’s deliverable…');
   iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'preview-request' }, 'http://' + cockpitState.addr);
 }
@@ -4832,7 +4936,7 @@ function resetPreview() {
 }
 
 function sessionIsLive() {
-  return cockpitState.status === 'running' || cockpitState.status === 'needs-you';
+  return !!cockpitState && (cockpitState.status === 'running' || cockpitState.status === 'needs-you');
 }
 
 function openLeaveConfirm() {
@@ -4856,18 +4960,58 @@ function closeLeaveConfirm() {
   document.getElementById('ck-leave-confirm').classList.remove('open');
 }
 
-function teardownCockpit() {
-  document.getElementById('cockpit-overlay').classList.remove('open');
-  const iframe = document.getElementById('ck-iframe');
-  if (iframe) iframe.src = 'about:blank'; // drop the SSE stream held by the embed
-  if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
-  cockpitState.id = null; cockpitState.addr = null; cockpitState.status = null; cockpitState._onEnded = null;
-  cockpitState._ending = false; // t-9eda: defense-in-depth — every reset path clears it
-  cockpitState.worktreeCwd = null;
-  cockpitState.actualCwd = null;
-  cockpitState.worktreeDocs = null;
-  renderNeedsYouBadge();
-  resetPreview();
+// t-8a2a: shared by closeTab() and teardownCockpit() — removes a tab's own
+// iframe from the DOM (dropping its connection outright, a stronger and
+// simpler guarantee than the old single-tab `iframe.src = 'about:blank'`)
+// and drops its entry from cockpitTabs. If it was the active tab, switches to
+// another open tab, or hides the overlay + stops the shared poll if none remain.
+function unmountTab(id) {
+  const tab = cockpitTabs[id];
+  if (!tab) return;
+  if (tab.iframeEl && tab.iframeEl.parentNode) tab.iframeEl.parentNode.removeChild(tab.iframeEl);
+  delete cockpitTabs[id];
+  if (activeTabId === id) {
+    const remaining = Object.keys(cockpitTabs);
+    if (remaining.length) {
+      const nextId = remaining[remaining.length - 1];
+      setActiveTab(nextId);
+      // setActiveTab only swaps which iframe/message-buffer is active — the
+      // topbar/rail labels (ck-id, ck-title, worktree/plan/state panels) are
+      // stale until re-rendered for the tab we just switched to.
+      const nextTicket = findTicketById(nextId);
+      if (nextTicket) renderCockpitRail(nextTicket);
+    } else {
+      activeTabId = null;
+      cockpitState = null;
+      document.getElementById('cockpit-overlay').classList.remove('open');
+      if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
+    }
+  }
+  renderTabStrip();
+}
+
+// User-initiated tab close (the strip's "×") — NEVER ends the session; the
+// daemon keeps it live regardless (t-c6fa attaches a later Start/Resume to
+// it instead of double-spawning). This is the HIGH blast-radius boundary the
+// ticket exists to enforce: closeTab() must never call teardownCockpit(), and
+// must never send any daemon request.
+function closeTab(id) {
+  unmountTab(id);
+}
+
+// A session genuinely ended (Save & End / End without saving / a daemon exit
+// event) — unmount its tab and refresh the board, since the ticket's status
+// may have changed server-side. `id` defaults to the active tab, since every
+// call site that ends a session acts on whichever tab is currently shown.
+function teardownCockpit(id) {
+  id = id || activeTabId;
+  if (!id || !cockpitTabs[id]) return;
+  const wasActive = id === activeTabId;
+  unmountTab(id);
+  if (wasActive) {
+    renderNeedsYouBadge();
+    resetPreview();
+  }
   loadData().then(render).catch(() => renderBoard());
 }
 
@@ -4893,7 +5037,7 @@ document.getElementById('ck-leave-skip').addEventListener('click', () => ckLeave
 // through the daemon's force-end, same as the already-closed short-circuit) — a
 // clean daemon end, never a silent orphan/kill.
 async function ckLeaveSaveAndEnd(skipSave) {
-  const iframe = document.getElementById('ck-iframe');
+  const iframe = activeIframe();
   const statusEl = document.getElementById('ck-leave-confirm-status');
   const saveBtn = document.getElementById('ck-leave-save');
   // t-9eda: check reentry FIRST, before the liveness check below — a prior
@@ -4996,6 +5140,7 @@ window.addEventListener('message', (e) => {
   const d = e.data;
   if (!d || d.source !== 'canon-cockpit-shell') return;
   if (d.type !== 'save-and-end' && d.type !== 'end') return;
+  if (!cockpitState) return;                            // t-8a2a: no active tab — nothing to end
   if (cockpitState._ending) return;                     // t-9eda: already ending — ckLeaveSaveAndEnd would no-op anyway
   if (!sessionIsLive()) return;                         // nothing live to end (shell poller reconciles)
   openLeaveConfirm();                                   // reuse the vetted flow's state setup
@@ -5064,26 +5209,54 @@ function ensurePreviewResize() {
   });
 }
 
-async function openCockpit(id) {
-  const t = findTicketById(id);
-  if (!t) return;
-  cockpitState.id = id;
-  cockpitState.status = null;
-  // t-cd06: resuming an in_progress ticket reuses its persisted worktree
-  // server-side (the daemon owns that, not the board) — only a fresh OPEN
-  // start needs an explicit row picked before the terminal is allowed to mount.
-  cockpitState.worktreeCwd = (t.status === 'open') ? null : '';
+// t-8a2a: renders the tab strip into both containers it can appear in — on
+// the board (visible when the overlay is closed) and mirrored in the topbar
+// (visible while a session is open) — from the same cockpitTabs data, so
+// "back to board shows N running" and in-overlay switching both work from one
+// render call. A pill's own needs-you dot is how a BACKGROUND tab's status
+// stays visible without switching to it (the topbar badge only reflects the
+// active tab).
+function renderTabStrip() {
+  const ids = Object.keys(cockpitTabs);
+  const html = ids.map(id => {
+    const tab = cockpitTabs[id];
+    const t = findTicketById(id);
+    const label = t ? displayTicketId(t) : id;
+    const needsYou = tab.status === 'needs-you';
+    return `<span class="ck-tab-pill${id === activeTabId ? ' active' : ''}" data-tab-id="${esc(id)}">`
+      + (needsYou ? '<span class="ck-tab-pill-needsyou" title="Agent is waiting on you"></span>' : '')
+      + `<span class="ck-tab-pill-id">${esc(label)}</span>`
+      + `<button class="ck-tab-pill-close" data-tab-id="${esc(id)}" title="Close tab (session stays running)" type="button">×</button>`
+      + `</span>`;
+  }).join('');
+  for (const containerId of ['ck-tab-strip', 'ck-tab-strip-topbar']) {
+    const el = document.getElementById(containerId);
+    if (!el) continue;
+    el.innerHTML = html;
+    el.hidden = ids.length === 0;
+  }
+  document.querySelectorAll('.ck-tab-pill').forEach(pill => {
+    pill.addEventListener('click', () => openCockpit(pill.dataset.tabId));
+  });
+  document.querySelectorAll('.ck-tab-pill-close').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeTab(btn.dataset.tabId);
+    });
+  });
+}
+
+// Rail rendering for the ACTIVE tab only (grill #1: rail/badge stay singular,
+// driven by whichever tab is active, re-rendered on switch — no per-tab
+// accordion/scroll state). Shared by a fresh tab open and a switch to an
+// already-open tab; never touches the terminal iframe itself.
+async function renderCockpitRail(t) {
   renderNeedsYouBadge();
-  resetPreview();
-  state.selectedId = id;
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-tc-id').textContent = displayTicketId(t);
   document.getElementById('ck-tc-title').textContent = t.title || '';
   renderCockpitStatusBadge(t);
-  ensurePreviewResize();
-  document.getElementById('cockpit').classList.remove('rail-collapsed');
-  document.getElementById('cockpit-overlay').classList.add('open');
   renderCockpitModel(t);
   renderCockpitPlan(t);
   await renderCockpitWorktree(t);
@@ -5095,47 +5268,104 @@ async function openCockpit(id) {
   renderCockpitPlan(t);
   await renderCockpitDocs(t);
   await renderCockpitState(t);
-  await maybeMountCockpitTerminal(t);
-  // Poll while open — a running agent edits acceptance.md as it works, and
-  // the rail should reflect that without the human having to close/reopen.
-  if (cockpitPollTimer) clearInterval(cockpitPollTimer);
+}
+
+// t-8a2a: one shared 5s poll for every open tab, not N independent timers
+// (grill #2) — daemon-staleness relay reaches EVERY open tab's iframe each
+// tick, but the rail-refresh render calls only run for the active tab (that
+// DOM belongs to whichever tab is shown). Started once, by the first tab to
+// open; stops itself once the last tab closes (also enforced by unmountTab).
+function ensureCockpitPollTimer() {
+  if (cockpitPollTimer) return;
   cockpitPollTimer = setInterval(async () => {
-    const ct = findTicketById(cockpitState.id);
+    const ids = Object.keys(cockpitTabs);
+    if (!ids.length) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; return; }
+    // t-74d6: re-check daemon staleness on the poll (GET /api/cockpit =
+    // discover, never relaunch) and re-relay to every open tab's iframe, so a
+    // daemon that drifts while sessions are open surfaces the banner without
+    // a remount — this matters for a backgrounded tab too, since the drift
+    // affects the real running process regardless of visibility.
+    try {
+      const cr = await fetch('/api/cockpit');
+      const cd = await cr.json();
+      if (cd && cd.running) {
+        const bi = { stale: !!cd.stale, running_build: cd.running_build || null, latest_build: cd.latest_build || null };
+        for (const tid of ids) {
+          const tab = cockpitTabs[tid];
+          tab.buildInfo = bi;
+          if (tab.addr && tab.iframeEl && tab.iframeEl.contentWindow) {
+            tab.iframeEl.contentWindow.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: bi }, 'http://' + tab.addr);
+          }
+        }
+      }
+    } catch {}
+    const ct = findTicketById(activeTabId);
     if (!ct) return;
     await fetchCockpitWorktreeDocs(ct);
     renderCockpitPlan(ct);
     renderCockpitDocs(ct);
     renderCockpitState(ct);
     renderCockpitStatusBadge(ct);
-    // t-74d6: re-check daemon staleness on the poll (GET /api/cockpit = discover,
-    // never relaunch) and re-relay to the iframe, so a daemon that drifts while
-    // the cockpit is already open surfaces the banner without a remount.
-    if (cockpitState.addr) {
-      try {
-        const cr = await fetch('/api/cockpit');
-        const cd = await cr.json();
-        if (cd && cd.running) {
-          const bi = { stale: !!cd.stale, running_build: cd.running_build || null, latest_build: cd.latest_build || null };
-          cockpitState.buildInfo = bi;
-          const ifr = document.getElementById('ck-iframe');
-          if (ifr && ifr.contentWindow) ifr.contentWindow.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: bi }, 'http://' + cockpitState.addr);
-        }
-      } catch {}
-    }
   }, 5000);
 }
 
-// t-f6b6: never tear down silently while a session is live — confirm first.
+async function openCockpit(id) {
+  const t = findTicketById(id);
+  if (!t) return;
+  state.selectedId = id;
+  resetPreview();
+  ensurePreviewResize();
+  document.getElementById('cockpit').classList.remove('rail-collapsed');
+  document.getElementById('cockpit-overlay').classList.add('open');
+
+  if (cockpitTabs[id]) {
+    // Already open — switch only. Never re-src's the iframe, never
+    // reconnects; the terminal keeps its live connection while backgrounded.
+    setActiveTab(id);
+    await renderCockpitRail(t);
+    if (cockpitState.needsRemount) {
+      cockpitState.needsRemount = false;
+      await maybeMountCockpitTerminal(t);
+    }
+    renderTabStrip();
+    return;
+  }
+
+  // New tab: mount a fresh, persistent iframe for this ticket. data-tab-id
+  // is a STABLE identifier (unlike id="ck-iframe", which migrates to
+  // whichever tab is active) — lets a background tab's own iframe still be
+  // located directly, e.g. for tests.
+  const iframe = document.createElement('iframe');
+  iframe.title = 'Agent terminal';
+  iframe.style.visibility = 'hidden';
+  iframe.dataset.tabId = id;
+  document.getElementById('ck-term').appendChild(iframe);
+  cockpitTabs[id] = newCockpitTabState(id, iframe);
+  setActiveTab(id);
+  // t-cd06: resuming an in_progress ticket reuses its persisted worktree
+  // server-side (the daemon owns that, not the board) — only a fresh OPEN
+  // start needs an explicit row picked before the terminal is allowed to mount.
+  cockpitState.worktreeCwd = (t.status === 'open') ? null : '';
+  renderTabStrip();
+  await renderCockpitRail(t);
+  await maybeMountCockpitTerminal(t);
+  ensureCockpitPollTimer();
+}
+
+// t-8a2a (grill #3): "← Board" only hides the overlay — no session ends, no
+// iframe is touched. Every open tab (this one and any others) keeps running
+// hidden in the background; the board's own tab strip still shows them, and
+// reopening any of them restores that view without reconnecting. Ending a
+// session is now a separate, explicit action — see #ck-end-session below.
 function closeCockpit() {
-  // t-9eda: an end sequence is already in flight (t-76dc's optimistic dismiss
-  // means the modal can be gone while cockpitState.status still reads live) —
-  // reopening the modal here would just invite a confusing second click;
-  // ckLeaveSaveAndEnd's own guard would no-op it anyway, but skipping the
-  // reopen avoids showing a dialog for a session that's already ending.
-  if (cockpitState._ending) return;
+  document.getElementById('cockpit-overlay').classList.remove('open');
+}
+
+document.getElementById('ck-end-session').addEventListener('click', () => {
+  if (!cockpitState || cockpitState._ending) return;
   if (sessionIsLive()) { openLeaveConfirm(); return; }
   teardownCockpit();
-}
+});
 
 // t-1357: when the cockpit session runs in a WORKTREE, its plan/acceptance/
 // HANDOFF live on the worktree's branch — the board's main .tickets/<id>/ shows
@@ -5749,11 +5979,10 @@ function renderCockpitTestPlan(content, t) {
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
 async function maybeMountCockpitTerminal(t) {
-  const msg = document.getElementById('ck-term-msg');
-  const iframe = document.getElementById('ck-iframe');
+  const iframe = activeIframe();
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
-    msg.textContent = 'Select a worktree above to continue — Start sprint is disabled until a row is selected.';
+    setTermMessage('Select a worktree above to continue — Start sprint is disabled until a row is selected.');
     return;
   }
   // t-2a1c: gate on the EFFECTIVE run cwd, not just the selected row. For a
@@ -5773,9 +6002,9 @@ async function maybeMountCockpitTerminal(t) {
   const presentByCwd = cockpitState.worktreePresentByCwd || {};
   if (presentByCwd[effectiveCwd] === false) {
     iframe.style.visibility = 'hidden';
-    msg.textContent = isLocked
+    setTermMessage(isLocked
       ? "This ticket is locked to a worktree that doesn't contain it, so a Start here would fail — Start sprint is disabled. Click \u201CUnlock worktree\u201D above to run in the Main checkout, or commit .tickets/ into that worktree."
-      : "This worktree doesn't contain the ticket, so a Start here would fail — Start sprint is disabled. Use the Main checkout, or commit .tickets/ into this worktree.";
+      : "This worktree doesn't contain the ticket, so a Start here would fail — Start sprint is disabled. Use the Main checkout, or commit .tickets/ into this worktree.");
     return;
   }
   // t-e5ff: fallback for an older backend that doesn't report ticket_present —
@@ -5783,16 +6012,15 @@ async function maybeMountCockpitTerminal(t) {
   const visByCwd = cockpitState.worktreeVisibleByCwd || {};
   if (visByCwd[cockpitState.worktreeCwd] === false) {
     iframe.style.visibility = 'hidden';
-    msg.textContent = ".tickets/ is gitignored, so this worktree can't see the ticket — Start sprint is disabled here. Use the Main checkout, or track .tickets/ in git.";
+    setTermMessage(".tickets/ is gitignored, so this worktree can't see the ticket — Start sprint is disabled here. Use the Main checkout, or track .tickets/ in git.");
     return;
   }
   await mountCockpitTerminal(t, cockpitState.worktreeCwd);
 }
 
 async function mountCockpitTerminal(t, cwd) {
-  const msg = document.getElementById('ck-term-msg');
-  const iframe = document.getElementById('ck-iframe');
-  msg.textContent = 'Starting the cockpit daemon…';
+  const iframe = activeIframe();
+  setTermMessage('Starting the cockpit daemon…');
   iframe.style.visibility = 'hidden';
   let addr = null, err = '';
   try {
@@ -5806,7 +6034,7 @@ async function mountCockpitTerminal(t, cwd) {
     } else err = (d && d.error) || 'daemon unavailable';
   } catch { err = 'request failed'; }
   if (!addr) {
-    msg.textContent = 'Could not start the cockpit daemon (' + err + '). Build tools/cockpit-daemon and retry.';
+    setTermMessage('Could not start the cockpit daemon (' + err + '). Build tools/cockpit-daemon and retry.');
     iframe.style.visibility = 'hidden';
     return;
   }
@@ -5840,7 +6068,7 @@ async function mountCockpitTerminal(t, cwd) {
     // Fail safe, not fail open: sending '' here would resolve against the
     // shared daemon's arbitrary launch-time project (t-fc91), not this one —
     // silently reintroducing the exact bug this check exists to prevent.
-    msg.textContent = "Could not verify this project's root — check your connection and try again.";
+    setTermMessage("Could not verify this project's root — check your connection and try again.");
     iframe.style.visibility = 'hidden';
     return;
   }
@@ -5851,7 +6079,7 @@ async function mountCockpitTerminal(t, cwd) {
   iframe.onload = () => { try { iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'daemon-build', info: bi }, 'http://' + addr); } catch (e) {} };
   iframe.src = url;
   iframe.style.visibility = 'visible';
-  msg.textContent = '';
+  setTermMessage('');
 }
 
 // Accordion: each Acceptance/Test Plan section collapses independently.
