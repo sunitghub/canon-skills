@@ -123,9 +123,9 @@
   /* ---- Upkeep (t-7ae6): project picker + report cards + single report viewer ---- */
   .up-wrap{max-width:1080px}
   .up-h1{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
-  .up-sub{color:var(--text-muted);font-size:13.5px;margin:0 0 20px;max-width:62ch}
+  .up-sub{color:var(--text-muted);font-size:13.5px;margin:0 0 20px;max-width:98ch}
   .projrow{display:flex;align-items:center;gap:8px;margin-bottom:22px;flex-wrap:wrap}
-  .projrow .lbl{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);margin-right:2px}
+  .projrow .lbl{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-right:2px}
   .projpill{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;cursor:pointer}
   .projpill .dot{width:6px;height:6px;border-radius:50%;background:var(--col-done)}
   .projpill.active{border-color:var(--accent);background:var(--accent-dim);color:var(--accent)}
@@ -144,8 +144,11 @@
   .up-status.ok{color:var(--col-done);background:color-mix(in srgb, var(--col-done) 14%, transparent)}
   .up-status.review{color:var(--amber);background:color-mix(in srgb, var(--amber) 16%, transparent)}
   .up-status.run{color:var(--col-progress);background:color-mix(in srgb, var(--col-progress) 16%, transparent)}
+  .up-status.run::before{animation:up-pulse 1.2s ease-in-out infinite}
+  @keyframes up-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 color-mix(in srgb, var(--col-progress) 55%, transparent)}50%{opacity:.55;box-shadow:0 0 0 4px color-mix(in srgb, var(--col-progress) 0%, transparent)}}
+  @media (prefers-reduced-motion: reduce){.up-status.run::before{animation:none}}
   .up-status.never,.up-status.err{color:var(--text-dim);background:var(--border-muted)}
-  .rc-when{font-size:11px;color:var(--text-dim);margin-bottom:-2px}
+  .rc-when{font-size:11px;color:var(--text-muted);margin-bottom:-2px}
   .rc-meta{display:flex;gap:16px;font-size:12px;color:var(--text-dim);padding-top:2px;border-top:1px solid var(--border-muted);margin-top:2px}
   .rc-meta b{color:var(--text-muted);font-weight:600}
   .rc-config{display:flex;gap:6px;align-items:center}
@@ -156,30 +159,46 @@
   .rc-actions{display:flex;gap:8px;margin-top:auto}
   .rc-actions .btn{padding:7px 15px;font-size:12.5px}
   .up-detail{background:var(--panel);border:1px solid var(--border);border-radius:14px;overflow:hidden}
-  .up-detail-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;cursor:pointer;user-select:none}
-  .up-detail-eyebrow{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-dim);margin-bottom:3px}
+  .up-detail-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;cursor:pointer;user-select:none;transition:background .15s ease}
+  .up-detail-head:hover{background:var(--border-muted)}
+  .up-detail-head:hover .up-chev{color:var(--accent)}
+  .up-detail-eyebrow{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-bottom:3px}
   .up-detail-title{font-size:15.5px;font-weight:700}
-  .up-detail-when{font-size:11.5px;color:var(--text-dim);white-space:nowrap;flex-shrink:0}
-  .up-chev{color:var(--text-dim);transition:transform .18s ease;font-size:13px;flex-shrink:0}
+  .up-detail-when{font-size:11.5px;color:var(--text-muted);white-space:nowrap;flex-shrink:0}
+  .up-chev{color:var(--text);transition:transform .18s ease;font-size:16px;flex-shrink:0}
   .up-detail.open .up-chev{transform:rotate(180deg)}
   .up-detail-body{max-height:0;overflow:hidden;transition:max-height .22s ease}
   .up-detail.open .up-detail-body{max-height:520px}
-  .up-detail-inner{padding:0 20px 20px;border-top:1px solid var(--border-muted)}
-  .up-prose{padding-top:16px;padding-right:6px;color:var(--text-body);font-size:13px;line-height:1.65;max-height:400px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border-hover) transparent}
-  .up-prose::-webkit-scrollbar{width:8px}
-  .up-prose::-webkit-scrollbar-track{background:transparent}
-  .up-prose::-webkit-scrollbar-thumb{background:var(--border-hover);border-radius:8px}
-  .up-prose::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
+  .up-detail-inner{padding:0 20px 20px;border-top:1px solid var(--border-hover)}
+  .up-prose{padding-top:16px;padding-right:6px;color:var(--text-body);font-size:13px;line-height:1.65;max-height:400px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--accent) var(--border-muted)}
+  .up-prose::-webkit-scrollbar{width:10px}
+  .up-prose::-webkit-scrollbar-track{background:var(--border-muted);border-radius:8px}
+  .up-prose::-webkit-scrollbar-thumb{background:var(--accent);border-radius:8px;border:2px solid var(--panel);background-clip:padding-box}
+  .up-prose::-webkit-scrollbar-thumb:hover{background:var(--text)}
   .up-empty{color:var(--text-dim);font-size:13px;padding:30px 0;text-align:center}
-  .up-prose h3{color:var(--text);font-size:13px;margin:16px 0 6px;font-weight:700}
+  .up-prose h3{color:var(--text);font-size:14px;margin:18px 0 8px;font-weight:700;padding-bottom:6px;border-bottom:1px solid var(--border-muted)}
   .up-prose h3:first-child{margin-top:0}
+  .up-prose h4{color:var(--text-muted);font-size:11.5px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;margin:16px 0 8px}
+  .up-prose h4:first-child{margin-top:0}
   .up-prose p{margin:6px 0}
+  .up-prose hr{border:0;border-top:1px solid var(--border-muted);margin:14px 0}
   .up-prose code{background:var(--border-muted);border-radius:4px;padding:1px 5px;font-family:ui-monospace,monospace;font-size:12px;color:var(--card-stat)}
   .up-prose ul{margin:4px 0;padding-left:20px;white-space:normal}
   /* Findings read as flagged callouts (semantic amber), not plain prose. */
   .up-prose ul.up-findings{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
   .up-prose ul.up-findings li{border-left:3px solid var(--amber);background:color-mix(in srgb, var(--amber) 10%, transparent);padding:9px 12px;border-radius:0 7px 7px 0}
   .up-prose ul.up-findings code{background:color-mix(in srgb, var(--amber) 16%, var(--border-muted))}
+  .up-meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-bottom:4px}
+  .up-meta .um{font-size:12px;color:var(--text-body)}
+  .up-meta .um b{color:var(--text-muted);font-weight:700;text-transform:uppercase;font-size:10.5px;letter-spacing:.04em;margin-right:5px}
+  .up-table-wrap{overflow-x:auto;margin:8px 0 4px;border:1px solid var(--border-muted);border-radius:8px}
+  .up-prose table{border-collapse:collapse;width:100%;table-layout:auto;font-size:12.5px}
+  .up-prose th{text-align:left;color:var(--text-muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;background:var(--border-muted);border-bottom:1px solid var(--border);overflow-wrap:break-word}
+  .up-prose td{padding:7px 10px;border-top:1px solid var(--border-muted);color:var(--text-body);overflow-wrap:break-word}
+  .up-prose tr:first-child td{border-top:0}
+  .up-status-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px}
+  .up-status-chip.bad{color:var(--col-discarded);background:color-mix(in srgb, var(--col-discarded) 14%, transparent)}
+  .up-status-chip.ok{color:var(--col-done);background:color-mix(in srgb, var(--col-done) 14%, transparent)}
   .view iframe{width:100%;height:100%;border:0;display:block;background:var(--bg)}
   .vhead{display:flex;align-items:center;margin-bottom:20px}
   .vhead h1{font-size:21px;font-weight:700;letter-spacing:-.4px}
@@ -869,14 +888,55 @@
   function upRenderReport(raw){
     if(!raw) return '<div class="up-empty">Empty report.</div>';
     const lines=raw.split(/\r?\n/);
-    let html=''; let inFindings=false; let inList=false;
+    let html=''; let inFindings=false; let inList=false; let inMeta=false; let skippedTitle=false;
     const closeList=()=>{ if(inList){ html+='</ul>'; inList=false; } };
+    const closeMeta=()=>{ if(inMeta){ html+='</div>'; inMeta=false; } };
     const inline=t=>esc(t).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
-    for(const line of lines){
-      const h2=line.match(/^##\s+(.*)/); const h1=line.match(/^#\s+(.*)/);
+    const isTableRow=l=>/^\s*\|.*\|\s*$/.test(l);
+    const isTableSep=l=>/^\s*\|[\s|:-]+\|\s*$/.test(l);
+    const splitRow=l=>l.trim().replace(/^\|/,'').replace(/\|$/,'').split('|').map(c=>c.trim());
+    const statusCell=c=>{
+      const m=c.match(/^(?:❌|✗|🔴)\s*(.*)/); // ✗, ❌, 🔴
+      if(m) return `<span class="up-status-chip bad">${inline(m[1]||'Missing')}</span>`;
+      const ok=c.match(/^(?:✅|✓|🟢)\s*(.*)/); // ✓, ✅, 🟢
+      if(ok) return `<span class="up-status-chip ok">${inline(ok[1]||'OK')}</span>`;
+      return inline(c);
+    };
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i];
+      // The panel title is always the report's first non-blank line, heading
+      // syntax or not (upViewReport takes it the same way) — skip it here
+      // unconditionally or it renders a second time in the body.
+      if(!skippedTitle){
+        if(!line.trim()) continue;
+        skippedTitle=true; continue;
+      }
+      const h3=line.match(/^###\s+(.*)/); const h2=line.match(/^##\s+(.*)/); const h1=line.match(/^#\s+(.*)/);
       const li=line.match(/^[-*]\s+(.*)/);
+      const metaLine=line.match(/^\*\*([^*]+):\*\*\s*(.*)/);
+      if(isTableRow(line) && isTableSep(lines[i+1]||'')){
+        closeList(); closeMeta();
+        const head=splitRow(line);
+        let body=''; let j=i+2;
+        // Tolerate blank lines between body rows (a common LLM-markdown quirk) —
+        // only a real, non-blank, non-table line actually ends the table.
+        for(;j<lines.length;j++){
+          if(!lines[j].trim()) continue;
+          if(!isTableRow(lines[j])) break;
+          body+='<tr>'+splitRow(lines[j]).map(c=>`<td>${statusCell(c)}</td>`).join('')+'</tr>';
+        }
+        html+='<div class="up-table-wrap"><table><thead><tr>'+head.map(c=>`<th>${inline(c)}</th>`).join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>';
+        i=j-1; continue;
+      }
+      if(metaLine){
+        if(!inMeta){ closeList(); html+='<div class="up-meta">'; inMeta=true; }
+        html+=`<span class="um"><b>${inline(metaLine[1])}</b>${inline(metaLine[2])}</span>`; continue;
+      }
+      closeMeta();
+      if(/^-{3,}\s*$/.test(line.trim())){ closeList(); html+='<hr>'; continue; }
       if(h1){ closeList(); inFindings=false; html+=`<h3>${inline(h1[1])}</h3>`; continue; }
       if(h2){ closeList(); inFindings=/findings/i.test(h2[1]); html+=`<h3>${inline(h2[1])}</h3>`; continue; }
+      if(h3){ closeList(); html+=`<h4>${inline(h3[1])}</h4>`; continue; }
       if(li){
         if(!inList){ html+=`<ul class="${inFindings?'up-findings':''}">`; inList=true; }
         html+=`<li>${inline(li[1])}</li>`; continue;
@@ -884,7 +944,7 @@
       closeList();
       if(line.trim()) html+=`<p>${inline(line)}</p>`;
     }
-    closeList();
+    closeList(); closeMeta();
     return html;
   }
 
