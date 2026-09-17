@@ -31,3 +31,23 @@ tickets_dir() {
 project_root() {
   dirname "$(tickets_dir)"
 }
+
+# worktree_root — the caller's OWN worktree top-level directory (t-01a4),
+# distinct from project_root(): project_root() always redirects to the MAIN
+# checkout (.tickets/ lives only there, t-cd06), but a per-worktree gate needs
+# to know which worktree the caller is actually IN. Walks up from $PWD to the
+# nearest ancestor with a .git entry (file, for a linked worktree — or
+# directory, for the main checkout) and returns ITS path, symlink-resolved
+# (`cd ... && pwd -P`, matching the daemon's Go EvalSymlinks intent so a
+# bash-written .cockpit-cwd compares equal to one the daemon wrote).
+worktree_root() {
+  local dir="$PWD"
+  while [[ "$dir" != "/" ]]; do
+    if [[ -e "$dir/.git" ]]; then
+      (cd "$dir" && pwd -P)
+      return 0
+    fi
+    dir="$(dirname "$dir")"
+  done
+  (cd "$PWD" && pwd -P)
+}

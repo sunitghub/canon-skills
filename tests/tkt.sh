@@ -194,3 +194,73 @@ assert_contains "$clean_out" "nothing to distill"
 # 4. Usage error with no id.
 learn_usage="$(run_fail "$TKT" learn)"
 assert_contains "$learn_usage" "Usage: tkt learn <id> [--force]"
+
+# ── t-01a4: current_id() is per-worktree, not repo-wide ────────────────────
+
+wt_project="$(make_project)"
+(cd "$wt_project" && git commit -q --allow-empty -m init)
+
+# Backward-compat baseline: single in_progress ticket, main checkout only —
+# must resolve exactly as before this change (HIGH blast-radius mitigation).
+(
+  cd "$wt_project"
+  solo_id="$("$TKT" create "Solo ticket" -t task)"
+  "$TKT" start "$solo_id" >/dev/null
+  cur_out="$("$TKT" current)"
+  assert_contains "$cur_out" "$solo_id"
+  "$TKT" close "$solo_id" --no-sprint >/dev/null
+)
+
+# Two real worktrees, one in_progress ticket bound to each (via .cockpit-cwd,
+# same as the daemon/cmd_start would write) — tkt current from EACH worktree
+# resolves to ITS OWN ticket independently, no "multiple in-progress" error.
+(
+  cd "$wt_project"
+  wt_a_id="$("$TKT" create "Worktree A ticket" -t task)"
+  "$TKT" start "$wt_a_id" >/dev/null
+  printf '%s\n' "$(cd "$wt_project" && pwd -P)" > ".tickets/$wt_a_id/.cockpit-cwd"
+
+  worktree_b="$wt_project-worktrees/feat-b"
+  mkdir -p "$(dirname "$worktree_b")"
+  git worktree add -q -b "sprint/feat-b" "$worktree_b" >/dev/null 2>&1
+
+  wt_b_id="$("$TKT" create "Worktree B ticket" -t task)"
+  "$TKT" start "$wt_b_id" >/dev/null
+  printf '%s\n' "$(cd "$worktree_b" && pwd -P)" > ".tickets/$wt_b_id/.cockpit-cwd"
+
+  # From the main checkout: resolves to A, not B, not an error.
+  main_cur="$("$TKT" current)"
+  assert_contains "$main_cur" "$wt_a_id"
+
+  # From worktree B: resolves to B, not A, not an error — the whole point.
+  wt_b_cur="$(cd "$worktree_b" && "$TKT" current)"
+  assert_contains "$wt_b_cur" "$wt_b_id"
+
+  git worktree remove -f "$worktree_b" >/dev/null 2>&1 || true
+  "$TKT" close "$wt_a_id" --no-sprint >/dev/null
+  "$TKT" close "$wt_b_id" --no-sprint >/dev/null
+)
+
+# Two tickets in_progress in the SAME worktree stays a genuine, hard error —
+# never silently resolved to either one.
+(
+  cd "$wt_project"
+  same_a="$("$TKT" create "Same-worktree A" -t task)"
+  same_b="$("$TKT" create "Same-worktree B" -t task)"
+  "$TKT" start "$same_a" >/dev/null
+  here="$(pwd -P)"
+  printf '%s\n' "$here" > ".tickets/$same_a/.cockpit-cwd"
+  # Force B in_progress too, bypassing the gate (simulating the anomaly
+  # directly, since the gate itself should normally prevent this).
+  sed -i.bak 's/^status: open$/status: in_progress/' ".tickets/$same_b/ticket.md" && rm -f ".tickets/$same_b/ticket.md.bak"
+  printf '%s\n' "$here" > ".tickets/$same_b/.cockpit-cwd"
+
+  set +e
+  err_out="$("$TKT" current 2>&1)"
+  err_rc=$?
+  set -e
+  [[ "$err_rc" -eq 2 ]] || fail "expected rc 2 for same-worktree double in_progress, got $err_rc"
+  assert_contains "$err_out" "multiple in-progress tickets bound to this worktree"
+)
+
+rm -rf "$wt_project" "$wt_project-worktrees"

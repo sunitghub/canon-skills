@@ -85,6 +85,15 @@ cmd_start() {
   tdir="$(ticket_dir_for "$id")"
   mkdir -p "$tdir"
 
+  # t-01a4: record which worktree this ticket is bound to, same path/format
+  # the cockpit daemon uses (.tickets/<id>/.cockpit-cwd) — a ticket started
+  # directly via this CLI (never touching the daemon) would otherwise carry
+  # no binding at all, and the per-worktree gate above would wrongly treat it
+  # as free to collide with. Never overwrite an existing binding (mirrors the
+  # daemon's own resume-reuses-persisted-cwd rule) — only a genuinely fresh
+  # start writes it.
+  [[ -f "$tdir/.cockpit-cwd" ]] || printf '%s\n' "$(worktree_root)" > "$tdir/.cockpit-cwd"
+
   [[ -f "$tdir/acceptance.md" ]] || cat > "$tdir/acceptance.md" <<EOF
 # Acceptance
 
