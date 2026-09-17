@@ -124,31 +124,73 @@ clear_active_if() {
   file="$(active_file)"
   [[ -f "$file" ]] || return 0
   current="$(tr -d '[:space:]' < "$file")"
-  [[ "$current" == "$id" ]] && rm -f "$file"
+  # t-01a4: a bare `[[ cond ]] && cmd` as the LAST statement in a function
+  # returns 1 (the [[ ]] test's own exit status) whenever cond is false —
+  # under set -e that silently aborts the whole calling script. Latent since
+  # this file's introduction: only ever manifested once two tickets could be
+  # in_progress at once (ACTIVE names one, this call closes the other) —
+  # never reproducible before this ticket made that state possible.
+  if [[ "$current" == "$id" ]]; then
+    rm -f "$file"
+  fi
+  return 0
 }
 
-current_id() {
-  local dir file id matches=()
-  dir="$(tickets_dir)"
-  file="$dir/ACTIVE"
-  if [[ -f "$file" ]]; then
-    id="$(tr -d '[:space:]' < "$file")"
-    if [[ -n "$id" ]] && find_ticket "$id" >/dev/null 2>&1; then
-      echo "$id"
-      return 0
+# _normalize_path <path> — symlink-resolved absolute form, matching the
+# daemon's Go EvalSymlinks intent, so a bash-written binding compares equal
+# to one the daemon wrote. Falls back to the raw value if the path is gone.
+_normalize_path() {
+  (cd "$1" 2>/dev/null && pwd -P) || echo "$1"
+}
+
+# _ticket_cwd_binding <ticket-file> — the worktree a ticket is bound to
+# (t-01a4): reads its sibling .cockpit-cwd (daemon or cmd_start-written),
+# defaulting to the main checkout when absent — a ticket never explicitly
+# bound to a worktree is implicitly bound to the shared main checkout, same
+# as the daemon's own resolveSpawnCwd default. A legacy flat <id>.md file (no
+# per-ticket directory) has nowhere to keep a binding — treat as main
+# checkout too, never as a shared binding across every flat ticket.
+_ticket_cwd_binding() {
+  local file="$1" tdir cwd
+  if [[ "$(basename "$file")" == "ticket.md" ]]; then
+    tdir="$(dirname "$file")"
+    if [[ -f "$tdir/.cockpit-cwd" ]]; then
+      cwd="$(tr -d '[:space:]' < "$tdir/.cockpit-cwd")"
+      [[ -n "$cwd" ]] && { _normalize_path "$cwd"; return; }
     fi
   fi
+  _normalize_path "$(project_root)"
+}
+
+# current_id (t-01a4): resolves the ticket in_progress in the CALLER's own
+# worktree, not repo-wide — multiple tickets may legitimately be in_progress
+# at once, one per worktree, each independently resolvable from its own cwd.
+current_id() {
+  local dir file id matches=() my_wt
+  dir="$(tickets_dir)"
+  my_wt="$(worktree_root)"
+
+  # No ACTIVE fast path (t-01a4, removed after a real bug found in testing):
+  # trusting ACTIVE as an early-return let a genuine same-worktree double
+  # in_progress anomaly go undetected — ACTIVE named the first ticket, its
+  # binding matched, and current_id() returned immediately without ever
+  # reaching the full scan that would have caught the second one. The scan
+  # below is cheap regardless of ticket count; always run it. ACTIVE is still
+  # written by tkt start/close for informational/back-compat purposes only.
 
   [[ -d "$dir" ]] || return 1
   while IFS= read -r file; do
     [[ "$(get_field "$file" status)" == "in_progress" ]] || continue
+    [[ "$(_ticket_cwd_binding "$file")" == "$my_wt" ]] || continue
     matches+=("$(get_field "$file" id)")
   done < <(ticket_files "$dir")
 
   case ${#matches[@]} in
     1) echo "${matches[0]}" ;;
     0) return 1 ;;
-    *) echo "Error: multiple in-progress tickets; run 'tkt start <id>' to set ACTIVE" >&2; return 2 ;;
+    # A genuine anomaly, not a normal multi-worktree state: this worktree's
+    # OWN gate should never let two tickets bind to it at once.
+    *) echo "Error: multiple in-progress tickets bound to this worktree; run 'tkt start <id>' to set ACTIVE" >&2; return 2 ;;
   esac
 }
 

@@ -1068,3 +1068,44 @@ EOF
 consist2_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$consist2_output" "eval-report.md verdict is not pass"
 [[ -f .tickets/ACTIVE ]] && "$TKT" close "$consist2_id" --no-sprint >/dev/null
+
+# ── t-01a4: sprint start's gate is per-worktree, not repo-wide ─────────────
+
+sp_project="$(make_project)"
+(cd "$sp_project" && git commit -q --allow-empty -m init)
+
+(
+  cd "$sp_project"
+  main_out="$("$SPRINT" start "Main checkout ticket")"
+  main_id="$(printf '%s\n' "$main_out" | awk '/Sprint started:/ { print $3 }')"
+
+  # cmd_start writes .cockpit-cwd on a fresh start, matching worktree_root().
+  assert_file_exists ".tickets/$main_id/.cockpit-cwd"
+  assert_eq "$(pwd -P)" "$(cat ".tickets/$main_id/.cockpit-cwd")"
+
+  # Same worktree (main checkout): a second sprint start is still blocked —
+  # unchanged behavior for the dominant, common case.
+  same_wt_blocked="$(run_fail "$SPRINT" start "Second in main checkout")"
+  assert_contains "$same_wt_blocked" "Active sprint already exists:"
+
+  # A different worktree: NOT blocked — the actual point of this ticket.
+  sp_wt="$sp_project-worktrees/feat-x"
+  mkdir -p "$(dirname "$sp_wt")"
+  git worktree add -q -b sprint/feat-x "$sp_wt"
+  wt_out="$(cd "$sp_wt" && "$SPRINT" start "Worktree ticket")"
+  assert_contains "$wt_out" "Sprint started:"
+  wt_id="$(printf '%s\n' "$wt_out" | awk '/Sprint started:/ { print $3 }')"
+  assert_eq "$(cd "$sp_wt" && pwd -P)" "$(cat ".tickets/$wt_id/.cockpit-cwd")"
+
+  # tkt current from EACH worktree resolves independently — the CLI-facing
+  # proof that current_id()'s worktree-awareness and cmd_start's own binding
+  # write interoperate correctly end to end.
+  assert_contains "$("$TKT" current)" "$main_id"
+  assert_contains "$(cd "$sp_wt" && "$TKT" current)" "$wt_id"
+
+  git worktree remove -f "$sp_wt" >/dev/null 2>&1 || true
+  "$TKT" close "$main_id" --no-sprint >/dev/null
+  "$TKT" close "$wt_id" --no-sprint >/dev/null
+)
+
+rm -rf "$sp_project" "$sp_project-worktrees"
