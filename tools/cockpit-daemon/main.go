@@ -445,6 +445,17 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// t-c6fa: a live session for this ticket already exists (e.g. a second
+	// browser tab, or a stale tab plus a fresh Resume click) — attach to it
+	// instead of spawning a second PTY that would race the first for the same
+	// underlying `claude --resume` conversation. Matches t-a98b's wanted
+	// "reattach to a still-live session" behavior. Scoped by projectRoot too,
+	// not ticket ID alone: one daemon serves many projects (t-391a), and
+	// ticket IDs are only unique within one project's .tickets/.
+	if existing := s.liveSessionForTicket(projectRoot, body.Ticket); existing != nil {
+		writeJSON(w, map[string]string{"session": existing.sid, "token": existing.token, "previewToken": existing.previewToken, "cwd": existing.cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
+		return
+	}
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
 	if err != nil {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
@@ -474,13 +485,40 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// on macOS) then matches and no longer raises a spurious mismatch warning,
 	// while a genuine wrong-tree run (actual differs from both selected and
 	// requested) still warns.
-	reqEcho := body.Cwd
-	if reqEcho == "" {
-		reqEcho = s.cfg.projectRoot
-	} else if rr, rerr := filepath.EvalSymlinks(reqEcho); rerr == nil {
-		reqEcho = rr
+	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
+}
+
+// resolveRequestedEcho computes the RESOLVED form of what the client asked
+// for (t-eed3), shared by the fresh-spawn and attach-to-existing (t-c6fa)
+// response paths so both echo `requested` identically.
+func (s *server) resolveRequestedEcho(cwdRequested string) string {
+	if cwdRequested == "" {
+		return s.cfg.projectRoot
 	}
-	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd, "requested": reqEcho})
+	if rr, rerr := filepath.EvalSymlinks(cwdRequested); rerr == nil {
+		return rr
+	}
+	return cwdRequested
+}
+
+// liveSessionForTicket returns the first non-exited session bound to ticket
+// within projectRoot, or nil (t-c6fa). Scoped by projectRoot too, not ticket
+// ID alone — see the handleStart call site's own comment for why.
+func (s *server) liveSessionForTicket(projectRoot, ticket string) *session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, se := range s.sessions {
+		if se.ticket != ticket || se.projectRoot != projectRoot {
+			continue
+		}
+		se.mu.Lock()
+		exited := se.exited
+		se.mu.Unlock()
+		if !exited {
+			return se
+		}
+	}
+	return nil
 }
 
 // resolveSpawnBin resolves the spawn command against PATH to an absolute path
