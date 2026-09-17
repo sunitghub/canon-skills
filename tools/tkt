@@ -277,6 +277,17 @@ cmd_set_status() {
   fi
   if [[ "$new_status" == "in_progress" ]]; then
     set_active "$id"
+    # t-01a4 (fixed after a real gap found in review): record which worktree
+    # this ticket is bound to, same path/format the cockpit daemon uses. Live
+    # here, not just in sprint's cmd_start, so bare `tkt start` (no sprint,
+    # no daemon) also binds correctly — sprint's own cmd_start calls this via
+    # `tkt start`, so it needs no separate write of its own. Never overwrite
+    # an existing binding; skip for a legacy flat <id>.md ticket (no per-id
+    # dir to hold a binding, same guard as _ticket_cwd_binding's read side).
+    if [[ "$(basename "$file")" == "ticket.md" ]]; then
+      local tdir="$(dirname "$file")"
+      [[ -f "$tdir/.cockpit-cwd" ]] || printf '%s\n' "$(worktree_root)" > "$tdir/.cockpit-cwd"
+    fi
   else
     clear_active_if "$id"
   fi

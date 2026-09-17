@@ -264,3 +264,36 @@ wt_project="$(make_project)"
 )
 
 rm -rf "$wt_project" "$wt_project-worktrees"
+
+# ── t-01a4 (review finding): bare `tkt start` also binds a worktree ────────
+# Distinct from the "two worktrees" case above, which starts BOTH tickets via
+# tkt start too but never isolated this specific gap: a ticket started with
+# no sprint/daemon involvement at all must still be visible to `tkt current`
+# from its own worktree, not silently invisible there.
+
+bare_project="$(make_project)"
+(cd "$bare_project" && git commit -q --allow-empty -m init)
+(
+  cd "$bare_project"
+  bare_wt="$bare_project-worktrees/bare"
+  mkdir -p "$(dirname "$bare_wt")"
+  git worktree add -q -b sprint/bare "$bare_wt" >/dev/null
+
+  cd "$bare_wt"
+  bare_id="$("$TKT" create "Bare start" -t task)"
+  "$TKT" start "$bare_id" >/dev/null
+
+  assert_file_exists "$bare_project/.tickets/$bare_id/.cockpit-cwd"
+  assert_eq "$(pwd -P)" "$(cat "$bare_project/.tickets/$bare_id/.cockpit-cwd")"
+  assert_contains "$("$TKT" current)" "$bare_id"
+
+  # From the main checkout, this worktree-bound ticket must NOT show as active.
+  main_cur_rc=0
+  (cd "$bare_project" && "$TKT" current >/dev/null 2>&1) || main_cur_rc=$?
+  [[ "$main_cur_rc" -eq 1 ]] || fail "expected main checkout to see no active ticket, got rc $main_cur_rc"
+
+  "$TKT" close "$bare_id" --no-sprint >/dev/null
+  cd "$bare_project"
+  git worktree remove -f "$bare_wt" >/dev/null 2>&1 || true
+)
+rm -rf "$bare_project" "$bare_project-worktrees"
