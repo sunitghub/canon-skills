@@ -215,7 +215,7 @@ created: 2026-06-27
 
 func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("", "", "", 2, "", false, false, "full", false, "", "")
+	created := createTicket("", "", "", 2, "", false, false, "full", false, "", "", "")
 	id := created["id"].(string)
 	if !regexp.MustCompile(`^t-[a-z0-9]{4}$`).MatchString(id) {
 		t.Fatalf("id = %q, want t-[a-z0-9]{4}", id)
@@ -237,7 +237,7 @@ func TestCreateTicketDefaultsAndIDShape(t *testing.T) {
 func TestCreateTicketGate(t *testing.T) {
 	setupTestProject(t)
 	// eval mode writes the gate line and surfaces it in the ticket JSON
-	ev := createTicket("eval gate", "task", "open", 2, "", true, false, "eval", false, "", "")
+	ev := createTicket("eval gate", "task", "open", 2, "", true, false, "eval", false, "", "", "")
 	if ev["gate"] != "eval" {
 		t.Fatalf("gate JSON = %v, want eval", ev["gate"])
 	}
@@ -246,7 +246,7 @@ func TestCreateTicketGate(t *testing.T) {
 		t.Fatalf("ticket.md missing 'gate: eval':\n%s", raw)
 	}
 	// full mode (default) writes no gate line
-	full := createTicket("full gate", "task", "open", 2, "", true, false, "full", false, "", "")
+	full := createTicket("full gate", "task", "open", 2, "", true, false, "full", false, "", "", "")
 	raw2, _ := os.ReadFile(filepath.Join(ticketsDir, full["id"].(string), "ticket.md"))
 	if strings.Contains(string(raw2), "gate:") {
 		t.Fatalf("full-mode ticket.md should have no gate line:\n%s", raw2)
@@ -256,7 +256,7 @@ func TestCreateTicketGate(t *testing.T) {
 // t-354b: createTicket writes an allowlisted, order-preserving, deduped skills line.
 func TestCreateTicketSkills(t *testing.T) {
 	setupTestProject(t)
-	c := createTicket("maint", "chore", "open", 2, "", false, false, "full", false, "context-check,dead-code-cleanup,bogus,context-check", "")
+	c := createTicket("maint", "chore", "open", 2, "", false, false, "full", false, "context-check,dead-code-cleanup,bogus,context-check", "", "")
 	raw, _ := os.ReadFile(filepath.Join(ticketsDir, c["id"].(string), "ticket.md"))
 	if !strings.Contains(string(raw), "skills: context-check,dead-code-cleanup") {
 		t.Fatalf("ticket.md missing expected skills line:\n%s", raw)
@@ -264,16 +264,32 @@ func TestCreateTicketSkills(t *testing.T) {
 	if strings.Contains(string(raw), "bogus") {
 		t.Fatalf("non-allowlisted skill leaked into frontmatter:\n%s", raw)
 	}
-	none := createTicket("plain", "task", "open", 2, "", false, false, "full", false, "", "")
+	none := createTicket("plain", "task", "open", 2, "", false, false, "full", false, "", "", "")
 	raw2, _ := os.ReadFile(filepath.Join(ticketsDir, none["id"].(string), "ticket.md"))
 	if strings.Contains(string(raw2), "skills:") {
 		t.Fatalf("no-skills ticket should have no skills line:\n%s", raw2)
 	}
 }
 
+// t-644a: createTicket writes an optional worktree_preference line, present/
+// absent convention (parity with server.py's create_ticket).
+func TestCreateTicketWorktreePreference(t *testing.T) {
+	setupTestProject(t)
+	withPref := createTicket("wt pref", "task", "open", 2, "", false, false, "full", false, "", "sprint/feat-x", "")
+	raw, _ := os.ReadFile(filepath.Join(ticketsDir, withPref["id"].(string), "ticket.md"))
+	if !strings.Contains(string(raw), "worktree_preference: sprint/feat-x") {
+		t.Fatalf("ticket.md missing expected worktree_preference line:\n%s", raw)
+	}
+	none := createTicket("no wt pref", "task", "open", 2, "", false, false, "full", false, "", "", "")
+	raw2, _ := os.ReadFile(filepath.Join(ticketsDir, none["id"].(string), "ticket.md"))
+	if strings.Contains(string(raw2), "worktree_preference:") {
+		t.Fatalf("no-preference ticket should have no worktree_preference line:\n%s", raw2)
+	}
+}
+
 func TestWriteStatusUpdatesActive(t *testing.T) {
 	setupTestProject(t)
-	created := createTicket("Active test", "task", "open", 2, "", false, false, "full", false, "", "")
+	created := createTicket("Active test", "task", "open", 2, "", false, false, "full", false, "", "", "")
 	id := created["id"].(string)
 
 	if !writeStatus(id, "in_progress", "") {
@@ -914,7 +930,7 @@ func TestScopedWritesTargetProject(t *testing.T) {
 	os.MkdirAll(filepath.Join(B, ".tickets"), 0755)
 	broot, _ := filepath.EvalSymlinks(B)
 
-	tk := createTicket("Scoped", "task", "open", 2, "body", false, false, "full", false, "", broot)
+	tk := createTicket("Scoped", "task", "open", 2, "body", false, false, "full", false, "", "", broot)
 	id := fmt.Sprint(tk["id"])
 	if _, err := os.Stat(filepath.Join(broot, ".tickets", id, "ticket.md")); err != nil {
 		t.Fatalf("scoped create did not land in project B: %v", err)

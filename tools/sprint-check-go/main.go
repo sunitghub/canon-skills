@@ -553,6 +553,7 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			stringValue(payload, "gate", "full"),
 			boolValue(payload["demo"]),
 			stringValue(payload, "skills", ""),
+			stringValue(payload, "worktree_preference", ""),
 			eroot,
 		))
 		return
@@ -1152,7 +1153,7 @@ func writeVisual(ticketID, filename, dataB64 string, root string) map[string]any
 	return map[string]any{"ok": true, "filename": name}
 }
 
-func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string, demo bool, skills string, root string) ticket {
+func createTicket(title, typ, status string, priority int, body string, ci bool, evalOverride bool, gate string, demo bool, skills string, worktreePreference string, root string) ticket {
 	td := ticketsDirForRoot(root)
 	os.MkdirAll(td, 0755)
 	existing := map[string]bool{}
@@ -1220,11 +1221,18 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 			skillsLine = "skills: " + strings.Join(picked, ",") + "\n"
 		}
 	}
+	// t-644a: a declared worktree preference, applied only later at first
+	// Start (see renderCockpitWorktree's pre-fill) -- present/absent
+	// convention, parity with server.py's create_ticket.
+	wtLine := ""
+	if wt := strings.TrimSpace(strings.ReplaceAll(worktreePreference, "\n", " ")); wt != "" {
+		wtLine = "worktree_preference: " + wt + "\n"
+	}
 	evalLine := "eval_override: false"
 	if evalOverride {
 		evalLine = "eval_override: true"
 	}
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, gateLine, demoLine, skillsLine, evalLine, strings.TrimSpace(body))
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, gateLine, demoLine, skillsLine, wtLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	os.WriteFile(path, []byte(text), 0644)
 	t, _ := parseTicket(path)

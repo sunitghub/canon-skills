@@ -1089,7 +1089,7 @@ def read_doc(doc_file: str, root: Path = None) -> str | None:
         return None
     return p.read_text(encoding='utf-8', errors='replace')
 
-def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', root: Path = None) -> dict:
+def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', worktree_preference: str = '', root: Path = None) -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
     tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
     tdir.mkdir(exist_ok=True)
@@ -1129,6 +1129,12 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str,
             picked.append(s)
     if picked:
         fm_lines.append('skills: ' + ','.join(picked))
+    # t-644a: a declared worktree preference, applied only later at first
+    # Start (see renderCockpitWorktree's pre-fill) -- present/absent
+    # convention, same as demo/gate above. Nothing on disk is created yet.
+    safe_wt = worktree_preference.strip().replace('\n', ' ')
+    if safe_wt:
+        fm_lines.append(f'worktree_preference: {safe_wt}')
     fm_lines.append(f'eval_override: {"true" if eval_override else "false"}')
     fm_lines.append('---\n')
     fm = '\n'.join(fm_lines)
@@ -2056,6 +2062,7 @@ class Handler(BaseHTTPRequestHandler):
                 gate     = 'eval' if str(payload.get('gate', '')).lower() == 'eval' else 'full',
                 demo     = bool(payload.get('demo', False)),
                 skills   = str(payload.get('skills', '')),
+                worktree_preference = str(payload.get('worktree_preference', '')),
                 root     = eroot,
             )
             self.send_json(t); return
