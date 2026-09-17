@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-17-2026 14:30
+learnings-sweep last run: 09-17-2026 15:50
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-17 | [t-01a4](.tickets/t-01a4/learnings.md) | A fresh evaluator independently re-reproduced a reviewer-caught fix from scratch (rebuilt the exact original repro, confirmed the fix live) rather than trusting the ticket's own description of it being fixed — the fresh-context gate's value is in re-deriving claims, not reading them, even for a fix made mid-sprint in response to an earlier finding. | UNPROMOTED |
 | 2026-09-17 | [t-c6fa](.tickets/t-c6fa/learnings.md) | A binding evaluator PASS and an advisory reviewer NO can legitimately coexist (scope drift that doesn't contradict any acceptance criterion) — `sprint complete` must still surface the reviewer's own separate NO verdict to the human closer, not let a clean eval report imply every gate was clean. | UNPROMOTED |
 | 2026-09-15 | [t-f15b](.tickets/t-f15b/learnings.md) | An acceptance.md test-count claim ("121/121 pass") arithmetically undercounted the real run (113 passed/8 failed/7 did-not-run = 128) and never disclosed the did-not-run set — grade against real command output, not the doc's own summary framing, even when the underlying verdict doesn't change. | UNPROMOTED |
 | 2026-09-15 | [t-a30c](.tickets/t-a30c/learnings.md) | A Test Plan line must be re-runnable by a fresh evaluator, not a narrative attestation of a past manual click — one forced a mechanical `fail:` (correct `not-run` grading) despite every criterion and reproducible test passing; fix was removing the line, not the code. | UNPROMOTED |
