@@ -5419,6 +5419,11 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await page.waitForTimeout(100);
       await page.locator('#ck-preview-label').click(); // expand
       await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
+      // t-82f4: the hit target was widened from 7px to 12px (7px was easy to
+      // miss with the mouse) — pin the rendered width so it can't silently
+      // shrink back.
+      const handleBox = await page.locator('#ck-preview-resize').boundingBox();
+      expect(handleBox.width).toBeGreaterThanOrEqual(12);
       const widthOf = () => page.locator('#ck-preview').evaluate(el => el.getBoundingClientRect().width);
       const before = await widthOf();
       // Drive the left-edge handle deterministically (synthetic mouse events on the
