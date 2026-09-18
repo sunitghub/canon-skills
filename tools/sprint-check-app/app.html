@@ -4829,18 +4829,17 @@ function activeIframe() {
 function setActiveTab(id) {
   activeTabId = id;
   cockpitState = cockpitTabs[id] || null;
+  // t-82f4: preview containers get the same show/hide-only swap as terminal
+  // iframes, in the same pass — a backgrounded tab's mounted preview (if any)
+  // stays alive in the DOM, never re-created.
   for (const [tid, tab] of Object.entries(cockpitTabs)) {
-    if (!tab.iframeEl) continue;
     const isActive = tid === id;
-    tab.iframeEl.style.display = isActive ? '' : 'none';
-    if (isActive) tab.iframeEl.id = 'ck-iframe';
-    else tab.iframeEl.removeAttribute('id');
-  }
-  // t-82f4: same show/hide-only swap as the terminal iframe loop above — a
-  // tab's preview container (if it ever mounted one) stays alive in the DOM
-  // while backgrounded, never re-created.
-  for (const tab of Object.values(cockpitTabs)) {
-    if (tab.previewEl) tab.previewEl.style.display = (tab.id === id) ? '' : 'none';
+    if (tab.iframeEl) {
+      tab.iframeEl.style.display = isActive ? '' : 'none';
+      if (isActive) tab.iframeEl.id = 'ck-iframe';
+      else tab.iframeEl.removeAttribute('id');
+    }
+    if (tab.previewEl) tab.previewEl.style.display = isActive ? '' : 'none';
   }
   document.getElementById('ck-preview').classList.toggle('collapsed', !cockpitState || cockpitState.previewCollapsed);
   const msgEl = document.getElementById('ck-term-msg');
