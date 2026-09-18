@@ -280,7 +280,7 @@ cred_pats = [
     re.compile(r"xox[baprs]-[0-9A-Za-z-]{10,}"),
     re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
     re.compile(r"-----BEGIN (RSA |EC |OPENSSH |DSA |)PRIVATE KEY-----"),
-    re.compile(r"(?i)\b(api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*"
+    re.compile(r"(?i)\b(api[_-]?key|key|secret|token|password|passwd)\b\s*[:=]\s*"
                r"['\"]([A-Za-z0-9_\-/+=]{12,})['\"]"),
 ]
 placeholder_markers = ("your", "example", "changeme", "xxxx", "<", ">",

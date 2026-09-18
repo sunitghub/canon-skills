@@ -263,6 +263,32 @@ tags: [test]
 api_key = "notarealsecretvalue1234567890ab"
 EOF
 
+# Bare `key =` must also fire (the generic-name alternation covers key/secret/token/
+# password, not just api_key), while a compound identifier like primary_key must not.
+mkdir -p "$pfix/barekey-skill"
+cat > "$pfix/barekey-skill/SKILL.md" <<'EOF'
+---
+name: barekey-skill
+description: Valid fixture. Use when testing bare-key credential detection here.
+category: dev
+tags: [test]
+---
+
+key = "notarealgooglekeyvalue1234567890"
+EOF
+
+mkdir -p "$pfix/compoundkey-safe"
+cat > "$pfix/compoundkey-safe/SKILL.md" <<'EOF'
+---
+name: compoundkey-safe
+description: Valid fixture. Use when testing compound-identifier false-positive avoidance here.
+category: dev
+tags: [test]
+---
+
+primary_key = "not_a_secret_just_a_long_identifier_value"
+EOF
+
 mkdir -p "$pfix/net-skill/scripts"
 cat > "$pfix/net-skill/SKILL.md" <<'EOF'
 ---
@@ -354,12 +380,14 @@ assert_contains "$padv" "cred-skill/SKILL.md: warning: SP-SEC-CRED"
 assert_contains "$padv" "net-skill/scripts/fetch.py: warning: SP-SEC-NET"
 assert_contains "$padv" "adversarial-skill/SKILL.md: warning: SP-SEC-ADVERSARIAL"
 assert_contains "$padv" "fenced-cred-skill/SKILL.md: warning: SP-SEC-CRED"
+assert_contains "$padv" "barekey-skill/SKILL.md: warning: SP-SEC-CRED"
 assert_contains "$padv" "skills lint: clean ("
 # No-op detector must skip quoted / backticked / negated occurrences.
 [[ "$padv" != *"noop-safe/SKILL.md: warning: SP-NOOP"* ]] || fail "SP-NOOP should skip quoted/backticked/negated no-ops"
 # Security checks must not false-positive on a placeholder value or ordinary curl/API-key prose.
 [[ "$padv" != *"security-safe/SKILL.md: warning: SP-SEC-CRED"* ]] || fail "SP-SEC-CRED should skip placeholder values"
 [[ "$padv" != *"security-safe/SKILL.md: warning: SP-SEC-NET"* ]] || fail "SP-SEC-NET should never fire from SKILL.md prose"
+[[ "$padv" != *"compoundkey-safe/SKILL.md: warning: SP-SEC-CRED"* ]] || fail "SP-SEC-CRED should not fire on a compound identifier like primary_key"
 # SP-SEC-ADVERSARIAL must skip fenced code (illustrative "what not to write" examples).
 [[ "$padv" != *"fenced-adv-safe/SKILL.md: warning: SP-SEC-ADVERSARIAL"* ]] || fail "SP-SEC-ADVERSARIAL should skip fenced code"
 
