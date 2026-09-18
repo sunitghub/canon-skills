@@ -272,6 +272,39 @@ time_pat = re.compile(
     r"|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+20\d\d\b"
     r"|\bin\s+20\d\d\b", re.I)
 
+# Security-pattern checks (skill-setup-std ## Validation, t-1acb) — mirrors the risk
+# indicators in Anthropic's enterprise Agent Skills doc: hardcoded credentials, network
+# calls from a bundled script, and instruction-manipulation language.
+cred_pats = [
+    re.compile(r"AKIA[0-9A-Z]{16}"),
+    re.compile(r"xox[baprs]-[0-9A-Za-z-]{10,}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9]{20,}"),
+    re.compile(r"-----BEGIN (RSA |EC |OPENSSH |DSA |)PRIVATE KEY-----"),
+    re.compile(r"(?i)\b(api[_-]?key|secret|token|password|passwd)\b\s*[:=]\s*"
+               r"['\"]([A-Za-z0-9_\-/+=]{12,})['\"]"),
+]
+placeholder_markers = ("your", "example", "changeme", "xxxx", "<", ">",
+                        "placeholder", "dummy", "fake")
+
+def _cred_hit(line):
+    for pat in cred_pats:
+        m = pat.search(line)
+        if m and not any(mk in m.group(0).lower() for mk in placeholder_markers):
+            return True
+    return False
+
+net_pat = re.compile(
+    r"\b(curl\s|requests\.(get|post|put|delete)\(|urllib\.request|fetch\(|"
+    r"axios\.|http\.client|socket\.connect)")
+adversarial_pat = re.compile(
+    r"(?i)\b(ignore (all )?(previous|prior|above) instructions|"
+    r"disregard (safety|previous|prior)|"
+    r"do not (tell|inform|notify) the user|"
+    r"hide (this|these actions?) from the user|"
+    r"without (informing|telling|notifying) the user|"
+    r"secretly|bypass safety)\b")
+script_exts = (".py", ".sh", ".js", ".ts")
+
 for f, fm, body, name in skills:
     rel = os.path.relpath(f, skills_dir)
     hidden = fm.get("hidden", "").strip().lower() == "true"
@@ -291,11 +324,20 @@ for f, fm, body, name in skills:
             out(rel, f"SP-DESC-CAP description+when_to_use is {len(desc)+len(wtu)} chars "
                      "(>1536 listing cap) — move extra triggers to when_to_use / trim")
 
-    # Body scans (no-ops, time-sensitive, @-imports), skipping fenced code.
+    # Body scans (no-ops, time-sensitive, @-imports, security patterns), skipping fenced
+    # code — except SP-SEC-CRED, which deliberately scans fenced code too (a hardcoded
+    # secret in a code sample is still a real finding).
     in_fence = False
     time_flagged = False
+    cred_flagged = False
+    adversarial_flagged = False
     for i, raw in enumerate(body.splitlines(), 1):
         st = raw.strip()
+        if not cred_flagged and _cred_hit(raw):
+            out(rel, f"SP-SEC-CRED hardcoded-looking credential (line {i}) — remove the "
+                     "secret; use an environment variable or credential store instead "
+                     "(skill-setup-std)")
+            cred_flagged = True
         if st.startswith("```"):
             in_fence = not in_fence
             continue
@@ -318,6 +360,37 @@ for f, fm, body, name in skills:
             out(rel, f"SP-TIME time-sensitive wording (line {i}) — move legacy notes to an "
                      "'Old patterns' section (skill-setup-std)")
             time_flagged = True
+        if not adversarial_flagged and adversarial_pat.search(raw):
+            out(rel, f"SP-SEC-ADVERSARIAL instruction-manipulation language (line {i}) — "
+                     "directives to ignore rules, hide actions, or alter behavior "
+                     "conditionally are a review red flag (skill-setup-std)")
+            adversarial_flagged = True
+
+    # Bundled scripts (scripts/**/*.{py,sh,js,ts}) — credential and network-call patterns.
+    # Network calls are scoped to scripts only, never SKILL.md prose: many skills legitimately
+    # *describe* calling an API in instructions, but a script runs with full environment access.
+    for script in sorted(f.parent.glob("scripts/**/*")):
+        if not script.is_file() or script.suffix not in script_exts:
+            continue
+        script_rel = os.path.relpath(script, skills_dir)
+        try:
+            lines = script.read_text(errors="replace").splitlines()
+        except OSError:
+            continue
+        script_cred_flagged = False
+        script_net_flagged = False
+        for i, raw in enumerate(lines, 1):
+            if not script_cred_flagged and _cred_hit(raw):
+                out(script_rel, f"SP-SEC-CRED hardcoded-looking credential (line {i}) — "
+                                 "remove the secret; use an environment variable or "
+                                 "credential store instead (skill-setup-std)")
+                script_cred_flagged = True
+            if not script_net_flagged and net_pat.search(raw):
+                out(script_rel, f"SP-SEC-NET network-call pattern (line {i}) — a bundled "
+                                 "script making network calls runs with full environment "
+                                 "access; confirm this is expected and documented "
+                                 "(skill-setup-std)")
+                script_net_flagged = True
 
     if len(body.splitlines()) > 500:
         out(rel, f"SP-BODYLEN SKILL.md body is {len(body.splitlines())} lines (>500) — split "
@@ -344,15 +417,36 @@ for f, fm, body, name in skills:
         except Exception:
             out(rel, "SP-EVALS-INVALID evals/evals.json is not valid JSON")
 
-# Reference/gate files: a table of contents once they exceed 100 lines.
+# Reference/gate files: TOC (>100 lines) + the same security patterns as SKILL.md bodies.
 for ref in sorted(list(skills_dir.glob("*/reference/*.md")) + list(skills_dir.glob("*/gates/*.md"))):
+    ref_rel = os.path.relpath(ref, skills_dir)
     lines = ref.read_text(errors="replace").splitlines()
     if len(lines) > 100:
         head = "\n".join(lines[:20]).lower()
         if "contents" not in head and "](#" not in head:
-            out(os.path.relpath(ref, skills_dir),
+            out(ref_rel,
                 f"SP-REF-TOC reference file is {len(lines)} lines (>100) with no table of "
                 "contents — add one so previews show full scope (Progressive disclosure)")
+    ref_in_fence = False
+    ref_cred_flagged = False
+    ref_adversarial_flagged = False
+    for i, raw in enumerate(lines, 1):
+        if not ref_cred_flagged and _cred_hit(raw):
+            out(ref_rel, f"SP-SEC-CRED hardcoded-looking credential (line {i}) — remove the "
+                         "secret; use an environment variable or credential store instead "
+                         "(skill-setup-std)")
+            ref_cred_flagged = True
+        st = raw.strip()
+        if st.startswith("```"):
+            ref_in_fence = not ref_in_fence
+            continue
+        if ref_in_fence:
+            continue
+        if not ref_adversarial_flagged and adversarial_pat.search(raw):
+            out(ref_rel, f"SP-SEC-ADVERSARIAL instruction-manipulation language (line {i}) — "
+                         "directives to ignore rules, hide actions, or alter behavior "
+                         "conditionally are a review red flag (skill-setup-std)")
+            ref_adversarial_flagged = True
 PYEOF
     while IFS=$'\t' read -r prose_rel prose_msg; do
       [ -n "$prose_rel" ] || continue
