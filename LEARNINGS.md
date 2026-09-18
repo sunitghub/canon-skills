@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-17-2026 21:30
+learnings-sweep last run: 09-18-2026 11:45
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-18 | [t-1acb](.tickets/t-1acb/learnings.md) | A fresh evaluator caught a real gap between an acceptance criterion's literal wording and the implementation on first pass — the criterion named `key/secret/token/password` as generic credential shapes, but the regex alternation only had `api_key`, missing bare `key`; fixed and independently re-verified pass on retry, including word-boundary false-positive spot-checks (`monkey =`, `turnkey =`). | UNPROMOTED |
 | 2026-09-17 | [t-8a2a](.tickets/t-8a2a/learnings.md) | Two of a diff's own pre-existing-unrelated test failures sat inside the exact describe block the sprint rewrote (16 tests, same click-target change) — the evaluator didn't assume "unrelated," it diffed the failing assertion and the app's actual status text against the ticket's own base commit byte-for-byte before ruling them out of scope. | UNPROMOTED |
 | 2026-09-17 | [t-644a](.tickets/t-644a/learnings.md) | Session sub-tabs looked like "mirror cockpit.html's ensureView one layer down" (N iframes) until `openCockpit()` was read in full — the real scope was making a whole per-session state machine (poll loop, needs-you, Save&End) per-tab-aware; read the full existing implementation before estimating scope on a change that extends a single-instance pattern to multiple instances. | UNPROMOTED |
 | 2026-09-17 | [t-01a4](.tickets/t-01a4/learnings.md) | A fresh evaluator independently re-reproduced a reviewer-caught fix from scratch (rebuilt the exact original repro, confirmed the fix live) rather than trusting the ticket's own description of it being fixed — the fresh-context gate's value is in re-deriving claims, not reading them, even for a fix made mid-sprint in response to an earlier finding. | UNPROMOTED |
