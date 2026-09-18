@@ -18,3 +18,5 @@ When running multiple Claude Code instances in parallel worktrees:
 - Each worktree uses a long-lived tracking branch (e.g., `claude-code-1/main-1`)
 - After a PR merges, reset the tracking branch: `git reset --hard origin/main`
 - The worktree keeps its identity across sprints — only the work branch changes
+
+@AGENTS.md

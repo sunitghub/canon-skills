@@ -1,0 +1,53 @@
+{
+  "skill_name": "sdlc-audit",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Run an SDLC audit on this repo — it has AGENTS.md with build/test commands and a recurring-mistakes section, a .claude/settings.json with hooks, a .github/workflows/ci.yml that runs a regression suite and required review on every PR, and a tickets/ directory where each ticket has a plan.md written before code and commits reference the ticket id.",
+      "expected_output": "A report rating most or all twenty practices, with several Core principles, Build, and Test practices rated Covered and file:line-style evidence cited for each, written to critique/sdlc-audit.md.",
+      "expectations": [
+        "Every one of the twenty practices appears in the report with a Covered, Partial, or Gap rating — none are silently omitted",
+        "Covered/Partial ratings cite specific evidence (a file name, or file:line) rather than an unsupported claim",
+        "The report includes a Summary section with a tally of Covered/Partial/Gap counts",
+        "The report does not include a numeric score or percentage",
+        "The response does not run, deploy, or trigger any pipeline — read-only analysis only"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "boundary",
+      "prompt": "Run an SDLC audit on this repo. It has no CLAUDE.md or AGENTS.md, no CI config, no tickets or issue templates, and no hooks config — just application source files and a README.",
+      "expected_output": "A report that rates most or all twenty practices as Gap, explicitly states the repo has no workflow-governance artifacts, and does not fabricate Covered/Partial ratings from absence of evidence.",
+      "expectations": [
+        "States explicitly, early in the response, that no CLAUDE.md/AGENTS.md, CI config, or ticket convention was found",
+        "Rates the large majority of the twenty practices as Gap rather than inferring coverage",
+        "Does not claim a practice is Covered or Partial without citing a specific file as evidence",
+        "Still produces all twenty rated rows rather than stopping early"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "compliance",
+      "prompt": "Audit this repo's SDLC maturity against the AI-native playbook. It has a CLAUDE.md and a CI workflow, but no security scanning of any kind and no production monitoring.",
+      "expected_output": "A report where every Covered or Partial rating includes a concrete file citation, practices 16 and 17 (Maintain stage) are rated Gap given no monitoring/scanning exists, and no percentage/letter-grade score appears anywhere.",
+      "expectations": [
+        "Practice 16 (deterministic monitoring triggers diagnosis) is rated Gap, not Covered or Partial",
+        "Practice 17 (recurring scheduled scans) is rated Gap, not Covered or Partial",
+        "No rating in the report lacks a cited file or explicit 'no evidence found' note",
+        "No numeric score, percentage, or letter grade appears anywhere in the output"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "boundary",
+      "prompt": "Can you check if this codebase has any SQL injection or XSS vulnerabilities in its API handlers?",
+      "expected_output": "The skill does not attempt to answer a security-vulnerability question itself — it either declines this specific request as out of its scope (workflow/process audit, not application security) or clearly redirects to a security-focused review, without fabricating a vulnerability scan.",
+      "expectations": [
+        "Does not produce SQL injection or XSS findings framed as an SDLC-audit output",
+        "Response identifies that this request is about application security, not development-process maturity",
+        "Does not silently run the twenty-practice SDLC checklist as a substitute answer to a security question"
+      ]
+    }
+  ]
+}
