@@ -5298,6 +5298,101 @@ test.describe('cockpit preview pane (t-b19b)', () => {
     }
   });
 
+  // t-82f4: "← Board" then reopening the SAME (still-open) tab must never
+  // re-mount the preview iframe or re-ask the agent for it — mirrors t-8a2a's
+  // own guarantee for the terminal iframe, extended to the preview pane, which
+  // previously had no per-tab state and was unconditionally reset by
+  // openCockpit()'s old top-of-function resetPreview() call.
+  function fakePreviewCockpitPageCountingRequests({ respondWith = 'file' } = {}) {
+    const respond = {
+      file: "window.parent.postMessage({source:'canon-cockpit', type:'preview-file', session:'sess1', previewToken:'ptok1', relpath:'index.html'}, '*');",
+    }[respondWith];
+    return `<!doctype html><html><body><script>
+      window.__previewRequestCount = 0;
+      window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+      window.addEventListener('message', function(e){
+        var d = e.data;
+        if(!d || d.source !== 'canon-cockpit') return;
+        if(d.type === 'preview-request'){
+          window.__previewRequestCount++;
+          setTimeout(function(){ ${respond} }, 30);
+        } else if(d.type === 'save-and-end' || d.type === 'force-end'){
+          window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*');
+        }
+      });
+    </script></body></html>`;
+  }
+
+  test('"← Board" then reopening the same tab restores the mounted preview iframe without re-requesting it (t-82f4)', async ({ page }) => {
+    const id = `t-82f4rt-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPageCountingRequests({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(1);
+      // Tag the live iframe node directly (not something app code sets) so a
+      // later re-query proves DOM identity, not just a matching src.
+      await page.locator('#ck-preview-body iframe').evaluate(el => { el.dataset.mountStamp = 'stamp-1'; });
+
+      await page.locator('#ck-back').click();
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      await reopenCockpitNoReload(page, id);
+      await page.waitForTimeout(100);
+
+      await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(1);
+      await expect(page.locator('#ck-preview-body iframe')).toHaveAttribute('data-mount-stamp', 'stamp-1');
+      const reqCount = await page.frameLocator('#ck-iframe').locator('body').evaluate(() => window.__previewRequestCount);
+      expect(reqCount).toBe(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('"← Board" then reopening a tab whose preview was never opened stays collapsed with no iframe (t-82f4)', async ({ page }) => {
+    const id = `t-82f4col-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
+
+      await page.locator('#ck-back').click();
+      await reopenCockpitNoReload(page, id);
+      await page.waitForTimeout(100);
+
+      await expect(page.locator('#ck-preview')).toHaveClass(/collapsed/);
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('closing a tab with an open preview frees its iframe from the DOM (t-82f4)', async ({ page }) => {
+    const id1 = `t-82f4cl1-${Date.now()}`;
+    const id2 = `t-82f4cl2-${Date.now()}`;
+    try {
+      writeTicket(id1, 'in_progress');
+      writeTicket(id2, 'in_progress');
+      await openResumedCockpit(page, id1, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(1);
+
+      // Back to the board (id1's tab stays open in the background) before
+      // opening a SECOND tab — matches how two tabs coexist in real use.
+      await page.locator('#ck-back').click();
+      await reopenCockpitNoReload(page, id2, fakePreviewCockpitPage({ respondWith: 'server-cmd' }));
+      await page.waitForTimeout(100);
+      await page.locator(`#ck-tab-strip-topbar .ck-tab-pill-close[data-tab-id="${id1}"]`).click();
+
+      await expect(page.locator('#ck-preview-body iframe')).toHaveCount(0);
+    } finally {
+      for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   // t-bc04: status badge next to the ticket id (topbar + rail), colored per status.
   test('status badge shows the ticket status next to the id (t-bc04)', async ({ page }) => {
     const idP = `t-uibp${Date.now().toString().slice(-4)}`;
