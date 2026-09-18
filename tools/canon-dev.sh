@@ -293,6 +293,15 @@ def _cred_hit(line):
             return True
     return False
 
+def _emit_cred(rel, i):
+    out(rel, f"SP-SEC-CRED hardcoded-looking credential (line {i}) — remove the secret; "
+             "use an environment variable or credential store instead (skill-setup-std)")
+
+def _emit_adversarial(rel, i):
+    out(rel, f"SP-SEC-ADVERSARIAL instruction-manipulation language (line {i}) — directives "
+             "to ignore rules, hide actions, or alter behavior conditionally are a review "
+             "red flag (skill-setup-std)")
+
 net_pat = re.compile(
     r"\b(curl\s|requests\.(get|post|put|delete)\(|urllib\.request|fetch\(|"
     r"axios\.|http\.client|socket\.connect)")
@@ -334,9 +343,7 @@ for f, fm, body, name in skills:
     for i, raw in enumerate(body.splitlines(), 1):
         st = raw.strip()
         if not cred_flagged and _cred_hit(raw):
-            out(rel, f"SP-SEC-CRED hardcoded-looking credential (line {i}) — remove the "
-                     "secret; use an environment variable or credential store instead "
-                     "(skill-setup-std)")
+            _emit_cred(rel, i)
             cred_flagged = True
         if st.startswith("```"):
             in_fence = not in_fence
@@ -361,9 +368,7 @@ for f, fm, body, name in skills:
                      "'Old patterns' section (skill-setup-std)")
             time_flagged = True
         if not adversarial_flagged and adversarial_pat.search(raw):
-            out(rel, f"SP-SEC-ADVERSARIAL instruction-manipulation language (line {i}) — "
-                     "directives to ignore rules, hide actions, or alter behavior "
-                     "conditionally are a review red flag (skill-setup-std)")
+            _emit_adversarial(rel, i)
             adversarial_flagged = True
 
     # Bundled scripts (scripts/**/*.{py,sh,js,ts}) — credential and network-call patterns.
@@ -381,9 +386,7 @@ for f, fm, body, name in skills:
         script_net_flagged = False
         for i, raw in enumerate(lines, 1):
             if not script_cred_flagged and _cred_hit(raw):
-                out(script_rel, f"SP-SEC-CRED hardcoded-looking credential (line {i}) — "
-                                 "remove the secret; use an environment variable or "
-                                 "credential store instead (skill-setup-std)")
+                _emit_cred(script_rel, i)
                 script_cred_flagged = True
             if not script_net_flagged and net_pat.search(raw):
                 out(script_rel, f"SP-SEC-NET network-call pattern (line {i}) — a bundled "
@@ -432,9 +435,7 @@ for ref in sorted(list(skills_dir.glob("*/reference/*.md")) + list(skills_dir.gl
     ref_adversarial_flagged = False
     for i, raw in enumerate(lines, 1):
         if not ref_cred_flagged and _cred_hit(raw):
-            out(ref_rel, f"SP-SEC-CRED hardcoded-looking credential (line {i}) — remove the "
-                         "secret; use an environment variable or credential store instead "
-                         "(skill-setup-std)")
+            _emit_cred(ref_rel, i)
             ref_cred_flagged = True
         st = raw.strip()
         if st.startswith("```"):
@@ -443,9 +444,7 @@ for ref in sorted(list(skills_dir.glob("*/reference/*.md")) + list(skills_dir.gl
         if ref_in_fence:
             continue
         if not ref_adversarial_flagged and adversarial_pat.search(raw):
-            out(ref_rel, f"SP-SEC-ADVERSARIAL instruction-manipulation language (line {i}) — "
-                         "directives to ignore rules, hide actions, or alter behavior "
-                         "conditionally are a review red flag (skill-setup-std)")
+            _emit_adversarial(ref_rel, i)
             ref_adversarial_flagged = True
 PYEOF
     while IFS=$'\t' read -r prose_rel prose_msg; do
