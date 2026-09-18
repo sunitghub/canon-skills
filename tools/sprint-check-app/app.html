@@ -1671,12 +1671,29 @@
       width: var(--ck-preview-w, 360px); flex-shrink: 0; border-left: 1px solid var(--border);
       background: var(--surface); display: flex; flex-direction: column; position: relative;
     }
-    /* t-bc04: left-edge drag handle to resize the preview pane. Absolutely
-       positioned on the left border; hidden while collapsed. */
+    /* t-bc04/t-82f4: left-edge drag handle to resize the preview pane.
+       Absolutely positioned on the left border; hidden while collapsed.
+       t-82f4: widened from a 7px hit target to 12px (7px was easy to miss
+       with the mouse, reported as the splitter "jumping" — really a mousedown
+       landing just off the strip) and given an always-faintly-visible grip
+       mark so it's discoverable without hunting along the border first. */
     .ck-preview-resize {
-      position: absolute; left: -3px; top: 0; bottom: 0; width: 7px; cursor: col-resize; z-index: 3;
+      position: absolute; left: -6px; top: 0; bottom: 0; width: 12px; cursor: col-resize; z-index: 3;
+      display: flex; align-items: center; justify-content: center;
     }
-    .ck-preview-resize:hover { background: var(--accent); opacity: .4; }
+    /* color-mix, not `opacity`, on this rule -- opacity on the handle itself
+       would also dim the ::before grip mark below (opacity compounds down
+       the tree), fighting its own :hover brightening rule. */
+    .ck-preview-resize:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+    .ck-preview-resize::before {
+      content: ''; width: 3px; height: 28px; border-radius: 2px; pointer-events: none;
+      background: repeating-linear-gradient(to bottom, var(--text-muted) 0 3px, transparent 3px 6px);
+      opacity: .5; transition: opacity .1s;
+    }
+    .ck-preview-resize:hover::before {
+      opacity: 1;
+      background: repeating-linear-gradient(to bottom, var(--accent) 0 3px, transparent 3px 6px);
+    }
     .ck-preview.collapsed .ck-preview-resize { display: none; }
     /* t-bc04: ticket status badge next to the id (topbar + rail), colored to
        match the board columns. */
@@ -1726,6 +1743,11 @@
     }
     .ck-preview-collapse:hover { color: var(--accent); }
     .ck-preview-body { flex: 1; min-height: 0; position: relative; }
+    /* t-82f4: one detached container per open tab lives inside #ck-preview-body
+       simultaneously (mirrors #ck-term's per-tab iframes) — only the active
+       tab's is display:'', so it needs its own definite height for a nested
+       iframe's height:100% to resolve. */
+    .ck-preview-tab-body { width: 100%; height: 100%; }
     .ck-preview-body iframe { width: 100%; height: 100%; border: 0; display: block; }
     .ck-preview-msg {
       padding: 16px; font-size: 13px; color: var(--text-muted); font-family: var(--mono, monospace);
@@ -4771,7 +4793,9 @@ let cockpitState = null;
 let cockpitPollTimer = null;
 
 function newCockpitTabState(id, iframeEl) {
-  return { id, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, _ending: false, iframeEl, pendingMessage: '' };
+  // t-82f4: previewEl/previewCollapsed mirror iframeEl's per-tab persistence —
+  // the preview pane used to be one global singleton, reset on every reopen.
+  return { id, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, _ending: false, iframeEl, pendingMessage: '', previewEl: null, previewCollapsed: true };
 }
 
 // Sets the terminal status message AND remembers it on the active tab, so
@@ -4812,6 +4836,13 @@ function setActiveTab(id) {
     if (isActive) tab.iframeEl.id = 'ck-iframe';
     else tab.iframeEl.removeAttribute('id');
   }
+  // t-82f4: same show/hide-only swap as the terminal iframe loop above — a
+  // tab's preview container (if it ever mounted one) stays alive in the DOM
+  // while backgrounded, never re-created.
+  for (const tab of Object.values(cockpitTabs)) {
+    if (tab.previewEl) tab.previewEl.style.display = (tab.id === id) ? '' : 'none';
+  }
+  document.getElementById('ck-preview').classList.toggle('collapsed', !cockpitState || cockpitState.previewCollapsed);
   const msgEl = document.getElementById('ck-term-msg');
   if (msgEl) msgEl.textContent = (cockpitState && cockpitState.pendingMessage) || '';
 }
@@ -4888,10 +4919,26 @@ function renderNeedsYouBadge() {
 // A static-file deliverable gets served read-only into a sandboxed iframe; a
 // server-needing deliverable gets a static "run this yourself" message.
 
+// t-82f4: lazily creates (and mounts into #ck-preview-body) TAB's own detached
+// preview container — mirrors how a tab's terminal iframe is created once and
+// then only shown/hidden. Every render* function below writes into a specific
+// tab's container, never the shared body directly, so switching tabs can never
+// clobber another tab's already-mounted preview.
+function previewBodyFor(tab) {
+  if (!tab.previewEl) {
+    const el = document.createElement('div');
+    el.className = 'ck-preview-tab-body';
+    el.style.display = tab.id === activeTabId ? '' : 'none';
+    document.getElementById('ck-preview-body').appendChild(el);
+    tab.previewEl = el;
+  }
+  return tab.previewEl;
+}
+
 function renderPreviewMessage(text) {
-  document.getElementById('ck-preview-body').innerHTML =
-    '<div class="ck-preview-msg"></div>';
-  document.querySelector('#ck-preview-body .ck-preview-msg').textContent = text;
+  const body = previewBodyFor(cockpitState);
+  body.innerHTML = '<div class="ck-preview-msg"></div>';
+  body.querySelector('.ck-preview-msg').textContent = text;
 }
 
 function renderPreviewFile(session, previewToken, relpath) {
@@ -4904,7 +4951,7 @@ function renderPreviewFile(session, previewToken, relpath) {
   // the served page keeps the token — a query string is dropped on relative URL
   // resolution, a path prefix is not.
   const url = `http://${cockpitState.addr}/session/${encodeURIComponent(session)}/preview/${encodeURIComponent(previewToken)}/${encodeURIComponent(relpath)}`;
-  const body = document.getElementById('ck-preview-body');
+  const body = previewBodyFor(cockpitState);
   body.innerHTML = '';
   const iframe = document.createElement('iframe');
   // allow-scripts only, deliberately no allow-same-origin — the previewed
@@ -4918,7 +4965,7 @@ function renderPreviewFile(session, previewToken, relpath) {
 }
 
 function renderPreviewServerCmd(cmd) {
-  const body = document.getElementById('ck-preview-body');
+  const body = previewBodyFor(cockpitState);
   body.innerHTML = '<div class="ck-preview-msg">This app needs a running server — run this yourself:<br><br><code></code></div>';
   body.querySelector('code').textContent = cmd;
 }
@@ -4928,11 +4975,6 @@ function requestPreview() {
   if (!iframe || !iframe.contentWindow || !cockpitState || !cockpitState.addr) return;
   renderPreviewMessage('Asking the agent how to preview this ticket’s deliverable…');
   iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'preview-request' }, 'http://' + cockpitState.addr);
-}
-
-function resetPreview() {
-  document.getElementById('ck-preview').classList.add('collapsed');
-  document.getElementById('ck-preview-body').innerHTML = '';
 }
 
 function sessionIsLive() {
@@ -4969,6 +5011,10 @@ function unmountTab(id) {
   const tab = cockpitTabs[id];
   if (!tab) return;
   if (tab.iframeEl && tab.iframeEl.parentNode) tab.iframeEl.parentNode.removeChild(tab.iframeEl);
+  // t-82f4: free the tab's own preview container too, same as its terminal
+  // iframe above — otherwise a closed tab's preview iframe leaks, detached
+  // from the tab strip but still parented under #ck-preview-body.
+  if (tab.previewEl && tab.previewEl.parentNode) tab.previewEl.parentNode.removeChild(tab.previewEl);
   delete cockpitTabs[id];
   if (activeTabId === id) {
     const remaining = Object.keys(cockpitTabs);
@@ -5011,9 +5057,10 @@ function closeTab(id) {
 function teardownCockpit(id) {
   id = id || activeTabId;
   if (!id || !cockpitTabs[id]) return;
-  const wasActive = id === activeTabId;
+  // t-82f4: unmountTab() already frees this tab's own preview container and,
+  // if it was active, setActiveTab() re-syncs the panel for whichever tab is
+  // next (or the overlay just closes if none remain) — no separate reset needed.
   unmountTab(id); // already re-renders the needs-you badge for whichever path it takes (switch or last-tab-closed)
-  if (wasActive) resetPreview();
   loadData().then(render).catch(() => renderBoard());
 }
 
@@ -5315,7 +5362,6 @@ async function openCockpit(id) {
   const t = findTicketById(id);
   if (!t) return;
   state.selectedId = id;
-  resetPreview();
   ensurePreviewResize();
   document.getElementById('cockpit').classList.remove('rail-collapsed');
   document.getElementById('cockpit-overlay').classList.add('open');
@@ -5323,6 +5369,9 @@ async function openCockpit(id) {
   if (cockpitTabs[id]) {
     // Already open — switch only. Never re-src's the iframe, never
     // reconnects; the terminal keeps its live connection while backgrounded.
+    // t-82f4: same guarantee now extends to the preview pane — setActiveTab()
+    // below restores this tab's own preview container + collapsed state
+    // exactly as left, instead of the old unconditional reset.
     setActiveTab(id);
     await renderCockpitRail(t);
     if (cockpitState.needsRemount) {
@@ -6142,10 +6191,14 @@ document.getElementById('ck-rail-toggle').addEventListener('click', () => {
 })();
 document.getElementById('ck-preview-label').addEventListener('click', () => {
   document.getElementById('ck-preview').classList.remove('collapsed');
+  // t-82f4: persist onto the active tab so switching away and back restores
+  // this expanded state instead of always reopening collapsed.
+  if (cockpitState) cockpitState.previewCollapsed = false;
   requestPreview();
 });
 document.getElementById('ck-preview-collapse').addEventListener('click', () => {
   document.getElementById('ck-preview').classList.add('collapsed');
+  if (cockpitState) cockpitState.previewCollapsed = true;
 });
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open')) closeCockpit();
