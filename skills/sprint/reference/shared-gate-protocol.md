@@ -39,7 +39,7 @@ You will receive:
 
 ## Tools
 
-Use Read and Bash only. Do not use the Edit or Write tools, or Agent, or any other tool — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report — findings go there only.
+Use Read, Bash, Grep, Glob, and LS only — this matches what both real dispatch mechanisms actually grant (interactive `Plan`-type dispatch excludes only Edit/Write/Agent at the harness level; headless CI's hardcoded `tools/sprint-headless` allowlist explicitly includes Grep/Glob/LS too). Do not use the Edit or Write tools, or Agent, or any other tool beyond that set — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report — findings go there only.
 
 **Never write into `tools/` outside this ticket's own files** (t-1781, live-reproduced twice: a
 gate dispatch corrupted the real `tools/sprint-headless` script with a test-stub-shaped

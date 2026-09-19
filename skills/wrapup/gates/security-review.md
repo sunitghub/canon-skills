@@ -23,7 +23,7 @@ allowed-tools: Bash(git diff:*), Bash(git status:*), Bash(git log:*), Bash(git s
 - Needs Verification
 - Out of Scope
 
-> **`allowed-tools` note:** the `allowed-tools:` frontmatter above is advisory when this gate runs inline in the main session (it does not bind there); it is enforced only when the gate is dispatched as a fresh subagent under headless-CI invocation (`tools/sprint-headless`). The two fresh-subagent gates (`review.md`/`eval.md`) carry no such frontmatter and rely on `subagent_type: "Plan"` instead.
+> **`allowed-tools` note:** the `allowed-tools:` frontmatter above is advisory when this gate runs inline in the main session (it does not bind there) and, per `DECISIONS.md` `t-ce74`, is very likely equally inert everywhere else — it only activates on a genuine `Skill`-tool invocation, and this gate is never invoked that way. Under headless-CI (`tools/sprint-headless`), the real enforced restriction is a **separate, hardcoded** `--allowedTools` list on the whole `claude -p` dispatch (`tools/sprint-headless`'s own script, not this file's frontmatter) — coincidentally similar in shape (no general Bash), but a different mechanism. The two fresh-subagent gates (`review.md`/`eval.md`) carry no such frontmatter and rely on `subagent_type: "Plan"` instead.
 
 ## Scope
 
@@ -73,6 +73,11 @@ If the repo already provides a scanner or rule set, run it when it is relevant t
 the changed files. Scanner hits are leads, not findings; trace exploitability
 before reporting. If no scanner is available, note `optional scanner unavailable`
 and continue with manual review. Scanner absence is not a skipped security gate.
+
+Under headless-CI (`tools/sprint-headless`), this step is unreachable: the dispatch's real
+enforced allowlist (see the `allowed-tools` note above) grants no general Bash, so no scanner
+can actually be invoked there regardless of what this file's own frontmatter says. Treat the
+scanner step as interactive-only.
 
 ## Process
 

@@ -29,12 +29,13 @@ documentation, setup, or agent behavior.
 2. **Reference consistency.** Search changed docs and workflow files for stale
    paths, removed commands, removed scripts, or old lifecycle names.
 
-3. **Skill graph.** Run `./tools/skills.sh list`. Confirm advertised standalone skills
-   appear there, and imported sub-skills remain hidden from the user-facing list.
-   When any `skills/**/SKILL.md` changed, run `./tools/canon-dev.sh lint` — it enforces
-   skill-setup-std deterministically (naming, frontmatter, flat location,
-   resolvable imports, depends graph). Advisory beyond the linter: flag skills
-   that violate one-job (an "and then" in the description) or have a vague
+3. **Skill graph.** Run `./tools/skills.sh list` (or `skills.sh list` via `command -v sprint`'s
+   directory in a consumer project where `tools/` isn't symlinked in). Confirm advertised
+   standalone skills appear there, and imported sub-skills remain hidden from the user-facing
+   list. When any `skills/**/SKILL.md` changed, run `./tools/canon-dev.sh lint` (same
+   consumer-project resolution) — it enforces skill-setup-std deterministically (naming,
+   frontmatter, flat location, resolvable imports, depends graph). Advisory beyond the linter:
+   flag skills that violate one-job (an "and then" in the description) or have a vague
    `description`.
 
 4. **Script surface.** For every script in `scripts/`, confirm it is wired by
@@ -57,8 +58,9 @@ documentation, setup, or agent behavior.
    before declaring the gate passed. Declaring done without visual confirmation
    is a gate failure.
 
-7. **Generated docs.** If skills or tool frontmatter changed, run
-   `./tools/canon-dev.sh catalog` and include `CATALOG.md` if it changed.
+7. **Generated docs.** If skills or tool frontmatter changed, run `./tools/canon-dev.sh catalog`
+   (or `canon-dev.sh catalog` via `command -v sprint`'s directory in a consumer project where
+   `tools/` isn't symlinked in) and include `CATALOG.md` if it changed.
 
 8. **Syntax checks.** Run cheap structural checks for changed executable files:
    `bash -n` for shell scripts. For Python files, run `python3 -m py_compile` only if `command -v python3`

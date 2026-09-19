@@ -308,7 +308,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
 
-   **If the subagent's Bash refused to write the file:** see shared gate mechanics (f) above.
+   **If the subagent's Bash refused to write the file:** see shared gate mechanics (6) above.
    Check whether `.tickets/<id>/review-notes.md` exists after dispatch; if not, save the
    returned report text yourself.
 
@@ -326,7 +326,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    own log call is. Log it anyway: it's the complete audit trail of which subagents actually ran
    this sprint, not just the one the close gate happens to check.
 
-   **What to pass for `<id>`:** see shared gate mechanics (e) above.
+   **What to pass for `<id>`:** see shared gate mechanics (5) above.
 
 3. **Evaluator review (non-trivial tiers — normal, high-risk, bugfix).** Skip only if `plan.md`'s `## Sign-off` `Tier:` field
    value is `trivial` (which can never apply to `SKILL.md`'s four categorical not-trivial
@@ -357,7 +357,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    - Record its model designation per the shared gate mechanics above
    - Write its report to `.tickets/<id>/eval-report.md` and return the verdict line
 
-   **If the subagent's Bash refused to write the file:** see shared gate mechanics (f) above.
+   **If the subagent's Bash refused to write the file:** see shared gate mechanics (6) above.
    Check whether `.tickets/<id>/eval-report.md` exists after dispatch; if not, save the
    returned report text yourself.
 
@@ -373,12 +373,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`, then
    run `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator` (bare — it's on
    PATH, same as `sprint`/`tkt`). `sprint complete`'s close gate (`_gate_eval_report`)
-   hard-fails if `.claude/subagent-runs.jsonl` exists but has no entry within ±60 minutes of
-   that `evaluator-run-id` — this CLI call is what satisfies that check now that no hook does it
-   automatically. Skipping it risks a confusing close-time failure on an otherwise-passing
-   sprint.
+   hard-fails if `.claude/subagent-runs.jsonl` doesn't exist, or exists but has no entry within
+   ±60 minutes of that `evaluator-run-id` — this CLI call is what satisfies that check now that
+   no hook does it automatically. Skipping it risks a confusing close-time failure on an
+   otherwise-passing sprint.
 
-   **What to pass for `<id>`:** see shared gate mechanics (e) above. For the evaluator
+   **What to pass for `<id>`:** see shared gate mechanics (5) above. For the evaluator
    specifically, reusing the `evaluator-run-id` (from the report's first line) is the
    recommended value — it ties the audit line to the exact run recorded in the report.
 
