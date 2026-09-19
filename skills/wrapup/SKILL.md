@@ -27,6 +27,8 @@ Commit & Push belongs to `sprint complete`'s own step 10, not this pipeline — 
 
 **Trivial change** (single-line, doc-only, mechanical rename): skip all steps except Refresh docs (Commit & Push isn't part of this pipeline — see above). This global clause overrides every per-gate skip criterion below — e.g. a single-line rename inside `tools/` skips `repo-check` via this clause even though `repo-check`'s own criteria ("no ... tools ... changed") wouldn't otherwise justify it, since `tools/` did change.
 
+**`Tier: bugfix` and `demo: true`** also override the per-gate criteria below wholesale, the same way — they are defined in `skills/sprint/reference/complete.md`, not here, and this file has no independent knowledge of them: `bugfix` (`complete.md`'s "Bugfix tier — lighter wrapup") keeps `security-review`/`repo-check`/inline `code-reviewer`, may skip `code-simplifier`/`doc-audit`; `demo` (`complete.md`'s "Demo mode") keeps only `security-review`, skips every other gate in this pipeline. Reading this file in isolation without checking `plan.md`'s `Tier:` or `ticket.md`'s `demo:` first will apply the wrong gate set on either path.
+
 Before each step, assess the change and skip if criteria apply. State why in one line — and which clause justified it (global override, or the gate's own criteria) when the two could seem to conflict.
 
 ### Skip code-simplifier if:

@@ -199,64 +199,81 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
      non-Claude model may shell out to `claude`, switch to the config-default model, and fail) — so
      follow this recipe verbatim rather than deriving one.
 
-   **Shared gate mechanics (reviewer + evaluator).** Four rules, stated once: (a) close
-   confirmation authorizes spawning either subagent — never ask separately; (b) both derive
-   their own changed-files list via `git merge-base` — never pass one in; (c) close each
-   subagent's handle (`TaskStop`) right after reading its verdict — completed handles still
-   occupy thread slots, and closing the reviewer's before step 3 avoids a thread-limit block if
-   the evaluator needs a rerun; if `TaskStop` errors with `not running (status: completed)`,
-   that's expected (the harness may already auto-free a completed task's slot) — proceed, don't
-   retry or treat it as fatal; (d) each subagent records its model designation in its report
-   — the exact value applied above (an explicit `Gate model:` value, `haiku` if the
-   structural check classified this low-risk, or the exact session model id, e.g.
-   `claude-sonnet-5`), never a paraphrase — same value as the Wrapup Gates table's
-   `(model: <model>)` suffix — **and the orchestrator MUST state that model designation in each gate's dispatch prompt (its Inputs), because the report-body `Model:` line is a HARD RULE the CLI enforces at close (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when `review-notes.md` exists) — t-072d**; (e) **what to pass for `<id>` in `subagent-log.sh`:** the gate
-   matches only on the log entry's timestamp, never on `agent_id` — so a harness-provided
-   dispatch id is not required. Use whichever is available: (1) a trailing `agentId: <id>`
-   token if the raw Agent-call result exposes one, (2) otherwise a stable synthetic id such as
-   `reviewer-<ticket-id>` or the evaluator's own `evaluator-run-id`. Do not stall or switch
-   dispatch modes hunting for a token — a `Plan`-type foreground `Agent` call may expose none
-   (reproduced in canon `t-9a75` and a separate Windows project `t-6cd0`); (f) **if a
-   subagent's Bash file-writing is refused outright** (permission boundary, not heredoc
-   failure): do not retry or re-dispatch with a broader-permission `subagent_type`. Check
-   whether the expected report file exists after dispatch; if not, save the returned report
-   text yourself before continuing; (g) **snapshot git status before AND after every subagent
-   dispatch** — a gate is read-only by contract (`shared-gate-protocol.md ## Tools`), so any
-   change outside the ticket's own `.tickets/<id>/` files is out-of-scope by definition, but an
-   after-only check misses a discard (see below). Immediately **before** dispatching, capture
-   `git status --porcelain` (PRE) and `git stash create` (a non-destructive snapshot — prints a
-   recovery hash without touching the working tree; empty output means no uncommitted changes).
-   Immediately **after** the gate completes, before reading its report, capture
-   `git status --porcelain` again (POST) and compare against PRE:
-     - **A path in POST that wasn't in PRE** (corruption/unexpected write) — `t-1781` twice
-       caught a fresh-context evaluator corrupting the real `tools/sprint-headless` script this
-       way (denied touching it when asked; `git diff --stat` proved otherwise). Restore
-       (`git checkout -- <path>`) before proceeding.
-     - **A path in PRE that is absent or reverted in POST** (discard of uncommitted work) — a
-       plain after-only check cannot see this, because discarding a file's uncommitted changes
-       makes it match `HEAD` again, erasing the evidence. `t-00e9` (live-reproduced): a
-       dispatched evaluator silently ran `git checkout -- <path>` to make a pre-existing test
-       failure disappear, wiping the user's own uncommitted work — an after-only check would
-       have read the working tree as clean afterward and missed it entirely. The PRE snapshot is
-       what makes this detectable. **Stop and surface it to the user with the PRE stash hash** —
-       do not silently continue, and do not auto-apply the stash (its content may conflict with
-       other changes made since).
-   If `git status`/`git stash create` fail (no git repository, or git unavailable), skip this
-   check entirely and log a warning that no corruption/discard detection ran for that dispatch —
-   the same no-baseline-available fallback shape used for changed-files derivation
-   (`shared-gate-protocol.md ## Base-ref derivation`), not a new pattern. **Known limit:** this
-   compares path presence, not content — a *partial* revert (some but not all of a file's
-   uncommitted changes undone) leaves the same path with the same porcelain status in both PRE
-   and POST, so it is not caught. Full content-diffing would close that gap but is out of scope
-   here; this check targets the two incidents on record (full corruption, full discard), not
-   partial tampering.
+   **Shared gate mechanics (reviewer + evaluator).** Seven rules, stated once:
+
+   1. Close confirmation authorizes spawning either subagent — never ask separately.
+
+   2. Both derive their own changed-files list via `git merge-base` — never pass one in.
+
+   3. Close each subagent's handle (`TaskStop`) right after reading its verdict — completed
+      handles still occupy thread slots, and closing the reviewer's before step 3 avoids a
+      thread-limit block if the evaluator needs a rerun; if `TaskStop` errors with
+      `not running (status: completed)`, that's expected (the harness may already auto-free a
+      completed task's slot) — proceed, don't retry or treat it as fatal.
+
+   4. Each subagent records its model designation in its report — the exact value applied above
+      (an explicit `Gate model:` value, `haiku` if the structural check classified this
+      low-risk, or the exact session model id, e.g. `claude-sonnet-5`), never a paraphrase —
+      same value as the Wrapup Gates table's `(model: <model>)` suffix. **The orchestrator MUST
+      state that model designation in each gate's dispatch prompt (its Inputs)**, because the
+      report-body `Model:` line is a HARD RULE the CLI enforces at close
+      (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when
+      `review-notes.md` exists) — t-072d.
+
+   5. **What to pass for `<id>` in `subagent-log.sh`:** the gate matches only on the log entry's
+      timestamp, never on `agent_id` — so a harness-provided dispatch id is not required. Use
+      whichever is available: (a) a trailing `agentId: <id>` token if the raw Agent-call result
+      exposes one, (b) otherwise a stable synthetic id such as `reviewer-<ticket-id>` or the
+      evaluator's own `evaluator-run-id`. Do not stall or switch dispatch modes hunting for a
+      token — a `Plan`-type foreground `Agent` call may expose none (reproduced in canon
+      `t-9a75` and a separate Windows project `t-6cd0`).
+
+   6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not
+      heredoc failure): do not retry or re-dispatch with a broader-permission `subagent_type`.
+      Check whether the expected report file exists after dispatch; if not, save the returned
+      report text yourself before continuing.
+
+   7. **Snapshot git status before AND after every subagent dispatch** — a gate is read-only by
+      contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own
+      `.tickets/<id>/` files is out-of-scope by definition, but an after-only check misses a
+      discard (see below). Immediately **before** dispatching, capture `git status --porcelain`
+      (PRE) and `git stash create` (a non-destructive snapshot — prints a recovery hash without
+      touching the working tree; empty output means no uncommitted changes). Immediately
+      **after** the gate completes, before reading its report, capture `git status --porcelain`
+      again (POST) and compare against PRE:
+      - **A path in POST that wasn't in PRE** (corruption/unexpected write) — `t-1781` twice
+        caught a fresh-context evaluator corrupting the real `tools/sprint-headless` script this
+        way (denied touching it when asked; `git diff --stat` proved otherwise). Restore
+        (`git checkout -- <path>`) before proceeding.
+      - **A path in PRE that is absent or reverted in POST** (discard of uncommitted work) — a
+        plain after-only check cannot see this, because discarding a file's uncommitted changes
+        makes it match `HEAD` again, erasing the evidence. `t-00e9` (live-reproduced): a
+        dispatched evaluator silently ran `git checkout -- <path>` to make a pre-existing test
+        failure disappear, wiping the user's own uncommitted work — an after-only check would
+        have read the working tree as clean afterward and missed it entirely. The PRE snapshot
+        is what makes this detectable. **Stop and surface it to the user with the PRE stash
+        hash** — do not silently continue, and do not auto-apply the stash (its content may
+        conflict with other changes made since).
+
+      If `git status`/`git stash create` fail (no git repository, or git unavailable), skip this
+      check entirely and log a warning that no corruption/discard detection ran for that
+      dispatch — the same no-baseline-available fallback shape used for changed-files derivation
+      (`shared-gate-protocol.md ## Base-ref derivation`), not a new pattern. **Known limit:**
+      this compares path presence, not content — a *partial* revert (some but not all of a
+      file's uncommitted changes undone) leaves the same path with the same porcelain status in
+      both PRE and POST, so it is not caught. Full content-diffing would close that gap but is
+      out of scope here; this check targets the two incidents on record (full corruption, full
+      discard), not partial tampering.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` **or** `bugfix` (anchored to that field, so the word appearing
    elsewhere in Sign-off's free text — e.g. a `Risk:` one-liner discussing the decision — never
-   triggers the skip), **or if `ticket.md` has `demo: true`** (the demo close-path skips this
-   advisory gate the same way `bugfix` does, while still running the binding evaluator in step 3
-   — see "Demo mode" in step 1). `bugfix` is the **eval-only** tier: it skips *this advisory reviewer* but,
+   triggers the skip), **or if `ticket.md` has `demo: true` AND the t-2201 guard doesn't void it**
+   (the demo close-path skips this advisory gate the same way `bugfix` does, while still running
+   the binding evaluator in step 3 — see "Demo mode" in step 1 — **but only if the sprint's diff
+   is report-only per the "Upkeep report-only guard (t-2201)" above; if `ticket.md` also carries
+   a `skills:` line and any non-`.md` file changed, `demo` does NOT apply here and this gate is
+   NOT skipped** — re-check that guard before skipping on `demo` alone). `bugfix` is the **eval-only** tier: it skips *this advisory reviewer* but,
    unlike `trivial`, still runs the binding evaluator in step 3. A sprint always starts as normal or high-risk (`SKILL.md`'s tiers never let genuinely
    trivial work start a sprint), but can be *downgraded* to trivial mid-flight if grill or
    impact analysis reveals the real change is a one-liner with no coordinated multi-file intent
