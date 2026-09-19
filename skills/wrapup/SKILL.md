@@ -10,7 +10,7 @@ hidden: true
 
 Called automatically by sprint complete — do not invoke directly.
 
-Run after a session, feature, bug fix, or ticket. Skip steps that do not apply.
+Runs after a session, feature, bug fix, or ticket closes. Skip steps that do not apply.
 
 ## Pipeline
 
@@ -21,7 +21,7 @@ code-simplifier → code-reviewer → security-review → repo-check → doc-aud
 Commit & Push belongs to `sprint complete`'s own step 10, not this pipeline — see
 `skills/sprint/reference/complete.md`.
 
-`code-simplifier`/`code-reviewer` run inline, in-session — scope is "code touched this session" from working memory, no git command needed. `security-review` also runs inline but derives scope from git (`git diff --name-only $(git merge-base HEAD origin/main) HEAD`) for an exact, auditable file list. `reviewer`/`evaluator` (fresh-subagent gates in `skills/sprint/reference/complete.md`, not this pipeline) always derive from git — they have no session memory at all.
+`code-simplifier`/`code-reviewer` run inline, in-session — scope is "code touched this session" from working memory, no git command needed. `security-review` also runs inline but derives scope from git: an explicit `Base ref` (headless CI dispatch grading an existing PR/diff) uses `git diff --name-only <base-ref> HEAD`; otherwise (normal interactive close) `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — same branching as `shared-gate-protocol.md ## Base-ref derivation` and `security-review.md`'s own Scope section. `reviewer`/`evaluator` (fresh-subagent gates in `skills/sprint/reference/complete.md`, not this pipeline) always derive from git — they have no session memory at all.
 
 ## Skip Logic
 

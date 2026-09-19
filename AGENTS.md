@@ -41,7 +41,10 @@ structural low-risk check, on a `demo: true` ticket (evaluator only), or via an 
 **Cross-harness note.** Fresh-context dispatch is confirmed working under Codex
 (`spawn_agent`/`wait_agent`/`close_agent`), but per-agent model selection is not — Codex's
 `spawn_agent` has no `model` field, and its model picker is session-level. Don't assume the
-Haiku-downgrade above works under Codex without testing live first.
+Haiku-downgrade above works under Codex without testing live first. For a **Pi** session,
+close gates run on the pi session model, full stop — this file's general `review → Opus` tier
+above is **not** the close-gate rule there; see `complete.md`'s pi-dispatch section for the
+harness-scoped recipe.
 
 **North-star (gate floor).** Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator. The one documented exception is a user-set `demo: true` light-close (the evaluator still runs). The full policy — demo mode, the model tier for gates, and the north-star amendments — lives in `skills/sprint/reference/complete.md` (see also `DECISIONS.md` 2026-07-25 / 07-30 / 08-02).
 <!-- MODEL-TIERS:END -->

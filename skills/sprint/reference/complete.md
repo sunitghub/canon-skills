@@ -27,9 +27,12 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    **Bugfix tier — lighter wrapup.** For a `Tier: bugfix` sprint (eval-only), run a reduced
    wrapup: keep `security-review` (a fix can still touch a trust boundary), `repo-check`, and
    the inline `code-reviewer` (the cheap in-context 8-dimension check — it runs, not skipped);
-   `code-simplifier` and `doc-audit` may be skipped for a single-file fix — record each skip and
-   its reason in the Wrapup Gates table. The advisory `reviewer` (step 2) is skipped for bugfix;
-   the binding `evaluator` (step 3) always runs.
+   `code-simplifier` and `doc-audit` may be skipped — a narrow single-file diff usually already
+   meets `wrapup/SKILL.md`'s own existing per-gate criteria for those two ("docs, comments, or
+   config only" / "no user-facing docs changed"), the same agent-judgment skip logic every tier
+   uses, not a new bugfix-specific mechanical rule — record each skip and its reason in the
+   Wrapup Gates table. Refresh-docs (the pipeline's last step) still runs. The advisory `reviewer`
+   (step 2) is skipped for bugfix; the binding `evaluator` (step 3) always runs.
 
    **Demo mode — light close for live demos or docs/UX work.** When `ticket.md` has `demo: true` (a
    `tkt`-owned frontmatter flag, absent = false — see `standards/ticket-layout.md`), run the
@@ -37,7 +40,8 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    live demo (time-box), or a docs/research/UX-mockup sprint whose whole surface is `.md`/`.pen`
    (+ visuals) with no code to code-review or simplify. The close-path is identical for both:
    keep exactly **`security-review` + the binding `evaluator` (step 3)**, and skip the advisory `reviewer` (step 2) **and every other wrapup gate** (code-simplifier,
-   code-reviewer, repo-check, doc-audit). It **never drops below the binding evaluator** — that
+   code-reviewer, repo-check, doc-audit) — refresh-docs (the pipeline's last step) still runs.
+   It **never drops below the binding evaluator** — that
    floor is non-negotiable; `demo` trims a **superset** of what the `bugfix` tier
    trims — the advisory `reviewer` plus, additionally, `code-reviewer` and
    `repo-check` (which `bugfix` keeps) — leaving only `security-review` + the
