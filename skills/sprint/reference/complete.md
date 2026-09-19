@@ -220,13 +220,36 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    subagent's Bash file-writing is refused outright** (permission boundary, not heredoc
    failure): do not retry or re-dispatch with a broader-permission `subagent_type`. Check
    whether the expected report file exists after dispatch; if not, save the returned report
-   text yourself before continuing; (g) **run `git status --porcelain` immediately after every
-   subagent dispatch completes**, before reading its report — a gate is read-only by contract
-   (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own `.tickets/<id>/`
-   files is out-of-scope by definition. `t-1781` twice caught a fresh-context evaluator
-   corrupting the real `tools/sprint-headless` script this way (denied touching it when asked;
-   `git diff --stat` proved otherwise) — this check is what catches that automatically instead
-   of by luck. Restore (`git checkout -- <path>`) before proceeding if it fires.
+   text yourself before continuing; (g) **snapshot git status before AND after every subagent
+   dispatch** — a gate is read-only by contract (`shared-gate-protocol.md ## Tools`), so any
+   change outside the ticket's own `.tickets/<id>/` files is out-of-scope by definition, but an
+   after-only check misses a discard (see below). Immediately **before** dispatching, capture
+   `git status --porcelain` (PRE) and `git stash create` (a non-destructive snapshot — prints a
+   recovery hash without touching the working tree; empty output means no uncommitted changes).
+   Immediately **after** the gate completes, before reading its report, capture
+   `git status --porcelain` again (POST) and compare against PRE:
+     - **A path in POST that wasn't in PRE** (corruption/unexpected write) — `t-1781` twice
+       caught a fresh-context evaluator corrupting the real `tools/sprint-headless` script this
+       way (denied touching it when asked; `git diff --stat` proved otherwise). Restore
+       (`git checkout -- <path>`) before proceeding.
+     - **A path in PRE that is absent or reverted in POST** (discard of uncommitted work) — a
+       plain after-only check cannot see this, because discarding a file's uncommitted changes
+       makes it match `HEAD` again, erasing the evidence. `t-00e9` (live-reproduced): a
+       dispatched evaluator silently ran `git checkout -- <path>` to make a pre-existing test
+       failure disappear, wiping the user's own uncommitted work — an after-only check would
+       have read the working tree as clean afterward and missed it entirely. The PRE snapshot is
+       what makes this detectable. **Stop and surface it to the user with the PRE stash hash** —
+       do not silently continue, and do not auto-apply the stash (its content may conflict with
+       other changes made since).
+   If `git status`/`git stash create` fail (no git repository, or git unavailable), skip this
+   check entirely and log a warning that no corruption/discard detection ran for that dispatch —
+   the same no-baseline-available fallback shape used for changed-files derivation
+   (`shared-gate-protocol.md ## Base-ref derivation`), not a new pattern. **Known limit:** this
+   compares path presence, not content — a *partial* revert (some but not all of a file's
+   uncommitted changes undone) leaves the same path with the same porcelain status in both PRE
+   and POST, so it is not caught. Full content-diffing would close that gap but is out of scope
+   here; this check targets the two incidents on record (full corruption, full discard), not
+   partial tampering.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` **or** `bugfix` (anchored to that field, so the word appearing
