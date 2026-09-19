@@ -1,6 +1,6 @@
 ---
 name: eval
-description: Evaluate completed sprint work against acceptance criteria from a clean context — grade each criterion pass/fail/partial with file:line evidence; called by sprint at close time
+description: Evaluate completed sprint work against acceptance criteria from a clean context — grade each criterion pass/fail/partial/not-run with file:line evidence; called by sprint at close time
 category: dev
 tags: [quality, review, orchestration, sprint]
 hidden: true

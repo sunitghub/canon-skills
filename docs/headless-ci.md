@@ -152,7 +152,7 @@ Pass **a ticket id** (`t-xxxx`) to grade that ticket's `.tickets/<id>/acceptance
 
 `--base-ref` (or `$GITHUB_BASE_REF`) defaults to `origin/main` (then `main`, else a clear error) when omitted; an explicit `--base-ref` and `$GITHUB_BASE_REF` take precedence, in that order. Relative refs (`HEAD~1`, `main~3`, `HEAD^`) are accepted.
 
-The evaluator grades each criterion with pass/fail/partial and `file:line` evidence, writes `eval-report.md` (in the ticket folder, or next to the spec file), and prints `HEADLESS_VERDICT: PASS` (exit 0) or `HEADLESS_VERDICT: FAIL` (exit 1).
+The evaluator grades each criterion with pass/fail/partial/not-run and `file:line` evidence, writes `eval-report.md` (in the ticket folder, or next to the spec file), and prints `HEADLESS_VERDICT: PASS` (exit 0) or `HEADLESS_VERDICT: FAIL` (exit 1).
 
 To run the evaluator on a specific model (e.g. Haiku to save tokens), pass `--model <model>` — an alias (`haiku`/`sonnet`/`opus`) or a full model id: `sprint-headless-eval t-abcd --model haiku`. Alternatively set `ANTHROPIC_MODEL` in the environment; `claude` honors either. The model governs the dispatched evaluator subagent, not just the orchestrator.
 

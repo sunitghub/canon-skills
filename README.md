@@ -69,7 +69,7 @@ same agent to check its own work. canon makes that structurally impossible.
    cannot inherit the assumption that produced the bug. A `fail` blocks the close.
 2. **The close gate is mechanical, not advisory.** The CLI refuses to close while any acceptance box
    is unchecked, `summary.md` is missing, the gates record is absent, a referenced visual mockup was never embedded, or the eval verdict isn't
-   `pass:`. Any `partial` forces `fail:`. Gates don't make agents smarter — they make certain
+   `pass:`. Any `partial` or `not-run` forces `fail:`. Gates don't make agents smarter — they make certain
    failures impossible.
 3. **A delivery receipt you can't write prose around.** Close produces a plan-vs-actual table, one
    row per criterion: delivered, waived, deferred, or partial. Deviations appear in the table or the
@@ -231,7 +231,7 @@ Creates a ticket, defines acceptance criteria, and writes the plan before touchi
 
 **`sprint complete`** — Block close until every box is checked.
 
-Runs the close path: simplify → code-review → security → repo/doc audit → **reviewer** (fresh subagent, advisory) → **evaluator** (fresh subagent, binding) → acceptance check → close. The evaluator — Read and Bash tools only, no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` before grading; the CLI blocks close if the field is absent or the verdict isn't `pass`. Any `partial` criterion forces the verdict to `fail` — there's no separate non-blocking `partial` verdict — and either blocks close the same way.
+Runs the close path: simplify → code-review → security → repo/doc audit → **reviewer** (fresh subagent, advisory) → **evaluator** (fresh subagent, binding) → acceptance check → close. The evaluator — Read and Bash tools only, no implementation history — grades each acceptance criterion against the actual code. It writes a machine-generated `evaluator-run-id` before grading; the CLI blocks close if the field is absent or the verdict isn't `pass`. Any `partial` or `not-run` criterion forces the verdict to `fail` — there's no separate non-blocking `partial`/`not-run` verdict — and either blocks close the same way.
 
 When the sprint closes, the agent writes `summary.md` — a plan-vs-actual table, one row per acceptance criterion, showing whether each was delivered, waived, deferred, or partial. Deviations must appear in the table; the agent can't bury them in prose. The **Summary** tab on the ticket board makes this permanent and queryable: find out whether the spec was fully met without scrolling through chat history.
 
@@ -276,7 +276,7 @@ approved ticket; the eval-only command runs one gate against anything with check
 | Requires | `tkt ci <id> on`, `- [x] Plan approved`, ticket committed | just the ticket/spec + a git repo |
 | Writes | `review-notes.md` + `eval-report.md` in `.tickets/<id>/` | `eval-report.md` in the ticket folder, or next to the spec file |
 | Cost | ~100k+ tokens (three subagents) | ~30–40k tokens (one subagent) |
-| Verdict | `HEADLESS_VERDICT: PASS`/`FAIL` → exit 0/1; any gate fail → FAIL | same; any `partial` forces `fail:` |
+| Verdict | `HEADLESS_VERDICT: PASS`/`FAIL` → exit 0/1; any gate fail → FAIL | same; any `partial` or `not-run` forces `fail:` |
 
 **Neither headless command runs your code.** Both dispatch through `claude -p --permission-mode
 dontAsk` with Bash whitelisted to `git diff/log/show/status` plus read-only tools — so they grade
