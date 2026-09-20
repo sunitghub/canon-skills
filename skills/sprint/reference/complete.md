@@ -83,8 +83,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    only `trivial` skips the evaluator, and `demo` is never `trivial`. **Scope note:**
    this close-path is settable via the shipped `tkt demo <id> on` command or by hand-setting
    `demo: true` in `ticket.md`; the board surfaces (New-Ticket **Demo/Docs/UX** checkbox,
-   Plan-tab toggle, tooltip, JSON parity) are Phase A, and the
-   headless `ci + demo` guard/warning is Phase C — none are required here. Headless/CI never
+   Plan-tab toggle, tooltip, JSON parity) are shipped, and the
+   headless `ci + demo` guard/warning (Phase C) is the only piece still outstanding — neither is
+   required here. Headless/CI never
    *reduces the gate set* for `demo`: `sprint-headless` runs its full pipeline and ignores `demo`
    entirely. `sprint-headless-eval` (already eval-only) also runs its full gate set, but **does**
    read `demo: true` in ticket-id mode to default the dispatched evaluator to Haiku when no
