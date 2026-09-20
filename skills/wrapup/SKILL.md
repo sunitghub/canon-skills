@@ -12,6 +12,13 @@ Called automatically by sprint complete — do not invoke directly.
 
 Runs after a session, feature, bug fix, or ticket closes. Skip steps that do not apply.
 
+Every `Read skills/...` reference below is a plain relative path inside canon's own repo. In a
+consumer project, resolve via `.claude/skills/...` (Claude Code) or `.agents/skills/...`
+(Codex/Pi) instead — canon's install symlinks into its real `skills/` tree. Known gap: if
+`.claude/skills` already existed as a real directory before `skills.sh add` ran, this file itself
+(a hidden sub-skill) may not be reachable via `.claude/skills` — `.agents/skills` is unaffected
+(`t-1b2c`).
+
 ## Pipeline
 
 ```

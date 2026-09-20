@@ -26,7 +26,10 @@ You are an evaluator agent. You did NOT write the code under review. You have no
 
 ## Inputs
 
-Read `skills/sprint/reference/shared-gate-protocol.md ## Inputs` — applies verbatim here.
+Read `skills/sprint/reference/shared-gate-protocol.md ## Inputs` — applies verbatim here. That
+path, and every other `skills/...` reference in this file, is a plain relative path inside
+canon's own repo; in a consumer project resolve via `.claude/skills/...` (Claude Code) or
+`.agents/skills/...` (Codex/Pi) instead — canon's install symlinks into its real `skills/` tree.
 
 ## Tools
 

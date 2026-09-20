@@ -12,6 +12,7 @@ Referenced by `review.md` and `eval.md`. Do not invoke directly.
 - Evidence is not success
 - Inputs
 - Tools
+- Skills-path resolution
 - Report-writing safety (Windows Git Bash)
 - Self-serve visual verification (no Node/Playwright required)
 - Base-ref derivation
@@ -61,6 +62,16 @@ the ticket's own named `## Test Plan` commands instead of the whole suite. (This
 self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `review.md` are
 dispatched to fresh subagents independently; the invariant phrase is locked across all three by
 `tests/doc-mirror-parity.sh` Check J. Keep it in sync.)
+
+## Skills-path resolution
+
+Every `skills/...` reference in these docs (e.g. `skills/wrapup/SKILL.md`) is a plain relative
+path inside canon's own repo. In a consumer project, resolve via `.claude/skills/...` (Claude
+Code) or `.agents/skills/...` (Codex/Pi) instead — both are install symlinks into canon's real
+`skills/` tree. **Known gap:** if a project's `.claude/skills` already existed as a real
+(non-symlink) directory before `skills.sh add` ran, only the explicitly-added skill got linked
+there — a hidden sub-skill like `wrapup` may not be reachable via `.claude/skills` in that case;
+`.agents/skills` is unaffected (`t-1b2c`).
 
 ## Report-writing safety (Windows Git Bash)
 
