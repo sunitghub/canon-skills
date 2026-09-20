@@ -35,3 +35,4 @@ Imported automatically by the skills above. Do not register directly.
 
 | Skill | Imported by |
 |---|---|
+| `wrapup` | sprint |

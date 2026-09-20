@@ -3,7 +3,7 @@ name: sprint
 description: Manages the sprint workflow for focused changes. Use when asked to add, fix, update, implement, debug, or build — see the Workflow tiers section for what's out of scope.
 category: dev
 tags: [workflow, planning, quality, tickets, orchestration]
-depends: []
+depends: [wrapup]
 ---
 
 # Sprint

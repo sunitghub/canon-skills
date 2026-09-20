@@ -52,7 +52,14 @@ cmd_add() {
     [ -n "$dep" ] && cmd_add "$dep" "$project_dir" "dep"
   done < <(resolve_deps "$skill_file")
 
-  [ -n "$as_dep" ] && return 0
+  # A dependency (e.g. a hidden sub-skill like wrapup) never gets an AGENTS.md row, but its
+  # files must still be linked so a bare `skills/<dep>/SKILL.md` reference can resolve —
+  # without this, a real (non-symlink) pre-existing .claude/skills dir leaves it unreachable
+  # (t-1b2c).
+  if [ -n "$as_dep" ]; then
+    upsert_skills_symlinks "$project_dir" "$skill_file"
+    return 0
+  fi
   echo "Registering: $name ($category)"
 
   local agents_file="$project_dir/AGENTS.md"
