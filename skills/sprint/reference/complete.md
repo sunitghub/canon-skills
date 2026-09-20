@@ -39,13 +39,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    **demo close-path**. The `demo` flag covers one light-close for two user-elected intents — a
    live demo (time-box), or a docs/research/UX-mockup sprint whose whole surface is `.md`/`.pen`
    (+ visuals) with no code to code-review or simplify. The close-path is identical for both:
-   keep exactly **`security-review` + the binding `evaluator` (step 3)**, and skip the advisory `reviewer` (step 2) **and every other wrapup gate** (code-simplifier,
-   code-reviewer, repo-check, doc-audit) — refresh-docs (the pipeline's last step) still runs.
-   It **never drops below the binding evaluator** — that
-   floor is non-negotiable; `demo` trims a **superset** of what the `bugfix` tier
-   trims — the advisory `reviewer` plus, additionally, `code-reviewer` and
-   `repo-check` (which `bugfix` keeps) — leaving only `security-review` + the
-   forced-Haiku evaluator (see the Model-tier section below). This reduction is driven by an explicit **user flag, not structural
+   **keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` and `repo-check` (which `bugfix` keeps).**
+   (step 2 = advisory reviewer, step 3 = evaluator; refresh-docs, the pipeline's last step, still runs.) It **never drops below the binding evaluator** — that floor is non-negotiable. **The evaluator is forced to Haiku
+   (`security-review` runs inline on the session model)** — see the Model-tier section below.
+   This reduction is driven by an explicit **user flag, not structural
    risk** — the one documented place a gate reduction is flag-driven rather than diff-driven,
    the same class of explicit/auditable override as `eval_override` / `Gate model:` (see
    `AGENTS.md`'s `## Model Tiers` and `DECISIONS.md`'s 2026-07-30 north-star-amendment entry).
@@ -85,13 +82,8 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `demo: true` in `ticket.md`; the board surfaces (New-Ticket **Demo/Docs/UX** checkbox,
    Plan-tab toggle, tooltip, JSON parity) are shipped, and the
    headless `ci + demo` guard/warning (Phase C) is the only piece still outstanding — neither is
-   required here. Headless/CI never
-   *reduces the gate set* for `demo`: `sprint-headless` runs its full pipeline and ignores `demo`
-   entirely. `sprint-headless-eval` (already eval-only) also runs its full gate set, but **does**
-   read `demo: true` in ticket-id mode to default the dispatched evaluator to Haiku when no
-   `--model` is given (model choice only — same effect as the interactive "Demo mode forces Haiku",
-   never a skipped gate; explicit `--model` wins). See `docs/headless-ci.md` and `DECISIONS.md`
-   2026-08-06.
+   required here. **Headless/CI never reduces the gate set for `demo`: `sprint-headless` runs its full pipeline and ignores `demo` entirely; `sprint-headless-eval` (already eval-only) also runs its full gate set but reads `demo: true` to default the evaluator to Haiku when no `--model` is given — a model choice, never a skipped gate.**
+   (ticket-id mode; explicit `--model` wins.) See `docs/headless-ci.md` and `DECISIONS.md` 2026-08-06.
 
 
    **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (where the project gitignores `.tickets/`, those files don't need committing for this purpose; a project that tracks `.tickets/` in git may include them) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
@@ -132,143 +124,145 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    checked. Avoid bare "ran"; use e.g. `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69`
    or `npm test passed 2026-06-13`. **`sprint complete` blocks without this section.**
 
-   **Scope note:** the next two subsections — *Model tier for gates* and *Shared gate mechanics* — configure the step 2–3 fresh-context gates (reviewer/evaluator), not the wrapup pipeline. They live under step 1 because the interim commit above is their shared precondition.
+## Gate dispatch mechanics (reviewer + evaluator)
 
-   **Model tier for gates.** Documented exception to `AGENTS.md`'s `## Model Tiers` `review →
-   Opus` default, scoped only to the two close-gate dispatches below.
+Configures the step 2-3 fresh-context gates below — not the wrapup pipeline above.
 
-   - **Explicit Gate model override wins — check first.** Read `plan.md`'s `## Sign-off` line
-     for a `| Gate model: <value>` segment. Valid `<value>`s (case-insensitive): a model id
-     (`haiku`, `sonnet`, `opus`), or literal `session` to force full session-model review — no
-     separate `auto`; omitting the field already means automatic. Set only by a live user
-     instruction ("run review/eval on haiku") or manual edit — never inferred or asserted by
-     the dispatching agent itself. If asked verbally and the field isn't in `plan.md` yet, write it
-     immediately, before continuing — so a compaction between ask and dispatch doesn't lose
-     it. If present, skip structural classification and jump to **Apply the result** with this
-     value. If absent, fall through.
-   - **Demo mode forces Haiku (evaluator only).** If `ticket.md` has `demo: true` and `plan.md`
-     has **no** explicit `Gate model:` value, apply `model: "haiku"` to the **binding evaluator
-     dispatch** — same effect as writing `Gate model: haiku`, without needing to edit `plan.md`.
-     This is scoped to the evaluator because it is the only demo-path gate that is a *dispatched
-     subagent*; `security-review` runs **inline in the main session** (see `wrapup/SKILL.md`), so
-     it takes no per-dispatch `model:` param — it runs on the session model (to run the whole
-     demo close cheaply, switch the session model to Haiku via `/model`). An explicit
-     `Gate model:` value still wins over this (checked above). This forces Haiku on *any* diff,
-     distinct from the structural low-risk downgrade below. No CLI change — this is an
-     agent-protocol read of the `demo` flag.
-   - **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
-     (same command the reviewer prompt uses).
-   - **Check `git merge-base`'s exit status, not the diff output.** Failure (missing
-     `origin/main`, detached HEAD, no git baseline) means normal cost, never low-risk — a
-     failed substitution can leave the outer `git diff` running against a different,
-     non-empty baseline, so empty output is neither guaranteed nor evidence of low risk. Only
-     exit status is reliable.
-   - **Classify low-risk** only if every changed path matches the allowlist — `docs/**/*.md`,
-     `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `skills/**/gates/*.md`,
-     `standards/**/*.md`, or root-level `*.md` — AND no path contains a security marker
-     (`auth`, `secret`, `session`, `crypto`, `token`, `credential`). This substring list is
-     deliberately narrower than the semantic "security-sensitive" definitions elsewhere
-     (`SKILL.md`'s high-risk triggers, `security-review.md`'s skip list). Allowlist, not
-     denylist: any non-matching path defaults to normal cost — never overridden downward by
-     the agent's own risk judgment.
-   - **Apply the result.** With an explicit `Gate model:` value: `session` → omit `model`
-     (inherits session model); any other value → pass it verbatim as `model` on both reviewer
-     and evaluator `Agent` calls. Without one: low-risk → pass `model: "haiku"`; otherwise
-     omit `model`. Check once; both gates share the result — their verdicts (YES/NO,
-     pass/fail) stay separate from this check.
-   - **High-risk sprints are unaffected** — the check only adds a cheap-model option, never
-     removes the mandatory dispatch. An explicit `Gate model:` override applies regardless of
-     tier.
-   - **Cross-harness caveat.** The automatic Haiku downgrade is confirmed only under Claude
-     Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's `spawn_agent` has no per-agent
-     `model` field (its model picker is session-level), so don't assume the downgrade takes
-     effect under Codex without testing live first — an explicit `Gate model:` override or
-     full-tier review is the safe default there.
-   - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
-     sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
-     Bash:
-     `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --model "<current session model>" --exclude-tools edit,write "<gate prompt>"`.
-     `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
-     reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
-     explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
-     *config-default* model (verified: it reported `claude-opus-4-6…` regardless of a `kimi-k3`
-     interactive session), and pi exposes no `PI_MODEL`/`PI_PROVIDER` env to read it from — so the
-     dispatching agent supplies its own current model. `--exclude-tools edit,write` gives the
-     read-only + Bash profile the gate contract requires (built-in tool names are lowercase:
-     `read,bash,edit,write,grep,find,ls`). The **hardened flags `--no-context-files --no-skills --no-prompt-templates` keep the `pi -p` gate hermetic** — it must not auto-load the project's context files, skills, or prompt templates: a fresh gate that inherited the project's own skills (including this `sprint` skill) would let it *reconstruct* the intended behavior instead of independently grading what shipped, defeating the no-implementation-history / no-project-context contract (these three flags are the hardened form observed in kimi's live VM dispatch — re-verify live on the VM, there is no pi in the evaluator here). **Also pass an explicit `Base ref: <fork-point>` in the gate prompt's Inputs** (the empty-diff/drift hazard and the fork-point recovery are documented in `shared-gate-protocol.md ## Base-ref derivation`) rather than relying on the subagent's own `git merge-base HEAD origin/main`: a `pi -p` subprocess derives its base ref live, so an `origin/main` advance mid-run can converge merge-base to HEAD and empty the diff (the t-3864 hazard) — an explicit fork-point base ref avoids it. Record that same model on the `eval`/`reviewer` row.
-     **Never** run a pi session's gate by shelling out to the `claude` CLI or onto a different model.
-     This rule is **harness-scoped**: for a pi session the close gates run on the **pi session
-     model**, full stop — `AGENTS.md`'s general `review → Opus` tier is **not** the close-gate rule
-     (that tier is the *default this section overrides*; a model must not grab it here). Left to the
-     model this dispatch is non-deterministic (a strong Claude model reconstructs it; a weaker/
-     non-Claude model may shell out to `claude`, switch to the config-default model, and fail) — so
-     follow this recipe verbatim rather than deriving one.
+**Model tier for gates.** Documented exception to `AGENTS.md`'s `## Model Tiers` `review →
+Opus` default, scoped only to the two close-gate dispatches below.
 
-   **Shared gate mechanics (reviewer + evaluator).** Seven rules, stated once:
+- **Explicit Gate model override wins — check first.** Read `plan.md`'s `## Sign-off` line
+  for a `| Gate model: <value>` segment. Valid `<value>`s (case-insensitive): a model id
+  (`haiku`, `sonnet`, `opus`), or literal `session` to force full session-model review — no
+  separate `auto`; omitting the field already means automatic. Set only by a live user
+  instruction ("run review/eval on haiku") or manual edit — never inferred or asserted by
+  the dispatching agent itself. If asked verbally and the field isn't in `plan.md` yet, write it
+  immediately, before continuing — so a compaction between ask and dispatch doesn't lose
+  it. If present, skip structural classification and jump to **Apply the result** with this
+  value. If absent, fall through.
+- **Demo mode forces Haiku (evaluator only).** If `ticket.md` has `demo: true` and `plan.md`
+  has **no** explicit `Gate model:` value, apply `model: "haiku"` to the **binding evaluator
+  dispatch** — same effect as writing `Gate model: haiku`, without needing to edit `plan.md`.
+  This is scoped to the evaluator because it is the only demo-path gate that is a *dispatched
+  subagent*; `security-review` runs **inline in the main session** (see `wrapup/SKILL.md`), so
+  it takes no per-dispatch `model:` param — it runs on the session model (to run the whole
+  demo close cheaply, switch the session model to Haiku via `/model`). An explicit
+  `Gate model:` value still wins over this (checked above). This forces Haiku on *any* diff,
+  distinct from the structural low-risk downgrade below. No CLI change — this is an
+  agent-protocol read of the `demo` flag.
+- **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
+  (same command the reviewer prompt uses).
+- **Check `git merge-base`'s exit status, not the diff output.** Failure (missing
+  `origin/main`, detached HEAD, no git baseline) means normal cost, never low-risk — a
+  failed substitution can leave the outer `git diff` running against a different,
+  non-empty baseline, so empty output is neither guaranteed nor evidence of low risk. Only
+  exit status is reliable.
+- **Classify low-risk** only if every changed path matches the allowlist — `docs/**/*.md`,
+  `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `skills/**/gates/*.md`,
+  `standards/**/*.md`, or root-level `*.md` — AND no path contains a security marker
+  (`auth`, `secret`, `session`, `crypto`, `token`, `credential`). This substring list is
+  deliberately narrower than the semantic "security-sensitive" definitions elsewhere
+  (`SKILL.md`'s high-risk triggers, `security-review.md`'s skip list). Allowlist, not
+  denylist: any non-matching path defaults to normal cost — never overridden downward by
+  the agent's own risk judgment.
+- **Apply the result.** With an explicit `Gate model:` value: `session` → omit `model`
+  (inherits session model); any other value → pass it verbatim as `model` on both reviewer
+  and evaluator `Agent` calls. Without one: low-risk → pass `model: "haiku"`; otherwise
+  omit `model`. Check once; both gates share the result — their verdicts (YES/NO,
+  pass/fail) stay separate from this check.
+- **High-risk sprints are unaffected** — the check only adds a cheap-model option, never
+  removes the mandatory dispatch. An explicit `Gate model:` override applies regardless of
+  tier.
+- **Cross-harness caveat.** The automatic Haiku downgrade is confirmed only under Claude
+  Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's `spawn_agent` has no per-agent
+  `model` field (its model picker is session-level), so don't assume the downgrade takes
+  effect under Codex without testing live first — an explicit `Gate model:` override or
+  full-tier review is the safe default there.
+- **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
+  sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
+  Bash:
+  `pi -p --no-session --no-context-files --no-skills --no-prompt-templates --model "<current session model>" --exclude-tools edit,write "<gate prompt>"`.
+  `-p`/`--print` is fresh — it does not load prior session memory (verified: a bare `pi -p`
+  reports `memory=no`) — and `--no-session` keeps it ephemeral. The **model MUST be passed
+  explicitly and set to the current pi session model**: a bare `pi -p` runs on pi's
+  *config-default* model (verified: it reported `claude-opus-4-6…` regardless of a `kimi-k3`
+  interactive session), and pi exposes no `PI_MODEL`/`PI_PROVIDER` env to read it from — so the
+  dispatching agent supplies its own current model. `--exclude-tools edit,write` gives the
+  read-only + Bash profile the gate contract requires (built-in tool names are lowercase:
+  `read,bash,edit,write,grep,find,ls`). The **hardened flags `--no-context-files --no-skills --no-prompt-templates` keep the `pi -p` gate hermetic** — it must not auto-load the project's context files, skills, or prompt templates: a fresh gate that inherited the project's own skills (including this `sprint` skill) would let it *reconstruct* the intended behavior instead of independently grading what shipped, defeating the no-implementation-history / no-project-context contract (these three flags are the hardened form observed in kimi's live VM dispatch — re-verify live on the VM, there is no pi in the evaluator here). **Also pass an explicit `Base ref: <fork-point>` in the gate prompt's Inputs** (the empty-diff/drift hazard and the fork-point recovery are documented in `shared-gate-protocol.md ## Base-ref derivation`) rather than relying on the subagent's own `git merge-base HEAD origin/main`: a `pi -p` subprocess derives its base ref live, so an `origin/main` advance mid-run can converge merge-base to HEAD and empty the diff (the t-3864 hazard) — an explicit fork-point base ref avoids it. Record that same model on the `eval`/`reviewer` row.
+  **Never** run a pi session's gate by shelling out to the `claude` CLI or onto a different model.
+  This rule is **harness-scoped**: for a pi session the close gates run on the **pi session
+  model**, full stop — `AGENTS.md`'s general `review → Opus` tier is **not** the close-gate rule
+  (that tier is the *default this section overrides*; a model must not grab it here). Left to the
+  model this dispatch is non-deterministic (a strong Claude model reconstructs it; a weaker/
+  non-Claude model may shell out to `claude`, switch to the config-default model, and fail) — so
+  follow this recipe verbatim rather than deriving one.
 
-   1. Close confirmation authorizes spawning either subagent — never ask separately.
+**Shared gate mechanics (reviewer + evaluator).** Seven rules, stated once:
 
-   2. Both derive their own changed-files list via `git merge-base` — never pass one in.
+1. Close confirmation authorizes spawning either subagent — never ask separately.
 
-   3. Close each subagent's handle (`TaskStop`) right after reading its verdict — completed
-      handles still occupy thread slots, and closing the reviewer's before step 3 avoids a
-      thread-limit block if the evaluator needs a rerun; if `TaskStop` errors with
-      `not running (status: completed)`, that's expected (the harness may already auto-free a
-      completed task's slot) — proceed, don't retry or treat it as fatal.
+2. Both derive their own changed-files list via `git merge-base` — never pass one in.
 
-   4. Each subagent records its model designation in its report — the exact value applied above
-      (an explicit `Gate model:` value, `haiku` if the structural check classified this
-      low-risk, or the exact session model id, e.g. `claude-sonnet-5`), never a paraphrase —
-      same value as the Wrapup Gates table's `(model: <model>)` suffix. **The orchestrator MUST
-      state that model designation in each gate's dispatch prompt (its Inputs)**, because the
-      report-body `Model:` line is a HARD RULE the CLI enforces at close
-      (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when
-      `review-notes.md` exists) — t-072d.
+3. Close each subagent's handle (`TaskStop`) right after reading its verdict — completed
+   handles still occupy thread slots, and closing the reviewer's before step 3 avoids a
+   thread-limit block if the evaluator needs a rerun; if `TaskStop` errors with
+   `not running (status: completed)`, that's expected (the harness may already auto-free a
+   completed task's slot) — proceed, don't retry or treat it as fatal.
 
-   5. **What to pass for `<id>` in `subagent-log.sh`:** the gate matches only on the log entry's
-      timestamp, never on `agent_id` — so a harness-provided dispatch id is not required. Use
-      whichever is available: (a) a trailing `agentId: <id>` token if the raw Agent-call result
-      exposes one, (b) otherwise a stable synthetic id such as `reviewer-<ticket-id>` or the
-      evaluator's own `evaluator-run-id`. Do not stall or switch dispatch modes hunting for a
-      token — a `Plan`-type foreground `Agent` call may expose none (reproduced in canon
-      `t-9a75` and a separate Windows project `t-6cd0`).
+4. Each subagent records its model designation in its report — the exact value applied above
+   (an explicit `Gate model:` value, `haiku` if the structural check classified this
+   low-risk, or the exact session model id, e.g. `claude-sonnet-5`), never a paraphrase —
+   same value as the Wrapup Gates table's `(model: <model>)` suffix. **The orchestrator MUST
+   state that model designation in each gate's dispatch prompt (its Inputs)**, because the
+   report-body `Model:` line is a HARD RULE the CLI enforces at close
+   (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when
+   `review-notes.md` exists) — t-072d.
 
-   6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not
-      heredoc failure): do not retry or re-dispatch with a broader-permission `subagent_type`.
-      Check whether the expected report file exists after dispatch; if not, save the returned
-      report text yourself before continuing.
+5. **What to pass for `<id>` in `subagent-log.sh`:** the gate matches only on the log entry's
+   timestamp, never on `agent_id` — so a harness-provided dispatch id is not required. Use
+   whichever is available: (a) a trailing `agentId: <id>` token if the raw Agent-call result
+   exposes one, (b) otherwise a stable synthetic id such as `reviewer-<ticket-id>` or the
+   evaluator's own `evaluator-run-id`. Do not stall or switch dispatch modes hunting for a
+   token — a `Plan`-type foreground `Agent` call may expose none (reproduced in canon
+   `t-9a75` and a separate Windows project `t-6cd0`).
 
-   7. **Snapshot git status before AND after every subagent dispatch** — a gate is read-only by
-      contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own
-      `.tickets/<id>/` files is out-of-scope by definition, but an after-only check misses a
-      discard (see below). Immediately **before** dispatching, capture `git status --porcelain`
-      (PRE) and `git stash create` (a non-destructive snapshot — prints a recovery hash without
-      touching the working tree; empty output means no uncommitted changes). Immediately
-      **after** the gate completes, before reading its report, capture `git status --porcelain`
-      again (POST) and compare against PRE:
-      - **A path in POST that wasn't in PRE** (corruption/unexpected write) — `t-1781` twice
-        caught a fresh-context evaluator corrupting the real `tools/sprint-headless` script this
-        way (denied touching it when asked; `git diff --stat` proved otherwise). Restore
-        (`git checkout -- <path>`) before proceeding.
-      - **A path in PRE that is absent or reverted in POST** (discard of uncommitted work) — a
-        plain after-only check cannot see this, because discarding a file's uncommitted changes
-        makes it match `HEAD` again, erasing the evidence. `t-00e9` (live-reproduced): a
-        dispatched evaluator silently ran `git checkout -- <path>` to make a pre-existing test
-        failure disappear, wiping the user's own uncommitted work — an after-only check would
-        have read the working tree as clean afterward and missed it entirely. The PRE snapshot
-        is what makes this detectable. **Stop and surface it to the user with the PRE stash
-        hash** — do not silently continue, and do not auto-apply the stash (its content may
-        conflict with other changes made since).
+6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not
+   heredoc failure): do not retry or re-dispatch with a broader-permission `subagent_type`.
+   Check whether the expected report file exists after dispatch; if not, save the returned
+   report text yourself before continuing.
 
-      If `git status`/`git stash create` fail (no git repository, or git unavailable), skip this
-      check entirely and log a warning that no corruption/discard detection ran for that
-      dispatch — the same no-baseline-available fallback shape used for changed-files derivation
-      (`shared-gate-protocol.md ## Base-ref derivation`), not a new pattern. **Known limit:**
-      this compares path presence, not content — a *partial* revert (some but not all of a
-      file's uncommitted changes undone) leaves the same path with the same porcelain status in
-      both PRE and POST, so it is not caught. Full content-diffing would close that gap but is
-      out of scope here; this check targets the two incidents on record (full corruption, full
-      discard), not partial tampering.
+7. **Snapshot git status before AND after every subagent dispatch** — a gate is read-only by
+   contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own
+   `.tickets/<id>/` files is out-of-scope by definition, but an after-only check misses a
+   discard (see below). Immediately **before** dispatching, capture `git status --porcelain`
+   (PRE) and `git stash create` (a non-destructive snapshot — prints a recovery hash without
+   touching the working tree; empty output means no uncommitted changes). Immediately
+   **after** the gate completes, before reading its report, capture `git status --porcelain`
+   again (POST) and compare against PRE:
+   - **A path in POST that wasn't in PRE** (corruption/unexpected write) — `t-1781` twice
+     caught a fresh-context evaluator corrupting the real `tools/sprint-headless` script this
+     way (denied touching it when asked; `git diff --stat` proved otherwise). Restore
+     (`git checkout -- <path>`) before proceeding.
+   - **A path in PRE that is absent or reverted in POST** (discard of uncommitted work) — a
+     plain after-only check cannot see this, because discarding a file's uncommitted changes
+     makes it match `HEAD` again, erasing the evidence. `t-00e9` (live-reproduced): a
+     dispatched evaluator silently ran `git checkout -- <path>` to make a pre-existing test
+     failure disappear, wiping the user's own uncommitted work — an after-only check would
+     have read the working tree as clean afterward and missed it entirely. The PRE snapshot
+     is what makes this detectable. **Stop and surface it to the user with the PRE stash
+     hash** — do not silently continue, and do not auto-apply the stash (its content may
+     conflict with other changes made since).
+
+   If `git status`/`git stash create` fail (no git repository, or git unavailable), skip this
+   check entirely and log a warning that no corruption/discard detection ran for that
+   dispatch — the same no-baseline-available fallback shape used for changed-files derivation
+   (`shared-gate-protocol.md ## Base-ref derivation`), not a new pattern. **Known limit:**
+   this compares path presence, not content — a *partial* revert (some but not all of a
+   file's uncommitted changes undone) leaves the same path with the same porcelain status in
+   both PRE and POST, so it is not caught. Full content-diffing would close that gap but is
+   out of scope here; this check targets the two incidents on record (full corruption, full
+   discard), not partial tampering.
 
 2. **Reviewer gate (normal+ tier).** Skip only if `plan.md`'s `## Sign-off` section's `Tier:`
    field value itself is `trivial` **or** `bugfix` (anchored to that field, so the word appearing

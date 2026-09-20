@@ -106,12 +106,11 @@ One light-close covers **two intents**, both explicit and user-elected:
   evaluator still earns its keep by grading the doc/mockup against its own acceptance criteria
   (research questions answered with cites; required screens present, embedded, and fresh).
 
-For either intent, `sprint complete` runs a **fast close-path**: keep exactly
-**`security-review` + the binding evaluator**, and skip the advisory reviewer plus
-the rest of wrapup — a **superset** of what `bugfix` trims, additionally dropping
-`code-reviewer` and `repo-check` (which `bugfix` keeps). The **evaluator
-is forced to Haiku** (`security-review` runs inline on the session model — only the dispatched
-evaluator takes a `model:` param; see `reference/complete.md`'s Model-tier section). It is a
+For either intent, `sprint complete` runs a **fast close-path**:
+**keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` and `repo-check` (which `bugfix` keeps).**
+**The evaluator is forced to Haiku
+(`security-review` runs inline on the session model)** — only the dispatched evaluator takes a
+`model:` param; see `reference/complete.md`'s Model-tier section. It is a
 user-elected `bugfix`-lite and **never drops below the binding evaluator** — so it never needs,
 and must never set, `eval_override`.
 
@@ -126,10 +125,9 @@ explicit **user flag, not structural risk** — the one documented place canon b
 "only structural risk may reduce gates" invariant, justified as the same explicit/auditable
 override class as `eval_override` / `Gate model:` and paid for by being loud (Demo/Docs markers on
 the Wrapup Gates rows + a `summary.md` demo line). See `reference/complete.md`'s "Demo mode"
-(step 1) for the full close-path and `AGENTS.md`'s north-star exception. Headless/CI never reduces
-the gate set for `demo`: `sprint-headless` ignores `demo` entirely, and `sprint-headless-eval` runs
-its full (eval-only) gate set but reads `demo: true` (ticket-id mode) to default the evaluator to
-Haiku when no `--model` is given — a model choice, never a skipped gate.
+(step 1) for the full close-path and `AGENTS.md`'s north-star exception.
+**Headless/CI never reduces the gate set for `demo`: `sprint-headless` runs its full pipeline and ignores `demo` entirely; `sprint-headless-eval` (already eval-only) also runs its full gate set but reads `demo: true` to default the evaluator to Haiku when no `--model` is given — a model choice, never a skipped gate.**
+(ticket-id mode; explicit `--model` wins.)
 
 ## Job types (JTBD)
 

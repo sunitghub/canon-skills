@@ -189,4 +189,22 @@ for file in "$SHARED" "$EVAL" "$REVIEW"; do
   grep -qF "$NO_DESTRUCTIVE_GIT" "$file" || fail "doc-mirror-parity: $label is missing the destructive-git-command guardrail verbatim (\"$NO_DESTRUCTIVE_GIT\") — the gate-safety wording has diverged across the gate docs"
 done
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md)"
+# ── Check K: the demo-mode policy is deliberately mirrored between SKILL.md
+# (sprint-start, needed to propose demo mode before a ticket exists) and
+# complete.md (close-time, needed to execute the close-path) — separate
+# consumers per efficiency.md's mirrored-docs exception, so lock instead of
+# merging (t-936d). This is what t-8f16's headless/demo contradiction slipped
+# through: Check I only locked the evaluator-floor phrase, not the gate list
+# or the headless carve-out that actually drifted.
+DEMO_GATE_LIST='keep exactly `security-review` + the binding evaluator, skip the advisory reviewer + the rest of wrapup — a superset of what `bugfix` trims, additionally dropping `code-reviewer` and `repo-check` (which `bugfix` keeps).'
+DEMO_HAIKU='evaluator is forced to Haiku'
+DEMO_HEADLESS='Headless/CI never reduces the gate set for `demo`: `sprint-headless` runs its full pipeline and ignores `demo` entirely; `sprint-headless-eval` (already eval-only) also runs its full gate set but reads `demo: true` to default the evaluator to Haiku when no `--model` is given — a model choice, never a skipped gate.'
+
+for file in "$SPRINT_SKILL" "$COMPLETE"; do
+  label="$(basename "$file")"
+  grep -qF "$DEMO_GATE_LIST" "$file" || fail "doc-mirror-parity: $label is missing the demo-mode gate-list phrase verbatim — the demo close-path's gate set has diverged between SKILL.md and complete.md"
+  grep -qF "$DEMO_HAIKU" "$file" || fail "doc-mirror-parity: $label is missing the demo-mode Haiku-forcing phrase verbatim"
+  grep -qF "$DEMO_HEADLESS" "$file" || fail "doc-mirror-parity: $label is missing the demo-mode headless carve-out phrase verbatim — this is the exact fact that drifted in t-8f16"
+done
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md)"
