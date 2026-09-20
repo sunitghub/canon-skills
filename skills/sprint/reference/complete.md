@@ -1,3 +1,11 @@
+---
+name: complete
+description: Full sprint-close protocol — wrapup pipeline, reviewer/evaluator gates, DECISIONS.md, summary, commit & push
+category: dev
+tags: [workflow, close, gates, sprint]
+hidden: true
+---
+
 # Sprint Complete
 
 **Trigger:** "sprint complete", "complete the sprint", "ship it"

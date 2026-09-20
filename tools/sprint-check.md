@@ -111,8 +111,8 @@ toggle blocks.
 Once both Acceptance and Plan exist, `+ New doc` is hidden. Canon's sprint flow
 does not use extra board-created sprint docs.
 
-`orient`, `impact-analysis`, `capture`, and wrapup checks are sub-skills run by
-the agent during the sprint lifecycle. They are not `+ New doc` types. When they
+`orient` and `impact-analysis` are reference docs, `capture` is a skill, and wrapup checks are
+gates — all run by the agent during the sprint lifecycle. They are not `+ New doc` types. When they
 produce useful context, the agent records it in the sprint docs, `HANDOFF.md`, or
 `DECISIONS.md`.
 

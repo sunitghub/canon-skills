@@ -4,8 +4,8 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.3
-updated: 2026-08-16
+version: 1.0.4
+updated: 2026-09-17
 ---
 
 # Agent Standards
@@ -25,7 +25,7 @@ updated: 2026-08-16
 
 ## Code Review Feedback
 
-Format: `file:line — <problem>. <fix>.` — no hedging, no preamble, no restating what the code does.
+Format: `file:line — <problem>. <fix>.` — no hedging prose, no preamble, no restating what the code does. A `[severity: … · confidence: …]` tag on a finding is not hedging — that's calibration, not padding.
 Explain only when the fix isn't self-evident; security/architectural issues get full explanation.
 - Ground review in base code, not the PR diff — the diff biases toward the PR's own framing; base code is what actually exists.
 - Scope to the change — no frontend notes on backend-only work, no unrelated coverage.

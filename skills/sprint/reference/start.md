@@ -1,3 +1,11 @@
+---
+name: start
+description: Full sprint-start protocol — ticket creation, tier classification, planning files, research, grill, impact analysis, approval
+category: dev
+tags: [workflow, planning, sprint]
+hidden: true
+---
+
 # Sprint Start
 
 **Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any normal/high-risk request to add, fix, update, debug, implement, or build something.

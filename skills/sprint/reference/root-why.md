@@ -1,3 +1,11 @@
+---
+name: root-why
+description: 5-Whys root-cause step for type-bug sprints — converts the report into an independent invariant plus a worked example before coding
+category: dev
+tags: [planning, debugging, bug, sprint]
+hidden: true
+---
+
 # Root-Why
 
 A lightweight root-cause step for `type: bug` sprints. Run it during planning, before drafting
