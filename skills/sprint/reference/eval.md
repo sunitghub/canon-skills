@@ -30,7 +30,7 @@ Read `skills/sprint/reference/shared-gate-protocol.md ## Inputs` — applies ver
 
 ## Tools
 
-Read `skills/sprint/reference/shared-gate-protocol.md ## Tools` — applies here. Your report file is `eval-report.md`. The rule: never run git checkout, git reset, or git clean to make an unrelated failure disappear — a pre-existing failure outside this ticket's own changed-files list is out-of-scope; report it as such instead (t-00e9).
+Read `skills/sprint/reference/shared-gate-protocol.md ## Tools` — applies here. Your report file is `eval-report.md`. The rule: never run git checkout, git reset, or git clean to make an unrelated failure disappear — a pre-existing failure outside this ticket's own changed-files list is out-of-scope; report it as such instead (t-00e9). **Verify pre-existing-ness, don't assume it from location alone:** a failure can sit *inside* a file this sprint rewrote and still be pre-existing — diff the failing assertion and the observed behavior against the ticket's own base commit byte-for-byte before ruling it out of scope; "it's in a file/block I didn't mean to touch" is not by itself evidence the failure predates this sprint (t-8a2a).
 
 ## Evidence is not success
 

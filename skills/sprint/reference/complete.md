@@ -491,6 +491,13 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded. For normal+ tier, name which model the reviewer/evaluator gates ran on (pulled from the Wrapup Gates table's `(model: <model>)` suffix) — e.g. "reviewer and evaluator ran on haiku (low-risk classification).">
    ```
 
+   **If the advisory reviewer's verdict was NO, this paragraph must say so explicitly** — name
+   it alongside the model, not just the model. A binding evaluator `pass:` and an advisory
+   reviewer `NO` can legitimately coexist (scope drift that doesn't contradict any acceptance
+   criterion); surfacing the NO at dispatch time (step 2, above) is chat-transient, but
+   `summary.md` is the durable artifact a later reader actually sees — a clean-looking summary
+   must never let a passing eval imply every gate was clean.
+
    One row per acceptance criterion from `acceptance.md`. Deviations must appear in the table
    — do not bury them in prose. The file appears as a **Summary** tab on the ticket board
    alongside Acceptance and Plan. If a criterion contains a `|`, write it as `\|` — bare pipes
