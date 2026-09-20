@@ -377,13 +377,22 @@ Opus` default, scoped only to the two close-gate dispatches below.
    `standards/ticket-layout.md`'s `eval_fail_count` field contract for the full mechanics.
 
    **Log the subagent run.** Immediately after the evaluator subagent completes, read the
-   `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`, then
-   run `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator` (bare — it's on
+   `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`. **Before
+   trusting it, verify it's genuine:** run `date +%s` yourself and diff against the run-id's
+   embedded epoch (the number before the `-`). If the difference exceeds 5 minutes (300s), do not
+   log or trust the report — the run-id is either fabricated (a model composing a plausible
+   number instead of executing the real command) or the subagent's clock is broken; discard the
+   report and re-dispatch a fresh evaluator instead (`t-7ec6`, live-reproduced: a dispatch's
+   reported run-id was ~2 years off real time, caught only because the skew happened to be large
+   — this check catches a smaller, plausible-looking fabrication too, which the after-the-fact
+   ±60min jsonl-window check below cannot). Once verified, run
+   `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator` (bare — it's on
    PATH, same as `sprint`/`tkt`). `sprint complete`'s close gate (`_gate_eval_report`)
    hard-fails if `.claude/subagent-runs.jsonl` doesn't exist, or exists but has no entry within
    ±60 minutes of that `evaluator-run-id` — this CLI call is what satisfies that check now that
    no hook does it automatically. Skipping it risks a confusing close-time failure on an
-   otherwise-passing sprint.
+   otherwise-passing sprint. This freshness check is scoped to the evaluator only — the
+   reviewer's `review-notes.md` has no equivalent mechanical authenticity gate to protect.
 
    **What to pass for `<id>`:** see shared gate mechanics (5) above. For the evaluator
    specifically, reusing the `evaluator-run-id` (from the report's first line) is the
