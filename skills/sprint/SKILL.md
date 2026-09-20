@@ -37,7 +37,7 @@ Use no sprint when:
 - Modifies a hook, pipeline, or post-commit script
 - Touches more than one file with coordinated intent
 
-None of these four triggers can be downgraded to trivial mid-sprint — `complete.md`'s and `start.md`'s downgrade rule explicitly excludes them (see `skills/sprint/reference/complete.md` steps 2-3, Reviewer gate / Evaluator review).
+These four triggers can never downgrade to trivial mid-sprint — `complete.md`'s/`start.md`'s downgrade rule excludes them (`skills/sprint/reference/complete.md` steps 2-3, Reviewer gate / Evaluator review).
 
 Work directly, then report verification.
 
@@ -72,11 +72,11 @@ invariant, and the covering test that asserts it is exactly the bugfix-tier elig
 
 ### Normal
 
-Default for focused, reversible product/docs/code changes that affect a small surface.
+Default for focused, reversible product/docs/code changes on a small surface.
 
-Run `sprint start`, create `acceptance.md` and `plan.md`, then build after approval. Keep plan.md brief: files, approach, known constraints. Test plan goes in `acceptance.md ## Test Plan`, not plan.md.
+Run `sprint start`, create `acceptance.md`/`plan.md`, build after approval. Keep plan.md brief: files, approach, known constraints. Test plan goes in `acceptance.md ## Test Plan`, not plan.md.
 
-Skip full orient, grill, and impact-analysis unless the local code is unclear or a high-risk trigger appears.
+Skip full orient/grill/impact-analysis unless the local code is unclear or a high-risk trigger appears.
 
 ### High-risk
 

@@ -29,7 +29,7 @@ Commit & Push belongs to `sprint complete`'s own step 10, not this pipeline — 
 
 **`Tier: bugfix` and `demo: true`** also override the per-gate criteria below wholesale, the same way — they are defined in `skills/sprint/reference/complete.md`, not here, and this file has no independent knowledge of them: `bugfix` (`complete.md`'s "Bugfix tier — lighter wrapup") keeps `security-review`/`repo-check`/inline `code-reviewer`, may skip `code-simplifier`/`doc-audit`; `demo` (`complete.md`'s "Demo mode") keeps only `security-review`, skips every other gate in this pipeline. Reading this file in isolation without checking `plan.md`'s `Tier:` or `ticket.md`'s `demo:` first will apply the wrong gate set on either path.
 
-Before each step, assess the change and skip if criteria apply. State why in one line — and which clause justified it (global override, or the gate's own criteria) when the two could seem to conflict.
+Before each step, assess and skip if criteria apply — state why in one line, naming which clause justified it (global override or the gate's own criteria) when the two could seem to conflict.
 
 ### Skip code-simplifier if:
 - Change is a single line or a trivial rename
@@ -48,8 +48,6 @@ Before each step, assess the change and skip if criteria apply. State why in one
 
 ### Skip doc-audit if:
 - No user-facing docs changed and no skill/standards frontmatter changed — matches `doc-audit/SKILL.md`'s own scope: README, `examples/**/*.md`, `docs/*.md`, `tools/*.md`, or `description`/`summary` frontmatter in `skills/*/SKILL.md`/`standards/*.md`
-
-
 
 ## Steps
 
