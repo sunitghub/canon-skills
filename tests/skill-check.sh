@@ -84,6 +84,18 @@ echo '{"evals":[1,{"id":2,"case_type":"a","prompt":"p","expectations":["e"]},{"i
 run "$TMP/shape"; assert_eq 0 "$rc"
 assert_eq warn "$(status "$out" evals-shape)"
 
+# Unhashable / odd-typed fields and pathological nesting must not crash either.
+echo '{"evals":[{"id":1,"case_type":["a"],"prompt":"p","expectations":["e"]},{"id":2,"case_type":{"k":1},"prompt":"p","expectations":["e"]},{"id":3,"case_type":null,"prompt":"p","expectations":["e"]}]}' > "$TMP/shape/evals/evals.json"
+run "$TMP/shape"; assert_eq 0 "$rc"
+python3 -c 'print("[" * 100000)' > "$TMP/shape/evals/evals.json"
+run "$TMP/shape"; assert_eq 1 "$rc"; assert_eq fail "$(status "$out" evals-present)"
+
+# An unreadable SKILL.md fails cleanly (skipped when running as root, which ignores modes).
+mkdir "$TMP/noread"; cp -R "$TMP/good/evals" "$TMP/noread/"; cp "$TMP/good/SKILL.md" "$TMP/noread/"; chmod 000 "$TMP/noread/SKILL.md"
+if [[ ! -r "$TMP/noread/SKILL.md" ]]; then
+  run "$TMP/noread"; assert_eq 1 "$rc"; assert_eq fail "$(status "$out" skill-md-present)"
+fi
+
 # Frontmatter: CRLF line endings are fine; a '----' line is not the closing fence.
 mkdir "$TMP/crlf"; cp -R "$TMP/good/evals" "$TMP/crlf/"
 printf -- '---\r\nname: crlf\r\ndescription: d\r\n---\r\nbody\r\n' > "$TMP/crlf/SKILL.md"

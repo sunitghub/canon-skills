@@ -60,7 +60,7 @@ def stage1(skill_dir):
         return [check("evals-present", 1, "fail", f"{path} not found", EVALS_FIX)]
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError) as e:
+    except (ValueError, OSError, RecursionError) as e:
         return [check("evals-present", 1, "fail", f"{path} is not valid JSON ({e!r})", EVALS_FIX)]
     cases = data.get("evals") if isinstance(data, dict) else None
     if not isinstance(cases, list):
@@ -74,10 +74,10 @@ def stage1(skill_dir):
     out.append(check("evals-shape", 1, "warn" if bad else "pass",
                      f"cases missing prompt or expectations: {', '.join(bad)}" if bad else "every case has a prompt and expectations",
                      "Give each case a concrete user prompt and 2-3 assertable expectations." if bad else ""))
-    types = {c.get("case_type") for c in cases if isinstance(c, dict)}
+    types = {str(c.get("case_type")) for c in cases if isinstance(c, dict)}
     varied = len(types) > 1 or len(cases) < 2
     out.append(check("evals-variety", 1, "pass" if varied else "warn",
-                     f"case_type values: {sorted(str(t) for t in types)}",
+                     f"case_type values: {sorted(types)}",
                      "" if varied else "Mix case types (control, compliance, boundary, edge) so the eval is not one scenario repeated."))
     return out
 
@@ -87,7 +87,10 @@ def stage2(skill_dir):
     if not md.is_file():
         return [check("skill-md-present", 2, "fail", f"{md} not found", "Add a SKILL.md with YAML frontmatter.")]
     out = [check("skill-md-present", 2, "pass", "SKILL.md found")]
-    text = md.read_text(encoding="utf-8", errors="replace")
+    try:
+        text = md.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return [check("skill-md-present", 2, "fail", f"{md} is not readable ({e!r})", "Fix the file permissions on SKILL.md.")]
     fm, body, err = parse_frontmatter(text)
     if err:
         out.append(check("frontmatter", 2, "fail", f"frontmatter unreadable: {err}",
