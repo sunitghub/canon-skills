@@ -27,7 +27,10 @@ containment, or write where it should not. **Advisory only** — it never blocks
 1. Snapshot without history: `git archive HEAD <changed tools + their tests + fixtures> | tar -x -C <scratch>/snap`.
    No `.git`, no `.tickets`: the agent cannot read the plan, the acceptance criteria, earlier fixes or reviewer output.
    Drop binaries and unrelated dirs. Do not tell it about known defects.
-2. Fresh `Agent` subagent, `subagent_type: "Plan"`, clean context (same dispatch rules as the reviewer/evaluator).
+2. Fresh `Agent` subagent with a clean context, `subagent_type: "Plan"` (Bash stays available for stubs and scratch
+   files, as in the t-46dc trial; if a harness refuses Bash writes, have it relay results in its reply). It runs on the
+   session model: the gate model-tier downgrade and `Gate model:` override in `complete.md` apply only to the reviewer
+   and evaluator dispatches, so do not hand this gate to a cheaper model.
 3. Prompt (fill the two placeholders):
 
    > You are a hostile-input tester. Your working area is EXACTLY `<SNAPSHOT>` and nothing else; do not read, list or
@@ -37,7 +40,7 @@ containment, or write where it should not. **Advisory only** — it never blocks
    > Find inputs that break a promise: escape containment, bypass a gate, leave a limit unenforced, write outside where it
    > should, crash, or wrongly refuse a legitimate input. NEVER run a paid or networked command: use stubs you write.
    > Never modify the source or tests. Prove every finding with the exact command and observed output; do not report
-   > anything you did not reproduce. Do not read any git history. Stop after about 40 commands.
+   > anything you did not reproduce. Do not read any git history. Stop after about 40 commands (the trials used 14 and 22).
    > Report: numbered list of defect, reproduction, observed output, severity (high/med/low); end with
    > 'Commands run: N'.
 
@@ -59,5 +62,5 @@ The agent is instructed, not sandboxed: keep secrets out of reach and never poin
 
 Retrospective trial t-46dc: on history-free snapshots of two shipped artifacts it found 6 of 6 real known defects,
 0 unreproduced claims, and a high-severity path traversal that a reviewer NO/YES and two evaluator passes had
-missed, at 0.9-1.5x a reviewer gate's tokens. Caveats: two snapshots, one author and model family, instructed rather
+missed, at 0.9-1.5x a reviewer gate's tokens. (One low finding was not re-run, so "0 unreproduced" covers the claims that were.) Caveats: two snapshots, one author and model family, instructed rather
 than sandboxed.
