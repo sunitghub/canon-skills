@@ -13,6 +13,7 @@ reference (code.claude.com/docs/en/skills), not canon's skill-setup-std — that
 stays in `canon-dev.sh lint`. Frontmatter is read as top-level keys only
 (stdlib, no PyYAML), which is enough for every rule below.
 """
+import codecs
 import json
 import re
 import sys
@@ -37,6 +38,16 @@ def check(cid, stage, status, evidence, fix=""):
     return {"id": cid, "stage": stage, "status": status, "evidence": evidence, "fix": fix}
 
 
+def unescape_key(k):
+    """A double-quoted YAML key may spell a name with escapes ("h\\x6fooks" is hooks)."""
+    if k is None:
+        return None
+    try:
+        return codecs.decode(k.encode("latin-1", "backslashreplace"), "unicode_escape")
+    except (UnicodeError, ValueError):
+        return k
+
+
 def parse_frontmatter(text):
     """Returns (fields, body, error). fields maps top-level key -> scalar/block text."""
     text = text.replace("\r\n", "\n")
@@ -50,7 +61,7 @@ def parse_frontmatter(text):
     for line in text[4:end].split("\n"):
         m = KEY_RE.match(line)
         if m:
-            last = m.group(1) or m.group(2) or m.group(3)
+            last = m.group(1) or unescape_key(m.group(2)) or m.group(3)
             fields[last] = m.group(4).strip().strip("'\"")
         elif last and (line.startswith((" ", "\t", "-"))):
             fields[last] = (fields[last] + " " + line.strip()).strip()

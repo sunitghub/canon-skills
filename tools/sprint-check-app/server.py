@@ -1824,19 +1824,26 @@ def _skill_eval_state_path(root: Path) -> Path:
 
 def _skill_eval_state_load(root: Path) -> dict:
     try:
-        return json.loads(_skill_eval_state_path(root).read_text(encoding='utf-8'))
+        d = json.loads(_skill_eval_state_path(root).read_text(encoding='utf-8'))
     except Exception:
         return {}
+    return d if isinstance(d, dict) else {}
 
 def _skill_eval_state_save(root: Path, key: str, entry: dict) -> None:
     p = _skill_eval_state_path(root)
     try:
+        if p.parent.is_symlink() or (p.parent.exists() and p.parent.resolve().parent != root.resolve()):
+            return  # a project-controlled .reports link must not redirect this write outside the project
         p.parent.mkdir(parents=True, exist_ok=True)
         state = _skill_eval_state_load(root)
         state[key] = entry
         p.write_text(json.dumps(state, indent=2), encoding='utf-8')
     except Exception:
         pass  # best-effort — the in-memory state is authoritative for this process
+
+def _skill_eval_key(root: Path, skill_dir: Path) -> tuple:
+    return (str(root.resolve()), str(skill_dir))  # resolved: a symlinked spelling of the project must not dodge the busy guard
+
 
 def _skill_eval_tag(root: Path, skill_dir: Path) -> str:
     return hashlib.sha1(f'{root.resolve()}|{skill_dir}'.encode()).hexdigest()[:12]  # resolved: one dir per project however its path is spelled
@@ -1862,7 +1869,7 @@ def _skill_eval_summary(result_path: Path) -> dict:
     return keep
 
 def _run_skill_eval(root: Path, skill_dir: Path, model: str, max_cost: float) -> None:
-    key = (str(root), str(skill_dir))
+    key = _skill_eval_key(root, skill_dir)
     tag = _skill_eval_tag(root, skill_dir)
     rel = f'.canon-cache/skill-eval/{tag}'
     plugin = CANON_ROOT / rel
@@ -1874,6 +1881,7 @@ def _run_skill_eval(root: Path, skill_dir: Path, model: str, max_cost: float) ->
         output = (gen.stdout + gen.stderr)
         if gen.returncode == 0:
             result_path.unlink(missing_ok=True)
+            shutil.rmtree(plugin / 'evals' / 'results', ignore_errors=True)  # a previous run's report must not be served for this one
             # No --allow-tools / --allow-real-servers: read-only tools, no real MCP servers.
             proc = subprocess.run(
                 [os.environ.get('SKILL_EVAL_CLAUDE_BIN', 'claude'), 'plugin', 'eval', str(plugin), '--trust-plugin',
@@ -1914,13 +1922,13 @@ def start_skill_eval_run(root: Path, raw: str, model: str, confirm_cost: bool,
         return {'ok': False, 'error': 'jq and bash are required to generate the eval plugin'}
     try:
         max_cost = float(max_cost)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         max_cost = 3.0
     if not math.isfinite(max_cost):  # NaN passes min/max clamps and would leave the cap unenforced
         max_cost = 3.0
     max_cost = min(max(max_cost, 0.5), 10.0)
     skill_dir = Path(chk['skill_dir'])
-    key = (str(root), str(skill_dir))
+    key = _skill_eval_key(root, skill_dir)
     with _SKILL_EVAL_LOCK:
         if (_SKILL_EVAL_RUNS.get(key) or {}).get('status') == 'running':
             return {'ok': False, 'busy': True, 'status': 'running'}
@@ -1935,11 +1943,11 @@ def get_skill_eval_state(root: Path, raw: str) -> dict:
     if err:
         return {'ok': False, 'error': err}
     with _SKILL_EVAL_LOCK:
-        live = _SKILL_EVAL_RUNS.get((str(root), str(p)))
+        live = _SKILL_EVAL_RUNS.get(_skill_eval_key(root, p))
         if live:
             return {'ok': True, **{k: v for k, v in live.items() if k != 'output'}}
     persisted = _skill_eval_state_load(root).get(str(p))
-    if persisted:
+    if isinstance(persisted, dict) and persisted:
         return {'ok': True, **{k: v for k, v in persisted.items() if k != 'output'}}
     return {'ok': True, 'status': 'never'}
 
@@ -1948,7 +1956,7 @@ def get_skill_eval_report(root: Path, raw: str) -> dict:
     if not st.get('ok'):
         return st
     report = st.get('report_path', '')
-    if not report:
+    if not isinstance(report, str) or not report:
         return {'ok': False, 'error': 'no report yet'}
     p, _ = validate_skill_dir(root, raw)
     try:  # only this run's own cache dir: a hand-edited state file must not serve another run's report
@@ -2208,6 +2216,8 @@ class Handler(BaseHTTPRequestHandler):
             payload = json.loads(self.rfile.read(length))
         except Exception:
             self.send_error(400); return
+        if not isinstance(payload, dict):
+            self.send_error(400); return  # every POST route reads its fields with payload.get
 
         # t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
         # absent → process default). Passed to the editable-tab write fns below.

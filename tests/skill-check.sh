@@ -128,6 +128,7 @@ mkskill hq2 "---\nname: t\n'hooks':\n  a: b\n---\nb\n";   run "$TMP/hq2"; assert
 mkskill hq3 '---\nname: t\nhooks :\n  a: b\n---\nb\n';    run "$TMP/hq3"; assert_eq warn "$(status "$out" trust-hooks)"
 mkskill hq4 '---\nname: t\ndescription: "a\n---\nrest"\nhooks:\n  a: b\n---\nb\n'
 run "$TMP/hq4"; assert_eq warn "$(status "$out" trust-hooks)"; assert_eq warn "$(status "$out" frontmatter-fences)"
+mkskill hq6 '---\nname: t\n"h\\x6foks":\n  a: b\n---\nb\n'; run "$TMP/hq6"; assert_eq warn "$(status "$out" trust-hooks)"   # YAML escape spells hooks
 mkskill hq5 "$FM"; run "$TMP/hq5"; assert_eq pass "$(status "$out" trust-hooks)"; assert_eq pass "$(status "$out" frontmatter-fences)"
 
 # Shell-injection and side-effect heuristics must not be evaded by adjacency, spacing or case.

@@ -46,15 +46,18 @@ STUB="$WORK/stub-claude"; ARGS="$WORK/stub-args"
 cat > "$STUB" <<'SH'
 #!/usr/bin/env bash
 echo "$@" > "$STUB_ARGS"
+sleep "${STUB_SLEEP:-0}"
 while [ $# -gt 0 ]; do [ "$1" = "--json" ] && out="$2"; shift; done
-mkdir -p evals/results/2026-01-01T00-00-00Z
-echo '<html>report</html>' > evals/results/2026-01-01T00-00-00Z/report.html
+if [ -z "${NO_REPORT:-}" ]; then
+  mkdir -p evals/results/2026-01-01T00-00-00Z
+  echo '<html>report</html>' > evals/results/2026-01-01T00-00-00Z/report.html
+fi
 echo '{"schemaVersion":1,"partial":false,"costUsd":0.1,"aggregates":{"casesTotal":3,"casesPassed":3,"overallScore":1,"meanDelta":0.5},"cases":[{"name":"good-1","arms":{"with":[{"score":1},{"score":1}],"without":[{"score":0},{"score":1}]}}]}' > "$out"
 SH
 chmod +x "$STUB"
 
 STUB_ARGS="$ARGS" SKILL_EVAL_CLAUDE_BIN="$STUB" python3 - "$ROOT" "$PROJ" "$OUT" <<'PY'
-import os, sys, time
+import json, os, shutil, sys, time
 from pathlib import Path
 sys.path.insert(0, os.path.join(sys.argv[1], "tools", "sprint-check-app"))
 import server
@@ -116,12 +119,12 @@ assert run(skills / "hooky", trust=True)["ok"]
 wait(skills / "hooky")
 
 # A report path that round-tripped through state but sits outside the cache is refused.
-server._SKILL_EVAL_RUNS[(str(proj), str((skills / "good").resolve()))]["report_path"] = "/etc/hosts"
+server._SKILL_EVAL_RUNS[server._skill_eval_key(proj, (skills / "good").resolve())]["report_path"] = "/etc/hosts"
 assert "outside this run's cache dir" in server.get_skill_eval_report(proj, str(skills / "good"))["error"]
 # ...and so is a real report belonging to a different run (another tag dir under the same cache).
 other = server.SKILL_EVAL_CACHE / "0123456789ab" / "evals" / "results" / "x"
 other.mkdir(parents=True, exist_ok=True); (other / "report.html").write_text("<html>other</html>")
-server._SKILL_EVAL_RUNS[(str(proj), str((skills / "good").resolve()))]["report_path"] = str(other / "report.html")
+server._SKILL_EVAL_RUNS[server._skill_eval_key(proj, (skills / "good").resolve())]["report_path"] = str(other / "report.html")
 assert "outside this run's cache dir" in server.get_skill_eval_report(proj, str(skills / "good"))["error"]
 import shutil; shutil.rmtree(server.SKILL_EVAL_CACHE / "0123456789ab")
 
@@ -175,6 +178,45 @@ for i in range(200):
 assert server._SKILL_EVAL_RUNS == before, "a refused model started a job"
 print("sprint-check-skill-eval: run fuzz ok")
 
+# The busy guard is keyed by the resolved project root: a symlinked spelling cannot start a second run.
+G = skills / "good"
+link = proj.parent / "projlink"; link.symlink_to(proj)
+os.environ["STUB_SLEEP"] = "2"
+a = server.start_skill_eval_run(proj, str(G), "", True, False, 3.0)
+b = server.start_skill_eval_run(link, str(G), "", True, False, 3.0)
+assert a["ok"] and b.get("busy") is True, (a, b)
+wait(G); os.environ["STUB_SLEEP"] = "0"; link.unlink()
+
+# A run that produces no report must not serve the previous run's report.
+assert server.get_skill_eval_report(proj, str(G))["ok"]
+os.environ["NO_REPORT"] = "1"
+assert server.start_skill_eval_run(proj, str(G), "", True, False, 3.0)["ok"]; wait(G)
+del os.environ["NO_REPORT"]
+assert server.get_skill_eval_report(proj, str(G)) == {"ok": False, "error": "no report yet"}, server.get_skill_eval_report(proj, str(G))
+
+# A project-controlled state file (or .reports link) must not crash the endpoints or redirect a write.
+sf = server._skill_eval_state_path(proj); gk = str(G.resolve())
+bodies = ["[]", '"x"', "null", "1", "{not json", json.dumps({gk: "x"}), json.dumps({gk: {"status": "done", "report_path": 123}}),
+          json.dumps({gk: {"status": "done", "report_path": ["a"]}}), json.dumps({gk: {"status": 5, "summary": "s", "report_path": None}})]
+random.seed(20260922)
+def blob(n=0):
+    return random.choice([None, 1, "x", [], {}, True, 2.5, [blob(n + 1)] if n < 3 else 0, {"a": blob(n + 1)} if n < 3 else 0, {gk: blob(n + 1)} if n < 3 else 0])
+bodies += [json.dumps(blob()) for _ in range(100)]
+for body in bodies:
+    sf.write_text(body); server._SKILL_EVAL_RUNS.clear()
+    for fn in (server.get_skill_eval_state, server.get_skill_eval_report):
+        r = fn(proj, str(G)); assert isinstance(r, dict), (body, r)
+shutil.rmtree(proj / ".reports", ignore_errors=True)
+outr = proj.parent / "outside-reports"; outr.mkdir(exist_ok=True); (proj / ".reports").symlink_to(outr)
+assert server.start_skill_eval_run(proj, str(G), "", True, False, 3.0)["ok"]; wait(G)
+assert not any(outr.iterdir()), "state was written through a project-controlled .reports link"
+(proj / ".reports").unlink()
+assert server.start_skill_eval_run(proj, str(G), "", True, False, 3.0)["ok"]; wait(G)   # leave a good persisted run for the HTTP layer below
+
+# A huge integer cost cap must fall back like any other bad number.
+assert server.start_skill_eval_run(proj, str(skills / "hooky"), "", True, True, 10**400)["max_cost_usd"] == 3.0
+wait(skills / "hooky")
+
 # A non-finite cost cap must fall back to the default, never reach claude as 'nan'/'inf'.
 for cap in (float("nan"), float("inf"), "nan", None):
     assert server.start_skill_eval_run(proj, str(skills / "hooky"), "", True, True, cap)["max_cost_usd"] == 3.0, cap
@@ -200,6 +242,9 @@ assert_eq false "$(jq -r .ok <<<"$body")"
 assert_eq 403 "$(post -o /dev/null -w '%{http_code}' -H 'Origin: http://evil.example' -d '{}' "$U")"
 assert_eq 403 "$(post -o /dev/null -w '%{http_code}' -H 'Host: evil.example' -d '{}' "$U")"
 assert_eq 400 "$(post -o /dev/null -w '%{http_code}' -d '{}' "$U?project=nope")"
+for body in '[1]' '"x"' 'null' '1'; do   # every POST route reads payload.get: a non-object body is a 400, not a dropped connection
+  assert_eq 400 "$(post -o /dev/null -w '%{http_code}' -d "$body" "$U")"
+done
 run_body="$(post -d "{\"skill_dir\":\"$PROJ/.claude/skills/good\"}" "http://127.0.0.1:$PORT/api/skill-eval/run")"
 assert_contains "$run_body" "confirm_cost"
 # The finished run above persisted its state, so a fresh server serves its report in a sandboxed origin.

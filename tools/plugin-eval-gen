@@ -64,6 +64,8 @@ for ((i = 0; i < count; i++)); do
   case "$idtype" in string|number) ;; *) echo "plugin-eval-gen: case $i has no usable id (a string or number is required)" >&2; exit 2 ;; esac
   id=$(jq -r ".evals[$i].id" "$src")
   [[ "$id" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "plugin-eval-gen: case $i has an unsafe id (letters, digits, _ and - only)" >&2; exit 2; }
+  jq -e ".evals[$i] | (.prompt | type) == \"string\" and (.expectations | type) == \"array\" and ([.expectations[] | type] | all(. == \"string\"))" "$src" >/dev/null 2>&1 \
+    || { echo "plugin-eval-gen: case $i needs a text prompt and a list of text expectations" >&2; exit 2; }
 done
 
 plugin="$ROOT/$out"

@@ -111,6 +111,16 @@ for good in '1' '-1' '"a-1"' '"todo_conv-2"'; do
   ID="$(mkidskill "$good")"; rc=0; "$GEN" --skill-dir "$ID" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 0 "$rc"; rm -rf "$(dirname "$ID")"
 done
 
+# A case with a non-text prompt or non-text expectations is refused before anything is written (jq used to die mid-way).
+for shape in '"prompt":5,"expectations":["e"]' '"prompt":"p","expectations":"x"' '"prompt":"p","expectations":[1]' '"prompt":"p"' '"expectations":["e"]' '"prompt":["p"],"expectations":["e"]'; do
+  ID="$(mktemp -d)/badtype"; mkdir -p "$ID/evals"; cp "$ROOT/tests/fixtures/skill-check/good/SKILL.md" "$ID/"
+  printf '{"evals":[{"id":1,"case_type":"control",%s}]}' "$shape" > "$ID/evals/evals.json"
+  rm -rf "$OUT/evals"
+  rc=0; "$GEN" --skill-dir "$ID" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
+  [[ ! -e "$OUT/evals" ]] || fail "a refused case type left output behind: $shape"
+  rm -rf "$(dirname "$ID")"
+done
+
 # A non-array "evals" is a usage error (exit 2), not a jq crash.
 for shape in '{"evals":"x"}' '{"evals":{"a":1}}' '[1]' 'null' '{}'; do
   ID="$(mktemp -d)/shape"; mkdir -p "$ID/evals"; cp "$ROOT/tests/fixtures/skill-check/good/SKILL.md" "$ID/"; printf '%s' "$shape" > "$ID/evals/evals.json"
