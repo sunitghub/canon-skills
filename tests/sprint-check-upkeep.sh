@@ -146,7 +146,7 @@ for m in cases["bad"]:
     assert r.get("ok") is False and "model" in r.get("error", ""), (m, r)
 assert not log.exists() and not server._UPKEEP_RUNS, "a refused model started an upkeep job"
 # Good models still start (the stub prints a report path and exits 0).
-for m in cases["good"][:3] + ["sonnet[1m]"]:
+for m in cases["good"]:
     r = server.start_upkeep_run(proj, "context-check", m)
     assert r.get("ok") is True, (m, r)
     for _ in range(100):
@@ -179,5 +179,34 @@ for m in cases["good"]:
 assert not (Path(workdir) / "claude-invocations.log").exists(), "claude was invoked"
 print("sprint-check-upkeep: model id (t-be1f) ok in python and bash")
 PY
+
+# The handlers apply the empty-model default BEFORE the rule (an empty string is not a model id but must still run),
+# and a refused model is reported to the caller. Real board server, stub upkeep-run that logs its argv.
+if command -v curl >/dev/null 2>&1; then
+  PORT="$(python3 -c 'import socket;s=socket.socket();s.bind(("127.0.0.1",0));print(s.getsockname()[1]);s.close()')"
+  mkdir -p "$WORKDIR/proj-http"
+  : > "$WORKDIR/upkeep-invocations.log"
+  UPKEEP_RUN_BIN="$STUB_OK" SPRINT_CHECK_ROOT="$WORKDIR/proj-http" python3 "$ROOT/tools/sprint-check-app/server.py" "$PORT" >/dev/null 2>&1 &
+  SRV=$!
+  trap 'kill "$SRV" 2>/dev/null || true; rm -rf "$WORKDIR"' EXIT
+  for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$PORT/api/git" && break; sleep 0.1; done
+  up_post() { curl -s -X POST -H 'Content-Type: application/json' -d "$1" "http://127.0.0.1:$PORT/api/upkeep/run"; }
+  up_wait() { for _ in $(seq 1 100); do [[ "$(curl -s "http://127.0.0.1:$PORT/api/upkeep/status?skill=context-check" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("status"))')" != "running" ]] && return 0; sleep 0.05; done; return 1; }
+  body="$(up_post '{"skill":"context-check","model":""}')"; up_wait
+  assert_contains "$body" '"ok": true'
+  assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model claude-haiku-4-5-20251001"
+  : > "$WORKDIR/upkeep-invocations.log"
+  body="$(up_post '{"skill":"context-check"}')"; up_wait                       # model omitted: same default
+  assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model claude-haiku-4-5-20251001"
+  : > "$WORKDIR/upkeep-invocations.log"
+  body="$(up_post '{"skill":"context-check","model":"claude-sonnet-5"}')"; up_wait
+  assert_contains "$(cat "$WORKDIR/upkeep-invocations.log")" "--model claude-sonnet-5"
+  : > "$WORKDIR/upkeep-invocations.log"
+  body="$(up_post '{"skill":"context-check","model":"--allow-tools"}')"
+  assert_contains "$body" "model must be a plain model id"
+  [[ ! -s "$WORKDIR/upkeep-invocations.log" ]] || fail "a refused model reached upkeep-run"
+  kill "$SRV" 2>/dev/null || true; wait "$SRV" 2>/dev/null || true
+  echo "sprint-check-upkeep: empty-model default and refusal over HTTP (t-be1f) ok"
+fi
 
 echo "sprint-check-upkeep: ok (resolver prefers .cmd on Windows, bash script elsewhere, env override wins; failed-run output persisted to upkeepRuns.json AND surfaced via get_upkeep_run_state, bounded to the configured 2048-byte tail)"

@@ -1605,8 +1605,7 @@ def get_headless_run_state(ticket_id: str) -> dict:
 # by (root, skill) instead of ticket id — the only background-job pattern in
 # this codebase, reused rather than inventing a second one.
 UPKEEP_SKILLS = ('context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings')
-# A model string reaches `claude --model`: no leading dash, no whitespace or shell characters; allows sonnet[1m] and
-# Bedrock ...:0. Ported to tools/upkeep-run and sprint-check-go; tests/fixtures/model-id-cases.json locks the three.
+# Reaches `claude --model`. Ported to tools/upkeep-run and sprint-check-go; tests/fixtures/model-id-cases.json locks all three.
 _MODEL_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}')
 
 def _resolve_upkeep_run_bin(os_name: str) -> Path:
@@ -1916,7 +1915,7 @@ def start_skill_eval_run(root: Path, raw: str, model: str, confirm_cost: bool,
     if confirm_cost is not True:
         return {'ok': False, 'error': 'confirm_cost required: this run spends model usage'}
     if model and not _MODEL_RE.fullmatch(model):
-        return {'ok': False, 'error': 'model must be a plain model id (letters, digits, . _ -)'}
+        return {'ok': False, 'error': 'model must be a plain model id (letters, digits, . _ : [ ] -)'}
     chk = skill_eval_check(root, raw)
     if not chk.get('ok'):
         return chk

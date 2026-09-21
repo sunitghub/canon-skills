@@ -2554,8 +2554,7 @@ func runUpkeep(root, skill, model string) {
 	})
 }
 
-// upkeepModelRe is the model-id rule (a string reaching `claude --model`); same rule as server.py's _MODEL_RE and
-// tools/upkeep-run, locked by tests/fixtures/model-id-cases.json.
+// Same model-id rule as server.py's _MODEL_RE and tools/upkeep-run; tests/fixtures/model-id-cases.json locks all three.
 var upkeepModelRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}$`)
 
 func validUpkeepModel(model string) bool { return upkeepModelRe.MatchString(model) }
