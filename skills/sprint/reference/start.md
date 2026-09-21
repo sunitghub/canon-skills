@@ -92,7 +92,8 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      paths — and assert it fails cleanly (a structured error, never a traceback or a silently
      unenforced limit). A short random loop of a few hundred cases is enough. Live-caught:
      `t-57df`'s evaluator failed twice on crashes a pre-gate fuzz would have found, and `t-23d8`'s
-     reviewer found a NaN cost cap and inner symlinks the same way.
+     reviewer found a NaN cost cap and inner symlinks the same way. For `Tier: high-risk` sprints of
+     this kind, plan the optional advisory break-it gate too (`reference/break-it.md`).
    - **Scenario-backed acceptance criteria (optional — for input→output claims).** A criterion
      that is a genuine input→output claim MAY carry a Given/When/Then block — an inline
      ` ```gherkin ` block (`t-6e32`), or a ` ```gherkin-file ` reference to a ticket-local

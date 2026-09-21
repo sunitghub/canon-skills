@@ -21,7 +21,7 @@ Wait for explicit confirmation. Don't proceed on a broad instruction like "resum
 Steps run in order (2-3 are the fresh-context gates; the rest run in the main session):
 - 1. Wrapup (pipeline gates)
 - 2. Reviewer gate (normal+)
-- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory mutation-test may run after
+- 3. Evaluator review (non-trivial tiers — normal, high-risk, bugfix) — advisory mutation-test and break-it may run after
 - 4. Test verification
 - 5. Acceptance check
 - 6. DECISIONS.md
@@ -112,6 +112,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | doc-audit | ran | README updated |
    | eval | ran | verdict: pass — eval-report.md written (model: haiku) |
    | mutation-test | skipped | advisory — no logic files changed |
+   | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
 
    `code-reviewer` and `reviewer` are distinct gates — `code-reviewer` is wrapup's in-context
@@ -433,6 +434,14 @@ Opus` default, scoped only to the two close-gate dispatches below.
    Wrapup Gates table (`ran | N surviving mutants (advisory)` or `skipped | no logic files
    changed`). When it runs inside a sprint it writes `.tickets/<id>/mutation-report.md`. No CLI
    close gate depends on it — see the skill's Promotion path.
+
+   **Break-it (advisory, high-risk or untrusted-input sprints).** Optionally dispatch an isolated
+   hostile-input subagent on a history-free snapshot of the changed code — read
+   `skills/sprint/reference/break-it.md` and follow it. It never blocks close; re-run every claim it
+   makes yourself, triage each reproduced defect (fix with a regression test / ticket / accept with a
+   reason), and record the outcome in the Wrapup Gates table (`ran | N of M claims reproduced, K fixed
+   (advisory)` or `skipped | <reason>`). One pass; a second only if the first found a medium-or-higher
+   defect you fixed.
 
 4. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - **Coverage check, before grading individual items.** Confirm every `acceptance.md ## Criteria`
