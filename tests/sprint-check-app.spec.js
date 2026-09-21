@@ -5998,3 +5998,97 @@ test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
     await expect.poll(() => capture.runBody && capture.runBody.allow_trust).toBe(true);
   });
 });
+
+test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
+  const PROJECTS = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-15' }];
+  const CARDS = ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings', 'skill-eval'];
+  async function open(page, width = 1100) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    await page.route('**/api/upkeep/status*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'idle', report_path: '' }) }));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-upkeep').click();
+    await expect(page.locator('#up-card-context-check')).toBeVisible();
+    await expect(page.locator('#se-card .rc-title')).toBeVisible();   // seRender runs after the grid; clicking its "?" earlier races the re-render
+  }
+  const btn = (page, id) => page.locator(`[data-help="${id}"] .rc-help`);
+  const pop = (page, id) => page.locator(`[data-help="${id}"] .rc-pop`);
+
+  test('every card has a real "?" button that toggles a non-modal popover with the expected sections', async ({ page }) => {
+    await open(page);
+    for (const id of CARDS) {
+      await expect(btn(page, id)).toHaveAttribute('aria-expanded', 'false');
+      await expect(btn(page, id)).toHaveAccessibleName(/About /);
+      await page.mouse.move(600, 20);   // a lingering hover lifts the card above (translateY)
+      // force: Playwright's "stable" wait on this button times out about once in 25 runs under CPU load although its box never
+      // moves (sampled: one position for 2s in 8 parallel browsers); the real mouse events are still dispatched.
+      await btn(page, id).click({ force: true });
+      await expect(btn(page, id)).toHaveAttribute('aria-expanded', 'true');
+      await expect(pop(page, id)).toBeVisible();
+      await expect(btn(page, id)).toHaveAttribute('aria-controls', `up-help-${id}`);
+      await btn(page, id).click({ force: true });                    // second click closes
+      await expect(pop(page, id)).toHaveCount(0);
+      await expect(btn(page, id)).toHaveAttribute('aria-expanded', 'false');
+    }
+    await btn(page, 'promote-learnings').click();
+    for (const h of ['How it happens', 'Why it runs', 'Where learnings come from', 'What it does not do', 'Cost'])
+      await expect(pop(page, 'promote-learnings')).toContainText(h, { ignoreCase: true });
+    await expect(pop(page, 'promote-learnings')).toContainText('tkt learn');
+    await btn(page, 'skill-eval').click();
+    for (const h of ['The three stages', 'What we hand to plugin eval', 'Limits'])
+      await expect(pop(page, 'skill-eval')).toContainText(h, { ignoreCase: true });
+    await expect(pop(page, 'promote-learnings')).toHaveCount(0);      // opening another closes the first
+  });
+
+  test('Escape and an outside click close it; a click inside does not', async ({ page }) => {
+    await open(page);
+    await btn(page, 'context-check').click();
+    await pop(page, 'context-check').locator('.rc-pop-lead').click();
+    await expect(pop(page, 'context-check')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(pop(page, 'context-check')).toHaveCount(0);
+    await btn(page, 'context-check').click();
+    await page.locator('.up-h1').click();
+    await expect(pop(page, 'context-check')).toHaveCount(0);
+    await btn(page, 'context-check').click();
+    await pop(page, 'context-check').getByRole('button', { name: 'Close' }).click();
+    await expect(pop(page, 'context-check')).toHaveCount(0);
+  });
+
+  test('it is non-modal: another card stays operable and no scrim appears', async ({ page }) => {
+    await open(page);
+    await btn(page, 'promote-learnings').click();
+    await expect(pop(page, 'promote-learnings')).toBeVisible();
+    await expect(page.locator('.scrim.show')).toHaveCount(0);
+    const sel = page.locator('#up-model-context-check');
+    await expect(sel).toBeEnabled();
+    await sel.selectOption('claude-sonnet-5');                       // works while the popover is open (it closes on that outside click)
+    await expect(sel).toHaveValue('claude-sonnet-5');
+  });
+
+  test('it survives a card re-render (status polling) while open', async ({ page }) => {
+    await open(page);
+    await btn(page, 'dead-code-cleanup').click();
+    await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
+    await page.evaluate(() => upRenderGrid());                       // what the 3s poll does when a run finishes
+    await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
+    await expect(btn(page, 'dead-code-cleanup')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  for (const width of [1100, 600]) {
+    test(`the popover stays inside the window and clear of the sidebar at ${width}px`, async ({ page }) => {
+      await open(page, width);
+      for (const id of CARDS) {
+        await btn(page, id).click();
+        const b = await pop(page, id).boundingBox();
+        const main = await page.locator('.main').boundingBox();
+        expect(b.x).toBeGreaterThanOrEqual(main.x - 1);
+        expect(b.x + b.width).toBeLessThanOrEqual(main.x + main.width + 1);
+        expect(b.y).toBeGreaterThanOrEqual(-1);
+        expect(b.y + b.height).toBeLessThanOrEqual(900 + 1);   // flips upward / shrinks instead of running off the bottom
+        await btn(page, id).click();
+      }
+    });
+  }
+});

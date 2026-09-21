@@ -222,6 +222,30 @@
   .se-ack{display:flex;gap:9px;align-items:flex-start;margin-top:10px;font-size:12.5px;line-height:1.45;cursor:pointer}
   .se-ack input{width:18px;height:18px;flex:none;margin:0;accent-color:var(--accent);cursor:pointer}
   .se-err{color:var(--col-discarded);font-size:12.5px}
+  /* ---- "?" info popovers (t-576f): non-modal, anchored to the button, closes on Esc / outside click ---- */
+  .rcard{position:relative}
+  .rcard:has(.rc-pop){z-index:30}
+  .rc-help-wrap{position:relative;flex:none}
+  .rc-help{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--text-muted);font:700 12px/1 inherit;cursor:pointer;display:grid;place-items:center;transition:color .12s ease,border-color .12s ease,background .12s ease}
+  .rc-help:hover,.rc-help[aria-expanded="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-dim)}
+  .rc-help:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .rc-pop{position:absolute;z-index:40;top:36px;right:-6px;width:min(400px,calc(100vw - 56px));background:var(--panel);border:1px solid var(--border-hover);border-radius:12px;box-shadow:0 18px 40px -12px rgba(0,0,0,.55),0 0 0 3px var(--accent-dim);text-align:left;cursor:auto}
+  .rc-pop::before{content:"";position:absolute;top:-6px;right:14px;width:10px;height:10px;background:var(--panel);border-left:1px solid var(--border-hover);border-top:1px solid var(--border-hover);transform:rotate(45deg)}
+  .rc-pop.up{top:auto;bottom:36px}
+  .rc-pop.up::before{top:auto;bottom:-6px;transform:rotate(225deg)}
+  .rc-pop-body{padding:16px 18px 14px;max-height:min(68vh,520px);overflow:auto;scrollbar-width:thin;scrollbar-color:var(--accent) var(--border-muted)}
+  .rc-pop-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px}
+  .rc-pop-title{font-weight:700;font-size:14.5px}
+  .rc-pop-x{border:0;background:transparent;color:var(--text-muted);font-size:18px;line-height:1;cursor:pointer;border-radius:6px;padding:2px 6px}
+  .rc-pop-x:hover{color:var(--text);background:var(--border-muted)}
+  .rc-pop-lead{color:var(--text-body);font-size:12.5px;line-height:1.5;margin:0 0 10px}
+  .rc-pop-sec{border-top:1px solid var(--border-muted);padding-top:10px;margin-top:10px}
+  .rc-pop-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px}
+  .rc-pop-sec p{color:var(--text-body);font-size:12.5px;line-height:1.55;margin:0}
+  .rc-pop-sec code{font-family:ui-monospace,monospace;font-size:11.5px;background:var(--bg);border:1px solid var(--border-muted);border-radius:5px;padding:0 5px}
+  .rc-pop-facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted)}
+  .rc-pop-fact{font-size:11.5px;color:var(--text-body);background:var(--accent-dim);border-radius:8px;padding:3px 9px}
+  .rc-pop-fact b{color:var(--accent);font-weight:700;margin-right:4px}
   .up-empty{color:var(--text-dim);font-size:13px;padding:30px 0;text-align:center}
   .up-prose h3{color:var(--text);font-size:14px;margin:18px 0 8px;font-weight:700;padding-bottom:6px;border-bottom:1px solid var(--border-muted)}
   .up-prose h3:first-child{margin-top:0}
@@ -444,7 +468,7 @@
           <div class="projrow" id="up-projrow"></div>
           <div class="sec-order">Sorted oldest run first &#8593;</div>
           <div class="up-grid" id="up-grid"></div>
-          <div class="rcard se-card" id="se-card"></div>
+          <div class="rcard se-card" id="se-card" data-help="skill-eval"></div>
           <div class="up-detail" id="up-detail">
             <div class="up-detail-head" onclick="upToggleCollapse()">
               <div>
@@ -802,6 +826,88 @@
     {id:'dead-code-cleanup', icon:'&#9986;', title:'dead-code-cleanup', desc:'Scans for unreferenced symbols. Advisory-first — never deletes without confirmation.'},
     {id:'promote-learnings', icon:'&#8593;', title:'promote-learnings', desc:'Fresh-context review of pending LEARNINGS.md rows — proposes promotions, never writes unconfirmed.'},
   ];
+  // ── "?" info popovers (t-576f). Text is sourced from tools/upkeep-run's header, each skill's SKILL.md,
+  // skills/sprint/reference/complete.md and the plugin-evals doc; keep it in step with them. ──
+  const UP_HOW='Click Run and the board starts <code>upkeep-run</code>, which launches a fresh, headless <code>claude -p</code> session against this project. The skill\'s own SKILL.md is checked against a pinned hash first, so a tampered copy is refused. It reads the repo and writes one Markdown report under the project\'s <code>.reports/</code>; you read it here with View report.';
+  const UP_NOT='It does not edit your code or config, does not run shell commands, and never auto-executes the report\'s Next Steps. Its tools are limited to reading plus writing the one report; the single-file limit itself is enforced by the prompt, not by the tool.';
+  const UP_COST='One real model call on your account: Haiku 4.5 by default, Sonnet 5 if you pick it. On a subscription it counts against your plan usage.';
+  const UP_HELP={
+    'skill-eval':{title:'Skill Eval',
+      lead:"Checks that a skill folder ships evals and follows Anthropic's skill-authoring rules, then measures the skill with and without it.",
+      sections:[
+        ['The three stages','<b>1 Eval coverage</b> (free): does <code>evals/evals.json</code> exist with enough varied cases? <b>2 Best practices</b> (free): frontmatter, description, size and trust checks based on Anthropic\'s published rules. <b>3 Plugin eval</b> (paid): runs <code>claude plugin eval</code>. Stage 3 unlocks only when stages 1 and 2 have no failure.'],
+        ['What we hand to plugin eval','Your <code>evals.json</code> is converted to eval cases. Each gets an LLM-judge rubric built from its expectations, plus a check that the skill actually fired. Every case runs twice with the skill and twice without it (the baseline); the difference is the skill\'s effect. The grading itself is Anthropic\'s <code>claude plugin eval</code>.'],
+        ['Limits','Scores come from an LLM judge, so they are only as good as your evals. Runs happen in an empty workspace with read-only tools, and expectations about saving memory are dropped. Skills that only run inside another workflow, like wrapup, cannot be scored this way. Canon\'s own skills are never picked here.']],
+      facts:[['Cost','stage 3 uses your Claude usage, capped near $3 (list price) per run'],['Writes','run state in the project\'s .reports/skillEvalRuns.json; reports stay in canon\'s cache']]},
+    'context-check':{title:'context-check',
+      lead:'Audits how heavy and redundant your always-on context is.',
+      sections:[['How it happens',UP_HOW],
+        ['Why it runs','Files such as CLAUDE.md and AGENTS.md load into every session, so bloat there costs tokens and attention on every turn. Run it when sessions feel heavy, or periodically to keep the always-on budget lean.'],
+        ['What it does not do',UP_NOT],
+        ['Cost',UP_COST]],
+      facts:[['Reads','always-on context files'],['Writes','one report']]},
+    'context-doctor':{title:'context-doctor',
+      lead:"Audits your repo's agent context against context-engineering lessons for the Claude model you run.",
+      sections:[['How it happens',UP_HOW],
+        ['Why it runs','It looks at the system prompt, CLAUDE.md/AGENTS.md, skills and references and reports what to tighten for Claude 4/5 models. The model is detected from the running session.'],
+        ['What it does not do',UP_NOT],
+        ['Cost',UP_COST]],
+      facts:[['Reads','agent context, skills, references'],['Writes','one report']]},
+    'dead-code-cleanup':{title:'dead-code-cleanup',
+      lead:'Finds likely-unreferenced symbols so you can consider removing them.',
+      sections:[['How it happens',UP_HOW],
+        ['Why it runs','It scans for top-level symbols with no references (JS/TS exports, Python def/class, Go exported functions) and ranks removal candidates as high or low confidence. It is a heuristic, so a candidate can be wrong.'],
+        ['What it does not do','Run from Upkeep it never reaches its deletion step: nothing is removed. '+UP_NOT],
+        ['Cost',UP_COST]],
+      facts:[['Reads','source files'],['Writes','one report']]},
+    'promote-learnings':{title:'promote-learnings',
+      lead:"A fresh-context review of pending learnings rows. It proposes where each durable one belongs and never writes it.",
+      sections:[['How it happens',UP_HOW+' It reads the UNPROMOTED rows in LEARNINGS.md, then each row\'s source <code>.tickets/&lt;id&gt;/learnings.md</code> in full.'],
+        ['Why it runs','The sprint that produced a lesson cannot judge whether it generalises, so promotion must be done by a reader with no memory of that sprint. Every Upkeep run is a fresh subprocess, so that holds automatically. For each durable row it proposes one destination, such as a file under <code>standards/</code>.'],
+        ['Where learnings come from','<b>1</b> <code>tkt learn &lt;id&gt;</code> distils a closed sprint\'s non-delivered plan rows and evaluator findings into an UNPROMOTED <code>.tickets/&lt;id&gt;/learnings.md</code>. <b>2</b> <code>learnings-sweep</code> indexes those into LEARNINGS.md. <b>3</b> This card judges them.'],
+        ['What it does not do','It never writes LEARNINGS.md, <code>standards/</code> or <code>critique/</code>. Promoting stays a separate, human-confirmed step. '+UP_NOT],
+        ['Cost',UP_COST]],
+      facts:[['Reads','LEARNINGS.md and ticket learnings'],['Writes','one report']]}
+  };
+  let upHelpOpen=null;
+  function upHelpBtn(id){
+    const h=UP_HELP[id]; if(!h) return '';
+    return `<span class="rc-help-wrap"><button type="button" class="rc-help" aria-label="About ${escAttr(h.title)}" aria-expanded="${upHelpOpen===id}" aria-controls="up-help-${id}" onclick="upHelpToggle('${id}')">?</button></span>`;
+  }
+  function upHelpPanelHTML(id){
+    const h=UP_HELP[id];
+    return `<div class="rc-pop" id="up-help-${id}" role="region" aria-label="About ${escAttr(h.title)}"><div class="rc-pop-body">`
+      +`<div class="rc-pop-head"><span class="rc-pop-title">${esc(h.title)}</span><button type="button" class="rc-pop-x" aria-label="Close" onclick="upHelpClose()">&times;</button></div>`
+      +`<p class="rc-pop-lead">${esc(h.lead)}</p>`
+      +h.sections.map(s=>`<div class="rc-pop-sec"><div class="rc-pop-eyebrow">${esc(s[0])}</div><p>${s[1]}</p></div>`).join('')
+      +`<div class="rc-pop-facts">${h.facts.map(f=>`<span class="rc-pop-fact"><b>${esc(f[0])}</b>${esc(f[1])}</span>`).join('')}</div>`
+      +'</div></div>';
+  }
+  // Keeps the DOM in step with upHelpOpen; called after every card (re)render so a poll refresh does not close it.
+  function upHelpSync(){
+    document.querySelectorAll('[data-help]').forEach(card=>{
+      const id=card.dataset.help, open=upHelpOpen===id;
+      const btn=card.querySelector('.rc-help'); if(btn) btn.setAttribute('aria-expanded',String(open));
+      const wrap=card.querySelector('.rc-help-wrap'); if(!wrap) return;
+      const pop=wrap.querySelector('.rc-pop');
+      if(open&&!pop){ wrap.insertAdjacentHTML('beforeend',upHelpPanelHTML(id)); upHelpPlace(wrap.querySelector('.rc-pop')); }
+      else if(!open&&pop) pop.remove();
+    });
+  }
+  // Open downward unless there is more room above; cap the body height to the room actually available.
+  function upHelpPlace(pop){
+    const w=pop.parentElement.getBoundingClientRect(), below=window.innerHeight-w.bottom-44, above=w.top-16;
+    const up=below<300&&above>below;
+    pop.classList.toggle('up',up);
+    const main=document.querySelector('.main');   // never spill under the sidebar on a narrow window
+    if(main) pop.style.width=Math.max(220,Math.min(400,w.right+6-main.getBoundingClientRect().left-12))+'px';
+    pop.querySelector('.rc-pop-body').style.maxHeight=Math.max(160,Math.min(520,up?above:below))+'px';
+  }
+  function upHelpToggle(id){ upHelpOpen=(upHelpOpen===id)?null:id; upHelpSync(); }
+  function upHelpClose(){ upHelpOpen=null; upHelpSync(); }
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&upHelpOpen) upHelpClose(); });
+  document.addEventListener('click',e=>{ if(upHelpOpen&&!e.target.closest('.rc-pop,.rc-help')) upHelpClose(); });
+
   let upProjectId=null;
   const upPollTimers={};
 
@@ -855,6 +961,7 @@
       return av-bv;
     });
     document.getElementById('up-grid').innerHTML=rows.map(({s,st})=>upCardHTML(s,st)).join('');
+    upHelpSync();
     rows.forEach(({s,st})=>{ if(st.status==='running') upStartPoll(s.id); });
   }
 
@@ -883,12 +990,12 @@
       ? `<button class="btn primary" onclick="upRun('${s.id}')"${running?' disabled':''}>&#9654; Run</button>`
       : `<button class="btn" onclick="upRun('${s.id}')"${running?' disabled':''}>&#8635; Run again</button>
          <button class="btn primary" onclick="upViewReport('${s.id}')">View report</button>`;
-    return `<div class="rcard" id="up-card-${s.id}">
+    return `<div class="rcard" id="up-card-${s.id}" data-help="${s.id}">
       <div class="rc-when mono">${esc(whenLine)}</div>
       <div class="rc-top">
         <div class="rc-icon">${s.icon}</div>
         <div class="rc-head"><div class="rc-title">${esc(s.title)}</div><p class="rc-desc">${esc(s.desc)}</p></div>
-        ${upStatusPill(st)}
+        ${upStatusPill(st)}${upHelpBtn(s.id)}
       </div>
       <div class="rc-config">${agentSel}${modelSel}${running?'<span class="rc-config-note">locked while running</span>':''}</div>
       <div class="rc-actions">${runBtn}</div>
@@ -983,7 +1090,7 @@
     const trust=rows.filter(r=>/^trust-/.test(r.id)&&r.status==='warn');
     const running=!!(se.run&&se.run.status==='running');
     let h=`<div class="rc-top"><div class="rc-icon">&#9878;</div><div class="rc-head"><div class="rc-title">Skill Eval</div>`
-      +`<p class="rc-desc">Check that a skill ships evals and follows Anthropic's authoring rules, then measure it with and without the skill.</p></div></div>`;
+      +`<p class="rc-desc">Check that a skill ships evals and follows Anthropic's authoring rules, then measure it with and without the skill.</p></div>${upHelpBtn('skill-eval')}</div>`;
     h+=`<div class="se-pick"><button class="btn" onclick="seToggleBrowse()">Browse…</button>`
       +`<span class="se-path">${se.dir?esc(se.dir):'Pick a skill folder inside '+esc(proj?proj.name:'the project')+' (the folder that contains SKILL.md)'}</span></div>`;
     if(se.open){
@@ -1014,6 +1121,7 @@
       h+='</div>';
     }
     el.innerHTML=h;
+    upHelpSync();
     if(se.open) seLoad(se.cwd);
   }
   // Explain the two real failures instead of "request failed": a board server started before this
