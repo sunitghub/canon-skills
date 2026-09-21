@@ -36,11 +36,13 @@ def check(cid, stage, status, evidence, fix=""):
 
 def parse_frontmatter(text):
     """Returns (fields, body, error). fields maps top-level key -> scalar/block text."""
+    text = text.replace("\r\n", "\n")
     if not text.startswith("---\n"):
         return None, text, "first line is not '---'"
-    end = text.find("\n---", 4)
-    if end == -1:
+    close = re.compile(r"\n---[ \t]*(\n|$)").search(text, 3)
+    if not close:
         return None, text, "no closing '---'"
+    end = close.start()
     fields, last = {}, None
     for line in text[4:end].split("\n"):
         m = re.match(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$", line)
@@ -49,7 +51,7 @@ def parse_frontmatter(text):
             fields[last] = m.group(2).strip().strip("'\"")
         elif last and (line.startswith((" ", "\t", "-"))):
             fields[last] = (fields[last] + " " + line.strip()).strip()
-    return fields, text[end + 4:], None
+    return fields, text[close.end():], None
 
 
 def stage1(skill_dir):
@@ -57,15 +59,17 @@ def stage1(skill_dir):
     if not path.is_file():
         return [check("evals-present", 1, "fail", f"{path} not found", EVALS_FIX)]
     try:
-        cases = json.loads(path.read_text(encoding="utf-8"))["evals"]
-        assert isinstance(cases, list)
-    except (ValueError, KeyError, AssertionError) as e:
-        return [check("evals-present", 1, "fail", f"{path} is not valid evals JSON ({e!r})", EVALS_FIX)]
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as e:
+        return [check("evals-present", 1, "fail", f"{path} is not valid JSON ({e!r})", EVALS_FIX)]
+    cases = data.get("evals") if isinstance(data, dict) else None
+    if not isinstance(cases, list):
+        return [check("evals-present", 1, "fail", f"{path} has no \"evals\" list", EVALS_FIX)]
     out = [check("evals-present", 1, "pass", f"{len(cases)} case(s) in evals/evals.json")]
     out.append(check("evals-count", 1, "pass" if len(cases) >= 3 else "warn",
                      f"{len(cases)} case(s); minimum is 3",
                      "" if len(cases) >= 3 else "Add cases until you cover the happy path, a must-follow rule, and an edge."))
-    bad = [str(c.get("id", i)) for i, c in enumerate(cases)
+    bad = [str(c.get("id", i)) if isinstance(c, dict) else str(i) for i, c in enumerate(cases)
            if not (isinstance(c, dict) and c.get("prompt") and c.get("expectations"))]
     out.append(check("evals-shape", 1, "warn" if bad else "pass",
                      f"cases missing prompt or expectations: {', '.join(bad)}" if bad else "every case has a prompt and expectations",

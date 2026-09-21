@@ -72,6 +72,26 @@ mkdir "$TMP/inject"; cp -R "$TMP/good/evals" "$TMP/inject/"
 printf -- '---\nname: inject\ndescription: d\n---\nBranch: !`git branch`\n' > "$TMP/inject/SKILL.md"
 run "$TMP/inject"; assert_eq warn "$(status "$out" trust-shell-injection)"
 
+# Malformed evals.json shapes must fail cleanly with JSON, never crash (rc 1, not a traceback).
+mkdir "$TMP/shape"; cp "$TMP/good/SKILL.md" "$TMP/shape/"; mkdir "$TMP/shape/evals"
+for bad in '[1,2]' 'null' '{"evals":"nope"}' '{"evals":null}'; do
+  echo "$bad" > "$TMP/shape/evals/evals.json"
+  run "$TMP/shape"; assert_eq 1 "$rc"
+  assert_eq fail "$(status "$out" evals-present)"
+done
+# A non-object entry inside a valid list is a shape warning, not a crash.
+echo '{"evals":[1,{"id":2,"case_type":"a","prompt":"p","expectations":["e"]},{"id":3,"case_type":"b","prompt":"p","expectations":["e"]}]}' > "$TMP/shape/evals/evals.json"
+run "$TMP/shape"; assert_eq 0 "$rc"
+assert_eq warn "$(status "$out" evals-shape)"
+
+# Frontmatter: CRLF line endings are fine; a '----' line is not the closing fence.
+mkdir "$TMP/crlf"; cp -R "$TMP/good/evals" "$TMP/crlf/"
+printf -- '---\r\nname: crlf\r\ndescription: d\r\n---\r\nbody\r\n' > "$TMP/crlf/SKILL.md"
+run "$TMP/crlf"; assert_eq 0 "$rc"; assert_eq pass "$(status "$out" frontmatter)"
+mkdir "$TMP/fence"; cp -R "$TMP/good/evals" "$TMP/fence/"
+printf -- '---\nname: fence\n----\ndescription: d\n---\nbody\n' > "$TMP/fence/SKILL.md"
+run "$TMP/fence"; assert_eq pass "$(status "$out" description-present)"
+
 # Must refuse: a path inside canon, including via a symlink; non-directory; bad usage.
 rc=0; "$TOOL" "$ROOT/skills/capture" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
 ln -s "$ROOT/skills/capture" "$TMP/link"
