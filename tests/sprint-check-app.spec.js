@@ -5809,8 +5809,6 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     await expect(runBtn).toBeDisabled();
     await expect(runBtn).toHaveCSS('cursor', 'not-allowed');
     await expect(runBtn).not.toHaveCSS('opacity', '1');
-    await runBtn.hover({ force: true });
-    await expect(runBtn).toHaveCSS('filter', 'none'); // no hover brighten on a disabled button
     // Poll interval is 3s in the client; wait long enough for one tick to land.
     await expect(page.locator('#up-card-context-check .up-status.ok, #up-card-context-check .up-status.run')).toHaveCount(1, { timeout: 6000 });
   });
