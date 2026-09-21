@@ -65,4 +65,12 @@ assert_eq 2 "$rc"
 rc=0; "$GEN" no-such-skill --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?
 assert_eq 1 "$rc"
 
+# Skill name is interpolated into a path that gets rm -rf'd, so path syntax must be refused.
+rm -rf "$OUT"
+for bad in .. ../x a/b Capture; do
+  rc=0; "$GEN" "$bad" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?
+  assert_eq 2 "$rc"
+  [[ ! -e "$OUT" ]] || fail "skill name '$bad' was rejected but a plugin dir was created"
+done
+
 echo "plugin-eval-gen: ok"
