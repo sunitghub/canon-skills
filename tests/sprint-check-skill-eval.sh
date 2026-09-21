@@ -132,6 +132,41 @@ assert "symbolic link" in err(lk), err(lk)
 assert not server.skill_eval_check(proj, str(lk))["ok"]
 assert not run(lk)["ok"]
 
+# t-a350: the model string reaches the claude argv, so only plain model ids are accepted.
+server._SKILL_EVAL_RUNS.clear()
+Path(os.environ["STUB_ARGS"]).write_text("")
+for bad in ("--allow-tools", "-x", "a b", "x;y", "m$(id)", "a/b", "x" * 65, "\n", "--model"):
+    r = server.start_skill_eval_run(proj, str(skills / "hooky"), bad, True, True, 3.0)
+    assert not r["ok"] and "model" in r["error"], (bad, r)
+assert not server._SKILL_EVAL_RUNS, "a refused model must not start a job"
+assert Path(os.environ["STUB_ARGS"]).read_text() == "", "claude was invoked for a refused model"
+for good in ("", "claude-sonnet-5", "claude-haiku-4-5-20251001", "opus"):
+    assert server.start_skill_eval_run(proj, str(skills / "hooky"), good, True, True, 3.0)["ok"], good
+    wait(skills / "hooky")
+
+# A hostile case id fails the check, so the run is refused before any file is generated.
+hid = skills / "hostid"; (hid / "evals").mkdir(parents=True); (hid / "SKILL.md").write_text((skills / "good" / "SKILL.md").read_text())
+(hid / "evals" / "evals.json").write_text('{"evals":[{"id":"x/../../../../../../tmp/PWN-a350","case_type":"a","prompt":"p","expectations":["e"]}]}')
+r = run(hid); assert not r["ok"] and "evals-ids" in r["error"], r
+assert not Path("/tmp/PWN-a350").exists()
+
+# Seeded fuzz of the run entry point: hostile argument types never raise and never start a job.
+import random
+random.seed(20260921)
+weird = [None, 1, -1, 2**70, 1.5, float("nan"), float("inf"), "", " ", "x", "--x", "a b", "\x00", "é", [], [1], {}, {"a": 1}, "true", 0]
+paths = [skills / "good", skills / "hooky", skills / "hostid", skills / "linky", out / "sneaky", "", "nope", "../..", "\x00"]
+before = dict(server._SKILL_EVAL_RUNS)
+for i in range(300):
+    model, cap, allow = str(random.choice(weird)), random.choice(weird), random.choice(weird)
+    confirm = random.choice([w for w in weird if w is not True])          # True is the one valid value, covered above
+    try:
+        r = server.start_skill_eval_run(proj, str(random.choice(paths)), model, confirm, allow, cap)
+    except Exception as e:                                                # noqa: BLE001 — the point of the fuzz
+        raise AssertionError(f"start_skill_eval_run raised {e!r} for {(model, cap, allow, confirm)!r}")
+    assert isinstance(r, dict) and r.get("ok") is False, r
+assert server._SKILL_EVAL_RUNS == before, "the fuzz started a job"
+print("sprint-check-skill-eval: run fuzz ok")
+
 # A non-finite cost cap must fall back to the default, never reach claude as 'nan'/'inf'.
 for cap in (float("nan"), float("inf"), "nan", None):
     assert server.start_skill_eval_run(proj, str(skills / "hooky"), "", True, True, cap)["max_cost_usd"] == 3.0, cap

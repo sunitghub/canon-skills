@@ -79,9 +79,10 @@ for bad in '[1,2]' 'null' '{"evals":"nope"}' '{"evals":null}'; do
   run "$TMP/shape"; assert_eq 1 "$rc"
   assert_eq fail "$(status "$out" evals-present)"
 done
-# A non-object entry inside a valid list is a shape warning, not a crash.
+# A non-object entry inside a valid list is reported, not a crash: no usable id fails (t-a350), shape warns.
 echo '{"evals":[1,{"id":2,"case_type":"a","prompt":"p","expectations":["e"]},{"id":3,"case_type":"b","prompt":"p","expectations":["e"]}]}' > "$TMP/shape/evals/evals.json"
-run "$TMP/shape"; assert_eq 0 "$rc"
+run "$TMP/shape"; assert_eq 1 "$rc"
+assert_eq fail "$(status "$out" evals-ids)"
 assert_eq warn "$(status "$out" evals-shape)"
 
 # Unhashable / odd-typed fields and pathological nesting must not crash either.
@@ -103,6 +104,80 @@ run "$TMP/crlf"; assert_eq 0 "$rc"; assert_eq pass "$(status "$out" frontmatter)
 mkdir "$TMP/fence"; cp -R "$TMP/good/evals" "$TMP/fence/"
 printf -- '---\nname: fence\n----\ndescription: d\n---\nbody\n' > "$TMP/fence/SKILL.md"
 run "$TMP/fence"; assert_eq pass "$(status "$out" description-present)"
+
+# --- t-a350: defects found by the t-46dc break-it trial --------------------------------
+GOODEVALS="$(cat "$ROOT/tests/fixtures/skill-check/good/evals/evals.json")"
+# mkskill <name> <SKILL.md as a printf format> [evals.json]
+mkskill() { local d="$TMP/$1"; mkdir -p "$d/evals"; printf '%b' "$2" > "$d/SKILL.md"; printf '%s' "${3:-$GOODEVALS}" > "$d/evals/evals.json"; }
+FM='---\nname: t\ndescription: d\n---\nbody\n'
+case3() { printf '{"evals":[{"id":%s,"case_type":"a","prompt":"p","expectations":["e"]},{"id":2,"case_type":"b","prompt":"p","expectations":["e"]},{"id":3,"case_type":"c","prompt":"p","expectations":["e"]}]}' "$1"; }
+
+# Case ids become directory names in the generator: path syntax must fail the check.
+for bad in '"x/../../../etc/y"' '".."' '"a/b"' '"/abs"' '""' '"has space"' '"a;b"' '["l"]' 'null'; do
+  mkskill ids "$FM" "$(case3 "$bad")"; run "$TMP/ids"; assert_eq 1 "$rc"; assert_eq fail "$(status "$out" evals-ids)"
+done
+for good in '1' '"a-1"' '"todo_conv-2"'; do
+  mkskill ids "$FM" "$(case3 "$good")"; run "$TMP/ids"; assert_eq pass "$(status "$out" evals-ids)"
+done
+mkskill ids "$FM" '{"evals":[{"id":1,"case_type":"a","prompt":"p","expectations":["e"]},{"id":"1","case_type":"b","prompt":"p","expectations":["e"]},{"id":3,"case_type":"c","prompt":"p","expectations":["e"]}]}'
+run "$TMP/ids"; assert_eq 0 "$rc"; assert_eq warn "$(status "$out" evals-ids)"   # duplicate ids overwrite each other's case dir
+
+# Trust: hooks must be detected however the key is written, and in ambiguous frontmatter.
+mkskill hq1 '---\nname: t\n"hooks":\n  a: b\n---\nb\n';   run "$TMP/hq1"; assert_eq warn "$(status "$out" trust-hooks)"
+mkskill hq2 "---\nname: t\n'hooks':\n  a: b\n---\nb\n";   run "$TMP/hq2"; assert_eq warn "$(status "$out" trust-hooks)"
+mkskill hq3 '---\nname: t\nhooks :\n  a: b\n---\nb\n';    run "$TMP/hq3"; assert_eq warn "$(status "$out" trust-hooks)"
+mkskill hq4 '---\nname: t\ndescription: "a\n---\nrest"\nhooks:\n  a: b\n---\nb\n'
+run "$TMP/hq4"; assert_eq warn "$(status "$out" trust-hooks)"; assert_eq warn "$(status "$out" frontmatter-fences)"
+mkskill hq5 "$FM"; run "$TMP/hq5"; assert_eq pass "$(status "$out" trust-hooks)"; assert_eq pass "$(status "$out" frontmatter-fences)"
+
+# Shell-injection and side-effect heuristics must not be evaded by adjacency, spacing or case.
+# shellcheck disable=SC2016  # the backticks are literal skill content
+{
+  mkskill si1 '---\nname: t\ndescription: d\n---\nx!`id`\n';               run "$TMP/si1"; assert_eq warn "$(status "$out" trust-shell-injection)"
+  mkskill si2 '---\nname: t\ndescription: d\n---\n(!`touch x`)\n';         run "$TMP/si2"; assert_eq warn "$(status "$out" trust-shell-injection)"
+  mkskill si3 '---\nname: t\ndescription: d\n---\nWow! Use `ls` here.\n';  run "$TMP/si3"; assert_eq pass "$(status "$out" trust-shell-injection)"
+}
+mkskill se1 '---\nname: t\ndescription: d\n---\nGIT   PUSH when done\n';    run "$TMP/se1"; assert_eq warn "$(status "$out" side-effects-guarded)"
+mkskill se2 '---\nname: t\ndescription: d\n---\nrun git\tcommit -m x\n';    run "$TMP/se2"; assert_eq warn "$(status "$out" side-effects-guarded)"
+
+# BOM: parsed, but reported.
+mkskill bom '\xef\xbb\xbf---\nname: t\ndescription: d\n---\nb\n'
+run "$TMP/bom"; assert_eq 0 "$rc"; assert_eq pass "$(status "$out" frontmatter)"; assert_eq warn "$(status "$out" bom)"
+
+# Wrong-typed prompt / expectations warn instead of passing.
+for cs in '{"id":1,"case_type":"a","prompt":"p","expectations":"x"}' '{"id":1,"case_type":"a","prompt":"p","expectations":{"a":1}}' \
+          '{"id":1,"case_type":"a","prompt":["p"],"expectations":["e"]}' '{"id":1,"case_type":"a","prompt":"p","expectations":[1,2]}'; do
+  mkskill wt "$FM" "{\"evals\":[$cs,{\"id\":2,\"case_type\":\"b\",\"prompt\":\"p\",\"expectations\":[\"e\"]},{\"id\":3,\"case_type\":\"c\",\"prompt\":\"p\",\"expectations\":[\"e\"]}]}"
+  run "$TMP/wt"; assert_eq warn "$(status "$out" evals-shape)"
+done
+
+# Enum fields compare case-insensitively (a false fail would block a valid skill).
+mkskill en '---\nname: t\ndescription: d\neffort: HIGH\ncontext: Fork\nshell: Bash\n---\nb\n'
+run "$TMP/en"; assert_eq pass "$(status "$out" field-values)"
+
+# Seeded fuzz: hostile evals.json / SKILL.md combinations must never crash the tool.
+python3 - "$TOOL" "$TMP" <<'PYFUZZ'
+import json, os, random, subprocess, sys
+tool, tmp = sys.argv[1:3]
+random.seed(20260921)
+d = os.path.join(tmp, "fuzz"); os.makedirs(os.path.join(d, "evals"))
+vals = [None, 1, -1, 2**70, 1.5, float("nan"), "", "x", "a/b", "..", "\x00", "é", [], [1], {}, {"a": [1]}, True]
+keys = ["id", "case_type", "prompt", "expectations", "expected_output"]
+skills = ["", "---\n", "---\n---\n", "﻿---\nname: x\n---\n", "---\r\nname: x\r\n---\r\nb\r\n", "---\n\"hooks\":\n a: b\n---\n",
+          "---\nhooks :\n a: b\n---\n!`id`\n", "---\ndescription: \"a\n---\nz\"\nhooks:\n a: b\n---\n", "\xff\xfe", "---\ncontext: Fork\n---\n" + "x" * 5000]
+for i in range(400):
+    ev = {"evals": [{random.choice(keys): random.choice(vals) for _ in range(random.randint(0, 5))} for _ in range(random.randint(0, 5))]}
+    if random.random() < 0.25:
+        ev = random.choice(vals)
+    with open(os.path.join(d, "evals", "evals.json"), "w") as f:
+        f.write(json.dumps(ev, allow_nan=True))
+    with open(os.path.join(d, "SKILL.md"), "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(random.choice(skills))
+    r = subprocess.run([tool, d], capture_output=True, text=True)
+    assert r.returncode in (0, 1) and "Traceback" not in r.stderr, (i, r.returncode, r.stderr[-300:], ev)
+    json.loads(r.stdout)
+print("skill-check fuzz: 400 cases, no crash")
+PYFUZZ
 
 # Must refuse: a path inside canon, including via a symlink; non-directory; bad usage.
 rc=0; "$TOOL" "$ROOT/skills/capture" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"

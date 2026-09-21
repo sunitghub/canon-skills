@@ -1765,7 +1765,8 @@ SKILL_CHECK_BIN = TOOLS_DIR / 'skill-check'
 PLUGIN_EVAL_GEN_BIN = TOOLS_DIR / 'plugin-eval-gen'
 SKILL_EVAL_CACHE = CANON_ROOT / '.canon-cache' / 'skill-eval'
 SKILL_EVAL_DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
-_SKILL_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+_SKILL_NAME_RE = re.compile(r'[a-z0-9][a-z0-9-]*')
+_MODEL_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')  # reaches the claude argv: no leading dash, no spaces
 _SKILL_EVAL_RUNS: dict[tuple, dict] = {}
 _SKILL_EVAL_LOCK = threading.Lock()
 
@@ -1785,7 +1786,7 @@ def validate_skill_dir(root: Path, raw: str):
         return None, 'skill folder must be inside the selected project'
     if p == CANON_ROOT or CANON_ROOT in p.parents:
         return None, "canon's own skills are checked internally, not here"
-    if not _SKILL_NAME_RE.match(p.name):
+    if not _SKILL_NAME_RE.fullmatch(p.name):
         return None, 'folder name must match [a-z0-9][a-z0-9-]*'
     # A link inside the folder could point at files outside the project (evals.json is read into
     # eval prompts), so any symlink refuses the folder. os.walk does not follow links, but lists them.
@@ -1901,6 +1902,8 @@ def start_skill_eval_run(root: Path, raw: str, model: str, confirm_cost: bool,
     fail, and (unless allow_trust) no trust warning. Re-validates server-side."""
     if confirm_cost is not True:
         return {'ok': False, 'error': 'confirm_cost required: this run spends model usage'}
+    if model and not _MODEL_RE.fullmatch(model):
+        return {'ok': False, 'error': 'model must be a plain model id (letters, digits, . _ -)'}
     chk = skill_eval_check(root, raw)
     if not chk.get('ok'):
         return chk
