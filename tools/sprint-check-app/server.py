@@ -1838,6 +1838,14 @@ def _skill_eval_summary(result_path: Path) -> dict:
     for k in ('costUsd', 'partial', 'partialReason'):
         if k in d:
             keep[k] = d[k]
+
+    def mean(arm):
+        sc = [r['score'] for r in (arm or []) if isinstance(r, dict) and isinstance(r.get('score'), (int, float))]
+        return sum(sc) / len(sc) if sc else None
+    keep['cases'] = [{'name': c.get('name') or c.get('id'),
+                      'with': mean((c.get('arms') or {}).get('with')),
+                      'without': mean((c.get('arms') or {}).get('without'))}
+                     for c in (d.get('cases') or []) if isinstance(c, dict) and isinstance(c.get('arms') or {}, dict)]
     return keep
 
 def _run_skill_eval(root: Path, skill_dir: Path, model: str, max_cost: float) -> None:
@@ -2113,6 +2121,29 @@ class Handler(BaseHTTPRequestHandler):
                 except UnknownProject:
                     self.send_error(400); return
                 self.send_json(get_upkeep_report(eroot, skill)); return
+            if path == '/api/skill-eval/report.html':
+                q = parse_qs(parsed.query)
+                try:
+                    eroot = effective_root(q)
+                except UnknownProject:
+                    self.send_error(400); return
+                rep = get_skill_eval_report(eroot, q.get('skill_dir', [''])[0])
+                try:
+                    body = Path(rep['report_path']).read_bytes() if rep.get('ok') else None
+                except OSError:
+                    body = None
+                if body is None:
+                    self.send_error(404); return
+                self.send_response(200)
+                self.send_header('Content-Type', 'text/html; charset=utf-8')
+                self.send_header('Content-Length', len(body))
+                # The report is generated from a user-picked skill's content: render it in an
+                # opaque origin (sandbox without allow-same-origin) so it cannot reach this API.
+                self.send_header('Content-Security-Policy', "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:")
+                self.send_header('X-Content-Type-Options', 'nosniff')
+                self.send_header('Connection', 'close')
+                self.end_headers()
+                self.wfile.write(body); return
             if path == '/api/skill-eval/status':
                 q = parse_qs(parsed.query)
                 try:

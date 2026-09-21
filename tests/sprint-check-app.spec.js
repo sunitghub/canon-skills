@@ -5824,3 +5824,119 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#up-rp-body')).toContainText('Next Steps');
   });
 });
+
+test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
+  const PROJECTS = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-15' }];
+  const chk = (id, stage, status, evidence = 'ok', fix = '') => ({ id, stage, status, evidence, fix });
+  const GOOD = {
+    ok: true, skill: 'api', skill_dir: '/tmp/proj-a/skills/api',
+    checks: [chk('evals-present', 1, 'pass'), chk('evals-variety', 1, 'warn', 'one case type', 'Mix case types'),
+             chk('frontmatter', 2, 'pass'), chk('body-length', 2, 'pass')],
+  };
+  const NOEVALS = {
+    ok: true, skill: 'api', skill_dir: '/tmp/proj-a/skills/api',
+    checks: [chk('evals-present', 1, 'fail', 'evals.json not found', 'Create evals/evals.json'), chk('frontmatter', 2, 'pass')],
+  };
+  const HOOKS = { ...GOOD, checks: [...GOOD.checks, chk('trust-hooks', 2, 'warn', 'frontmatter registers hooks', 'Review the hook commands')] };
+
+  async function setup(page, { check, statuses = [{ ok: true, status: 'never' }], run = { ok: true, status: 'running' }, capture = {} }) {
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    await page.route('**/api/upkeep/status*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'idle', report_path: '' }) }));
+    await page.route('**/api/browse-dirs*', route => {
+      const path = new URL(route.request().url()).searchParams.get('path');
+      const body = path === '/tmp/proj-a'
+        ? { path, parent: '/tmp', entries: [{ name: 'skills', path: '/tmp/proj-a/skills' }] }
+        : { path, parent: '/tmp/proj-a', entries: [{ name: 'api', path: '/tmp/proj-a/skills/api' }] };
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.route('**/api/skill-eval/check*', route => {
+      capture.checkUrl = route.request().url(); capture.checkBody = route.request().postData();
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(check) });
+    });
+    let n = 0;
+    await page.route('**/api/skill-eval/status*', route => {
+      const body = statuses[Math.min(n++, statuses.length - 1)];
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.route('**/api/skill-eval/run*', route => {
+      capture.runUrl = route.request().url(); capture.runBody = JSON.parse(route.request().postData());
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(run) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-upkeep').click();
+  }
+  async function pick(page) {
+    await page.locator('#se-card button:has-text("Browse")').click();
+    await expect(page.locator('#se-card .dirnav-path')).toHaveText('/tmp/proj-a');
+    await expect(page.locator('#se-card .dirnav-row:has-text("skills")')).toBeVisible(); // list loaded
+    await expect(page.locator('#se-card .dirnav-row.up')).toHaveCount(0); // never above the project root
+    await page.locator('#se-card .dirnav-row:has-text("skills")').click();
+    await expect(page.locator('#se-card .dirnav-row:has-text("api")')).toBeVisible();
+    await expect(page.locator('#se-card .dirnav-row.up')).toHaveCount(1);
+    await page.locator('#se-card .dirnav-row:has-text("api")').click();
+    await page.locator('#se-card button:has-text("Use this folder")').click();
+  }
+
+  test('browse starts at the project root, cannot go above it, and checks the picked folder with ?project=', async ({ page }) => {
+    const capture = {};
+    await setup(page, { check: GOOD, capture });
+    await expect(page.locator('#se-card')).toBeVisible();
+    await pick(page);
+    await expect(page.locator('#se-card')).toContainText('Eval coverage');
+    await expect(page.locator('#se-card')).toContainText('Best practices');
+    await expect(page.locator('#se-card')).toContainText('evals-variety');
+    await expect(page.locator('#se-card')).toContainText('Mix case types');
+    expect(capture.checkUrl).toContain('project=proj-a');
+    expect(JSON.parse(capture.checkBody).skill_dir).toBe('/tmp/proj-a/skills/api');
+  });
+
+  test('a failing check locks stage 3: no Run button, nothing spent', async ({ page }) => {
+    await setup(page, { check: NOEVALS });
+    await pick(page);
+    await expect(page.locator('#se-card')).toContainText('Create evals/evals.json');
+    await expect(page.locator('#se-card')).toContainText('Fix the failing check');
+    await expect(page.locator('#se-card button:has-text("Run plugin eval")')).toHaveCount(0);
+  });
+
+  test('a server refusal is shown and the folder is cleared', async ({ page }) => {
+    await setup(page, { check: { ok: false, error: 'skill folder must be inside the selected project' } });
+    await pick(page);
+    await expect(page.locator('#se-card .se-err')).toContainText('must be inside the selected project');
+    await expect(page.locator('#se-card .se-steps')).toHaveCount(0);
+  });
+
+  test('run: cost confirm names plan usage, sends confirm_cost, then shows scores and a report link', async ({ page }) => {
+    const capture = {};
+    const done = { ok: true, status: 'done', finished_at: Date.now() / 1000, report_path: '/x/report.html',
+      summary: { casesTotal: 2, casesPassed: 2, overallScore: 1, meanDelta: 0.5, costUsd: 0.42,
+                 cases: [{ name: 'api-1', with: 1, without: 0 }, { name: 'api-2', with: 1, without: 1 }] } };
+    await setup(page, { check: GOOD, statuses: [{ ok: true, status: 'never' }, done], capture });
+    await pick(page);
+    await page.locator('#se-card button:has-text("Run plugin eval")').click();
+    await expect(page.locator('#cc-body')).toContainText('plan usage');
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => capture.runBody && capture.runBody.confirm_cost).toBe(true);
+    expect(capture.runBody.allow_trust).toBe(false);
+    expect(capture.runUrl).toContain('project=proj-a');
+    await expect(page.locator('#se-card .se-tiles')).toContainText('$0.42', { timeout: 10000 });
+    await expect(page.locator('#se-card .se-tiles')).toContainText('+0.50');
+    await expect(page.locator('#se-card')).toContainText('api-1');
+    const href = await page.locator('#se-card a:has-text("Open full report")').getAttribute('href');
+    expect(href).toContain('/api/skill-eval/report.html?project=proj-a');
+    expect(href).toContain(encodeURIComponent('/tmp/proj-a/skills/api'));
+  });
+
+  test('a skill with hooks needs an explicit acknowledgement before Run is enabled', async ({ page }) => {
+    const capture = {};
+    await setup(page, { check: HOOKS, capture });
+    await pick(page);
+    const run = page.locator('#se-card button:has-text("Run plugin eval")');
+    await expect(run).toBeDisabled();
+    await page.locator('#se-card label:has-text("trust-hooks") input').check();
+    await expect(run).toBeEnabled();
+    await run.click();
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => capture.runBody && capture.runBody.allow_trust).toBe(true);
+  });
+});

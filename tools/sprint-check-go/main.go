@@ -366,7 +366,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		// t-23d8: Skill Eval is Python-server only in v1 (skill-check is python3, which
 		// Windows does not reliably have). The routes exist so the API surface stays in
 		// parity (tests/sprint-check-api-parity.sh) and answer honestly.
-		if path == "/api/skill-eval/status" || path == "/api/skill-eval/report" {
+		if path == "/api/skill-eval/status" || path == "/api/skill-eval/report" || path == "/api/skill-eval/report.html" {
 			sendJSON(w, skillEvalUnsupported)
 			return
 		}

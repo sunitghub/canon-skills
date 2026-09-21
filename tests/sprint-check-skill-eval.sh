@@ -49,7 +49,7 @@ echo "$@" > "$STUB_ARGS"
 while [ $# -gt 0 ]; do [ "$1" = "--json" ] && out="$2"; shift; done
 mkdir -p evals/results/2026-01-01T00-00-00Z
 echo '<html>report</html>' > evals/results/2026-01-01T00-00-00Z/report.html
-echo '{"schemaVersion":1,"partial":false,"costUsd":0.1,"aggregates":{"casesTotal":3,"casesPassed":3,"overallScore":1,"meanDelta":0.5}}' > "$out"
+echo '{"schemaVersion":1,"partial":false,"costUsd":0.1,"aggregates":{"casesTotal":3,"casesPassed":3,"overallScore":1,"meanDelta":0.5},"cases":[{"name":"good-1","arms":{"with":[{"score":1},{"score":1}],"without":[{"score":0},{"score":1}]}}]}' > "$out"
 SH
 chmod +x "$STUB"
 
@@ -106,6 +106,7 @@ assert st["status"] == "done" and st["summary"]["casesPassed"] == 3, st
 rep = server.get_skill_eval_report(proj, str(skills / "good"))
 assert rep["ok"] and rep["report_path"].endswith("report.html") and rep["summary"]["meanDelta"] == 0.5, rep
 args = Path(os.environ["STUB_ARGS"]).read_text()
+assert rep["summary"]["cases"] == [{"name": "good-1", "with": 1.0, "without": 0.5}], rep["summary"]
 assert "--trust-plugin" in args and "--max-cost-usd 3.0" in args and "--runs 2" in args, args
 assert "--allow-tools" not in args and "--allow-real-servers" not in args, args
 assert (proj / ".reports" / "skillEvalRuns.json").is_file(), "run state was not persisted"
@@ -137,6 +138,16 @@ assert_eq 403 "$(post -o /dev/null -w '%{http_code}' -H 'Host: evil.example' -d 
 assert_eq 400 "$(post -o /dev/null -w '%{http_code}' -d '{}' "$U?project=nope")"
 run_body="$(post -d "{\"skill_dir\":\"$PROJ/.claude/skills/good\"}" "http://127.0.0.1:$PORT/api/skill-eval/run")"
 assert_contains "$run_body" "confirm_cost"
+# The finished run above persisted its state, so a fresh server serves its report in a sandboxed origin.
+G="$PROJ/.claude/skills/good"
+assert_eq "done" "$(curl -s "http://127.0.0.1:$PORT/api/skill-eval/status?skill_dir=$G" | jq -r .status)"
+hdrs="$(curl -s -D - -o "$WORK/report.out" "http://127.0.0.1:$PORT/api/skill-eval/report.html?skill_dir=$G")"
+assert_contains "$hdrs" "200"
+assert_contains "$hdrs" "text/html"
+assert_contains "$hdrs" "sandbox allow-scripts"
+assert_contains "$(cat "$WORK/report.out")" "<html>report</html>"
+assert_eq 404 "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/skill-eval/report.html?skill_dir=$PROJ/.claude/skills/no-evals")"
+assert_eq 404 "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/skill-eval/report.html?skill_dir=$OUT/sneaky")"
 status="$(curl -s "http://127.0.0.1:$PORT/api/skill-eval/status?skill_dir=$OUT/sneaky")"
 assert_eq false "$(jq -r .ok <<<"$status")"
 
