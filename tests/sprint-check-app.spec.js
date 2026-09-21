@@ -5809,6 +5809,16 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     await expect(runBtn).toBeDisabled();
     await expect(runBtn).toHaveCSS('cursor', 'not-allowed');
     await expect(runBtn).not.toHaveCSS('opacity', '1');
+    // A real hover on a disabled button never matches reliably, so force :hover through CDP and read the computed filter.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
+    const { root } = await cdp.send('DOM.getDocument');
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#up-card-context-check .rc-actions .btn' });
+    await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
+    await page.waitForTimeout(400); // let any filter transition finish before reading
+    // Read once, without toHaveCSS's auto-retry: the 3s poll re-renders the card, and a retry would eventually
+    // read the fresh, un-hovered button and pass even with the rule removed.
+    expect(await runBtn.evaluate(el => getComputedStyle(el).filter)).toBe('none'); // a disabled button must not brighten on hover
     // Poll interval is 3s in the client; wait long enough for one tick to land.
     await expect(page.locator('#up-card-context-check .up-status.ok, #up-card-context-check .up-status.run')).toHaveCount(1, { timeout: 6000 });
   });
