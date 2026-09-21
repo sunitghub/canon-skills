@@ -117,7 +117,28 @@ wait(skills / "hooky")
 
 # A report path that round-tripped through state but sits outside the cache is refused.
 server._SKILL_EVAL_RUNS[(str(proj), str((skills / "good").resolve()))]["report_path"] = "/etc/hosts"
-assert server.get_skill_eval_report(proj, str(skills / "good"))["error"] == "report path outside the skill-eval cache"
+assert "outside this run's cache dir" in server.get_skill_eval_report(proj, str(skills / "good"))["error"]
+# ...and so is a real report belonging to a different run (another tag dir under the same cache).
+other = server.SKILL_EVAL_CACHE / "0123456789ab" / "evals" / "results" / "x"
+other.mkdir(parents=True, exist_ok=True); (other / "report.html").write_text("<html>other</html>")
+server._SKILL_EVAL_RUNS[(str(proj), str((skills / "good").resolve()))]["report_path"] = str(other / "report.html")
+assert "outside this run's cache dir" in server.get_skill_eval_report(proj, str(skills / "good"))["error"]
+import shutil; shutil.rmtree(server.SKILL_EVAL_CACHE / "0123456789ab")
+
+# A link inside the picked folder refuses it everywhere (it could pull outside files into eval prompts).
+lk = skills / "linky"; lk.mkdir(); (lk / "SKILL.md").write_text((skills / "good" / "SKILL.md").read_text())
+(lk / "evals").mkdir(); (lk / "evals" / "evals.json").symlink_to(out / "sneaky" / "evals" / "evals.json")
+assert "symbolic link" in err(lk), err(lk)
+assert not server.skill_eval_check(proj, str(lk))["ok"]
+assert not run(lk)["ok"]
+
+# A non-finite cost cap must fall back to the default, never reach claude as 'nan'/'inf'.
+for cap in (float("nan"), float("inf"), "nan", None):
+    assert server.start_skill_eval_run(proj, str(skills / "hooky"), "", True, True, cap)["max_cost_usd"] == 3.0, cap
+    wait(skills / "hooky")
+assert "--max-cost-usd 3.0" in Path(os.environ["STUB_ARGS"]).read_text()
+assert server.start_skill_eval_run(proj, str(skills / "hooky"), "", True, True, 99)["max_cost_usd"] == 10.0
+wait(skills / "hooky")
 print("sprint-check-skill-eval: functions ok")
 PY
 

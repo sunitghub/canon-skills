@@ -5,6 +5,7 @@ import base64
 import fnmatch
 import hashlib
 import json
+import math
 import os
 import random
 import re
@@ -1786,6 +1787,14 @@ def validate_skill_dir(root: Path, raw: str):
         return None, "canon's own skills are checked internally, not here"
     if not _SKILL_NAME_RE.match(p.name):
         return None, 'folder name must match [a-z0-9][a-z0-9-]*'
+    # A link inside the folder could point at files outside the project (evals.json is read into
+    # eval prompts), so any symlink refuses the folder. os.walk does not follow links, but lists them.
+    seen = 0
+    for dirpath, dirs, files in os.walk(p):
+        for n in dirs + files:
+            seen += 1
+            if os.path.islink(os.path.join(dirpath, n)) or seen > 20000:
+                return None, 'skill folder contains a symbolic link (or is too large); remove it and retry'
     return p, None
 
 def skill_eval_check(root: Path, raw: str) -> dict:
@@ -1828,6 +1837,9 @@ def _skill_eval_state_save(root: Path, key: str, entry: dict) -> None:
     except Exception:
         pass  # best-effort — the in-memory state is authoritative for this process
 
+def _skill_eval_tag(root: Path, skill_dir: Path) -> str:
+    return hashlib.sha1(f'{root.resolve()}|{skill_dir}'.encode()).hexdigest()[:12]  # resolved: one dir per project however its path is spelled
+
 def _skill_eval_summary(result_path: Path) -> dict:
     try:
         d = json.loads(result_path.read_text(encoding='utf-8'))
@@ -1850,7 +1862,7 @@ def _skill_eval_summary(result_path: Path) -> dict:
 
 def _run_skill_eval(root: Path, skill_dir: Path, model: str, max_cost: float) -> None:
     key = (str(root), str(skill_dir))
-    tag = hashlib.sha1('|'.join(key).encode()).hexdigest()[:12]
+    tag = _skill_eval_tag(root, skill_dir)
     rel = f'.canon-cache/skill-eval/{tag}'
     plugin = CANON_ROOT / rel
     result_path = plugin / 'last-run.json'
@@ -1898,9 +1910,12 @@ def start_skill_eval_run(root: Path, raw: str, model: str, confirm_cost: bool,
     if not (shutil.which('jq') and shutil.which('bash')):
         return {'ok': False, 'error': 'jq and bash are required to generate the eval plugin'}
     try:
-        max_cost = min(max(float(max_cost), 0.5), 10.0)
+        max_cost = float(max_cost)
     except (TypeError, ValueError):
         max_cost = 3.0
+    if not math.isfinite(max_cost):  # NaN passes min/max clamps and would leave the cap unenforced
+        max_cost = 3.0
+    max_cost = min(max(max_cost, 0.5), 10.0)
     skill_dir = Path(chk['skill_dir'])
     key = (str(root), str(skill_dir))
     with _SKILL_EVAL_LOCK:
@@ -1932,10 +1947,11 @@ def get_skill_eval_report(root: Path, raw: str) -> dict:
     report = st.get('report_path', '')
     if not report:
         return {'ok': False, 'error': 'no report yet'}
-    try:  # the report must live under this feature's own cache, never a path merely round-tripped through state
-        Path(report).resolve().relative_to(SKILL_EVAL_CACHE.resolve())
+    p, _ = validate_skill_dir(root, raw)
+    try:  # only this run's own cache dir: a hand-edited state file must not serve another run's report
+        Path(report).resolve().relative_to((SKILL_EVAL_CACHE / _skill_eval_tag(root, p)).resolve())
     except (ValueError, OSError):
-        return {'ok': False, 'error': 'report path outside the skill-eval cache'}
+        return {'ok': False, 'error': 'report path outside this run\'s cache dir'}
     return {'ok': True, 'summary': st.get('summary', {}), 'report_path': report}
 
 # ── HTTP handler ──────────────────────────────────────────────────────────

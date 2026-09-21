@@ -90,4 +90,11 @@ rc=0; "$GEN" --skill-dir "$ROOT/skills/capture" --plugin-dir "$REL" >/dev/null 2
 rc=0; "$GEN" --skill-dir "$TMP_SKILL/nope" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
 rc=0; "$GEN" capture --skill-dir "$TMP_SKILL" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
 
+# A symlinked SKILL.md / evals dir / evals.json inside the picked folder is refused (it would be read or dropped silently).
+for target in SKILL.md evals; do
+  SL="$(mktemp -d)/sl"; cp -R "$TMP_SKILL" "$SL"; rm -rf "${SL:?}/$target"; ln -s "$TMP_SKILL/$target" "$SL/$target"
+  rc=0; "$GEN" --skill-dir "$SL" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
+  rm -rf "$(dirname "$SL")"
+done
+
 echo "plugin-eval-gen: ok"
