@@ -363,6 +363,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, getHeadlessRunState(m[1]))
 			return
 		}
+		// t-23d8: Skill Eval is Python-server only in v1 (skill-check is python3, which
+		// Windows does not reliably have). The routes exist so the API surface stays in
+		// parity (tests/sprint-check-api-parity.sh) and answer honestly.
+		if path == "/api/skill-eval/status" || path == "/api/skill-eval/report" {
+			sendJSON(w, skillEvalUnsupported)
+			return
+		}
 		if path == "/api/upkeep/status" {
 			skill := r.URL.Query().Get("skill")
 			if !upkeepSkills[skill] {
@@ -489,6 +496,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, startHeadlessRun(m[1], baseRef))
+		return
+	}
+	if path == "/api/skill-eval/check" || path == "/api/skill-eval/run" {
+		sendJSON(w, skillEvalUnsupported)
 		return
 	}
 	if path == "/api/upkeep/run" {
@@ -2632,6 +2643,8 @@ func serveFile(w http.ResponseWriter, path, contentType string) {
 	}
 	w.Write(body)
 }
+
+var skillEvalUnsupported = map[string]any{"ok": false, "error": "Skill Eval is not available in this build; run the Python board server"}
 
 func sendJSON(w http.ResponseWriter, data any) {
 	body, _ := json.Marshal(data)

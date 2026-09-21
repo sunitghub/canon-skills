@@ -1753,6 +1753,183 @@ def get_upkeep_report(root: Path, skill: str) -> dict:
     except Exception as e:
         return {'ok': False, 'error': str(e)}
 
+# ── Skill Eval (t-23d8): check + plugin eval for a user-picked skill folder ──
+# Stage 1/2 (tools/skill-check) are free and synchronous; stage 3 (`claude plugin
+# eval`, via tools/plugin-eval-gen --skill-dir) spends money, so it is async, needs
+# an explicit confirm_cost, and re-runs every check server-side — the UI's earlier
+# check is advisory only. Same thread+dict job shape as Upkeep above.
+TOOLS_DIR = Path(__file__).resolve().parent.parent
+CANON_ROOT = TOOLS_DIR.parent
+SKILL_CHECK_BIN = TOOLS_DIR / 'skill-check'
+PLUGIN_EVAL_GEN_BIN = TOOLS_DIR / 'plugin-eval-gen'
+SKILL_EVAL_CACHE = CANON_ROOT / '.canon-cache' / 'skill-eval'
+SKILL_EVAL_DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
+_SKILL_NAME_RE = re.compile(r'^[a-z0-9][a-z0-9-]*$')
+_SKILL_EVAL_RUNS: dict[tuple, dict] = {}
+_SKILL_EVAL_LOCK = threading.Lock()
+
+def validate_skill_dir(root: Path, raw: str):
+    """(resolved Path, None) or (None, error). The one path gate for check, run,
+    status and report: symlinks are resolved first, the folder must sit inside the
+    selected project's root (never a raw client path), must not be canon's own
+    (checked internally, not here), and its name must be a legal skill name."""
+    try:
+        p = Path(str(raw)).expanduser().resolve(strict=True)
+        proot = root.resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None, 'skill folder not found'
+    if not p.is_dir():
+        return None, 'not a folder'
+    if proot not in p.parents:
+        return None, 'skill folder must be inside the selected project'
+    if p == CANON_ROOT or CANON_ROOT in p.parents:
+        return None, "canon's own skills are checked internally, not here"
+    if not _SKILL_NAME_RE.match(p.name):
+        return None, 'folder name must match [a-z0-9][a-z0-9-]*'
+    return p, None
+
+def skill_eval_check(root: Path, raw: str) -> dict:
+    p, err = validate_skill_dir(root, raw)
+    if err:
+        return {'ok': False, 'error': err}
+    try:
+        r = subprocess.run([sys.executable or 'python3', str(SKILL_CHECK_BIN), str(p)],
+                           capture_output=True, text=True, timeout=30)
+        data = json.loads(r.stdout)
+    except (OSError, subprocess.TimeoutExpired, ValueError) as e:
+        return {'ok': False, 'error': f'skill-check failed: {e}'}
+    return {'ok': True, 'skill_dir': str(p), **data}
+
+def _skill_eval_blocker(checks: list, allow_trust: bool) -> str:
+    fails = [c['id'] for c in checks if c.get('status') == 'fail']
+    if fails:
+        return 'fix failing check(s) first: ' + ', '.join(fails)
+    trust = [c['id'] for c in checks if str(c.get('id', '')).startswith('trust-') and c.get('status') == 'warn']
+    if trust and not allow_trust:
+        return 'skill runs code outside the sandbox (' + ', '.join(trust) + '); review it and pass allow_trust to run anyway'
+    return ''
+
+def _skill_eval_state_path(root: Path) -> Path:
+    return root / '.reports' / 'skillEvalRuns.json'
+
+def _skill_eval_state_load(root: Path) -> dict:
+    try:
+        return json.loads(_skill_eval_state_path(root).read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+
+def _skill_eval_state_save(root: Path, key: str, entry: dict) -> None:
+    p = _skill_eval_state_path(root)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        state = _skill_eval_state_load(root)
+        state[key] = entry
+        p.write_text(json.dumps(state, indent=2), encoding='utf-8')
+    except Exception:
+        pass  # best-effort — the in-memory state is authoritative for this process
+
+def _skill_eval_summary(result_path: Path) -> dict:
+    try:
+        d = json.loads(result_path.read_text(encoding='utf-8'))
+    except Exception:
+        return {}
+    agg = d.get('aggregates') or {}
+    keep = {k: agg[k] for k in ('casesTotal', 'casesPassed', 'overallScore', 'meanDelta') if k in agg}
+    for k in ('costUsd', 'partial', 'partialReason'):
+        if k in d:
+            keep[k] = d[k]
+    return keep
+
+def _run_skill_eval(root: Path, skill_dir: Path, model: str, max_cost: float) -> None:
+    key = (str(root), str(skill_dir))
+    tag = hashlib.sha1('|'.join(key).encode()).hexdigest()[:12]
+    rel = f'.canon-cache/skill-eval/{tag}'
+    plugin = CANON_ROOT / rel
+    result_path = plugin / 'last-run.json'
+    output, status, report_path = '', 'error', ''
+    try:
+        gen = subprocess.run([str(PLUGIN_EVAL_GEN_BIN), '--skill-dir', str(skill_dir), '--plugin-dir', rel],
+                             capture_output=True, text=True, timeout=60)
+        output = (gen.stdout + gen.stderr)
+        if gen.returncode == 0:
+            result_path.unlink(missing_ok=True)
+            # No --allow-tools / --allow-real-servers: read-only tools, no real MCP servers.
+            proc = subprocess.run(
+                [os.environ.get('SKILL_EVAL_CLAUDE_BIN', 'claude'), 'plugin', 'eval', str(plugin), '--trust-plugin',
+                 '--runs', '2', '--max-cost-usd', str(max_cost), '--model', model, '--no-publish',
+                 '--json', str(result_path)],
+                capture_output=True, text=True, timeout=1800, cwd=plugin)
+            output += proc.stdout + proc.stderr
+            reports = sorted((plugin / 'evals' / 'results').glob('*/report.html'))
+            report_path = str(reports[-1]) if reports else ''
+            status = 'done' if (proc.returncode in (0, 1) and result_path.is_file()) else 'error'
+    except Exception as e:
+        output += f'\nError: {e}'
+    summary = _skill_eval_summary(result_path) if status == 'done' else {}
+    finished_at = time.time()
+    with _SKILL_EVAL_LOCK:
+        st = _SKILL_EVAL_RUNS.setdefault(key, {})
+        st.update({'status': status, 'output': output, 'summary': summary,
+                   'report_path': report_path, 'finished_at': finished_at})
+    _skill_eval_state_save(root, str(skill_dir), {
+        'status': status, 'summary': summary, 'report_path': report_path,
+        'finished_at': finished_at, 'model': model, 'output': output[-2048:]})
+
+def start_skill_eval_run(root: Path, raw: str, model: str, confirm_cost: bool,
+                         allow_trust: bool, max_cost) -> dict:
+    """Refuses unless the user confirmed the cost, every stage 1/2 check has no
+    fail, and (unless allow_trust) no trust warning. Re-validates server-side."""
+    if confirm_cost is not True:
+        return {'ok': False, 'error': 'confirm_cost required: this run spends model usage'}
+    chk = skill_eval_check(root, raw)
+    if not chk.get('ok'):
+        return chk
+    blocker = _skill_eval_blocker(chk.get('checks', []), allow_trust is True)
+    if blocker:
+        return {'ok': False, 'error': blocker}
+    if not (shutil.which('jq') and shutil.which('bash')):
+        return {'ok': False, 'error': 'jq and bash are required to generate the eval plugin'}
+    try:
+        max_cost = min(max(float(max_cost), 0.5), 10.0)
+    except (TypeError, ValueError):
+        max_cost = 3.0
+    skill_dir = Path(chk['skill_dir'])
+    key = (str(root), str(skill_dir))
+    with _SKILL_EVAL_LOCK:
+        if (_SKILL_EVAL_RUNS.get(key) or {}).get('status') == 'running':
+            return {'ok': False, 'busy': True, 'status': 'running'}
+        _SKILL_EVAL_RUNS[key] = {'status': 'running', 'output': '', 'summary': {}, 'report_path': '',
+                                 'started_at': time.time()}
+    threading.Thread(target=_run_skill_eval, args=(root, skill_dir, model or SKILL_EVAL_DEFAULT_MODEL, max_cost),
+                     daemon=True).start()
+    return {'ok': True, 'status': 'running', 'max_cost_usd': max_cost}
+
+def get_skill_eval_state(root: Path, raw: str) -> dict:
+    p, err = validate_skill_dir(root, raw)
+    if err:
+        return {'ok': False, 'error': err}
+    with _SKILL_EVAL_LOCK:
+        live = _SKILL_EVAL_RUNS.get((str(root), str(p)))
+        if live:
+            return {'ok': True, **{k: v for k, v in live.items() if k != 'output'}}
+    persisted = _skill_eval_state_load(root).get(str(p))
+    if persisted:
+        return {'ok': True, **{k: v for k, v in persisted.items() if k != 'output'}}
+    return {'ok': True, 'status': 'never'}
+
+def get_skill_eval_report(root: Path, raw: str) -> dict:
+    st = get_skill_eval_state(root, raw)
+    if not st.get('ok'):
+        return st
+    report = st.get('report_path', '')
+    if not report:
+        return {'ok': False, 'error': 'no report yet'}
+    try:  # the report must live under this feature's own cache, never a path merely round-tripped through state
+        Path(report).resolve().relative_to(SKILL_EVAL_CACHE.resolve())
+    except (ValueError, OSError):
+        return {'ok': False, 'error': 'report path outside the skill-eval cache'}
+    return {'ok': True, 'summary': st.get('summary', {}), 'report_path': report}
+
 # ── HTTP handler ──────────────────────────────────────────────────────────
 
 class Handler(BaseHTTPRequestHandler):
@@ -1936,6 +2113,20 @@ class Handler(BaseHTTPRequestHandler):
                 except UnknownProject:
                     self.send_error(400); return
                 self.send_json(get_upkeep_report(eroot, skill)); return
+            if path == '/api/skill-eval/status':
+                q = parse_qs(parsed.query)
+                try:
+                    eroot = effective_root(q)
+                except UnknownProject:
+                    self.send_error(400); return
+                self.send_json(get_skill_eval_state(eroot, q.get('skill_dir', [''])[0])); return
+            if path == '/api/skill-eval/report':
+                q = parse_qs(parsed.query)
+                try:
+                    eroot = effective_root(q)
+                except UnknownProject:
+                    self.send_error(400); return
+                self.send_json(get_skill_eval_report(eroot, q.get('skill_dir', [''])[0])); return
             m = re.match(r'^/api/worktree-lock/(t-[a-z0-9]{4})$', path)
             if m:
                 try:
@@ -2024,6 +2215,14 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(400); return
             model = str(payload.get('model', '')) or 'claude-haiku-4-5-20251001'
             self.send_json(start_upkeep_run(eroot, skill, model)); return
+
+        if path == '/api/skill-eval/check':
+            self.send_json(skill_eval_check(eroot, str(payload.get('skill_dir', '')))); return
+
+        if path == '/api/skill-eval/run':
+            self.send_json(start_skill_eval_run(
+                eroot, str(payload.get('skill_dir', '')), str(payload.get('model', '')),
+                payload.get('confirm_cost'), payload.get('allow_trust'), payload.get('max_cost_usd', 3.0))); return
 
         if path == '/api/ci-workflow':
             self.send_json(write_ci_workflow()); return

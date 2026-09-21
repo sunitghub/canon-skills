@@ -19,7 +19,12 @@ fi
 GEN="$ROOT/tools/plugin-eval-gen"
 REL=".canon-cache/plugin-eval-test-$$"
 OUT="$ROOT/$REL"
-trap 'rm -rf "$OUT"' EXIT
+TMP_SKILL="$(mktemp -d)/mine"
+trap 'rm -rf "$OUT" "$(dirname "$TMP_SKILL")"' EXIT
+mkdir -p "$TMP_SKILL/evals"
+cp "$ROOT/tests/fixtures/skill-check/good/SKILL.md" "$TMP_SKILL/"
+cp "$ROOT/tests/fixtures/skill-check/good/evals/evals.json" "$TMP_SKILL/evals/"
+ln -s /etc/hosts "$TMP_SKILL/leak"
 
 "$GEN" capture --plugin-dir "$REL" >/dev/null
 "$GEN" wrapup --plugin-dir "$REL" >/dev/null
@@ -72,5 +77,17 @@ for bad in .. ../x a/b Capture; do
   assert_eq 2 "$rc"
   [[ ! -e "$OUT" ]] || fail "skill name '$bad' was rejected but a plugin dir was created"
 done
+
+# --skill-dir: a folder outside canon is copied (symlinks dropped, source untouched); canon's own
+# skills, a missing dir, and name+dir together are refused.
+"$GEN" --skill-dir "$TMP_SKILL" --plugin-dir "$REL" >/dev/null
+assert_file_exists "$OUT/skills/mine/SKILL.md"
+assert_file_exists "$TMP_SKILL/SKILL.md"
+[[ -L "$TMP_SKILL/leak" ]] || fail "source folder was modified"
+[[ -z "$(find "$OUT/skills/mine" -type l)" ]] || fail "symlink inside the picked folder was copied"
+assert_file_exists "$OUT/evals/mine-1/prompt.md"
+rc=0; "$GEN" --skill-dir "$ROOT/skills/capture" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
+rc=0; "$GEN" --skill-dir "$TMP_SKILL/nope" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
+rc=0; "$GEN" capture --skill-dir "$TMP_SKILL" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
 
 echo "plugin-eval-gen: ok"
