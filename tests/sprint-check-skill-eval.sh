@@ -140,7 +140,7 @@ for bad in ("--allow-tools", "-x", "a b", "x;y", "m$(id)", "a/b", "x" * 65, "\n"
     assert not r["ok"] and "model" in r["error"], (bad, r)
 assert not server._SKILL_EVAL_RUNS, "a refused model must not start a job"
 assert Path(os.environ["STUB_ARGS"]).read_text() == "", "claude was invoked for a refused model"
-for good in ("", "claude-sonnet-5", "claude-haiku-4-5-20251001", "opus"):
+for good in ("", "claude-sonnet-5", "claude-haiku-4-5-20251001", "opus", "sonnet[1m]", "us.anthropic.claude-haiku-4-5-20251001-v1:0"):
     assert server.start_skill_eval_run(proj, str(skills / "hooky"), good, True, True, 3.0)["ok"], good
     wait(skills / "hooky")
 
@@ -165,6 +165,14 @@ for i in range(300):
         raise AssertionError(f"start_skill_eval_run raised {e!r} for {(model, cap, allow, confirm)!r}")
     assert isinstance(r, dict) and r.get("ok") is False, r
 assert server._SKILL_EVAL_RUNS == before, "the fuzz started a job"
+# With confirm_cost True the model check is the guard that must fire: hostile models built from parts
+# that can never be legitimate (leading dash, whitespace, shell or control characters) are always refused.
+for i in range(200):
+    m = random.choice(["-", "--", "-x", "a ", " a", "a;b", "a$(x)", "a`b`", "a|b", "a&b", "a\x00", "a\n", "a\r", "a\t", "é", "a'b", 'a"b'])
+    m = random.choice(["", "ok", "x" * 5]) + m if not m.startswith("-") else m
+    r = server.start_skill_eval_run(proj, str(skills / "hooky"), m, True, True, 3.0)
+    assert r.get("ok") is False and "model" in r["error"], (m, r)
+assert server._SKILL_EVAL_RUNS == before, "a refused model started a job"
 print("sprint-check-skill-eval: run fuzz ok")
 
 # A non-finite cost cap must fall back to the default, never reach claude as 'nan'/'inf'.

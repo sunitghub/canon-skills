@@ -57,6 +57,7 @@ src="$srcdir/evals/evals.json"
 case "$out" in /*|*..*) echo "plugin-eval-gen: --plugin-dir must be a relative path without '..'" >&2; exit 2 ;; esac
 
 # A case id becomes a directory name, so validate every id before anything is written.
+jq -e '.evals | type == "array"' "$src" >/dev/null 2>&1 || { echo "plugin-eval-gen: $src has no \"evals\" list" >&2; exit 2; }
 count=$(jq '.evals | length' "$src")
 for ((i = 0; i < count; i++)); do
   idtype=$(jq -r ".evals[$i].id | type" "$src")

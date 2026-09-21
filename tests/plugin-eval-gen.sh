@@ -100,15 +100,21 @@ done
 # t-a350: a hostile case id must never write outside the plugin dir (it becomes a directory name).
 mkidskill() { local d; d="$(mktemp -d)/idskill"; mkdir -p "$d/evals"; cp "$ROOT/tests/fixtures/skill-check/good/SKILL.md" "$d/"
   printf '{"evals":[{"id":%s,"case_type":"control","prompt":"p","expectations":["e"]}]}' "$1" > "$d/evals/evals.json"; echo "$d"; }
-for bad in '"x/../../../../../../../../tmp/PWN-a350"' '".."' '"a/b"' '"/tmp/PWN-a350"' '""' '"a b"' '"a;b"' 'null' '["x"]'; do
+for bad in '"x/../../../../../../../../tmp/PWN-a350"' '".."' '"a/b"' '"/tmp/PWN-a350"' '""' '"a b"' '"a;b"' 'null' '["x"]' '1.5' '1e400' 'true'; do
   ID="$(mkidskill "$bad")"
   rc=0; "$GEN" --skill-dir "$ID" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"
   [[ ! -e /tmp/PWN-a350 ]] || { rm -rf /tmp/PWN-a350; fail "hostile id wrote outside the plugin dir: $bad"; }
   [[ -z "$(find "$OUT/evals" -mindepth 1 -maxdepth 1 -name 'idskill-*' 2>/dev/null)" ]] || fail "a case dir was created for a refused id: $bad"
   rm -rf "$(dirname "$ID")"
 done
-for good in '1' '"a-1"' '"todo_conv-2"'; do
+for good in '1' '-1' '"a-1"' '"todo_conv-2"'; do
   ID="$(mkidskill "$good")"; rc=0; "$GEN" --skill-dir "$ID" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 0 "$rc"; rm -rf "$(dirname "$ID")"
+done
+
+# A non-array "evals" is a usage error (exit 2), not a jq crash.
+for shape in '{"evals":"x"}' '{"evals":{"a":1}}' '[1]' 'null' '{}'; do
+  ID="$(mktemp -d)/shape"; mkdir -p "$ID/evals"; cp "$ROOT/tests/fixtures/skill-check/good/SKILL.md" "$ID/"; printf '%s' "$shape" > "$ID/evals/evals.json"
+  rc=0; "$GEN" --skill-dir "$ID" --plugin-dir "$REL" >/dev/null 2>&1 || rc=$?; assert_eq 2 "$rc"; rm -rf "$(dirname "$ID")"
 done
 
 echo "plugin-eval-gen: ok"

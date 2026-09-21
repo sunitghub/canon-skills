@@ -1766,7 +1766,7 @@ PLUGIN_EVAL_GEN_BIN = TOOLS_DIR / 'plugin-eval-gen'
 SKILL_EVAL_CACHE = CANON_ROOT / '.canon-cache' / 'skill-eval'
 SKILL_EVAL_DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 _SKILL_NAME_RE = re.compile(r'[a-z0-9][a-z0-9-]*')
-_MODEL_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,63}')  # reaches the claude argv: no leading dash, no spaces
+_MODEL_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}')  # reaches the claude argv: no leading dash, no spaces; allows sonnet[1m] and Bedrock ...:0
 _SKILL_EVAL_RUNS: dict[tuple, dict] = {}
 _SKILL_EVAL_LOCK = threading.Lock()
 
