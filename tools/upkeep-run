@@ -77,6 +77,10 @@ while [[ $# -gt 0 ]]; do
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
+# The model reaches `claude --model`: refuse anything but a plain model id (no leading dash, whitespace, shell
+# characters). Same rule as server.py and sprint-check-go; tests/fixtures/model-id-cases.json locks the three.
+model_re='^[A-Za-z0-9][]A-Za-z0-9._:[-]{0,63}$'
+[[ "$MODEL" =~ $model_re ]] || { echo "Error: --model must be a plain model id (letters, digits, . _ : [ ] -), not '$MODEL'." >&2; exit 1; }
 [[ -z "$ROOT" ]] && { echo "Error: --root <project-root> is required." >&2; exit 1; }
 [[ -d "$ROOT" ]] || { echo "Error: root '$ROOT' does not exist." >&2; exit 1; }
 

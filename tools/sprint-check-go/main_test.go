@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -1194,5 +1195,69 @@ func TestGetUpkeepReportRejectsPathOutsideReports(t *testing.T) {
 	report := getUpkeepReport(root, "context-check")
 	if report["ok"] != false {
 		t.Fatalf("expected the out-of-.reports/ path to be refused, got %v", report)
+	}
+}
+
+// TestUpkeepModelIDCases (t-be1f): the model string reaches `claude --model`, so it must be a plain model id.
+// The good/bad cases live in tests/fixtures/model-id-cases.json, shared with the bash and Python tests.
+func TestUpkeepModelIDCases(t *testing.T) {
+	raw, err := os.ReadFile("../../tests/fixtures/model-id-cases.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cases struct {
+		Good []string `json:"good"`
+		Bad  []string `json:"bad"`
+	}
+	if err := json.Unmarshal(raw, &cases); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	// Other tests share the package-level upkeepRuns map, so only look at this test's own root.
+	hasUpkeepJob := func(r string) bool {
+		upkeepRunsMu.Lock()
+		defer upkeepRunsMu.Unlock()
+		for k := range upkeepRuns {
+			if k.root == r {
+				return true
+			}
+		}
+		return false
+	}
+	for _, m := range cases.Bad {
+		if validUpkeepModel(m) {
+			t.Errorf("validUpkeepModel accepted %q", m)
+		}
+		r := startUpkeepRun(root, "context-check", m)
+		if r["ok"] != false || !strings.Contains(fmt.Sprint(r["error"]), "model") {
+			t.Errorf("startUpkeepRun(%q) = %v, want a model refusal", m, r)
+		}
+	}
+	for _, m := range cases.Good {
+		if !validUpkeepModel(m) {
+			t.Errorf("validUpkeepModel refused %q", m)
+		}
+	}
+	if hasUpkeepJob(root) {
+		t.Errorf("a refused model started a job for %s", root)
+	}
+	// Seeded fuzz: strings built from parts that can never be legitimate are always refused.
+	rng := rand.New(rand.NewSource(20260922))
+	// A dash is only hostile as the FIRST character (ok-tail is a valid id); the rest are never valid anywhere.
+	badChars := []string{" ", ";", "$(", "`", "|", "&", "\n", "\r", "\t", "'", "\"", "\\", "/", "é", "*", "="}
+	heads := []string{"", "ok", "xxxxx"}
+	for i := 0; i < 300; i++ {
+		var m string
+		if rng.Intn(10) < 3 {
+			m = []string{"-", "--"}[rng.Intn(2)] + []string{"", "tail", "x y"}[rng.Intn(3)]
+		} else {
+			m = heads[rng.Intn(len(heads))] + badChars[rng.Intn(len(badChars))] + []string{"", "tail"}[rng.Intn(2)]
+		}
+		if r := startUpkeepRun(root, "context-check", m); r["ok"] != false {
+			t.Fatalf("fuzz: startUpkeepRun(%q) = %v", m, r)
+		}
+	}
+	if hasUpkeepJob(root) {
+		t.Errorf("the fuzz started a job for %s", root)
 	}
 }

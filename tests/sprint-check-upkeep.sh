@@ -120,4 +120,64 @@ assert len(api_state["output"]) == 2048, f"API-returned output not bounded to 20
 print("sprint-check-upkeep: truncation boundary (t-1776) ok")
 PY
 
+# t-be1f: the model string reaches `claude --model`, so all three implementations (bash runner, Python
+# server, Go server) refuse anything but a plain model id. The good/bad cases live in one shared fixture.
+STUB_OK="$WORKDIR/stub-upkeep-run-ok"
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/upkeep-invocations.log"\necho "UPKEEP_REPORT: /x"\nexit 0\n' "$WORKDIR" > "$STUB_OK"
+chmod +x "$STUB_OK"
+mkdir -p "$WORKDIR/fakebin"
+printf '#!/usr/bin/env bash\necho "claude invoked: $*" >> "%s/claude-invocations.log"\nexit 0\n' "$WORKDIR" > "$WORKDIR/fakebin/claude"
+chmod +x "$WORKDIR/fakebin/claude"
+
+python3 - "$ROOT" "$WORKDIR" "$STUB_OK" <<'PY'
+import sys, os, json, time, random, subprocess
+from pathlib import Path
+root_repo, workdir, stub = sys.argv[1], sys.argv[2], sys.argv[3]
+cases = json.load(open(os.path.join(root_repo, "tests", "fixtures", "model-id-cases.json")))
+sys.path.insert(0, os.path.join(root_repo, "tools", "sprint-check-app"))
+import server
+server.UPKEEP_RUN_BIN = stub
+proj = Path(workdir) / "proj-model"; proj.mkdir()
+log = Path(workdir) / "upkeep-invocations.log"
+
+# Python server: bad models are refused with a model error and never start a job.
+for m in cases["bad"]:
+    r = server.start_upkeep_run(proj, "context-check", m)
+    assert r.get("ok") is False and "model" in r.get("error", ""), (m, r)
+assert not log.exists() and not server._UPKEEP_RUNS, "a refused model started an upkeep job"
+# Good models still start (the stub prints a report path and exits 0).
+for m in cases["good"][:3] + ["sonnet[1m]"]:
+    r = server.start_upkeep_run(proj, "context-check", m)
+    assert r.get("ok") is True, (m, r)
+    for _ in range(100):
+        if server.get_upkeep_run_state(proj, "context-check").get("status") != "running": break
+        time.sleep(0.05)
+# Seeded fuzz: hostile strings built from parts that can never be a legitimate id are always refused.
+random.seed(20260922)
+# A dash is only hostile as the FIRST character (ok-tail is a valid id), everything else below is never valid anywhere.
+bad_chars = [" ", ";", "$(", "`", "|", "&", "\n", "\r", "\t", "'", '"', "\\", "/", "é", "*", "="]
+before = log.read_text() if log.exists() else ""
+for _ in range(300):
+    if random.random() < 0.3:
+        m = random.choice(["-", "--"]) + random.choice(["", "tail", "x y"])
+    else:
+        m = random.choice(["", "ok", "x" * 5]) + random.choice(bad_chars) + random.choice(["", "tail"])
+    r = server.start_upkeep_run(proj, "context-check", m)
+    assert r.get("ok") is False and "model" in r.get("error", ""), (m, r)
+assert (log.read_text() if log.exists() else "") == before, "fuzz started an upkeep job"
+
+# Bash runner: refuses before doing anything else (a missing root would otherwise be the first error), and never runs claude.
+env = dict(os.environ, PATH=os.path.join(workdir, "fakebin") + os.pathsep + os.environ["PATH"])
+run = lambda m: subprocess.run([os.path.join(root_repo, "tools", "upkeep-run"), "context-check", "--root", "/nonexistent-t-be1f", "--model", m],
+                               env=env, capture_output=True, text=True)
+for m in cases["bad"]:
+    r = run(m)
+    assert r.returncode == 1 and "--model" in r.stderr and "does not exist" not in r.stderr, (m, r.returncode, r.stderr)
+for m in cases["good"]:
+    r = run(m)
+    assert r.returncode == 1 and "does not exist" in r.stderr, (m, r.returncode, r.stderr)   # got past the model check
+assert not (Path(workdir) / "claude-invocations.log").exists(), "claude was invoked"
+print("sprint-check-upkeep: model id (t-be1f) ok in python and bash")
+PY
+
 echo "sprint-check-upkeep: ok (resolver prefers .cmd on Windows, bash script elsewhere, env override wins; failed-run output persisted to upkeepRuns.json AND surfaced via get_upkeep_run_state, bounded to the configured 2048-byte tail)"

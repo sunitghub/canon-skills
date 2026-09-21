@@ -1605,6 +1605,9 @@ def get_headless_run_state(ticket_id: str) -> dict:
 # by (root, skill) instead of ticket id — the only background-job pattern in
 # this codebase, reused rather than inventing a second one.
 UPKEEP_SKILLS = ('context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings')
+# A model string reaches `claude --model`: no leading dash, no whitespace or shell characters; allows sonnet[1m] and
+# Bedrock ...:0. Ported to tools/upkeep-run and sprint-check-go; tests/fixtures/model-id-cases.json locks the three.
+_MODEL_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}')
 
 def _resolve_upkeep_run_bin(os_name: str) -> Path:
     """t-1776: upkeep-run is a bash script with no Windows-native entry point.
@@ -1698,6 +1701,8 @@ def start_upkeep_run(root: Path, skill: str, model: str) -> dict:
     held (threading.Lock is not reentrant)."""
     if skill not in UPKEEP_SKILLS:
         return {'ok': False, 'error': f'unknown skill {skill!r}'}
+    if not _MODEL_RE.fullmatch(model):
+        return {'ok': False, 'error': 'model must be a plain model id (letters, digits, . _ : [ ] -)'}
     key = (str(root), skill)
     already_running = False
     with _UPKEEP_LOCK:
@@ -1766,7 +1771,7 @@ PLUGIN_EVAL_GEN_BIN = TOOLS_DIR / 'plugin-eval-gen'
 SKILL_EVAL_CACHE = CANON_ROOT / '.canon-cache' / 'skill-eval'
 SKILL_EVAL_DEFAULT_MODEL = 'claude-haiku-4-5-20251001'
 _SKILL_NAME_RE = re.compile(r'[a-z0-9][a-z0-9-]*')
-_MODEL_RE = re.compile(r'[A-Za-z0-9][A-Za-z0-9._:\[\]-]{0,63}')  # reaches the claude argv: no leading dash, no spaces; allows sonnet[1m] and Bedrock ...:0
+# _MODEL_RE (the model-id rule) lives with the Upkeep constants above; Skill Eval reuses it.
 _SKILL_EVAL_RUNS: dict[tuple, dict] = {}
 _SKILL_EVAL_LOCK = threading.Lock()
 
