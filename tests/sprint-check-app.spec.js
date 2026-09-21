@@ -5812,14 +5812,17 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     await stubUpkeep(page, {
       status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 },
       report: { ok: true, path: '/tmp/proj-a/.reports/context-check_x.md',
-        content: '# Report\n\n**Summary:** all clear.\n\n## Findings\n\n- `AGENTS.md:1` a finding.\n\n## Next Steps\n\nDo the thing.\n' },
+        content: '# Report\n\n**Summary:** all clear.\n\nSome **bold** prose.\n\n## Findings\n\n- `AGENTS.md:1` a finding.\n\n## Next Steps\n\nDo the thing.\n' },
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-upkeep').click();
     await page.locator('#up-card-context-check button:has-text("View report")').click();
     await expect(page.locator('#up-detail')).toHaveClass(/open/);
-    await expect(page.locator('#up-rp-body strong')).toContainText('Summary:');
+    // A leading `**Label:** value` line is a meta chip (5e5a6cf), not inline bold: <b> inside .up-meta .um.
+    await expect(page.locator('#up-rp-body .up-meta .um b')).toContainText('Summary');
+    await expect(page.locator('#up-rp-body .up-meta .um')).toContainText('all clear.');
+    await expect(page.locator('#up-rp-body p strong')).toContainText('bold');
     await expect(page.locator('#up-rp-body ul.up-findings li')).toContainText('AGENTS.md:1');
     await expect(page.locator('#up-rp-body')).toContainText('Next Steps');
   });
