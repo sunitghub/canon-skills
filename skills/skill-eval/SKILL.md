@@ -15,6 +15,8 @@ See [example.md](example.md) for a step-by-step walkthrough using the `capture` 
 
 Trigger eval (whether the skill fires for the right queries) and benchmark/improve/compare modes are **out of scope**. For those, see [skill-creator](https://github.com/anthropics/skills/blob/main/skills/skill-creator/SKILL.md).
 
+For a plugin-vs-no-plugin baseline (Δ score), generate a throwaway plugin with `tools/plugin-eval-gen <skill> --write`, then run the `claude plugin eval` command it prints. Skills that only run inside a sprint (e.g. `wrapup`) stay on this skill: `claude plugin eval` can't invoke them directly.
+
 ## Steps
 
 0. **Structural check.** Analyse the SKILL.md body (all lines after the closing `---` of the frontmatter) and the eval case count:
