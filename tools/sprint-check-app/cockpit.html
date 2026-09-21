@@ -225,8 +225,9 @@
   /* ---- "?" info popovers (t-576f): non-modal, anchored to the button, closes on Esc / outside click ---- */
   .rcard{position:relative}
   .rcard:has(.rc-pop){z-index:30}
+  .rcard:has(.rc-pop):hover{transform:none}   /* the hover lift would make the open popover jump */
   .rc-help-wrap{position:relative;flex:none}
-  .rc-help{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--text-muted);font:700 12px/1 inherit;cursor:pointer;display:grid;place-items:center;transition:color .12s ease,border-color .12s ease,background .12s ease}
+  .rc-help{width:24px;height:24px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--text-muted);font-family:inherit;font-weight:700;font-size:12px;line-height:1;cursor:pointer;display:grid;place-items:center;transition:color .12s ease,border-color .12s ease,background .12s ease}
   .rc-help:hover,.rc-help[aria-expanded="true"]{color:var(--accent);border-color:var(--accent);background:var(--accent-dim)}
   .rc-help:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .rc-pop{position:absolute;z-index:40;top:36px;right:-6px;width:min(400px,calc(100vw - 56px));background:var(--panel);border:1px solid var(--border-hover);border-radius:12px;box-shadow:0 18px 40px -12px rgba(0,0,0,.55),0 0 0 3px var(--accent-dim);text-align:left;cursor:auto}
@@ -829,15 +830,15 @@
   // ── "?" info popovers (t-576f). Text is sourced from tools/upkeep-run's header, each skill's SKILL.md,
   // skills/sprint/reference/complete.md and the plugin-evals doc; keep it in step with them. ──
   const UP_HOW='Click Run and the board starts <code>upkeep-run</code>, which launches a fresh, headless <code>claude -p</code> session against this project. The skill\'s own SKILL.md is checked against a pinned hash first, so a tampered copy is refused. It reads the repo and writes one Markdown report under the project\'s <code>.reports/</code>; you read it here with View report.';
-  const UP_NOT='It does not edit your code or config, does not run shell commands, and never auto-executes the report\'s Next Steps. Its tools are limited to reading plus writing the one report; the single-file limit itself is enforced by the prompt, not by the tool.';
-  const UP_COST='One real model call on your account: Haiku 4.5 by default, Sonnet 5 if you pick it. On a subscription it counts against your plan usage.';
+  const UP_NOT='It does not edit your code or config, runs no arbitrary shell commands, and never auto-executes the report\'s Next Steps. Its tools are limited to reading (plus read-only git and wc) and writing the one report; the single-file limit itself is enforced by the prompt, not by the tool.';
+  const UP_COST='One headless Claude session on your account, which can take many tool turns: Haiku 4.5 by default, Sonnet 5 if you pick it. On a subscription it counts against your plan usage.';
   const UP_HELP={
     'skill-eval':{title:'Skill Eval',
       lead:"Checks that a skill folder ships evals and follows Anthropic's skill-authoring rules, then measures the skill with and without it.",
       sections:[
-        ['The three stages','<b>1 Eval coverage</b> (free): does <code>evals/evals.json</code> exist with enough varied cases? <b>2 Best practices</b> (free): frontmatter, description, size and trust checks based on Anthropic\'s published rules. <b>3 Plugin eval</b> (paid): runs <code>claude plugin eval</code>. Stage 3 unlocks only when stages 1 and 2 have no failure.'],
-        ['What we hand to plugin eval','Your <code>evals.json</code> is converted to eval cases. Each gets an LLM-judge rubric built from its expectations, plus a check that the skill actually fired. Every case runs twice with the skill and twice without it (the baseline); the difference is the skill\'s effect. The grading itself is Anthropic\'s <code>claude plugin eval</code>.'],
-        ['Limits','Scores come from an LLM judge, so they are only as good as your evals. Runs happen in an empty workspace with read-only tools, and expectations about saving memory are dropped. Skills that only run inside another workflow, like wrapup, cannot be scored this way. Canon\'s own skills are never picked here.']],
+        ['The three stages','<b>1 Eval coverage</b> (free): does <code>evals/evals.json</code> exist with enough varied cases? <b>2 Best practices</b> (free): frontmatter, description, size and trust checks based on Anthropic\'s published rules. <b>3 Plugin eval</b> (paid): runs <code>claude plugin eval</code>. Stage 3 unlocks only when stages 1 and 2 have no failure, and a skill with hooks or shell blocks needs your explicit OK.'],
+        ['What we hand to plugin eval','Your <code>evals.json</code> is converted to eval cases. Each gets an LLM-judge rubric built from its expectations, plus, for most cases, a check that the skill actually fired. Every case runs twice with the skill and twice without it (the baseline); the difference is the skill\'s effect. The grading itself is Anthropic\'s <code>claude plugin eval</code>.'],
+        ['Limits','Scores come from an LLM judge, so they are only as good as your evals. Each run starts in an empty working directory (per the plugin-evals doc) with read-only tools, and expectations about saving memory are dropped. A skill that refuses direct invocation, as wrapup does, may never fire and so scores as if it did nothing. Canon\'s own skills are never picked here.']],
       facts:[['Cost','stage 3 uses your Claude usage, capped near $3 (list price) per run'],['Writes','run state in the project\'s .reports/skillEvalRuns.json; reports stay in canon\'s cache']]},
     'context-check':{title:'context-check',
       lead:'Audits how heavy and redundant your always-on context is.',
@@ -845,11 +846,11 @@
         ['Why it runs','Files such as CLAUDE.md and AGENTS.md load into every session, so bloat there costs tokens and attention on every turn. Run it when sessions feel heavy, or periodically to keep the always-on budget lean.'],
         ['What it does not do',UP_NOT],
         ['Cost',UP_COST]],
-      facts:[['Reads','always-on context files'],['Writes','one report']]},
+      facts:[['Reads','always-on context files, project and global'],['Writes','one report']]},
     'context-doctor':{title:'context-doctor',
-      lead:"Audits your repo's agent context against context-engineering lessons for the Claude model you run.",
+      lead:"Audits your repo's agent context against context-engineering lessons for Claude 4/5 models.",
       sections:[['How it happens',UP_HOW],
-        ['Why it runs','It looks at the system prompt, CLAUDE.md/AGENTS.md, skills and references and reports what to tighten for Claude 4/5 models. The model is detected from the running session.'],
+        ['Why it runs','It looks at the system prompt, CLAUDE.md/AGENTS.md, skills and references and reports what to tighten. The model it targets is the one that runs the audit: the model you pick on this card.'],
         ['What it does not do',UP_NOT],
         ['Cost',UP_COST]],
       facts:[['Reads','agent context, skills, references'],['Writes','one report']]},
@@ -864,12 +865,12 @@
       lead:"A fresh-context review of pending learnings rows. It proposes where each durable one belongs and never writes it.",
       sections:[['How it happens',UP_HOW+' It reads the UNPROMOTED rows in LEARNINGS.md, then each row\'s source <code>.tickets/&lt;id&gt;/learnings.md</code> in full.'],
         ['Why it runs','The sprint that produced a lesson cannot judge whether it generalises, so promotion must be done by a reader with no memory of that sprint. Every Upkeep run is a fresh subprocess, so that holds automatically. For each durable row it proposes one destination, such as a file under <code>standards/</code>.'],
-        ['Where learnings come from','<b>1</b> <code>tkt learn &lt;id&gt;</code> distils a closed sprint\'s non-delivered plan rows and evaluator findings into an UNPROMOTED <code>.tickets/&lt;id&gt;/learnings.md</code>. <b>2</b> <code>learnings-sweep</code> indexes those into LEARNINGS.md. <b>3</b> This card judges them.'],
+        ['Where learnings come from','Today these first two steps are manual. <b>1</b> <code>tkt learn &lt;id&gt;</code> (you run it; the sprint agent only suggests it) distils a closed sprint\'s non-delivered plan rows and evaluator findings into an UNPROMOTED <code>.tickets/&lt;id&gt;/learnings.md</code>. <b>2</b> <code>learnings-sweep</code> (also run by you) indexes those into LEARNINGS.md. <b>3</b> This card judges them.'],
         ['What it does not do','It never writes LEARNINGS.md, <code>standards/</code> or <code>critique/</code>. Promoting stays a separate, human-confirmed step. '+UP_NOT],
         ['Cost',UP_COST]],
       facts:[['Reads','LEARNINGS.md and ticket learnings'],['Writes','one report']]}
   };
-  let upHelpOpen=null;
+  let upHelpOpen=null, upHelpScroll=0;
   function upHelpBtn(id){
     const h=UP_HELP[id]; if(!h) return '';
     return `<span class="rc-help-wrap"><button type="button" class="rc-help" aria-label="About ${escAttr(h.title)}" aria-expanded="${upHelpOpen===id}" aria-controls="up-help-${id}" onclick="upHelpToggle('${id}')">?</button></span>`;
@@ -877,7 +878,7 @@
   function upHelpPanelHTML(id){
     const h=UP_HELP[id];
     return `<div class="rc-pop" id="up-help-${id}" role="region" aria-label="About ${escAttr(h.title)}"><div class="rc-pop-body">`
-      +`<div class="rc-pop-head"><span class="rc-pop-title">${esc(h.title)}</span><button type="button" class="rc-pop-x" aria-label="Close" onclick="upHelpClose()">&times;</button></div>`
+      +`<div class="rc-pop-head"><span class="rc-pop-title">${esc(h.title)}</span><button type="button" class="rc-pop-x" aria-label="Close" onclick="upHelpClose(true)">&times;</button></div>`
       +`<p class="rc-pop-lead">${esc(h.lead)}</p>`
       +h.sections.map(s=>`<div class="rc-pop-sec"><div class="rc-pop-eyebrow">${esc(s[0])}</div><p>${s[1]}</p></div>`).join('')
       +`<div class="rc-pop-facts">${h.facts.map(f=>`<span class="rc-pop-fact"><b>${esc(f[0])}</b>${esc(f[1])}</span>`).join('')}</div>`
@@ -890,7 +891,10 @@
       const btn=card.querySelector('.rc-help'); if(btn) btn.setAttribute('aria-expanded',String(open));
       const wrap=card.querySelector('.rc-help-wrap'); if(!wrap) return;
       const pop=wrap.querySelector('.rc-pop');
-      if(open&&!pop){ wrap.insertAdjacentHTML('beforeend',upHelpPanelHTML(id)); upHelpPlace(wrap.querySelector('.rc-pop')); }
+      if(open&&!pop){
+        wrap.insertAdjacentHTML('beforeend',upHelpPanelHTML(id)); upHelpPlace(wrap.querySelector('.rc-pop'));
+        wrap.querySelector('.rc-pop-body').scrollTop=upHelpScroll;   // a card re-render rebuilds the panel; keep the reader's place
+      }
       else if(!open&&pop) pop.remove();
     });
   }
@@ -903,10 +907,16 @@
     if(main) pop.style.width=Math.max(220,Math.min(400,w.right+6-main.getBoundingClientRect().left-12))+'px';
     pop.querySelector('.rc-pop-body').style.maxHeight=Math.max(160,Math.min(520,up?above:below))+'px';
   }
-  function upHelpToggle(id){ upHelpOpen=(upHelpOpen===id)?null:id; upHelpSync(); }
-  function upHelpClose(){ upHelpOpen=null; upHelpSync(); }
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&upHelpOpen) upHelpClose(); });
-  document.addEventListener('click',e=>{ if(upHelpOpen&&!e.target.closest('.rc-pop,.rc-help')) upHelpClose(); });
+  function upHelpToggle(id){ upHelpOpen=(upHelpOpen===id)?null:id; upHelpScroll=0; upHelpSync(); }
+  // focusBtn: Escape and the x hand focus back to the "?"; an outside click leaves focus where the user put it.
+  function upHelpClose(focusBtn){
+    const id=upHelpOpen; upHelpOpen=null; upHelpScroll=0; upHelpSync();
+    if(focusBtn&&id){ const b=document.querySelector(`[data-help="${id}"] .rc-help`); if(b) b.focus(); }
+  }
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&upHelpOpen) upHelpClose(true); });
+  document.addEventListener('click',e=>{ if(upHelpOpen&&!e.target.closest('.rc-pop,.rc-help')) upHelpClose(false); });
+  document.addEventListener('scroll',e=>{ if(e.target.classList&&e.target.classList.contains('rc-pop-body')) upHelpScroll=e.target.scrollTop; },true);
+  window.addEventListener('resize',()=>{ if(upHelpOpen) upHelpClose(false); });   // placement is computed once, so a resize closes it
 
   let upProjectId=null;
   const upPollTimers={};

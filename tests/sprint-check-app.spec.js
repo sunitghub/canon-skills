@@ -6063,8 +6063,9 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
     await expect(page.locator('.scrim.show')).toHaveCount(0);
     const sel = page.locator('#up-model-context-check');
     await expect(sel).toBeEnabled();
-    await sel.selectOption('claude-sonnet-5');                       // works while the popover is open (it closes on that outside click)
+    await sel.selectOption('claude-sonnet-5');                       // selectOption sends no click, so the popover stays open
     await expect(sel).toHaveValue('claude-sonnet-5');
+    await expect(pop(page, 'promote-learnings')).toBeVisible();      // the page was usable while it was open, and it is still open
   });
 
   test('it survives a card re-render (status polling) while open', async ({ page }) => {
@@ -6074,6 +6075,74 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
     await page.evaluate(() => upRenderGrid());                       // what the 3s poll does when a run finishes
     await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
     await expect(btn(page, 'dead-code-cleanup')).toHaveAttribute('aria-expanded', 'true');
+    await page.evaluate(() => loadUpkeep());                         // project switch / view re-entry path
+    await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
+    await btn(page, 'skill-eval').click({ force: true });           // and the Skill Eval card's own render path
+    await expect(pop(page, 'skill-eval')).toBeVisible();
+    await page.evaluate(() => seRender());
+    await expect(pop(page, 'skill-eval')).toBeVisible();
+    await expect(pop(page, 'dead-code-cleanup')).toHaveCount(0);
+  });
+
+  test('Escape and the close button return focus to the "?"; an outside click does not steal focus', async ({ page }) => {
+    await open(page);
+    await btn(page, 'context-doctor').click({ force: true });
+    await page.keyboard.press('Escape');
+    await expect(btn(page, 'context-doctor')).toBeFocused();
+    await btn(page, 'context-doctor').click({ force: true });
+    await pop(page, 'context-doctor').getByRole('button', { name: 'Close' }).click();
+    await expect(btn(page, 'context-doctor')).toBeFocused();
+    await btn(page, 'context-doctor').click({ force: true });
+    await page.locator('#up-model-context-check').focus();
+    await page.locator('.up-h1').click();
+    await expect(pop(page, 'context-doctor')).toHaveCount(0);
+    await expect(btn(page, 'context-doctor')).not.toBeFocused();
+  });
+
+  test('the reader\'s scroll position survives a card re-render; a different card starts at the top', async ({ page }) => {
+    await open(page);
+    await btn(page, 'skill-eval').click({ force: true });
+    const body = pop(page, 'skill-eval').locator('.rc-pop-body');
+    await body.evaluate(el => { el.scrollTop = 120; });
+    await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(50);
+    await page.waitForFunction(() => upHelpScroll > 50);             // the scroll event (async) is what records the position; a real reader's scroll is long done before a re-render
+    await page.evaluate(() => seRender());
+    await expect.poll(() => pop(page, 'skill-eval').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBeGreaterThan(50);
+    // The Skill Eval popover opens upward over the right-hand cards, so switch via the left column's "?" (not covered).
+    await btn(page, 'context-check').click();
+    await expect(pop(page, 'context-check')).toBeVisible();
+    await expect.poll(() => pop(page, 'context-check').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBe(0);
+    await btn(page, 'skill-eval').click({ force: true });                      // back: it does not resume the old position
+    await expect.poll(() => pop(page, 'skill-eval').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBe(0);
+  });
+
+  test('a window resize closes it (placement is computed once)', async ({ page }) => {
+    await open(page);
+    await btn(page, 'context-check').click({ force: true });
+    await expect(pop(page, 'context-check')).toBeVisible();
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await expect(pop(page, 'context-check')).toHaveCount(0);
+  });
+
+  test('the popover text says what is true: allowed git/wc, manual learnings steps, honest Skill Eval limits, chips', async ({ page }) => {
+    await open(page);
+    await btn(page, 'context-check').click({ force: true });
+    const cc = pop(page, 'context-check');
+    await expect(cc).toContainText('runs no arbitrary shell commands');
+    await expect(cc).toContainText('read-only git and wc');
+    await expect(cc).not.toContainText('does not run shell commands');
+    await expect(cc).toContainText('many tool turns');
+    await expect(cc.locator('.rc-pop-fact', { hasText: 'Reads' })).toContainText('project and global');
+    await expect(cc.locator('.rc-pop-fact', { hasText: 'Writes' })).toContainText('one report');
+    await btn(page, 'promote-learnings').click({ force: true });
+    await expect(pop(page, 'promote-learnings')).toContainText('Today these first two steps are manual');
+    await btn(page, 'skill-eval').click({ force: true });
+    const se = pop(page, 'skill-eval');
+    await expect(se).toContainText('for most cases, a check that the skill actually fired');
+    await expect(se).toContainText('needs your explicit OK');
+    await expect(se).toContainText('may never fire');
+    await expect(se.locator('.rc-pop-fact', { hasText: 'Cost' })).toContainText('$3');
+    await expect(se.locator('.rc-pop-fact', { hasText: 'Writes' })).toContainText('skillEvalRuns.json');
   });
 
   for (const width of [1100, 600]) {
