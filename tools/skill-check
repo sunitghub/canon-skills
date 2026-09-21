@@ -1,0 +1,159 @@
+#!/usr/bin/env python3
+"""skill-check — free, deterministic checks on a skill folder (no model calls).
+
+Usage: skill-check <skill-dir>
+
+Prints {skill, checks:[{id, stage, status, evidence, fix}]}. status is
+pass | warn | fail; only `fail` means a paid `claude plugin eval` run would not
+be meaningful. Exit 0 = no fail, 1 = at least one fail, 2 = bad usage or a
+skill inside the canon repo (canon's own skills are checked internally).
+
+Stage 1 is eval coverage. Stage 2 applies the rules on the Anthropic Skills
+reference (code.claude.com/docs/en/skills), not canon's skill-setup-std — that
+stays in `canon-dev.sh lint`. Frontmatter is read as top-level keys only
+(stdlib, no PyYAML), which is enough for every rule below.
+"""
+import json
+import re
+import sys
+from pathlib import Path
+
+CANON_ROOT = Path(__file__).resolve().parent.parent
+BOOLS = {"true", "false", "yes", "no", "on", "off", "1", "0"}
+EFFORTS = {"low", "medium", "high", "xhigh", "max"}
+SIDE_EFFECT = re.compile(r"git push|git commit|gh pr |rm -rf|\bdeploy\b|\bpublish\b", re.I)
+EVALS_FIX = (
+    "Create evals/evals.json: {\"skill_name\": \"<name>\", \"evals\": [{\"id\", \"case_type\", "
+    "\"prompt\", \"expected_output\", \"expectations\": [...]}]} with at least 3 cases "
+    "(e.g. control, compliance, edge). Ask Claude to draft realistic prompts and assertable "
+    "expectations from SKILL.md, then review them."
+)
+
+
+def check(cid, stage, status, evidence, fix=""):
+    return {"id": cid, "stage": stage, "status": status, "evidence": evidence, "fix": fix}
+
+
+def parse_frontmatter(text):
+    """Returns (fields, body, error). fields maps top-level key -> scalar/block text."""
+    if not text.startswith("---\n"):
+        return None, text, "first line is not '---'"
+    end = text.find("\n---", 4)
+    if end == -1:
+        return None, text, "no closing '---'"
+    fields, last = {}, None
+    for line in text[4:end].split("\n"):
+        m = re.match(r"^([A-Za-z_][\w-]*):[ \t]*(.*)$", line)
+        if m:
+            last = m.group(1)
+            fields[last] = m.group(2).strip().strip("'\"")
+        elif last and (line.startswith((" ", "\t", "-"))):
+            fields[last] = (fields[last] + " " + line.strip()).strip()
+    return fields, text[end + 4:], None
+
+
+def stage1(skill_dir):
+    path = skill_dir / "evals" / "evals.json"
+    if not path.is_file():
+        return [check("evals-present", 1, "fail", f"{path} not found", EVALS_FIX)]
+    try:
+        cases = json.loads(path.read_text(encoding="utf-8"))["evals"]
+        assert isinstance(cases, list)
+    except (ValueError, KeyError, AssertionError) as e:
+        return [check("evals-present", 1, "fail", f"{path} is not valid evals JSON ({e!r})", EVALS_FIX)]
+    out = [check("evals-present", 1, "pass", f"{len(cases)} case(s) in evals/evals.json")]
+    out.append(check("evals-count", 1, "pass" if len(cases) >= 3 else "warn",
+                     f"{len(cases)} case(s); minimum is 3",
+                     "" if len(cases) >= 3 else "Add cases until you cover the happy path, a must-follow rule, and an edge."))
+    bad = [str(c.get("id", i)) for i, c in enumerate(cases)
+           if not (isinstance(c, dict) and c.get("prompt") and c.get("expectations"))]
+    out.append(check("evals-shape", 1, "warn" if bad else "pass",
+                     f"cases missing prompt or expectations: {', '.join(bad)}" if bad else "every case has a prompt and expectations",
+                     "Give each case a concrete user prompt and 2-3 assertable expectations." if bad else ""))
+    types = {c.get("case_type") for c in cases if isinstance(c, dict)}
+    varied = len(types) > 1 or len(cases) < 2
+    out.append(check("evals-variety", 1, "pass" if varied else "warn",
+                     f"case_type values: {sorted(str(t) for t in types)}",
+                     "" if varied else "Mix case types (control, compliance, boundary, edge) so the eval is not one scenario repeated."))
+    return out
+
+
+def stage2(skill_dir):
+    md = skill_dir / "SKILL.md"
+    if not md.is_file():
+        return [check("skill-md-present", 2, "fail", f"{md} not found", "Add a SKILL.md with YAML frontmatter.")]
+    out = [check("skill-md-present", 2, "pass", "SKILL.md found")]
+    text = md.read_text(encoding="utf-8", errors="replace")
+    fm, body, err = parse_frontmatter(text)
+    if err:
+        out.append(check("frontmatter", 2, "fail", f"frontmatter unreadable: {err}",
+                         "SKILL.md must start with a '---' line and close the block with '---'; otherwise the whole file is treated as content."))
+        return out
+    out.append(check("frontmatter", 2, "pass", "frontmatter block is well-formed"))
+
+    bad = [f"{k}={fm[k]!r}" for k in ("disable-model-invocation", "user-invocable", "background")
+           if k in fm and fm[k].lower() not in BOOLS]
+    if "effort" in fm and fm["effort"].lower() not in EFFORTS:
+        bad.append(f"effort={fm['effort']!r}")
+    if "context" in fm and fm["context"] != "fork":
+        bad.append(f"context={fm['context']!r}")
+    if "shell" in fm and fm["shell"] not in ("bash", "powershell"):
+        bad.append(f"shell={fm['shell']!r}")
+    out.append(check("field-values", 2, "fail" if bad else "pass",
+                     "invalid: " + ", ".join(bad) if bad else "boolean and enum fields are valid",
+                     "Booleans take true/false/yes/no/on/off/1/0; effort is low|medium|high|xhigh|max; context is fork; shell is bash|powershell." if bad else ""))
+
+    desc = fm.get("description", "")
+    out.append(check("description-present", 2, "pass" if desc else "warn",
+                     "description set" if desc else "no description; the first non-empty body line is used instead",
+                     "" if desc else "Add a description that states what the skill does and when to use it — Claude reads it to decide when to load the skill."))
+    combined = len(desc) + len(fm.get("when_to_use", ""))
+    out.append(check("description-length", 2, "pass" if combined <= 1536 else "warn",
+                     f"description + when_to_use = {combined} chars (limit 1536)",
+                     "" if combined <= 1536 else "Text past 1,536 characters is truncated. Put the key use case and trigger phrases first."))
+    lines = len(body.strip("\n").split("\n")) if body.strip() else 0
+    out.append(check("body-length", 2, "pass" if lines < 500 else "warn",
+                     f"body is {lines} lines (guidance: under 500)",
+                     "" if lines < 500 else "Move detailed reference into supporting files the skill loads when needed."))
+    comp = len(fm.get("compatibility", ""))
+    out.append(check("compatibility-length", 2, "pass" if comp <= 500 else "warn",
+                     f"compatibility is {comp} chars (limit 500)",
+                     "" if comp <= 500 else "Shorten the compatibility field to 500 characters or fewer."))
+    tokens = len(text) // 4
+    out.append(check("compaction-size", 2, "pass" if tokens <= 5000 else "warn",
+                     f"about {tokens} tokens (only the first 5,000 survive compaction)",
+                     "" if tokens <= 5000 else "Trim SKILL.md or move detail to supporting files so the essentials fit in the first 5,000 tokens."))
+    guarded = fm.get("disable-model-invocation", "").lower() in ("true", "yes", "on", "1")
+    side = SIDE_EFFECT.search(body)
+    flag = bool(side) and not guarded
+    out.append(check("side-effects-guarded", 2, "warn" if flag else "pass",
+                     f"body mentions {side.group(0).strip()!r} and Claude may auto-invoke the skill" if flag else "no unguarded side-effect wording found (heuristic)",
+                     "Set disable-model-invocation: true for workflows that push, commit, deploy or delete, so they run only when you invoke them." if flag else ""))
+    out.append(check("trust-hooks", 2, "warn" if "hooks" in fm else "pass",
+                     "frontmatter registers hooks, which run outside a sandbox" if "hooks" in fm else "no hooks in frontmatter",
+                     "Review the hook commands before running an eval; an automated run should refuse this skill." if "hooks" in fm else ""))
+    inj = re.search(r"(^|\s)!`|^```!", body, re.M)
+    out.append(check("trust-shell-injection", 2, "warn" if inj else "pass",
+                     "body has !`command` or ```! blocks, which run before the skill is sent" if inj else "no shell-injection blocks",
+                     "Review those commands; a failing one aborts the whole invocation." if inj else ""))
+    return out
+
+
+def main(argv):
+    if len(argv) != 2 or argv[1] in ("-h", "--help"):
+        print(__doc__.split("\n\n")[0], file=sys.stderr)
+        return 2
+    skill_dir = Path(argv[1]).resolve()
+    if not skill_dir.is_dir():
+        print(f"skill-check: {argv[1]} is not a directory", file=sys.stderr)
+        return 2
+    if skill_dir == CANON_ROOT or CANON_ROOT in skill_dir.parents:
+        print("skill-check: refusing a path inside the canon repo — its skills are checked internally", file=sys.stderr)
+        return 2
+    checks = stage1(skill_dir) + stage2(skill_dir)
+    print(json.dumps({"skill": skill_dir.name, "checks": checks}, indent=2))
+    return 1 if any(c["status"] == "fail" for c in checks) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

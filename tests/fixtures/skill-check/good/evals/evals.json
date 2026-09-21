@@ -1,0 +1,5 @@
+{"skill_name": "good", "evals": [
+  {"id": 1, "case_type": "control", "prompt": "Write a commit message for renaming getUser to fetchUser", "expected_output": "A conventional commit", "expectations": ["Uses an imperative subject"]},
+  {"id": 2, "case_type": "compliance", "prompt": "Write a commit message, subject under 50 chars", "expected_output": "Short subject", "expectations": ["Subject is 50 chars or fewer"]},
+  {"id": 3, "case_type": "edge", "prompt": "Write a commit message for an empty change", "expected_output": "Asks for the change", "expectations": ["Asks what changed"]}
+]}
