@@ -84,6 +84,15 @@ Steps (normal-tier skips 7-9; high-risk runs the full pipeline):
      ticket). The reviewer/evaluator verify visual criteria against actual
      rendered output — see `shared-gate-protocol.md ## Self-serve visual
      verification` for the browser-binary recipe (no Node/Playwright needed).
+   - **Untrusted-input criterion (required when the sprint adds a tool, endpoint, or parser that
+     reads input it does not control** — files or JSON from a user-picked folder, request payloads,
+     paths). `## Test Plan` must include a malformed-input step **run before the close gates are
+     dispatched**: feed it the shapes it must survive — wrong types (list/dict/null/NaN where a
+     scalar is expected), empty, huge or deeply nested input, CRLF/binary, symlinks and `..` in
+     paths — and assert it fails cleanly (a structured error, never a traceback or a silently
+     unenforced limit). A short random loop of a few hundred cases is enough. Live-caught:
+     `t-57df`'s evaluator failed twice on crashes a pre-gate fuzz would have found, and `t-23d8`'s
+     reviewer found a NaN cost cap and inner symlinks the same way.
    - **Scenario-backed acceptance criteria (optional — for input→output claims).** A criterion
      that is a genuine input→output claim MAY carry a Given/When/Then block — an inline
      ` ```gherkin ` block (`t-6e32`), or a ` ```gherkin-file ` reference to a ticket-local
