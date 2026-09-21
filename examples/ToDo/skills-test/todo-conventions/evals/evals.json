@@ -1,0 +1,51 @@
+{
+  "skill_name": "todo-conventions",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Use the todo-conventions skill: rewrite this as a todo item for the ToDo app: \"I should probably remember to buy some milk on the way home today.\"",
+      "expected_output": "A short imperative item without filler, at most 60 characters, sentence case, no trailing period.",
+      "expectations": [
+        "The item starts with an imperative verb such as Buy",
+        "The item is 60 characters or fewer",
+        "The item has no filler words like 'probably' or 'I should'",
+        "The item does not end with a period"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "compliance",
+      "prompt": "Use the todo-conventions skill: I want my ToDo app's todos to survive a page reload. Show me the code change for index.html.",
+      "expected_output": "Persistence added with localStorage under the key todo:v1, storing the todos array as JSON, wrapped in try/catch.",
+      "expectations": [
+        "Uses localStorage with the key todo:v1",
+        "Stores the todos array as JSON",
+        "Wraps storage reads and writes in try/catch",
+        "Keeps the change inside index.html without adding a framework or extra files"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "edge",
+      "prompt": "Use the todo-conventions skill: please rename the element ids todo-form, todo-input and todo-list in the ToDo app to form, input and items.",
+      "expected_output": "Declines to rename the three ids because tooling depends on them, and suggests a class or wrapper element instead.",
+      "expectations": [
+        "Does not rename todo-form, todo-input or todo-list",
+        "Explains that tests or tooling look those ids up",
+        "Suggests a class or wrapper element as the alternative"
+      ]
+    },
+    {
+      "id": 4,
+      "case_type": "boundary",
+      "prompt": "Use the todo-conventions skill: add this as a todo item: \"Schedule a meeting with the whole platform team to discuss the quarterly infrastructure migration plan and budget\"",
+      "expected_output": "The item is shortened to 60 characters or fewer, the cut is mentioned, and it starts with an imperative verb.",
+      "expectations": [
+        "The resulting item is 60 characters or fewer",
+        "The item starts with an imperative verb",
+        "The response says the text was shortened"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "skill_name": "todo-hooky",
+  "evals": [
+    {
+      "id": 1,
+      "case_type": "control",
+      "prompt": "Use the todo-hooky skill: I edited the ToDo index.html and the form now reads <form id=\"todo-form\"><input type=\"text\" id=\"todo-input\"></form><ul id=\"todo-list\"></ul> with the empty text 'No todos yet.' and a button class=\"delete\". Run your checks.",
+      "expected_output": "All three checks reported as pass, each citing the markup that proves it.",
+      "expectations": [
+        "Reports the three ids as present",
+        "Reports the empty-state text as matching",
+        "Reports the delete class as present",
+        "Does not change or rewrite the markup"
+      ]
+    },
+    {
+      "id": 2,
+      "case_type": "compliance",
+      "prompt": "Use the todo-hooky skill: after my edit the list is <ul id=\"items\"></ul> and the form is <form id=\"todo-form\"><input id=\"todo-input\"></form>. Run your checks.",
+      "expected_output": "The todo-list id check fails, and the response only reports without fixing.",
+      "expectations": [
+        "Reports the todo-list id as missing",
+        "Marks that check as fail",
+        "Does not rewrite the markup to fix it"
+      ]
+    },
+    {
+      "id": 3,
+      "case_type": "edge",
+      "prompt": "Use the todo-hooky skill: my index.html now has two elements with id=\"todo-list\" and the empty state says 'Nothing here'. Run your checks.",
+      "expected_output": "Flags the duplicate todo-list id and the wrong empty-state text as failures.",
+      "expectations": [
+        "Flags that todo-list appears more than once",
+        "Flags the empty-state text as not matching 'No todos yet.'"
+      ]
+    }
+  ]
+}
