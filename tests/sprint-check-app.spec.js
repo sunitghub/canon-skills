@@ -5894,6 +5894,38 @@ test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
     expect(JSON.parse(capture.checkBody).skill_dir).toBe('/tmp/proj-a/skills/api');
   });
 
+  test('a stale board server (404 without JSON) says to restart it, not "request failed"', async ({ page }) => {
+    await setup(page, { check: GOOD });
+    await page.route('**/api/skill-eval/check*', route => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' }));
+    await pick(page);
+    await expect(page.locator('#se-card .se-err')).toContainText('older than this page');
+    await expect(page.locator('#se-card .se-err')).toContainText('Restart it');
+    await expect(page.locator('#se-card')).not.toContainText('request failed');
+  });
+
+  test('an unreachable board server says so', async ({ page }) => {
+    await setup(page, { check: GOOD });
+    await page.route('**/api/skill-eval/check*', route => route.abort());
+    await pick(page);
+    await expect(page.locator('#se-card .se-err')).toContainText('Could not reach the board server');
+  });
+
+  test('a non-JSON server error names the HTTP status', async ({ page }) => {
+    await setup(page, { check: GOOD });
+    await page.route('**/api/skill-eval/check*', route => route.fulfill({ status: 500, contentType: 'text/html', body: '<h1>boom</h1>' }));
+    await pick(page);
+    await expect(page.locator('#se-card .se-err')).toContainText('unexpected reply (HTTP 500)');
+  });
+
+  test('a stale server on Run shows the restart message too', async ({ page }) => {
+    await setup(page, { check: GOOD });
+    await pick(page);
+    await page.route('**/api/skill-eval/run*', route => route.fulfill({ status: 404, contentType: 'text/plain', body: 'Not Found' }));
+    await page.locator('#se-card button:has-text("Run plugin eval")').click();
+    await page.locator('#cc-ok').click();
+    await expect(page.locator('#se-card .se-err')).toContainText('Restart it');
+  });
+
   test('a failing check locks stage 3: no Run button, nothing spent', async ({ page }) => {
     await setup(page, { check: NOEVALS });
     await pick(page);
@@ -5936,8 +5968,16 @@ test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
     await pick(page);
     const run = page.locator('#se-card button:has-text("Run plugin eval")');
     await expect(run).toBeDisabled();
+    // It must also LOOK disabled (the global .btn has no disabled style) and say how to enable it.
+    await expect(run).toHaveCSS('cursor', 'not-allowed');
+    await expect(run).not.toHaveCSS('opacity', '1');
+    await expect(page.locator('#se-card')).toContainText('Tick the box below to enable Run');
+    const box = await page.locator('#se-card .se-ack input').boundingBox();
+    expect(box.width).toBeGreaterThanOrEqual(16); // the browser default (~13px) read as tiny next to the button
     await page.locator('#se-card label:has-text("trust-hooks") input').check();
     await expect(run).toBeEnabled();
+    await expect(run).toHaveCSS('opacity', '1');
+    await expect(page.locator('#se-card')).not.toContainText('Tick the box below');
     await run.click();
     await page.locator('#cc-ok').click();
     await expect.poll(() => capture.runBody && capture.runBody.allow_trust).toBe(true);

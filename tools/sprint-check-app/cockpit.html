@@ -219,6 +219,9 @@
   .se-bar span{font-size:11px;color:var(--text-muted);text-align:right;font-variant-numeric:tabular-nums}
   .se-note{font-size:12px;color:var(--text-muted)}
   .se-card a.btn{text-decoration:none}
+  .se-ack{display:flex;gap:9px;align-items:flex-start;margin-top:10px;font-size:12.5px;line-height:1.45;cursor:pointer}
+  .se-ack input{width:18px;height:18px;flex:none;margin:0;accent-color:var(--accent);cursor:pointer}
+  .se-card .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}  /* the global .btn has no disabled look, so a disabled Run read as clickable */
   .se-err{color:var(--col-discarded);font-size:12.5px}
   .up-empty{color:var(--text-dim);font-size:13px;padding:30px 0;text-align:center}
   .up-prose h3{color:var(--text);font-size:14px;margin:18px 0 8px;font-weight:700;padding-bottom:6px;border-bottom:1px solid var(--border-muted)}
@@ -1001,8 +1004,9 @@
         h+=`<div class="se-note">Fix the failing check${(w1==='fail'&&w2==='fail')?'s':''} above to unlock this stage. Nothing has been run or spent.</div>`;
       }else{
         h+=`<div class="rc-config"><select class="rc-select" id="se-model" title="Model"${running?' disabled':''}><option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option><option value="claude-sonnet-5">Sonnet 5</option></select>`
-          +`<button class="btn primary" onclick="seRun()"${(running||(trust.length&&!se.trust))?' disabled':''}>${running?'Running…':(se.run&&se.run.status==='done'?'&#8635; Run again':'&#9654; Run plugin eval')}</button></div>`;
-        if(trust.length) h+=`<label class="se-note" style="display:flex;gap:6px;align-items:flex-start;margin-top:8px"><input type="checkbox" ${se.trust?'checked':''} onchange="se.trust=this.checked;seRender()"> This skill runs hooks or shell commands (${esc(trust.map(t=>t.id).join(', '))}). I have reviewed them and want to run it anyway.</label>`;
+          +`<button class="btn primary" onclick="seRun()"${(running||(trust.length&&!se.trust))?' disabled':''}>${running?'Running…':(se.run&&se.run.status==='done'?'&#8635; Run again':'&#9654; Run plugin eval')}</button>`
+          +((trust.length&&!se.trust&&!running)?'<span class="se-note">Tick the box below to enable Run.</span>':'')+'</div>';
+        if(trust.length) h+=`<label class="se-note se-ack"><input type="checkbox" ${se.trust?'checked':''} onchange="se.trust=this.checked;seRender()"> This skill runs hooks or shell commands (${esc(trust.map(t=>t.id).join(', '))}). I have reviewed them and want to run it anyway.</label>`;
         if(se.run&&se.run.status==='done') h+='<div style="margin-top:12px">'+seResult(se.run)+'</div>';
         else if(se.run&&se.run.status==='error') h+='<div class="se-err" style="margin-top:8px">The run failed. Check the board server log for the eval output.</div>';
       }
@@ -1011,9 +1015,16 @@
     el.innerHTML=h;
     if(se.open) seLoad(se.cwd);
   }
+  // Explain the two real failures instead of "request failed": a board server started before this
+  // page's routes existed answers 404 (plain text, not JSON); a stopped server refuses the connection.
+  async function seJson(url,opts){
+    let r;
+    try{ r=await fetch(url,opts); }catch(e){ return {ok:false,error:'Could not reach the board server. Is it still running?'}; }
+    if(r.status===404) return {ok:false,error:'This board server is older than this page. Restart it to use Skill Eval.'};
+    try{ return await r.json(); }catch(e){ return {ok:false,error:'The board server sent an unexpected reply (HTTP '+r.status+').'}; }
+  }
   async function seLoad(path){
-    let d={};
-    try{ d=await (await fetch('/api/browse-dirs?path='+encodeURIComponent(path||'')+(se.hidden?'&hidden=1':''))).json(); }catch(e){ d={error:'request failed'}; }
+    const d=await seJson('/api/browse-dirs?path='+encodeURIComponent(path||'')+(se.hidden?'&hidden=1':''));
     const list=document.getElementById('se-list'); if(!list) return;
     if(d.error){ list.innerHTML='<div class="dirnav-empty">'+esc(d.error)+'</div>'; return; }
     se.cwd=d.path||'';
@@ -1035,8 +1046,7 @@
     se.dir=se.cwd; se.open=false; se.err=''; se.check=null; se.run=null; se.trust=false;
     clearInterval(sePoll); sePoll=null;
     seRender();
-    let r={};
-    try{ r=await (await fetch('/api/skill-eval/check?project='+encodeURIComponent(upProjectId),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skill_dir:se.dir})})).json(); }catch(e){ r={ok:false,error:'request failed'}; }
+    const r=await seJson('/api/skill-eval/check?project='+encodeURIComponent(upProjectId),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skill_dir:se.dir})});
     if(!r.ok){ se.err=r.error||'Could not check that folder.'; se.dir=''; seRender(); return; }
     se.check=r;
     try{
@@ -1066,9 +1076,8 @@
     });
     if(!ok) return;
     se.err='';
-    let r={};
-    try{ r=await (await fetch('/api/skill-eval/run?project='+encodeURIComponent(upProjectId),{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({skill_dir:se.dir,model,confirm_cost:true,allow_trust:se.trust,max_cost_usd:3})})).json(); }catch(e){ r={ok:false,error:'request failed'}; }
+    const r=await seJson('/api/skill-eval/run?project='+encodeURIComponent(upProjectId),{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({skill_dir:se.dir,model,confirm_cost:true,allow_trust:se.trust,max_cost_usd:3})});
     if(!r.ok && !r.busy){ se.err=r.error||'Could not start the run.'; seRender(); return; }
     se.run={status:'running'}; seRender(); seStartPoll();
   }
