@@ -5756,6 +5756,15 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     }
   });
 
+  test('context-check "?" popover mentions trend tracking against the last run (t-c957)', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.locator('#nav-upkeep').click();
+    await page.locator('#up-card-context-check .rc-help').click();
+    await expect(page.locator('#up-help-context-check')).toContainText(
+      'compares its finding count to your last run on this repo');
+  });
+
   test('clicking a Projects tab clears the Upkeep nav active state (t-5dc2 3-way switch)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');

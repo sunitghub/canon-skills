@@ -64,11 +64,17 @@ Audit what Claude loads every session. Writes `context-check-report.md` at the p
 
    In each size table, set the **Issues** column to `Y` if any finding was flagged for that file, `—` if none. For each file assessed in Steps 7–8, explicitly state either the issue found or "no relevance concern" — do not silently skip files that passed. If one section has no findings, say so and continue to the next section. If no findings exist anywhere, stop before the write prompt.
 
-10. Ask: `Write context-check-report.md report? (y to confirm)`. Do not write without `y`. On confirmation, write `context-check-report.md` at the project root as a markdown table:
+10. Ask: `Write context-check-report.md report? (y to confirm)`. Do not write without `y`. On confirmation:
+
+   - Compute `finding_count` = the number of rows across both size tables whose **Status** is `issues found`, and `file_count` = the total number of rows across both tables.
+   - Read `.reports/context-check-history.json` at the project root (create the `.reports/` directory if absent). Treat a missing or unparseable file as `{}`. Look up the entry keyed by this project's absolute root path (an array of `{timestamp, finding_count, file_count}` objects, oldest first).
+   - If that array is non-empty, take its last entry's `finding_count` as `<prev>` and its `timestamp` as `<date>`.
+   - Append `{timestamp: <ISO 8601 now>, finding_count, file_count}` to the array; if the array now has more than 20 entries, drop from the front until it has exactly 20. Write the file back (pretty-printed JSON, one key per absolute project path — do not touch other projects' entries).
+   - Write `context-check-report.md` at the project root as a markdown table:
 
    ```
    | File | Status | Details |
    |------|--------|---------|
    ```
 
-   One row per audited file. **Status** must be exactly one of: `clean`, `issues found`, `not present`, `skipped`. Use `skipped` for canon-managed files that are not audited. **Details** is a one-line summary of the finding or reason, or `—` if none. Overwrite if the file already exists — this is a point-in-time snapshot, not a log.
+   One row per audited file. **Status** must be exactly one of: `clean`, `issues found`, `not present`, `skipped`. Use `skipped` for canon-managed files that are not audited. **Details** is a one-line summary of the finding or reason, or `—` if none. Overwrite if the file already exists — this is a point-in-time snapshot, not a log. **If a prior history entry existed** (the `<prev>`/`<date>` computed above), insert one line at the very top of the file, before the first table: `**Trend:** findings <prev> → <finding_count> (last run <date>)`. Omit this line entirely on a project's first-ever run (no prior entry).
