@@ -5779,6 +5779,18 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
       'run this skill again in an interactive session');
   });
 
+  test('promote-learnings "?" popover mentions direct invocation and a captured example (t-5dd4)', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.locator('#nav-upkeep').click();
+    await page.locator('#up-card-promote-learnings .rc-help').click();
+    const panel = page.locator('#up-help-promote-learnings');
+    await expect(panel).toContainText('/promote-learnings');
+    await expect(panel).toContainText('Example output');
+    await expect(panel).toContainText('standards/efficiency.md');
+    await expect(panel).toContainText('dismiss');
+  });
+
   test('clicking a Projects tab clears the Upkeep nav active state (t-5dc2 3-way switch)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
