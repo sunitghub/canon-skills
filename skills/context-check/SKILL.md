@@ -66,7 +66,7 @@ Audit what Claude loads every session. Writes `context-check-report.md` at the p
 
 10. Ask: `Write context-check-report.md report? (y to confirm)`. Do not write without `y`. On confirmation:
 
-   - Compute `finding_count` = the number of rows across both size tables whose **Status** is `issues found`, and `file_count` = the total number of rows across both tables.
+   - Compute `finding_count` = the number of rows, across both the Global and Project sections (from Step 9), whose **Status** will be `issues found` in the report table below, and `file_count` = the total number of rows across both sections.
    - Read `.reports/context-check-history.json` at the project root (create the `.reports/` directory if absent). Treat a missing or unparseable file as `{}`. Look up the entry keyed by this project's absolute root path (an array of `{timestamp, finding_count, file_count}` objects, oldest first).
    - If that array is non-empty, take its last entry's `finding_count` as `<prev>` and its `timestamp` as `<date>`.
    - Append `{timestamp: <ISO 8601 now>, finding_count, file_count}` to the array; if the array now has more than 20 entries, drop from the front until it has exactly 20. Write the file back (pretty-printed JSON, one key per absolute project path — do not touch other projects' entries).
