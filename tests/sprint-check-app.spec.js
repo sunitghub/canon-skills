@@ -6124,7 +6124,7 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
     await expect(pop(page, 'context-check')).toHaveCount(0);
   });
 
-  test('the popover text says what is true: allowed git/wc, manual learnings steps, honest Skill Eval limits, chips', async ({ page }) => {
+  test('the popover text says what is true: allowed git/wc, tkt learn/learnings-sweep run automatically, honest Skill Eval limits, chips', async ({ page }) => {
     await open(page);
     await btn(page, 'context-check').click({ force: true });
     const cc = pop(page, 'context-check');

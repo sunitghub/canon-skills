@@ -553,9 +553,12 @@ Opus` default, scoped only to the two close-gate dispatches below.
    `learnings-sweep <id>` (single-ticket mode — see `skills/learnings-sweep/SKILL.md`): it upserts
    that one row into root `LEARNINGS.md` so the pending queue stays current without a repo-wide
    scan. This is pure aggregation, not promotion — it never changes a row's `Status` away from
-   `UNPROMOTED`, so it does not violate the non-self-promote rule above. `learnings-sweep` and the
-   actual promotion into the durable store stay exactly as manual and fresh-context as before —
-   only the distill step moved from a suggestion to an automatic action.
+   `UNPROMOTED`, so it does not violate the non-self-promote rule above. This `learnings-sweep`
+   call was already yours to make before this ticket — the pre-existing text already had you
+   follow the user's own `tkt learn` run with it; that mechanics is unchanged. What moved is only
+   who triggers `tkt learn` itself: an agent action now, not a wait for the user. The actual
+   promotion into the durable store is the one step that stays manual and fresh-context, exactly
+   as before — `promote-learnings` runs with no memory of this sprint, per its own SKILL.md.
 
 9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses
    because a required file is missing or checklist items remain unchecked, report the blockers
