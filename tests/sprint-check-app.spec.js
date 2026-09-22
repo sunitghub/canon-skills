@@ -5776,7 +5776,7 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
 
     await page.locator('#up-card-dead-code-cleanup .rc-help').click();
     await expect(page.locator('#up-help-dead-code-cleanup')).toContainText(
-      'run this skill again in an interactive session');
+      'interactive session'); // exact phrasing moved into its own section, t-d05b
   });
 
   test('promote-learnings "?" popover mentions direct invocation and a captured example (t-5dd4)', async ({ page }) => {
@@ -5807,6 +5807,40 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     const skillEvalHtml = await page.locator('#up-help-skill-eval').innerHTML();
     expect(skillEvalHtml).toContain('<br><b>2 Best practices</b>');
     expect(skillEvalHtml).toContain('<br><b>3 Plugin eval</b>');
+  });
+
+  test('all 5 Upkeep "?" popovers have a "What to do next" section (t-d05b)', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.locator('#nav-upkeep').click();
+    await expect(page.locator('#se-card .rc-title')).toBeVisible(); // seRender runs after the grid
+
+    const cases = [
+      ['context-check', 'Trend line move'],
+      ['context-doctor', "claude-optimization.md"],
+      ['dead-code-cleanup', 'review candidates and confirm removals'],
+      ['promote-learnings', 'no promote command'],
+      ['skill-eval', 'Open the full report'],
+    ];
+    for (const [id, snippet] of cases) {
+      await page.locator(`[data-help="${id}"] .rc-help`).click({ force: true });
+      const panel = page.locator(`#up-help-${id}`);
+      await expect(panel).toContainText('What to do next', { ignoreCase: true });
+      await expect(panel).toContainText(snippet);
+      await page.locator(`[data-help="${id}"] .rc-help`).click({ force: true }); // close before next
+    }
+
+    // dead-code-cleanup/promote-learnings: the moved sentences must appear only
+    // once each in the panel, not duplicated between the new section and
+    // "What it does not do".
+    await page.locator('[data-help="dead-code-cleanup"] .rc-help').click({ force: true });
+    const deadCodeText = await page.locator('#up-help-dead-code-cleanup').innerText();
+    expect(deadCodeText.match(/review candidates and confirm removals/g)?.length ?? 0).toBe(1);
+    await page.locator('[data-help="dead-code-cleanup"] .rc-help').click({ force: true });
+
+    await page.locator('#up-card-promote-learnings .rc-help').click();
+    const learningsText = await page.locator('#up-help-promote-learnings').innerText();
+    expect(learningsText.match(/no promote command/g)?.length ?? 0).toBe(1);
   });
 
   test('clicking a Projects tab clears the Upkeep nav active state (t-5dc2 3-way switch)', async ({ page }) => {
