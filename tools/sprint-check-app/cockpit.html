@@ -858,7 +858,7 @@
       lead:'Finds likely-unreferenced symbols so you can consider removing them.',
       sections:[['How it happens',UP_HOW],
         ['Why it runs','It scans for top-level symbols with no references (JS/TS exports, Python def/class, Go exported functions) and ranks removal candidates as high or low confidence. It is a heuristic, so a candidate can be wrong.'],
-        ['What it does not do','Run from Upkeep it never reaches its deletion step: nothing is removed. '+UP_NOT],
+        ['What it does not do','Run from Upkeep it never reaches its deletion step: nothing is removed. To act on a candidate, run this skill again in an interactive session — its confirm-then-remove loop only runs there, never headless. '+UP_NOT],
         ['Cost',UP_COST]],
       facts:[['Reads','source files'],['Writes','one report']]},
     'promote-learnings':{title:'promote-learnings',
@@ -866,7 +866,7 @@
       sections:[['How it happens',UP_HOW+' It reads the UNPROMOTED rows in LEARNINGS.md, then each row\'s source <code>.tickets/&lt;id&gt;/learnings.md</code> in full.'],
         ['Why it runs','The sprint that produced a lesson cannot judge whether it generalises, so promotion must be done by a reader with no memory of that sprint. Every Upkeep run is a fresh subprocess, so that holds automatically. For each durable row it proposes one destination, such as a file under <code>standards/</code>.'],
         ['Where learnings come from','<b>1</b> <code>tkt learn &lt;id&gt;</code> (the sprint agent runs this itself at close, when there is anything to distill) distils a closed sprint\'s non-delivered plan rows and evaluator findings into an UNPROMOTED <code>.tickets/&lt;id&gt;/learnings.md</code>. <b>2</b> <code>learnings-sweep</code> (also automatic, right after) indexes those into LEARNINGS.md. <b>3</b> This card judges them.'],
-        ['What it does not do','It never writes LEARNINGS.md, <code>standards/</code> or <code>critique/</code>. Promoting stays a separate, human-confirmed step. '+UP_NOT],
+        ['What it does not do','It never writes LEARNINGS.md, <code>standards/</code> or <code>critique/</code>. There is no promote command — read the report\'s own Next Steps section, then hand-edit the proposed destination file and flip that row\'s Status in LEARNINGS.md yourself. '+UP_NOT],
         ['Cost',UP_COST]],
       facts:[['Reads','LEARNINGS.md and ticket learnings'],['Writes','one report']]}
   };

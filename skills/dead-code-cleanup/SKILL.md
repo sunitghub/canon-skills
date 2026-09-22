@@ -66,7 +66,7 @@ review/eval gates like any other change — this skill never bypasses them.
    | Low-confidence (entry-point) | M |
    | Languages scanned | js, py, go |
 
-   Advisory only — nothing removed. Confirm candidates to remove; removals go through the sprint's gates.
+   > Advisory only — nothing removed. Confirm candidates to remove; removals go through the sprint's gates.
 
    ## High-confidence candidates
 

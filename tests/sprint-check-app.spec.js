@@ -5765,6 +5765,20 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
       'compares its finding count to your last run on this repo');
   });
 
+  test('promote-learnings and dead-code-cleanup "?" popovers name the concrete next step (t-a27a)', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.locator('#nav-upkeep').click();
+
+    await page.locator('#up-card-promote-learnings .rc-help').click();
+    await expect(page.locator('#up-help-promote-learnings')).toContainText(
+      'no promote command');
+
+    await page.locator('#up-card-dead-code-cleanup .rc-help').click();
+    await expect(page.locator('#up-help-dead-code-cleanup')).toContainText(
+      'run this skill again in an interactive session');
+  });
+
   test('clicking a Projects tab clears the Upkeep nav active state (t-5dc2 3-way switch)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');

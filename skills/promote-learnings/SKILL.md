@@ -69,6 +69,10 @@ fresh session — do not run it in the same conversation that just closed the sp
 <repeat per row>
 
 ## Next Steps
+
+> This skill never writes these changes itself. Apply them by hand: edit the destination
+> file below, then flip each promoted row's Status in LEARNINGS.md away from UNPROMOTED.
+
 <Concrete, per-proposal actions a human can take — e.g. "Add the following to
 standards/efficiency.md: ..." or "Consider writing a critique/canon-learnings.md section
 covering: ...". Never performed by this skill itself.>
