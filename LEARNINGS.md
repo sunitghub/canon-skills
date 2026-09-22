@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-18-2026 11:45
+learnings-sweep last run: 09-22-2026 13:46
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-22 | [t-3f4e](.tickets/t-3f4e/learnings.md) | No findings. All five criteria and all four test-plan items verified pass with direct evidence against actual changed files and live command execution. | UNPROMOTED |
 | 2026-09-18 | [t-1acb](.tickets/t-1acb/learnings.md) | A fresh evaluator caught a real gap between an acceptance criterion's literal wording and the implementation on first pass — the criterion named `key/secret/token/password` as generic credential shapes, but the regex alternation only had `api_key`, missing bare `key`; fixed and independently re-verified pass on retry, including word-boundary false-positive spot-checks (`monkey =`, `turnkey =`). | promoted |
 | 2026-09-17 | [t-8a2a](.tickets/t-8a2a/learnings.md) | Two of a diff's own pre-existing-unrelated test failures sat inside the exact describe block the sprint rewrote (16 tests, same click-target change) — the evaluator didn't assume "unrelated," it diffed the failing assertion and the app's actual status text against the ticket's own base commit byte-for-byte before ruling them out of scope. | promoted |
 | 2026-09-17 | [t-644a](.tickets/t-644a/learnings.md) | Session sub-tabs looked like "mirror cockpit.html's ensureView one layer down" (N iframes) until `openCockpit()` was read in full — the real scope was making a whole per-session state machine (poll loop, needs-you, Save&End) per-tab-aware; read the full existing implementation before estimating scope on a change that extends a single-instance pattern to multiple instances. | dismissed |
