@@ -56,11 +56,11 @@ right-sizing, snippet, and evidence principles apply.
 
 ## Steps
 
-1. **Save run-id.** Before reading anything, overwrite `.tickets/<id>/eval-report.md` with a single line via Bash — even if the file already exists from a prior pass; a stale run-id (or a report with no run-id, from a prior pass that overwrote it away at step 8) must never be trusted or left in place:
+1. **Save run-id (provisional).** Before reading anything, overwrite `.tickets/<id>/eval-report.md` with a single line via Bash — even if the file already exists from a prior pass; a stale run-id (or a report with no run-id, from a prior pass that discarded it away without ever reaching step 8) must never be trusted or left in place:
    ```
    evaluator-run-id: <epoch-seconds>-<RANDOM>
    ```
-   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation. The run-id is a **correlation handle, not a security token**: the close gate (`_gate_eval_report`) matches it to a `.claude/subagent-runs.jsonl` entry only by timestamp window (±60 min) and never validates the id itself as tamper-proof authenticity — so `$RANDOM`'s low entropy is not a weakness here, and increasing it (e.g. `uuidgen`/`openssl`) would falsely imply a security property this field does not claim. Step 8 appends the rest of the report after this line — never re-overwrite the whole file at step 8, or this line is lost and the close gate fails on a missing run-id.
+   Generate `<epoch-seconds>` via `date +%s` and `<RANDOM>` via `$RANDOM` in a Bash call. This anchors the report to *this* fresh subagent invocation and guards against a stale leftover report from a discarded prior pass. The run-id is a **correlation handle, not a security token**: the close gate (`_gate_eval_report`) matches it to a `.claude/subagent-runs.jsonl` entry only by timestamp window (±60 min) and never validates the id itself as tamper-proof authenticity — so `$RANDOM`'s low entropy is not a weakness here, and increasing it (e.g. `uuidgen`/`openssl`) would falsely imply a security property this field does not claim. **This value is provisional** — step 8 re-stamps it with a fresh timestamp right before writing the rest of the report, so the value written here only needs to survive until then.
 
    `date +%s` and `$RANDOM` are chosen because they work identically in Git Bash on Windows — do not substitute `uuidgen`, PowerShell, or any other tool even on a Windows path; live-reproduced failure: an evaluator subagent second-guessed this instruction on a Windows machine, tried PowerShell GUID generation then `uuidgen` (neither works in Git Bash), and wrote a malformed run-id that would have hard-failed the close gate.
 
@@ -90,10 +90,28 @@ right-sizing, snippet, and evidence principles apply.
    - **not-run** — cannot determine from static reading alone; flag for human verification. **For a visual/rendered item you must first attempt the browser-binary render (see "## Self-serve visual verification") — do not grade a renderable visual item `not-run` when a browser binary is available.** Likewise, for a **scenario-backed / runner item** — a `## Test Plan` line naming a runner command (e.g. `node dsl_runner.js specs/x.feature`) — you must actually execute the command: **do not grade it `not-run` from static reading when the command is present and runnable.** Reserve `not-run` for when the runner genuinely cannot execute (e.g. a missing interpreter or dependency in the eval environment), and disclose why — that is distinct from `fail` (a runner that ran and reported non-zero).
    - **fail** — test is missing, wrong, or wouldn't catch the targeted failure
 
-8. **Save the report.** Save the evaluation via Bash to `.tickets/<id>/eval-report.md` — append (`>>`), never truncate (`>`), so the run-id line from step 1 survives. Write it in sections, verify each append, and follow the retry pattern in "Report-writing safety" above. **HARD RULE (t-072d): the `Model:` line below is mandatory — `sprint complete` blocks the close if `eval-report.md` has no `^Model:` line. Do not drop it, even if you write the rest of the report free-form.**
+8. **Re-stamp the run-id, then save the report.** `complete.md`'s freshness check compares
+   this id's embedded timestamp against wall-clock time when the orchestrator reads it
+   right after you hand back — so a run-id from step 1 makes that diff include your
+   *entire* grading time (reading files, re-running tests, rendering visuals), which can
+   legitimately exceed the check's threshold on a thorough eval. Fix: re-stamp it here,
+   as late as possible, immediately before writing the rest of the report — not earlier
+   in this step, so the gap between this timestamp and hand-back stays small regardless
+   of how long grading itself took.
+
+   Generate a fresh `<epoch-seconds>-<RANDOM>` the same way as step 1 (`date +%s`/`$RANDOM`,
+   Windows-Git-Bash-safe — do not substitute `uuidgen`/PowerShell). Since nothing else has
+   been written to `.tickets/<id>/eval-report.md` between step 1 and here, overwrite
+   (`>`, not `>>`) the file with just this new line — this deliberately replaces step 1's
+   provisional stamp, unlike every other write in this step, which appends. Then continue
+   normally: append (`>>`) the rest of the report in sections, verify each append, and
+   follow the retry pattern in "Report-writing safety" above. **HARD RULE (t-072d): the
+   `Model:` line below is mandatory — `sprint complete` blocks the close if
+   `eval-report.md` has no `^Model:` line. Do not drop it, even if you write the rest of
+   the report free-form.**
 
 ```markdown
-evaluator-run-id: <already written at step 1 — leave as line 1, do not re-write>
+evaluator-run-id: <re-stamped at the start of this step — leave as line 1, do not re-write again>
 
 # Eval Report
 

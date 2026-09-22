@@ -380,13 +380,20 @@ Opus` default, scoped only to the two close-gate dispatches below.
    **Log the subagent run.** Immediately after the evaluator subagent completes, read the
    `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`. **Before
    trusting it, verify it's genuine:** run `date +%s` yourself and diff against the run-id's
-   embedded epoch (the number before the `-`). If the difference exceeds 5 minutes (300s), do not
-   log or trust the report — the run-id is either fabricated (a model composing a plausible
-   number instead of executing the real command) or the subagent's clock is broken; discard the
-   report and re-dispatch a fresh evaluator instead (`t-7ec6`, live-reproduced: a dispatch's
-   reported run-id was ~2 years off real time, caught only because the skew happened to be large
-   — this check catches a smaller, plausible-looking fabrication too, which the after-the-fact
-   ±60min jsonl-window check below cannot). Once verified, run
+   embedded epoch (the number before the `-`). **What this measures (t-a29b):** `eval.md` step 8
+   re-stamps this id immediately before writing the rest of the report — as late in the
+   evaluator's run as possible — specifically so this diff reflects time since the evaluator
+   *finished its work and handed back*, not its total grading duration. A thorough evaluation
+   (re-running tests, rendering visuals) can legitimately take many minutes; this diff should
+   not, regardless — it is only message-delivery/orchestrator-turnaround latency. If the
+   difference still exceeds 5 minutes (300s), do not log or trust the report — the run-id is
+   either fabricated (a model composing a plausible number instead of executing the real
+   command) or the subagent's clock is broken; discard the report and re-dispatch a fresh
+   evaluator instead (`t-7ec6`, live-reproduced: a dispatch's reported run-id was ~2 years off
+   real time, caught only because the skew happened to be large — this check catches a smaller,
+   plausible-looking fabrication too, which the after-the-fact ±60min jsonl-window check below
+   cannot; the 300s threshold value itself is unchanged by t-a29b, only what it measures). Once
+   verified, run
    `subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator` (bare — it's on
    PATH, same as `sprint`/`tkt`). `sprint complete`'s close gate (`_gate_eval_report`)
    hard-fails if `.claude/subagent-runs.jsonl` doesn't exist, or exists but has no entry within
