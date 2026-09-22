@@ -4,8 +4,8 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.4
-updated: 2026-09-17
+version: 1.0.5
+updated: 2026-09-22
 ---
 
 # Agent Standards
@@ -22,6 +22,8 @@ updated: 2026-09-17
 - No new dependencies for problems existing tools solve.
 - Test at system boundaries; don't mock what's cheap to integration-test.
 - Passing tests verify code correctness, not feature correctness — test both.
+- A test failing inside a block your diff touches is not automatically pre-existing/unrelated — diff its failing assertion and target string against the base commit byte-for-byte before excluding it from scope.
+- Grade test-count/pass-rate claims (e.g. "121/121 pass") against the actual recomputed total from real command output, not the doc's own summary arithmetic — check specifically for a silently-omitted did-not-run set.
 
 ## Code Review Feedback
 
@@ -29,6 +31,7 @@ Format: `file:line — <problem>. <fix>.` — no hedging prose, no preamble, no 
 Explain only when the fix isn't self-evident; security/architectural issues get full explanation.
 - Ground review in base code, not the PR diff — the diff biases toward the PR's own framing; base code is what actually exists.
 - Scope to the change — no frontend notes on backend-only work, no unrelated coverage.
+- A committed binary that changed alongside its source file (e.g. a rebuilt `.exe` beside the `.go` it's built from) is scope, not creep, when repo history shows the pairing predates this ticket — check `git log` on the binary's path before flagging a file-list criterion violated for it; disclose it as an ungraded artifact instead of failing the criterion.
 
 ## Git
 
