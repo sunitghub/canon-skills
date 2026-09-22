@@ -6135,7 +6135,7 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
     await expect(cc.locator('.rc-pop-fact', { hasText: 'Reads' })).toContainText('project and global');
     await expect(cc.locator('.rc-pop-fact', { hasText: 'Writes' })).toContainText('one report');
     await btn(page, 'promote-learnings').click({ force: true });
-    await expect(pop(page, 'promote-learnings')).toContainText('Today these first two steps are manual');
+    await expect(pop(page, 'promote-learnings')).toContainText('the sprint agent runs this itself at close');
     await btn(page, 'skill-eval').click({ force: true });
     const se = pop(page, 'skill-eval');
     await expect(se).toContainText('for most cases, a check that the skill actually fired');

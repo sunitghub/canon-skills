@@ -524,26 +524,38 @@ Opus` default, scoped only to the two close-gate dispatches below.
    alongside Acceptance and Plan. If a criterion contains a `|`, write it as `\|` — bare pipes
    break the board's table renderer.
 
-   **Learnings candidate (nudge, never automatic).** Now that `summary.md` exists, if its
-   plan-vs-actual table has any non-`delivered` row (waived/deferred/partial) — or the evaluator
-   recorded findings in step 3 — suggest running `tkt learn <id>`: it distills those close
-   artifacts into an **UNPROMOTED** `.tickets/<id>/learnings.md` candidate for a *non-builder*
-   (fresh agent or human) to promote later into the durable store (canon:
-   `critique/canon-learnings.md`, `standards/`, or — rarely, since it's always-loaded context on
-   every session, so reserve it for something that must apply universally — `CLAUDE.md`/`AGENTS.md`).
-   It proposes, never promotes, and is never auto-fired — surface it, don't run it unasked.
+   **Learnings candidate (automatic distill, manual promote — t-f6a6).** Now that `summary.md`
+   exists, if its plan-vs-actual table has any non-`delivered` row (waived/deferred/partial) — or
+   the evaluator recorded findings in step 3 — run `tkt learn <id>` yourself, right here in step 8,
+   before step 9 Close. It distills those close artifacts into an **UNPROMOTED**
+   `.tickets/<id>/learnings.md` candidate for a *non-builder* (fresh agent or human) to promote
+   later into the durable store (canon: `critique/canon-learnings.md`, `standards/`, or — rarely,
+   since it's always-loaded context on every session, so reserve it for something that must apply
+   universally — `CLAUDE.md`/`AGENTS.md`). It proposes, never promotes.
+
+   **Never silent.** State in the chat reply and in `summary.md`'s own paragraph that `tkt learn`
+   ran and name the file it wrote (or, on a clean sprint, that it found nothing to distill —
+   `tkt learn`'s own skip logic, unchanged, is what makes running it unattended safe). In a
+   consumer project that tracks `.tickets/`, this is an untracked write the user did not
+   individually ask for — surfacing it at close is not optional.
 
    Distinct from step 7's **Conventions** check above: that's live, same-session, builder-authored
    capture of a structural pattern noticed while context is fresh (no non-builder gate needed,
    since it's mechanical, not an evaluative judgment call). This step is for judgment calls —
    deviations and evaluator findings — that specifically need someone with no stake in the sprint
-   to decide are worth keeping.
+   to decide are worth keeping. Running the *distillation* automatically does not collapse that
+   distinction: `tkt learn` only compresses what already happened into a candidate file, the same
+   mechanical, non-evaluative act whether triggered by a human or by this step. The judgment call —
+   is a candidate durable, does it generalize — still belongs solely to the later non-builder
+   reader (`promote-learnings`), never to this sprint's own agent.
 
-   If the user runs `tkt learn <id>` and it confirms/writes `.tickets/<id>/learnings.md`, follow it
-   with `learnings-sweep <id>` (single-ticket mode — see `skills/learnings-sweep/SKILL.md`): it
-   upserts that one row into root `LEARNINGS.md` so the pending queue stays current without a
-   repo-wide scan. This is pure aggregation, not promotion — it never changes a row's `Status` away
-   from `UNPROMOTED`, so it does not violate the non-self-promote rule above.
+   If `tkt learn <id>` confirms/writes `.tickets/<id>/learnings.md`, follow it immediately with
+   `learnings-sweep <id>` (single-ticket mode — see `skills/learnings-sweep/SKILL.md`): it upserts
+   that one row into root `LEARNINGS.md` so the pending queue stays current without a repo-wide
+   scan. This is pure aggregation, not promotion — it never changes a row's `Status` away from
+   `UNPROMOTED`, so it does not violate the non-self-promote rule above. `learnings-sweep` and the
+   actual promotion into the durable store stay exactly as manual and fresh-context as before —
+   only the distill step moved from a suggestion to an automatic action.
 
 9. **Close.** Run `sprint complete` — never write `ticket.md` status directly. If it refuses
    because a required file is missing or checklist items remain unchecked, report the blockers
