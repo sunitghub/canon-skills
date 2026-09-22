@@ -5792,6 +5792,23 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     await expect(panel).toContainText('dismiss');
   });
 
+  test('promote-learnings and skill-eval "?" popovers render numbered lists on separate lines (t-4254)', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.locator('#nav-upkeep').click();
+    await expect(page.locator('#se-card .rc-title')).toBeVisible(); // seRender runs after the grid
+
+    await page.locator('#up-card-promote-learnings .rc-help').click();
+    const learningsHtml = await page.locator('#up-help-promote-learnings').innerHTML();
+    expect(learningsHtml).toContain('<br><b>2</b>');
+    expect(learningsHtml).toContain('<br><b>3</b>');
+
+    await page.locator('[data-help="skill-eval"] .rc-help').click({ force: true });
+    const skillEvalHtml = await page.locator('#up-help-skill-eval').innerHTML();
+    expect(skillEvalHtml).toContain('<br><b>2 Best practices</b>');
+    expect(skillEvalHtml).toContain('<br><b>3 Plugin eval</b>');
+  });
+
   test('clicking a Projects tab clears the Upkeep nav active state (t-5dc2 3-way switch)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
