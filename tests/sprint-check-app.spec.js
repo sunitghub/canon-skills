@@ -5787,6 +5787,7 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     const panel = page.locator('#up-help-promote-learnings');
     await expect(panel).toContainText('/promote-learnings');
     await expect(panel).toContainText('Example output');
+    await expect(panel).toContainText('not a live preview');
     await expect(panel).toContainText('standards/efficiency.md');
     await expect(panel).toContainText('dismiss');
   });
