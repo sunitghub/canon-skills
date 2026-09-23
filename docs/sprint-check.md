@@ -198,7 +198,12 @@ sprint agent without leaving the browser — no second terminal.
   `git worktree list --porcelain` (no cockpit-owned registry), and **+ New**
   (creates a sibling `<repo>-worktrees/<branch>` checkout via `git worktree
   add`, nebula's own convention). A fresh OPEN start gates the terminal —
-  the daemon's own Start control — behind an explicit row pick; Resume doesn't
+  the daemon's own Start control — behind an explicit row pick. A worktree you
+  chose in **New Ticket** is stored on the ticket (`worktree_preference`) and shown on
+  the open card and in the ticket's meta row, but nothing is created until you click
+  **+ New** here (which asks to confirm); for such a ticket the button is ready
+  without editing the pre-filled name, whereas the default `sprint/<id>` suggestion
+  stays inert. Resume doesn't
   need to re-ask, since the daemon persists the resolved cwd per ticket
   (`.tickets/<id>/.cockpit-cwd`) and reuses it automatically (falling back to
   re-resolving if that worktree was since deleted). A `.worktreeinclude`

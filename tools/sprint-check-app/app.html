@@ -587,6 +587,11 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     html[data-theme="light"] .card-diverge { color: #92400e; background: #fef3c7; border-color: #d97706; }
+    /* t-15ee: the worktree chosen at New Ticket, shown on an OPEN card until the sprint starts. */
+    .card-wt-pref {
+      display: block; margin-top: 6px; font-size: 10px; letter-spacing: .02em; color: var(--text-muted);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
     .modal-diverge {
       flex: 1; margin: 0 14px; font-size: 11px; line-height: 1.4; color: #fbbf24;
     }
@@ -2680,6 +2685,10 @@ async function fetchVersion() {
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
+// esc() leaves `"` alone, so text going inside an attribute needs this one (t-6328 lesson).
+function escAttr(s) {
+  return esc(s).replace(/"/g, '&quot;');
+}
 
 function displayTicketId(t) {
   return String(t?.id ?? '').replace(/^(['"])(.*)\1$/, '$2');
@@ -2811,6 +2820,19 @@ function divergenceInfo(t) {
 function divergenceLine(t) {
   const info = divergenceInfo(t);
   return info ? `<div class="card-diverge" title="${esc(info.long).replace(/"/g, '&quot;')}">${esc(info.short)}</div>` : '';
+}
+
+// t-15ee: the branch chosen in New Ticket (`worktree_preference`), while the ticket is still open —
+// nothing is created until the sprint starts, so without this the choice looks dropped.
+function openWorktreePreference(t) {
+  return t && t.status === 'open' && t.worktree_preference ? String(t.worktree_preference) : '';
+}
+
+function worktreePrefLine(t) {
+  const pref = openWorktreePreference(t);
+  return pref
+    ? `<div class="card-wt-pref" title="${escAttr(`Chosen at New Ticket — the worktree "${pref}" is created when you start the sprint.`)}">worktree: ${esc(pref)}</div>`
+    : '';
 }
 
 function sortChecklistRuns(text) {
@@ -3587,6 +3609,7 @@ function cardHTML(t, idx) {
         ${startBtn}
         <p class="card-title">${esc(t.title)}</p>
         ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
+        ${worktreePrefLine(t)}
         ${divergenceLine(t)}
       </div>
       <div class="card-footer">
@@ -3657,6 +3680,7 @@ function openModal(id) {
     { label:'Type',     val: titleCase(t.type || 'task') },
     { label:'Priority', val: `P${t.priority ?? 2}` },
     { label:'Age',      val: age(t.created) || '—' },
+    ...(openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="${escAttr(`Chosen at New Ticket — created when you start the sprint`)}">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
     { label:'Ready',    html:`<span style="color:${mReadyColor};font-weight:600;display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${mReadyColor};display:inline-block;flex-shrink:0"></span>${esc(mReadyLabel)}</span>` },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
 
@@ -5807,11 +5831,15 @@ async function renderCockpitWorktree(t) {
   // flip that hasn't gone through tkt's in_progress write, so no
   // .cockpit-cwd exists yet) — gate on the lock itself instead.
   let wtNewDefault = `sprint/${t.id}`;
+  // t-15ee: an explicit choice from New Ticket that has no worktree yet — a stated intent, unlike
+  // the default `sprint/<id>` suggestion — so "+ New" starts enabled (still behind a confirm).
+  let wtPrefPending = '';
   if (!lock.locked && t.worktree_preference) {
     const match = others.find(e => e.branch === t.worktree_preference);
     if (match) cockpitState.worktreeCwd = match.path;
-    else wtNewDefault = t.worktree_preference;
+    else { wtNewDefault = t.worktree_preference; wtPrefPending = t.worktree_preference; }
   }
+  cockpitState.wtPrefPending = wtPrefPending;
 
   let html = `<div class="ck-worktree-active-note" id="ck-worktree-note"></div>`;
   html += rowHTML('', 'Main checkout (current)', mainEntry ? mainEntry.path : '');
@@ -5822,7 +5850,9 @@ async function renderCockpitWorktree(t) {
     <button type="button" class="ck-worktree-new-plus" title="Edit the branch name, then click to create the worktree">+ New</button>
     <input id="ck-worktree-new-input" value="${esc(wtNewDefault)}" spellcheck="false" autocomplete="off">
   </div>
-  <div class="ck-add-hint">Edit the name, then Create — an untouched suggestion never creates a worktree by itself.</div>`;
+  <div class="ck-add-hint">${wtPrefPending
+    ? `You chose <b>${esc(wtPrefPending)}</b> when creating this ticket — click + New to create it (you'll be asked to confirm), or pick Main checkout.`
+    : 'Edit the name, then Create — an untouched suggestion never creates a worktree by itself.'}</div>`;
   if (anyBlocked) {
     html += `<div class="ck-worktree-warn" role="alert">
       <strong>.tickets/ is gitignored</strong> — a git worktree only carries tracked files, so a worktree can't see this ticket and a sprint started there can't find it. Use the <strong>Main checkout</strong>, or track <code>.tickets/</code> in git.
@@ -5885,7 +5915,7 @@ async function renderCockpitWorktree(t) {
   // field to retype from scratch) — but the button only enables on a real
   // `input` event, which setting `value` via markup never fires, so an
   // untouched field is exactly as inert as an empty one always was.
-  btn.disabled = true;
+  btn.disabled = !(wtPrefPending && wtPrefPending.length > 3); // pending ⇒ no existing worktree matched
   input.addEventListener('focus', () => input.select());
   input.addEventListener('input', () => {
     const v = input.value.trim();
@@ -6098,7 +6128,9 @@ async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
-    setTermMessage('Select a worktree above to continue — Start sprint is disabled until a row is selected.');
+    setTermMessage(cockpitState.wtPrefPending
+      ? `Select a worktree above to continue. You chose "${cockpitState.wtPrefPending}" when creating this ticket — click + New to create it, or pick Main checkout. Start sprint is disabled until a row is selected.`
+      : 'Select a worktree above to continue — Start sprint is disabled until a row is selected.');
     return;
   }
   // t-2a1c: gate on the EFFECTIVE run cwd, not just the selected row. For a

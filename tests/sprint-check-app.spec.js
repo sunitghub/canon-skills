@@ -3863,6 +3863,121 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  const OPEN_PLAN = ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''];
+
+  test('worktree preference (t-15ee): open card chip + modal item only when a choice was made; hostile names stay inert', async ({ page }) => {
+    const stamp = Date.now();
+    const withId = `t-wtp-a-${stamp}`, noneId = `t-wtp-b-${stamp}`, progId = `t-wtp-c-${stamp}`, evilId = `t-wtp-d-${stamp}`;
+    const evil = '<img src=x onerror=1> a" onmouseover="window.__pwn=1';
+    try {
+      writeTicket(withId, 'open', { worktreePreference: 'sprint/wt-15ee' });
+      writeTicket(noneId, 'open');
+      writeTicket(progId, 'in_progress', { worktreePreference: 'sprint/wt-progress' });
+      writeTicket(evilId, 'open', { worktreePreference: evil });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(withId);
+      const card = page.locator(`.card[data-id="${withId}"]`);
+      await expect(card.locator('.card-wt-pref')).toHaveText('worktree: sprint/wt-15ee');
+      await expect(card.locator('.card-wt-pref')).toHaveAttribute('title', /created when you start the sprint/);
+      await card.click();
+      const item = page.locator('#m-meta .meta-item', { hasText: 'Worktree' });
+      await expect(item).toContainText('sprint/wt-15ee');
+      await expect(item).toContainText('created when you start');
+      await page.keyboard.press('Escape');
+
+      await page.locator('#board-search').fill(noneId);
+      await expect(page.locator(`.card[data-id="${noneId}"] .card-wt-pref`)).toHaveCount(0);
+      await page.locator(`.card[data-id="${noneId}"]`).click();
+      await expect(page.locator('#m-meta .meta-item', { hasText: 'Worktree' })).toHaveCount(0);
+      await page.keyboard.press('Escape');
+
+      await page.locator('#board-search').fill(progId);
+      await expect(page.locator(`.card[data-id="${progId}"] .card-wt-pref`)).toHaveCount(0);
+
+      await page.locator('#board-search').fill(evilId);
+      const evilCard = page.locator(`.card[data-id="${evilId}"]`);
+      await expect(evilCard.locator('.card-wt-pref')).toContainText('<img src=x onerror=1>');
+      await expect(evilCard.locator('.card-wt-pref img')).toHaveCount(0);
+      const evilChip = evilCard.locator('.card-wt-pref');
+      expect(await evilChip.getAttribute('onmouseover')).toBeNull();
+      expect(await evilChip.getAttribute('title')).toContain('onmouseover="window.__pwn=1"');
+      await evilCard.click();
+      await expect(page.locator('#m-meta .meta-item', { hasText: 'Worktree' }).locator('img')).toHaveCount(0);
+      expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+    } finally {
+      for (const id of [withId, noneId, progId, evilId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  async function openRailFor(page, id, posts) {
+    await stubCockpit(page);
+    await page.route('**/api/worktrees**', route => {
+      if (route.request().method() === 'POST') {
+        posts.push(route.request().postData());
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, path: '/tmp/wt-15ee/created' }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+      ]) });
+    });
+    await page.route('**/api/worktree-lock/**', route => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+  }
+
+  test('worktree preference (t-15ee): rail arms "+ New" for an explicit choice, names it, and still needs the confirm', async ({ page }) => {
+    const id = `t-wtp-r-${Date.now()}`;
+    const posts = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'sprint/wt-15ee' });
+      await openRailFor(page, id, posts);
+      await expect(page.locator('#ck-worktree-new-input')).toHaveValue('sprint/wt-15ee');
+      await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
+      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('You chose sprint/wt-15ee when creating this ticket');
+      await expect(page.locator('#ck-term-msg')).toContainText('You chose "sprint/wt-15ee" when creating this ticket');
+
+      // Dismissing the confirm creates nothing.
+      let dialogText = '';
+      page.once('dialog', d => { dialogText = d.message(); d.dismiss(); });
+      await page.locator('.ck-worktree-new-plus').click();
+      await expect.poll(() => dialogText).toContain('Create a new git worktree for branch "sprint/wt-15ee"');
+      expect(posts).toHaveLength(0);
+
+      // Accepting it creates exactly that worktree.
+      page.once('dialog', d => d.accept());
+      await page.locator('.ck-worktree-new-plus').click();
+      await expect.poll(() => posts.length).toBe(1);
+      expect(JSON.parse(posts[0])).toEqual({ branch: 'sprint/wt-15ee' });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('worktree preference (t-15ee): a ticket with no explicit choice keeps the default suggestion inert', async ({ page }) => {
+    const id = `t-wtp-n-${Date.now()}`;
+    const posts = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await openRailFor(page, id, posts);
+      await expect(page.locator('#ck-worktree-new-input')).toHaveValue(`sprint/${id}`);
+      await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
+      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('an untouched suggestion never creates a worktree by itself');
+      await expect(page.locator('#ck-term-msg')).not.toContainText('You chose');
+      await page.locator('#ck-worktree-new-input').fill(`sprint/${id}-edited`);
+      await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
+      expect(posts).toHaveLength(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('IN PROGRESS card shows a read-only worktree chip when bound; empty when unbound (t-644a)', async ({ page }) => {
     const boundId = `t-wtchip-a-${Date.now()}`;
     const unboundId = `t-wtchip-b-${Date.now()}`;
