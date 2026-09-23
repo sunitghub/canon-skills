@@ -227,11 +227,15 @@ Opus` default, scoped only to the two close-gate dispatches below.
 
 2. Both derive their own changed-files list via `git merge-base` — never pass one in.
 
-3. Close each subagent's handle (`TaskStop`) right after reading its verdict — completed
-   handles still occupy thread slots, and closing the reviewer's before step 3 avoids a
-   thread-limit block if the evaluator needs a rerun; if `TaskStop` errors with
-   `not running (status: completed)`, that's expected (the harness may already auto-free a
-   completed task's slot) — proceed, don't retry or treat it as fatal.
+3. Free a gate subagent's slot only when it still holds one. Under Claude Code, a
+   `task-notification` with status `completed` (or an Agent result already returned) means there
+   is nothing to stop — do **not** call `TaskStop`; it always errors with
+   `not running (status: completed)`. Call `TaskStop` only for an agent still running that you
+   must abandon (e.g. a gate needs a rerun while the first is in flight). On harnesses whose
+   completed handles keep occupying a slot (Codex: `close_agent`), close each handle right after
+   reading its verdict — closing the reviewer's before step 3 avoids a thread-limit block if the
+   evaluator needs a rerun. If a stop call errors with `not running (status: completed)`, that's
+   expected — proceed, don't retry or treat it as fatal.
 
 4. Each subagent records its model designation in its report — the exact value applied above
    (an explicit `Gate model:` value, the Admin Review & Eval default's alias, or the exact
