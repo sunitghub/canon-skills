@@ -1793,7 +1793,9 @@ func createWorktree(branch, root string) map[string]any {
 		}
 		return nil
 	}
+	newBranch := true
 	if err := run("worktree", "add", path, "-b", branch); err != nil {
+		newBranch = false
 		if err2 := run("worktree", "add", path, branch); err2 != nil {
 			msg := err2.Error()
 			if len(msg) > 500 {
@@ -1803,8 +1805,46 @@ func createWorktree(branch, root string) map[string]any {
 		}
 	}
 	copied := copyWorktreeIncludeFiles(path, root)
+	ticketsSynced := []string{}
+	if newBranch {
+		ticketsSynced = syncUncommittedTickets(path, root)
+	}
 	linkSkillsIntoWorktree(path)
-	return map[string]any{"ok": true, "path": path, "branch": branch, "worktreeinclude_copied": copied}
+	return map[string]any{"ok": true, "path": path, "branch": branch, "worktreeinclude_copied": copied, "tickets_synced": ticketsSynced}
+}
+
+// syncUncommittedTickets mirrors server.py's _sync_uncommitted_tickets — see
+// its docstring for the rationale (uncommitted .tickets/ edits such as
+// `demo: true` never reach a worktree, which only materializes committed
+// content). Callers invoke it only for a brand-new branch.
+func syncUncommittedTickets(dest, root string) []string {
+	changed := runGitIn(root, "-c", "core.quotepath=off", "diff", "--name-only", "HEAD", "--", ".tickets")
+	added := runGitIn(root, "-c", "core.quotepath=off", "ls-files", "--others", "--exclude-standard", "--", ".tickets")
+	copied := []string{}
+	nl := string(rune(10))
+	for _, relpath := range strings.Split(changed+nl+added, nl) {
+		relpath = strings.TrimSpace(relpath)
+		if relpath == "" {
+			continue
+		}
+		src := filepath.Join(root, filepath.FromSlash(relpath))
+		info, err := os.Stat(src)
+		if err != nil || !info.Mode().IsRegular() {
+			continue // deleted in main
+		}
+		data, err := os.ReadFile(src)
+		if err != nil {
+			continue
+		}
+		dst := filepath.Join(dest, filepath.FromSlash(relpath))
+		if os.MkdirAll(filepath.Dir(dst), 0o755) != nil {
+			continue // best-effort — a copy failure never blocks worktree creation
+		}
+		if os.WriteFile(dst, data, info.Mode()) == nil {
+			copied = append(copied, relpath)
+		}
+	}
+	return copied
 }
 
 // linkSkillsIntoWorktree creates the canon skills link inside a freshly-created
