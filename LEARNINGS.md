@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-23-2026 21:10
+learnings-sweep last run: 09-23-2026 15:33
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-23 | [t-075e](.tickets/t-075e/learnings.md) | No evaluator failures on the final run, but the advisory reviewer (and the first evaluator run) caught that a backfilled `promoted → <file>` target had been chosen by grepping the ticket ID, which also matched a template example row rather than the lesson — when back-filling a provenance link, require the ID to appear in a real content line of the target (not a placeholder/example) and read the hit before recording it. | UNPROMOTED |
 | 2026-09-23 | [t-13b3](.tickets/t-13b3/learnings.md) | No evaluator findings, but the advisory reviewer found my parser only handled the `- ` bullet shape I'd seen in a few reports — 63 of 129 real review-notes use bare `file:line` lines (review.md's own template), so it produced nothing on t-15ee, the exact failure the ticket set out to fix; before writing a parser for an existing artifact family, measure the shapes across all real instances (and check the producer's own template) rather than generalizing from the few in view, and run it on a real example. | UNPROMOTED |
 | 2026-09-23 | [t-6a45](.tickets/t-6a45/learnings.md) | No evaluator findings. The advisory reviewer caught that the fix's own fall-through path had a fail-closed-but-destructive side effect: validation fails closed on a transient `git worktree list` error, and the unconditional re-persist then permanently overwrote a legitimate worktree binding — when a security check falls back on failure, ask what the fallback *writes*, not just what it returns, and pin it with a file-content assertion plus a guard-revert. | `promoted → standards/efficiency.md` |
 | 2026-09-23 | [t-8e73](.tickets/t-8e73/learnings.md) | No evaluator findings, but the advisory reviewer caught that my "the session cwd is already validated at spawn" premise was false for a persisted, agent-writable `.cockpit-cwd` — before widening a security boundary to include a value, re-validate that value at the point of use rather than trusting an earlier check you haven't read, and pin it with a test that fails when the re-validation is removed (guard-revert). | `promoted → standards/efficiency.md` |
