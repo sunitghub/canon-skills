@@ -383,7 +383,7 @@ _gate_eval_report_authentic() {
     # non-canon writer) are skipped above. Say so, or the closer sees only the generic line.
     if (( malformed > 0 )); then
       echo "Note: $malformed entr$([[ $malformed -eq 1 ]] && echo y || echo ies) in .claude/subagent-runs.jsonl ha$([[ $malformed -eq 1 ]] && echo s || echo ve) no ISO \"ts\" field (e.g. an integer \"timestamp\") and $([[ $malformed -eq 1 ]] && echo is || echo are) ignored."
-      echo "Log the evaluator with: subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator — do not hand-edit the file."
+      echo "Log the evaluator with: subagent-log.sh --agent-id $run_id --agent-type evaluator — do not hand-edit the file."
     fi
     return 1
   fi

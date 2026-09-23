@@ -414,7 +414,7 @@ EOF
 int_ts_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$int_ts_output" "no matching subagent entry"
 assert_contains "$int_ts_output" "1 entry in .claude/subagent-runs.jsonl has no ISO"
-assert_contains "$int_ts_output" "subagent-log.sh --agent-id"
+assert_contains "$int_ts_output" "subagent-log.sh --agent-id 1000000000-99999 --agent-type evaluator"
 assert_contains "$int_ts_output" "do not hand-edit"
 
 # t-c94f: untrusted log input never crashes or matches — empty, garbage, CRLF, a 100 KB line, and a
