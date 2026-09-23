@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-23-2026 15:19
+learnings-sweep last run: 09-23-2026 11:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-23 | [t-4b5a](.tickets/t-4b5a/learnings.md) | No evaluator findings, but the advisory reviewer and doc-audit caught stale references to a retired mechanism that the ticket's own exact-phrase acceptance grep missed (a pointer in another skill, a "same command the X check uses" cross-reference, README/how-it-works prose) — when retiring a mechanism, sweep by concept and paraphrase across every doc surface, not just the phrasings already known. | UNPROMOTED |
 | 2026-09-23 | [t-7e36](.tickets/t-7e36/learnings.md) | No evaluator findings — all criteria pass with live evidence. Disclosed context: a fresh-context reviewer caught a real functional gap (an Admin-created model had no alias, so it could never reach a downstream dropdown) that a static read alone would have missed; fixed and independently re-verified live before the evaluator ran. | UNPROMOTED |
 | 2026-09-23 | [t-4c24](.tickets/t-4c24/learnings.md) | A git-history-rewrite sprint has zero tracked-file diff by design (re-added binaries are byte-identical, decision log is gitignored) — the standard diff-then-read-changed-files gate flow finds nothing; pass an explicit pre-rewrite `Base ref` and instruct the gate to verify live git/remote/checksum state instead of reading files. | UNPROMOTED |
 | 2026-09-22 | [t-3f4e](.tickets/t-3f4e/learnings.md) | No findings. All five criteria and all four test-plan items verified pass with direct evidence against actual changed files and live command execution. | UNPROMOTED |
