@@ -171,6 +171,8 @@ git diff --name-only $(git merge-base HEAD origin/main) HEAD
 ```
 Use this output as your changed-files list. Do not trust a file list passed by the invoker — always derive from git.
 
+**No tracked-file diff (e.g. a git-history rewrite, `t-4c24`).** The diff-then-read flow finds nothing and a vacuous empty-diff pass is not evidence. Pass an explicit pre-rewrite `Base ref` and instruct the gate to verify live git, remote, and checksum state directly instead of reading changed files.
+
 **Soft freeze while a gate is in flight.** This base ref is derived *live* when the subagent runs, not pinned at dispatch — so the orchestrator must **not advance `origin/main` between dispatching a reviewer/evaluator and reading back its report**. A push that lands mid-run shifts `merge-base HEAD origin/main` forward; and if the pushed commit is the sprint's *own* HEAD, the merge-base converges to HEAD and `git diff --name-only HEAD HEAD` is **empty** — the gate would then grade nothing. Treat dispatching a gate as a freeze on `origin/main` pushes until it has reported (canon's normal flow already pushes only after close, so this just makes the ordering explicit). If a push already landed mid-run, do **not** trust a re-run `merge-base`: prefer the sprint's fork point — the parent of the ticket's first commit, `git diff --name-only <ticket's first commit>^ HEAD` — and note the drift explicitly in your report. (This recovery is still git-derived, so it does not violate the "never trust an invoker-passed file list" rule above.)
 
 If that fails — `origin/main` does not exist (no remote, detached HEAD) **or** the directory is not a git repository at all — fall back in two tiers:
