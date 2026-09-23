@@ -424,8 +424,8 @@ Opus` default, scoped only to the two close-gate dispatches below.
    specifically, reusing the `evaluator-run-id` (from the report's first line) is the
    recommended value — it ties the audit line to the exact run recorded in the report.
 
-   Read `.tickets/<id>/eval-report.md` after the subagent completes and close its handle per
-   the shared gate mechanics above. Surface any `fail` findings to the user before proceeding
+   Read `.tickets/<id>/eval-report.md` after the subagent completes and free its slot only if
+   the harness needs it (shared gate mechanics rule 3). Surface any `fail` findings to the user before proceeding
    — this includes any report where individual criteria/test-plan items graded `partial`
    **or `not-run`**, since `eval.md` requires the verdict line to be `fail:` whenever a partial
    or not-run exists (there is no separate non-blocking `partial:`/`not-run:` verdict — `not-run`
