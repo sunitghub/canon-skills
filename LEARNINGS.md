@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-23-2026 11:49
+learnings-sweep last run: 09-23-2026 12:23
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-23 | [t-7d83](.tickets/t-7d83/learnings.md) | No evaluator findings. A "missing `?project=`" bug had two independent causes (server ignored the param; the client never sent it for an `<img>`, which a `fetch()`-patching wrapper can't see) — a client-only or server-only test would each have passed while the bug remained, so the ticket added a real end-to-end image-load test and proved each fix necessary by reverting it alone. Also: a byte-for-byte cross-backend check on JSON bodies is wrong (json.dumps and json.Marshal differ in whitespace) — compare parsed content for JSON, bytes only for files. | UNPROMOTED |
 | 2026-09-23 | [t-6328](.tickets/t-6328/learnings.md) | No evaluator findings, but the advisory reviewer caught an attribute-breakout XSS the ticket's own hostile-input test passed straight through: the board's `esc()` does not escape `"`, so escaped text placed inside `title="…"` is injectable — a hostile-name test must include attribute breakout, and be shown to fail without the fix (done here by reverting it). Separately, the feature's own real-git test caught a design flaw (stale copies on older branches flagged as divergence) that a stubbed-git test would have missed. | UNPROMOTED |
 | 2026-09-23 | [t-4b5a](.tickets/t-4b5a/learnings.md) | No evaluator findings, but the advisory reviewer and doc-audit caught stale references to a retired mechanism that the ticket's own exact-phrase acceptance grep missed (a pointer in another skill, a "same command the X check uses" cross-reference, README/how-it-works prose) — when retiring a mechanism, sweep by concept and paraphrase across every doc surface, not just the phrasings already known. | UNPROMOTED |
 | 2026-09-23 | [t-7e36](.tickets/t-7e36/learnings.md) | No evaluator findings — all criteria pass with live evidence. Disclosed context: a fresh-context reviewer caught a real functional gap (an Admin-created model had no alias, so it could never reach a downstream dropdown) that a static read alone would have missed; fixed and independently re-verified live before the evaluator ran. | UNPROMOTED |
