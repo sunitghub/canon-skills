@@ -195,6 +195,76 @@ assert_contains "$clean_out" "nothing to distill"
 learn_usage="$(run_fail "$TKT" learn)"
 assert_contains "$learn_usage" "Usage: tkt learn <id> [--force]"
 
+# 5. (t-13b3) Reviewer-only findings: clean summary + evaluator pass, but the advisory reviewer
+#    caught a defect → a candidate is still written and quotes it.
+rev_id="$("$TKT" create "Reviewer only findings")"
+cat > ".tickets/$rev_id/summary.md" <<'EOF'
+# Summary
+
+| Acceptance item | Status | Notes |
+|---|---|---|
+| Everything shipped | delivered | ok |
+EOF
+cat > ".tickets/$rev_id/eval-report.md" <<'EOF'
+evaluator-run-id: test-789
+# Eval Report
+## Findings
+No findings.
+## Verdict
+pass: all good
+EOF
+cat > ".tickets/$rev_id/review-notes.md" <<'EOF'
+# Review Notes
+
+## Findings
+
+- `app.html:2807` — esc() does not escape a double quote, so title="..." is injectable. [severity: med · confidence: high]
+- `spec.js:6432` — the hostile-name test never tries attribute breakout. [severity: low · confidence: high]
+
+## Verdict
+
+NO
+EOF
+rev_out="$("$TKT" learn "$rev_id")"
+assert_contains "$rev_out" "wrote UNPROMOTED learnings candidate"
+rev_cand="$(cat ".tickets/$rev_id/learnings.md")"
+assert_contains "$rev_cand" "## Reviewer findings"
+assert_contains "$rev_cand" "esc() does not escape a double quote"
+assert_contains "$rev_cand" "never tries attribute breakout"
+assert_contains "$rev_cand" "Advisory reviewer verdict: NO"
+assert_contains "$rev_cand" "Lesson from the reviewer findings above"
+
+# 6. Reviewer "No findings." + otherwise clean sprint → still writes nothing.
+revclean_id="$("$TKT" create "Reviewer clean")"
+cp ".tickets/$clean_id/summary.md" ".tickets/$revclean_id/summary.md"
+cp ".tickets/$clean_id/eval-report.md" ".tickets/$revclean_id/eval-report.md"
+printf '# Review Notes\n\n## Findings\n\nNo findings.\n\n## Verdict\n\nYES\n' > ".tickets/$revclean_id/review-notes.md"
+revclean_out="$("$TKT" learn "$revclean_id")"
+assert_contains "$revclean_out" "nothing to distill"
+[[ -f ".tickets/$revclean_id/learnings.md" ]] && fail "tkt learn wrote a candidate for a reviewer-clean sprint" || true
+
+# 7. Malformed review-notes.md never errors or emits garbage: CRLF, empty, no bullets, a 5000-char line.
+mal_id="$("$TKT" create "Malformed review notes")"
+cp ".tickets/$rev_id/summary.md" ".tickets/$mal_id/summary.md"
+cp ".tickets/$rev_id/eval-report.md" ".tickets/$mal_id/eval-report.md"
+: > ".tickets/$mal_id/review-notes.md"
+mal_out="$("$TKT" learn "$mal_id")"
+assert_contains "$mal_out" "nothing to distill"
+printf '# R\n\n## Findings\n\nprose with no bullets\n\n## Verdict\n\nNO\n' > ".tickets/$mal_id/review-notes.md"
+mal_out="$("$TKT" learn "$mal_id")"
+assert_contains "$mal_out" "nothing to distill"
+printf '# R\r\n\r\n## Findings\r\n\r\n- crlf finding one [severity: low]\r\n\r\n## Verdict\r\n\r\nNO\r\n' > ".tickets/$mal_id/review-notes.md"
+"$TKT" learn "$mal_id" >/dev/null
+mal_cand="$(cat ".tickets/$mal_id/learnings.md")"
+assert_contains "$mal_cand" "crlf finding one [severity: low]"
+assert_contains "$mal_cand" "Advisory reviewer verdict: NO."
+if [[ "$mal_cand" == *$'\r'* ]]; then fail "tkt learn: CR leaked into the candidate"; fi
+long_line="$(head -c 5000 /dev/zero | tr '\0' 'x')"
+printf '## Findings\n\n- %s\n\n## Verdict\n\nNO\n' "$long_line" > ".tickets/$mal_id/review-notes.md"
+"$TKT" learn "$mal_id" --force >/dev/null
+assert_contains "$(cat ".tickets/$mal_id/learnings.md")" "(see review-notes.md)"
+if grep -q "$(head -c 500 /dev/zero | tr '\0' 'x')" ".tickets/$mal_id/learnings.md"; then fail "tkt learn: an over-long reviewer line was not capped"; fi
+
 # ── t-01a4: current_id() is per-worktree, not repo-wide ────────────────────
 
 wt_project="$(make_project)"

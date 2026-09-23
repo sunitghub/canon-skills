@@ -712,8 +712,26 @@ cmd_learn() {
     fi
   fi
 
-  if [[ -z "$deviations" && -z "$findings" ]]; then
-    echo "$id: clean sprint — no non-delivered rows in summary.md and no evaluator findings; nothing to distill."
+  # Reviewer findings = review-notes.md's ## Findings bullets, unless "No findings." The reviewer is
+  # advisory, so the evaluator can pass while a real defect (fixed mid-sprint) lives only here (t-13b3).
+  # review-notes.md is absent on bugfix/demo/trivial closes — optional. Each line is capped so a long
+  # finding can't bloat the candidate; the full text stays in review-notes.md.
+  local revn="$tdir/review-notes.md" rfindings="" rverdict=""
+  if [[ -f "$revn" ]]; then
+    rfindings="$(awk '
+      /^##[[:space:]]+Findings[[:space:]]*$/ { infind=1; next }
+      infind && /^##[[:space:]]/ { infind=0 }
+      infind { sub(/\r$/, ""); if ($0 ~ /^[[:space:]]*-[[:space:]]/) print (length($0) > 400 ? substr($0, 1, 400) " … (see review-notes.md)" : $0) }
+    ' "$revn")"
+    rverdict="$(awk '
+      /^##[[:space:]]+Verdict[[:space:]]*$/ { inv=1; next }
+      inv && /^##[[:space:]]/ { inv=0 }
+      inv { sub(/\r$/, ""); if ($0 ~ /[^[:space:]]/) { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit } }
+    ' "$revn")"
+  fi
+
+  if [[ -z "$deviations" && -z "$findings" && -z "$rfindings" ]]; then
+    echo "$id: clean sprint — no non-delivered rows in summary.md and no evaluator or reviewer findings; nothing to distill."
     echo "(No learnings candidate written.)"
     return 0
   fi
@@ -748,12 +766,20 @@ cmd_learn() {
     printf "## Evaluator findings\n\n"
     if [[ -n "$findings" ]]; then printf "%s\n\n" "$findings"; else printf "_none_\n\n"; fi
 
+    printf "## Reviewer findings\n\n"
+    if [[ -n "$rfindings" ]]; then
+      printf "Advisory reviewer verdict: %s. Full text in \`review-notes.md\`.\n\n%s\n\n" "${rverdict:-unknown}" "$rfindings"
+    else
+      printf "_none_\n\n"
+    fi
+
     printf "## Candidate lessons\n"
     printf "<!-- One durable lesson per kept item; a non-builder fills in and promotes these. -->\n"
     while IFS= read -r it; do
       [[ -n "$it" ]] && printf -- "- [ ] Lesson from: %s\n" "$it"
     done <<< "$dev_items"
     [[ -n "$findings" ]] && printf -- "- [ ] Lesson from the evaluator findings above\n"
+    [[ -n "$rfindings" ]] && printf -- "- [ ] Lesson from the reviewer findings above\n"
     printf -- "- [ ] (other)\n"
   } > "$out"
 
@@ -798,7 +824,7 @@ Commands:
   show <id>                 Display ticket details
   why <file>                Show tickets whose commits touched a file
   learn <id> [--force]      Distill a closed sprint's summary.md deviations +
-                            eval-report.md findings into an UNPROMOTED candidate at
+                            eval-report.md and review-notes.md findings into an UNPROMOTED candidate at
                             .tickets/<id>/learnings.md. Proposes, never promotes — a
                             non-builder moves keepers into the durable store. Writes
                             nothing for a clean sprint; refuses to overwrite an

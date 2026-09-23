@@ -547,7 +547,9 @@ Opus` default, scoped only to the two close-gate dispatches below.
 
    **Learnings candidate (automatic distill, manual promote — t-f6a6).** Now that `summary.md`
    exists, if its plan-vs-actual table has any non-`delivered` row (waived/deferred/partial) — or
-   the evaluator recorded findings in step 3 — run `tkt learn <id>` yourself, right here in step 8,
+   the evaluator recorded findings in step 3, or the advisory reviewer recorded findings in
+   step 2 (`review-notes.md`; the evaluator can pass while the reviewer caught the lesson, t-13b3)
+   — run `tkt learn <id>` yourself, right here in step 8,
    before step 9 Close. It distills those close artifacts into an **UNPROMOTED**
    `.tickets/<id>/learnings.md` candidate for a *non-builder* (fresh agent or human) to promote
    later into the durable store (canon: `critique/canon-learnings.md`, `standards/`, or — rarely,
@@ -563,7 +565,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    Distinct from step 7's **Conventions** check above: that's live, same-session, builder-authored
    capture of a structural pattern noticed while context is fresh (no non-builder gate needed,
    since it's mechanical, not an evaluative judgment call). This step is for judgment calls —
-   deviations and evaluator findings — that specifically need someone with no stake in the sprint
+   deviations and evaluator/reviewer findings — that specifically need someone with no stake in the sprint
    to decide are worth keeping. Running the *distillation* automatically does not collapse that
    distinction: `tkt learn` only compresses what already happened into a candidate file, the same
    mechanical, non-evaluative act whether triggered by a human or by this step. The judgment call —

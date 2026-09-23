@@ -44,9 +44,11 @@ Input: a ticket id (`t-xxxx`). No glob.
 
 1. Read `.tickets/<id>/learnings.md`. If absent, stop — nothing to sweep (report this, don't error).
 2. Extract: `generated` date (frontmatter), the ticket title (H1, after `Learnings candidate —
-   <id>: `), a one-line finding (compress `## Evaluator findings`/`## Deviations` down to the single
-   most load-bearing sentence — prefer a `Candidate lessons` checklist item if any are filled in,
-   else the first substantive evaluator finding), and `status` (frontmatter — almost always
+   <id>: `), a one-line finding (compress `## Evaluator findings`/`## Reviewer findings`/`## Deviations`
+   down to the single most load-bearing sentence — prefer a `Candidate lessons` checklist item if
+   any are filled in, else the most load-bearing finding; a real defect the advisory reviewer caught
+   outranks an evaluator "No findings. Notes…" line, since the evaluator can pass while the reviewer
+   found the lesson), and `status` (frontmatter — almost always
    `UNPROMOTED` at this point).
 3. Upsert into `LEARNINGS.md`'s table: if a row for this ticket id already exists, replace it in
    place (don't duplicate, don't reorder past its original position unless the date changed). If
