@@ -6407,7 +6407,7 @@ test.describe('branch divergence badge (t-6328)', () => {
         const tickets = await res.json();
         for (const t of tickets) {
           if (t.id === divId) t.branch_divergence = { branch: 'sprint/t-91mc', status: 'closed', where: 'branch', merged: false };
-          if (t.id === evilId) t.branch_divergence = { branch: '<img src=x onerror="window.__pwn=1">', status: 'closed', where: 'worktree', merged: true };
+          if (t.id === evilId) t.branch_divergence = { branch: '<img src=x onerror="window.__pwn=1"> x" onmouseover="window.__pwn=1" data-y="', status: 'closed', where: 'worktree', merged: true };
         }
         await route.fulfill({ response: res, json: tickets });
       });
@@ -6434,6 +6434,12 @@ test.describe('branch divergence badge (t-6328)', () => {
       const evilCard = page.locator(`.card[data-id="${evilId}"]`);
       await expect(evilCard.locator('.card-diverge')).toContainText('<img src=x onerror=');
       await expect(evilCard.locator('.card-diverge img')).toHaveCount(0);
+      // Attribute breakout: a `"` in the branch name must not escape the title="…" attribute.
+      const badge = evilCard.locator('.card-diverge');
+      expect(await badge.getAttribute('onmouseover')).toBeNull();
+      expect(await badge.getAttribute('data-y')).toBeNull();
+      expect(await badge.getAttribute('title')).toContain('onmouseover="window.__pwn=1"');
+      await badge.hover();
       await evilCard.click();
       await expect(page.locator('#m-diverge')).toContainText('in worktree <img src=x');
       await expect(page.locator('#m-diverge')).toContainText('(branch merged)');

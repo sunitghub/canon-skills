@@ -152,4 +152,22 @@ for port in "$IP_PORT" "$IG_PORT"; do
 done
 kill "$IP_PID" "$IG_PID" 2>/dev/null || true
 
-echo "board-branch-divergence: ok (unmerged branch, live worktree, unchanged, merged, main-catches-up, non-git, TTL cache, 8-branch cap, gitignored-tickets skip — server.py == main.go)"
+# Worktree cap: 10 more worktrees each edit a distinct tracked ticket; with sprint-t-wtre that is 11
+# non-main worktrees, only the first 8 are scanned -> sprint-t-wtre + 7 of the new ones flagged.
+cd "$REPO"
+for i in 0 1 2 3 4 5 6 7 8 9; do mk_ticket "t-wc$i" open; done
+git add -A && git commit -q -m "wc tickets"
+for i in 0 1 2 3 4 5 6 7 8 9; do
+  git worktree add -q "${WORK}-worktrees/wc$i" -b "wcb$i"
+  (cd "${WORK}-worktrees/wc$i" && mk_ticket "t-wc$i" in_progress)
+done
+count_wc() {
+  curl -s "http://127.0.0.1:$1/api/tickets" | python3 -c '
+import json,sys
+print(sum(1 for t in json.load(sys.stdin) if t["id"].startswith("t-wc") and "branch_divergence" in t))'
+}
+assert_eq 7 "$(count_wc "$PY_PORT")"
+assert_eq 7 "$(count_wc "$GO_PORT")"
+check t-wtre '{"branch": "sprint/t-wtre", "merged": true, "status": "in_progress", "where": "worktree"}'
+
+echo "board-branch-divergence: ok (unmerged branch, live worktree, unchanged, merged, main-catches-up, non-git, TTL cache, 8-branch cap, 8-worktree cap, gitignored-tickets skip — server.py == main.go)"

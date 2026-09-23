@@ -622,6 +622,7 @@ def list_worktrees(ticket_id: str = '', root: Path = None) -> list[dict]:
 # invisible without this. Read-only signal, mirrored in sprint-check-go/main.go.
 # Bounded (branch cap) and TTL-cached because /api/tickets is the hottest route.
 _DIVERGENCE_BRANCH_CAP = 8
+_DIVERGENCE_WORKTREE_CAP = 8
 _DIVERGENCE_CACHE: dict = {}
 _DIVERGENCE_LOCK = threading.Lock()
 _GREP_STATUS = re.compile(r'^\.tickets/([^/]+)/ticket\.md:status:\s*(.+?)\s*$')
@@ -671,9 +672,7 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
     if run(['git', 'check-ignore', '.tickets'], root):
         return out  # untracked tickets: no other checkout can carry a different copy
     seen_branches = set()
-    for e in list_worktrees(root=root):
-        if e.get('is_main'):
-            continue
+    for e in [w for w in list_worktrees(root=root) if not w.get('is_main')][:_DIVERGENCE_WORKTREE_CAP]:
         branch = e.get('branch') or ((e.get('head') or '')[:7] or '(detached)')
         seen_branches.add(e.get('branch'))
         tdir = Path(e['path']) / '.tickets'
@@ -692,7 +691,7 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
             if st:
                 out.setdefault(tid, []).append({'branch': branch, 'status': st, 'where': 'worktree', 'merged': merged})
     refs = run(['git', 'for-each-ref', '--no-merged=HEAD', '--format=%(refname:short)', 'refs/heads'], root)
-    branches = [b for b in refs.splitlines() if b and b not in seen_branches][:_DIVERGENCE_BRANCH_CAP]
+    branches = [b for b in refs.splitlines() if b and not b.startswith('-') and b not in seen_branches][:_DIVERGENCE_BRANCH_CAP]
     for b in branches:
         base = run(['git', 'merge-base', 'HEAD', b], root)
         changed = _changed_ticket_ids(
@@ -2217,9 +2216,11 @@ class Handler(BaseHTTPRequestHandler):
             except UnknownProject:
                 self.send_error(400); return
             tickets = load_tickets(eroot)
+            # Annotate BEFORE dropping archived: the cached scan is keyed by ids, so
+            # an ?all=1 request inside the TTL must not miss archived tickets.
+            annotate_branch_divergence(tickets, eroot)
             if 'all=1' not in parsed.query:
                 tickets = [t for t in tickets if t.get('status') != 'archived']
-            annotate_branch_divergence(tickets, eroot)
             self.send_json(tickets)
         elif path == '/api/handoff':
             try:

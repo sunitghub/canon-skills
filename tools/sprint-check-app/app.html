@@ -2808,7 +2808,7 @@ function divergenceInfo(t) {
 
 function divergenceLine(t) {
   const info = divergenceInfo(t);
-  return info ? `<div class="card-diverge" title="${esc(info.long)}">${esc(info.short)}</div>` : '';
+  return info ? `<div class="card-diverge" title="${esc(info.long).replace(/"/g, '&quot;')}">${esc(info.short)}</div>` : '';
 }
 
 function sortChecklistRuns(text) {

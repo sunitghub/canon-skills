@@ -253,6 +253,9 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		tickets := loadTickets(root)
+		// Annotate BEFORE dropping archived: the cached scan is keyed by ids, so an
+		// ?all=1 request inside the TTL must not miss archived tickets.
+		annotateBranchDivergence(tickets, root)
 		if !queryHasAll(r.URL.RawQuery) {
 			filtered := make([]ticket, 0, len(tickets))
 			for _, t := range tickets {
@@ -262,7 +265,6 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			tickets = filtered
 		}
-		annotateBranchDivergence(tickets, root)
 		sendJSON(w, tickets)
 	case "/api/handoff":
 		root, ok := effectiveRoot(r)
@@ -1555,10 +1557,6 @@ func validBranchName(name string) bool {
 	return name != "" && baseRefRe.MatchString(name) && !strings.HasPrefix(name, "-") && !strings.Contains(name, "..")
 }
 
-// t-1780: root scopes this to the requesting tab's own project (empty ->
-// rootOr falls back to the shell's own boot-time projectRoot). Without it,
-// every caller saw the shell's launch project regardless of which registered
-// project's tab actually asked.
 // ── Branch/worktree status divergence (t-6328) — mirrors server.py ─────────
 var (
 	grepStatusRe = regexp.MustCompile(`^\.tickets/([^/]+)/ticket\.md:status:\s*(.+?)\s*$`)
@@ -1568,7 +1566,10 @@ var (
 // The board shows the served checkout's copy of each ticket.md; where `.tickets/`
 // is tracked, a live worktree or unmerged branch can hold a different status.
 // Read-only, bounded (branch cap) and TTL-cached: /api/tickets is the hottest route.
-const divergenceBranchCap = 8
+const (
+	divergenceBranchCap   = 8
+	divergenceWorktreeCap = 8
+)
 
 type divergenceCand struct {
 	branch, status, where string
@@ -1647,10 +1648,15 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 		return out // untracked tickets: no other checkout can carry a different copy
 	}
 	seenBranches := map[string]bool{}
+	scannedWorktrees := 0
 	for _, e := range listWorktrees("", root) {
 		if isMain, _ := e["is_main"].(bool); isMain {
 			continue
 		}
+		if scannedWorktrees >= divergenceWorktreeCap {
+			break
+		}
+		scannedWorktrees++
 		head, _ := e["head"].(string)
 		branch, _ := e["branch"].(string)
 		seenBranches[branch] = true
@@ -1689,7 +1695,7 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 	refs, _ := gitCtx(root, "for-each-ref", "--no-merged=HEAD", "--format=%(refname:short)", "refs/heads")
 	scanned := 0
 	for _, b := range strings.Split(refs, "\n") {
-		if b == "" || seenBranches[b] {
+		if b == "" || strings.HasPrefix(b, "-") || seenBranches[b] {
 			continue
 		}
 		if scanned >= divergenceBranchCap {
@@ -1790,6 +1796,10 @@ func annotateBranchDivergence(tickets []ticket, root string) {
 	}
 }
 
+// t-1780: root scopes this to the requesting tab's own project (empty ->
+// rootOr falls back to the shell's own boot-time projectRoot). Without it,
+// every caller saw the shell's launch project regardless of which registered
+// project's tab actually asked.
 func listWorktrees(ticketID, root string) []map[string]any {
 	raw := runGitIn(root, "worktree", "list", "--porcelain")
 	var entries []map[string]any
