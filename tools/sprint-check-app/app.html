@@ -2819,7 +2819,7 @@ function divergenceInfo(t) {
 
 function divergenceLine(t) {
   const info = divergenceInfo(t);
-  return info ? `<div class="card-diverge" title="${esc(info.long).replace(/"/g, '&quot;')}">${esc(info.short)}</div>` : '';
+  return info ? `<div class="card-diverge" title="${escAttr(info.long)}">${esc(info.short)}</div>` : '';
 }
 
 // t-15ee: the branch chosen in New Ticket (`worktree_preference`), while the ticket is still open —
@@ -2831,7 +2831,7 @@ function openWorktreePreference(t) {
 function worktreePrefLine(t) {
   const pref = openWorktreePreference(t);
   return pref
-    ? `<div class="card-wt-pref" title="${escAttr(`Chosen at New Ticket — the worktree "${pref}" is created when you start the sprint.`)}">worktree: ${esc(pref)}</div>`
+    ? `<div class="card-wt-pref" title="${escAttr(`Chosen at New Ticket — the worktree "${pref}" is created when you start the sprint.`)}">Worktree: ${esc(pref)}</div>`
     : '';
 }
 
@@ -3680,7 +3680,7 @@ function openModal(id) {
     { label:'Type',     val: titleCase(t.type || 'task') },
     { label:'Priority', val: `P${t.priority ?? 2}` },
     { label:'Age',      val: age(t.created) || '—' },
-    ...(openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="${escAttr(`Chosen at New Ticket — created when you start the sprint`)}">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
+    ...(openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — created when you start the sprint">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
     { label:'Ready',    html:`<span style="color:${mReadyColor};font-weight:600;display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${mReadyColor};display:inline-block;flex-shrink:0"></span>${esc(mReadyLabel)}</span>` },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
 
@@ -5731,6 +5731,7 @@ async function fetchWorktreeLock(ticketId) {
 // re-rendered on cockpit open, not on the 5s poll — the list rarely changes
 // mid-session and re-rendering would clobber an in-progress "+ New" typing.
 async function renderCockpitWorktree(t) {
+  const tab = cockpitState; // the tab being rendered — cockpitState may move to another tab across the awaits below
   // t-644a: hide the whole accordion section for a non-git project — same
   // live state.isGitProject check the New Ticket modal's Worktree row uses,
   // not cached at registration so it reappears once git init happens.
@@ -5837,9 +5838,14 @@ async function renderCockpitWorktree(t) {
   if (!lock.locked && t.worktree_preference) {
     const match = others.find(e => e.branch === t.worktree_preference);
     if (match) cockpitState.worktreeCwd = match.path;
-    else { wtNewDefault = t.worktree_preference; wtPrefPending = t.worktree_preference; }
+    else {
+      wtNewDefault = t.worktree_preference;
+      // Arm only when the list really loaded (a failed fetch leaves it empty) and the choice isn't the
+      // main checkout's own branch — otherwise the click could only end in an "already exists" alert.
+      if (mainEntry && mainEntry.branch !== t.worktree_preference) wtPrefPending = t.worktree_preference;
+    }
   }
-  cockpitState.wtPrefPending = wtPrefPending;
+  tab.wtPrefPending = wtPrefPending;
 
   let html = `<div class="ck-worktree-active-note" id="ck-worktree-note"></div>`;
   html += rowHTML('', 'Main checkout (current)', mainEntry ? mainEntry.path : '');

@@ -3879,7 +3879,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       await page.locator('#board-search').fill(withId);
       const card = page.locator(`.card[data-id="${withId}"]`);
-      await expect(card.locator('.card-wt-pref')).toHaveText('worktree: sprint/wt-15ee');
+      await expect(card.locator('.card-wt-pref')).toHaveText('Worktree: sprint/wt-15ee');
       await expect(card.locator('.card-wt-pref')).toHaveAttribute('title', /created when you start the sprint/);
       await card.click();
       const item = page.locator('#m-meta .meta-item', { hasText: 'Worktree' });
@@ -3895,6 +3895,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       await page.locator('#board-search').fill(progId);
       await expect(page.locator(`.card[data-id="${progId}"] .card-wt-pref`)).toHaveCount(0);
+      await page.locator(`.card[data-id="${progId}"]`).click();
+      await expect(page.locator('#m-meta .meta-item', { hasText: 'Worktree' })).toHaveCount(0); // open-only
+      await page.keyboard.press('Escape');
 
       await page.locator('#board-search').fill(evilId);
       const evilCard = page.locator(`.card[data-id="${evilId}"]`);
@@ -3957,6 +3960,63 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(JSON.parse(posts[0])).toEqual({ branch: 'sprint/wt-15ee' });
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('worktree preference (t-15ee): edge cases — existing worktree, main branch, unlocked in_progress, hostile name in the rail', async ({ page }) => {
+    const stamp = Date.now();
+    const existId = `t-wtp-e-${stamp}`, mainId = `t-wtp-m-${stamp}`, progId = `t-wtp-p-${stamp}`, evilId = `t-wtp-h-${stamp}`;
+    const evil = '<img src=x onerror=1> a" b';
+    const posts = [];
+    const wtPath = '/tmp/wt-15ee/existing';
+    const openRail = async id => {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    };
+    try {
+      writeTicket(existId, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'sprint/already-there' });
+      writeTicket(mainId, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'main' });
+      writeTicket(progId, 'in_progress', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'sprint/prog-15ee' });
+      writeTicket(evilId, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: evil });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => route.request().method() === 'POST'
+        ? (posts.push(route.request().postData()), route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, path: '/tmp/x' }) }))
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+            { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+            { path: wtPath, branch: 'sprint/already-there', is_main: false, tickets_visible: true, ticket_present: true },
+          ]) }));
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+      }));
+
+      // Preference names a worktree that already exists: its row is pre-selected, "+ New" is NOT armed.
+      await openRail(existId);
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
+      await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
+      await expect(page.locator('#ck-worktree .ck-add-hint')).not.toContainText('You chose');
+
+      // Preference equals the main checkout's own branch: nothing to create, so not armed.
+      await openRail(mainId);
+      await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
+      await expect(page.locator('#ck-term-msg')).not.toContainText('You chose');
+
+      // Unlocked in_progress ticket (board-flipped, nothing bound yet) behaves like open: armed.
+      await openRail(progId);
+      await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
+      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('You chose sprint/prog-15ee');
+
+      // Hostile name: inert text in the hint (element) and the gate message (textContent).
+      await openRail(evilId);
+      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('<img src=x onerror=1>');
+      await expect(page.locator('#ck-worktree .ck-add-hint img')).toHaveCount(0);
+      await expect(page.locator('#ck-term-msg')).toContainText('<img src=x onerror=1>');
+      await expect(page.locator('#ck-term-msg img')).toHaveCount(0);
+      expect(posts).toHaveLength(0);
+    } finally {
+      for (const id of [existId, mainId, progId, evilId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
 
