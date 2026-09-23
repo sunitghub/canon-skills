@@ -2290,15 +2290,23 @@ class Handler(BaseHTTPRequestHandler):
                 return
             m = re.match(r'^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$', path)
             if m:
+                try:
+                    eroot = effective_root(parse_qs(parsed.query))
+                except UnknownProject:
+                    self.send_error(400); return
                 ticket_id, relpath = m.group(1), unquote(m.group(2))
-                img = _safe_ticket_doc(f'{ticket_id}/{relpath}', exts=IMAGE_EXTS)
+                img = _safe_ticket_doc(f'{ticket_id}/{relpath}', exts=IMAGE_EXTS, root=eroot)
                 if img is None or not img.is_file():
                     self.send_error(404); return
                 self.send_image(img); return
             m = re.match(r'^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$', path)
             if m:
+                try:
+                    eroot = effective_root(parse_qs(parsed.query))
+                except UnknownProject:
+                    self.send_error(400); return
                 ticket_id, relpath = m.group(1), unquote(m.group(2))
-                feat = _safe_ticket_doc(f'{ticket_id}/{relpath}', exts=('.feature',))
+                feat = _safe_ticket_doc(f'{ticket_id}/{relpath}', exts=('.feature',), root=eroot)
                 if feat is None or not feat.is_file():
                     self.send_error(404); return
                 self.send_json({'content': feat.read_text(encoding='utf-8', errors='replace')})

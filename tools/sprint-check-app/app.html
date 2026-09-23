@@ -2377,7 +2377,7 @@
   // Read endpoints that resolve via effective_root on the server. t-1780:
   // worktrees/worktree-lock now scope too — a shared multi-project instance
   // otherwise showed the shell's launch-time project's worktrees under any tab.
-  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/)/;
+  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/)/;
   // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
   // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
   // create/unlock done inside a project tab target THAT project. Deliberately
@@ -2836,7 +2836,10 @@ function sortChecklistRuns(text) {
 function resolveMockupSrc(src, ticketId) {
   if (/^(https?:)?\/\//.test(src) || src.startsWith('/')) return src;
   const relpath = src.split('/').map(encodeURIComponent).join('/');
-  return `/api/ticket-image/${encodeURIComponent(ticketId)}/${relpath}`;
+  // An <img> is loaded by the browser directly, so the fetch wrapper (t-a55a) never sees it —
+  // scope it here or a Cockpit project tab reads the server's default project (t-7d83).
+  const proj = window.__canonProject ? `?project=${encodeURIComponent(window.__canonProject)}` : '';
+  return `/api/ticket-image/${encodeURIComponent(ticketId)}/${relpath}${proj}`;
 }
 
 // Render a fenced Gherkin block as a styled scenario panel. Keyword-highlights

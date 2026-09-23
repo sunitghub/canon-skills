@@ -6449,3 +6449,87 @@ test.describe('branch divergence badge (t-6328)', () => {
     }
   });
 });
+
+test.describe('project-scoped ticket assets (t-7d83)', () => {
+  test('end to end: a plan image in a second project loads in that project\'s Cockpit tab (was a 404)', async ({ page }) => {
+    const os = require('os');
+    const net = require('net');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'canon-t7d83-'));
+    const defaultRoot = path.join(root, 'default');
+    const otherRoot = path.join(root, 'other');
+    const canonHome = path.join(root, 'canon-home');
+    const id = 't-pj01';
+    let proc;
+    try {
+      fs.mkdirSync(path.join(defaultRoot, '.tickets'), { recursive: true });
+      fs.mkdirSync(path.join(otherRoot, '.git'), { recursive: true });
+      const dir = path.join(otherRoot, '.tickets', id);
+      fs.mkdirSync(path.join(dir, 'visuals'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'visuals', 'pic.png'), Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64'));
+      fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, 'status: in_progress', 'type: task', 'priority: 2',
+        'created: 2026-09-23T00:00:00Z', '---', '', '# Other project ticket', ''].join('\n'));
+      fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', '- [x] Plan approved', '', '## Approach',
+        'See:', '', '![pic](visuals/pic.png)', ''].join('\n'));
+
+      const port = await new Promise(resolve => {
+        const srv = net.createServer();
+        srv.listen(0, '127.0.0.1', () => { const p = srv.address().port; srv.close(() => resolve(p)); });
+      });
+      proc = spawn('python3', [path.join(__dirname, '..', 'tools', 'sprint-check-app', 'server.py'), String(port)], {
+        cwd: defaultRoot, env: { ...process.env, SPRINT_CHECK_ROOT: defaultRoot, CANON_HOME: canonHome }, stdio: 'ignore',
+      });
+      const base = `http://127.0.0.1:${port}`;
+      await expect.poll(async () => { try { return (await page.request.get(`${base}/api/tickets`)).status(); } catch { return 0; } }, { timeout: 8000 }).toBe(200);
+      const add = await page.request.post(`${base}/api/projects`, { headers: { Origin: 'http://localhost' }, data: { path: otherRoot, description: 't7d83' } });
+      expect(add.ok()).toBeTruthy();
+      const pid = (await (await page.request.get(`${base}/api/projects`)).json()).find(e => e.path.endsWith('other')).id;
+
+      await page.goto(`${base}/?project=${pid}`);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      const img = page.locator('#m-body img.doc-visual-img');
+      await expect(img).toBeVisible();
+      await expect(img).toHaveAttribute('src', `/api/ticket-image/${id}/visuals/pic.png?project=${pid}`);
+      await expect.poll(() => img.evaluate(el => el.naturalWidth)).toBeGreaterThan(0);
+    } finally {
+      if (proc) proc.kill();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('in a Cockpit project tab the .feature fetch and image URLs carry ?project=; the standalone board is unchanged', async ({ page }) => {
+    const seen = [];
+    page.on('request', req => { if (/\/api\/ticket-feature\//.test(req.url())) seen.push(req.url()); });
+
+    // Embedded project tab: board loaded as /?project=<id> (unknown id is fine — we only inspect URLs).
+    await page.goto(BASE + '/?project=zz9');
+    await page.evaluate(() => fetch('/api/ticket-feature/t-abcd/features/x.feature').catch(() => {}));
+    await expect.poll(() => seen.length).toBeGreaterThan(0);
+    expect(seen[0]).toContain('project=zz9');
+    const scoped = await page.evaluate(() => ({
+      rel: resolveMockupSrc('visuals/a b.png', 't-abcd'),
+      abs: resolveMockupSrc('https://example.com/x.png', 't-abcd'),
+      root: resolveMockupSrc('/meta/x.png', 't-abcd'),
+    }));
+    expect(scoped.rel).toBe('/api/ticket-image/t-abcd/visuals/a%20b.png?project=zz9');
+    expect(scoped.abs).toBe('https://example.com/x.png');
+    expect(scoped.root).toBe('/meta/x.png');
+
+    // Project ids are URL-encoded, not trusted.
+    await page.goto(BASE + '/?project=' + encodeURIComponent('a&b=c d'));
+    expect(await page.evaluate(() => resolveMockupSrc('v/x.png', 't-abcd')))
+      .toBe('/api/ticket-image/t-abcd/v/x.png?project=a%26b%3Dc%20d');
+
+    // Standalone board: no param anywhere.
+    seen.length = 0;
+    await page.goto(BASE + '/');
+    await page.evaluate(() => fetch('/api/ticket-feature/t-abcd/features/x.feature').catch(() => {}));
+    await expect.poll(() => seen.length).toBeGreaterThan(0);
+    expect(seen[0]).not.toContain('project=');
+    expect(await page.evaluate(() => resolveMockupSrc('visuals/a.png', 't-abcd')))
+      .toBe('/api/ticket-image/t-abcd/visuals/a.png');
+  });
+});

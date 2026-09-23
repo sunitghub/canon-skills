@@ -344,8 +344,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if m := regexp.MustCompile(`^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$`).FindStringSubmatch(path); m != nil {
+			root, rok := effectiveRoot(r)
+			if !rok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
 			ticketID, relpath := m[1], unescape(m[2])
-			p, ok := safeTicketDoc(ticketID+"/"+relpath, imageExts...)
+			p, ok := safeTicketDocIn(ticketID+"/"+relpath, root, imageExts...)
 			if !ok || !exists(p) {
 				http.NotFound(w, r)
 				return
@@ -354,8 +359,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if m := regexp.MustCompile(`^/api/ticket-feature/(t-[a-z0-9]{4})/(.+)$`).FindStringSubmatch(path); m != nil {
+			root, rok := effectiveRoot(r)
+			if !rok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
 			ticketID, relpath := m[1], unescape(m[2])
-			p, ok := safeTicketDoc(ticketID+"/"+relpath, ".feature")
+			p, ok := safeTicketDocIn(ticketID+"/"+relpath, root, ".feature")
 			if !ok || !exists(p) {
 				http.NotFound(w, r)
 				return

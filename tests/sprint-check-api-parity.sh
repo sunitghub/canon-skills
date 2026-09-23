@@ -890,6 +890,46 @@ if py['version'] != semver:
     print(f"/api/version semver {py['version']} != VERSION file {semver}"); sys.exit(1)
 PY
 
+# ── project-scoped ticket assets (t-7d83): /api/ticket-image and /api/ticket-feature must serve
+# from the project named by ?project=, not the server's default project. A ticket that exists ONLY
+# in a second registered project makes an ignored param a 404 instead of a silent pass.
+SCOPED="$WORK/scopedproj"
+mkdir -p "$SCOPED/.git" "$SCOPED/.tickets/t-prj1/visuals" "$SCOPED/.tickets/t-prj1/features"
+printf '\x89PNG\r\n\x1a\nscoped' > "$SCOPED/.tickets/t-prj1/visuals/scoped.png"
+printf 'Scenario: scoped\n  Given only in the second project\n' > "$SCOPED/.tickets/t-prj1/features/scoped.feature"
+# Real files OUTSIDE .tickets/: a traversal that escaped containment would return 200 for these.
+printf '\x89PNG\r\n\x1a\nsecret' > "$SCOPED/outside.png"
+printf 'Scenario: secret\n' > "$SCOPED/outside.feature"
+printf -- '---\nid: t-prj1\nstatus: open\ntype: task\npriority: 2\ncreated: 2026-06-08T00:00:00Z\n---\n# Scoped\n' > "$SCOPED/.tickets/t-prj1/ticket.md"
+scoped_pid() { # port -> registered id of the scoped project
+  curl -s "http://127.0.0.1:$1/api/projects" | python3 -c "import sys,json;print(next((e['id'] for e in json.load(sys.stdin) if e['path'].endswith('scopedproj')),''))"
+}
+for port in "$PY_PORT" "$GO_PORT"; do
+  curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "{\"path\":\"$SCOPED\",\"description\":\"scoped assets\"}" "http://127.0.0.1:$port/api/projects" >/dev/null
+done
+SID_PY="$(scoped_pid "$PY_PORT")"; SID_GO="$(scoped_pid "$GO_PORT")"
+[ -n "$SID_PY" ] && [ "$SID_PY" = "$SID_GO" ] || fail "sprint-check-api-parity: FAIL — scoped project ids missing or differ between backends ('$SID_PY' vs '$SID_GO')"
+SID="$SID_PY"
+scoped_code() { curl -s -o "$3" -w '%{http_code}' "http://127.0.0.1:$1/api/$2"; }
+for route in "ticket-image/t-prj1/visuals/scoped.png" "ticket-feature/t-prj1/features/scoped.feature"; do
+  case "$route" in ticket-image/*) traversal="ticket-image/t-prj1/..%2F..%2Foutside.png";; *) traversal="ticket-feature/t-prj1/..%2F..%2Foutside.feature";; esac
+  for pair in "py:$PY_PORT" "go:$GO_PORT"; do
+    who="${pair%%:*}"; port="${pair##*:}"; out="$(mktemp)"
+    [ "$(scoped_code "$port" "$route?project=$SID" "$out")" = "200" ] || fail "sprint-check-api-parity: FAIL — $who $route with ?project= should be 200"
+    grep -q "scoped\|second project" "$out" || fail "sprint-check-api-parity: FAIL — $who $route served the wrong file for ?project="
+    [ "$(scoped_code "$port" "$route" "$out")" = "404" ] || fail "sprint-check-api-parity: FAIL — $who $route without ?project= must 404 (the ticket is not in the default project)"
+    [ "$(scoped_code "$port" "$route?project=ffffffffffff" "$out")" = "400" ] || fail "sprint-check-api-parity: FAIL — $who $route with an unknown ?project= must be 400"
+    code="$(scoped_code "$port" "$traversal?project=$SID" "$out")"
+    # Go's ServeMux answers an encoded `..` with a 301 path-clean redirect, Python with a 404 — both
+    # are rejections; what must never happen is a 200 or the outside file's contents coming back.
+    { [ "$code" != "200" ] && ! grep -q secret "$out"; } || fail "sprint-check-api-parity: FAIL — $who traversal out of .tickets/ with ?project= must be rejected (got $code)"
+    rm -f "$out"
+  done
+done
+for port in "$PY_PORT" "$GO_PORT"; do
+  curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$port/api/projects/$SID" >/dev/null
+done
+
 # ── /api/projects registry parity (t-9917) ─────────────────────────────────
 # Add the SAME git dir to both backends, compare the POST responses + GET list
 # + on-disk projects.json byte-for-byte, then DELETE and confirm empty on both.
