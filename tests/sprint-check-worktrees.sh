@@ -142,6 +142,43 @@ assert copied == {'.env', 'config/secrets.json'}, copied
   git -C "$WORK" branch -D feat/wti-test >/dev/null 2>&1 || true
   git -C "$WORK" worktree prune >/dev/null 2>&1 || true
 
+  # Uncommitted .tickets/ edits (e.g. `demo: true` set in the board, not yet
+  # committed) are copied into a NEW-branch worktree, which otherwise only
+  # sees committed content. An existing-branch checkout is left untouched —
+  # its own ticket files may be ahead of main's.
+  echo 'demo: true' >> "$WORK/.tickets/t-ready/ticket.md"
+  mkdir -p "$WORK/.tickets/t-newtkt"
+  echo 'id: t-newtkt' > "$WORK/.tickets/t-newtkt/ticket.md"
+  local sync_json sync_path
+  sync_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktrees" \
+    -H 'Content-Type: application/json' -d '{"branch":"feat/ticket-sync"}')"
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['ok'] is True, d" "$sync_json"
+  sync_path="$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['path'])" "$sync_json")"
+  grep -q '^demo: true' "$sync_path/.tickets/t-ready/ticket.md" || fail "$label: uncommitted demo flag not synced into the new worktree"
+  [[ -f "$sync_path/.tickets/t-newtkt/ticket.md" ]] || fail "$label: untracked ticket not synced into the new worktree"
+  python3 -c "
+import json, sys
+d = json.loads(sys.argv[1])
+synced = set(d.get('tickets_synced') or [])
+assert synced == {'.tickets/t-ready/ticket.md', '.tickets/t-newtkt/ticket.md'}, synced
+" "$sync_json"
+  git -C "$WORK" worktree remove -f "$sync_path" >/dev/null 2>&1 || true
+  git -C "$WORK" branch -D feat/ticket-sync >/dev/null 2>&1 || true
+
+  git -C "$WORK" branch existing-sync >/dev/null 2>&1 || true
+  sync_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktrees" \
+    -H 'Content-Type: application/json' -d '{"branch":"existing-sync"}')"
+  python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['ok'] is True, d; assert not d.get('tickets_synced'), d" "$sync_json"
+  sync_path="$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['path'])" "$sync_json")"
+  if grep -q '^demo: true' "$sync_path/.tickets/t-ready/ticket.md"; then
+    fail "$label: existing-branch checkout was overwritten with main's uncommitted ticket edits"
+  fi
+  git -C "$WORK" worktree remove -f "$sync_path" >/dev/null 2>&1 || true
+  git -C "$WORK" branch -D existing-sync >/dev/null 2>&1 || true
+  git -C "$WORK" worktree prune >/dev/null 2>&1 || true
+  git -C "$WORK" checkout -- .tickets/t-ready/ticket.md
+  rm -rf "$WORK/.tickets/t-newtkt"
+
   # same branch again -> path-exists failure (ok:false), not a 500/crash.
   local dup_json
   dup_json="$(curl -s -X POST "http://127.0.0.1:$port/api/worktrees" \

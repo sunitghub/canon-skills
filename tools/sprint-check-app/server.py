@@ -752,6 +752,32 @@ def _copy_worktreeinclude_files(dest: Path, root: Path = None) -> list[str]:
                 pass  # best-effort — a copy failure never blocks worktree creation
     return copied
 
+def _sync_uncommitted_tickets(dest: Path, root: Path = None) -> list[str]:
+    """Copies the main checkout's uncommitted `.tickets/` edits (modified
+    tracked files + new untracked, non-ignored ones) into a freshly created
+    worktree. `git worktree add` materializes only committed content, so a
+    ticket flag set in the board but not yet committed (e.g. `demo: true`)
+    is otherwise invisible to the sprint that runs in the worktree. Callers
+    invoke this only for a brand-new branch: an existing branch's own ticket
+    files may be ahead of main's and must not be overwritten."""
+    root = root if root is not None else PROJECT_ROOT
+    changed = run(['git', '-c', 'core.quotepath=off', 'diff', '--name-only', 'HEAD', '--', '.tickets'], root)
+    new = run(['git', '-c', 'core.quotepath=off', 'ls-files', '--others', '--exclude-standard', '--', '.tickets'], root)
+    copied = []
+    for relpath in (changed + '\n' + new).splitlines():
+        relpath = relpath.strip()
+        src = root / relpath
+        if not relpath or not src.is_file():
+            continue  # deleted in main, or blank line
+        dst = dest / relpath
+        try:
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst)
+            copied.append(relpath)
+        except OSError:
+            pass  # best-effort — a copy failure never blocks worktree creation
+    return copied
+
 def create_worktree(branch: str, root: Path = None) -> dict:
     """`git worktree add` as a sibling checkout, nebula's own convention:
     `<repo>/../<repo-name>-worktrees/<branch-with-slashes-as-dashes>`. Falls
@@ -767,10 +793,12 @@ def create_worktree(branch: str, root: Path = None) -> dict:
     if path.exists():
         return {'ok': False, 'error': 'path already exists'}
     sibling_root.mkdir(parents=True, exist_ok=True)
+    new_branch = True
     try:
         subprocess.run(['git', 'worktree', 'add', str(path), '-b', branch],
                         cwd=root, check=True, capture_output=True, text=True, timeout=15)
     except subprocess.CalledProcessError:
+        new_branch = False
         try:
             subprocess.run(['git', 'worktree', 'add', str(path), branch],
                             cwd=root, check=True, capture_output=True, text=True, timeout=15)
@@ -779,8 +807,9 @@ def create_worktree(branch: str, root: Path = None) -> dict:
     except Exception as e:
         return {'ok': False, 'error': str(e)[:500]}
     copied = _copy_worktreeinclude_files(path, root)
+    tickets_synced = _sync_uncommitted_tickets(path, root) if new_branch else []
     _link_skills_into_worktree(path)
-    return {'ok': True, 'path': str(path), 'branch': branch, 'worktreeinclude_copied': copied}
+    return {'ok': True, 'path': str(path), 'branch': branch, 'worktreeinclude_copied': copied, 'tickets_synced': tickets_synced}
 
 def _link_skills_into_worktree(path: Path) -> None:
     """t-f99b: create the canon skills link inside a freshly-created worktree so
