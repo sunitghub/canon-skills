@@ -38,9 +38,10 @@ option list from `tools/sprint-check-app/model-tiers.json` (Admin > Model Tiers,
 that file is a seeded, editable mirror of the Anthropic models named above, not a replacement for
 this prose; the registry's OpenAI entries are recorded for future use only (`t-ef27`).
 
-**Exception — sprint close gates** follow their own rule (may downgrade to Haiku on a
-structural low-risk check, on a `demo: true` ticket (evaluator only), or via an explicit user
-`Gate model:` override) — see the
+**Exception — sprint close gates** follow their own rule (may downgrade to the Admin > Model
+Tiers "Review & Eval" default, applied unconditionally to every interactive close since
+2026-09-23; to Haiku on a `demo: true` ticket, evaluator only; or via an explicit user
+`Gate model:` override, which always wins) — see the
 "Model tier for gates" note in `skills/sprint/reference/complete.md`, not this block.
 
 **Cross-harness note.** Fresh-context dispatch is confirmed working under Codex

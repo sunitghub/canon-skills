@@ -79,9 +79,9 @@ same agent to check its own work. canon makes that structurally impossible.
    Those are state-management failures, not capability gaps. Plans, rejected alternatives, discovered constraints and
    the acceptance bar live in `.tickets/` as plain markdown — read back in at the next `sprint start`.
    A compaction, a new session, or you in six months all get the same thread.
-5. **Cost proportional to risk.** Simple work stays light. The close gates stay mandatory but run on
-   a cheaper model when every changed file is low-risk — decided by a structural check on file paths,
-   never by the agent's own judgment of its own work.
+5. **Cost you control.** Simple work stays light. The close gates stay mandatory but run on the model
+   you set once in the Cockpit's Admin > Model Tiers ("Review & Eval", shipped as Sonnet 5), overridable per ticket via `Gate model:` —
+   a setting a human chose, never the agent's own judgment of its own work.
 
 ## The Board
 
@@ -313,18 +313,16 @@ reviewer and the binding evaluator. First match wins:
 | # | Condition | Set by | Model used | Scope |
 |---|---|---|---|---|
 | 1 | `Gate model:` is a model id (`haiku`/`sonnet`/`opus`) | User only — live instruction or manual edit in `plan.md` | that model | Both gates; overrides everything below, any risk tier |
-| 2 | `Gate model: session` | User only | current session model | Forces full-tier review; skips the structural check |
+| 2 | `Gate model: session` | User only | current session model | Forces full session-model review; skips the rows below |
 | 3 | `demo: true` on the ticket (and no `Gate model:`) | User, via the demo flag | Haiku, on any diff | Evaluator only — `security-review` runs inline on the session model |
-| 4 | Structural low-risk: **every** changed path in the allowlist AND no security-marker substring | Automatic — `git diff` vs `git merge-base HEAD origin/main` | Haiku | Allowlist, not denylist; if the baseline check fails, falls to row 5 |
-| 5 | Default — any non-matching path, or the baseline check fails | Automatic fallback | current session model (Sonnet/Opus) | High-risk sprints always land here or above |
+| 4 | Admin "Review & Eval" default (`defaults.eval.anthropic` in `tools/sprint-check-app/model-tiers.json`) | Admin > Model Tiers, applied to **every** interactive close regardless of diff risk | the registry model's alias (e.g. `sonnet`) | Read directly from disk; interactive `sprint complete` only — headless is unchanged |
+| 5 | Fallback — registry missing/unreadable, or the default has no matching alias | Automatic | current session model (Sonnet/Opus) | Never a silent downgrade on error |
 
-*Allowlist:* `docs/**/*.md`, `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `skills/**/gates/*.md`, `standards/**/*.md`, root `*.md`.
-*Security markers:* `auth`, `secret`, `session`, `crypto`, `token`, `credential`.
-
-The evaluator runs on your **session model by default**; it drops to **Haiku** only via an explicit
-user setting (rows 1–3) or a purely mechanical file-path check (row 4) — never the agent's own
-judgment of its own work. The chosen model is recorded on the `eval` row as `(model: <id>)` for
-audit. (The automatic Haiku downgrade is confirmed only under Claude Code.) Full logic:
+The gates run on whatever you set in Admin > Model Tiers (row 4), unless a ticket's own `Gate model:`
+or the demo flag (rows 1–3) says otherwise — a human's setting, never the agent's own judgment of
+its own work. Note this applies to code changes too, not just docs-only diffs: pick a weak model there
+and every close uses it unless overridden. The chosen model and its source are recorded on the `eval`
+row as `(model: <id> — <source>)` for audit. (The automatic downgrade is confirmed only under Claude Code.) Full logic:
 [`skills/sprint/reference/complete.md`](skills/sprint/reference/complete.md) → "Model tier for gates."
 
 ## Code Archaeology

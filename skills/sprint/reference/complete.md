@@ -106,11 +106,11 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    |------|--------|--------|
    | code-simplifier | skipped | docs-only change |
    | code-reviewer | ran | no findings — reviewed the 8-dimension checklist in-context |
-   | reviewer | ran | verdict: YES (model: haiku) |
+   | reviewer | ran | verdict: YES (model: sonnet — Admin Review & Eval default) |
    | security-review | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
-   | eval | ran | verdict: pass — eval-report.md written (model: haiku) |
+   | eval | ran | verdict: pass — eval-report.md written (model: sonnet — Admin Review & Eval default) |
    | mutation-test | skipped | advisory — no logic files changed |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
@@ -124,10 +124,10 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `skills/sprint/reference/eval.md`) — `eval` and `evaluator` are the one binding
    fresh-subagent gate, not two things, unlike the reviewer/code-reviewer pair.
 
-   For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model>)` — the
-   value applied by the model-tier check below: an explicit `Gate model:` value,
-   `haiku` if the structural check matched low-risk, or the exact session model id (e.g.
-   `claude-sonnet-5`), never a paraphrase. Records which tier ran.
+   For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model> — <source>)` —
+   the value and source applied by the model-tier check below: an explicit `Gate model:` value,
+   the Admin Review & Eval default's alias, or the exact session model id (e.g.
+   `claude-sonnet-5`) when both fall through, never a paraphrase. Records which tier ran and why.
 
    Use `ran`/`skipped`, always with a reason — even for gates that ran, note the evidence
    checked. Avoid bare "ran"; use e.g. `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69`
@@ -147,7 +147,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   instruction ("run review/eval on haiku") or manual edit — never inferred or asserted by
   the dispatching agent itself. If asked verbally and the field isn't in `plan.md` yet, write it
   immediately, before continuing — so a compaction between ask and dispatch doesn't lose
-  it. If present, skip structural classification and jump to **Apply the result** with this
+  it. If present, skip the checks below and jump to **Apply the result** with this
   value. If absent, fall through.
 - **Demo mode forces Haiku (evaluator only).** If `ticket.md` has `demo: true` and `plan.md`
   has **no** explicit `Gate model:` value, apply `model: "haiku"` to the **binding evaluator
@@ -157,32 +157,46 @@ Opus` default, scoped only to the two close-gate dispatches below.
   it takes no per-dispatch `model:` param — it runs on the session model (to run the whole
   demo close cheaply, switch the session model to Haiku via `/model`). An explicit
   `Gate model:` value still wins over this (checked above). This forces Haiku on *any* diff,
-  distinct from the structural low-risk downgrade below. No CLI change — this is an
-  agent-protocol read of the `demo` flag.
-- **Compute changed files.** `git diff --name-only $(git merge-base HEAD origin/main) HEAD`
-  (same command the reviewer prompt uses).
-- **Check `git merge-base`'s exit status, not the diff output.** Failure (missing
-  `origin/main`, detached HEAD, no git baseline) means normal cost, never low-risk — a
-  failed substitution can leave the outer `git diff` running against a different,
-  non-empty baseline, so empty output is neither guaranteed nor evidence of low risk. Only
-  exit status is reliable.
-- **Classify low-risk** only if every changed path matches the allowlist — `docs/**/*.md`,
-  `skills/**/SKILL.md`, `skills/**/reference/**/*.md`, `skills/**/gates/*.md`,
-  `standards/**/*.md`, or root-level `*.md` — AND no path contains a security marker
-  (`auth`, `secret`, `session`, `crypto`, `token`, `credential`). This substring list is
-  deliberately narrower than the semantic "security-sensitive" definitions elsewhere
-  (`SKILL.md`'s high-risk triggers, `security-review.md`'s skip list). Allowlist, not
-  denylist: any non-matching path defaults to normal cost — never overridden downward by
-  the agent's own risk judgment.
+  distinct from the Admin default below. No CLI change — this is an agent-protocol read of the
+  `demo` flag.
+- **Admin "Review & Eval" default (`t-4b5a`) — applies unconditionally, no risk exception.**
+  Read `tools/sprint-check-app/model-tiers.json` **directly from disk** (not an HTTP fetch — the
+  board/server isn't guaranteed running during an interactive close). It's a plain relative path
+  inside canon's own repo; in a consumer project (`tools/` not symlinked in) find it via
+  `command -v sprint`'s containing directory instead (`where sprint` on Windows) —
+  `sprint-check-app/` sits beside `sprint` there. The registry belongs to the canon install, so
+  one Admin setting governs every project using it. Take
+  `defaults.eval.anthropic` (a model `id`, e.g. `claude-sonnet-5`) and find the matching entry in
+  `models.anthropic` to read its `alias` (e.g. `sonnet`) — the Agent tool's `model:` param takes
+  the short alias, not the full id. This applies to **every** ticket regardless of diff risk —
+  a deliberate user choice (2026-09-23) that trades today's "code changes get full-strength
+  review by default" posture for one admin-configurable default; the per-ticket `Gate model:`
+  override (checked first, above) remains the escape hatch for anything that needs something
+  different. **Fail-safe, never a silent downgrade on error:** if the file is missing or
+  unreadable, `defaults.eval.anthropic` is absent, its `id` has no matching `alias` in
+  `models.anthropic`, or that alias is not one the Agent tool's `model:` param accepts
+  (`fable`, `opus`, `sonnet`, `haiku` — Admin lets a user add models with arbitrary aliases, and
+  an unrecognized value would make the dispatch itself error), treat this step as absent and
+  fall through to session default below — same posture as any other read failure in this
+  protocol. **Interactive close only** — this
+  does not apply to `tools/sprint-headless`/CI, which keeps reading only an explicit
+  `Gate model:` (unchanged, `DECISIONS.md` 2026-07-27); extending it there is a distinct,
+  not-yet-scoped follow-up. This supersedes the former structural low-risk classification
+  (git-diff-based allowlist check), which is now fully retired — nothing else in this protocol
+  reads it.
 - **Apply the result.** With an explicit `Gate model:` value: `session` → omit `model`
   (inherits session model); any other value → pass it verbatim as `model` on both reviewer
-  and evaluator `Agent` calls. Without one: low-risk → pass `model: "haiku"`; otherwise
-  omit `model`. Check once; both gates share the result — their verdicts (YES/NO,
-  pass/fail) stay separate from this check.
+  and evaluator `Agent` calls. Without one: the resolved Admin default's alias → pass it as
+  `model`; if that step also fell through (fail-safe), omit `model` entirely (full session
+  model). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
+  separate from this check. **Name the source, not just the value**, wherever this result is
+  recorded (Wrapup Gates table, `summary.md`) — `Admin Review & Eval default`, `Gate model
+  override`, `demo mode`, or `session` — so a later reader can tell an admin-wide setting from a
+  per-ticket decision, the same loudness convention `Gate model:`/`demo` already follow.
 - **High-risk sprints are unaffected** — the check only adds a cheap-model option, never
   removes the mandatory dispatch. An explicit `Gate model:` override applies regardless of
   tier.
-- **Cross-harness caveat.** The automatic Haiku downgrade is confirmed only under Claude
+- **Cross-harness caveat.** The automatic Admin-default downgrade is confirmed only under Claude
   Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's generic `spawn_agent` call has no
   `model` field, but a named custom subagent defined in a `~/.codex/agents/*.toml` file can
   set its own `model`, overriding `agents.default_subagent_model`. Don't assume the downgrade
@@ -221,9 +235,9 @@ Opus` default, scoped only to the two close-gate dispatches below.
    completed task's slot) — proceed, don't retry or treat it as fatal.
 
 4. Each subagent records its model designation in its report — the exact value applied above
-   (an explicit `Gate model:` value, `haiku` if the structural check classified this
-   low-risk, or the exact session model id, e.g. `claude-sonnet-5`), never a paraphrase —
-   same value as the Wrapup Gates table's `(model: <model>)` suffix. **The orchestrator MUST
+   (an explicit `Gate model:` value, the Admin Review & Eval default's alias, or the exact
+   session model id, e.g. `claude-sonnet-5`), never a paraphrase — same value as the Wrapup
+   Gates table's `(model: <model> — <source>)` suffix. **The orchestrator MUST
    state that model designation in each gate's dispatch prompt (its Inputs)**, because the
    report-body `Model:` line is a HARD RULE the CLI enforces at close
    (`_gate_eval_report_model` on `eval-report.md` always; `_gate_review_notes_model` when
@@ -517,7 +531,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    |---|---|---|
    | <criterion verbatim> | delivered / waived / deferred / partial | reason if not delivered |
 
-   <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded. For normal+ tier, name which model the reviewer/evaluator gates ran on (pulled from the Wrapup Gates table's `(model: <model>)` suffix) — e.g. "reviewer and evaluator ran on haiku (low-risk classification).">
+   <one paragraph: what shipped, test results, any waived/deferred items and why, follow-up recorded. For normal+ tier, name which model the reviewer/evaluator gates ran on (pulled from the Wrapup Gates table's `(model: <model> — <source>)` suffix) — e.g. "reviewer and evaluator ran on sonnet (Admin Review & Eval default).">
    ```
 
    **If the advisory reviewer's verdict was NO, this paragraph must say so explicitly** — name
