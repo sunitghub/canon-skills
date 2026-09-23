@@ -473,7 +473,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	s.persistAgentKindIn(projectRoot, body.Ticket, kind)
 	// t-7590: echo the cwd the daemon actually resolved and spawned in (may
 	// differ from what the client requested — a locked in_progress ticket
-	// reuses its persisted .cockpit-cwd, an empty request resolves to the main
+	// reuses its persisted .cockpit-cwd while that still re-validates, an empty request resolves to the main
 	// checkout). The board displays this as the authoritative "Working in:" so a
 	// wrong-tree run can never hide behind an optimistic pre-Start label.
 	//
