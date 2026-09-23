@@ -137,7 +137,10 @@ sprint agent without leaving the browser — no second terminal.
   embedded terminal (xterm.js). Click **Start sprint** (or **Resume**) → the
   agent runs in-page; you type to it there. The agent keeps running if you
   close the tab and reattaches (scrollback replayed) when you reopen;
-  **Kill** stops it cleanly with no orphaned process.
+  **Kill** stops it cleanly with no orphaned process. A reopened tab only
+  reattaches once you press **Start sprint** again; until then **End Session**
+  can't reach the still-running agent, so it says so (and leaves the tab open)
+  instead of closing as if it had ended it.
 - **It is a real agent, with this project's own permissions.** The daemon execs
   `claude` with the ticket as a single prompt argument (`sprint start <id>`) —
   the same thing you would type at a terminal — so it can write files and run

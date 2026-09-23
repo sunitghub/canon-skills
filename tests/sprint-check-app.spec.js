@@ -4696,6 +4696,118 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
+  // t-2687: End Session on a tab that never attached (status not running) while the daemon still lists
+  // a live session for the ticket must not silently close the tab.
+  const stubSessions = (page, list) => page.route('**/api/cockpit-sessions', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(list),
+  }));
+
+  test('End Session on an unattached tab with a live daemon session explains instead of closing (t-2687)', async ({ page }) => {
+    const id = `t-lcdet-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: '<img src=x onerror=1>', status: 'running' }]);
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'idle' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-end-session').click();
+      const modal = page.locator('#ck-leave-confirm');
+      await expect(modal).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText("still running in the daemon but isn't attached to this tab");
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText('Start sprint to reattach');
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText('<img src=x onerror=1>'); // textContent — inert
+      await expect(page.locator('#ck-leave-confirm-body img')).toHaveCount(0);
+      // A notice, not a choice: the two actions are hidden and the dismiss button reads OK.
+      await expect(page.locator('#ck-leave-save')).toBeHidden();
+      await expect(page.locator('#ck-leave-skip')).toBeHidden();
+      await expect(page.locator('#ck-leave-cancel')).toHaveText('OK');
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/); // the tab is NOT torn down
+      await page.locator('#ck-leave-cancel').click();
+      await expect(modal).not.toHaveClass(/open/);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      // Once the tab really is live, the normal dialog gets its buttons and label back.
+      await page.evaluate(() => { cockpitState.status = 'running'; });
+      await page.locator('#ck-end-session').click();
+      await expect(modal).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-save')).toBeVisible();
+      await expect(page.locator('#ck-leave-save')).toBeEnabled();
+      await expect(page.locator('#ck-leave-skip')).toBeVisible();
+      await expect(page.locator('#ck-leave-cancel')).toHaveText('Cancel');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  for (const [label, list, status] of [
+    ['no daemon session', [], 200],
+    ['a session for another project root', [{ ticket: 'T-ID', project_root: '/somewhere/else', agent: 'claude', status: 'running' }], 200],
+    ['a failed lookup', null, 500],
+  ]) {
+    test(`End Session on an unattached tab still closes it with ${label} (t-2687)`, async ({ page }) => {
+      const id = `t-lcnone-${Date.now()}`;
+      try {
+        writeTicket(id, 'in_progress');
+        await page.route('**/api/cockpit-sessions', route => route.fulfill({
+          status, contentType: 'application/json',
+          body: JSON.stringify(list ? list.map(x => ({ ...x, ticket: id })) : { error: 'x' }),
+        }));
+        await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'idle' }));
+        await page.waitForTimeout(100);
+        await page.locator('#ck-end-session').click();
+        await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+        await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+  }
+
+  test('a live tab keeps the normal Save & End dialog even when the daemon lists its session (t-2687)', async ({ page }) => {
+    const id = `t-lclive-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await stubSessions(page, [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-end-session').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-save')).toBeEnabled();
+      await expect(page.locator('#ck-leave-confirm-body')).not.toContainText("isn't attached");
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('switching tabs while the sessions lookup is in flight applies nothing to the wrong tab (t-2687)', async ({ page }) => {
+    const idA = `t-lcswa-${Date.now()}`, idB = `t-lcswb-${Date.now()}`;
+    try {
+      writeTicket(idA, 'in_progress');
+      writeTicket(idB, 'in_progress');
+      let release;
+      const gate = new Promise(r => { release = r; });
+      await stubSessions(page, []); // plain during page load so networkidle can settle
+      await openResumedCockpit(page, idA, fakeCockpitPage({ initialStatus: 'idle' }));
+      await page.waitForTimeout(100);
+      // Gate the lookup only now (the most recently registered route wins).
+      await page.route('**/api/cockpit-sessions', async route => {
+        await gate;
+        await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+          { session: 's1', ticket: idA, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }]) });
+      });
+      await page.locator('#ck-end-session').click();          // lookup for A now pending
+      await page.locator('#ck-back').click();                  // leave the overlay, keep A's tab open
+      await reopenCockpitNoReload(page, idB, fakeCockpitPage({ initialStatus: 'running' })); // B becomes the active tab
+      await page.waitForTimeout(100);
+      release();
+      await page.waitForTimeout(400);
+      await expect(page.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idA), { recursive: true, force: true });
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idB), { recursive: true, force: true });
+    }
+  });
+
   test('Save & End waits for the ended reply before tearing down', async ({ page }) => {
     const id = `t-lcsave-${Date.now()}`;
     try {

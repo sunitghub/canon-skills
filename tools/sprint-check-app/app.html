@@ -5080,6 +5080,9 @@ function openLeaveConfirm() {
   // while needs-you blocks the normal Save & End path.
   document.getElementById('ck-leave-skip').disabled = false;
   document.getElementById('ck-leave-cancel').disabled = false;
+  document.getElementById('ck-leave-save').style.display = '';
+  document.getElementById('ck-leave-skip').style.display = '';
+  document.getElementById('ck-leave-cancel').textContent = 'Cancel';
   document.getElementById('ck-leave-confirm-body').textContent = needsYou
     ? 'The agent is waiting on you right now — Cancel to go back and resolve the prompt, then you can Save & End, or End without saving.'
     : "Save & End saves this sprint's state to HANDOFF and ends the session. End without saving skips that and ends immediately — use it if the save is stuck. Cancel to keep working here.";
@@ -5501,9 +5504,45 @@ function closeCockpit() {
   document.getElementById('cockpit-overlay').classList.remove('open');
 }
 
-document.getElementById('ck-end-session').addEventListener('click', () => {
+// t-2687: a tab that was never attached (closed/reopened, or opened from the COCKPIT SESSIONS
+// row and Start not yet pressed) has no session id/token, so the board can't end the daemon's
+// live session for that ticket (t-ddc8: the board never holds the daemon token). Tearing the
+// tab down anyway looked like success while the session kept running — find it and say so.
+async function findLiveDaemonSession(ticketId) {
+  try {
+    const r = await fetch('/api/cockpit-sessions');
+    if (!r.ok) return null;
+    const list = await r.json();
+    if (!Array.isArray(list)) return null;
+    const root = state.git && state.git.root ? cockpitPathKey(state.git.root) : '';
+    // /api/cockpit-sessions lists only non-exited sessions (daemon handleSessions).
+    return list.find(s => String(s.ticket) === ticketId
+      && (!root || !s.project_root || cockpitPathKey(s.project_root) === root)) || null;
+  } catch { return null; }
+}
+
+function openDetachedSessionNotice(s) {
+  // A notice, not a choice: hide the two actions (a disabled Save & End still reads as clickable)
+  // and let the dismiss button say OK. openLeaveConfirm() restores all three for the normal dialog.
+  document.getElementById('ck-leave-save').style.display = 'none';
+  document.getElementById('ck-leave-skip').style.display = 'none';
+  const ok = document.getElementById('ck-leave-cancel');
+  ok.disabled = false;
+  ok.textContent = 'OK';
+  document.getElementById('ck-leave-confirm-body').textContent =
+    `A ${String(s.agent || 'agent')} session for this ticket is still running in the daemon but isn't attached to this tab, ` +
+    "so End Session can't end it from here. Click ▶ Start sprint to reattach, then End Session.";
+  document.getElementById('ck-leave-confirm-status').textContent = '';
+  document.getElementById('ck-leave-confirm').classList.add('open');
+}
+
+document.getElementById('ck-end-session').addEventListener('click', async () => {
   if (!cockpitState || cockpitState._ending) return;
   if (sessionIsLive()) { openLeaveConfirm(); return; }
+  const tab = cockpitState;
+  const detached = await findLiveDaemonSession(tab.id);
+  if (cockpitState !== tab || tab._ending) return; // switched tabs (or an end began) during the lookup
+  if (detached) { openDetachedSessionNotice(detached); return; }
   teardownCockpit();
 });
 
