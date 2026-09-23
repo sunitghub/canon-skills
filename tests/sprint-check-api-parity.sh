@@ -910,6 +910,7 @@ done
 SID_PY="$(scoped_pid "$PY_PORT")"; SID_GO="$(scoped_pid "$GO_PORT")"
 [ -n "$SID_PY" ] && [ "$SID_PY" = "$SID_GO" ] || fail "sprint-check-api-parity: FAIL — scoped project ids missing or differ between backends ('$SID_PY' vs '$SID_GO')"
 SID="$SID_PY"
+SCOPED_BODIES="$(mktemp -d)"
 scoped_code() { curl -s -o "$3" -w '%{http_code}' "http://127.0.0.1:$1/api/$2"; }
 for route in "ticket-image/t-prj1/visuals/scoped.png" "ticket-feature/t-prj1/features/scoped.feature"; do
   case "$route" in ticket-image/*) traversal="ticket-image/t-prj1/..%2F..%2Foutside.png";; *) traversal="ticket-feature/t-prj1/..%2F..%2Foutside.feature";; esac
@@ -917,6 +918,7 @@ for route in "ticket-image/t-prj1/visuals/scoped.png" "ticket-feature/t-prj1/fea
     who="${pair%%:*}"; port="${pair##*:}"; out="$(mktemp)"
     [ "$(scoped_code "$port" "$route?project=$SID" "$out")" = "200" ] || fail "sprint-check-api-parity: FAIL — $who $route with ?project= should be 200"
     grep -q "scoped\|second project" "$out" || fail "sprint-check-api-parity: FAIL — $who $route served the wrong file for ?project="
+    cp "$out" "$SCOPED_BODIES/$who"
     [ "$(scoped_code "$port" "$route" "$out")" = "404" ] || fail "sprint-check-api-parity: FAIL — $who $route without ?project= must 404 (the ticket is not in the default project)"
     [ "$(scoped_code "$port" "$route?project=ffffffffffff" "$out")" = "400" ] || fail "sprint-check-api-parity: FAIL — $who $route with an unknown ?project= must be 400"
     code="$(scoped_code "$port" "$traversal?project=$SID" "$out")"
@@ -925,7 +927,17 @@ for route in "ticket-image/t-prj1/visuals/scoped.png" "ticket-feature/t-prj1/fea
     { [ "$code" != "200" ] && ! grep -q secret "$out"; } || fail "sprint-check-api-parity: FAIL — $who traversal out of .tickets/ with ?project= must be rejected (got $code)"
     rm -f "$out"
   done
+  case "$route" in
+    ticket-image/*) cmp -s "$SCOPED_BODIES/py" "$SCOPED_BODIES/go" || fail "sprint-check-api-parity: FAIL — $route bytes differ between server.py and main.go for ?project=" ;;
+    # JSON: json.dumps and json.Marshal differ only in whitespace, so compare the parsed document.
+    *) python3 - "$SCOPED_BODIES/py" "$SCOPED_BODIES/go" <<'PY' || fail "sprint-check-api-parity: FAIL — $route content differs between server.py and main.go for ?project="
+import json,sys
+sys.exit(0 if json.load(open(sys.argv[1])) == json.load(open(sys.argv[2])) else 1)
+PY
+    ;;
+  esac
 done
+rm -rf "$SCOPED_BODIES"
 for port in "$PY_PORT" "$GO_PORT"; do
   curl -s -X DELETE -H 'Origin: http://localhost' "http://127.0.0.1:$port/api/projects/$SID" >/dev/null
 done
