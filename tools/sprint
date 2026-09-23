@@ -361,12 +361,12 @@ _gate_eval_report_authentic() {
   if (( run_len >= 13 )); then
     run_epoch=$(( run_epoch / 1000 ))
   fi
-  local matched=0 line ts entry_epoch diff
+  local matched=0 line ts entry_epoch diff malformed=0
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     ts="$(printf '%s' "$line" | grep -o '"ts"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')"
-    [[ -z "$ts" ]] && continue
-    [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || continue
+    [[ -z "$ts" ]] && { malformed=$((malformed + 1)); continue; }
+    [[ "$ts" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]] || { malformed=$((malformed + 1)); continue; }
     entry_epoch="$(date -u -d "$ts" +%s 2>/dev/null || date -j -u -f "%Y-%m-%dT%H:%M:%SZ" "$ts" +%s 2>/dev/null)" || continue
     [[ "$entry_epoch" =~ ^[0-9]+$ ]] || continue
     diff=$(( entry_epoch - run_epoch ))
@@ -379,6 +379,12 @@ _gate_eval_report_authentic() {
   if [[ "$matched" != "1" ]]; then
     echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no matching subagent entry in .claude/subagent-runs.jsonl (±60 min window)."
     echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
+    # t-c94f: entries without an ISO "ts" (e.g. an integer "timestamp" from a hand-written or
+    # non-canon writer) are skipped above. Say so, or the closer sees only the generic line.
+    if (( malformed > 0 )); then
+      echo "Note: $malformed entr$([[ $malformed -eq 1 ]] && echo y || echo ies) in .claude/subagent-runs.jsonl ha$([[ $malformed -eq 1 ]] && echo s || echo ve) no ISO \"ts\" field (e.g. an integer \"timestamp\") and $([[ $malformed -eq 1 ]] && echo is || echo are) ignored."
+      echo "Log the evaluator with: subagent-log.sh --agent-id <evaluator-run-id> --agent-type evaluator — do not hand-edit the file."
+    fi
     return 1
   fi
 }

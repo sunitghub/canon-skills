@@ -403,10 +403,40 @@ pass: all criteria met
 EOF
 jsonl_nomatch_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$jsonl_nomatch_output" "no matching subagent entry"
+# t-c94f: a well-formed but out-of-window entry gets the plain message — no malformed-entry hint.
+[[ "$jsonl_nomatch_output" == *"no ISO"* ]] && fail "out-of-window ISO entry must not trigger the malformed hint: $jsonl_nomatch_output"
+
+# t-c94f: an entry with an integer "timestamp" and no ISO "ts" is still rejected (a hand-written
+# record must not satisfy the audit trail) — but the message now names why and how to fix it.
+cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"timestamp":1000000100,"agent_id":"hand-written","agent_type":"evaluator"}
+EOF
+int_ts_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$int_ts_output" "no matching subagent entry"
+assert_contains "$int_ts_output" "1 entry in .claude/subagent-runs.jsonl has no ISO"
+assert_contains "$int_ts_output" "subagent-log.sh --agent-id"
+assert_contains "$int_ts_output" "do not hand-edit"
+
+# t-c94f: untrusted log input never crashes or matches — empty, garbage, CRLF, a 100 KB line, and a
+# "ts" holding an injected newline all fail cleanly (plural wording covers >1 malformed line).
+printf '' > ".claude/subagent-runs.jsonl"
+empty_log_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$empty_log_output" "no matching subagent entry"
+[[ "$empty_log_output" == *"no ISO"* ]] && fail "an empty log has nothing malformed to report: $empty_log_output"
+{
+  printf 'not json at all\n'
+  printf '{"ts":"2001-09-09T01:46:40Z\\n","agent_id":"nl"}\r\n'
+  printf '{"timestamp":1000000100,"pad":"%s"}\n' "$(head -c 100000 /dev/zero | tr '\0' 'x')"
+} > ".claude/subagent-runs.jsonl"
+garbage_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$garbage_output" "no matching subagent entry"
+assert_contains "$garbage_output" "3 entries in .claude/subagent-runs.jsonl have no ISO"
 
 # JSONL present, matching entry within ±60 min → should pass
-# entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window
+# entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window. A malformed line ahead of it
+# (t-c94f) must not stop the valid one from matching — the accept decision is unchanged.
 cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"timestamp":1000000100,"agent_id":"hand-written","agent_type":"evaluator"}
 {"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real","agent_type":"general-purpose","transcript_path":"/tmp/eval.jsonl"}
 EOF
 match_output="$("$SPRINT" complete 2>&1 || true)"
@@ -451,8 +481,10 @@ jsonl_absent_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$jsonl_absent_output" "subagent-runs.jsonl not found"
 
 # Provide a matching entry — now it can close
-# entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window
+# entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window. A malformed line ahead of it
+# (t-c94f) must not stop the valid one from matching — the accept decision is unchanged.
 cat > ".claude/subagent-runs.jsonl" <<'EOF'
+{"timestamp":1000000100,"agent_id":"hand-written","agent_type":"evaluator"}
 {"ts":"2001-09-09T02:16:40Z","session_id":"s1","agent_id":"agent-real2","agent_type":"general-purpose","transcript_path":"/tmp/eval2.jsonl"}
 EOF
 complete_output="$("$SPRINT" complete)"
