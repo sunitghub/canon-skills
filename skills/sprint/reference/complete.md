@@ -257,7 +257,11 @@ Opus` default, scoped only to the two close-gate dispatches below.
 6. **If a subagent's Bash file-writing is refused outright** (permission boundary, not
    heredoc failure): do not retry or re-dispatch with a broader-permission `subagent_type`.
    Check whether the expected report file exists after dispatch; if not, save the returned
-   report text yourself before continuing.
+   report text yourself before continuing. Save it **verbatim** — never compose a report
+   from a bare verdict, and never write or edit `evaluator-run-id` yourself (live-reproduced
+   on Windows/Haiku: an orchestrator wrote its own report with `haiku-eval-2026-09-23`). If
+   the returned text is only a verdict, or line 1 lacks a `date +%s`-style `<epoch>-<n>`
+   run-id, discard it and re-dispatch a fresh gate.
 
 7. **Snapshot git status before AND after every subagent dispatch** — a gate is read-only by
    contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own
