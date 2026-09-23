@@ -30,7 +30,7 @@ fresh session — do not run it in the same conversation that just closed the sp
 
 1. Read root `LEARNINGS.md`. For each row with `Status: UNPROMOTED`, read its linked
    `.tickets/<id>/learnings.md` in full (not just the one-line `Finding` cell — that's a terse
-   distillation, the source file has the actual evaluator findings / deviations).
+   distillation, the source file has the actual evaluator findings, reviewer findings and deviations).
 2. For each row, judge: is this durable and general enough that a *different* future sprint would
    benefit from knowing it, or is it a one-off specific to that ticket's exact circumstances? A
    learning tied to one ticket's specific bug is not durable; a learning about a class of mistake
@@ -106,3 +106,7 @@ covering: ...". Never performed by this skill itself.>
   field only changes when the actual write happens, outside this skill.
 - If `LEARNINGS.md` has zero UNPROMOTED rows, say so plainly in the report — an empty queue is a
   valid, unremarkable result, not an error.
+- When recording or backfilling a `promoted → <file>` target, the lesson itself must appear in a real
+  content line of that file. Read each grep hit: a ticket-ID match in a template or example row (e.g.
+  the sample row in `skills/learnings-sweep/SKILL.md`) is not evidence. With no real hit, leave the
+  row plain `promoted` rather than guessing.

@@ -4,7 +4,7 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.6
+version: 1.0.7
 updated: 2026-09-23
 ---
 
@@ -66,6 +66,7 @@ Act on these when you see them — don't wait to be told.
 - A bare `[[ cond ]] && cmd` as a function's LAST statement returns the `[[ ]]` test's own exit status (1) whenever `cond` is false — under `set -e`, that silently aborts the *caller*, not just skips `cmd`. Easy to miss because the common/expected case (`cond` usually true) never triggers it — it only fires once the false branch becomes reachable, potentially long after the line was written. Safe: wrap in `if`/`fi`, or append `; return 0` / `|| true` after it.
 - A test asserts against a re-implementation of the logic under test → call the production function instead. A locally rebuilt sort key or a hand-copied constant list passes while the real thing is broken.
 - A guard exercised only against inputs it already handles is unverified → feed it the cases it must *reject*.
+- Writing a parser for an existing artifact family (reports, tickets, logs) → count the shapes across all real instances and read the producer's own template first; run it on a real instance, not only fixtures shaped like the parser.
 - New security/validation/race guard → ship a test that fails when the guard is reverted, and run the revert. Two causes for one symptom → prove each fix necessary by reverting it alone, plus one end-to-end test through the real client path.
 - A hostile-input test must match the sink's context: escaped text in `title="…"` needs a quote-breakout payload (`a"onmouseover="x`), not just `<img onerror>`.
 - Widening what a security check allows → re-validate the new value at the point of use; never lean on an earlier check you haven't read, especially for files an agent can write (`.tickets/`).
