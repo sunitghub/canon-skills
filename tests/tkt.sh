@@ -250,7 +250,7 @@ cp ".tickets/$rev_id/eval-report.md" ".tickets/$mal_id/eval-report.md"
 : > ".tickets/$mal_id/review-notes.md"
 mal_out="$("$TKT" learn "$mal_id")"
 assert_contains "$mal_out" "nothing to distill"
-printf '# R\n\n## Findings\n\nprose with no bullets\n\n## Verdict\n\nNO\n' > ".tickets/$mal_id/review-notes.md"
+printf '# R\n\n## Findings\n\n\n## Verdict\n\nNO\n' > ".tickets/$mal_id/review-notes.md"
 mal_out="$("$TKT" learn "$mal_id")"
 assert_contains "$mal_out" "nothing to distill"
 printf '# R\r\n\r\n## Findings\r\n\r\n- crlf finding one [severity: low]\r\n\r\n## Verdict\r\n\r\nNO\r\n' > ".tickets/$mal_id/review-notes.md"
@@ -259,6 +259,25 @@ mal_cand="$(cat ".tickets/$mal_id/learnings.md")"
 assert_contains "$mal_cand" "crlf finding one [severity: low]"
 assert_contains "$mal_cand" "Advisory reviewer verdict: NO."
 if [[ "$mal_cand" == *$'\r'* ]]; then fail "tkt learn: CR leaked into the candidate"; fi
+# 8. Real reviewer reports rarely use "- " bullets: review.md's template is one `file:line — issue` per line,
+#    and headings carry suffixes. Every shape must still reach the candidate (t-13b3 reviewer finding).
+for shape in bare numbered star; do
+  shape_id="$("$TKT" create "Shape $shape")"
+  cp ".tickets/$rev_id/summary.md" ".tickets/$shape_id/summary.md"
+  cp ".tickets/$rev_id/eval-report.md" ".tickets/$shape_id/eval-report.md"
+  case "$shape" in
+    bare)     body='src/a.go:10 — first bare finding [severity: med]\n\nsrc/b.go:20 — second bare finding' ;;
+    numbered) body='1. first numbered finding\n2. second numbered finding' ;;
+    star)     body='* first star finding\n* second star finding' ;;
+  esac
+  printf '# R\n\n## Findings (advisory)\n\n%b\n\n## Verdict: NO — see above\n' "$body" > ".tickets/$shape_id/review-notes.md"
+  "$TKT" learn "$shape_id" >/dev/null
+  shape_cand="$(cat ".tickets/$shape_id/learnings.md")"
+  assert_contains "$shape_cand" "first $shape finding"
+  assert_contains "$shape_cand" "second $shape finding"
+  assert_contains "$shape_cand" "Advisory reviewer verdict: NO — see above."
+done
+
 long_line="$(head -c 5000 /dev/zero | tr '\0' 'x')"
 printf '## Findings\n\n- %s\n\n## Verdict\n\nNO\n' "$long_line" > ".tickets/$mal_id/review-notes.md"
 "$TKT" learn "$mal_id" --force >/dev/null

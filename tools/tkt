@@ -712,19 +712,31 @@ cmd_learn() {
     fi
   fi
 
-  # Reviewer findings = review-notes.md's ## Findings bullets, unless "No findings." The reviewer is
+  # Reviewer findings = every non-blank line under review-notes.md's "## Findings…" heading (the heading
+  # may carry a suffix, e.g. "## Findings (advisory)"), except a bare "No findings." line. The reviewer is
   # advisory, so the evaluator can pass while a real defect (fixed mid-sprint) lives only here (t-13b3).
-  # review-notes.md is absent on bugfix/demo/trivial closes — optional. Each line is capped so a long
-  # finding can't bloat the candidate; the full text stays in review-notes.md.
+  # review.md's own template asks for one finding per line with no bullet marker, so any line shape counts.
+  # review-notes.md is absent on bugfix/demo/trivial closes — optional. Each line is capped, and the count
+  # is bounded, so a huge report can't bloat the candidate; the full text stays in review-notes.md.
   local revn="$tdir/review-notes.md" rfindings="" rverdict=""
   if [[ -f "$revn" ]]; then
     rfindings="$(awk '
-      /^##[[:space:]]+Findings[[:space:]]*$/ { infind=1; next }
+      /^##[[:space:]]+Findings/ { infind=1; next }
       infind && /^##[[:space:]]/ { infind=0 }
-      infind { sub(/\r$/, ""); if ($0 ~ /^[[:space:]]*-[[:space:]]/) print (length($0) > 400 ? substr($0, 1, 400) " … (see review-notes.md)" : $0) }
+      infind {
+        sub(/\r$/, "")
+        if ($0 !~ /[^[:space:]]/) next
+        if (tolower($0) ~ /^[[:space:]]*[-*]?[[:space:]]*no findings\.?[[:space:]]*$/) next
+        if (++n > 40) { if (n == 41) print "… (more findings in review-notes.md)"; next }
+        print (length($0) > 400 ? substr($0, 1, 400) " … (see review-notes.md)" : $0)
+      }
     ' "$revn")"
     rverdict="$(awk '
-      /^##[[:space:]]+Verdict[[:space:]]*$/ { inv=1; next }
+      /^##[[:space:]]+Verdict/ {
+        rest=$0; sub(/^##[[:space:]]+Verdict[[:space:]]*[:—-]*[[:space:]]*/, "", rest); sub(/\r$/, "", rest)
+        if (rest ~ /[^[:space:]]/) { print rest; exit }
+        inv=1; next
+      }
       inv && /^##[[:space:]]/ { inv=0 }
       inv { sub(/\r$/, ""); if ($0 ~ /[^[:space:]]/) { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit } }
     ' "$revn")"
