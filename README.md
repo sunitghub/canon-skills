@@ -322,7 +322,7 @@ The gates run on whatever you set in Admin > Model Tiers (row 4), unless a ticke
 or the demo flag (rows 1–3) says otherwise — a human's setting, never the agent's own judgment of
 its own work. Note this applies to code changes too, not just docs-only diffs: pick a weak model there
 and every close uses it unless overridden. The chosen model and its source are recorded on the `eval`
-row as `(model: <id> — <source>)` for audit. (The automatic downgrade is confirmed only under Claude Code.) Full logic:
+row as `(model: <id> — <source>)` for audit. (Applying the Admin default is confirmed only under Claude Code.) Full logic:
 [`skills/sprint/reference/complete.md`](skills/sprint/reference/complete.md) → "Model tier for gates."
 
 ## Code Archaeology

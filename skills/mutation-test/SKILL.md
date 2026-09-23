@@ -94,8 +94,9 @@ If zero mutants survive, say so — that is a passing signal, not a no-op.
 
 This skill ships advisory-first by design. Promoting it to a **close gate** is deliberately
 deferred: do it only once the false-positive rate is known from real runs, and only for
-logic-bearing changes — gated by the same structural low-risk path check the close-gate
-model-downgrade uses (`skills/sprint/reference/complete.md`). Until then, no `tools/sprint`
+logic-bearing changes — gated by a structural path check (the close-gate model tier once
+used a docs-only allowlist for this; `skills/sprint/reference/complete.md` retired it in
+`t-4b5a`, so any promotion would need its own). Until then, no `tools/sprint`
 `_gate_*` function references this skill.
 
 ## Gotchas

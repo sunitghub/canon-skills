@@ -58,7 +58,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    **Upkeep report-only guard (t-2201) — HARD, structural.** If `ticket.md` also carries a
    `skills:` line (an *auto-Demo'd maintenance chore* — `t-354b`), the demo light-close is valid
    **only if the sprint's diff is report-only**: `git diff --name-only $(git merge-base HEAD
-   origin/main) HEAD` (the same command the Model-tier check uses; canon gitignores `.tickets/`,
+   origin/main) HEAD` (the same base-ref command the reviewer/evaluator gates use; canon gitignores `.tickets/`,
    so its docs never count) must yield **only `.md` files**. If **any** non-`.md` (code) file
    changed — e.g. a confirmed `dead-code-cleanup` removal landed in this ticket — the demo
    light-close does **NOT** apply: run the **normal-tier** close instead (full wrapup + the
@@ -165,25 +165,22 @@ Opus` default, scoped only to the two close-gate dispatches below.
   inside canon's own repo; in a consumer project (`tools/` not symlinked in) find it via
   `command -v sprint`'s containing directory instead (`where sprint` on Windows) —
   `sprint-check-app/` sits beside `sprint` there. The registry belongs to the canon install, so
-  one Admin setting governs every project using it. Take
-  `defaults.eval.anthropic` (a model `id`, e.g. `claude-sonnet-5`) and find the matching entry in
-  `models.anthropic` to read its `alias` (e.g. `sonnet`) — the Agent tool's `model:` param takes
-  the short alias, not the full id. This applies to **every** ticket regardless of diff risk —
-  a deliberate user choice (2026-09-23) that trades today's "code changes get full-strength
-  review by default" posture for one admin-configurable default; the per-ticket `Gate model:`
-  override (checked first, above) remains the escape hatch for anything that needs something
-  different. **Fail-safe, never a silent downgrade on error:** if the file is missing or
-  unreadable, `defaults.eval.anthropic` is absent, its `id` has no matching `alias` in
-  `models.anthropic`, or that alias is not one the Agent tool's `model:` param accepts
-  (`fable`, `opus`, `sonnet`, `haiku` — Admin lets a user add models with arbitrary aliases, and
-  an unrecognized value would make the dispatch itself error), treat this step as absent and
-  fall through to session default below — same posture as any other read failure in this
-  protocol. **Interactive close only** — this
-  does not apply to `tools/sprint-headless`/CI, which keeps reading only an explicit
-  `Gate model:` (unchanged, `DECISIONS.md` 2026-07-27); extending it there is a distinct,
-  not-yet-scoped follow-up. This supersedes the former structural low-risk classification
-  (git-diff-based allowlist check), which is now fully retired — nothing else in this protocol
-  reads it.
+  one Admin setting governs every project using it. Take `defaults.eval.anthropic` (a model
+  `id`, e.g. `claude-sonnet-5`) and find the matching entry in `models.anthropic` to read its
+  `alias` (e.g. `sonnet`) — the Agent tool's `model:` param takes the short alias, not the full
+  id. This applies to **every** ticket regardless of diff risk — a deliberate user choice
+  (2026-09-23) that trades the former "code changes get full-strength review by default"
+  posture for one admin-configurable default; the per-ticket `Gate model:` override (checked
+  first, above) remains the escape hatch. **Interactive close only** — `tools/sprint-headless`/CI
+  keeps reading only an explicit `Gate model:` (unchanged, `DECISIONS.md` 2026-07-27); extending
+  it there is a distinct, not-yet-scoped follow-up. This supersedes the former structural
+  low-risk classification (git-diff-based allowlist check), now fully retired.
+- **Fail-safe for the Admin default — never a silent downgrade, never a dispatch error.** Treat
+  the Admin-default step as absent and fall through to the session model if **any** of: the file
+  is missing or unreadable; `defaults.eval.anthropic` is absent; its `id` has no matching entry
+  in `models.anthropic`; or the entry's `alias` is not one the Agent tool's `model:` param
+  accepts (`fable`, `opus`, `sonnet`, `haiku` — Admin lets a user add models with arbitrary
+  aliases, and an unrecognized value would make the dispatch itself error).
 - **Apply the result.** With an explicit `Gate model:` value: `session` → omit `model`
   (inherits session model); any other value → pass it verbatim as `model` on both reviewer
   and evaluator `Agent` calls. Without one: the resolved Admin default's alias → pass it as
@@ -191,15 +188,17 @@ Opus` default, scoped only to the two close-gate dispatches below.
   model). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
   separate from this check. **Name the source, not just the value**, wherever this result is
   recorded (Wrapup Gates table, `summary.md`) — `Admin Review & Eval default`, `Gate model
-  override`, `demo mode`, or `session` — so a later reader can tell an admin-wide setting from a
+  override` (including `Gate model: session`, recorded as `Gate model override — session`), `demo
+  mode`, `session` (the fail-safe fallthrough) — so a later reader can tell an admin-wide setting from a
   per-ticket decision, the same loudness convention `Gate model:`/`demo` already follow.
-- **High-risk sprints are unaffected** — the check only adds a cheap-model option, never
-  removes the mandatory dispatch. An explicit `Gate model:` override applies regardless of
-  tier.
-- **Cross-harness caveat.** The automatic Admin-default downgrade is confirmed only under Claude
+- **The dispatch stays mandatory at every tier** — this check only picks the model, never
+  removes the reviewer/evaluator dispatch. Unlike the retired low-risk check, the Admin default
+  **does** apply to high-risk sprints too (that is the accepted tradeoff above); an explicit
+  `Gate model:` override is how a high-risk ticket opts into something stronger.
+- **Cross-harness caveat.** Applying the Admin default is confirmed only under Claude
   Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's generic `spawn_agent` call has no
   `model` field, but a named custom subagent defined in a `~/.codex/agents/*.toml` file can
-  set its own `model`, overriding `agents.default_subagent_model`. Don't assume the downgrade
+  set its own `model`, overriding `agents.default_subagent_model`. Don't assume the default
   takes effect under Codex without setting up and testing such an agent file live — an
   explicit `Gate model:` override or full-tier review is the safe default until then.
 - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
