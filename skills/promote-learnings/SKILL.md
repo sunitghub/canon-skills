@@ -47,6 +47,22 @@ fresh session — do not run it in the same conversation that just closed the sp
    - **`CLAUDE.md`/`AGENTS.md`** — rarely, only when the lesson must apply on *every* session
      regardless of what the session is doing (these are always-loaded, so cost is paid on every
      turn). Say explicitly why a narrower home (standards/ or a scoped reference) doesn't fit.
+   - **The reference doc for the workflow step where the mistake happens** (e.g.
+     `skills/sprint/reference/shared-gate-protocol.md` for gate mechanics, the skill's own
+     `SKILL.md` gotchas for a single-skill quirk) — when the lesson only matters at one step.
+     Propose the file and the section.
+
+   **Choosing between them:** ask "at what moment would a future session make this mistake?" and
+   pick the narrowest home that is read at that moment.
+   - Applies to every session whatever it is doing → `CLAUDE.md`/`AGENTS.md`.
+   - Applied while writing code, tests, commits or reviews → `standards/efficiency.md` (the only
+     `standards/` file auto-loaded, via the `~/.claude/CLAUDE.md` import; another `standards/`
+     file is read only on request, so a rule there needs a pointer from where it applies).
+   - Only bites at one workflow step or in one skill → that step's reference doc or `SKILL.md`.
+   - Needs its incident to be understood (why the obvious fix failed) → `critique/`.
+   Before proposing, grep the destination for the same rule and extend it instead of adding a
+   second copy. A row that spans two moments may be split into two proposals (as `t-6328` was).
+   Keep any always-loaded rule to one or two lines; its cost is paid every session.
 4. For each non-durable row, recommend dismissal with a one-line reason.
 5. Never edit `LEARNINGS.md`, any file under `standards/`, `critique/canon-learnings.md`,
    `CLAUDE.md`, or `AGENTS.md` — this skill's own report is the only output.
@@ -63,7 +79,7 @@ fresh session — do not run it in the same conversation that just closed the sp
 
 ### <ticket-id>: <one-line summary of the learning>
 - **Durable:** yes/no — <why>
-- **Proposed destination:** standards/<file>.md | critique/canon-learnings.md | CLAUDE.md/AGENTS.md | dismiss
+- **Proposed destination:** standards/<file>.md | critique/canon-learnings.md | CLAUDE.md/AGENTS.md | <workflow reference doc>#<section> | dismiss
 - **Starting point:** <example rule text, or outline/key points, or the dismissal reason>
 
 <repeat per row>
@@ -71,9 +87,11 @@ fresh session — do not run it in the same conversation that just closed the sp
 ## Next Steps
 
 > This skill never writes these changes itself. Apply them by hand: edit the destination
-> file below, then flip each promoted row's Status in LEARNINGS.md away from UNPROMOTED.
+> file below, bump that file's frontmatter `version` and set `updated` to today (if it has
+> them), then flip each promoted row's Status in LEARNINGS.md away from UNPROMOTED.
 
-<Concrete, per-proposal actions a human can take — e.g. "Add the following to
+<Include the frontmatter bump ("bump `version` 1.0.5 → 1.0.6, `updated` → <today>") in each
+destination's action. Concrete, per-proposal actions a human can take — e.g. "Add the following to
 standards/efficiency.md: ..." or "Consider writing a critique/canon-learnings.md section
 covering: ...". Never performed by this skill itself.>
 ```

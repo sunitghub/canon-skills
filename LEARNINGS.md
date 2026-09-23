@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-23-2026 20:05
+learnings-sweep last run: 09-23-2026 21:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-23 | [t-13b3](.tickets/t-13b3/learnings.md) | No evaluator findings, but the advisory reviewer found my parser only handled the `- ` bullet shape I'd seen in a few reports — 63 of 129 real review-notes use bare `file:line` lines (review.md's own template), so it produced nothing on t-15ee, the exact failure the ticket set out to fix; before writing a parser for an existing artifact family, measure the shapes across all real instances (and check the producer's own template) rather than generalizing from the few in view, and run it on a real example. | UNPROMOTED |
 | 2026-09-23 | [t-6a45](.tickets/t-6a45/learnings.md) | No evaluator findings. The advisory reviewer caught that the fix's own fall-through path had a fail-closed-but-destructive side effect: validation fails closed on a transient `git worktree list` error, and the unconditional re-persist then permanently overwrote a legitimate worktree binding — when a security check falls back on failure, ask what the fallback *writes*, not just what it returns, and pin it with a file-content assertion plus a guard-revert. | promoted |
 | 2026-09-23 | [t-8e73](.tickets/t-8e73/learnings.md) | No evaluator findings, but the advisory reviewer caught that my "the session cwd is already validated at spawn" premise was false for a persisted, agent-writable `.cockpit-cwd` — before widening a security boundary to include a value, re-validate that value at the point of use rather than trusting an earlier check you haven't read, and pin it with a test that fails when the re-validation is removed (guard-revert). | promoted |
 | 2026-09-23 | [t-2687](.tickets/t-2687/learnings.md) | No evaluator findings, but two things only a fresh look caught: a screenshot showed a disabled-but-clickable-looking button that every assertion had passed, and the reviewer found that guarding an async lookup against tab switches isn't enough — the tab's own status can change during the await (Start sprint attaching), turning a "nothing found" result into the original orphan bug. When an async check precedes a destructive action, re-validate every precondition after the await, and pin each with a test that gates the request. | promoted |
