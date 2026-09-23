@@ -88,7 +88,10 @@ fresh session — do not run it in the same conversation that just closed the sp
 
 > This skill never writes these changes itself. Apply them by hand: edit the destination
 > file below, bump that file's frontmatter `version` and set `updated` to today (if it has
-> them), then flip each promoted row's Status in LEARNINGS.md away from UNPROMOTED.
+> them), then flip each promoted row's Status in LEARNINGS.md away from UNPROMOTED. Record the
+> target in the cell — `` `promoted → standards/efficiency.md` `` (whole value in backticks so
+> editors highlight it; or `dismissed`) — so where a lesson went is readable from the row without
+> git archaeology.
 
 <Include the frontmatter bump ("bump `version` 1.0.5 → 1.0.6, `updated` → <today>") in each
 destination's action. Concrete, per-proposal actions a human can take — e.g. "Add the following to
