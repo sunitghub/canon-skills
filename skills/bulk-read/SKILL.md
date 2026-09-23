@@ -53,10 +53,12 @@ then, this skill is the portable alternative, not a guarantee.
 
 ## Gotchas
 
-- **Codex per-agent model selection is unconfirmed.** The Haiku dispatch in step 3 is confirmed
-  working under Claude Code. Codex's `spawn_agent` has no `model` field — its model picker is
-  session-level — so don't assume the cost savings hold there without testing live first (same
-  caveat `AGENTS.md`'s Model Tiers section already carries for `explore`).
+- **Codex per-agent model selection needs a custom agent file.** The Haiku dispatch in step 3
+  is confirmed working under Claude Code. Under Codex, the generic `spawn_agent` call has no
+  `model` field, but a named custom subagent defined in `~/.codex/agents/*.toml` can set its
+  own `model`, overriding `agents.default_subagent_model` — don't assume the cost savings hold
+  under Codex without setting up and testing such an agent file live (same caveat `AGENTS.md`'s
+  Model Tiers section already carries for `explore`).
 - **A vague question produces a vague citation set.** If the subagent's answer doesn't actually
   resolve what you needed, that's a sign the question was under-specified, not that this skill
   failed — re-dispatch with a sharper question rather than falling back to a direct `Read`.

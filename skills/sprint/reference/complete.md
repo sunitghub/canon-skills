@@ -183,10 +183,11 @@ Opus` default, scoped only to the two close-gate dispatches below.
   removes the mandatory dispatch. An explicit `Gate model:` override applies regardless of
   tier.
 - **Cross-harness caveat.** The automatic Haiku downgrade is confirmed only under Claude
-  Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's `spawn_agent` has no per-agent
-  `model` field (its model picker is session-level), so don't assume the downgrade takes
-  effect under Codex without testing live first — an explicit `Gate model:` override or
-  full-tier review is the safe default there.
+  Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's generic `spawn_agent` call has no
+  `model` field, but a named custom subagent defined in a `~/.codex/agents/*.toml` file can
+  set its own `model`, overriding `agents.default_subagent_model`. Don't assume the downgrade
+  takes effect under Codex without setting up and testing such an agent file live — an
+  explicit `Gate model:` override or full-tier review is the safe default until then.
 - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
   Bash:
