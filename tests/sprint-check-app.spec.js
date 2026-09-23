@@ -4778,6 +4778,50 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
+  test('a session with an unknown project root still matches by ticket id (t-2687)', async ({ page }) => {
+    const id = `t-lcroot-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await stubSessions(page, [{ session: 's1', ticket: id, project_root: '', agent: 'claude', status: 'running' }]);
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'idle' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-end-session').click();
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText("isn't attached to this tab");
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  for (const [label, list] of [['finds a session', 'DETACHED'], ['finds nothing', []]]) {
+    test(`Start sprint attaching during the sessions lookup gives the live dialog, never a notice or teardown, when the lookup ${label} (t-2687)`, async ({ page }) => {
+      const id = `t-lcrace-${Date.now()}`;
+      try {
+        writeTicket(id, 'in_progress');
+        let release;
+        const gate = new Promise(r => { release = r; });
+        await stubSessions(page, []);
+        await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'idle' }));
+        await page.waitForTimeout(100);
+        await page.route('**/api/cockpit-sessions', async route => {
+          await gate;
+          await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(
+            list === 'DETACHED' ? [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }] : list) });
+        });
+        await page.locator('#ck-end-session').click();               // lookup pending; tab still un-attached
+        await page.evaluate(() => { cockpitState.status = 'running'; }); // ...Start sprint attaches meanwhile
+        release();
+        await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+        await expect(page.locator('#ck-leave-save')).toBeVisible();
+        await expect(page.locator('#ck-leave-save')).toBeEnabled();
+        await expect(page.locator('#ck-leave-confirm-body')).not.toContainText("isn't attached");
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+  }
+
   test('switching tabs while the sessions lookup is in flight applies nothing to the wrong tab (t-2687)', async ({ page }) => {
     const idA = `t-lcswa-${Date.now()}`, idB = `t-lcswb-${Date.now()}`;
     try {

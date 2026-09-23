@@ -5515,6 +5515,8 @@ async function findLiveDaemonSession(ticketId) {
     const list = await r.json();
     if (!Array.isArray(list)) return null;
     const root = state.git && state.git.root ? cockpitPathKey(state.git.root) : '';
+    // Match the project too so two projects sharing a ticket id don't collide — but when either root is
+    // unknown (e.g. the board fell back to mock git data) it can't be checked, so the ticket id decides.
     // /api/cockpit-sessions lists only non-exited sessions (daemon handleSessions).
     return list.find(s => String(s.ticket) === ticketId
       && (!root || !s.project_root || cockpitPathKey(s.project_root) === root)) || null;
@@ -5542,6 +5544,9 @@ document.getElementById('ck-end-session').addEventListener('click', async () => 
   const tab = cockpitState;
   const detached = await findLiveDaemonSession(tab.id);
   if (cockpitState !== tab || tab._ending) return; // switched tabs (or an end began) during the lookup
+  // Start sprint may have attached while we were looking: then this is a live tab, and tearing it down
+  // (or calling it unattached) would be the original orphan bug again.
+  if (sessionIsLive()) { openLeaveConfirm(); return; }
   if (detached) { openDetachedSessionNotice(detached); return; }
   teardownCockpit();
 });
