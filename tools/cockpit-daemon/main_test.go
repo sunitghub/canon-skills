@@ -4444,6 +4444,24 @@ func TestResolveSpawnCwdForTicketRevalidatesPersisted(t *testing.T) {
 			if gotReal != c.want {
 				t.Fatalf("persisted %q: want %q, got %q", c.persisted, c.want, gotReal)
 			}
+			// A value that still exists on disk is left alone (a transient git failure must not
+			// unbind a worktree); a vanished one is re-persisted from the request.
+			after, _ := os.ReadFile(cwdFile)
+			wantFile := c.persisted
+			if c.name == "removed worktree falls through" || c.name == "relative path rejected" {
+				wantFile = c.want
+			}
+			afterReal, _ := filepath.EvalSymlinks(strings.TrimSpace(string(after)))
+			if afterReal == "" {
+				afterReal = strings.TrimSpace(string(after)) // e.g. a relative or vanished value, left verbatim
+			}
+			wantReal, _ := filepath.EvalSymlinks(wantFile)
+			if wantReal == "" {
+				wantReal = wantFile
+			}
+			if afterReal != wantReal {
+				t.Fatalf("persisted file: want %q, got %q", wantReal, afterReal)
+			}
 		})
 	}
 }

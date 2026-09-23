@@ -1857,13 +1857,15 @@ func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 // resolveSpawnCwdForTicket persists the resolved cwd to
 // .tickets/<id>/.cockpit-cwd, mirroring resolveClaudeSessionID's pattern: an
 // already in_progress ticket reads its persisted cwd back and reuses it
-// regardless of what the client requested, so a live claude conversation is
+// (once it still re-validates, t-6a45) regardless of what the client
+// requested, so a live claude conversation is
 // never reattached in a different directory than it started in and the
 // WORKTREE picker never needs to be re-asked mid-sprint. A ticket freshly
 // (re)opened from open/closed re-resolves and re-persists, same as a fresh
 // (non-resumed) claude session id.
 func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot string) (string, bool) {
 	cwdPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-cwd")
+	keepPersisted := false
 	if s.ticketStatusIn(projectRoot, ticket) == "in_progress" {
 		if b, err := os.ReadFile(cwdPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
@@ -1874,6 +1876,13 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot stri
 				if cwd, ok := s.resolveSpawnCwd(existing, projectRoot); ok {
 					return cwd, true
 				}
+				// Don't overwrite a value that still exists on disk: validation also fails
+				// closed on a transient `git worktree list` error, and rewriting would
+				// permanently unbind a legit worktree. A tampered value stays inert — it is
+				// re-validated on every start. Only a vanished directory is re-persisted.
+				if _, err := os.Stat(existing); err == nil {
+					keepPersisted = true
+				}
 			}
 		}
 	}
@@ -1881,7 +1890,9 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot stri
 	if !ok {
 		return "", false
 	}
-	_ = os.WriteFile(cwdPath, []byte(resolved+"\n"), 0o600)
+	if !keepPersisted {
+		_ = os.WriteFile(cwdPath, []byte(resolved+"\n"), 0o600)
+	}
 	return resolved, true
 }
 
