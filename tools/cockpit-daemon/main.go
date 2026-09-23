@@ -1597,13 +1597,11 @@ func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *s
 		projectRoot = s.cfg.projectRoot
 	}
 	// t-8e73: a worktree session runs (and prints PREVIEW_FILE) in its own cwd, a sibling of the main
-	// checkout that projectRoot names — allow that cwd too. But se.cwd is NOT always freshly validated:
-	// for an in_progress ticket resolveSpawnCwdForTicket reuses the persisted .cockpit-cwd after only a
-	// stat, and that file lives in .tickets/, which the agent can write. A tampered value (e.g. "/") would
-	// otherwise widen the preview to any local file, defeating the containment. So re-validate it NOW
-	// against the project root / a live `git worktree list` (resolveSpawnCwd) and add it only if it passes;
-	// otherwise the preview stays bounded to projectRoot. A session still can't preview another worktree
-	// or project.
+	// checkout that projectRoot names — allow that cwd too. Spawn now validates a persisted .cockpit-cwd
+	// (t-6a45), but a worktree can be removed or the file rewritten while the session lives, so re-validate
+	// it NOW against the project root / a live `git worktree list` (resolveSpawnCwd) and add it only if it
+	// passes; otherwise the preview stays bounded to projectRoot. A session still can't preview another
+	// worktree or project.
 	roots := []string{projectRoot}
 	if se.cwd != "" {
 		if cwd, cok := s.resolveSpawnCwd(se.cwd, projectRoot); cok {
@@ -1869,12 +1867,13 @@ func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot stri
 	if s.ticketStatusIn(projectRoot, ticket) == "in_progress" {
 		if b, err := os.ReadFile(cwdPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
-				if _, err := os.Stat(existing); err == nil {
-					return existing, true // already validated when first written
+				// .cockpit-cwd lives in agent-writable .tickets/, so re-validate it like
+				// any fresh cwd (t-6a45). A worktree removed between sessions, or a
+				// tampered value, fails here and falls through to re-resolve from the
+				// request instead of spawning somewhere unvalidated.
+				if cwd, ok := s.resolveSpawnCwd(existing, projectRoot); ok {
+					return cwd, true
 				}
-				// persisted worktree no longer exists on disk (removed between
-				// sessions) — fall through and re-resolve from the request instead
-				// of spawning into a directory that's gone.
 			}
 		}
 	}

@@ -2860,10 +2860,10 @@ func TestPreviewRootWorktreeSession(t *testing.T) {
 	}
 }
 
-// t-8e73 review finding: for an in_progress ticket the daemon reuses the persisted .cockpit-cwd after only
-// a stat, and that file lives in .tickets/ where the agent can write. A tampered value must NOT widen the
-// preview — se.cwd is re-validated against the project root / a live `git worktree list` when the preview
-// root is set — while a persisted REAL worktree still works.
+// t-8e73 review finding: the persisted .cockpit-cwd lives in .tickets/ where the agent can write. A tampered
+// value must NOT widen the preview — se.cwd is re-validated against the project root / a live
+// `git worktree list` when the preview root is set (defence in depth behind the spawn-time check, t-6a45) —
+// while a persisted REAL worktree still works.
 func TestPreviewRootIgnoresTamperedPersistedCwd(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()
@@ -2912,8 +2912,7 @@ func TestPreviewRootIgnoresTamperedPersistedCwd(t *testing.T) {
 		return out.Session, out.Token
 	}
 
-	// Tampered persisted cwd: the session spawns there (pre-existing trust), but its preview must stay
-	// bounded to the project root.
+	// Tampered persisted cwd: its preview must stay bounded to the project root.
 	os.WriteFile(cwdFile, []byte(tampered+"\n"), 0o600)
 	sid, tok := start()
 	if got := setRoot(sid, tok, secret); got != http.StatusBadRequest {
@@ -4398,5 +4397,53 @@ func TestAppendDebugLogLineTruncatesToTail(t *testing.T) {
 	small := appendDebugLogLine([]byte("ab"), []byte("cd"), 100)
 	if string(small) != "abcd" {
 		t.Fatalf("expected no truncation under the cap, got %q", small)
+	}
+}
+
+// t-6a45: an in_progress ticket's persisted .cockpit-cwd lives in agent-writable .tickets/, so spawn must
+// re-validate it (project root / live `git worktree list`) rather than trust it after a stat.
+func TestResolveSpawnCwdForTicketRevalidatesPersisted(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, root, "t-ab12")
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", "ticket.md"),
+		[]byte("---\nid: t-ab12\nstatus: in_progress\n---\n# t\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cwdFile := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-cwd")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	realRoot, _ := filepath.EvalSymlinks(root)
+	realWt, _ := filepath.EvalSymlinks(wt)
+
+	other := t.TempDir() // exists, but is not the project or one of its worktrees
+	linkToOther := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(other, linkToOther); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	removed := filepath.Join(t.TempDir(), "gone")
+
+	cases := []struct {
+		name, persisted, want string
+	}{
+		{"live worktree resumes", wt, realWt},
+		{"tampered existing dir rejected", other, realRoot},
+		{"tampered filesystem root rejected", string(filepath.Separator), realRoot},
+		{"symlink to non-worktree rejected", linkToOther, realRoot},
+		{"relative path rejected", "some/where", realRoot},
+		{"removed worktree falls through", removed, realRoot},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			os.WriteFile(cwdFile, []byte(c.persisted+"\n"), 0o600)
+			got, ok := s.resolveSpawnCwdForTicket("t-ab12", "", root)
+			if !ok {
+				t.Fatalf("want ok, got !ok")
+			}
+			gotReal, _ := filepath.EvalSymlinks(got)
+			if gotReal != c.want {
+				t.Fatalf("persisted %q: want %q, got %q", c.persisted, c.want, gotReal)
+			}
+		})
 	}
 }
