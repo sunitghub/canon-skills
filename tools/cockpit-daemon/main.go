@@ -1542,9 +1542,12 @@ func copilotResumeFailed(buf []byte) bool {
 
 // previewRootFor resolves the safe, symlink-checked directory to serve for a
 // reported (agent-chosen) absolute file path. Rejects a non-absolute path, a
-// nonexistent directory, or one whose resolved real path falls outside
-// projectRoot.
-func previewRootFor(reportedPath, projectRoot string) (string, bool) {
+// nonexistent directory, or one whose resolved real path falls outside EVERY
+// allowed root. Callers pass the session's project root plus its own validated
+// cwd (t-8e73): a worktree session's files live in a sibling directory of the
+// main checkout, so the project root alone can never contain them. Empty roots
+// are ignored; with none left nothing is allowed.
+func previewRootFor(reportedPath string, roots ...string) (string, bool) {
 	if !filepath.IsAbs(reportedPath) {
 		return "", false
 	}
@@ -1553,15 +1556,20 @@ func previewRootFor(reportedPath, projectRoot string) (string, bool) {
 	if err != nil {
 		return "", false // doesn't exist or can't be resolved — never assume safe
 	}
-	resolvedRoot, err := filepath.EvalSymlinks(projectRoot)
-	if err != nil {
-		resolvedRoot = projectRoot
+	for _, root := range roots {
+		if root == "" {
+			continue
+		}
+		resolvedRoot, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			resolvedRoot = root
+		}
+		rel, err := filepath.Rel(resolvedRoot, resolvedDir)
+		if err == nil && !strings.HasPrefix(rel, "..") {
+			return resolvedDir, true
+		}
 	}
-	rel, err := filepath.Rel(resolvedRoot, resolvedDir)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", false
-	}
-	return resolvedDir, true
+	return "", false
 }
 
 // handlePreviewRoot validates and stores the one directory this session's
@@ -1588,7 +1596,11 @@ func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *s
 	if projectRoot == "" {
 		projectRoot = s.cfg.projectRoot
 	}
-	root, ok := previewRootFor(body.Path, projectRoot)
+	// t-8e73: a worktree session runs (and prints PREVIEW_FILE) in its own cwd, a sibling of the main
+	// checkout that projectRoot names — allow that cwd too. It was validated against a live
+	// `git worktree list` at spawn, so this adds no path the daemon didn't already vouch for; a session
+	// still can't preview another worktree or project.
+	root, ok := previewRootFor(body.Path, projectRoot, se.cwd)
 	if !ok {
 		http.Error(w, "path not allowed", http.StatusBadRequest)
 		return

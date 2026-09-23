@@ -2722,6 +2722,144 @@ func TestPreviewRootFor(t *testing.T) {
 	}
 }
 
+// t-8e73: a worktree session's files live in a SIBLING directory of the main checkout, so the
+// project root alone can never contain them — previewRootFor must accept any of several roots.
+func TestPreviewRootForMultipleRoots(t *testing.T) {
+	main := t.TempDir()
+	wt := t.TempDir() // stands in for a sibling worktree: not under `main`
+	wtFile := filepath.Join(wt, "site", "index.html")
+	if err := os.MkdirAll(filepath.Dir(wtFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(wtFile, []byte("x"), 0o644)
+
+	// The bug: with only the main checkout allowed, the worktree file is rejected.
+	if _, ok := previewRootFor(wtFile, main); ok {
+		t.Fatal("a file outside the only allowed root must be rejected")
+	}
+	// The fix: allowed once the session's own worktree is an allowed root too.
+	got, ok := previewRootFor(wtFile, main, wt)
+	if !ok {
+		t.Fatal("a file under the second allowed root must be accepted")
+	}
+	want, _ := filepath.EvalSymlinks(filepath.Dir(wtFile))
+	if got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	// Empty roots are ignored (a session without a cwd must not allow "everything").
+	if _, ok := previewRootFor(wtFile, "", main); ok {
+		t.Fatal("an empty root must be ignored, not treated as allow-all")
+	}
+	if _, ok := previewRootFor(wtFile); ok {
+		t.Fatal("no roots at all must allow nothing")
+	}
+	// Still rejected with extra roots: outside every root, relative, nonexistent.
+	other := t.TempDir()
+	otherFile := filepath.Join(other, "index.html")
+	os.WriteFile(otherFile, []byte("x"), 0o644)
+	if _, ok := previewRootFor(otherFile, main, wt); ok {
+		t.Fatal("a file outside every allowed root must be rejected")
+	}
+	if _, ok := previewRootFor("site/index.html", main, wt); ok {
+		t.Fatal("a relative path must be rejected")
+	}
+	if _, ok := previewRootFor(filepath.Join(wt, "nope", "index.html"), main, wt); ok {
+		t.Fatal("a nonexistent directory must be rejected")
+	}
+	// Symlink escape from the SECOND root: a dir inside the worktree pointing outside every root.
+	link := filepath.Join(wt, "escape")
+	if err := os.Symlink(other, link); err != nil {
+		t.Skipf("symlink not supported on this platform: %v", err)
+	}
+	if _, ok := previewRootFor(filepath.Join(link, "index.html"), main, wt); ok {
+		t.Fatal("a symlink escaping the worktree must be rejected")
+	}
+}
+
+// t-8e73, end to end: a session started in a real linked worktree (a sibling dir of the main checkout,
+// exactly the reported layout) can preview its own worktree's files, and a session's extra root is its
+// own cwd only.
+func TestPreviewRootWorktreeSession(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, wt, "t-ab12") // t-e5ff: the worktree must physically hold the ticket dir to be startable
+
+	wtSite := filepath.Join(wt, "site")
+	mainSite := filepath.Join(root, "site")
+	for _, d := range []string{wtSite, mainSite} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wtFile := filepath.Join(wtSite, "index.html")
+	mainFile := filepath.Join(mainSite, "index.html")
+	os.WriteFile(wtFile, []byte("<html>worktree</html>"), 0o644)
+	os.WriteFile(mainFile, []byte("<html>main</html>"), 0o644)
+	outsideFile := filepath.Join(t.TempDir(), "index.html")
+	os.WriteFile(outsideFile, []byte("x"), 0o644)
+
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	start := func(cwd string) (sid, tok, ptok string) {
+		resp := startSessionCwd(t, ts.URL, "t-ab12", cwd, bootTok)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			t.Fatalf("start in %q: want 200, got %d: %s", cwd, resp.StatusCode, b)
+		}
+		var out struct{ Session, Token, PreviewToken string }
+		json.NewDecoder(resp.Body).Decode(&out)
+		return out.Session, out.Token, out.PreviewToken
+	}
+	setRoot := func(sid, tok, path string) int {
+		body, _ := json.Marshal(map[string]string{"path": path})
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+sid+"/preview-root", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+
+	// Session in the WORKTREE.
+	sid, tok, ptok := start(wt)
+	if got := setRoot(sid, tok, wtFile); got != http.StatusNoContent {
+		t.Fatalf("worktree file from a worktree session: want 204, got %d", got)
+	}
+	r, err := http.Get(ts.URL + "/session/" + sid + "/preview/" + ptok + "/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	if r.StatusCode != http.StatusOK || string(b) != "<html>worktree</html>" {
+		t.Fatalf("serving the worktree file: status=%d body=%q", r.StatusCode, b)
+	}
+	if got := setRoot(sid, tok, mainFile); got != http.StatusNoContent {
+		t.Fatalf("main-checkout file from a worktree session (regression): want 204, got %d", got)
+	}
+	if got := setRoot(sid, tok, outsideFile); got != http.StatusBadRequest {
+		t.Fatalf("a path outside both roots: want 400, got %d", got)
+	}
+	killAllSessions(s)
+
+	// Session in the MAIN checkout must not reach into the worktree.
+	sid2, tok2, _ := start("")
+	if got := setRoot(sid2, tok2, wtFile); got != http.StatusBadRequest {
+		t.Fatalf("a main-checkout session previewing a worktree file: want 400, got %d", got)
+	}
+	if got := setRoot(sid2, tok2, mainFile); got != http.StatusNoContent {
+		t.Fatalf("main-checkout file from a main-checkout session: want 204, got %d", got)
+	}
+}
+
 func TestPreviewRootAndServe(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()
