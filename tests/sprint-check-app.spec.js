@@ -6384,3 +6384,62 @@ test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
     }
   });
 });
+
+test.describe('branch divergence badge (t-6328)', () => {
+  test('a ticket with branch_divergence shows a card badge + modal footer note; a normal ticket shows neither; hostile branch names stay inert text', async ({ page }) => {
+    const stamp = Date.now();
+    const divId = `t-brdv-${stamp}`;
+    const okId = `t-brok-${stamp}`;
+    const evilId = `t-brev-${stamp}`;
+    try {
+      for (const id of [divId, okId, evilId]) {
+        const dir = path.join(PROJECT_ROOT, '.tickets', id);
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(path.join(dir, 'ticket.md'), [
+          '---', `id: ${id}`, 'status: open', 'type: task', 'priority: 2',
+          'created: 2026-09-23T00:00:00Z', '---', '', `# Divergence ${id}`, '',
+        ].join('\n'));
+      }
+      // Real /api/tickets, with branch_divergence injected on two tickets.
+      await page.route('**/api/tickets*', async route => {
+        if (route.request().method() !== 'GET') return route.continue();
+        const res = await route.fetch();
+        const tickets = await res.json();
+        for (const t of tickets) {
+          if (t.id === divId) t.branch_divergence = { branch: 'sprint/t-91mc', status: 'closed', where: 'branch', merged: false };
+          if (t.id === evilId) t.branch_divergence = { branch: '<img src=x onerror="window.__pwn=1">', status: 'closed', where: 'worktree', merged: true };
+        }
+        await route.fulfill({ response: res, json: tickets });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+
+      await page.locator('#board-search').fill(divId);
+      const divCard = page.locator(`.card[data-id="${divId}"]`);
+      await expect(divCard.locator('.card-diverge')).toHaveText('closed on sprint/t-91mc');
+      await divCard.click();
+      await expect(page.locator('#m-diverge')).toBeVisible();
+      await expect(page.locator('#m-diverge')).toHaveText("Showing this checkout's copy (open) — closed on sprint/t-91mc, not merged.");
+      await page.keyboard.press('Escape');
+
+      await page.locator('#board-search').fill(okId);
+      const okCard = page.locator(`.card[data-id="${okId}"]`);
+      await expect(okCard).toBeVisible();
+      await expect(okCard.locator('.card-diverge')).toHaveCount(0);
+      await okCard.click();
+      await expect(page.locator('#m-diverge')).toBeHidden();
+      await page.keyboard.press('Escape');
+
+      await page.locator('#board-search').fill(evilId);
+      const evilCard = page.locator(`.card[data-id="${evilId}"]`);
+      await expect(evilCard.locator('.card-diverge')).toContainText('<img src=x onerror=');
+      await expect(evilCard.locator('.card-diverge img')).toHaveCount(0);
+      await evilCard.click();
+      await expect(page.locator('#m-diverge')).toContainText('in worktree <img src=x');
+      await expect(page.locator('#m-diverge')).toContainText('(branch merged)');
+      expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+    } finally {
+      for (const id of [divId, okId, evilId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+});

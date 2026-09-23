@@ -578,6 +578,20 @@
       border-radius: var(--radius-sm); padding: 2px 6px; max-width: 120px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    /* t-6328: this ticket's status differs on another worktree/unmerged branch — shown only
+       when the server sends `branch_divergence`; amber = "look before trusting this card". */
+    .card-diverge {
+      display: block; margin-top: 6px; font-size: 10px; font-weight: 600; letter-spacing: .02em;
+      color: #fbbf24; background: rgba(251,191,36,.10); border: 1px solid rgba(251,191,36,.35);
+      border-radius: var(--radius-sm); padding: 2px 6px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    html[data-theme="light"] .card-diverge { color: #92400e; background: #fef3c7; border-color: #d97706; }
+    .modal-diverge {
+      flex: 1; margin: 0 14px; font-size: 11px; line-height: 1.4; color: #fbbf24;
+    }
+    .modal-diverge[hidden] { display: none; }
+    html[data-theme="light"] .modal-diverge { color: #92400e; }
     .card-title {
       font-size: 13px; font-weight: 600; color: var(--text);
       line-height: 1.5; overflow-wrap: anywhere; margin: 0;
@@ -2121,6 +2135,7 @@
     </div>
     <div class="modal-footer">
       <div class="modal-actions" id="m-actions"></div>
+      <div class="modal-diverge" id="m-diverge" hidden></div>
       <div class="kbd-hint" id="m-kbd">Esc</div>
     </div>
     <div class="modal-resize-handle" title="Resize dialog" aria-label="Resize dialog"></div>
@@ -2776,6 +2791,24 @@ function ciBadge(t) {
 function demoBadge(t) {
   if (String(t.demo) !== 'true') return '';
   return `<span class="demo-badge" title="Demo/Docs/UX light-close — for live demos or docs/research/UX-mockup work: sprint complete runs the reduced close-path (security-review + the binding evaluator only, forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO/DOCS</span>`;
+}
+
+// t-6328: `branch_divergence` ({branch,status,where,merged}) is sent only when this ticket's
+// status differs on a live worktree / unmerged branch. Returns null when absent.
+function divergenceInfo(t) {
+  const d = t && t.branch_divergence;
+  if (!d || !d.branch || !d.status) return null;
+  const where = d.where === 'worktree' ? `in worktree ${d.branch}` : `on ${d.branch}`;
+  const merge = d.where === 'worktree' && d.merged ? ' (branch merged)' : ', not merged';
+  return {
+    short: `${d.status} ${where}`,
+    long: `Showing this checkout's copy (${t.status}) — ${d.status} ${where}${merge}.`,
+  };
+}
+
+function divergenceLine(t) {
+  const info = divergenceInfo(t);
+  return info ? `<div class="card-diverge" title="${esc(info.long)}">${esc(info.short)}</div>` : '';
 }
 
 function sortChecklistRuns(text) {
@@ -3549,6 +3582,7 @@ function cardHTML(t, idx) {
         ${startBtn}
         <p class="card-title">${esc(t.title)}</p>
         ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
+        ${divergenceLine(t)}
       </div>
       <div class="card-footer">
         <div class="card-meta-col">
@@ -4766,6 +4800,10 @@ function closeModal() {
 }
 
 function refreshModalActions(t) {
+  const dv = document.getElementById('m-diverge');
+  const info = divergenceInfo(t);
+  dv.textContent = info ? info.long : '';
+  dv.hidden = !info;
   const locked = t.status === 'closed' || t.status === 'cancelled';
   document.getElementById('m-actions').innerHTML = locked ? '' : `
     <button class="btn btn-danger" id="act-discard" title="Move this ticket to Discarded when the work is abandoned or no longer needed.">Discard ticket ✕</button>

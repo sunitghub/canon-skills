@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
@@ -261,6 +262,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			}
 			tickets = filtered
 		}
+		annotateBranchDivergence(tickets, root)
 		sendJSON(w, tickets)
 	case "/api/handoff":
 		root, ok := effectiveRoot(r)
@@ -1557,6 +1559,237 @@ func validBranchName(name string) bool {
 // rootOr falls back to the shell's own boot-time projectRoot). Without it,
 // every caller saw the shell's launch project regardless of which registered
 // project's tab actually asked.
+// ── Branch/worktree status divergence (t-6328) — mirrors server.py ─────────
+var (
+	grepStatusRe = regexp.MustCompile(`^\.tickets/([^/]+)/ticket\.md:status:\s*(.+?)\s*$`)
+	fmStatusRe   = regexp.MustCompile(`(?m)^status:\s*(.+?)\s*$`)
+)
+
+// The board shows the served checkout's copy of each ticket.md; where `.tickets/`
+// is tracked, a live worktree or unmerged branch can hold a different status.
+// Read-only, bounded (branch cap) and TTL-cached: /api/tickets is the hottest route.
+const divergenceBranchCap = 8
+
+type divergenceCand struct {
+	branch, status, where string
+	merged                bool
+}
+
+type divergenceCacheEntry struct {
+	expires time.Time
+	scan    map[string][]divergenceCand
+}
+
+var (
+	divergenceCache   = map[string]divergenceCacheEntry{}
+	divergenceCacheMu sync.Mutex
+)
+
+func divergenceTTL() time.Duration {
+	if v := os.Getenv("SPRINT_CHECK_DIVERGENCE_TTL"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			if f < 0 {
+				f = 0
+			}
+			return time.Duration(f * float64(time.Second))
+		}
+	}
+	return 10 * time.Second
+}
+
+// gitCtx runs git with a 5s bound (server.py's run() uses the same timeout).
+func gitCtx(root string, args ...string) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = rootOr(root)
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	return strings.TrimSpace(out.String()), err == nil
+}
+
+func frontmatterStatus(text string) string {
+	m := frontmatterRe.FindStringSubmatch(text)
+	if m == nil {
+		return ""
+	}
+	sm := fmStatusRe.FindStringSubmatch(m[1])
+	if sm == nil {
+		return ""
+	}
+	return unquoteYAMLScalar(sm[1])
+}
+
+var changedTicketRe = regexp.MustCompile(`^\.tickets/([^/]+)/ticket\.md$`)
+
+// changedTicketIDs returns the ticket ids named by `git diff --name-only` lines.
+func changedTicketIDs(diffOut string, ids map[string]bool) map[string]bool {
+	out := map[string]bool{}
+	for _, line := range strings.Split(diffOut, "\n") {
+		if m := changedTicketRe.FindStringSubmatch(strings.TrimSpace(line)); m != nil && ids[m[1]] {
+			out[m[1]] = true
+		}
+	}
+	return out
+}
+
+// scanOtherCheckouts returns statuses for every live non-main worktree and every
+// unmerged local branch (no worktree) that itself CHANGED a ticket since its fork
+// point from HEAD — an older branch also holds stale copies of tickets that have
+// since advanced on main, which is not a divergence worth flagging.
+func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenceCand {
+	out := map[string][]divergenceCand{}
+	if inside, _ := gitCtx(root, "rev-parse", "--is-inside-work-tree"); inside == "" {
+		return out
+	}
+	if ignored, _ := gitCtx(root, "check-ignore", ".tickets"); ignored != "" {
+		return out // untracked tickets: no other checkout can carry a different copy
+	}
+	seenBranches := map[string]bool{}
+	for _, e := range listWorktrees("", root) {
+		if isMain, _ := e["is_main"].(bool); isMain {
+			continue
+		}
+		head, _ := e["head"].(string)
+		branch, _ := e["branch"].(string)
+		seenBranches[branch] = true
+		if branch == "" {
+			branch = "(detached)"
+			if len(head) >= 7 {
+				branch = head[:7]
+			}
+		}
+		tdir := filepath.Join(fmt.Sprint(e["path"]), ".tickets")
+		if head == "" {
+			continue
+		}
+		base, _ := gitCtx(root, "merge-base", "HEAD", head)
+		if base == "" {
+			continue
+		}
+		// base vs the WORKING TREE, so an uncommitted status edit counts too.
+		diffOut, _ := gitCtx(fmt.Sprint(e["path"]), "diff", "--name-only", base, "--", ".tickets/*/ticket.md")
+		_, merged := gitCtx(root, "merge-base", "--is-ancestor", head, "HEAD")
+		names := []string{}
+		for id := range changedTicketIDs(diffOut, ids) {
+			names = append(names, id)
+		}
+		sort.Strings(names)
+		for _, id := range names {
+			raw, err := os.ReadFile(filepath.Join(tdir, id, "ticket.md"))
+			if err != nil {
+				continue
+			}
+			if st := frontmatterStatus(string(raw)); st != "" {
+				out[id] = append(out[id], divergenceCand{branch, st, "worktree", merged})
+			}
+		}
+	}
+	refs, _ := gitCtx(root, "for-each-ref", "--no-merged=HEAD", "--format=%(refname:short)", "refs/heads")
+	scanned := 0
+	for _, b := range strings.Split(refs, "\n") {
+		if b == "" || seenBranches[b] {
+			continue
+		}
+		if scanned >= divergenceBranchCap {
+			break
+		}
+		scanned++
+		base, _ := gitCtx(root, "merge-base", "HEAD", b)
+		if base == "" {
+			continue
+		}
+		diffOut, _ := gitCtx(root, "diff", "--name-only", base, b, "--", ".tickets/*/ticket.md")
+		changed := changedTicketIDs(diffOut, ids)
+		if len(changed) == 0 {
+			continue
+		}
+		first := map[string]string{}
+		grepOut, _ := gitCtx(root, "grep", "-I", "-e", "^status:", b, "--", ".tickets/*/ticket.md")
+		for _, line := range strings.Split(grepOut, "\n") {
+			if !strings.HasPrefix(line, b+":") {
+				continue
+			}
+			m := grepStatusRe.FindStringSubmatch(line[len(b)+1:])
+			if m == nil || !changed[m[1]] {
+				continue
+			}
+			if _, dup := first[m[1]]; !dup {
+				first[m[1]] = unquoteYAMLScalar(m[2])
+			}
+		}
+		for tid, st := range first {
+			out[tid] = append(out[tid], divergenceCand{b, st, "branch", false})
+		}
+	}
+	return out
+}
+
+// annotateBranchDivergence adds `branch_divergence` to tickets whose status
+// differs on another worktree/unmerged branch. A git failure means no field.
+func annotateBranchDivergence(tickets []ticket, root string) {
+	main := map[string]string{}
+	ids := map[string]bool{}
+	for _, t := range tickets {
+		if t["layout"] != "folder" {
+			continue
+		}
+		if id, ok := t["id"].(string); ok && id != "" {
+			main[id] = fmt.Sprint(t["status"])
+			ids[id] = true
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+	ttl := divergenceTTL()
+	key := rootOr(root)
+	var scan map[string][]divergenceCand
+	if ttl > 0 {
+		divergenceCacheMu.Lock()
+		if hit, ok := divergenceCache[key]; ok && time.Now().Before(hit.expires) {
+			scan = hit.scan
+		}
+		divergenceCacheMu.Unlock()
+	}
+	if scan == nil {
+		scan = scanOtherCheckouts(root, ids)
+		if ttl > 0 {
+			divergenceCacheMu.Lock()
+			divergenceCache[key] = divergenceCacheEntry{time.Now().Add(ttl), scan}
+			divergenceCacheMu.Unlock()
+		}
+	}
+	// Prefer a live worktree over a branch, then a terminal status, then branch name —
+	// the same order as server.py's min() key, so both backends pick the same entry.
+	better := func(a, b divergenceCand) bool {
+		if (a.where == "worktree") != (b.where == "worktree") {
+			return a.where == "worktree"
+		}
+		aTerm, bTerm := a.status == "closed" || a.status == "cancelled", b.status == "closed" || b.status == "cancelled"
+		if aTerm != bTerm {
+			return aTerm
+		}
+		return a.branch < b.branch
+	}
+	for _, t := range tickets {
+		id, _ := t["id"].(string)
+		var best *divergenceCand
+		for i := range scan[id] {
+			c := scan[id][i]
+			if c.status != main[id] && (best == nil || better(c, *best)) {
+				best = &c
+			}
+		}
+		if best != nil {
+			t["branch_divergence"] = map[string]any{
+				"branch": best.branch, "status": best.status, "where": best.where, "merged": best.merged,
+			}
+		}
+	}
+}
+
 func listWorktrees(ticketID, root string) []map[string]any {
 	raw := runGitIn(root, "worktree", "list", "--porcelain")
 	var entries []map[string]any

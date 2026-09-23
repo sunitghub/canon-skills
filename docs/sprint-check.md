@@ -24,6 +24,8 @@ Drag the bottom-right corner of the ticket detail modal to resize it when long D
 
 Closed and discarded tickets open read-only. Their sprint docs remain inspectable, but edit controls are hidden until the work is reopened or a new ticket is created.
 
+**Status that differs on another branch.** The board always shows the checkout it was started from. If your project tracks `.tickets/` in git and a live worktree (or an unmerged local branch) has itself *changed* a ticket's status — e.g. `sprint complete` closed it on `sprint/t-91mc` but that branch isn't merged yet — the card gets an amber line (`closed on sprint/t-91mc`) and the ticket's footer explains it: "Showing this checkout's copy (open) — closed on sprint/t-91mc, not merged." Cards that match everywhere are unchanged. It is read-only, checks at most 8 unmerged branches, and is cached for 10 seconds (`SPRINT_CHECK_DIVERGENCE_TTL` seconds to change, `0` to disable). Where `.tickets/` is gitignored, worktrees can't see tickets at all, so nothing appears.
+
 ## Edit Sprint Docs in Place
 
 ![Edit sprint docs in ticket detail](../meta/screenshots/ticket-doc-editor.png)

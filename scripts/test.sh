@@ -34,6 +34,7 @@ tests=(
   "$ROOT/tests/helpers-sweep.sh"
   "$ROOT/tests/sprint-check-app.sh"
   "$ROOT/tests/sprint-check-api-parity.sh"
+  "$ROOT/tests/board-branch-divergence.sh"
   "$ROOT/tests/registry.sh"
   "$ROOT/tests/canon-cockpit.sh"
   "$ROOT/tests/sprint-check-delegate.sh"

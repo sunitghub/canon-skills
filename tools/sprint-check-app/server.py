@@ -615,6 +615,132 @@ def list_worktrees(ticket_id: str = '', root: Path = None) -> list[dict]:
                     e['ticket_present'] = False
     return entries
 
+# ── Branch/worktree status divergence (t-6328) ────────────────────────────
+# The board shows the served checkout's copy of each ticket.md. Where `.tickets/`
+# is tracked in git, a live worktree or an unmerged branch can hold a DIFFERENT
+# status for the same ticket (e.g. closed on sprint/t-91mc, still `open` here) —
+# invisible without this. Read-only signal, mirrored in sprint-check-go/main.go.
+# Bounded (branch cap) and TTL-cached because /api/tickets is the hottest route.
+_DIVERGENCE_BRANCH_CAP = 8
+_DIVERGENCE_CACHE: dict = {}
+_DIVERGENCE_LOCK = threading.Lock()
+_GREP_STATUS = re.compile(r'^\.tickets/([^/]+)/ticket\.md:status:\s*(.+?)\s*$')
+_FM_STATUS = re.compile(r'^status:\s*(.+?)\s*$', re.MULTILINE)
+
+def _divergence_ttl() -> float:
+    try:
+        return max(0.0, float(os.environ.get('SPRINT_CHECK_DIVERGENCE_TTL', '10')))
+    except ValueError:
+        return 10.0
+
+def _git_ok(args: list, cwd: Path) -> bool:
+    try:
+        return subprocess.run(['git'] + args, cwd=cwd, stdout=subprocess.DEVNULL,
+                              stderr=subprocess.DEVNULL, timeout=5).returncode == 0
+    except Exception:
+        return False
+
+def _frontmatter_status(text: str):
+    m = _FRONTMATTER.match(text)
+    if not m:
+        return None
+    sm = _FM_STATUS.search(m.group(1))
+    return _unquote_yaml_scalar(sm.group(1)) if sm else None
+
+_CHANGED_TICKET = re.compile(r'^\.tickets/([^/]+)/ticket\.md$')
+
+def _changed_ticket_ids(diff_out: str, ids: set) -> set:
+    """Ticket ids named by `git diff --name-only` lines under .tickets/."""
+    out = set()
+    for line in diff_out.splitlines():
+        m = _CHANGED_TICKET.match(line.strip())
+        if m and m.group(1) in ids:
+            out.add(m.group(1))
+    return out
+
+def _scan_other_checkouts(root: Path, ids: set) -> dict:
+    """{ticket_id: [{branch, status, where, merged}, ...]} for every live
+    non-main worktree and every unmerged local branch (no worktree) that itself
+    CHANGED one of `ids` since its fork point from HEAD. Only self-changed tickets
+    count: an older branch also holds stale copies of every ticket that has since
+    advanced on main, which is not a divergence worth flagging. Statuses only —
+    the caller drops entries equal to main's."""
+    out: dict = {}
+    if not run(['git', 'rev-parse', '--is-inside-work-tree'], root):
+        return out
+    if run(['git', 'check-ignore', '.tickets'], root):
+        return out  # untracked tickets: no other checkout can carry a different copy
+    seen_branches = set()
+    for e in list_worktrees(root=root):
+        if e.get('is_main'):
+            continue
+        branch = e.get('branch') or ((e.get('head') or '')[:7] or '(detached)')
+        seen_branches.add(e.get('branch'))
+        tdir = Path(e['path']) / '.tickets'
+        base = run(['git', 'merge-base', 'HEAD', e['head']], root) if e.get('head') else ''
+        if not base:
+            continue
+        # base vs the WORKING TREE, so an uncommitted status edit counts too.
+        names = _changed_ticket_ids(
+            run(['git', 'diff', '--name-only', base, '--', '.tickets/*/ticket.md'], Path(e['path'])), ids)
+        merged = _git_ok(['merge-base', '--is-ancestor', e['head'], 'HEAD'], root)
+        for tid in sorted(names):
+            try:
+                st = _frontmatter_status((tdir / tid / 'ticket.md').read_text(encoding='utf-8', errors='replace'))
+            except OSError:
+                continue
+            if st:
+                out.setdefault(tid, []).append({'branch': branch, 'status': st, 'where': 'worktree', 'merged': merged})
+    refs = run(['git', 'for-each-ref', '--no-merged=HEAD', '--format=%(refname:short)', 'refs/heads'], root)
+    branches = [b for b in refs.splitlines() if b and b not in seen_branches][:_DIVERGENCE_BRANCH_CAP]
+    for b in branches:
+        base = run(['git', 'merge-base', 'HEAD', b], root)
+        changed = _changed_ticket_ids(
+            run(['git', 'diff', '--name-only', base, b, '--', '.tickets/*/ticket.md'], root), ids) if base else set()
+        if not changed:
+            continue
+        first: dict = {}
+        for line in run(['git', 'grep', '-I', '-e', '^status:', b, '--', '.tickets/*/ticket.md'], root).splitlines():
+            if not line.startswith(b + ':'):
+                continue
+            m = _GREP_STATUS.match(line[len(b) + 1:])
+            if m and m.group(1) in changed and m.group(1) not in first:
+                first[m.group(1)] = _unquote_yaml_scalar(m.group(2))
+        for tid, st in first.items():
+            out.setdefault(tid, []).append({'branch': b, 'status': st, 'where': 'branch', 'merged': False})
+    return out
+
+def annotate_branch_divergence(tickets: list, root: Path = None) -> None:
+    """Adds `branch_divergence` to tickets whose status differs on another
+    worktree/unmerged branch. Never raises — a git failure means no field."""
+    root = root if root is not None else PROJECT_ROOT
+    main = {t['id']: t.get('status') for t in tickets if t.get('layout') == 'folder' and t.get('id')}
+    if not main:
+        return
+    ttl = _divergence_ttl()
+    key = str(root)
+    now = time.monotonic()
+    scan = None
+    if ttl > 0:
+        with _DIVERGENCE_LOCK:
+            hit = _DIVERGENCE_CACHE.get(key)
+            if hit and hit[0] > now:
+                scan = hit[1]
+    if scan is None:
+        try:
+            scan = _scan_other_checkouts(root, set(main))
+        except Exception:
+            scan = {}
+        if ttl > 0:
+            with _DIVERGENCE_LOCK:
+                _DIVERGENCE_CACHE[key] = (now + ttl, scan)
+    for t in tickets:
+        cands = [c for c in scan.get(t.get('id'), []) if c['status'] != main.get(t.get('id'))]
+        if cands:
+            best = min(cands, key=lambda c: (c['where'] != 'worktree',
+                                             c['status'] not in ('closed', 'cancelled'), c['branch']))
+            t['branch_divergence'] = best
+
 def _is_canon_runtime_path(path: str) -> bool:
     """True for canon's own per-machine runtime files under .tickets/ that
     churn every session (t-2f53): .tickets/ACTIVE and any .tickets/**/.cockpit-*
@@ -2093,6 +2219,7 @@ class Handler(BaseHTTPRequestHandler):
             tickets = load_tickets(eroot)
             if 'all=1' not in parsed.query:
                 tickets = [t for t in tickets if t.get('status') != 'archived']
+            annotate_branch_divergence(tickets, eroot)
             self.send_json(tickets)
         elif path == '/api/handoff':
             try:
