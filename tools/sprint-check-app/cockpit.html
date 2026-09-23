@@ -134,6 +134,7 @@
   .mt-badge{font-size:9px;font-weight:700;letter-spacing:.03em;padding:2px 6px;border-radius:5px;text-transform:uppercase;white-space:nowrap;background:var(--accent-dim);color:var(--accent)}
   .mt-card-desc{font-size:11px;color:var(--text-dim);line-height:1.4;min-height:2.6em}
   .mt-card-id{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--text-body);background:var(--bg);border:1px solid var(--border-muted);border-radius:6px;padding:4px 7px}
+  .mt-alias-label{color:var(--text-dim);flex-shrink:0}
   .mt-card-price{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-body);padding-top:6px;border-top:1px solid var(--border-muted)}
   .mt-card-actions{display:flex;justify-content:flex-end;gap:10px;font-size:10.5px}
   .mt-card-actions a{color:var(--text-muted);cursor:pointer;text-decoration:none}
@@ -1432,12 +1433,16 @@
     }catch(e){ toast("Couldn't reach the board"); await mtLoad(); return false; }
   }
 
-  function mtSlugify(name,existing){
+  function mtSlugify(name,existing,field='id'){
     let base=String(name||'model').toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||'model';
-    let id=base, n=2;
-    while(existing.some(m=>m.id===id)){ id=base+'-'+n; n++; }
-    return id;
+    let val=base, n=2;
+    while(existing.some(m=>m[field]===val)){ val=base+'-'+n; n++; }
+    return val;
   }
+  // Only Anthropic's alias field feeds the per-ticket Gate-model dropdown
+  // (app.html's `models.filter(m => m.alias)`) — OpenAI has no equivalent
+  // consumer yet (t-ef27), so its cards carry no alias field at all.
+  const MT_ALIAS_PROVIDERS=new Set(['anthropic']);
 
   function mtRender(){
     if(!mtData) return;
@@ -1463,10 +1468,14 @@
     const defaultIds=new Set(Object.values(mtData.defaults.eval||{}).concat(Object.values(mtData.defaults.light||{})));
     grid.innerHTML = models.map(m=>{
       const badge=defaultIds.has(m.id)?'<span class="mt-badge">Default</span>':'';
+      const aliasRow=MT_ALIAS_PROVIDERS.has(mtProvider)
+        ? `<div class="mt-card-id"><span class="mt-alias-label">Gate-model alias</span> <span contenteditable="true" data-field="alias" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.alias||'')}</span></div>`
+        : '';
       return `<div class="mt-card">
         <div class="mt-card-top"><span class="mt-card-name" contenteditable="true" data-field="name" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.name)}</span>${badge}</div>
         <div class="mt-card-desc" contenteditable="true" data-field="desc" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.desc||'')}</div>
         <div class="mt-card-id">${esc(m.id)}</div>
+        ${aliasRow}
         <div class="mt-card-price"><span>Input/MTok</span><span>$<span contenteditable="true" data-field="input_price" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.input_price)}</span></span></div>
         <div class="mt-card-price"><span>Output/MTok</span><span>$<span contenteditable="true" data-field="output_price" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.output_price)}</span></span></div>
         <div class="mt-card-actions"><a class="danger" onclick="mtRemoveModel('${escAttr(m.id)}')">Remove</a></div>
@@ -1483,6 +1492,8 @@
     if(await mtSave()) toast('Default updated');
   }
 
+  const MT_ID_RE=/^[A-Za-z0-9._-]+$/; // mirrors server.py's MODEL_ID_RE / main.go's modelIDRe
+
   async function mtEditField(el){
     const id=el.dataset.id, field=el.dataset.field;
     const model=(mtData.models[mtProvider]||[]).find(m=>m.id===id);
@@ -1492,14 +1503,30 @@
       const n=parseFloat(val);
       val = isNaN(n) ? model[field] : n;
     }
+    if(field==='alias' && val && !MT_ID_RE.test(val)){
+      toast('Alias may only contain letters, digits, "." "_" "-"');
+      el.textContent=model.alias||'';
+      return;
+    }
     model[field]=val;
-    await mtSave();
+    if(!(await mtSave())) return;
+    // A saved alias changes which options the per-ticket Gate-model dropdown
+    // offers elsewhere on the board — no local re-render needed here, but
+    // nothing else needs to happen either; the next Plan-tab fetch picks it up.
   }
 
   async function mtAddModel(){
     mtData.models[mtProvider]=mtData.models[mtProvider]||[];
     const id=mtSlugify('new-model',mtData.models[mtProvider]);
-    mtData.models[mtProvider].push({id,name:'New Model',desc:'',reasoning:[],input_price:0,output_price:0});
+    const entry={id,name:'New Model',desc:'',reasoning:[],input_price:0,output_price:0};
+    // Seed a usable alias immediately so a UI-added Anthropic model reaches the
+    // per-ticket Gate-model dropdown without a manual edit step (t-7e36 review
+    // finding: a model added via this button previously had no alias at all,
+    // so it could never appear there).
+    if(MT_ALIAS_PROVIDERS.has(mtProvider)){
+      entry.alias=mtSlugify('new-model',mtData.models[mtProvider],'alias');
+    }
+    mtData.models[mtProvider].push(entry);
     if(await mtSave()) mtRender(); else await mtLoad();
   }
 

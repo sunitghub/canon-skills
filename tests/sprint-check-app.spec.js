@@ -6284,7 +6284,7 @@ test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
     await page.request.post(BASE + '/api/admin/model-tiers', { data: JSON.parse(canonical) });
   }
 
-  test('Admin "+ Add" creates a real registry entry via POST, and Remove deletes it via the confirm dialog', async ({ page }) => {
+  test('Admin "+ Add" creates a real registry entry with a usable alias reachable from the per-ticket dropdown, and Remove deletes it', async ({ page }) => {
     const canonical = readCanonicalModelTiers();
     try {
       await page.goto(BASE + '/cockpit');
@@ -6292,11 +6292,26 @@ test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.locator('#nav-admin').click();
       await page.locator('.mt-add-card').click();
       await expect(page.locator('.mt-grid .mt-card')).toHaveCount(5); // 4 seeded + 1 new
+      let newAlias;
       await expect.poll(async () => {
         const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
-        return reg.models.anthropic.some(m => m.name === 'New Model');
-      }).toBe(true);
+        const m = reg.models.anthropic.find(m => m.name === 'New Model');
+        newAlias = m && m.alias;
+        return Boolean(newAlias);
+      }).toBe(true); // t-7e36 review finding: the Add button used to omit alias entirely,
+                      // so a UI-added model could never reach the per-ticket dropdown below.
 
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill('t-7e36');
+      await page.locator('.card[data-id="t-7e36"]').click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator(`.model-tier-select option[value="${newAlias}"]`)).toHaveText('New Model');
+
+      await page.locator('#board-search').fill('');
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
       await page.locator('.mt-grid .mt-card', { hasText: 'New Model' }).locator('.danger').click();
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
       await page.locator('#cc-ok').click(); // confirm the Remove dialog
