@@ -2860,6 +2860,75 @@ func TestPreviewRootWorktreeSession(t *testing.T) {
 	}
 }
 
+// t-8e73 review finding: for an in_progress ticket the daemon reuses the persisted .cockpit-cwd after only
+// a stat, and that file lives in .tickets/ where the agent can write. A tampered value must NOT widen the
+// preview — se.cwd is re-validated against the project root / a live `git worktree list` when the preview
+// root is set — while a persisted REAL worktree still works.
+func TestPreviewRootIgnoresTamperedPersistedCwd(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	wt := gitWorktreeFixture(t, root) // real repo + real sibling worktree
+	seedTicketDir(t, root, "t-ab12")
+	seedTicketDir(t, wt, "t-ab12")
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", "ticket.md"),
+		[]byte("---\nid: t-ab12\nstatus: in_progress\n---\n# t\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// An attacker-chosen directory that is NOT a worktree of the project, made to look startable.
+	tampered := t.TempDir()
+	seedTicketDir(t, tampered, "t-ab12")
+	secret := filepath.Join(tampered, "index.html")
+	os.WriteFile(secret, []byte("secret"), 0o644)
+	wtFile := filepath.Join(wt, "index.html")
+	os.WriteFile(wtFile, []byte("ok"), 0o644)
+	cwdFile := filepath.Join(root, ".tickets", "t-ab12", ".cockpit-cwd")
+
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	setRoot := func(sid, tok, path string) int {
+		body, _ := json.Marshal(map[string]string{"path": path})
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+sid+"/preview-root", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	start := func() (sid, tok string) {
+		resp := startSessionCwd(t, ts.URL, "t-ab12", "", bootTok)
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(resp.Body)
+			t.Fatalf("start: want 200, got %d: %s", resp.StatusCode, b)
+		}
+		var out struct{ Session, Token string }
+		json.NewDecoder(resp.Body).Decode(&out)
+		return out.Session, out.Token
+	}
+
+	// Tampered persisted cwd: the session spawns there (pre-existing trust), but its preview must stay
+	// bounded to the project root.
+	os.WriteFile(cwdFile, []byte(tampered+"\n"), 0o600)
+	sid, tok := start()
+	if got := setRoot(sid, tok, secret); got != http.StatusBadRequest {
+		t.Fatalf("a file under a TAMPERED persisted cwd: want 400, got %d", got)
+	}
+	killAllSessions(s)
+
+	// A persisted cwd that really is a worktree of the project keeps working.
+	os.WriteFile(cwdFile, []byte(wt+"\n"), 0o600)
+	sid, tok = start()
+	if got := setRoot(sid, tok, wtFile); got != http.StatusNoContent {
+		t.Fatalf("a file under a persisted REAL worktree cwd: want 204, got %d", got)
+	}
+}
+
 func TestPreviewRootAndServe(t *testing.T) {
 	bin, _, _ := fakeSprint(t)
 	root := t.TempDir()

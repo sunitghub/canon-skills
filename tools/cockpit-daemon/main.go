@@ -134,7 +134,7 @@ type session struct {
 	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
 	humanInputAt  time.Time // t-2e7e: bumped ONLY by a real POST /input (not PTY output/echo);
 	// lets an in-flight save-and-kill detect a human actually came back and abort
-	previewRoot string // t-b19b: symlink-validated dir under projectRoot; set once via /preview-root
+	previewRoot string // t-b19b: symlink-validated dir under projectRoot or the session's own worktree cwd (t-8e73); set once via /preview-root
 }
 
 // frame is one SSE event bound for the browser. Terminal output and status
@@ -1530,7 +1530,7 @@ func copilotResumeFailed(buf []byte) bool {
 // PREVIEW_FILE marker (cockpit.html watches for it and relays the path here),
 // so a small static app's sibling ./style.css/./app.js resolve the way any
 // real static file server would — not just the one named file. Bounded to
-// projectRoot: the daemon process already has full read access to the whole
+// projectRoot plus the session's own re-validated worktree cwd (t-8e73): the daemon process already has full read access to the whole
 // project, so the actual thing this check prevents is a malformed or
 // malicious absolute path (typo, injected content) pointing the browser at
 // files outside the project entirely (e.g. ~/.ssh, /etc/passwd).
@@ -1597,10 +1597,20 @@ func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *s
 		projectRoot = s.cfg.projectRoot
 	}
 	// t-8e73: a worktree session runs (and prints PREVIEW_FILE) in its own cwd, a sibling of the main
-	// checkout that projectRoot names — allow that cwd too. It was validated against a live
-	// `git worktree list` at spawn, so this adds no path the daemon didn't already vouch for; a session
-	// still can't preview another worktree or project.
-	root, ok := previewRootFor(body.Path, projectRoot, se.cwd)
+	// checkout that projectRoot names — allow that cwd too. But se.cwd is NOT always freshly validated:
+	// for an in_progress ticket resolveSpawnCwdForTicket reuses the persisted .cockpit-cwd after only a
+	// stat, and that file lives in .tickets/, which the agent can write. A tampered value (e.g. "/") would
+	// otherwise widen the preview to any local file, defeating the containment. So re-validate it NOW
+	// against the project root / a live `git worktree list` (resolveSpawnCwd) and add it only if it passes;
+	// otherwise the preview stays bounded to projectRoot. A session still can't preview another worktree
+	// or project.
+	roots := []string{projectRoot}
+	if se.cwd != "" {
+		if cwd, cok := s.resolveSpawnCwd(se.cwd, projectRoot); cok {
+			roots = append(roots, cwd)
+		}
+	}
+	root, ok := previewRootFor(body.Path, roots...)
 	if !ok {
 		http.Error(w, "path not allowed", http.StatusBadRequest)
 		return
@@ -1620,7 +1630,7 @@ func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *s
 // app can read the token off location either way, and it stays a read-only,
 // this-root-only capability (constant-time compared). http.FileServer(http.Dir(root))
 // already refuses to serve anything above root via "../" in relpath; root itself
-// was already validated to be under projectRoot at /preview-root time.
+// was already validated to be under projectRoot (or the session's own worktree cwd) at /preview-root time.
 func (s *server) handlePreview(w http.ResponseWriter, r *http.Request, se *session, tokenAndPath string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)

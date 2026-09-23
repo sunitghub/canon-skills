@@ -458,7 +458,7 @@
               // lets us safely scan every row: the echoed prompt line's literal
               // "<absolute path>" placeholder starts with "<" and can never
               // match, so it's ignored. The daemon still re-validates the path
-              // (symlink-safe containment under projectRoot); cockpit.html has
+              // (symlink-safe containment under projectRoot or the session's own worktree); cockpit.html has
               // no privileged position to assert safety on its own.
               if(previewDeadline){
                 var mFile = clean.match(/^PREVIEW_FILE:\s*((?:\/|\\\\|[A-Za-z]:[\\/]).*\S)$/);
