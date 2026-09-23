@@ -107,4 +107,26 @@ assert_grep 'id="tv-board"' "$APP"
 assert_grep 'id="tv-daemon"' "$APP"
 assert_grep "'canon v'" "$APP"
 
+# Branch footer: a ticket whose sibling-worktree copy has a different status is
+# flagged on the card; a matching one is not (feed it the reject case too).
+assert_grep 'function branchLine\(t\)' "$APP"
+assert_grep 'card-branch-warn' "$APP"
+fx="$(mktemp -d)"; trap 'rm -rf "$fx" "$fx-wt"' EXIT
+git -C "$fx" init -q -b main
+mkdir -p "$fx/.tickets/t-1" "$fx/.tickets/t-2"
+printf -- '---\nid: t-1\nstatus: open\n---\n' > "$fx/.tickets/t-1/ticket.md"
+printf -- '---\nid: t-2\nstatus: open\n---\n' > "$fx/.tickets/t-2/ticket.md"
+git -C "$fx" add -A
+git -C "$fx" -c user.email=t@t -c user.name=t commit -qm init
+git -C "$fx" worktree add -q -b sprint/t-1 "$fx-wt"
+sed -i 's/status: open/status: closed/' "$fx-wt/.tickets/t-1/ticket.md"
+fxp="$(cd "$fx" && pwd -W 2>/dev/null || pwd)"
+out="$(cd "$ROOT/tools/sprint-check-app" && SPRINT_CHECK_ROOT="$fxp" python3 -c "
+import server
+from pathlib import Path
+r = Path('$fxp'); t = server.load_tickets(r); server.annotate_branch_state(t, r)
+print(sorted((x['id'], x['branch'], (x.get('other_branch') or {}).get('branch', '-')) for x in t))
+" 2>/dev/null || true)"
+[[ "$out" == "[('t-1', 'main', 'sprint/t-1'), ('t-2', 'main', '-')]" ]] || fail "annotate_branch_state: unexpected output: $out"
+
 printf 'sprint-check-app: ok\n'

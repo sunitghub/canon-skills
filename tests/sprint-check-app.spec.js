@@ -6249,3 +6249,19 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
     });
   }
 });
+
+test.describe('card branch footer', () => {
+  test('shows branch, and flags a ticket whose status differs on an unmerged branch', async ({ page }) => {
+    const base = { type: 'feature', priority: 2, created: '2026-09-23', layout: 'folder', body: '' };
+    await page.route('**/api/tickets*', route => route.fulfill({ json: [
+      { ...base, id: 't-x1', title: 'Diverged', status: 'open', branch: 'master', other_branch: { branch: 'sprint/t-x1', status: 'closed' } },
+      { ...base, id: 't-x2', title: 'Plain', status: 'open', branch: 'master' },
+    ] }));
+    await page.goto(BASE);
+    const diverged = page.locator('.card[data-id="t-x1"] .card-branch');
+    await expect(diverged).toContainText('master');
+    await expect(diverged.locator('.card-branch-warn')).toHaveText('closed on sprint/t-x1, not merged');
+    await expect(page.locator('.card[data-id="t-x2"] .card-branch')).toHaveText(/master/);
+    await expect(page.locator('.card[data-id="t-x2"] .card-branch-warn')).toHaveCount(0);
+  });
+});

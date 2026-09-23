@@ -448,6 +448,31 @@ def load_tickets(root: Path = None) -> list:
                 t['headless_running'] = True
     return tickets
 
+def annotate_branch_state(tickets: list, root: Path = None) -> None:
+    """Board cards read the main checkout, so a ticket closed on an unmerged
+    sprint branch still looks open there. Stamp each ticket with the checkout's
+    `branch`, and `other_branch` ({branch, status}) when a sibling worktree's
+    copy of the ticket has a different status."""
+    root = root if root is not None else PROJECT_ROOT
+    branch = run(['git', 'branch', '--show-current'], root).strip()
+    if not branch:
+        return
+    for t in tickets:
+        t['branch'] = branch
+    for wt in list_worktrees(root=root):
+        if wt.get('is_main') or not wt.get('branch'):
+            continue
+        for t in tickets:
+            if t.get('other_branch') or not t.get('id'):
+                continue
+            f = Path(wt['path']) / '.tickets' / t['id'] / 'ticket.md'
+            try:
+                m = re.search(r'^status:\s*(\S+)', f.read_text(encoding='utf-8', errors='replace'), re.MULTILINE)
+            except OSError:
+                continue
+            if m and m.group(1) != t.get('status'):
+                t['other_branch'] = {'branch': wt['branch'], 'status': m.group(1)}
+
 # ── HANDOFF.md parsing ────────────────────────────────────────────────────
 
 def load_handoff(root: Path = None) -> dict:
@@ -2047,6 +2072,7 @@ class Handler(BaseHTTPRequestHandler):
             tickets = load_tickets(eroot)
             if 'all=1' not in parsed.query:
                 tickets = [t for t in tickets if t.get('status') != 'archived']
+            annotate_branch_state(tickets, eroot)
             self.send_json(tickets)
         elif path == '/api/handoff':
             try:

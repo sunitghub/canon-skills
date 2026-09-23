@@ -585,6 +585,9 @@
     }
     html[data-theme="light"] .card-title { color: #3d3d60; }
 
+    .card-branch { padding: 5px 11px 7px; font-size: 10px; color: var(--text-muted); font-family: var(--mono, monospace); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .card-branch .card-branch-warn { color: var(--col-warn, #f59e0b); font-weight: 600; }
+
     /* Card footer — 3-column label-above-value grid */
     .card-footer {
       display: grid; grid-template-columns: auto auto 1fr;
@@ -3568,7 +3571,15 @@ function cardHTML(t, idx) {
           </span>
         </div>
       </div>
+      ${branchLine(t)}
     </div>`;
+}
+
+function branchLine(t) {
+  if (!t.branch) return '';
+  const ob = t.other_branch;
+  const warn = ob ? ` · <span class="card-branch-warn" title="This board reads ${esc(t.branch)}; the ticket differs on that branch until it is merged">${esc(ob.status)} on ${esc(ob.branch)}, not merged</span>` : '';
+  return `<div class="card-branch" data-branch="${esc(t.branch)}">⎇ ${esc(t.branch)}${warn}</div>`;
 }
 
 function cardTicketId(el) {
