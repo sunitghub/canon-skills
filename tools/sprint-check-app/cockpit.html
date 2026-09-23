@@ -111,6 +111,36 @@
   .aswitch input:checked+.strack{background:var(--accent)}
   .aswitch input:checked+.strack .sthumb{transform:translateX(16px)}
   .aswitch input:disabled+.strack{opacity:.5;cursor:not-allowed}
+  /* ---- Admin > Model Tiers (t-7e36) ---- */
+  .mt-wrap{margin-bottom:16px}
+  .mt-banner{display:flex;gap:9px;align-items:flex-start;border-left:3px solid var(--amber);background:color-mix(in srgb, var(--amber) 10%, transparent);border-radius:0 8px 8px 0;padding:10px 12px;margin-bottom:14px;font-size:11.5px;line-height:1.45;color:var(--text-body)}
+  .mt-banner b{color:var(--amber)}
+  .mt-defaults{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  @media (max-width:680px){.mt-defaults{grid-template-columns:1fr}}
+  .mt-default-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .mt-default-card .setting-k{margin-bottom:1px}
+  .mt-default-card .setting-d{margin-bottom:10px}
+  .mt-picker-row{display:flex;gap:8px;flex-wrap:wrap}
+  .mt-picker{flex:1;min-width:140px;display:flex;align-items:center;gap:7px;border:1px solid var(--border-muted);border-radius:8px;padding:7px 9px;background:var(--bg)}
+  .mt-picker select{appearance:none;border:none;background:transparent;color:var(--text);font-size:12.5px;font-weight:600;width:100%;cursor:pointer}
+  .mt-picker .mt-prov{font-size:10px;color:var(--text-dim);font-family:ui-monospace,monospace;white-space:nowrap}
+  .mt-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border-muted);margin-bottom:12px}
+  .mt-tab{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer}
+  .mt-tab.active{color:var(--text);border-bottom-color:var(--accent)}
+  .mt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  .mt-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .mt-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+  .mt-card-name{font-size:13px;font-weight:650}
+  .mt-badge{font-size:9px;font-weight:700;letter-spacing:.03em;padding:2px 6px;border-radius:5px;text-transform:uppercase;white-space:nowrap;background:var(--accent-dim);color:var(--accent)}
+  .mt-card-desc{font-size:11px;color:var(--text-dim);line-height:1.4;min-height:2.6em}
+  .mt-card-id{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--text-body);background:var(--bg);border:1px solid var(--border-muted);border-radius:6px;padding:4px 7px}
+  .mt-card-price{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-body);padding-top:6px;border-top:1px solid var(--border-muted)}
+  .mt-card-actions{display:flex;justify-content:flex-end;gap:10px;font-size:10.5px}
+  .mt-card-actions a{color:var(--text-muted);cursor:pointer;text-decoration:none}
+  .mt-card-actions a:hover{color:var(--text)}
+  .mt-card-actions a.danger:hover{color:var(--col-discarded)}
+  .mt-add-card{border:1px dashed var(--border-hover);border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:110px;color:var(--text-muted);font-size:12.5px;cursor:pointer}
+  .mt-add-card:hover{border-color:var(--accent);color:var(--accent)}
   .sessions{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 4px}
   .slabel{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);padding:10px 14px 6px}
   .srow{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--border-muted)}
@@ -455,6 +485,30 @@
                   <span class="strack"><span class="sthumb"></span></span>
                 </label>
               </div>
+            </div>
+            <div class="mt-wrap">
+              <div class="slabel">Model Tiers</div>
+              <div class="mt-banner">
+                <span>&#9888;</span>
+                <span><b>Metadata only, for now.</b> Anthropic picks are honored by Claude Code's
+                  close-gate dispatch. OpenAI picks are recorded here but <b>not yet dispatched</b>
+                  &mdash; canon has no live-verified path from a saved pick to a running Codex
+                  session (see <code>t-ef27</code>).</span>
+              </div>
+              <div class="mt-defaults">
+                <div class="mt-default-card">
+                  <div class="setting-k">Review &amp; Eval gates</div>
+                  <div class="setting-d">Sprint-close reviewer / evaluator dispatch. A ticket's own <code>Gate model:</code> override still wins.</div>
+                  <div class="mt-picker-row" id="mt-default-eval"></div>
+                </div>
+                <div class="mt-default-card">
+                  <div class="setting-k">Simple / Light work</div>
+                  <div class="setting-d">Explore, orient, light implement steps &mdash; cheap, high-volume calls.</div>
+                  <div class="mt-picker-row" id="mt-default-light"></div>
+                </div>
+              </div>
+              <div class="mt-tabs" id="mt-tabs"></div>
+              <div class="mt-grid" id="mt-grid"></div>
             </div>
             <div class="sessions">
               <div class="slabel">Active agent sessions (all projects)</div>
@@ -1352,6 +1406,108 @@
     }
     // Active projects = projects currently open in a tab (shell state).
     document.getElementById('ad-tile-active').textContent = openTabs.length;
+    mtLoad();
+  }
+
+  // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
+  // Board-wide registry (not per-project, not daemon state) backing this
+  // panel and the per-ticket Gate-model dropdown in app.html. Anthropic
+  // picks are dispatched today (Claude Code); OpenAI picks are recorded only
+  // — see the mt-banner text and t-ef27.
+  let mtData=null, mtProvider='anthropic';
+  const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
+
+  async function mtLoad(){
+    try{ mtData=await (await fetch('/api/admin/model-tiers')).json(); }
+    catch(e){ mtData={defaults:{eval:{},light:{}},models:{anthropic:[],openai:[]}}; }
+    mtRender();
+  }
+
+  async function mtSave(){
+    try{
+      const r=await fetch('/api/admin/model-tiers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(mtData)});
+      const res=await r.json();
+      if(!res.ok){ toast(res.error||"Couldn't save — reverting"); await mtLoad(); return false; }
+      return true;
+    }catch(e){ toast("Couldn't reach the board"); await mtLoad(); return false; }
+  }
+
+  function mtSlugify(name,existing){
+    let base=String(name||'model').toLowerCase().replace(/[^a-z0-9._-]+/g,'-').replace(/^-+|-+$/g,'')||'model';
+    let id=base, n=2;
+    while(existing.some(m=>m.id===id)){ id=base+'-'+n; n++; }
+    return id;
+  }
+
+  function mtRender(){
+    if(!mtData) return;
+    // Defaults pickers
+    ['eval','light'].forEach(tier=>{
+      const row=document.getElementById('mt-default-'+tier);
+      if(!row) return;
+      row.innerHTML=Object.keys(MT_PROVIDER_LABEL).map(prov=>{
+        const models=mtData.models[prov]||[];
+        const cur=(mtData.defaults[tier]||{})[prov]||'';
+        const opts=models.map(m=>`<option value="${escAttr(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('');
+        return `<div class="mt-picker"><select data-tier="${tier}" data-prov="${prov}" onchange="mtSetDefault(this)">${opts}</select><span class="mt-prov">${prov}${prov==='openai'?' · inert':''}</span></div>`;
+      }).join('');
+    });
+    // Provider tabs
+    const tabs=document.getElementById('mt-tabs');
+    tabs.innerHTML=Object.entries(MT_PROVIDER_LABEL).map(([prov,label])=>
+      `<div class="mt-tab${prov===mtProvider?' active':''}" onclick="mtSwitchProvider('${prov}')">${label} <span style="color:var(--text-dim);font-weight:400">· ${(mtData.models[prov]||[]).length}</span></div>`
+    ).join('');
+    // Card grid
+    const grid=document.getElementById('mt-grid');
+    const models=mtData.models[mtProvider]||[];
+    const defaultIds=new Set(Object.values(mtData.defaults.eval||{}).concat(Object.values(mtData.defaults.light||{})));
+    grid.innerHTML = models.map(m=>{
+      const badge=defaultIds.has(m.id)?'<span class="mt-badge">Default</span>':'';
+      return `<div class="mt-card">
+        <div class="mt-card-top"><span class="mt-card-name" contenteditable="true" data-field="name" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.name)}</span>${badge}</div>
+        <div class="mt-card-desc" contenteditable="true" data-field="desc" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.desc||'')}</div>
+        <div class="mt-card-id">${esc(m.id)}</div>
+        <div class="mt-card-price"><span>Input/MTok</span><span>$<span contenteditable="true" data-field="input_price" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.input_price)}</span></span></div>
+        <div class="mt-card-price"><span>Output/MTok</span><span>$<span contenteditable="true" data-field="output_price" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.output_price)}</span></span></div>
+        <div class="mt-card-actions"><a class="danger" onclick="mtRemoveModel('${escAttr(m.id)}')">Remove</a></div>
+      </div>`;
+    }).join('') + `<div class="mt-add-card" onclick="mtAddModel()">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
+  }
+
+  function mtSwitchProvider(prov){ mtProvider=prov; mtRender(); }
+
+  async function mtSetDefault(sel){
+    const tier=sel.dataset.tier, prov=sel.dataset.prov;
+    mtData.defaults[tier]=mtData.defaults[tier]||{};
+    mtData.defaults[tier][prov]=sel.value;
+    if(await mtSave()) toast('Default updated');
+  }
+
+  async function mtEditField(el){
+    const id=el.dataset.id, field=el.dataset.field;
+    const model=(mtData.models[mtProvider]||[]).find(m=>m.id===id);
+    if(!model) return;
+    let val=el.textContent.trim();
+    if(field==='input_price'||field==='output_price'){
+      const n=parseFloat(val);
+      val = isNaN(n) ? model[field] : n;
+    }
+    model[field]=val;
+    await mtSave();
+  }
+
+  async function mtAddModel(){
+    mtData.models[mtProvider]=mtData.models[mtProvider]||[];
+    const id=mtSlugify('new-model',mtData.models[mtProvider]);
+    mtData.models[mtProvider].push({id,name:'New Model',desc:'',reasoning:[],input_price:0,output_price:0});
+    if(await mtSave()) mtRender(); else await mtLoad();
+  }
+
+  async function mtRemoveModel(id){
+    const ok=await cockpitConfirm({title:'Remove model?',body:'Removes "'+id+'" from the registry. Any ticket whose Gate model: still names it keeps that value as a hand-edit override.',okLabel:'Remove',danger:true});
+    if(!ok) return;
+    mtData.models[mtProvider]=(mtData.models[mtProvider]||[]).filter(m=>m.id!==id);
+    if(await mtSave()) mtRender(); else await mtLoad();
   }
 
   // Restart/Stop both reuse the daemon's token-free /api/cockpit-restart|-stop

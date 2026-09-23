@@ -39,6 +39,50 @@ TICKETS_DIR  = PROJECT_ROOT / '.tickets'
 HANDOFF_FILE = PROJECT_ROOT / 'HANDOFF.md'
 APP_HTML     = Path(__file__).parent / 'app.html'
 COCKPIT_HTML = Path(__file__).parent / 'cockpit.html'
+MODEL_TIERS_PATH = Path(__file__).parent / 'model-tiers.json'
+
+# ── Admin: Model Tiers registry (t-7e36) ──────────────────────────────────
+# Board-wide (not per-project, not daemon-owned) model registry backing the
+# Admin > Model Tiers UI and the per-ticket Gate-model dropdown. A model id is
+# validated here because it later becomes a ~/.codex/agents/<id>.toml filename
+# in the follow-up ticket (t-ef27) -- the allowlist must live on the save path,
+# not be assumed later. Mirrored in sprint-check-go/main.go.
+MODEL_ID_RE = re.compile(r'^[A-Za-z0-9._-]+$')
+
+def load_model_tiers() -> dict:
+    try:
+        return json.loads(MODEL_TIERS_PATH.read_text(encoding='utf-8'))
+    except Exception:
+        return {'defaults': {'eval': {}, 'light': {}}, 'models': {'anthropic': [], 'openai': []}}
+
+def _model_tiers_valid(data) -> bool:
+    if not isinstance(data, dict):
+        return False
+    models = data.get('models')
+    defaults = data.get('defaults')
+    if not isinstance(models, dict) or not isinstance(defaults, dict):
+        return False
+    for provider, entries in models.items():
+        if not isinstance(entries, list):
+            return False
+        for m in entries:
+            if not isinstance(m, dict) or not MODEL_ID_RE.match(str(m.get('id', ''))):
+                return False
+            if m.get('alias') and not MODEL_ID_RE.match(str(m.get('alias'))):
+                return False
+    for tier, per_provider in defaults.items():
+        if not isinstance(per_provider, dict):
+            return False
+        for provider, model_id in per_provider.items():
+            if not MODEL_ID_RE.match(str(model_id)):
+                return False
+    return True
+
+def save_model_tiers(data) -> dict:
+    if not _model_tiers_valid(data):
+        return {'ok': False, 'error': 'invalid model-tiers payload (bad id or shape)'}
+    MODEL_TIERS_PATH.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+    return {'ok': True}
 
 # ── Canon Cockpit project registry (t-9917) ───────────────────────────────
 # One shared registry of projects the Cockpit shell can open. Stored as a JSON
@@ -2036,6 +2080,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(COCKPIT_HTML if COCKPIT_HTML.exists() else APP_HTML)
         elif path == '/api/projects':
             self.send_json(registry_list())
+        elif path == '/api/admin/model-tiers':
+            self.send_json(load_model_tiers())
         elif re.match(r'^/meta/screenshots/[a-zA-Z0-9_-]+\.(png|gif|jpg|jpeg|webp)$', path):
             img = PROJECT_ROOT / path.lstrip('/')
             self.send_image(img); return
@@ -2232,6 +2278,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/projects':
             result = registry_add(str(payload.get('path', '')), str(payload.get('description', '')))
+            self.send_json(result, status=200 if result.get('ok') else 400); return
+
+        if path == '/api/admin/model-tiers':
+            result = save_model_tiers(payload)
             self.send_json(result, status=200 if result.get('ok') else 400); return
 
         # t-7485/t-96c3: register a canon skill into the tab's project. The target

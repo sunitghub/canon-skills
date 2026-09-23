@@ -1,0 +1,118 @@
+{
+  "defaults": {
+    "eval": {
+      "anthropic": "claude-sonnet-5",
+      "openai": "gpt-6-luna"
+    },
+    "light": {
+      "anthropic": "claude-haiku-4-5-20251001",
+      "openai": "gpt-6-luna"
+    }
+  },
+  "models": {
+    "anthropic": [
+      {
+        "alias": "fable",
+        "desc": "For demanding reasoning and long-horizon agentic work.",
+        "id": "claude-fable-5-1",
+        "input_price": 10,
+        "name": "Claude Fable 5.1",
+        "output_price": 50,
+        "reasoning": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "alias": "opus",
+        "desc": "For long-running agentic coding and knowledge work.",
+        "id": "claude-opus-5-5",
+        "input_price": 4,
+        "name": "Claude Opus 5.5",
+        "output_price": 20,
+        "reasoning": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "alias": "sonnet",
+        "desc": "The best combination of speed and intelligence.",
+        "id": "claude-sonnet-5",
+        "input_price": 2,
+        "name": "Claude Sonnet 5",
+        "output_price": 10,
+        "reasoning": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "alias": "haiku",
+        "desc": "The fastest model with near-frontier intelligence.",
+        "id": "claude-haiku-4-5-20251001",
+        "input_price": 1,
+        "name": "Claude Haiku 4.5",
+        "output_price": 5,
+        "reasoning": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      }
+    ],
+    "openai": [
+      {
+        "desc": "Our most capable model, built for the hardest end-to-end work.",
+        "id": "gpt-6-astra",
+        "input_price": 10,
+        "name": "GPT-6 Astra",
+        "output_price": 50,
+        "reasoning": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      {
+        "desc": "Built to power complex coding and agentic workflows.",
+        "id": "gpt-6-sol",
+        "input_price": 2,
+        "name": "GPT-6 Sol",
+        "output_price": 10,
+        "reasoning": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      {
+        "desc": "Our most efficient model for focused, high-volume tasks.",
+        "id": "gpt-6-luna",
+        "input_price": 0.1,
+        "name": "GPT-6 Luna",
+        "output_price": 0.5,
+        "reasoning": [
+          "none",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      }
+    ]
+  }
+}

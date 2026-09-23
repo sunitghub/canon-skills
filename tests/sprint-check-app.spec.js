@@ -6249,3 +6249,123 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
     });
   }
 });
+
+// .serial: these tests mutate the shared, board-wide model-tiers.json — never
+// safe to interleave with each other (a concurrent restore can stomp on a
+// sibling test's in-flight edit and leave the file in a state neither test
+// wrote).
+test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
+  test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the OpenAI-inert banner', async ({ page }) => {
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+    await expect(page.locator('#view-admin')).toHaveClass(/active/);
+    await expect(page.locator('.mt-banner')).toContainText('not yet dispatched');
+    await expect(page.locator('.mt-banner')).toContainText('OpenAI');
+    // default pickers: one row per tier, each offering both providers
+    await expect(page.locator('#mt-default-eval .mt-picker')).toHaveCount(2);
+    await expect(page.locator('#mt-default-light .mt-picker')).toHaveCount(2);
+    // Anthropic tab active by default with the 4 seeded models
+    await expect(page.locator('.mt-tab.active')).toContainText('Anthropic');
+    await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toContainText(['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5', 'Claude Haiku 4.5']);
+    // switching to OpenAI shows its 3 seeded models
+    await page.locator('.mt-tab', { hasText: 'OpenAI' }).click();
+    await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toContainText(['GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna']);
+  });
+
+  // Restore against the canonical file on disk, not a live GET snapshot — a
+  // snapshot could itself be dirty (e.g. a prior interrupted run's leftover),
+  // which would perpetuate corruption across runs instead of healing it.
+  const MODEL_TIERS_PATH = path.join(PROJECT_ROOT, 'tools', 'sprint-check-app', 'model-tiers.json');
+  function readCanonicalModelTiers() {
+    return fs.readFileSync(MODEL_TIERS_PATH, 'utf8');
+  }
+  async function restoreModelTiers(page, canonical) {
+    await page.request.post(BASE + '/api/admin/model-tiers', { data: JSON.parse(canonical) });
+  }
+
+  test('Admin "+ Add" creates a real registry entry via POST, and Remove deletes it via the confirm dialog', async ({ page }) => {
+    const canonical = readCanonicalModelTiers();
+    try {
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await page.locator('.mt-add-card').click();
+      await expect(page.locator('.mt-grid .mt-card')).toHaveCount(5); // 4 seeded + 1 new
+      await expect.poll(async () => {
+        const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+        return reg.models.anthropic.some(m => m.name === 'New Model');
+      }).toBe(true);
+
+      await page.locator('.mt-grid .mt-card', { hasText: 'New Model' }).locator('.danger').click();
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await page.locator('#cc-ok').click(); // confirm the Remove dialog
+      await expect(page.locator('.mt-grid .mt-card')).toHaveCount(4);
+      await expect.poll(async () => {
+        const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+        return reg.models.anthropic.some(m => m.name === 'New Model');
+      }).toBe(false);
+    } finally {
+      await restoreModelTiers(page, canonical);
+    }
+  });
+
+  test('editing a saved model persists and sources the per-ticket Gate-model dropdown, not just the hardcoded fallback', async ({ page }) => {
+    const id = `t-mtreg-${Date.now()}`;
+    const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+    const canonical = readCanonicalModelTiers();
+    try {
+      // Add a model with a stable alias distinct from every hardcoded fallback value
+      // (default/fable/opus/sonnet/haiku) directly via the same POST route the UI uses —
+      // its later appearance in the per-ticket dropdown can only be explained by a live
+      // fetch of the registry, not the JS fallback array.
+      const reg = JSON.parse(canonical);
+      reg.models.anthropic.push({
+        id: 'probe-model-zz', alias: 'probe-alias-zz', name: 'Registry Sourcing Probe',
+        desc: 'test fixture', reasoning: [], input_price: 1, output_price: 1,
+      });
+      const postRes = await page.request.post(BASE + '/api/admin/model-tiers', { data: reg });
+      expect(postRes.ok()).toBeTruthy();
+
+      // GET round-trips the edit — proves persistence, not just an in-memory echo.
+      const after = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
+      expect(after.models.anthropic.find(m => m.id === 'probe-model-zz').name).toBe('Registry Sourcing Probe');
+
+      // Admin UI renders the persisted edit.
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('.mt-grid .mt-card', { hasText: 'Registry Sourcing Probe' })).toBeVisible();
+
+      // Per-ticket Gate-model dropdown lists it too.
+      fs.mkdirSync(ticketDir, { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), [
+        '---', `id: ${id}`, 'status: in_progress', 'type: task', 'priority: 2',
+        'created: 2026-09-23T00:00:00Z', '---', '', '# Model registry sourcing test', '',
+      ].join('\n'));
+      fs.writeFileSync(path.join(ticketDir, 'plan.md'), [
+        '# Plan', '', '## Sign-off', 'Tier: normal | Risk: test', '', '- [x] Plan approved', '',
+        '## Approach', 'n/a', '',
+        // injectSectionJumps (and with it the Sign-off model-tier <select>) only
+        // renders once the doc has >=2 "## " headings — a single-heading plan.md
+        // silently renders no dropdown at all (t-7e36 debugging).
+      ].join('\n'));
+
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      // The dropdown's option list is populated by an async fetch fired at page
+      // load, independent of the DOM interactions above — poll rather than assert
+      // once, so a slow-to-resolve fetch isn't mistaken for a missing option.
+      await expect.poll(() =>
+        page.locator('.model-tier-select option[value="probe-alias-zz"]').count()
+      ).toBe(1);
+      await expect(page.locator('.model-tier-select option[value="probe-alias-zz"]')).toHaveText('Registry Sourcing Probe');
+    } finally {
+      fs.rmSync(ticketDir, { recursive: true, force: true });
+      await restoreModelTiers(page, canonical);
+    }
+  });
+});

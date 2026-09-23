@@ -33,6 +33,11 @@ whichever session/dispatch does that work.
   configured on Sonnet+Opus, bump to Opus for high-risk sprints instead.
 - `review` / `grill` → Opus, thinking `high` — adversarial, judgment-heavy; a weaker model would rubber-stamp.
 
+The board's per-ticket `Gate model:` dropdown (`tools/sprint-check-app/app.html`) reads its live
+option list from `tools/sprint-check-app/model-tiers.json` (Admin > Model Tiers, `t-7e36`) —
+that file is a seeded, editable mirror of the Anthropic models named above, not a replacement for
+this prose; the registry's OpenAI entries are recorded for future use only (`t-ef27`).
+
 **Exception — sprint close gates** follow their own rule (may downgrade to Haiku on a
 structural low-risk check, on a `demo: true` ticket (evaluator only), or via an explicit user
 `Gate model:` override) — see the

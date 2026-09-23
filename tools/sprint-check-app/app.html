@@ -3869,7 +3869,30 @@ function injectSectionJumps(container) {
   container.parentNode.insertBefore(bar, container);
 }
 
-const MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
+// t-7e36: seeded fallback in case /api/admin/model-tiers hasn't loaded yet (or is
+// unreachable) — refreshModelTierOptions() below replaces this with the live
+// Admin-owned registry's Anthropic ids. Only Anthropic is listed here: this
+// dropdown feeds parseGateModel/withGateModel below, whose only real consumers
+// (interactive sprint complete, sprint-headless) are Claude-Code-only — see
+// DECISIONS.md 2026-07-27 (t-4003). OpenAI entries exist in the registry but are
+// not yet dispatchable (t-ef27), so they're deliberately excluded from this list.
+let MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
+let MODEL_TIER_LABELS = {};
+(async () => {
+  try {
+    const r = await fetch('/api/admin/model-tiers');
+    const reg = await r.json();
+    // Gate model: persists the short alias (fable/opus/sonnet/haiku), not the
+    // full API id — matches the value `claude -p --model` has always been
+    // passed (DECISIONS.md t-4003) and every ticket's already-saved plan.md.
+    const models = (reg.models && reg.models.anthropic) || [];
+    const aliased = models.filter(m => m.alias);
+    if (aliased.length) {
+      MODEL_TIER_OPTIONS = ['default', ...aliased.map(m => m.alias)];
+      MODEL_TIER_LABELS = Object.fromEntries(aliased.map(m => [m.alias, m.name]));
+    }
+  } catch { /* keep fallback */ }
+})();
 const SIGNOFF_TIER_OPTIONS = ['normal', 'bugfix', 'high-risk'];
 const SIGNOFF_TIER_LABELS = { normal: 'Normal', bugfix: 'Bugfix', 'high-risk': 'High-risk' };
 
@@ -4020,7 +4043,7 @@ function injectSignoffControls(container, content, t) {
   MODEL_TIER_OPTIONS.forEach(opt => {
     const o = document.createElement('option');
     o.value = opt;
-    o.textContent = opt === 'default' ? 'Default' : opt[0].toUpperCase() + opt.slice(1);
+    o.textContent = opt === 'default' ? 'Default' : (MODEL_TIER_LABELS[opt] || opt[0].toUpperCase() + opt.slice(1));
     select.appendChild(o);
   });
   select.value = recognized ? currentLower : 'default';

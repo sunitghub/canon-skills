@@ -35,11 +35,13 @@ var (
 	baseRefRe        = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`) // also used for worktree branch names — same git-ref-name charset
 	imageExts        = []string{".png", ".gif", ".jpg", ".jpeg", ".webp"}
 	safeVisualName   = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+	modelIDRe        = regexp.MustCompile(`^[A-Za-z0-9._-]+$`) // t-7e36: mirrors server.py's MODEL_ID_RE
 	projectRoot      string
 	ticketsDir       string
 	handoffFile      string
 	appHTML          string
 	cockpitHTML      string
+	modelTiersPath   string
 	sprintHeadless   string
 	canonGateTmpl    string
 	cockpitDaemonBin string
@@ -139,6 +141,7 @@ func main() {
 	}
 	appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)
 	cockpitHTML = filepath.Join(filepath.Dir(appHTML), "cockpit.html")
+	modelTiersPath = filepath.Join(filepath.Dir(appHTML), "model-tiers.json")
 	sprintHeadless = resolveSprintHeadless(toolsDir, projectRoot, cwd)
 	upkeepRunBin = resolveUpkeepRunBin(toolsDir, projectRoot, cwd)
 	canonGateTmpl = resolveCanonGateTemplate(toolsDir, projectRoot, cwd)
@@ -240,6 +243,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/api/projects":
 		sendJSON(w, registryLoad())
+	case "/api/admin/model-tiers":
+		sendJSON(w, loadModelTiers())
 	case "/api/tickets":
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -449,6 +454,15 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/projects" {
 		res := registryAdd(stringValue(payload, "path", ""), stringValue(payload, "description", ""))
+		status := http.StatusOK
+		if ok, _ := res["ok"].(bool); !ok {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
+	if path == "/api/admin/model-tiers" {
+		res := saveModelTiers(payload)
 		status := http.StatusOK
 		if ok, _ := res["ok"].(bool); !ok {
 			status = http.StatusBadRequest
@@ -2733,6 +2747,78 @@ func registrySave(entries []registryProject) error {
 		return err
 	}
 	return nil
+}
+
+// t-7e36: Admin > Model Tiers registry. Board-wide (not per-project, not
+// daemon-owned), mirrors server.py's load_model_tiers/save_model_tiers. A
+// model id is validated here because it later becomes a
+// ~/.codex/agents/<id>.toml filename in the follow-up ticket (t-ef27).
+func loadModelTiers() map[string]any {
+	empty := map[string]any{
+		"defaults": map[string]any{"eval": map[string]any{}, "light": map[string]any{}},
+		"models":   map[string]any{"anthropic": []any{}, "openai": []any{}},
+	}
+	data, err := os.ReadFile(modelTiersPath)
+	if err != nil {
+		return empty
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return empty
+	}
+	return parsed
+}
+
+func modelTiersValid(data map[string]any) bool {
+	models, ok := data["models"].(map[string]any)
+	if !ok {
+		return false
+	}
+	defaults, ok := data["defaults"].(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, entriesRaw := range models {
+		entries, ok := entriesRaw.([]any)
+		if !ok {
+			return false
+		}
+		for _, mRaw := range entries {
+			m, ok := mRaw.(map[string]any)
+			if !ok || !modelIDRe.MatchString(fmt.Sprint(m["id"])) {
+				return false
+			}
+			if alias, hasAlias := m["alias"]; hasAlias && fmt.Sprint(alias) != "" && !modelIDRe.MatchString(fmt.Sprint(alias)) {
+				return false
+			}
+		}
+	}
+	for _, perProviderRaw := range defaults {
+		perProvider, ok := perProviderRaw.(map[string]any)
+		if !ok {
+			return false
+		}
+		for _, modelID := range perProvider {
+			if !modelIDRe.MatchString(fmt.Sprint(modelID)) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func saveModelTiers(data map[string]any) map[string]any {
+	if !modelTiersValid(data) {
+		return map[string]any{"ok": false, "error": "invalid model-tiers payload (bad id or shape)"}
+	}
+	body, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	if err := os.WriteFile(modelTiersPath, append(body, '\n'), 0o644); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true}
 }
 
 func registryAdd(path, description string) map[string]any {
