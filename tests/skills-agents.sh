@@ -44,9 +44,10 @@ p1="$(newp)"
 "$SKILLS" add sprint "$p1" >/dev/null
 [[ -L "$p1/.claude/agents" ]] || fail "expected .claude/agents link"
 assert_eq "$ROOT/agents" "$(readlink "$p1/.claude/agents")"
-[ "$(grep -cxF "/.claude/agents/" "$p1/.gitignore")" -eq 1 ] || fail "link not gitignored once"
+[ "$(grep -cxF "/.claude/agents" "$p1/.gitignore")" -eq 1 ] || fail "link not gitignored once"
+git -C "$p1" check-ignore -q .claude/agents || fail "git does not actually ignore the .claude/agents link"
 "$SKILLS" refresh "$p1" >/dev/null 2>&1
-[ "$(grep -cxF "/.claude/agents/" "$p1/.gitignore")" -eq 1 ] || fail "refresh duplicated the gitignore entry"
+[ "$(grep -cxF "/.claude/agents" "$p1/.gitignore")" -eq 1 ] || fail "refresh duplicated the gitignore entry"
 
 # remove sprint removes only canon's link.
 "$SKILLS" remove sprint "$p1" >/dev/null
@@ -65,7 +66,7 @@ cmp -s "$ROOT/agents/canon-reviewer.md" "$p2/.claude/agents/canon-reviewer.md" |
 assert_eq "$h_user_eval" "$(md5sum "$p2/.claude/agents/canon-evaluator.md" | cut -d' ' -f1)"
 assert_contains "$out" "not canon-managed"
 assert_eq "$h_mine" "$(md5sum "$p2/.claude/agents/mine.md" | cut -d' ' -f1)"
-[[ ! -e "$p2/.gitignore" ]] || ! grep -qxF "/.claude/agents/" "$p2/.gitignore" || fail "a real agents folder must stay tracked"
+[[ ! -e "$p2/.gitignore" ]] || ! grep -qxF "/.claude/agents" "$p2/.gitignore" || fail "a real agents folder must stay tracked"
 
 # a stale canon copy (marker kept) is refreshed; an identical one is left alone and silent.
 printf '\nstale line\n' >> "$p2/.claude/agents/canon-reviewer.md"
@@ -95,11 +96,13 @@ p4="$(newp)"; mkdir -p "$p4/.claude"; ln -s "$p4/nowhere" "$p4/.claude/agents"
 lib "$p4" "$ROOT" upsert_gate_agents >/dev/null
 assert_eq "$ROOT/agents" "$(readlink "$p4/.claude/agents")"
 
-# --- 5. canon's own root is never touched ------------------------------------------------------
+# --- 5. canon's own root links to its own agents/ (dogfooding, like its .claude/skills) --------
 fake="$(make_project)"; dirs+=("$fake")
 mkdir -p "$fake/agents"; cp "$ROOT"/agents/canon-*.md "$fake/agents/"
 lib "$fake" "$fake" upsert_gate_agents >/dev/null
-[[ ! -e "$fake/.claude/agents" ]] || fail "canon's own root got a .claude/agents"
+assert_eq "$fake/agents" "$(readlink "$fake/.claude/agents")"
+[ "$(grep -cxF "/.claude/agents" "$fake/.gitignore")" -eq 1 ] || fail "canon's own agents link not gitignored"
+git -C "$fake" check-ignore -q .claude/agents || fail "canon's own agents link not actually ignored"
 
 # --- 6. worktree link ---------------------------------------------------------------------------
 p5="$(newp)"

@@ -96,7 +96,7 @@ upsert_gate_agents() {
   local project_dir="$1" target="$SKILLS_ROOT/agents"
   local link="$project_dir/.claude/agents" cur src dst
   [ -d "$target" ] || return 0
-  [ "$(cd "$project_dir" && pwd -P)" = "$(cd "$SKILLS_ROOT" && pwd -P)" ] && return 0
+  # canon's own root is linked too (like its .claude/skills), so canon's own closes run its gates.
   mkdir -p "$project_dir/.claude"
   if _is_dir_link "$link"; then
     cur="$(_read_dir_link "$link")"
@@ -150,7 +150,9 @@ remove_gate_agents() {
 
 # A linked .claude/agents is local (like the skills mirror, t-f99b) and must never be committed.
 _ensure_agents_link_gitignored() {
-  local project_dir="$1" gi="$1/.gitignore" entry="/.claude/agents/"
+  # No trailing slash: git treats a symlink as a file, so "/.claude/agents/" (directories only) would not
+  # match it on macOS/Linux — only a Windows junction, which git sees as a directory.
+  local project_dir="$1" gi="$1/.gitignore" entry="/.claude/agents"
   git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   if ! has_line "$entry" "$gi"; then
     [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
