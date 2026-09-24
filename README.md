@@ -346,14 +346,14 @@ titles.
 **Learn mode** — Capture the lesson a sprint just taught, without letting the author grade itself.
 
 `tkt why` is the read side of repo-as-memory; `tkt learn <id>` is the capture side. It distills a
-closed sprint's objective close artifacts — the non-`delivered` rows of `summary.md` and the
-evaluator's `eval-report.md` findings — into an **UNPROMOTED** `.tickets/<id>/learnings.md`
-candidate. It **proposes, never promotes**: a reviewer *without* the sprint's implementation history
+closed sprint's objective close artifacts — the non-`delivered` rows of `summary.md`, the
+evaluator's `eval-report.md` findings, and the advisory reviewer's `review-notes.md` findings — into
+an **UNPROMOTED** `.tickets/<id>/learnings.md` candidate. It **proposes, never promotes**: a reviewer *without* the sprint's implementation history
 (a fresh agent or you later) moves any keeper into the durable store, so the agent that wrote the
 code never certifies its own lessons. In a project that adds canon's sprint skill, that store is the
 project's own `PROMOTED.md`, seeded by `skills.sh add sprint`/`refresh` and loaded every session via
-`@PROMOTED.md` in its `AGENTS.md`. Clean sprints produce nothing; `sprint complete` only *nudges*
-it when deviations exist — never auto-fires.
+`@PROMOTED.md` in its `AGENTS.md`. `sprint complete` runs it automatically when there are deviations
+or gate findings, then indexes the candidate into `LEARNINGS.md`. Clean sprints produce nothing.
 
 ## How Sprint Works
 
