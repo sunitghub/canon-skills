@@ -189,7 +189,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   (`t-c774`). Any other value → pass it verbatim as `model` on both reviewer
   and evaluator `Agent` calls. Without one: the resolved Admin default's alias → pass it as
   `model`; if that step also fell through (fail-safe), omit `model` so the definition's floor
-  applies (`sonnet`; the session model only on the `Plan` fallback). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
+  applies (`claude-sonnet-5`; the session model only on the `Plan` fallback). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
   separate from this check. **Name the source, not just the value**, wherever this result is
   recorded (Wrapup Gates table, `summary.md`) — `Admin Review & Eval default`, `Gate model
   override` (including `Gate model: session`, recorded as `Gate model override — session`), `demo
