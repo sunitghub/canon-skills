@@ -316,12 +316,12 @@ reviewer and the binding evaluator. First match wins:
 | 2 | `Gate model: session` | User only | current session model | Forces full session-model review; skips the rows below |
 | 3 | `demo: true` on the ticket (and no `Gate model:`) | User, via the demo flag | Haiku, on any diff | Evaluator only — `security-review` runs inline on the session model |
 | 4 | Admin "Review & Eval" default (`defaults.eval.anthropic` in `tools/sprint-check-app/model-tiers.json`) | Admin > Model Tiers, applied to **every** interactive close regardless of diff risk | the registry model's alias (e.g. `sonnet`) | Read directly from disk; interactive `sprint complete` only — headless is unchanged |
-| 5 | Fallback — registry missing/unreadable, or the default has no matching alias | Automatic | the gate definition's floor, `sonnet` (`agents/canon-*.md`); the session model only if the gate fell back to `Plan` | Never silently inherits an expensive session model |
+| 5 | Fallback — registry missing/unreadable, or the default has no matching alias | Automatic | the gate definition's floor, `claude-sonnet-5` (`agents/canon-*.md`); the session model only if the gate fell back to `Plan` | Never silently inherits an expensive session model |
 
 The gates run as canon's own agent definitions, `canon-reviewer` and `canon-evaluator` in `agents/`. `skills.sh add sprint`
 and `refresh` link or copy them into `.claude/agents/`. The definitions fix what a dispatch can't: **effort `high`** and
-a read-only tool set (Read, Grep, Glob, Bash). The table above still picks the model, and a dispatched `model` overrides
-the definition's `sonnet` floor. A project that hasn't been refreshed falls back to the built-in `Plan` type,
+a read-only tool set (Read, Grep, Glob, plus a shell: `Bash` for Claude Code, `execute` for Copilot CLI). The table above still picks the model, and a dispatched `model` overrides
+the definition's `claude-sonnet-5` floor. A project that hasn't been refreshed falls back to the built-in `Plan` type,
 recorded as `(fallback: Plan)` on the gate's row. On Windows, write agent/skill files from a shell or a code editor:
 Notepad's Markdown mode saves the frontmatter's `---` as `\---`, which silently drops it. Also open the project by its
 path's real case (`ToDo`, not `todo`), because Claude Code keys workspace trust by the exact path string. `add`/`refresh` also

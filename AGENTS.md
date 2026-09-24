@@ -39,7 +39,7 @@ that file is a seeded, editable mirror of the Anthropic models named above, not 
 this prose; the registry's OpenAI entries are recorded for future use only (`t-ef27`).
 
 **Close-gate effort** comes from canon's gate agent definitions (`agents/canon-reviewer.md`,
-`canon-evaluator.md`: `effort: high`, a `sonnet` model floor, read-only tools), not from this prose.
+`canon-evaluator.md`: `effort: high`, a `claude-sonnet-5` model floor, read-only tools with `Bash`/`execute` shells), not from this prose.
 A dispatch can set only the model, never effort (`t-c774`).
 
 **Exception — sprint close gates** follow their own rule (may downgrade to the Admin > Model

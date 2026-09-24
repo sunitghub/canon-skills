@@ -18,17 +18,16 @@ lib() { SKILLS_ROOT="$2" bash -c 'source "$1/tools/skills/project.sh"; source "$
 # --- 1. definitions ---------------------------------------------------------------------------
 registry="$ROOT/tools/sprint-check-app/model-tiers.json"
 anth_id="$(python3 -c "import json;print(json.load(open('$registry'))['defaults']['eval']['anthropic'])")"
-anth_alias="$(python3 -c "import json;d=json.load(open('$registry'));print(next(m['alias'] for m in d['models']['anthropic'] if m['id']=='$anth_id'))")"
 openai_id="$(python3 -c "import json;print(json.load(open('$registry'))['defaults']['eval']['openai'])")"
 for g in reviewer evaluator; do
   md="$ROOT/agents/canon-$g.md"; toml="$ROOT/agents/codex/canon-$g.toml"
   assert_file_exists "$md"; assert_file_exists "$toml"
   assert_eq "---" "$(head -1 "$md")"                       # byte 0 is '-' (no BOM, no '\---')
   assert_eq "canon-$g" "$(fm "$md" name)"
-  assert_eq "$anth_alias" "$(fm "$md" model)"               # model floor = registry's eval default
+  assert_eq "$anth_id" "$(fm "$md" model)"                  # model floor = registry's eval default, full id (Copilot rejects aliases, t-bdce)
   assert_eq "high" "$(fm "$md" effort)"
   tools="$(fm "$md" tools)"
-  assert_eq "Read, Grep, Glob, Bash" "$tools"
+  assert_eq "Read, Grep, Glob, Bash, execute" "$tools"      # Bash: Claude Code's shell; execute: Copilot's (t-bdce)
   for bad in Edit Write Agent; do [[ ", $tools," != *", $bad,"* ]] || fail "$md grants $bad"; done
   assert_count 1 "canon:agent" "$md"
   # Codex parity: same name, effort, registry-owned model, and no write access.

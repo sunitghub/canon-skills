@@ -126,7 +126,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model> — <source>)` —
    the value and source applied by the model-tier check below: an explicit `Gate model:` value,
-   the Admin Review & Eval default's alias, `sonnet` (the `canon-*` definition floor) when both
+   the Admin Review & Eval default's alias, `claude-sonnet-5` (the `canon-*` definition floor) when both
    fall through, or the exact session model id (e.g. `claude-sonnet-5`) on the `Plan` fallback;
    never a paraphrase. Records which tier ran and why.
 
@@ -178,14 +178,14 @@ Opus` default, scoped only to the two close-gate dispatches below.
   low-risk classification (git-diff-based allowlist check), now fully retired.
 - **Fail-safe for the Admin default — never a silent downgrade, never a dispatch error.** Treat
   the Admin-default step as absent and fall through to the gate definition's model floor
-  (`sonnet` in `agents/canon-*.md`, `t-c774`; on the `Plan` fallback, the session model) if **any** of: the file
+  (`claude-sonnet-5` in `agents/canon-*.md`, `t-c774`/`t-bdce`; on the `Plan` fallback, the session model) if **any** of: the file
   is missing or unreadable; `defaults.eval.anthropic` is absent; its `id` has no matching entry
   in `models.anthropic`; or the entry's `alias` is not one the Agent tool's `model:` param
   accepts (`fable`, `opus`, `sonnet`, `haiku` — Admin lets a user add models with arbitrary
   aliases, and an unrecognized value would make the dispatch itself error).
 - **Apply the result.** With an explicit `Gate model:` value: `session` → pass **your own
   session model's alias** explicitly as `model` (`fable`, `opus`, `sonnet` or `haiku`). Omitting
-  `model` would apply the `canon-*` definition's `sonnet` floor, not the session model
+  `model` would apply the `canon-*` definition's `claude-sonnet-5` floor, not the session model
   (`t-c774`). Any other value → pass it verbatim as `model` on both reviewer
   and evaluator `Agent` calls. Without one: the resolved Admin default's alias → pass it as
   `model`; if that step also fell through (fail-safe), omit `model` so the definition's floor
@@ -205,6 +205,16 @@ Opus` default, scoped only to the two close-gate dispatches below.
   set its own `model`, overriding `agents.default_subagent_model`. Don't assume the default
   takes effect under Codex without setting up and testing such an agent file live — an
   explicit `Gate model:` override or full-tier review is the safe default until then.
+- **Copilot CLI dispatch (harness-scoped, `t-bdce`).** Copilot CLI loads canon's `.claude/agents` gate
+  definitions, but it **rejects Claude Code's model aliases** (`sonnet`, `haiku`, …). Pass **Copilot's
+  model id** for the resolved tier instead: `sonnet` → `claude-sonnet-5`, `haiku` (demo mode) →
+  `claude-haiku-4.5`. Copilot's ids can differ from the Admin registry's Anthropic ids, so don't copy the
+  registry id blindly. If Copilot still rejects the id, its error lists the available ids: pick the
+  **same family and version**, never silently switch families, and record the id actually used on the
+  gate's Wrapup Gates row. The definitions' own `model: claude-sonnet-5` floor is valid in both harnesses,
+  and their `tools:` list carries `execute` (Copilot's shell) next to `Bash` (Claude Code's). Verified
+  live on Windows: with `Bash` alone, the Copilot evaluator had no shell and couldn't produce a real
+  run id.
 - **pi dispatch (harness-scoped) — encode, don't reconstruct.** pi has **no built-in
   sub-agents** (by design), so dispatch each fresh-context gate as a `pi -p` subprocess from
   Bash:
@@ -335,8 +345,8 @@ Opus` default, scoped only to the two close-gate dispatches below.
    check and shared gate mechanics above. **Pass `subagent_type: "canon-reviewer"`** on the
    `Agent` call (`t-c774`). It's canon's own agent definition (`agents/canon-reviewer.md`,
    installed into `.claude/agents/` by `skills.sh add sprint`/`refresh`). It fixes the gate's
-   tools (Read, Grep, Glob, Bash: no Edit, Write or Agent), its **effort** (`high`, which a
-   dispatch can't set any other way), and a `sonnet` model floor that replaces "inherit the
+   tools (Read, Grep, Glob, and a shell: `Bash` in Claude Code, `execute` in Copilot CLI; no Edit, Write or Agent), its **effort** (`high`, which a
+   dispatch can't set any other way), and a `claude-sonnet-5` model floor that replaces "inherit the
    session model". Still pass `model` from the model-tier check above. It overrides the
    definition's model, so `Gate model:`, demo mode and the Admin default behave exactly as
    before. Bash stays available for git and for writing the report via `cat >>`; if a harness
