@@ -292,12 +292,43 @@ EOF
   return 0
 }
 
+# Git for Windows defaults to core.autocrlf=true, which checks scripts out CRLF — and bash can't run
+# them. A committed eol=lf rule keeps every Windows clone and worktree runnable; inert on macOS (t-e681).
+ensure_gitattributes() {
+  local project_dir="$1"
+  [ "$(cd "$project_dir" && pwd -P)" = "$(cd "$SKILLS_ROOT" && pwd -P)" ] && return 0
+  local ga="$project_dir/.gitattributes"
+  has_line "# canon:gitattributes:BEGIN" "$ga" && return 0
+  if [ -f "$ga" ] && awk '{ sub(/\r$/, "") } $1 == "*.sh" { f=1; exit } END { exit !f }' "$ga"; then
+    echo "  [sprint]  .gitattributes already has a *.sh rule — left as is"
+    return 0
+  fi
+  if [ -L "$ga" ]; then
+    echo "  [sprint]  .gitattributes is a symlink — left as is"
+    return 0
+  fi
+  local verb=created
+  if [ -f "$ga" ]; then
+    verb=updated
+    [ -s "$ga" ] && [ -n "$(tail -c1 "$ga")" ] && echo >> "$ga"
+  fi
+  {
+    echo "# canon:gitattributes:BEGIN"
+    echo "# Shell scripts stay LF: bash can't run CRLF, and Git for Windows checks out CRLF by default."
+    echo "*.sh text eol=lf"
+    echo "# canon:gitattributes:END"
+  } >> "$ga"
+  echo "  [sprint]  $verb .gitattributes (*.sh eol=lf) — run 'git add --renormalize .' once to fix scripts already checked out"
+  return 0
+}
+
 _post_register_prompts() {
   local name="$1" project_dir="$2"
   [[ "$name" == "ticket" || "$name" == "sprint-check" || "$name" == "sprint" ]] || return 0
   if [[ "$name" == "sprint" ]]; then
     ensure_sprint_project_marker "$project_dir"
     ensure_promoted_learnings "$project_dir"
+    ensure_gitattributes "$project_dir"
     offer_subagent_log_permission "$project_dir"
   fi
   _init_git_precommit "$project_dir"

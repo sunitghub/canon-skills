@@ -184,7 +184,7 @@ assert_file_exists "$promo/PROMOTED.md"
 fake_canon="$(make_project)"
 trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4" "$promo" "$fake_canon"' EXIT
 printf '# Agents\n' > "$fake_canon/AGENTS.md"
-SKILLS_ROOT="$fake_canon" bash -c 'source "$1"; ensure_promoted_learnings "$2"' _ "$ROOT/tools/skills/prompts.sh" "$fake_canon"
+SKILLS_ROOT="$fake_canon" bash -c 'source "$1"; source "$2"; ensure_promoted_learnings "$3"' _ "$ROOT/tools/skills/lib.sh" "$ROOT/tools/skills/prompts.sh" "$fake_canon"
 [[ ! -e "$fake_canon/PROMOTED.md" ]] || fail "canon's own root must not get PROMOTED.md"
 [ "$(grep -cxF "@PROMOTED.md" "$fake_canon/AGENTS.md")" -eq 0 ] || fail "canon's own AGENTS.md must not import PROMOTED.md"
 
@@ -193,7 +193,7 @@ SKILLS_ROOT="$fake_canon" bash -c 'source "$1"; ensure_promoted_learnings "$2"' 
 no_nl="$(make_project)"
 trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4" "$promo" "$fake_canon" "$no_nl"' EXIT
 printf '# Agents' > "$no_nl/AGENTS.md"
-SKILLS_ROOT="$ROOT" bash -c 'source "$1"; ensure_promoted_learnings "$2"' _ "$ROOT/tools/skills/prompts.sh" "$no_nl" >/dev/null
+SKILLS_ROOT="$ROOT" bash -c 'source "$1"; source "$2"; ensure_promoted_learnings "$3"' _ "$ROOT/tools/skills/lib.sh" "$ROOT/tools/skills/prompts.sh" "$no_nl" >/dev/null
 [ "$(grep -cxF "# Agents" "$no_nl/AGENTS.md")" -eq 1 ] || fail "@PROMOTED.md glued onto AGENTS.md's last line"
 [ "$(grep -cxF "@PROMOTED.md" "$no_nl/AGENTS.md")" -eq 1 ] || fail "expected @PROMOTED.md on its own line"
 
@@ -203,7 +203,71 @@ trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge
 printf '# Agents\n' > "$dangle/AGENTS.md"
 ln -s "$dangle/outside/target.md" "$dangle/PROMOTED.md"
 mkdir -p "$dangle/outside"
-SKILLS_ROOT="$ROOT" bash -c 'source "$1"; ensure_promoted_learnings "$2"' _ "$ROOT/tools/skills/prompts.sh" "$dangle" >/dev/null
+SKILLS_ROOT="$ROOT" bash -c 'source "$1"; source "$2"; ensure_promoted_learnings "$3"' _ "$ROOT/tools/skills/lib.sh" "$ROOT/tools/skills/prompts.sh" "$dangle" >/dev/null
 [[ ! -e "$dangle/outside/target.md" ]] || fail "wrote through a dangling PROMOTED.md symlink"
+
+# --- .gitattributes seeding (t-e681) ---
+ga_trap() { trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4" "$promo" "$fake_canon" "$no_nl" "$dangle" '"$*" EXIT; }
+ga_seed() { SKILLS_ROOT="$ROOT" bash -c 'source "$1"; source "$2"; ensure_gitattributes "$3"' _ "$ROOT/tools/skills/lib.sh" "$ROOT/tools/skills/prompts.sh" "$1"; }
+
+# Absent: add sprint creates it with the marked block.
+ga1="$(make_project)"; ga_trap "$ga1"
+printf '# Agents\n' > "$ga1/AGENTS.md"
+"$SKILLS" add sprint "$ga1" >/dev/null
+assert_file_exists "$ga1/.gitattributes"
+for l in "# canon:gitattributes:BEGIN" "*.sh text eol=lf" "# canon:gitattributes:END"; do
+  [ "$(grep -cxF -- "$l" "$ga1/.gitattributes")" -eq 1 ] || fail "missing own-line: $l"
+done
+[[ ! -e "$ga1/LEARNINGS.md" ]] || fail "add sprint must not seed LEARNINGS.md"
+
+# Re-add and refresh: byte-identical.
+h="$(md5sum "$ga1/.gitattributes" | cut -d' ' -f1)"
+out="$("$SKILLS" add sprint "$ga1" 2>&1)"; "$SKILLS" refresh "$ga1" >/dev/null 2>&1
+assert_eq "$h" "$(md5sum "$ga1/.gitattributes" | cut -d' ' -f1)"
+[[ "$out" != *".gitattributes"* ]] || fail "re-add should be silent about its own block: $out"
+
+# Existing file, no *.sh rule, no trailing newline: appended, originals intact and in order.
+ga2="$(make_project)"; ga_trap "$ga1" "$ga2"
+printf '*.png binary\n*.txt text' > "$ga2/.gitattributes"
+ga_seed "$ga2" >/dev/null
+assert_eq "*.png binary" "$(sed -n 1p "$ga2/.gitattributes")"
+assert_eq "*.txt text" "$(sed -n 2p "$ga2/.gitattributes")"
+assert_eq "# canon:gitattributes:BEGIN" "$(sed -n 3p "$ga2/.gitattributes")"
+[ "$(grep -cxF "*.sh text eol=lf" "$ga2/.gitattributes")" -eq 1 ] || fail "block not appended"
+
+# Existing file with the user's own *.sh rule: untouched, note printed.
+ga3="$(make_project)"; ga_trap "$ga1" "$ga2" "$ga3"
+printf '*.sh -text\n' > "$ga3/.gitattributes"
+h3="$(md5sum "$ga3/.gitattributes" | cut -d' ' -f1)"
+out="$(ga_seed "$ga3")"
+assert_contains "$out" "already has a *.sh rule"
+assert_eq "$h3" "$(md5sum "$ga3/.gitattributes" | cut -d' ' -f1)"
+
+# CRLF file that already has the marker: byte-identical, no second block.
+ga4="$(make_project)"; ga_trap "$ga1" "$ga2" "$ga3" "$ga4"
+printf '# canon:gitattributes:BEGIN\r\n*.sh text eol=lf\r\n# canon:gitattributes:END\r\n' > "$ga4/.gitattributes"
+h4="$(md5sum "$ga4/.gitattributes" | cut -d' ' -f1)"
+ga_seed "$ga4" >/dev/null
+assert_eq "$h4" "$(md5sum "$ga4/.gitattributes" | cut -d' ' -f1)"
+
+# canon's own root is never seeded.
+ga5="$(make_project)"; ga_trap "$ga1" "$ga2" "$ga3" "$ga4" "$ga5"
+SKILLS_ROOT="$ga5" bash -c 'source "$1"; source "$2"; ensure_gitattributes "$3"' _ "$ROOT/tools/skills/lib.sh" "$ROOT/tools/skills/prompts.sh" "$ga5" >/dev/null
+[[ ! -e "$ga5/.gitattributes" ]] || fail "canon's own root must not get .gitattributes"
+
+# End-to-end through real git with core.autocrlf=true: the seeded rule keeps a script LF on checkout,
+# and without it the same checkout is CRLF (so this assertion can fail).
+autocrlf_checkout_has_cr() {   # $1 = repo; commits run.sh, deletes it, checks it out, reports CR count
+  git -C "$1" -c core.autocrlf=true add -A >/dev/null 2>&1
+  git -C "$1" -c core.autocrlf=true -c user.email=t@t -c user.name=t commit -qm x >/dev/null 2>&1
+  rm "$1/run.sh"
+  git -C "$1" -c core.autocrlf=true checkout -- run.sh
+  tr -cd '\r' < "$1/run.sh" | wc -c | tr -d ' '
+}
+ga6="$(make_project)"; ga7="$(make_project)"; ga_trap "$ga1" "$ga2" "$ga3" "$ga4" "$ga5" "$ga6" "$ga7"
+printf '#!/usr/bin/env bash\necho hi\n' > "$ga6/run.sh"; cp "$ga6/run.sh" "$ga7/run.sh"
+ga_seed "$ga6" >/dev/null
+assert_eq "0" "$(autocrlf_checkout_has_cr "$ga6")"
+[ "$(autocrlf_checkout_has_cr "$ga7")" -gt 0 ] || fail "control: autocrlf checkout without the rule should be CRLF"
 
 printf 'skills-add-sprint: ok\n'
