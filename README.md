@@ -404,9 +404,9 @@ canon enforces its own standards on itself. A git-native pre-commit hook runs th
 **Windows 11 — no WSL required:** install [Git for Windows](https://git-scm.com/download/win), then:
 1. Run **`install.cmd`** once — double-click it, or run `install.cmd` from any terminal. It launches `install.ps1` for you and adds `tools/` to your user PATH. (Running `install.ps1` directly can fail with *"install.ps1 is not digitally signed … UnauthorizedAccess"* — that's Windows' PowerShell execution policy blocking unsigned scripts, not a canon bug. `install.cmd` sidesteps it with a process-scoped bypass; if you prefer the `.ps1`, run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.)
 2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
-3. Use **PowerShell** (or any terminal) for everything else: `sprint-check-win` opens the board, tickets can be created and managed through the UI.
+3. Use **PowerShell** for everything else. Each command has a `.cmd` wrapper in `tools/`, so run it by name: `canon-cockpit` or `sprint-check-win` opens the board, and `sprint`, `tkt` and `skills` (for example `skills refresh`) run canon's CLI through Git Bash for you.
 
-For agent-driven workflows (`sprint`, `tkt`, `skills.sh`) run those from Git Bash. See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11)** for the full setup.
+In a **Git Bash** window the same tools work too, but use the script names: `skills.sh refresh`, not `skills refresh` (Git Bash doesn't run `.cmd` files, and `tools/skills` is a folder). See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11)** for the full setup.
 
 **Git for Windows is the only dependency on Windows.** canon never requires Python there:
 - `canon-cockpit` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python.
