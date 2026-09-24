@@ -3470,6 +3470,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
       await expect(page.locator(`.card[data-id="${id}"] .card-wt-pref`)).toHaveText('Worktree: Main checkout');
+      await page.locator(`.card[data-id="${id}"]`).click();
+      const meta = page.locator('#m-meta .meta-item', { hasText: 'Worktree' });
+      await expect(meta).toContainText('Main checkout');
+      await expect(meta).not.toContainText('main-checkout');
+      await expect(meta).not.toContainText('created when you start');
+      await page.keyboard.press('Escape');
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
@@ -3505,13 +3511,25 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
         await card.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-19d1', 'visuals', `card-wt-run-${theme}.png`) });
       }
+      // Modal prev/next walk the card's lane (IN PROGRESS), not main's raw `open` status.
+      writeTicket(`${id}-ip`, 'in_progress');
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await card.click();
+      const onlyInProgress = await page.locator('#btn-ticket-prev').isDisabled() ? '#btn-ticket-next' : '#btn-ticket-prev';
+      await page.locator(onlyInProgress).click();
+      const landed = (await page.locator('#m-id').textContent()).trim();
+      expect(landed).not.toBe(id);
+      expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', landed, 'ticket.md'), 'utf8')).toMatch(/^status: in_progress$/m);
+      await page.keyboard.press('Escape');
       await card.locator('.card-start').click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('.ck-worktree-row[data-cwd="/tmp/wt-19d1/feat"]')).toHaveClass(/selected/);
       // Display only: main's ticket.md still says open.
       expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md'), 'utf8')).toContain('status: open');
     } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      for (const t of [id, `${id}-ip`]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', t), { recursive: true, force: true });
     }
   });
 
@@ -3552,10 +3570,26 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0).locator('.cs-where')).toHaveText('Main checkout');
     await expect(rows.nth(1).locator('.cs-where')).toHaveText('sprint-update-ui-styling');
+    await expect(rows.nth(1)).toHaveAttribute('title', 'C:\\Users\\u\\Documents\\ToDo-worktrees\\sprint-update-ui-styling');
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       await page.locator('#cockpit-sessions').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-19d1', 'visuals', `sessions-${theme}.png`) });
     }
+  });
+
+  test('a session cwd holding a quote cannot break out of the row title attribute (t-19d1)', async ({ page }) => {
+    const hostile = '/tmp/a"onmouseover="window.__pwned=1"x';
+    await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ ticket: 't-cccc"x="1', project_root: '/tmp/p', cwd: hostile, agent: 'claude', status: 'running' }]) }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const row = page.locator('#cockpit-sessions .cockpit-session-row');
+    await expect(row).toHaveCount(1);
+    await expect(row).toHaveAttribute('title', hostile);
+    expect(await row.getAttribute('onmouseover')).toBeNull();
+    expect(await row.getAttribute('x')).toBeNull();
+    await row.hover();
+    expect(await page.evaluate(() => window.__pwned)).toBeUndefined();
   });
 
   test('a locked in_progress ticket selects the Main row and shows its friendly label even when the persisted lock path differs only in slash format (t-f15b, Windows)', async ({ page }) => {

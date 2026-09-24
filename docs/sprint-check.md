@@ -200,8 +200,13 @@ sprint agent without leaving the browser — no second terminal.
   main checkout — rows for **Main checkout (current)**, every real entry from
   `git worktree list --porcelain` (no cockpit-owned registry), and **+ New**
   (creates a sibling `<repo>-worktrees/<branch>` checkout via `git worktree
-  add`, nebula's own convention). A fresh OPEN start gates the terminal —
-  the daemon's own Start control — behind an explicit row pick. A worktree you
+  add`, nebula's own convention). When there's a real choice, a fresh OPEN start
+  gates the terminal — the daemon's own Start control — behind an explicit row pick.
+  Main is preselected instead when it's the only worktree or the ticket chose
+  **Main checkout** in New Ticket (the default, stored as `main-checkout`); a
+  project that isn't a git repo has no WORKTREE section and no gate (`t-19d1`). An
+  open ticket already in progress in a worktree shows in **IN PROGRESS** with
+  **Resume**, which preselects that worktree. A worktree you
   chose in **New Ticket** is stored on the ticket (`worktree_preference`) and shown on
   the open card and in the ticket's meta row, but nothing is created until you click
   **+ New** here (which asks to confirm); for such a ticket the button is ready

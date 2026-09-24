@@ -3104,7 +3104,7 @@ async function refreshCockpitSessions() {
     const cwd = String(s.cwd || '');
     const norm = p => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
     const where = !cwd || norm(cwd) === norm(project) ? 'Main checkout' : cwd.split(/[\\/]/).filter(Boolean).pop();
-    return `<div class="cockpit-session-row" data-ticket="${esc(ticket)}" title="${esc(cwd || project)}">`
+    return `<div class="cockpit-session-row" data-ticket="${escAttr(ticket)}" title="${escAttr(cwd || project)}">`
       + `<span class="cs-ticket">${esc(ticket)}</span>`
       + `<span class="cs-project">${esc(project)}</span>`
       + `<span class="cs-where">${esc(where)}</span>`
@@ -3715,7 +3715,8 @@ function openModal(id) {
     { label:'Type',     val: titleCase(t.type || 'task') },
     { label:'Priority', val: `P${t.priority ?? 2}` },
     { label:'Age',      val: age(t.created) || '—' },
-    ...(openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — created when you start the sprint">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
+    ...(openWorktreePreference(t) === WT_PREF_MAIN ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — the sprint runs in the main checkout.">Main checkout</span>` }]
+      : openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — created when you start the sprint">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
     { label:'Ready',    html:`<span style="color:${mReadyColor};font-weight:600;display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${mReadyColor};display:inline-block;flex-shrink:0"></span>${esc(mReadyLabel)}</span>` },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
 
@@ -3877,12 +3878,18 @@ function renderModalHeadless(t) {
     .catch(() => {});
 }
 
+// The ticket's board lane (effectiveStatus, so a worktree run sits with IN PROGRESS), newest first.
+function laneTicketIds(cur) {
+  if (!cur) return [];
+  return state.tickets.filter(t => effectiveStatus(t) === effectiveStatus(cur))
+    .sort((a, b) => (b.created || '').localeCompare(a.created || ''))
+    .map(t => t.id);
+}
+
 function navigateTicket(dir) {
   if (modalState.editMode) return;
   const cur = state.tickets.find(t => t.id === state.selectedId);
-  const ids = state.tickets.filter(t => t.status === cur?.status)
-    .sort((a, b) => (b.created || '').localeCompare(a.created || ''))
-    .map(t => t.id);
+  const ids = laneTicketIds(cur);
   const idx = ids.indexOf(state.selectedId);
   const nextId = ids[idx + dir];
   if (!nextId) return;
@@ -3901,9 +3908,7 @@ function renderModalDocs(t) {
     ? `<button class="doc-tab${descActive ? ' active' : ''}" data-file="">Description</button>`
     : '';
 
-  const ticketIds = state.tickets.filter(tk => tk.status === t.status)
-    .sort((a, b) => (b.created || '').localeCompare(a.created || ''))
-    .map(tk => tk.id);
+  const ticketIds = laneTicketIds(t);
   const ticketIdx = ticketIds.indexOf(t.id);
   const navPrev = `<button class="doc-nav-btn" id="btn-ticket-prev" title="Previous ticket"${ticketIdx <= 0 ? ' disabled' : ''}>‹</button>`;
   const navNext = `<button class="doc-nav-btn" id="btn-ticket-next" title="Next ticket"${ticketIdx >= ticketIds.length - 1 ? ' disabled' : ''}>›</button>`;
