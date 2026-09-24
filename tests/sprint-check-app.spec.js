@@ -3387,6 +3387,177 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // --- t-19d1 (+ t-d218): Start must never deadlock, and Main is preselected when there's no real choice ---
+  const onlyMain = route => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'master', is_main: true, tickets_visible: true, ticket_present: true }]) });
+  const mainAndFeat = route => route.fulfill({ status: 200, contentType: 'application/json',
+    body: JSON.stringify([
+      { path: PROJECT_ROOT, branch: 'master', is_main: true, tickets_visible: true, ticket_present: true },
+      { path: '/tmp/wt-19d1/feat', branch: 'sprint/feat-19d1', is_main: false, tickets_visible: true, ticket_present: true },
+    ]) });
+  async function openFromCard(page, id) {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+  }
+
+  test('a git repo with no commits yet shows the WORKTREE rail and Start is not stuck (t-d218)', async ({ page }) => {
+    const id = `t-ckd218-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      await page.route('**/api/git', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ branch: 'master', project: 'fresh', root: PROJECT_ROOT, modified: 3, log: [], total_commits: null, is_git: true }) }));
+      await page.route('**/api/worktrees**', onlyMain);
+      await openFromCard(page, id);
+      await expect(page.locator('#ck-worktree-section')).toBeVisible();
+      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);   // only Main exists -> preselected
+      await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a non-git project has no WORKTREE section and the terminal is not gated (t-d218)', async ({ page }) => {
+    const id = `t-ckngit-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      await page.route('**/api/git', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ branch: '', project: 'nogit', modified: 0, log: [], is_git: false }) }));
+      await openFromCard(page, id);
+      await expect(page.locator('#ck-worktree-section')).toBeHidden();
+      await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('New Ticket in a no-commits repo shows the Worktree row, and the default Main checkout saves main-checkout (t-d218, t-19d1)', async ({ page }) => {
+    await page.route('**/api/git', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ branch: 'master', project: 'fresh', root: PROJECT_ROOT, modified: 0, log: [], total_commits: null, is_git: true }) }));
+    await page.route('**/api/worktrees**', onlyMain);
+    const title = `Main default ${Date.now()}`;
+    let createdId = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      await expect(page.locator('#c-worktree-row')).toBeVisible();
+      await expect(page.locator('#c-worktree-pills .create-pill[data-wt="main"]')).toHaveClass(/active/);
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8')).toContain('worktree_preference: main-checkout');
+      await expect(card.locator('.card-wt-pref')).toHaveText('Worktree: Main checkout');
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
+  test('New Ticket\'s Main checkout choice (main-checkout) shows on the card and preselects Main even with other worktrees (t-19d1)', async ({ page }) => {
+    const id = `t-ckmain-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], worktreePreference: 'main-checkout' });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', mainAndFeat);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await expect(page.locator(`.card[data-id="${id}"] .card-wt-pref`)).toHaveText('Worktree: Main checkout');
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
+      await expect(page.locator('.ck-worktree-row.selected')).toHaveCount(1);
+      await expect(page.locator('#ck-term-msg')).not.toContainText('Select a worktree above');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('an open ticket in progress in a worktree sits in IN PROGRESS with Resume and a worktree chip, and Resume preselects that worktree (t-19d1)', async ({ page }) => {
+    const id = `t-ckwtrun-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', mainAndFeat);
+      await page.route('**/api/tickets**', async route => {
+        const resp = await route.fetch();
+        const json = await resp.json();
+        for (const t of json) if (t.id === id) t.branch_divergence = { branch: 'sprint/feat-19d1', status: 'in_progress', where: 'worktree', merged: false };
+        await route.fulfill({ response: resp, json });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      const card = page.locator(`.column-body[data-status="in_progress"] .card[data-id="${id}"]`);
+      await expect(card).toBeVisible();
+      await expect(page.locator(`.column-body[data-status="open"] .card[data-id="${id}"]`)).toHaveCount(0);
+      await expect(card.locator('.card-start')).toHaveText('▶ Resume');
+      await expect(card.locator('.card-wt-run')).toHaveText('Worktree: sprint/feat-19d1');
+      await expect(card.locator('.card-diverge')).toHaveCount(0);
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await card.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-19d1', 'visuals', `card-wt-run-${theme}.png`) });
+      }
+      await card.locator('.card-start').click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('.ck-worktree-row[data-cwd="/tmp/wt-19d1/feat"]')).toHaveClass(/selected/);
+      // Display only: main's ticket.md still says open.
+      expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md'), 'utf8')).toContain('status: open');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('card age: a full ISO created reads "just now"; a legacy date-only created reads in days, never hours (t-19d1)', async ({ page }) => {
+    const iso = `t-ckageI-${Date.now()}`, dateOnly = `t-ckageD-${Date.now()}`;
+    try {
+      writeTicket(iso, 'open'); writeTicket(dateOnly, 'open');
+      const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      await page.route('**/api/tickets**', async route => {
+        const resp = await route.fetch();
+        const json = await resp.json();
+        for (const t of json) {
+          if (t.id === iso) t.created = new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+          if (t.id === dateOnly) t.created = ymd;
+        }
+        await route.fulfill({ response: resp, json });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill('t-ckage');
+      await expect(page.locator(`.card[data-id="${iso}"] .card-footer`)).toContainText('just now');
+      await expect(page.locator(`.card[data-id="${dateOnly}"] .card-footer`)).toContainText('today');
+      await expect(page.locator(`.card[data-id="${dateOnly}"] .card-footer`)).not.toContainText(/\dh ago/);
+    } finally {
+      for (const t of [iso, dateOnly]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', t), { recursive: true, force: true });
+    }
+  });
+
+  test('Cockpit sessions rows show where each session runs: Main checkout or the worktree folder (t-19d1)', async ({ page }) => {
+    await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify([
+        { ticket: 't-aaaa', project_root: 'C:\\Users\\u\\Documents\\ToDo', cwd: 'C:\\Users\\u\\Documents\\ToDo', agent: 'claude', status: 'running' },
+        { ticket: 't-bbbb', project_root: 'C:\\Users\\u\\Documents\\ToDo', cwd: 'C:\\Users\\u\\Documents\\ToDo-worktrees\\sprint-update-ui-styling', agent: 'claude', status: 'running' },
+      ]) }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const rows = page.locator('#cockpit-sessions .cockpit-session-row');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0).locator('.cs-where')).toHaveText('Main checkout');
+    await expect(rows.nth(1).locator('.cs-where')).toHaveText('sprint-update-ui-styling');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await page.locator('#cockpit-sessions').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-19d1', 'visuals', `sessions-${theme}.png`) });
+    }
+  });
+
   test('a locked in_progress ticket selects the Main row and shows its friendly label even when the persisted lock path differs only in slash format (t-f15b, Windows)', async ({ page }) => {
     const id = `t-ckf15b-${Date.now()}`;
     // Simulate the daemon's native-OS-separator lock path (Windows backslashes)

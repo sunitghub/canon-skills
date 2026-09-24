@@ -338,6 +338,10 @@ if not isinstance(py_total, int) or py_total != 2:
     print(f"sprint-check-api-parity: FAIL — /api/git total_commits should be 2 (fixture has 2 commits), got {py_total!r}")
     sys.exit(1)
 PY
+# t-d218: is_git is true for a git repo (the board's rail gate keys off it, not total_commits) — both backends.
+for be in "server.py:$py_git" "main.go:$go_git"; do
+  printf '%s' "${be#*:}" | grep -q '"is_git": *true' || fail "sprint-check-api-parity: FAIL — ${be%%:*} /api/git lacks is_git: true"
+done
 
 
 # ── /api/ticket-image parity: same fixture image, both servers, same bytes;
@@ -617,6 +621,9 @@ for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
   nd="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"nodemo create","type":"task"}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
   if grep -q '^demo:' "$WORK/.tickets/$nd/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label create without demo wrote a demo line ($nd)"; fi
   if [[ "$label" == "server.py" ]]; then py_demo_id="$did"; else go_demo_id="$did"; fi
+  # t-19d1: created is a full UTC timestamp, so the card age is real ("just now", not "10h ago").
+  grep -qE '^created: [0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$' "$WORK/.tickets/$did/ticket.md" \
+    || fail "sprint-check-api-parity: FAIL — $label create wrote a non-ISO created: $(grep '^created:' "$WORK/.tickets/$did/ticket.md")"
 done
 # frontmatter byte-parity between backends for a demo ticket (ignore the naturally-differing id/title/created)
 py_fm="$(awk '/^---$/{c++} c<2{print} c==2{print; exit}' "$WORK/.tickets/$py_demo_id/ticket.md" | grep -vE '^(id|title|created): ')"

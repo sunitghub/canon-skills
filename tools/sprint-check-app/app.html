@@ -1803,6 +1803,7 @@
     .cockpit-session-row:hover { background: var(--accent-dim); border-color: var(--accent); }
     .cockpit-session-row .cs-ticket { font-family: var(--mono, monospace); font-weight: 600; }
     .cockpit-session-row .cs-project { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cockpit-session-row .cs-where { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--border); color: var(--text); background: var(--surface-raised); white-space: nowrap; }
     .cockpit-session-row .cs-agent { color: var(--text-muted); }
     .cockpit-session-row .cs-status { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
     .cockpit-session-row .cs-status.running { background: var(--col-progress); color: var(--badge-fg); }
@@ -2769,7 +2770,16 @@ function whyQueryFromInput(value) {
 
 function age(iso) {
   if (!iso) return '';
-  const date = iso.includes('T') ? new Date(iso) : new Date(iso + 'T00:00:00');
+  // t-19d1: a legacy date-only `created` has no time of day — report whole days, never a made-up
+  // hour count ("10h ago" for a ticket created minutes ago).
+  if (!iso.includes('T')) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const days = Math.round((today - new Date(iso + 'T00:00:00')) / 86400000);
+    if (days <= 0) return 'today';
+    if (days < 30) return `${days}d ago`;
+    return `${Math.floor(days / 30)}mo ago`;
+  }
+  const date = new Date(iso);
   const m = Math.floor((Date.now() - date) / 60000);
   if (m < 2)   return 'just now';
   if (m < 60)  return `${m}m ago`;
@@ -2817,10 +2827,25 @@ function divergenceInfo(t) {
   };
 }
 
+// t-19d1: where a ticket really is. An `open` ticket that's `in_progress` in a live worktree (the
+// sprint started there; .tickets/ is tracked, so only the worktree's copy changed) counts as in
+// progress for lanes, counts and Start/Resume. Display only — main's ticket.md is never written.
+function worktreeRun(t) {
+  const d = t && t.branch_divergence;
+  return (t && t.status === 'open' && d && d.where === 'worktree' && d.status === 'in_progress' && d.branch) ? d : null;
+}
+function effectiveStatus(t) {
+  return worktreeRun(t) ? 'in_progress' : (t ? t.status : '');
+}
+
 function divergenceLine(t) {
   const info = divergenceInfo(t);
   return info ? `<div class="card-diverge" title="${escAttr(info.long)}">${esc(info.short)}</div>` : '';
 }
+
+// t-19d1: New Ticket's "Main checkout" choice is saved as this sentinel, not a branch name (the main
+// checkout's branch varies: main, master, …), so the rail can preselect Main and the card can say so.
+const WT_PREF_MAIN = 'main-checkout';
 
 // t-15ee: the branch chosen in New Ticket (`worktree_preference`), while the ticket is still open —
 // nothing is created until the sprint starts, so without this the choice looks dropped.
@@ -2830,9 +2855,9 @@ function openWorktreePreference(t) {
 
 function worktreePrefLine(t) {
   const pref = openWorktreePreference(t);
-  return pref
-    ? `<div class="card-wt-pref" title="${escAttr(`Chosen at New Ticket — the worktree "${pref}" is created when you start the sprint.`)}">Worktree: ${esc(pref)}</div>`
-    : '';
+  if (!pref) return '';
+  if (pref === WT_PREF_MAIN) return `<div class="card-wt-pref" title="Chosen at New Ticket — the sprint runs in the main checkout.">Worktree: Main checkout</div>`;
+  return `<div class="card-wt-pref" title="${escAttr(`Chosen at New Ticket — the worktree "${pref}" is created when you start the sprint.`)}">Worktree: ${esc(pref)}</div>`;
 }
 
 function sortChecklistRuns(text) {
@@ -3074,9 +3099,15 @@ async function refreshCockpitSessions() {
     const agent = String(s.agent || '');
     const status = String(s.status || 'running');
     const statusCls = status === 'needs-you' ? 'needs-you' : 'running';
-    return `<div class="cockpit-session-row" data-ticket="${esc(ticket)}" title="${esc(project)}">`
+    // t-19d1: where the session actually runs — "Main checkout", or the worktree's folder — not
+    // just the project root (a worktree session used to look like it ran in main).
+    const cwd = String(s.cwd || '');
+    const norm = p => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+    const where = !cwd || norm(cwd) === norm(project) ? 'Main checkout' : cwd.split(/[\\/]/).filter(Boolean).pop();
+    return `<div class="cockpit-session-row" data-ticket="${esc(ticket)}" title="${esc(cwd || project)}">`
       + `<span class="cs-ticket">${esc(ticket)}</span>`
       + `<span class="cs-project">${esc(project)}</span>`
+      + `<span class="cs-where">${esc(where)}</span>`
       + `<span class="cs-agent">${esc(agent)}</span>`
       + `<span class="cs-status ${statusCls}">${esc(status)}</span>`
       + `</div>`;
@@ -3103,11 +3134,12 @@ function renderHeader() {
   // gate every worktree-preference surface (modal row, rail accordion, board
   // chip) live, not cached at registration — reappears the moment git init
   // happens and this project's header next re-renders.
-  state.isGitProject = typeof git?.total_commits === 'number';
+  // t-d218: is_git from the server; total_commits is absent in a repo with no commits yet (still git).
+  state.isGitProject = git?.is_git === true || typeof git?.total_commits === 'number';
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
-  setText('h-open',     tickets.filter(t => t.status === 'open').length);
-  setText('h-active',   tickets.filter(t => t.status === 'in_progress').length);
+  setText('h-open',     tickets.filter(t => effectiveStatus(t) === 'open').length);
+  setText('h-active',   tickets.filter(t => effectiveStatus(t) === 'in_progress').length);
   const archivedCount = tickets.filter(t => t.status === 'archived').length;
   setText('h-archived', archivedCount);
   document.getElementById('h-archived-stat').style.display = archivedCount > 0 ? '' : 'none';
@@ -3120,7 +3152,7 @@ function renderSidebar() {
   const { handoff, git, tickets } = state;
 
   // Now Working On
-  const wip    = tickets.filter(t => t.status === 'in_progress');
+  const wip    = tickets.filter(t => effectiveStatus(t) === 'in_progress');
   const wipEl  = document.getElementById('s-wip');
   const wipItems = document.getElementById('s-wip-items');
   if (wip.length) {
@@ -3202,7 +3234,7 @@ function renderSidebar() {
   </div>`;
 
   document.getElementById('s-summary').innerHTML = donutHtml + '<div class="sidebar-summary">' + COLUMNS.map(col => {
-    const count = tickets.filter(t => t.status === col.status).length;
+    const count = tickets.filter(t => effectiveStatus(t) === col.status).length;
     const iconColor = col.status === 'in_progress' ? 'var(--col-progress)'
                     : col.status === 'closed'      ? 'var(--col-done)'
                     : col.status === 'cancelled'   ? 'var(--col-discarded)'
@@ -3295,7 +3327,7 @@ function renderBoard() {
   }
   board.innerHTML = COLUMNS.map(col => {
     const cards = tickets
-      .filter(t => t.status === col.status)
+      .filter(t => effectiveStatus(t) === col.status)
       .sort((a, b) => (b.created || '').localeCompare(a.created || ''));
     const limited = COLLAPSE_STATUSES.has(col.status) && !state.expandedCols.has(col.status);
     const visible = limited ? cards.slice(0, COL_LIMIT) : cards;
@@ -3589,7 +3621,10 @@ function cardHTML(t, idx) {
   // error handling) rather than guessed at ahead of time from a global count
   // the board has no way to evaluate per-worktree without asking the daemon.
   let startBtn = '';
-  if (t.status === 'open') {
+  const run = worktreeRun(t);
+  if (run) {
+    startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint — it's in progress in worktree ${escAttr(run.branch)}">▶ Resume</button>`;
+  } else if (t.status === 'open') {
     startBtn = `<button class="card-start" data-id="${esc(t.id)}" title="Start this sprint in the cockpit">▶ Start</button>`;
   } else if (t.status === 'in_progress') {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
@@ -3609,8 +3644,8 @@ function cardHTML(t, idx) {
         ${startBtn}
         <p class="card-title">${esc(t.title)}</p>
         ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
-        ${worktreePrefLine(t)}
-        ${divergenceLine(t)}
+        ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : `${worktreePrefLine(t)}
+        ${divergenceLine(t)}`}
       </div>
       <div class="card-footer">
         <div class="card-meta-col">
@@ -5781,7 +5816,9 @@ async function renderCockpitWorktree(t) {
   // not cached at registration so it reappears once git init happens.
   const section = document.getElementById('ck-worktree-section');
   if (section) section.style.display = state.isGitProject ? '' : 'none';
-  if (!state.isGitProject) return;
+  // t-d218: no worktree choice exists outside git, so there's nothing to pick — run in the project
+  // itself. Leaving worktreeCwd null here gated Start forever with no rows to select.
+  if (!state.isGitProject) { if (tab.worktreeCwd === null) tab.worktreeCwd = ''; return; }
   const box = document.getElementById('ck-worktree');
   let entries = [];
   try {
@@ -5879,7 +5916,15 @@ async function renderCockpitWorktree(t) {
   // t-15ee: an explicit choice from New Ticket that has no worktree yet — a stated intent, unlike
   // the default `sprint/<id>` suggestion — so "+ New" starts enabled (still behind a confirm).
   let wtPrefPending = '';
-  if (!lock.locked && t.worktree_preference) {
+  const running = worktreeRun(t);
+  const runRow = running ? others.find(e => e.branch === running.branch) : null;
+  if (!lock.locked && runRow) {
+    // t-19d1: the sprint is already in progress in this worktree (see worktreeRun) — Resume goes there.
+    if (cockpitState.worktreeCwd === null) cockpitState.worktreeCwd = runRow.path;
+  } else if (!lock.locked && t.worktree_preference === WT_PREF_MAIN) {
+    // t-19d1: the ticket chose Main checkout at New Ticket — preselect it.
+    if (cockpitState.worktreeCwd === null) cockpitState.worktreeCwd = '';
+  } else if (!lock.locked && t.worktree_preference) {
     const match = others.find(e => e.branch === t.worktree_preference);
     if (match) cockpitState.worktreeCwd = match.path;
     else {
@@ -5888,6 +5933,11 @@ async function renderCockpitWorktree(t) {
       // main checkout's own branch — otherwise the click could only end in an "already exists" alert.
       if (mainEntry && mainEntry.branch !== t.worktree_preference) wtPrefPending = t.worktree_preference;
     }
+  }
+  // t-19d1: no preference and the main checkout is the only worktree — there's no real choice to
+  // protect (t-cd06/t-470d's explicit pick guards against the WRONG checkout), so preselect Main.
+  if (!lock.locked && !t.worktree_preference && mainEntry && others.length === 0 && cockpitState.worktreeCwd === null) {
+    cockpitState.worktreeCwd = '';
   }
   tab.wtPrefPending = wtPrefPending;
 
@@ -6755,7 +6805,7 @@ async function uploadVisual(ticketId, filename, base64) {
     return title.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
   }
   function worktreePreferenceValue() {
-    if (wtMode === 'main') return '';
+    if (wtMode === 'main') return WT_PREF_MAIN;
     if (wtMode === 'new') return wtNewValue.trim();
     return wtMode; // an existing branch name, selected as-is
   }

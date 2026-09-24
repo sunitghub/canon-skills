@@ -16,7 +16,7 @@ import subprocess
 import sys
 import threading
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -540,7 +540,9 @@ def load_git(root: Path = None) -> dict:
                 break
     total_commits_raw = run(['git', 'rev-list', '--count', 'HEAD'], cwd)
     total_commits = int(total_commits_raw) if total_commits_raw.isdigit() else None
-    return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log, 'total_commits': total_commits}
+    # t-d218: a repo with no commits yet has no total_commits, but it IS git (worktree rail, Start gate).
+    is_git = run(['git', 'rev-parse', '--is-inside-work-tree'], cwd).strip() == 'true'
+    return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log, 'total_commits': total_commits, 'is_git': is_git}
 
 # ── Worktrees (t-cd06) ───────────────────────────────────────────────────
 
@@ -1269,7 +1271,8 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str,
         ticket_id = 't-' + ''.join(random.choices(chars, k=4))
         if ticket_id not in existing:
             break
-    created = date.today().isoformat()
+    # t-19d1: full UTC timestamp like `tkt create`; a date alone rendered as local midnight ("10h ago").
+    created = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     safe_title = title.replace('\n', ' ').strip()
     fm_lines = [
         '---',

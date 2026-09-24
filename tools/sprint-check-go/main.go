@@ -854,7 +854,9 @@ func loadGit(root string) map[string]any {
 		totalCommits = n
 	}
 	cwd := rootOr(root)
-	return map[string]any{"branch": branch, "project": filepath.Base(cwd), "root": cwd, "modified": modified, "log": log, "total_commits": totalCommits}
+	// t-d218: parity with server.py — a repo with no commits yet has no total_commits but IS git.
+	isGit := strings.TrimSpace(runGitIn(root, "rev-parse", "--is-inside-work-tree")) == "true"
+	return map[string]any{"branch": branch, "project": filepath.Base(cwd), "root": cwd, "modified": modified, "log": log, "total_commits": totalCommits, "is_git": isGit}
 }
 
 func loadCommit(hash string, root string) map[string]any {
@@ -1271,7 +1273,7 @@ func createTicket(title, typ, status string, priority int, body string, ci bool,
 	if evalOverride {
 		evalLine = "eval_override: true"
 	}
-	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().Format("2006-01-02"), ciLine, gateLine, demoLine, skillsLine, wtLine, evalLine, strings.TrimSpace(body))
+	text := fmt.Sprintf("---\nid: %s\ntitle: %s\nstatus: %s\ntype: %s\npriority: %d\ncreated: %s\n%s%s%s%s%s%s\n---\n\n%s\n", id, strings.ReplaceAll(title, "\n", " "), status, typ, priority, time.Now().UTC().Format("2006-01-02T15:04:05Z"), ciLine, gateLine, demoLine, skillsLine, wtLine, evalLine, strings.TrimSpace(body))
 	path := filepath.Join(dir, "ticket.md")
 	os.WriteFile(path, []byte(text), 0644)
 	t, _ := parseTicket(path)
