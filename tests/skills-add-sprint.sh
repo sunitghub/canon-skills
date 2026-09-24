@@ -153,4 +153,57 @@ run_with_tty "'$SKILLS' add sprint '$bridge_project4'" "y"
 assert_count 1 "@AGENTS.md" "$bridge_project4/CLAUDE.md"
 assert_contains "$(cat "$bridge_project4/CLAUDE.md")" "# Custom instructions"
 
+# --- PROMOTED.md seeding (t-f65c) ---
+
+promo="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4" "$promo"' EXIT
+printf "# Agents\n" > "$promo/AGENTS.md"
+"$SKILLS" add sprint "$promo" >/dev/null
+assert_file_exists "$promo/PROMOTED.md"
+assert_count 1 "<!-- canon:promoted:BEGIN -->" "$promo/PROMOTED.md"
+assert_count 1 "<!-- canon:promoted:END -->" "$promo/PROMOTED.md"
+[ "$(grep -cxF "@PROMOTED.md" "$promo/AGENTS.md")" -eq 1 ] || fail "expected exactly one @PROMOTED.md line"
+[[ ! -e "$promo/LEARNINGS.md" ]] || fail "add sprint must not seed LEARNINGS.md"
+
+# Existing PROMOTED.md content is never overwritten; re-add and refresh stay idempotent.
+printf -- '- keep me (t-0000)\n' >> "$promo/PROMOTED.md"
+before_hash="$(md5sum "$promo/PROMOTED.md" | cut -d' ' -f1)"
+"$SKILLS" add sprint "$promo" >/dev/null
+"$SKILLS" refresh "$promo" >/dev/null 2>&1
+assert_eq "$before_hash" "$(md5sum "$promo/PROMOTED.md" | cut -d' ' -f1)"
+[ "$(grep -cxF "@PROMOTED.md" "$promo/AGENTS.md")" -eq 1 ] || fail "re-add/refresh duplicated @PROMOTED.md"
+
+# A project that added sprint before t-f65c (no PROMOTED.md, no import) is upgraded by refresh.
+rm "$promo/PROMOTED.md"
+grep -vxF "@PROMOTED.md" "$promo/AGENTS.md" > "$promo/AGENTS.tmp" && mv "$promo/AGENTS.tmp" "$promo/AGENTS.md"
+"$SKILLS" refresh "$promo" >/dev/null 2>&1
+assert_file_exists "$promo/PROMOTED.md"
+[ "$(grep -cxF "@PROMOTED.md" "$promo/AGENTS.md")" -eq 1 ] || fail "refresh did not add @PROMOTED.md"
+
+# canon itself (project_dir == SKILLS_ROOT) is never seeded.
+fake_canon="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4" "$promo" "$fake_canon"' EXIT
+printf '# Agents\n' > "$fake_canon/AGENTS.md"
+SKILLS_ROOT="$fake_canon" bash -c 'source "$1"; ensure_promoted_learnings "$2"' _ "$ROOT/tools/skills/prompts.sh" "$fake_canon"
+[[ ! -e "$fake_canon/PROMOTED.md" ]] || fail "canon's own root must not get PROMOTED.md"
+[ "$(grep -cxF "@PROMOTED.md" "$fake_canon/AGENTS.md")" -eq 0 ] || fail "canon's own AGENTS.md must not import PROMOTED.md"
+
+# AGENTS.md without a trailing newline: the import still lands on its own line. Called directly —
+# via `add`, skills_table_upsert rewrites AGENTS.md first, so this shape never reaches the hook.
+no_nl="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4" "$promo" "$fake_canon" "$no_nl"' EXIT
+printf '# Agents' > "$no_nl/AGENTS.md"
+SKILLS_ROOT="$ROOT" bash -c 'source "$1"; ensure_promoted_learnings "$2"' _ "$ROOT/tools/skills/prompts.sh" "$no_nl" >/dev/null
+[ "$(grep -cxF "# Agents" "$no_nl/AGENTS.md")" -eq 1 ] || fail "@PROMOTED.md glued onto AGENTS.md's last line"
+[ "$(grep -cxF "@PROMOTED.md" "$no_nl/AGENTS.md")" -eq 1 ] || fail "expected @PROMOTED.md on its own line"
+
+# A dangling PROMOTED.md symlink is never written through (would create a file outside the project).
+dangle="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$second_project" "$bridge_project" "$bridge_project2" "$bridge_project3" "$bridge_project4" "$promo" "$fake_canon" "$no_nl" "$dangle"' EXIT
+printf '# Agents\n' > "$dangle/AGENTS.md"
+ln -s "$dangle/outside/target.md" "$dangle/PROMOTED.md"
+mkdir -p "$dangle/outside"
+SKILLS_ROOT="$ROOT" bash -c 'source "$1"; ensure_promoted_learnings "$2"' _ "$ROOT/tools/skills/prompts.sh" "$dangle" >/dev/null
+[[ ! -e "$dangle/outside/target.md" ]] || fail "wrote through a dangling PROMOTED.md symlink"
+
 printf 'skills-add-sprint: ok\n'

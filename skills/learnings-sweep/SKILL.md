@@ -15,8 +15,10 @@ never changes a row's `Status` away from `UNPROMOTED`.
 
 ## Promotion destinations (not this skill's job — context for what "promote" means)
 
-A non-builder promoting a keeper from `LEARNINGS.md` chooses among three places, in order of
-preference:
+A non-builder promoting a keeper from `LEARNINGS.md` in **canon itself** chooses among three places,
+in order of preference. In a **consumer project** the destination is the project's own `PROMOTED.md`
+(seeded by `skills.sh add sprint`/`refresh`, @-imported from its `AGENTS.md`), never canon's tree via
+the skills symlink — see `skills/promote-learnings/SKILL.md`'s "Canon or consumer".
 
 1. **`critique/canon-learnings.md`** — narrative critique log, the default for most keepers.
 2. **`standards/`** — a formal, reusable standard the keeper generalizes into.

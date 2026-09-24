@@ -563,7 +563,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    `.tickets/<id>/learnings.md` candidate for a *non-builder* (fresh agent or human) to promote
    later into the durable store (canon: `critique/canon-learnings.md`, `standards/`, or — rarely,
    since it's always-loaded context on every session, so reserve it for something that must apply
-   universally — `CLAUDE.md`/`AGENTS.md`). It proposes, never promotes.
+   universally — `CLAUDE.md`/`AGENTS.md`; a consumer project: its own `PROMOTED.md`). It proposes, never promotes.
 
    **Never silent.** State in the chat reply and in `summary.md`'s own paragraph that `tkt learn`
    ran and name the file it wrote (or, on a clean sprint, that it found nothing to distill —

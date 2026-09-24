@@ -11,7 +11,7 @@
 #   1. auto-answers 'Y' to the skill's own report-write confirmation only
 #   2. hard "never modify anything else" instruction — dead-code-cleanup
 #      never reaches its deletion step; promote-learnings never writes to
-#      LEARNINGS.md/standards//critique/canon-learnings.md
+#      LEARNINGS.md/standards//critique/canon-learnings.md/PROMOTED.md
 #   3. every report ends with a ## Next Steps section, never auto-executed
 # --allowedTools is also restricted to a read-plus-write set — no Edit, no
 # generic Bash, no delete-capable command, so destructive actions are
@@ -124,8 +124,8 @@ Hard rules for this headless run, overriding your normal interactive behavior:
    what the skill's own instructions say to do after producing findings. If
    the skill would normally proceed to modify code (e.g. dead-code-cleanup's
    delete step) or write to a shared file (e.g. promote-learnings writing
-   directly into LEARNINGS.md's Status field, standards/, or
-   critique/canon-learnings.md), do NOT do it — describe it as a suggestion
+   directly into LEARNINGS.md's Status field, standards/,
+   critique/canon-learnings.md, or PROMOTED.md), do NOT do it — describe it as a suggestion
    in the report instead, under Next Steps (rule 3). The ONLY file you may
    create or modify is the report file named below.
 3. End the report with a '## Next Steps' section: concrete, actionable

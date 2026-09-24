@@ -222,11 +222,39 @@ ensure_sprint_project_marker() {
   echo "  [sprint]  ensured project-local .tickets/"
 }
 
+# Consumer projects promote learnings into their own PROMOTED.md (never into canon's tree via the
+# skills symlink), @-imported from AGENTS.md. canon itself keeps critique/ + standards/ (t-f65c).
+ensure_promoted_learnings() {
+  local project_dir="$1"
+  [ "$(cd "$project_dir" && pwd -P)" = "$(cd "$SKILLS_ROOT" && pwd -P)" ] && return 0
+  local promoted="$project_dir/PROMOTED.md" agents="$project_dir/AGENTS.md"
+  if [ ! -e "$promoted" ] && [ ! -L "$promoted" ]; then
+    cat > "$promoted" <<'EOF'
+# Promoted Learnings
+
+Durable lessons promoted from `LEARNINGS.md` by `promote-learnings` after human confirmation.
+Loaded on every session via `@PROMOTED.md` in `AGENTS.md` — keep each entry to one or two lines.
+
+<!-- canon:promoted:BEGIN -->
+
+<!-- canon:promoted:END -->
+EOF
+    echo "  [sprint]  created PROMOTED.md"
+  fi
+  if ! grep -qxF "@PROMOTED.md" "$agents" 2>/dev/null; then
+    [ -s "$agents" ] && [ -n "$(tail -c1 "$agents")" ] && echo >> "$agents"
+    echo "@PROMOTED.md" >> "$agents"
+    echo "  [AGENTS.md]  added @PROMOTED.md import"
+  fi
+  return 0
+}
+
 _post_register_prompts() {
   local name="$1" project_dir="$2"
   [[ "$name" == "ticket" || "$name" == "sprint-check" || "$name" == "sprint" ]] || return 0
   if [[ "$name" == "sprint" ]]; then
     ensure_sprint_project_marker "$project_dir"
+    ensure_promoted_learnings "$project_dir"
     offer_subagent_log_permission "$project_dir"
   fi
   _init_git_precommit "$project_dir"

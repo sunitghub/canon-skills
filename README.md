@@ -350,7 +350,9 @@ closed sprint's objective close artifacts — the non-`delivered` rows of `summa
 evaluator's `eval-report.md` findings — into an **UNPROMOTED** `.tickets/<id>/learnings.md`
 candidate. It **proposes, never promotes**: a reviewer *without* the sprint's implementation history
 (a fresh agent or you later) moves any keeper into the durable store, so the agent that wrote the
-code never certifies its own lessons. Clean sprints produce nothing; `sprint complete` only *nudges*
+code never certifies its own lessons. In a project that adds canon's sprint skill, that store is the
+project's own `PROMOTED.md`, seeded by `skills.sh add sprint`/`refresh` and loaded every session via
+`@PROMOTED.md` in its `AGENTS.md`. Clean sprints produce nothing; `sprint complete` only *nudges*
 it when deviations exist — never auto-fires.
 
 ## How Sprint Works
