@@ -62,4 +62,29 @@ assert_count 1 "| sprint | dev | $ROOT/skills/sprint/SKILL.md |" "$project/AGENT
 status_output="$("$SKILLS" status "$project")"
 assert_contains "$status_output" "sprint                    [ok]"
 
+# --- registered inject skill's @-import is kept in place, not pruned and re-appended (t-bd3e) ---
+inj="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$inj"' EXIT
+cat > "$inj/AGENTS.md" << AGENTSEOF
+# Agents
+
+<!-- AI-SKILLS:BEGIN -->
+## Active canon skills
+> Managed by \`skills.sh\` — use \`add\`/\`remove\` to change. Source: $ROOT
+
+| Skill | Category | Source |
+|-------|----------|--------|
+| efficiency | agent-ops | $ROOT/standards/efficiency.md |
+| sprint | dev | $ROOT/skills/sprint/SKILL.md |
+<!-- AI-SKILLS:END -->
+@$ROOT/standards/efficiency.md
+User AGENTS content.
+AGENTSEOF
+line_before="$(grep -nxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md" | cut -d: -f1)"
+out="$("$SKILLS" refresh "$inj" 2>&1)"
+[[ "$out" != *"legacy @-import: @$ROOT/standards/efficiency.md"* ]] || fail "registered efficiency import was pruned"
+[ "$(grep -cxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md")" -eq 1 ] || fail "efficiency import missing or duplicated"
+assert_eq "$line_before" "$(grep -nxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md" | cut -d: -f1)"
+
+
 printf 'skills-refresh: ok\n'

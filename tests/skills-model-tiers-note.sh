@@ -28,6 +28,43 @@ assert_count 1 "MODEL-TIERS:BEGIN" "$project/AGENTS.md"
 "$SKILLS" add efficiency "$project" >/dev/null
 assert_count 1 "MODEL-TIERS:BEGIN" "$project/AGENTS.md"
 
+# --- stale block sync (t-bd3e) ---
+
+canon_block() { awk '/<!-- MODEL-TIERS:BEGIN -->/{f=1} f; /<!-- MODEL-TIERS:END -->/{if(f) exit}' "$1"; }
+outside_block() { awk '/<!-- MODEL-TIERS:BEGIN -->/{f=1} !f; /<!-- MODEL-TIERS:END -->/{f=0}' "$1"; }
+
+stale="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$stale"' EXIT
+{ printf '# Agents\nUser content before.\n\n'; canon_block "$ROOT/AGENTS.md"; printf '\nUser content after.\n'; } > "$stale/AGENTS.md"
+"$SKILLS" add efficiency "$stale" >/dev/null 2>&1   # registers table row + import; block already current
+awk '/<!-- MODEL-TIERS:BEGIN -->/{n=1} n==3{print "STALE: structural low-risk check"; n++; next} n{n++} {print}' "$stale/AGENTS.md" > "$stale/a.tmp" && mv "$stale/a.tmp" "$stale/AGENTS.md"
+assert_count 1 "STALE: structural low-risk check" "$stale/AGENTS.md"
+before_outside="$(outside_block "$stale/AGENTS.md")"
+out="$("$SKILLS" add efficiency "$stale" 2>&1)"
+assert_contains "$out" "updated MODEL-TIERS block"
+assert_count 0 "STALE: structural low-risk check" "$stale/AGENTS.md"
+assert_eq "$(canon_block "$ROOT/AGENTS.md")" "$(canon_block "$stale/AGENTS.md")"
+assert_eq "$before_outside" "$(outside_block "$stale/AGENTS.md")"
+assert_count 1 "MODEL-TIERS:BEGIN" "$stale/AGENTS.md"
+assert_count 1 "MODEL-TIERS:END" "$stale/AGENTS.md"
+
+# Already current: byte-identical, nothing reported.
+h1="$(md5sum "$stale/AGENTS.md" | cut -d' ' -f1)"
+out="$("$SKILLS" add efficiency "$stale" 2>&1)"
+[[ "$out" != *"MODEL-TIERS"* ]] || fail "current block reported as updated: $out"
+assert_eq "$h1" "$(md5sum "$stale/AGENTS.md" | cut -d' ' -f1)"
+
+# BEGIN without END: left byte-identical, with a warning (a replace would eat the rest of the file).
+unclosed="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$stale" "$unclosed"' EXIT
+printf '# Agents\n<!-- MODEL-TIERS:BEGIN -->\nold note\nUser content after.\n' > "$unclosed/AGENTS.md"
+"$SKILLS" add efficiency "$unclosed" >/dev/null 2>&1   # first add writes the table row and import
+h2="$(md5sum "$unclosed/AGENTS.md" | cut -d' ' -f1)"
+out="$("$SKILLS" add efficiency "$unclosed" 2>&1)"
+assert_contains "$out" "no END marker"
+assert_eq "$h2" "$(md5sum "$unclosed/AGENTS.md" | cut -d' ' -f1)"
+assert_count 1 "User content after." "$unclosed/AGENTS.md"
+
 # --- removal path ---
 
 # Non-interactive remove (test harness has no tty): block stays untouched.

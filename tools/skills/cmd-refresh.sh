@@ -12,6 +12,15 @@ cmd_refresh() {
     exit 1
   fi
 
+  # A registered inject skill (efficiency, agent-design) owns its @-import in AGENTS.md — not legacy.
+  # Pruning it only for cmd_add to re-append it churned every refresh and moved the line (t-bd3e).
+  local keep_imports="" sname sfile
+  while IFS= read -r sname; do
+    [ -z "$sname" ] && continue
+    sfile=$(find_skill "$sname" 2>/dev/null) || continue
+    if [ "$(fm_field "$sfile" inject)" = "true" ]; then keep_imports+="@$sfile"$'\n'; fi
+  done < <(registered_skill_names "$agents_file")
+
   # ── Prune stale canon @-imports from CLAUDE.md and AGENTS.md ────────────
   for prune_file in "$claude_file" "$agents_file"; do
     [ -f "$prune_file" ] || continue
@@ -19,6 +28,10 @@ cmd_refresh() {
     tmp=$(mktemp)
     while IFS= read -r line; do
       [[ "$line" == *"[pruned]"* ]] && continue
+      if [ "$prune_file" = "$agents_file" ] && [ -n "$keep_imports" ] && grep -qxF -- "$line" <<< "$keep_imports"; then
+        printf '%s\n' "$line"
+        continue
+      fi
       if [[ "$line" == @"$SKILLS_ROOT"/* ]]; then
         echo "  [pruned]  legacy @-import: $line" >&2
         continue

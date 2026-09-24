@@ -56,6 +56,7 @@ offer_model_tiers_note() {
   local target="$project_dir/AGENTS.md"
   local source_agents="$SKILLS_ROOT/AGENTS.md"
   if grep -qF "<!-- MODEL-TIERS:BEGIN -->" "$target" 2>/dev/null; then
+    sync_model_tiers_block "$target" "$source_agents"
     return 0
   fi
   if _prompt_or_auto_yes "Update AGENTS.md with model-per-task note?"; then
@@ -65,6 +66,32 @@ offer_model_tiers_note() {
     } >> "$target"
     echo "AGENTS.md updated with model-per-task note."
   fi
+}
+
+_model_tiers_block() {
+  awk '/<!-- MODEL-TIERS:BEGIN -->/{f=1} f; /<!-- MODEL-TIERS:END -->/{if(f) exit}' "$1" | tr -d '\r'
+}
+
+# The block between the markers is canon-managed: a consumer's copy is replaced when canon's changes,
+# so a retired rule never lingers in its AGENTS.md (t-bd3e). Content outside the markers is untouched.
+sync_model_tiers_block() {
+  local target="$1" source_agents="$2" desired current blk
+  desired=$(_model_tiers_block "$source_agents")
+  [ -n "$desired" ] || return 0
+  if ! awk '/<!-- MODEL-TIERS:BEGIN -->/{b=1} b && /<!-- MODEL-TIERS:END -->/{e=1} END{exit !(b&&e)}' "$target"; then
+    echo "  [AGENTS.md]  MODEL-TIERS block has no END marker — left unchanged" >&2
+    return 0
+  fi
+  current=$(_model_tiers_block "$target")
+  [ "$current" = "$desired" ] && return 0
+  blk=$(mktemp)
+  printf '%s\n' "$desired" > "$blk"
+  awk -v blk="$blk" '
+    !done && /<!-- MODEL-TIERS:BEGIN -->/ { while ((getline l < blk) > 0) print l; skip=1; done=1; next }
+    skip { if (/<!-- MODEL-TIERS:END -->/) skip=0; next }
+    { print }' "$target" > "$target.tmp" && mv "$target.tmp" "$target"
+  rm -f "$blk"
+  echo "  [AGENTS.md]  updated MODEL-TIERS block"
 }
 
 offer_remove_model_tiers_note() {
