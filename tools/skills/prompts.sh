@@ -182,14 +182,16 @@ _settings_backend() {
 
 # _ps_settings <status|add|remove> <settings.json> <allow|deny> <rule>... — prints one word
 # (present/absent, ok, invalid). -EncodedCommand (UTF-16LE base64) sidesteps .ps1 execution policy;
-# inputs travel as env vars, so paths and rules need no quoting.
+# inputs travel as env vars, so paths and rules need no quoting. stdin is /dev/null: skills refresh runs
+# this inside `while read … done <<< "$skills"`, and PowerShell 5.1 reads a redirected stdin into its own
+# output, so "present" came back polluted and every refresh re-asked (live on the Windows VM, t-55c1).
 _ps_settings() {
   local mode="$1" settings="$2" key="$3" enc winpath
   shift 3
   winpath="$(cygpath -w "$settings" 2>/dev/null || printf '%s' "$settings")"
   enc="$(iconv -f UTF-8 -t UTF-16LE "$(dirname "${BASH_SOURCE[0]}")/settings-merge.ps1" | base64 | tr -d '\n')"
   CANON_SETTINGS="$winpath" CANON_KEY="$key" CANON_MODE="$mode" CANON_RULES="$(printf '%s\n' "$@")" \
-    powershell.exe -NoProfile -NonInteractive -EncodedCommand "$enc" 2>/dev/null | tr -d '\r'
+    powershell.exe -NoProfile -NonInteractive -EncodedCommand "$enc" </dev/null 2>/dev/null | tr -d '\r'
 }
 
 # t-c774: close gates keep Bash (git, tests, report write), so a tool list can't stop a gate installing

@@ -78,6 +78,21 @@ rm -f "$tmp/ps.log"; out="$(PS_STATUS=present psrun offer_install_deny_rules)"
 assert_eq "" "$out"
 [ "$(grep -c '^add' "$tmp/ps.log")" -eq 0 ] || fail "added rules that were already present"
 
+# Inside a stdin-fed loop, as skills refresh runs it: a real PowerShell 5.1 echoes redirected stdin into
+# its output. This fake does too, so the status only stays "present" if canon closes powershell's stdin.
+cp "$fakeps/powershell.exe" "$fakeps/ps.clean"
+cat > "$fakeps/powershell.exe" <<'PS'
+#!/usr/bin/env bash
+[ -t 0 ] || cat                      # like PS 5.1: consume and echo whatever stdin holds
+exec "$(dirname "$0")/ps.clean" "$@" </dev/null
+PS
+chmod +x "$fakeps/powershell.exe"
+rm -f "$tmp/ps.log"
+out="$(printf 'efficiency\nsprint\n' | { while read -r _skill; do PS_STATUS=present psrun offer_install_deny_rules; done; })"
+assert_eq "" "$out"
+[ "$(grep -c '^add' "$tmp/ps.log" 2>/dev/null || true)" -eq 0 ] || fail "re-added present rules inside a stdin-fed loop (refresh)"
+cp "$fakeps/ps.clean" "$fakeps/powershell.exe"
+
 # invalid file, or powershell failing with no output: refused, nothing written.
 for st in invalid ""; do
   rm -f "$tmp/ps.log"; out="$(PS_STATUS="$st" psrun offer_install_deny_rules)"
