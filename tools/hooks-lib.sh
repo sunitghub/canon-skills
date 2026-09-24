@@ -155,10 +155,70 @@ _settings_outside_hooks() {
   ' "$1" 2>/dev/null
 }
 
+# True if the file is valid JSON: an awk tokenizer + recursive-descent check (objects, arrays, strings with
+# escapes, literals), no Python — Windows end users have only Git Bash.
+_json_valid() {
+  awk '
+    function val(   t) {
+      t = tk[p]
+      if (t == "{") return obj()
+      if (t == "[") return arr()
+      if (t ~ /^"/ || t ~ /^(true|false|null|-?[0-9][0-9.eE+-]*)$/) { p++; return 1 }
+      return 0
+    }
+    function obj() {
+      p++; if (tk[p] == "}") { p++; return 1 }
+      while (1) {
+        if (tk[p] !~ /^"/) return 0
+        p++; if (tk[p] != ":") return 0
+        p++; if (!val()) return 0
+        if (tk[p] == ",") { p++; continue }
+        if (tk[p] == "}") { p++; return 1 }
+        return 0
+      }
+    }
+    function arr() {
+      p++; if (tk[p] == "]") { p++; return 1 }
+      while (1) {
+        if (!val()) return 0
+        if (tk[p] == ",") { p++; continue }
+        if (tk[p] == "]") { p++; return 1 }
+        return 0
+      }
+    }
+    { doc = doc $0 "\n" }
+    END {
+      n = length(doc); nt = 0; bad = 0
+      for (i = 1; i <= n; i++) {
+        c = substr(doc, i, 1)
+        if (c == "\"") {
+          s = c; i++; closed = 0
+          while (i <= n) {
+            c = substr(doc, i, 1); s = s c
+            if (c == "\\") { i++; s = s substr(doc, i, 1) }
+            else if (c == "\"") { closed = 1; break }
+            i++
+          }
+          if (!closed) bad = 1
+          tk[++nt] = s
+        } else if (c ~ /[{}\[\]:,]/) {
+          tk[++nt] = c
+        } else if (c !~ /[ \t\r\n]/) {
+          s = c
+          while (i < n && substr(doc, i + 1, 1) !~ /[ \t\r\n,{}\[\]:"]/) { i++; s = s substr(doc, i, 1) }
+          tk[++nt] = s
+        }
+      }
+      p = 1
+      exit !(!bad && nt > 0 && val() && p == nt + 1)
+    }
+  ' "$1" 2>/dev/null
+}
+
 # Removes legacy canon hook entries from settings.json. _uninstall_claude_edit does the line-based
 # sed/awk surgery (no Python on Windows); this wrapper guarantees it can never cost the user a setting:
-# if anything outside the top-level "hooks" member changes, or the file comes out empty, the original is
-# restored and the step
+# if anything outside the top-level "hooks" member changes, or the file comes out empty or invalid JSON,
+# the original is restored and the step
 # is reported as left as is. Every add/refresh runs this, and the line-based editing wiped settings.json
 # to {} in several shapes (t-55c1: canon's own permission rule; compact single-line JSON; a second,
 # ungated collapse in the prune step). A stranded legacy hook is harmless; lost user settings are not.
@@ -166,11 +226,15 @@ _uninstall_claude() {
   local settings="$1"
   [ -f "$settings" ] || { _uninstall_claude_edit "$settings"; return 0; }
   local orig="${settings}.canon-orig" before after out
+  if ! _json_valid "$settings"; then
+    echo "  [skip]   $settings is not valid JSON — legacy canon hook cleanup left as is"
+    return 0
+  fi
   cp "$settings" "$orig"
   before="$(_settings_outside_hooks "$settings")"
   out="$(_uninstall_claude_edit "$settings")"
   after="$(_settings_outside_hooks "$settings")"
-  if [ "$before" != "$after" ] || [ ! -s "$settings" ]; then
+  if [ "$before" != "$after" ] || [ ! -s "$settings" ] || ! _json_valid "$settings"; then
     cp "$orig" "$settings"
     out="  [skip]   legacy canon hooks in $settings could not be removed without touching other settings — left as is"
   fi

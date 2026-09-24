@@ -106,6 +106,19 @@ keeps toplevel-event   "{$legacy, \"Stop\": \"user-stop\"}" '"user-stop"'
 keeps nested-hooks     "{$legacy, \"plugin\": {\"hooks\": {\"mine\": true}}}" '"mine"'
 keeps pretty-matcher   "$(printf '{\n  %s,\n  "matcher": "user-value"\n}' "$legacy")" '"user-value"'
 
+# 3f. Validity: an invalid settings.json is left alone; an edit whose result is invalid JSON is rolled back
+#     even when everything outside "hooks" survived (the signature can't see inside "hooks").
+printf '{"permissions": {"allow": ["Bash(ls:*)"],}}\n' > "$tmp/invalid.json"; cp "$tmp/invalid.json" "$tmp/invalid.orig"
+out="$(bash -c 'source "$1/tools/hooks-lib.sh"; _uninstall_claude "$2"' _ "$ROOT" "$tmp/invalid.json")"
+cmp -s "$tmp/invalid.json" "$tmp/invalid.orig" || fail "invalid settings.json was modified"
+assert_contains "$out" "not valid JSON"
+printf '%s\n' "{$legacy, \"permissions\": {\"allow\": [\"Bash(ls:*)\"]}}" > "$tmp/broken.json"; cp "$tmp/broken.json" "$tmp/broken.orig"
+out="$(bash -c 'source "$1/tools/hooks-lib.sh"
+  _uninstall_claude_edit() { sed -i.bak "s/\"hooks\": {/\"hooks\": {,/" "$1"; rm -f "$1.bak"; echo "  [removed]  1"; }   # corrupts inside "hooks" only
+  _uninstall_claude "$2"' _ "$ROOT" "$tmp/broken.json")"
+cmp -s "$tmp/broken.json" "$tmp/broken.orig" || fail "an edit that produced invalid JSON was kept: $(cat "$tmp/broken.json")"
+assert_contains "$out" "left as is"
+
 # 4. End to end: a real skills refresh must leave a settings.json holding canon's own rules untouched.
 proj="$tmp/proj"; mkdir -p "$proj"; git -C "$proj" init -q; printf '# Agents\n' > "$proj/AGENTS.md"
 HOME="$tmp/h" "$SKILLS" add sprint "$proj" >/dev/null 2>&1
