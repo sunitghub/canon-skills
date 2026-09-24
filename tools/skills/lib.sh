@@ -68,6 +68,15 @@ covered_deps_for_skills() {
   done
 }
 
+# A python3 that actually runs. `command -v` isn't enough: Windows ships a Microsoft Store placeholder
+# python3.exe that exists without Python installed and does nothing. canon assumes only Git for Windows
+# there, so every python3-backed step must check this and skip honestly, never report a false [ok] (t-c774).
+have_python() {
+  local out
+  out="$(python3 -c 'print(1)' 2>/dev/null | tr -d '\r')" || return 1
+  [ "$out" = "1" ]
+}
+
 # Exact-line presence check that ignores a trailing \r, so a CRLF file (Windows) doesn't read as missing
 # the line and get a duplicate appended on every add/refresh (t-bd3e).
 has_line() {

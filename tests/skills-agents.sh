@@ -98,6 +98,13 @@ out="$("$SKILLS" refresh "$p3" 2>&1)"
 assert_contains "$out" "links elsewhere"
 assert_eq "$own" "$(readlink "$p3/.claude/agents")"
 
+# refresh also shows the gitignore line when it creates the link (it was filtered out too).
+p10="$(newp)"; "$SKILLS" add sprint "$p10" >/dev/null 2>&1
+rm "$p10/.claude/agents"; grep -vxF "/.claude/agents" "$p10/.gitignore" > "$p10/gi.tmp" && mv "$p10/gi.tmp" "$p10/.gitignore"
+out="$("$SKILLS" refresh "$p10" 2>&1)"
+assert_contains "$out" "[agents]  created link"
+assert_contains "$out" "[gitignore] /.claude/agents"
+
 # a dangling link (e.g. canon moved) is re-pointed to canon.
 p4="$(newp)"; mkdir -p "$p4/.claude"; ln -s "$p4/nowhere" "$p4/.claude/agents"
 lib "$p4" "$ROOT" upsert_gate_agents >/dev/null
@@ -158,5 +165,33 @@ for bad in 'not json' '{"permissions": ["x"]}' '{"permissions": {"deny": "Bash(x
   assert_eq "$h8" "$(md5sum "$p8/.claude/settings.json" | cut -d' ' -f1)"
   assert_contains "$out" "not valid JSON"
 done
+
+# Native Windows Python ends its output with \r\n. With a python3 that does the same, a settings file
+# that already has every rule must not re-prompt (the VM re-asked both questions on every refresh).
+crbin="$(mktemp -d)"; dirs+=("$crbin"); real_py="$(command -v python3)"
+printf '#!/usr/bin/env bash\n"%s" "$@" | sed "s/\$/\r/"\nexit ${PIPESTATUS[0]}\n' "$real_py" > "$crbin/python3"; chmod +x "$crbin/python3"
+p11="$(newp)"; mkdir -p "$p11/.claude"
+SKILLS_SH_ASSUME_YES=1 lib "$p11" "$ROOT" offer_install_deny_rules >/dev/null
+SKILLS_SH_ASSUME_YES=1 lib "$p11" "$ROOT" offer_subagent_log_permission >/dev/null
+out="$(PATH="$crbin:$PATH" lib "$p11" "$ROOT" offer_install_deny_rules </dev/null 2>&1)"
+assert_eq "" "$out"
+out="$(PATH="$crbin:$PATH" lib "$p11" "$ROOT" offer_subagent_log_permission </dev/null 2>&1)"
+assert_eq "" "$out"
+
+# Windows without Python: the Microsoft Store placeholder python3 exists but does nothing (exit 0, no
+# output). Both settings merges must skip honestly, never print a false [ok], and never write.
+stubbin="$(mktemp -d)"; dirs+=("$stubbin")
+printf '#!/usr/bin/env bash\nexit 0\n' > "$stubbin/python3"; chmod +x "$stubbin/python3"
+p12="$(newp)"
+for fn in offer_install_deny_rules offer_subagent_log_permission; do
+  out="$(PATH="$stubbin:$PATH" SKILLS_SH_ASSUME_YES=1 lib "$p12" "$ROOT" "$fn" 2>&1)"
+  assert_contains "$out" "Python, which isn't available here"
+  [[ "$out" != *"[ok]"* ]] || fail "$fn reported [ok] with a placeholder python3: $out"
+done
+[[ ! -e "$p12/.claude/settings.json" ]] || fail "settings.json written without a working python"
+# ...and refresh surfaces the skip (it contains "left as is").
+"$SKILLS" add sprint "$p12" >/dev/null 2>&1 || true
+out="$(PATH="$stubbin:$PATH" SKILLS_SH_ASSUME_YES=1 "$SKILLS" refresh "$p12" 2>&1)"
+assert_contains "$out" "Python, which isn't available here"
 
 printf 'skills-agents: ok\n'

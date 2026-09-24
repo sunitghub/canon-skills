@@ -147,7 +147,7 @@ offer_remove_model_tiers_note() {
 
 # Shared by offer_subagent_log_permission/offer_remove_subagent_log_permission — echoes
 # "present", "absent", or "invalid" (malformed JSON) for the given rule in
-# permissions.allow. Caller is responsible for checking `command -v python3` first.
+# permissions.allow. Caller is responsible for checking `have_python` first.
 _subagent_log_rule_status() {
   local settings="$1" rule="$2"
   [ -f "$settings" ] || { echo "absent"; return 0; }
@@ -202,9 +202,10 @@ PYEOF
 
 offer_install_deny_rules() {
   local project_dir="$1" settings="$1/.claude/settings.json" status
-  command -v python3 &>/dev/null || { echo "  [skip]  python3 not found — install deny rules not added"; return 0; }
+  have_python || { echo "  [skip]  install deny rules need Python, which isn't available here — left as is"; return 0; }
   # A crash while reading the file counts as invalid; under set -e a bare failing $(...) would abort add/refresh.
-  status="$(_deny_rules_status "$settings")" || status=invalid
+  # tr -d '\r': native Windows Python prints "present\r\n", and $(...) strips only the \n (t-c774).
+  status="$(_deny_rules_status "$settings" | tr -d '\r')" || status=invalid
   if [ "$status" = "invalid" ]; then
     echo "  [fail]  $settings is not valid JSON (or permissions/deny has the wrong type) — install deny rules not added"
     return 0
@@ -251,13 +252,13 @@ offer_subagent_log_permission() {
   local settings="$project_dir/.claude/settings.json"
   local rule="Bash(subagent-log.sh:*)"
 
-  if ! command -v python3 &>/dev/null; then
-    echo "  [fail]  python3 not found — cannot safely add the subagent-log.sh permission rule to $settings"
+  if ! have_python; then
+    echo "  [skip]  the subagent-log.sh permission rule needs Python, which isn't available here — left as is"
     return 0
   fi
 
   local status
-  status="$(_subagent_log_rule_status "$settings" "$rule")"
+  status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
   if [ "$status" = "invalid" ]; then
     echo "  [fail]  $settings is not valid JSON — skipping subagent-log.sh permission check"
     return 0
@@ -301,10 +302,10 @@ offer_remove_subagent_log_permission() {
   local rule="Bash(subagent-log.sh:*)"
 
   [ -f "$settings" ] || return 0
-  command -v python3 &>/dev/null || return 0
+  have_python || return 0
 
   local status
-  status="$(_subagent_log_rule_status "$settings" "$rule")"
+  status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
   [ "$status" = "present" ] || return 0
 
   if ! { : <> /dev/tty; } 2>/dev/null; then
