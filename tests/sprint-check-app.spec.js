@@ -6276,6 +6276,120 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     }
   }
 
+  // --- t-7d8d: busy state while a skill registers (skills.sh add is slow on Windows) ---
+  // A held /api/register-skill: resolves only when the test calls release(<json>).
+  async function stubRegister(page) {
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    let skills = [];
+    await page.route('**/api/project-stats*', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ updated: '2026-09-24', ticket_count: 0, skills }) }));
+    const reg = { calls: 0, release: null };
+    await page.route('**/api/register-skill*', async route => {
+      reg.calls++;
+      const body = await new Promise(r => { reg.release = r; });
+      if (body === 'abort') return route.abort();
+      if (body.ok) skills = ['sprint'];
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    return reg;
+  }
+  const regBtn = (page, skill) => page.locator(`.regskill[data-id="proj-a"][data-skill="${skill}"]`);
+
+  test('registering a skill shows a spinner, disables the card\'s buttons, and sends one request; success reloads (t-7d8d)', async ({ page }) => {
+    const reg = await stubRegister(page);
+    const sprint = regBtn(page, 'sprint'), eff = regBtn(page, 'efficiency');
+    await expect(sprint).toBeVisible();
+    await expect(page.locator('.regbtns[data-reg="proj-a"]')).toHaveAttribute('aria-live', 'polite');
+    await sprint.click();
+    await page.locator('#cc-ok').click();
+    await expect(sprint).toContainText('Adding sprint…');
+    await expect(sprint.locator('.reg-spin')).toBeVisible();
+    await expect(sprint).toHaveAttribute('aria-busy', 'true');
+    await expect(sprint).toBeDisabled();
+    await expect(eff).toBeDisabled();
+    await sprint.dblclick({ force: true });
+    await eff.click({ force: true });
+    await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
+    expect(reg.calls).toBe(1);
+    const seen = new Set();
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const accent = await page.evaluate(() => {   // --accent resolved to rgb() the same way the spinner's colour is
+        const probe = document.createElement('span'); probe.style.color = 'var(--accent)'; document.body.appendChild(probe);
+        const c = getComputedStyle(probe).color; probe.remove(); return c;
+      });
+      const spin = await sprint.locator('.reg-spin').evaluate(e => getComputedStyle(e).borderTopColor);
+      expect(spin).toBe(accent);
+      seen.add(spin);
+      await page.locator('.regbtns[data-reg="proj-a"]').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-7d8d', 'visuals', `busy-${theme}.png`) });
+    }
+    expect(seen.size).toBe(2);              // the spinner follows the theme, not a fixed colour
+    reg.release({ ok: true });
+    await expect(page.locator('#toast')).toContainText('Registered sprint in proj-a');
+    await expect(sprint).toBeHidden();      // reloaded: sprint is now registered
+    await expect(eff).toBeEnabled();
+    await expect(eff).toHaveText('+ efficiency');
+  });
+
+  test('after an error, a failed request, or unsupported, the register buttons come back (t-7d8d)', async ({ page }) => {
+    const reg = await stubRegister(page);
+    const sprint = regBtn(page, 'sprint'), eff = regBtn(page, 'efficiency');
+    for (const outcome of [{ ok: false, error: 'boom' }, 'abort', { unsupported: true, cmd: 'skills.sh add sprint /tmp/proj-a' }]) {
+      await sprint.click();
+      await page.locator('#cc-ok').click();
+      await expect(sprint).toBeDisabled();
+      reg.release(outcome);
+      if (outcome.unsupported) {
+        await expect(page.locator('#cc-title')).toContainText('manually');
+        await expect(sprint).toBeEnabled();  // restored before the manual-command dialog, not behind it
+        await page.locator('#cc-ok').click();
+      }
+      for (const [b, label] of [[sprint, '+ sprint'], [eff, '+ efficiency']]) {
+        await expect(b).toBeEnabled();
+        await expect(b).toHaveText(label);
+        expect(await b.getAttribute('aria-busy')).toBeNull();
+      }
+    }
+    expect(reg.calls).toBe(3);
+  });
+
+  test('a run in flight blocks a second one for the same project even after the cards re-render (t-7d8d)', async ({ page }) => {
+    const reg = await stubRegister(page);
+    await regBtn(page, 'sprint').click();
+    await page.locator('#cc-ok').click();
+    await expect(regBtn(page, 'sprint')).toBeDisabled();
+    await page.evaluate(() => load());      // re-render: fresh, enabled buttons (e.g. another project's run finished)
+    await expect(regBtn(page, 'efficiency')).toBeEnabled();
+    await regBtn(page, 'efficiency').click();
+    await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);   // no second confirm, no second run
+    expect(reg.calls).toBe(1);
+    reg.release({ ok: false, error: 'x' });
+  });
+
+  test('cancelling the register confirm sends nothing and leaves the buttons alone (t-7d8d)', async ({ page }) => {
+    const reg = await stubRegister(page);
+    const sprint = regBtn(page, 'sprint');
+    await sprint.click();
+    await page.locator('#cc-cancel').click();
+    await expect(sprint).toBeEnabled();
+    await expect(sprint).toHaveText('+ sprint');
+    expect(reg.calls).toBe(0);
+  });
+
+  test('the register spinner does not animate under prefers-reduced-motion (t-7d8d)', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const reg = await stubRegister(page);
+    const sprint = regBtn(page, 'sprint');
+    await sprint.click();
+    await page.locator('#cc-ok').click();
+    expect(await sprint.locator('.reg-spin').evaluate(e => getComputedStyle(e).animationName)).toBe('none');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    expect(await sprint.locator('.reg-spin').evaluate(e => getComputedStyle(e).animationName)).toBe('reg-spin');
+    reg.release({ ok: false, error: 'x' });
+  });
+
   test('Upkeep nav item is present and switches to its own view', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');

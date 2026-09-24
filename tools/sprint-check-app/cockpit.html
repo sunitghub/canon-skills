@@ -348,6 +348,12 @@
   .dereg:hover{color:#fff;background:var(--col-discarded);border-color:var(--col-discarded);transform:translateY(-1px);box-shadow:0 4px 14px -4px var(--col-discarded)}
   .regskill{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--accent);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
   .regskill:hover{background:var(--accent);color:#fff}
+  .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent)}
+  .regskill[aria-busy="true"]{opacity:1}
+  /* t-7d8d: shown while skills.sh add runs (slow on Windows). currentColor follows the theme. */
+  .reg-spin{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:reg-spin .8s linear infinite}
+  @keyframes reg-spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){.reg-spin{animation:none}}
   .empty{border:1.5px dashed var(--border-hover);border-radius:12px;padding:40px;text-align:center;color:var(--text-muted)}
   .scrim{position:fixed;inset:0;background:var(--scrim);display:none;place-items:center;z-index:20}
   .scrim.show{display:grid}
@@ -1684,7 +1690,7 @@
     bar.className='skill-nudge';
     const msg=document.createElement('span'); msg.className='sn-msg';
     msg.textContent='This project doesn’t have the canon “sprint” skill registered.';
-    const actions=document.createElement('span'); actions.className='sn-actions';
+    const actions=document.createElement('span'); actions.className='sn-actions'; actions.setAttribute('aria-live','polite');
     const reg=document.createElement('button'); reg.className='btn primary sn-reg'; reg.textContent='Register sprint';
     const x=document.createElement('button'); x.className='sn-x'; x.title='Dismiss'; x.textContent='✕';
     actions.appendChild(reg); actions.appendChild(x);
@@ -1693,7 +1699,7 @@
     v.insertBefore(bar, v.firstChild);
     x.addEventListener('click',()=>{ bar.remove(); v.classList.remove('has-nudge'); });
     reg.addEventListener('click',async()=>{
-      await registerSkill(id, name, proj.path||'', 'sprint');  // reuses the themed cockpitConfirm flow
+      await registerSkill(id, name, proj.path||'', 'sprint', reg);  // reuses the themed cockpitConfirm flow
       if(await hasSprintSkill(id)){ bar.remove(); v.classList.remove('has-nudge'); }
     });
   }
@@ -1762,7 +1768,7 @@
           </div>
           <div class="card-divider"></div>
           <div class="cardbottom">
-            <div class="regbtns" data-reg="${escAttr(p.id)}" style="display:none">
+            <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
               ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Register the ${sk} skill in this project" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
             </div>
             <div class="actions">
@@ -1776,7 +1782,7 @@
     // JS-string/attribute injection from a maliciously-named registered path).
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
     grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
-    grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill)));
+    grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
     shown.forEach(p=>fillCardStats(p.id));
   }
 
@@ -1813,17 +1819,35 @@
   // registered-id-only endpoint with the chosen skill, then refreshes. If the
   // host can't run it (no bash/skills.sh — e.g. Windows Go binary), surfaces the
   // exact copy-paste command instead of failing silently.
-  async function registerSkill(id,name,path,skill){
+  // t-7d8d: one run per project at a time — two concurrent skills.sh add runs race on
+  // AGENTS.md and settings.json.
+  const _regBusy=new Set();
+  async function registerSkill(id,name,path,skill,btn){
     skill=skill||'sprint';
+    if(_regBusy.has(id)) return;
     const detail = REG_SKILL_DETAIL[skill] || ('registers the “'+skill+'” skill');
     if(!(await cockpitConfirm({title:'Register the “'+skill+'” skill in “'+name+'”?', body:'This '+detail+'. Safe to re-run.', okLabel:'Register'}))) return;
+    if(_regBusy.has(id)) return;
+    _regBusy.add(id);
+    const btns=[...document.querySelectorAll('.regskill')].filter(b=>b.dataset.id===id);
+    if(btn&&!btns.includes(btn)) btns.push(btn);
+    const saved=btns.map(b=>b.innerHTML);
+    btns.forEach(b=>{ b.disabled=true; });
+    if(btn){ btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>'+esc('Adding '+skill+'…'); }
+    let restored=false;
+    const restore=()=>{
+      if(restored) return; restored=true;
+      _regBusy.delete(id);
+      btns.forEach((b,i)=>{ b.disabled=false; b.removeAttribute('aria-busy'); b.innerHTML=saved[i]; });
+    };
     try{
       const r=await fetch('/api/register-skill?project='+encodeURIComponent(id)+'&skill='+encodeURIComponent(skill),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
       const res=await r.json().catch(()=>({}));
       if(res&&res.ok){ toast('✓ Registered '+skill+' in '+name); load(); return; }
-      if(res&&res.unsupported){ await cockpitConfirm({title:'Register '+skill+' manually', body:'This host can’t run it — run this in a terminal, then reopen the project:', code: res.cmd||('skills.sh add '+skill+' '+path), okOnly:true, okLabel:'Done'}); return; }
+      if(res&&res.unsupported){ restore(); await cockpitConfirm({title:'Register '+skill+' manually', body:'This host can’t run it — run this in a terminal, then reopen the project:', code: res.cmd||('skills.sh add '+skill+' '+path), okOnly:true, okLabel:'Done'}); return; }
       toast((res&&res.error)?('Could not register: '+res.error):('Could not register '+skill));
     }catch(e){ toast('Request failed'); }
+    finally{ restore(); }
   }
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';hideBrowse();document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
