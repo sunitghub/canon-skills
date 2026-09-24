@@ -4,7 +4,7 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.7
+version: 1.0.8
 updated: 2026-09-23
 ---
 
@@ -74,6 +74,7 @@ Act on these when you see them — don't wait to be told.
 - Async lookup before a destructive action → after the `await`, re-check every precondition (identity, status, liveness), not just the one you guarded; test it by gating the request.
 - Retiring or renaming a mechanism → sweep every doc surface by concept and paraphrase (cross-references, README prose, other skills), not only the known phrase; an exact-phrase grep proves only known spots.
 - Cross-backend equality: parse JSON before comparing (`json.dumps` vs `json.Marshal` differ in whitespace); compare bytes only for files.
+- On Windows the Bash tool is Git Bash — unquoted `C:\...` backslashes are escapes (and trip Claude Code's approval prompt). Use forward-slash (`/c/Users/...`) or quoted paths.
 - Never `pkill`/`kill` by matching a process name, script path, or command-line pattern shared with anything the user might independently be running (a dev server, an agent daemon, a shared script invoked from elsewhere) — a pattern match can hit the user's own live, unrelated process and kill in-progress work with no undo. Resolve the exact PID first (a lockfile/state-file's recorded PID, the port a service publishes, or `$!` from a process this session itself started) and kill only that PID.
 
 ## Token Efficiency
