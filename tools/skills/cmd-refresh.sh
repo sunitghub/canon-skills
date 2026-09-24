@@ -125,7 +125,9 @@ cmd_refresh() {
       continue
     }
     local changes
-    changes=$(printf '%s\n' "$output" | grep -E "added|updated|created" || true)
+    # "left as is" too: a setup step that declined to act (e.g. a user-owned .claude/agents link, t-c774)
+    # must be visible, not filtered out with the no-op noise.
+    changes=$(printf '%s\n' "$output" | grep -E "added|updated|created|left as is" || true)
     if [ -n "$changes" ]; then
       printf "  %-22s  [updated]\n" "$skill"
       printf '%s\n' "$changes" | sed 's/^/    /'

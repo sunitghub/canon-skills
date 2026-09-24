@@ -91,6 +91,13 @@ assert_contains "$out" "links elsewhere"
 lib "$p3" "$ROOT" remove_gate_agents >/dev/null
 assert_eq "$own" "$(readlink "$p3/.claude/agents")"
 
+# refresh surfaces that warning (it used to filter everything but added/updated/created).
+printf '| Skill | Category | Source |\n' > /dev/null
+"$SKILLS" add sprint "$p3" >/dev/null 2>&1
+out="$("$SKILLS" refresh "$p3" 2>&1)"
+assert_contains "$out" "links elsewhere"
+assert_eq "$own" "$(readlink "$p3/.claude/agents")"
+
 # a dangling link (e.g. canon moved) is re-pointed to canon.
 p4="$(newp)"; mkdir -p "$p4/.claude"; ln -s "$p4/nowhere" "$p4/.claude/agents"
 lib "$p4" "$ROOT" upsert_gate_agents >/dev/null
