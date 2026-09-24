@@ -273,6 +273,10 @@
   .rc-pop-lead{color:var(--text-body);font-size:12.5px;line-height:1.5;margin:0 0 10px}
   .rc-pop-sec{border-top:1px solid var(--border-muted);padding-top:10px;margin-top:10px}
   .rc-pop-eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px}
+  .rc-pop-sec.next{border-left:2px solid var(--col-done);padding-left:10px}
+  .rc-pop-sec.next .rc-pop-eyebrow,.rc-pop-jump{color:var(--col-done)}
+  .rc-pop-jump{background:none;border:none;padding:0;margin:-4px 0 4px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}
+  .rc-pop-jump:hover{text-decoration:underline}
   .rc-pop-sec p{color:var(--text-body);font-size:12.5px;line-height:1.55;margin:0}
   .rc-pop-sec code{font-family:ui-monospace,monospace;font-size:11.5px;background:var(--bg);border:1px solid var(--border-muted);border-radius:5px;padding:0 5px}
   .rc-pop-facts{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border-muted)}
@@ -941,7 +945,8 @@
     return `<div class="rc-pop" id="up-help-${id}" role="region" aria-label="About ${escAttr(h.title)}"><div class="rc-pop-body">`
       +`<div class="rc-pop-head"><span class="rc-pop-title">${esc(h.title)}</span><button type="button" class="rc-pop-x" aria-label="Close" onclick="upHelpClose(true)">&times;</button></div>`
       +`<p class="rc-pop-lead">${esc(h.lead)}</p>`
-      +h.sections.map(s=>`<div class="rc-pop-sec"><div class="rc-pop-eyebrow">${esc(s[0])}</div><p>${s[1]}</p></div>`).join('')
+      +(h.sections.some(s=>s[0]===UP_NEXT)?`<button type="button" class="rc-pop-jump" onclick="upHelpJump('${id}')">&rarr; ${UP_NEXT}</button>`:'')
+      +h.sections.map(s=>`<div class="rc-pop-sec${s[0]===UP_NEXT?' next" id="up-help-'+id+'-next':''}"><div class="rc-pop-eyebrow">${esc(s[0])}</div><p>${s[1]}</p></div>`).join('')
       +`<div class="rc-pop-facts">${h.facts.map(f=>`<span class="rc-pop-fact"><b>${esc(f[0])}</b>${esc(f[1])}</span>`).join('')}</div>`
       +'</div></div>';
   }
@@ -961,12 +966,20 @@
   }
   // Open downward unless there is more room above; cap the body height to the room actually available.
   function upHelpPlace(pop){
-    const w=pop.parentElement.getBoundingClientRect(), below=window.innerHeight-w.bottom-44, above=w.top-16;
+    // Room above is measured from #views' top edge: the top bar and the tab strip sit above it and would cover the panel.
+    const main=document.querySelector('.main'), mr=main?main.getBoundingClientRect():{left:0};
+    const views=pop.closest('.views'), topEdge=views?views.getBoundingClientRect().top:0;
+    const w=pop.parentElement.getBoundingClientRect(), below=window.innerHeight-w.bottom-44, above=w.top-topEdge-16;
     const up=below<300&&above>below;
     pop.classList.toggle('up',up);
-    const main=document.querySelector('.main');   // never spill under the sidebar on a narrow window
-    if(main) pop.style.width=Math.max(220,Math.min(400,w.right+6-main.getBoundingClientRect().left-12))+'px';
+    if(main) pop.style.width=Math.max(220,Math.min(400,w.right+6-mr.left-12))+'px';   // never spill under the sidebar on a narrow window
     pop.querySelector('.rc-pop-body').style.maxHeight=Math.max(160,Math.min(520,up?above:below))+'px';
+  }
+  const UP_NEXT='What to do next';
+  // Scroll only the panel body: scrollIntoView would also scroll the page behind the popover.
+  function upHelpJump(id){
+    const sec=document.getElementById(`up-help-${id}-next`), body=sec&&sec.closest('.rc-pop-body'); if(!body) return;
+    body.scrollBy({top:sec.getBoundingClientRect().top-body.getBoundingClientRect().top-4,behavior:'smooth'});
   }
   function upHelpToggle(id){ upHelpOpen=(upHelpOpen===id)?null:id; upHelpScroll=0; upHelpSync(); }
   // focusBtn: Escape and the x hand focus back to the "?"; an outside click leaves focus where the user put it.
