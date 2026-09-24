@@ -6123,6 +6123,23 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     await expect(panel).toContainText('dismiss');
   });
 
+  test('promote-learnings "?" popover covers the consumer PROMOTED.md path (t-8b55)', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.locator('#nav-upkeep').click();
+    await page.locator('#up-card-promote-learnings .rc-help').click();
+    const text = await page.locator('#up-help-promote-learnings').innerText();
+    const lower = text.toLowerCase(); // headings render uppercased via CSS, so innerText is uppercase
+    const at = (name) => { const i = lower.indexOf(name.toLowerCase()); expect(i, name).toBeGreaterThan(-1); return i; };
+    const section = (name, next) => text.slice(at(name), next ? at(next) : undefined);
+    expect(section('Why it runs', 'Where learnings come from')).toContain('PROMOTED.md');
+    expect(section('Example output', 'What to do next')).toContain('In canon, this skill never writes');
+    expect(section('What to do next', 'What it does not do')).toContain('PROMOTED.md');
+    expect(section('What to do next', 'What it does not do')).toMatch(/^What to do next\s*To move the learnings, run \/promote-learnings in an interactive session/i);
+    expect(section('What it does not do', 'Cost')).toContain('PROMOTED.md');
+    await page.locator('#up-help-promote-learnings').screenshot({ path: test.info().outputPath('promote-learnings-help.png') });
+  });
+
   test('promote-learnings and skill-eval "?" popovers render numbered lists on separate lines (t-4254)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
