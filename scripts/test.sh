@@ -20,6 +20,7 @@ tests=(
   "$ROOT/tests/windows-no-python.sh"
   "$ROOT/tests/cockpit-launch-lib.sh"
   "$ROOT/tests/no-python-windows-paths.sh"
+  "$ROOT/tests/hooks-lib-settings.sh"
   "$ROOT/tests/git-precommit-hook.sh"
   "$ROOT/tests/subagent-log-cli.sh"
   "$ROOT/tests/disposable-cred.sh"

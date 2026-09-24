@@ -93,6 +93,13 @@ _init_pi() {
   fi
 }
 
+# True if settings.json has any key besides Claude Code hook structure (hooks, matcher, type, command,
+# timeout, and PascalCase event names such as PreToolUse). Count form, not `grep -q`, under pipefail.
+_has_non_hook_keys() {
+  [ "$(grep -oE '"[^"]+"[[:space:]]*:' "$1" 2>/dev/null | sed -E 's/[[:space:]]*:$//' \
+      | grep -cvxE '"(hooks|matcher|type|command|timeout|[A-Z][A-Za-z]*)"' || true)" -gt 0 ]
+}
+
 _uninstall_claude() {
   local settings="$1"
 
@@ -103,9 +110,12 @@ _uninstall_claude() {
 
   local _canon_scripts=(auto-handoff.sh handoff-inject.sh sprint-inject.sh pre-commit-check.sh subagent-log.sh auto-polish-trigger.sh guard-managed-files.sh)
   local removed=0
+  # Count only hook entries that RUN a canon script ("command": "…<script>…"). A bare grep for the
+  # name also matched permission rules like "Bash(subagent-log.sh:*)" — which canon itself adds — so
+  # every add/refresh ran this cleanup and the collapse below wiped settings.json to {} (t-55c1).
   for _n in "${_canon_scripts[@]}"; do
     local c
-    c=$(grep -cF "$_n" "$settings" 2>/dev/null) || c=0
+    c=$(grep -cE '"command"[[:space:]]*:[[:space:]]*"[^"]*'"${_n//./\\.}" "$settings" 2>/dev/null) || c=0
     removed=$(( removed + c ))
   done
 
@@ -169,9 +179,10 @@ _uninstall_claude() {
     mv "$tmp" "$settings"
     rm -f "$compact_tmp"
 
-    # After removal: if no "command" entries remain at all, the file is just
-    # empty matcher wrappers — collapse to {}
-    if ! grep -q '"command"' "$settings" 2>/dev/null; then
+    # After removal: if no "command" entries remain AND the file holds nothing but hook structure,
+    # it's just empty matcher wrappers — collapse to {}. Any other key (permissions, env, model, …)
+    # keeps the file: collapsing it destroyed user settings (t-55c1).
+    if ! grep -q '"command"' "$settings" 2>/dev/null && ! _has_non_hook_keys "$settings"; then
       printf '{}' > "$settings"
     fi
   fi
