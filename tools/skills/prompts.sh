@@ -171,6 +171,27 @@ PYEOF
 # surgery on this file: t-f01d's incident (_init_claude used to `cat > settings.json`
 # unconditionally, destroying pre-existing permissions/model/hooks) means any write here
 # must never touch unrelated keys.
+# Which JSON engine edits .claude/settings.json: python3 where it really works; else, on Windows (Git for
+# Windows only — no Python, t-55c1), Windows' own powershell.exe running settings-merge.ps1; else none.
+_settings_backend() {
+  if have_python; then echo python
+  elif _is_windows && command -v powershell.exe >/dev/null 2>&1; then echo powershell
+  else echo none
+  fi
+}
+
+# _ps_settings <status|add|remove> <settings.json> <allow|deny> <rule>... — prints one word
+# (present/absent, ok, invalid). -EncodedCommand (UTF-16LE base64) sidesteps .ps1 execution policy;
+# inputs travel as env vars, so paths and rules need no quoting.
+_ps_settings() {
+  local mode="$1" settings="$2" key="$3" enc winpath
+  shift 3
+  winpath="$(cygpath -w "$settings" 2>/dev/null || printf '%s' "$settings")"
+  enc="$(iconv -f UTF-8 -t UTF-16LE "$(dirname "${BASH_SOURCE[0]}")/settings-merge.ps1" | base64 | tr -d '\n')"
+  CANON_SETTINGS="$winpath" CANON_KEY="$key" CANON_MODE="$mode" CANON_RULES="$(printf '%s\n' "$@")" \
+    powershell.exe -NoProfile -NonInteractive -EncodedCommand "$enc" 2>/dev/null | tr -d '\r'
+}
+
 # t-c774: close gates keep Bash (git, tests, report write), so a tool list can't stop a gate installing
 # software (a t-bd3e evaluator ran `brew install gawk` on the host). Deny system-wide installers only —
 # project-level npm/pip stays allowed. Session-wide (settings has no per-subagent scope); asked first.
@@ -201,11 +222,20 @@ PYEOF
 }
 
 offer_install_deny_rules() {
-  local project_dir="$1" settings="$1/.claude/settings.json" status
-  have_python || { echo "  [skip]  install deny rules need Python, which isn't available here — left as is"; return 0; }
+  local project_dir="$1" settings="$1/.claude/settings.json" status backend
+  backend="$(_settings_backend)"
+  if [ "$backend" = none ]; then
+    echo "  [skip]  install deny rules need Python (or PowerShell on Windows), which isn't available here — left as is"
+    return 0
+  fi
   # A crash while reading the file counts as invalid; under set -e a bare failing $(...) would abort add/refresh.
   # tr -d '\r': native Windows Python prints "present\r\n", and $(...) strips only the \n (t-c774).
-  status="$(_deny_rules_status "$settings" | tr -d '\r')" || status=invalid
+  if [ "$backend" = python ]; then
+    status="$(_deny_rules_status "$settings" | tr -d '\r')" || status=invalid
+  else
+    status="$(_ps_settings status "$settings" deny "${CANON_INSTALL_DENY_RULES[@]}")" || status=invalid
+    [ -n "$status" ] || status=invalid
+  fi
   if [ "$status" = "invalid" ]; then
     echo "  [fail]  $settings is not valid JSON (or permissions/deny has the wrong type) — install deny rules not added"
     return 0
@@ -216,6 +246,14 @@ offer_install_deny_rules() {
     return 0
   fi
   mkdir -p "$(dirname "$settings")"
+  if [ "$backend" = powershell ]; then
+    if [ "$(_ps_settings add "$settings" deny "${CANON_INSTALL_DENY_RULES[@]}" || true)" = ok ]; then
+      echo "  [ok]     $settings — added install deny rules"
+    else
+      echo "  [fail]   could not update $settings — left untouched"
+    fi
+    return 0
+  fi
   if python3 - "$settings" "${CANON_INSTALL_DENY_RULES[@]}" <<'PYEOF'
 import json, sys
 path, rules = sys.argv[1], sys.argv[2:]
@@ -252,13 +290,19 @@ offer_subagent_log_permission() {
   local settings="$project_dir/.claude/settings.json"
   local rule="Bash(subagent-log.sh:*)"
 
-  if ! have_python; then
-    echo "  [skip]  the subagent-log.sh permission rule needs Python, which isn't available here — left as is"
+  local backend status
+  backend="$(_settings_backend)"
+  if [ "$backend" = none ]; then
+    echo "  [skip]  the subagent-log.sh permission rule needs Python (or PowerShell on Windows), which isn't available here — left as is"
     return 0
   fi
 
-  local status
-  status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
+  if [ "$backend" = python ]; then
+    status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
+  else
+    status="$(_ps_settings status "$settings" allow "$rule" || true)"
+    [ -n "$status" ] || status=invalid
+  fi
   if [ "$status" = "invalid" ]; then
     echo "  [fail]  $settings is not valid JSON — skipping subagent-log.sh permission check"
     return 0
@@ -271,6 +315,14 @@ offer_subagent_log_permission() {
   fi
 
   mkdir -p "$(dirname "$settings")"
+  if [ "$backend" = powershell ]; then
+    if [ "$(_ps_settings add "$settings" allow "$rule" || true)" = ok ]; then
+      echo "  [ok]     $settings — added $rule"
+    else
+      echo "  [fail]   could not update $settings — left untouched"
+    fi
+    return 0
+  fi
   if python3 - "$settings" "$rule" <<'PYEOF'
 import json, sys
 path, rule = sys.argv[1], sys.argv[2]
@@ -302,10 +354,15 @@ offer_remove_subagent_log_permission() {
   local rule="Bash(subagent-log.sh:*)"
 
   [ -f "$settings" ] || return 0
-  have_python || return 0
+  local backend status
+  backend="$(_settings_backend)"
+  [ "$backend" != none ] || return 0
 
-  local status
-  status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
+  if [ "$backend" = python ]; then
+    status="$(_subagent_log_rule_status "$settings" "$rule" | tr -d '\r')"   # Windows Python: "present\r"
+  else
+    status="$(_ps_settings status "$settings" allow "$rule" || true)"
+  fi
   [ "$status" = "present" ] || return 0
 
   if ! { : <> /dev/tty; } 2>/dev/null; then
@@ -316,6 +373,11 @@ offer_remove_subagent_log_permission() {
   read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
   [[ "$answer" =~ ^[Yy]$ ]] || return 0
 
+  if [ "$backend" = powershell ]; then
+    _ps_settings remove "$settings" allow "$rule" >/dev/null || true
+    echo "  $settings — removed subagent-log.sh permission rule." > /dev/tty
+    return 0
+  fi
   python3 - "$settings" "$rule" <<'PYEOF'
 import json, sys
 path, rule = sys.argv[1], sys.argv[2]

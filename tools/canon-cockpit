@@ -61,8 +61,7 @@ main() {
     exit 1
   fi
 
-  python3 "$SERVER" "$port" &
-  SERVER_PID=$!
+  start_cockpit_server "$port" || exit 1
   trap 'kill "$SERVER_PID" 2>/dev/null; exit 0' INT TERM EXIT
   sleep 0.4
   open_browser "$url"

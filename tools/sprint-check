@@ -93,8 +93,7 @@ main() {
 
   # No cockpit instance running yet — start it (same foreground lifecycle as
   # running `canon-cockpit` directly: it lives as long as this shell).
-  python3 "$SERVER" "$port" &
-  SERVER_PID=$!
+  start_cockpit_server "$port" || exit 1
   trap 'kill "$SERVER_PID" 2>/dev/null; exit 0' INT TERM EXIT
 
   for _ in $(seq 1 50); do

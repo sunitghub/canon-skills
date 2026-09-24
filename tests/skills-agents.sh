@@ -185,13 +185,13 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$stubbin/python3"; chmod +x "$stubbin/
 p12="$(newp)"
 for fn in offer_install_deny_rules offer_subagent_log_permission; do
   out="$(PATH="$stubbin:$PATH" SKILLS_SH_ASSUME_YES=1 lib "$p12" "$ROOT" "$fn" 2>&1)"
-  assert_contains "$out" "Python, which isn't available here"
+  assert_contains "$out" "which isn't available here"
   [[ "$out" != *"[ok]"* ]] || fail "$fn reported [ok] with a placeholder python3: $out"
 done
 [[ ! -e "$p12/.claude/settings.json" ]] || fail "settings.json written without a working python"
 # ...and refresh surfaces the skip (it contains "left as is").
 "$SKILLS" add sprint "$p12" >/dev/null 2>&1 || true
 out="$(PATH="$stubbin:$PATH" SKILLS_SH_ASSUME_YES=1 "$SKILLS" refresh "$p12" 2>&1)"
-assert_contains "$out" "Python, which isn't available here"
+assert_contains "$out" "which isn't available here"
 
 printf 'skills-agents: ok\n'

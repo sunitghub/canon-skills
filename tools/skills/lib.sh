@@ -14,6 +14,10 @@ if ! declare -F _init_claude &>/dev/null; then
   # shellcheck source=tools/hooks-lib.sh
   source "$(dirname "${BASH_SOURCE[0]}")/../hooks-lib.sh"
 fi
+if ! declare -F have_python &>/dev/null; then
+  # shellcheck source=tools/platform-lib.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/../platform-lib.sh"
+fi
 if ! declare -F find_skill &>/dev/null; then
   # shellcheck source=tools/skill-lib.sh
   source "$(dirname "${BASH_SOURCE[0]}")/../skill-lib.sh"
@@ -66,23 +70,6 @@ covered_deps_for_skills() {
       [ -n "$dep" ] && printf '%s\n' "$dep"
     done < <(resolve_deps "$sf")
   done
-}
-
-# A python3 that actually runs. `command -v` isn't enough: Windows ships a Microsoft Store placeholder
-# python3.exe that exists without Python installed and does nothing. canon assumes only Git for Windows
-# there, so every python3-backed step must check this and skip honestly, never report a false [ok] (t-c774).
-#
-# Never EXECUTE a python3 under Windows' WindowsApps folder: that's an App execution alias (Microsoft
-# Store placeholder or the Python install manager), and running it can download and install Python
-# (live on the VM, 2026-09-24: `python3 -c "print(1)"` installed Python 3.14.7). Judge it by path (t-55c1).
-have_python() {
-  local py out
-  py="$(command -v python3 2>/dev/null)" || return 1
-  case "$(printf '%s' "$py" | tr '[:upper:]\\' '[:lower:]/')" in
-    */appdata/local/microsoft/windowsapps/*) return 1 ;;
-  esac
-  out="$("$py" -c 'print(1)' 2>/dev/null | tr -d '\r')" || return 1
-  [ "$out" = "1" ]
 }
 
 # Exact-line presence check that ignores a trailing \r, so a CRLF file (Windows) doesn't read as missing

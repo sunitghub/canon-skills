@@ -408,6 +408,13 @@ canon enforces its own standards on itself. A git-native pre-commit hook runs th
 
 For agent-driven workflows (`sprint`, `tkt`, `skills.sh`) run those from Git Bash. See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11)** for the full setup.
 
+**Git for Windows is the only dependency on Windows.** canon never requires Python there:
+- `canon-cockpit` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python.
+- `skills.sh` edits `.claude/settings.json` (the permission and deny rules) with Windows' built-in PowerShell.
+- `sprint`, `tkt` and the pre-commit hook use only bash.
+
+canon never *runs* a `python3` found under `…\AppData\Local\Microsoft\WindowsApps\`. That's an App execution alias, and on some machines running it downloads and installs Python. A test, `tests/no-python-windows-paths.sh`, fails if an end-user script starts depending on Python.
+
 Register canon in another project:
 
 ```bash

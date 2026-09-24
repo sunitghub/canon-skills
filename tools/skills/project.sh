@@ -6,11 +6,6 @@ set -euo pipefail
 # shellcheck source=tools/skills/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-_is_windows() {
-  case "$(uname -s 2>/dev/null)" in MINGW*|CYGWIN*|MSYS*) return 0 ;; esac
-  return 1
-}
-
 # Create a directory symlink (Unix) or junction (Windows — no elevated rights needed).
 _create_dir_link() {
   local target="$1" link="$2"
