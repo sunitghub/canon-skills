@@ -163,7 +163,7 @@ _json_valid() {
       t = tk[p]
       if (t == "{") return obj()
       if (t == "[") return arr()
-      if (t ~ /^"/ || t ~ /^(true|false|null|-?[0-9][0-9.eE+-]*)$/) { p++; return 1 }
+      if (t ~ /^"/ || t ~ /^(true|false|null)$/ || t ~ /^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$/) { p++; return 1 }
       return 0
     }
     function obj() {
@@ -195,7 +195,11 @@ _json_valid() {
           s = c; i++; closed = 0
           while (i <= n) {
             c = substr(doc, i, 1); s = s c
-            if (c == "\\") { i++; s = s substr(doc, i, 1) }
+            if (c == "\\") {
+              i++; e = substr(doc, i, 1); s = s e
+              if (e == "u") { if (substr(doc, i + 1, 4) !~ /^[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]$/) bad = 1 }
+              else if (index("\"\\/bfnrt", e) == 0) bad = 1
+            }
             else if (c == "\"") { closed = 1; break }
             i++
           }

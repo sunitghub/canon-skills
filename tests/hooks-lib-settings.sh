@@ -86,15 +86,20 @@ if command -v python3 >/dev/null 2>&1; then valid_json "$tmp/quoted.json" || fai
 # 3d. The evaluator's reproductions (t-55c1 eval run 1): the prune step's line-based awk emptied compact
 #     single-line JSON, and its second collapse ignored user keys. Whatever the surgery does, no non-hook
 #     key may be lost; the wrapper restores the original instead ("left as is").
-keeps() {  # <label> <json> <key-that-must-survive>
-  printf '%s\n' "$2" > "$tmp/$1.json"
+keeps() {  # <label> <json> <key-that-must-survive> [removed|left] — also asserts what happened to the hook
+  printf '%s\n' "$2" > "$tmp/$1.json"; cp "$tmp/$1.json" "$tmp/$1.orig"
   out="$(bash -c 'source "$1/tools/hooks-lib.sh"; _uninstall_claude "$2"' _ "$ROOT" "$tmp/$1.json")"
   grep -qF "$3" "$tmp/$1.json" || fail "$1: lost $3 — now: $(cat "$tmp/$1.json") — said: $out"
   if command -v python3 >/dev/null 2>&1; then valid_json "$tmp/$1.json" || fail "$1: invalid JSON: $(cat "$tmp/$1.json")"; fi
+  case "${4:-}" in
+    removed) if grep -qE 'auto-handoff\.sh|subagent-log\.sh"' "$tmp/$1.json"; then fail "$1: legacy hook not removed: $(cat "$tmp/$1.json")"; fi ;;
+    left)    cmp -s "$tmp/$1.json" "$tmp/$1.orig" || fail "$1: expected the file left byte-identical: $(cat "$tmp/$1.json")"
+             assert_contains "$out" "left as is" ;;
+  esac
 }
-keeps compact-apikey '{"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "bash /old/canon/tools/auto-handoff.sh"}]}]}, "ApiKey": "user-secret-value"}' '"ApiKey": "user-secret-value"'
+keeps compact-apikey '{"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "bash /old/canon/tools/auto-handoff.sh"}]}]}, "ApiKey": "user-secret-value"}' '"ApiKey": "user-secret-value"' left
 keeps empty-skeleton-apikey "$(printf '{\n  "hooks": {\n    "Stop": [\n      {\n        "matcher": "",\n        "hooks": []\n      }\n    ]\n  },\n  "ApiKey": "keep-me"\n}')" '"ApiKey": "keep-me"'
-keeps compact-quoted-perms '{"hooks": {"SubagentStop": [{"matcher": "", "hooks": [{"type": "command", "command": "\"C:\\Program Files\\canon\\tools\\subagent-log.sh\""}]}]}, "permissions": {"allow": ["Bash(ls:*)"]}}' '"Bash(ls:*)"'
+keeps compact-quoted-perms '{"hooks": {"SubagentStop": [{"matcher": "", "hooks": [{"type": "command", "command": "\"C:\\Program Files\\canon\\tools\\subagent-log.sh\""}]}]}, "permissions": {"allow": ["Bash(ls:*)"]}}' '"Bash(ls:*)"' left
 keeps compact-perms-only '{"permissions": {"allow": ["Bash(subagent-log.sh:*)"], "deny": ["Bash(brew install:*)"]}, "model": "sonnet"}' '"model": "sonnet"'
 
 # 3e. The evaluator's run-2 finding: user data named like hook vocabulary. The guard compares everything
