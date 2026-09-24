@@ -17,6 +17,7 @@ tests=(
   "$ROOT/tests/skills-uninstall.sh"
   "$ROOT/tests/skills-mirror-gitignore.sh"
   "$ROOT/tests/skills-agents.sh"
+  "$ROOT/tests/windows-no-python.sh"
   "$ROOT/tests/git-precommit-hook.sh"
   "$ROOT/tests/subagent-log-cli.sh"
   "$ROOT/tests/disposable-cred.sh"
