@@ -158,7 +158,7 @@ Follow [examples/restaurant-bill-split/](../examples/restaurant-bill-split/READM
 
 ## Windows 11
 
-canon's CLI tools are bash scripts. The supported Windows 11 path is **Git for Windows (Git Bash) — no WSL required**: run **`install.cmd`** once (double-click it, or `install.cmd` from any terminal — it launches `install.ps1` without tripping PowerShell's execution policy) to add `tools/` to your user PATH, then use **Git Bash** to clone/update canon and run the agent CLIs (`sprint`, `tkt`, `skills.sh`), and **PowerShell** (or any terminal) with `sprint-check-win` for the board — the board ships as a Go binary, so no Python is needed. See the [main setup guide](setup.md) and the README's **Windows 11 — no WSL required** section for the full steps.
+canon's CLI tools are bash scripts. The supported Windows 11 path is **Git for Windows (Git Bash) — no WSL required**: run **`install.cmd`** once (double-click it, or `install.cmd` from any terminal — it launches `install.ps1` without tripping PowerShell's execution policy) to add `tools/` to your user PATH, then use **Git Bash** to clone/update canon, and **PowerShell** for everything else. Each command has a `.cmd` wrapper, so run it by name: `sprint`, `tkt`, `skills` (for example `skills refresh`), and `canon-cockpit` or `sprint-check-win` for the board. The board ships as a Go binary and settings are edited with Windows' built-in PowerShell, so no Python is needed. In a Git Bash window, use the script names instead (`skills.sh refresh`). See the [main setup guide](setup.md) and the README's **Windows 11 — no WSL required** section for the full steps.
 
 #### Windows setup gotchas (real field errors + fixes)
 
