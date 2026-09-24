@@ -66,6 +66,23 @@ printf '{\n  "hooks": {\n    "Stop": [\n      {\n        "matcher": "",\n       
 run "$tmp/hooksonly.json"
 assert_eq "{}" "$(cat "$tmp/hooksonly.json")"
 
+# 3b. A legacy hook next to a capitalized user key (not a hook event): the key must survive (reviewer
+#     finding: a [A-Z][A-Za-z]* whitelist treated "ApiKey" as hook structure and still collapsed to {}).
+printf '{\n  "hooks": {\n    "Stop": [\n      {\n        "matcher": "",\n        "hooks": [\n          { "type": "command", "command": "bash /old/canon/tools/auto-handoff.sh" }\n        ]\n      }\n    ]\n  },\n  "ApiKey": "keep-me"\n}\n' > "$tmp/capkey.json"
+run "$tmp/capkey.json"
+assert_count 1 '"ApiKey": "keep-me"' "$tmp/capkey.json"
+if grep -q 'auto-handoff.sh' "$tmp/capkey.json"; then fail "legacy hook not removed next to a capitalized key"; fi
+if command -v python3 >/dev/null 2>&1; then valid_json "$tmp/capkey.json" || fail "capkey file no longer valid JSON: $(cat "$tmp/capkey.json")"; fi
+
+# 3c. A legacy hook whose command holds escaped quotes (a quoted Windows path): still counted and removed
+#     (reviewer finding: [^"]* stopped at the first \" so the hook was left behind).
+printf '{\n  "hooks": {\n    "SubagentStop": [\n      {\n        "matcher": "",\n        "hooks": [\n          { "type": "command", "command": "\\"C:\\\\Program Files\\\\canon\\\\tools\\\\subagent-log.sh\\"" }\n        ]\n      }\n    ]\n  },\n  "permissions": {\n    "allow": [\n      "Bash(ls:*)"\n    ]\n  }\n}\n' > "$tmp/quoted.json"
+grep -q 'Program Files' "$tmp/quoted.json" || fail "fixture: quoted hook missing"
+run "$tmp/quoted.json"
+if grep -q 'subagent-log.sh' "$tmp/quoted.json"; then fail "legacy hook with an escaped-quote path was left behind"; fi
+assert_count 1 'Bash(ls:*)' "$tmp/quoted.json"
+if command -v python3 >/dev/null 2>&1; then valid_json "$tmp/quoted.json" || fail "quoted file no longer valid JSON: $(cat "$tmp/quoted.json")"; fi
+
 # 4. End to end: a real skills refresh must leave a settings.json holding canon's own rules untouched.
 proj="$tmp/proj"; mkdir -p "$proj"; git -C "$proj" init -q; printf '# Agents\n' > "$proj/AGENTS.md"
 HOME="$tmp/h" "$SKILLS" add sprint "$proj" >/dev/null 2>&1

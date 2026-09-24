@@ -93,11 +93,13 @@ _init_pi() {
   fi
 }
 
-# True if settings.json has any key besides Claude Code hook structure (hooks, matcher, type, command,
-# timeout, and PascalCase event names such as PreToolUse). Count form, not `grep -q`, under pipefail.
+# True if settings.json has any key besides Claude Code hook structure: hooks, matcher, type, command,
+# timeout, and the named hook events. An unknown key counts as user data, so the file is kept (safe side).
+# Count form, not `grep -q`, under pipefail.
+_CLAUDE_HOOK_KEYS='hooks|matcher|type|command|timeout|PreToolUse|PostToolUse|PostToolUseFailure|Notification|UserPromptSubmit|Stop|SubagentStart|SubagentStop|PreCompact|SessionStart|SessionEnd'
 _has_non_hook_keys() {
   [ "$(grep -oE '"[^"]+"[[:space:]]*:' "$1" 2>/dev/null | sed -E 's/[[:space:]]*:$//' \
-      | grep -cvxE '"(hooks|matcher|type|command|timeout|[A-Z][A-Za-z]*)"' || true)" -gt 0 ]
+      | grep -cvxE "\"($_CLAUDE_HOOK_KEYS)\"" || true)" -gt 0 ]
 }
 
 _uninstall_claude() {
@@ -115,7 +117,8 @@ _uninstall_claude() {
   # every add/refresh ran this cleanup and the collapse below wiped settings.json to {} (t-55c1).
   for _n in "${_canon_scripts[@]}"; do
     local c
-    c=$(grep -cE '"command"[[:space:]]*:[[:space:]]*"[^"]*'"${_n//./\\.}" "$settings" 2>/dev/null) || c=0
+    # ([^"\\]|\\.)*: step over escaped characters, e.g. a quoted "C:\\Program Files\\…" path.
+    c=$(grep -cE '"command"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*'"${_n//./\\.}" "$settings" 2>/dev/null) || c=0
     removed=$(( removed + c ))
   done
 
