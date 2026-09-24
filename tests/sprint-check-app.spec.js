@@ -6657,6 +6657,25 @@ test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
     await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toContainText(['GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna']);
   });
 
+  test('Review & Eval card states that gate effort comes from the agent definitions (t-c774)', async ({ page }) => {
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+    const card = page.locator('.mt-default-card', { has: page.locator('#mt-default-eval') });
+    const note = card.locator('#mt-effort-note');
+    await expect(note).toBeVisible();
+    await expect(note).toContainText('Effort: high');
+    await expect(note).toContainText('agents/canon-reviewer.md');
+    // Rendered under the model pickers, inside the Review & Eval card only.
+    const [pickBox, noteBox] = [await card.locator('#mt-default-eval').boundingBox(), await note.boundingBox()];
+    expect(noteBox.y).toBeGreaterThanOrEqual(pickBox.y + pickBox.height);
+    await expect(page.locator('.mt-default-card', { has: page.locator('#mt-default-light') }).locator('#mt-effort-note')).toHaveCount(0);
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await card.screenshot({ path: test.info().outputPath(`review-eval-card-${theme}.png`) });
+    }
+  });
+
   // Restore against the canonical file on disk, not a live GET snapshot — a
   // snapshot could itself be dirty (e.g. a prior interrupted run's leftover),
   // which would perpetuate corruption across runs instead of healing it.

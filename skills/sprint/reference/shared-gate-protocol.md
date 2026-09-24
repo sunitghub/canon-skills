@@ -40,7 +40,7 @@ You will receive:
 
 ## Tools
 
-Use Read, Bash, Grep, Glob, and LS only — this matches what both real dispatch mechanisms actually grant (interactive `Plan`-type dispatch excludes only Edit/Write/Agent at the harness level; headless CI's hardcoded `tools/sprint-headless` allowlist explicitly includes Grep/Glob/LS too). Do not use the Edit or Write tools, or Agent, or any other tool beyond that set — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report — findings go there only.
+Use Read, Bash, Grep, Glob, and LS only — this matches what both real dispatch mechanisms actually grant (interactive dispatch as `canon-reviewer`/`canon-evaluator` grants Read, Grep, Glob and Bash — list files with `ls` via Bash — and its `Plan` fallback excludes only Edit/Write/Agent at the harness level; headless CI's hardcoded `tools/sprint-headless` allowlist explicitly includes Grep/Glob/LS too). Do not use the Edit or Write tools, or Agent, or any other tool beyond that set — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report — findings go there only.
 
 **Never write into `tools/` outside this ticket's own files** (t-1781, live-reproduced twice: a
 gate dispatch corrupted the real `tools/sprint-headless` script with a test-stub-shaped
@@ -84,7 +84,7 @@ failure — live-reproduced on a real harness install where `Plan`-type Bash ref
 file-modifying commands, stricter than the Tools section above assumes): do not retry with
 smaller chunks, that won't help a permission refusal. Do not ask for or accept broader tool
 access (e.g. a re-dispatch as `general-purpose`) to work around it — that defeats the whole
-reason this gate runs as `Plan` in the first place. Instead, include your full report,
+reason this gate runs as a restricted type (`canon-reviewer`/`canon-evaluator`, or its `Plan` fallback) in the first place. Instead, include your full report,
 verbatim, in the exact format specified in the calling protocol, in your final text response
 to the caller. The orchestrating agent will save it itself.
 

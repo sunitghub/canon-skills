@@ -38,6 +38,10 @@ option list from `tools/sprint-check-app/model-tiers.json` (Admin > Model Tiers,
 that file is a seeded, editable mirror of the Anthropic models named above, not a replacement for
 this prose; the registry's OpenAI entries are recorded for future use only (`t-ef27`).
 
+**Close-gate effort** comes from canon's gate agent definitions (`agents/canon-reviewer.md`,
+`canon-evaluator.md`: `effort: high`, a `sonnet` model floor, read-only tools), not from this prose.
+A dispatch can set only the model, never effort (`t-c774`).
+
 **Exception — sprint close gates** follow their own rule (may downgrade to the Admin > Model
 Tiers "Review & Eval" default, applied unconditionally to every interactive close since
 2026-09-23; to Haiku on a `demo: true` ticket, evaluator only; or via an explicit user

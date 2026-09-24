@@ -126,8 +126,9 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
    For the `reviewer`/`eval` rows, always suffix the reason with `(model: <model> — <source>)` —
    the value and source applied by the model-tier check below: an explicit `Gate model:` value,
-   the Admin Review & Eval default's alias, or the exact session model id (e.g.
-   `claude-sonnet-5`) when both fall through, never a paraphrase. Records which tier ran and why.
+   the Admin Review & Eval default's alias, `sonnet` (the `canon-*` definition floor) when both
+   fall through, or the exact session model id (e.g. `claude-sonnet-5`) on the `Plan` fallback;
+   never a paraphrase. Records which tier ran and why.
 
    Use `ran`/`skipped`, always with a reason — even for gates that ran, note the evidence
    checked. Avoid bare "ran"; use e.g. `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69`
@@ -176,20 +177,23 @@ Opus` default, scoped only to the two close-gate dispatches below.
   it there is a distinct, not-yet-scoped follow-up. This supersedes the former structural
   low-risk classification (git-diff-based allowlist check), now fully retired.
 - **Fail-safe for the Admin default — never a silent downgrade, never a dispatch error.** Treat
-  the Admin-default step as absent and fall through to the session model if **any** of: the file
+  the Admin-default step as absent and fall through to the gate definition's model floor
+  (`sonnet` in `agents/canon-*.md`, `t-c774`; on the `Plan` fallback, the session model) if **any** of: the file
   is missing or unreadable; `defaults.eval.anthropic` is absent; its `id` has no matching entry
   in `models.anthropic`; or the entry's `alias` is not one the Agent tool's `model:` param
   accepts (`fable`, `opus`, `sonnet`, `haiku` — Admin lets a user add models with arbitrary
   aliases, and an unrecognized value would make the dispatch itself error).
-- **Apply the result.** With an explicit `Gate model:` value: `session` → omit `model`
-  (inherits session model); any other value → pass it verbatim as `model` on both reviewer
+- **Apply the result.** With an explicit `Gate model:` value: `session` → pass **your own
+  session model's alias** explicitly as `model` (`fable`, `opus`, `sonnet` or `haiku`). Omitting
+  `model` would apply the `canon-*` definition's `sonnet` floor, not the session model
+  (`t-c774`). Any other value → pass it verbatim as `model` on both reviewer
   and evaluator `Agent` calls. Without one: the resolved Admin default's alias → pass it as
-  `model`; if that step also fell through (fail-safe), omit `model` entirely (full session
-  model). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
+  `model`; if that step also fell through (fail-safe), omit `model` so the definition's floor
+  applies (`sonnet`; the session model only on the `Plan` fallback). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
   separate from this check. **Name the source, not just the value**, wherever this result is
   recorded (Wrapup Gates table, `summary.md`) — `Admin Review & Eval default`, `Gate model
   override` (including `Gate model: session`, recorded as `Gate model override — session`), `demo
-  mode`, `session` (the fail-safe fallthrough) — so a later reader can tell an admin-wide setting from a
+  mode`, `definition floor` (the fail-safe fallthrough; `session` on the `Plan` fallback) — so a later reader can tell an admin-wide setting from a
   per-ticket decision, the same loudness convention `Gate model:`/`demo` already follow.
 - **The dispatch stays mandatory at every tier** — this check only picks the model, never
   removes the reviewer/evaluator dispatch. Unlike the retired low-risk check, the Admin default
@@ -328,13 +332,20 @@ Opus` default, scoped only to the two close-gate dispatches below.
    reviewer. Same-context review is not acceptable.
 
    Reviewer has no implementation history. Invoke with a clean context, per the model-tier
-   check and shared gate mechanics above. **Pass `subagent_type: "Plan"`** on the `Agent`
-   call — the only mechanism that restricts a dispatched subagent's tools; the `Plan`
-   type excludes Edit, Write, and Agent at the harness level (Bash stays available, needed for
-   git commands and writing the report via `cat >>` — though some harnesses refuse even `Plan`-type file-modifying Bash, in which case the subagent relays its report in-response per `shared-gate-protocol.md ## Report-writing safety`). Chosen over `Explore` (same tool
-   restriction) because `Explore`'s own description warns it reads excerpts rather than whole
-   files — wrong fit for adversarial full-file review; the dispatch prompt overrides `Plan`'s
-   default architect framing regardless. Prompt must instruct it to:
+   check and shared gate mechanics above. **Pass `subagent_type: "canon-reviewer"`** on the
+   `Agent` call (`t-c774`). It's canon's own agent definition (`agents/canon-reviewer.md`,
+   installed into `.claude/agents/` by `skills.sh add sprint`/`refresh`). It fixes the gate's
+   tools (Read, Grep, Glob, Bash: no Edit, Write or Agent), its **effort** (`high`, which a
+   dispatch can't set any other way), and a `sonnet` model floor that replaces "inherit the
+   session model". Still pass `model` from the model-tier check above. It overrides the
+   definition's model, so `Gate model:`, demo mode and the Admin default behave exactly as
+   before. Bash stays available for git and for writing the report via `cat >>`; if a harness
+   refuses file-modifying Bash, the subagent relays its report in-response per
+   `shared-gate-protocol.md ## Report-writing safety`.
+   **Fallback:** if the dispatch fails because the agent type isn't found (a project not yet
+   refreshed, or Codex/Pi), re-dispatch once with `subagent_type: "Plan"`, which also excludes
+   Edit, Write and Agent. Append `(fallback: Plan)` to that gate's Wrapup Gates reason, so the
+   missing effort setting is visible, never silent. Prompt must instruct it to:
    - Read `skills/sprint/reference/review.md` and follow the review protocol
    - Record its model designation per the shared gate mechanics above
    - Write findings to `.tickets/<id>/review-notes.md` and return the verdict line
@@ -382,7 +393,8 @@ Opus` default, scoped only to the two close-gate dispatches below.
    sole, intentionally human-only escape hatch.
 
    Invoke a fresh Agent subagent with a clean context, per the model-tier check above. Pass
-   `subagent_type: "Plan"`, same restriction and rationale as the reviewer gate above. Prompt
+   `subagent_type: "canon-evaluator"` (`agents/canon-evaluator.md`), with the same `model`
+   override, rationale and `(fallback: Plan)` rule as the reviewer gate above. Prompt
    must instruct it to:
    - Read `skills/sprint/reference/eval.md` and follow the eval protocol
    - Record its model designation per the shared gate mechanics above

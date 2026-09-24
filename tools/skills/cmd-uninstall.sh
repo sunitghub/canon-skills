@@ -32,6 +32,7 @@ cmd_uninstall() {
         ' "$proj/AGENTS.md" > "$proj/AGENTS.md.tmp" && mv "$proj/AGENTS.md.tmp" "$proj/AGENTS.md"
       fi
       remove_skills_symlinks "$proj"
+      remove_gate_agents "$proj"
       _uninstall_claude "$proj/.claude/settings.json" 2>&1 | sed 's/^/  /' || true
       _uninstall_git_precommit "$proj" 2>&1 | sed 's/^/  /' || true
       echo "  [cleaned]  $proj"

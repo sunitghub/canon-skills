@@ -171,6 +171,81 @@ PYEOF
 # surgery on this file: t-f01d's incident (_init_claude used to `cat > settings.json`
 # unconditionally, destroying pre-existing permissions/model/hooks) means any write here
 # must never touch unrelated keys.
+# t-c774: close gates keep Bash (git, tests, report write), so a tool list can't stop a gate installing
+# software (a t-bd3e evaluator ran `brew install gawk` on the host). Deny system-wide installers only —
+# project-level npm/pip stays allowed. Session-wide (settings has no per-subagent scope); asked first.
+CANON_INSTALL_DENY_RULES=(
+  "Bash(brew install:*)" "Bash(apt install:*)" "Bash(apt-get install:*)"
+  "Bash(sudo apt install:*)" "Bash(sudo apt-get install:*)"
+  "Bash(choco install:*)" "Bash(winget install:*)"
+)
+
+# prints: present | missing | invalid  (invalid = not JSON, or permissions/deny of the wrong type)
+_deny_rules_status() {
+  python3 - "$1" "${CANON_INSTALL_DENY_RULES[@]}" <<'PYEOF'
+import json, sys
+path, rules = sys.argv[1], sys.argv[2:]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except FileNotFoundError:
+    print("missing"); sys.exit()
+except Exception:
+    print("invalid"); sys.exit()
+perms = data.get("permissions", {}) if isinstance(data, dict) else None
+deny = perms.get("deny", []) if isinstance(perms, dict) else None
+if not isinstance(deny, list):
+    print("invalid"); sys.exit()
+print("present" if all(r in deny for r in rules) else "missing")
+PYEOF
+}
+
+offer_install_deny_rules() {
+  local project_dir="$1" settings="$1/.claude/settings.json" status
+  command -v python3 &>/dev/null || { echo "  [skip]  python3 not found — install deny rules not added"; return 0; }
+  # A crash while reading the file counts as invalid; under set -e a bare failing $(...) would abort add/refresh.
+  status="$(_deny_rules_status "$settings")" || status=invalid
+  if [ "$status" = "invalid" ]; then
+    echo "  [fail]  $settings is not valid JSON (or permissions/deny has the wrong type) — install deny rules not added"
+    return 0
+  fi
+  [ "$status" = "present" ] && return 0
+  if ! _prompt_or_auto_yes "Add deny rules to $settings so agents (incl. close gates) can't run system installers (brew/apt/choco/winget install)?"; then
+    echo "  [skip]  install deny rules not added (see CANON_INSTALL_DENY_RULES in tools/skills/prompts.sh)"
+    return 0
+  fi
+  mkdir -p "$(dirname "$settings")"
+  if python3 - "$settings" "${CANON_INSTALL_DENY_RULES[@]}" <<'PYEOF'
+import json, sys
+path, rules = sys.argv[1], sys.argv[2:]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except FileNotFoundError:
+    data = {}
+if not isinstance(data, dict):
+    sys.exit(1)
+perms = data.setdefault("permissions", {})
+if not isinstance(perms, dict):
+    sys.exit(1)
+deny = perms.setdefault("deny", [])
+if not isinstance(deny, list):
+    sys.exit(1)
+for r in rules:
+    if r not in deny:
+        deny.append(r)
+with open(path, "w") as f:
+    json.dump(data, f, indent=2)
+    f.write("\n")
+PYEOF
+  then
+    echo "  [ok]     $settings — added install deny rules"
+  else
+    echo "  [fail]   could not update $settings — left untouched"
+  fi
+  return 0
+}
+
 offer_subagent_log_permission() {
   local project_dir="$1"
   local settings="$project_dir/.claude/settings.json"
@@ -328,7 +403,9 @@ _post_register_prompts() {
     ensure_sprint_project_marker "$project_dir"
     ensure_promoted_learnings "$project_dir"
     ensure_gitattributes "$project_dir"
+    upsert_gate_agents "$project_dir"
     offer_subagent_log_permission "$project_dir"
+    offer_install_deny_rules "$project_dir"
   fi
   _init_git_precommit "$project_dir"
   offer_tkt_path

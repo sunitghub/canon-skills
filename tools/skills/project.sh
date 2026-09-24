@@ -85,6 +85,81 @@ _ensure_mirror_gitignored() {
   done
 }
 
+# t-c774: canon's close-gate agent definitions (agents/canon-reviewer.md, canon-evaluator.md) give the
+# gates a fixed model floor, effort and tool list. No .claude/agents -> link the folder to canon's (a
+# junction on Windows); a project's own real folder -> copy the canon-*.md files in, refreshed when
+# canon's differ. A same-named file without the canon:agent marker, or a link the user pointed
+# elsewhere, is never touched.
+_is_canon_agents_dir() { [ -f "$1/canon-reviewer.md" ] && grep -qF "canon:agent" "$1/canon-reviewer.md"; }
+
+upsert_gate_agents() {
+  local project_dir="$1" target="$SKILLS_ROOT/agents"
+  local link="$project_dir/.claude/agents" cur src dst
+  [ -d "$target" ] || return 0
+  [ "$(cd "$project_dir" && pwd -P)" = "$(cd "$SKILLS_ROOT" && pwd -P)" ] && return 0
+  mkdir -p "$project_dir/.claude"
+  if _is_dir_link "$link"; then
+    cur="$(_read_dir_link "$link")"
+    [ "$cur" = "$target" ] && { _ensure_agents_link_gitignored "$project_dir"; return 0; }
+    if [ ! -d "$cur" ] || _is_canon_agents_dir "$cur"; then
+      _create_dir_link "$target" "$link"
+      echo "  [agents]  updated link: $link"
+      _ensure_agents_link_gitignored "$project_dir"
+    else
+      echo "  [agents]  $link links elsewhere (not canon) — left as is; gates fall back to Plan"
+    fi
+  elif [ -d "$link" ]; then
+    for src in "$target"/canon-*.md; do
+      dst="$link/$(basename "$src")"
+      if [ -e "$dst" ] && ! grep -qF "canon:agent" "$dst"; then
+        echo "  [agents]  $dst exists and is not canon-managed — left as is"
+        continue
+      fi
+      if [ ! -e "$dst" ] || ! cmp -s "$src" "$dst"; then
+        cp "$src" "$dst"
+        echo "  [agents]  copied: $dst"
+      fi
+    done
+  elif [ -e "$link" ] || [ -L "$link" ]; then
+    echo "  [agents]  $link is not a directory — left as is; gates fall back to Plan"
+  else
+    _create_dir_link "$target" "$link"
+    echo "  [agents]  created link: $link"
+    _ensure_agents_link_gitignored "$project_dir"
+  fi
+  return 0
+}
+
+# Only canon's own link or canon-marked copies; a user's files and folder stay.
+remove_gate_agents() {
+  local project_dir="$1" link="$1/.claude/agents" f
+  if _is_dir_link "$link"; then
+    if [ "$(_read_dir_link "$link")" = "$SKILLS_ROOT/agents" ]; then
+      _remove_dir_link "$link"
+      echo "  [agents]  removed link: $link"
+    fi
+  elif [ -d "$link" ]; then
+    for f in "$link"/canon-*.md; do
+      [ -f "$f" ] && grep -qF "canon:agent" "$f" || continue
+      rm "$f"
+      echo "  [agents]  removed: $f"
+    done
+  fi
+  return 0
+}
+
+# A linked .claude/agents is local (like the skills mirror, t-f99b) and must never be committed.
+_ensure_agents_link_gitignored() {
+  local project_dir="$1" gi="$1/.gitignore" entry="/.claude/agents/"
+  git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  if ! has_line "$entry" "$gi"; then
+    [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
+    printf '%s\n' "$entry" >> "$gi"
+    echo "  [gitignore] $entry"
+  fi
+  return 0
+}
+
 # t-f99b: create the skills link inside a git worktree so it resolves to CURRENT
 # canon (never a stale committed copy). Called by the board's createWorktree
 # (via `skills.sh link-worktree <path>`) — a git worktree, being gitignored, has
@@ -117,6 +192,7 @@ link_worktree() {
     fi
     echo "  [worktree-link] $link -> $target"
   done
+  upsert_gate_agents "$wt_dir"
   _ensure_mirror_gitignored "$wt_dir"
 }
 
