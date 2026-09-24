@@ -83,6 +83,20 @@ if grep -q 'subagent-log.sh' "$tmp/quoted.json"; then fail "legacy hook with an 
 assert_count 1 'Bash(ls:*)' "$tmp/quoted.json"
 if command -v python3 >/dev/null 2>&1; then valid_json "$tmp/quoted.json" || fail "quoted file no longer valid JSON: $(cat "$tmp/quoted.json")"; fi
 
+# 3d. The evaluator's reproductions (t-55c1 eval run 1): the prune step's line-based awk emptied compact
+#     single-line JSON, and its second collapse ignored user keys. Whatever the surgery does, no non-hook
+#     key may be lost; the wrapper restores the original instead ("left as is").
+keeps() {  # <label> <json> <key-that-must-survive>
+  printf '%s\n' "$2" > "$tmp/$1.json"
+  out="$(bash -c 'source "$1/tools/hooks-lib.sh"; _uninstall_claude "$2"' _ "$ROOT" "$tmp/$1.json")"
+  grep -qF "$3" "$tmp/$1.json" || fail "$1: lost $3 — now: $(cat "$tmp/$1.json") — said: $out"
+  if command -v python3 >/dev/null 2>&1; then valid_json "$tmp/$1.json" || fail "$1: invalid JSON: $(cat "$tmp/$1.json")"; fi
+}
+keeps compact-apikey '{"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "bash /old/canon/tools/auto-handoff.sh"}]}]}, "ApiKey": "user-secret-value"}' '"ApiKey": "user-secret-value"'
+keeps empty-skeleton-apikey "$(printf '{\n  "hooks": {\n    "Stop": [\n      {\n        "matcher": "",\n        "hooks": []\n      }\n    ]\n  },\n  "ApiKey": "keep-me"\n}')" '"ApiKey": "keep-me"'
+keeps compact-quoted-perms '{"hooks": {"SubagentStop": [{"matcher": "", "hooks": [{"type": "command", "command": "\"C:\\Program Files\\canon\\tools\\subagent-log.sh\""}]}]}, "permissions": {"allow": ["Bash(ls:*)"]}}' '"Bash(ls:*)"'
+keeps compact-perms-only '{"permissions": {"allow": ["Bash(subagent-log.sh:*)"], "deny": ["Bash(brew install:*)"]}, "model": "sonnet"}' '"model": "sonnet"'
+
 # 4. End to end: a real skills refresh must leave a settings.json holding canon's own rules untouched.
 proj="$tmp/proj"; mkdir -p "$proj"; git -C "$proj" init -q; printf '# Agents\n' > "$proj/AGENTS.md"
 HOME="$tmp/h" "$SKILLS" add sprint "$proj" >/dev/null 2>&1

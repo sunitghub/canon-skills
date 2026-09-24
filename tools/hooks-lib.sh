@@ -102,7 +102,36 @@ _has_non_hook_keys() {
       | grep -cvxE "\"($_CLAUDE_HOOK_KEYS)\"" || true)" -gt 0 ]
 }
 
+# The non-hook keys of a settings.json, one per line, sorted (duplicates kept, so counts compare too).
+_non_hook_keys() {
+  { grep -oE '"[^"]+"[[:space:]]*:' "$1" 2>/dev/null || true; } | sed -E 's/[[:space:]]*:$//' \
+    | { grep -vxE "\"($_CLAUDE_HOOK_KEYS)\"" || true; } | LC_ALL=C sort
+}
+
+# Removes legacy canon hook entries from settings.json. _uninstall_claude_edit does the line-based
+# sed/awk surgery (no Python on Windows); this wrapper guarantees it can never cost the user a setting:
+# if any non-hook key disappears, or the file comes out empty, the original is restored and the step
+# is reported as left as is. Every add/refresh runs this, and the line-based editing wiped settings.json
+# to {} in several shapes (t-55c1: canon's own permission rule; compact single-line JSON; a second,
+# ungated collapse in the prune step). A stranded legacy hook is harmless; lost user settings are not.
 _uninstall_claude() {
+  local settings="$1"
+  [ -f "$settings" ] || { _uninstall_claude_edit "$settings"; return 0; }
+  local orig="${settings}.canon-orig" before after out
+  cp "$settings" "$orig"
+  before="$(_non_hook_keys "$settings")"
+  out="$(_uninstall_claude_edit "$settings")"
+  after="$(_non_hook_keys "$settings")"
+  if [ "$before" != "$after" ] || [ ! -s "$settings" ]; then
+    cp "$orig" "$settings"
+    out="  [skip]   legacy canon hooks in $settings could not be removed without touching other settings — left as is"
+  fi
+  rm -f "$orig"
+  printf '%s\n' "$out"
+  return 0
+}
+
+_uninstall_claude_edit() {
   local settings="$1"
 
   if [ ! -f "$settings" ]; then
