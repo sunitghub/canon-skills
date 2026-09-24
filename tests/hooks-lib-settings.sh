@@ -97,6 +97,15 @@ keeps empty-skeleton-apikey "$(printf '{\n  "hooks": {\n    "Stop": [\n      {\n
 keeps compact-quoted-perms '{"hooks": {"SubagentStop": [{"matcher": "", "hooks": [{"type": "command", "command": "\"C:\\Program Files\\canon\\tools\\subagent-log.sh\""}]}]}, "permissions": {"allow": ["Bash(ls:*)"]}}' '"Bash(ls:*)"'
 keeps compact-perms-only '{"permissions": {"allow": ["Bash(subagent-log.sh:*)"], "deny": ["Bash(brew install:*)"]}, "model": "sonnet"}' '"model": "sonnet"'
 
+# 3e. The evaluator's run-2 finding: user data named like hook vocabulary. The guard compares everything
+#     outside the top-level "hooks" member, so key names can't blind it.
+legacy='"hooks": {"Stop": [{"matcher": "", "hooks": [{"type": "command", "command": "bash /old/canon/tools/auto-handoff.sh"}]}]}'
+keeps toplevel-matcher "{$legacy, \"matcher\": \"user-value\"}" '"user-value"'
+keeps toplevel-timeout "{$legacy, \"timeout\": 42}" '42'
+keeps toplevel-event   "{$legacy, \"Stop\": \"user-stop\"}" '"user-stop"'
+keeps nested-hooks     "{$legacy, \"plugin\": {\"hooks\": {\"mine\": true}}}" '"mine"'
+keeps pretty-matcher   "$(printf '{\n  %s,\n  "matcher": "user-value"\n}' "$legacy")" '"user-value"'
+
 # 4. End to end: a real skills refresh must leave a settings.json holding canon's own rules untouched.
 proj="$tmp/proj"; mkdir -p "$proj"; git -C "$proj" init -q; printf '# Agents\n' > "$proj/AGENTS.md"
 HOME="$tmp/h" "$SKILLS" add sprint "$proj" >/dev/null 2>&1

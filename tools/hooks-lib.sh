@@ -102,15 +102,63 @@ _has_non_hook_keys() {
       | grep -cvxE "\"($_CLAUDE_HOOK_KEYS)\"" || true)" -gt 0 ]
 }
 
-# The non-hook keys of a settings.json, one per line, sorted (duplicates kept, so counts compare too).
-_non_hook_keys() {
-  { grep -oE '"[^"]+"[[:space:]]*:' "$1" 2>/dev/null || true; } | sed -E 's/[[:space:]]*:$//' \
-    | { grep -vxE "\"($_CLAUDE_HOOK_KEYS)\"" || true; } | LC_ALL=C sort
+# Structural signature of a settings.json with its top-level "hooks" member removed: tokens outside that
+# member, space-joined, whitespace and commas dropped, strings verbatim. Equal signatures before and after
+# the cleanup mean nothing outside "hooks" changed. Independent of key names, so a user key that happens
+# to be called matcher/timeout/an event name, or a "hooks" key nested in a user object, is protected.
+_settings_outside_hooks() {
+  awk '
+    # JSON signature with the top-level "hooks" member dropped. Pass 1 tokenizes (strings kept verbatim,
+    # whitespace and commas dropped); pass 2 skips `"hooks" : <value>` at depth 1. POSIX awk only.
+    { doc = doc $0 "\n" }
+    END {
+      n = length(doc); nt = 0
+      for (i = 1; i <= n; i++) {
+        c = substr(doc, i, 1)
+        if (c == "\"") {                       # string token, escapes honoured
+          s = c; i++
+          while (i <= n) {
+            c = substr(doc, i, 1); s = s c
+            if (c == "\\") { i++; s = s substr(doc, i, 1) }
+            else if (c == "\"") break
+            i++
+          }
+          tk[++nt] = s
+        } else if (c ~ /[{}\[\]:]/) {
+          tk[++nt] = c
+        } else if (c !~ /[ \t\r\n,]/) {        # literal: number / true / false / null
+          s = c
+          while (i < n && substr(doc, i + 1, 1) !~ /[ \t\r\n,{}\[\]:"]/) { i++; s = s substr(doc, i, 1) }
+          tk[++nt] = s
+        }
+      }
+      out = ""; depth = 0
+      for (k = 1; k <= nt; k++) {
+        t = tk[k]
+        if (depth == 1 && t == "\"hooks\"" && tk[k + 1] == ":") {
+          k += 2
+          if (tk[k] == "{" || tk[k] == "[") {  # skip the whole object/array value
+            d = 0
+            for (; k <= nt; k++) {
+              if (tk[k] == "{" || tk[k] == "[") d++
+              else if (tk[k] == "}" || tk[k] == "]") { d--; if (d == 0) break }
+            }
+          }                                    # a primitive value is the single token already skipped
+          continue
+        }
+        if (t == "{" || t == "[") depth++
+        else if (t == "}" || t == "]") depth--
+        out = out t " "
+      }
+      print out
+    }
+  ' "$1" 2>/dev/null
 }
 
 # Removes legacy canon hook entries from settings.json. _uninstall_claude_edit does the line-based
 # sed/awk surgery (no Python on Windows); this wrapper guarantees it can never cost the user a setting:
-# if any non-hook key disappears, or the file comes out empty, the original is restored and the step
+# if anything outside the top-level "hooks" member changes, or the file comes out empty, the original is
+# restored and the step
 # is reported as left as is. Every add/refresh runs this, and the line-based editing wiped settings.json
 # to {} in several shapes (t-55c1: canon's own permission rule; compact single-line JSON; a second,
 # ungated collapse in the prune step). A stranded legacy hook is harmless; lost user settings are not.
@@ -119,9 +167,9 @@ _uninstall_claude() {
   [ -f "$settings" ] || { _uninstall_claude_edit "$settings"; return 0; }
   local orig="${settings}.canon-orig" before after out
   cp "$settings" "$orig"
-  before="$(_non_hook_keys "$settings")"
+  before="$(_settings_outside_hooks "$settings")"
   out="$(_uninstall_claude_edit "$settings")"
-  after="$(_non_hook_keys "$settings")"
+  after="$(_settings_outside_hooks "$settings")"
   if [ "$before" != "$after" ] || [ ! -s "$settings" ]; then
     cp "$orig" "$settings"
     out="  [skip]   legacy canon hooks in $settings could not be removed without touching other settings — left as is"
