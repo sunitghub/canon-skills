@@ -32,7 +32,7 @@ cmd_add() {
     local inject_line="@$skill_file"
     local inject_target="$project_dir/AGENTS.md"
     echo "Registering: $name ($category)"
-    if grep -qxF "$inject_line" "$inject_target" 2>/dev/null; then
+    if has_line "$inject_line" "$inject_target"; then
       echo "  [AGENTS.md]  already present"
     else
       echo "$inject_line" >> "$inject_target"

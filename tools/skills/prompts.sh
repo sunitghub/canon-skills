@@ -68,27 +68,43 @@ offer_model_tiers_note() {
   fi
 }
 
+# Awk prelude shared by the MODEL-TIERS helpers: a marker counts only as a whole line (optional \r)
+# outside a ``` fence, so a doc example that quotes the markers is never mistaken for the block.
+_MT_AWK='
+  { line=$0; sub(/\r$/, "", line) }
+  line ~ /^[ \t]*```/ { fence=!fence }
+  { isb = !fence && line == "<!-- MODEL-TIERS:BEGIN -->"; ise = !fence && line == "<!-- MODEL-TIERS:END -->" }'
+
 _model_tiers_block() {
-  awk '/<!-- MODEL-TIERS:BEGIN -->/{f=1} f; /<!-- MODEL-TIERS:END -->/{if(f) exit}' "$1" | tr -d '\r'
+  awk "$_MT_AWK"'
+    isb && !done { f=1 }
+    f { print line }
+    f && ise { f=0; done=1 }' "$1"
 }
 
 # The block between the markers is canon-managed: a consumer's copy is replaced when canon's changes,
 # so a retired rule never lingers in its AGENTS.md (t-bd3e). Content outside the markers is untouched.
 sync_model_tiers_block() {
-  local target="$1" source_agents="$2" desired current blk
+  local target="$1" source_agents="$2" desired current blk shape
   desired=$(_model_tiers_block "$source_agents")
   [ -n "$desired" ] || return 0
-  if ! awk '/<!-- MODEL-TIERS:BEGIN -->/{b=1} b && /<!-- MODEL-TIERS:END -->/{e=1} END{exit !(b&&e)}' "$target"; then
-    echo "  [AGENTS.md]  MODEL-TIERS block has no END marker — left unchanged" >&2
+  # Exactly one BEGIN followed by its END; anything else (unclosed, duplicated) is left for a human.
+  shape=$(awk "$_MT_AWK"'
+    isb { nb++; if (open) bad=1; open=1 }
+    ise { ne++; if (!open) bad=1; open=0 }
+    END { print ((nb==1 && ne==1 && !bad) ? "ok" : "bad") }' "$target")
+  if [ "$shape" != "ok" ]; then
+    echo "  [AGENTS.md]  MODEL-TIERS markers are not a single BEGIN/END pair — left unchanged" >&2
     return 0
   fi
   current=$(_model_tiers_block "$target")
   [ "$current" = "$desired" ] && return 0
   blk=$(mktemp)
   printf '%s\n' "$desired" > "$blk"
-  awk -v blk="$blk" '
-    !done && /<!-- MODEL-TIERS:BEGIN -->/ { while ((getline l < blk) > 0) print l; skip=1; done=1; next }
-    skip { if (/<!-- MODEL-TIERS:END -->/) skip=0; next }
+  # Keep the target's line endings: a CRLF BEGIN line means the inserted block is written CRLF too.
+  awk -v blk="$blk" "$_MT_AWK"'
+    isb { eol = ($0 ~ /\r$/) ? "\r" : ""; while ((getline l < blk) > 0) print l eol; skip=1; next }
+    skip { if (ise) skip=0; next }
     { print }' "$target" > "$target.tmp" && mv "$target.tmp" "$target"
   rm -f "$blk"
   echo "  [AGENTS.md]  updated MODEL-TIERS block"
@@ -268,7 +284,7 @@ Loaded on every session via `@PROMOTED.md` in `AGENTS.md` — keep each entry to
 EOF
     echo "  [sprint]  created PROMOTED.md"
   fi
-  if ! grep -qxF "@PROMOTED.md" "$agents" 2>/dev/null; then
+  if ! has_line "@PROMOTED.md" "$agents"; then
     [ -s "$agents" ] && [ -n "$(tail -c1 "$agents")" ] && echo >> "$agents"
     echo "@PROMOTED.md" >> "$agents"
     echo "  [AGENTS.md]  added @PROMOTED.md import"

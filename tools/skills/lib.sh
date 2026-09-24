@@ -68,6 +68,14 @@ covered_deps_for_skills() {
   done
 }
 
+# Exact-line presence check that ignores a trailing \r, so a CRLF file (Windows) doesn't read as missing
+# the line and get a duplicate appended on every add/refresh (t-bd3e).
+has_line() {
+  [ -f "$2" ] || return 1
+  # ENVIRON, not -v: awk -v would interpret backslashes in a Windows-style path.
+  HAS_LINE_T="$1" awk 'BEGIN { t = ENVIRON["HAS_LINE_T"] } { sub(/\r$/, "") } $0 == t { f=1; exit } END { exit !f }' "$2"
+}
+
 is_canon_project_import_line() {
   local line="$1" import_path base
   [[ "$line" == @* ]] || return 1

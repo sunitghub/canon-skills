@@ -61,9 +61,46 @@ printf '# Agents\n<!-- MODEL-TIERS:BEGIN -->\nold note\nUser content after.\n' >
 "$SKILLS" add efficiency "$unclosed" >/dev/null 2>&1   # first add writes the table row and import
 h2="$(md5sum "$unclosed/AGENTS.md" | cut -d' ' -f1)"
 out="$("$SKILLS" add efficiency "$unclosed" 2>&1)"
-assert_contains "$out" "no END marker"
+assert_contains "$out" "not a single BEGIN/END pair"
 assert_eq "$h2" "$(md5sum "$unclosed/AGENTS.md" | cut -d' ' -f1)"
 assert_count 1 "User content after." "$unclosed/AGENTS.md"
+
+# A doc example quoting the markers inside a ``` fence is not the block: the real block is synced,
+# the example is left byte-identical (reviewer finding, t-bd3e).
+fenced="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$stale" "$unclosed" "$fenced"' EXIT
+{ printf '# Agents\n\n```md\n<!-- MODEL-TIERS:BEGIN -->\nexample only\n<!-- MODEL-TIERS:END -->\n```\n\n'
+  canon_block "$ROOT/AGENTS.md" | awk 'NR==3{print "STALE LINE"; next} {print}'; } > "$fenced/AGENTS.md"
+out="$("$SKILLS" add efficiency "$fenced" 2>&1)"
+assert_contains "$out" "updated MODEL-TIERS block"
+assert_count 1 "example only" "$fenced/AGENTS.md"
+assert_count 0 "STALE LINE" "$fenced/AGENTS.md"
+assert_count 2 "<!-- MODEL-TIERS:BEGIN -->" "$fenced/AGENTS.md"   # the fenced example + the real block
+
+# Two real BEGIN/END pairs: ambiguous, left byte-identical with a warning.
+dup="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$stale" "$unclosed" "$fenced" "$dup"' EXIT
+{ printf '# Agents\n'; canon_block "$ROOT/AGENTS.md"; printf 'between\n'; canon_block "$ROOT/AGENTS.md" | awk 'NR==3{print "STALE"; next} {print}'; } > "$dup/AGENTS.md"
+"$SKILLS" add efficiency "$dup" >/dev/null 2>&1
+h3="$(md5sum "$dup/AGENTS.md" | cut -d' ' -f1)"
+out="$("$SKILLS" add efficiency "$dup" 2>&1)"
+assert_contains "$out" "not a single BEGIN/END pair"
+assert_eq "$h3" "$(md5sum "$dup/AGENTS.md" | cut -d' ' -f1)"
+
+# CRLF target (Windows): the stale block is synced, the file stays CRLF-only, and a second add is a
+# no-op — no duplicate efficiency @-import appended.
+crlf="$(make_project)"
+trap 'rm -rf "$project" "$tmp_home" "$stale" "$unclosed" "$fenced" "$dup" "$crlf"' EXIT
+{ printf '# Agents\n'; canon_block "$ROOT/AGENTS.md" | awk 'NR==3{print "STALE CRLF"; next} {print}'; printf 'User after.\n'; } \
+  | sed 's/$/\r/' > "$crlf/AGENTS.md"
+"$SKILLS" add efficiency "$crlf" >/dev/null 2>&1
+assert_count 0 "STALE CRLF" "$crlf/AGENTS.md"
+[ "$(grep -c $'\r$' "$crlf/AGENTS.md")" -ge "$(grep -c "MODEL-TIERS\|User after" "$crlf/AGENTS.md")" ] || fail "sync dropped CRLF"
+[ "$(awk '/MODEL-TIERS:BEGIN/{f=1} f && !/\r$/{n++} /MODEL-TIERS:END/{f=0} END{print n+0}' "$crlf/AGENTS.md")" -eq 0 ] || fail "synced block written LF into a CRLF file"
+h4="$(md5sum "$crlf/AGENTS.md" | cut -d' ' -f1)"
+out="$("$SKILLS" add efficiency "$crlf" 2>&1)"
+assert_eq "$h4" "$(md5sum "$crlf/AGENTS.md" | cut -d' ' -f1)"
+[ "$(tr -d '\r' < "$crlf/AGENTS.md" | grep -cxF "@$ROOT/standards/efficiency.md")" -eq 1 ] || fail "CRLF: efficiency @-import duplicated"
 
 # --- removal path ---
 

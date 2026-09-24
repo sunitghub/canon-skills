@@ -86,5 +86,14 @@ out="$("$SKILLS" refresh "$inj" 2>&1)"
 [ "$(grep -cxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md")" -eq 1 ] || fail "efficiency import missing or duplicated"
 assert_eq "$line_before" "$(grep -nxF "@$ROOT/standards/efficiency.md" "$inj/AGENTS.md" | cut -d: -f1)"
 
+# Same file with CRLF endings (Windows): the import is kept, not pruned, and neither it nor
+# @PROMOTED.md is duplicated across two refreshes.
+sed 's/$/\r/' "$inj/AGENTS.md" > "$inj/a.tmp" && mv "$inj/a.tmp" "$inj/AGENTS.md"
+out="$("$SKILLS" refresh "$inj" 2>&1)"
+[[ "$out" != *"legacy @-import: @$ROOT/standards/efficiency.md"* ]] || fail "CRLF: registered efficiency import was pruned"
+"$SKILLS" refresh "$inj" >/dev/null 2>&1
+[ "$(tr -d '\r' < "$inj/AGENTS.md" | grep -cxF "@$ROOT/standards/efficiency.md")" -eq 1 ] || fail "CRLF: efficiency import duplicated"
+[ "$(tr -d '\r' < "$inj/AGENTS.md" | grep -cxF "@PROMOTED.md")" -eq 1 ] || fail "CRLF: @PROMOTED.md duplicated"
+
 
 printf 'skills-refresh: ok\n'

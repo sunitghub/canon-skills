@@ -28,7 +28,7 @@ cmd_refresh() {
     tmp=$(mktemp)
     while IFS= read -r line; do
       [[ "$line" == *"[pruned]"* ]] && continue
-      if [ "$prune_file" = "$agents_file" ] && [ -n "$keep_imports" ] && grep -qxF -- "$line" <<< "$keep_imports"; then
+      if [ "$prune_file" = "$agents_file" ] && [ -n "$keep_imports" ] && grep -qxF -- "${line%$'\r'}" <<< "$keep_imports"; then
         printf '%s\n' "$line"
         continue
       fi
