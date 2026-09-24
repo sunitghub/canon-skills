@@ -250,6 +250,16 @@ h4="$(md5sum "$ga4/.gitattributes" | cut -d' ' -f1)"
 ga_seed "$ga4" >/dev/null
 assert_eq "$h4" "$(md5sum "$ga4/.gitattributes" | cut -d' ' -f1)"
 
+# Existing CRLF file without the marker: the appended block is CRLF too (no mixed endings),
+# and git still reads the rule (reviewer finding, t-e681).
+ga8="$(make_project)"; ga_trap "$ga1" "$ga2" "$ga3" "$ga4" "$ga8"
+printf '*.png binary\r\n' > "$ga8/.gitattributes"
+ga_seed "$ga8" >/dev/null
+[ "$(grep -vc $'\r$' "$ga8/.gitattributes")" -eq 0 ] || fail "appended block left LF lines in a CRLF .gitattributes"
+[ "$(grep -c "canon:gitattributes:BEGIN" "$ga8/.gitattributes")" -eq 1 ] || fail "CRLF append: block missing"
+touch "$ga8/x.sh"
+assert_contains "$(git -C "$ga8" check-attr eol -- x.sh)" "x.sh: eol: lf"
+
 # canon's own root is never seeded.
 ga5="$(make_project)"; ga_trap "$ga1" "$ga2" "$ga3" "$ga4" "$ga5"
 SKILLS_ROOT="$ga5" bash -c 'source "$1"; source "$2"; ensure_gitattributes "$3"' _ "$ROOT/tools/skills/lib.sh" "$ROOT/tools/skills/prompts.sh" "$ga5" >/dev/null

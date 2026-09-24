@@ -307,17 +307,16 @@ ensure_gitattributes() {
     echo "  [sprint]  .gitattributes is a symlink — left as is"
     return 0
   fi
-  local verb=created
+  local verb=created eol=""
   if [ -f "$ga" ]; then
     verb=updated
-    [ -s "$ga" ] && [ -n "$(tail -c1 "$ga")" ] && echo >> "$ga"
+    # Match an existing CRLF file's line endings rather than leaving it mixed.
+    if awk '/\r$/ { f=1; exit } END { exit !f }' "$ga"; then eol=$'\r'; fi
+    [ -s "$ga" ] && [ -n "$(tail -c1 "$ga")" ] && printf '%s\n' "$eol" >> "$ga"
   fi
-  {
-    echo "# canon:gitattributes:BEGIN"
-    echo "# Shell scripts stay LF: bash can't run CRLF, and Git for Windows checks out CRLF by default."
-    echo "*.sh text eol=lf"
-    echo "# canon:gitattributes:END"
-  } >> "$ga"
+  printf '%s\n' "# canon:gitattributes:BEGIN$eol" \
+    "# Shell scripts stay LF: bash can't run CRLF, and Git for Windows checks out CRLF by default.$eol" \
+    "*.sh text eol=lf$eol" "# canon:gitattributes:END$eol" >> "$ga"
   echo "  [sprint]  $verb .gitattributes (*.sh eol=lf) — run 'git add --renormalize .' once to fix scripts already checked out"
   return 0
 }
