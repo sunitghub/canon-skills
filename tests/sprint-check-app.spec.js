@@ -6368,6 +6368,29 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     reg.release({ ok: false, error: 'x' });
   });
 
+  test('the in-project Register sprint bar shows the same busy state, not dimmed, and comes back (t-7d8d)', async ({ page }) => {
+    const reg = await stubRegister(page);
+    await page.locator('.go[data-open="proj-a"]').click();
+    const bar = page.locator('.sn-reg');
+    await expect(bar).toBeVisible();
+    await expect(page.locator('.sn-actions')).toHaveAttribute('aria-live', 'polite');
+    await bar.click();
+    await page.locator('#cc-ok').click();
+    await expect(bar).toContainText('Adding sprint…');
+    await expect(bar.locator('.reg-spin')).toBeVisible();
+    await expect(bar).toHaveAttribute('aria-busy', 'true');
+    await expect(bar).toBeDisabled();
+    expect(await bar.evaluate(e => getComputedStyle(e).opacity)).toBe('1');   // busy, not the dimmed .btn:disabled look
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await bar.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-7d8d', 'visuals', `bar-busy-${theme}.png`) });
+    }
+    reg.release({ ok: false, error: 'x' });
+    await expect(bar).toBeEnabled();
+    await expect(bar).toHaveText('Register sprint');
+    expect(reg.calls).toBe(1);
+  });
+
   test('cancelling the register confirm sends nothing and leaves the buttons alone (t-7d8d)', async ({ page }) => {
     const reg = await stubRegister(page);
     const sprint = regBtn(page, 'sprint');

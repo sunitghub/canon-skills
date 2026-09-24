@@ -349,7 +349,7 @@
   .regskill{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--accent);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
   .regskill:hover{background:var(--accent);color:#fff}
   .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent)}
-  .regskill[aria-busy="true"]{opacity:1}
+  .regskill[aria-busy="true"],.sn-reg[aria-busy="true"]{opacity:1}
   /* t-7d8d: shown while skills.sh add runs (slow on Windows). currentColor follows the theme. */
   .reg-spin{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:reg-spin .8s linear infinite}
   @keyframes reg-spin{to{transform:rotate(360deg)}}
