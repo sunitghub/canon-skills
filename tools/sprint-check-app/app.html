@@ -1628,6 +1628,14 @@
       color: var(--accent); border-color: var(--accent); background: var(--accent-dim);
     }
     .ck-worktree-new-plus:disabled { opacity: 0.5; cursor: default; }
+    /* t-d254: busy spinner for the commit + worktree-create steps (slow on a big repo).
+       aria-busy keeps a busy button at full strength so it reads as working, not disabled. */
+    .ck-spin { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px;
+      border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ck-spin .8s linear infinite; }
+    @keyframes ck-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .ck-spin { animation: none; } }
+    .ck-worktree-new-plus[aria-busy="true"] { opacity: 1; cursor: progress; }
+    .ck-leave-btn-save[aria-busy="true"]:disabled { background: var(--accent); color: #fff; cursor: progress; }
     .ck-worktree-active-note {
       font-size: 12px; font-weight: 600; color: var(--accent); margin: 0 0 8px 0; min-height: 15px;
     }
@@ -2129,7 +2137,6 @@
       <div class="ck-leave-confirm-status" id="ck-tcm-status" role="alert"></div>
       <div class="ck-leave-confirm-actions">
         <button class="ck-leave-btn ck-leave-btn-save" id="ck-tcm-commit" type="button">Commit &amp; create worktree</button>
-        <button class="ck-leave-btn ck-leave-btn-skip" id="ck-tcm-skip" type="button">Create without committing</button>
         <button class="ck-leave-btn ck-leave-btn-cancel" id="ck-tcm-cancel" type="button">Cancel</button>
       </div>
     </div>
@@ -4992,6 +4999,22 @@ function missingTicketMessage(ticketId, worktreePath, mainBranch) {
     + `then git -C "${worktreePath}" merge ${main}`;
 }
 
+// t-d254: swap a button into a busy "spinner + label" state and back. The label is
+// text (textContent), the spinner a fixed element, so nothing here parses HTML.
+function setButtonBusy(btn, busyLabel, idleLabel) {
+  btn.textContent = '';
+  if (busyLabel) {
+    const sp = document.createElement('span');
+    sp.className = 'ck-spin';
+    sp.setAttribute('aria-hidden', 'true');
+    btn.append(sp, busyLabel);
+    btn.setAttribute('aria-busy', 'true');
+  } else {
+    btn.textContent = idleLabel;
+    btn.removeAttribute('aria-busy');
+  }
+}
+
 function setTermMessage(text) {
   const el = document.getElementById('ck-term-msg');
   if (el) el.textContent = text;
@@ -6193,6 +6216,7 @@ async function renderCockpitWorktree(t) {
     } else if (!confirm(`Create a new git worktree for branch "${branch}"?`)) return;
     input.disabled = true;
     btn.disabled = true;
+    setButtonBusy(btn, 'Creating…');
     try {
       const r = await fetch('/api/worktrees', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -6201,6 +6225,7 @@ async function renderCockpitWorktree(t) {
       const d = await r.json();
       if (!r.ok || !d.ok) {
         alert('Could not create worktree: ' + (d && d.error ? d.error : `HTTP ${r.status}`));
+        setButtonBusy(btn, null, '+ New');
         input.disabled = false;
         btn.disabled = false;
         return;
@@ -6216,6 +6241,7 @@ async function renderCockpitWorktree(t) {
       selectCockpitWorktree(t, createdRow ? createdRow.dataset.cwd : d.path);
     } catch (err) {
       alert('Could not create worktree: ' + err);
+      setButtonBusy(btn, null, '+ New');
       input.disabled = false;
       btn.disabled = false;
     }
@@ -6229,13 +6255,14 @@ async function renderCockpitWorktree(t) {
 // uncommitted files (listed, never committed) — and on "Commit & create" posts
 // the checked paths. The server re-derives eligibility, so this list is only a
 // request. File names are inserted as text nodes (no HTML), so a hostile name is
-// inert. Resolves 'committed' | 'skip' | 'cancel'.
+// inert. Resolves 'committed' | 'cancel'. There is deliberately no "create without
+// committing": that worktree couldn't see the ticket, so Start would stay disabled
+// (user, 2026-09-25) — to commit another way, Cancel and commit by hand.
 function openTicketCommitDialog(ticketId, plan, branch) {
   const overlay = document.getElementById('ck-tcommit');
   const files = document.getElementById('ck-tcm-files');
   const status = document.getElementById('ck-tcm-status');
   const commitBtn = document.getElementById('ck-tcm-commit');
-  const skipBtn = document.getElementById('ck-tcm-skip');
   const cancelBtn = document.getElementById('ck-tcm-cancel');
   document.getElementById('ck-tcm-intro').textContent =
     `A worktree only contains committed files, and ${ticketId} isn't fully committed. ` +
@@ -6282,15 +6309,16 @@ function openTicketCommitDialog(ticketId, plan, branch) {
   return new Promise(resolve => {
     const done = (result) => {
       overlay.classList.remove('open');
-      commitBtn.onclick = skipBtn.onclick = cancelBtn.onclick = null;
+      commitBtn.onclick = cancelBtn.onclick = null;
       overlay.onkeydown = null;
       resolve(result);
     };
-    const setBusy = (busy) => { commitBtn.disabled = skipBtn.disabled = cancelBtn.disabled = busy; };
+    const setBusy = (busy) => { commitBtn.disabled = cancelBtn.disabled = busy; };
     commitBtn.onclick = async () => {
       const paths = [...files.querySelectorAll('input[type=checkbox]')].filter(cb => cb.checked).map(cb => cb.dataset.path);
       setBusy(true);
-      status.textContent = 'Committing…';
+      setButtonBusy(commitBtn, 'Committing…');
+      status.textContent = '';
       try {
         const r = await fetch('/api/ticket-commit/' + encodeURIComponent(ticketId), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -6299,18 +6327,20 @@ function openTicketCommitDialog(ticketId, plan, branch) {
         const d = await r.json().catch(() => ({}));
         if (!r.ok || !d.ok) {
           status.textContent = 'Commit failed: ' + (d && d.error ? d.error : `HTTP ${r.status}`);
+          setButtonBusy(commitBtn, null, 'Commit & create worktree');
           setBusy(false);
           return;
         }
         showToast(`✓ Committed ${d.commit} — ${d.message}`, 'warn');
+        setButtonBusy(commitBtn, null, 'Commit & create worktree');
         setBusy(false);
         done('committed');
       } catch (err) {
         status.textContent = 'Commit failed: ' + err;
+        setButtonBusy(commitBtn, null, 'Commit & create worktree');
         setBusy(false);
       }
     };
-    skipBtn.onclick = () => done('skip');
     cancelBtn.onclick = () => done('cancel');
     overlay.onkeydown = (e) => { if (e.key === 'Escape' && !cancelBtn.disabled) done('cancel'); };
   });

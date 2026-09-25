@@ -4393,7 +4393,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('commit dialog: Create without committing, Cancel, and a failed commit (t-d254)', async ({ page }) => {
+  test('commit dialog: Cancel, a failed commit, and no create-without-committing escape (t-d254)', async ({ page }) => {
     const id = `t-wtp-k-${Date.now()}`;
     const log = [];
     try {
@@ -4416,11 +4416,71 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(dlg).toHaveClass(/open/);
       expect(log.filter(l => l.startsWith('worktrees:'))).toHaveLength(0);
 
-      // Create without committing: the old behavior, worktree POST only.
-      await dlg.locator('#ck-tcm-skip').click();
-      await expect.poll(() => log.filter(l => l.startsWith('worktrees:')).length).toBe(1);
+      // No "Create without committing": that worktree couldn't see the ticket. Only
+      // Commit & create and Cancel exist, and Cancel after a failure creates nothing.
+      await expect(dlg.locator('button')).toHaveText(['Commit & create worktree', 'Cancel']);
+      await dlg.locator('#ck-tcm-cancel').click();
+      await expect(dlg).not.toHaveClass(/open/);
+      expect(log.filter(l => l.startsWith('worktrees:'))).toHaveLength(0);
       expect(log.filter(l => l.startsWith('commit:'))).toHaveLength(1); // only the failed attempt
     } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('slow repo: Commit & create and + New show a spinner while each step runs (t-d254)', async ({ page }) => {
+    const id = `t-wtp-s-${Date.now()}`;
+    let releaseCommit, releaseWorktree;
+    const commitGate = new Promise(r => { releaseCommit = r; });
+    const worktreeGate = new Promise(r => { releaseWorktree = r; });
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', async route => {
+        if (route.request().method() === 'POST') {
+          await worktreeGate;
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, path: '/tmp/wt-d254/slow' }) });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+        ]) });
+      });
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+      }));
+      await page.route('**/api/ticket-commit/**', async route => {
+        if (route.request().method() === 'POST') {
+          await commitGate;
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, commit: 'abc1234', committed: [], message: 'm' }) });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(d254Plan(id)) });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const plus = page.locator('.ck-worktree-new-plus');
+      await plus.click();
+      const commitBtn = page.locator('#ck-tcm-commit');
+      await commitBtn.click();
+      // Commit in flight: spinner + label, busy, Cancel locked.
+      await expect(commitBtn).toHaveText('Committing…');
+      await expect(commitBtn.locator('.ck-spin')).toBeVisible();
+      await expect(commitBtn).toHaveAttribute('aria-busy', 'true');
+      await expect(page.locator('#ck-tcm-cancel')).toBeDisabled();
+      releaseCommit();
+      // Worktree creation in flight: the dialog is gone, + New carries the spinner.
+      await expect(page.locator('#ck-tcommit')).not.toHaveClass(/open/);
+      await expect(plus).toHaveText('Creating…');
+      await expect(plus.locator('.ck-spin')).toBeVisible();
+      await expect(plus).toHaveAttribute('aria-busy', 'true');
+      await expect(commitBtn).toHaveText('Commit & create worktree'); // label restored for next time
+      releaseWorktree();
+      await expect(page.locator('.ck-worktree-new-plus')).toHaveText('+ New');
+    } finally {
+      releaseCommit(); releaseWorktree();
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
   });
