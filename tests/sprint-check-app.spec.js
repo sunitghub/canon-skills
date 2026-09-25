@@ -4424,6 +4424,24 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('in a Cockpit project tab, ticket-commit GET and POST both carry ?project= (t-d254)', async ({ page }) => {
+    // Live-caught on the VM: unscoped, the plan came back "not a git repository"
+    // (the board's default folder), and a POST would have committed there.
+    const seen = [];
+    await page.route('**/api/ticket-commit/**', route => {
+      seen.push(route.request().method() + ' ' + route.request().url());
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }); // never reaches a real repo
+    });
+    await page.goto(BASE + '/?project=zz9');
+    await page.evaluate(async () => {
+      await fetch('/api/ticket-commit/t-abcd').catch(() => {});
+      await fetch('/api/ticket-commit/t-abcd', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"paths":[]}' }).catch(() => {});
+    });
+    await expect.poll(() => seen.length).toBe(2);
+    expect(seen[0]).toMatch(/^GET .*\/api\/ticket-commit\/t-abcd\?project=zz9$/);
+    expect(seen[1]).toMatch(/^POST .*\/api\/ticket-commit\/t-abcd\?project=zz9$/);
+  });
+
   test('only optional files uncommitted: no warning, + New keeps the plain confirm (t-d254)', async ({ page }) => {
     const id = `t-wtp-o-${Date.now()}`;
     const log = [];

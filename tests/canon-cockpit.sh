@@ -81,7 +81,7 @@ grep -q "&theme=" <<<"$page" || fail "canon-cockpit: project iframe src does not
 # worktree create/unlock moved OUT of the OUT-set — they're project-scoped now.
 grep -q "WRITE_RE" <<<"$board" || fail "canon-cockpit: app.html missing WRITE_RE (write POSTs not scoped)"
 write_re_line="$(grep -m1 "const WRITE_RE" <<<"$board")"
-for tok in status body demo visual doc tickets 'worktrees\$' worktree-unlock; do
+for tok in status body demo visual doc tickets 'worktrees\$' worktree-unlock ticket-commit; do
   grep -q "$tok" <<<"$write_re_line" || fail "canon-cockpit: WRITE_RE missing the '$tok' write path"
 done
 for bad in cockpit version ci-workflow headless; do
@@ -91,7 +91,7 @@ done
 # shared multi-project instance otherwise showed the shell's launch-time
 # project's worktrees under any tab (live-reproduced, Windows).
 read_re_line="$(grep -m1 "const READ_RE" <<<"$board")"
-for tok in worktrees worktree-lock; do
+for tok in worktrees worktree-lock ticket-commit; do
   grep -q "$tok" <<<"$read_re_line" || fail "canon-cockpit: READ_RE missing the '$tok' read path (t-1780)"
 done
 # the wrapper must act on writes, not GET-only (method POST/PUT branch present)
