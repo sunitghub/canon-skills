@@ -2896,7 +2896,8 @@ function divergenceInfo(t) {
     : d.where === 'worktree' && d.merged ? ' (branch merged)' : ', not merged';
   return {
     short: `${d.status} ${where}`,
-    long: `Showing this checkout's copy (${t.status}) — ${d.status} ${where}${merge}.`,
+    // t-e78b: a live ticket's docs above are the worktree's, so only the STATUS is this checkout's.
+    long: `${t.docs_from ? 'Status from this checkout' : "Showing this checkout's copy"} (${t.status}) — ${d.status} ${where}${merge}.`,
   };
 }
 

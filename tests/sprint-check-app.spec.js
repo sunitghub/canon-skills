@@ -4644,6 +4644,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(await info({ ...base, merged: true, dirty: false })).toContain('(branch merged)');
     expect(await info({ ...base, merged: false, dirty: false })).toContain('not merged');
     expect(await info({ ...base, where: 'branch', merged: false, dirty: false })).toContain('not merged');
+    // t-e78b: with live worktree docs above it, the footer claims only the status.
+    const live = await page.evaluate(d => divergenceInfo({ id: 't-x', status: 'open', docs_from: { branch: 'sprint/x' }, branch_divergence: d }).long, { ...base, merged: true, dirty: true });
+    expect(live).toMatch(/^Status from this checkout \(open\) — in_progress in worktree sprint\/x, uncommitted changes in worktree\.$/);
+    expect(await info({ ...base, merged: true, dirty: true })).toMatch(/^Showing this checkout's copy \(open\)/);
   });
 
   test('a worktree-bound ticket shows its live docs read-only; an unbound one is unchanged (t-e78b)', async ({ page }) => {
