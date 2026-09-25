@@ -7269,6 +7269,17 @@ test.describe('canon-cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(favicon).toEqual([]);
   });
 
+  test('Admin default pickers have a solid themed background, not transparent (Edge popup source) (t-294b)', async ({ page }) => {
+    await openModelTiers(page);
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const [sel, box] = await page.locator('#mt-default-eval .mt-picker').first().evaluate(p =>
+        [getComputedStyle(p.querySelector('select')).backgroundColor, getComputedStyle(p).backgroundColor]);
+      expect(sel).toBe(box);
+      expect(sel).not.toBe('rgba(0, 0, 0, 0)');
+    }
+  });
+
   test('board select popups follow the theme (t-294b)', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');

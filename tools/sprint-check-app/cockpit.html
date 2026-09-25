@@ -128,7 +128,8 @@
   .mt-default-card .mt-effort-note{margin:10px 0 0}
   .mt-picker-row{display:flex;gap:8px;flex-wrap:wrap}
   .mt-picker{flex:1;min-width:140px;display:flex;align-items:center;gap:7px;border:1px solid var(--border-muted);border-radius:8px;padding:7px 9px;background:var(--bg)}
-  .mt-picker select{appearance:none;border:none;background:transparent;color:var(--text);font-size:12.5px;font-weight:600;width:100%;cursor:pointer}
+  /* Solid, not transparent: Edge on Windows draws the native popup from the select's own colours (t-294b). */
+  .mt-picker select{appearance:none;border:none;background:var(--bg);color:var(--text);font-size:12.5px;font-weight:600;width:100%;cursor:pointer}
   .mt-picker .mt-prov{font-size:10px;color:var(--text-dim);font-family:ui-monospace,monospace;white-space:nowrap}
   .mt-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border-muted);margin-bottom:12px}
   .mt-tab{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer}
