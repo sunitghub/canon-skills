@@ -127,6 +127,7 @@ type session struct {
 	status        string // "running" | "needs-you"
 	done          chan struct{}
 	doneOnce      sync.Once
+	closeOnce     sync.Once // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
 	exited        bool
 	killed        bool      // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
 	reaping       bool      // t-2e7e: set while saveAndEndIdle is in flight, guards against a second reap goroutine
@@ -736,7 +737,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.sessions[se.sid] = se
 	s.mu.Unlock()
 	go se.readLoop()
-	go func() { _ = c.Wait() }() // reap on exit/kill so no zombie child is left
+	go se.waitExit(c.Wait, exitDrainGrace) // reaps the child (no zombie) and ends readLoop on Windows
 	return se, nil
 }
 
@@ -1003,7 +1004,7 @@ func (s *server) killSession(se *session) {
 	se.mu.Unlock()
 	se.debugf("kill invoked")
 	killProcess(se.cmd) // platform-specific: no orphaned children
-	se.pty.Close()
+	se.closePty()
 	se.markDone()
 	se.cleanup()
 	s.mu.Lock()
@@ -1135,6 +1136,28 @@ func (se *session) broadcastLocked(f frame) {
 }
 
 func (se *session) markDone() { se.doneOnce.Do(func() { close(se.done) }) }
+
+func (se *session) closePty() { se.closeOnce.Do(func() { se.pty.Close() }) }
+
+// exitDrainGrace is how long waitExit lets readLoop drain after the child exits
+// before closing the PTY itself.
+const exitDrainGrace = 2 * time.Second
+
+// waitExit (t-b999) waits for the agent process, then makes sure readLoop sees
+// the exit. On Unix the master read already fails once the child exits. On
+// Windows, ConPTY's output pipe stays open until the pseudoconsole is closed
+// (go-pty's conPty.Read is a plain pipe read), so readLoop would block forever
+// and the session would stay "running". Waiting for done first keeps output the
+// child wrote just before exiting; the grace bounds the Windows case.
+func (se *session) waitExit(wait func() error, grace time.Duration) {
+	_ = wait()
+	select {
+	case <-se.done:
+	case <-time.After(grace):
+		se.debugf("child exited but the pty read is still open after %s — closing it", grace)
+	}
+	se.closePty()
+}
 
 // cleanup removes the daemon-owned --settings dir. Called on kill and on natural
 // exit, so a long-lived daemon doesn't accumulate hook dirs.

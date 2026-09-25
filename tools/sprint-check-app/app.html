@@ -5211,6 +5211,21 @@ function openLeaveConfirm() {
     : "Save & End saves this sprint's state to HANDOFF and ends the session. End without saving skips that and ends immediately — use it if the save is stuck. Cancel to keep working here.";
   document.getElementById('ck-leave-confirm-status').textContent = '';
   document.getElementById('ck-leave-confirm').classList.add('open');
+  // t-b999: a closed ticket has nothing to save (t-98d8 force-ends it anyway), so don't offer
+  // Save & End. The in-memory status can be stale (sprint complete runs in the terminal), so
+  // re-read it; a failed read keeps the normal dialog.
+  const tab = cockpitState;
+  const localClosed = (state.tickets || []).some(t => t.id === tab.id && t.status === 'closed');
+  if (localClosed) showClosedLeave();
+  else isTicketClosed(tab.id).then(closed => {
+    if (closed && cockpitState === tab && document.getElementById('ck-leave-confirm').classList.contains('open')) showClosedLeave();
+  });
+}
+
+function showClosedLeave() {
+  document.getElementById('ck-leave-save').style.display = 'none';
+  document.getElementById('ck-leave-confirm-body').textContent =
+    'This ticket is closed — there is nothing to save. End without saving to close the session, or Cancel to keep working here.';
 }
 
 function closeLeaveConfirm() {

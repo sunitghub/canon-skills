@@ -4901,6 +4901,36 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
+  test('a live session on a ticket closed meanwhile offers no Save & End (t-b999)', async ({ page }) => {
+    const id = `t-lcclosed-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      await page.waitForTimeout(100);
+      writeTicket(id, 'closed');            // `sprint complete` ran in the terminal; the board's state is stale
+      await page.locator('#ck-end-session').click();
+      const modal = page.locator('#ck-leave-confirm');
+      await expect(modal).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-save')).toBeHidden();
+      await expect(page.locator('#ck-leave-confirm-body')).toHaveText(
+        'This ticket is closed — there is nothing to save. End without saving to close the session, or Cancel to keep working here.');
+      await expect(page.locator('#ck-leave-skip')).toBeVisible();
+      await expect(page.locator('#ck-leave-cancel')).toBeVisible();
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await page.locator('#ck-leave-confirm .ck-leave-confirm')
+          .screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-b999', 'visuals', `closed-leave-${theme}.png`) });
+      }
+      // The next open of the dialog for a still-open ticket is back to normal.
+      await page.locator('#ck-leave-cancel').click();
+      writeTicket(id, 'in_progress');
+      await page.locator('#ck-end-session').click();
+      await expect(page.locator('#ck-leave-save')).toBeVisible();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   // t-2687: End Session on a tab that never attached (status not running) while the daemon still lists
   // a live session for the ticket must not silently close the tab.
   const stubSessions = (page, list) => page.route('**/api/cockpit-sessions', route => route.fulfill({

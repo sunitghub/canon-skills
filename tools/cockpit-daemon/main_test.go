@@ -23,6 +23,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	pty "github.com/aymanbagabas/go-pty"
 )
 
 const bootTok = "boot-token-test"
@@ -4463,5 +4465,121 @@ func TestResolveSpawnCwdForTicketRevalidatesPersisted(t *testing.T) {
 				t.Fatalf("persisted file: want %q, got %q", wantReal, afterReal)
 			}
 		})
+	}
+}
+
+// ── t-b999: natural exit when the PTY read never fails (Windows ConPTY) ─────
+
+// fakeConPty behaves like go-pty's Windows conPty: Read returns whatever output
+// is queued, then blocks until Close (ConPTY's output pipe stays open after the
+// child exits until ClosePseudoConsole). Close counts calls.
+type fakeConPty struct {
+	pty.Pty
+	mu     sync.Mutex
+	queued []byte
+	closed chan struct{}
+	closes int
+}
+
+func newFakeConPty(tail string) *fakeConPty {
+	return &fakeConPty{queued: []byte(tail), closed: make(chan struct{})}
+}
+
+func (f *fakeConPty) Read(b []byte) (int, error) {
+	f.mu.Lock()
+	if len(f.queued) > 0 {
+		n := copy(b, f.queued)
+		f.queued = f.queued[n:]
+		f.mu.Unlock()
+		return n, nil
+	}
+	f.mu.Unlock()
+	<-f.closed
+	return 0, io.EOF
+}
+
+func (f *fakeConPty) Close() error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.closes++
+	if f.closes == 1 {
+		close(f.closed)
+	}
+	return nil
+}
+
+func (f *fakeConPty) closeCount() int { f.mu.Lock(); defer f.mu.Unlock(); return f.closes }
+
+func fakeExitSession(p pty.Pty) *session {
+	return &session{
+		sid: "sid-b999", ticket: "t-ab12", pty: p, max: 1 << 16, status: "running",
+		subs: map[chan frame]struct{}{}, done: make(chan struct{}), lastActivity: time.Now(),
+	}
+}
+
+func TestNaturalExitEndsSessionWhenPtyReadStaysOpen(t *testing.T) {
+	s := newServer(config{token: bootTok, projectRoot: t.TempDir(), stateDir: t.TempDir(), sessionReapTTL: time.Hour})
+	fake := newFakeConPty("Resume this session with: claude --resume abc\r\n")
+	se := fakeExitSession(fake)
+	s.sessions[se.sid] = se
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+
+	go se.readLoop()
+	go se.waitExit(func() error { return nil }, 100*time.Millisecond) // the agent has exited
+
+	select {
+	case <-se.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session never ended: readLoop still blocked on the open pty read")
+	}
+	se.mu.Lock()
+	exited, buf := se.exited, string(se.buf)
+	se.mu.Unlock()
+	if !exited {
+		t.Fatal("se.exited false after the agent exited")
+	}
+	if !strings.Contains(buf, "Resume this session with") {
+		t.Fatalf("output written before exit was lost; buffer = %q", buf)
+	}
+	resp, err := http.Get(ts.URL + "/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var list []struct{ Session string }
+	json.NewDecoder(resp.Body).Decode(&list)
+	for _, e := range list {
+		if e.Session == se.sid {
+			t.Fatalf("/sessions still lists the exited session: %+v", list)
+		}
+	}
+}
+
+func TestWaitExitKeepsUnixDrainAndClosesOnce(t *testing.T) {
+	// Unix shape: readLoop finishes on its own (done closes) — waitExit must not
+	// cut it short, and a kill racing the natural exit must not close twice.
+	s := newServer(config{token: bootTok, projectRoot: t.TempDir(), stateDir: t.TempDir(), sessionReapTTL: time.Hour})
+	fake := newFakeConPty("")
+	se := fakeExitSession(fake)
+	s.sessions[se.sid] = se
+	exited := make(chan struct{})
+	go se.readLoop()
+	go func() { se.waitExit(func() error { <-exited; return nil }, 50*time.Millisecond); }()
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); s.killSession(se) }()
+	}
+	close(exited)
+	wg.Wait()
+	select {
+	case <-se.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session never ended")
+	}
+	time.Sleep(150 * time.Millisecond) // past waitExit's grace
+	if n := fake.closeCount(); n != 1 {
+		t.Fatalf("pty closed %d times, want exactly 1 (ConPTY must not be closed twice)", n)
 	}
 }
