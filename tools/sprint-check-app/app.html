@@ -6148,7 +6148,7 @@ async function renderCockpitWorktree(t) {
     html += `<details class="ck-worktree-held"><summary>${held.length} worktree${held.length === 1 ? '' : 's'} in use by other tickets</summary>`
       + held.map(e => `<div class="ck-worktree-held-row" data-branch="${escAttr(e.branch || '')}">
           <span class="ck-worktree-held-branch">${esc(e.branch || '(detached)')}</span>
-          <span class="ck-worktree-held-why">${esc(e.held_by.ticket ? e.held_by.ticket + ' · ' : '')}${esc(e.held_by.reason || '')}</span>
+          <span class="ck-worktree-held-why">${esc(e.held_by.ticket ? e.held_by.ticket + ' · ' : '')}${esc(e.held_by.reason || '')}${e.held_by.reason === 'folder missing' ? ' — run <code>git worktree prune</code>' : ''}</span>
         </div>`).join('')
       + `</details>`;
   }
@@ -6259,7 +6259,9 @@ async function renderCockpitWorktree(t) {
     if (branch.length <= 3 || branch === mainBranch) return;
     if (existingBranches.has(branch)) {
       const h = held.find(e => e.branch === branch);
-      alert(h
+      alert(h && h.held_by.reason === 'folder missing'
+        ? `"${branch}" has a stale worktree entry (its folder is gone). Run "git worktree prune" in the project, or pick another name.`
+        : h
         ? `"${branch}" is in use by ${h.held_by.ticket || 'another ticket'} (${h.held_by.reason}) — pick another name.`
         : `"${branch}" already has a worktree — select it from the list above instead.`);
       return;

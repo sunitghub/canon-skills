@@ -54,7 +54,8 @@ ticket "$REPO" t-mine open sprint/mine   # the requester in the own-view checks
 ticket "$REPO" t-want open sprint/bnd    # prefers a branch another ticket is running in
 echo a > "$REPO/a.txt"
 git -C "$REPO" add -A && git -C "$REPO" commit -q -m init
-for b in bnd res dirty unmerged noise free mine; do git -C "$REPO" worktree add -q -b "sprint/$b" "$WT/$b"; done
+for b in bnd res dirty unmerged noise free mine gone; do git -C "$REPO" worktree add -q -b "sprint/$b" "$WT/$b"; done
+rm -rf "$WT/gone"                                                       # deleted folder: git lists it as prunable
 # Bindings: the daemon writes the absolute worktree path into the main checkout's lock file.
 echo "$WT/bnd" > "$REPO/.tickets/t-bnd1/.cockpit-cwd"
 echo "$WT/dirty" > "$REPO/.tickets/t-cls1/.cockpit-cwd"
@@ -93,6 +94,7 @@ want = {
   'sprint/dirty':    {'ticket': 't-cls1', 'reason': 'uncommitted changes'},
   'sprint/unmerged': {'ticket': '',       'reason': 'branch not merged'},
   'sprint/mine':     {'ticket': 't-mine', 'reason': 'reserved'},
+  'sprint/gone':     {'ticket': '',       'reason': 'folder missing'},
 }
 for br, hb in want.items():
     assert a[br].get('held_by') == hb, f'{label}: {br} held_by {a[br].get("held_by")} != {hb}'

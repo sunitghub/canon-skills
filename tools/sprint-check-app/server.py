@@ -634,7 +634,8 @@ def list_worktrees(ticket_id: str = '', root: Path = None) -> list[dict]:
 # Which non-main worktrees another ticket still needs, so the pickers stop
 # offering them. Derived from existing state only (no registry, per t-cd06):
 # a ticket's .cockpit-cwd lock (bound), an open ticket's worktree_preference
-# (reserved), the worktree's own dirty state, and whether its branch is merged.
+# (reserved), the worktree's own dirty state, whether its branch is merged, and
+# whether its folder still exists.
 # The requesting ticket's own worktree is marked `own` and never held, so its
 # row (and Resume) always stays. Mirrored in sprint-check-go (annotateWorktreeHolds).
 _WT_PREF_RE = re.compile(r'^worktree_preference:\s*(.+?)\s*$', re.MULTILINE)
@@ -712,6 +713,12 @@ def _annotate_worktree_holds(entries: list, ticket_id: str, root: Path) -> None:
     for e in others:
         path = str(e.get('path', ''))
         branch = e.get('branch') or ''
+        # A deleted worktree folder still appears in `git worktree list` (marked
+        # prunable) until `git worktree prune` runs. It can't be used by anyone —
+        # and with no folder it reads as clean and merged, i.e. falsely "free".
+        if not os.path.isdir(path):
+            e['held_by'] = {'ticket': '', 'reason': 'folder missing'}
+            continue
         key = _path_key(path)
         binders = bound.get(key, [])
         # A bound ticket's live status is the worktree's own copy when it has one.

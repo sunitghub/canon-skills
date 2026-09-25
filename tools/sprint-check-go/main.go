@@ -2003,6 +2003,13 @@ func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
 		}
 		path := fmt.Sprint(e["path"])
 		branch, _ := e["branch"].(string)
+		// A deleted worktree folder still appears in `git worktree list` (marked
+		// prunable) until `git worktree prune`; with no folder it reads as clean and
+		// merged, i.e. falsely free. Nobody can use it.
+		if fi, err := os.Stat(path); err != nil || !fi.IsDir() {
+			e["held_by"] = map[string]any{"ticket": "", "reason": "folder missing"}
+			continue
+		}
 		binders := bound[pathKey(path)]
 		statusOf := func(id string) string {
 			if st, _, ok := ticketFM(filepath.Join(path, ".tickets", id, "ticket.md")); ok && st != "" {
