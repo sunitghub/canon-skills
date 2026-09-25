@@ -6135,9 +6135,10 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     // Harmless stub in place of `claude` — stays alive so the PTY session
     // persists for the duration of the test; never spawns a real agent.
     // t-533f: answers the first prompt it's sent (the preview request) with a
-    // PREVIEW_FILE marker line, the way a real agent would.
+    // PREVIEW_FILE marker line, the way a real agent would — including the other
+    // screen text a full-screen TUI leaves on the same row (seen live on Windows).
     const stub = path.join(work, 'stub-agent.sh');
-    fs.writeFileSync(stub, '#!/usr/bin/env bash\nread -r _\nprintf "PREVIEW_FILE: %s\\n" ' +
+    fs.writeFileSync(stub, '#!/usr/bin/env bash\nread -r _\nprintf "PREVIEW_FILE: %s          ✻Cooked for 2s · done 7:23PM❯ ← for agents\\n" ' +
       JSON.stringify(path.join(work, 'preview-app', 'index.html')) + '\nexec sleep 60\n', { mode: 0o755 });
 
     // Build and spawn the REAL daemon on an ephemeral loopback port.

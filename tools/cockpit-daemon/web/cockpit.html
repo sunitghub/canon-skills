@@ -461,10 +461,14 @@
               // (symlink-safe containment under projectRoot or the session's own worktree); cockpit.html has
               // no privileged position to assert safety on its own.
               if(previewDeadline){
-                var mFile = clean.match(/^PREVIEW_FILE:\s*((?:\/|\\\\|[A-Za-z]:[\\/]).*\S)$/);
+                // t-533f: a full-screen TUI row can carry other screen text after the
+                // path ("index.html      ✻Cooked for 2s · done…", live on Windows), so
+                // stop at the first .html/.htm followed by a space, quote or the end —
+                // the prompt asks for exactly one static HTML file.
+                var mFile = clean.match(/^PREVIEW_FILE:\s*((?:\/|\\\\|[A-Za-z]:[\\/]).*?\.html?)(?=[\s`'"]|$)/i);
                 if(mFile){
                   previewDeadline = 0;
-                  var filePath = mFile[1].replace(/[`'"\s]+$/, "");
+                  var filePath = mFile[1];
                   fetch("/session/"+session+"/preview-root", {
                     method: "POST",
                     headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)),
