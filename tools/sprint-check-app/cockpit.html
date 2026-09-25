@@ -363,9 +363,10 @@
   .go:hover{filter:brightness(1.08)}
   .dereg{width:40px;height:40px;border-radius:9px;border:1px solid color-mix(in srgb, var(--col-discarded) 45%, transparent);background:transparent;color:var(--col-discarded);font-size:15px;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease,transform .12s ease}
   .dereg:hover{color:#fff;background:var(--col-discarded);border-color:var(--col-discarded);transform:translateY(-1px);box-shadow:0 4px 14px -4px var(--col-discarded)}
-  .regskill{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--accent);background:var(--accent-dim);color:var(--accent);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
-  .regskill:hover{background:var(--accent);color:#fff}
-  .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent)}
+  /* A visible + <skill> button means that skill is missing here — red reads "needed". Busy/disabled keeps the accent (below). */
+  .regskill{height:32px;padding:0 12px;border-radius:8px;border:1px solid var(--col-discarded);background:transparent;color:var(--col-discarded);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .regskill:hover{background:var(--col-discarded);color:#fff}
+  .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
   .regskill[aria-busy="true"],.sn-reg[aria-busy="true"]{opacity:1}
   /* t-7d8d: shown while skills.sh add runs (slow on Windows). currentColor follows the theme. */
   .reg-spin{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:reg-spin .8s linear infinite}
@@ -1811,7 +1812,7 @@
           <div class="card-divider"></div>
           <div class="cardbottom">
             <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
-              ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Register the ${sk} skill in this project" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
+              ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
             </div>
             <div class="actions">
               <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>

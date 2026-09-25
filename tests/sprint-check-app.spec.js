@@ -6675,6 +6675,16 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
     const sprint = regBtn(page, 'sprint'), eff = regBtn(page, 'efficiency');
     await expect(sprint).toBeVisible();
     await expect(page.locator('.regbtns[data-reg="proj-a"]')).toHaveAttribute('aria-live', 'polite');
+    // A visible + <skill> button means the skill is missing: idle border is the theme's red.
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const red = await page.evaluate(() => {
+        const probe = document.createElement('span'); probe.style.color = 'var(--col-discarded)'; document.body.appendChild(probe);
+        const c = getComputedStyle(probe).color; probe.remove(); return c;
+      });
+      expect(await sprint.evaluate(e => getComputedStyle(e).borderTopColor)).toBe(red);
+      await page.locator('.regbtns[data-reg="proj-a"]').screenshot({ path: path.join(require('os').tmpdir(), `canon-regskill-needed-${theme}.png`) });
+    }
     await sprint.click();
     await page.locator('#cc-ok').click();
     await expect(sprint).toContainText('Adding sprint…');

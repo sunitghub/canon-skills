@@ -281,7 +281,7 @@ grep -qF 'class="sidebar-icon-rail"' <<<"$board" || fail "canon-cockpit: the sta
 # card fold-in (cockpit.html): bottom-row register buttons + right-aligned actions + tooltips
 grep -qF 'class="cardbottom"' <<<"$page" || fail "canon-cockpit: card missing the .cardbottom row (register buttons + actions)"
 grep -qE "\.card \.actions\{[^}]*margin-left:auto" <<<"$page" || fail "canon-cockpit: card actions must be right-aligned via margin-left:auto"
-grep -qF 'title="Register the ${sk} skill in this project"' <<<"$page" || fail "canon-cockpit: register buttons must carry a hover title tooltip"
+grep -qF 'title="Not set up in this project yet — click to register the ${sk} skill"' <<<"$page" || fail "canon-cockpit: register buttons must carry a hover title tooltip"
 
 # ── t-1b88: Add-Project Browse folder picker ─────────────────────────────────
 grep -qF 'class="pathrow"' <<<"$page" || fail "canon-cockpit: Add modal missing the .pathrow (input + Browse)"
