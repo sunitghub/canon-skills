@@ -4372,6 +4372,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(dlg.locator('.ck-tcm-file.muted input')).toHaveCount(0);
       await expect(dlg).toContainText('(+1 more)');
       await expect(dlg.locator('#ck-tcm-msg')).toContainText(`chore: add ticket ${id}`);
+      await expect(dlg.locator('#ck-tcm-intro')).toContainText(`Commit it on the main checkout first, then create the "sprint/${id}" worktree.`);
       // The hostile file name is text, not markup.
       await expect(dlg.locator('img')).toHaveCount(0);
       await expect(dlg).toContainText('<img src=x onerror=');

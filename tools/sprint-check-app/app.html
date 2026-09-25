@@ -6239,7 +6239,7 @@ function openTicketCommitDialog(ticketId, plan, branch) {
   const cancelBtn = document.getElementById('ck-tcm-cancel');
   document.getElementById('ck-tcm-intro').textContent =
     `A worktree only contains committed files, and ${ticketId} isn't fully committed. ` +
-    `Commit it on the main checkout first, then create "${branch}".`;
+    `Commit it on the main checkout first, then create the "${branch}" worktree.`;
   const msg = document.getElementById('ck-tcm-msg');
   msg.textContent = 'Commit message: ';
   const code = document.createElement('code');
