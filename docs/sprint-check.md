@@ -219,6 +219,14 @@ sprint agent without leaving the browser — no second terminal.
   matching gitignored files (e.g. `.env`) into a freshly created worktree. Idle-reap
   is tiered by cwd: a worktree session keeps the 5-minute default, a main-checkout
   session gets a longer 30-minute safety net instead of never reaping.
-- **Scope:** the board integration above, the rail accordion, and the worktree
-  picker are done. The preview pane and further visual polish are follow-up
+- **Preview pane (`t-b19b`, `t-533f`):** asks the agent for the ticket's
+  deliverable and shows a static HTML file in a sandboxed iframe
+  (`sandbox="allow-scripts"` only), so the untrusted page can't reach the
+  daemon. The sandbox blocks forms and storage, so the pane says so and
+  offers **Copy file link** — a `file:///` URL to paste into a real browser to
+  use the app. It never opens the served preview URL itself: top-level, that
+  page would share the daemon's origin. A deliverable that needs a dev server
+  gets the command to run yourself instead.
+- **Scope:** the board integration above, the rail accordion, the worktree
+  picker, and the preview pane are done. Further visual polish is follow-up
   work — see `Future/Terminal-In-Board/` and tickets `t-8a63`/`t-ddc8`/`t-96a8`.
