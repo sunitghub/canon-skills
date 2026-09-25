@@ -4686,9 +4686,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
     await expect(page.locator('#btn-new-doc')).toHaveCount(0);
     await expect(page.locator('#m-check-tip')).toHaveCount(0);
-    // Clicking a checkbox on the live doc sends no write.
-    await page.locator('#m-body .doc-bullet[data-check-idx]').first().click();
-    await page.waitForTimeout(300);
+    // Live doc checkboxes aren't tagged as toggleable at all (no hover/pointer, no click write).
+    await expect(page.locator('#m-body .doc-bullet[data-check-idx]')).toHaveCount(0);
+    // The Demo/Docs/UX toggle writes main's ticket.md frontmatter, so it stays usable.
+    await expect(page.locator('.signoff-demo-toggle')).toBeEnabled();
     const tier = page.locator('.signoff-controls select').first();
     await expect(tier).toBeDisabled();
     expect(await tier.getAttribute('title')).toContain('Live from sprint/e7lv');

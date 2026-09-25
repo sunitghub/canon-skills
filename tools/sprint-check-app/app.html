@@ -4268,9 +4268,12 @@ function injectSignoffControls(container, content, t) {
   demoBtn.type = 'button';
   demoBtn.className = 'signoff-demo-toggle' + (demoOn ? ' active' : '');
   demoBtn.textContent = demoOn ? 'Demo/Docs/UX ✓' : 'Demo/Docs/UX ✗';
-  demoBtn.disabled = locked;
-  demoBtn.title = locked
-    ? lockedTip
+  // t-e78b follow-up: the demo flag lives in MAIN's ticket.md frontmatter, not the live
+  // worktree plan.md, so only a closed ticket locks it (reviewer finding).
+  const demoLocked = t.status === 'closed' || t.status === 'cancelled';
+  demoBtn.disabled = demoLocked;
+  demoBtn.title = demoLocked
+    ? 'Ticket is closed — no further edits.'
     : 'Demo/Docs/UX light-close (live demos or docs/research/UX-mockup work): sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
   demoBtn.addEventListener('click', async () => {
     const next = String(t.demo) !== 'true';
@@ -4343,7 +4346,9 @@ function renderModalBody(t) {
           }
         }
         bodyEl.innerHTML = warning + md(d.content, t.id);
-        tagCheckboxes(bodyEl);
+        // t-e78b follow-up: a live worktree doc's checkboxes aren't toggleable here, so don't
+        // tag them — no hover highlight or pointer suggesting otherwise.
+        if (!t.docs_from) tagCheckboxes(bodyEl);
         injectSectionJumps(bodyEl);
         hydrateFeatureRefs(bodyEl, t.id);
         if (slug === 'plan') injectSignoffControls(bodyEl, d.content, t);
