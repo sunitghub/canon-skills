@@ -7255,6 +7255,20 @@ test.describe('canon-cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(posts[0].models.anthropic.some(m => m.name === 'New Model' && m.alias)).toBe(true);
   });
 
+  test('the board and cockpit pages declare an icon, so nothing requests /favicon.ico (t-294b)', async ({ page }) => {
+    const favicon = [];
+    page.on('request', r => { if (new URL(r.url()).pathname === '/favicon.ico') favicon.push(r.url()); });
+    for (const url of [BASE, BASE + '/cockpit']) {
+      await page.goto(url);
+      await page.waitForLoadState('networkidle');
+      const href = await page.locator('link[rel="icon"]').getAttribute('href');
+      expect(href).toMatch(/^data:image\/svg\+xml,/);
+      const size = await page.evaluate(h => new Promise(res => { const i = new Image(); i.onload = () => res([i.naturalWidth, i.naturalHeight]); i.onerror = () => res(null); i.src = h; }), href);
+      expect(size).not.toBeNull();                  // the data URI is a valid, decodable SVG
+    }
+    expect(favicon).toEqual([]);
+  });
+
   test('board select popups follow the theme (t-294b)', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
