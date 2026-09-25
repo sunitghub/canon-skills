@@ -15,6 +15,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - Never end a turn after only stating what you are about to do; if a sentence describes a next action, perform it in the same turn. **Exception:** canon's defined approval checkpoints — `sprint start`'s "wait for explicit approval" (before code) and `sprint complete`'s "wait for confirmation" (before close) — are deliberate stops; pausing for the user there is required, not a stall.
 - Be concise in output, thorough in reasoning.
 - Test before declaring done.
+- Editing `tools/sprint-check-app/` (the board)? Read `tools/sprint-check-app/CLAUDE.md` first — board-specific gotchas (Cockpit fetch scoping, id prefixes, Playwright setup). Harnesses don't all load a nested CLAUDE.md on their own.
 
 ## Standards
 

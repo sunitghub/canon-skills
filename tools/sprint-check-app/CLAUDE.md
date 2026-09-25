@@ -30,6 +30,10 @@ Never swap a real script under `tools/` in place to stub it for a test (a same-p
 `SPRINT_HEADLESS_BIN`, `SPRINT_HEADLESS_EVAL_BIN` are the existing pattern to follow for any
 new one.
 
+## New element ids
+
+Grep for an id prefix before using it — the cockpit rail already owns `ck-tc-*` (ticket card: `ck-tc-status`, `ck-tc-title`, …). A duplicate id makes `getElementById` return the first match with no error, so a new widget silently writes into another one (t-d254's commit dialog did, until renamed to `ck-tcm-*`).
+
 ## Architecture
 
 Single-file app (`app.html`) served by a Python stdlib HTTP server (`server.py`). No build step. All JS, CSS, and HTML are inline. Edit `app.html` directly.
