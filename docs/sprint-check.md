@@ -173,10 +173,11 @@ sprint agent without leaving the browser — no second terminal.
   ticket ids are validated `^t-[a-z0-9]{4}$` and exec'd as an argv slice (never a
   shell); tokens travel via a `0600` state file, never argv. Transport is stdlib
   **SSE (output) + POST (input)** — no WebSocket.
-- **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS;
-  Windows validation is pending a Windows box. The interactive-`claude` spawn
-  above is **macOS-only so far** — its behaviour under ConPTY is unverified and
-  deliberately deferred.
+- **Platforms:** macOS/Linux and Windows (ConPTY). Runtime-verified on macOS,
+  and with interactive `claude` on a Windows 11 VM (2026-09-24). ConPTY keeps
+  the output pipe open after the agent exits, so the daemon closes the PTY
+  itself once the process has exited (after up to 2s for the last output to
+  drain); without that an exited agent stayed "running" (`t-b999`).
 - **Prerequisite:** `claude` must be on `PATH`. If it isn't, Start fails with the
   exec error surfaced in the terminal rather than hanging.
 - **Cockpit mode:** the kanban lanes collapse to a left ticket rail and an
