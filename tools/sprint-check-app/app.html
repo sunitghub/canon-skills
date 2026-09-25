@@ -6126,7 +6126,8 @@ async function renderCockpitWorktree(t) {
 
   // t-2241: rows only for worktrees this ticket can use — Main, its own, and free
   // ones. Worktrees another ticket still needs (server `held_by`) collapse into one
-  // unselectable group. Once the ticket's own worktree is selected, show just that
+  // unselectable "N worktrees unavailable" group (reasons per row). Once the ticket's
+  // own worktree is selected, show just that
   // row + "Change worktree"; the full picker stays in the DOM (hidden) so every
   // handler below wires up unchanged.
   const held = others.filter(e => e.held_by);
@@ -6145,7 +6146,7 @@ async function renderCockpitWorktree(t) {
     if (!compact || e !== ownSelected) html += rowHTML(e.path, e.branch || '(detached)', e.path); // compact already shows it above
   }
   if (held.length) {
-    html += `<details class="ck-worktree-held"><summary>${held.length} worktree${held.length === 1 ? '' : 's'} in use by other tickets</summary>`
+    html += `<details class="ck-worktree-held"><summary>${held.length} worktree${held.length === 1 ? '' : 's'} unavailable</summary>`
       + held.map(e => `<div class="ck-worktree-held-row" data-branch="${escAttr(e.branch || '')}">
           <span class="ck-worktree-held-branch">${esc(e.branch || '(detached)')}</span>
           <span class="ck-worktree-held-why">${esc(e.held_by.ticket ? e.held_by.ticket + ' · ' : '')}${esc(e.held_by.reason || '')}${e.held_by.reason === 'folder missing' ? ' — run <code>git worktree prune</code>' : ''}</span>
@@ -7161,7 +7162,7 @@ async function uploadVisual(ticketId, filename, base64) {
     html += `<button class="create-pill${wtMode === 'new' ? ' active' : ''}" type="button" title="Type a branch name -- not created yet, just remembered for first Start" data-wt="new">+ New</button>`;
     if (heldWt.length) {
       const tip = heldWt.map(w => `${w.branch} — ${w.held_by.ticket ? w.held_by.ticket + ' · ' : ''}${w.held_by.reason}`).join('\n');
-      html += `<span class="create-wt-held" title="${escAttr(tip)}">${heldWt.length} in use by other tickets</span>`;
+      html += `<span class="create-wt-held" title="${escAttr(tip)}">${heldWt.length} unavailable</span>`;
     }
     wtEl.innerHTML = html;
     if (wtMode === 'new') {

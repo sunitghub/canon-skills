@@ -227,9 +227,9 @@ sprint agent without leaving the browser — no second terminal.
   main checkout with a fixed `chore: add ticket <id>` message; anything you had
   staged stays staged. Undo with `git reset --soft HEAD~1`. The picker (and New Ticket's
   Worktree row) only offers worktrees this ticket can use (`t-2241`): Main, its own, and
-  free ones. A worktree another ticket still needs is collapsed under "N worktrees in use
-  by other tickets" with the reason: *in progress* (bound to an active ticket), *reserved*
-  (an open ticket chose it), *uncommitted changes*, or *branch not merged*. Once the
+  free ones. Any other worktree is collapsed under "N worktrees unavailable" with its
+  reason: *in progress* (bound to an active ticket), *reserved* (an open ticket chose it),
+  *uncommitted changes*, *branch not merged*, or *folder missing* (run `git worktree prune`). Once the
   ticket's own worktree is selected, the rail shows just that row plus **Change worktree**.
   The card/modal divergence note says "uncommitted changes in worktree" rather than
   "branch merged" when the worktree has unsaved work. Idle-reap

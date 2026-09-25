@@ -4559,7 +4559,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const box = page.locator('#ck-worktree');
       await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine']);
       const group = box.locator('details.ck-worktree-held');
-      await expect(group.locator('summary')).toHaveText('2 worktrees in use by other tickets');
+      await expect(group.locator('summary')).toHaveText('2 worktrees unavailable');
       await expect(group).not.toHaveAttribute('open', '');
       for (const theme of ['dark', 'light']) {
         await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
@@ -4628,7 +4628,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const pills = page.locator('#c-worktree-pills');
     await expect(pills.locator('.create-pill')).toHaveText(['Main checkout', 'sprint/free', '+ New']);
     const held = pills.locator('.create-wt-held');
-    await expect(held).toHaveText('3 in use by other tickets');
+    await expect(held).toHaveText('3 unavailable');
     const tip = await held.getAttribute('title');
     expect(tip).toContain('sprint/bnd — t-bnd1 · in progress');
     expect(tip).toContain('sprint/mine — t-mine · reserved');
