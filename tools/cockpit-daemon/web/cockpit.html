@@ -473,7 +473,9 @@
                     if(pr.ok){
                       // Basename via both separators so a Windows path splits too.
                       var relpath = filePath.split(/[\\/]/).pop();
-                      try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-file", session: session, previewToken: previewTok, relpath: relpath }, "*"); }catch(e){}
+                      // t-533f: path lets the board offer a file:/// link for a real browser;
+                      // sent only after the daemon accepted it above.
+                      try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-file", session: session, previewToken: previewTok, relpath: relpath, path: filePath }, "*"); }catch(e){}
                     } else {
                       try{ window.parent.postMessage({ source: "canon-cockpit", type: "preview-rejected" }, "*"); }catch(e){}
                     }

@@ -1766,8 +1766,26 @@
        simultaneously (mirrors #ck-term's per-tab iframes) — only the active
        tab's is display:'', so it needs its own definite height for a nested
        iframe's height:100% to resolve. */
-    .ck-preview-tab-body { width: 100%; height: 100%; }
-    .ck-preview-body iframe { width: 100%; height: 100%; border: 0; display: block; }
+    .ck-preview-tab-body { width: 100%; height: 100%; display: flex; flex-direction: column; }
+    .ck-preview-body iframe { width: 100%; flex: 1; min-height: 0; border: 0; display: block; }
+    /* t-533f: the sandbox silently blocks forms/storage — say so, and offer the real file. */
+    .ck-preview-note {
+      flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+      padding: 8px 10px; font-size: 12px; line-height: 1.4; color: var(--text-muted);
+      background: var(--surface-raised); border-bottom: 1px solid var(--border);
+    }
+    .ck-preview-note-text { flex: 1 1 180px; }
+    .ck-preview-copy {
+      flex: none; height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+      color: var(--accent); cursor: pointer;
+    }
+    .ck-preview-copy:hover { background: var(--accent); color: #fff; }
+    .ck-preview-copy-status { flex-basis: 100%; color: var(--text); }
+    .ck-preview-copy-url {
+      flex-basis: 100%; font: 12px var(--mono, monospace); color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;
+    }
     .ck-preview-msg {
       padding: 16px; font-size: 13px; color: var(--text-muted); font-family: var(--mono, monospace);
       line-height: 1.5;
@@ -5008,7 +5026,7 @@ window.addEventListener('message', (e) => {
   } else if (d.type === 'ended' && tab._onEnded) {
     tab._onEnded();
   } else if (d.type === 'preview-file') {
-    if (isActive) renderPreviewFile(d.session, d.previewToken, d.relpath);
+    if (isActive) renderPreviewFile(d.session, d.previewToken, d.relpath, d.path);
   } else if (d.type === 'preview-server-cmd') {
     if (isActive) renderPreviewServerCmd(d.cmd);
   } else if (d.type === 'preview-timeout') {
@@ -5070,7 +5088,71 @@ function renderPreviewMessage(text) {
   body.querySelector('.ck-preview-msg').textContent = text;
 }
 
-function renderPreviewFile(session, previewToken, relpath) {
+// t-533f: a local absolute path → the file:/// URL a real browser opens (POSIX, Windows drive,
+// UNC). Each segment is percent-encoded so spaces and '#' survive; '' for anything else.
+function fileUrlFor(p) {
+  if (typeof p !== 'string' || !p) return '';
+  const enc = parts => parts.filter(Boolean).map(encodeURIComponent).join('/');
+  let m = p.match(/^\\\\([^\\/]+)[\\/](.+)$/);
+  if (m) return `file://${encodeURIComponent(m[1])}/${enc(m[2].split(/[\\/]/))}`;
+  m = p.match(/^([A-Za-z]):[\\/](.*)$/);
+  if (m) return `file:///${m[1].toUpperCase()}:/${enc(m[2].split(/[\\/]/))}`;
+  if (p.startsWith('/')) return `file:///${enc(p.split('/'))}`;
+  return '';
+}
+
+// The note row above the sandboxed preview. It never opens or navigates to the daemon preview
+// URL: top-level, that page would share the daemon's origin and could read the token /cockpit
+// embeds (t-533f research.md). The user pastes the file:/// URL into a real browser instead.
+function previewNoteFor(relpath, absPath) {
+  const note = document.createElement('div');
+  note.className = 'ck-preview-note';
+  const text = document.createElement('span');
+  text.className = 'ck-preview-note-text';
+  text.textContent = 'Preview is sandboxed — forms and storage are disabled. Open it in your browser to use the app.';
+  note.appendChild(text);
+  const url = fileUrlFor(absPath);
+  if (!url) {
+    const hint = document.createElement('span');
+    hint.className = 'ck-preview-copy-status';
+    hint.textContent = `Open ${relpath} from the project folder in your browser.`;
+    note.appendChild(hint);
+    return note;
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ck-preview-copy';
+  btn.textContent = 'Copy file link';
+  btn.title = url;
+  btn.setAttribute('aria-label', `Copy the file link for ${relpath} to open in your browser`);
+  const status = document.createElement('span');
+  status.className = 'ck-preview-copy-status';
+  status.setAttribute('role', 'status');
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      status.textContent = "Copied — paste it into your browser's address bar.";
+    } catch {
+      status.textContent = "Copy this link into your browser's address bar:";
+      let input = note.querySelector('.ck-preview-copy-url');
+      if (!input) {
+        input = document.createElement('input');
+        input.className = 'ck-preview-copy-url';
+        input.readOnly = true;
+        input.setAttribute('aria-label', 'File link');
+        input.value = url;
+        note.appendChild(input);
+      }
+      input.focus();
+      input.select();
+    }
+  });
+  note.appendChild(btn);
+  note.appendChild(status);
+  return note;
+}
+
+function renderPreviewFile(session, previewToken, relpath, absPath) {
   if (!cockpitState.addr || !session || !previewToken || !relpath) {
     renderPreviewMessage("Couldn't load the preview (missing session details).");
     return;
@@ -5082,6 +5164,7 @@ function renderPreviewFile(session, previewToken, relpath) {
   const url = `http://${cockpitState.addr}/session/${encodeURIComponent(session)}/preview/${encodeURIComponent(previewToken)}/${encodeURIComponent(relpath)}`;
   const body = previewBodyFor(cockpitState);
   body.innerHTML = '';
+  body.appendChild(previewNoteFor(relpath, absPath));
   const iframe = document.createElement('iframe');
   // allow-scripts only, deliberately no allow-same-origin — the previewed
   // app-under-test is untrusted content; this keeps it at an opaque origin

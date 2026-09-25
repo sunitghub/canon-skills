@@ -5679,9 +5679,10 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   // daemon to validate the reported path (t-b19b's plan.md decision: the
   // daemon re-validates, never trusts the client-relayed path uncomprehendingly)
   // — this fake page only tests the BOARD side's reaction to each outcome.
-  function fakePreviewCockpitPage({ respondWith = 'file', delayMs = 30 } = {}) {
+  function fakePreviewCockpitPage({ respondWith = 'file', delayMs = 30, filePath } = {}) {
+    const pathField = filePath === undefined ? '' : `, path:${JSON.stringify(filePath)}`;
     const respond = {
-      file: "window.parent.postMessage({source:'canon-cockpit', type:'preview-file', session:'sess1', previewToken:'ptok1', relpath:'index.html'}, '*');",
+      file: `window.parent.postMessage({source:'canon-cockpit', type:'preview-file', session:'sess1', previewToken:'ptok1', relpath:'index.html'${pathField}}, '*');`,
       'server-cmd': "window.parent.postMessage({source:'canon-cockpit', type:'preview-server-cmd', cmd:'npm run dev'}, '*');",
       timeout: "window.parent.postMessage({source:'canon-cockpit', type:'preview-timeout'}, '*');",
       rejected: "window.parent.postMessage({source:'canon-cockpit', type:'preview-rejected'}, '*');",
@@ -5733,6 +5734,99 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       const iframe = page.locator('#ck-preview-body iframe');
       await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
       await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/ptok1/index.html');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  // --- t-533f: the sandbox silently blocks forms/storage — say so and offer the real file ---
+  const NOTE = 'Preview is sandboxed — forms and storage are disabled. Open it in your browser to use the app.';
+
+  test('a static preview shows the sandbox note and Copy file link; the iframe stays sandboxed on the daemon URL (t-533f)', async ({ page, context }) => {
+    const id = `t-pvnote-${Date.now()}`;
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file', filePath: 'C:\\Users\\agentops\\Documents\\ToDo\\index.html' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      const note = page.locator('#ck-preview-body .ck-preview-note');
+      await expect(note).toContainText(NOTE);
+      const btn = note.locator('.ck-preview-copy');
+      await expect(btn).toHaveText('Copy file link');
+      await expect(btn).toHaveAttribute('aria-label', 'Copy the file link for index.html to open in your browser');
+      const iframe = page.locator('#ck-preview-body iframe');
+      await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/ptok1/index.html');
+
+      let popups = 0;
+      page.on('popup', () => { popups++; });
+      const before = page.url();
+      await btn.click();
+      await expect(note.locator('.ck-preview-copy-status')).toHaveText("Copied — paste it into your browser's address bar.");
+      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('file:///C:/Users/agentops/Documents/ToDo/index.html');
+      await page.waitForTimeout(300);
+      expect(popups).toBe(0);                              // never opens the daemon URL (it would share the daemon's origin)
+      expect(page.url()).toBe(before);
+      await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/ptok1/index.html');
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await note.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-533f', 'visuals', `note-${theme}.png`) });
+      }
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('fileUrlFor builds a pasteable file:/// URL for POSIX, Windows drive and UNC paths (t-533f)', async ({ page }) => {
+    await page.goto(BASE);
+    const cases = {
+      '/Users/me/My App/index.html': 'file:///Users/me/My%20App/index.html',
+      'C:\\Users\\a b\\#1\\index.html': 'file:///C:/Users/a%20b/%231/index.html',
+      'c:/proj/index.html': 'file:///C:/proj/index.html',
+      '\\\\host\\share\\app\\index.html': 'file://host/share/app/index.html',
+      'index.html': '',
+      '': '',
+    };
+    for (const [input, want] of Object.entries(cases)) {
+      expect(await page.evaluate(p => fileUrlFor(p), input), input).toBe(want);
+    }
+  });
+
+  test('without a path (older daemon) the note says where to open the file instead of a dead button (t-533f)', async ({ page }) => {
+    const id = `t-pvnopath-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      const note = page.locator('#ck-preview-body .ck-preview-note');
+      await expect(note).toContainText(NOTE);
+      await expect(note).toContainText('Open index.html from the project folder in your browser.');
+      await expect(note.locator('.ck-preview-copy')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('if the clipboard is blocked, the file link is shown selected for a manual copy (t-533f)', async ({ page }) => {
+    const id = `t-pvclip-${Date.now()}`;
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } });
+    });
+    try {
+      writeTicket(id, 'in_progress');
+      await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file', filePath: '/tmp/my app/index.html' }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-preview-label').click();
+      await page.locator('.ck-preview-copy').click();
+      const input = page.locator('.ck-preview-copy-url');
+      await expect(input).toHaveValue('file:///tmp/my%20app/index.html');
+      await expect(input).toHaveAttribute('readonly', '');
+      await expect(input).toBeFocused();
+      expect(await input.evaluate(el => [el.selectionStart, el.selectionEnd])).toEqual([0, 'file:///tmp/my%20app/index.html'.length]);
+      await expect(page.locator('.ck-preview-copy-status')).toHaveText("Copy this link into your browser's address bar:");
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -6040,8 +6134,11 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
 
     // Harmless stub in place of `claude` — stays alive so the PTY session
     // persists for the duration of the test; never spawns a real agent.
+    // t-533f: answers the first prompt it's sent (the preview request) with a
+    // PREVIEW_FILE marker line, the way a real agent would.
     const stub = path.join(work, 'stub-agent.sh');
-    fs.writeFileSync(stub, '#!/usr/bin/env bash\nexec sleep 60\n', { mode: 0o755 });
+    fs.writeFileSync(stub, '#!/usr/bin/env bash\nread -r _\nprintf "PREVIEW_FILE: %s\\n" ' +
+      JSON.stringify(path.join(work, 'preview-app', 'index.html')) + '\nexec sleep 60\n', { mode: 0o755 });
 
     // Build and spawn the REAL daemon on an ephemeral loopback port.
     daemonBin = path.join(work, 'cockpit-daemon-test');
@@ -6128,6 +6225,33 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     const rightTok = await request.get(`${base}/session/${started.session}/preview/${encodeURIComponent(started.previewToken)}/style.css`);
     expect(rightTok.status()).toBe(200);
     expect(await rightTok.text()).toContain('#marker');
+  });
+  test('the real daemon page relays the accepted absolute path with preview-file (t-533f)', async ({ page, context }) => {
+    // Playwright's Chromium blocks a page framing a loopback daemon port under Local Network
+    // Access checks unless granted (net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS).
+    await context.grantPermissions(['local-network-access']);
+    const addr = await daemonAddr();
+    const want = path.join(work, 'preview-app', 'index.html');
+    // A loopback-origin parent (the board's own server), as the real board is — the daemon page
+    // only accepts messages from a loopback parent.
+    await page.route('**/__pv533f', route => route.fulfill({ status: 200, contentType: 'text/html', body:
+      `<!doctype html><html><body><iframe id="ck" style="width:800px;height:400px" ` +
+      `src="http://${addr}/cockpit?ticket=${TICKET}&embed=1&autostart=1"></iframe><script>
+        window.__msgs = [];
+        window.addEventListener('message', function (e) {
+          var d = e.data; if (!d || d.source !== 'canon-cockpit') return;
+          window.__msgs.push(d);
+          if (d.type === 'started') setTimeout(function () {
+            document.getElementById('ck').contentWindow.postMessage({ source: 'canon-cockpit', type: 'preview-request' }, '*');
+          }, 1500);
+        });
+      </script></body></html>` }));
+    await page.goto(BASE + '/__pv533f');
+    await expect.poll(() => page.evaluate(() => (window.__msgs.find(m => m.type === 'preview-file') || null)), { timeout: 30_000 })
+      .not.toBeNull();
+    const msg = await page.evaluate(() => window.__msgs.find(m => m.type === 'preview-file'));
+    expect(msg.relpath).toBe('index.html');
+    expect(msg.path).toBe(want);
   });
 });
 
