@@ -4078,6 +4078,23 @@ func TestContainsMarkerLineClaudeFraming(t *testing.T) {
 			"\x1b[2B  print the exact line " + m + " on its own, and stop.\r", false},
 		{"absent",
 			"\x1b[2Bnothing here\rstill nothing\r", false},
+		// t-6291: Copilot bullets its one-line reply; this 60s-stalled Save & End on the VM.
+		{"copilot bullet prefix",
+			"\x1b[1m\u25cf\x1b[0m " + m + "\r\n", true},
+		{"copilot bullet, CR-only framing",
+			"\x1b[2B\u25cf " + m + "\x1b[K\r\x1b[2Bready", true},
+		{"claude record glyph prefix",
+			"\u23fa " + m + "\n", true},
+		{"markdown code span",
+			"`" + m + "`\n", true},
+		{"markdown bold",
+			"**" + m + "**\n", true},
+		{"bulleted prose mentioning the marker must not match",
+			"\u25cf I will print " + m + " next\n", false},
+		{"marker followed by more text must not match",
+			"\u25cf " + m + " done\n", false},
+		{"bulleted echoed save prompt must not match",
+			"\u25cf print the exact line " + m + " on its own, and stop.\n", false},
 	}
 	for _, c := range cases {
 		if got := containsMarkerLine([]byte(c.buf), m); got != c.want {

@@ -1501,10 +1501,20 @@ var ansiCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 // alone left the whole buffer as one line and the marker was never isolated,
 // stalling Save & End until the fallback timeout ("saves forever"). Mirrors the
 // cockpit.html fix.
+//
+// t-6291: agents decorate a one-line reply — Copilot prints "● COCKPIT_STATE_SAVED",
+// Claude a leading "⏺", some wrap it in markdown — so strip the SAME leading and
+// trailing chrome the daemon's own page strips before its identical compare
+// (web/cockpit.html: /^[\s*_`>#•●⏺○◦▸▹‣·-]+/ and /[\s*_`]+$/), then still
+// require the WHOLE line to be the marker.
+const markerLeadChrome = " \t*_`>#•●⏺○◦▸▹‣·-"
+const markerTrailChrome = " \t*_`"
+
 func containsMarkerLine(buf []byte, marker string) bool {
 	clean := ansiCSIRe.ReplaceAllString(string(buf), "")
 	for _, line := range strings.FieldsFunc(clean, func(r rune) bool { return r == '\n' || r == '\r' }) {
-		if strings.TrimSpace(line) == marker {
+		line = strings.TrimRight(strings.TrimLeft(strings.TrimSpace(line), markerLeadChrome), markerTrailChrome)
+		if line == marker {
 			return true
 		}
 	}
