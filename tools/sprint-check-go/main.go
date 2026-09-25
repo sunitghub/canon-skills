@@ -219,8 +219,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleDelete(w http.ResponseWriter, r *http.Request) {
-	origin := r.Header.Get("Origin")
-	if origin != "" && !strings.HasPrefix(origin, "http://127.0.0.1") && !strings.HasPrefix(origin, "http://localhost") {
+	if !originOK(r.Header.Get("Origin")) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -459,8 +458,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePost(w http.ResponseWriter, r *http.Request) {
-	origin := r.Header.Get("Origin")
-	if origin != "" && !strings.HasPrefix(origin, "http://127.0.0.1") && !strings.HasPrefix(origin, "http://localhost") {
+	if !originOK(r.Header.Get("Origin")) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -2446,6 +2444,17 @@ func portInUse(port int) bool {
 	}
 	ln.Close()
 	return false
+}
+
+// originOK is the CSRF guard for every write (POST/DELETE, t-957a): the Origin
+// must be EXACTLY a loopback origin, optionally with a port — the old prefix test
+// let http://127.0.0.1.attacker.example through. Mirrors server.py's _origin_ok
+// and cockpit-daemon's originIsLoopback (minus [::1], which hostOK rejects too).
+// No Origin → allowed (curl, the CLI, tests). RE2's $ is end-of-text only.
+var originOKRe = regexp.MustCompile(`^http://(127\.0\.0\.1|localhost)(:[0-9]{1,5})?$`)
+
+func originOK(origin string) bool {
+	return origin == "" || originOKRe.MatchString(origin)
 }
 
 func hostOK(host string) bool {

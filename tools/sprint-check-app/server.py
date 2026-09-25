@@ -546,6 +546,18 @@ def load_git(root: Path = None) -> dict:
 
 # ── Worktrees (t-cd06) ───────────────────────────────────────────────────
 
+# t-957a: CSRF guard for every write (POST/DELETE). The Origin must be EXACTLY a
+# loopback origin, optionally with a port — a prefix test let
+# `http://127.0.0.1.attacker.example` through. Same rule as cockpit-daemon's
+# originIsLoopback (minus [::1], which _ALLOWED_HOSTS doesn't accept either);
+# mirrored in sprint-check-go's originOK. No Origin → allowed (curl, the CLI,
+# tests); browsers always send one on a cross-origin POST/DELETE. fullmatch,
+# not match+$ — Python's $ also matches before a trailing newline (t-2a1c).
+_ORIGIN_RE = re.compile(r'http://(127\.0\.0\.1|localhost)(:[0-9]{1,5})?')
+
+def _origin_ok(origin: str) -> bool:
+    return not origin or bool(_ORIGIN_RE.fullmatch(origin))
+
 def _valid_branch_name(name: str) -> bool:
     # Reuses _BASE_REF_RE's allow-list (same git-ref-name charset, defined
     # below); additionally rejects a leading '-' (would be read as a flag by
@@ -2517,8 +2529,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(403); return
         parsed = urlparse(self.path)
         path = parsed.path
-        origin = self.headers.get('Origin', '')
-        if origin and not origin.startswith('http://127.0.0.1') and not origin.startswith('http://localhost'):
+        if not _origin_ok(self.headers.get('Origin', '')):
             self.send_error(403); return
         try:
             length = int(self.headers.get('Content-Length', 0))
@@ -2652,8 +2663,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             self.send_error(403); return
         path = urlparse(self.path).path
-        origin = self.headers.get('Origin', '')
-        if origin and not origin.startswith('http://127.0.0.1') and not origin.startswith('http://localhost'):
+        if not _origin_ok(self.headers.get('Origin', '')):
             self.send_error(403); return
         m = re.match(r'^/api/projects/([0-9a-f]{12})$', path)
         if m:
