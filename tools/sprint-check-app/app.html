@@ -3632,6 +3632,28 @@ async function renderCardWorktreeChips() {
 
 let _toastTimer = null;
 let _pendingConfirm = null;
+// t-1940: every board write goes through here, so a refused or failed save is
+// never mistaken for a saved one. A non-2xx status, a JSON `ok: false`, or a
+// network error is a failure: the reason is toasted, and the caller keeps or
+// reverts its own UI. (403 from the origin guard answers HTML, hence the
+// tolerant JSON parse.)
+async function postWrite(url, body, what) {
+  let r, d = {};
+  try {
+    r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    d = await r.json().catch(() => ({}));
+  } catch (err) {
+    showToast(`⚠ Couldn't ${what}: the board server didn't answer`, 'block');
+    return { ok: false, error: String(err) };
+  }
+  if (!r.ok || (d && d.ok === false)) {
+    const why = (d && d.error) || `HTTP ${r.status}`;
+    showToast(`⚠ Couldn't ${what}: ${why}`, 'block');
+    return { ok: false, error: why };
+  }
+  return { ok: true, data: d };
+}
+
 function showToast(msg, type = 'warn') {
   const el = document.getElementById('drop-toast');
   if (!el) return;
@@ -3929,17 +3951,12 @@ function renderModalHeadless(t) {
     const input = document.getElementById('m-headless-baseref');
     const baseRef = input.value.trim();
     if (!baseRef) { input.focus(); return; }
-    fetch(`/api/ticket/${encodeURIComponent(t.id)}/headless-run`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base_ref: baseRef }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        renderHeadlessStatus(t.id, data);
-        if (data.status === 'running') startHeadlessPoll(t.id);
-      })
-      .catch(() => {});
+    postWrite(`/api/ticket/${encodeURIComponent(t.id)}/headless-run`, { base_ref: baseRef }, 'start the headless run')
+      .then(res => {
+        if (!res.ok) return; // t-1940: the reason is toasted; a refused start used to vanish silently
+        renderHeadlessStatus(t.id, res.data);
+        if (res.data.status === 'running') startHeadlessPoll(t.id);
+      });
   });
   // Pick up an already-in-progress run (e.g. the modal was reopened) rather than
   // showing a blank idle state that hides real, ongoing work.
@@ -4197,11 +4214,8 @@ function injectSignoffControls(container, content, t) {
         const r = await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`);
         const d = await r.json();
         const updated = withSignoffBase(d.content, tierSelect.value, risk);
-        await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ content: updated }),
-        });
-      } catch { /* best effort */ } finally {
+        await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content: updated }, 'save the Sign-off tier/risk');
+      } catch { /* the read failed — the re-render below shows the saved value */ } finally {
         const cur = state.tickets.find(tk => tk.id === state.selectedId);
         if (cur) renderModalBody(cur);
       }
@@ -4242,11 +4256,8 @@ function injectSignoffControls(container, content, t) {
       const r = await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`);
       const d = await r.json();
       const updated = withGateModel(d.content, select.value);
-      await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: updated }),
-      });
-    } catch { /* best effort */ } finally {
+      await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content: updated }, 'save the Gate model');
+    } catch { /* the read failed — the re-render below shows the saved value */ } finally {
       const cur = state.tickets.find(tk => tk.id === state.selectedId);
       if (cur) renderModalBody(cur);
     }
@@ -4279,12 +4290,9 @@ function injectSignoffControls(container, content, t) {
     const next = String(t.demo) !== 'true';
     demoBtn.disabled = true;
     try {
-      await fetch(`/api/ticket/${t.id}/demo`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ demo: next }),
-      });
-      t.demo = next ? 'true' : 'false';
-    } catch { /* best effort */ } finally {
+      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/Docs/UX');
+      if (res.ok) t.demo = next ? 'true' : 'false';
+    } finally {
       renderBoard();
       const cur = state.tickets.find(tk => tk.id === state.selectedId);
       if (cur) renderModalBody(cur);
@@ -4421,22 +4429,16 @@ async function saveEdit(t) {
     alert(validationError);
     return;
   }
-  try {
-    if (modalState.activeDoc) {
-      await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      });
-    } else {
-      await fetch(`/api/ticket/${t.id}/body`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ body: content }),
-      });
-      t.body = content;
-      const headingMatch = content.match(/^#\s+(.+)$/m);
-      if (headingMatch) t.title = headingMatch[1].trim();
-    }
-  } catch { /* server unavailable */ }
+  if (modalState.activeDoc) {
+    const res = await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content }, 'save this doc');
+    if (!res.ok) return; // stay in edit mode with the text intact
+  } else {
+    const res = await postWrite(`/api/ticket/${t.id}/body`, { body: content }, 'save the description');
+    if (!res.ok) return;
+    t.body = content;
+    const headingMatch = content.match(/^#\s+(.+)$/m);
+    if (headingMatch) t.title = headingMatch[1].trim();
+  }
   exitEditMode(t);
 }
 
@@ -4694,10 +4696,8 @@ function selectDocType(t, slug, name) {
   const rawTemplate = DOC_TYPES.find(d => d.slug === slug)?.template || `# ${name}\n\n`;
   const template = rawTemplate.replaceAll('<id>', t.id);
 
-  fetch(`/api/doc/${encodeURIComponent(file)}`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content: template }),
-  }).then(() => {
+  postWrite(`/api/doc/${encodeURIComponent(file)}`, { content: template }, `create ${name}`).then(res => {
+    if (!res.ok) { renderModalDocs(t); return; } // no tab for a doc that wasn't created
     t.docs = t.docs || [];
     if (!t.docs.some(d => d.file === file)) t.docs.push({ name, file });
     modalState.activeDoc = file;
@@ -4977,12 +4977,9 @@ function refreshModalActions(t) {
 }
 
 async function moveCard(t, newStatus) {
-  try {
-    await fetch(`/api/ticket/${t.id}/status`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus }),
-    });
-  } catch { /* server unavailable — update local state only */ }
+  // t-1940: only a confirmed save moves the card — a refused one used to look moved until refresh.
+  const res = await postWrite(`/api/ticket/${t.id}/status`, { status: newStatus }, `move ${t.id}`);
+  if (!res.ok) { renderBoard(); return; }
   t.status = newStatus;
   renderHeader();
   renderSidebar();
@@ -7008,18 +7005,13 @@ async function toggleCheckbox(docFile, checkIdx) {
   try {
     r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
     d = await r.json();
-  } catch { return; }
+  } catch { showToast("⚠ Couldn't update that checkbox: the doc couldn't be read", 'block'); return false; }
   let i = 0;
   const updated = d.content.replace(/^(- \[)([ xX])(\] .+)$/gm, (m, pre, mark, rest) => {
     if (i++ === checkIdx) return pre + (mark.trim() === '' ? 'x' : ' ') + rest;
     return m;
   });
-  try {
-    await fetch(`/api/doc/${encodeURIComponent(docFile)}`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: updated }),
-    });
-  } catch { /* best effort */ }
+  return (await postWrite(`/api/doc/${encodeURIComponent(docFile)}`, { content: updated }, 'update that checkbox')).ok;
 }
 
 // Delegated handler — fires once, lives on #m-body permanently
@@ -7041,8 +7033,12 @@ document.getElementById('m-body').addEventListener('click', async e => {
   bullet.classList.toggle('doc-check-open', !wasOpen);
   if (marker) { marker.classList.toggle('open', !wasOpen); marker.textContent = wasOpen ? '✓' : ''; }
 
-  await toggleCheckbox(modalState.activeDoc, idx);
+  const saved = await toggleCheckbox(modalState.activeDoc, idx);
   bullet.classList.remove('toggling');
+  if (!saved) { // t-1940: revert the optimistic flip
+    bullet.classList.toggle('doc-check-open', wasOpen);
+    if (marker) { marker.classList.toggle('open', wasOpen); marker.textContent = wasOpen ? '' : '✓'; }
+  }
 
   // Re-sync tickets so readiness indicators update on the board
   try {
@@ -7303,10 +7299,9 @@ async function uploadVisual(ticketId, filename, base64) {
     titleEl.style.borderColor = '';
     document.getElementById('c-submit').disabled = true;
     try {
-      const ticket = await fetch('/api/tickets', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, worktree_preference: worktreePreferenceValue() }),
-      }).then(r => r.json());
+      const created = await postWrite('/api/tickets', { title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, worktree_preference: worktreePreferenceValue() }, 'create the ticket');
+      if (!created.ok) { document.getElementById('c-submit').disabled = false; return; }
+      const ticket = created.data;
 
       if (stagedVisuals.length) {
         let body = ticket.body || '';
@@ -7319,11 +7314,8 @@ async function uploadVisual(ticketId, filename, base64) {
           body = body.replace(`![pasted-${v.index}](pending:${v.index})`, replacement);
         }
         if (body !== ticket.body) {
-          await fetch(`/api/ticket/${ticket.id}/body`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ body }),
-          });
-          ticket.body = body;
+          // The ticket exists either way; a failed body write is reported, not fatal.
+          if ((await postWrite(`/api/ticket/${ticket.id}/body`, { body }, `save ${ticket.id}'s pasted images`)).ok) ticket.body = body;
         }
       }
 

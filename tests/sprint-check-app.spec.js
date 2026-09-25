@@ -4711,6 +4711,140 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts).toHaveLength(0);
   });
 
+  // t-1940: a refused or failed board save must never look saved.
+  const T1940 = (id, extra = {}) => ({ id, title: `Ticket ${id}`, status: 'open', type: 'task', priority: 2, layout: 'folder',
+    created: '2026-09-25T00:00:00Z', body: `# Ticket ${id}\n\nDescription.`, docs: [{ name: 'Acceptance', file: `${id}/acceptance.md` }],
+    acceptance_has_items: true, acceptance_unchecked: true, ...extra });
+  // Replies in order; 'html403' mimics the origin guard's HTML 403, 'abort' a dead server.
+  function scriptedPosts(page, pattern, replies) {
+    const seen = [];
+    return page.route(pattern, route => {
+      if (route.request().method() !== 'POST') return route.fallback();
+      seen.push(route.request().postData());
+      const r = replies.shift() || 'ok';
+      if (r === 'abort') return route.abort();
+      if (r === 'html403') return route.fulfill({ status: 403, contentType: 'text/html', body: '<html>forbidden</html>' });
+      if (r === '409') return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'is live in worktree sprint/x — edit it in the sprint session' }) });
+      if (r === 'okfalse') return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":false}' });
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' });
+    }).then(() => seen);
+  }
+
+  test('a card move that the server refuses stays in its column and says why (t-1940)', async ({ page }) => {
+    const id = 't-mv40';
+    await page.route('**/api/tickets**', route => route.request().method() === 'GET'
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([T1940(id)]) }) : route.fallback());
+    const seen = await scriptedPosts(page, `**/api/ticket/${id}/status`, ['html403', '409', 'abort', 'okfalse', 'ok']);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const inCol = st => page.locator(`.column-body[data-status="${st}"] .card[data-id="${id}"]`);
+    await expect(inCol('open')).toBeVisible();
+    const move = () => page.evaluate(i => moveCard(state.tickets.find(t => t.id === i), 'in_progress'), id);
+    const toast = page.locator('#drop-toast');
+
+    await move();
+    await expect(toast).toContainText(`Couldn't move ${id}: HTTP 403`);
+    await expect(inCol('open')).toBeVisible();
+    await move();
+    await expect(toast).toContainText('is live in worktree sprint/x');
+    await expect(inCol('open')).toBeVisible();
+    await move();
+    await expect(toast).toContainText("the board server didn't answer");
+    await expect(inCol('open')).toBeVisible();
+    await move();
+    await expect(toast).toContainText(`Couldn't move ${id}: HTTP 200`);
+    await expect(inCol('open')).toBeVisible();
+    // A confirmed save still moves it.
+    await move();
+    await expect(inCol('in_progress')).toBeVisible();
+    expect(seen).toHaveLength(5);
+  });
+
+  test('modal writes keep or revert their UI on failure: doc save, checkbox, demo, new doc, create ticket (t-1940)', async ({ page }) => {
+    const id = 't-mw40';
+    await page.route('**/api/tickets**', route => route.request().method() === 'GET'
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([T1940(id, { docs: [
+          { name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }] })]) }) : route.fallback());
+    // The board URL-encodes the doc path (t-mw40%2Facceptance.md), so match on /api/doc/ broadly.
+    await page.route('**/api/doc/**', route => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const content = route.request().url().includes('plan.md')
+        ? '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\nx\n'
+        : '# Acceptance\n\n## Criteria\n\n- [ ] first item\n';
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content }) });
+    });
+    await scriptedPosts(page, '**/api/doc/**', ['409', '409', '409', '409']);
+    await scriptedPosts(page, `**/api/ticket/${id}/demo`, ['html403']);
+    const toast = page.locator('#drop-toast');
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.locator('.doc-tab', { hasText: 'Acceptance' }).click();
+
+    // Checkbox: the optimistic flip reverts when the save is refused.
+    const bullet = page.locator('#m-body .doc-bullet[data-check-idx]').first();
+    const before = await bullet.getAttribute('class');
+    // After a toggle the handler reloads /api/tickets, then re-renders the modal, which
+    // re-fetches the doc. Wait for that exact sequence (not a timer): a re-render landing
+    // after Edit is clicked would reset the editor and the save below would never post.
+    let docReads = 0;
+    page.on('response', r => { if (r.url().includes('/api/doc/') && r.request().method() === 'GET') docReads++; });
+    const reloaded = page.waitForResponse(r => r.url().includes('/api/tickets') && r.request().method() === 'GET');
+    await bullet.click();
+    await expect(toast).toContainText("Couldn't update that checkbox");
+    await reloaded;
+    // Two doc reads: the toggle's own read-before-write, then the re-render's.
+    await expect.poll(() => docReads).toBeGreaterThanOrEqual(2);
+    await expect.poll(() => page.locator('#m-body .doc-bullet[data-check-idx]').first().getAttribute('class')).toBe(before);
+
+    // Doc save: a refused save stays in edit mode with the typed text.
+    await page.locator('#btn-edit-doc').click();
+    const area = page.locator('#m-edit-area');
+    await expect(area).toBeVisible();
+    // Edit fetches the doc and fills the textarea when it lands; typing earlier gets overwritten.
+    await expect(area).toHaveValue(/first item/);
+    // Valid acceptance (both sections), so the board's own validation passes and the POST is sent.
+    await area.fill('# Acceptance\n\nTicket: `t-mw40`\n\n## Criteria\n\n- [ ] typed but not saved\n\n## Test Plan\n\n- [ ] a check\n\n## QA\n\n- [ ] Tested locally\n');
+    await page.locator('#btn-save-top').click();
+    await expect(toast).toContainText("Couldn't save this doc");
+    await expect(area).toBeVisible();
+    await expect(area).toHaveValue(/typed but not saved/);
+    await page.locator('#btn-cancel-top').click();
+
+    // Demo toggle: a refused change leaves it showing the saved (off) state.
+    await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+    const demo = page.locator('.signoff-demo-toggle');
+    await expect(demo).toHaveText('Demo/Docs/UX ✗');
+    await demo.click();
+    await expect(toast).toContainText("Couldn't change Demo/Docs/UX: HTTP 403");
+    await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/Docs/UX ✗');
+    // Sign-off tier: a refused change re-renders to the saved value.
+    const tier = page.locator('.signoff-controls select').first();
+    await expect(tier).toHaveValue('normal');
+    await tier.selectOption('high-risk');
+    await expect(toast).toContainText("Couldn't save the Sign-off tier/risk");
+    await expect(page.locator('.signoff-controls select').first()).toHaveValue('normal');
+
+    // New doc: no tab appears for a doc that wasn't created.
+    const tabsBefore = await page.locator('.doc-tab').count();
+    await page.locator('#btn-new-doc').click();
+    await page.locator('.doc-type-card').first().click();
+    await page.locator('#act-picker-edit').click();
+    await expect(toast).toContainText("Couldn't create");
+    await expect(page.locator('.doc-tab')).toHaveCount(tabsBefore);
+    await page.keyboard.press('Escape');
+
+    // Create ticket: a refused create keeps the modal open and the button usable.
+    await scriptedPosts(page, '**/api/tickets', ['html403']);
+    await page.locator('#btn-create').click();
+    await page.locator('#c-title').fill('Refused create');
+    await page.locator('#c-submit').click();
+    await expect(toast).toContainText("Couldn't create the ticket: HTTP 403");
+    await expect(page.locator('#create-modal')).toBeVisible();
+    await expect(page.locator('#c-submit')).toBeEnabled();
+  });
+
   test('IN PROGRESS card shows a read-only worktree chip when bound; empty when unbound (t-644a)', async ({ page }) => {
     const boundId = `t-wtchip-a-${Date.now()}`;
     const unboundId = `t-wtchip-b-${Date.now()}`;
