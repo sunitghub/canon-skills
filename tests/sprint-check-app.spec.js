@@ -4646,6 +4646,66 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(await info({ ...base, where: 'branch', merged: false, dirty: false })).toContain('not merged');
   });
 
+  test('a worktree-bound ticket shows its live docs read-only; an unbound one is unchanged (t-e78b)', async ({ page }) => {
+    const live = 't-e7lv', plain = 't-e7pl';
+    const docs = id => [{ name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }];
+    const base = id => ({ id, title: `Ticket ${id}`, status: 'open', type: 'task', priority: 2, layout: 'folder',
+      created: '2026-09-25T00:00:00Z', body: `# Ticket ${id}\n\nDescription text.`, docs: docs(id) });
+    const tickets = [
+      { ...base(live), acceptance_has_items: true, acceptance_unchecked: true, plan_has_approach: true, plan_approved: true,
+        docs_from: { branch: 'sprint/e7lv' } },
+      { ...base(plain), acceptance_has_items: false, acceptance_unchecked: null, plan_has_approach: null, plan_approved: null },
+    ];
+    await page.route('**/api/tickets**', route => route.request().method() === 'GET'
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tickets) })
+      : route.continue());
+    const posts = [];
+    await page.route('**/api/doc/**', route => {
+      if (route.request().method() === 'POST') { posts.push(route.request().url()); return route.fulfill({ status: 409, contentType: 'application/json', body: '{"ok":false}' }); }
+      const plan = '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\nlive approach from the worktree\n';
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: route.request().url().includes('plan.md') ? plan : '# Acceptance\n' }) });
+    });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    // Live ticket: readiness comes from the overlaid (worktree) fields, so no "needs acc".
+    await page.locator('#board-search').fill(live);
+    const card = page.locator(`.card[data-id="${live}"]`);
+    await expect(card).toBeVisible();
+    await expect(card).not.toContainText('needs acc');
+    await card.click();
+    await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+    await expect(page.locator('#m-body')).toContainText('live approach from the worktree');
+    const badge = page.locator('#doc-live-badge');
+    await expect(badge).toContainText('Live from sprint/e7lv');
+    expect(await badge.getAttribute('title')).toContain('The sprint session in sprint/e7lv owns these files');
+    await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
+    await expect(page.locator('#btn-new-doc')).toHaveCount(0);
+    await expect(page.locator('#m-check-tip')).toHaveCount(0);
+    // Clicking a checkbox on the live doc sends no write.
+    await page.locator('#m-body .doc-bullet[data-check-idx]').first().click();
+    await page.waitForTimeout(300);
+    const tier = page.locator('.signoff-controls select').first();
+    await expect(tier).toBeDisabled();
+    expect(await tier.getAttribute('title')).toContain('Live from sprint/e7lv');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await page.locator('#modal').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e78b', 'visuals', `live-plan-${theme}.png`) });
+    }
+    // The Description tab is main's ticket.md and stays editable.
+    await page.locator('.doc-tab', { hasText: 'Description' }).click();
+    await expect(page.locator('#btn-edit-doc')).toBeVisible();
+    await page.keyboard.press('Escape');
+
+    // Unbound ticket: Plan tab keeps Edit, no live badge.
+    await page.locator('#board-search').fill(plain);
+    await page.locator(`.card[data-id="${plain}"]`).click();
+    await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+    await expect(page.locator('#btn-edit-doc')).toBeVisible();
+    await expect(page.locator('#doc-live-badge')).toHaveCount(0);
+    expect(posts).toHaveLength(0);
+  });
+
   test('IN PROGRESS card shows a read-only worktree chip when bound; empty when unbound (t-644a)', async ({ page }) => {
     const boundId = `t-wtchip-a-${Date.now()}`;
     const unboundId = `t-wtchip-b-${Date.now()}`;

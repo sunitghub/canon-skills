@@ -565,7 +565,7 @@ def _valid_branch_name(name: str) -> bool:
     # joined into the sibling directory path).
     return bool(name) and bool(_BASE_REF_RE.match(name)) and not name.startswith('-') and '..' not in name
 
-def list_worktrees(ticket_id: str = '', root: Path = None) -> list[dict]:
+def list_worktrees(ticket_id: str = '', root: Path = None, annotate: bool = True) -> list[dict]:
     """Parse `git worktree list --porcelain` — the single source of truth for
     the cockpit sidebar's WORKTREE section (t-cd06's resolved design): no
     cockpit-owned registry, so a worktree created outside cockpit still shows
@@ -627,8 +627,86 @@ def list_worktrees(ticket_id: str = '', root: Path = None) -> list[dict]:
                     e['ticket_present'] = (Path(e['path']) / '.tickets' / ticket_id).is_dir()
                 except Exception:
                     e['ticket_present'] = False
-    _annotate_worktree_holds(entries, ticket_id, root)
+    if annotate:
+        _annotate_worktree_holds(entries, ticket_id, root)
     return entries
+
+# ── Live docs of a worktree-bound ticket (t-e78b) ─────────────────────────
+# A sprint running in a worktree edits .tickets/<id>/{plan,acceptance,…}.md
+# THERE; the board serves the main checkout, so its card and modal showed the
+# stale copy until merge. For a bound ticket (its .cockpit-cwd lock, else an
+# in-progress worktree copy), the board reads those docs from the worktree and
+# refuses board writes to them (the sprint session owns them). The lock file is
+# agent-writable, so the path is re-validated against `git worktree list` and
+# every read stays inside <worktree>/.tickets/<id>/ — same trust model as
+# cockpit_docs (t-1357). Mirrored in sprint-check-go (liveWorktree et al.).
+_DOC_OVERLAY_FIELDS = ('docs', 'acceptance_has_items', 'acceptance_unchecked',
+                       'models_used', 'plan_has_approach', 'plan_approved')
+
+def _registered_worktrees(root: Path) -> list:
+    return [e for e in list_worktrees(root=root, annotate=False)
+            if not e.get('is_main') and os.path.isdir(str(e.get('path', '')))]
+
+def _live_worktree(t: dict, root: Path, wts: list):
+    """{'dir': <wt>/.tickets/<id> (resolved), 'branch'} for a bound ticket, else None."""
+    tid = str(t.get('id') or '')
+    if t.get('layout') != 'folder' or not tid or tid in ('.', '..') or '/' in tid or '\\' in tid:
+        return None
+    cand = None
+    lock = tickets_dir_for(root) / tid / '.cockpit-cwd'
+    if lock.is_file():
+        cwd = lock.read_text(encoding='utf-8', errors='replace').strip()
+        if cwd:
+            key = _path_key(cwd)
+            cand = next((e for e in wts if _path_key(e['path']) == key), None)
+    if cand is None:
+        d = t.get('branch_divergence') or {}
+        if d.get('where') == 'worktree' and d.get('status') == 'in_progress':
+            cand = next((e for e in sorted(wts, key=lambda e: e['path']) if e.get('branch') == d.get('branch')), None)
+    if cand is None:
+        return None
+    try:
+        base = (Path(cand['path']) / '.tickets').resolve()
+        tdir = (base / tid).resolve()
+        tdir.relative_to(base)
+    except (OSError, ValueError, RuntimeError):
+        return None
+    if not (tdir / 'ticket.md').is_file():
+        return None
+    return {'dir': tdir, 'branch': cand.get('branch') or ''}
+
+def annotate_live_docs(tickets: list, root: Path = None) -> None:
+    root = root if root is not None else PROJECT_ROOT
+    wts = _registered_worktrees(root)
+    if not wts:
+        return
+    for t in tickets:
+        live = _live_worktree(t, root, wts)
+        if not live:
+            continue
+        try:
+            w = parse_ticket(live['dir'] / 'ticket.md')
+        except Exception:
+            continue
+        for k in _DOC_OVERLAY_FIELDS:
+            t[k] = w.get(k)
+        t['docs_from'] = {'branch': live['branch']}
+
+def _live_for_doc(doc_file: str, root: Path = None):
+    """The live worktree for the ticket a doc path belongs to, computed exactly
+    like /api/tickets (full load + divergence, so the TTL-cached scan is never
+    seeded with a partial id set)."""
+    root = root if root is not None else PROJECT_ROOT
+    parts = Path(doc_file).parts
+    if not parts:
+        return None
+    tickets = load_tickets(root)
+    annotate_branch_divergence(tickets, root)
+    t = next((x for x in tickets if x.get('id') == parts[0]), None)
+    if not t:
+        return None
+    wts = _registered_worktrees(root)
+    return _live_worktree(t, root, wts) if wts else None
 
 # ── Worktree holds (t-2241) ───────────────────────────────────────────────
 # Which non-main worktrees another ticket still needs, so the pickers stop
@@ -805,7 +883,7 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
     if run(['git', 'check-ignore', '.tickets'], root):
         return out  # untracked tickets: no other checkout can carry a different copy
     seen_branches = set()
-    for e in [w for w in list_worktrees(root=root) if not w.get('is_main')][:_DIVERGENCE_WORKTREE_CAP]:
+    for e in [w for w in list_worktrees(root=root, annotate=False) if not w.get("is_main")][:_DIVERGENCE_WORKTREE_CAP]:
         branch = e.get('branch') or ((e.get('head') or '')[:7] or '(detached)')
         seen_branches.add(e.get('branch'))
         tdir = Path(e['path']) / '.tickets'
@@ -986,7 +1064,7 @@ def cockpit_docs(ticket_id: str, cwd: str):
     # so this self-contained call is correct for any project without needing
     # a separate ?project= lookup.
     worktrees = set()
-    for e in list_worktrees(root=cwd_real):
+    for e in list_worktrees(root=cwd_real, annotate=False):
         try:
             worktrees.add(Path(e['path']).resolve())
         except Exception:
@@ -1498,7 +1576,19 @@ def write_body(ticket_id: str, new_body: str, root: Path = None) -> bool:
     return True
 
 def read_doc(doc_file: str, root: Path = None) -> str | None:
-    """Read a companion doc file safely from TICKETS_DIR."""
+    """Read a companion doc file safely from TICKETS_DIR — or, for a ticket
+    bound to a worktree (t-e78b), from that worktree's copy."""
+    live = _live_for_doc(doc_file, root)
+    if live:
+        rel = Path(doc_file)
+        if not rel.is_absolute() and '..' not in rel.parts and rel.suffix.lower() == '.md':
+            try:
+                target = (live['dir'].parent / rel).resolve()
+                target.relative_to(live['dir'])
+            except (OSError, ValueError, RuntimeError):
+                target = None
+            if target is not None and target.is_file():
+                return target.read_text(encoding='utf-8', errors='replace')
     p = _safe_ticket_doc(doc_file, root=root)
     if p is None or not p.is_file():
         p = legacy_doc_target(doc_file, root)
@@ -2467,6 +2557,7 @@ class Handler(BaseHTTPRequestHandler):
             # Annotate BEFORE dropping archived: the cached scan is keyed by ids, so
             # an ?all=1 request inside the TTL must not miss archived tickets.
             annotate_branch_divergence(tickets, eroot)
+            annotate_live_docs(tickets, eroot)
             if 'all=1' not in parsed.query:
                 tickets = [t for t in tickets if t.get('status') != 'archived']
             self.send_json(tickets)
@@ -2705,7 +2796,11 @@ class Handler(BaseHTTPRequestHandler):
 
         m = re.match(r'^/api/doc/(.+)$', path)
         if m:
-            ok = write_doc(unquote(m.group(1)), str(payload.get('content', '')), eroot)
+            doc = unquote(m.group(1))
+            live = _live_for_doc(doc, eroot)
+            if live:  # t-e78b: the sprint session in that worktree owns these files
+                self.send_json({'ok': False, 'error': f"{Path(doc).parts[0]} is live in worktree {live['branch']} — edit it in the sprint session"}, status=409); return
+            ok = write_doc(doc, str(payload.get('content', '')), eroot)
             self.send_json({'ok': ok}); return
 
         m = re.match(r'^/api/ticket/(t-[a-z0-9]{4})/headless-run$', path)

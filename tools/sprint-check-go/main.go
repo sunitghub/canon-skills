@@ -255,6 +255,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		// Annotate BEFORE dropping archived: the cached scan is keyed by ids, so an
 		// ?all=1 request inside the TTL must not miss archived tickets.
 		annotateBranchDivergence(tickets, root)
+		annotateLiveDocs(tickets, root)
 		if !queryHasAll(r.URL.RawQuery) {
 			filtered := make([]ticket, 0, len(tickets))
 			for _, t := range tickets {
@@ -526,7 +527,13 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
-		sendJSON(w, map[string]bool{"ok": writeDoc(unescape(m[1]), fmt.Sprint(payload["content"]), eroot)})
+		doc := unescape(m[1])
+		if _, branch, live := liveForDoc(doc, eroot); live { // t-e78b: the sprint session owns these files
+			tid := strings.Split(filepath.ToSlash(filepath.Clean(filepath.FromSlash(doc))), "/")[0]
+			sendJSONStatus(w, map[string]any{"ok": false, "error": tid + " is live in worktree " + branch + " — edit it in the sprint session"}, http.StatusConflict)
+			return
+		}
+		sendJSON(w, map[string]bool{"ok": writeDoc(doc, fmt.Sprint(payload["content"]), eroot)})
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/headless-run$`).FindStringSubmatch(path); m != nil {
@@ -1358,6 +1365,19 @@ func findTicketPath(id string, root string) string {
 }
 
 func readDoc(docFile string, root string) (string, bool) {
+	// t-e78b: a worktree-bound ticket's docs come from that worktree's copy.
+	if dir, _, live := liveForDoc(docFile, root); live {
+		clean := filepath.Clean(filepath.FromSlash(docFile))
+		if !filepath.IsAbs(clean) && !strings.HasPrefix(clean, "..") && strings.ToLower(filepath.Ext(clean)) == ".md" {
+			if target, err := filepath.EvalSymlinks(filepath.Join(filepath.Dir(dir), clean)); err == nil {
+				if rel, err := filepath.Rel(dir, target); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+					if raw, err := os.ReadFile(target); err == nil {
+						return string(raw), true
+					}
+				}
+			}
+		}
+	}
 	p, ok := safeTicketDoc2(docFile, root)
 	if !ok || !exists(p) {
 		if legacy, legacyOK := legacyDocTarget(docFile, root); legacyOK {
@@ -1683,7 +1703,7 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 	}
 	seenBranches := map[string]bool{}
 	scannedWorktrees := 0
-	for _, e := range listWorktrees("", root) {
+	for _, e := range listWorktreesBase("", root) {
 		if isMain, _ := e["is_main"].(bool); isMain {
 			continue
 		}
@@ -1836,7 +1856,15 @@ func annotateBranchDivergence(tickets []ticket, root string) {
 // rootOr falls back to the shell's own boot-time projectRoot). Without it,
 // every caller saw the shell's launch project regardless of which registered
 // project's tab actually asked.
+// listWorktrees is listWorktreesBase plus the t-2241 hold annotation (what the
+// pickers need). Callers that only need the worktree set use the base.
 func listWorktrees(ticketID, root string) []map[string]any {
+	entries := listWorktreesBase(ticketID, root)
+	annotateWorktreeHolds(entries, ticketID, rootOr(root))
+	return entries
+}
+
+func listWorktreesBase(ticketID, root string) []map[string]any {
 	raw := runGitIn(root, "worktree", "list", "--porcelain")
 	var entries []map[string]any
 	var cur map[string]any
@@ -1896,8 +1924,122 @@ func listWorktrees(ticketID, root string) []map[string]any {
 	if entries == nil {
 		entries = []map[string]any{}
 	}
-	annotateWorktreeHolds(entries, ticketID, rootOr(root))
 	return entries
+}
+
+// ── Live docs of a worktree-bound ticket (t-e78b) ─────────────────────────
+// Mirrors server.py's annotate_live_docs / _live_worktree / _live_for_doc
+// (parity-tested by tests/sprint-check-live-docs.sh). The .cockpit-cwd lock is
+// agent-writable, so a bound path must be a registered non-main worktree and
+// every read stays inside <worktree>/.tickets/<id>/.
+var docOverlayFields = []string{"docs", "acceptance_has_items", "acceptance_unchecked",
+	"models_used", "plan_has_approach", "plan_approved"}
+
+func registeredWorktrees(root string) []map[string]any {
+	out := []map[string]any{}
+	for _, e := range listWorktreesBase("", root) {
+		if isMain, _ := e["is_main"].(bool); isMain {
+			continue
+		}
+		if fi, err := os.Stat(fmt.Sprint(e["path"])); err == nil && fi.IsDir() {
+			out = append(out, e)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return fmt.Sprint(out[i]["path"]) < fmt.Sprint(out[j]["path"]) })
+	return out
+}
+
+// liveWorktree returns (<wt>/.tickets/<id> resolved, branch, true) for a bound ticket.
+func liveWorktree(t ticket, root string, wts []map[string]any) (string, string, bool) {
+	tid, _ := t["id"].(string)
+	if t["layout"] != "folder" || tid == "" || tid == "." || tid == ".." || strings.ContainsAny(tid, "/\\") {
+		return "", "", false
+	}
+	var cand map[string]any
+	if raw, err := os.ReadFile(filepath.Join(ticketsDirForRoot(root), tid, ".cockpit-cwd")); err == nil {
+		if cwd := strings.TrimSpace(string(raw)); cwd != "" {
+			key := pathKey(cwd)
+			for _, e := range wts {
+				if pathKey(fmt.Sprint(e["path"])) == key {
+					cand = e
+					break
+				}
+			}
+		}
+	}
+	if cand == nil {
+		if d, ok := t["branch_divergence"].(map[string]any); ok && d["where"] == "worktree" && d["status"] == "in_progress" {
+			for _, e := range wts {
+				if e["branch"] == d["branch"] {
+					cand = e
+					break
+				}
+			}
+		}
+	}
+	if cand == nil {
+		return "", "", false
+	}
+	base, err := filepath.EvalSymlinks(filepath.Join(fmt.Sprint(cand["path"]), ".tickets"))
+	if err != nil {
+		return "", "", false
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Join(base, tid))
+	if err != nil {
+		return "", "", false
+	}
+	if rel, err := filepath.Rel(base, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", "", false
+	}
+	if fi, err := os.Stat(filepath.Join(dir, "ticket.md")); err != nil || fi.IsDir() {
+		return "", "", false
+	}
+	branch, _ := cand["branch"].(string)
+	return dir, branch, true
+}
+
+func annotateLiveDocs(tickets []ticket, root string) {
+	root = rootOr(root)
+	wts := registeredWorktrees(root)
+	if len(wts) == 0 {
+		return
+	}
+	for _, t := range tickets {
+		dir, branch, ok := liveWorktree(t, root, wts)
+		if !ok {
+			continue
+		}
+		w, err := parseTicket(filepath.Join(dir, "ticket.md"))
+		if err != nil {
+			continue
+		}
+		for _, k := range docOverlayFields {
+			t[k] = w[k]
+		}
+		t["docs_from"] = map[string]any{"branch": branch}
+	}
+}
+
+// liveForDoc computes a doc's ticket binding exactly like /api/tickets (full
+// load + divergence, so the TTL-cached scan is never seeded with a partial set).
+func liveForDoc(docFile, root string) (string, string, bool) {
+	root = rootOr(root)
+	parts := strings.Split(filepath.ToSlash(filepath.Clean(filepath.FromSlash(docFile))), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		return "", "", false
+	}
+	tickets := loadTickets(root)
+	annotateBranchDivergence(tickets, root)
+	for _, t := range tickets {
+		if t["id"] == parts[0] {
+			wts := registeredWorktrees(root)
+			if len(wts) == 0 {
+				return "", "", false
+			}
+			return liveWorktree(t, root, wts)
+		}
+	}
+	return "", "", false
 }
 
 // ── Worktree holds (t-2241) ───────────────────────────────────────────────
@@ -2098,7 +2240,7 @@ func cockpitDocs(ticketID, cwd string) (map[string]any, bool) {
 	// worktree list` reports every sibling of whichever repo it's run inside,
 	// so this is correct for any project without a separate ?project= lookup.
 	isWorktree := false
-	for _, e := range listWorktrees("", cwdReal) {
+	for _, e := range listWorktreesBase("", cwdReal) {
 		if wt, err := filepath.EvalSymlinks(fmt.Sprint(e["path"])); err == nil && wt == cwdReal {
 			isWorktree = true
 			break

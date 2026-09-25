@@ -1637,6 +1637,9 @@
     .ck-worktree-held-why { font-size: 11px; color: var(--text-muted); }
     .ck-worktree-change { background: none; border: 0; padding: 4px 2px; color: var(--accent); font-size: 12px; cursor: pointer; }
     .ck-worktree-change:hover { text-decoration: underline; }
+    /* t-e78b: a worktree-bound ticket's live sprint docs — read-only on the board. */
+    .doc-live-badge { font-size: 11.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
+      padding: 3px 10px; white-space: nowrap; cursor: help; }
     .create-wt-held { align-self: center; font-size: 11.5px; color: var(--text-muted); cursor: help; margin-left: 4px; }
     /* t-d254: busy spinner for the commit + worktree-create steps (slow on a big repo).
        aria-busy keeps a busy button at full strength so it reads as working, not disabled. */
@@ -3983,11 +3986,18 @@ function renderModalDocs(t) {
   const navPrev = `<button class="doc-nav-btn" id="btn-ticket-prev" title="Previous ticket"${ticketIdx <= 0 ? ' disabled' : ''}>‹</button>`;
   const navNext = `<button class="doc-nav-btn" id="btn-ticket-next" title="Next ticket"${ticketIdx >= ticketIds.length - 1 ? ' disabled' : ''}>›</button>`;
 
+  // t-e78b: a worktree-bound ticket's sprint docs are the live worktree copy — the
+  // sprint session owns them (the server refuses board writes too). The Description
+  // tab is main's ticket.md and stays editable.
+  const liveBranch = t.docs_from && t.docs_from.branch;
+  const liveDoc = !!(liveBranch && modalState.activeDoc);
   const rightControls = modalState.editMode
     ? `<div class="doc-tab-right">${navPrev}${navNext}<button class="doc-save-btn" id="btn-save-top">Save</button><button class="doc-cancel-btn" id="btn-cancel-top">Cancel</button></div>`
+    : liveDoc
+      ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-live-badge" id="doc-live-badge" title="${escAttr(`The sprint session in ${liveBranch} owns these files — edit them there`)}">Live from ${esc(liveBranch)} · edit in its sprint session</span></div>`
     : locked
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
-      : `<div class="doc-tab-right">${navPrev}${navNext}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<button class="doc-edit-btn" id="btn-edit-doc">Edit</button></div>`;
+      : `<div class="doc-tab-right">${navPrev}${navNext}${canAddDoc && !liveBranch ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<button class="doc-edit-btn" id="btn-edit-doc">Edit</button></div>`;
 
   bar.innerHTML = descTab + docs.map(d => {
     const active = d.file === modalState.activeDoc;
@@ -4014,12 +4024,15 @@ function renderModalDocs(t) {
   document.getElementById('btn-save-top')?.addEventListener('click', () => saveEdit(t));
   document.getElementById('btn-cancel-top')?.addEventListener('click', () => exitEditMode(t));
 
-  // Re-inject the persistent check tip (innerHTML wipe removes it)
-  const tip = document.createElement('span');
-  tip.id = 'm-check-tip';
-  tip.className = 'doc-check-tip';
-  tip.innerHTML = '<span class="doc-check-tip-icon">☑</span>Click to check off';
-  bar.appendChild(tip);
+  // Re-inject the persistent check tip (innerHTML wipe removes it) — not on a live
+  // worktree doc (t-e78b), whose checkboxes can't be toggled from the board.
+  if (!liveDoc) {
+    const tip = document.createElement('span');
+    tip.id = 'm-check-tip';
+    tip.className = 'doc-check-tip';
+    tip.innerHTML = '<span class="doc-check-tip-icon">☑</span>Click to check off';
+    bar.appendChild(tip);
+  }
 }
 
 function injectSectionJumps(container) {
@@ -4132,7 +4145,9 @@ function injectSignoffControls(container, content, t) {
   const bar = container.parentNode.querySelector('.section-jumps');
   if (!bar) return;
 
-  const locked = t.status === 'closed' || t.status === 'cancelled';
+  // t-e78b: a live worktree plan.md is owned by the sprint session; these controls write plan.md.
+  const locked = t.status === 'closed' || t.status === 'cancelled' || !!t.docs_from;
+  const lockedTip = t.docs_from ? `Live from ${t.docs_from.branch} — the sprint session owns plan.md; edit it there.` : 'Ticket is closed — no further edits.';
   const wrap = document.createElement('span');
   wrap.className = 'signoff-controls';
 
@@ -4142,7 +4157,7 @@ function injectSignoffControls(container, content, t) {
     const tierSelect = document.createElement('select');
     tierSelect.className = 'signoff-tier-select';
     tierSelect.disabled = locked;
-    tierSelect.title = locked ? 'Ticket is closed — no further edits.' : 'Sprint tier.';
+    tierSelect.title = locked ? lockedTip : 'Sprint tier.';
     SIGNOFF_TIER_OPTIONS.forEach(opt => {
       const o = document.createElement('option');
       o.value = opt;
@@ -4157,7 +4172,7 @@ function injectSignoffControls(container, content, t) {
     riskInput.placeholder = 'Risk: blast radius / key risks, one line';
     riskInput.value = base.risk;
     riskInput.disabled = locked;
-    riskInput.title = locked ? 'Ticket is closed — no further edits.' : '';
+    riskInput.title = locked ? lockedTip : '';
 
     const riskWarning = document.createElement('span');
     riskWarning.className = 'signoff-risk-warning';
@@ -4205,7 +4220,7 @@ function injectSignoffControls(container, content, t) {
   const recognized = MODEL_TIER_OPTIONS.includes(currentLower);
 
   let disabledReason = '';
-  if (locked) disabledReason = 'Ticket is closed — no further edits.';
+  if (locked) disabledReason = lockedTip;
   else if (!filled) disabledReason = 'Fill in Tier/Risk on Sign-off first.';
   else if (!recognized) disabledReason = `Custom override set by hand-edit: \`${value}\` — edit plan.md directly to change.`;
 
@@ -4254,7 +4269,7 @@ function injectSignoffControls(container, content, t) {
   demoBtn.textContent = demoOn ? 'Demo/Docs/UX ✓' : 'Demo/Docs/UX ✗';
   demoBtn.disabled = locked;
   demoBtn.title = locked
-    ? 'Ticket is closed — no further edits.'
+    ? lockedTip
     : 'Demo/Docs/UX light-close (live demos or docs/research/UX-mockup work): sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
   demoBtn.addEventListener('click', async () => {
     const next = String(t.demo) !== 'true';
@@ -4339,6 +4354,7 @@ function renderModalBody(t) {
 function enterEditMode(t) {
   if (modalState.editMode) return;
   if (t.status === 'closed' || t.status === 'cancelled') return;
+  if (t.docs_from && modalState.activeDoc) return; // t-e78b: live worktree doc — read-only here
   modalState.editMode = true;
   renderModalDocs(t);
   document.getElementById('m-docs').classList.add('editing');
@@ -7007,6 +7023,7 @@ document.getElementById('m-body').addEventListener('click', async e => {
   if (!bullet || !modalState.activeDoc) return;
   const currentTicket = state.tickets.find(tk => tk.id === state.selectedId);
   if (!currentTicket || currentTicket.status === 'closed' || currentTicket.status === 'cancelled') return;
+  if (currentTicket.docs_from) return; // t-e78b: live worktree doc — the sprint session owns it
   e.stopPropagation();
 
   const idx = Number(bullet.dataset.checkIdx);
