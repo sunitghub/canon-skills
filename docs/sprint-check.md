@@ -225,7 +225,14 @@ sprint agent without leaving the browser — no second terminal.
   session logs like `cockpit-sessions.md` are optional, and any other uncommitted
   files are listed but never included. It commits only the checked paths on the
   main checkout with a fixed `chore: add ticket <id>` message; anything you had
-  staged stays staged. Undo with `git reset --soft HEAD~1`. Idle-reap
+  staged stays staged. Undo with `git reset --soft HEAD~1`. The picker (and New Ticket's
+  Worktree row) only offers worktrees this ticket can use (`t-2241`): Main, its own, and
+  free ones. A worktree another ticket still needs is collapsed under "N worktrees in use
+  by other tickets" with the reason: *in progress* (bound to an active ticket), *reserved*
+  (an open ticket chose it), *uncommitted changes*, or *branch not merged*. Once the
+  ticket's own worktree is selected, the rail shows just that row plus **Change worktree**.
+  The card/modal divergence note says "uncommitted changes in worktree" rather than
+  "branch merged" when the worktree has unsaved work. Idle-reap
   is tiered by cwd: a worktree session keeps the 5-minute default, a main-checkout
   session gets a longer 30-minute safety net instead of never reaping.
 - **Preview pane (`t-b19b`, `t-533f`):** asks the agent for the ticket's

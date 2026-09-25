@@ -627,7 +627,119 @@ def list_worktrees(ticket_id: str = '', root: Path = None) -> list[dict]:
                     e['ticket_present'] = (Path(e['path']) / '.tickets' / ticket_id).is_dir()
                 except Exception:
                     e['ticket_present'] = False
+    _annotate_worktree_holds(entries, ticket_id, root)
     return entries
+
+# ── Worktree holds (t-2241) ───────────────────────────────────────────────
+# Which non-main worktrees another ticket still needs, so the pickers stop
+# offering them. Derived from existing state only (no registry, per t-cd06):
+# a ticket's .cockpit-cwd lock (bound), an open ticket's worktree_preference
+# (reserved), the worktree's own dirty state, and whether its branch is merged.
+# The requesting ticket's own worktree is marked `own` and never held, so its
+# row (and Resume) always stays. Mirrored in sprint-check-go (annotateWorktreeHolds).
+_WT_PREF_RE = re.compile(r'^worktree_preference:\s*(.+?)\s*$', re.MULTILINE)
+_HOLD_DONE = ('closed', 'cancelled')
+
+def _path_key(p: str) -> str:
+    try:
+        p = os.path.realpath(p)
+    except Exception:
+        pass
+    return p.replace('\\', '/').rstrip('/').lower()
+
+def _is_worktree_noise(path: str) -> bool:
+    """Canon runtime files plus the daemon's session log (t-022f) — none of
+    them is work a user would lose by reusing the worktree."""
+    return _is_canon_runtime_path(path) or path.rsplit('/', 1)[-1] == 'cockpit-sessions.md'
+
+def _worktree_dirty(path: str) -> bool:
+    try:
+        out = subprocess.run(['git', '-C', path, 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+                             capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10)
+    except Exception:
+        return False
+    if out.returncode != 0:
+        return False
+    tokens = out.stdout.split('\0')
+    i = 0
+    while i < len(tokens):
+        entry = tokens[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        if 'R' in entry[:2] or 'C' in entry[:2]:
+            i += 1
+        if not _is_worktree_noise(entry[3:]):
+            return True
+    return False
+
+def _ticket_fm(path: Path) -> tuple:
+    """(status, worktree_preference) from a ticket.md's frontmatter."""
+    try:
+        text = path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return None, ''
+    m = _FRONTMATTER.match(text)
+    if not m:
+        return None, ''
+    pm = _WT_PREF_RE.search(m.group(1))
+    return _frontmatter_status(text), (_unquote_yaml_scalar(pm.group(1)) if pm else '')
+
+def _annotate_worktree_holds(entries: list, ticket_id: str, root: Path) -> None:
+    others = [e for e in entries if not e.get('is_main')]
+    if not others:
+        return
+    tdir = tickets_dir_for(root)
+    bound: dict = {}      # path key -> [ticket ids whose .cockpit-cwd points there]
+    preferred: dict = {}  # branch -> [open ticket ids that chose it]
+    main_status: dict = {}
+    try:
+        tdirs = sorted(d for d in tdir.iterdir() if d.is_dir())
+    except OSError:
+        tdirs = []
+    for d in tdirs:
+        st, pref = _ticket_fm(d / 'ticket.md')
+        if st is None:
+            continue
+        main_status[d.name] = st
+        if st == 'open' and pref:
+            preferred.setdefault(pref, []).append(d.name)
+        cwd_file = d / '.cockpit-cwd'
+        if cwd_file.is_file():
+            cwd = cwd_file.read_text(encoding='utf-8', errors='replace').strip()
+            if cwd:
+                bound.setdefault(_path_key(cwd), []).append(d.name)
+    for e in others:
+        path = str(e.get('path', ''))
+        branch = e.get('branch') or ''
+        key = _path_key(path)
+        binders = bound.get(key, [])
+        # A bound ticket's live status is the worktree's own copy when it has one.
+        def status_of(tid):
+            wst, _ = _ticket_fm(Path(path) / '.tickets' / tid / 'ticket.md')
+            return wst or main_status.get(tid)
+        active = [t for t in binders if status_of(t) not in _HOLD_DONE]
+        reservers = preferred.get(branch, [])
+        named = branch[len('sprint/'):] if branch.startswith('sprint/') and branch[len('sprint/'):] in main_status else ''
+        claimants = active + reservers + binders + ([named] if named else [])
+        # Another ticket actively running here always wins over a mere preference.
+        if ticket_id and ticket_id in claimants and all(t == ticket_id for t in active):
+            e['own'] = True
+            continue
+        active = [t for t in active if t != ticket_id]
+        reason, holder = '', ''
+        if active:
+            reason, holder = 'in progress', active[0]
+        elif reservers:
+            reason, holder = 'reserved', reservers[0]
+        else:
+            owner = (binders or [named or ''])[0]
+            if _worktree_dirty(path):
+                reason, holder = 'uncommitted changes', owner
+            elif e.get('head') and not _git_ok(['merge-base', '--is-ancestor', e['head'], 'HEAD'], root):
+                reason, holder = 'branch not merged', owner
+        if reason:
+            e['held_by'] = {'ticket': holder, 'reason': reason}
 
 # ── Branch/worktree status divergence (t-6328) ────────────────────────────
 # The board shows the served checkout's copy of each ticket.md. Where `.tickets/`
@@ -693,6 +805,9 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
         base = run(['git', 'merge-base', 'HEAD', e['head']], root) if e.get('head') else ''
         if not base:
             continue
+        # t-2241: uncommitted work (not canon runtime noise) means "not merged"
+        # in any honest sense, whatever merge-base says about committed history.
+        dirty = _worktree_dirty(e['path'])
         # base vs the WORKING TREE, so an uncommitted status edit counts too.
         names = _changed_ticket_ids(
             run(['git', 'diff', '--name-only', base, '--', '.tickets/*/ticket.md'], Path(e['path'])), ids)
@@ -703,7 +818,7 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
             except OSError:
                 continue
             if st:
-                out.setdefault(tid, []).append({'branch': branch, 'status': st, 'where': 'worktree', 'merged': merged})
+                out.setdefault(tid, []).append({'branch': branch, 'status': st, 'where': 'worktree', 'merged': merged, 'dirty': dirty})
     refs = run(['git', 'for-each-ref', '--no-merged=HEAD', '--format=%(refname:short)', 'refs/heads'], root)
     branches = [b for b in refs.splitlines() if b and not b.startswith('-') and b not in seen_branches][:_DIVERGENCE_BRANCH_CAP]
     for b in branches:
@@ -720,7 +835,7 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
             if m and m.group(1) in changed and m.group(1) not in first:
                 first[m.group(1)] = _unquote_yaml_scalar(m.group(2))
         for tid, st in first.items():
-            out.setdefault(tid, []).append({'branch': b, 'status': st, 'where': 'branch', 'merged': False})
+            out.setdefault(tid, []).append({'branch': b, 'status': st, 'where': 'branch', 'merged': False, 'dirty': False})
     return out
 
 def annotate_branch_divergence(tickets: list, root: Path = None) -> None:

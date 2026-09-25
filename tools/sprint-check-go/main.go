@@ -1607,7 +1607,7 @@ const (
 
 type divergenceCand struct {
 	branch, status, where string
-	merged                bool
+	merged, dirty         bool
 }
 
 type divergenceCacheEntry struct {
@@ -1711,6 +1711,8 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 		// base vs the WORKING TREE, so an uncommitted status edit counts too.
 		diffOut, _ := gitCtx(fmt.Sprint(e["path"]), "diff", "--name-only", base, "--", ".tickets/*/ticket.md")
 		_, merged := gitCtx(root, "merge-base", "--is-ancestor", head, "HEAD")
+		// t-2241: uncommitted (non-runtime) work means "not merged" in any honest sense.
+		dirty := worktreeDirty(fmt.Sprint(e["path"]))
 		names := []string{}
 		for id := range changedTicketIDs(diffOut, ids) {
 			names = append(names, id)
@@ -1722,7 +1724,7 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 				continue
 			}
 			if st := frontmatterStatus(string(raw)); st != "" {
-				out[id] = append(out[id], divergenceCand{branch, st, "worktree", merged})
+				out[id] = append(out[id], divergenceCand{branch, st, "worktree", merged, dirty})
 			}
 		}
 	}
@@ -1760,7 +1762,7 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 			}
 		}
 		for tid, st := range first {
-			out[tid] = append(out[tid], divergenceCand{b, st, "branch", false})
+			out[tid] = append(out[tid], divergenceCand{b, st, "branch", false, false})
 		}
 	}
 	return out
@@ -1824,7 +1826,7 @@ func annotateBranchDivergence(tickets []ticket, root string) {
 		}
 		if best != nil {
 			t["branch_divergence"] = map[string]any{
-				"branch": best.branch, "status": best.status, "where": best.where, "merged": best.merged,
+				"branch": best.branch, "status": best.status, "where": best.where, "merged": best.merged, "dirty": best.dirty,
 			}
 		}
 	}
@@ -1894,7 +1896,180 @@ func listWorktrees(ticketID, root string) []map[string]any {
 	if entries == nil {
 		entries = []map[string]any{}
 	}
+	annotateWorktreeHolds(entries, ticketID, rootOr(root))
 	return entries
+}
+
+// ── Worktree holds (t-2241) ───────────────────────────────────────────────
+// Mirrors server.py's _annotate_worktree_holds (parity-tested by
+// tests/sprint-check-worktree-holds.sh): which non-main worktrees another ticket
+// still needs — bound via .cockpit-cwd and not done ("in progress"), chosen by an
+// open ticket's worktree_preference ("reserved"), dirty ignoring runtime noise
+// ("uncommitted changes"), or unmerged ("branch not merged"). The requesting
+// ticket's own worktree is marked own and never held.
+var wtPrefRe = regexp.MustCompile(`(?m)^worktree_preference:\s*(.+?)\s*$`)
+
+func pathKey(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		p = r
+	}
+	return strings.ToLower(strings.TrimRight(strings.ReplaceAll(p, "\\", "/"), "/"))
+}
+
+func isWorktreeNoise(path string) bool {
+	return isCanonRuntimePath(path) || path[strings.LastIndex(path, "/")+1:] == "cockpit-sessions.md"
+}
+
+func worktreeDirty(path string) bool {
+	out, _, err := gitOutIn(path, 10*time.Second, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	if err != nil {
+		return false
+	}
+	tokens := strings.Split(out, "\x00")
+	for i := 0; i < len(tokens); i++ {
+		entry := tokens[i]
+		if len(entry) < 4 {
+			continue
+		}
+		if strings.ContainsAny(entry[:2], "RC") {
+			i++
+		}
+		if !isWorktreeNoise(entry[3:]) {
+			return true
+		}
+	}
+	return false
+}
+
+// ticketFM returns (status, worktree_preference) from a ticket.md's frontmatter;
+// ok is false when the file is missing or has no frontmatter.
+func ticketFM(path string) (string, string, bool) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", "", false
+	}
+	m := frontmatterRe.FindStringSubmatch(string(raw))
+	if m == nil {
+		return "", "", false
+	}
+	pref := ""
+	if pm := wtPrefRe.FindStringSubmatch(m[1]); pm != nil {
+		pref = unquoteYAMLScalar(pm[1])
+	}
+	return frontmatterStatus(string(raw)), pref, true
+}
+
+func annotateWorktreeHolds(entries []map[string]any, ticketID, root string) {
+	hasOther := false
+	for _, e := range entries {
+		if isMain, _ := e["is_main"].(bool); !isMain {
+			hasOther = true
+		}
+	}
+	if !hasOther {
+		return
+	}
+	tdir := ticketsDirForRoot(root)
+	bound := map[string][]string{}
+	preferred := map[string][]string{}
+	mainStatus := map[string]string{}
+	dirs, _ := os.ReadDir(tdir)
+	names := []string{}
+	for _, d := range dirs {
+		if d.IsDir() {
+			names = append(names, d.Name())
+		}
+	}
+	sort.Strings(names)
+	for _, id := range names {
+		st, pref, ok := ticketFM(filepath.Join(tdir, id, "ticket.md"))
+		if !ok {
+			continue
+		}
+		mainStatus[id] = st
+		if st == "open" && pref != "" {
+			preferred[pref] = append(preferred[pref], id)
+		}
+		if raw, err := os.ReadFile(filepath.Join(tdir, id, ".cockpit-cwd")); err == nil {
+			if cwd := strings.TrimSpace(string(raw)); cwd != "" {
+				k := pathKey(cwd)
+				bound[k] = append(bound[k], id)
+			}
+		}
+	}
+	for _, e := range entries {
+		if isMain, _ := e["is_main"].(bool); isMain {
+			continue
+		}
+		path := fmt.Sprint(e["path"])
+		branch, _ := e["branch"].(string)
+		binders := bound[pathKey(path)]
+		statusOf := func(id string) string {
+			if st, _, ok := ticketFM(filepath.Join(path, ".tickets", id, "ticket.md")); ok && st != "" {
+				return st
+			}
+			return mainStatus[id]
+		}
+		active := []string{}
+		for _, id := range binders {
+			if st := statusOf(id); st != "closed" && st != "cancelled" {
+				active = append(active, id)
+			}
+		}
+		reservers := preferred[branch]
+		named := ""
+		if strings.HasPrefix(branch, "sprint/") {
+			if _, ok := mainStatus[strings.TrimPrefix(branch, "sprint/")]; ok {
+				named = strings.TrimPrefix(branch, "sprint/")
+			}
+		}
+		if ticketID != "" {
+			own := named == ticketID
+			for _, list := range [][]string{active, reservers, binders} {
+				for _, id := range list {
+					own = own || id == ticketID
+				}
+			}
+			// Another ticket actively running here always wins over a mere preference.
+			for _, id := range active {
+				own = own && id == ticketID
+			}
+			if own {
+				e["own"] = true
+				continue
+			}
+			kept := []string{}
+			for _, id := range active {
+				if id != ticketID {
+					kept = append(kept, id)
+				}
+			}
+			active = kept
+		}
+		reason, holder := "", ""
+		switch {
+		case len(active) > 0:
+			reason, holder = "in progress", active[0]
+		case len(reservers) > 0:
+			reason, holder = "reserved", reservers[0]
+		default:
+			owner := named
+			if len(binders) > 0 {
+				owner = binders[0]
+			}
+			head, _ := e["head"].(string)
+			if worktreeDirty(path) {
+				reason, holder = "uncommitted changes", owner
+			} else if head != "" {
+				if _, merged := gitCtx(root, "merge-base", "--is-ancestor", head, "HEAD"); !merged {
+					reason, holder = "branch not merged", owner
+				}
+			}
+		}
+		if reason != "" {
+			e["held_by"] = map[string]any{"ticket": holder, "reason": reason}
+		}
+	}
 }
 
 // cockpitDocs (t-1357) reads a cockpit ticket's plan.md / acceptance.md /

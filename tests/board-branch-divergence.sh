@@ -80,8 +80,9 @@ check() { # id expected
   [[ "$go" == "$2" ]] || fail "main.go branch_divergence for $1: expected '$2', got '$go'"
 }
 
-check t-brch '{"branch": "sprint/t-brch", "merged": false, "status": "closed", "where": "branch"}'
-check t-wtre '{"branch": "sprint/t-wtre", "merged": true, "status": "in_progress", "where": "worktree"}'
+# t-2241: `dirty` — t-wtre's edit is uncommitted, so "merged" alone would mislead.
+check t-brch '{"branch": "sprint/t-brch", "dirty": false, "merged": false, "status": "closed", "where": "branch"}'
+check t-wtre '{"branch": "sprint/t-wtre", "dirty": true, "merged": true, "status": "in_progress", "where": "worktree"}'
 check t-same NONE
 check t-mrgd NONE   # merged branch; AND the older unmerged sprint/t-brch holds a stale open copy of it — must not flag
 
@@ -168,6 +169,6 @@ print(sum(1 for t in json.load(sys.stdin) if t["id"].startswith("t-wc") and "bra
 }
 assert_eq 7 "$(count_wc "$PY_PORT")"
 assert_eq 7 "$(count_wc "$GO_PORT")"
-check t-wtre '{"branch": "sprint/t-wtre", "merged": true, "status": "in_progress", "where": "worktree"}'
+check t-wtre '{"branch": "sprint/t-wtre", "dirty": true, "merged": true, "status": "in_progress", "where": "worktree"}'
 
 echo "board-branch-divergence: ok (unmerged branch, live worktree, unchanged, merged, main-catches-up, non-git, TTL cache, 8-branch cap, 8-worktree cap, gitignored-tickets skip — server.py == main.go)"

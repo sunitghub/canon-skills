@@ -4522,6 +4522,130 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // t-2241: one stubbed worktree list for both pickers — the rail asks with
+  // ?ticket= (its own worktree comes back `own`), the New Ticket modal without.
+  const T2241_WT = (withOwn) => [
+    { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+    { path: '/tmp/wt-2241/free', branch: 'sprint/free', is_main: false, tickets_visible: true, ticket_present: true },
+    withOwn
+      ? { path: '/tmp/wt-2241/mine', branch: 'sprint/mine', is_main: false, tickets_visible: true, ticket_present: true, own: true }
+      : { path: '/tmp/wt-2241/mine', branch: 'sprint/mine', is_main: false, tickets_visible: true, held_by: { ticket: 't-mine', reason: 'reserved' } },
+    { path: '/tmp/wt-2241/bnd', branch: 'sprint/bnd', is_main: false, tickets_visible: true, ticket_present: false, held_by: { ticket: 't-bnd1', reason: 'in progress' } },
+    { path: '/tmp/wt-2241/dirty', branch: 'sprint/dirty', is_main: false, tickets_visible: true, ticket_present: false, held_by: { ticket: '', reason: 'uncommitted changes' } },
+  ];
+  async function stubWorktrees2241(page) {
+    await stubCockpit(page);
+    await page.route('**/api/worktrees**', route => {
+      if (route.request().method() === 'POST') return route.fulfill({ status: 500, body: 'no creates here' });
+      const railAsk = new URL(route.request().url()).searchParams.has('ticket');
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(T2241_WT(railAsk)) });
+    });
+    await page.route('**/api/worktree-lock/**', route => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+    }));
+  }
+
+  test('rail lists only Main, own and free worktrees; held ones collapse with owner + reason and cannot be picked (t-2241)', async ({ page }) => {
+    const id = `t-wth-r-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await stubWorktrees2241(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const box = page.locator('#ck-worktree');
+      await expect(box.locator('.ck-worktree-row .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine']);
+      const group = box.locator('details.ck-worktree-held');
+      await expect(group.locator('summary')).toHaveText('2 worktrees in use by other tickets');
+      await expect(group).not.toHaveAttribute('open', '');
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await box.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-2241', 'visuals', `rail-collapsed-${theme}.png`) });
+      }
+      await group.locator('summary').click();
+      await expect(group.locator('.ck-worktree-held-row')).toHaveCount(2);
+      await expect(group.locator('.ck-worktree-held-row[data-branch="sprint/bnd"]')).toContainText('t-bnd1 · in progress');
+      await expect(group.locator('.ck-worktree-held-row[data-branch="sprint/dirty"]')).toContainText('uncommitted changes');
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await box.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-2241', 'visuals', `rail-expanded-${theme}.png`) });
+      }
+      // Held rows are not worktree rows: clicking one selects nothing.
+      await group.locator('.ck-worktree-held-row[data-branch="sprint/bnd"]').click();
+      await expect(box.locator('.ck-worktree-row.selected')).toHaveCount(0);
+
+      // + New with a held branch name names the holder instead of "already exists".
+      const input = page.locator('#ck-worktree-new-input');
+      await input.fill('sprint/bnd');
+      await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
+      let alertText = '';
+      page.once('dialog', d => { alertText = d.message(); d.dismiss(); });
+      await input.press('Enter');
+      await expect.poll(() => alertText).toContain('"sprint/bnd" is in use by t-bnd1 (in progress)');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('once its own worktree is selected the rail shows just that row + Change worktree (t-2241)', async ({ page }) => {
+    const id = `t-wth-o-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await stubWorktrees2241(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const box = page.locator('#ck-worktree');
+      await box.locator('.ck-worktree-row[data-cwd="/tmp/wt-2241/mine"]').click();
+      await expect(box.locator('.ck-worktree-row:visible')).toHaveCount(1);
+      await expect(box.locator('.ck-worktree-row:visible')).toHaveClass(/selected/);
+      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText('sprint/mine');
+      await expect(box.locator('.ck-worktree-full')).toBeHidden();
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await box.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-2241', 'visuals', `rail-own-compact-${theme}.png`) });
+      }
+      await box.locator('#ck-worktree-change').click();
+      await expect(box.locator('.ck-worktree-full')).toBeVisible();
+      await expect(box.locator('.ck-worktree-row:visible .ck-worktree-label')).toHaveText(['Main checkout (current)', 'sprint/free', 'sprint/mine']);
+      await expect(box.locator('#ck-worktree-change')).toHaveCount(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('New Ticket modal offers only Main, free worktrees and + New; held ones are counted with a tooltip (t-2241)', async ({ page }) => {
+    await stubWorktrees2241(page);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-create').click();
+    const pills = page.locator('#c-worktree-pills');
+    await expect(pills.locator('.create-pill')).toHaveText(['Main checkout', 'sprint/free', '+ New']);
+    const held = pills.locator('.create-wt-held');
+    await expect(held).toHaveText('3 in use by other tickets');
+    const tip = await held.getAttribute('title');
+    expect(tip).toContain('sprint/bnd — t-bnd1 · in progress');
+    expect(tip).toContain('sprint/mine — t-mine · reserved');
+    expect(tip).toContain('sprint/dirty — uncommitted changes');
+  });
+
+  test('divergence footer: uncommitted worktree work is never called "merged" (t-2241)', async ({ page }) => {
+    await page.goto(BASE);
+    const info = (d) => page.evaluate(d => divergenceInfo({ id: 't-x', status: 'open', branch_divergence: d }).long, d);
+    const base = { where: 'worktree', branch: 'sprint/x', status: 'in_progress' };
+    expect(await info({ ...base, merged: true, dirty: true })).toContain('uncommitted changes in worktree');
+    expect(await info({ ...base, merged: true, dirty: true })).not.toContain('branch merged');
+    expect(await info({ ...base, merged: true, dirty: false })).toContain('(branch merged)');
+    expect(await info({ ...base, merged: false, dirty: false })).toContain('not merged');
+    expect(await info({ ...base, where: 'branch', merged: false, dirty: false })).toContain('not merged');
+  });
+
   test('IN PROGRESS card shows a read-only worktree chip when bound; empty when unbound (t-644a)', async ({ page }) => {
     const boundId = `t-wtchip-a-${Date.now()}`;
     const unboundId = `t-wtchip-b-${Date.now()}`;
