@@ -145,6 +145,17 @@
   .mt-card-actions a{color:var(--text-muted);cursor:pointer;text-decoration:none}
   .mt-card-actions a:hover{color:var(--text)}
   .mt-card-actions a.danger:hover{color:var(--col-discarded)}
+  /* t-294b: cards are read-only until Edit; inputs only in edit mode. */
+  .mt-card-actions button{font:inherit;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer}
+  .mt-card-actions button:hover:not(:disabled){color:var(--text);border-color:var(--border-hover)}
+  .mt-card-actions button:disabled{opacity:.45;cursor:default}
+  .mt-card-actions button.mt-save{background:var(--accent);border-color:var(--accent);color:#fff}
+  .mt-card.editing{border-color:var(--accent)}
+  .mt-field{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text-dim)}
+  .mt-field input{font:inherit;font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 7px;width:100%}
+  .mt-field input:focus{outline:none;border-color:var(--accent)}
+  .mt-field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .mt-card-err{font-size:10.5px;color:var(--col-discarded)}
   .mt-add-card{border:1px dashed var(--border-hover);border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:110px;color:var(--text-muted);font-size:12.5px;cursor:pointer}
   .mt-add-card:hover{border-color:var(--accent);color:var(--accent)}
   .sessions{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 4px}
@@ -1491,24 +1502,70 @@
     const grid=document.getElementById('mt-grid');
     const models=mtData.models[mtProvider]||[];
     const defaultIds=new Set(Object.values(mtData.defaults.eval||{}).concat(Object.values(mtData.defaults.light||{})));
+    const hasAlias=MT_ALIAS_PROVIDERS.has(mtProvider);
     grid.innerHTML = models.map(m=>{
       const badge=defaultIds.has(m.id)?'<span class="mt-badge">Default</span>':'';
-      const aliasRow=MT_ALIAS_PROVIDERS.has(mtProvider)
-        ? `<div class="mt-card-id"><span class="mt-alias-label">Gate-model alias</span> <span contenteditable="true" data-field="alias" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.alias||'')}</span></div>`
+      if(m.id===mtEditing) return mtEditCard(m,badge,hasAlias);
+      const aliasRow=hasAlias
+        ? `<div class="mt-card-id"><span class="mt-alias-label">Gate-model alias</span> <span>${esc(m.alias||'')}</span></div>`
         : '';
-      return `<div class="mt-card">
-        <div class="mt-card-top"><span class="mt-card-name" contenteditable="true" data-field="name" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.name)}</span>${badge}</div>
-        <div class="mt-card-desc" contenteditable="true" data-field="desc" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.desc||'')}</div>
+      return `<div class="mt-card" data-id="${escAttr(m.id)}">
+        <div class="mt-card-top"><span class="mt-card-name">${esc(m.name)}</span>${badge}</div>
+        <div class="mt-card-desc">${esc(m.desc||'')}</div>
         <div class="mt-card-id">${esc(m.id)}</div>
         ${aliasRow}
-        <div class="mt-card-price"><span>Input/MTok</span><span>$<span contenteditable="true" data-field="input_price" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.input_price)}</span></span></div>
-        <div class="mt-card-price"><span>Output/MTok</span><span>$<span contenteditable="true" data-field="output_price" data-id="${escAttr(m.id)}" onblur="mtEditField(this)">${esc(m.output_price)}</span></span></div>
-        <div class="mt-card-actions"><a class="danger" onclick="mtRemoveModel('${escAttr(m.id)}')">Remove</a></div>
+        <div class="mt-card-price"><span>Input/MTok</span><span>$${esc(m.input_price)}</span></div>
+        <div class="mt-card-price"><span>Output/MTok</span><span>$${esc(m.output_price)}</span></div>
+        <div class="mt-card-actions"><button type="button" class="mt-edit" onclick="mtStartEdit('${escAttr(m.id)}')"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="danger" onclick="mtRemoveModel('${escAttr(m.id)}')">Remove</a></div>
       </div>`;
     }).join('') + `<div class="mt-add-card" onclick="mtAddModel()">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
   }
 
-  function mtSwitchProvider(prov){ mtProvider=prov; mtRender(); }
+  function mtSwitchProvider(prov){ mtProvider=prov; mtEditing=null; mtRender(); }
+
+  // t-294b: one card at a time is editable; nothing is saved until Save.
+  let mtEditing=null;
+  function mtEditCard(m,badge,hasAlias){
+    const f=(key,label,val,type='text')=>`<label class="mt-field">${label}<input type="${type}" data-field="${key}"${type==='number'?' min="0" step="any"':''} value="${escAttr(val==null?'':String(val))}"></label>`;
+    return `<div class="mt-card editing" data-id="${escAttr(m.id)}" onkeydown="mtEditKey(event)">
+      <div class="mt-card-top"><span class="mt-card-name">Editing</span>${badge}</div>
+      ${f('name','Name',m.name)}
+      ${f('desc','Description',m.desc||'')}
+      <div class="mt-card-id">${esc(m.id)}</div>
+      ${hasAlias?f('alias','Gate-model alias',m.alias||''):''}
+      <div class="mt-field-row">${f('input_price','Input $/MTok',m.input_price,'number')}${f('output_price','Output $/MTok',m.output_price,'number')}</div>
+      <div class="mt-card-err" role="alert"></div>
+      <div class="mt-card-actions"><button type="button" class="mt-cancel" onclick="mtCancelEdit()">Cancel</button><button type="button" class="mt-save" onclick="mtSaveEdit()">Save</button></div>
+    </div>`;
+  }
+  function mtStartEdit(id){
+    mtEditing=id; mtRender();
+    const input=document.querySelector('.mt-card.editing input');
+    if(input) input.focus();
+  }
+  function mtCancelEdit(){ mtEditing=null; mtRender(); }
+  function mtEditKey(e){
+    if(e.key==='Escape'){ e.preventDefault(); mtCancelEdit(); }
+    else if(e.key==='Enter' && e.target.tagName==='INPUT'){ e.preventDefault(); mtSaveEdit(); }
+  }
+  async function mtSaveEdit(){
+    const card=document.querySelector('.mt-card.editing');
+    const model=(mtData.models[mtProvider]||[]).find(m=>m.id===mtEditing);
+    if(!card||!model) return;
+    const v={};
+    card.querySelectorAll('input[data-field]').forEach(i=>{ v[i.dataset.field]=i.value.trim(); });
+    const price=x=>(x!==''&&isFinite(Number(x))&&Number(x)>=0)?Number(x):null;
+    let err='';
+    if(!v.name) err='Name can’t be empty.';
+    else if('alias' in v && v.alias && !MT_ID_RE.test(v.alias)) err='Alias may only contain letters, digits, "." "_" "-".';
+    else if(price(v.input_price)===null||price(v.output_price)===null) err='Prices must be numbers of 0 or more.';
+    if(err){ card.querySelector('.mt-card-err').textContent=err; return; }
+    model.name=v.name; model.desc=v.desc;
+    if('alias' in v) model.alias=v.alias;
+    model.input_price=price(v.input_price); model.output_price=price(v.output_price);
+    mtEditing=null;
+    if(await mtSave()){ mtRender(); toast('Saved'); }
+  }
 
   async function mtSetDefault(sel){
     const tier=sel.dataset.tier, prov=sel.dataset.prov;
@@ -1518,27 +1575,6 @@
   }
 
   const MT_ID_RE=/^[A-Za-z0-9._-]+$/; // mirrors server.py's MODEL_ID_RE / main.go's modelIDRe
-
-  async function mtEditField(el){
-    const id=el.dataset.id, field=el.dataset.field;
-    const model=(mtData.models[mtProvider]||[]).find(m=>m.id===id);
-    if(!model) return;
-    let val=el.textContent.trim();
-    if(field==='input_price'||field==='output_price'){
-      const n=parseFloat(val);
-      val = isNaN(n) ? model[field] : n;
-    }
-    if(field==='alias' && val && !MT_ID_RE.test(val)){
-      toast('Alias may only contain letters, digits, "." "_" "-"');
-      el.textContent=model.alias||'';
-      return;
-    }
-    model[field]=val;
-    if(!(await mtSave())) return;
-    // A saved alias changes which options the per-ticket Gate-model dropdown
-    // offers elsewhere on the board — no local re-render needed here, but
-    // nothing else needs to happen either; the next Plan-tab fetch picks it up.
-  }
 
   async function mtAddModel(){
     mtData.models[mtProvider]=mtData.models[mtProvider]||[];
@@ -1552,7 +1588,7 @@
       entry.alias=mtSlugify('new-model',mtData.models[mtProvider],'alias');
     }
     mtData.models[mtProvider].push(entry);
-    if(await mtSave()) mtRender(); else await mtLoad();
+    if(await mtSave()){ mtStartEdit(id); } else await mtLoad();
   }
 
   async function mtRemoveModel(id){

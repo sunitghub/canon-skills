@@ -7,6 +7,10 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* Native controls (select popups, scrollbars) follow the theme; Windows otherwise draws them light. */
+    :root { color-scheme: dark; }
+    html[data-theme="light"] { color-scheme: light; }
+    option { background: var(--surface); color: var(--text); }
     :root {
       --bg:             #1b2330;
       --surface:        #232d3c;

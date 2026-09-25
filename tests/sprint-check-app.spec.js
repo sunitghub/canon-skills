@@ -7135,6 +7135,147 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
 // safe to interleave with each other (a concurrent restore can stomp on a
 // sibling test's in-flight edit and leave the file in a state neither test
 // wrote).
+// t-294b: model cards are read-only until Edit; Save/Cancel are explicit. The registry API is
+// stubbed so these tests never write the real (possibly user-local) model-tiers.json.
+test.describe('canon-cockpit Admin > Model Tiers editing (t-294b)', () => {
+  const FIXTURE = {
+    defaults: { eval: { anthropic: 'm-sonnet', openai: 'o-luna' }, light: { anthropic: 'm-haiku', openai: 'o-luna' } },
+    models: {
+      anthropic: [
+        { id: 'm-sonnet', name: 'Sonnet Test', alias: 'sonnet', desc: 'Balanced.', reasoning: [], input_price: 3, output_price: 15 },
+        { id: 'm-haiku', name: 'Haiku Test', alias: 'haiku', desc: 'Fast.', reasoning: [], input_price: 1, output_price: 5 },
+      ],
+      openai: [{ id: 'o-luna', name: 'Luna Test', desc: '', reasoning: [], input_price: 1, output_price: 2 }],
+    },
+  };
+  async function openModelTiers(page) {
+    const posts = [];
+    let current = JSON.parse(JSON.stringify(FIXTURE));
+    await page.route('**/api/admin/model-tiers', async route => {
+      if (route.request().method() === 'POST') {
+        current = route.request().postDataJSON();
+        posts.push(current);
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(current) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.locator('#nav-admin').click();
+    await expect(page.locator('.mt-card[data-id="m-sonnet"]')).toBeVisible();
+    return posts;
+  }
+  const card = (page, id) => page.locator(`.mt-card[data-id="${id}"]`);
+
+  test('cards are read-only: nothing is editable and clicking/typing saves nothing (t-294b)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    expect(await page.locator('.mt-grid [contenteditable]').count()).toBe(0);
+    await card(page, 'm-sonnet').locator('.mt-card-desc').click();
+    await page.keyboard.type('df');
+    await page.locator('#view-admin').click({ position: { x: 5, y: 5 } });
+    await expect(card(page, 'm-sonnet').locator('.mt-card-desc')).toHaveText('Balanced.');
+    expect(posts.length).toBe(0);
+  });
+
+  test('Edit then Cancel or Escape restores the values and sends nothing; only one card edits at a time (t-294b)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    await card(page, 'm-sonnet').locator('.mt-edit').click();
+    const c = card(page, 'm-sonnet');
+    await expect(c).toHaveClass(/editing/);
+    for (const [field, label] of [['name', 'Name'], ['desc', 'Description'], ['alias', 'Gate-model alias'], ['input_price', 'Input $/MTok'], ['output_price', 'Output $/MTok']]) {
+      await expect(c.getByLabel(label)).toHaveAttribute('data-field', field);
+    }
+    await expect(card(page, 'm-haiku').locator('.mt-edit')).toBeDisabled();
+    await c.getByLabel('Name').fill('Changed');
+    await c.locator('.mt-cancel').click();
+    await expect(card(page, 'm-sonnet').locator('.mt-card-name')).toHaveText('Sonnet Test');
+    await card(page, 'm-sonnet').locator('.mt-edit').click();
+    await card(page, 'm-sonnet').getByLabel('Name').fill('Changed again');
+    await page.keyboard.press('Escape');
+    await expect(card(page, 'm-sonnet').locator('.mt-card-name')).toHaveText('Sonnet Test');
+    await expect(card(page, 'm-haiku').locator('.mt-edit')).toBeEnabled();
+    expect(posts.length).toBe(0);
+  });
+
+  test('Save (or Enter) sends one request with the new values and shows them read-only (t-294b)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    await card(page, 'm-sonnet').locator('.mt-edit').click();
+    const c = card(page, 'm-sonnet');
+    await c.getByLabel('Name').fill('Sonnet Renamed');
+    await c.getByLabel('Description').fill('New desc');
+    await c.getByLabel('Gate-model alias').fill('sonnet-x');
+    await c.getByLabel('Input $/MTok').fill('2.5');
+    await c.getByLabel('Output $/MTok').fill('12');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await c.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-294b', 'visuals', `edit-card-${theme}.png`) });
+    }
+    await c.locator('.mt-save').click();
+    await expect(card(page, 'm-sonnet').locator('.mt-card-name')).toHaveText('Sonnet Renamed');
+    await expect(card(page, 'm-sonnet')).not.toHaveClass(/editing/);
+    expect(posts.length).toBe(1);
+    expect(posts[0].models.anthropic[0]).toMatchObject({ id: 'm-sonnet', name: 'Sonnet Renamed', desc: 'New desc', alias: 'sonnet-x', input_price: 2.5, output_price: 12 });
+    await card(page, 'm-haiku').locator('.mt-edit').click();
+    await card(page, 'm-haiku').getByLabel('Description').fill('Enter saves');
+    await page.keyboard.press('Enter');
+    await expect(card(page, 'm-haiku').locator('.mt-card-desc')).toHaveText('Enter saves');
+    expect(posts.length).toBe(2);
+  });
+
+  test('invalid name, alias or price blocks Save with a message and sends nothing (t-294b)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    await card(page, 'm-sonnet').locator('.mt-edit').click();
+    const c = card(page, 'm-sonnet');
+    const cases = [
+      ['Name', '', 'Name can’t be empty.'],
+      ['Gate-model alias', 'bad alias!', 'Alias may only contain letters, digits, "." "_" "-".'],
+      ['Input $/MTok', '-1', 'Prices must be numbers of 0 or more.'],
+    ];
+    for (const [label, value, msg] of cases) {
+      const input = c.getByLabel(label);
+      const before = await input.inputValue();
+      await input.fill(value);
+      await c.locator('.mt-save').click();
+      await expect(c.locator('.mt-card-err')).toHaveText(msg);
+      await expect(c).toHaveClass(/editing/);
+      await input.fill(before);
+    }
+    expect(posts.length).toBe(0);
+  });
+
+  test('+ Add creates the model with a seeded alias and opens it in edit mode (t-294b)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    await page.locator('.mt-add-card').click();
+    const editing = page.locator('.mt-card.editing');
+    await expect(editing).toHaveCount(1);
+    await expect(editing.getByLabel('Name')).toHaveValue('New Model');
+    await expect(editing.getByLabel('Gate-model alias')).not.toHaveValue('');
+    await expect(editing.getByLabel('Name')).toBeFocused();
+    expect(posts.length).toBe(1);
+    expect(posts[0].models.anthropic.some(m => m.name === 'New Model' && m.alias)).toBe(true);
+  });
+
+  test('board select popups follow the theme (t-294b)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    for (const [theme, want] of [['dark', 'dark'], ['light', 'light']]) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const got = await page.evaluate(() => {
+        const probe = document.createElement('span'); document.body.appendChild(probe);
+        probe.style.background = 'var(--surface)'; probe.style.color = 'var(--text)';
+        const s = document.createElement('select'); const o = document.createElement('option'); s.appendChild(o); document.body.appendChild(s);
+        const r = { scheme: getComputedStyle(document.documentElement).colorScheme,
+          optBg: getComputedStyle(o).backgroundColor, optColor: getComputedStyle(o).color,
+          surface: getComputedStyle(probe).backgroundColor, text: getComputedStyle(probe).color };
+        s.remove(); probe.remove(); return r;
+      });
+      expect(got.scheme).toBe(want);
+      expect(got.optBg).toBe(got.surface);
+      expect(got.optColor).toBe(got.text);
+    }
+  });
+});
+
 test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
   test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the OpenAI-inert banner', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
