@@ -1441,6 +1441,16 @@
     .ck-leave-btn-skip:hover { color: var(--col-discarded); border-color: var(--col-discarded); }
     .ck-leave-btn-skip:disabled { opacity: .4; cursor: not-allowed; }
     .ck-leave-btn-skip:disabled:hover { color: var(--text-muted); border-color: var(--border); }
+    /* t-d254: commit-the-ticket-first dialog (reuses the leave-confirm overlay). */
+    #ck-tcommit .ck-leave-confirm { max-width: 520px; }
+    .ck-tcm-files { max-height: 280px; overflow-y: auto; margin-top: 10px; }
+    .ck-tcm-group { margin-top: 10px; }
+    .ck-tcm-group-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin-bottom: 4px; }
+    .ck-tcm-file { display: flex; gap: 6px; align-items: flex-start; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-body); word-break: break-all; padding: 1px 0; }
+    .ck-tcm-file input { accent-color: var(--accent); margin-top: 2px; flex: none; }
+    .ck-tcm-file.muted { color: var(--text-muted); }
+    .ck-tcm-msg { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+    .ck-tcm-msg code { font-family: ui-monospace, monospace; color: var(--text); }
     .ck-topbar {
       display: flex; align-items: center; gap: 12px; padding: 8px 14px;
       background: var(--surface); border-bottom: 1px solid var(--border);
@@ -2106,6 +2116,21 @@
         <button class="ck-leave-btn ck-leave-btn-save" id="ck-leave-save" type="button">Save &amp; End</button>
         <button class="ck-leave-btn ck-leave-btn-skip" id="ck-leave-skip" type="button">End without saving</button>
         <button class="ck-leave-btn ck-leave-btn-cancel" id="ck-leave-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <!-- t-d254: a worktree only carries committed files — offer to commit the ticket first. -->
+  <div id="ck-tcommit" class="ck-leave-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="ck-tcm-title">
+    <div class="ck-leave-confirm">
+      <div class="ck-leave-confirm-title" id="ck-tcm-title">Commit the ticket before creating the worktree?</div>
+      <div class="ck-leave-confirm-body" id="ck-tcm-intro"></div>
+      <div class="ck-tcm-files" id="ck-tcm-files"></div>
+      <div class="ck-tcm-msg" id="ck-tcm-msg"></div>
+      <div class="ck-leave-confirm-status" id="ck-tcm-status" role="alert"></div>
+      <div class="ck-leave-confirm-actions">
+        <button class="ck-leave-btn ck-leave-btn-save" id="ck-tcm-commit" type="button">Commit &amp; create worktree</button>
+        <button class="ck-leave-btn ck-leave-btn-skip" id="ck-tcm-skip" type="button">Create without committing</button>
+        <button class="ck-leave-btn ck-leave-btn-cancel" id="ck-tcm-cancel" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -4954,6 +4979,17 @@ function newCockpitTabState(id, iframeEl) {
 // Sets the terminal status message AND remembers it on the active tab, so
 // switching tabs can restore the right text into the one shared #ck-term-msg
 // element (see setActiveTab) instead of leaking the last-active tab's text.
+// t-d254: a worktree created before its ticket was committed can't see it.
+// Name the exact fix-up (commit on the main checkout, then merge that branch in)
+// instead of a vague "commit .tickets/" — shown as text via setTermMessage.
+function missingTicketMessage(ticketId, worktreePath, mainBranch) {
+  const main = mainBranch || 'main';
+  return `This worktree doesn't contain ${ticketId}, so a Start here would fail — Start sprint is disabled. `
+    + `Use the Main checkout, or bring the ticket in: on the Main checkout run `
+    + `git add .tickets/${ticketId} then git commit -m "chore: add ticket ${ticketId}" -- .tickets/${ticketId}, `
+    + `then git -C "${worktreePath}" merge ${main}`;
+}
+
 function setTermMessage(text) {
   const el = document.getElementById('ck-term-msg');
   if (el) el.textContent = text;
@@ -5989,6 +6025,7 @@ async function renderCockpitWorktree(t) {
   cockpitState.worktreePresentByCwd[''] = true;
   for (const e of others) cockpitState.worktreePresentByCwd[e.path] = e.ticket_present !== false;
   cockpitState.worktreeMainPath = mainEntry ? mainEntry.path : null;
+  cockpitState.worktreeMainBranch = mainEntry ? mainEntry.branch : null; // t-d254: named in the missing-ticket fix-up
 
   // t-cd06: an already-locked in_progress ticket's real worktree must show
   // as selected here — the daemon uses the locked cwd regardless of what's
@@ -6066,6 +6103,21 @@ async function renderCockpitWorktree(t) {
       <strong>.tickets/ is gitignored</strong> — a git worktree only carries tracked files, so a worktree can't see this ticket and a sprint started there can't find it. Use the <strong>Main checkout</strong>, or track <code>.tickets/</code> in git.
     </div>`;
   }
+  // t-d254: a worktree only carries committed files. Warn before any click when
+  // the ticket's own docs are uncommitted (runtime logs alone don't count), and
+  // let + New offer to commit them. A failed or 400 lookup (e.g. a non-canon id)
+  // leaves commitPlan null → today's plain confirm, never a false warning.
+  let commitPlan = null;
+  try {
+    const r = await fetch('/api/ticket-commit/' + encodeURIComponent(t.id));
+    if (r.ok) commitPlan = await r.json();
+  } catch {}
+  const needsCommit = !!(commitPlan && !commitPlan.blocked && Array.isArray(commitPlan.required) && commitPlan.required.length);
+  if (needsCommit) {
+    html += `<div class="ck-worktree-warn" id="ck-worktree-uncommitted" role="status">
+      <strong>${esc(t.id)} isn't committed yet</strong> — a new worktree won't contain it. + New will offer to commit it first.
+    </div>`;
+  }
   // t-fe3c: when the ticket is locked to a worktree, offer to clear that lock so
   // the next Start/Resume uses the picked worktree (the daemon otherwise reuses
   // the saved cwd and ignores the picker). Confirmed with an explanation on click.
@@ -6134,7 +6186,9 @@ async function renderCockpitWorktree(t) {
       alert(`"${branch}" already has a worktree — select it from the list above instead.`);
       return;
     }
-    if (!confirm(`Create a new git worktree for branch "${branch}"?`)) return;
+    if (needsCommit) {
+      if (await openTicketCommitDialog(t.id, commitPlan, branch) === 'cancel') return;
+    } else if (!confirm(`Create a new git worktree for branch "${branch}"?`)) return;
     input.disabled = true;
     btn.disabled = true;
     try {
@@ -6166,6 +6220,98 @@ async function renderCockpitWorktree(t) {
   };
   btn.addEventListener('click', create);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') create(); });
+}
+
+// t-d254: the commit-first dialog. Lists the server's classification — Required
+// (checked, locked), Recommended (checked), Optional (unchecked), and other
+// uncommitted files (listed, never committed) — and on "Commit & create" posts
+// the checked paths. The server re-derives eligibility, so this list is only a
+// request. File names are inserted as text nodes (no HTML), so a hostile name is
+// inert. Resolves 'committed' | 'skip' | 'cancel'.
+function openTicketCommitDialog(ticketId, plan, branch) {
+  const overlay = document.getElementById('ck-tcommit');
+  const files = document.getElementById('ck-tcm-files');
+  const status = document.getElementById('ck-tcm-status');
+  const commitBtn = document.getElementById('ck-tcm-commit');
+  const skipBtn = document.getElementById('ck-tcm-skip');
+  const cancelBtn = document.getElementById('ck-tcm-cancel');
+  document.getElementById('ck-tcm-intro').textContent =
+    `A worktree only contains committed files, and ${ticketId} isn't fully committed. ` +
+    `Commit it on the main checkout first, then create "${branch}".`;
+  const msg = document.getElementById('ck-tcm-msg');
+  msg.textContent = 'Commit message: ';
+  const code = document.createElement('code');
+  code.textContent = plan.message || '';
+  msg.appendChild(code);
+  status.textContent = '';
+  files.textContent = '';
+  const group = (title, paths, mode) => {
+    if (!paths || !paths.length) return;
+    const g = document.createElement('div');
+    g.className = 'ck-tcm-group';
+    const h = document.createElement('div');
+    h.className = 'ck-tcm-group-title';
+    h.textContent = title;
+    g.appendChild(h);
+    for (const p of paths) {
+      const row = document.createElement('label');
+      row.className = 'ck-tcm-file' + (mode === 'list' ? ' muted' : '');
+      if (mode !== 'list') {
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.dataset.path = p;
+        cb.checked = mode !== 'optional';
+        cb.disabled = mode === 'required';
+        row.appendChild(cb);
+      }
+      row.appendChild(document.createTextNode(p));
+      g.appendChild(row);
+    }
+    files.appendChild(g);
+  };
+  group('Required — the ticket itself', plan.required, 'required');
+  group('Recommended — canon’s ignore rules', plan.recommended, 'recommended');
+  group('Optional — per-machine session logs', plan.optional, 'optional');
+  const others = plan.other_dirty || [];
+  const more = (plan.other_dirty_count || 0) - others.length;
+  group(`Also uncommitted — not included${more > 0 ? ` (+${more} more)` : ''}`, others, 'list');
+  overlay.classList.add('open');
+  commitBtn.focus();
+  return new Promise(resolve => {
+    const done = (result) => {
+      overlay.classList.remove('open');
+      commitBtn.onclick = skipBtn.onclick = cancelBtn.onclick = null;
+      overlay.onkeydown = null;
+      resolve(result);
+    };
+    const setBusy = (busy) => { commitBtn.disabled = skipBtn.disabled = cancelBtn.disabled = busy; };
+    commitBtn.onclick = async () => {
+      const paths = [...files.querySelectorAll('input[type=checkbox]')].filter(cb => cb.checked).map(cb => cb.dataset.path);
+      setBusy(true);
+      status.textContent = 'Committing…';
+      try {
+        const r = await fetch('/api/ticket-commit/' + encodeURIComponent(ticketId), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paths }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) {
+          status.textContent = 'Commit failed: ' + (d && d.error ? d.error : `HTTP ${r.status}`);
+          setBusy(false);
+          return;
+        }
+        showToast(`✓ Committed ${d.commit} — ${d.message}`, 'warn');
+        setBusy(false);
+        done('committed');
+      } catch (err) {
+        status.textContent = 'Commit failed: ' + err;
+        setBusy(false);
+      }
+    };
+    skipBtn.onclick = () => done('skip');
+    cancelBtn.onclick = () => done('cancel');
+    overlay.onkeydown = (e) => { if (e.key === 'Escape' && !cancelBtn.disabled) done('cancel'); };
+  });
 }
 
 // t-cd06 amendment: an in_progress ticket's FIRST worktree pick (no
@@ -6358,7 +6504,7 @@ async function maybeMountCockpitTerminal(t) {
     iframe.style.visibility = 'hidden';
     setTermMessage(isLocked
       ? "This ticket is locked to a worktree that doesn't contain it, so a Start here would fail — Start sprint is disabled. Click \u201CUnlock worktree\u201D above to run in the Main checkout, or commit .tickets/ into that worktree."
-      : "This worktree doesn't contain the ticket, so a Start here would fail — Start sprint is disabled. Use the Main checkout, or commit .tickets/ into this worktree.");
+      : missingTicketMessage(t.id, effectiveCwd, cockpitState.worktreeMainBranch));
     return;
   }
   // t-e5ff: fallback for an older backend that doesn't report ticket_present —

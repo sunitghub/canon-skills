@@ -316,6 +316,20 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, listWorktrees(wtTicket, root))
 	default:
+		if strings.HasPrefix(path, "/api/ticket-commit/") {
+			tid := strings.TrimPrefix(path, "/api/ticket-commit/")
+			if !ticketCommitIDRe.MatchString(tid) {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			root, ok := effectiveRoot(r)
+			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			sendJSON(w, ticketCommitPlan(tid, root))
+			return
+		}
 		if regexp.MustCompile(`^/meta/screenshots/[A-Za-z0-9_-]+\.(png|gif|jpg|jpeg|webp)$`).MatchString(path) {
 			serveFile(w, filepath.Join(projectRoot, filepath.FromSlash(strings.TrimPrefix(path, "/"))), mime.TypeByExtension(filepath.Ext(path)))
 			return
@@ -570,6 +584,16 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, createWorktree(branch, eroot))
+		return
+	}
+	if strings.HasPrefix(path, "/api/ticket-commit/") {
+		tid := strings.TrimPrefix(path, "/api/ticket-commit/")
+		if !ticketCommitIDRe.MatchString(tid) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		result, status := ticketCommit(tid, payload["paths"], eroot)
+		sendJSONStatus(w, result, status)
 		return
 	}
 	if m := regexp.MustCompile(`^/api/worktree-unlock/([^/]+)$`).FindStringSubmatch(path); m != nil {
@@ -2074,6 +2098,202 @@ func createWorktree(branch, root string) map[string]any {
 	copied := copyWorktreeIncludeFiles(path, root)
 	linkSkillsIntoWorktree(path)
 	return map[string]any{"ok": true, "path": path, "branch": branch, "worktreeinclude_copied": copied}
+}
+
+// ── Commit a ticket before branching (t-d254) ────────────────────────────
+// Mirrors server.py's ticket_commit_plan/ticket_commit (parity-tested): GET
+// classifies the ticket's uncommitted files, POST commits a chosen subset
+// path-scoped (`--only`), re-deriving eligibility itself rather than trusting
+// the client's list.
+var ticketCommitIDRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
+
+const otherDirtyCap = 20
+
+// gitOutIn is runGitIn without the trim (porcelain lines start with a space)
+// and with the exit status, which runGitIn discards.
+func gitOutIn(root string, timeout time.Duration, args ...string) (string, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = root
+	var out, errb bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &errb
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		err = ctx.Err()
+	}
+	return out.String(), errb.String(), err
+}
+
+func ticketCommitBlocked(root string) string {
+	if runGitIn(root, "rev-parse", "--is-inside-work-tree") != "true" {
+		return "not a git repository"
+	}
+	if runGitIn(root, "check-ignore", ".tickets") != "" {
+		return ".tickets/ is gitignored"
+	}
+	if runGitIn(root, "rev-parse", "-q", "--verify", "HEAD") == "" {
+		return "the repository has no commits yet"
+	}
+	if _, _, err := gitOutIn(root, 10*time.Second, "symbolic-ref", "-q", "HEAD"); err != nil {
+		return "HEAD is detached"
+	}
+	for _, marker := range []string{"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"} {
+		p := runGitIn(root, "rev-parse", "--git-path", marker)
+		if p == "" {
+			continue
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(root, p)
+		}
+		if exists(p) {
+			return "a merge, rebase or cherry-pick is in progress"
+		}
+	}
+	return ""
+}
+
+func ticketCommitPlan(ticketID, root string) map[string]any {
+	root = rootOr(root)
+	required, recommended, optional, other := []string{}, []string{}, []string{}, []string{}
+	plan := map[string]any{"required": required, "recommended": recommended, "optional": optional,
+		"other_dirty": other, "other_dirty_count": 0, "message": "", "blocked": ticketCommitBlocked(root)}
+	if b := plan["blocked"]; b == "not a git repository" || b == ".tickets/ is gitignored" {
+		return plan
+	}
+	out, _, err := gitOutIn(root, 10*time.Second, "status", "--porcelain=v1", "-z", "--untracked-files=all")
+	if err != nil {
+		plan["blocked"] = "git status failed"
+		return plan
+	}
+	prefix := ".tickets/" + ticketID + "/"
+	untrackedRequired := false
+	tokens := strings.Split(out, "\x00")
+	for i := 0; i < len(tokens); i++ {
+		entry := tokens[i]
+		if len(entry) < 4 {
+			continue
+		}
+		xy, path := entry[:2], entry[3:]
+		if strings.ContainsAny(xy, "RC") {
+			i++ // -z puts a rename/copy's source path in the next token
+		}
+		switch {
+		case strings.HasPrefix(path, prefix):
+			name := path[strings.LastIndex(path, "/")+1:]
+			if name == "cockpit-sessions.md" || strings.HasPrefix(name, ".cockpit-") {
+				optional = append(optional, path)
+			} else {
+				required = append(required, path)
+				untrackedRequired = untrackedRequired || xy == "??"
+			}
+		case path == ".tickets/.gitignore":
+			recommended = append(recommended, path)
+		default:
+			other = append(other, path)
+		}
+	}
+	sort.Strings(required)
+	sort.Strings(recommended)
+	sort.Strings(optional)
+	sort.Strings(other)
+	plan["required"], plan["recommended"], plan["optional"] = required, recommended, optional
+	plan["other_dirty_count"] = len(other)
+	if len(other) > otherDirtyCap {
+		other = other[:otherDirtyCap]
+	}
+	plan["other_dirty"] = other
+	if len(required) > 0 {
+		verb := "update"
+		if untrackedRequired {
+			verb = "add"
+		}
+		plan["message"] = "chore: " + verb + " ticket " + ticketID
+	}
+	return plan
+}
+
+// ticketCommit returns (json, http status), like server.py's ticket_commit.
+func ticketCommit(ticketID string, raw any, root string) (map[string]any, int) {
+	root = rootOr(root)
+	fail := func(msg string, status int) (map[string]any, int) {
+		return map[string]any{"ok": false, "error": msg}, status
+	}
+	list, ok := raw.([]any)
+	if !ok || len(list) == 0 {
+		return fail("paths must be a non-empty list", http.StatusBadRequest)
+	}
+	seen := map[string]bool{}
+	for _, v := range list {
+		s, ok := v.(string)
+		if !ok {
+			return fail("paths must be a non-empty list", http.StatusBadRequest)
+		}
+		seen[s] = true
+	}
+	chosen := make([]string, 0, len(seen))
+	for s := range seen {
+		chosen = append(chosen, s)
+	}
+	sort.Strings(chosen)
+	plan := ticketCommitPlan(ticketID, root)
+	if b, _ := plan["blocked"].(string); b != "" {
+		return fail(b, http.StatusConflict)
+	}
+	required := plan["required"].([]string)
+	if len(required) == 0 {
+		return fail("the ticket has no uncommitted files", http.StatusConflict)
+	}
+	eligible := map[string]bool{}
+	for _, k := range []string{"required", "recommended", "optional"} {
+		for _, p := range plan[k].([]string) {
+			eligible[p] = true
+		}
+	}
+	var bad, missing []string
+	for _, p := range chosen {
+		if !eligible[p] {
+			bad = append(bad, p)
+		}
+	}
+	if len(bad) > 0 {
+		if len(bad) > 5 {
+			bad = bad[:5]
+		}
+		return fail("not eligible for this commit: "+strings.Join(bad, ", "), http.StatusBadRequest)
+	}
+	for _, p := range required {
+		if !seen[p] {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) > 0 {
+		if len(missing) > 5 {
+			missing = missing[:5]
+		}
+		return fail("required files missing: "+strings.Join(missing, ", "), http.StatusBadRequest)
+	}
+	if _, _, err := gitOutIn(root, 10*time.Second, append([]string{"add", "-A", "--"}, chosen...)...); err != nil {
+		return fail("git add failed", http.StatusInternalServerError)
+	}
+	message := plan["message"].(string)
+	stdout, stderr, err := gitOutIn(root, 120*time.Second, append([]string{"commit", "--only", "-m", message, "--"}, chosen...)...)
+	if err == context.DeadlineExceeded {
+		return fail("git commit timed out (a commit hook may be slow)", http.StatusInternalServerError)
+	}
+	if err != nil {
+		msg := strings.TrimSpace(stderr + stdout)
+		if len(msg) > 800 {
+			msg = msg[len(msg)-800:]
+		}
+		if msg == "" {
+			msg = "git commit failed"
+		}
+		return fail(msg, http.StatusInternalServerError)
+	}
+	return map[string]any{"ok": true, "commit": runGitIn(root, "rev-parse", "--short", "HEAD"),
+		"committed": chosen, "message": message}, http.StatusOK
 }
 
 // linkSkillsIntoWorktree creates the canon skills link inside a freshly-created

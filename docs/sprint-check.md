@@ -217,7 +217,15 @@ sprint agent without leaving the browser — no second terminal.
   (`.tickets/<id>/.cockpit-cwd`) and reuses it automatically (falling back to
   re-resolving if that worktree was since deleted). A `.worktreeinclude`
   file at the project root (same convention as Claude Code's/Codex's own) copies
-  matching gitignored files (e.g. `.env`) into a freshly created worktree. Idle-reap
+  matching gitignored files (e.g. `.env`) into a freshly created worktree. A git
+  worktree only carries **committed** files, so when the ticket's own docs aren't
+  committed yet (projects that track `.tickets/`), the rail says so under **+ New**,
+  and **+ New** offers to commit them first (`t-d254`). The dialog lists the files
+  by group: the ticket's docs are required, `.tickets/.gitignore` is recommended,
+  session logs like `cockpit-sessions.md` are optional, and any other uncommitted
+  files are listed but never included. It commits only the checked paths on the
+  main checkout with a fixed `chore: add ticket <id>` message; anything you had
+  staged stays staged. Undo with `git reset --soft HEAD~1`. Idle-reap
   is tiered by cwd: a worktree session keeps the 5-minute default, a main-checkout
   session gets a longer 30-minute safety net instead of never reaping.
 - **Preview pane (`t-b19b`, `t-533f`):** asks the agent for the ticket's

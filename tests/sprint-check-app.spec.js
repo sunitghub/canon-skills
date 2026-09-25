@@ -4309,6 +4309,140 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // t-d254: rail with a stubbed /api/ticket-commit plan; `log` records every
+  // POST in order as "<route>:<body>" so tests can assert commit-then-create.
+  async function openRailWithPlan(page, id, plan, log, { commitReply } = {}) {
+    await stubCockpit(page);
+    await page.route('**/api/worktrees**', route => {
+      if (route.request().method() === 'POST') {
+        log.push('worktrees:' + route.request().postData());
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, path: '/tmp/wt-d254/created' }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+      ]) });
+    });
+    await page.route('**/api/worktree-lock/**', route => route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+    }));
+    await page.route('**/api/ticket-commit/**', route => {
+      if (route.request().method() === 'POST') {
+        log.push('commit:' + route.request().postData());
+        const reply = commitReply || { status: 200, body: { ok: true, commit: 'abc1234', committed: [], message: plan.message } };
+        return route.fulfill({ status: reply.status, contentType: 'application/json', body: JSON.stringify(reply.body) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(plan) });
+    });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+  }
+  const d254Plan = (id, over = {}) => ({
+    required: [`.tickets/${id}/a"b <img src=x onerror="window.__pwn=1">.md`, `.tickets/${id}/ticket.md`],
+    recommended: ['.tickets/.gitignore'],
+    optional: [`.tickets/${id}/cockpit-sessions.md`],
+    other_dirty: ['.claude/settings.json', 'src/app.py'],
+    other_dirty_count: 3,
+    message: `chore: add ticket ${id}`,
+    blocked: '',
+    ...over,
+  });
+
+  test('uncommitted ticket: rail warns, + New opens the grouped commit dialog, Commit & create commits then creates (t-d254)', async ({ page }) => {
+    const id = `t-wtp-c-${Date.now()}`;
+    const log = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      const plan = d254Plan(id);
+      await openRailWithPlan(page, id, plan, log);
+      await expect(page.locator('#ck-worktree-uncommitted')).toContainText(`${id} isn't committed yet`);
+
+      await page.locator('.ck-worktree-new-plus').click();
+      const dlg = page.locator('#ck-tcommit');
+      await expect(dlg).toHaveClass(/open/);
+      const cb = p => dlg.locator(`input[data-path="${p.replace(/"/g, '\\"')}"]`);
+      for (const p of plan.required) { await expect(cb(p)).toBeChecked(); await expect(cb(p)).toBeDisabled(); }
+      await expect(cb('.tickets/.gitignore')).toBeChecked();
+      await expect(cb('.tickets/.gitignore')).toBeEnabled();
+      await expect(cb(`.tickets/${id}/cockpit-sessions.md`)).not.toBeChecked();
+      // Other dirty files are listed without a checkbox, with the overflow count.
+      await expect(dlg.locator('.ck-tcm-file.muted')).toHaveCount(2);
+      await expect(dlg.locator('.ck-tcm-file.muted input')).toHaveCount(0);
+      await expect(dlg).toContainText('(+1 more)');
+      await expect(dlg.locator('#ck-tcm-msg')).toContainText(`chore: add ticket ${id}`);
+      // The hostile file name is text, not markup.
+      await expect(dlg.locator('img')).toHaveCount(0);
+      await expect(dlg).toContainText('<img src=x onerror=');
+      expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await dlg.locator('.ck-leave-confirm').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-d254', 'visuals', `commit-dialog-${theme}.png`) });
+      }
+
+      await dlg.locator('#ck-tcm-commit').click();
+      await expect.poll(() => log.length).toBe(2);
+      expect(log[0].startsWith('commit:')).toBe(true);
+      expect(JSON.parse(log[0].slice('commit:'.length)).paths.sort()).toEqual([...plan.required, '.tickets/.gitignore'].sort());
+      expect(log[1]).toBe('worktrees:' + JSON.stringify({ branch: `sprint/${id}` }));
+      await expect(dlg).not.toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('commit dialog: Create without committing, Cancel, and a failed commit (t-d254)', async ({ page }) => {
+    const id = `t-wtp-k-${Date.now()}`;
+    const log = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await openRailWithPlan(page, id, d254Plan(id), log, { commitReply: { status: 500, body: { ok: false, error: 'pre-commit hook failed: lint' } } });
+      const dlg = page.locator('#ck-tcommit');
+      const plus = page.locator('.ck-worktree-new-plus');
+
+      // Cancel: nothing sent, dialog closes.
+      await plus.click();
+      await expect(dlg).toHaveClass(/open/);
+      await dlg.locator('#ck-tcm-cancel').click();
+      await expect(dlg).not.toHaveClass(/open/);
+      expect(log).toHaveLength(0);
+
+      // A failed commit keeps the dialog open with the server's reason and creates nothing.
+      await plus.click();
+      await dlg.locator('#ck-tcm-commit').click();
+      await expect(dlg.locator('#ck-tcm-status')).toContainText('pre-commit hook failed: lint');
+      await expect(dlg).toHaveClass(/open/);
+      expect(log.filter(l => l.startsWith('worktrees:'))).toHaveLength(0);
+
+      // Create without committing: the old behavior, worktree POST only.
+      await dlg.locator('#ck-tcm-skip').click();
+      await expect.poll(() => log.filter(l => l.startsWith('worktrees:')).length).toBe(1);
+      expect(log.filter(l => l.startsWith('commit:'))).toHaveLength(1); // only the failed attempt
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('only optional files uncommitted: no warning, + New keeps the plain confirm (t-d254)', async ({ page }) => {
+    const id = `t-wtp-o-${Date.now()}`;
+    const log = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await openRailWithPlan(page, id, d254Plan(id, { required: [], recommended: [], message: '' }), log);
+      await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
+      await expect(page.locator('#ck-worktree-uncommitted')).toHaveCount(0);
+      let dialogText = '';
+      page.once('dialog', d => { dialogText = d.message(); d.dismiss(); });
+      await page.locator('.ck-worktree-new-plus').click();
+      await expect.poll(() => dialogText).toContain('Create a new git worktree for branch');
+      await expect(page.locator('#ck-tcommit')).not.toHaveClass(/open/);
+      expect(log).toHaveLength(0);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('IN PROGRESS card shows a read-only worktree chip when bound; empty when unbound (t-644a)', async ({ page }) => {
     const boundId = `t-wtchip-a-${Date.now()}`;
     const unboundId = `t-wtchip-b-${Date.now()}`;

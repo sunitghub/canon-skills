@@ -953,6 +953,117 @@ def create_worktree(branch: str, root: Path = None) -> dict:
     _link_skills_into_worktree(path)
     return {'ok': True, 'path': str(path), 'branch': branch, 'worktreeinclude_copied': copied}
 
+# ── Commit a ticket before branching (t-d254) ────────────────────────────
+# `git worktree add` carries committed files only, so a worktree made for an
+# uncommitted ticket can't see it. The rail offers to commit the ticket first:
+# GET classifies what's uncommitted, POST commits a user-chosen subset. POST
+# re-derives the classification itself — the client's list is a request, not
+# authority — and commits path-scoped (`--only`) so unrelated staged work is
+# never swept in (same fix as auto-handoff.sh, DECISIONS 2026-06-01).
+# Mirrored in sprint-check-go (ticketCommitPlan/ticketCommit), parity-tested.
+_TICKET_ID_RE = re.compile(r't-[a-z0-9]{4}')
+_TICKET_RUNTIME_FILES = ('cockpit-sessions.md',)  # per-machine logs the daemon writes (t-022f)
+_OTHER_DIRTY_CAP = 20
+
+def _git_out(args: list, cwd: Path, timeout: int = 10) -> tuple[int, str]:
+    """(returncode, stdout) without stripping — porcelain lines start with a space."""
+    try:
+        p = subprocess.run(['git', *args], cwd=cwd, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=timeout)
+        return p.returncode, p.stdout
+    except Exception:
+        return 1, ''
+
+def _ticket_commit_blocked(root: Path) -> str:
+    if run(['git', 'rev-parse', '--is-inside-work-tree'], root) != 'true':
+        return 'not a git repository'
+    if run(['git', 'check-ignore', '.tickets'], root):
+        return '.tickets/ is gitignored'
+    if not run(['git', 'rev-parse', '-q', '--verify', 'HEAD'], root):
+        return 'the repository has no commits yet'
+    if _git_out(['symbolic-ref', '-q', 'HEAD'], root)[0] != 0:
+        return 'HEAD is detached'
+    for marker in ('MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply'):
+        p = run(['git', 'rev-parse', '--git-path', marker], root)
+        if p and (root / p).exists():
+            return 'a merge, rebase or cherry-pick is in progress'
+    return ''
+
+def ticket_commit_plan(ticket_id: str, root: Path = None) -> dict:
+    root = root if root is not None else PROJECT_ROOT
+    plan = {'required': [], 'recommended': [], 'optional': [], 'other_dirty': [],
+            'other_dirty_count': 0, 'message': '', 'blocked': _ticket_commit_blocked(root)}
+    if plan['blocked'] in ('not a git repository', '.tickets/ is gitignored'):
+        return plan
+    rc, out = _git_out(['status', '--porcelain=v1', '-z', '--untracked-files=all'], root)
+    if rc != 0:
+        plan['blocked'] = 'git status failed'
+        return plan
+    prefix = f'.tickets/{ticket_id}/'
+    untracked_required = False
+    other = []
+    tokens = out.split('\0')
+    i = 0
+    while i < len(tokens):
+        entry = tokens[i]
+        i += 1
+        if len(entry) < 4:
+            continue
+        xy, path = entry[:2], entry[3:]
+        if 'R' in xy or 'C' in xy:
+            i += 1  # -z puts a rename/copy's source path in the next token
+        if path.startswith(prefix):
+            name = path.rsplit('/', 1)[-1]
+            if name in _TICKET_RUNTIME_FILES or name.startswith('.cockpit-'):
+                plan['optional'].append(path)
+            else:
+                plan['required'].append(path)
+                untracked_required = untracked_required or xy == '??'
+        elif path == '.tickets/.gitignore':
+            plan['recommended'].append(path)
+        else:
+            other.append(path)
+    for k in ('required', 'recommended', 'optional'):
+        plan[k].sort()
+    other.sort()
+    plan['other_dirty'] = other[:_OTHER_DIRTY_CAP]
+    plan['other_dirty_count'] = len(other)
+    if plan['required']:
+        plan['message'] = f"chore: {'add' if untracked_required else 'update'} ticket {ticket_id}"
+    return plan
+
+def ticket_commit(ticket_id: str, paths, root: Path = None) -> tuple[dict, int]:
+    """Commit exactly `paths` for `ticket_id`. Returns (json, http_status)."""
+    root = root if root is not None else PROJECT_ROOT
+    if not isinstance(paths, list) or not paths or not all(isinstance(p, str) for p in paths):
+        return {'ok': False, 'error': 'paths must be a non-empty list'}, 400
+    plan = ticket_commit_plan(ticket_id, root)
+    if plan['blocked']:
+        return {'ok': False, 'error': plan['blocked']}, 409
+    if not plan['required']:
+        return {'ok': False, 'error': 'the ticket has no uncommitted files'}, 409
+    eligible = set(plan['required'] + plan['recommended'] + plan['optional'])
+    chosen = sorted(set(paths))
+    bad = [p for p in chosen if p not in eligible]
+    if bad:
+        return {'ok': False, 'error': 'not eligible for this commit: ' + ', '.join(bad[:5])}, 400
+    missing = [p for p in plan['required'] if p not in chosen]
+    if missing:
+        return {'ok': False, 'error': 'required files missing: ' + ', '.join(missing[:5])}, 400
+    rc, _ = _git_out(['add', '-A', '--', *chosen], root)
+    if rc != 0:
+        return {'ok': False, 'error': 'git add failed'}, 500
+    try:
+        p = subprocess.run(['git', 'commit', '--only', '-m', plan['message'], '--', *chosen],
+                           cwd=root, capture_output=True, text=True, encoding='utf-8',
+                           errors='replace', timeout=120)  # hooks run; they may be slow
+    except subprocess.TimeoutExpired:
+        return {'ok': False, 'error': 'git commit timed out (a commit hook may be slow)'}, 500
+    if p.returncode != 0:
+        return {'ok': False, 'error': ((p.stderr or '') + (p.stdout or '')).strip()[-800:] or 'git commit failed'}, 500
+    return {'ok': True, 'commit': run(['git', 'rev-parse', '--short', 'HEAD'], root),
+            'committed': chosen, 'message': plan['message']}, 200
+
 def _link_skills_into_worktree(path: Path) -> None:
     """t-f99b: create the canon skills link inside a freshly-created worktree so
     it resolves to CURRENT canon. The skill mirror is gitignored (never
@@ -2272,6 +2383,15 @@ class Handler(BaseHTTPRequestHandler):
             except UnknownProject:
                 self.send_error(400); return
             self.send_json(list_worktrees(wt_ticket, root=eroot))
+        elif path.startswith('/api/ticket-commit/'):
+            tid = path[len('/api/ticket-commit/'):]
+            if not _TICKET_ID_RE.fullmatch(tid):
+                self.send_error(400); return
+            try:
+                eroot = effective_root(parse_qs(parsed.query))
+            except UnknownProject:
+                self.send_error(400); return
+            self.send_json(ticket_commit_plan(tid, root=eroot))
         else:
             m = re.match(r'^/api/commit/([0-9a-f]{4,40})$', path)
             if m:
@@ -2494,6 +2614,13 @@ class Handler(BaseHTTPRequestHandler):
             if not _valid_branch_name(branch):
                 self.send_error(400); return
             self.send_json(create_worktree(branch, root=eroot)); return
+
+        if path.startswith('/api/ticket-commit/'):
+            tid = path[len('/api/ticket-commit/'):]
+            if not _TICKET_ID_RE.fullmatch(tid):
+                self.send_error(400); return
+            result, status = ticket_commit(tid, payload.get('paths'), root=eroot)
+            self.send_json(result, status=status); return
 
         m = re.match(r'^/api/worktree-unlock/([^/]+)$', path)
         if m:
