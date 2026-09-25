@@ -4197,10 +4197,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
         status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
       }));
 
-      // Preference names a worktree that already exists: its row is pre-selected, "+ New" is NOT armed.
+      // Preference names a worktree that already exists: its row is pre-selected, "+ New" is NOT armed
+      // for it — the field keeps the default suggestion (creatable since t-29cc, still behind a confirm).
       await openRail(existId);
       await expect(page.locator(`.ck-worktree-row[data-cwd="${wtPath}"]`)).toHaveClass(/selected/);
-      await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
+      await expect(page.locator('#ck-worktree-new-input')).toHaveValue(`sprint/${existId}`);
       await expect(page.locator('#ck-worktree .ck-add-hint')).not.toContainText('You chose');
 
       // Preference equals the main checkout's own branch: nothing to create, so not armed.
@@ -4225,19 +4226,84 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('worktree preference (t-15ee): a ticket with no explicit choice keeps the default suggestion inert', async ({ page }) => {
+  test('+ New creates the untouched default suggestion after a confirm, by click or Enter (t-29cc)', async ({ page }) => {
     const id = `t-wtp-n-${Date.now()}`;
     const posts = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       await openRailFor(page, id, posts);
-      await expect(page.locator('#ck-worktree-new-input')).toHaveValue(`sprint/${id}`);
-      await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
-      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('an untouched suggestion never creates a worktree by itself');
+      const input = page.locator('#ck-worktree-new-input');
+      const plus = page.locator('.ck-worktree-new-plus');
+      await expect(input).toHaveValue(`sprint/${id}`);
+      await expect(plus).toBeEnabled();
+      await expect(page.locator('#ck-worktree .ck-add-hint')).toContainText('Click + New (or press Enter) to create this worktree');
       await expect(page.locator('#ck-term-msg')).not.toContainText('You chose');
-      await page.locator('#ck-worktree-new-input').fill(`sprint/${id}-edited`);
-      await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        await page.locator('#ck-worktree').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-29cc', 'visuals', `worktree-new-${theme}.png`) });
+      }
+
+      // Dismissing the confirm creates nothing.
+      let dialogText = '';
+      page.once('dialog', d => { dialogText = d.message(); d.dismiss(); });
+      await plus.click();
+      await expect.poll(() => dialogText).toContain(`Create a new git worktree for branch "sprint/${id}"`);
       expect(posts).toHaveLength(0);
+
+      // Enter follows the same rule as the click: confirm, then exactly one POST.
+      page.once('dialog', d => d.accept());
+      await input.press('Enter');
+      await expect.poll(() => posts.length).toBe(1);
+      expect(JSON.parse(posts[0])).toEqual({ branch: `sprint/${id}` });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('+ New stays disabled for the main branch and an existing worktree, for click and Enter alike (t-29cc)', async ({ page }) => {
+    const id = `t-wtp-x-${Date.now()}`;
+    const posts = [];
+    let dialogs = 0;
+    page.on('dialog', d => { dialogs++; d.dismiss(); });
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN, worktreePreference: 'main' });
+      await stubCockpit(page);
+      await page.route('**/api/worktrees**', route => {
+        if (route.request().method() === 'POST') {
+          posts.push(route.request().postData());
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, path: '/tmp/x' }) });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+          { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+          { path: '/tmp/wt-29cc/taken', branch: 'sprint/taken', is_main: false, tickets_visible: true, ticket_present: true },
+        ]) });
+      });
+      await page.route('**/api/worktree-lock/**', route => route.fulfill({
+        status: 200, contentType: 'application/json', body: JSON.stringify({ locked: false, cwd: null, main_dirty: false }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+
+      const input = page.locator('#ck-worktree-new-input');
+      const plus = page.locator('.ck-worktree-new-plus');
+      // A `main` preference pre-fills the main checkout's own branch: never creatable.
+      await expect(input).toHaveValue('main');
+      await expect(plus).toBeDisabled();
+      await input.press('Enter');
+      // An existing worktree's branch: disabled, and Enter stops at an alert, not a POST.
+      await input.fill('sprint/taken');
+      await expect(plus).toBeDisabled();
+      await input.press('Enter');
+      // Too short.
+      await input.fill('abc');
+      await expect(plus).toBeDisabled();
+      await input.press('Enter');
+      await page.waitForTimeout(300);
+      expect(posts).toHaveLength(0);
+      expect(dialogs).toBe(1); // only the existing-branch alert; no create confirm ever opened
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }

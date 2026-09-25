@@ -6055,12 +6055,12 @@ async function renderCockpitWorktree(t) {
     html += rowHTML(e.path, e.branch || '(detached)', e.path);
   }
   html += `<div class="ck-worktree-new">
-    <button type="button" class="ck-worktree-new-plus" title="Edit the branch name, then click to create the worktree">+ New</button>
+    <button type="button" class="ck-worktree-new-plus" title="Create a worktree for the branch named here (asks to confirm)">+ New</button>
     <input id="ck-worktree-new-input" value="${esc(wtNewDefault)}" spellcheck="false" autocomplete="off">
   </div>
   <div class="ck-add-hint">${wtPrefPending
     ? `You chose <b>${esc(wtPrefPending)}</b> when creating this ticket — click + New to create it (you'll be asked to confirm), or pick Main checkout.`
-    : 'Edit the name, then Create — an untouched suggestion never creates a worktree by itself.'}</div>`;
+    : 'Click + New (or press Enter) to create this worktree — you\'ll be asked to confirm. Edit the name first to use a different branch.'}</div>`;
   if (anyBlocked) {
     html += `<div class="ck-worktree-warn" role="alert">
       <strong>.tickets/ is gitignored</strong> — a git worktree only carries tracked files, so a worktree can't see this ticket and a sprint started there can't find it. Use the <strong>Main checkout</strong>, or track <code>.tickets/</code> in git.
@@ -6116,22 +6116,20 @@ async function renderCockpitWorktree(t) {
   // before it ever reaches the confirm dialog, rather than letting the
   // server's "path already exists" round-trip surface as a generic alert.
   const existingBranches = new Set(others.map(e => e.branch).filter(Boolean));
-  // Require a real, deliberately-typed branch name — no falling back to the
-  // pre-filled suggestion on an untouched field (that silently created an
-  // unwanted worktree in testing). The suggestion is a real `value` now, not
-  // a placeholder (t-c6fa: clicking in gives you editable text, not an empty
-  // field to retype from scratch) — but the button only enables on a real
-  // `input` event, which setting `value` via markup never fires, so an
-  // untouched field is exactly as inert as an empty one always was.
-  btn.disabled = !(wtPrefPending && wtPrefPending.length > 3); // pending ⇒ no existing worktree matched
+  // t-29cc: one rule for click and Enter, the untouched suggestion included —
+  // create()'s confirm() is the guard against an unwanted worktree. The main
+  // checkout's branch is excluded too: it's never a row in `others`, and a
+  // `main` preference pre-fills it (git refuses a second checkout of it).
+  const mainBranch = mainEntry ? mainEntry.branch : '';
+  const canCreate = v => v.length > 3 && !existingBranches.has(v) && v !== mainBranch;
+  btn.disabled = !canCreate(input.value.trim());
   input.addEventListener('focus', () => input.select());
   input.addEventListener('input', () => {
-    const v = input.value.trim();
-    btn.disabled = v.length <= 3 || existingBranches.has(v);
+    btn.disabled = !canCreate(input.value.trim());
   });
   const create = async () => {
     const branch = input.value.trim();
-    if (branch.length <= 3) return;
+    if (branch.length <= 3 || branch === mainBranch) return;
     if (existingBranches.has(branch)) {
       alert(`"${branch}" already has a worktree — select it from the list above instead.`);
       return;
