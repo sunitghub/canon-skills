@@ -1175,6 +1175,50 @@ func TestResolveGateModelFixtures(t *testing.T) {
 	}
 }
 
+// t-ef27: a valid `openai:<id>` resolves to no model WITHOUT the "ignoring invalid"
+// warning (it is a real value, just not a --model); a malformed id still warns.
+// Both return "" — only the warning tells them apart, so this reads stderr.
+func TestGateModelOpenAIWarning(t *testing.T) {
+	for _, tc := range []struct {
+		gate     string
+		wantWarn bool
+	}{
+		{"openai:gpt-6-luna", false},
+		{"OpenAI:GPT-6-Luna", false},
+		{"openai:", true},
+		{"openai:--model", true},
+	} {
+		t.Run(tc.gate, func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, ".tickets", "t-ab12")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			plan := "## Sign-off\nTier: normal | Risk: none | Gate model: " + tc.gate + "\n"
+			if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			r, w, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			old := os.Stderr
+			os.Stderr = w
+			s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+			got := s.gateModel("t-ab12")
+			w.Close()
+			os.Stderr = old
+			out, _ := io.ReadAll(r)
+			if got != "" {
+				t.Errorf("gateModel = %q, want \"\"", got)
+			}
+			if warned := strings.Contains(string(out), "ignoring invalid Gate model"); warned != tc.wantWarn {
+				t.Errorf("warned=%v, want %v; stderr: %s", warned, tc.wantWarn, out)
+			}
+		})
+	}
+}
+
 // A missing plan.md is the common case for a brand-new ticket — no override, no error.
 func TestResolveGateModelNoPlan(t *testing.T) {
 	s := newServer(config{projectRoot: t.TempDir(), stateDir: t.TempDir()})
@@ -1212,6 +1256,11 @@ func TestSpawnModelFlag(t *testing.T) {
 		{"a real hyphenated model id still reaches argv",
 			"Tier: normal | Risk: none | Gate model: claude-sonnet-5",
 			[]string{"--model", "claude-sonnet-5"}},
+		// t-ef27: openai:<id> is for the close gates under Copilot CLI; the session
+		// itself runs on the harness default, so it must not become --model.
+		{"openai:<id> means no flag on a claude spawn",
+			"Tier: normal | Risk: none | Gate model: openai:gpt-6-luna",
+			nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			bin, argvFile, _ := fakeSprint(t)
@@ -1253,6 +1302,7 @@ func TestCopilotSpawnMapsGateModel(t *testing.T) {
 		{"haiku", []string{"--model", "claude-haiku-4.5"}, false},
 		{"opus", nil, true},
 		{"gpt-5.4", []string{"--model", "gpt-5.4"}, false},
+		{"openai:gpt-6-luna", nil, false}, // t-ef27: gates only, the session uses Copilot's default
 	} {
 		t.Run(tc.gate, func(t *testing.T) {
 			bin, argvFile, _ := fakeSprint(t)

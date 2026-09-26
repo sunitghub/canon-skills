@@ -39,7 +39,7 @@ ok() {
 }
 
 # Explode the fixtures into a TSV of (name, plan-file, expected-parse,
-# expected-resolve). Tab-delimited, not NUL: bash silently drops NUL bytes, which
+# expected-resolve). Delimited by 0x1f (not tab: tab is IFS whitespace, so bash collapses empty fields), not NUL: bash silently drops NUL bytes, which
 # collapses the record into one field and quietly skips every case but the first.
 # Each plan body goes to its own file, so its newlines never reach this table.
 python3 - "$FIXTURES" "$TMP" <<'PY'
@@ -49,19 +49,23 @@ cases = json.load(open(fixtures))["cases"]
 out = []
 for i, c in enumerate(cases):
     (tmp / f"plan{i}.md").write_text(c["plan"])
-    assert not any("\t" in c[k] for k in ("name", "parse", "expect")), c["name"]
-    out.append("\t".join([c["name"], str(tmp / f"plan{i}.md"), c["parse"], c["expect"]]))
+    assert not any("\x1f" in c[k] for k in ("name", "parse", "expect")), c["name"]
+    out.append("\x1f".join([c["name"], str(tmp / f"plan{i}.md"), c["parse"], c["expect"], str(c.get("status", ""))]))
 (tmp / "records").write_text("\n".join(out) + "\n")
 PY
 
 count=0
-while IFS=$'\t' read -r name plan want_parse want_resolve; do
+while IFS=$'\x1f' read -r name plan want_parse want_resolve want_status; do
   got_parse="$(gate_model_parse "$plan")"
   ok "parse: $name" "$got_parse" "$want_parse"
   # gate_model_resolve exits 2 on a present-but-invalid value; that is a pass when the
   # fixture expects no model, since "rejected" and "absent" both mean no --model flag.
-  got_resolve="$(gate_model_resolve "$plan" 2>/dev/null)" || got_resolve=""
+  status=0
+  got_resolve="$(gate_model_resolve "$plan" 2>/dev/null)" || status=$?
   ok "resolve: $name" "$got_resolve" "$want_resolve"
+  # Optional per-case exit status (t-ef27): "rejected" and "valid, no model" both print
+  # nothing, so only the exit code tells a valid `openai:<id>` from an invalid one.
+  [[ -z "$want_status" ]] || ok "resolve status: $name" "$status" "$want_status"
   count=$((count + 1))
 done < "$TMP/records"
 

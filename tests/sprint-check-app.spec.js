@@ -1861,6 +1861,75 @@ test.describe('board modal', () => {
     }
   });
 
+  test('Gate model dropdown offers registry OpenAI models as openai:<id> and writes the pick to plan.md (t-ef27)', async ({ page }) => {
+    const id = `t-g${Date.now().toString(36).slice(-3)}`;   // valid t-xxxx shape: the demo toggle POSTs to /api/ticket/<id>/demo
+    const planPath = path.join(PROJECT_ROOT, '.tickets', id, 'plan.md');
+    try {
+      const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
+      fs.mkdirSync(path.join(ticketDir), { recursive: true });
+      fs.writeFileSync(path.join(ticketDir, 'ticket.md'), ['---', `id: ${id}`, 'status: in_progress', 'type: task', 'priority: 2', 'demo: true', 'created: 2026-09-26T00:00:00Z', '---', '', '# OpenAI gate model option', ''].join('\n'));
+      fs.writeFileSync(planPath, ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [x] Plan approved', '', '## Approach', 'x', ''].join('\n'));
+      await page.route('**/api/admin/model-tiers', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          defaults: { eval: { anthropic: 'claude-sonnet-5', openai: 'gpt-6-luna' }, light: {} },
+          models: {
+            anthropic: [{ id: 'claude-haiku-4-5-20251001', alias: 'haiku', name: 'Claude Haiku 4.5' }, { id: 'claude-sonnet-5', alias: 'sonnet', name: 'Claude Sonnet 5' }],
+            openai: [{ id: 'gpt-6-luna', name: 'GPT-6 Luna' }, { id: '--evil', name: 'Hostile' }],
+          },
+        }),
+      }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"]`).click();
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+
+      const select = page.locator('.model-tier-select');
+      await expect(select).toBeEnabled();
+      // OpenAI registry entry is listed with the provider-carrying value and label;
+      // a registry id that would fail the resolvers' charset guard is never offered.
+      const luna = select.locator('option[value="openai:gpt-6-luna"]');
+      await expect(luna).toHaveText('GPT-6 Luna (OpenAI · Copilot gates only)');
+      await expect(select.locator('option[value="openai:--evil"]')).toHaveCount(0);
+      // Anthropic options and Default are unchanged.
+      await expect(select.locator('option[value="haiku"]')).toHaveText('Claude Haiku 4.5');
+      await expect(select.locator('option[value="default"]')).toHaveText('Default');
+
+      await select.selectOption('openai:gpt-6-luna');
+      await expect.poll(() => fs.readFileSync(planPath, 'utf8')).toContain('Tier: normal | Risk: fixture | Gate model: openai:gpt-6-luna');
+      await expect(select).toHaveValue('openai:gpt-6-luna');   // recognized after the re-render, not shown as a hand-edit
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+        const dir = path.join(PROJECT_ROOT, '.tickets', 't-ef27', 'visuals');
+        fs.mkdirSync(dir, { recursive: true });
+        await page.locator('.model-tier-select').locator('xpath=..').screenshot({ path: path.join(dir, `gate-model-openai-${theme}.png`) });
+      }
+
+      // Demo is on (frontmatter): an explicit model replaces the forced-Haiku evaluator, and the Plan tab says so.
+      const hint = page.locator('.model-tier-demo-hint');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✓');
+      await expect(hint).toHaveText('Replaces Demo’s Haiku');
+      await expect(hint).toHaveAttribute('title', /Copilot CLI/);
+      await select.selectOption('haiku');
+      await expect.poll(() => fs.readFileSync(planPath, 'utf8')).toContain('Gate model: haiku');
+      await expect(hint).toHaveAttribute('title', /overrides that/);
+      await expect(hint).not.toHaveAttribute('title', /Copilot CLI/);
+      await select.selectOption('default');
+      await expect.poll(() => fs.readFileSync(planPath, 'utf8')).not.toContain('Gate model');
+      await expect(hint).toHaveCount(0);   // Default = no override, nothing to warn about
+      // With demo off there is nothing to override either.
+      await select.selectOption('haiku');
+      await expect(hint).toHaveText('Replaces Demo’s Haiku');
+      await page.locator('.signoff-demo-toggle').click();
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✗');
+      await expect(hint).toHaveCount(0);
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('signoff Tier dropdown renders bugfix as a first-class option', async ({ page }) => {
     const id = `t-signoff-tier-bugfix-${Date.now()}`;
 
@@ -2059,7 +2128,7 @@ test.describe('board modal', () => {
       await page.locator('.doc-tab', { hasText: 'Plan' }).click();
 
       const toggle = page.locator('.signoff-demo-toggle');
-      await expect(toggle).toHaveText('Demo/Docs/UX ✗');
+      await expect(toggle).toHaveText('Demo/UX ✗');
       await expect(toggle).not.toHaveClass(/active/);
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
 
@@ -2068,7 +2137,7 @@ test.describe('board modal', () => {
       await expect.poll(() =>
         fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8')
       ).toMatch(/^demo: true$/m);
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/Docs/UX ✓');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✓');
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toBeVisible();
 
       // Toggle OFF → demo line removed, badge gone
@@ -2076,7 +2145,7 @@ test.describe('board modal', () => {
       await expect.poll(() =>
         /^demo:/m.test(fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8'))
       ).toBe(false);
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/Docs/UX ✗');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✗');
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
     } finally {
       if (id) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
@@ -4815,10 +4884,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // Demo toggle: a refused change leaves it showing the saved (off) state.
     await page.locator('.doc-tab', { hasText: 'Plan' }).click();
     const demo = page.locator('.signoff-demo-toggle');
-    await expect(demo).toHaveText('Demo/Docs/UX ✗');
+    await expect(demo).toHaveText('Demo/UX ✗');
     await demo.click();
-    await expect(toast).toContainText("Couldn't change Demo/Docs/UX: HTTP 403");
-    await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/Docs/UX ✗');
+    await expect(toast).toContainText("Couldn't change Demo/UX: HTTP 403");
+    await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✗');
     // Sign-off tier: a refused change re-renders to the saved value.
     const tier = page.locator('.signoff-controls select').first();
     await expect(tier).toHaveValue('normal');
@@ -7919,7 +7988,7 @@ test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
     await expect(page.locator('#view-admin')).toHaveClass(/active/);
-    await expect(page.locator('.mt-banner')).toContainText('not yet dispatched');
+    await expect(page.locator('.mt-banner')).toContainText('Gate model: openai:<id>');   // t-ef27: was 'not yet dispatched'
     await expect(page.locator('.mt-banner')).toContainText('OpenAI');
     // default pickers: one row per tier, each offering both providers
     await expect(page.locator('#mt-default-eval .mt-picker')).toHaveCount(2);

@@ -143,13 +143,29 @@ Opus` default, scoped only to the two close-gate dispatches below.
 
 - **Explicit Gate model override wins — check first.** Read `plan.md`'s `## Sign-off` line
   for a `| Gate model: <value>` segment. Valid `<value>`s (case-insensitive): a model id
-  (`haiku`, `sonnet`, `opus`), or literal `session` to force full session-model review — no
-  separate `auto`; omitting the field already means automatic. Set only by a live user
+  (`haiku`, `sonnet`, `opus`), literal `session` to force full session-model review, or
+  `openai:<id>` (below) — no separate `auto`; omitting the field already means automatic. Set only by a live user
   instruction ("run review/eval on haiku") or manual edit — never inferred or asserted by
   the dispatching agent itself. If asked verbally and the field isn't in `plan.md` yet, write it
   immediately, before continuing — so a compaction between ask and dispatch doesn't lose
   it. If present, skip the checks below and jump to **Apply the result** with this
   value. If absent, fall through.
+- **`Gate model: openai:<id>` — a per-ticket OpenAI pick, Copilot CLI only (`t-ef27`).** Set from the
+  board's Plan tab (registry OpenAI entries) or by hand; the id follows the same charset rule as any
+  model id. It runs the **close gates only** — the session itself stays on the harness default, and
+  `sprint-headless`/the cockpit spawn treat it as no `--model` (with a notice). Apply it by harness:
+  - **Copilot CLI** (the dispatch tool is Copilot's `task`, not Claude Code's `Agent`): dispatch both gates
+    with `model: <id>` (Copilot's own id for it, e.g. `gpt-6-luna`), recording
+    `(model: <id> — Gate model override, OpenAI)`. If Copilot rejects the id — or the id is absent from
+    Copilot's own model list, since a dispatch that returns without an error is not proof the model ran
+    (live-observed, `t-ef27`) — treat it as unavailable (below); never try another OpenAI model or version.
+  - **Fallback — loud, never a stop or a dispatch error:** if Copilot rejects the id, or the close runs in
+    Claude Code or pi (which can't dispatch a non-Anthropic model), run both gates on the normal chain
+    below (demo → Admin Anthropic default → definition floor) and record
+    `(model: <alias> — fallback: openai:<id> unavailable in Copilot)` or
+    `(model: <alias> — fallback: openai:<id> needs Copilot CLI)`. This recorded switch is the one explicit
+    exception to the Copilot note's "never silently switch families" — an OpenAI pick is a deliberate
+    cross-family choice, so it is announced, not silent.
 - **Demo mode forces Haiku (evaluator only).** If `ticket.md` has `demo: true` and `plan.md`
   has **no** explicit `Gate model:` value, apply `model: "haiku"` to the **binding evaluator
   dispatch** — same effect as writing `Gate model: haiku`, without needing to edit `plan.md`.
@@ -192,7 +208,9 @@ Opus` default, scoped only to the two close-gate dispatches below.
   applies (`claude-sonnet-5`; the session model only on the `Plan` fallback). Check once; both gates share the result — their verdicts (YES/NO, pass/fail) stay
   separate from this check. **Name the source, not just the value**, wherever this result is
   recorded (Wrapup Gates table, `summary.md`) — `Admin Review & Eval default`, `Gate model
-  override` (including `Gate model: session`, recorded as `Gate model override — session`), `demo
+  override` (including `Gate model: session`, recorded as `Gate model override — session`, and
+  `Gate model: openai:<id>` under Copilot, recorded as `Gate model override, OpenAI`; its fallback is
+  recorded as `fallback: openai:<id> <reason>`), `demo
   mode`, `definition floor` (the fail-safe fallthrough; `session` on the `Plan` fallback) — so a later reader can tell an admin-wide setting from a
   per-ticket decision, the same loudness convention `Gate model:`/`demo` already follow.
 - **The dispatch stays mandatory at every tier** — this check only picks the model, never
@@ -210,7 +228,8 @@ Opus` default, scoped only to the two close-gate dispatches below.
   model id** for the resolved tier instead: `sonnet` → `claude-sonnet-5`, `haiku` (demo mode) →
   `claude-haiku-4.5`. Copilot's ids can differ from the Admin registry's Anthropic ids, so don't copy the
   registry id blindly. If Copilot still rejects the id, its error lists the available ids: pick the
-  **same family and version**, never silently switch families, and record the id actually used on the
+  **same family and version**, never silently switch families (the one exception is a per-ticket
+  `openai:<id>` pick, an explicit and recorded family switch — see above), and record the id actually used on the
   gate's Wrapup Gates row. The definitions' own `model: claude-sonnet-5` floor is valid in both harnesses,
   and their `tools:` list carries `execute` (Copilot's shell) next to `Bash` (Claude Code's). Verified
   live on Windows: with `Bash` alone, the Copilot evaluator had no shell and couldn't produce a real

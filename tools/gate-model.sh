@@ -43,6 +43,18 @@ gate_model_resolve() {
   local plan="$1" v
   v="$(gate_model_parse "$plan")"
   [[ -z "$v" || "$v" == "session" || "$v" == "default" ]] && return 0
+  # `openai:<id>` (t-ef27) picks an OpenAI model for the CLOSE GATES under Copilot CLI
+  # (complete.md). It is never a claude/copilot `--model` for this run, so it resolves
+  # to no override — same as `session` — after the same charset guard on the id.
+  if [[ "$v" == openai:* ]]; then
+    local oid="${v#openai:}"
+    if [[ ! "$oid" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+      echo "Error: Gate model '$v' in $plan ## Sign-off is invalid (openai:<id> — the id must start with a letter or digit; letters, digits, '.', '_', '-' only)." >&2
+      return 2
+    fi
+    echo "Note: Gate model '$v' applies to Copilot CLI close gates only; this run uses the CLI's default model." >&2
+    return 0
+  fi
   # Must START with a letter or digit, not just consist of the allowed charset.
   # `-` is legal inside a model id (claude-sonnet-5) but a LEADING one makes the
   # value a flag: `--model --dangerously-skip-permissions` hands the CLI a second

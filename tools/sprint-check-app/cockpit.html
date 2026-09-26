@@ -520,10 +520,11 @@
               <div class="slabel">Model Tiers</div>
               <div class="mt-banner">
                 <span>&#9888;</span>
-                <span><b>Metadata only, for now.</b> Anthropic picks are honored by Claude Code's
-                  close-gate dispatch. OpenAI picks are recorded here but <b>not yet dispatched</b>
-                  &mdash; canon has no live-verified path from a saved pick to a running Codex
-                  session (see <code>t-ef27</code>).</span>
+                <span><b>OpenAI runs per ticket.</b> Anthropic picks are honored by Claude Code's
+                  close-gate dispatch. An OpenAI model runs the close gates under Copilot CLI only
+                  when a ticket sets <code>Gate model: openai:&lt;id&gt;</code> (Plan tab); the
+                  OpenAI defaults below are still recorded only, and Codex has no dispatch path
+                  (see <code>t-ef27</code>).</span>
               </div>
               <div class="mt-defaults">
                 <div class="mt-default-card">
@@ -1452,8 +1453,9 @@
   // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
   // Board-wide registry (not per-project, not daemon state) backing this
   // panel and the per-ticket Gate-model dropdown in app.html. Anthropic
-  // picks are dispatched today (Claude Code); OpenAI picks are recorded only
-  // — see the mt-banner text and t-ef27.
+  // picks are dispatched by Claude Code; an OpenAI model runs close gates under
+  // Copilot CLI only via a per-ticket `Gate model: openai:<id>` (t-ef27) — the
+  // OpenAI defaults here stay recorded only. See the mt-banner text.
   let mtData=null, mtProvider='anthropic';
   const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
 
@@ -1493,7 +1495,7 @@
         const models=mtData.models[prov]||[];
         const cur=(mtData.defaults[tier]||{})[prov]||'';
         const opts=models.map(m=>`<option value="${escAttr(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('');
-        return `<div class="mt-picker"><select data-tier="${tier}" data-prov="${prov}" onchange="mtSetDefault(this)">${opts}</select><span class="mt-prov">${prov}${prov==='openai'?' · inert':''}</span></div>`;
+        return `<div class="mt-picker"><select data-tier="${tier}" data-prov="${prov}" onchange="mtSetDefault(this)">${opts}</select><span class="mt-prov">${prov}${prov==='openai'?' · per-ticket':''}</span></div>`;
       }).join('');
     });
     // Provider tabs

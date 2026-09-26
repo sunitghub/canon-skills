@@ -430,6 +430,21 @@ out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-md
 assert_contains "$out" "is invalid"
 [[ -s "$CAP_ARGS" ]] && fail "sprint-headless model test: claude was invoked despite an invalid Gate model"
 
+# 14d2. t-ef27: openai:<id> is a close-gate pick for Copilot CLI, never a claude -p
+# --model — dispatch proceeds on claude's default and says so.
+write_plan 'Tier: normal | Risk: fixture | Gate model: openai:gpt-6-luna'
+: > "$CAP_ARGS"
+out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_ok "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD 2>&1)"
+assert_no_model_arg
+assert_contains "$out" "Copilot CLI close gates only"
+
+# 14d3. t-ef27: a malformed id after the prefix still hard-fails before claude runs.
+write_plan 'Tier: normal | Risk: fixture | Gate model: openai:--x'
+: > "$CAP_ARGS"
+out="$(cd "$WORK" && PATH="$STUB_CAP_DIR:$PATH" run_fail "$SPRINT_HEADLESS" t-mdl1 --base-ref HEAD)"
+assert_contains "$out" "is invalid"
+[[ -s "$CAP_ARGS" ]] && fail "sprint-headless model test: claude was invoked despite an invalid openai: Gate model"
+
 # 14e. sprint-headless-eval --model haiku → --model haiku reaches claude
 mkdir -p "$WORK/specs"
 cat > "$WORK/specs/x.md" <<'EOF'

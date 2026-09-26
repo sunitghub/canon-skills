@@ -2265,7 +2265,7 @@
           <button class="create-pill" id="c-ci" type="button" title="Mark ticket CI-eligible for headless grading">CI</button>
           <button class="create-pill" id="c-gate-eval" type="button" title="Eval-only headless gate: the run button uses sprint-headless-eval (evaluator only) instead of the full pipeline. Requires CI.">Eval-only</button>
           <button class="create-pill" id="c-eval-override" type="button" title="Allow closing even if evaluator reports partial/fail">Eval Override</button>
-          <button class="create-pill" id="c-demo" type="button" title="Demo/Docs/UX light-close: for live demos AND docs/research/UX-mockup (.md/.pen) work — sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.">Demo/Docs/UX</button>
+          <button class="create-pill" id="c-demo" type="button" title="Demo/Docs/UX light-close: for live demos AND docs/research/UX-mockup (.md/.pen) work — sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.">Demo/UX</button>
         </div>
       </div>
       <div class="editor-toolbar open" id="c-editor-toolbar">
@@ -4078,8 +4078,9 @@ function injectSectionJumps(container) {
 // Admin-owned registry's Anthropic ids. Only Anthropic is listed here: this
 // dropdown feeds parseGateModel/withGateModel below, whose only real consumers
 // (interactive sprint complete, sprint-headless) are Claude-Code-only — see
-// DECISIONS.md 2026-07-27 (t-4003). OpenAI entries exist in the registry but are
-// not yet dispatchable (t-ef27), so they're deliberately excluded from this list.
+// DECISIONS.md 2026-07-27 (t-4003). t-ef27: registry OpenAI entries are appended as
+// `openai:<id>` — a per-ticket pick that runs the close gates under Copilot CLI only
+// (never the session), so the value carries the provider without a registry lookup.
 let MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
 let MODEL_TIER_LABELS = {};
 (async () => {
@@ -4094,6 +4095,14 @@ let MODEL_TIER_LABELS = {};
     if (aliased.length) {
       MODEL_TIER_OPTIONS = ['default', ...aliased.map(m => m.alias)];
       MODEL_TIER_LABELS = Object.fromEntries(aliased.map(m => [m.alias, m.name]));
+    }
+    // Same charset rule as the resolvers (tools/gate-model.sh): a registry id that
+    // wouldn't survive them is never offered, so the dropdown can't write an invalid value.
+    const openai = ((reg.models && reg.models.openai) || []).filter(m => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m.id || ''));
+    for (const m of openai) {
+      const v = 'openai:' + m.id.toLowerCase();
+      MODEL_TIER_OPTIONS = [...MODEL_TIER_OPTIONS, v];
+      MODEL_TIER_LABELS[v] = `${m.name || m.id} (OpenAI · Copilot gates only)`;
     }
   } catch { /* keep fallback */ }
 })();
@@ -4270,6 +4279,18 @@ function injectSignoffControls(container, content, t) {
   note.title = 'Codex’s sub-agent spawn tools have no per-agent model field, so this override is Claude-Code-only.';
   wrap.appendChild(note);
 
+  // t-ef27: an explicit Gate model beats demo mode's forced-Haiku evaluator (complete.md
+  // precedence), so say so — a demo ticket with a costlier pick is deliberate, not a surprise.
+  if (String(t.demo) === 'true' && recognized && currentLower !== 'default') {
+    const hint = document.createElement('span');
+    hint.className = 'model-tier-note model-tier-demo-hint';
+    hint.textContent = 'Replaces Demo’s Haiku';   // short: this row is already tight (full text in the title)
+    hint.style.whiteSpace = 'nowrap';
+    hint.title = 'Demo/UX is on, which normally forces a Haiku evaluator. An explicit Gate model overrides that, so this ticket’s gate runs on the model you picked.'
+      + (currentLower.startsWith('openai:') ? ' An OpenAI pick only applies under Copilot CLI; elsewhere the gate falls back to Haiku.' : '');
+    wrap.appendChild(hint);
+  }
+
   // ── Demo toggle (t-64a0) ─────────────────────────────────────────────
   // Unlike Tier/Risk/Model (which edit plan.md prose), this edits the `demo`
   // FRONTMATTER boolean via POST /api/ticket/<id>/demo, then updates t.demo +
@@ -4278,7 +4299,7 @@ function injectSignoffControls(container, content, t) {
   const demoBtn = document.createElement('button');
   demoBtn.type = 'button';
   demoBtn.className = 'signoff-demo-toggle' + (demoOn ? ' active' : '');
-  demoBtn.textContent = demoOn ? 'Demo/Docs/UX ✓' : 'Demo/Docs/UX ✗';
+  demoBtn.textContent = demoOn ? 'Demo/UX ✓' : 'Demo/UX ✗';
   // t-e78b follow-up: the demo flag lives in MAIN's ticket.md frontmatter, not the live
   // worktree plan.md, so only a closed ticket locks it (reviewer finding).
   const demoLocked = t.status === 'closed' || t.status === 'cancelled';
@@ -4290,7 +4311,7 @@ function injectSignoffControls(container, content, t) {
     const next = String(t.demo) !== 'true';
     demoBtn.disabled = true;
     try {
-      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/Docs/UX');
+      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/UX');
       if (res.ok) t.demo = next ? 'true' : 'false';
     } finally {
       renderBoard();
