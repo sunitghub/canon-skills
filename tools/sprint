@@ -489,7 +489,7 @@ _gate_review_notes_shape() {
   lower="$(printf '%s' "$cf" | tr '[:upper:]' '[:lower:]')"
   if [[ -z "$cf" ]]; then
     problems+=$'\n  - no `Changed files:` line'
-  elif [[ "$lower" =~ ^(none|n/a|na|empty|-) ]] || ! [[ "$cf" =~ [[:alnum:]_-]+[./][[:alnum:]_.-]+ ]]; then
+  elif [[ "$lower" =~ ^(none|n/a|na|empty|-)([^[:alnum:]_./-]|$) ]] || ! [[ "$cf" =~ [[:alnum:]_-]+[./][[:alnum:]_.-]+ ]]; then
     problems+=$'\n  - `Changed files:` lists no path (an empty diff usually means a wrong base ref)'
   fi
   for label in "${REVIEW_CONCERNS[@]}"; do
@@ -501,7 +501,7 @@ _gate_review_notes_shape() {
     while IFS= read -r val; do
       [[ -n "${val//[[:space:]]/}" ]] || continue
       lower="$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')"
-      if [[ "$lower" =~ ^none ]] && { ! [[ "$lower" =~ checked ]] || ! [[ "$val" =~ [^[:space:]]+:[0-9]+ ]]; }; then
+      if [[ "$lower" =~ ^none([^[:alnum:]_]|$) ]] && { ! [[ "$lower" =~ checked ]] || ! [[ "$val" =~ [^[:space:]]+:[0-9]+ ]]; }; then
         problems+=$'\n  - the "'"$label"'" `none` line must say what was checked and cite a file:line'
       fi
     done <<< "$vals"

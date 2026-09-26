@@ -230,7 +230,7 @@ assert_contains "$shape_out" "nothing to distill"
 shape2_id="$("$TKT" create "Per-concern one finding")"
 cp ".tickets/$shape_id/summary.md" ".tickets/$shape2_id/summary.md"
 cp ".tickets/$shape_id/eval-report.md" ".tickets/$shape2_id/eval-report.md"
-sed 's|^Dead code: none.*|Dead code: tools/tkt:730 — orphaned awk variable [severity: low · confidence: med]|; s|^## Verdict|## Verdict|; s|^YES$|NO|' ".tickets/$shape_id/review-notes.md" > ".tickets/$shape2_id/review-notes.md"
+sed 's|^Dead code: none.*|Dead code: tools/tkt:730 — orphaned awk variable [severity: low · confidence: med]|; s|^YES$|NO|' ".tickets/$shape_id/review-notes.md" > ".tickets/$shape2_id/review-notes.md"
 "$TKT" learn "$shape2_id" >/dev/null
 shape2_cand="$(cat ".tickets/$shape2_id/learnings.md")"
 assert_contains "$shape2_cand" "orphaned awk variable"

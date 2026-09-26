@@ -633,14 +633,23 @@ assert_contains "$empty_output" 'lists no path'
 good_review "tools/sprint, tests/sprint.sh" "none"
 uncited_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$uncited_output" 'the "Scope creep" `none` line must say what was checked'
+# each half of the `none` requirement is enforced alone: a citation with no `checked`, and `checked` with no citation
+good_review "tools/sprint, tests/sprint.sh" "none, tools/sprint:12"
+nocheck_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$nocheck_output" 'the "Scope creep" `none` line must say what was checked'
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff"
+nocite_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$nocite_output" 'the "Scope creep" `none` line must say what was checked'
 # a missing concern line names the concern
 good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
 grep -v '^Dead code:' ".tickets/$model_id/review-notes.md" > ".tickets/$model_id/rn.tmp" && mv ".tickets/$model_id/rn.tmp" ".tickets/$model_id/review-notes.md"
 missing_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_output" 'no line for the "Dead code" concern'
 
-# a fully-formed report — one real finding, the rest checked-none — satisfies both gates → closes
-good_review "tools/sprint, tests/sprint.sh" "tools/sprint:470 — orphaned variable [severity: low · confidence: med]"
+# a fully-formed report — one real finding, the rest checked-none — satisfies both gates → closes.
+# The paths merely START with n/na/empty (native/, empty-state.js) and the finding starts with
+# "none" as a prefix (nonexistent…): neither may be read as an empty diff or an uncited none.
+good_review "native/foo.c, empty-state.js" "nonexistent helper referenced, tools/sprint:12 [severity: low · confidence: med]"
 model_complete_output="$("$SPRINT" complete)"
 assert_contains "$model_complete_output" "Sprint completed: $model_id"
 assert_grep "^status: closed$" ".tickets/$model_id/ticket.md"
