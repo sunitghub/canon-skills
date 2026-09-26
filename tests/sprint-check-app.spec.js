@@ -1861,6 +1861,78 @@ test.describe('board modal', () => {
     }
   });
 
+  // t-8c73: overlapping renderModalBody calls each injected their own .section-jumps bar and
+  // Sign-off controls once their fetch resolved, so .model-tier-select resolved to 2 elements
+  // (the flake behind two tests). Renders are now idempotent and a stale one is ignored.
+  async function openPlanTabFor(page, id) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, 'status: in_progress', 'type: task', 'priority: 2', 'created: 2026-09-26T00:00:00Z', '---', '', '# Overlapping renders', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [x] Plan approved', '', '## Approach', 'plan-only-marker', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', `Ticket: \`${id}\``, '', '## Criteria', '- [ ] acceptance-only-marker', '', '## Test Plan', '- [ ] x', '', '## QA', '- [ ] Tested locally', ''].join('\n'));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+  }
+
+  // Serve the ticket's docs straight from disk so the timing under test is the render's, not a
+  // busy single-threaded server's (the stress runs put four workers on one). `hold(name)` delays
+  // that doc's FIRST response until released.
+  async function serveDocsFromDisk(page, hold) {
+    const held = {};
+    await page.route(/\/api\/doc\/[^?]+/, async route => {
+      const name = decodeURIComponent(new URL(route.request().url()).pathname.replace('/api/doc/', ''));
+      if (route.request().method() !== 'GET') return route.fallback();
+      const file = path.join(PROJECT_ROOT, '.tickets', name);
+      if (!fs.existsSync(file)) return route.fallback();
+      if (hold && name.endsWith(hold.file) && !held[name]) { held[name] = true; await hold.gate; }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: fs.readFileSync(file, 'utf8') }) });
+    });
+  }
+
+  test('overlapping renders leave exactly one Sign-off control set (t-8c73)', async ({ page }) => {
+    const id = `t-h${Date.now().toString(36).slice(-3)}`;
+    try {
+      await serveDocsFromDisk(page);
+      await openPlanTabFor(page, id);
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('.model-tier-select')).toHaveCount(1);
+      // Three renders in one tick: all pass the synchronous bar-clear before any fetch resolves.
+      await page.evaluate(() => { const t = state.tickets.find(x => x.id === state.selectedId); renderModalBody(t); renderModalBody(t); renderModalBody(t); });
+      await expect(page.locator('#m-body')).toContainText('plan-only-marker');
+      await page.waitForTimeout(500);   // let every in-flight fetch settle before counting
+      await expect(page.locator('.section-jumps')).toHaveCount(1);
+      await expect(page.locator('.signoff-controls')).toHaveCount(1);
+      await expect(page.locator('.model-tier-select')).toHaveCount(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a stale doc response never overwrites a newer render (t-8c73)', async ({ page }) => {
+    const id = `t-h${Date.now().toString(36).slice(-3)}`;
+    try {
+      // Hold the FIRST plan.md fetch; the user then switches to Acceptance; the held response lands last.
+      let release;
+      const gate = new Promise(r => { release = r; });
+      await serveDocsFromDisk(page, { file: 'plan.md', gate });
+      await openPlanTabFor(page, id);
+      await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+      await page.locator('.doc-tab', { hasText: 'Acceptance' }).click();
+      await expect(page.locator('#m-body')).toContainText('acceptance-only-marker');
+      release();
+      await page.waitForTimeout(700);
+      // The stale plan response was ignored: still Acceptance, no plan controls injected.
+      await expect(page.locator('#m-body')).toContainText('acceptance-only-marker');
+      await expect(page.locator('#m-body')).not.toContainText('plan-only-marker');
+      await expect(page.locator('.signoff-controls')).toHaveCount(0);
+    } finally {
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('signoff Tier dropdown renders bugfix as a first-class option', async ({ page }) => {
     const id = `t-signoff-tier-bugfix-${Date.now()}`;
 

@@ -3782,7 +3782,7 @@ function findTicketById(id) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-const modalState = { editMode: false, activeDoc: null };
+const modalState = { editMode: false, activeDoc: null, renderSeq: 0 };
 
 function openModal(id) {
   const t = findTicketById(id);
@@ -4069,7 +4069,10 @@ function injectSectionJumps(container) {
       container.querySelector('#' + a.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   });
-  // Insert before the content box so sticky works within the scroll container (.modal-body)
+  // Insert before the content box so sticky works within the scroll container (.modal-body).
+  // t-8c73: replace any bar already there — overlapping renders each reach this point after
+  // their own fetch, and a second bar carries a second set of Sign-off controls.
+  container.parentNode.querySelectorAll('.section-jumps').forEach(el => el.remove());
   container.parentNode.insertBefore(bar, container);
 }
 
@@ -4162,6 +4165,7 @@ function withSignoffBase(content, tier, risk) {
 function injectSignoffControls(container, content, t) {
   const bar = container.parentNode.querySelector('.section-jumps');
   if (!bar) return;
+  bar.querySelectorAll('.signoff-controls').forEach(el => el.remove());   // t-8c73: never two control sets in one bar
 
   // t-e78b: a live worktree plan.md is owned by the sprint session; these controls write plan.md.
   const locked = t.status === 'closed' || t.status === 'cancelled' || !!t.docs_from;
@@ -4310,6 +4314,10 @@ function renderModalBody(t) {
   editEl.style.display = 'none';
   bodyEl.style.display = '';
   bodyEl.parentNode.querySelectorAll('.section-jumps').forEach(el => el.remove());
+  // t-8c73: a newer render supersedes this one. Without this a slow doc fetch from an older
+  // render lands after a newer one and injects a second bar (two .model-tier-select) or
+  // overwrites the doc the user has since switched to.
+  const seq = ++modalState.renderSeq;
 
   if (!modalState.activeDoc) {
     const content = (t.body || '').trim();
@@ -4328,6 +4336,7 @@ function renderModalBody(t) {
     fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => {
+        if (seq !== modalState.renderSeq) return;   // t-8c73: superseded by a newer render
         if (!d.content) { bodyEl.innerHTML = '<span class="modal-empty">Empty doc.</span>'; return; }
         const slug = modalState.activeDoc ? docSlug(t, modalState.activeDoc) : '';
         let warning = '';
@@ -4361,7 +4370,7 @@ function renderModalBody(t) {
         hydrateFeatureRefs(bodyEl, t.id);
         if (slug === 'plan') injectSignoffControls(bodyEl, d.content, t);
       })
-      .catch(() => { bodyEl.innerHTML = '<span class="modal-empty">Could not load doc.</span>'; });
+      .catch(() => { if (seq === modalState.renderSeq) bodyEl.innerHTML = '<span class="modal-empty">Could not load doc.</span>'; });
   }
 }
 
