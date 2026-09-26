@@ -86,6 +86,8 @@ if command -v node >/dev/null 2>&1; then
   node "$ROOT/tests/sprint-check-handoff-state.js"
   printf '==> %s\n' "tests/sprint-check-status-badge.js"
   node "$ROOT/tests/sprint-check-status-badge.js"
+  printf '==> %s\n' "tests/sprint-check-api-scoping.js"
+  node "$ROOT/tests/sprint-check-api-scoping.js"
 else
   printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
 fi
