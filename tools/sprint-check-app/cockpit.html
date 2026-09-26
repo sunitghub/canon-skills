@@ -876,7 +876,8 @@
     openProject(proj.id,proj.name);
     const ifr=document.getElementById('view-'+proj.id).querySelector('iframe');
     const send=()=>{ try{ ifr.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-ticket',ticket:d.ticket}, location.origin); }catch(err){} };
-    // A just-created tab's iframe is still loading; its board's listener isn't up yet.
+    // A just-created tab's iframe is still loading; its board's listener isn't up yet. A fresh iframe
+    // reports readyState 'complete' for its initial about:blank, hence the href check.
     if(ifr.contentDocument&&ifr.contentDocument.readyState==='complete'&&ifr.contentWindow.location.href!=='about:blank') send();
     else ifr.addEventListener('load',send,{once:true});
   });

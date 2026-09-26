@@ -3226,9 +3226,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
       // Board side: open-ticket with a bad id / from a non-parent source never opens the overlay.
       await frame.evaluate(() => { window.postMessage({ source: 'canon-cockpit-shell', type: 'open-ticket', ticket: 't-zz2d' }, location.origin); });
-      await frame.evaluate(() => window.parent.postMessage({ source: 'canon-cockpit-shell', type: 'open-ticket', ticket: 'x"y' }, location.origin));
+      // From the shell into the tab's board (the real direction), with a hostile id and a valid-shape id that isn't a real ticket.
+      await page.evaluate(() => {
+        const w = document.querySelector('#view-proj-a iframe').contentWindow;
+        w.postMessage({ source: 'canon-cockpit-shell', type: 'open-ticket', ticket: 't-zz2d" onmouseover="x' }, location.origin);
+      });
       await page.waitForTimeout(400);
       await expect(board.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      // Positive control: the same channel with a valid id DOES open it, so the probes above really reach the guard.
+      await page.evaluate(id => document.querySelector('#view-proj-a iframe').contentWindow.postMessage({ source: 'canon-cockpit-shell', type: 'open-ticket', ticket: id }, location.origin), XID);
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
     });

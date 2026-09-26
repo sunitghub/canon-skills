@@ -3148,16 +3148,16 @@ function render() {
   refreshCockpitSessions();
 }
 
+// t-2d2e: same normalization for the row's "Main checkout" test and the
+// same-project test, so both agree on what "this project" means.
+const normProjectPath = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
 // t-391a: the "Cockpit sessions" panel lists active sessions across ALL projects
 // the one daemon serves (nebula's model — one daemon, many projects). Read-only
 // fetch of /api/cockpit-sessions (token-free, like /api/cockpit); clicking a row
 // opens/attaches that session in the cockpit overlay, where the tokened Kill /
 // Save & End live. No token-free kill is added — the board never holds the daemon
 // token (t-ddc8). Basename split uses [\\/] so a Windows project path renders too.
-// t-2d2e: same normalization for the row's "Main checkout" test and the
-// same-project test, so both agree on what "this project" means.
-const normProjectPath = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
 async function refreshCockpitSessions() {
   const panel = document.getElementById('cockpit-sessions');
   if (!panel) return;
