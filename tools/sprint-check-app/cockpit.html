@@ -857,6 +857,30 @@
     setTimeout(pollSessions, 800);
   }
 
+  // t-2d2e: a board's Cockpit-sessions row for ANOTHER project asks the shell to
+  // open that project's tab, then hands the ticket to that tab's board. Same-origin
+  // only, sender must be one of our tab iframes, and the ticket id shape is checked
+  // on both hops (the board re-checks before openCockpit).
+  const TICKET_ID_RE=/^t-[a-z0-9]{4}$/;
+  const _projKey=p=>String(p||'').replace(/\\/g,'/').replace(/\/+$/,'').toLowerCase();
+  window.addEventListener('message',function(e){
+    if(e.origin!==location.origin) return;
+    const d=e.data;
+    if(!d||d.source!=='canon-board'||d.type!=='open-session') return;
+    if(typeof d.ticket!=='string'||!TICKET_ID_RE.test(d.ticket)) return;
+    if(typeof d.project_root!=='string') return;
+    if(![...document.querySelectorAll('.view iframe')].some(f=>f.contentWindow===e.source)) return;
+    const want=_projKey(d.project_root);
+    const proj=(window._projects||[]).find(p=>_projKey(p.path)===want);
+    if(!proj){ toast('Project not registered: '+d.project_root); return; }
+    openProject(proj.id,proj.name);
+    const ifr=document.getElementById('view-'+proj.id).querySelector('iframe');
+    const send=()=>{ try{ ifr.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-ticket',ticket:d.ticket}, location.origin); }catch(err){} };
+    // A just-created tab's iframe is still loading; its board's listener isn't up yet.
+    if(ifr.contentDocument&&ifr.contentDocument.readyState==='complete'&&ifr.contentWindow.location.href!=='about:blank') send();
+    else ifr.addEventListener('load',send,{once:true});
+  });
+
   // Scoped refresh/close guard: prompt the browser's leave confirmation ONLY when
   // at least one open tab has a live agent session. With no live tab, refresh and
   // close stay seamless (never a blanket trap); tabs restore from localStorage.

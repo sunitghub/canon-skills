@@ -3154,6 +3154,10 @@ function render() {
 // opens/attaches that session in the cockpit overlay, where the tokened Kill /
 // Save & End live. No token-free kill is added — the board never holds the daemon
 // token (t-ddc8). Basename split uses [\\/] so a Windows project path renders too.
+// t-2d2e: same normalization for the row's "Main checkout" test and the
+// same-project test, so both agree on what "this project" means.
+const normProjectPath = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
 async function refreshCockpitSessions() {
   const panel = document.getElementById('cockpit-sessions');
   if (!panel) return;
@@ -3176,9 +3180,8 @@ async function refreshCockpitSessions() {
     // t-19d1: where the session actually runs — "Main checkout", or the worktree's folder — not
     // just the project root (a worktree session used to look like it ran in main).
     const cwd = String(s.cwd || '');
-    const norm = p => p.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-    const where = !cwd || norm(cwd) === norm(project) ? 'Main checkout' : cwd.split(/[\\/]/).filter(Boolean).pop();
-    return `<div class="cockpit-session-row" data-ticket="${escAttr(ticket)}" title="${escAttr(cwd || project)}">`
+    const where = !cwd || normProjectPath(cwd) === normProjectPath(project) ? 'Main checkout' : cwd.split(/[\\/]/).filter(Boolean).pop();
+    return `<div class="cockpit-session-row" data-ticket="${escAttr(ticket)}" data-project="${escAttr(project)}" title="${escAttr(cwd || project)}">`
       + `<span class="cs-ticket">${esc(ticket)}</span>`
       + `<span class="cs-project">${esc(project)}</span>`
       + `<span class="cs-where">${esc(where)}</span>`
@@ -3190,8 +3193,20 @@ async function refreshCockpitSessions() {
     + `<div class="cockpit-sessions-list">${rows}</div>`;
   panel.hidden = false;
   panel.querySelectorAll('.cockpit-session-row').forEach(row => {
-    row.addEventListener('click', () => openCockpit(row.dataset.ticket));
+    row.addEventListener('click', () => openSessionRow(row.dataset.ticket, row.dataset.project));
   });
+}
+
+// t-2d2e: a row from another project can't open here (the ticket isn't in this
+// board's list). Inside the Cockpit shell, hand it to the shell, which switches to
+// that project's tab; a standalone board has no shell, so say why nothing opens.
+function openSessionRow(ticket, project) {
+  if (!project || normProjectPath(project) === normProjectPath(state.gitRoot)) { openCockpit(ticket); return; }
+  if (window.parent !== window && COCKPIT_TICKET_ID.test(ticket)) {
+    window.parent.postMessage({ source: 'canon-board', type: 'open-session', project_root: project, ticket }, location.origin);
+    return;
+  }
+  showToast(`⚠ ${ticket} belongs to ${project} — open that project's board`, 'warn');
 }
 
 function renderHeader() {
@@ -5516,6 +5531,10 @@ window.addEventListener('message', (e) => {
   if (e.source !== window.parent) return;               // only our embedding shell
   const d = e.data;
   if (!d || d.source !== 'canon-cockpit-shell') return;
+  if (d.type === 'open-ticket') {                        // t-2d2e: shell routed a cross-project Sessions row here
+    if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
+    return;
+  }
   if (d.type !== 'save-and-end' && d.type !== 'end') return;
   if (!cockpitState) return;                            // t-8a2a: no active tab — nothing to end
   if (cockpitState._ending) return;                     // t-9eda: already ending — ckLeaveSaveAndEnd would no-op anyway
@@ -5523,6 +5542,13 @@ window.addEventListener('message', (e) => {
   openLeaveConfirm();                                   // reuse the vetted flow's state setup
   ckLeaveSaveAndEnd(d.type === 'end');                  // end === skip the save turn
 });
+
+// t-2d2e: a freshly opened project tab's ticket list loads after its iframe does.
+function openTicketWhenLoaded(ticket, tries) {
+  if (findTicketById(ticket)) { openCockpit(ticket); return; }
+  if (tries > 0) { setTimeout(() => openTicketWhenLoaded(ticket, tries - 1), 250); return; }
+  showToast(`⚠ ${ticket} not found in this project`, 'warn');
+}
 
 // t-bc04: ticket status badge (topbar #ck-status + rail #ck-tc-status), colored
 // to match the board's status columns (--col-* vars). Live-updates via the poll.

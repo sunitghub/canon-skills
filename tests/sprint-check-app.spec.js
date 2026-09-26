@@ -3104,7 +3104,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.route('**/api/cockpit-sessions', route => route.fulfill({
         status: 200, contentType: 'application/json',
         body: JSON.stringify([
-          { session: 's1', ticket: idA, project_root: '/Users/me/projA', cwd: '/Users/me/projA', agent: 'claude', status: 'running', started: '2026-09-10T00:00:00Z' },
+          { session: 's1', ticket: idA, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', started: '2026-09-10T00:00:00Z' },
           { session: 's2', ticket: 't-othr', project_root: 'C:\\Users\\me\\projB', cwd: 'C:\\Users\\me\\projB', agent: 'pi', status: 'needs-you', started: '2026-09-10T00:00:00Z' },
         ]),
       }));
@@ -3116,8 +3116,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(panel.locator('.cockpit-session-row')).toHaveCount(2);
       await expect(panel).toContainText(idA);
       // t-7ea8: the row shows the full project directory path, not just the basename.
-      await expect(panel).toContainText('/Users/me/projA');
-      await expect(panel).toContainText('projA');
+      await expect(panel).toContainText(PROJECT_ROOT);
       // Windows project path renders too (full path incl. basename).
       await expect(panel).toContainText('projB');
       await expect(panel.locator('.cs-status.needs-you')).toHaveText('needs-you');
@@ -3129,6 +3128,110 @@ test.describe('cockpit in board (t-ddc8)', () => {
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', idA), { recursive: true, force: true });
     }
+  });
+
+  // t-2d2e: a Sessions row for ANOTHER project must not silently no-op.
+  test.describe('cross-project Sessions row (t-2d2e)', () => {
+    const XID = 't-zz2d';
+    const sessionsBody = rows => route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) });
+    const row = (ticket, project_root) => ({ session: 's1', ticket, project_root, cwd: project_root, agent: 'claude', status: 'running', started: '2026-09-26T00:00:00Z' });
+
+    test('standalone board: cross-project row toasts the project and opens nothing', async ({ page }) => {
+      await stubCockpit(page);
+      await page.route('**/api/cockpit-sessions', sessionsBody([row(XID, '/tmp/other-proj')]));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator(`.cockpit-session-row[data-ticket="${XID}"]`).click();
+      await expect(page.locator('#drop-toast')).toContainText('/tmp/other-proj');
+      await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+    });
+
+    test('same-project row (slash/case/trailing-slash variants) posts nothing to the parent and opens the overlay', async ({ page }) => {
+      writeTicket(XID, 'in_progress');
+      try {
+        await stubCockpit(page);
+        const variant = PROJECT_ROOT.replace(/\/+$/, '').toUpperCase() + '/';
+        await page.route('**/api/cockpit-sessions', sessionsBody([row(XID, variant)]));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.evaluate(() => { window.__posted = 0; const o = window.parent.postMessage; window.parent.postMessage = (...a) => { window.__posted++; return o.apply(window.parent, a); }; });
+        await page.locator(`.cockpit-session-row[data-ticket="${XID}"]`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        expect(await page.evaluate(() => window.__posted)).toBe(0);
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+      }
+    });
+
+    // Shell page with two registered projects; proj-x's board serves THIS repo's real ticket list.
+    async function openShell(page, sessions) {
+      const projects = [
+        { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
+        { id: 'proj-x', path: 'C:\\Users\\me\\Proj-X', name: 'proj-x', description: '', added: '2026-09-26' },
+      ];
+      await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
+      await page.route('**/api/cockpit-sessions', sessionsBody(sessions));
+      // Neither project is real: serve each board this repo's own data so it loads.
+      await page.route(/\/api\/(tickets|handoff|git)(\?|$)/, async r => {
+        const u = new URL(r.request().url());
+        if (!['proj-a', 'proj-x'].includes(u.searchParams.get('project'))) return r.fallback();
+        const real = await page.request.get(BASE + u.pathname + (u.searchParams.get('all') ? '?all=1' : ''));
+        return r.fulfill({ status: real.status(), contentType: 'application/json', body: await real.text() });
+      });
+      await stubCockpit(page);
+      await page.goto(BASE + '/cockpit');
+      await page.waitForLoadState('networkidle');
+      await page.evaluate(() => openProject('proj-a', 'proj-a'));
+      return page.frameLocator('#view-proj-a iframe');
+    }
+
+    test('shell: cross-project row switches to the registered project tab and opens the cockpit there', async ({ page }) => {
+      writeTicket(XID, 'in_progress');
+      try {
+        const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/')]);
+        await board.locator(`.cockpit-session-row[data-ticket="${XID}"]`).click();
+        await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
+        await expect(page.frameLocator('#view-proj-x iframe').locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
+      } finally {
+        await page.unrouteAll({ behavior: 'ignoreErrors' });   // the 5s board poll may still be mid-route
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+      }
+    });
+
+    test('shell: a project that is not registered toasts its name and opens no tab', async ({ page }) => {
+      const board = await openShell(page, [row(XID, '/tmp/nowhere')]);
+      await board.locator(`.cockpit-session-row[data-ticket="${XID}"]`).click();
+      await expect(page.locator('#toast')).toContainText('/tmp/nowhere');
+      await expect(page.locator('#view-nowhere, #view-proj-x')).toHaveCount(0);
+    });
+
+    test('hostile open-session / open-ticket messages are inert', async ({ page }) => {
+      writeTicket(XID, 'in_progress');   // real ticket, so a wrongly-accepted open-ticket WOULD open the overlay
+      const board = await openShell(page, []);
+      const send = m => page.evaluate(m => { window.__pwned = 0; window.postMessage(m, location.origin); }, m);
+      const tabsBefore = await page.locator('.view').count();
+      // Sender is the shell page itself (not a tab iframe) → rejected even with a valid payload.
+      await send({ source: 'canon-board', type: 'open-session', project_root: 'C:\\Users\\me\\Proj-X', ticket: XID });
+      // Sender is a real tab iframe, but the payload is hostile.
+      const frame = page.frames().find(f => f.url().includes('project=proj-a'));
+      const hostile = [
+        { project_root: 'C:\\Users\\me\\Proj-X', ticket: 't-abcd" onmouseover="window.__pwned=1' },
+        { project_root: 'C:\\Users\\me\\Proj-X', ticket: { a: 1 } },
+        { project_root: '"><img src=x onerror=window.__pwned=1>', ticket: XID },
+        { project_root: ['C:\\Users\\me\\Proj-X'], ticket: XID },
+      ];
+      for (const h of hostile) await frame.evaluate(h => window.parent.postMessage({ source: 'canon-board', type: 'open-session', ...h }, location.origin), h);
+      await page.waitForTimeout(400);
+      expect(await page.locator('.view').count()).toBe(tabsBefore);
+      expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      // Board side: open-ticket with a bad id / from a non-parent source never opens the overlay.
+      await frame.evaluate(() => { window.postMessage({ source: 'canon-cockpit-shell', type: 'open-ticket', ticket: 't-zz2d' }, location.origin); });
+      await frame.evaluate(() => window.parent.postMessage({ source: 'canon-cockpit-shell', type: 'open-ticket', ticket: 'x"y' }, location.origin));
+      await page.waitForTimeout(400);
+      await expect(board.locator('#cockpit-overlay')).not.toHaveClass(/open/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+    });
   });
 
   test('collapse toggle is top-anchored + STATUS shows HANDOFF Next Steps (t-6ecc)', async ({ page }) => {
