@@ -191,6 +191,51 @@ clean_out="$("$TKT" learn "$clean_id")"
 assert_contains "$clean_out" "nothing to distill"
 [[ -f ".tickets/$clean_id/learnings.md" ]] && fail "tkt learn wrote a candidate for a clean sprint" || true
 
+# 3b. (t-de16) A review-notes.md in the per-concern shape whose five lines are all
+#     "none — checked …" is a clean pass: nothing to distill, the none lines are not findings.
+shape_id="$("$TKT" create "Per-concern all none")"
+cat > ".tickets/$shape_id/summary.md" <<'EOF'
+# Summary
+
+| Acceptance item | Status | Notes |
+|---|---|---|
+| Everything shipped | delivered | ok |
+EOF
+cat > ".tickets/$shape_id/eval-report.md" <<'EOF'
+evaluator-run-id: test-de16
+# Eval Report
+## Findings
+No findings.
+## Verdict
+pass: all good
+EOF
+cat > ".tickets/$shape_id/review-notes.md" <<'EOF'
+# Review Notes
+Model: test-model
+Changed files: tools/tkt, tests/tkt.sh
+## Findings
+Scope creep: none — checked plan.md Files vs diff, plan.md:20
+Visual regression: none — checked no UI files changed, tools/tkt:1
+Dead code: none — checked no orphaned code, tools/tkt:730
+Unnecessary complexity: none — checked one added rule, tools/tkt:731
+Standards violations: none — checked efficiency.md, tools/tkt:731
+## Verdict
+YES
+EOF
+shape_out="$("$TKT" learn "$shape_id")"
+assert_contains "$shape_out" "nothing to distill"
+[[ -f ".tickets/$shape_id/learnings.md" ]] && fail "tkt learn treated per-concern 'none — checked' lines as findings" || true
+
+# 3c. (t-de16) One real finding among four none lines: the candidate quotes only the finding.
+shape2_id="$("$TKT" create "Per-concern one finding")"
+cp ".tickets/$shape_id/summary.md" ".tickets/$shape2_id/summary.md"
+cp ".tickets/$shape_id/eval-report.md" ".tickets/$shape2_id/eval-report.md"
+sed 's|^Dead code: none.*|Dead code: tools/tkt:730 — orphaned awk variable [severity: low · confidence: med]|; s|^## Verdict|## Verdict|; s|^YES$|NO|' ".tickets/$shape_id/review-notes.md" > ".tickets/$shape2_id/review-notes.md"
+"$TKT" learn "$shape2_id" >/dev/null
+shape2_cand="$(cat ".tickets/$shape2_id/learnings.md")"
+assert_contains "$shape2_cand" "orphaned awk variable"
+if [[ "$shape2_cand" == *"none — checked"* ]]; then fail "tkt learn: a 'none — checked' line leaked into the candidate"; fi
+
 # 4. Usage error with no id.
 learn_usage="$(run_fail "$TKT" learn)"
 assert_contains "$learn_usage" "Usage: tkt learn <id> [--force]"

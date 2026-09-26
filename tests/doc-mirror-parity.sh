@@ -69,6 +69,18 @@ if [[ "$start_occurrences" -lt 2 ]]; then
   fail "doc-mirror-parity: start.md should have 2 occurrences of the Windows command -v fallback clause (steps 1 and 5), found $start_occurrences"
 fi
 
+# ── Check C3 (t-de16): the reviewer's concern labels have one owner — tools/sprint's
+# REVIEW_CONCERNS array, which _gate_review_notes_shape enforces at close. review.md's report
+# template must show each label, or a reviewer following it would be rejected at close.
+concerns_line="$(grep -m1 '^REVIEW_CONCERNS=' "$ROOT/tools/sprint")" || fail "doc-mirror-parity: tools/sprint has no REVIEW_CONCERNS array (t-de16)"
+concern_count=0
+while IFS= read -r label; do
+  [[ -n "$label" ]] || continue
+  concern_count=$((concern_count + 1))
+  grep -qF "$label:" "$ROOT/skills/sprint/reference/review.md" || fail "doc-mirror-parity: review.md's report template is missing the '$label:' concern line that tools/sprint requires at close (t-de16)"
+done < <(grep -oE '"[^"]+"' <<<"$concerns_line" | tr -d '"')
+[[ "$concern_count" -ge 5 ]] || fail "doc-mirror-parity: expected >= 5 review concern labels in tools/sprint, found $concern_count (t-de16)"
+
 # ── Check D: base-ref branching commands must match between
 # shared-gate-protocol.md and security-review.md.
 base_ref_commands() {

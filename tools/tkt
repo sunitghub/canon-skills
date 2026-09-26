@@ -727,6 +727,8 @@ cmd_learn() {
         sub(/\r$/, "")
         if ($0 !~ /[^[:space:]]/) next
         if (tolower($0) ~ /^[[:space:]]*[-*]?[[:space:]]*no findings\.?[[:space:]]*$/) next
+        # per-concern lines from review.md (t-de16): "<Concern>: none — checked …" is a pass, not a finding.
+        if (tolower($0) ~ /^[[:space:]]*[-*]?[[:space:]]*[a-z ]+:[[:space:]]*none([[:space:]]|$)/) next
         if (++n > 40) { if (n == 41) print "… (more findings in review-notes.md)"; next }
         print (length($0) > 400 ? substr($0, 1, 400) " … (see review-notes.md)" : $0)
       }

@@ -594,13 +594,53 @@ EOF
 review_missing_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$review_missing_output" "review-notes.md is missing the 'Model:' line"
 
-# add the Model line to review-notes → both gates satisfied → closes
+# t-de16: the reviewer's passes must be SHOWN. A bare "No findings. / YES" report — the
+# t-294b live defect, two runs with the same 111 bytes, one over an empty diff — is rejected.
 cat > ".tickets/$model_id/review-notes.md" <<'EOF'
 # Review Notes
 Model: test-model
+## Findings
+No findings.
 ## Verdict
 YES
 EOF
+bare_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$bare_output" "does not show the reviewer's passes"
+assert_contains "$bare_output" 'no `Changed files:` line'
+assert_contains "$bare_output" 'no line for the "Scope creep" concern'
+
+good_review() {
+  # $1 = Changed files value, $2 = Scope creep line value (the rest are well-formed)
+  cat > ".tickets/$model_id/review-notes.md" <<EOF
+# Review Notes
+Model: test-model
+Changed files: $1
+## Findings
+Scope creep: $2
+Visual regression: none — checked no UI files changed, tools/sprint:1
+Dead code: none — checked no code orphaned by the gate, tools/sprint:470
+Unnecessary complexity: none — checked one function, tools/sprint:463
+Standards violations: none — checked efficiency.md, tools/sprint:470
+## Verdict
+YES
+EOF
+}
+# an empty diff lists no path
+good_review "none (empty diff)" "none — checked plan.md Files vs diff, plan.md:20"
+empty_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$empty_output" 'lists no path'
+# a `none` with no what-was-checked / file:line
+good_review "tools/sprint, tests/sprint.sh" "none"
+uncited_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$uncited_output" 'the "Scope creep" `none` line must say what was checked'
+# a missing concern line names the concern
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+grep -v '^Dead code:' ".tickets/$model_id/review-notes.md" > ".tickets/$model_id/rn.tmp" && mv ".tickets/$model_id/rn.tmp" ".tickets/$model_id/review-notes.md"
+missing_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$missing_output" 'no line for the "Dead code" concern'
+
+# a fully-formed report — one real finding, the rest checked-none — satisfies both gates → closes
+good_review "tools/sprint, tests/sprint.sh" "tools/sprint:470 — orphaned variable [severity: low · confidence: med]"
 model_complete_output="$("$SPRINT" complete)"
 assert_contains "$model_complete_output" "Sprint completed: $model_id"
 assert_grep "^status: closed$" ".tickets/$model_id/ticket.md"

@@ -365,7 +365,10 @@ Opus` default, scoped only to the two close-gate dispatches below.
    returned report text yourself.
 
    Verdict is `YES` (clean) or `NO` (findings present). The reviewer verdict is **advisory, not
-   blocking** — surface findings to the user, record them in `review-notes.md`, then continue.
+   blocking** — surface findings to the user, record them in `review-notes.md`, then continue. Only the
+   report's *shape* is enforced at close (`_gate_review_notes_shape`, t-de16): a `Changed files:` line
+   with a path and one line per `review.md` step-4 concern (a finding, or `none — checked <what>,
+   <file:line>`); a bare "No findings." is rejected — re-dispatch the reviewer if so.
    The evaluator (step 3) owns the binding gate. Record the reviewer outcome in the Wrapup
    Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
