@@ -1362,7 +1362,8 @@ func (s *server) saveAndEnd(se *session) {
 		"acceptance.md unless something is unresolved that they don't already capture — only then " +
 		"update them. Then print the exact line " + cockpitSaveMarker + " on its own, and stop."
 	// t-f91a: the callers check too, but a menu can appear between their check and
-	// this goroutine starting; the write below must never reach one.
+	// this goroutine starting. Abort rather than write into it. (A caller that already
+	// answered 202 then waits out its own fallback; the window is that narrow.)
 	if se.copilotHasPendingMenu() {
 		se.debugf("save-end aborted: copilot menu pending")
 		se.mu.Lock()
@@ -2129,13 +2130,17 @@ func copilotNeedsLogin(buf []byte) bool {
 // elapsed-time counter keeps redrawing, so PTY quiescence never flags it either:
 // the screen is the only signal.
 //
-// The signature is the footer both menus share, taken from real captures
-// (testdata/copilot-*-menu.bin): "↑/↓ to navigate · enter to select · esc to
-// cancel". It is matched on the RENDERED screen, over its last few non-blank rows
-// (a menu is the live UI, at the bottom; scrollback that once held one must not
-// count), with all whitespace removed so a footer wrapped across rows on a narrow
-// terminal still matches. Once the menu is answered copilot erases those rows, so
-// the match goes away by itself.
+// The signature, taken from real captures (testdata/copilot-*-menu.bin), is the
+// footer both menus share — "↑/↓ to navigate · enter to select · esc to cancel" —
+// AND their last option, "3. No (Esc)". The footer alone is the phrase an agent
+// would quote when discussing this very feature; requiring the option too makes a
+// quote-induced false positive need three menu phrases, not two. (A menu without a
+// "No (Esc)" option is not detected: that fails open, i.e. today's behavior.) It is
+// matched on the RENDERED screen, over its last few non-blank rows (a menu is the
+// live UI, at the bottom; scrollback that once held one must not count). Only
+// letters and digits are compared, so a footer wrapped across rows, or across a
+// bordered box's "│" edges, on a narrow terminal still matches. Once the menu is
+// answered copilot erases those rows, so the match goes away by itself.
 func copilotMenuPending(buf []byte, cols, rows int) bool {
 	v := newVTScreen(cols, rows)
 	v.feed(buf)
@@ -2150,13 +2155,13 @@ func copilotMenuPending(buf []byte, cols, rows int) bool {
 	for i := len(picked) - 1; i >= 0; i-- {
 		b.WriteString(picked[i])
 	}
-	flat := strings.ToLower(strings.Map(func(r rune) rune {
-		if unicode.IsSpace(r) {
-			return -1
+	flat := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
 		}
-		return r
-	}, b.String()))
-	return strings.Contains(flat, "entertoselect") && strings.Contains(flat, "esctocancel")
+		return -1
+	}, b.String())
+	return strings.Contains(flat, "entertoselect") && strings.Contains(flat, "esctocancel") && strings.Contains(flat, "noesc")
 }
 
 // menuRefusal is the body of the 409 Save & End returns while a menu is pending.

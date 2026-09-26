@@ -4914,6 +4914,10 @@ func TestCopilotMenuPendingOnRealCaptures(t *testing.T) {
 		// Menu-like words the AGENT printed are not a live menu once real UI has scrolled them away.
 		{"menu footer text far above the live UI", append([]byte("enter to select · esc to cancel\r\n"), []byte(strings.Repeat("line of output\r\n", 60))...), false},
 		{"not-logged-in screen", []byte("You must be logged in. Please use /login to sign in to use Copilot.\r\n"), false},
+		// An agent discussing this feature quotes the footer. On the REAL composer screen, right above the
+		// live prompt (inside the bottom-rows window), that must not read as a pending menu.
+		{"footer quoted by the agent above a live composer", append(append([]byte(nil), composer...), []byte("\r\nthe menu footer reads: ↑/↓ to navigate · enter to select · esc to cancel\r\n")...), false},
+		{"footer quoted mid-scrollback of the real composer session", append([]byte("agent: the footer says enter to select · esc to cancel\r\n"), composer...), false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := copilotMenuPending(tc.buf, 120, 40); got != tc.want {
@@ -4921,9 +4925,13 @@ func TestCopilotMenuPendingOnRealCaptures(t *testing.T) {
 			}
 		})
 	}
-	// A narrow terminal wraps the footer across rows; whitespace-stripped matching still sees it.
+	// A narrow terminal wraps the footer across rows; punctuation-stripped matching still sees it.
 	if !copilotMenuPending([]byte("Do you want to allow this?\r\n1. Yes\r\n3. No (Esc)\r\n↑/↓ to navigate · enter to\r\nselect · esc to cancel\r\n"), 30, 12) {
 		t.Fatal("a footer wrapped across rows on a narrow terminal must still match")
+	}
+	// The real menu is drawn inside a bordered box: a wrapped footer carries "│" edges on each row.
+	if !copilotMenuPending([]byte("│ Do you want to allow this?   │\r\n│ 1. Yes                       │\r\n│ 3. No (Esc)                  │\r\n│ ↑/↓ to navigate · enter to   │\r\n│ select · esc to cancel       │\r\n╰──────────────────────────────╯\r\n"), 32, 12) {
+		t.Fatal("a footer wrapped inside a bordered box must still match (fail-open otherwise)")
 	}
 }
 
