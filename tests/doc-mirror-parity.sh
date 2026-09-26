@@ -72,8 +72,8 @@ fi
 # ── Check C2 (t-2595): start.md's three helper-doc reads stay conditional, and the
 # start checklist that replaces them stays. An unconditional read costs ~390 lines
 # on every sprint start.
-grep -qF 'Read `tools/ticket.md` (the `tkt`/`sprint` CLI help' "$START" || fail "doc-mirror-parity: start.md step 1 lost its conditional tools/ticket.md read (t-2595)"
-grep -qF "only if you need a command you don't know" "$START" || fail "doc-mirror-parity: start.md step 1's tools/ticket.md read is no longer conditional (t-2595)"
+# Anchor the read and its condition to the same line, so the condition can't drift elsewhere.
+grep -F 'Read `tools/ticket.md` (the `tkt`/`sprint` CLI help' "$START" | grep -qF "only if you need a command you don't know" || fail "doc-mirror-parity: start.md step 1's tools/ticket.md read is missing or no longer conditional (t-2595)"
 grep -qF 'Read `standards/ticket-layout.md` (field contract, doc lifecycle, board rendering rules) only when' "$START" || fail "doc-mirror-parity: start.md step 4's standards/ticket-layout.md read is no longer conditional (t-2595)"
 grep -qF 'create it from the template in `tools/handoff.md` (read that only then' "$START" || fail "doc-mirror-parity: start.md step 5's tools/handoff.md read is no longer conditional (t-2595)"
 grep -qF 'Start checklist' "$START" || fail "doc-mirror-parity: start.md is missing its Start checklist (t-2595)"
