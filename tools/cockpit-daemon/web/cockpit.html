@@ -436,7 +436,8 @@
               .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "") // OSC (e.g. \x1b]8;…\x07 hyperlinks)
               // t-6291: Windows ConPTY redraws rows with cursor moves (CUP/up/down/
               // next-line/VPA) instead of \r/\n — a row move starts a new line.
-              // Same rule as the daemon's containsMarkerLine (screenText).
+              // Byte-level only: the daemon's Save & End matches on a rendered
+              // screen (vtScreen) because ConPTY can also skip unchanged cells.
               .replace(/\x1b\[[0-9;?]*[HfABEFd]/g, "\n")
               .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");        // CSI (colors, column moves, erases)
             var rows = flat.split(/[\r\n]+/);

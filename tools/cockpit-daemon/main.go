@@ -135,6 +135,7 @@ type session struct {
 	reaping       bool      // t-2e7e: set while saveAndEndIdle is in flight, guards against a second reap goroutine
 	onNaturalExit func()    // set by spawn(); schedules the reap-after-TTL cleanup
 	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
+	cols, rows    int       // t-6291: last size from /resize (0 = unknown) — Save & End's screen model needs it to wrap and scroll like the terminal
 	humanInputAt  time.Time // t-2e7e: bumped ONLY by a real POST /input (not PTY output/echo);
 	// lets an in-flight save-and-kill detect a human actually came back and abort
 	previewRoot string // t-b19b: symlink-validated dir under projectRoot or the session's own worktree cwd (t-8e73); set once via /preview-root
@@ -951,6 +952,9 @@ func (s *server) handleResize(w http.ResponseWriter, r *http.Request, se *sessio
 		return
 	}
 	_ = se.pty.Resize(body.Cols, body.Rows)
+	se.mu.Lock()
+	se.cols, se.rows = body.Cols, body.Rows
+	se.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -1379,24 +1383,17 @@ func (s *server) saveAndEnd(se *session) {
 		case <-deadline.C:
 			if debugEnabled.Load() {
 				se.mu.Lock()
-				tail := se.buf
-				if sentAt <= len(tail) {
-					tail = tail[sentAt:]
-				}
-				tail = append([]byte(nil), tail...)
+				pre, tail, cols, rows := se.outputSinceLocked(sentAt)
 				se.mu.Unlock()
-				se.debugf("save-end ended by=fallback after=%s marker_substring=%v framing=%q",
-					time.Since(began).Round(time.Millisecond), strings.Contains(string(tail), cockpitSaveMarker), markerFraming(tail, cockpitSaveMarker))
+				se.debugf("save-end ended by=fallback after=%s size=%dx%d marker_substring=%v framing=%q screen=%q",
+					time.Since(began).Round(time.Millisecond), cols, rows, strings.Contains(string(tail), cockpitSaveMarker),
+					markerFraming(tail, cockpitSaveMarker), maskedRows(changedRows(pre, tail, cols, rows), cockpitSaveMarker))
 			}
 			s.killSession(se)
 			return
 		case <-poll.C:
 			se.mu.Lock()
-			newOutput := se.buf
-			if sentAt <= len(newOutput) {
-				newOutput = newOutput[sentAt:]
-			} // else: buf was trimmed to max size since sentAt — scan it all, no valid offset
-			found := containsMarkerLine(newOutput, cockpitSaveMarker)
+			pre, newOutput, cols, rows := se.outputSinceLocked(sentAt)
 			// t-af51: an unauthenticated copilot session idles forever at its own
 			// prompt — never exits, never touches a watched file, never emits the
 			// marker — so without this it always waits out the full saveFallback.
@@ -1414,6 +1411,7 @@ func (s *server) saveAndEnd(se *session) {
 				se.reaping = false
 			}
 			se.mu.Unlock()
+			found := markerOnScreen(pre, newOutput, cockpitSaveMarker, cols, rows)
 			if exited {
 				ended("agent-exited")
 				return // already gone naturally — nothing left to kill
@@ -1451,6 +1449,30 @@ func (s *server) saveAndEnd(se *session) {
 			}
 		}
 	}
+}
+
+// outputSinceLocked splits the scrollback at the save prompt (only output AFTER it
+// counts) and returns the terminal size for replaying it. The slices are copies,
+// so the screen replay runs without se.mu. Caller holds se.mu.
+func (se *session) outputSinceLocked(sentAt int) (pre, post []byte, cols, rows int) {
+	buf := se.buf
+	if sentAt > len(buf) { // buf was trimmed to max size since sentAt — no valid offset, scan it all
+		sentAt = 0
+	}
+	return append([]byte(nil), buf[:sentAt]...), append([]byte(nil), buf[sentAt:]...), se.cols, se.rows
+}
+
+// maskedRows renders screen rows for the fallback log with every letter and
+// digit masked (the marker itself kept) — t-ffb9: never raw PTY content.
+func maskedRows(rows []string, marker string) string {
+	var b strings.Builder
+	for i, row := range rows {
+		if i > 0 {
+			b.WriteString(" | ")
+		}
+		maskInto(&b, row, marker)
+	}
+	return b.String()
 }
 
 // t-2c9e: file-settle detection of a completed Save & End, agent-agnostic.
@@ -1534,28 +1556,419 @@ var ansiCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 const markerLeadChrome = " \t*_`>#•●⏺○◦▸▹‣·-"
 const markerTrailChrome = " \t*_`"
 
-// t-6291: on Windows, ConPTY redraws rows by moving the cursor (CUP "ESC[5;1H",
-// up/down, next/prev line, VPA) instead of emitting \r or \n, so without this every
-// row of a redraw collapses into one "line" and the marker is never on its own. Row
-// moves become line breaks; same-row column moves (CUF "C", CHA "G") stay removable
-// chrome — Claude uses those mid-line (t-2lv7). OSC (hyperlinks) is dropped whole,
-// as the daemon's page already does. Mirrored in web/cockpit.html.
-var rowMoveCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[HfABEFd]`)
-var oscRe = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
-
-func screenText(buf []byte) string {
-	return ansiCSIRe.ReplaceAllString(rowMoveCSIRe.ReplaceAllString(oscRe.ReplaceAllString(string(buf), ""), "\n"), "")
+// t-6291: on Windows, ConPTY is a screen DIFFER, not a text stream: it redraws a
+// row by moving the cursor (CUP/VPA/up/down) and writes only the cells that
+// changed since its last frame — so a reply drawn over the old spinner row can
+// arrive as "●" + a cursor jump + the tail of the word, and "COCKPIT_STATE_SAVED"
+// never occurs contiguously in the bytes (live-reproduced: the marker was on
+// screen while the only copy in the stream was the echoed prompt). So the marker
+// is matched on a rendered screen (vtScreen), not on the raw bytes: bytes before
+// the prompt are replayed untracked, bytes after it mark every row whose cells
+// they CHANGE, and only a changed row that reads exactly the marker counts.
+func containsMarkerLine(buf []byte, marker string) bool {
+	return markerOnScreen(nil, buf, marker, 0, 0)
 }
 
-func containsMarkerLine(buf []byte, marker string) bool {
-	clean := screenText(buf)
-	for _, line := range strings.FieldsFunc(clean, func(r rune) bool { return r == '\n' || r == '\r' }) {
-		line = strings.TrimRight(strings.TrimLeft(strings.TrimSpace(line), markerLeadChrome), markerTrailChrome)
-		if line == marker {
+// markerOnScreen replays pre (untracked) then post onto a cols×rows screen
+// (0 = unbounded: no autowrap / no bottom-of-screen scroll) and reports whether
+// a row changed by post is, after chrome trimming, exactly marker.
+func markerOnScreen(pre, post []byte, marker string, cols, rows int) bool {
+	for _, line := range changedRows(pre, post, cols, rows) {
+		if strings.TrimRight(strings.TrimLeft(strings.TrimSpace(line), markerLeadChrome), markerTrailChrome) == marker {
 			return true
 		}
 	}
 	return false
+}
+
+func changedRows(pre, post []byte, cols, rows int) []string {
+	v := newVTScreen(cols, rows)
+	v.feed(pre)
+	v.tracking = true
+	v.feed(post)
+	var out []string
+	for i, row := range v.grid {
+		if v.dirty[i] {
+			out = append(out, v.rowText(row))
+		}
+	}
+	return out
+}
+
+// vtScreen is the minimal VT/xterm model markerOnScreen needs: printable cells,
+// CR/LF/BS/TAB, cursor moves, erases, insert/delete, scroll regions and scroll,
+// REP, save/restore cursor and the alternate screen (treated as a clear).
+// Colors and modes are ignored. It only has to place text where a terminal
+// would — anything it gets wrong just misses the marker, and Save & End falls
+// back as before.
+type vtScreen struct {
+	cols, rows     int // 0 = unbounded
+	grid           [][]rune
+	dirty          []bool
+	r, c           int
+	savedR, savedC int
+	top, bottom    int // scroll region, inclusive; bottom -1 = last row
+	pendingWrap    bool
+	last           rune
+	tracking       bool
+}
+
+const vtWideTail = rune(-1) // the right half of a double-width cell
+
+func newVTScreen(cols, rows int) *vtScreen {
+	v := &vtScreen{cols: cols, rows: rows, bottom: -1}
+	v.ensureRow(max(rows-1, 0))
+	return v
+}
+
+func (v *vtScreen) ensureRow(r int) {
+	for len(v.grid) <= r {
+		v.grid = append(v.grid, nil)
+		v.dirty = append(v.dirty, false)
+	}
+}
+
+func (v *vtScreen) bottomRow() int {
+	if v.bottom >= 0 {
+		return v.bottom
+	}
+	if v.rows > 0 {
+		return v.rows - 1
+	}
+	return -1 // unbounded: never scrolls
+}
+
+func (v *vtScreen) clampCursor() {
+	v.r, v.c = max(v.r, 0), max(v.c, 0)
+	if v.rows > 0 {
+		v.r = min(v.r, v.rows-1)
+	}
+	if v.cols > 0 {
+		v.c = min(v.c, v.cols-1)
+	}
+	v.pendingWrap = false
+}
+
+func (v *vtScreen) set(r, c int, ch rune) {
+	v.ensureRow(r)
+	row := v.grid[r]
+	for len(row) <= c {
+		row = append(row, ' ')
+	}
+	if row[c] != ch && v.tracking {
+		v.dirty[r] = true
+	}
+	row[c] = ch
+	v.grid[r] = row
+}
+
+func (v *vtScreen) put(ch rune) {
+	w := 1
+	if vtWide(ch) {
+		w = 2
+	}
+	if v.pendingWrap || (v.cols > 0 && v.c+w > v.cols) {
+		v.c = 0
+		v.lineFeed()
+	}
+	v.set(v.r, v.c, ch)
+	if w == 2 {
+		v.set(v.r, v.c+1, vtWideTail)
+	}
+	v.c += w
+	if v.cols > 0 && v.c >= v.cols {
+		v.c, v.pendingWrap = v.cols-1, true
+	}
+	v.last = ch
+}
+
+func (v *vtScreen) lineFeed() {
+	v.pendingWrap = false
+	if v.r == v.bottomRow() {
+		v.scrollUp(1)
+		return
+	}
+	v.r++
+	if v.rows > 0 {
+		v.r = min(v.r, v.rows-1)
+	}
+	v.ensureRow(v.r)
+}
+
+// scrollUp/scrollDown shift rows (and their dirty flags) within the scroll region.
+func (v *vtScreen) scrollUp(n int) {
+	bot := v.bottomRow()
+	if bot < 0 {
+		return
+	}
+	v.ensureRow(bot)
+	for ; n > 0; n-- {
+		copy(v.grid[v.top:bot], v.grid[v.top+1:bot+1])
+		copy(v.dirty[v.top:bot], v.dirty[v.top+1:bot+1])
+		v.grid[bot], v.dirty[bot] = nil, v.tracking
+	}
+}
+
+func (v *vtScreen) scrollDown(n int) {
+	bot := v.bottomRow()
+	if bot < 0 {
+		return
+	}
+	v.ensureRow(bot)
+	for ; n > 0; n-- {
+		copy(v.grid[v.top+1:bot+1], v.grid[v.top:bot])
+		copy(v.dirty[v.top+1:bot+1], v.dirty[v.top:bot])
+		v.grid[v.top], v.dirty[v.top] = nil, v.tracking
+	}
+}
+
+func (v *vtScreen) eraseRow(r, from, to int) { // [from, to), to<0 = end of row
+	v.ensureRow(r)
+	if to < 0 || to > len(v.grid[r]) {
+		to = len(v.grid[r])
+	}
+	for c := max(from, 0); c < to; c++ {
+		v.set(r, c, ' ')
+	}
+}
+
+func (v *vtScreen) eraseAll() {
+	for r := range v.grid {
+		v.eraseRow(r, 0, -1)
+	}
+}
+
+func (v *vtScreen) rowText(row []rune) string {
+	var b strings.Builder
+	for _, ch := range row {
+		if ch != vtWideTail {
+			b.WriteRune(ch)
+		}
+	}
+	return strings.TrimRight(b.String(), " ")
+}
+
+func (v *vtScreen) feed(buf []byte) {
+	for i := 0; i < len(buf); {
+		ch, size := utf8.DecodeRune(buf[i:])
+		if ch != 0x1b {
+			i += size
+			switch {
+			case ch == '\r':
+				v.c, v.pendingWrap = 0, false
+			case ch == '\n' || ch == '\v' || ch == '\f':
+				v.lineFeed()
+			case ch == '\b':
+				v.c, v.pendingWrap = max(v.c-1, 0), false
+			case ch == '\t':
+				v.c = (v.c/8 + 1) * 8
+				v.clampCursor()
+			case ch < 0x20 || ch == 0x7f || ch == utf8.RuneError && size == 1:
+			case unicode.Is(unicode.Mn, ch) || unicode.Is(unicode.Me, ch) || ch == 0x200d || ch == 0xfe0f:
+				// zero-width: combining marks, ZWJ, emoji presentation
+			default:
+				v.put(ch)
+			}
+			continue
+		}
+		i += v.escape(buf[i:])
+	}
+}
+
+// escape applies the sequence at buf[0] (ESC) and returns its length.
+func (v *vtScreen) escape(buf []byte) int {
+	if len(buf) < 2 {
+		return len(buf)
+	}
+	switch buf[1] {
+	case '[':
+		j := 2
+		for j < len(buf) && (buf[j] < 0x40 || buf[j] > 0x7e) {
+			j++
+		}
+		if j == len(buf) {
+			return j
+		}
+		v.csi(string(buf[2:j]), buf[j])
+		return j + 1
+	case ']', 'P', '_', '^': // OSC/DCS/APC/PM: skip to BEL or ST
+		for j := 2; j < len(buf); j++ {
+			if buf[j] == 0x07 {
+				return j + 1
+			}
+			if buf[j] == 0x1b && j+1 < len(buf) && buf[j+1] == '\\' {
+				return j + 2
+			}
+		}
+		return len(buf)
+	case '(', ')', '*', '+', '#', '%':
+		return min(3, len(buf))
+	case '7':
+		v.savedR, v.savedC = v.r, v.c
+	case '8':
+		v.r, v.c = v.savedR, v.savedC
+		v.clampCursor()
+	case 'D':
+		v.lineFeed()
+	case 'E':
+		v.c = 0
+		v.lineFeed()
+	case 'M':
+		if v.r == v.top {
+			v.scrollDown(1)
+		} else {
+			v.r = max(v.r-1, 0)
+		}
+	case 'c':
+		v.eraseAll()
+		v.r, v.c, v.top, v.bottom = 0, 0, 0, -1
+	}
+	return 2
+}
+
+func (v *vtScreen) csi(params string, final byte) {
+	private := strings.HasPrefix(params, "?") || strings.HasPrefix(params, ">") || strings.HasPrefix(params, "=")
+	params = strings.TrimLeft(params, "?>=")
+	var ps []int
+	for _, f := range strings.Split(strings.TrimRight(params, " !\"#$%&'()*+,-./"), ";") {
+		n, _ := strconv.Atoi(f)
+		ps = append(ps, n)
+	}
+	arg := func(i, def int) int {
+		if i < len(ps) && ps[i] > 0 {
+			return ps[i]
+		}
+		return def
+	}
+	if private {
+		if final == 'h' || final == 'l' {
+			for _, p := range ps {
+				if p == 1049 || p == 1047 || p == 47 {
+					v.eraseAll() // alternate screen in or out: start from a blank screen
+				}
+			}
+		}
+		return
+	}
+	switch final {
+	case 'H', 'f':
+		v.r, v.c = arg(0, 1)-1, arg(1, 1)-1
+	case 'A':
+		v.r -= arg(0, 1)
+	case 'B', 'e':
+		v.r += arg(0, 1)
+	case 'C', 'a':
+		v.c += arg(0, 1)
+	case 'D':
+		v.c -= arg(0, 1)
+	case 'E':
+		v.r, v.c = v.r+arg(0, 1), 0
+	case 'F':
+		v.r, v.c = v.r-arg(0, 1), 0
+	case 'G', '`':
+		v.c = arg(0, 1) - 1
+	case 'd':
+		v.r = arg(0, 1) - 1
+	case 'K':
+		switch arg(0, 0) {
+		case 0:
+			v.eraseRow(v.r, v.c, -1)
+		case 1:
+			v.eraseRow(v.r, 0, v.c+1)
+		case 2:
+			v.eraseRow(v.r, 0, -1)
+		}
+	case 'J':
+		switch arg(0, 0) {
+		case 0:
+			v.eraseRow(v.r, v.c, -1)
+			for r := v.r + 1; r < len(v.grid); r++ {
+				v.eraseRow(r, 0, -1)
+			}
+		case 1:
+			for r := 0; r < v.r; r++ {
+				v.eraseRow(r, 0, -1)
+			}
+			v.eraseRow(v.r, 0, v.c+1)
+		default:
+			v.eraseAll()
+		}
+	case 'X':
+		v.eraseRow(v.r, v.c, v.c+arg(0, 1))
+	case 'P', '@':
+		v.ensureRow(v.r)
+		row := v.grid[v.r]
+		if v.c < len(row) {
+			n := arg(0, 1)
+			var shifted []rune
+			if final == 'P' {
+				shifted = append(append([]rune(nil), row[:v.c]...), row[min(v.c+n, len(row)):]...)
+			} else {
+				shifted = append(append(append([]rune(nil), row[:v.c]...), []rune(strings.Repeat(" ", n))...), row[v.c:]...)
+				if v.cols > 0 && len(shifted) > v.cols {
+					shifted = shifted[:v.cols]
+				}
+			}
+			for len(shifted) < len(row) {
+				shifted = append(shifted, ' ')
+			}
+			for c, ch := range shifted {
+				v.set(v.r, c, ch)
+			}
+		}
+		return // no cursor move
+	case 'L', 'M':
+		if v.r < v.top || (v.bottomRow() >= 0 && v.r > v.bottomRow()) {
+			return
+		}
+		saved := v.top
+		v.top = v.r
+		if final == 'L' {
+			v.scrollDown(arg(0, 1))
+		} else {
+			v.scrollUp(arg(0, 1))
+		}
+		v.top = saved
+		return
+	case 'S':
+		v.scrollUp(arg(0, 1))
+		return
+	case 'T':
+		v.scrollDown(arg(0, 1))
+		return
+	case 'r':
+		v.top, v.bottom = arg(0, 1)-1, arg(1, 0)-1
+		if v.rows > 0 && (v.bottom < 0 || v.bottom >= v.rows) {
+			v.bottom = v.rows - 1
+		}
+		if v.bottom >= 0 && v.top >= v.bottom {
+			v.top, v.bottom = 0, -1
+		}
+		v.r, v.c = 0, 0
+	case 'b':
+		for n := arg(0, 1); n > 0 && v.last != 0; n-- {
+			v.put(v.last)
+		}
+		return
+	case 's':
+		v.savedR, v.savedC = v.r, v.c
+		return
+	case 'u':
+		v.r, v.c = v.savedR, v.savedC
+	default:
+		return // SGR and every other mode/report sequence: no effect on the cells
+	}
+	v.clampCursor()
+	v.ensureRow(v.r)
+}
+
+// vtWide reports double-width (East Asian wide / emoji) runes — enough to keep
+// columns aligned with the terminal on the rows the matcher reads.
+func vtWide(r rune) bool {
+	return r >= 0x1100 && (r <= 0x115f || (r >= 0x2e80 && r <= 0xa4cf && r != 0x303f) ||
+		(r >= 0xac00 && r <= 0xd7a3) || (r >= 0xf900 && r <= 0xfaff) || (r >= 0xfe30 && r <= 0xfe4f) ||
+		(r >= 0xff00 && r <= 0xff60) || (r >= 0xffe0 && r <= 0xffe6) || (r >= 0x1f300 && r <= 0x1f64f) ||
+		(r >= 0x1f900 && r <= 0x1f9ff) || (r >= 0x20000 && r <= 0x3fffd))
 }
 
 // markerFraming renders the bytes around the LAST occurrence of marker for the
@@ -1587,29 +2000,7 @@ func markerFraming(buf []byte, marker string) string {
 	}
 	win := raw[lo:hi]
 	var b strings.Builder
-	mask := func(seg string) {
-		for len(seg) > 0 {
-			if strings.HasPrefix(seg, marker) {
-				b.WriteString(marker)
-				seg = seg[len(marker):]
-				continue
-			}
-			r, size := utf8.DecodeRuneInString(seg)
-			switch {
-			case r == '\r':
-				b.WriteString(`\r`)
-			case r == '\n':
-				b.WriteString(`\n`)
-			case r < 0x20 || r == 0x7f:
-				fmt.Fprintf(&b, `\x%02x`, r)
-			case unicode.IsLetter(r) || unicode.IsDigit(r):
-				b.WriteByte('x')
-			default:
-				b.WriteRune(r)
-			}
-			seg = seg[size:]
-		}
-	}
+	mask := func(seg string) { maskInto(&b, seg, marker) }
 	last := 0
 	for _, m := range framingTokenRe.FindAllStringIndex(win, -1) {
 		mask(win[last:m[0]])
@@ -1618,6 +2009,30 @@ func markerFraming(buf []byte, marker string) string {
 	}
 	mask(win[last:])
 	return b.String()
+}
+
+func maskInto(b *strings.Builder, seg, marker string) {
+	for len(seg) > 0 {
+		if strings.HasPrefix(seg, marker) {
+			b.WriteString(marker)
+			seg = seg[len(marker):]
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(seg)
+		switch {
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(b, `\x%02x`, r)
+		case unicode.IsLetter(r) || unicode.IsDigit(r):
+			b.WriteByte('x')
+		default:
+			b.WriteRune(r)
+		}
+		seg = seg[size:]
+	}
 }
 
 // copilotLoginTailWindow bounds how much of the recent buffer saveAndEnd's

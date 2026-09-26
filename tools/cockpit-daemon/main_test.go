@@ -4629,6 +4629,47 @@ func TestMarkerFramingMasksContent(t *testing.T) {
 }
 
 
+// t-6291: ConPTY sends only the cells that changed since its last frame, so the
+// marker can arrive in pieces around cursor jumps — the live VM case, where the
+// reply overwrote the spinner row and the stream never held the marker whole.
+// These run on the rendered screen, with the pre-prompt output untracked.
+func TestMarkerOnScreen(t *testing.T) {
+	m := cockpitSaveMarker
+	cases := []struct {
+		name, pre, post string
+		cols, rows      int
+		want            bool
+	}{
+		{"conpty skips unchanged cells of the old row",
+			"\x1b[5;1H\u25c9 COCKPIT_STATE_CHECK", "\x1b[5;1H\u25cf\x1b[5;17HSAVED\x1b[6;1H> ", 80, 24, true},
+		{"marker split by a colour change and a column jump",
+			"", "\x1b[3;1H\u25cf COCKPIT\x1b[34m_STATE\x1b[0m\x1b[3;16H_SAVED", 80, 24, true},
+		{"an old marker row the prompt's output never changes must not count",
+			"\x1b[2;1H\u25cf " + m + "\r\n", "\x1b[2;1H\u25cf " + m + "\x1b[4;1Hthinking", 80, 24, false},
+		{"an old marker row scrolled up by new output must not count",
+			"\x1b[3;1H\u25cf " + m, "\x1b[3;1H\n\nnew line\n", 80, 3, false},
+		{"marker on a row reached by scrolling at the bottom",
+			"\x1b[3;1Hold", "\r\n\u25cf " + m, 80, 3, true},
+		{"marker drawn via insert-line inside a scroll region",
+			"\x1b[1;1Htop\x1b[2;1Hmid", "\x1b[1;3r\x1b[2;1H\x1b[L\u25cf " + m + "\x1b[r", 80, 3, true},
+		{"erased-character tail leaves only the marker",
+			"\x1b[4;1H\u25cf " + m + "EXTRA", "\x1b[4;22H\x1b[5X", 80, 24, true},
+		{"echoed prompt wraps the marker mid-sentence",
+			"", "\x1b[1;1Hthen print the exact line " + m + " on its own, and stop.", 40, 24, false},
+		{"autowrap spills text onto the marker's row",
+			"", "\x1b[1;1H" + strings.Repeat("x", 30) + "\u25cf " + m, 30, 24, true},
+		{"wide characters keep columns aligned for a partial redraw",
+			"\x1b[1;1H\u6f22COCKPIT_STATE_CHECK", "\x1b[1;1H\u25cf \x1b[1;17HSAVED", 80, 24, true},
+		{"REP repeats the last character",
+			"", "\x1b[1;1H\u25cf COCKPIT_STATE_SAVED \x1b[3b\r\n", 80, 24, true},
+	}
+	for _, c := range cases {
+		if got := markerOnScreen([]byte(c.pre), []byte(c.post), m, c.cols, c.rows); got != c.want {
+			t.Errorf("%s: markerOnScreen = %v, want %v (changed rows %q)", c.name, got, c.want, changedRows([]byte(c.pre), []byte(c.post), c.cols, c.rows))
+		}
+	}
+}
+
 // fakeAgentPrinting prints printfFmt (a printf format: octal escapes allowed) when
 // it receives the save prompt — for exercising how Save & End reads real TUI
 // framings end to end (t-6291).
@@ -4706,6 +4747,19 @@ func TestSaveAndEndMatchesConPTYFramedCopilotMarker(t *testing.T) {
 	}
 }
 
+// t-6291: the second VM case — the reply is drawn over the spinner row and ConPTY
+// sends only the changed cells, so the marker never occurs whole in the stream.
+func TestSaveAndEndMatchesConPTYPartialRedraw(t *testing.T) {
+	bin := fakeAgentPrinting(t, `\033[5;1H\342\227\211 COCKPIT_STATE_CHECK\033[5;1H\342\227\217\033[5;17HSAVED\033[6;1H> `)
+	ended, log := saveAndEndWith(t, bin, 30*time.Second, 8*time.Second)
+	if !ended {
+		t.Fatalf("session did not end via the marker before the deadline; log:\n%s", log)
+	}
+	if !strings.Contains(log, "save-end ended by=marker") {
+		t.Errorf("verbose log should record ended by=marker; got:\n%s", log)
+	}
+}
+
 // t-6291: when the marker only appears mid-sentence, Save & End falls back — and
 // the verbose log says the marker WAS present plus how it was framed, with the
 // agent's words masked (t-ffb9: never raw PTY content).
@@ -4715,7 +4769,7 @@ func TestSaveAndEndFallbackLogsMaskedFraming(t *testing.T) {
 	if !ended {
 		t.Fatalf("session should have been fallback-killed; log:\n%s", log)
 	}
-	for _, want := range []string{"save-end prompt sent agent=", "save-end ended by=fallback", "marker_substring=true", cockpitSaveMarker} {
+	for _, want := range []string{"save-end prompt sent agent=", "save-end ended by=fallback", "marker_substring=true", cockpitSaveMarker, "screen=\"", "\u25cf x xxxx xxxxx " + cockpitSaveMarker + " xxxx"} {
 		if !strings.Contains(log, want) {
 			t.Errorf("verbose log missing %q; got:\n%s", want, log)
 		}
