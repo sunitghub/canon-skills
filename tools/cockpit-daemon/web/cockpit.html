@@ -226,8 +226,15 @@
       // is no live agent to write HANDOFF — tell the parent we're done right
       // away instead of leaving it to spin for the full save-fallback + its own
       // 90s client-side timeout waiting for a marker that will never come.
+      // A 409 (t-f91a) means copilot is sitting on a menu that is waiting for the
+      // USER — the daemon wrote nothing. That is not an end: tell the board to keep
+      // the session and show why ("save-refused"), never "ended".
       fetch("/session/"+session+"/save-and-end", { method:"POST", headers: authHeaders(sessTok) })
         .then(function(r){
+          if(r.status === 409){
+            try{ window.parent.postMessage({ source: "canon-cockpit", type: "save-refused" }, "*"); }catch(e){}
+            return;
+          }
           if(!r.ok){
             try{ window.parent.postMessage({ source: "canon-cockpit", type: "ended" }, "*"); }catch(e){}
           }

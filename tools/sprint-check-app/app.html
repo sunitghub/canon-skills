@@ -5123,6 +5123,8 @@ window.addEventListener('message', (e) => {
     else tab.actualCwd = d.cwd || '';
   } else if (d.type === 'ended' && tab._onEnded) {
     tab._onEnded();
+  } else if (d.type === 'save-refused' && tab._onSaveRefused) {
+    tab._onSaveRefused();   // t-f91a: copilot is on a menu waiting for the user — nothing was typed
   } else if (d.type === 'preview-file') {
     if (isActive) renderPreviewFile(d.session, d.previewToken, d.relpath, d.path);
   } else if (d.type === 'preview-server-cmd') {
@@ -5467,6 +5469,7 @@ async function ckLeaveSaveAndEnd(skipSave) {
   const finish = (msg) => {
     if (done) return; done = true;
     cockpitState._onEnded = null;
+    cockpitState._onSaveRefused = null;
     cockpitState._ending = false;
     if (!skipSave) statusEl.textContent = msg; // modal already closed for skipSave
     closeLeaveConfirm();
@@ -5482,7 +5485,7 @@ async function ckLeaveSaveAndEnd(skipSave) {
   cockpitState._onEnded = () => finish(closed ? 'Ended — ticket already closed, no state to save.' : (skipSave ? 'Ended without saving.' : 'Saved and ended.'));
   // Overridable so tests don't wait 90 real seconds; production leaves it unset.
   const fallbackMs = window.__cockpitSaveFallbackMs || 90000;
-  setTimeout(() => {
+  const fallbackTimer = setTimeout(() => {
     if (done) return;
     // The marker never showed up — force the kill directly rather than just
     // blanking the iframe, or the session orphans anyway (the exact bug
@@ -5490,6 +5493,21 @@ async function ckLeaveSaveAndEnd(skipSave) {
     iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'force-end' }, 'http://' + cockpitState.addr);
     setTimeout(() => finish('Timed out waiting for save — ended anyway. It may be incomplete.'), 3000);
   }, fallbackMs);
+  // t-f91a: the daemon refused Save & End because copilot is waiting on a selection menu
+  // (a tool-call approval, folder trust). Nothing was typed and nothing ended: cancel the
+  // fallback kill, give the controls back, and say why. The modal stays open; the user
+  // answers the menu in the terminal, then retries — or picks End without saving.
+  cockpitState._onSaveRefused = () => {
+    if (done) return;
+    clearTimeout(fallbackTimer);
+    cockpitState._onEnded = null;
+    cockpitState._onSaveRefused = null;
+    cockpitState._ending = false;
+    statusEl.textContent = 'Copilot is waiting for your answer to a prompt in the terminal — answer it there, then Save & End again (or End without saving).';
+    document.getElementById('ck-leave-cancel').disabled = false;
+    document.getElementById('ck-leave-skip').disabled = false;
+    saveBtn.disabled = false;
+  };
   // t-98d8: an already-closed ticket has no in-progress state worth a full agent
   // save turn — skip the save-state prompt and end cleanly via force-end. Status
   // is fetched fresh (isTicketClosed), failing safe to the save path on error.
