@@ -69,6 +69,17 @@ if [[ "$start_occurrences" -lt 2 ]]; then
   fail "doc-mirror-parity: start.md should have 2 occurrences of the Windows command -v fallback clause (steps 1 and 5), found $start_occurrences"
 fi
 
+# ── Check C2 (t-2595): start.md's three helper-doc reads stay conditional, and the
+# start checklist that replaces them stays. An unconditional read costs ~390 lines
+# on every sprint start.
+grep -qF 'Read `tools/ticket.md` (the `tkt`/`sprint` CLI help' "$START" || fail "doc-mirror-parity: start.md step 1 lost its conditional tools/ticket.md read (t-2595)"
+grep -qF "only if you need a command you don't know" "$START" || fail "doc-mirror-parity: start.md step 1's tools/ticket.md read is no longer conditional (t-2595)"
+grep -qF 'Read `standards/ticket-layout.md` (field contract, doc lifecycle, board rendering rules) only when' "$START" || fail "doc-mirror-parity: start.md step 4's standards/ticket-layout.md read is no longer conditional (t-2595)"
+grep -qF 'create it from the template in `tools/handoff.md` (read that only then' "$START" || fail "doc-mirror-parity: start.md step 5's tools/handoff.md read is no longer conditional (t-2595)"
+grep -qF 'Start checklist' "$START" || fail "doc-mirror-parity: start.md is missing its Start checklist (t-2595)"
+# The three old unconditional forms must not come back.
+[ "$(grep -cE 'Read `tools/handoff.md` \(same resolution|1\. \*\*Ticket and context\.\*\* Read `tools/ticket.md`|^   - Read `standards/ticket-layout.md` for' "$START")" -eq 0 ] || fail "doc-mirror-parity: start.md has an unconditional helper-doc read again (t-2595)"
+
 # ── Check D: base-ref branching commands must match between
 # shared-gate-protocol.md and security-review.md.
 base_ref_commands() {
