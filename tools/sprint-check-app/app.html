@@ -4075,12 +4075,13 @@ function injectSectionJumps(container) {
 
 // t-7e36: seeded fallback in case /api/admin/model-tiers hasn't loaded yet (or is
 // unreachable) — refreshModelTierOptions() below replaces this with the live
-// Admin-owned registry's Anthropic ids. Only Anthropic is listed here: this
-// dropdown feeds parseGateModel/withGateModel below, whose only real consumers
+// Admin-owned registry's ids. This seeded fallback lists only Anthropic: the
+// dropdown feeds parseGateModel/withGateModel below, whose session-level consumers
 // (interactive sprint complete, sprint-headless) are Claude-Code-only — see
-// DECISIONS.md 2026-07-27 (t-4003). t-ef27: registry OpenAI entries are appended as
-// `openai:<id>` — a per-ticket pick that runs the close gates under Copilot CLI only
-// (never the session), so the value carries the provider without a registry lookup.
+// DECISIONS.md 2026-07-27 (t-4003). t-ef27: once the registry loads, its OpenAI entries
+// are appended as `openai:<id>` — a per-ticket pick that runs the close gates under
+// Copilot CLI only (never the session), so the value carries the provider without a
+// registry lookup.
 let MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
 let MODEL_TIER_LABELS = {};
 (async () => {
@@ -4276,7 +4277,7 @@ function injectSignoffControls(container, content, t) {
   const note = document.createElement('span');
   note.className = 'model-tier-note';
   note.textContent = 'No effect under Codex';
-  note.title = 'Codex’s sub-agent spawn tools have no per-agent model field, so this override is Claude-Code-only.';
+  note.title = 'Codex’s sub-agent spawn tools have no per-agent model field, so a Claude model override is Claude-Code-only (an openai:<id> pick runs the close gates under Copilot CLI).';
   wrap.appendChild(note);
 
   // t-ef27: an explicit Gate model beats demo mode's forced-Haiku evaluator (complete.md

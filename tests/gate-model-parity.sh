@@ -39,7 +39,8 @@ ok() {
 }
 
 # Explode the fixtures into a TSV of (name, plan-file, expected-parse,
-# expected-resolve). Delimited by 0x1f (not tab: tab is IFS whitespace, so bash collapses empty fields), not NUL: bash silently drops NUL bytes, which
+# expected-resolve, expected-status). Delimited by 0x1f, not tab: tab is IFS whitespace,
+# so bash collapses empty fields. Not NUL either: bash silently drops NUL bytes, which
 # collapses the record into one field and quietly skips every case but the first.
 # Each plan body goes to its own file, so its newlines never reach this table.
 python3 - "$FIXTURES" "$TMP" <<'PY'
