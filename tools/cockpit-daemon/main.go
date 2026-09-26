@@ -1539,7 +1539,7 @@ func (s *server) endSaved(se *session) {
 
 var ansiCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 
-// containsMarkerLine matches a whole trimmed line exactly — a coincidental
+// The Save & End marker matches a whole trimmed line exactly — a coincidental
 // substring mid-sentence (the agent describing what it's about to do, incl. the
 // echoed save prompt) must never count, same discipline as t-f6b6's client-side
 // matcher. t-2lv7: split on "\r" OR "\n" — Claude Code's TUI positions every row
@@ -1565,10 +1565,7 @@ const markerTrailChrome = " \t*_`"
 // is matched on a rendered screen (vtScreen), not on the raw bytes: bytes before
 // the prompt are replayed untracked, bytes after it mark every row whose cells
 // they CHANGE, and only a changed row that reads exactly the marker counts.
-func containsMarkerLine(buf []byte, marker string) bool {
-	return markerOnScreen(nil, buf, marker, 0, 0)
-}
-
+//
 // markerOnScreen replays pre (untracked) then post onto a cols×rows screen
 // (0 = unknown: wrap at vtMaxCols, scroll at vtMaxRows) and reports whether
 // a row changed by post is, after chrome trimming, exactly marker. Trailing

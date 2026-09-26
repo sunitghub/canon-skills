@@ -4104,8 +4104,8 @@ func TestContainsMarkerLineClaudeFraming(t *testing.T) {
 			"\x1b]8;;https://x\x07" + m + "\x1b]8;;\x07\r\n", true},
 	}
 	for _, c := range cases {
-		if got := containsMarkerLine([]byte(c.buf), m); got != c.want {
-			t.Errorf("%s: containsMarkerLine = %v, want %v", c.name, got, c.want)
+		if got := markerOnScreen(nil, []byte(c.buf), m, 0, 0); got != c.want {
+			t.Errorf("%s: markerOnScreen = %v, want %v", c.name, got, c.want)
 		}
 	}
 }
@@ -4627,7 +4627,6 @@ func TestMarkerFramingMasksContent(t *testing.T) {
 		t.Error("framing without a marker should be \"absent\"")
 	}
 }
-
 
 // t-6291: ConPTY sends only the cells that changed since its last frame, so the
 // marker can arrive in pieces around cursor jumps — the live VM case, where the
