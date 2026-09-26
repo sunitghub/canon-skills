@@ -1864,6 +1864,15 @@ test.describe('board modal', () => {
   // t-8c73: overlapping renderModalBody calls each injected their own .section-jumps bar and
   // Sign-off controls once their fetch resolved, so .model-tier-select resolved to 2 elements
   // (the flake behind two tests). Renders are now idempotent and a stale one is ignored.
+  // A valid t-xxxx id (the demo toggle POSTs to /api/ticket/<id>/demo) that is NOT an existing ticket:
+  // the tests write and later rmSync .tickets/<id>, so a collision with a real ticket would destroy it.
+  function freshTicketId() {
+    for (;;) {
+      const id = 't-' + Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+      if (/^t-[a-z0-9]{4}$/.test(id) && !fs.existsSync(path.join(PROJECT_ROOT, '.tickets', id))) return id;
+    }
+  }
+
   async function openPlanTabFor(page, id) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
@@ -1892,7 +1901,7 @@ test.describe('board modal', () => {
   }
 
   test('overlapping renders leave exactly one Sign-off control set (t-8c73)', async ({ page }) => {
-    const id = `t-h${Date.now().toString(36).slice(-3)}`;
+    const id = freshTicketId();
     try {
       await serveDocsFromDisk(page);
       await openPlanTabFor(page, id);
@@ -1911,7 +1920,7 @@ test.describe('board modal', () => {
   });
 
   test('a stale doc response never overwrites a newer render (t-8c73)', async ({ page }) => {
-    const id = `t-h${Date.now().toString(36).slice(-3)}`;
+    const id = freshTicketId();
     try {
       // Hold the FIRST plan.md fetch; the user then switches to Acceptance; the held response lands last.
       let release;
