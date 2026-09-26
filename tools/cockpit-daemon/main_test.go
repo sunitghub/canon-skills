@@ -4676,6 +4676,22 @@ func TestMarkerOnScreen(t *testing.T) {
 	}
 }
 
+// t-6291: the agent controls every byte the screen model replays, so hostile
+// counts must stay bounded — one escape must not allocate or loop without limit.
+func TestMarkerOnScreenBoundsHostileCounts(t *testing.T) {
+	hostile := strings.Repeat("\x1b[999999999;1Htext on the row\x1b[999999999;2H\x1b[999999999@\x1b[999999999b"+
+		"\x1b[999999999S\x1b[999999999L\x1b[999999999;999999999H\x1b[999999999C", 200)
+	for _, size := range [][2]int{{0, 0}, {154, 46}, {999999999, 999999999}} {
+		start := time.Now()
+		if markerOnScreen(nil, []byte(hostile+"\r\n\u25cf "+cockpitSaveMarker), cockpitSaveMarker, size[0], size[1]) != true {
+			t.Errorf("size %v: marker after hostile counts should still match", size)
+		}
+		if d := time.Since(start); d > 3*time.Second {
+			t.Errorf("size %v: replay took %s, want bounded", size, d)
+		}
+	}
+}
+
 // fakeAgentPrinting prints printfFmt (a printf format: octal escapes allowed) when
 // it receives the save prompt — for exercising how Save & End reads real TUI
 // framings end to end (t-6291).

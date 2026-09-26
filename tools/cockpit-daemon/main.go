@@ -1570,7 +1570,7 @@ func containsMarkerLine(buf []byte, marker string) bool {
 }
 
 // markerOnScreen replays pre (untracked) then post onto a cols×rows screen
-// (0 = unbounded: no autowrap / no bottom-of-screen scroll) and reports whether
+// (0 = unknown: wrap at vtMaxCols, scroll at vtMaxRows) and reports whether
 // a row changed by post is, after chrome trimming, exactly marker. Trailing
 // box-drawing and block glyphs also go: Copilot draws its scrollbar ("┃") in
 // the last column of every row (VM round 3). Leading ones stay — Copilot's
@@ -1608,7 +1608,7 @@ func changedRows(pre, post []byte, cols, rows int) []string {
 // would — anything it gets wrong just misses the marker, and Save & End falls
 // back as before.
 type vtScreen struct {
-	cols, rows     int // 0 = unbounded
+	cols, rows     int // rows 0 = unknown (scrolls at vtMaxRows)
 	grid           [][]rune
 	dirty          []bool
 	r, c           int
@@ -1621,9 +1621,18 @@ type vtScreen struct {
 
 const vtWideTail = rune(-1) // the right half of a double-width cell
 
+// vtMaxCols/vtMaxRows bound the screen (a real terminal is far smaller) and
+// every repeat count. The agent controls these bytes: without them, one
+// "ESC[999999999;1H" or "ESC[999999999@" would allocate or loop without bound
+// inside the daemon, and a scroll costs O(rows) per line fed.
+const vtMaxCols, vtMaxRows = 1024, 512
+
 func newVTScreen(cols, rows int) *vtScreen {
-	v := &vtScreen{cols: cols, rows: rows, bottom: -1}
-	v.ensureRow(max(rows-1, 0))
+	if cols <= 0 || cols > vtMaxCols {
+		cols = vtMaxCols // unknown width: wrap at the cap so a row stays bounded
+	}
+	v := &vtScreen{cols: cols, rows: min(rows, vtMaxRows), bottom: -1}
+	v.ensureRow(max(v.rows-1, 0))
 	return v
 }
 
@@ -1641,11 +1650,11 @@ func (v *vtScreen) bottomRow() int {
 	if v.rows > 0 {
 		return v.rows - 1
 	}
-	return -1 // unbounded: never scrolls
+	return vtMaxRows - 1 // unknown height: the cap is the bottom
 }
 
 func (v *vtScreen) clampCursor() {
-	v.r, v.c = max(v.r, 0), max(v.c, 0)
+	v.r, v.c = min(max(v.r, 0), vtMaxRows-1), min(max(v.c, 0), vtMaxCols-1)
 	if v.rows > 0 {
 		v.r = min(v.r, v.rows-1)
 	}
@@ -1694,37 +1703,34 @@ func (v *vtScreen) lineFeed() {
 		v.scrollUp(1)
 		return
 	}
-	v.r++
+	last := vtMaxRows - 1
 	if v.rows > 0 {
-		v.r = min(v.r, v.rows-1)
+		last = v.rows - 1
 	}
+	v.r = min(v.r+1, last) // below a scroll region: move down, never past the screen
 	v.ensureRow(v.r)
 }
 
 // scrollUp/scrollDown shift rows (and their dirty flags) within the scroll region.
 func (v *vtScreen) scrollUp(n int) {
 	bot := v.bottomRow()
-	if bot < 0 {
-		return
-	}
 	v.ensureRow(bot)
-	for ; n > 0; n-- {
-		copy(v.grid[v.top:bot], v.grid[v.top+1:bot+1])
-		copy(v.dirty[v.top:bot], v.dirty[v.top+1:bot+1])
-		v.grid[bot], v.dirty[bot] = nil, v.tracking
+	n = min(n, bot-v.top+1)
+	copy(v.grid[v.top:bot+1-n], v.grid[v.top+n:bot+1])
+	copy(v.dirty[v.top:bot+1-n], v.dirty[v.top+n:bot+1])
+	for r := bot + 1 - n; r <= bot; r++ {
+		v.grid[r], v.dirty[r] = nil, v.tracking
 	}
 }
 
 func (v *vtScreen) scrollDown(n int) {
 	bot := v.bottomRow()
-	if bot < 0 {
-		return
-	}
 	v.ensureRow(bot)
-	for ; n > 0; n-- {
-		copy(v.grid[v.top+1:bot+1], v.grid[v.top:bot])
-		copy(v.dirty[v.top+1:bot+1], v.dirty[v.top:bot])
-		v.grid[v.top], v.dirty[v.top] = nil, v.tracking
+	n = min(n, bot-v.top+1)
+	copy(v.grid[v.top+n:bot+1], v.grid[v.top:bot+1-n])
+	copy(v.dirty[v.top+n:bot+1], v.dirty[v.top:bot+1-n])
+	for r := v.top; r < v.top+n; r++ {
+		v.grid[r], v.dirty[r] = nil, v.tracking
 	}
 }
 
@@ -1842,7 +1848,7 @@ func (v *vtScreen) csi(params string, final byte) {
 	}
 	arg := func(i, def int) int {
 		if i < len(ps) && ps[i] > 0 {
-			return ps[i]
+			return min(ps[i], vtMaxCols)
 		}
 		return def
 	}
@@ -1924,7 +1930,7 @@ func (v *vtScreen) csi(params string, final byte) {
 		}
 		return // no cursor move
 	case 'L', 'M':
-		if v.r < v.top || (v.bottomRow() >= 0 && v.r > v.bottomRow()) {
+		if v.r < v.top || v.r > v.bottomRow() {
 			return
 		}
 		saved := v.top
