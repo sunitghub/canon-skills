@@ -4095,6 +4095,13 @@ func TestContainsMarkerLineClaudeFraming(t *testing.T) {
 			"\u25cf " + m + " done\n", false},
 		{"bulleted echoed save prompt must not match",
 			"\u25cf print the exact line " + m + " on its own, and stop.\n", false},
+		// t-6291: Windows ConPTY moves the cursor between rows instead of \r/\n.
+		{"conpty cursor-position rows",
+			"\x1b[4;1Hthinking\x1b[K\x1b[5;1H\x1b[34m\u25cf\x1b[0m " + m + "\x1b[K\x1b[6;1H\x1b[?25h> ", true},
+		{"conpty row with the marker mid-sentence must not match",
+			"\x1b[5;1HI will print " + m + " next\x1b[K\x1b[6;1H", false},
+		{"osc hyperlink around the marker",
+			"\x1b]8;;https://x\x07" + m + "\x1b]8;;\x07\r\n", true},
 	}
 	for _, c := range cases {
 		if got := containsMarkerLine([]byte(c.buf), m); got != c.want {
@@ -4598,5 +4605,124 @@ func TestWaitExitKeepsUnixDrainAndClosesOnce(t *testing.T) {
 	time.Sleep(150 * time.Millisecond) // past waitExit's grace
 	if n := fake.closeCount(); n != 1 {
 		t.Fatalf("pty closed %d times, want exactly 1 (ConPTY must not be closed twice)", n)
+	}
+}
+
+// t-6291: the fallback log shows how the marker was framed without recording what
+// the agent wrote — letters/digits masked, escapes and symbols kept.
+func TestMarkerFramingMasksContent(t *testing.T) {
+	buf := []byte("secret token abc123\x1b[5;1H\x1b[34m\u25cf\x1b[0m " + cockpitSaveMarker + " next\x1b[K")
+	got := markerFraming(buf, cockpitSaveMarker)
+	for _, leak := range []string{"secret", "token", "abc123", "next"} {
+		if strings.Contains(got, leak) {
+			t.Errorf("framing leaked %q: %s", leak, got)
+		}
+	}
+	for _, keep := range []string{cockpitSaveMarker, "ESC[5;1H", "ESC[34m", "\u25cf", "ESC[K"} {
+		if !strings.Contains(got, keep) {
+			t.Errorf("framing lost %q: %s", keep, got)
+		}
+	}
+	if markerFraming([]byte("no marker here"), cockpitSaveMarker) != "absent" {
+		t.Error("framing without a marker should be \"absent\"")
+	}
+}
+
+
+// fakeAgentPrinting prints printfFmt (a printf format: octal escapes allowed) when
+// it receives the save prompt — for exercising how Save & End reads real TUI
+// framings end to end (t-6291).
+func fakeAgentPrinting(t *testing.T, printfFmt string) (bin string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-agent-prints.sh")
+	script := "#!/bin/sh\n" +
+		"printf 'READY\\n'\n" +
+		"while IFS= read -r line; do\n" +
+		"  case \"$line\" in\n" +
+		"    *'save your current state'*) printf '" + printfFmt + "' ;;\n" +
+		"  esac\n" +
+		"done\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// saveAndEndWith runs a real Save & End against a fake agent and returns whether
+// the session ended before `within`, plus the session's verbose debug log.
+func saveAndEndWith(t *testing.T, bin string, fallback, within time.Duration) (ended bool, log string) {
+	t.Helper()
+	debugEnabled.Store(true)
+	t.Cleanup(func() { debugEnabled.Store(false) })
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: fallback, saveQuiesce: time.Hour, // only the marker (or the fallback) can end it
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			ended = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(100 * time.Millisecond) // let the final debug line land
+	raw, _ := os.ReadFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-debug.log"))
+	return ended, string(raw)
+}
+
+// t-6291: the VM case — Copilot on Windows ConPTY: a bulleted marker drawn with
+// cursor-position row moves and no \r/\n. Must end via the marker, long before
+// the 30s fallback, and say so in the verbose log.
+func TestSaveAndEndMatchesConPTYFramedCopilotMarker(t *testing.T) {
+	bin := fakeAgentPrinting(t, `\033[4;1Hthinking\033[K\033[5;1H\033[34m\342\227\217\033[0m `+cockpitSaveMarker+`\033[K\033[6;1H\033[?25h> `)
+	ended, log := saveAndEndWith(t, bin, 30*time.Second, 8*time.Second)
+	if !ended {
+		t.Fatalf("session did not end via the marker before the deadline; log:\n%s", log)
+	}
+	if !strings.Contains(log, "save-end ended by=marker") {
+		t.Errorf("verbose log should record ended by=marker; got:\n%s", log)
+	}
+}
+
+// t-6291: when the marker only appears mid-sentence, Save & End falls back — and
+// the verbose log says the marker WAS present plus how it was framed, with the
+// agent's words masked (t-ffb9: never raw PTY content).
+func TestSaveAndEndFallbackLogsMaskedFraming(t *testing.T) {
+	bin := fakeAgentPrinting(t, `secret token abc \342\227\217 I will print `+cockpitSaveMarker+` next\n`)
+	ended, log := saveAndEndWith(t, bin, 400*time.Millisecond, 5*time.Second)
+	if !ended {
+		t.Fatalf("session should have been fallback-killed; log:\n%s", log)
+	}
+	for _, want := range []string{"save-end prompt sent agent=", "save-end ended by=fallback", "marker_substring=true", cockpitSaveMarker} {
+		if !strings.Contains(log, want) {
+			t.Errorf("verbose log missing %q; got:\n%s", want, log)
+		}
+	}
+	for _, leak := range []string{"secret", "token", "abc", "print", "next"} {
+		if strings.Contains(log, leak) {
+			t.Errorf("verbose log leaked agent text %q:\n%s", leak, log)
+		}
 	}
 }

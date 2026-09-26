@@ -434,7 +434,11 @@
             // first-match-wins under the previewDeadline/pendingMarker guards).
             var flat = markerBuf
               .replace(/\x1b\][\s\S]*?(?:\x07|\x1b\\)/g, "") // OSC (e.g. \x1b]8;…\x07 hyperlinks)
-              .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");        // CSI (colors, cursor moves, erases)
+              // t-6291: Windows ConPTY redraws rows with cursor moves (CUP/up/down/
+              // next-line/VPA) instead of \r/\n — a row move starts a new line.
+              // Same rule as the daemon's containsMarkerLine (screenText).
+              .replace(/\x1b\[[0-9;?]*[HfABEFd]/g, "\n")
+              .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "");        // CSI (colors, column moves, erases)
             var rows = flat.split(/[\r\n]+/);
             for(var li=0; li<rows.length; li++){
               // Strip leading chrome (bullets ⏺/●/•, markdown, quote/list

@@ -47,6 +47,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	pty "github.com/aymanbagabas/go-pty"
 )
@@ -1362,6 +1364,12 @@ func (s *server) saveAndEnd(se *session) {
 		s.killSession(se)
 		return
 	}
+	// t-6291: verbose lifecycle log of how Save & End ended (metadata only).
+	began := time.Now()
+	se.debugf("save-end prompt sent agent=%s scan_from=%d", se.agent, sentAt)
+	ended := func(by string) {
+		se.debugf("save-end ended by=%s after=%s", by, time.Since(began).Round(time.Millisecond))
+	}
 	deadline := time.NewTimer(s.cfg.saveFallback)
 	defer deadline.Stop()
 	poll := time.NewTicker(500 * time.Millisecond)
@@ -1369,6 +1377,17 @@ func (s *server) saveAndEnd(se *session) {
 	for {
 		select {
 		case <-deadline.C:
+			if debugEnabled.Load() {
+				se.mu.Lock()
+				tail := se.buf
+				if sentAt <= len(tail) {
+					tail = tail[sentAt:]
+				}
+				tail = append([]byte(nil), tail...)
+				se.mu.Unlock()
+				se.debugf("save-end ended by=fallback after=%s marker_substring=%v framing=%q",
+					time.Since(began).Round(time.Millisecond), strings.Contains(string(tail), cockpitSaveMarker), markerFraming(tail, cockpitSaveMarker))
+			}
 			s.killSession(se)
 			return
 		case <-poll.C:
@@ -1396,16 +1415,20 @@ func (s *server) saveAndEnd(se *session) {
 			}
 			se.mu.Unlock()
 			if exited {
+				ended("agent-exited")
 				return // already gone naturally — nothing left to kill
 			}
 			if humanReturned {
+				ended("human-returned")
 				return
 			}
 			if stuckUnauthenticated {
+				ended("copilot-not-logged-in")
 				s.killSession(se) // never salvageable — don't wait out saveFallback
 				return
 			}
 			if found {
+				ended("marker")
 				s.endSaved(se) // claude fast path: the clean sentinel line
 				return
 			}
@@ -1422,6 +1445,7 @@ func (s *server) saveAndEnd(se *session) {
 				sawChange = true
 			}
 			if sawChange && time.Since(lastChange) >= s.cfg.saveQuiesce {
+				ended("file-settle")
 				s.endSaved(se)
 				return
 			}
@@ -1510,8 +1534,21 @@ var ansiCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[a-zA-Z]`)
 const markerLeadChrome = " \t*_`>#•●⏺○◦▸▹‣·-"
 const markerTrailChrome = " \t*_`"
 
+// t-6291: on Windows, ConPTY redraws rows by moving the cursor (CUP "ESC[5;1H",
+// up/down, next/prev line, VPA) instead of emitting \r or \n, so without this every
+// row of a redraw collapses into one "line" and the marker is never on its own. Row
+// moves become line breaks; same-row column moves (CUF "C", CHA "G") stay removable
+// chrome — Claude uses those mid-line (t-2lv7). OSC (hyperlinks) is dropped whole,
+// as the daemon's page already does. Mirrored in web/cockpit.html.
+var rowMoveCSIRe = regexp.MustCompile(`\x1b\[[0-9;?]*[HfABEFd]`)
+var oscRe = regexp.MustCompile(`\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)`)
+
+func screenText(buf []byte) string {
+	return ansiCSIRe.ReplaceAllString(rowMoveCSIRe.ReplaceAllString(oscRe.ReplaceAllString(string(buf), ""), "\n"), "")
+}
+
 func containsMarkerLine(buf []byte, marker string) bool {
-	clean := ansiCSIRe.ReplaceAllString(string(buf), "")
+	clean := screenText(buf)
 	for _, line := range strings.FieldsFunc(clean, func(r rune) bool { return r == '\n' || r == '\r' }) {
 		line = strings.TrimRight(strings.TrimLeft(strings.TrimSpace(line), markerLeadChrome), markerTrailChrome)
 		if line == marker {
@@ -1519,6 +1556,68 @@ func containsMarkerLine(buf []byte, marker string) bool {
 		}
 	}
 	return false
+}
+
+// markerFraming renders the bytes around the LAST occurrence of marker for the
+// Save & End fallback log (t-6291), with content masked: escape sequences and
+// control bytes are shown quoted, the marker is kept, symbols/spaces are kept
+// (they are the framing — bullets, borders), and every letter or digit becomes
+// "x". So the log shows exactly how the line was framed without recording what
+// the agent wrote — t-ffb9's rule is lifecycle metadata, never PTY content.
+var framingTokenRe = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b.?`)
+
+func markerFraming(buf []byte, marker string) string {
+	raw := string(buf)
+	i := strings.LastIndex(raw, marker)
+	if i < 0 {
+		return "absent"
+	}
+	lo, hi := i-160, i+len(marker)+80
+	if lo < 0 {
+		lo = 0
+	}
+	if hi > len(raw) {
+		hi = len(raw)
+	}
+	for lo > 0 && !utf8.RuneStart(raw[lo]) {
+		lo--
+	}
+	for hi < len(raw) && !utf8.RuneStart(raw[hi]) {
+		hi++
+	}
+	win := raw[lo:hi]
+	var b strings.Builder
+	mask := func(seg string) {
+		for len(seg) > 0 {
+			if strings.HasPrefix(seg, marker) {
+				b.WriteString(marker)
+				seg = seg[len(marker):]
+				continue
+			}
+			r, size := utf8.DecodeRuneInString(seg)
+			switch {
+			case r == '\r':
+				b.WriteString(`\r`)
+			case r == '\n':
+				b.WriteString(`\n`)
+			case r < 0x20 || r == 0x7f:
+				fmt.Fprintf(&b, `\x%02x`, r)
+			case unicode.IsLetter(r) || unicode.IsDigit(r):
+				b.WriteByte('x')
+			default:
+				b.WriteRune(r)
+			}
+			seg = seg[size:]
+		}
+	}
+	last := 0
+	for _, m := range framingTokenRe.FindAllStringIndex(win, -1) {
+		mask(win[last:m[0]])
+		b.WriteString(strings.ReplaceAll(win[m[0]:m[1]], "\x1b", "ESC"))
+		last = m[1]
+	}
+	mask(win[last:])
+	return b.String()
 }
 
 // copilotLoginTailWindow bounds how much of the recent buffer saveAndEnd's
