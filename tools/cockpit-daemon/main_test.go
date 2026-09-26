@@ -1240,6 +1240,63 @@ func TestSpawnModelFlag(t *testing.T) {
 	}
 }
 
+// t-d8b0: end to end through spawn() — the Gate model in plan.md reaches a real
+// copilot argv as Copilot's own id, or not at all (logged), never as an alias.
+func TestCopilotSpawnMapsGateModel(t *testing.T) {
+	debugEnabled.Store(true)
+	t.Cleanup(func() { debugEnabled.Store(false) })
+	for _, tc := range []struct {
+		gate    string
+		want    []string // expected leading argv before --session-id
+		logSkip bool
+	}{
+		{"haiku", []string{"--model", "claude-haiku-4.5"}, false},
+		{"opus", nil, true},
+		{"gpt-5.4", []string{"--model", "gpt-5.4"}, false},
+	} {
+		t.Run(tc.gate, func(t *testing.T) {
+			bin, argvFile, _ := fakeSprint(t)
+			t.Setenv("COCKPIT_COPILOT_BIN", bin)
+			t.Setenv("COPILOT_HOME", t.TempDir())
+			root := t.TempDir()
+			dir := filepath.Join(root, ".tickets", "t-ab12")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			plan := "# Plan\n\n## Sign-off\nTier: normal | Risk: none | Gate model: " + tc.gate + "\n\n## Approach\n1. do it\n"
+			if err := os.WriteFile(filepath.Join(dir, "plan.md"), []byte(plan), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			s := newServer(config{token: bootTok, sprintBin: "/usr/bin/false", projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			resp := startSessionWithAgent(t, ts.URL, "t-ab12", "copilot", bootTok)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("start: %d", resp.StatusCode)
+			}
+			resp.Body.Close()
+			argv := waitFile(t, argvFile, 3*time.Second)
+			lines := strings.Split(strings.TrimSpace(argv), "\n")
+			var got []string
+			for _, l := range lines[1:] {
+				a := strings.TrimPrefix(l, "ARG:")
+				if a == "--session-id" {
+					break
+				}
+				got = append(got, a)
+			}
+			if strings.Join(got, " ") != strings.Join(tc.want, " ") {
+				t.Fatalf("copilot argv before --session-id = %q, want %q (full argv %q)", got, tc.want, lines)
+			}
+			log, _ := os.ReadFile(filepath.Join(dir, ".cockpit-debug.log"))
+			if skip := strings.Contains(string(log), "spawn model="+tc.gate+" omitted for copilot"); skip != tc.logSkip {
+				t.Errorf("debug log skip line present=%v, want %v; log:\n%s", skip, tc.logSkip, log)
+			}
+		})
+	}
+}
+
 // ── t-2e7e: session id resume/fresh + idle reaping ──────────────────────────
 
 func writeTicketStatus(t *testing.T, root, ticket, status string) {
@@ -3788,6 +3845,28 @@ func TestAgentSpawnArgs(t *testing.T) {
 	eq("copilot fresh",
 		agentSpawnArgs("copilot", "t-ab12", false, "SID", "gpt-5.4", ""),
 		[]string{"--model", "gpt-5.4", "--session-id", "SID", "--interactive", "sprint start t-ab12"})
+	// t-d8b0: Copilot's --model takes its own ids, never Claude Code aliases.
+	eq("copilot haiku maps to Copilot's id",
+		agentSpawnArgs("copilot", "t-ab12", false, "SID", "haiku", ""),
+		[]string{"--model", "claude-haiku-4.5", "--session-id", "SID", "--interactive", "sprint start t-ab12"})
+	eq("copilot sonnet maps to Copilot's id",
+		agentSpawnArgs("copilot", "t-ab12", true, "SID", "sonnet", ""),
+		[]string{"--model", "claude-sonnet-5", "--resume=SID"})
+	eq("copilot alias match is case-insensitive",
+		agentSpawnArgs("copilot", "t-ab12", true, "SID", "HAIKU", ""),
+		[]string{"--model", "claude-haiku-4.5", "--resume=SID"})
+	eq("copilot opus has no verified id: no --model",
+		agentSpawnArgs("copilot", "t-ab12", true, "SID", "opus", ""),
+		[]string{"--resume=SID"})
+	eq("copilot fable has no verified id: no --model",
+		agentSpawnArgs("copilot", "t-ab12", true, "SID", "Fable", ""),
+		[]string{"--resume=SID"})
+	eq("copilot full id passes through",
+		agentSpawnArgs("copilot", "t-ab12", true, "SID", "claude-sonnet-5", ""),
+		[]string{"--model", "claude-sonnet-5", "--resume=SID"})
+	eq("claude keeps the alias",
+		agentSpawnArgs("claude", "t-ab12", true, "SID", "haiku", ""),
+		[]string{"--model", "haiku", "--resume", "SID"})
 	eq("copilot fresh minimal",
 		agentSpawnArgs("copilot", "t-ab12", false, "SID", "", ""),
 		[]string{"--session-id", "SID", "--interactive", "sprint start t-ab12"})

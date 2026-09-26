@@ -600,6 +600,9 @@ func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, se
 	// --resume flag's syntax (space-separated vs. copilot's --resume=<id>), and
 	// the fresh-start prompt (positional vs. copilot's --interactive) differ.
 	var args []string
+	if kind == "copilot" {
+		gateModel = copilotModel(gateModel)
+	}
 	if gateModel != "" {
 		args = append(args, "--model", gateModel)
 	}
@@ -617,6 +620,30 @@ func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, se
 		args = append(args, "--resume", sessionID)
 	}
 	return args
+}
+
+// copilotModelIDs maps the Claude Code aliases the board writes to `Gate model:`
+// onto Copilot's own model ids (t-d8b0): Copilot's --model rejects the aliases
+// ("Model \"haiku\" from --model flag is not available."), and its haiku id
+// differs from the Anthropic API id. Only ids verified in Copilot's model list
+// (t-bdce) are mapped; the same pairs back complete.md's Copilot gate-dispatch
+// note. An alias with no verified id maps to "" — no --model, so the session
+// starts on Copilot's default instead of failing.
+var copilotModelIDs = map[string]string{
+	"sonnet": "claude-sonnet-5",
+	"haiku":  "claude-haiku-4.5",
+	"opus":   "",
+	"fable":  "",
+}
+
+// copilotModel returns the --model value for a copilot spawn: the mapped id for a
+// Claude alias (case-insensitive), "" for an alias Copilot has no verified id
+// for, and any other value (a full id such as gpt-5.4) unchanged.
+func copilotModel(gateModel string) string {
+	if id, ok := copilotModelIDs[strings.ToLower(gateModel)]; ok {
+		return id
+	}
+	return gateModel
 }
 
 // agentDisplayModel sanitizes a model string for injection into cockpit.html's
@@ -674,6 +701,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// exists to wire up regardless — see resolveCopilotSessionIDIn/agentSpawnArgs).
 	program := s.cfg.sprintBin // claude default / COCKPIT_SPRINT_BIN override
 	copilotResuming := false   // t-6ce0: surfaced onto the session below
+	copilotGate := ""          // t-d8b0: logged below when copilot can't take it
 	switch kind {
 	case "pi":
 		program = envOr("COCKPIT_PI_BIN", "pi")
@@ -684,7 +712,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		program = envOr("COCKPIT_COPILOT_BIN", "copilot")
 		copilotSessionID, resuming := s.resolveCopilotSessionIDIn(projectRoot, ticket)
 		copilotResuming = resuming
-		args = agentSpawnArgs("copilot", ticket, resuming, copilotSessionID, s.gateModelIn(projectRoot, ticket), "")
+		copilotGate = s.gateModelIn(projectRoot, ticket)
+		args = agentSpawnArgs("copilot", ticket, resuming, copilotSessionID, copilotGate, "")
 	default:
 		// The Notification hook goes in via --settings, which loads ADDITIONAL
 		// settings (verified: the project's own permissions.ask rules still fire), so
@@ -725,6 +754,9 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
 	se.debugf("spawn agent=%s ticket=%s cwd=%s resuming=%v", kind, ticket, cwd, copilotResuming)
+	if copilotGate != "" && copilotModel(copilotGate) == "" {
+		se.debugf("spawn model=%s omitted for copilot (no verified Copilot id)", copilotGate)
+	}
 	// Natural exit (no explicit /kill) leaves the entry in s.sessions so a quick
 	// reattach can still replay scrollback; reap it after a grace TTL so a
 	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
