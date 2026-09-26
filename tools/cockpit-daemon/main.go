@@ -1571,10 +1571,16 @@ func containsMarkerLine(buf []byte, marker string) bool {
 
 // markerOnScreen replays pre (untracked) then post onto a cols×rows screen
 // (0 = unbounded: no autowrap / no bottom-of-screen scroll) and reports whether
-// a row changed by post is, after chrome trimming, exactly marker.
+// a row changed by post is, after chrome trimming, exactly marker. Trailing
+// box-drawing and block glyphs also go: Copilot draws its scrollbar ("┃") in
+// the last column of every row (VM round 3). Leading ones stay — Copilot's
+// "│" prefixes its thinking block, which must never end a save.
 func markerOnScreen(pre, post []byte, marker string, cols, rows int) bool {
 	for _, line := range changedRows(pre, post, cols, rows) {
-		if strings.TrimRight(strings.TrimLeft(strings.TrimSpace(line), markerLeadChrome), markerTrailChrome) == marker {
+		line = strings.TrimRightFunc(line, func(r rune) bool {
+			return unicode.IsSpace(r) || strings.ContainsRune(markerTrailChrome, r) || (r >= 0x2500 && r <= 0x259f)
+		})
+		if strings.TrimLeft(strings.TrimSpace(line), markerLeadChrome) == marker {
 			return true
 		}
 	}

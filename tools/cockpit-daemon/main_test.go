@@ -4660,6 +4660,12 @@ func TestMarkerOnScreen(t *testing.T) {
 			"", "\x1b[1;1H" + strings.Repeat("x", 30) + "\u25cf " + m, 30, 24, true},
 		{"wide characters keep columns aligned for a partial redraw",
 			"\x1b[1;1H\u6f22COCKPIT_STATE_CHECK", "\x1b[1;1H\u25cf \x1b[1;17HSAVED", 80, 24, true},
+		{"copilot scrollbar in the last column",
+			"\x1b[38;1H\x1b[154G\u2503", "\x1b[38;1H  \u25cf " + m + "\x1b[131X\x1b[37m\x1b[131C\u2503", 154, 46, true},
+		{"marker inside copilot's thinking block must not count",
+			"", "\x1b[5;1H  \u2502 " + m + "\x1b[154G\u2503", 154, 46, false},
+		{"echoed prompt row with the scrollbar must not count",
+			"", "\x1b[6;1H    xxxx xxxx " + m + " on its own, and\x1b[154G\u2503", 154, 46, false},
 		{"REP repeats the last character",
 			"", "\x1b[1;1H\u25cf COCKPIT_STATE_SAVED \x1b[3b\r\n", 80, 24, true},
 	}
