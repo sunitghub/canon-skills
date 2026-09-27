@@ -57,6 +57,12 @@ tests=(
   "$ROOT/tests/sprint-headless-eval-criteria-only.sh"
 )
 
+# t-8765: a test that backgrounds a board server and doesn't kill it leaks it past the run (a subshell-
+# captured PID once orphaned two servers per run, ~240 across a session). Snapshot the server PIDs first
+# and fail if the run leaves NEW ones — servers already running (a developer's own board) are ignored.
+_server_pids() { { pgrep -f 'sprint-check-app/server\.py|sprint-check-go-bin' 2>/dev/null || true; } | sort -u; }
+SERVERS_BEFORE="$(_server_pids)"
+
 for test_file in "${tests[@]}"; do
   printf '==> %s\n' "${test_file#$ROOT/}"
   bash "$test_file"
@@ -90,6 +96,13 @@ if command -v node >/dev/null 2>&1; then
   node "$ROOT/tests/sprint-check-api-scoping.js"
 else
   printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
+fi
+
+sleep 1
+LEAKED_SERVERS="$(comm -13 <(printf '%s\n' "$SERVERS_BEFORE") <(_server_pids) | tr '\n' ' ')"
+if [[ -n "${LEAKED_SERVERS// /}" ]]; then
+  printf '\nFAIL: the test run left sprint-check servers running (PIDs): %s\n' "$LEAKED_SERVERS" >&2
+  exit 1
 fi
 
 printf '\nAll tests passed.\n'
