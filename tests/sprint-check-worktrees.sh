@@ -269,7 +269,7 @@ PY_PID=""
 
 if [[ -n "$GO_BIN" ]]; then
   GO_PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-  SPRINT_CHECK_ROOT="$WORK" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
+  SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$WORK" "$GO_BIN" "$GO_PORT" >/dev/null 2>&1 &
   GO_PID=$!
   disown "$GO_PID" 2>/dev/null || true
   for _ in $(seq 1 50); do

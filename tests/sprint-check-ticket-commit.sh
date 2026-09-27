@@ -60,7 +60,7 @@ start_server() {
   if [[ "$kind" == py ]]; then
     SPRINT_CHECK_ROOT="$repo" python3 "$SERVER_PY" "$port" >/dev/null 2>&1 &
   else
-    SPRINT_CHECK_ROOT="$repo" "$GO_BIN" "$port" >/dev/null 2>&1 &
+    SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$repo" "$GO_BIN" "$port" >/dev/null 2>&1 &
   fi
   PIDS+=("$!")
   disown "$!" 2>/dev/null || true   # no "Terminated" job noise when cleanup kills it
