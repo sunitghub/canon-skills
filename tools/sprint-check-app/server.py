@@ -2046,7 +2046,9 @@ def _cockpit_running_build(addr: str) -> dict | None:
         return {'version': str(data.get('version', '')),
                 'exe_mtime': int(data.get('exe_mtime', 0)),
                 'uptime_secs': int(data.get('uptime_secs', 0)),
-                'debug_enabled': bool(data.get('debug_enabled', False))}
+                'debug_enabled': bool(data.get('debug_enabled', False)),
+                'idle_timeout_secs': int(data.get('idle_timeout_secs', 0)),
+                'idle_timeout_main_secs': int(data.get('idle_timeout_main_secs', 0))}
     except Exception:
         return None
 

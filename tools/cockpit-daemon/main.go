@@ -126,7 +126,8 @@ type session struct {
 	buf           []byte
 	max           int
 	subs          map[chan frame]struct{}
-	status        string // "running" | "needs-you"
+	status        string    // "running" | "needs-you" | "awaiting-input" (t-824e: finished, at the prompt)
+	statusSince   time.Time // t-824e: when status last changed — /sessions reports how long a session has waited
 	done          chan struct{}
 	doneOnce      sync.Once
 	closeOnce     sync.Once // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
@@ -215,7 +216,8 @@ func (s *server) handler() http.Handler {
 	// same string, so a string compare could never flag a rebuilt-in-place binary.
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds()), "debug_enabled": debugEnabled.Load()})
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds()), "debug_enabled": debugEnabled.Load(),
+			"idle_timeout_secs": int64(s.cfg.idleTimeout.Seconds()), "idle_timeout_main_secs": int64(s.cfg.idleTimeoutMain.Seconds())}) // t-824e: Admin's reaper line
 	})
 	// t-ffb9: toggles verbose session-lifecycle logging (see debugf). Deliberately
 	// token-free like /version/healthz, NOT s.guard-wrapped like /session/* or
@@ -755,7 +757,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
 		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: s.ticketsDirIn(projectRoot),
 		agent: kind, started: time.Now(), copilotResumeAttempt: copilotResuming,
-		pty: p, cmd: c, max: s.cfg.scrollback, status: "running",
+		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
@@ -802,6 +804,12 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Agent       string `json:"agent"`
 		Status      string `json:"status"`
 		Started     string `json:"started"`
+		// t-824e: the one place session state is decided; the pages only display it.
+		State         string `json:"state"`           // needs-you | done | working | idle
+		StateSecs     int64  `json:"state_secs"`      // seconds in this state (idle: since last activity)
+		IdleSecs      int64  `json:"idle_secs"`       // seconds since terminal output or input
+		IdleLimitSecs int64  `json:"idle_limit_secs"` // the reaper's timeout for this session
+		Signal        string `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
 	s.mu.Lock()
@@ -814,14 +822,50 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Cwd: se.cwd, Agent: se.agent, Status: se.status,
 			Started: se.started.UTC().Format(time.RFC3339),
 		}
+		info.State, info.StateSecs, info.IdleSecs, info.Signal = sessionStateLocked(se, time.Now())
 		se.mu.Unlock()
 		if !exited {
 			out = append(out, info)
 		}
 	}
 	s.mu.Unlock()
+	// idleTimeoutFor resolves symlinks on disk — done outside the locks.
+	for i := range out {
+		out[i].IdleLimitSecs = int64(s.idleTimeoutFor(out[i].ProjectRoot, out[i].Cwd).Seconds())
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+// workingWindow: terminal output or input within this long counts as working (t-824e grill).
+const workingWindow = 15 * time.Second
+
+// sessionStateLocked derives the displayed state (caller holds se.mu). needs-you: the hook saw a
+// question, or a Copilot menu is pending; done: the hook saw the agent finish / idle at its
+// prompt; otherwise working or idle by last activity.
+func sessionStateLocked(se *session, now time.Time) (state string, stateSecs, idleSecs int64, signal string) {
+	idle := now.Sub(se.lastActivity)
+	idleSecs = int64(idle.Seconds())
+	since := int64(now.Sub(se.statusSince).Seconds())
+	switch se.agent {
+	case "copilot":
+		signal = "copilot-menu"
+	case "pi":
+		signal = "activity"
+	default:
+		signal = "hook"
+	}
+	switch {
+	case se.status == "needs-you":
+		return "needs-you", since, idleSecs, signal
+	case se.agent == "copilot" && se.menuPendingLocked():
+		return "needs-you", idleSecs, idleSecs, signal
+	case se.status == "awaiting-input":
+		return "done", since, idleSecs, signal
+	case idle < workingWindow:
+		return "working", idleSecs, idleSecs, signal
+	}
+	return "idle", idleSecs, idleSecs, signal
 }
 
 // handleSession routes /session/{sid}/{stream|input|resize|kill|status}.
@@ -1333,12 +1377,18 @@ func (s *server) startIdleReaper() {
 // safety net (idleTimeoutMain) rather than running unreaped forever — a
 // deliberate compromise, not an exemption, so cockpit never regresses to
 // leaking indefinitely-idle agent processes on the main checkout.
-func (s *server) idleTimeoutFor(cwd string) time.Duration {
-	resolvedRoot, err := filepath.EvalSymlinks(s.cfg.projectRoot)
-	if err != nil {
-		resolvedRoot = s.cfg.projectRoot
+// t-824e: projectRoot is the session's own project (t-391a: one daemon serves every project), not
+// the daemon's launch root — comparing with the launch root gave another project's main checkout
+// the worktree timeout. "" falls back to the launch root, as before.
+func (s *server) idleTimeoutFor(projectRoot, cwd string) time.Duration {
+	if projectRoot == "" {
+		projectRoot = s.cfg.projectRoot
 	}
-	if cwd == "" || pathsEqual(cwd, resolvedRoot) || pathsEqual(cwd, s.cfg.projectRoot) {
+	resolvedRoot, err := filepath.EvalSymlinks(projectRoot)
+	if err != nil {
+		resolvedRoot = projectRoot
+	}
+	if cwd == "" || pathsEqual(cwd, resolvedRoot) || pathsEqual(cwd, projectRoot) {
 		return s.cfg.idleTimeoutMain
 	}
 	return s.cfg.idleTimeout
@@ -1353,7 +1403,7 @@ func (s *server) reapIdleSessions() {
 	s.mu.Unlock()
 	for _, se := range candidates {
 		se.mu.Lock()
-		idleFor, idleLimit := time.Since(se.lastActivity), s.idleTimeoutFor(se.cwd)
+		idleFor, idleLimit := time.Since(se.lastActivity), s.idleTimeoutFor(se.projectRoot, se.cwd)
 		idle := idleFor > idleLimit
 		blocked := se.status == "needs-you"
 		exited := se.exited
@@ -2386,15 +2436,20 @@ func (s *server) handlePreview(w http.ResponseWriter, r *http.Request, se *sessi
 // not worth a warning.
 var errNoDaemonAddr = errors.New("daemon address unknown")
 
+// hookMatchers maps Claude Code Notification types (hook matchers) to the status they post.
+var hookMatchers = []struct{ matcher, status string }{
+	{"permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input", "needs-you"},
+	{"idle_prompt|agent_completed", "awaiting-input"},
+}
+
 // writeHookSettings builds the daemon-owned, session-scoped settings file passed
-// to `claude --settings`. It holds one Notification hook — the event Claude Code
-// fires when it opens a permission prompt or otherwise waits on the human
-// (verified live against a real permissions.ask prompt) — which posts
-// "needs-you" back to this daemon.
+// to `claude --settings`. It holds one Notification hook entry per hookMatchers
+// row: questions post "needs-you", finishing / idling at the prompt posts
+// "awaiting-input" (both verified live, t-2e7e and t-824e).
 //
 // The credential is a STATUS-ONLY token (never the session token — see
 // handleSession), and it travels in curl's -K config file rather than on curl's
-// argv, so it never appears in `ps` output. Both files are 0600 under the
+// argv, so it never appears in `ps` output. Every file is 0600 under the
 // daemon's own state dir, never inside the user's project. Returns the dir to
 // clean up on exit.
 func (s *server) writeHookSettings(sid, statusToken string) (string, error) {
@@ -2410,23 +2465,28 @@ func (s *server) writeHookSettings(sid, statusToken string) (string, error) {
 	// daemon's env, and the hook command ends `|| true` — so on any machine with a
 	// proxy set the needs-you ping would be routed away and fail invisibly,
 	// silently disabling the one signal this whole feature exists to provide.
-	conf := fmt.Sprintf("url = \"http://%s/session/%s/status\"\nheader = \"Authorization: Bearer %s\"\nrequest = \"POST\"\ndata = \"needs-you\"\nnoproxy = \"*\"\nsilent\nmax-time = 3\n", s.cfg.addr, sid, statusToken)
-	confPath := filepath.Join(dir, "curl.conf")
-	if err := os.WriteFile(confPath, []byte(conf), 0o600); err != nil {
-		os.RemoveAll(dir)
-		return "", err
-	}
-	// `|| true`: a status ping must never fail the agent's own turn.
-	hook := map[string]any{
-		"hooks": map[string]any{
-			"Notification": []any{map[string]any{
-				"hooks": []any{map[string]any{
-					"type":    "command",
-					"command": "curl -K " + shellQuote(confPath) + " >/dev/null 2>&1 || true",
-				}},
+	// t-824e: one curl config per status. Questions mean the agent is blocked on the human
+	// (needs-you, never reaped); finishing or idling at the prompt is "awaiting-input" (shown as
+	// done, reaped on the normal timer). Any other notification (auth_success, quota_*) posts nothing —
+	// without matchers every notification marked needs-you and idle sessions were never reaped.
+	entries := []any{}
+	for _, h := range hookMatchers {
+		conf := fmt.Sprintf("url = \"http://%s/session/%s/status\"\nheader = \"Authorization: Bearer %s\"\nrequest = \"POST\"\ndata = \"%s\"\nnoproxy = \"*\"\nsilent\nmax-time = 3\n", s.cfg.addr, sid, statusToken, h.status)
+		confPath := filepath.Join(dir, h.status+".conf")
+		if err := os.WriteFile(confPath, []byte(conf), 0o600); err != nil {
+			os.RemoveAll(dir)
+			return "", err
+		}
+		// `|| true`: a status ping must never fail the agent's own turn.
+		entries = append(entries, map[string]any{
+			"matcher": h.matcher,
+			"hooks": []any{map[string]any{
+				"type":    "command",
+				"command": "curl -K " + shellQuote(confPath) + " >/dev/null 2>&1 || true",
 			}},
-		},
+		})
 	}
+	hook := map[string]any{"hooks": map[string]any{"Notification": entries}}
 	data, err := json.Marshal(hook)
 	if err != nil {
 		os.RemoveAll(dir)
@@ -2904,7 +2964,9 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-var validStatuses = map[string]bool{"running": true, "needs-you": true}
+// t-824e: "awaiting-input" is the hook's "finished, at the prompt" (idle_prompt / agent_completed).
+// Not "done": the pages already use "done" for an exited session.
+var validStatuses = map[string]bool{"running": true, "needs-you": true, "awaiting-input": true}
 
 // handleStatus receives the hook's ping. Gated by the session's STATUS-ONLY
 // token (see handleSession) — deliberately not the session token, which the
@@ -2937,6 +2999,7 @@ func (se *session) setStatus(status string) {
 		return
 	}
 	se.status = status
+	se.statusSince = time.Now()
 	// Same critical section as the assignment: two concurrent callers can't
 	// interleave into a stream order that disagrees with se.status.
 	se.broadcastLocked(frame{event: "status", data: []byte(status)})

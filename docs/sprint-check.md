@@ -158,8 +158,18 @@ sprint agent without leaving the browser — no second terminal.
   it can end up blocked on a prompt while you're looking at another tab. The
   status dot turns red and pulses (**needs you**) as soon as that happens, and a
   tab attaching later is told the pending status too — so a reattach can't show
-  green over an unanswered prompt. Typing clears it. The signal is Claude Code's
-  own `Notification` hook, handed to the session via `claude --settings <file>`
+  green over an unanswered prompt. Typing clears it. When the agent has finished
+  and sits at its prompt, the status reads **done · waiting for your next
+  prompt** instead (`t-824e`): questions (`permission_prompt`, `elicitation_*`,
+  `agent_needs_input`) mean needs you, `idle_prompt`/`agent_completed` mean done,
+  and other notifications change nothing. The daemon's `/sessions` turns this
+  into one state per session — needs you, working (output or input in the last
+  15 s), idle, or done — shown in the shell's Agents sidebar, the "N needs you"
+  pill, an amber tab dot, the Projects cards, Admin's session table and the
+  ticket cockpit's state chip. Copilot's needs you comes from its approval
+  menu; Pi has no question signal (working/idle only). Claude Code's
+  folder-trust prompt sends no notification, so it shows as idle. The signal is
+  Claude Code's own `Notification` hook, handed to the session via `claude --settings <file>`
   from the daemon's state dir: **the daemon writes nothing into your project**,
   which keeps `DECISIONS.md`'s 2026-07-02 "zero Claude Code hooks in a project's
   settings" intact. The hook's callback credential lives in a `0600` curl `-K`
@@ -233,8 +243,11 @@ sprint agent without leaving the browser — no second terminal.
   ticket's own worktree is selected, the rail shows just that row plus **Change worktree**.
   The card/modal divergence note says "uncommitted changes in worktree" rather than
   "branch merged" when the worktree has unsaved work. Idle-reap
-  is tiered by cwd: a worktree session keeps the 5-minute default, a main-checkout
-  session gets a longer 30-minute safety net instead of never reaping.
+  is tiered by cwd: a worktree session keeps the 5-minute default, a session in its
+  own project's main checkout (whichever project it runs in, `t-824e`) gets a longer
+  30-minute safety net instead of never reaping. A session that needs you is never
+  reaped; a done one is. Admin shows both timeouts, and the ticket cockpit shows the
+  countdown next to End Session.
 - **Preview pane (`t-b19b`, `t-533f`):** asks the agent for the ticket's
   deliverable and shows a static HTML file in a sandboxed iframe
   (`sandbox="allow-scripts"` only), so the untrusted page can't reach the

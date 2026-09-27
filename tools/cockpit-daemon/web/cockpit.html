@@ -516,6 +516,9 @@
         else if(ev==="status" && data){
           var st = atob(data);
           if(st === "needs-you") setStatus("needsyou","needs you · "+activeTicket);
+          // t-824e: finished its turn and waiting at the prompt — still a live
+          // process, so it keeps the running class (and posts "running" out).
+          else if(st === "awaiting-input") setStatus("running","done · waiting for your next prompt · "+activeTicket);
           else setStatus("running","running · "+activeTicket);
         }
         else if(ev==="exit"){
