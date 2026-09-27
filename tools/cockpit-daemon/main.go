@@ -1015,6 +1015,12 @@ func (s *server) handleSaveAndEnd(w http.ResponseWriter, r *http.Request, se *se
 		http.Error(w, "session has exited", http.StatusGone)
 		return
 	}
+	// t-f91a: never type into a pending copilot menu — that answers it.
+	if se.copilotHasPendingMenu() {
+		se.debugf("save-end refused: copilot menu pending")
+		http.Error(w, menuRefusal, http.StatusConflict)
+		return
+	}
 	se.mu.Lock()
 	already := se.reaping
 	if !already {
@@ -1317,6 +1323,12 @@ func (s *server) reapIdleSessions() {
 		blocked := se.status == "needs-you"
 		exited := se.exited
 		alreadyReaping := se.reaping
+		// t-f91a: a copilot session on a selection menu is waiting on a human, not
+		// abandoned — never write into it (that would answer it), never reap it.
+		if idle && !blocked && !exited && !alreadyReaping && se.menuPendingLocked() {
+			blocked = true
+			se.debugf("idle reap skipped: copilot menu pending")
+		}
 		if idle && !blocked && !exited && !alreadyReaping {
 			se.reaping = true
 		}
@@ -1349,6 +1361,16 @@ func (s *server) saveAndEnd(se *session) {
 		"the write; a repeated 'nothing changed' entry isn't worth logging. Don't re-read plan.md or " +
 		"acceptance.md unless something is unresolved that they don't already capture — only then " +
 		"update them. Then print the exact line " + cockpitSaveMarker + " on its own, and stop."
+	// t-f91a: the callers check too, but a menu can appear between their check and
+	// this goroutine starting. Abort rather than write into it. (A caller that already
+	// answered 202 then waits out its own fallback; the window is that narrow.)
+	if se.copilotHasPendingMenu() {
+		se.debugf("save-end aborted: copilot menu pending")
+		se.mu.Lock()
+		se.reaping = false
+		se.mu.Unlock()
+		return
+	}
 	se.mu.Lock()
 	sentAt := len(se.buf)            // only output written AFTER the prompt counts — buf may hold an
 	humanBaseline := se.humanInputAt // unrelated earlier line matching the marker verbatim (e.g. from a
@@ -2097,6 +2119,64 @@ const copilotLoginTailWindow = 4096
 func copilotNeedsLogin(buf []byte) bool {
 	clean := ansiCSIRe.ReplaceAllString(string(buf), "")
 	return strings.Contains(clean, "You must be logged in") || strings.Contains(clean, "Please use /login")
+}
+
+// copilotMenuPending reports whether a copilot session is sitting on one of its
+// selection menus (t-f91a): the tool-call approval ("Do you want to allow this?
+// 1. Yes / 2. Yes, and remember… / 3. No (Esc)") or the folder-trust prompt. Anything
+// typed at such a menu ANSWERS it — Enter picks the highlighted option (approving a
+// tool call, or trusting a folder), Esc rejects — so Save & End must send nothing
+// while one is up. Copilot has no needs-you event, and while a tool is pending its
+// elapsed-time counter keeps redrawing, so PTY quiescence never flags it either:
+// the screen is the only signal.
+//
+// The signature, taken from real captures (testdata/copilot-*-menu.bin), is the
+// footer both menus share — "↑/↓ to navigate · enter to select · esc to cancel" —
+// AND their last option, "3. No (Esc)". The footer alone is the phrase an agent
+// would quote when discussing this very feature; requiring the option too makes a
+// quote-induced false positive need three menu phrases, not two. (A menu without a
+// "No (Esc)" option is not detected: that fails open, i.e. today's behavior.) It is
+// matched on the RENDERED screen, over its last few non-blank rows (a menu is the
+// live UI, at the bottom; scrollback that once held one must not count). Only
+// letters and digits are compared, so a footer wrapped across rows, or across a
+// bordered box's "│" edges, on a narrow terminal still matches. Once the menu is
+// answered copilot erases those rows, so the match goes away by itself.
+func copilotMenuPending(buf []byte, cols, rows int) bool {
+	v := newVTScreen(cols, rows)
+	v.feed(buf)
+	const lastRows = 15
+	var picked []string
+	for i := len(v.grid) - 1; i >= 0 && len(picked) < lastRows; i-- {
+		if t := v.rowText(v.grid[i]); strings.TrimSpace(t) != "" {
+			picked = append(picked, t)
+		}
+	}
+	var b strings.Builder
+	for i := len(picked) - 1; i >= 0; i-- {
+		b.WriteString(picked[i])
+	}
+	flat := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, b.String())
+	return strings.Contains(flat, "entertoselect") && strings.Contains(flat, "esctocancel") && strings.Contains(flat, "noesc")
+}
+
+// menuRefusal is the body of the 409 Save & End returns while a menu is pending.
+const menuRefusal = "Copilot is waiting for your answer to a prompt in the terminal — answer it there, then Save & End again (or End without saving)."
+
+// menuPendingLocked is copilotMenuPending over the session's own buffer (se.mu held).
+func (se *session) menuPendingLocked() bool {
+	return se.agent == "copilot" && copilotMenuPending(se.buf, se.cols, se.rows)
+}
+
+// copilotHasPendingMenu is menuPendingLocked for callers that don't hold se.mu.
+func (se *session) copilotHasPendingMenu() bool {
+	se.mu.Lock()
+	defer se.mu.Unlock()
+	return se.menuPendingLocked()
 }
 
 // copilotResumeFailed detects copilot's stable "dead resume id" output

@@ -4930,3 +4930,270 @@ func TestSaveAndEndFallbackLogsMaskedFraming(t *testing.T) {
 		}
 	}
 }
+
+// ── t-f91a: Save & End must never type into a pending copilot menu ─────────────
+//
+// The fixtures under testdata/ are REAL Copilot CLI 1.0.88 output captured in a
+// 120x40 PTY (2026-09-26), never answered: the tool-call approval menu ("Do you want
+// to allow this?"), the folder-trust prompt, and the composer after a tool call ran.
+
+func readMenuFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+func TestCopilotMenuPendingOnRealCaptures(t *testing.T) {
+	approval := readMenuFixture(t, "copilot-approval-menu.bin")
+	trust := readMenuFixture(t, "copilot-trust-menu.bin")
+	composer := readMenuFixture(t, "copilot-composer-after-tool.bin")
+	for _, tc := range []struct {
+		name string
+		buf  []byte
+		want bool
+	}{
+		{"tool-call approval menu", approval, true},
+		{"folder-trust prompt", trust, true},
+		{"composer after a tool call ran", composer, false},
+		{"empty buffer", nil, false},
+		// The menu was answered: copilot erases its rows and redraws the composer.
+		{"approval menu answered and screen redrawn", append(append([]byte(nil), approval...), []byte("\x1b[2J\x1b[H> ready")...), false},
+		// Menu-like words the AGENT printed are not a live menu once real UI has scrolled them away.
+		{"menu footer text far above the live UI", append([]byte("enter to select · esc to cancel\r\n"), []byte(strings.Repeat("line of output\r\n", 60))...), false},
+		{"not-logged-in screen", []byte("You must be logged in. Please use /login to sign in to use Copilot.\r\n"), false},
+		// An agent discussing this feature quotes the footer. On the REAL composer screen, right above the
+		// live prompt (inside the bottom-rows window), that must not read as a pending menu.
+		{"footer quoted by the agent above a live composer", append(append([]byte(nil), composer...), []byte("\r\nthe menu footer reads: ↑/↓ to navigate · enter to select · esc to cancel\r\n")...), false},
+		{"footer quoted mid-scrollback of the real composer session", append([]byte("agent: the footer says enter to select · esc to cancel\r\n"), composer...), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := copilotMenuPending(tc.buf, 120, 40); got != tc.want {
+				t.Fatalf("copilotMenuPending = %v, want %v", got, tc.want)
+			}
+		})
+	}
+	// A narrow terminal wraps the footer across rows; punctuation-stripped matching still sees it.
+	if !copilotMenuPending([]byte("Do you want to allow this?\r\n1. Yes\r\n3. No (Esc)\r\n↑/↓ to navigate · enter to\r\nselect · esc to cancel\r\n"), 30, 12) {
+		t.Fatal("a footer wrapped across rows on a narrow terminal must still match")
+	}
+	// The real menu is drawn inside a bordered box: a wrapped footer carries "│" edges on each row.
+	if !copilotMenuPending([]byte("│ Do you want to allow this?   │\r\n│ 1. Yes                       │\r\n│ 3. No (Esc)                  │\r\n│ ↑/↓ to navigate · enter to   │\r\n│ select · esc to cancel       │\r\n╰──────────────────────────────╯\r\n"), 32, 12) {
+		t.Fatal("a footer wrapped inside a bordered box must still match (fail-open otherwise)")
+	}
+}
+
+// fakeAgentOnMenu prints a captured menu at spawn, then records every byte it
+// receives on stdin into recvFile — so "Save & End wrote nothing" is a file-size check.
+func fakeAgentOnMenu(t *testing.T, fixture string) (bin, recvFile string) {
+	t.Helper()
+	dir := t.TempDir()
+	bin = filepath.Join(dir, "fake-copilot.sh")
+	recvFile = filepath.Join(dir, "received.bin")
+	abs, err := filepath.Abs(filepath.Join("testdata", fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\n" +
+		"cat '" + abs + "'\n" +
+		"exec cat > '" + recvFile + "'\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+func postSaveAndEnd(t *testing.T, base, sid, tok string) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/"+sid+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	b, _ := io.ReadAll(r.Body)
+	return r.StatusCode, string(b)
+}
+
+func startMenuSession(t *testing.T, bin string, cfg config) (*server, *httptest.Server, string, string) {
+	t.Helper()
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	cfg.token, cfg.sprintBin, cfg.projectRoot, cfg.stateDir = bootTok, bin, root, t.TempDir()
+	s := newServer(cfg)
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSessionWithAgent(t, ts.URL, "t-ab12", "copilot", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	// Let the fake agent's menu reach the session buffer.
+	s.mu.Lock()
+	se := s.sessions[out.Session]
+	s.mu.Unlock()
+	// Wait for the WHOLE fixture: the size check alone (>500) passed while the menu's footer,
+	// the last thing drawn, was still in flight, so a check racing it saw no menu and Save & End
+	// ran its full 30s fallback (an intermittent failure under load). Stable = unchanged for 300ms.
+	deadline := time.Now().Add(5 * time.Second)
+	last, stableSince := -1, time.Now()
+	for time.Now().Before(deadline) {
+		se.mu.Lock()
+		n := len(se.buf)
+		se.mu.Unlock()
+		if n != last {
+			last, stableSince = n, time.Now()
+		} else if n > 500 && time.Since(stableSince) > 300*time.Millisecond {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return s, ts, out.Session, out.Token
+}
+
+// The safety property: with a real approval menu on screen, Save & End answers 409 and
+// the PTY receives ZERO bytes — no prompt, no Enter, no Esc — so it cannot approve, reject
+// or trust anything. A composer screen still gets the prompt (202).
+func TestSaveAndEndNeverTypesIntoCopilotMenu(t *testing.T) {
+	for _, tc := range []struct {
+		fixture    string
+		wantStatus int
+		wantBytes  bool
+	}{
+		{"copilot-approval-menu.bin", http.StatusConflict, false},
+		{"copilot-trust-menu.bin", http.StatusConflict, false},
+		{"copilot-composer-after-tool.bin", http.StatusAccepted, true},
+	} {
+		t.Run(tc.fixture, func(t *testing.T) {
+			bin, recv := fakeAgentOnMenu(t, tc.fixture)
+			s, ts, sid, tok := startMenuSession(t, bin, config{
+				idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+				saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
+			})
+			status, body := postSaveAndEnd(t, ts.URL, sid, tok)
+			if status != tc.wantStatus {
+				t.Fatalf("save-and-end status = %d (%s), want %d", status, body, tc.wantStatus)
+			}
+			time.Sleep(1500 * time.Millisecond) // long enough for the prompt (300ms gap + Enter) to land if it were sent
+			b, _ := os.ReadFile(recv)
+			if got := len(b) > 0; got != tc.wantBytes {
+				t.Fatalf("PTY received %d bytes (%q), wantBytes=%v", len(b), b, tc.wantBytes)
+			}
+			s.mu.Lock()
+			se := s.sessions[sid]
+			s.mu.Unlock()
+			se.mu.Lock()
+			reaping := se.reaping
+			se.mu.Unlock()
+			if tc.wantStatus == http.StatusConflict {
+				if !strings.Contains(body, "waiting for your answer") {
+					t.Errorf("409 body = %q, want the answer-the-prompt message", body)
+				}
+				if reaping {
+					t.Error("a refused Save & End must not leave se.reaping set (it would block the next attempt and the reaper)")
+				}
+			}
+		})
+	}
+}
+
+// claude/pi sessions are never inspected: the same menu bytes on a claude session must not refuse.
+func TestSaveAndEndMenuCheckIsCopilotOnly(t *testing.T) {
+	menu := readMenuFixture(t, "copilot-approval-menu.bin")
+	for _, agent := range []string{"claude", "pi", ""} {
+		se := &session{agent: agent, buf: menu, cols: 120, rows: 40}
+		if se.copilotHasPendingMenu() {
+			t.Errorf("agent %q: menu check fired for a non-copilot session", agent)
+		}
+	}
+	se := &session{agent: "copilot", buf: menu, cols: 120, rows: 40}
+	if !se.copilotHasPendingMenu() {
+		t.Error("copilot session on the real approval menu must be pending")
+	}
+}
+
+// The idle reaper treats a menu as "waiting on a human", not abandoned: it must not
+// write a save prompt into it. A session that is merely idle at a composer is still reaped.
+func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
+	debugEnabled.Store(true) // the skip is only observable through the verbose log (saveAndEnd's own guard also writes nothing)
+	t.Cleanup(func() { debugEnabled.Store(false) })
+	for _, tc := range []struct {
+		fixture string
+		reaped  bool
+	}{
+		{"copilot-approval-menu.bin", false},
+		{"copilot-composer-after-tool.bin", true},
+	} {
+		t.Run(tc.fixture, func(t *testing.T) {
+			bin, recv := fakeAgentOnMenu(t, tc.fixture)
+			s, _, sid, _ := startMenuSession(t, bin, config{
+				idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: time.Hour,
+				saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
+			})
+			time.Sleep(200 * time.Millisecond) // past the idle timeout
+			s.reapIdleSessions()
+			time.Sleep(1500 * time.Millisecond)
+			b, _ := os.ReadFile(recv)
+			if got := len(b) > 0; got != tc.reaped {
+				t.Fatalf("PTY received %d bytes, reaped=%v want %v", len(b), got, tc.reaped)
+			}
+			log, _ := os.ReadFile(filepath.Join(s.ticketsDirIn(s.cfg.projectRoot), "t-ab12", ".cockpit-debug.log"))
+			if skipped := strings.Contains(string(log), "idle reap skipped: copilot menu pending"); skipped == tc.reaped {
+				t.Errorf("reaper skip logged=%v, want %v; log:\n%s", skipped, !tc.reaped, log)
+			}
+			_ = sid
+		})
+	}
+}
+
+// saveAndEnd's own guard (the callers check too): a menu that appears after a caller's
+// check must still never receive the prompt, and the reaping flag is released.
+func TestSaveAndEndGuardRefusesMenuDirectly(t *testing.T) {
+	bin, recv := fakeAgentOnMenu(t, "copilot-approval-menu.bin")
+	s, _, sid, _ := startMenuSession(t, bin, config{
+		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
+		saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
+	})
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	se.mu.Lock()
+	se.reaping = true // as the caller sets it before launching saveAndEnd
+	se.mu.Unlock()
+	s.saveAndEnd(se)
+	time.Sleep(1200 * time.Millisecond)
+	if b, _ := os.ReadFile(recv); len(b) != 0 {
+		t.Fatalf("saveAndEnd wrote %d bytes into a pending menu: %q", len(b), b)
+	}
+	se.mu.Lock()
+	reaping := se.reaping
+	se.mu.Unlock()
+	if reaping {
+		t.Error("saveAndEnd must release se.reaping when it aborts on a menu")
+	}
+}
+
+// t-f91a: the 409 → 'save-refused' → board contract spans two files that share no code
+// (the daemon-served page and the board's app.html). If either side renames the message
+// type, a refused Save & End silently becomes an "ended" teardown (or a dead click), so
+// pin the string on both sides and the daemon page's 409 branch.
+func TestSaveRefusedContractAcrossPages(t *testing.T) {
+	page, err := os.ReadFile(filepath.Join("web", "cockpit.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	board, err := os.ReadFile(filepath.Join("..", "sprint-check-app", "app.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`r\.status === 409[\s\S]{0,200}type: "save-refused"`).Match(page) {
+		t.Error("web/cockpit.html must relay a 409 from save-and-end as a 'save-refused' message (not 'ended')")
+	}
+	if !strings.Contains(string(board), "d.type === 'save-refused'") || !strings.Contains(string(board), "_onSaveRefused") {
+		t.Error("app.html must handle the 'save-refused' message from the daemon page")
+	}
+}

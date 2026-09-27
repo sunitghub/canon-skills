@@ -5661,7 +5661,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   // A minimal fake /cockpit page implementing only the postMessage contract
   // real cockpit.html speaks — no real PTY, no real claude process. Isolates
   // testing of the BOARD side's confirm/save/timeout logic.
-  function fakeCockpitPage({ initialStatus = 'running', endDelayMs = 50, forceEndDelayMs = 0 } = {}) {
+  function fakeCockpitPage({ initialStatus = 'running', endDelayMs = 50, forceEndDelayMs = 0, refuseSave = false } = {}) {
     return `<!doctype html><html><body><script>
       window.parent.postMessage({source:'canon-cockpit', type:'status', status:${JSON.stringify(initialStatus)}}, '*');
       window.addEventListener('message', function(e){
@@ -5669,6 +5669,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
         if(!d || d.source !== 'canon-cockpit') return;
         if(d.type === 'save-and-end'){
           window.parent.postMessage({source:'canon-cockpit', type:'__received', received:'save-and-end'}, '*');
+          if(${refuseSave}){ window.parent.postMessage({source:'canon-cockpit', type:'save-refused'}, '*'); return; }
           setTimeout(function(){ window.parent.postMessage({source:'canon-cockpit', type:'ended'}, '*'); }, ${endDelayMs});
         } else if(d.type === 'force-end'){
           window.parent.postMessage({source:'canon-cockpit', type:'__received', received:'force-end'}, '*');
@@ -6029,6 +6030,38 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#ck-term-msg')).toHaveText('Ending without saving…');
       // Once the daemon's delayed 'ended' actually arrives, teardown proceeds.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  // t-f91a: the daemon answers 409 when copilot is on a menu that waits for the user. The
+  // daemon page relays that as 'save-refused' — NOT 'ended' — so the board must keep the
+  // session, cancel the fallback kill, explain, and hand the controls back.
+  test('a refused Save & End keeps the session, explains why, and re-enables the controls (t-f91a)', async ({ page }) => {
+    const id = `t-lcrefuse-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress');
+      await page.addInitScript(() => { window.__cockpitSaveFallbackMs = 1500; });   // a fallback that would kill within the test window
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', refuseSave: true }));
+      await page.waitForTimeout(100);
+      await page.locator('#ck-end-session').click();
+      await page.locator('#ck-leave-save').click();
+      const modal = page.locator('#ck-leave-confirm');
+      await expect(page.locator('#ck-leave-confirm-status')).toContainText('waiting for your answer');
+      // Still open, session still there, controls usable again.
+      await expect(modal).toHaveClass(/open/);
+      await expect(page.locator('#ck-leave-save')).toBeEnabled();
+      await expect(page.locator('#ck-leave-skip')).toBeEnabled();
+      await expect(page.locator('#ck-leave-cancel')).toBeEnabled();
+      // The 1.5s fallback (force-end, then a 3s forced teardown) was cancelled: wait past both and check nothing was torn down.
+      await page.waitForTimeout(5500);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-iframe')).not.toHaveCSS('visibility', 'hidden');
+      // A retry sends save-and-end again (the flow isn't stuck on _ending).
+      await page.evaluate(() => { window.__received = []; window.addEventListener('message', e => { if (e.data && e.data.type === '__received') window.__received.push(e.data.received); }); });
+      await page.locator('#ck-leave-save').click();
+      await expect.poll(() => page.evaluate(() => window.__received)).toContain('save-and-end');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
