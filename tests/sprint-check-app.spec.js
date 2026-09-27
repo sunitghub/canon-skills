@@ -3411,13 +3411,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const list = page.locator('#ag-list');
         await expect(page.locator('#ag-label')).toBeVisible();
         await expect(list.locator('.ag-row')).toHaveCount(6);
-        await expect(list.locator('.ag-proj')).toHaveText(['proj-a', 'proj-x']);
+        await expect(list.locator('.ag-proj b')).toHaveText(['proj-a', 'proj-x']);
         await expect(list.locator('.ag-row.st-needs-you')).toHaveCount(2);
         await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toContainText('needs you · 30s');
-        await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toContainText('done · waiting for your next prompt');
+        await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toContainText('done 1m · reaps in 28m');
         await expect(list.locator('.ag-row', { hasText: 't-bbb2' })).toContainText('working');
         await expect(list.locator('.ag-row', { hasText: 't-ddd4' })).toContainText('running'); // old-daemon fallback
-        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('title', 'State from: Claude Code notification hook');
+        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('title', 'needs you · state from: Claude Code notification hook');
         await expect(list.locator('.ag-row.st-idle')).toContainText('no ticket'); // hostile ticket id is dropped, not rendered
         await expect(list).not.toContainText('undefined');
         await expect(list.locator('img')).toHaveCount(0);
@@ -3513,11 +3513,109 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.route('**/api/cockpit-sessions', sessionsBody([]));
       await page.evaluate(() => pollSessions());
       await expect(page.locator('#needpill')).toBeHidden();
-      await expect(page.locator('#ag-label')).toBeHidden();
+      await expect(page.locator('#ag-label')).toBeVisible();   // t-e69b: the section is always there
+      await expect(page.locator('#ag-list')).toHaveText('No agents running');
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals'), { recursive: true });
+      await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'sidebar-empty.png') });
       await expect(page.locator('#ad-sessions')).toHaveText('No active agent sessions.');
       expect(errors).toEqual([]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
+    // t-e69b: sidebar rows and Admin table follow the t-f139 mockup, with ticket titles looked up once per ticket.
+    const HOSTILE_TITLE = 'x" onmouseover="window.__pwned=1" y <img src=x onerror=window.__pwned=1>';
+    async function stubTicketDocs(page) {
+      const hits = {};
+      const docs = {
+        't-aaa1': '---\nid: t-aaa1\nstatus: in_progress\n---\n# Test scripts leak board servers\n\nbody\n# not the title\n',
+        [XID]: `---\nid: ${XID}\n---\n# ${HOSTILE_TITLE}\n`,
+        't-ccc3': '# Due-date reminders\n',
+      };
+      await page.route(/\/api\/doc\/t-[a-z0-9]{4}\/ticket\.md\?project=/, route => {
+        const u = new URL(route.request().url());
+        const ticket = u.pathname.split('/')[3];
+        const key = u.searchParams.get('project') + '/' + ticket;
+        hits[key] = (hits[key] || 0) + 1;
+        if (!docs[ticket]) return route.fulfill({ status: 404, body: '' });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: docs[ticket] }) });
+      });
+      return hits;
+    }
+
+    test('shell sidebar (t-e69b): mockup rows, agent codes, group counts, titles fetched once and inert', async ({ page }) => {
+      const hits = await stubTicketDocs(page);
+      await openShell(page, stateRows());
+      await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
+      const list = page.locator('#ag-list');
+      await expect(page.locator('#ag-label')).toHaveText(/Agents\s*by project/);
+      await expect(list.locator('.ag-proj b')).toHaveText(['proj-a', 'proj-x']);
+      await expect(list.locator('.ag-proj span')).toHaveText(['3', '3']);
+      const row = id => list.locator('.ag-row', { has: page.locator('.ag-id', { hasText: id }) });
+      await expect(row('t-aaa1').locator('.ag-t1')).toHaveText('t-aaa1Test scripts leak board servers');
+      await expect(row('t-aaa1').locator('.ag-a')).toHaveText('cc');
+      await expect(row('t-aaa1').locator('.ag-s')).toHaveText('needs you · 30s');
+      await expect(row(XID).locator('.ag-a')).toHaveText('cp');
+      await expect(row('t-bbb2').locator('.ag-t1')).toHaveText('t-bbb2');            // 404 → id alone
+      await expect(row('t-bbb2').locator('.ag-s')).toHaveText('working');
+      await expect(row('t-ccc3').locator('.ag-t1')).toHaveText('t-ccc3Due-date reminders'); // no frontmatter
+      await expect(row('t-ccc3').locator('.ag-s')).toHaveText('done 1m · reaps in 28m');
+      await expect(row('t-ddd4').locator('.ag-s')).toHaveText('running');          // older daemon row
+      await expect(list.locator('.ag-row.st-idle .ag-s')).toHaveText('idle 6m');    // non-numeric limit → no countdown
+      // Mockup type: 13px title line, 12px state line, 8px dot.
+      const css = await row('t-aaa1').evaluate(el => ({
+        t1: getComputedStyle(el.querySelector('.ag-t1')).fontSize,
+        s: getComputedStyle(el.querySelector('.ag-s')).fontSize,
+        dot: getComputedStyle(el.querySelector('.sdot')).width,
+        id: getComputedStyle(el.querySelector('.ag-id')).fontFamily,
+        t1font: getComputedStyle(el.querySelector('.ag-t1')).fontFamily,
+      }));
+      expect(css).toMatchObject({ t1: '13px', s: '12px', dot: '8px' });
+      expect(css.id).toMatch(/monospace/);
+      expect(css.t1font).not.toMatch(/monospace/);
+      // Hostile title: inert text, and the quote can't break out of the row's title attribute.
+      await expect(row(XID).locator('.ag-t1')).toContainText(HOSTILE_TITLE);
+      expect(await row(XID).getAttribute('title')).toContain(HOSTILE_TITLE);
+      await expect(list.locator('img')).toHaveCount(0);
+      await row(XID).hover();
+      // More polls don't refetch: one lookup per (project, ticket), including the 404.
+      for (let i = 0; i < 3; i++) await page.evaluate(() => pollSessions());
+      expect(hits).toEqual({ 'proj-a/t-aaa1': 1, [`proj-x/${XID}`]: 1, 'proj-x/t-bbb2': 1, 'proj-x/t-ccc3': 1, 'proj-a/t-ddd4': 1 });
+      expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals'), { recursive: true });
+      await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'sidebar.png') });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell Admin (t-e69b): sessions block under the tiles, ticket titles, mockup table type, 0s durations', async ({ page }) => {
+      await stubTicketDocs(page);
+      const rows = stateRows().map(r => (r.session === 's3' ? { ...r, state_secs: 0, idle_secs: 0 } : r));
+      await openShell(page, rows);
+      await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false, shell_uptime_secs: 0, running_build: { version: 'x', uptime_secs: 0, idle_timeout_secs: 300, idle_timeout_main_secs: 1800 } }) }));
+      await page.locator('#nav-admin').click();
+      const box = page.locator('#ad-sessions');
+      await expect(box.locator('tbody tr')).toHaveCount(6);
+      // Order: tiles → sessions → Verbose logging → Model Tiers.
+      const order = await page.evaluate(() => {
+        const q = s => document.querySelector('#view-admin ' + s);
+        const before = (a, b) => !!(q(a).compareDocumentPosition(q(b)) & Node.DOCUMENT_POSITION_FOLLOWING);
+        return [before('.tiles', '.sessions'), before('.sessions', '.admin-settings'), before('.sessions', '.mt-wrap')];
+      });
+      expect(order).toEqual([true, true, true]);
+      await expect(box.locator('tbody tr').nth(0).locator('td.tk')).toHaveText('t-aaa1Test scripts leak board servers');
+      await expect(box.locator('tbody tr').nth(2).locator('td.tk')).toHaveText('t-bbb2');
+      await expect(box.locator('tbody tr').nth(2).locator('td').nth(5)).toHaveText('0s');       // 0-second state
+      await expect(page.locator('#ad-uptime')).toHaveText('—');                                   // uptime keeps "—" for 0
+      const type = await box.evaluate(el => ({
+        td: getComputedStyle(el.querySelector('tbody td')).fontSize,
+        th: getComputedStyle(el.querySelector('th')).fontSize,
+        ls: getComputedStyle(el.querySelector('th')).letterSpacing,
+      }));
+      expect(type).toEqual({ td: '12.5px', th: '10.5px', ls: '1.05px' });
+      await expect(box.locator('img')).toHaveCount(0);
+      await page.locator('#view-admin').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'admin.png') });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('board Cockpit sessions panel (t-824e): shows the daemon state, never the raw awaiting-input status', async ({ page }) => {
       await stubCockpit(page);
       const rows = stateRows().filter(r => ['s3', 's4', 's5'].includes(r.session)).map(r => ({ ...r, project_root: PROJECT_ROOT }));

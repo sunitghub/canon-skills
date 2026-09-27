@@ -176,19 +176,32 @@
   .needpill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
   .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
   .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
-  .ag-proj{font-size:11px;font-weight:700;color:var(--text-muted);padding:8px 8px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ag-row{display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body)}
-  .ag-row:hover{background:var(--border-muted);color:var(--text)}
-  .ag-row .ag-t{font-family:ui-monospace,monospace;font-size:12px;display:flex;gap:6px;align-items:baseline;min-width:0;white-space:nowrap}
-  .ag-row .ag-a{font-family:inherit;font-size:10.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
-  .ag-row .ag-s{display:flex;align-items:center;gap:6px;font-size:11px}
+  /* t-e69b: rows follow the t-f139 mockup — dot | id + title | agent code, state line below */
+  .ag-label{display:flex;justify-content:space-between;align-items:center;padding-right:18px;border-top:1px solid var(--border-muted);margin-top:8px;padding-top:14px}
+  .ag-empty{font-size:12px;color:var(--text-muted);padding:4px 8px}
+  .ag-proj{display:flex;gap:6px;align-items:baseline;font-size:11.5px;color:var(--text-muted);padding:8px 8px 4px;white-space:nowrap;overflow:hidden}
+  .ag-proj b{color:var(--text-body);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+  .ag-row{display:grid;grid-template-columns:12px minmax(0,1fr) auto;column-gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body);width:100%}
+  .ag-row:hover{background:var(--border-muted)}
+  .ag-row .sdot{width:8px;height:8px;margin-top:6px}
+  .ag-row .ag-t1{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ag-row .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;color:var(--text-muted);margin-right:5px}
+  .ag-row .ag-none{color:var(--text-muted)}
+  .ag-row .ag-a{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:10.5px;color:var(--text-dim);align-self:center}
+  .ag-row .ag-s{grid-column:2/-1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ag-row.st-idle .ag-s,.ag-row.st-running .ag-s{color:var(--text-muted)}
+  .ag-row.st-needs-you .sdot{animation:ag-pulse 1.6s ease-in-out infinite}
+  @keyframes ag-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--amber) 55%, transparent)}50%{box-shadow:0 0 0 4px transparent}}
+  @media (prefers-reduced-motion:reduce){.ag-row.st-needs-you .sdot{animation:none}}
   .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
   /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
-  #view-admin .sessions{width:max-content;min-width:100%;max-width:calc(100vw - 300px)}
+  #view-admin .sessions{width:max-content;min-width:100%;max-width:calc(100vw - 300px);margin-bottom:16px}
   .ad-table-wrap{overflow-x:auto}
-  .ad-table{width:100%;border-collapse:collapse;font-size:12px}
-  .ad-table th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);text-align:left;font-weight:600;padding:6px 8px}
-  .ad-table td{padding:8px 8px;border-top:1px solid var(--border-muted);vertical-align:middle;white-space:nowrap}
+  .ad-table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .ad-table th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);text-align:left;font-weight:600;padding:6px 8px}
+  .ad-table td{padding:7px 8px;border-top:1px solid var(--border-muted);vertical-align:middle;white-space:nowrap;color:var(--text-body)}
+  .ad-table td.tk{max-width:260px;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+  .ad-table td.tk .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;color:var(--text-muted);margin-right:5px}
   .ad-table td.mono{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis}
   .ad-table td.num{font-variant-numeric:tabular-nums}
   .ad-table .stcell{display:flex;align-items:center;gap:6px;font-weight:600;white-space:normal;min-width:90px;max-width:150px}
@@ -488,7 +501,7 @@
         <a id="nav-admin" onclick="showView('admin')"><span class="ic">&#9881;</span> Admin</a>
         <a id="nav-upkeep" onclick="showView('upkeep')"><span class="ic">&#9874;</span> Upkeep</a>
       </nav>
-      <div class="navlabel" id="ag-label" hidden>Agents</div>
+      <div class="navlabel ag-label" id="ag-label"><span>Agents</span><span>by project</span></div>
       <div class="agents" id="ag-list"></div>
       <div class="spacer"></div>
       <div class="foot">
@@ -536,6 +549,11 @@
               <div class="tile"><div class="n st st-needs-you stc" id="ad-tile-needs">—</div><div class="l">Needs you</div></div>
               <div class="tile"><div class="n b" id="ad-tile-active">—</div><div class="l">Active projects</div></div>
             </div>
+            <div class="sessions">
+              <div class="slabel">Active agent sessions (all projects)</div>
+              <div class="ad-reaper" id="ad-reaper" hidden></div>
+              <div id="ad-sessions"></div>
+            </div>
             <div class="admin-settings">
               <div class="setting-row">
                 <div>
@@ -573,11 +591,6 @@
               </div>
               <div class="mt-tabs" id="mt-tabs"></div>
               <div class="mt-grid" id="mt-grid"></div>
-            </div>
-            <div class="sessions">
-              <div class="slabel">Active agent sessions (all projects)</div>
-              <div class="ad-reaper" id="ad-reaper" hidden></div>
-              <div id="ad-sessions"></div>
             </div>
           </div>
         </section>
@@ -879,25 +892,61 @@
   const STATE_SHORT={'needs-you':'needs you','done':'done','working':'working','idle':'idle','running':'running'};
   const SIGNAL_LABEL={'hook':'Claude Code notification hook','copilot-menu':'Copilot approval menu','activity':'terminal activity only (no question signal)'};
   const SIGNAL_SHORT={'hook':'hook','copilot-menu':'Copilot menu','activity':'activity'};
+  const AGENT_CODE={'claude':'cc','copilot':'cp','pi':'pi'};
+  // Session durations: unlike fmtUptime (where 0 means "no value"), 0 s is a real time here.
+  function fmtDur(secs){ return secs<60 ? Math.floor(secs)+'s' : fmtUptime(secs); }
+  // t-e69b: ticket titles, fetched once per (project, ticket) from the ticket's own
+  // ticket.md — /api/tickets carries every body and is far too big to poll. A failed
+  // lookup caches '' (the row shows the id alone); null marks one in flight.
+  const ticketTitles=new Map();
+  function ticketTitle(pid, ticket){ return ticketTitles.get(pid+'/'+ticket)||''; }
+  function ensureTicketTitles(views){
+    for(const v of views){
+      if(!v.pid || !v.ticket) continue;
+      const key=v.pid+'/'+v.ticket;
+      if(ticketTitles.has(key)) continue;
+      ticketTitles.set(key,null);
+      fetch('/api/doc/'+encodeURIComponent(v.ticket)+'/ticket.md?project='+encodeURIComponent(v.pid))
+        .then(r=>r.ok?r.json():null)
+        .then(j=>{
+          const body=String((j&&j.content)||'').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n/,'');
+          const m=body.match(/^# +(.+)$/m);
+          ticketTitles.set(key, m ? m[1].trim().slice(0,200) : '');
+          if(m) renderSessionSurfaces();
+        })
+        .catch(()=>ticketTitles.set(key,''));
+    }
+  }
   function sessionView(s){
     s=s||{};
     const state=(typeof s.state==='string' && STATE_LABEL[s.state]) ? s.state : (s.status==='needs-you' ? 'needs-you' : 'running');
     const num=v=>(typeof v==='number' && isFinite(v) && v>=0) ? v : null;
     const since=num(s.state_secs), idle=num(s.idle_secs), limit=num(s.idle_limit_secs);
+    const reapIn=(limit!==null && idle!==null) ? Math.max(0,limit-idle) : null;
     let reaper='';
     if(state==='needs-you') reaper='paused \u00b7 waiting on you';
-    else if(limit!==null && idle!==null) reaper='auto-save & end in '+(limit-idle>0 ? fmtUptime(limit-idle) : 'under a minute');
+    else if(reapIn!==null) reaper='auto-save & end in '+(reapIn>0 ? fmtDur(reapIn) : 'under a minute');
     const proot=String(s.project_root||''), ticket=String(s.ticket||'');
+    const proj=(window._projects||[]).find(p=>_projKey(p.path)===_projKey(proot));
     return {
-      state, label:STATE_LABEL[state], short:STATE_SHORT[state], since, reaper,
+      state, label:STATE_LABEL[state], short:STATE_SHORT[state], since, reaper, reapIn, pid:proj?proj.id:'', projName:proj?proj.name:'',
       signal:SIGNAL_LABEL[s.signal]||'', signalShort:SIGNAL_SHORT[s.signal]||'',
       ticket:TICKET_ID_RE.test(ticket)?ticket:'',
       proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
       agent:String(s.agent||''), cwd:String(s.cwd||''),
     };
   }
+  // Sidebar state line: short, with the countdown where the reaper applies.
+  function agentLine(v){
+    const since=v.since!==null ? fmtDur(v.since) : '';
+    const reaps=v.reapIn!==null ? ' \u00b7 reaps in '+fmtDur(v.reapIn) : '';
+    if(v.state==='needs-you') return 'needs you'+(since?' \u00b7 '+since:'');
+    if(v.state==='idle' || v.state==='done') return v.short+(since?' '+since:'')+reaps;
+    return v.short;
+  }
   function renderSessionSurfaces(){
     const views=lastSessions.map(sessionView);
+    ensureTicketTitles(views);
     // Top-bar pill: only when something waits on you; opens the longest wait.
     const waiting=views.filter(v=>v.state==='needs-you');
     const pill=document.getElementById('needpill');
@@ -907,14 +956,16 @@
     // Sidebar Agents, grouped by project.
     const groups=new Map();
     for(const v of views){ const k=_projKey(v.proot); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); }
-    const regName=k=>{ const p=(window._projects||[]).find(p=>_projKey(p.path)===k); return p?p.name:''; };
-    document.getElementById('ag-label').hidden=views.length===0;
     const list=document.getElementById('ag-list');
-    list.innerHTML=[...groups.values()].map(g=>
-      `<div class="ag-proj" title="${escAttr(g[0].proot)}">${esc(regName(_projKey(g[0].proot))||g[0].name)}</div>`+g.map(v=>
-        `<button class="ag-row st st-${v.state}" data-i="${views.indexOf(v)}" title="${escAttr(v.signal?('State from: '+v.signal):v.label)}">`+
-        `<span class="ag-t">${esc(v.ticket||'no ticket')}<span class="ag-a">${esc(v.agent)}</span></span>`+
-        `<span class="ag-s"><span class="sdot"></span>${esc(v.label)}${v.since!==null?(' \u00b7 '+esc(fmtUptime(v.since))):''}</span></button>`).join('')
+    list.innerHTML=views.length===0 ? '<div class="ag-empty">No agents running</div>' : [...groups.values()].map(g=>
+      `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span></div>`+g.map(v=>{
+        const title=ticketTitle(v.pid,v.ticket);
+        return `<button class="ag-row st st-${v.state}" data-i="${views.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
+        `<span class="sdot"></span>`+
+        `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:'<span class="ag-none">no ticket</span>'}</span>`+
+        `<span class="ag-a" title="${escAttr(v.agent)}">${esc(AGENT_CODE[v.agent]||v.agent.slice(0,3))}</span>`+
+        `<span class="ag-s">${esc(agentLine(v))}</span></button>`;
+      }).join('')
     ).join('');
     list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
     // Projects cards: counts by state.
@@ -943,11 +994,11 @@
       '<th>State</th><th>Ticket</th><th>Project</th><th>Agent</th><th>Directory</th><th>Since</th><th>Reaper</th><th>Signal</th><th></th></tr></thead><tbody>'+
       views.map((v,i)=>`<tr class="st st-${v.state}">`+
         `<td><span class="stcell"><span class="sdot"></span>${esc(v.label)}</span></td>`+
-        `<td class="mono">${esc(v.ticket||'\u2014')}</td>`+
-        `<td title="${escAttr(v.proot)}">${esc(v.name)}</td>`+
+        (v.ticket ? `<td class="tk" title="${escAttr(ticketTitle(v.pid,v.ticket))}"><span class="ag-id">${esc(v.ticket)}</span>${esc(ticketTitle(v.pid,v.ticket))}</td>` : `<td class="tk">\u2014</td>`)+
+        `<td title="${escAttr(v.proot)}">${esc(v.projName||v.name)}</td>`+
         `<td class="agent" title="${escAttr(v.agent)}">${esc(v.agent)}</td>`+
         `<td class="mono" title="${escAttr(v.cwd)}">${esc(v.cwd)}</td>`+
-        `<td class="num">${v.since!==null?esc(fmtUptime(v.since)):'\u2014'}</td>`+
+        `<td class="num">${v.since!==null?esc(fmtDur(v.since)):'\u2014'}</td>`+
         `<td>${esc(v.reaper||'\u2014')}</td>`+
         `<td title="${escAttr(v.signal)}">${esc(v.signalShort||'\u2014')}</td>`+
         `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`).join('')+
