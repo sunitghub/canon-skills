@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1362,5 +1363,79 @@ func TestPlainDirsBetweenRefusesLinkedComponent(t *testing.T) {
 	}
 	if plainDirsBetween(root, filepath.Join(root, "link", "skill")) {
 		t.Fatal("a linked intermediate component was accepted")
+	}
+}
+
+// t-e555: a run is done iff claude exits 0 or 1 and wrote its result file (server.py's rule);
+// any other exit, a missing result, or the timeout is an error. Exit 1 ("some cases did not
+// pass") was misread as a failure because the context was checked after cancel().
+func TestRunSkillEvalExitCodes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub claude is a bash script")
+	}
+	wd, _ := os.Getwd()
+	canon := filepath.Dir(filepath.Dir(wd))
+	savedHTML, savedTimeout := appHTML, skillEvalRunTimeout
+	defer func() { appHTML, skillEvalRunTimeout = savedHTML, savedTimeout }()
+	appHTML = filepath.Join(canon, "tools", "sprint-check-app", "app.html")
+
+	tmp := t.TempDir()
+	root := filepath.Join(tmp, "proj")
+	skill := filepath.Join(root, "skills", "good")
+	if err := os.MkdirAll(filepath.Dir(skill), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := exec.Command("cp", "-R", filepath.Join(canon, "tests", "fixtures", "skill-check", "good"), skill).Run(); err != nil {
+		t.Fatal(err)
+	}
+	skill, _ = filepath.EvalSymlinks(skill)
+	t.Cleanup(func() { os.RemoveAll(filepath.Join(canon, ".canon-cache", "skill-eval", skillEvalTag(root, skill))) })
+
+	stub := filepath.Join(tmp, "claude-stub")
+	script := "#!/usr/bin/env bash\nout=\"\"; while [ $# -gt 0 ]; do [ \"$1\" = --json ] && out=\"$2\"; shift; done\n" +
+		"sleep \"${STUB_SLEEP:-0}\"\n" +
+		"[ -z \"${STUB_LINGER:-}\" ] || (sleep 5) &\n" +
+		"[ -n \"${STUB_NO_RESULT:-}\" ] || echo '{\"aggregates\":{\"casesTotal\":2,\"casesPassed\":1}}' > \"$out\"\n" +
+		"exit \"${STUB_EXIT:-0}\"\n"
+	if err := os.WriteFile(stub, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SKILL_EVAL_CLAUDE_BIN", stub)
+
+	cases := []struct {
+		name, exit, sleep, noResult, linger, want string
+		timeout                                   time.Duration
+	}{
+		{"exit 0 with result", "0", "0", "", "", "done", time.Minute},
+		{"exit 1 with result", "1", "0", "", "", "done", time.Minute},
+		{"exit 2 with result", "2", "0", "", "", "error", time.Minute},
+		{"exit 1 without result", "1", "0", "1", "", "error", time.Minute},
+		{"past the timeout", "0", "5", "", "", "error", 300 * time.Millisecond},
+		// a child still holds the output pipe after claude exits 0: Wait returns ErrWaitDelay (a
+		// non-zero exit would win as ExitError instead) and the run keeps claude's own exit code
+		{"exit 0 with a lingering child", "0", "0", "", "1", "done", time.Minute},
+	}
+	for _, c := range cases {
+		t.Setenv("STUB_EXIT", c.exit)
+		t.Setenv("STUB_SLEEP", c.sleep)
+		t.Setenv("STUB_NO_RESULT", c.noResult)
+		t.Setenv("STUB_LINGER", c.linger)
+		skillEvalRunTimeout = c.timeout
+		start := time.Now()
+		runSkillEval(root, skill, "claude-haiku-4-5-20251001", 3.0)
+		skillEvalMu.Lock()
+		st := skillEvalRuns[skillEvalKey(root, skill)]
+		skillEvalMu.Unlock()
+		if st["status"] != c.want {
+			t.Errorf("%s: status %v, want %s (output %q)", c.name, st["status"], c.want, st["output"])
+		}
+		if c.want == "done" {
+			if sum, _ := st["summary"].(map[string]any); sum["casesPassed"] != float64(1) {
+				t.Errorf("%s: summary %v, want casesPassed 1", c.name, st["summary"])
+			}
+		}
+		if (c.name == "past the timeout" || c.linger != "") && time.Since(start) > 4*time.Second {
+			t.Errorf("%s: the run was not killed at the timeout (took %v)", c.name, time.Since(start))
+		}
 	}
 }
