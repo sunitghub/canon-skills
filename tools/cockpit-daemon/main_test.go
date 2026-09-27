@@ -5039,7 +5039,9 @@ func startMenuSession(t *testing.T, bin string, cfg config) (*server, *httptest.
 	s := newServer(cfg)
 	ts := httptest.NewServer(s.handler())
 	t.Cleanup(ts.Close)
-	t.Cleanup(func() { killAllSessions(s) })
+	// stopVerbose (not bare killAllSessions): with verbose logging on, a session's async exit lines
+	// otherwise re-create .cockpit-debug.log mid t.TempDir removal ("directory not empty").
+	t.Cleanup(func() { stopVerbose(s, root) })
 	resp := startSessionWithAgent(t, ts.URL, "t-ab12", "copilot", bootTok)
 	var out struct{ Session, Token string }
 	json.NewDecoder(resp.Body).Decode(&out)
@@ -5146,9 +5148,20 @@ func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
 				idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: time.Hour,
 				saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
 			})
-			time.Sleep(200 * time.Millisecond) // past the idle timeout
-			s.reapIdleSessions()
-			time.Sleep(1500 * time.Millisecond)
+			// Reap repeatedly: output landing late on a loaded machine resets the idle clock (so one
+			// fixed-time reap is timing-fragile), and the save prompt needs its 300ms gap to land.
+			deadline := time.Now().Add(8 * time.Second)
+			for i := 0; time.Now().Before(deadline); i++ {
+				time.Sleep(100 * time.Millisecond)
+				s.reapIdleSessions()
+				if got, _ := os.ReadFile(recv); tc.reaped && len(got) > 0 {
+					break
+				}
+				if !tc.reaped && i >= 8 {
+					break
+				}
+			}
+			time.Sleep(700 * time.Millisecond) // a wrongly-sent prompt would have landed by now
 			b, _ := os.ReadFile(recv)
 			if got := len(b) > 0; got != tc.reaped {
 				t.Fatalf("PTY received %d bytes, reaped=%v want %v", len(b), got, tc.reaped)
