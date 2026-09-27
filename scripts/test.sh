@@ -62,6 +62,16 @@ tests=(
 # and fail if the run leaves NEW ones — servers already running (a developer's own board) are ignored.
 _server_pids() { { pgrep -f 'sprint-check-app/server\.py|sprint-check-go-bin' 2>/dev/null || true; } | sort -u; }
 SERVERS_BEFORE="$(_server_pids)"
+# pgrep is machine-wide, so a concurrent run's LIVE server (or a build in another worktree) also shows up
+# as "new". A leaked server is an ORPHAN: its test script exited, so it was reparented to PID 1. Only
+# count those; a live server still has its own script as parent.
+_new_orphan_servers() {
+  local p
+  for p in $(comm -13 <(printf '%s\n' "$SERVERS_BEFORE") <(_server_pids)); do
+    [[ "$(ps -o ppid= -p "$p" 2>/dev/null | tr -d ' ')" == 1 ]] && printf '%s ' "$p"
+  done
+  return 0
+}
 
 for test_file in "${tests[@]}"; do
   printf '==> %s\n' "${test_file#$ROOT/}"
@@ -98,8 +108,12 @@ else
   printf '==> %s\n' "tests/sprint-check-gherkin.js skipped (node absent)"
 fi
 
-sleep 1
-LEAKED_SERVERS="$(comm -13 <(printf '%s\n' "$SERVERS_BEFORE") <(_server_pids) | tr '\n' ' ')"
+# Give a server that was just killed a few seconds to actually exit before calling it a leak.
+for _ in 1 2 3 4 5; do
+  sleep 1
+  LEAKED_SERVERS="$(_new_orphan_servers)"
+  [[ -z "${LEAKED_SERVERS// /}" ]] && break
+done
 if [[ -n "${LEAKED_SERVERS// /}" ]]; then
   printf '\nFAIL: the test run left sprint-check servers running (PIDs): %s\n' "$LEAKED_SERVERS" >&2
   exit 1

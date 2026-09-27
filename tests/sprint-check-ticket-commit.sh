@@ -53,6 +53,8 @@ free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",
 start_server() {
   local kind="$1" repo="$2" port
   # Fail on ANY subshell call ($(...), a pipeline): the bookkeeping below would be lost there (t-8765).
+  # kill -TERM "$$" (not just exit): an `exit` inside the subshell would end only the subshell, and under
+  # `if`/`&&` set -e would not stop the parent — the SIGTERM makes the parent run its EXIT trap and stop.
   [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   port="$(free_port)"
   if [[ "$kind" == py ]]; then
@@ -73,6 +75,8 @@ start_server() {
 new_repo() {
   local repo
   # Fail on ANY subshell call ($(...), a pipeline): the bookkeeping below would be lost there (t-8765).
+  # kill -TERM "$$" (not just exit): an `exit` inside the subshell would end only the subshell, and under
+  # `if`/`&&` set -e would not stop the parent — the SIGTERM makes the parent run its EXIT trap and stop.
   [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   repo="$(mktemp -d)"
   DIRS+=("$repo")
