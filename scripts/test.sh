@@ -4,6 +4,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+# t-269d: the Go board server opens the developer's real browser at startup unless this is set; every test
+# that starts it would otherwise open real tabs (tests/no-browser-in-tests.sh keeps each script honest too).
+export SPRINT_CHECK_NO_BROWSER=1
+
 tests=(
   "$ROOT/tests/tkt.sh"
   "$ROOT/tests/sprint.sh"
@@ -46,6 +50,7 @@ tests=(
   "$ROOT/tests/board-branch-divergence.sh"
   "$ROOT/tests/registry.sh"
   "$ROOT/tests/canon-cockpit.sh"
+  "$ROOT/tests/no-browser-in-tests.sh"
   "$ROOT/tests/sprint-check-delegate.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
   "$ROOT/tests/gate-model-parity.sh"
