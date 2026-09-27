@@ -52,7 +52,7 @@ right-sizing, snippet, and evidence principles apply.
 
 2. **Derive changed files.** Follow `skills/sprint/reference/shared-gate-protocol.md ## Base-ref derivation` — use the explicit `Base ref` if passed, otherwise derive via `git merge-base HEAD origin/main`, with the same two-tier fallback for missing remotes/repos.
 
-3. **Read changed files.** Read each file from step 2. Do not read files not on that list.
+3. **Read changed files.** Read each file from step 2. Do not read files not on that list. **If that list is empty, stop:** do not write "No findings" — write the report with `Changed files: none (empty diff)` and tell the caller the base ref is probably wrong (the sprint's commits may already be on `origin/main`); `sprint complete` rejects such a report (t-de16).
 
 4. **Check each concern.** For every changed file, look for:
    - **Scope creep** — changes beyond what `plan.md` describes
@@ -70,14 +70,22 @@ Ticket: `<id>`
 Reviewed: <ISO date>
 Model: <the model designation received in Inputs>
 
+Changed files: <the paths you diffed at step 2, comma-separated — never empty>
+
 ## Findings
 
-<If none: "No findings." Otherwise: one finding per line — `file:line — <issue>` `[severity: high|med|low · confidence: high|med|low]`.>
+Scope creep: <finding, or `none — checked <what>, <file:line>`>
+Visual regression: <finding, or `none — checked <what>, <file:line>`>
+Dead code: <finding, or `none — checked <what>, <file:line>`>
+Unnecessary complexity: <finding, or `none — checked <what>, <file:line>`>
+Standards violations: <finding, or `none — checked <what>, <file:line>`>
 
 ## Verdict
 
 YES
 ```
+
+   Every step-4 concern gets at least one line, so each pass is visible. A finding is `<Concern>: file:line — <issue> [severity: high|med|low · confidence: high|med|low]` (repeat the label for more than one). "None" must show what you checked and where, with a `file:line` — a bare "No findings." is rejected at close. **`sprint complete` blocks a `review-notes.md` with no path in `Changed files:`, a missing or empty concern line, or a `none` line without `checked` and a `file:line` (t-de16).**
 
    If there are findings, change `YES` to `NO`.
 
