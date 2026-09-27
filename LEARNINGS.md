@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-27-2026 10:19
+learnings-sweep last run: 09-27-2026 11:27
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-27 | [t-b9a7](.tickets/t-b9a7/learnings.md) | Porting a check to a second runtime: a parity test only proves both sides agree, so pin each rejection rule directly too (both sides could drop it together), and aim the fuzz at the known text-handling gaps (isspace, `\w`, code-point lengths, invalid UTF-8) or it proves nothing. Go 1.23+ on Windows: junctions report `ModeIrregular` and `EvalSymlinks` stops following them, so check every path component, not just the resolved path. A build script that compiles one file silently drops new files from the binary. | UNPROMOTED |
 | 2026-09-27 | [t-d538](.tickets/t-d538/learnings.md) | A UI action tested only on the standalone board with glob route mocks (`**/api/x**` matches with or without the query) hid that it sent no `?project=` there; assert the query string in the mock. Cockpit-only confirms can't use the board toast (it renders under the overlay). A gate subagent that loses its PID across Bash calls fell back to `pkill -f cockpit-daemon`, which can kill the user's own daemon; gate prompts should require starting and stopping a server in the same Bash call. | UNPROMOTED |
 | 2026-09-27 | [t-269d](.tickets/t-269d/learnings.md) | A guard test built from the spellings in use today is weak twice over: file-level string checks pass on a comment or one of several starts, and fixed spellings miss the next variant. Check each occurrence, skip comments/build lines/assignments, and prove the guard with synthetic misses. Also: measure a suspected side effect with a fake on PATH BEFORE quoting a figure (I said ~3 tabs; measured 2), and fake only what the code under test prefers on this OS (a fake `xdg-open` shadowed a test's own `open` stub). | UNPROMOTED |
 | 2026-09-27 | [t-8765](.tickets/t-8765/learnings.md) | Bash state set inside `$(func)` (an array append, a PID) is lost with the subshell — a cleanup trap then kills nothing and leaks. Guard helpers with `[[ $BASH_SUBSHELL == 0 ]]` (bash 3.2 has no `BASHPID`), and make a suite-level "no new processes" check count only orphans (ppid 1), since `pgrep -f` is machine-wide and flags a concurrent run's live server. | UNPROMOTED |

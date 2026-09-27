@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"math/rand"
 	"net/http/httptest"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -1262,33 +1264,66 @@ func TestUpkeepModelIDCases(t *testing.T) {
 	}
 }
 
-// t-56f6: the cockpit disables the Skill Eval card when a route answers unsupported:true, so every
-// Skill Eval route in this build must carry the marker — a missing one brings back the
-// error-after-a-pick bug on Windows.
-func TestSkillEvalRoutesMarkUnsupported(t *testing.T) {
-	cases := []struct{ method, path, body string }{
-		{"GET", "/api/skill-eval/status", ""},
-		{"GET", "/api/skill-eval/status?project=&skill_dir=", ""},
-		{"GET", "/api/skill-eval/report", ""},
-		{"POST", "/api/skill-eval/check", "{}"},
-		{"POST", "/api/skill-eval/run", "{}"},
+// t-b9a7: concurrent run completions must not lose or corrupt each other's state entries.
+func TestSkillEvalStateSaveIsSerialized(t *testing.T) {
+	root := t.TempDir()
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			skillEvalStateSave(root, fmt.Sprintf("/skills/s%d", i), map[string]any{"status": "done", "pad": strings.Repeat("x", 4000)})
+		}(i)
 	}
-	for _, c := range cases {
-		req := httptest.NewRequest(c.method, "http://127.0.0.1"+c.path, strings.NewReader(c.body))
-		rec := httptest.NewRecorder()
-		handle(rec, req)
-		if rec.Code != 200 {
-			t.Fatalf("%s %s: status %d, body %q", c.method, c.path, rec.Code, rec.Body.String())
-		}
-		var got map[string]any
-		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-			t.Fatalf("%s %s: not JSON: %q", c.method, c.path, rec.Body.String())
-		}
-		if got["ok"] != false || got["unsupported"] != true {
-			t.Errorf("%s %s = %v, want ok:false unsupported:true", c.method, c.path, got)
-		}
-		if msg, _ := got["error"].(string); strings.Contains(msg, "run the Python board server") {
-			t.Errorf("%s %s still gives the unfollowable Python-server advice: %q", c.method, c.path, msg)
+	wg.Wait()
+	b, err := os.ReadFile(skillEvalStatePath(root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(b, &state); err != nil {
+		t.Fatalf("state file corrupted: %v", err)
+	}
+	if len(state) != 64 {
+		t.Fatalf("state has %d entries, want 64 (lost updates)", len(state))
+	}
+}
+
+// t-b9a7: canon's own skills are refused even when the selected project contains canon, and an
+// unverifiable canon root refuses everything (fail closed) instead of disabling that check.
+func TestValidateSkillDirRefusesCanon(t *testing.T) {
+	wd, _ := os.Getwd()
+	canon := filepath.Dir(filepath.Dir(wd)) // tools/sprint-check-go → repo root
+	saved := appHTML
+	defer func() { appHTML = saved }()
+	appHTML = filepath.Join(canon, "tools", "sprint-check-app", "app.html")
+	if _, msg := validateSkillDir(filepath.Dir(canon), filepath.Join(canon, "skills", "capture")); msg != "canon's own skills are checked internally, not here" {
+		t.Fatalf("canon skill: got %q", msg)
+	}
+	outside := t.TempDir()
+	skill := filepath.Join(outside, "proj", "good")
+	if err := os.MkdirAll(skill, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, msg := validateSkillDir(filepath.Join(outside, "proj"), skill); msg != "" {
+		t.Fatalf("ordinary skill refused: %q", msg)
+	}
+	appHTML = filepath.Join(outside, "nowhere", "sprint-check-app", "app.html")
+	if _, msg := validateSkillDir(filepath.Join(outside, "proj"), skill); msg != "canon's own skills are checked internally, not here" {
+		t.Fatalf("unknown canon root must fail closed, got %q", msg)
+	}
+}
+
+// t-b9a7: a junction (ModeIrregular, possibly with ModeDir) or a symlink is never a plain entry.
+func TestPlainModeRefusesJunctionsAndLinks(t *testing.T) {
+	cases := map[fs.FileMode]bool{
+		0: true, fs.ModeDir: true, 0o644: true, fs.ModeDir | 0o755: true,
+		fs.ModeSymlink: false, fs.ModeIrregular: false, fs.ModeDir | fs.ModeIrregular: false,
+		fs.ModeDir | fs.ModeSymlink: false, fs.ModeNamedPipe: false, fs.ModeSocket: false, fs.ModeDevice: false,
+	}
+	for m, want := range cases {
+		if got := plainMode(m); got != want {
+			t.Errorf("plainMode(%v) = %v, want %v", m, got, want)
 		}
 	}
 }
@@ -1309,5 +1344,23 @@ func TestSyncedServiceDetectsSyncedFolders(t *testing.T) {
 		if got := syncedService(path); got != want {
 			t.Errorf("syncedService(%q) = %v, want %v", path, got, want)
 		}
+	}
+}
+
+// t-b9a7: any non-plain component between the project root and the skill refuses it (a symlink here
+// stands in for a Windows junction, which EvalSymlinks no longer resolves since Go 1.23).
+func TestPlainDirsBetweenRefusesLinkedComponent(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "real", "skill"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if !plainDirsBetween(root, filepath.Join(root, "real", "skill")) {
+		t.Fatal("plain path refused")
+	}
+	if plainDirsBetween(root, filepath.Join(root, "link", "skill")) {
+		t.Fatal("a linked intermediate component was accepted")
 	}
 }

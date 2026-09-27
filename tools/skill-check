@@ -26,6 +26,9 @@ SIDE_EFFECT = re.compile(r"git push|git commit|gh pr |rm -rf|\bdeploy\b|\bpublis
 ID_RE = re.compile(r"[A-Za-z0-9_-]+")  # a case id becomes a directory name in plugin-eval-gen
 KEY_RE = re.compile(r"""^(?:([A-Za-z_][\w-]*)|"([^"]+)"|'([^']+)')[ \t]*:[ \t]*(.*)$""")
 HOOKS_LINE = re.compile(r"""^["']?hooks["']?[ \t]*:""", re.M)
+MAX_DEPTH = 64          # nesting deeper than this is refused (Python and the Go board agree)
+MAX_NUMBER_LEN = 100    # a longer number literal is refused (Python caps int text by version)
+SAFE_INT = 2 ** 53 - 1  # larger integer ids print differently across jq versions
 EVALS_FIX = (
     "Create evals/evals.json: {\"skill_name\": \"<name>\", \"evals\": [{\"id\", \"case_type\", "
     "\"prompt\", \"expected_output\", \"expectations\": [...]}]} with at least 3 cases "
@@ -38,10 +41,78 @@ def check(cid, stage, status, evidence, fix=""):
     return {"id": cid, "stage": stage, "status": status, "evidence": evidence, "fix": fix}
 
 
+def js(v):
+    """JSON text for evidence; the Go board (skilleval.go) prints the same bytes."""
+    return json.dumps(v, ensure_ascii=False)
+
+
+def _reject_constant(name):
+    raise ValueError(f"{name} is not JSON")
+
+
+def strict_json_error(text):
+    """None, or why `text` is refused before json.loads. Rules shared with the Go board so the
+    two parsers see the same documents: nesting depth, number length, lone surrogates and NUL
+    escapes (jq drops NUL, which would make the generated eval differ)."""
+    depth = 0
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '"':
+            i += 1
+            while i < n and text[i] != '"':
+                if text[i] == "\\" and i + 1 < n:
+                    if text[i + 1] == "u" and i + 5 < n and re.fullmatch(r"[0-9a-fA-F]{4}", text[i + 2:i + 6] or ""):
+                        cp = int(text[i + 2:i + 6], 16)
+                        if cp == 0:
+                            return "a \\u0000 escape"
+                        if 0xD800 <= cp <= 0xDBFF:
+                            nxt = text[i + 6:i + 12]
+                            if not (len(nxt) == 6 and nxt[:2] == "\\u" and re.fullmatch(r"[dD][c-fC-F][0-9a-fA-F]{2}", nxt[2:])):
+                                return "a lone surrogate escape"
+                            i += 12
+                            continue
+                        if 0xDC00 <= cp <= 0xDFFF:
+                            return "a lone surrogate escape"
+                        i += 6
+                        continue
+                    i += 2
+                    continue
+                i += 1
+            i += 1
+            continue
+        if ch in "[{":
+            depth += 1
+            if depth > MAX_DEPTH:
+                return f"nesting deeper than {MAX_DEPTH}"
+        elif ch in "]}":
+            depth -= 1
+        elif ch in "-0123456789":
+            j = i
+            while j < n and text[j] in "+-0123456789.eE":
+                j += 1
+            if j - i > MAX_NUMBER_LEN:
+                return f"a number longer than {MAX_NUMBER_LEN} characters"
+            i = j
+            continue
+        i += 1
+    return None
+
+
+def load_json_strict(text):
+    why = strict_json_error(text)
+    if why:
+        raise ValueError(why)
+    return json.loads(text, parse_constant=_reject_constant)
+
+
 def unescape_key(k):
-    """A double-quoted YAML key may spell a name with escapes ("h\\x6fooks" is hooks)."""
+    """A double-quoted YAML key may spell a name with escapes ("h\\x6fooks" is hooks). A \\N{name}
+    escape is not decoded (the Go board has no Unicode name table); stage 2 flags such a key."""
     if k is None:
         return None
+    if "\\N" in k:
+        return k
     try:
         return codecs.decode(k.encode("latin-1", "backslashreplace"), "unicode_escape")
     except (UnicodeError, ValueError):
@@ -83,9 +154,9 @@ def stage1(skill_dir):
     if not path.is_file():
         return [check("evals-present", 1, "fail", f"{path} not found", EVALS_FIX)]
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (ValueError, OSError, RecursionError) as e:
-        return [check("evals-present", 1, "fail", f"{path} is not valid JSON ({e!r})", EVALS_FIX)]
+        data = load_json_strict(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError, RecursionError):
+        return [check("evals-present", 1, "fail", f"{path} is not valid JSON", EVALS_FIX)]
     cases = data.get("evals") if isinstance(data, dict) else None
     if not isinstance(cases, list):
         return [check("evals-present", 1, "fail", f"{path} has no \"evals\" list", EVALS_FIX)]
@@ -95,16 +166,20 @@ def stage1(skill_dir):
                      "" if len(cases) >= 3 else "Add cases until you cover the happy path, a must-follow rule, and an edge."))
     def case_id(c):
         v = c.get("id") if isinstance(c, dict) else None
-        return str(v) if isinstance(v, (str, int)) and not isinstance(v, bool) else None
+        if isinstance(v, str):
+            return v
+        if isinstance(v, int) and not isinstance(v, bool) and abs(v) <= SAFE_INT:
+            return str(v)
+        return None
     ids = [case_id(c) for c in cases]
     bad_ids = [i for i, v in enumerate(ids) if v is None or not ID_RE.fullmatch(v)]
     dupes = sorted({v for v in ids if v is not None and ids.count(v) > 1})
     if bad_ids:
-        out.append(check("evals-ids", 1, "fail", f"case(s) at position {bad_ids[:5]} have no usable id (letters, digits, _ and - only)",
+        out.append(check("evals-ids", 1, "fail", f"case(s) at position {js(bad_ids[:5])} have no usable id (letters, digits, _ and - only)",
                          "Give every case a short id such as 1 or \"compliance-2\"; ids become directory names when the eval is generated."))
     else:
         out.append(check("evals-ids", 1, "warn" if dupes else "pass",
-                         f"duplicate ids: {dupes[:5]}" if dupes else "every case has a unique, path-safe id",
+                         f"duplicate ids: {js(dupes[:5])}" if dupes else "every case has a unique, path-safe id",
                          "Duplicate ids overwrite each other's generated case; make them unique." if dupes else ""))
 
     def ok_case(c):
@@ -115,10 +190,16 @@ def stage1(skill_dir):
     out.append(check("evals-shape", 1, "warn" if bad else "pass",
                      f"cases without a text prompt and a list of text expectations: {', '.join(bad)}" if bad else "every case has a prompt and expectations",
                      "Give each case a concrete user prompt (text) and 2-3 assertable expectations (a list of text)." if bad else ""))
-    types = {str(c.get("case_type")) for c in cases if isinstance(c, dict)}
+    def case_type(c):
+        v = c.get("case_type")
+        if isinstance(v, str):
+            return v
+        return "<" + ("null" if v is None else "boolean" if isinstance(v, bool) else "number" if isinstance(v, (int, float))
+                      else "array" if isinstance(v, list) else "object") + ">"
+    types = {case_type(c) for c in cases if isinstance(c, dict)}
     varied = len(types) > 1 or len(cases) < 2
     out.append(check("evals-variety", 1, "pass" if varied else "warn",
-                     f"case_type values: {sorted(types)}",
+                     f"case_type values: {js(sorted(types))}",
                      "" if varied else "Mix case types (control, compliance, boundary, edge) so the eval is not one scenario repeated."))
     return out
 
@@ -130,8 +211,8 @@ def stage2(skill_dir):
     out = [check("skill-md-present", 2, "pass", "SKILL.md found")]
     try:
         text = md.read_text(encoding="utf-8", errors="replace")
-    except OSError as e:
-        return [check("skill-md-present", 2, "fail", f"{md} is not readable ({e!r})", "Fix the file permissions on SKILL.md.")]
+    except OSError:
+        return [check("skill-md-present", 2, "fail", f"{md} is not readable", "Fix the file permissions on SKILL.md.")]
     bom = text.startswith("\ufeff")
     if bom:
         text = text[1:]
@@ -145,14 +226,14 @@ def stage2(skill_dir):
                      "SKILL.md starts with a UTF-8 byte-order mark" if bom else "no byte-order mark",
                      "Save SKILL.md as UTF-8 without BOM; some readers only accept frontmatter that starts with '---'." if bom else ""))
 
-    bad = [f"{k}={fm[k]!r}" for k in ("disable-model-invocation", "user-invocable", "background")
+    bad = [f"{k}={js(fm[k])}" for k in ("disable-model-invocation", "user-invocable", "background")
            if k in fm and fm[k].lower() not in BOOLS]
     if "effort" in fm and fm["effort"].lower() not in EFFORTS:
-        bad.append(f"effort={fm['effort']!r}")
+        bad.append(f"effort={js(fm['effort'])}")
     if "context" in fm and fm["context"].lower() != "fork":
-        bad.append(f"context={fm['context']!r}")
+        bad.append(f"context={js(fm['context'])}")
     if "shell" in fm and fm["shell"].lower() not in ("bash", "powershell"):
-        bad.append(f"shell={fm['shell']!r}")
+        bad.append(f"shell={js(fm['shell'])}")
     out.append(check("field-values", 2, "fail" if bad else "pass",
                      "invalid: " + ", ".join(bad) if bad else "boolean and enum fields are valid",
                      "Booleans take true/false/yes/no/on/off/1/0; effort is low|medium|high|xhigh|max; context is fork; shell is bash|powershell." if bad else ""))
@@ -181,10 +262,11 @@ def stage2(skill_dir):
     side = SIDE_EFFECT.search(re.sub(r"\s+", " ", body))
     flag = bool(side) and not guarded
     out.append(check("side-effects-guarded", 2, "warn" if flag else "pass",
-                     f"body mentions {side.group(0).strip()!r} and Claude may auto-invoke the skill" if flag else "no unguarded side-effect wording found (heuristic)",
+                     f"body mentions {js(side.group(0).strip())} and Claude may auto-invoke the skill" if flag else "no unguarded side-effect wording found (heuristic)",
                      "Set disable-model-invocation: true for workflows that push, commit, deploy or delete, so they run only when you invoke them." if flag else ""))
     hidden = hidden_hooks(text)
-    has_hooks = "hooks" in fm or hidden
+    # a key spelled with an undecoded \\N{...} escape could be "hooks": treat it as one
+    has_hooks = "hooks" in fm or hidden or any("\\N" in k for k in fm)
     out.append(check("trust-hooks", 2, "warn" if has_hooks else "pass",
                      "frontmatter registers hooks, which run outside a sandbox" if has_hooks else "no hooks in frontmatter",
                      "Review the hook commands before running an eval; an automated run should refuse this skill." if has_hooks else ""))

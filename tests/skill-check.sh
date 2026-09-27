@@ -157,7 +157,7 @@ mkskill en '---\nname: t\ndescription: d\neffort: HIGH\ncontext: Fork\nshell: Ba
 run "$TMP/en"; assert_eq pass "$(status "$out" field-values)"
 
 # Seeded fuzz: hostile evals.json / SKILL.md combinations must never crash the tool.
-python3 - "$TOOL" "$TMP" <<'PYFUZZ'
+FIXTURES="$ROOT/tests/fixtures/skill-check" python3 - "$TOOL" "$TMP" <<'PYFUZZ'
 import json, os, random, subprocess, sys
 tool, tmp = sys.argv[1:3]
 random.seed(20260921)
@@ -176,8 +176,34 @@ for i in range(400):
         f.write(random.choice(skills))
     r = subprocess.run([tool, d], capture_output=True, text=True)
     assert r.returncode in (0, 1) and "Traceback" not in r.stderr, (i, r.returncode, r.stderr[-300:], ev)
-    json.loads(r.stdout)
-print("skill-check fuzz: 400 cases, no crash")
+    # t-b9a7: evidence is plain text + JSON, never a Python exception or list repr (the Go board
+    # prints the same bytes, see tests/skill-eval-parity.sh)
+    for c in json.loads(r.stdout)["checks"]:
+        assert not any(t in c["evidence"] for t in ("Error(", "['", "[']", "', '", "JSONDecodeError", "UnicodeDecodeError")), (i, c)
+print("skill-check fuzz: 400 cases, no crash, no reprs in evidence")
+
+# t-b9a7: strict JSON (same rules as the Go board) — each of these makes evals.json invalid.
+strict = {
+    "NaN": '{"evals": [NaN]}', "-Infinity": '{"evals": [], "x": -Infinity}', "Infinity": '{"evals": [Infinity]}',
+    "depth 70": '{"evals": ' + "[" * 70 + "]" * 70 + '}', "depth 2000": '{"evals": ' + "[" * 2000 + "]" * 2000 + '}',
+    "lone high surrogate": '{"evals": [{"id": 1, "prompt": "a\\ud800b", "expectations": ["x"]}]}',
+    "lone low surrogate": '{"evals": [{"id": 1, "prompt": "a\\udc00b", "expectations": ["x"]}]}',
+    "NUL escape": '{"evals": [{"id": 1, "prompt": "a\\u0000b", "expectations": ["x"]}]}',
+    "150-digit number": '{"evals": [{"id": ' + "9" * 150 + ', "prompt": "p", "expectations": ["x"]}]}',
+    "trailing data": '{"evals": []} x',
+}
+path = os.path.join(d, "evals", "evals.json")
+for name, body in strict.items():
+    with open(path, "w") as f: f.write(body)
+    ev = {c["id"]: c for c in json.loads(subprocess.run([tool, d], capture_output=True, text=True).stdout)["checks"]}["evals-present"]
+    assert ev["status"] == "fail" and ev["evidence"] == os.path.realpath(path) + " is not valid JSON", (name, ev)
+# ...while a valid surrogate pair and depth 64 still parse
+for name, body in {"surrogate pair": '{"evals": [{"id": 1, "prompt": "ok \\ud83c\\udf89", "expectations": ["x"]}]}',
+                   "depth 63": '{"evals": [' + "[" * 62 + "]" * 62 + ']}'}.items():
+    with open(path, "w") as f: f.write(body)
+    ev = {c["id"]: c for c in json.loads(subprocess.run([tool, d], capture_output=True, text=True).stdout)["checks"]}["evals-present"]
+    assert ev["status"] == "pass", (name, ev)
+print("skill-check strict JSON: ok")
 PYFUZZ
 
 # Must refuse: a path inside canon, including via a symlink; non-directory; bad usage.
