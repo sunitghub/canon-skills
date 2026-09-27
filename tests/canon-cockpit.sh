@@ -331,4 +331,26 @@ nudge_true_count="$(grep -c "nudge:true" <<<"$page")"
 grep -qE "registerSkill\(id, *name, *proj\.path" <<<"$page" || fail "canon-cockpit: nudge Register button must reuse registerSkill(id,name,path,'sprint')"
 grep -qF "bar.remove(); v.classList.remove('has-nudge')" <<<"$page" || fail "canon-cockpit: nudge Dismiss/Register-success must remove the banner and has-nudge class"
 
+# t-824e: server.py passes the daemon's reaper timeouts through running_build; an older daemon → 0.
+# Mirrors TestCockpitRunningBuildPassesReaperTimeouts (tools/sprint-check-go).
+python3 - "$ROOT/tools/sprint-check-app" <<'PY' || fail "canon-cockpit: running_build must pass idle_timeout_secs / idle_timeout_main_secs through (0 when absent)"
+import http.server, json, sys, threading
+sys.path.insert(0, sys.argv[1])
+import server
+for body, want in [
+    ({'version': 'v', 'exe_mtime': 1, 'uptime_secs': 2, 'debug_enabled': True, 'idle_timeout_secs': 300, 'idle_timeout_main_secs': 1800}, (300, 1800)),
+    ({'version': 'v', 'exe_mtime': 1, 'uptime_secs': 2, 'debug_enabled': False}, (0, 0)),
+]:
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            data = json.dumps(body).encode()
+            self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
+        def log_message(self, *a): pass
+    srv = http.server.HTTPServer(('127.0.0.1', 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    got = server._cockpit_running_build('127.0.0.1:%d' % srv.server_address[1])
+    srv.shutdown()
+    assert got and (got['idle_timeout_secs'], got['idle_timeout_main_secs']) == want and got['version'] == 'v', got
+PY
+
 echo "canon-cockpit: ok (single-instance no-2nd-server; /cockpit serves Projects page with filter + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iv Upkeep view — nav/view/project-picker/report-grid/single-detail-panel present, all 4 skills, Agent picker shows Pi/Copilot disabled not omitted, Model defaults Haiku 4.5, client never writes directly to standards/ or critique/canon-learnings.md; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs; t-340d hide dotfolders by default + Show-hidden toggle; t-07c8 git relaxed to a warning + no-store HTML; t-5849 canon-styled cockpitConfirm replaces native confirm/prompt; t-5c3c soft nudge to register sprint skill on explicit project open, session-scoped dismiss, no restore-time banner storm)"

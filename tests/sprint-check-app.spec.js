@@ -3269,7 +3269,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(panel).toContainText(PROJECT_ROOT);
       // Windows project path renders too (full path incl. basename).
       await expect(panel).toContainText('projB');
-      await expect(panel.locator('.cs-status.needs-you')).toHaveText('needs-you');
+      await expect(panel.locator('.cs-status.needs-you')).toHaveText('needs you'); // t-824e: the state label, not the wire token
 
       // Clicking the row opens that session in the cockpit overlay (attach — the
       // tokened Kill/Save & End live there; no token-free board kill, t-ddc8).
@@ -3388,6 +3388,146 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+    });
+
+    // t-824e: every shell surface reads the daemon's per-session state. Two projects, a mix of
+    // states, one pre-t-824e row (status only) and one hostile row.
+    const HOSTILE_CWD = '/tmp/a"onmouseover="window.__pwned=1"x';
+    const stateRows = () => [
+      { session: 's1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 30, idle_secs: 30, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 's2', ticket: XID, project_root: 'c:/users/me/proj-x/', cwd: 'c:/users/me/proj-x/wt', agent: 'copilot', status: 'running', state: 'needs-you', state_secs: 95, idle_secs: 95, idle_limit_secs: 300, signal: 'copilot-menu' },
+      { session: 's3', ticket: 't-bbb2', project_root: 'C:\\Users\\me\\Proj-X', cwd: 'C:\\Users\\me\\Proj-X', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 's4', ticket: 't-ccc3', project_root: 'C:\\Users\\me\\Proj-X', cwd: 'C:\\Users\\me\\Proj-X', agent: 'claude', status: 'awaiting-input', state: 'done', state_secs: 70, idle_secs: 70, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 's5', ticket: 't-ddd4', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', started: '2026-09-26T00:00:00Z' },
+      { session: 's6', ticket: 't-eee5" x="1', project_root: '/tmp/proj-a', cwd: HOSTILE_CWD, agent: '<img src=x onerror=window.__pwned=1>', status: 'running', state: 'idle', state_secs: 400, idle_secs: 400, idle_limit_secs: 'soon', signal: '<b>x</b>' },
+    ];
+
+    test('shell (t-824e): Agents sidebar, needs-you pill, amber tab dot and Projects Sessions row', async ({ page }) => {
+      writeTicket(XID, 'in_progress');
+      try {
+        await openShell(page, stateRows());
+        await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
+        // Sidebar: grouped by project — Proj-X's rows arrive under two path spellings and still form one group, named as registered.
+        const list = page.locator('#ag-list');
+        await expect(page.locator('#ag-label')).toBeVisible();
+        await expect(list.locator('.ag-row')).toHaveCount(6);
+        await expect(list.locator('.ag-proj')).toHaveText(['proj-a', 'proj-x']);
+        await expect(list.locator('.ag-row.st-needs-you')).toHaveCount(2);
+        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toContainText('needs you · 30s');
+        await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toContainText('done · waiting for your next prompt');
+        await expect(list.locator('.ag-row', { hasText: 't-bbb2' })).toContainText('working');
+        await expect(list.locator('.ag-row', { hasText: 't-ddd4' })).toContainText('running'); // old-daemon fallback
+        await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('title', 'State from: Claude Code notification hook');
+        await expect(list.locator('.ag-row.st-idle')).toContainText('no ticket'); // hostile ticket id is dropped, not rendered
+        await expect(list).not.toContainText('undefined');
+        await expect(list.locator('img')).toHaveCount(0);
+        // Tab dot: proj-a (open) has a waiting session.
+        await expect(page.locator('.tab[data-tab="proj-a"] .live.on.needs')).toBeVisible();
+        // Projects cards: counts by state.
+        await page.locator('.tab.pinned').click();
+        await expect(page.locator('.meta[data-stats="proj-a"] [data-f="sessions"]')).toHaveText('1 needs you · 1 running · 1 idle');
+        await expect(page.locator('.meta[data-stats="proj-a"] [data-f="sessions-row"]')).toBeVisible();
+        fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals'), { recursive: true });
+        await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals', 'shell.png') });
+        // Pill: 2 waiting; opens the longest wait (XID in Proj-X, 95s) and its ticket cockpit.
+        const pill = page.locator('#needpill');
+        await expect(pill).toHaveText('2 needs you');
+        await pill.click();
+        await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
+        await expect(page.frameLocator('#view-proj-x iframe').locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
+        // With nothing waiting the pill goes away and the Sessions row hides for an idle project.
+        await page.unroute('**/api/cockpit-sessions');
+        await page.route('**/api/cockpit-sessions', sessionsBody(stateRows().filter(r => r.state !== 'needs-you' && r.project_root !== '/tmp/proj-a')));
+        await page.evaluate(() => pollSessions());
+        await expect(pill).toBeHidden();
+        await expect(page.locator('.tab[data-tab="proj-a"] .live')).not.toHaveClass(/needs/);
+        expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      } finally {
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', XID), { recursive: true, force: true });
+      }
+    });
+
+    test('shell Admin (t-824e): session table, Needs you tile, daemon line and reaper line; no Save & End or Stop', async ({ page }) => {
+      await openShell(page, stateRows());
+      await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false, running_build: { version: 'x', uptime_secs: 60, idle_timeout_secs: 300, idle_timeout_main_secs: 1800 } }) }));
+      await page.evaluate(() => { window.__pwned = 0; });
+      await page.locator('#nav-admin').click();
+      const box = page.locator('#ad-sessions');
+      await expect(box.locator('th')).toHaveText(['State', 'Ticket', 'Project', 'Agent', 'Directory', 'Since', 'Reaper', 'Signal', '']);
+      await expect(box.locator('tbody tr')).toHaveCount(6);
+      await expect(page.locator('#ad-tile-agents')).toHaveText('6');
+      await expect(page.locator('#ad-tile-needs')).toHaveText('2');
+      // Four tiles stay on one row in the 620px Admin column (reviewer: auto-fit wrapped them 3+1).
+      const tops = await page.locator('#view-admin .tiles .tile').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().top)));
+      expect(tops).toHaveLength(4);
+      expect(new Set(tops).size).toBe(1);
+      await expect(page.locator('#ad-daemon-hint')).toHaveText('6 agents running · 2 needs you');
+      await expect(page.locator('#ad-reaper')).toContainText('after 5m in a worktree and 30m in a project’s main checkout');
+      await expect(box.locator('button.ad-open.answer')).toHaveCount(2);
+      await expect(box.locator('button.ad-open')).toHaveText(['Answer', 'Answer', 'Open', 'Open', 'Open', 'Open']);
+      await expect(box).not.toContainText('Save & End');
+      await expect(box).not.toContainText('Stop');
+      const copilot = box.locator('tbody tr').nth(1);
+      await expect(copilot).toContainText('paused · waiting on you');
+      await expect(copilot).toContainText('Copilot menu');
+      await expect(copilot.locator('td').nth(7)).toHaveAttribute('title', 'Copilot approval menu');
+      await expect(box.locator('tbody tr').nth(2)).toContainText('auto-save & end in 29m');
+      // Old-daemon row: status fallback, no countdown or signal, never "undefined".
+      const old = box.locator('tbody tr').nth(4);
+      await expect(old).toContainText('running');
+      await expect(old.locator('td').nth(5)).toHaveText('—');
+      await expect(old.locator('td').nth(6)).toHaveText('—');
+      await expect(box).not.toContainText('undefined');
+      // Hostile row: a non-number limit gives no countdown; markup stays text; the quote can't break out of title.
+      const hostile = box.locator('tbody tr').nth(5);
+      await expect(hostile.locator('td').nth(6)).toHaveText('—');
+      await expect(hostile.locator('td').nth(4)).toHaveAttribute('title', HOSTILE_CWD);
+      await expect(hostile).toContainText('<img src=x onerror=window.__pwned=1>');
+      await expect(box.locator('img, b')).toHaveCount(0);
+      await hostile.locator('td').nth(4).hover();
+      expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+        await page.locator('#view-admin').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals', `admin-${theme}.png`) });
+      }
+      // Answer opens the session's project tab.
+      await box.locator('button.ad-open.answer').first().click();
+      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-824e): an older daemon without a state field and an empty list render cleanly', async ({ page }) => {
+      await openShell(page, [{ session: 's1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'needs-you' }]);
+      const errors = [];
+      page.on('pageerror', e => errors.push(e.message));
+      await page.evaluate(() => pollSessions());
+      await expect(page.locator('#needpill')).toHaveText('1 needs you');
+      await expect(page.locator('#ag-list .ag-row')).toContainText('needs you');
+      await expect(page.locator('#ag-list')).not.toContainText('undefined');
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('#ad-sessions tbody tr td').nth(6)).toHaveText('paused · waiting on you');
+      await expect(page.locator('#ad-reaper')).toBeHidden(); // no timeouts from an old daemon
+      await page.unroute('**/api/cockpit-sessions');
+      await page.route('**/api/cockpit-sessions', sessionsBody([]));
+      await page.evaluate(() => pollSessions());
+      await expect(page.locator('#needpill')).toBeHidden();
+      await expect(page.locator('#ag-label')).toBeHidden();
+      await expect(page.locator('#ad-sessions')).toHaveText('No active agent sessions.');
+      expect(errors).toEqual([]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+    test('board Cockpit sessions panel (t-824e): shows the daemon state, never the raw awaiting-input status', async ({ page }) => {
+      await stubCockpit(page);
+      const rows = stateRows().filter(r => ['s3', 's4', 's5'].includes(r.session)).map(r => ({ ...r, project_root: PROJECT_ROOT }));
+      await page.route('**/api/cockpit-sessions', sessionsBody(rows));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const badges = page.locator('#cockpit-sessions .cs-status');
+      await expect(badges).toHaveText(['working', 'done', 'running']);
+      await expect(badges.nth(1)).toHaveAttribute('title', 'done · waiting for your next prompt');
+      await expect(page.locator('#cockpit-sessions')).not.toContainText('awaiting-input');
     });
   });
 
@@ -6323,14 +6463,15 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     }
   });
 
-  test('needs-you badge (t-2e7e): shown top-right on needs-you, hidden on running, hidden on reopen', async ({ page }) => {
+  test('state chip (t-2e7e, t-824e): needs you on needs-you, running fallback otherwise, cleared on reopen', async ({ page }) => {
     const id = `t-badge-${Date.now()}`;
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       await page.waitForTimeout(100);
-      const badge = page.locator('#ck-needs-you-badge');
-      await expect(badge).toBeHidden();
+      const badge = page.locator('#ck-state-chip');
+      // No daemon row for this ticket → the status fallback, never a stale needs-you.
+      await expect(badge).toHaveText('running');
 
       // The board only trusts a status message whose source is the cockpit
       // iframe's own contentWindow, so it must be posted FROM the iframe's
@@ -6342,16 +6483,16 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
       // Flip the fake daemon's status to needs-you without navigating.
       await postFromIframe('needs-you');
-      await expect(badge).toBeVisible();
-      await expect(badge).toHaveText('!');
+      await expect(badge).toHaveText('needs you');
+      await expect(badge).toHaveClass(/st-needs-you/);
 
       // Back to running clears it again.
       await postFromIframe('running');
-      await expect(badge).toBeHidden();
+      await expect(badge).toHaveText('running');
 
       // A fresh reopen must never inherit a prior session's stale badge state.
       await postFromIframe('needs-you');
-      await expect(badge).toBeVisible();
+      await expect(badge).toHaveText('needs you');
       // "Leave running" was removed (t-a852) — a needs-you session must be
       // resolved before it can be left, so flip to running, then Save & End
       // closes it (fake daemon replies 'ended').
@@ -6361,7 +6502,49 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 5000 });
       await reopenCockpitNoReload(page, id, fakeCockpitPage({ initialStatus: 'running' }));
       await page.waitForTimeout(100);
-      await expect(badge).toBeHidden();
+      await expect(badge).not.toHaveClass(/st-needs-you/);
+      await expect(badge).toHaveText('running');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+  test('ticket cockpit state chip + reaper line (t-824e): working, done, Copilot needs-you, old daemon', async ({ page }) => {
+    const id = `t-chip-${Date.now()}`;
+    let rows = [];
+    try {
+      writeTicket(id, 'in_progress');
+      await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+      const base = { session: 's1', ticket: id, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' };
+      rows = [{ ...base, state: 'working', state_secs: 4, idle_secs: 10, idle_limit_secs: 300, signal: 'hook' }];
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running' }));
+      const chip = page.locator('#ck-state-chip'), reaper = page.locator('#ck-reaper');
+      const poke = () => page.frameLocator('#ck-iframe').locator('body').evaluate(() => {
+        window.parent.postMessage({ source: 'canon-cockpit', type: 'status', status: 'running' }, '*');
+      });
+      await poke();
+      await expect(chip).toHaveText('working');
+      await expect(chip).toHaveAttribute('title', 'State from: Claude Code notification hook');
+      await expect(reaper).toHaveText('Auto-save & end in 4m · resets on activity');
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals'), { recursive: true });
+      await page.locator('#cockpit-overlay .ck-topbar').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals', 'ticket-cockpit.png') });
+
+      rows = [{ ...base, status: 'awaiting-input', state: 'done', state_secs: 70, idle_secs: 70, idle_limit_secs: 1800, signal: 'hook' }];
+      await poke();
+      await expect(chip).toHaveText('done · waiting for your next prompt');
+      await expect(chip).toHaveClass(/st-done/);
+      await expect(reaper).toHaveText('Auto-save & end in 28m · resets on activity');
+
+      rows = [{ ...base, agent: 'copilot', state: 'needs-you', state_secs: 12, idle_secs: 12, idle_limit_secs: 300, signal: 'copilot-menu' }];
+      await poke();
+      await expect(chip).toHaveText('needs you');
+      await expect(chip).toHaveAttribute('title', 'State from: Copilot approval menu');
+      await expect(reaper).toHaveText('Auto-save paused · waiting on you');
+
+      rows = [{ ...base }]; // pre-t-824e daemon: status only
+      await poke();
+      await expect(chip).toHaveText('running');
+      await expect(reaper).toBeHidden();
+      await expect(page.locator('#cockpit-overlay')).not.toContainText('undefined');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -6669,9 +6852,9 @@ test.describe('session sub-tabs (t-8a2a)', () => {
       await page.waitForTimeout(100);
 
       await expect(page.locator(`#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="${id1}"] .ck-tab-pill-needsyou`)).toBeVisible();
-      // The topbar badge stays scoped to the ACTIVE tab (id2), which never
+      // The topbar state chip stays scoped to the ACTIVE tab (id2), which never
       // received a needs-you status.
-      await expect(page.locator('#ck-needs-you-badge')).toBeHidden();
+      await expect(page.locator('#ck-state-chip')).not.toHaveClass(/st-needs-you/);
     } finally {
       for (const id of [id1, id2]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }

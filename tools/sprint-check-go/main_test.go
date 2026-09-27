@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"math/rand"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -1436,6 +1437,29 @@ func TestRunSkillEvalExitCodes(t *testing.T) {
 		}
 		if (c.name == "past the timeout" || c.linger != "") && time.Since(start) > 4*time.Second {
 			t.Errorf("%s: the run was not killed at the timeout (took %v)", c.name, time.Since(start))
+		}
+	}
+}
+
+// t-824e: the daemon's two reaper timeouts reach Admin through /api/cockpit's running_build; a
+// daemon predating them reports 0 (Admin then hides the reaper line). Mirrors server.py's check
+// in tests/canon-cockpit.sh.
+func TestCockpitRunningBuildPassesReaperTimeouts(t *testing.T) {
+	for _, c := range []struct {
+		body           string
+		idle, idleMain float64
+	}{
+		{`{"version":"v","exe_mtime":1,"uptime_secs":2,"debug_enabled":true,"idle_timeout_secs":300,"idle_timeout_main_secs":1800}`, 300, 1800},
+		{`{"version":"v","exe_mtime":1,"uptime_secs":2,"debug_enabled":false}`, 0, 0},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, c.body) }))
+		got := cockpitRunningBuild(strings.TrimPrefix(srv.URL, "http://"))
+		srv.Close()
+		raw, _ := json.Marshal(got)
+		var m map[string]any
+		json.Unmarshal(raw, &m)
+		if m["idle_timeout_secs"] != c.idle || m["idle_timeout_main_secs"] != c.idleMain || m["version"] != "v" {
+			t.Errorf("running_build for %s = %v", c.body, m)
 		}
 	}
 }

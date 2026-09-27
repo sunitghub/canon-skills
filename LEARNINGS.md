@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-27-2026 12:30
+learnings-sweep last run: 09-27-2026 17:23
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-27 | [t-824e](.tickets/t-824e/learnings.md) | Adding a fourth tile to a grid tuned for three (`auto-fit, minmax(150px,1fr)` in a 620px column) silently wraps it 3+1 — no test caught it until the reviewer rendered Admin; assert row layout (tile tops equal) when a fixed-width panel gains items. | UNPROMOTED |
 | 2026-09-27 | [t-e555](.tickets/t-e555/learnings.md) | A stub that always exits 0 can't test exit-code handling: vary the stub's exit code and pipe behaviour per case. In Go, check `ctx.Err()` before `cancel()`; `cmd.WaitDelay` also fires after a normal exit and returns `ErrWaitDelay` only for exit 0 (a non-zero exit wins as `ExitError`) — so a test for that branch must use exit 0, and the branch should be revert-checked. | UNPROMOTED |
 | 2026-09-27 | [t-b9a7](.tickets/t-b9a7/learnings.md) | Porting a check to a second runtime: a parity test only proves both sides agree, so pin each rejection rule directly too (both sides could drop it together), and aim the fuzz at the known text-handling gaps (isspace, `\w`, code-point lengths, invalid UTF-8) or it proves nothing. Go 1.23+ on Windows: junctions report `ModeIrregular` and `EvalSymlinks` stops following them, so check every path component, not just the resolved path. A build script that compiles one file silently drops new files from the binary. | UNPROMOTED |
 | 2026-09-27 | [t-d538](.tickets/t-d538/learnings.md) | A UI action tested only on the standalone board with glob route mocks (`**/api/x**` matches with or without the query) hid that it sent no `?project=` there; assert the query string in the mock. Cockpit-only confirms can't use the board toast (it renders under the overlay). A gate subagent that loses its PID across Bash calls fell back to `pkill -f cockpit-daemon`, which can kill the user's own daemon; gate prompts should require starting and stopping a server in the same Bash call. | UNPROMOTED |

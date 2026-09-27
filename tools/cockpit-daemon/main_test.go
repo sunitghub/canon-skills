@@ -980,40 +980,52 @@ func TestHookSettingsFile(t *testing.T) {
 	}
 	var parsed struct {
 		Hooks map[string][]struct {
-			Hooks []struct{ Type, Command string }
+			Matcher string
+			Hooks   []struct{ Type, Command string }
 		}
 	}
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		t.Fatalf("settings.json is not valid JSON: %v", err)
 	}
+	// t-824e: one entry per status, each with a matcher, so only real questions mark needs-you
+	// (never reaped) and finishing/idling at the prompt marks awaiting-input (reaped normally).
+	want := map[string]string{
+		"permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input": "needs-you",
+		"idle_prompt|agent_completed": "awaiting-input",
+	}
 	n, ok := parsed.Hooks["Notification"]
-	if !ok || len(n) != 1 || len(n[0].Hooks) != 1 {
-		t.Fatalf("want exactly one Notification hook, got %+v", parsed.Hooks)
-	}
-	cmd := n[0].Hooks[0].Command
-	if !strings.Contains(cmd, "curl -K ") {
-		t.Errorf("hook command should read its credential from a -K file: %q", cmd)
-	}
-	if strings.Contains(cmd, "sess-token-abc") {
-		t.Errorf("session token leaked into the hook command string: %q", cmd)
+	if !ok || len(n) != len(want) {
+		t.Fatalf("want %d Notification entries, got %+v", len(want), parsed.Hooks)
 	}
 	if strings.Contains(string(raw), "sess-token-abc") {
 		t.Errorf("session token leaked into settings.json: %s", raw)
 	}
-
-	conf, err := os.ReadFile(filepath.Join(dir, "curl.conf"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// noproxy is asserted because its absence is silent: curl would route the ping
-	// through a proxy and the hook's `|| true` would swallow the failure, disabling
-	// needs-you with the whole suite still green.
-	for _, want := range []string{"sess-token-abc", "/session/sid123/status", "127.0.0.1:8455", "noproxy = \"*\""} {
-		if !strings.Contains(string(conf), want) {
-			t.Errorf("curl.conf missing %q: %s", want, conf)
+	for _, e := range n {
+		status, known := want[e.Matcher]
+		if !known || len(e.Hooks) != 1 {
+			t.Fatalf("unexpected Notification entry %+v", e)
+		}
+		cmd := e.Hooks[0].Command
+		if !strings.Contains(cmd, "curl -K ") || !strings.Contains(cmd, status+".conf") {
+			t.Errorf("%s: hook command should read its credential from %s.conf via -K: %q", status, status, cmd)
+		}
+		if strings.Contains(cmd, "sess-token-abc") {
+			t.Errorf("session token leaked into the hook command string: %q", cmd)
+		}
+		conf, err := os.ReadFile(filepath.Join(dir, status+".conf"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		// noproxy is asserted because its absence is silent: curl would route the ping
+		// through a proxy and the hook's `|| true` would swallow the failure, disabling
+		// needs-you with the whole suite still green.
+		for _, w := range []string{"sess-token-abc", "/session/sid123/status", "127.0.0.1:8455", "noproxy = \"*\"", "data = \"" + status + "\""} {
+			if !strings.Contains(string(conf), w) {
+				t.Errorf("%s.conf missing %q: %s", status, w, conf)
+			}
 		}
 	}
-	for _, f := range []string{"curl.conf", "settings.json"} {
+	for _, f := range []string{"needs-you.conf", "awaiting-input.conf", "settings.json"} {
 		fi, err := os.Stat(filepath.Join(dir, f))
 		if err != nil {
 			t.Fatal(err)
@@ -5525,5 +5537,190 @@ func TestDebugfConcurrentAppendsKeepEveryLine(t *testing.T) {
 	log := readVerboseLog(root, "t-ab12")
 	if got := strings.Count(log, "concurrent line "); got != n {
 		t.Fatalf("%d of %d concurrent debug lines survived", got, n)
+	}
+}
+
+// t-824e: the daemon alone decides a session's displayed state.
+func TestSessionStateDerivation(t *testing.T) {
+	now := time.Now()
+	menu := []byte("Do you want to allow this?\r\n1. Yes\r\n3. No (Esc)\r\n↑/↓ to navigate · enter to\r\nselect · esc to cancel\r\n")
+	cases := []struct {
+		name                 string
+		se                   *session
+		state, signal        string
+		stateSecs, idleSecs  int64
+	}{
+		{"hook question", &session{agent: "claude", status: "needs-you", statusSince: now.Add(-42 * time.Second), lastActivity: now.Add(-40 * time.Second)}, "needs-you", "hook", 42, 40},
+		{"finished at the prompt", &session{agent: "claude", status: "awaiting-input", statusSince: now.Add(-70 * time.Second), lastActivity: now.Add(-90 * time.Second)}, "done", "hook", 70, 90},
+		{"output 5s ago", &session{agent: "claude", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-5 * time.Second)}, "working", "hook", 5, 5},
+		{"quiet 20s", &session{agent: "claude", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-20 * time.Second)}, "idle", "hook", 20, 20},
+		{"copilot menu pending", &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-30 * time.Second), buf: menu, cols: 30, rows: 12}, "needs-you", "copilot-menu", 30, 30},
+		{"copilot working", &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-2 * time.Second)}, "working", "copilot-menu", 2, 2},
+		{"pi quiet", &session{agent: "pi", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-3 * time.Minute)}, "idle", "activity", 180, 180},
+	}
+	for _, c := range cases {
+		state, stateSecs, idleSecs, signal := sessionStateLocked(c.se, now)
+		if state != c.state || signal != c.signal || stateSecs != c.stateSecs || idleSecs != c.idleSecs {
+			t.Errorf("%s: got (%s, %d, %d, %s), want (%s, %d, %d, %s)", c.name, state, stateSecs, idleSecs, signal, c.state, c.stateSecs, c.idleSecs, c.signal)
+		}
+	}
+}
+
+// t-824e: the timeout tier keys off the session's own project, not the daemon's launch project —
+// in both directions (another project's main checkout gets the main tier, its worktree does not).
+func TestIdleTimeoutForUsesSessionProject(t *testing.T) {
+	launch, other := t.TempDir(), t.TempDir()
+	s := newServer(config{token: bootTok, projectRoot: launch, stateDir: t.TempDir(), idleTimeout: time.Minute, idleTimeoutMain: time.Hour})
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(other, link); err != nil {
+		t.Fatal(err)
+	}
+	resolvedOther, _ := filepath.EvalSymlinks(other)
+	for _, c := range []struct {
+		name, root, cwd string
+		want            time.Duration
+	}{
+		{"launch project main checkout", launch, launch, time.Hour},
+		{"other project main checkout", other, other, time.Hour},
+		{"other project, root given via a symlink", link, resolvedOther, time.Hour},
+		{"other project worktree", other, filepath.Join(other, "wt"), time.Minute},
+		{"launch root while cwd is another project", launch, other, time.Minute},
+		{"empty cwd", other, "", time.Hour},
+		{"no project root falls back to launch", "", launch, time.Hour},
+	} {
+		if got := s.idleTimeoutFor(c.root, c.cwd); got != c.want {
+			t.Errorf("%s: idleTimeoutFor(%q, %q) = %v, want %v", c.name, c.root, c.cwd, got, c.want)
+		}
+	}
+}
+
+// t-824e: a session the hook marked awaiting-input (finished, at the prompt) is reaped on the normal
+// timer; only needs-you is exempt (TestIdleReapSparesNeedsYouSession).
+func TestIdleReapReapsAwaitingInputSession(t *testing.T) {
+	bin := fakeAgentThatSaves(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{
+		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond,
+		saveFallback: 3 * time.Second,
+	})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	s.mu.Lock()
+	se := s.sessions[out.Session]
+	s.mu.Unlock()
+	se.setStatus("awaiting-input")
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		s.mu.Lock()
+		_, stillThere := s.sessions[out.Session]
+		s.mu.Unlock()
+		if !stillThere {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("an awaiting-input (done) session was never reaped")
+}
+
+// t-824e: /sessions carries the derived state fields and still no token.
+func TestSessionsEndpointStateFields(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: time.Minute, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	s.mu.Lock()
+	s.sessions[out.Session].setStatus("needs-you")
+	s.mu.Unlock()
+	r, err := http.Get(ts.URL + "/sessions")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	var rows []map[string]any
+	if err := json.Unmarshal(raw, &rows); err != nil || len(rows) != 1 {
+		t.Fatalf("rows: %v %s", err, raw)
+	}
+	row := rows[0]
+	if row["state"] != "needs-you" || row["signal"] != "hook" || row["idle_limit_secs"] != float64(3600) {
+		t.Errorf("row = %v", row)
+	}
+	for _, k := range []string{"state_secs", "idle_secs"} {
+		if _, ok := row[k].(float64); !ok {
+			t.Errorf("%s missing or not a number: %v", k, row)
+		}
+	}
+	if strings.Contains(string(raw), out.Token) || strings.Contains(string(raw), bootTok) {
+		t.Errorf("a token leaked into /sessions: %s", raw)
+	}
+	v, _ := http.Get(ts.URL + "/version")
+	var ver map[string]any
+	json.NewDecoder(v.Body).Decode(&ver)
+	v.Body.Close()
+	if ver["idle_timeout_secs"] != float64(60) || ver["idle_timeout_main_secs"] != float64(3600) {
+		t.Errorf("/version timeouts = %v", ver)
+	}
+}
+
+// t-824e: the hook's "awaiting-input" post is accepted over HTTP, shows as done in /sessions, and
+// the human's next keystroke resets it to running (same as needs-you).
+func TestAwaitingInputStatusOverHTTP(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	s.mu.Lock()
+	statusTok := s.sessions[out.Session].statusToken
+	s.mu.Unlock()
+	post := func(action, tok, body string) int {
+		req, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/"+action, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	row := func() map[string]any {
+		r, err := http.Get(base + "/sessions")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var rows []map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&rows); err != nil || len(rows) != 1 {
+			t.Fatalf("rows: %v %v", err, rows)
+		}
+		return rows[0]
+	}
+	if got := post("status", statusTok, "awaiting-input"); got != http.StatusNoContent {
+		t.Fatalf("awaiting-input: want 204, got %d", got)
+	}
+	if r := row(); r["status"] != "awaiting-input" || r["state"] != "done" {
+		t.Fatalf("after awaiting-input: %v", r)
+	}
+	if got := post("input", out.Token, "next prompt\r"); got != http.StatusNoContent {
+		t.Fatalf("input: want 204, got %d", got)
+	}
+	if r := row(); r["status"] != "running" || r["state"] != "working" {
+		t.Fatalf("input must reset awaiting-input to running: %v", r)
 	}
 }

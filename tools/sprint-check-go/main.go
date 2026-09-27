@@ -3186,15 +3186,18 @@ func cockpitRunningBuild(addr string) map[string]any {
 	}
 	defer resp.Body.Close()
 	var v struct {
-		Version      string `json:"version"`
-		ExeMtime     int64  `json:"exe_mtime"`
-		UptimeSecs   int64  `json:"uptime_secs"`
-		DebugEnabled bool   `json:"debug_enabled"`
+		Version         string `json:"version"`
+		ExeMtime        int64  `json:"exe_mtime"`
+		UptimeSecs      int64  `json:"uptime_secs"`
+		DebugEnabled    bool   `json:"debug_enabled"`
+		IdleTimeout     int64  `json:"idle_timeout_secs"`
+		IdleTimeoutMain int64  `json:"idle_timeout_main_secs"`
 	}
 	if json.NewDecoder(resp.Body).Decode(&v) != nil {
 		return nil
 	}
-	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled}
+	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled,
+		"idle_timeout_secs": v.IdleTimeout, "idle_timeout_main_secs": v.IdleTimeoutMain}
 }
 
 // cockpitSetDebug forwards the Admin panel's debug-logging toggle to the

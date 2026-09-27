@@ -1480,12 +1480,20 @@
     }
     /* Always in the topbar (not the collapsible rail) so it's visible even
        rail-collapsed — t-2e7e's grill required this be unmissable. */
-    .ck-needs-you-badge {
-      display: flex; align-items: center; justify-content: center;
-      width: 20px; height: 20px; border-radius: 50%;
-      background: #f4a300; color: #1a1a1f; font-weight: 800; font-size: 13px;
-      animation: pulse 1.4s ease-in-out infinite;
+    /* t-824e: the session's state from the daemon (needs you / working / idle /
+       done); replaces the needs-you "!" badge. Hover names the signal source. */
+    .ck-state-chip {
+      --st: var(--text-muted);
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+      border: 1px solid color-mix(in srgb, var(--st) 45%, transparent);
+      background: color-mix(in srgb, var(--st) 12%, transparent); color: var(--st);
+      border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700;
     }
+    .ck-state-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .ck-state-chip.st-working { --st: var(--col-progress); }
+    .ck-state-chip.st-done, .ck-state-chip.st-running { --st: var(--col-done); }
+    .ck-state-chip.st-needs-you { background: #f4a300; border-color: #f4a300; color: #1a1a1f; animation: pulse 1.4s ease-in-out infinite; }
+    .ck-reaper { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
     /* t-8a2a: session sub-tabs — one pill per open ticket, on the board (visible
        when the overlay is closed) and mirrored in the topbar (visible while a
        session is open), same renderTabStrip() call filling both containers. */
@@ -2052,7 +2060,8 @@
       <span class="ck-title" id="ck-title"></span>
       <div class="ck-tab-strip ck-tab-strip-topbar" id="ck-tab-strip-topbar" hidden></div>
       <span class="spacer"></span>
-      <span class="ck-needs-you-badge" id="ck-needs-you-badge" title="Agent is waiting on you" style="display:none">!</span>
+      <span class="ck-state-chip" id="ck-state-chip" hidden></span>
+      <span class="ck-reaper" id="ck-reaper" hidden></span>
       <button class="ck-end-session" id="ck-end-session" type="button" title="Save state and end this session">End Session</button>
       <span class="ck-model" id="ck-model">model: from plan.md</span>
     </div>
@@ -3181,6 +3190,14 @@ const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
 // opens/attaches that session in the cockpit overlay, where the tokened Kill /
 // Save & End live. No token-free kill is added — the board never holds the daemon
 // token (t-ddc8). Basename split uses [\\/] so a Windows project path renders too.
+// t-824e: a /sessions row's displayed state — the daemon's "state", or for a daemon older
+// than t-824e its "status" (needs-you / running). Never the raw wire status ("awaiting-input").
+const CK_STATE_LABEL = { 'needs-you': 'needs you', done: 'done \u00b7 waiting for your next prompt', working: 'working', idle: 'idle', running: 'running' };
+const CK_SIGNAL_LABEL = { hook: 'Claude Code notification hook', 'copilot-menu': 'Copilot approval menu', activity: 'terminal activity only (no question signal)' };
+function ckRowState(row) {
+  if (row && typeof row.state === 'string' && CK_STATE_LABEL[row.state]) return row.state;
+  return row && row.status === 'needs-you' ? 'needs-you' : 'running';
+}
 async function refreshCockpitSessions() {
   const panel = document.getElementById('cockpit-sessions');
   if (!panel) return;
@@ -3198,8 +3215,8 @@ async function refreshCockpitSessions() {
     const ticket = String(s.ticket || '');
     const project = String(s.project_root || '');
     const agent = String(s.agent || '');
-    const status = String(s.status || 'running');
-    const statusCls = status === 'needs-you' ? 'needs-you' : 'running';
+    const st = ckRowState(s);
+    const statusCls = st === 'needs-you' ? 'needs-you' : 'running';
     // t-19d1: where the session actually runs — "Main checkout", or the worktree's folder — not
     // just the project root (a worktree session used to look like it ran in main).
     const cwd = String(s.cwd || '');
@@ -3209,7 +3226,7 @@ async function refreshCockpitSessions() {
       + `<span class="cs-project">${esc(project)}</span>`
       + `<span class="cs-where">${esc(where)}</span>`
       + `<span class="cs-agent">${esc(agent)}</span>`
-      + `<span class="cs-status ${statusCls}">${esc(status)}</span>`
+      + `<span class="cs-status ${statusCls}" title="${escAttr(CK_STATE_LABEL[st])}">${esc(st === 'done' ? 'done' : CK_STATE_LABEL[st])}</span>`
       + `</div>`;
   }).join('');
   panel.innerHTML = `<div class="cockpit-sessions-title">Cockpit sessions \u00b7 ${sessions.length}</div>`
@@ -5183,7 +5200,7 @@ window.addEventListener('message', (e) => {
   const isActive = sourceId === activeTabId;
   if (d.type === 'status') {
     tab.status = d.status;
-    if (isActive) renderNeedsYouBadge();
+    if (isActive) { renderSessionStateChip(); refreshSessionStateChip(); }
     renderTabStrip();
   } else if (d.type === 'started') {
     // applyActualWorkingCwd renders rail DOM that belongs to the active tab
@@ -5226,9 +5243,39 @@ window.addEventListener('message', (e) => {
   }
 });
 
-function renderNeedsYouBadge() {
-  document.getElementById('ck-needs-you-badge').style.display =
-    (cockpitState && cockpitState.status === 'needs-you') ? 'flex' : 'none';
+// t-824e: the active tab's state chip + reaper line. The live status stream says
+// needs-you the instant the hook fires; the daemon's /sessions row (refreshed
+// by the shared cockpit poll) adds working / idle / done and the reaper clock.
+// A daemon older than t-824e sends no "state": fall back to needs-you / running (ckRowState).
+function fmtWait(secs) {
+  const m = Math.floor(secs / 60);
+  return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m > 0 ? m + 'm' : 'under a minute';
+}
+function renderSessionStateChip() {
+  const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper');
+  if (!sessionIsLive()) { chip.hidden = true; reaper.hidden = true; return; }
+  const row = cockpitState.daemonRow || null;
+  const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
+  let st = row ? ckRowState(row) : 'running';
+  if (cockpitState.status === 'needs-you') st = 'needs-you';
+  chip.className = 'ck-state-chip st-' + st;
+  chip.textContent = CK_STATE_LABEL[st];
+  const signal = row && CK_SIGNAL_LABEL[row.signal];
+  chip.title = signal ? 'State from: ' + signal : 'State from the session\u2019s status';
+  chip.hidden = false;
+  const idle = row && num(row.idle_secs), limit = row && num(row.idle_limit_secs);
+  if (st === 'needs-you') reaper.textContent = 'Auto-save paused \u00b7 waiting on you';
+  else if (idle !== null && limit !== null) reaper.textContent = 'Auto-save & end in ' + fmtWait(Math.max(0, limit - idle)) + ' \u00b7 resets on activity';
+  else reaper.textContent = '';
+  reaper.hidden = !reaper.textContent;
+}
+async function refreshSessionStateChip() {
+  const tab = cockpitState, id = activeTabId;
+  if (!tab || !document.getElementById('cockpit-overlay').classList.contains('open') || !sessionIsLive()) { renderSessionStateChip(); return; }
+  const row = await findLiveDaemonSession(id);
+  if (tab !== cockpitState) return; // switched tabs while the lookup was in flight
+  tab.daemonRow = row;
+  renderSessionStateChip();
 }
 
 // ── Preview pane (t-b19b) ───────────────────────────────────────────────────
@@ -5435,7 +5482,7 @@ function unmountTab(id) {
       cockpitState = null;
       document.getElementById('cockpit-overlay').classList.remove('open');
       if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
-      renderNeedsYouBadge(); // null cockpitState -> hides it; no other path re-renders this once the last tab closes
+      renderSessionStateChip(); // null cockpitState -> hides it; no other path re-renders this once the last tab closes
     }
   }
   renderTabStrip();
@@ -5727,7 +5774,8 @@ function renderTabStrip() {
 // accordion/scroll state). Shared by a fresh tab open and a switch to an
 // already-open tab; never touches the terminal iframe itself.
 async function renderCockpitRail(t) {
-  renderNeedsYouBadge();
+  renderSessionStateChip();
+  refreshSessionStateChip();
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-tc-id').textContent = displayTicketId(t);
@@ -5775,6 +5823,7 @@ function ensureCockpitPollTimer() {
         }
       }
     } catch {}
+    refreshSessionStateChip(); // t-824e: the active tab's state chip + reaper line
     const ct = findTicketById(activeTabId);
     if (!ct) return;
     await fetchCockpitWorktreeDocs(ct);

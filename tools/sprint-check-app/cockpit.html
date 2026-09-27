@@ -99,7 +99,7 @@
   /* t-a30c: neutral at rest so it doesn't compete with Restart for visual weight — turns red only on hover to signal it's destructive. */
   .dstop{flex:1;background:transparent;color:var(--text-muted);border:1px solid var(--border);border-radius:9px;padding:12px;font-size:14px;font-weight:600;cursor:pointer;transition:background .12s ease,border-color .12s ease,color .12s ease}
   .dstop:hover{background:var(--col-discarded);border-color:var(--col-discarded);color:#fff}
-  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
   .tile{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
   .tile .n{font-size:24px;font-weight:700;letter-spacing:-.5px}
   .tile .n.a{color:var(--accent)} .tile .n.g{color:var(--col-done)} .tile .n.b{color:var(--col-progress)}
@@ -163,12 +163,39 @@
   .sessions{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 4px}
   .slabel{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-dim);padding:10px 14px 6px}
   .srow{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--border-muted)}
-  .srow .sd{width:7px;height:7px;border-radius:50%;background:var(--col-done)}
-  .srow .sp{color:var(--text-muted);font-family:ui-monospace,monospace;font-size:11px}
-  .srow .stail{margin-left:auto;display:flex;align-items:center;gap:8px}
-  .srow .sa{font-size:11px;color:var(--text-muted)}
-  .srow .selapsed{font-family:ui-monospace,monospace;font-size:11px;font-weight:700;color:var(--card-stat);background:var(--accent-dim);border-radius:6px;padding:2px 7px;font-variant-numeric:tabular-nums}
   .srow .snone{color:var(--text-muted);padding:6px 4px}
+  /* t-824e: session state, owned by the daemon (/sessions "state") */
+  .st{--st:var(--text-muted)}
+  .stc,.st .ag-s,.st .stcell{color:var(--st)}
+  .st-needs-you{--st:var(--amber)} .st-working{--st:var(--col-progress)} .st-done,.st-running{--st:var(--col-done)} .st-idle{--st:var(--text-muted)}
+  .sdot{width:7px;height:7px;border-radius:50%;background:var(--st);flex-shrink:0}
+  .st-needs-you .sdot{box-shadow:0 0 6px var(--amber)}
+  .tab .live.needs{background:var(--amber);box-shadow:0 0 6px var(--amber)}
+  .needpill{display:flex;align-items:center;gap:7px;margin-right:12px;border:1px solid color-mix(in srgb, var(--amber) 55%, transparent);background:color-mix(in srgb, var(--amber) 14%, transparent);color:var(--amber);border-radius:20px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
+  .needpill[hidden]{display:none}
+  .needpill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
+  .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
+  .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
+  .ag-proj{font-size:11px;font-weight:700;color:var(--text-muted);padding:8px 8px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ag-row{display:flex;flex-direction:column;gap:2px;padding:6px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body)}
+  .ag-row:hover{background:var(--border-muted);color:var(--text)}
+  .ag-row .ag-t{font-family:ui-monospace,monospace;font-size:12px;display:flex;gap:6px;align-items:baseline;min-width:0;white-space:nowrap}
+  .ag-row .ag-a{font-family:inherit;font-size:10.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .ag-row .ag-s{display:flex;align-items:center;gap:6px;font-size:11px}
+  .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
+  /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
+  #view-admin .sessions{width:max-content;min-width:100%;max-width:calc(100vw - 300px)}
+  .ad-table-wrap{overflow-x:auto}
+  .ad-table{width:100%;border-collapse:collapse;font-size:12px}
+  .ad-table th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-dim);text-align:left;font-weight:600;padding:6px 8px}
+  .ad-table td{padding:8px 8px;border-top:1px solid var(--border-muted);vertical-align:middle;white-space:nowrap}
+  .ad-table td.mono{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis}
+  .ad-table td.num{font-variant-numeric:tabular-nums}
+  .ad-table .stcell{display:flex;align-items:center;gap:6px;font-weight:600;white-space:normal;min-width:90px;max-width:150px}
+  .ad-table td.agent{max-width:110px;overflow:hidden;text-overflow:ellipsis}
+  .ad-open{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .ad-open:hover{border-color:var(--accent);color:var(--text)}
+  .ad-open.answer{border-color:var(--amber);color:var(--amber)}
   /* ---- Upkeep (t-7ae6): project picker + report cards + single report viewer ---- */
   .up-wrap{max-width:1080px}
   .up-h1{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
@@ -353,6 +380,7 @@
   /* vertical meta column with an accent bar marker (no clock icon) */
   .card .meta{padding-left:12px;border-left:3px solid var(--accent);display:grid;grid-template-columns:auto auto;justify-content:start;column-gap:28px;row-gap:4px;align-content:center}
   .card .metarow{display:contents}
+  .card .metarow[hidden]{display:none}
   .card .metarow .k{color:var(--text-muted);font-size:13px}
   .card .metarow .v{color:var(--card-stat);font-weight:700;font-size:13px;font-variant-numeric:tabular-nums}
   .card .regbtns{display:flex;gap:8px;flex-wrap:wrap}
@@ -447,6 +475,7 @@
       </select>
     </div>
     <div class="topspacer"></div>
+    <button class="needpill" id="needpill" hidden title="Open the session that has waited longest"></button>
     <span class="n" id="ncount" style="margin-right:14px"></span>
     <button class="btn primary" onclick="openAdd()">+ Add Project</button>
   </div>
@@ -459,6 +488,8 @@
         <a id="nav-admin" onclick="showView('admin')"><span class="ic">&#9881;</span> Admin</a>
         <a id="nav-upkeep" onclick="showView('upkeep')"><span class="ic">&#9874;</span> Upkeep</a>
       </nav>
+      <div class="navlabel" id="ag-label" hidden>Agents</div>
+      <div class="agents" id="ag-list"></div>
       <div class="spacer"></div>
       <div class="foot">
         <button id="theme-btn" onclick="toggleTheme()">&#127769; Dark</button>
@@ -502,6 +533,7 @@
             <div class="tiles">
               <div class="tile"><div class="n a" id="ad-tile-projects">—</div><div class="l">Registered projects</div></div>
               <div class="tile"><div class="n g" id="ad-tile-agents">—</div><div class="l">Running agents</div></div>
+              <div class="tile"><div class="n st st-needs-you stc" id="ad-tile-needs">—</div><div class="l">Needs you</div></div>
               <div class="tile"><div class="n b" id="ad-tile-active">—</div><div class="l">Active projects</div></div>
             </div>
             <div class="admin-settings">
@@ -544,6 +576,7 @@
             </div>
             <div class="sessions">
               <div class="slabel">Active agent sessions (all projects)</div>
+              <div class="ad-reaper" id="ad-reaper" hidden></div>
               <div id="ad-sessions"></div>
             </div>
           </div>
@@ -799,6 +832,8 @@
   let activeTab='projects';
   let knownIds=new Set();     // registered project ids (for restore filtering)
   let liveTabIds=new Set();   // t-0db3: open tab ids whose project has a live agent session
+  let needsTabIds=new Set();  // t-824e: open tab ids whose project has a session waiting on you
+  let lastSessions=[];        // t-824e: last /api/cockpit-sessions rows, shared by every surface
   let pendingCloseId=null;    // tab awaiting the close-warn decision
   let closingTabs=new Set();  // tabs told to Save&End/End — removed once their session ends
 
@@ -814,12 +849,20 @@
     try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
     if(!Array.isArray(sessions)) sessions=[];
     const liveRoots=new Set(sessions.map(s=>_normPath(s&&s.project_root)).filter(Boolean));
+    const needRoots=new Set(sessions.filter(s=>sessionView(s).state==='needs-you').map(s=>_normPath(s.project_root)).filter(Boolean));
     const byId=new Map((window._projects||[]).map(p=>[p.id,_normPath(p.path)]));
-    const next=new Set();
-    for(const t of openTabs){ const path=byId.get(t.id); if(path && liveRoots.has(path)) next.add(t.id); }
-    // only re-render if the live set actually changed
-    const changed = next.size!==liveTabIds.size || [...next].some(id=>!liveTabIds.has(id));
-    liveTabIds=next;
+    const next=new Set(), nextNeeds=new Set();
+    for(const t of openTabs){
+      const path=byId.get(t.id);
+      if(path && liveRoots.has(path)) next.add(t.id);
+      if(path && needRoots.has(path)) nextNeeds.add(t.id);
+    }
+    // only re-render if the live or needs-you set actually changed
+    const differs=(a,b)=>a.size!==b.size || [...a].some(id=>!b.has(id));
+    const changed = differs(next,liveTabIds) || differs(nextNeeds,needsTabIds);
+    liveTabIds=next; needsTabIds=nextNeeds;
+    lastSessions=sessions;
+    renderSessionSurfaces();
     // A tab awaiting close (Save&End/End) is removed once its session has ended
     // — the daemon finished the save/end turn, so no orphan and no premature
     // iframe teardown.
@@ -827,6 +870,90 @@
     if(changed) renderTabs();
   }
   function startSessionPoll(){ pollSessions(); setInterval(pollSessions, 5000); }
+
+  // ── Session state (t-824e) ─────────────────────────────────────────────────
+  // The daemon owns each session's state (/sessions "state"); every surface below
+  // reads it through sessionView. A daemon older than t-824e sends only "status",
+  // so fall back to needs-you / running with no working/idle split or countdown.
+  const STATE_LABEL={'needs-you':'needs you','done':'done \u00b7 waiting for your next prompt','working':'working','idle':'idle','running':'running'};
+  const STATE_SHORT={'needs-you':'needs you','done':'done','working':'working','idle':'idle','running':'running'};
+  const SIGNAL_LABEL={'hook':'Claude Code notification hook','copilot-menu':'Copilot approval menu','activity':'terminal activity only (no question signal)'};
+  const SIGNAL_SHORT={'hook':'hook','copilot-menu':'Copilot menu','activity':'activity'};
+  function sessionView(s){
+    s=s||{};
+    const state=(typeof s.state==='string' && STATE_LABEL[s.state]) ? s.state : (s.status==='needs-you' ? 'needs-you' : 'running');
+    const num=v=>(typeof v==='number' && isFinite(v) && v>=0) ? v : null;
+    const since=num(s.state_secs), idle=num(s.idle_secs), limit=num(s.idle_limit_secs);
+    let reaper='';
+    if(state==='needs-you') reaper='paused \u00b7 waiting on you';
+    else if(limit!==null && idle!==null) reaper='auto-save & end in '+(limit-idle>0 ? fmtUptime(limit-idle) : 'under a minute');
+    const proot=String(s.project_root||''), ticket=String(s.ticket||'');
+    return {
+      state, label:STATE_LABEL[state], short:STATE_SHORT[state], since, reaper,
+      signal:SIGNAL_LABEL[s.signal]||'', signalShort:SIGNAL_SHORT[s.signal]||'',
+      ticket:TICKET_ID_RE.test(ticket)?ticket:'',
+      proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
+      agent:String(s.agent||''), cwd:String(s.cwd||''),
+    };
+  }
+  function renderSessionSurfaces(){
+    const views=lastSessions.map(sessionView);
+    // Top-bar pill: only when something waits on you; opens the longest wait.
+    const waiting=views.filter(v=>v.state==='needs-you');
+    const pill=document.getElementById('needpill');
+    pill.hidden=waiting.length===0;
+    pill.textContent=waiting.length+' needs you';
+    pill.onclick=()=>{ if(waiting.length) openSessionInTab([...waiting].sort((a,b)=>(b.since||0)-(a.since||0))[0]); };
+    // Sidebar Agents, grouped by project.
+    const groups=new Map();
+    for(const v of views){ const k=_projKey(v.proot); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); }
+    const regName=k=>{ const p=(window._projects||[]).find(p=>_projKey(p.path)===k); return p?p.name:''; };
+    document.getElementById('ag-label').hidden=views.length===0;
+    const list=document.getElementById('ag-list');
+    list.innerHTML=[...groups.values()].map(g=>
+      `<div class="ag-proj" title="${escAttr(g[0].proot)}">${esc(regName(_projKey(g[0].proot))||g[0].name)}</div>`+g.map(v=>
+        `<button class="ag-row st st-${v.state}" data-i="${views.indexOf(v)}" title="${escAttr(v.signal?('State from: '+v.signal):v.label)}">`+
+        `<span class="ag-t">${esc(v.ticket||'no ticket')}<span class="ag-a">${esc(v.agent)}</span></span>`+
+        `<span class="ag-s"><span class="sdot"></span>${esc(v.label)}${v.since!==null?(' \u00b7 '+esc(fmtUptime(v.since))):''}</span></button>`).join('')
+    ).join('');
+    list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
+    // Projects cards: counts by state.
+    for(const p of (window._projects||[])){
+      const sel=window.CSS&&CSS.escape?CSS.escape(p.id):p.id;
+      const meta=document.querySelector('.meta[data-stats="'+sel+'"]');
+      if(!meta) continue;
+      const mine=views.filter(v=>_projKey(v.proot)===_projKey(p.path));
+      const counts=new Map();
+      for(const v of mine) counts.set(v.short,(counts.get(v.short)||0)+1);
+      meta.querySelector('[data-f="sessions-row"]').hidden=mine.length===0;
+      meta.querySelector('[data-f="sessions"]').textContent=[...counts].map(([k,n])=>n+' '+k).join(' \u00b7 ');
+    }
+    renderAdminSessions(views);
+  }
+  function renderAdminSessions(views){
+    const box=document.getElementById('ad-sessions');
+    if(!box) return;
+    const needs=views.filter(v=>v.state==='needs-you').length;
+    document.getElementById('ad-tile-agents').textContent=views.length;
+    document.getElementById('ad-tile-needs').textContent=needs;
+    if(!views.length){ box.innerHTML='<div class="srow snone">No active agent sessions.</div>'; return; }
+    // Metadata only: the board holds no session token, so there is deliberately
+    // no Save & End / Stop here (t-391a) — Answer/Open jumps to the session's tab.
+    box.innerHTML='<div class="ad-table-wrap"><table class="ad-table"><thead><tr>'+
+      '<th>State</th><th>Ticket</th><th>Project</th><th>Agent</th><th>Directory</th><th>Since</th><th>Reaper</th><th>Signal</th><th></th></tr></thead><tbody>'+
+      views.map((v,i)=>`<tr class="st st-${v.state}">`+
+        `<td><span class="stcell"><span class="sdot"></span>${esc(v.label)}</span></td>`+
+        `<td class="mono">${esc(v.ticket||'\u2014')}</td>`+
+        `<td title="${escAttr(v.proot)}">${esc(v.name)}</td>`+
+        `<td class="agent" title="${escAttr(v.agent)}">${esc(v.agent)}</td>`+
+        `<td class="mono" title="${escAttr(v.cwd)}">${esc(v.cwd)}</td>`+
+        `<td class="num">${v.since!==null?esc(fmtUptime(v.since)):'\u2014'}</td>`+
+        `<td>${esc(v.reaper||'\u2014')}</td>`+
+        `<td title="${escAttr(v.signal)}">${esc(v.signalShort||'\u2014')}</td>`+
+        `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`).join('')+
+      '</tbody></table></div>';
+    box.querySelectorAll('.ad-open').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
+  }
 
   function openCloseWarn(id){
     pendingCloseId=id;
@@ -871,17 +998,23 @@
     if(typeof d.ticket!=='string'||!TICKET_ID_RE.test(d.ticket)) return;
     if(typeof d.project_root!=='string') return;
     if(![...document.querySelectorAll('.view iframe')].some(f=>f.contentWindow===e.source)) return;
-    const want=_projKey(d.project_root);
+    openSessionInTab({proot:d.project_root, ticket:d.ticket});
+  });
+  // Open a session's project tab, then hand its ticket (if any) to that tab's board.
+  // Shared by the board's open-session message and the t-824e session surfaces.
+  function openSessionInTab(v){
+    const want=_projKey(v.proot);
     const proj=(window._projects||[]).find(p=>_projKey(p.path)===want);
-    if(!proj){ toast('Project not registered: '+d.project_root); return; }
+    if(!proj){ toast('Project not registered: '+v.proot); return; }
     openProject(proj.id,proj.name);
+    if(!(typeof v.ticket==='string'&&TICKET_ID_RE.test(v.ticket))) return;
     const ifr=document.getElementById('view-'+proj.id).querySelector('iframe');
-    const send=()=>{ try{ ifr.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-ticket',ticket:d.ticket}, location.origin); }catch(err){} };
+    const send=()=>{ try{ ifr.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-ticket',ticket:v.ticket}, location.origin); }catch(err){} };
     // A just-created tab's iframe is still loading; its board's listener isn't up yet. A fresh iframe
     // reports readyState 'complete' for its initial about:blank, hence the href check.
     if(ifr.contentDocument&&ifr.contentDocument.readyState==='complete'&&ifr.contentWindow.location.href!=='about:blank') send();
     else ifr.addEventListener('load',send,{once:true});
-  });
+  }
 
   // Scoped refresh/close guard: prompt the browser's leave confirmation ONLY when
   // at least one open tab has a live agent session. With no live tab, refresh and
@@ -1467,14 +1600,12 @@
     // sessions (cross-project) → running agents count + list
     let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
     if(!Array.isArray(sessions)) sessions=[];
-    document.getElementById('ad-tile-agents').textContent=sessions.length;
-    const box=document.getElementById('ad-sessions');
-    box.innerHTML = sessions.length ? sessions.map(s=>{
-      const proot=String(s.project_root||''), name=proot.split(/[\\/]/).filter(Boolean).pop()||proot;
-      const started=s.started?Date.parse(s.started):NaN;
-      const elapsed=isNaN(started)?'':fmtUptime((Date.now()-started)/1000);
-      return `<div class="srow"><span class="sd"></span><b>${esc(name)}</b><span class="sp">${esc(proot)}${s.ticket?(' \u00b7 '+esc(String(s.ticket))):''}</span><span class="stail"><span class="sa">${esc(String(s.agent||''))}</span>${elapsed?`<span class="selapsed">${esc(elapsed)}</span>`:''}</span></div>`;
-    }).join('') : '<div class="srow snone">No active agent sessions.</div>';
+    lastSessions=sessions;
+    renderSessionSurfaces();
+    // Reaper settings, read-only (a daemon older than t-824e doesn't report them).
+    const rb=ck.running_build||{}, rp=document.getElementById('ad-reaper');
+    rp.hidden=!(rb.idle_timeout_secs>0 && rb.idle_timeout_main_secs>0);
+    rp.textContent=rp.hidden?'':('Idle sessions auto-save & end after '+fmtUptime(rb.idle_timeout_secs)+' in a worktree and '+fmtUptime(rb.idle_timeout_main_secs)+' in a project\u2019s main checkout; any activity resets the timer, and a session that needs you is never ended.');
     // t-ade9: a per-state hint under the daemon panel \u2014 "Healthy" alone doesn't
     // say whether any agent is actually running, which reads as a contradiction
     // once you know the daemon spawns lazily on first Start/Resume.
@@ -1484,8 +1615,8 @@
     } else if(sessions.length===0){
       hint.textContent='Daemon is idle \u2014 no agents currently running.';
     } else {
-      const names=sessions.map(s=>{ const p=String(s.project_root||''); return p.split(/[\\/]/).filter(Boolean).pop()||p; });
-      hint.textContent=sessions.length+' agent'+(sessions.length===1?'':'s')+' running: '+names.join(', ');
+      const needs=sessions.filter(s=>sessionView(s).state==='needs-you').length;
+      hint.textContent=sessions.length+' agent'+(sessions.length===1?'':'s')+' running \u00b7 '+needs+' needs you';
     }
     // Active projects = projects currently open in a tab (shell state).
     document.getElementById('ad-tile-active').textContent = openTabs.length;
@@ -1718,7 +1849,7 @@
       const el=document.createElement('div');
       el.className='tab project'+(activeTab===t.id?' active':'');
       el.dataset.tab=t.id;
-      const liveCls = liveTabIds.has(t.id) ? ' on' : '';
+      const liveCls = liveTabIds.has(t.id) ? (needsTabIds.has(t.id) ? ' on needs' : ' on') : '';
       el.innerHTML='<span class="live'+liveCls+'"></span> '+esc(t.name)+' <span class="tx" title="Close tab">&#10005;</span>';
       el.addEventListener('click',(ev)=>{ if(ev.target.classList.contains('tx')){closeTab(t.id);} else {activateTab(t.id);} });
       strip.appendChild(el);
@@ -1852,6 +1983,7 @@
             <div class="metarow"><span class="k">Updated</span><span class="v" data-f="updated">…</span></div>
             <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
             <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
+            <div class="metarow" data-f="sessions-row" hidden><span class="k">Sessions</span><span class="v" data-f="sessions"></span></div>
           </div>
           <div class="card-divider"></div>
           <div class="cardbottom">
@@ -1873,6 +2005,7 @@
     grid.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
     grid.querySelectorAll('.trackchg').forEach(b=>b.addEventListener('click',()=>trackChanges(b.dataset.id,b.dataset.name,b)));
     shown.forEach(p=>fillCardStats(p.id));
+    renderSessionSurfaces();
   }
 
   async function fillCardStats(id){
