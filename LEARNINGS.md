@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-25-2026 17:25
+learnings-sweep last run: 09-26-2026 11:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-26 | [t-2595](.tickets/t-2595/learnings.md) | A doc that replaces a copied rule with a pointer ("owned by step 1") must be checked against the owner: the checklist cited step 1 for a rule only `SKILL.md` states. A parity check on prose is phrase-anchored, so pair the condition and the thing it guards on one line. | UNPROMOTED |
 | 2026-09-25 | [t-e78b](.tickets/t-e78b/learnings.md) | Making a surface read-only by locking its whole control group over-disabled a control that writes a different file: the Demo/Docs/UX toggle sits among the Sign-off controls but writes main's ticket.md frontmatter, not the live worktree doc; the reviewer caught it. Lock per write target, not per group. | UNPROMOTED |
 | 2026-09-24 | [t-b999](.tickets/t-b999/learnings.md) | Exit detection was tied to a Unix-only PTY behaviour (the master read fails when the child exits); on Windows ConPTY keeps the pipe open until the pseudoconsole is closed, so a naturally exited agent stayed "running". A fake PTY that blocks Read until Close reproduced the Windows shape on macOS. Separately, the reviewer again (as in t-533f) flagged a close-time doc edit missing from plan.md's Files. When lifecycle depends on I/O side effects, key it on the process event and model the other platform's I/O in a test; and when doc-audit edits a file at close, list it in plan.md ## Files in the same step. | UNPROMOTED |
 | 2026-09-24 | [t-533f](.tickets/t-533f/learnings.md) | The ticket's own suggested fix (open the served preview URL in a new tab) would have handed an untrusted page the daemon token: top-level it shares the daemon's origin, and `/cockpit` embeds the token with no auth. Reading the trust boundary's DECISIONS entry and the daemon's routes before planning caught it. Separately, the first live check exposed a pre-existing greedy marker regex that swallowed full-screen TUI text on the same row; the tests had only ever fed it clean lines. When a fix touches a sandbox, trace what the sandboxed content could reach without it before choosing the design; and feed terminal-marker parsers the real TUI row shape, not a clean line. | UNPROMOTED |
