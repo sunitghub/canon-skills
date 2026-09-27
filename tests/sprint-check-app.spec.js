@@ -1862,7 +1862,7 @@ test.describe('board modal', () => {
   });
 
   test('Gate model dropdown offers registry OpenAI models as openai:<id> and writes the pick to plan.md (t-ef27)', async ({ page }) => {
-    const id = `t-g${Date.now().toString(36).slice(-3)}`;   // valid t-xxxx shape: the demo toggle POSTs to /api/ticket/<id>/demo
+    const id = freshTicketId();   // valid t-xxxx shape, and never an existing ticket (the test rmSyncs .tickets/<id>)
     const planPath = path.join(PROJECT_ROOT, '.tickets', id, 'plan.md');
     try {
       const ticketDir = path.join(PROJECT_ROOT, '.tickets', id);
