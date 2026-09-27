@@ -21,9 +21,21 @@ GO_BIN=""
 PIDS=()
 DIRS=()
 cleanup() {
+  local p leaked=""
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   for d in "${DIRS[@]:-}"; do [[ -n "$d" ]] && rm -rf "$d" "$d-worktrees"; done
   [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
+  # t-8765: a server that survives its own test's kill is a leak — say so and fail, never leave it silently.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    leaked=""
+    for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill -0 "$p" 2>/dev/null && leaked="$leaked $p"; done
+    [[ -z "$leaked" ]] && break
+    sleep 0.2
+  done
+  if [[ -n "$leaked" ]]; then
+    echo "FAIL: sprint-check-ticket-commit left servers running (PIDs):$leaked" >&2
+    exit 1
+  fi
   return 0
 }
 trap cleanup EXIT
@@ -35,9 +47,15 @@ fi
 
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 
-# start_server <py|go> <repo> → prints the port once the server answers.
+# start_server <py|go> <repo> → sets SERVER_PORT once the server answers. It must NOT be called via
+# $(...): a command substitution runs in a subshell, so the PIDS update below would be lost, the EXIT
+# trap would kill nothing, and every run would orphan its servers (t-8765).
 start_server() {
   local kind="$1" repo="$2" port
+  # Fail on ANY subshell call ($(...), a pipeline): the bookkeeping below would be lost there (t-8765).
+  # kill -TERM "$$" (not just exit): an `exit` inside the subshell would end only the subshell, and under
+  # `if`/`&&` set -e would not stop the parent — the SIGTERM makes the parent run its EXIT trap and stop.
+  [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   port="$(free_port)"
   if [[ "$kind" == py ]]; then
     SPRINT_CHECK_ROOT="$repo" python3 "$SERVER_PY" "$port" >/dev/null 2>&1 &
@@ -45,15 +63,21 @@ start_server() {
     SPRINT_CHECK_ROOT="$repo" "$GO_BIN" "$port" >/dev/null 2>&1 &
   fi
   PIDS+=("$!")
+  disown "$!" 2>/dev/null || true   # no "Terminated" job noise when cleanup kills it
   for _ in $(seq 1 50); do
     curl -s -o /dev/null "http://127.0.0.1:$port/api/git" && break
     sleep 0.1
   done
-  echo "$port"
+  SERVER_PORT="$port"
 }
 
+# new_repo → sets NEW_REPO (same no-$(...) rule as start_server: DIRS must be updated in this shell).
 new_repo() {
   local repo
+  # Fail on ANY subshell call ($(...), a pipeline): the bookkeeping below would be lost there (t-8765).
+  # kill -TERM "$$" (not just exit): an `exit` inside the subshell would end only the subshell, and under
+  # `if`/`&&` set -e would not stop the parent — the SIGTERM makes the parent run its EXIT trap and stop.
+  [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   repo="$(mktemp -d)"
   DIRS+=("$repo")
   git -C "$repo" init -q -b master
@@ -62,7 +86,7 @@ new_repo() {
   echo a > "$repo/a.txt"
   git -C "$repo" add a.txt
   git -C "$repo" commit -q -m init
-  echo "$repo"
+  NEW_REPO="$repo"
 }
 
 jget() { python3 -c "import json,sys; print(json.dumps(json.loads(sys.argv[1])[sys.argv[2]]))" "$1" "$2"; }
@@ -77,7 +101,7 @@ post_commit() { # port id json-paths → "<http-code> <body>"
 
 run_checks() {
   local kind="$1" label="$2" repo port head before plan res code
-  repo="$(new_repo)"
+  new_repo; repo="$NEW_REPO"
   # Untracked ticket (incl. a hostile-but-legal filename), a runtime log, the
   # canon-owned ignore file, another ticket, and an unrelated STAGED file.
   mkdir -p "$repo/.tickets/t-ab12/visuals" "$repo/.tickets/t-zz99"
@@ -90,7 +114,7 @@ run_checks() {
   echo other > "$repo/.tickets/t-zz99/ticket.md"
   echo staged > "$repo/staged.txt"
   git -C "$repo" add staged.txt
-  port="$(start_server "$kind" "$repo")"
+  start_server "$kind" "$repo"; port="$SERVER_PORT"
 
   plan="$(curl -s "http://127.0.0.1:$port/api/ticket-commit/t-ab12")"
   python3 - "$plan" "$label" <<'EOF'
@@ -177,10 +201,10 @@ EOF
 
   # .tickets/ gitignored (fresh repo) → blocked, empty lists.
   local repo2 port2
-  repo2="$(new_repo)"
+  new_repo; repo2="$NEW_REPO"
   mkdir -p "$repo2/.tickets/t-ab12" && echo x > "$repo2/.tickets/t-ab12/ticket.md"
   echo '.tickets/' > "$repo2/.gitignore"
-  port2="$(start_server "$kind" "$repo2")"
+  start_server "$kind" "$repo2"; port2="$SERVER_PORT"
   plan="$(curl -s "http://127.0.0.1:$port2/api/ticket-commit/t-ab12")"
   [[ "$(jget "$plan" blocked)" == '".tickets/ is gitignored"' && "$(jget "$plan" required)" == '[]' ]] || fail "$label: ignored .tickets not blocked: $plan"
 
@@ -193,4 +217,6 @@ if [[ -n "$GO_BIN" ]]; then
 else
   echo "  main.go: go absent — Go half skipped"
 fi
+# The bookkeeping itself must have worked: a subshell-captured start_server would leave both empty.
+[[ ${#PIDS[@]} -gt 0 && ${#DIRS[@]} -gt 0 ]] || { echo "FAIL: no server PIDs / repo dirs recorded — start_server/new_repo ran in a subshell (t-8765)" >&2; exit 1; }
 echo "sprint-check-ticket-commit: ok"
