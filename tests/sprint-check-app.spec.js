@@ -7730,7 +7730,9 @@ test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
   };
   const HOOKS = { ...GOOD, checks: [...GOOD.checks, chk('trust-hooks', 2, 'warn', 'frontmatter registers hooks', 'Review the hook commands')] };
 
-  async function setup(page, { check, statuses = [{ ok: true, status: 'never' }], run = { ok: true, status: 'running' }, capture = {} }) {
+  // probe: the reply to the card's load-time availability check (t-56f6) — a /status call with no
+  // skill_dir. Default mirrors the Python server's plain "pick a folder" error, i.e. available.
+  async function setup(page, { check, statuses = [{ ok: true, status: 'never' }], run = { ok: true, status: 'running' }, capture = {}, probe = { ok: false, error: 'skill_dir is required' } }) {
     await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
     await page.route('**/api/upkeep/status*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'idle', report_path: '' }) }));
     await page.route('**/api/browse-dirs*', route => {
@@ -7741,11 +7743,16 @@ test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
     await page.route('**/api/skill-eval/check*', route => {
+      capture.checkCount++;
       capture.checkUrl = route.request().url(); capture.checkBody = route.request().postData();
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(check) });
     });
     let n = 0;
+    capture.checkCount = 0;
     await page.route('**/api/skill-eval/status*', route => {
+      if (!new URL(route.request().url()).searchParams.get('skill_dir')) { // the probe: keep `statuses` in step
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(probe) });
+      }
       const body = statuses[Math.min(n++, statuses.length - 1)];
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
     });
@@ -7780,6 +7787,29 @@ test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
     await expect(page.locator('#se-card')).toContainText('Mix case types');
     expect(capture.checkUrl).toContain('project=proj-a');
     expect(JSON.parse(capture.checkBody).skill_dir).toBe('/tmp/proj-a/skills/api');
+  });
+
+  test('a board build without Skill Eval disables the card on load, before any pick (t-56f6)', async ({ page }) => {
+    const capture = {};
+    await setup(page, { check: GOOD, capture, probe: { ok: false, unsupported: true, error: "Skill Eval isn't available in this build of the board." } });
+    await expect(page.locator('#se-card button:has-text("Browse")')).toBeDisabled();
+    await expect(page.locator('#se-card')).toContainText("isn't available in this build of the board");
+    await expect(page.locator('#se-card')).toContainText('Windows');
+    await expect(page.locator('#se-card .dirnav')).toHaveCount(0);
+    await page.locator('#se-card button:has-text("Browse")').click({ force: true }); // a forced click on the disabled button still does nothing
+    await expect(page.locator('#se-card .dirnav')).toHaveCount(0);
+    expect(capture.checkCount).toBe(0);
+  });
+
+  test('a failed availability probe leaves the card usable, as before (t-56f6)', async ({ page }) => {
+    const capture = {};
+    await setup(page, { check: GOOD, capture });
+    await page.unroute('**/api/skill-eval/status*');
+    await page.route('**/api/skill-eval/status*', route => route.abort());
+    await page.reload(); await page.waitForLoadState('networkidle'); await page.locator('#nav-upkeep').click();
+    await expect(page.locator('#se-card button:has-text("Browse")')).toBeEnabled();
+    await pick(page);
+    expect(capture.checkCount).toBe(1);
   });
 
   test('a stale board server (404 without JSON) says to restart it, not "request failed"', async ({ page }) => {

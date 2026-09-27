@@ -3474,7 +3474,9 @@ func serveFile(w http.ResponseWriter, path, contentType string) {
 	w.Write(body)
 }
 
-var skillEvalUnsupported = map[string]any{"ok": false, "error": "Skill Eval is not available in this build; run the Python board server"}
+// t-56f6: "unsupported" is the machine-readable marker (same field registerSkill uses) that
+// lets the cockpit disable the Skill Eval card on load instead of erroring after a pick.
+var skillEvalUnsupported = map[string]any{"ok": false, "unsupported": true, "error": "Skill Eval isn't available in this build of the board. See README → Windows: what's different."}
 
 func sendJSON(w http.ResponseWriter, data any) {
 	body, _ := json.Marshal(data)
