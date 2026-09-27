@@ -418,7 +418,7 @@ canon never *runs* a `python3` found under `…\AppData\Local\Microsoft\WindowsA
 ### Windows: what's different
 
 - **The board runs the Go binary** (`sprint-check-win.exe`) unless a working Python is found, so a few board features behave differently from macOS/Linux.
-- **Skill Eval is not available** in the Go board: the Upkeep card says so and stays disabled (until `t-b9a7` ports it).
+- **Skill Eval is not available** in the Go board: the Upkeep card says so and stays disabled until Skill Eval is ported to the Go board.
 - **Command names depend on the shell:** PowerShell and cmd use the `.cmd` wrappers (`skills refresh`), Git Bash needs the script names (`skills.sh refresh`).
 
 Adding or removing a Windows gap? Update this list in the same change.
