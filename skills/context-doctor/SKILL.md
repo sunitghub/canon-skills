@@ -151,7 +151,7 @@ and [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) pages
       category on **Fable 5 and Opus 5.5** (new on Opus 5.5 relative to Opus 5). Fix: drop the
       instruction and read the reasoning from summarized thinking blocks instead. Server-side
       fallback does not retry a `reasoning_extraction` decline on either model — it comes back to the
-      caller, so the request simply fails rather than degrading to another model.
+      caller, so another model does not silently take over.
     - `action` when found — do not raise this check in `4` mode, or for a repo targeting Opus 5
       (which lacks the category); the Anthropic pages don't document it for earlier models, so
       treat it as not applicable there rather than asserting it.
