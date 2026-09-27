@@ -32,7 +32,7 @@ Then invoke it in Claude Code:
 - Rates eleven lenses — the seven core context-engineering lenses (rules→judgement,
   examples→interfaces, upfront→progressive-disclosure, repeat→simple-descriptions, memory,
   specs→rich-references, conflicting-instructions), two model-agnostic checks (checkpoint/pause
-  discipline, progress-claim grounding), and two Fable-5-specific checks (reasoning-extraction
+  discipline, progress-claim grounding), and two Claude 5-specific checks (reasoning-extraction
   avoidance, effort-default guidance) — each `aligned | advisory | action`.
 - Prints a Summary table and an overall verdict: `lean | trim | overloaded` (no numeric score).
 - Asks before writing `claude-optimization.md` to your repo root.
@@ -42,9 +42,9 @@ Then invoke it in Claude Code:
 Defaults to whichever Claude model is running the skill (detected from the session). Override with:
 
 ```
-/context-doctor --model 5   # full checkup, includes the two Fable-5-only checks
+/context-doctor --model 5   # full checkup, includes the two Claude 5-specific checks (Fable 5, Opus 5.5)
 /context-doctor --model 4   # nine lenses — skips reasoning-extraction and effort-default checks,
-                             # which are false positives for Opus 4.8
+                             # which are false positives for a repo targeting Opus 4.8
 ```
 
 Use `--model 4` when auditing on a different model than the one your repo actually targets in

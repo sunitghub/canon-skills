@@ -31,15 +31,16 @@ sprint diff.
 
 ## Target model
 
-Two checkup modes, gating which Fable-5-specific checks run:
+Two checkup modes, gating which Claude-5-specific checks run:
 
-- **`5`** (default) — full checkup: the seven lenses below, plus four Fable-5-specific checks
-  (reasoning-extraction avoidance, effort-default guidance, checkpoint/pause discipline,
-  progress-claim grounding).
+- **`5`** (default) — full checkup for a Fable 5/5.1 or Opus 5.5 target: the seven lenses below,
+  plus four checks (reasoning-extraction avoidance, effort-default guidance, checkpoint/pause
+  discipline, progress-claim grounding). A repo targeting Opus 5 also runs in `5`, but check 10 is
+  not raised for it and check 11 uses the `high` default.
 - **`4`** — the seven lenses only, plus the two checks that are model-agnostic (checkpoint/pause
   discipline, progress-claim grounding). Skip reasoning-extraction avoidance and effort-default
-  guidance — those are Fable-5-only failure modes and would be false positives for a repo targeting
-  Opus 4.8.
+  guidance — those failure modes are specific to Claude 5-generation models and would be false
+  positives for a repo targeting Opus 4.8.
 
 Detect the default from the running session's own model identity (stated in the system prompt).
 Override with `--model 4` or `--model 5` when the repo's target differs from the session model —
@@ -135,22 +136,40 @@ Rate each: **aligned** (follows the lesson), **advisory** (minor drift, worth tr
      verified.
    - `advisory` unless the repo has evidence of prior fabricated status reports, then `action`.
 
-## Fable-5-specific checks (`5` only)
+## Claude 5-specific checks (`5` only)
+
+Which model the repo targets decides the details of both checks. Take it from the model ids the
+repo's own skills/agents/settings name; if none, from the running session's model; if still unclear,
+report both models' guidance as `advisory` rather than picking one. (Sources: Anthropic's
+[Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5)
+and [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) pages.)
 
 10. **Reasoning-extraction avoidance.** Instructions that ask Claude to echo, transcribe, or explain
     its internal reasoning as response text.
     - Check skills/CLAUDE.md for "explain your reasoning", "show your work", or similar asked of the
-      *response* (not `thinking` blocks). This can trigger Fable 5's `reasoning_extraction` refusal
-      category, causing fallbacks to Opus 4.8.
-    - `action` when found — do not raise this check in `4` mode; it is not a failure mode for
-      Opus 4.8.
+      *response* (not `thinking` blocks). This can trigger the `reasoning_extraction` refusal
+      category on **Fable 5 and Opus 5.5** (new on Opus 5.5 relative to Opus 5). Fix: drop the
+      instruction and read the reasoning from summarized thinking blocks instead. Server-side
+      fallback does not retry a `reasoning_extraction` decline on either model — it comes back to the
+      caller, so another model does not silently take over.
+    - `action` when found — do not raise this check in `4` mode, or for a repo targeting Opus 5
+      (which lacks the category); the Anthropic pages don't document it for earlier models, so
+      treat it as not applicable there rather than asserting it.
 
-11. **Effort-default guidance.** Whether effort-level usage matches Fable 5's cost/latency curve.
-    - Check for blanket `xhigh` usage on routine work, or no effort guidance at all on a repo doing
-      capability-sensitive work. Recommend `high` as default, `xhigh` for the most
-      capability-sensitive workloads, `medium`/`low` for routine work.
-    - `advisory` — these are tuning recommendations specific to Fable 5, not a correctness bug; do
-      not raise this check in `4` mode, since Opus 4.8's effort/quality tradeoff differs.
+11. **Effort-default guidance.** Whether effort-level usage matches the target model's cost/latency
+    curve. The defaults differ by model:
+    - **Fable 5 / 5.1:** default `high`; `xhigh` for the most capability-sensitive workloads;
+      `medium`/`low` for routine work.
+    - **Opus 5:** default `high`, like Fable.
+    - **Opus 5.5:** default `medium` (Opus 5 defaults to `high`, so a carried-over setting runs a
+      level off). Set effort explicitly, sweep levels against the repo's
+      own evals, and reserve `xhigh`/`max` for work with a measured quality gain.
+    - Check for blanket `xhigh`/`max` on routine work, or no effort guidance at all on a repo doing
+      capability-sensitive work, and for an Opus 5.5 repo that assumes `high` is the default.
+    - `advisory` — these are tuning recommendations, not a correctness bug; do not raise this check
+      in `4` mode, since Opus 4.8's effort/quality tradeoff differs. Judgement-heavy review gates
+      (canon's own reviewer/evaluator) can legitimately stay at `high`: the source itself says to
+      test before lowering effort.
 
 ## Summary and verdict
 

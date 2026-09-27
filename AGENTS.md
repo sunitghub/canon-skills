@@ -11,6 +11,7 @@ Universal instructions for AI coding agents. Loaded natively by Claude Code, Pi,
 - When dispatching a research/reporting-only subagent that has full tool access (e.g. `general-purpose`), explicitly instruct it not to edit or write any file. Default tool access includes Edit/Write — omitting this instruction risks unauthorized side effects on files it was only meant to read.
 - Subagent dispatches should return a structured report, not raw tool noise. Use `skills/sprint/reference/subagent-report.md` as the return-shape contract: Result, Output, Evidence, Learnings. Preserve context hygiene — snapshot the active working branch only, do not transform parent context into text, and exclude sibling/abandoned branches.
 - Define success criteria before starting. Verify when done.
+- User decisions and the approved plan are settled: reopen them only on new evidence or when the user does — and always surface a mistake you find in earlier work.
 - If multiple interpretations exist, present them — don't pick silently.
 - Never end a turn after only stating what you are about to do; if a sentence describes a next action, perform it in the same turn. **Exception:** canon's defined approval checkpoints — `sprint start`'s "wait for explicit approval" (before code) and `sprint complete`'s "wait for confirmation" (before close) — are deliberate stops; pausing for the user there is required, not a stall.
 - Be concise in output, thorough in reasoning.
