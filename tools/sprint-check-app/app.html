@@ -1719,16 +1719,17 @@
     .ck-accordion-section.collapsed .ck-accordion-body { display: none; }
     .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c); }
     .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
+    /* The message and (t-d538) the Track changes buttons stack in one centered column, so a
+       message that wraps in a narrow pane pushes the buttons down instead of covering them. */
+    .ck-term-msg-wrap {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 14px; padding: 24px; pointer-events: none;
+    }
     .ck-term-msg {
-      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-      color: var(--text-muted); font-family: var(--mono, monospace); font-size: 13px; padding: 24px;
-      text-align: center; pointer-events: none;
+      color: var(--text-muted); font-family: var(--mono, monospace); font-size: 13px; text-align: center;
     }
     /* t-d538: the one action offered in place of the terminal for a non-git project */
-    .ck-track-actions {
-      position: absolute; left: 50%; top: calc(50% + 44px); transform: translateX(-50%);
-      display: flex; gap: 8px; z-index: 1;
-    }
+    .ck-track-actions { display: flex; gap: 8px; pointer-events: auto; }
     .ck-track-cancel {
       height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border);
       background: transparent; color: var(--text-muted); font-size: 12.5px; cursor: pointer;
@@ -2120,10 +2121,12 @@
         </div>
       </div>
       <div class="ck-term" id="ck-term">
-        <div class="ck-term-msg" id="ck-term-msg"></div>
-        <div class="ck-track-actions" id="ck-track-actions" style="display:none">
-          <button class="ck-track-btn" id="ck-track-btn" type="button">Track changes</button>
-          <button class="ck-track-cancel" id="ck-track-cancel" type="button" style="display:none">Cancel</button>
+        <div class="ck-term-msg-wrap">
+          <div class="ck-term-msg" id="ck-term-msg"></div>
+          <div class="ck-track-actions" id="ck-track-actions" style="display:none">
+            <button class="ck-track-btn" id="ck-track-btn" type="button">Track changes</button>
+            <button class="ck-track-cancel" id="ck-track-cancel" type="button" style="display:none">Cancel</button>
+          </div>
         </div>
       </div>
       <div class="ck-preview collapsed" id="ck-preview">
@@ -6682,6 +6685,10 @@ function renderCockpitTestPlan(content, t) {
 // t-d538: the daemon only runs agents in a git work tree, so a non-git project would fail Start
 // with "cwd not allowed". Offer the opt-in local history instead of mounting the terminal.
 const TRACK_INTRO = "This project doesn't track changes yet. Agents need it to run here and to check their work.";
+// In a Cockpit project tab the fetch wrapper adds ?project=<id>; a standalone board names its own
+// folder explicitly with `default` — the server never falls back to a default folder silently.
+const TRACK_URL = document.documentElement.classList.contains('canon-proj-embed')
+  ? '/api/track-changes' : '/api/track-changes?project=default';
 function syncTrackButton() {
   const box = document.getElementById('ck-track-actions');
   if (!box) return;
@@ -6700,7 +6707,7 @@ async function trackChangesFromCockpit() {
   const btn = document.getElementById('ck-track-btn');
   if (!tab.trackConfirming) {
     let synced = '';
-    try { const r = await fetch('/api/track-changes'); if (r.ok) synced = (await r.json()).synced || ''; } catch {}
+    try { const r = await fetch(TRACK_URL); if (r.ok) synced = (await r.json()).synced || ''; } catch {}
     if (cockpitState !== tab) return;
     tab.trackConfirming = true;
     setTermMessage('Create a local history (git) for this folder? Nothing is uploaded, and canon commits only a .gitignore; your files stay as they are.'
@@ -6709,7 +6716,7 @@ async function trackChangesFromCockpit() {
     return;
   }
   btn.disabled = true;
-  const res = await postWrite('/api/track-changes', { confirm: true }, 'start tracking changes');
+  const res = await postWrite(TRACK_URL, { confirm: true }, 'start tracking changes');
   btn.disabled = false;
   tab.trackConfirming = false;
   if (!res.ok) {

@@ -3725,6 +3725,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
           : { branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false }) }));
       await page.route('**/api/worktrees**', onlyMain);
       await page.route('**/api/track-changes**', route => {
+        // standalone board (no Cockpit ?project): it must name its own folder, never omit project
+        expect(new URL(route.request().url()).searchParams.get('project')).toBe('default');
         if (route.request().method() === 'POST') {
           posts.push(route.request().postDataJSON()); tracked = true;
           return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, commit: 'abc1234' }) });
@@ -3737,6 +3739,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-term-msg')).toContainText('Dropbox');
       await expect(page.locator('#ck-track-btn')).toHaveText('Yes, track changes');
       expect(posts.length).toBe(0); // nothing is written before the confirm
+      // reviewer (t-d538): in a narrow terminal pane the wrapped message must push the buttons
+      // down, never cover them
+      await page.evaluate(() => { document.querySelector('.ck-term').style.maxWidth = '240px'; });
+      const msgBox = await page.locator('#ck-term-msg').boundingBox();
+      const actBox = await page.locator('#ck-track-actions').boundingBox();
+      expect(msgBox.height).toBeGreaterThan(60);                      // it really wrapped
+      expect(actBox.y).toBeGreaterThanOrEqual(msgBox.y + msgBox.height); // buttons sit below the text
+      await page.evaluate(() => { document.querySelector('.ck-term').style.maxWidth = ''; });
       await page.locator('#ck-track-cancel').click();              // Cancel backs out, still nothing written
       await expect(page.locator('#ck-track-btn')).toHaveText('Track changes');
       expect(posts.length).toBe(0);

@@ -1785,6 +1785,17 @@ def synced_service(path: str):
 def _inside_work_tree(root: Path) -> bool:
     return _git_out(['rev-parse', '--is-inside-work-tree'], root)[1].strip() == 'true'
 
+def track_changes_root(query: dict) -> Path:
+    """?project=<id> → that registered folder; ?project=default → this board's own root (a
+    standalone board names itself explicitly). Absent/empty → ValueError: git init never targets a
+    folder by accident. Unknown id → UnknownProject."""
+    pid = (query.get('project', [''])[0] or '').strip()
+    if not pid:
+        raise ValueError('project is required')
+    if pid == 'default':
+        return PROJECT_ROOT
+    return effective_root(query)
+
 def track_changes_state(root: Path) -> dict:
     return {'ok': True, 'tracking': _inside_work_tree(root), 'synced': synced_service(root)}
 
@@ -1812,8 +1823,8 @@ def track_changes(root: Path, confirm) -> dict:
             raise RuntimeError((p.stderr or p.stdout or 'git ' + args[0] + ' failed').strip()[:300])
         return p.stdout.strip()
     try:
+        created = True  # .git was absent a moment ago, so anything there from now on is ours
         git('init', '-q')
-        created = True
         if not had_ignore:
             with open(ignore, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(TRACK_CHANGES_GITIGNORE)
@@ -2644,11 +2655,10 @@ class Handler(BaseHTTPRequestHandler):
             except UnknownProject:
                 self.send_error(400)
         elif path == '/api/track-changes':
-            q = parse_qs(parsed.query)
-            if not (q.get('project', [''])[0] or '').strip():
-                self.send_json({'ok': False, 'error': 'project is required'}, status=400); return
             try:
-                self.send_json(track_changes_state(effective_root(q)))
+                self.send_json(track_changes_state(track_changes_root(parse_qs(parsed.query))))
+            except ValueError as e:
+                self.send_json({'ok': False, 'error': str(e)}, status=400)
             except UnknownProject:
                 self.send_error(400)
         elif path == '/api/git':
@@ -2837,6 +2847,17 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             self.send_error(400); return  # every POST route reads its fields with payload.get
 
+        # t-d538: git init targets an explicitly named folder — never the default by omission.
+        if path == '/api/track-changes':
+            try:
+                troot = track_changes_root(parse_qs(parsed.query))
+            except ValueError as e:
+                self.send_json({'ok': False, 'error': str(e)}, status=400); return
+            except UnknownProject:
+                self.send_error(400); return
+            result = track_changes(troot, payload.get('confirm'))
+            self.send_json(result, status=200 if result.get('ok') else 400); return
+
         # t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
         # absent → process default). Passed to the editable-tab write fns below.
         try:
@@ -2844,13 +2865,6 @@ class Handler(BaseHTTPRequestHandler):
         except UnknownProject:
             self.send_error(400); return
 
-        # t-d538: never the process default root — git init must target an explicitly
-        # chosen, registry-resolved folder (unknown id already 400'd above).
-        if path == '/api/track-changes':
-            if not (parse_qs(parsed.query).get('project', [''])[0] or '').strip():
-                self.send_json({'ok': False, 'error': 'project is required'}, status=400); return
-            result = track_changes(eroot, payload.get('confirm'))
-            self.send_json(result, status=200 if result.get('ok') else 400); return
 
         if path == '/api/projects':
             result = registry_add(str(payload.get('path', '')), str(payload.get('description', '')))

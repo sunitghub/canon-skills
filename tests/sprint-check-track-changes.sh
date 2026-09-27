@@ -166,6 +166,11 @@ check_backend() {
   r="$(req GET "$port" "")"; assert_eq "400" "${r%% *}"
   r="$(req POST "$port" "?project=" '{"confirm":true}')"
   assert_eq "400" "${r%% *}"; [[ ! -e "$dflt/.git" ]] || fail "$kind: default root was initialized with an empty ?project"
+  # ?project=default names the board's own root explicitly (a standalone board, no Cockpit tab id)
+  r="$(req GET "$port" "?project=default")"; assert_eq "200" "${r%% *}"; assert_eq "false" "$(jget "${r#* }" tracking)"
+  r="$(req POST "$port" "?project=default" '{"confirm":true}')"
+  assert_eq "200" "${r%% *}"; [[ -d "$dflt/.git" ]] || fail "$kind: ?project=default did not initialize the board's own root"
+  assert_eq ".gitignore" "$(git -C "$dflt" show --name-only --format= HEAD)"
 
   # unknown id
   r="$(req POST "$port" "?project=0123456789ab" '{"confirm":true}')"; assert_eq "400" "${r%% *}"

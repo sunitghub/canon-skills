@@ -274,13 +274,13 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, loadHandoff(root))
 	case "/api/track-changes":
-		if strings.TrimSpace(r.URL.Query().Get("project")) == "" {
-			sendJSONStatus(w, map[string]any{"ok": false, "error": "project is required"}, http.StatusBadRequest)
-			return
-		}
-		root, ok := effectiveRoot(r)
+		root, errMsg, ok := trackChangesRoot(r)
 		if !ok {
-			http.Error(w, "unknown project", http.StatusBadRequest)
+			if errMsg == "" {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+			} else {
+				sendJSONStatus(w, map[string]any{"ok": false, "error": errMsg}, http.StatusBadRequest)
+			}
 			return
 		}
 		sendJSON(w, trackChangesState(root))
@@ -481,6 +481,27 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	path := r.URL.Path
+	// t-d538: git init targets an explicitly named folder — never the default by omission.
+	// Handled before the shared ?project resolution so `default` (a standalone board naming
+	// its own folder) isn't rejected as an unknown id. Mirrors server.py's do_POST order.
+	if path == "/api/track-changes" {
+		root, errMsg, ok := trackChangesRoot(r)
+		if !ok {
+			if errMsg == "" {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+			} else {
+				sendJSONStatus(w, map[string]any{"ok": false, "error": errMsg}, http.StatusBadRequest)
+			}
+			return
+		}
+		res := trackChanges(root, payload["confirm"])
+		status := http.StatusOK
+		if res["ok"] != true {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
 	// t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
 	// absent → process default). Resolved before any route (mirrors server.py's
 	// do_POST ordering) so an unknown ?project 400s identically on both backends.
@@ -513,21 +534,6 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	// t-7485/t-96c3: register a canon skill into the tab's project. eroot is the
 	// registry-resolved root (unknown id already 400'd above); the skill comes
 	// from the client but registerSkill validates it against a fixed allowlist.
-	// t-d538: never the process default root — git init must target an explicitly
-	// chosen, registry-resolved folder (unknown id already 400'd above).
-	if path == "/api/track-changes" {
-		if strings.TrimSpace(r.URL.Query().Get("project")) == "" {
-			sendJSONStatus(w, map[string]any{"ok": false, "error": "project is required"}, http.StatusBadRequest)
-			return
-		}
-		res := trackChanges(eroot, payload["confirm"])
-		status := http.StatusOK
-		if res["ok"] != true {
-			status = http.StatusBadRequest
-		}
-		sendJSONStatus(w, res, status)
-		return
-	}
 	if path == "/api/register-skill" {
 		skill := r.URL.Query().Get("skill")
 		if skill == "" {
@@ -3967,6 +3973,20 @@ func insideWorkTree(root string) bool {
 	return strings.TrimSpace(out) == "true"
 }
 
+// trackChangesRoot: ?project=<id> → that registered folder; ?project=default → this board's own
+// root. Absent/empty → "project is required"; unknown id → ok=false with an empty message (400).
+func trackChangesRoot(r *http.Request) (string, string, bool) {
+	pid := strings.TrimSpace(r.URL.Query().Get("project"))
+	if pid == "" {
+		return "", "project is required", false
+	}
+	if pid == "default" {
+		return projectRoot, "", true
+	}
+	root, ok := effectiveRoot(r)
+	return root, "", ok
+}
+
 func trackChangesState(root string) map[string]any {
 	return map[string]any{"ok": true, "tracking": insideWorkTree(root), "synced": syncedService(root)}
 }
@@ -4022,10 +4042,10 @@ func trackChanges(root string, confirm any) map[string]any {
 		}
 		return fail(msg)
 	}
+	created = true // .git was absent a moment ago, so anything there from now on is ours
 	if _, err := git("init", "-q"); err != nil {
 		return rollback(err)
 	}
-	created = true
 	if !hadIgnore {
 		if err := os.WriteFile(ignore, []byte(trackChangesGitignore), 0o644); err != nil {
 			return rollback(err)
