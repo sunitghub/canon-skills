@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-25-2026 17:25
+learnings-sweep last run: 09-26-2026 19:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-26 | [t-f91a](.tickets/t-f91a/learnings.md) | Build a screen-text detector from a REAL capture, not the ticket's paraphrase (the first capture was the trust prompt, not the approval; a read-only command ran with no prompt). Match on letters/digits only (box borders broke a whitespace-only match) and require more than the one phrase an agent would quote. And wait for a fixture to be fully delivered before asserting on it — a size threshold raced the footer and caused an intermittent 30s failure. | UNPROMOTED |
 | 2026-09-25 | [t-e78b](.tickets/t-e78b/learnings.md) | Making a surface read-only by locking its whole control group over-disabled a control that writes a different file: the Demo/Docs/UX toggle sits among the Sign-off controls but writes main's ticket.md frontmatter, not the live worktree doc; the reviewer caught it. Lock per write target, not per group. | UNPROMOTED |
 | 2026-09-24 | [t-b999](.tickets/t-b999/learnings.md) | Exit detection was tied to a Unix-only PTY behaviour (the master read fails when the child exits); on Windows ConPTY keeps the pipe open until the pseudoconsole is closed, so a naturally exited agent stayed "running". A fake PTY that blocks Read until Close reproduced the Windows shape on macOS. Separately, the reviewer again (as in t-533f) flagged a close-time doc edit missing from plan.md's Files. When lifecycle depends on I/O side effects, key it on the process event and model the other platform's I/O in a test; and when doc-audit edits a file at close, list it in plan.md ## Files in the same step. | UNPROMOTED |
 | 2026-09-24 | [t-533f](.tickets/t-533f/learnings.md) | The ticket's own suggested fix (open the served preview URL in a new tab) would have handed an untrusted page the daemon token: top-level it shares the daemon's origin, and `/cockpit` embeds the token with no auth. Reading the trust boundary's DECISIONS entry and the daemon's routes before planning caught it. Separately, the first live check exposed a pre-existing greedy marker regex that swallowed full-screen TUI text on the same row; the tests had only ever fed it clean lines. When a fix touches a sandbox, trace what the sandboxed content could reach without it before choosing the design; and feed terminal-marker parsers the real TUI row shape, not a clean line. | UNPROMOTED |
