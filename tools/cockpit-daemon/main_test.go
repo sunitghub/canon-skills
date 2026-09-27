@@ -4986,12 +4986,18 @@ func startMenuSession(t *testing.T, bin string, cfg config) (*server, *httptest.
 	s.mu.Lock()
 	se := s.sessions[out.Session]
 	s.mu.Unlock()
-	deadline := time.Now().Add(3 * time.Second)
+	// Wait for the WHOLE fixture: the size check alone (>500) passed while the menu's footer,
+	// the last thing drawn, was still in flight, so a check racing it saw no menu and Save & End
+	// ran its full 30s fallback (an intermittent failure under load). Stable = unchanged for 300ms.
+	deadline := time.Now().Add(5 * time.Second)
+	last, stableSince := -1, time.Now()
 	for time.Now().Before(deadline) {
 		se.mu.Lock()
 		n := len(se.buf)
 		se.mu.Unlock()
-		if n > 500 {
+		if n != last {
+			last, stableSince = n, time.Now()
+		} else if n > 500 && time.Since(stableSince) > 300*time.Millisecond {
 			break
 		}
 		time.Sleep(20 * time.Millisecond)
