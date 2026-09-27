@@ -33,9 +33,10 @@ sprint diff.
 
 Two checkup modes, gating which Claude-5-specific checks run:
 
-- **`5`** (default) — full checkup for a Claude 5-generation target (Fable 5/5.1, Opus 5.5): the
-  seven lenses below, plus four checks (reasoning-extraction avoidance, effort-default guidance,
-  checkpoint/pause discipline, progress-claim grounding).
+- **`5`** (default) — full checkup for a Fable 5/5.1 or Opus 5.5 target: the seven lenses below,
+  plus four checks (reasoning-extraction avoidance, effort-default guidance, checkpoint/pause
+  discipline, progress-claim grounding). A repo targeting Opus 5 also runs in `5`, but check 10 is
+  not raised for it and check 11 uses the `high` default.
 - **`4`** — the seven lenses only, plus the two checks that are model-agnostic (checkpoint/pause
   discipline, progress-claim grounding). Skip reasoning-extraction avoidance and effort-default
   guidance — those failure modes are specific to Claude 5-generation models and would be false
@@ -147,19 +148,21 @@ and [Effort](https://platform.claude.com/docs/en/build-with-claude/effort) pages
     its internal reasoning as response text.
     - Check skills/CLAUDE.md for "explain your reasoning", "show your work", or similar asked of the
       *response* (not `thinking` blocks). This can trigger the `reasoning_extraction` refusal
-      category on **Fable 5 and Opus 5.5** (new on Opus 5.5 — Opus 5 and earlier don't have it).
-      Fix: drop the instruction and read the reasoning from summarized thinking blocks instead.
-      Fable 5 declines can fall back to Opus 4.8; on Opus 5.5 a `reasoning_extraction` decline is
-      returned to the caller rather than retried.
-    - `action` when found — do not raise this check in `4` mode, or for a repo targeting Opus 5 or
-      earlier; it is not a failure mode there.
+      category on **Fable 5 and Opus 5.5** (new on Opus 5.5 relative to Opus 5). Fix: drop the
+      instruction and read the reasoning from summarized thinking blocks instead. Server-side
+      fallback does not retry a `reasoning_extraction` decline on either model — it comes back to the
+      caller, so the request simply fails rather than degrading to another model.
+    - `action` when found — do not raise this check in `4` mode, or for a repo targeting Opus 5
+      (which lacks the category); the Anthropic pages don't document it for earlier models, so
+      treat it as not applicable there rather than asserting it.
 
 11. **Effort-default guidance.** Whether effort-level usage matches the target model's cost/latency
     curve. The defaults differ by model:
     - **Fable 5 / 5.1:** default `high`; `xhigh` for the most capability-sensitive workloads;
       `medium`/`low` for routine work.
-    - **Opus 5.5:** default `medium` (Opus 5 and earlier Opus models default to `high`, so a
-      carried-over setting runs a level off). Set effort explicitly, sweep levels against the repo's
+    - **Opus 5:** default `high`, like Fable.
+    - **Opus 5.5:** default `medium` (Opus 5 defaults to `high`, so a carried-over setting runs a
+      level off). Set effort explicitly, sweep levels against the repo's
       own evals, and reserve `xhigh`/`max` for work with a measured quality gain.
     - Check for blanket `xhigh`/`max` on routine work, or no effort guidance at all on a repo doing
       capability-sensitive work, and for an Opus 5.5 repo that assumes `high` is the default.
