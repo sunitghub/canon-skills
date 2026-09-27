@@ -1175,7 +1175,7 @@
   // ── Skill Eval (t-23d8): free checks on a picked skill folder, then the paid plugin eval ──
   // Every path/gate decision is re-made by the server (validate_skill_dir, confirm_cost, fail and
   // trust gates); this UI only guides. The run is read-only and uses the signed-in Claude account.
-  const se={dir:'',check:null,err:'',open:false,cwd:'',hidden:false,trust:false,run:null};
+  const se={dir:'',check:null,err:'',open:false,cwd:'',hidden:false,trust:false,run:null,avail:null};
   let sePoll=null;
   const SE_ICON={pass:'&#10003;',warn:'&#9650;',fail:'&#10005;',lock:'&#128274;'};
   const SE_LABEL={pass:'Pass',warn:'Warning',fail:'Fail',lock:'Locked'};
@@ -1217,8 +1217,19 @@
       +(cases?`<div class="se-note" style="margin-top:10px">Score per case: <b style="color:var(--accent)">with</b> vs <b>without</b> the skill</div>${cases}`:'')
       +`<div class="rc-actions" style="margin-top:12px">${link}${when?`<span class="se-note" style="align-self:center">Last run — ${esc(when)}</span>`:''}</div>`;
   }
+  // t-56f6: ask once per page load whether this board build runs Skill Eval at all. The Go build
+  // (Windows) marks every Skill Eval route unsupported:true; anything else — Python's plain
+  // "pick a folder" error, a failed fetch, an old server — counts as available, as before.
+  async function seProbe(){
+    se.avail='probing';
+    let d=null;
+    try{ d=await (await fetch('/api/skill-eval/status?project='+encodeURIComponent(upProjectId))).json(); }catch(e){}
+    se.avail=!(d&&d.unsupported===true);
+    seRender();
+  }
   function seRender(){
     const el=document.getElementById('se-card'); if(!el) return;
+    if(se.avail===null) seProbe();
     const proj=(window._projects||[]).find(p=>p.id===upProjectId);
     const c=se.check, rows=c?c.checks:[];
     const s1=rows.filter(r=>r.stage===1), s2=rows.filter(r=>r.stage===2);
@@ -1227,6 +1238,12 @@
     const running=!!(se.run&&se.run.status==='running');
     let h=`<div class="rc-top"><div class="rc-icon">&#9878;</div><div class="rc-head"><div class="rc-title">Skill Eval</div>`
       +`<p class="rc-desc">Check that a skill ships evals and follows Anthropic's authoring rules, then measure it with and without the skill.</p></div>${upHelpBtn('skill-eval')}</div>`;
+    if(se.avail===false){
+      el.innerHTML=h+`<div class="se-pick"><button class="btn" disabled>Browse…</button></div>`
+        +`<div class="se-note">Skill Eval isn't available in this build of the board (the Go build used on Windows). See README → Windows: what's different.</div>`;
+      upHelpSync();
+      return;
+    }
     h+=`<div class="se-pick"><button class="btn" onclick="seToggleBrowse()">Browse…</button>`
       +`<span class="se-path">${se.dir?esc(se.dir):'Pick a skill folder inside '+esc(proj?proj.name:'the project')+' (the folder that contains SKILL.md)'}</span></div>`;
     if(se.open){

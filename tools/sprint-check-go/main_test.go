@@ -1261,3 +1261,34 @@ func TestUpkeepModelIDCases(t *testing.T) {
 		t.Errorf("the fuzz started a job for %s", root)
 	}
 }
+
+// t-56f6: the cockpit disables the Skill Eval card when a route answers unsupported:true, so every
+// Skill Eval route in this build must carry the marker — a missing one brings back the
+// error-after-a-pick bug on Windows.
+func TestSkillEvalRoutesMarkUnsupported(t *testing.T) {
+	cases := []struct{ method, path, body string }{
+		{"GET", "/api/skill-eval/status", ""},
+		{"GET", "/api/skill-eval/status?project=&skill_dir=", ""},
+		{"GET", "/api/skill-eval/report", ""},
+		{"POST", "/api/skill-eval/check", "{}"},
+		{"POST", "/api/skill-eval/run", "{}"},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(c.method, "http://127.0.0.1"+c.path, strings.NewReader(c.body))
+		rec := httptest.NewRecorder()
+		handle(rec, req)
+		if rec.Code != 200 {
+			t.Fatalf("%s %s: status %d, body %q", c.method, c.path, rec.Code, rec.Body.String())
+		}
+		var got map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+			t.Fatalf("%s %s: not JSON: %q", c.method, c.path, rec.Body.String())
+		}
+		if got["ok"] != false || got["unsupported"] != true {
+			t.Errorf("%s %s = %v, want ok:false unsupported:true", c.method, c.path, got)
+		}
+		if msg, _ := got["error"].(string); strings.Contains(msg, "run the Python board server") {
+			t.Errorf("%s %s still gives the unfollowable Python-server advice: %q", c.method, c.path, msg)
+		}
+	}
+}

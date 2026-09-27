@@ -415,6 +415,14 @@ In a **Git Bash** window the same tools work too, but use the script names: `ski
 
 canon never *runs* a `python3` found under `…\AppData\Local\Microsoft\WindowsApps\`. That's an App execution alias, and on some machines running it downloads and installs Python. A test, `tests/no-python-windows-paths.sh`, fails if an end-user script starts depending on Python.
 
+### Windows: what's different
+
+- **The board runs the Go binary** (`sprint-check-win.exe`) unless a working Python is found, so a few board features behave differently from macOS/Linux.
+- **Skill Eval is not available** in the Go board: the Upkeep card says so and stays disabled (until `t-b9a7` ports it).
+- **Command names depend on the shell:** PowerShell and cmd use the `.cmd` wrappers (`skills refresh`), Git Bash needs the script names (`skills.sh refresh`).
+
+Adding or removing a Windows gap? Update this list in the same change.
+
 Register canon in another project:
 
 ```bash
