@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -4874,9 +4875,325 @@ func TestSaveAndEndFallbackLogsMaskedFraming(t *testing.T) {
 			t.Errorf("verbose log missing %q; got:\n%s", want, log)
 		}
 	}
+	// t-75cb: the spawn/start/wait lines carry paths, argv and random ids BY DESIGN (a uuid can
+	// contain "abc"; the fake script's own name contains "print"). The canaries guard the lines that
+	// could carry agent text, so check everything except those metadata lines.
+	var checked []string
+	for _, l := range strings.Split(log, "\n") {
+		if strings.Contains(l, " spawn agent=") || strings.Contains(l, " start spawned ") || strings.Contains(l, " start attached ") || strings.Contains(l, " wait returned ") {
+			continue
+		}
+		checked = append(checked, l)
+	}
+	scanned := strings.Join(checked, "\n")
 	for _, leak := range []string{"secret", "token", "abc", "print", "next"} {
-		if strings.Contains(log, leak) {
+		if strings.Contains(scanned, leak) {
 			t.Errorf("verbose log leaked agent text %q:\n%s", leak, log)
 		}
+	}
+}
+
+// ── t-75cb: verbose lifecycle logging coverage ─────────────────────────────────
+//
+// Each event writes one metadata line to .tickets/<id>/.cockpit-debug.log when debugEnabled is
+// on and nothing when it is off; no line ever holds PTY/agent output text (t-ffb9). The fake
+// agents print a unique sentinel so "no PTY text" is a substring check on the whole log.
+
+const verboseSentinel = "ZZ-PTY-SENTINEL-9f3a71"
+
+func verboseDebug(t *testing.T, on bool) {
+	t.Helper()
+	debugEnabled.Store(on)
+	t.Cleanup(func() { debugEnabled.Store(false) })
+}
+
+// fakeAgentScript writes an executable sh script that prints the sentinel, then runs tail.
+func fakeAgentScript(t *testing.T, tail string) string {
+	t.Helper()
+	bin := filepath.Join(t.TempDir(), "fake-agent.sh")
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf '"+verboseSentinel+"\\n'\n"+tail+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func readVerboseLog(root, ticket string) string {
+	b, _ := os.ReadFile(filepath.Join(root, ".tickets", ticket, ".cockpit-debug.log"))
+	return string(b)
+}
+
+func waitVerboseLog(t *testing.T, root, ticket, want string) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if l := readVerboseLog(root, ticket); strings.Contains(l, want) {
+			return l
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("debug log never contained %q; log:\n%s", want, readVerboseLog(root, ticket))
+	return ""
+}
+
+// stopVerbose kills every session and waits for the async exit lines (readLoop's `exit` and
+// waitExit's `wait returned`) to land BEFORE t.TempDir is removed: a debugf firing after the
+// kill re-creates .cockpit-debug.log mid-RemoveAll ("directory not empty").
+func stopVerbose(s *server, root string) {
+	s.mu.Lock()
+	var all []*session
+	for _, se := range s.sessions {
+		all = append(all, se)
+	}
+	s.mu.Unlock()
+	killAllSessions(s)
+	deadline := time.Now().Add(3 * time.Second)
+	for _, se := range all {
+		select {
+		case <-se.done:
+		case <-time.After(time.Until(deadline)):
+		}
+	}
+	if debugEnabled.Load() {
+		for time.Now().Before(deadline) {
+			l := readVerboseLog(root, "t-ab12")
+			if strings.Count(l, "spawn agent=") <= strings.Count(l, "wait returned") {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	time.Sleep(50 * time.Millisecond) // the last debugf may still be inside its write
+}
+
+func verboseServer(t *testing.T, bin string, cfg config) (*server, *httptest.Server, string) {
+	t.Helper()
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	cfg.token, cfg.sprintBin, cfg.projectRoot, cfg.stateDir = bootTok, bin, root, t.TempDir()
+	if cfg.saveFallback == 0 {
+		cfg.saveFallback = 30 * time.Second
+	}
+	s := newServer(cfg)
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { stopVerbose(s, root) })
+	return s, ts, root
+}
+
+func TestVerboseLogSpawnAndAttach(t *testing.T) {
+	verboseDebug(t, true)
+	bin := fakeAgentScript(t, "exec cat")
+	s, ts, root := verboseServer(t, bin, config{})
+	r1 := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session string }
+	json.NewDecoder(r1.Body).Decode(&out)
+	r1.Body.Close()
+	log := waitVerboseLog(t, root, "t-ab12", "spawn agent=")
+	// The resolved binary and every argv element, so a wrong flag is visible at once.
+	for _, want := range []string{"bin=" + strconv.Quote(bin), "--session-id", "sprint start t-ab12"} {
+		if !strings.Contains(log, want) {
+			t.Errorf("spawn line missing %q; log:\n%s", want, log)
+		}
+	}
+	if !strings.Contains(waitVerboseLog(t, root, "t-ab12", "start spawned new session"), "cwd_differs=false") {
+		t.Errorf("a plain start must log cwd_differs=false; log:\n%s", readVerboseLog(root, "t-ab12"))
+	}
+	// A second start for the live ticket ATTACHES; it must say so and must not spawn again.
+	r2 := startSession(t, ts.URL, "t-ab12", bootTok)
+	r2.Body.Close()
+	log = waitVerboseLog(t, root, "t-ab12", "start attached to live session sid="+out.Session)
+	if n := strings.Count(log, "spawn agent="); n != 1 {
+		t.Errorf("attach spawned again: %d spawn lines", n)
+	}
+	// The agent really did print the sentinel into the session — and none of it reached the log.
+	s.mu.Lock()
+	se := s.sessions[out.Session]
+	s.mu.Unlock()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		se.mu.Lock()
+		got := strings.Contains(string(se.buf), verboseSentinel)
+		se.mu.Unlock()
+		if got {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if strings.Contains(readVerboseLog(root, "t-ab12"), verboseSentinel) {
+		t.Fatal("PTY text leaked into the debug log")
+	}
+}
+
+func TestVerboseLogExitCodes(t *testing.T) {
+	verboseDebug(t, true)
+	for _, tc := range []struct {
+		name, tail, want string
+		kill             bool
+	}{
+		{"exit 3", "exit 3", "exit_code=3", false},
+		{"clean exit", "exit 0", "exit_code=0", false},
+		{"killed", "exec cat", "exit_code=-1", true}, // signal death: -1, never confused with a clean 0
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bin := fakeAgentScript(t, tc.tail)
+			s, ts, root := verboseServer(t, bin, config{})
+			resp := startSession(t, ts.URL, "t-ab12", bootTok)
+			var out struct{ Session string }
+			json.NewDecoder(resp.Body).Decode(&out)
+			resp.Body.Close()
+			if tc.kill {
+				s.mu.Lock()
+				se := s.sessions[out.Session]
+				s.mu.Unlock()
+				waitVerboseLog(t, root, "t-ab12", "spawn agent=")
+				s.killSession(se)
+			}
+			log := waitVerboseLog(t, root, "t-ab12", "wait returned")
+			if !strings.Contains(log, tc.want) {
+				t.Errorf("want %q in the wait line; log:\n%s", tc.want, log)
+			}
+			if strings.Contains(log, verboseSentinel) {
+				t.Fatal("PTY text leaked into the debug log")
+			}
+		})
+	}
+}
+
+// A persisted .cockpit-cwd lock overrides the requested cwd: the start line must flag it.
+func TestVerboseLogCwdOverride(t *testing.T) {
+	verboseDebug(t, true)
+	bin := fakeAgentScript(t, "exec cat")
+	root := t.TempDir()
+	wt := gitWorktreeFixture(t, root)
+	seedTicketDir(t, root, "t-ab12")
+	seedTicketDir(t, wt, "t-ab12")
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", "ticket.md"), []byte("---\nid: t-ab12\nstatus: in_progress\n---\n# t\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-cwd"), []byte(wt+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), saveFallback: 30 * time.Second})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { stopVerbose(s, root) })
+	resp := startSessionCwd(t, ts.URL, "t-ab12", "", bootTok) // the picker asks for the main checkout
+	resp.Body.Close()
+	log := waitVerboseLog(t, root, "t-ab12", "start spawned new session")
+	if !strings.Contains(log, "cwd_differs=true") {
+		t.Errorf("a lock overriding the requested cwd must log cwd_differs=true; log:\n%s", log)
+	}
+}
+
+func TestVerboseLogPreviewRootReasons(t *testing.T) {
+	verboseDebug(t, true)
+	bin := fakeAgentScript(t, "exec cat")
+	s, ts, root := verboseServer(t, bin, config{})
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	_ = s
+	inRoot := filepath.Join(root, "site", "index.html")
+	os.MkdirAll(filepath.Dir(inRoot), 0o755)
+	os.WriteFile(inRoot, []byte("x"), 0o644)
+	outside := filepath.Join(t.TempDir(), "index.html")
+	os.WriteFile(outside, []byte("x"), 0o644)
+	for _, tc := range []struct {
+		path, want string
+		code       int
+	}{
+		{inRoot, "preview-root accepted", http.StatusNoContent},
+		{outside, "reason=outside allowed roots", http.StatusBadRequest},
+		{"site/index.html", "reason=not absolute", http.StatusBadRequest},
+		{filepath.Join(root, "missing-dir", "index.html"), "reason=directory unresolvable", http.StatusBadRequest},
+	} {
+		body, _ := json.Marshal(map[string]string{"path": tc.path})
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/preview-root", bytes.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+out.Token)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		if r.StatusCode != tc.code {
+			t.Errorf("path %q: status %d, want %d (logging must not change the response)", tc.path, r.StatusCode, tc.code)
+		}
+		waitVerboseLog(t, root, "t-ab12", tc.want)
+	}
+}
+
+func TestVerboseLogIdleReap(t *testing.T) {
+	verboseDebug(t, true)
+	bin := fakeAgentScript(t, "exec cat")
+	s, ts, root := verboseServer(t, bin, config{idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: time.Hour})
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	resp.Body.Close()
+	waitVerboseLog(t, root, "t-ab12", "spawn agent=")
+	// Reap repeatedly until the session is quiet for the 50ms timeout: output that lands late (a
+	// loaded machine) resets the idle clock, so a single fixed-time reap is timing-fragile.
+	var log string
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+		s.reapIdleSessions()
+		if log = readVerboseLog(root, "t-ab12"); strings.Contains(log, "idle reap: inactive for") {
+			break
+		}
+	}
+	if !strings.Contains(log, "idle reap: inactive for") {
+		t.Fatalf("no idle reap line; log:\n%s", log)
+	}
+	if !strings.Contains(log, "(timeout 50ms)") {
+		t.Errorf("idle reap line must carry the timeout; log:\n%s", log)
+	}
+	if strings.Contains(log, verboseSentinel) {
+		t.Fatal("PTY text leaked into the debug log")
+	}
+}
+
+// With verbose logging off none of the new sites may write anything — not even create the file.
+func TestVerboseLogOffWritesNothing(t *testing.T) {
+	verboseDebug(t, false)
+	bin := fakeAgentScript(t, "exec cat")
+	s, ts, root := verboseServer(t, bin, config{idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: time.Hour})
+	resp := startSession(t, ts.URL, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	startSession(t, ts.URL, "t-ab12", bootTok).Body.Close() // attach
+	body, _ := json.Marshal(map[string]string{"path": filepath.Join(root, "x", "index.html")})
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+out.Session+"/preview-root", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	if r, err := http.DefaultClient.Do(req); err == nil {
+		r.Body.Close()
+	}
+	time.Sleep(200 * time.Millisecond)
+	s.reapIdleSessions()
+	time.Sleep(800 * time.Millisecond)
+	killAllSessions(s)
+	time.Sleep(300 * time.Millisecond)
+	if _, err := os.Stat(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-debug.log")); err == nil {
+		t.Fatalf("debug logging is off but a log file exists:\n%s", readVerboseLog(root, "t-ab12"))
+	}
+}
+
+// t-75cb: concurrent debugf calls (a fast exit fires spawn/wait/exit from three goroutines) must
+// not lose lines to the read-modify-write append.
+func TestDebugfConcurrentAppendsKeepEveryLine(t *testing.T) {
+	verboseDebug(t, true)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	se := &session{ticket: "t-ab12", ticketsDir: filepath.Join(root, ".tickets")}
+	const n = 60
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) { defer wg.Done(); se.debugf("concurrent line %d", i) }(i)
+	}
+	wg.Wait()
+	log := readVerboseLog(root, "t-ab12")
+	if got := strings.Count(log, "concurrent line "); got != n {
+		t.Fatalf("%d of %d concurrent debug lines survived", got, n)
 	}
 }
