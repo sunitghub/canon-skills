@@ -2908,6 +2908,15 @@ func (s *server) gateModelIn(root, ticket string) string {
 	if v == "" || v == "session" || v == "default" {
 		return ""
 	}
+	// t-ef27: `openai:<id>` picks an OpenAI model for the close gates under Copilot
+	// CLI. The session itself runs on the harness default, so it is no --model here;
+	// mirrors gate_model_resolve.
+	if id := strings.TrimPrefix(v, "openai:"); id != v {
+		if !modelValueRe.MatchString(id) {
+			fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid Gate model %q in %s (openai:<id> — the id must start with a letter or digit; letters, digits, '.', '_', '-' only)\n", v, plan)
+		}
+		return ""
+	}
 	if !modelValueRe.MatchString(v) {
 		fmt.Fprintf(os.Stderr, "cockpit: ignoring invalid Gate model %q in %s (alias or model id — letters, digits, '.', '_', '-' only)\n", v, plan)
 		return ""

@@ -37,7 +37,7 @@ whichever session/dispatch does that work.
 The board's per-ticket `Gate model:` dropdown (`tools/sprint-check-app/app.html`) reads its live
 option list from `tools/sprint-check-app/model-tiers.json` (Admin > Model Tiers, `t-7e36`) —
 that file is a seeded, editable mirror of the Anthropic models named above, not a replacement for
-this prose; the registry's OpenAI entries are recorded for future use only (`t-ef27`).
+this prose; the registry's OpenAI entries run close gates only per ticket, via `Gate model: openai:<id>` under Copilot CLI (`t-ef27`); the Admin OpenAI defaults stay recorded only.
 
 **Close-gate effort** comes from canon's gate agent definitions (`agents/canon-reviewer.md`,
 `canon-evaluator.md`: `effort: high`, a `claude-sonnet-5` model floor, read-only tools with `Bash`/`execute` shells), not from this prose.

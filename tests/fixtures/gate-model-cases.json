@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared fixture set for the two real `Gate model:` resolvers that produce a --model argv for claude: tools/gate-model.sh's gate_model_resolve (bash/awk, used by sprint-headless) and cockpit-daemon's gateModel (Go). Both must agree on `expect` for every case. Cross-runtime port, locked by parity per standards/efficiency.md. `parse` is gate_model_parse's raw output; `expect` is the resolved value (\"\" = no --model flag). NOTE: app.html's parseGateModel is a THIRD reader, display-only for the board's #ck-model chip, and is deliberately not pinned here. It diverges more widely than label case: it also requires a literal `|` before the label, matches only an unindented capital-T `Tier:`, does NOT stop at the next `|`, and applies no charset guard — so the board's chip can display a different value than the daemon passes to --model. See HANDOFF.md ## Discoveries.",
+  "_comment": "Shared fixture set for the two real `Gate model:` resolvers that produce a --model argv for claude: tools/gate-model.sh's gate_model_resolve (bash/awk, used by sprint-headless) and cockpit-daemon's gateModel (Go). Both must agree on `expect` for every case. Cross-runtime port, locked by parity per standards/efficiency.md. `parse` is gate_model_parse's raw output; `expect` is the resolved value (\"\" = no --model flag). NOTE: app.html's parseGateModel is a THIRD reader, display-only for the board's #ck-model chip, and is deliberately not pinned here. It diverges more widely than label case: it also requires a literal `|` before the label, matches only an unindented capital-T `Tier:`, does NOT stop at the next `|`, and applies no charset guard — so the board's chip can display a different value than the daemon passes to --model. See HANDOFF.md ## Discoveries. Optional `status` (t-ef27): the exit status bash's gate_model_resolve must return (0 valid, 2 present-but-invalid); the Go port has no exit status and just returns \"\" for both, so only the bash parity test reads it.",
   "cases": [
     {
       "name": "value present",
@@ -126,6 +126,41 @@
       "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: hai ku\n",
       "parse": "hai ku",
       "expect": ""
+    },
+    {
+      "name": "openai:<id> selects a close-gate model, not a --model for this run (t-ef27)",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: openai:gpt-6-luna\n",
+      "parse": "openai:gpt-6-luna",
+      "expect": "",
+      "status": 0
+    },
+    {
+      "name": "openai: prefix is case-insensitive (parse lowercases)",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: OpenAI:GPT-6-Luna\n",
+      "parse": "openai:gpt-6-luna",
+      "expect": "",
+      "status": 0
+    },
+    {
+      "name": "openai: with no id is invalid",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: openai:\n",
+      "parse": "openai:",
+      "expect": "",
+      "status": 2
+    },
+    {
+      "name": "openai: id must not start with a dash (flag injection)",
+      "plan": "## Sign-off\nTier: normal | Risk: none | Gate model: openai:--model\n",
+      "parse": "openai:--model",
+      "expect": "",
+      "status": 2
+    },
+    {
+      "name": "openai:<id> value stops at the next pipe",
+      "plan": "## Sign-off\nTier: normal | Gate model: openai:gpt-6-luna | Note: keep\n",
+      "parse": "openai:gpt-6-luna",
+      "expect": "",
+      "status": 0
     }
   ]
 }
