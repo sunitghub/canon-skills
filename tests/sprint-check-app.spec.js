@@ -3459,6 +3459,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(box.locator('tbody tr')).toHaveCount(6);
       await expect(page.locator('#ad-tile-agents')).toHaveText('6');
       await expect(page.locator('#ad-tile-needs')).toHaveText('2');
+      // Four tiles stay on one row in the 620px Admin column (reviewer: auto-fit wrapped them 3+1).
+      const tops = await page.locator('#view-admin .tiles .tile').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().top)));
+      expect(tops).toHaveLength(4);
+      expect(new Set(tops).size).toBe(1);
       await expect(page.locator('#ad-daemon-hint')).toHaveText('6 agents running · 2 needs you');
       await expect(page.locator('#ad-reaper')).toContainText('after 5m in a worktree and 30m in a project’s main checkout');
       await expect(box.locator('button.ad-open.answer')).toHaveCount(2);
