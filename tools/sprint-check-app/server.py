@@ -2301,11 +2301,14 @@ def validate_skill_dir(root: Path, raw: str):
         return None, 'folder name must match [a-z0-9][a-z0-9-]*'
     # A link inside the folder could point at files outside the project (evals.json is read into
     # eval prompts), so any symlink refuses the folder. os.walk does not follow links, but lists them.
+    # t-b9a7: anything that is neither a regular file nor a directory refuses it too (the Go board
+    # applies the same rule; on Windows it also catches junctions).
     seen = 0
     for dirpath, dirs, files in os.walk(p):
         for n in dirs + files:
             seen += 1
-            if os.path.islink(os.path.join(dirpath, n)) or seen > 20000:
+            full = os.path.join(dirpath, n)
+            if os.path.islink(full) or not (os.path.isfile(full) or os.path.isdir(full)) or seen > 20000:
                 return None, 'skill folder contains a symbolic link (or is too large); remove it and retry'
     return p, None
 

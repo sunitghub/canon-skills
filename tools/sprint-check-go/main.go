@@ -396,11 +396,37 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			sendJSON(w, getHeadlessRunState(m[1]))
 			return
 		}
-		// t-23d8: Skill Eval is Python-server only in v1 (skill-check is python3, which
-		// Windows does not reliably have). The routes exist so the API surface stays in
-		// parity (tests/sprint-check-api-parity.sh) and answer honestly.
+		// t-b9a7: Skill Eval (skilleval.go) — same routes and shapes as server.py.
 		if path == "/api/skill-eval/status" || path == "/api/skill-eval/report" || path == "/api/skill-eval/report.html" {
-			sendJSON(w, skillEvalUnsupported)
+			root, ok := effectiveRoot(r)
+			if !ok {
+				http.Error(w, "unknown project", http.StatusBadRequest)
+				return
+			}
+			raw := r.URL.Query().Get("skill_dir")
+			switch path {
+			case "/api/skill-eval/status":
+				sendJSON(w, getSkillEvalState(root, raw))
+			case "/api/skill-eval/report":
+				sendJSON(w, getSkillEvalReport(root, raw))
+			default:
+				rep := getSkillEvalReport(root, raw)
+				var body []byte
+				if rep["ok"] == true {
+					body, _ = os.ReadFile(rep["report_path"].(string))
+				}
+				if body == nil {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				// The report is generated from a user-picked skill's content: render it in an
+				// opaque origin (sandbox without allow-same-origin) so it cannot reach this API.
+				w.Header().Set("Content-Security-Policy", "sandbox allow-scripts; default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:")
+				w.Header().Set("X-Content-Type-Options", "nosniff")
+				w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+				w.Write(body)
+			}
 			return
 		}
 		if path == "/api/upkeep/status" {
@@ -545,8 +571,16 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, startHeadlessRun(m[1], baseRef))
 		return
 	}
-	if path == "/api/skill-eval/check" || path == "/api/skill-eval/run" {
-		sendJSON(w, skillEvalUnsupported)
+	if path == "/api/skill-eval/check" {
+		raw := ""
+		if v, ok := payload["skill_dir"]; ok {
+			raw = pyStr(v)
+		}
+		sendJSON(w, skillEvalCheck(eroot, raw))
+		return
+	}
+	if path == "/api/skill-eval/run" {
+		sendJSON(w, startSkillEvalRun(eroot, payload))
 		return
 	}
 	if path == "/api/upkeep/run" {
@@ -3473,10 +3507,6 @@ func serveFile(w http.ResponseWriter, path, contentType string) {
 	}
 	w.Write(body)
 }
-
-// t-56f6: "unsupported" is the machine-readable marker (same field registerSkill uses) that
-// lets the cockpit disable the Skill Eval card on load instead of erroring after a pick.
-var skillEvalUnsupported = map[string]any{"ok": false, "unsupported": true, "error": "Skill Eval isn't available in this build of the board. See README → Windows: what's different."}
 
 func sendJSON(w http.ResponseWriter, data any) {
 	body, _ := json.Marshal(data)

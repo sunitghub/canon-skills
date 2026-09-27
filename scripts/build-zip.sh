@@ -85,10 +85,12 @@ if command -v go >/dev/null 2>&1; then
   # the human identifier; the SHA moves to `main.commit` (build provenance).
   SCV="$(git -C "$REPO_ROOT" log -1 --format=%h -- tools/sprint-check-go 2>/dev/null || echo dev)"
   SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"
-  GOOS=windows GOARCH=amd64 go build \
+  # t-b9a7: build the package, not main.go alone — skilleval.go (and any later file) must be in the
+  # .exe. A package dir without go.mod needs GO111MODULE=off. tests/build-zip-go-package.sh locks this.
+  ( cd "$REPO_ROOT" && GO111MODULE=off GOOS=windows GOARCH=amd64 go build \
     -ldflags "-X main.version=$SEMVER -X main.commit=$SCV" \
     -o "$REPO_ROOT/tools/sprint-check-win.exe" \
-    "$REPO_ROOT/tools/sprint-check-go/main.go"
+    ./tools/sprint-check-go )
   echo "dist: sprint-check-win.exe rebuilt ($(du -sh "$REPO_ROOT/tools/sprint-check-win.exe" | cut -f1)) [v$SEMVER ($SCV)]"
 else
   echo "dist: sprint-check-win.exe skipped (go absent)"
