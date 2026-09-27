@@ -1199,8 +1199,8 @@ func runSkillEval(root, skillDir, model string, maxCost float64) {
 		cmd := exec.CommandContext(ctx, bin, "plugin", "eval", plugin, "--trust-plugin", "--runs", "2",
 			"--max-cost-usd", pyFloatRepr(maxCost, false), "--model", model, "--no-publish", "--json", resultPath)
 		cmd.Dir = plugin
-		// After the timeout kill, stop waiting for the output pipe: claude's own child processes
-		// can hold it open and would keep the run "running" long past the deadline.
+		// Stop waiting for the output pipe 2 s after claude exits or is killed: its own child
+		// processes can hold the pipe open and would keep the run "running" indefinitely.
 		cmd.WaitDelay = 2 * time.Second
 		out, err := cmd.CombinedOutput()
 		// Only the deadline is a failure of the run itself; exit 1 means "some cases did not pass"
@@ -1210,14 +1210,20 @@ func runSkillEval(root, skillDir, model string, maxCost float64) {
 		cancel()
 		output += string(out)
 		code := 0
-		if err != nil {
-			var ee *exec.ExitError
-			if errors.As(err, &ee) && !timedOut {
-				code = ee.ExitCode()
-			} else {
-				code = -1
-				output += "\nError: " + err.Error()
-			}
+		var ee *exec.ExitError
+		switch {
+		case err == nil:
+		case timedOut:
+			code = -1
+			output += "\nError: " + err.Error()
+		case errors.As(err, &ee):
+			code = ee.ExitCode()
+		case errors.Is(err, exec.ErrWaitDelay) && cmd.ProcessState != nil:
+			// claude itself exited; only a child still held the output pipe past WaitDelay.
+			code = cmd.ProcessState.ExitCode()
+		default:
+			code = -1
+			output += "\nError: " + err.Error()
 		}
 		reports, _ := filepath.Glob(filepath.Join(plugin, "evals", "results", "*", "report.html"))
 		sort.Strings(reports)
