@@ -656,7 +656,7 @@
       <p>Launch <code>canon-cockpit</code> once. Running it again just focuses this window — everything opens <em>inside</em> it, no more a browser tab per project.</p>
 
       <div class="help-sect">Projects</div>
-      <p>Register a git repo with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
+      <p>Register a project folder with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
 
       <div class="help-sect">Tabs</div>
       <p>Open projects become folder-named tabs beside the pinned <b>Projects</b> tab; close a tab with its <b>&#10005;</b>. The embedded board is read-only in this phase.</p>
@@ -1821,7 +1821,7 @@
 
     const grid=document.getElementById('grid');
     if(!projects.length){
-      grid.innerHTML='<div class="empty">No projects registered yet.<br>Click <strong>+ Add Project</strong> to register a git repo.</div>';
+      grid.innerHTML='<div class="empty">No projects registered yet.<br>Click <strong>+ Add Project</strong> to register a project folder.</div>';
       return;
     }
     grid.innerHTML=shown.map(p=>`
