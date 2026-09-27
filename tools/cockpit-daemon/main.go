@@ -457,6 +457,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// not ticket ID alone: one daemon serves many projects (t-391a), and
 	// ticket IDs are only unique within one project's .tickets/.
 	if existing := s.liveSessionForTicket(projectRoot, body.Ticket); existing != nil {
+		existing.debugf("start attached to live session sid=%s cwd=%s requested=%s", existing.sid, existing.cwd, s.resolveRequestedEcho(body.Cwd))
 		writeJSON(w, map[string]string{"session": existing.sid, "token": existing.token, "previewToken": existing.previewToken, "cwd": existing.cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
 		return
 	}
@@ -489,7 +490,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// on macOS) then matches and no longer raises a spurious mismatch warning,
 	// while a genuine wrong-tree run (actual differs from both selected and
 	// requested) still warns.
-	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
+	requested := s.resolveRequestedEcho(body.Cwd)
+	// t-75cb: the cwd actually used vs the one asked for — a persisted .cockpit-cwd lock can
+	// override the picker, and that is the first thing to check when a run lands in the wrong tree.
+	se.debugf("start spawned new session sid=%s cwd=%s requested=%s cwd_differs=%v", se.sid, cwd, requested, !pathsEqual(cwd, requested))
+	writeJSON(w, map[string]string{"session": se.sid, "token": se.token, "previewToken": se.previewToken, "cwd": cwd, "requested": requested})
 }
 
 // resolveRequestedEcho computes the RESOLVED form of what the client asked
@@ -734,7 +739,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		claudeSessionID, resuming := s.resolveClaudeSessionIDIn(projectRoot, ticket)
 		args = agentSpawnArgs("claude", ticket, resuming, claudeSessionID, s.gateModelIn(projectRoot, ticket), settingsPath)
 	}
-	c := p.Command(resolveSpawnBin(program), args...)
+	bin := resolveSpawnBin(program)
+	c := p.Command(bin, args...)
 	c.Dir = cwd
 	c.Env = append(os.Environ(), "COCKPIT_TICKET="+ticket)
 	if err := c.Start(); err != nil {
@@ -753,7 +759,10 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
-	se.debugf("spawn agent=%s ticket=%s cwd=%s resuming=%v", kind, ticket, cwd, copilotResuming)
+	// t-75cb: the binary actually run and its full argv (flags, ids, the fixed prompt —
+	// never a token: the status token rides in the settings FILE) so a wrong flag is
+	// visible at once (t-d8b0's `copilot --model haiku` would have been).
+	se.debugf("spawn agent=%s ticket=%s cwd=%s resuming=%v bin=%q argv=%q", kind, ticket, cwd, copilotResuming, bin, args)
 	if copilotGate != "" && copilotModel(copilotGate) == "" {
 		se.debugf("spawn model=%s omitted for copilot (no verified Copilot id)", copilotGate)
 	}
@@ -1194,13 +1203,29 @@ const exitDrainGrace = 2 * time.Second
 // and the session would stay "running". Waiting for done first keeps output the
 // child wrote just before exiting; the grace bounds the Windows case.
 func (se *session) waitExit(wait func() error, grace time.Duration) {
-	_ = wait()
+	code, msg := exitStatus(wait())
+	// t-75cb: the process's own status, which the readLoop `exit` line (killed/buf_len) can't give.
+	se.debugf("wait returned exit_code=%d wait_err=%q", code, msg)
 	select {
 	case <-se.done:
 	case <-time.After(grace):
 		se.debugf("child exited but the pty read is still open after %s — closing it", grace)
 	}
 	se.closePty()
+}
+
+// exitStatus splits a Wait() error into an exit code and a message (t-75cb): nil is a
+// clean 0; an *exec.ExitError carries the process's code (-1 when it died on a signal);
+// any other error is -1 with its text.
+func exitStatus(err error) (int, string) {
+	if err == nil {
+		return 0, ""
+	}
+	var ee *exec.ExitError
+	if errors.As(err, &ee) {
+		return ee.ExitCode(), err.Error()
+	}
+	return -1, err.Error()
 }
 
 // cleanup removes the daemon-owned --settings dir. Called on kill and on natural
@@ -1216,6 +1241,10 @@ func (se *session) cleanup() {
 // Resets to false on every process start — no persistence by design (a
 // forgotten-on toggle should never survive an unrelated daemon restart).
 var debugEnabled atomic.Bool
+
+// debugLogMu serializes debugf's read-modify-write of .cockpit-debug.log (one lock for all
+// sessions: the log is diagnostics, never a hot path).
+var debugLogMu sync.Mutex
 
 // debugLogMaxBytes caps .cockpit-debug.log at a fixed size — lifecycle events
 // are small and bounded per entry, but an unattended long-running session
@@ -1236,6 +1265,11 @@ func (se *session) debugf(format string, a ...any) {
 	if !debugEnabled.Load() {
 		return
 	}
+	// t-75cb: the append below is read-modify-write, and a fast exit fires the spawn, wait and
+	// exit lines from different goroutines within microseconds — unserialized, the last writer's
+	// snapshot silently dropped the others' lines.
+	debugLogMu.Lock()
+	defer debugLogMu.Unlock()
 	dir := filepath.Join(se.ticketsDir, se.ticket)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return
@@ -1319,7 +1353,8 @@ func (s *server) reapIdleSessions() {
 	s.mu.Unlock()
 	for _, se := range candidates {
 		se.mu.Lock()
-		idle := time.Since(se.lastActivity) > s.idleTimeoutFor(se.cwd)
+		idleFor, idleLimit := time.Since(se.lastActivity), s.idleTimeoutFor(se.cwd)
+		idle := idleFor > idleLimit
 		blocked := se.status == "needs-you"
 		exited := se.exited
 		alreadyReaping := se.reaping
@@ -1336,6 +1371,7 @@ func (s *server) reapIdleSessions() {
 		if !idle || blocked || exited || alreadyReaping {
 			continue
 		}
+		se.debugf("idle reap: inactive for %s (timeout %s) — starting save-and-end", idleFor.Round(time.Second), idleLimit)
 		go s.saveAndEnd(se)
 	}
 }
@@ -2240,6 +2276,19 @@ func previewRootFor(reportedPath string, roots ...string) (string, bool) {
 	return "", false
 }
 
+// previewRejectReason names why previewRootFor refused a path, for the verbose log
+// (t-75cb). previewRootFor stays pure and unchanged; this mirrors its first two checks
+// and attributes anything else to the roots.
+func previewRejectReason(reportedPath string) string {
+	if !filepath.IsAbs(reportedPath) {
+		return "not absolute"
+	}
+	if _, err := filepath.EvalSymlinks(filepath.Dir(filepath.Clean(reportedPath))); err != nil {
+		return "directory unresolvable"
+	}
+	return "outside allowed roots"
+}
+
 // handlePreviewRoot validates and stores the one directory this session's
 // /preview/<relpath> route will serve from. Authenticated via the real
 // session token (only the trusted board relay reaches here) — never the
@@ -2278,9 +2327,11 @@ func (s *server) handlePreviewRoot(w http.ResponseWriter, r *http.Request, se *s
 	}
 	root, ok := previewRootFor(body.Path, roots...)
 	if !ok {
+		se.debugf("preview-root rejected path=%q reason=%s", body.Path, previewRejectReason(body.Path))
 		http.Error(w, "path not allowed", http.StatusBadRequest)
 		return
 	}
+	se.debugf("preview-root accepted path=%q root=%q", body.Path, root)
 	se.mu.Lock()
 	se.previewRoot = root
 	se.mu.Unlock()
