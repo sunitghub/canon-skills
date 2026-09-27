@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-26-2026 20:42
+learnings-sweep last run: 09-26-2026 21:29
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-27 | [t-a381](.tickets/t-a381/learnings.md) | When editing a skill, don't carry forward an unverified factual claim about model behavior from the old text: the draft kept "Fable 5 declines fall back to Opus 4.8", which the live Fable 5 page contradicts. Quote each behavioral claim in research.md and re-fetch the primary page; hedge what the source doesn't say ("earlier models" was an inference). | UNPROMOTED |
 | 2026-09-26 | [t-2595](.tickets/t-2595/learnings.md) | A doc that replaces a copied rule with a pointer ("owned by step 1") must be checked against the owner: the checklist cited step 1 for a rule only `SKILL.md` states. A parity check on prose is phrase-anchored, so pair the condition and the thing it guards on one line. | UNPROMOTED |
 | 2026-09-26 | [t-3c65](.tickets/t-3c65/learnings.md) | Clean sprint; one accepted gap: the scoping check treats a path matching either READ_RE or WRITE_RE as scoped, so a POST-only route matching only READ_RE passes (method not checked). | UNPROMOTED |
 | 2026-09-26 | [t-2d2e](.tickets/t-2d2e/learnings.md) | A hostile-input test can pass while never reaching the guard it claims to cover: the bad-id `open-ticket` probe was posted iframe→parent (to the shell), so reverting the board's guard left it green. Only a revert of the guard, plus a positive control on the same channel, proves the probe arrives. | UNPROMOTED |
