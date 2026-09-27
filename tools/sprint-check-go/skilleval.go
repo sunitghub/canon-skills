@@ -36,9 +36,11 @@ const (
 	skillJSONMaxDepth     = 64        // same as tools/skill-check MAX_DEPTH
 	skillJSONMaxNumberLen = 100       // same as MAX_NUMBER_LEN
 	skillSafeInt          = 1<<53 - 1 // same as SAFE_INT
-	skillEvalRunTimeout   = 30 * time.Minute
 	skillEvalWalkCap      = 20000
 )
+
+// skillEvalRunTimeout bounds one `claude plugin eval` run (server.py: 1800 s); a variable so a test can shorten it.
+var skillEvalRunTimeout = 30 * time.Minute
 
 var (
 	skillNameRe      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
@@ -1197,13 +1199,20 @@ func runSkillEval(root, skillDir, model string, maxCost float64) {
 		cmd := exec.CommandContext(ctx, bin, "plugin", "eval", plugin, "--trust-plugin", "--runs", "2",
 			"--max-cost-usd", pyFloatRepr(maxCost, false), "--model", model, "--no-publish", "--json", resultPath)
 		cmd.Dir = plugin
+		// After the timeout kill, stop waiting for the output pipe: claude's own child processes
+		// can hold it open and would keep the run "running" long past the deadline.
+		cmd.WaitDelay = 2 * time.Second
 		out, err := cmd.CombinedOutput()
+		// Only the deadline is a failure of the run itself; exit 1 means "some cases did not pass"
+		// and still counts as done (server.py: returncode in (0, 1)). Check before cancel(), which
+		// sets ctx.Err() for every run.
+		timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
 		cancel()
 		output += string(out)
 		code := 0
 		if err != nil {
 			var ee *exec.ExitError
-			if errors.As(err, &ee) && ctx.Err() == nil {
+			if errors.As(err, &ee) && !timedOut {
 				code = ee.ExitCode()
 			} else {
 				code = -1
