@@ -656,7 +656,7 @@
       <p>Launch <code>canon-cockpit</code> once. Running it again just focuses this window — everything opens <em>inside</em> it, no more a browser tab per project.</p>
 
       <div class="help-sect">Projects</div>
-      <p>Register a git repo with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
+      <p>Register a project folder with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
 
       <div class="help-sect">Tabs</div>
       <p>Open projects become folder-named tabs beside the pinned <b>Projects</b> tab; close a tab with its <b>&#10005;</b>. The embedded board is read-only in this phase.</p>
@@ -1838,7 +1838,7 @@
 
     const grid=document.getElementById('grid');
     if(!projects.length){
-      grid.innerHTML='<div class="empty">No projects registered yet.<br>Click <strong>+ Add Project</strong> to register a git repo.</div>';
+      grid.innerHTML='<div class="empty">No projects registered yet.<br>Click <strong>+ Add Project</strong> to register a project folder.</div>';
       return;
     }
     grid.innerHTML=shown.map(p=>`
@@ -1857,6 +1857,7 @@
           <div class="cardbottom">
             <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
               ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
+              <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="This folder isn't a git repository — agents can't run here until it tracks changes" style="display:none">Track changes</button>
             </div>
             <div class="actions">
               <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
@@ -1869,7 +1870,8 @@
     // JS-string/attribute injection from a maliciously-named registered path).
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
     grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
-    grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
+    grid.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
+    grid.querySelectorAll('.trackchg').forEach(b=>b.addEventListener('click',()=>trackChanges(b.dataset.id,b.dataset.name,b)));
     shown.forEach(p=>fillCardStats(p.id));
   }
 
@@ -1891,11 +1893,21 @@
       const reg=card&&card.querySelector('.regbtns');
       if(reg){
         let any=false;
-        reg.querySelectorAll('.regskill').forEach(b=>{
+        reg.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>{
           const show=!skills.includes(b.dataset.skill);
           b.style.display = show ? '' : 'none';
           any = any || show;
         });
+        // t-d538: a non-git folder can't run agents until it tracks changes.
+        const tc=reg.querySelector('.trackchg');
+        if(tc){
+          let st=null;
+          try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok) st=await t.json(); }catch(e){}
+          const show=!!(st&&st.ok&&st.tracking===false);
+          tc.style.display = show ? '' : 'none';
+          tc.dataset.synced = (st&&st.synced) || '';
+          any = any || show;
+        }
         reg.style.display = any ? '' : 'none';
       }
     }catch(e){ up.textContent='—'; ct.textContent='—'; if(sk) sk.textContent='—'; }
@@ -1935,6 +1947,26 @@
       toast((res&&res.error)?('Could not register: '+res.error):('Could not register '+skill));
     }catch(e){ toast('Request failed'); }
     finally{ restore(); }
+  }
+
+  // t-d538: opt-in local history (git init + a .gitignore-only first commit) for a registered
+  // non-git folder. The server re-resolves the folder from the registry and refuses on any
+  // existing .git; this only explains and confirms.
+  async function trackChanges(id,name,btn){
+    if(btn&&btn.disabled) return;
+    const synced=btn&&btn.dataset.synced;
+    const body='Creates a local history for this folder (git) so agents can run here and their work can be checked. Nothing is uploaded. canon adds a .gitignore and commits only that; your files stay as they are.'
+      +(synced?' Note: this folder is in '+synced+'. Sync services can damage this history — consider moving the project out of '+synced+' first.':'');
+    if(!(await cockpitConfirm({title:'Track changes in “'+name+'”?', body, okLabel:'Track changes'}))) return;
+    const saved=btn?btn.innerHTML:'';
+    if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>Starting…'; }
+    try{
+      const r=await fetch('/api/track-changes?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
+      const res=await r.json().catch(()=>({}));
+      if(res&&res.ok){ toast('✓ '+name+' now tracks changes'); load(); return; }
+      toast((res&&res.error)?res.error:'Could not start tracking changes (HTTP '+r.status+')');
+    }catch(e){ toast('Request failed'); }
+    finally{ if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; } }
   }
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';hideBrowse();document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}

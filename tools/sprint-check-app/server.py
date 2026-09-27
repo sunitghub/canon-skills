@@ -1759,6 +1759,94 @@ def register_skill(root: Path, skill: str = 'sprint') -> dict:
         return {'ok': False, 'error': (p.stderr or p.stdout or 'skills.sh failed').strip()[:400], 'cmd': hint}
     return {'ok': True, 'skills': registered_skills(root)}
 
+# t-d538: opt-in "Track changes" for a registered folder that isn't a git repo, so agents
+# can run there (the daemon only trusts git work trees) and sprints can close. Byte-identical
+# to sprint-check-go's trackChangesGitignore (parity-tested). Design sources stay tracked;
+# only OS junk, dependency/build dirs and large media/archives are ignored.
+TRACK_CHANGES_GITIGNORE = (
+    '# Added by canon when this folder started tracking changes.\n'
+    '.DS_Store\nThumbs.db\ndesktop.ini\n'
+    'node_modules/\n.venv/\n__pycache__/\ndist/\nbuild/\n'
+    '*.mp4\n*.mov\n*.zip\n'
+)
+TRACK_CHANGES_MESSAGE = 'chore: start tracking changes with canon'
+# (path-segment prefix, service name). Warn-only: a miss just skips the warning.
+_SYNCED_MARKERS = (('mobile documents', 'iCloud Drive'), ('cloudstorage', 'cloud storage'),
+                   ('dropbox', 'Dropbox'), ('onedrive', 'OneDrive'),
+                   ('google drive', 'Google Drive'), ('my drive', 'Google Drive'))
+
+def synced_service(path: str):
+    for seg in re.split(r'[\\/]+', str(path).lower()):
+        for marker, name in _SYNCED_MARKERS:
+            if seg.startswith(marker):
+                return name
+    return None
+
+def _inside_work_tree(root: Path) -> bool:
+    return _git_out(['rev-parse', '--is-inside-work-tree'], root)[1].strip() == 'true'
+
+def track_changes_root(query: dict) -> Path:
+    """?project=<id> → that registered folder; ?project=default → this board's own root (a
+    standalone board names itself explicitly). Absent/empty → ValueError: git init never targets a
+    folder by accident. Unknown id → UnknownProject."""
+    pid = (query.get('project', [''])[0] or '').strip()
+    if not pid:
+        raise ValueError('project is required')
+    if pid == 'default':
+        return PROJECT_ROOT
+    return effective_root(query)
+
+def track_changes_state(root: Path) -> dict:
+    return {'ok': True, 'tracking': _inside_work_tree(root), 'synced': synced_service(root)}
+
+def track_changes(root: Path, confirm) -> dict:
+    """git init + a .gitignore-only first commit in a registry-resolved folder. Refuses on any
+    existing .git (a broken repo must never be reinitialized, then deleted by the rollback) and
+    inside a parent repo. On failure it removes only what this call created."""
+    if confirm is not True:
+        return {'ok': False, 'error': 'Track changes needs confirm: true.'}
+    if not shutil.which('git'):
+        return {'ok': False, 'error': 'git is not installed on this machine.'}
+    git_dir, ignore = root / '.git', root / '.gitignore'
+    if os.path.lexists(git_dir):
+        return {'ok': False, 'error': 'This folder already has a .git. Fix or remove it yourself; canon will not touch it.'}
+    if _inside_work_tree(root):
+        return {'ok': False, 'error': 'This folder is already inside a git repository.'}
+    had_ignore = os.path.lexists(ignore)
+    created = wrote_ignore = False
+    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}
+
+    def git(*args):
+        p = subprocess.run(['git', *args], cwd=root, capture_output=True, text=True,
+                           encoding='utf-8', errors='replace', timeout=20, env=env)
+        if p.returncode != 0:
+            raise RuntimeError((p.stderr or p.stdout or 'git ' + args[0] + ' failed').strip()[:300])
+        return p.stdout.strip()
+    try:
+        created = True  # .git was absent a moment ago, so anything there from now on is ours
+        git('init', '-q')
+        if not had_ignore:
+            with open(ignore, 'w', encoding='utf-8', newline='\n') as f:
+                f.write(TRACK_CHANGES_GITIGNORE)
+            wrote_ignore = True
+        git('add', '--', '.gitignore')
+        identity = []
+        if _git_out(['config', 'user.name'], root)[0] != 0:
+            identity += ['-c', 'user.name=canon']
+        if _git_out(['config', 'user.email'], root)[0] != 0:
+            identity += ['-c', 'user.email=canon@localhost']
+        git(*identity, 'commit', '-q', '-m', TRACK_CHANGES_MESSAGE)
+        return {'ok': True, 'commit': git('rev-parse', '--short', 'HEAD')}
+    except Exception as e:
+        if created:
+            shutil.rmtree(git_dir, ignore_errors=True)
+        if wrote_ignore:
+            try:
+                ignore.unlink()
+            except OSError:
+                pass
+        return {'ok': False, 'error': f'Could not start tracking changes: {e}'[:400]}
+
 
 # ── Cockpit daemon integration (t-ddc8) ─────────────────────────────────────
 # The board never owns a PTY (t-1262 lesson): it discovers/launches the shipped
@@ -2566,6 +2654,13 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(load_handoff(effective_root(parse_qs(parsed.query))))
             except UnknownProject:
                 self.send_error(400)
+        elif path == '/api/track-changes':
+            try:
+                self.send_json(track_changes_state(track_changes_root(parse_qs(parsed.query))))
+            except ValueError as e:
+                self.send_json({'ok': False, 'error': str(e)}, status=400)
+            except UnknownProject:
+                self.send_error(400)
         elif path == '/api/git':
             try:
                 self.send_json(load_git(effective_root(parse_qs(parsed.query))))
@@ -2752,12 +2847,24 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             self.send_error(400); return  # every POST route reads its fields with payload.get
 
+        # t-d538: git init targets an explicitly named folder — never the default by omission.
+        if path == '/api/track-changes':
+            try:
+                troot = track_changes_root(parse_qs(parsed.query))
+            except ValueError as e:
+                self.send_json({'ok': False, 'error': str(e)}, status=400); return
+            except UnknownProject:
+                self.send_error(400); return
+            result = track_changes(troot, payload.get('confirm'))
+            self.send_json(result, status=200 if result.get('ok') else 400); return
+
         # t-8485: project-scoped writes — resolve ?project once (400 on unknown id;
         # absent → process default). Passed to the editable-tab write fns below.
         try:
             eroot = effective_root(parse_qs(parsed.query))
         except UnknownProject:
             self.send_error(400); return
+
 
         if path == '/api/projects':
             result = registry_add(str(payload.get('path', '')), str(payload.get('description', '')))

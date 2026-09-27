@@ -1292,3 +1292,22 @@ func TestSkillEvalRoutesMarkUnsupported(t *testing.T) {
 		}
 	}
 }
+
+// t-d538: synced-folder detection is warn-only, but it must see Windows paths too.
+func TestSyncedServiceDetectsSyncedFolders(t *testing.T) {
+	cases := map[string]any{
+		`/Users/a/Library/Mobile Documents/com~apple~CloudDocs/plans`: "iCloud Drive",
+		`/Users/a/Library/CloudStorage/GoogleDrive-a@b.c/My Drive/x`:  "cloud storage",
+		`C:\Users\a\Dropbox (Personal)\plans`:                         "Dropbox",
+		`C:\Users\a\OneDrive - Acme\Designs`:                          "OneDrive",
+		`G:\My Drive\roadmap`:                                         "Google Drive",
+		`/Users/a/Google Drive/roadmap`:                               "Google Drive",
+		`/Users/a/Developer/canon`:                                    nil,
+		`C:\Users\a\projects\app`:                                     nil,
+	}
+	for path, want := range cases {
+		if got := syncedService(path); got != want {
+			t.Errorf("syncedService(%q) = %v, want %v", path, got, want)
+		}
+	}
+}

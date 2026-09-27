@@ -3695,6 +3695,94 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // --- t-d538: a non-git project offers Track changes instead of a terminal that would fail ---
+  test('a non-git project shows Track changes instead of the terminal (t-d538)', async ({ page }) => {
+    const id = `t-ckd538-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false }) }));
+      await openFromCard(page, id);
+      await expect(page.locator('#ck-term-msg')).toContainText("doesn't track changes yet");
+      await expect(page.locator('#ck-track-btn')).toBeVisible();
+      await expect(page.locator('#ck-iframe')).toBeHidden();
+      await page.locator('#cockpit-overlay').screenshot({ path: path.join(require('os').tmpdir(), 'canon-d538-cockpit-untracked.png') });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('Track changes confirms, POSTs confirm:true, then shows the terminal (t-d538)', async ({ page }) => {
+    const id = `t-ckd538b-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      let tracked = false; const posts = [];
+      await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify(tracked
+          ? { branch: 'main', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], total_commits: 1, is_git: true }
+          : { branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false }) }));
+      await page.route('**/api/worktrees**', onlyMain);
+      await page.route('**/api/track-changes**', route => {
+        // standalone board (no Cockpit ?project): it must name its own folder, never omit project
+        expect(new URL(route.request().url()).searchParams.get('project')).toBe('default');
+        if (route.request().method() === 'POST') {
+          posts.push(route.request().postDataJSON()); tracked = true;
+          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, commit: 'abc1234' }) });
+        }
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking: tracked, synced: 'Dropbox' }) });
+      });
+      await openFromCard(page, id);
+      await page.locator('#ck-track-btn').click();
+      await expect(page.locator('#ck-term-msg')).toContainText('local history');
+      await expect(page.locator('#ck-term-msg')).toContainText('Dropbox');
+      await expect(page.locator('#ck-track-btn')).toHaveText('Yes, track changes');
+      expect(posts.length).toBe(0); // nothing is written before the confirm
+      // reviewer (t-d538): in a narrow terminal pane the wrapped message must push the buttons
+      // down, never cover them
+      await page.evaluate(() => { document.querySelector('.ck-term').style.maxWidth = '240px'; });
+      const msgBox = await page.locator('#ck-term-msg').boundingBox();
+      const actBox = await page.locator('#ck-track-actions').boundingBox();
+      expect(msgBox.height).toBeGreaterThan(60);                      // it really wrapped
+      expect(actBox.y).toBeGreaterThanOrEqual(msgBox.y + msgBox.height); // buttons sit below the text
+      await page.evaluate(() => { document.querySelector('.ck-term').style.maxWidth = ''; });
+      await page.locator('#ck-track-cancel').click();              // Cancel backs out, still nothing written
+      await expect(page.locator('#ck-track-btn')).toHaveText('Track changes');
+      expect(posts.length).toBe(0);
+      await page.locator('#ck-track-btn').click();
+      await page.locator('#ck-track-btn').click();
+      await expect.poll(() => posts.length).toBe(1);
+      expect(posts[0]).toEqual({ confirm: true });
+      await expect(page.locator('#ck-track-btn')).toBeHidden();
+      await expect(page.locator('#ck-term-msg')).not.toContainText("doesn't track changes yet");
+      await expect(page.locator('#ck-worktree-section')).toBeVisible();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a refused Track changes keeps the offer and says why (t-d538, t-1940)', async ({ page }) => {
+    const id = `t-ckd538c-${Date.now()}`;
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false }) }));
+      await page.route('**/api/track-changes**', route => route.request().method() === 'POST'
+        ? route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'This folder already has a .git.' }) })
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking: false, synced: null }) }));
+      await openFromCard(page, id);
+      await page.locator('#ck-track-btn').click();
+      await page.locator('#ck-track-btn').click();
+      await expect(page.locator('#ck-term-msg')).toContainText('already has a .git');
+      await expect(page.locator('#ck-track-btn')).toBeVisible();
+      await expect(page.locator('#ck-track-btn')).toHaveText('Track changes');
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('New Ticket in a no-commits repo shows the Worktree row, and the default Main checkout saves main-checkout (t-d218, t-19d1)', async ({ page }) => {
     await page.route('**/api/git', route => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ branch: 'master', project: 'fresh', root: PROJECT_ROOT, modified: 0, log: [], total_commits: null, is_git: true }) }));
@@ -8534,3 +8622,39 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
       .toBe('/api/ticket-image/t-abcd/visuals/a.png');
   });
 });
+
+test.describe('canon-cockpit Projects card: Track changes (t-d538)', () => {
+  const PROJECTS = [
+    { id: 'proj-git', path: '/tmp/proj-git', name: 'proj-git', description: '', added: '2026-09-27' },
+    { id: 'proj-plain', path: '/tmp/proj-plain', name: 'proj-plain', description: 'no git here', added: '2026-09-27' },
+  ];
+  test('only a non-git project card offers Track changes, and it POSTs confirm:true after the confirm', async ({ page }) => {
+    const posts = [];
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    await page.route('**/api/project-stats*', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ updated: '2026-09-27', ticket_count: 0, skills: ['sprint', 'efficiency'] }) }));
+    await page.route('**/api/track-changes*', route => {
+      const pid = new URL(route.request().url()).searchParams.get('project');
+      if (route.request().method() === 'POST') {
+        posts.push({ pid, body: route.request().postDataJSON() });
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, commit: 'abc1234' }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ ok: true, tracking: pid === 'proj-git', synced: pid === 'proj-plain' ? 'iCloud Drive' : null }) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    const plainBtn = page.locator('.trackchg[data-id="proj-plain"]'), gitBtn = page.locator('.trackchg[data-id="proj-git"]');
+    await expect(plainBtn).toBeVisible();
+    await expect(gitBtn).toBeHidden();
+    await page.locator('.regbtns[data-reg="proj-plain"]').screenshot({ path: path.join(require('os').tmpdir(), 'canon-d538-card.png') });
+    await plainBtn.click();
+    await expect(page.locator('body')).toContainText('Track changes in “proj-plain”?');
+    await expect(page.locator('body')).toContainText('iCloud Drive');
+    expect(posts.length).toBe(0);
+    await page.getByRole('button', { name: 'Track changes', exact: true }).last().click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0]).toEqual({ pid: 'proj-plain', body: { confirm: true } });
+  });
+});
+
