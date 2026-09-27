@@ -177,7 +177,8 @@
   .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
   .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
   /* t-e69b: rows follow the t-f139 mockup — dot | id + title | agent code, state line below */
-  .ag-label{display:flex;justify-content:space-between;align-items:center;padding-right:18px;border-top:1px solid var(--border-muted);margin-top:8px;padding-top:14px}
+  .ag-label{display:flex;justify-content:space-between;align-items:baseline;padding-right:18px;border-top:1px solid var(--border-muted);margin-top:8px;padding-top:14px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--text-body)}
+  .ag-label span+span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted)}
   .ag-empty{font-size:12px;color:var(--text-muted);padding:4px 8px}
   .ag-proj{display:flex;gap:6px;align-items:baseline;font-size:11.5px;color:var(--text-muted);padding:8px 8px 4px;white-space:nowrap;overflow:hidden}
   .ag-proj b{color:var(--text-body);font-weight:600;overflow:hidden;text-overflow:ellipsis}
@@ -185,7 +186,7 @@
   .ag-row:hover{background:var(--border-muted)}
   .ag-row .sdot{width:8px;height:8px;margin-top:6px}
   .ag-row .ag-t1{font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ag-row .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;color:var(--text-muted);margin-right:5px}
+  .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;color:var(--text-muted);margin-right:5px}
   .ag-row .ag-none{color:var(--text-muted)}
   .ag-row .ag-a{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:10.5px;color:var(--text-dim);align-self:center}
   .ag-row .ag-s{grid-column:2/-1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -195,17 +196,18 @@
   @media (prefers-reduced-motion:reduce){.ag-row.st-needs-you .sdot{animation:none}}
   .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
   /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
-  #view-admin .sessions{width:max-content;min-width:100%;max-width:calc(100vw - 300px);margin-bottom:16px}
+  #view-admin .sessions{margin-bottom:16px}
   .ad-table-wrap{overflow-x:auto}
   .ad-table{width:100%;border-collapse:collapse;font-size:12.5px}
   .ad-table th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);text-align:left;font-weight:600;padding:6px 8px}
   .ad-table td{padding:7px 8px;border-top:1px solid var(--border-muted);vertical-align:middle;white-space:nowrap;color:var(--text-body)}
-  .ad-table td.tk{max-width:260px;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
-  .ad-table td.tk .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;color:var(--text-muted);margin-right:5px}
-  .ad-table td.mono{font-family:ui-monospace,monospace;font-size:11px;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis}
-  .ad-table td.num{font-variant-numeric:tabular-nums}
-  .ad-table .stcell{display:flex;align-items:center;gap:6px;font-weight:600;white-space:normal;min-width:90px;max-width:150px}
-  .ad-table td.agent{max-width:110px;overflow:hidden;text-overflow:ellipsis}
+  /* t-e69b: fits the 620px Admin column — ticket, project, agent and directory share one Session cell */
+  .ad-table td.sess{width:100%;max-width:0;white-space:nowrap}
+  .ad-table .s1,.ad-table .s2{overflow:hidden;text-overflow:ellipsis}
+  .ad-table .s1{color:var(--text)}
+  .ad-table .s2{font-size:11.5px;color:var(--text-muted)}
+  .ad-table td.reap{font-size:12px}
+  .ad-table .stcell{display:flex;align-items:center;gap:6px;font-weight:600}
   .ad-open{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
   .ad-open:hover{border-color:var(--accent);color:var(--text)}
   .ad-open.answer{border-color:var(--amber);color:var(--amber)}
@@ -891,7 +893,6 @@
   const STATE_LABEL={'needs-you':'needs you','done':'done \u00b7 waiting for your next prompt','working':'working','idle':'idle','running':'running'};
   const STATE_SHORT={'needs-you':'needs you','done':'done','working':'working','idle':'idle','running':'running'};
   const SIGNAL_LABEL={'hook':'Claude Code notification hook','copilot-menu':'Copilot approval menu','activity':'terminal activity only (no question signal)'};
-  const SIGNAL_SHORT={'hook':'hook','copilot-menu':'Copilot menu','activity':'activity'};
   const AGENT_CODE={'claude':'cc','copilot':'cp','pi':'pi'};
   // Session durations: unlike fmtUptime (where 0 means "no value"), 0 s is a real time here.
   function fmtDur(secs){ return secs<60 ? Math.floor(secs)+'s' : fmtUptime(secs); }
@@ -930,7 +931,7 @@
     const proj=(window._projects||[]).find(p=>_projKey(p.path)===_projKey(proot));
     return {
       state, label:STATE_LABEL[state], short:STATE_SHORT[state], since, reaper, reapIn, pid:proj?proj.id:'', projName:proj?proj.name:'',
-      signal:SIGNAL_LABEL[s.signal]||'', signalShort:SIGNAL_SHORT[s.signal]||'',
+      signal:SIGNAL_LABEL[s.signal]||'',
       ticket:TICKET_ID_RE.test(ticket)?ticket:'',
       proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
       agent:String(s.agent||''), cwd:String(s.cwd||''),
@@ -991,17 +992,18 @@
     // Metadata only: the board holds no session token, so there is deliberately
     // no Save & End / Stop here (t-391a) — Answer/Open jumps to the session's tab.
     box.innerHTML='<div class="ad-table-wrap"><table class="ad-table"><thead><tr>'+
-      '<th>State</th><th>Ticket</th><th>Project</th><th>Agent</th><th>Directory</th><th>Since</th><th>Reaper</th><th>Signal</th><th></th></tr></thead><tbody>'+
-      views.map((v,i)=>`<tr class="st st-${v.state}">`+
-        `<td><span class="stcell"><span class="sdot"></span>${esc(v.label)}</span></td>`+
-        (v.ticket ? `<td class="tk" title="${escAttr(ticketTitle(v.pid,v.ticket))}"><span class="ag-id">${esc(v.ticket)}</span>${esc(ticketTitle(v.pid,v.ticket))}</td>` : `<td class="tk">\u2014</td>`)+
-        `<td title="${escAttr(v.proot)}">${esc(v.projName||v.name)}</td>`+
-        `<td class="agent" title="${escAttr(v.agent)}">${esc(v.agent)}</td>`+
-        `<td class="mono" title="${escAttr(v.cwd)}">${esc(v.cwd)}</td>`+
-        `<td class="num">${v.since!==null?esc(fmtDur(v.since)):'\u2014'}</td>`+
-        `<td>${esc(v.reaper||'\u2014')}</td>`+
-        `<td title="${escAttr(v.signal)}">${esc(v.signalShort||'\u2014')}</td>`+
-        `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`).join('')+
+      '<th>State</th><th>Session</th><th>Reaper</th><th></th></tr></thead><tbody>'+
+      views.map((v,i)=>{
+        const title=ticketTitle(v.pid,v.ticket);
+        const dir=!v.cwd || _projKey(v.cwd)===_projKey(v.proot) ? 'main checkout' : (v.cwd.split(/[\\/]/).filter(Boolean).pop()||v.cwd);
+        const since=v.since!==null ? ' \u00b7 '+fmtDur(v.since) : '';
+        return `<tr class="st st-${v.state}">`+
+        `<td title="${escAttr(v.label+(v.signal?' \u00b7 state from: '+v.signal:''))}"><span class="stcell"><span class="sdot"></span>${esc(v.short+since)}</span></td>`+
+        `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:'no ticket'}</div>`+
+        `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd)}">${esc((v.projName||v.name)+' \u00b7 '+(AGENT_CODE[v.agent]||v.agent)+' \u00b7 '+dir)}</div></td>`+
+        `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
+        `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;
+      }).join('')+
       '</tbody></table></div>';
     box.querySelectorAll('.ad-open').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
   }

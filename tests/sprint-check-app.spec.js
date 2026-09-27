@@ -3313,6 +3313,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
+    const docsStubbed = new WeakSet();
     // Shell page with two registered projects; proj-x's board serves THIS repo's real ticket list.
     async function openShell(page, sessions) {
       const projects = [
@@ -3321,6 +3322,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       ];
       await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
       await page.route('**/api/cockpit-sessions', sessionsBody(sessions));
+      // t-e69b: the shell looks up ticket titles; unless a test stubbed them (stubTicketDocs), none exist.
+      // (Later routes win in Playwright, so this default must not be registered over a test's stub.)
+      if (!docsStubbed.has(page)) await page.route(/\/api\/doc\/t-[a-z0-9]{4}\/ticket\.md\?project=/, r => r.fulfill({ status: 404, body: '' }));
       // Neither project is real: serve each board this repo's own data so it loads.
       await page.route(/\/api\/(tickets|handoff|git)(\?|$)/, async r => {
         const u = new URL(r.request().url());
@@ -3455,7 +3459,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => { window.__pwned = 0; });
       await page.locator('#nav-admin').click();
       const box = page.locator('#ad-sessions');
-      await expect(box.locator('th')).toHaveText(['State', 'Ticket', 'Project', 'Agent', 'Directory', 'Since', 'Reaper', 'Signal', '']);
+      // t-e69b: ticket, project, agent and directory share the Session cell; since and signal live in the State cell.
+      await expect(box.locator('th')).toHaveText(['State', 'Session', 'Reaper', '']);
       await expect(box.locator('tbody tr')).toHaveCount(6);
       await expect(page.locator('#ad-tile-agents')).toHaveText('6');
       await expect(page.locator('#ad-tile-needs')).toHaveText('2');
@@ -3471,22 +3476,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(box).not.toContainText('Stop');
       const copilot = box.locator('tbody tr').nth(1);
       await expect(copilot).toContainText('paused · waiting on you');
-      await expect(copilot).toContainText('Copilot menu');
-      await expect(copilot.locator('td').nth(7)).toHaveAttribute('title', 'Copilot approval menu');
+      await expect(copilot.locator('td').nth(0)).toHaveText('needs you · 1m');
+      await expect(copilot.locator('td').nth(0)).toHaveAttribute('title', 'needs you · state from: Copilot approval menu');
+      await expect(copilot.locator('.s2')).toHaveText('proj-x · cp · wt');
       await expect(box.locator('tbody tr').nth(2)).toContainText('auto-save & end in 29m');
       // Old-daemon row: status fallback, no countdown or signal, never "undefined".
       const old = box.locator('tbody tr').nth(4);
       await expect(old).toContainText('running');
-      await expect(old.locator('td').nth(5)).toHaveText('—');
-      await expect(old.locator('td').nth(6)).toHaveText('—');
+      await expect(old.locator('td').nth(0)).toHaveText('running');
+      await expect(old.locator('td').nth(2)).toHaveText('—');
       await expect(box).not.toContainText('undefined');
       // Hostile row: a non-number limit gives no countdown; markup stays text; the quote can't break out of title.
       const hostile = box.locator('tbody tr').nth(5);
-      await expect(hostile.locator('td').nth(6)).toHaveText('—');
-      await expect(hostile.locator('td').nth(4)).toHaveAttribute('title', HOSTILE_CWD);
+      await expect(hostile.locator('td').nth(2)).toHaveText('—');
+      expect(await hostile.locator('.s2').getAttribute('title')).toContain(HOSTILE_CWD);
       await expect(hostile).toContainText('<img src=x onerror=window.__pwned=1>');
       await expect(box.locator('img, b')).toHaveCount(0);
-      await hostile.locator('td').nth(4).hover();
+      await hostile.locator('.s2').hover();
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
       for (const theme of ['dark', 'light']) {
         await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
@@ -3507,7 +3513,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ag-list .ag-row')).toContainText('needs you');
       await expect(page.locator('#ag-list')).not.toContainText('undefined');
       await page.locator('#nav-admin').click();
-      await expect(page.locator('#ad-sessions tbody tr td').nth(6)).toHaveText('paused · waiting on you');
+      await expect(page.locator('#ad-sessions tbody tr td').nth(2)).toHaveText('paused · waiting on you');
       await expect(page.locator('#ad-reaper')).toBeHidden(); // no timeouts from an old daemon
       await page.unroute('**/api/cockpit-sessions');
       await page.route('**/api/cockpit-sessions', sessionsBody([]));
@@ -3524,6 +3530,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // t-e69b: sidebar rows and Admin table follow the t-f139 mockup, with ticket titles looked up once per ticket.
     const HOSTILE_TITLE = 'x" onmouseover="window.__pwned=1" y <img src=x onerror=window.__pwned=1>';
     async function stubTicketDocs(page) {
+      docsStubbed.add(page);
       const hits = {};
       const docs = {
         't-aaa1': '---\nid: t-aaa1\nstatus: in_progress\n---\n# Test scripts leak board servers\n\nbody\n# not the title\n',
@@ -3547,6 +3554,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
       const list = page.locator('#ag-list');
       await expect(page.locator('#ag-label')).toHaveText(/Agents\s*by project/);
+      // The heading reads like the nav links above it (14px, not the small caps label).
+      const [agSize, navSize, agCase] = await page.evaluate(() => [
+        getComputedStyle(document.querySelector('#ag-label span')).fontSize,
+        getComputedStyle(document.querySelector('#nav-admin')).fontSize,
+        getComputedStyle(document.querySelector('#ag-label span')).textTransform]);
+      expect(agSize).toBe(navSize);
+      expect(agCase).toBe('none');
       await expect(list.locator('.ag-proj b')).toHaveText(['proj-a', 'proj-x']);
       await expect(list.locator('.ag-proj span')).toHaveText(['3', '3']);
       const row = id => list.locator('.ag-row', { has: page.locator('.ag-id', { hasText: id }) });
@@ -3601,9 +3615,22 @@ test.describe('cockpit in board (t-ddc8)', () => {
         return [before('.tiles', '.sessions'), before('.sessions', '.admin-settings'), before('.sessions', '.mt-wrap')];
       });
       expect(order).toEqual([true, true, true]);
-      await expect(box.locator('tbody tr').nth(0).locator('td.tk')).toHaveText('t-aaa1Test scripts leak board servers');
-      await expect(box.locator('tbody tr').nth(2).locator('td.tk')).toHaveText('t-bbb2');
-      await expect(box.locator('tbody tr').nth(2).locator('td').nth(5)).toHaveText('0s');       // 0-second state
+      await expect(box.locator('tbody tr').nth(0).locator('.s1')).toHaveText('t-aaa1Test scripts leak board servers');
+      await expect(box.locator('tbody tr').nth(0).locator('.s2')).toHaveText('proj-a · cc · main checkout');
+      await expect(box.locator('tbody tr').nth(2).locator('.s1')).toHaveText('t-bbb2');
+      await expect(box.locator('tbody tr').nth(2).locator('td').nth(0)).toHaveText('working · 0s');   // 0-second state
+      // Project shows the registered name (as in the sidebar), not the folder: this row's root is C:\Users\me\Proj-X.
+      await expect(box.locator('tbody tr').nth(2).locator('.s2')).toHaveText('proj-x · cc · main checkout');
+      // Same width as the other Admin sections, and the table fits without scrolling.
+      await expect(page.locator('#ad-reaper')).toBeVisible();   // its long line is what used to widen the block
+      const fit = await page.evaluate(() => {
+        const w = s => Math.round(document.querySelector('#view-admin ' + s).getBoundingClientRect().width);
+        const wrap = document.querySelector('#ad-sessions .ad-table-wrap');
+        return { sessions: w('.sessions'), tiles: w('.tiles'), settings: w('.admin-settings'), scrolls: wrap.scrollWidth > wrap.clientWidth };
+      });
+      expect(fit.sessions).toBe(fit.tiles);
+      expect(fit.sessions).toBe(fit.settings);
+      expect(fit.scrolls).toBe(false);
       await expect(page.locator('#ad-uptime')).toHaveText('—');                                   // uptime keeps "—" for 0
       const type = await box.evaluate(el => ({
         td: getComputedStyle(el.querySelector('tbody td')).fontSize,
@@ -3612,7 +3639,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }));
       expect(type).toEqual({ td: '12.5px', th: '10.5px', ls: '1.05px' });
       await expect(box.locator('img')).toHaveCount(0);
-      await page.locator('#view-admin').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'admin.png') });
+      await page.locator('#view-admin .sessions').scrollIntoViewIfNeeded();
+      await page.locator('#view-admin .sessions').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'admin.png') });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
