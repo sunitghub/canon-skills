@@ -273,6 +273,17 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		sendJSON(w, loadHandoff(root))
+	case "/api/track-changes":
+		if strings.TrimSpace(r.URL.Query().Get("project")) == "" {
+			sendJSONStatus(w, map[string]any{"ok": false, "error": "project is required"}, http.StatusBadRequest)
+			return
+		}
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, trackChangesState(root))
 	case "/api/git":
 		root, ok := effectiveRoot(r)
 		if !ok {
@@ -502,6 +513,21 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	// t-7485/t-96c3: register a canon skill into the tab's project. eroot is the
 	// registry-resolved root (unknown id already 400'd above); the skill comes
 	// from the client but registerSkill validates it against a fixed allowlist.
+	// t-d538: never the process default root — git init must target an explicitly
+	// chosen, registry-resolved folder (unknown id already 400'd above).
+	if path == "/api/track-changes" {
+		if strings.TrimSpace(r.URL.Query().Get("project")) == "" {
+			sendJSONStatus(w, map[string]any{"ok": false, "error": "project is required"}, http.StatusBadRequest)
+			return
+		}
+		res := trackChanges(eroot, payload["confirm"])
+		status := http.StatusOK
+		if res["ok"] != true {
+			status = http.StatusBadRequest
+		}
+		sendJSONStatus(w, res, status)
+		return
+	}
 	if path == "/api/register-skill" {
 		skill := r.URL.Query().Get("skill")
 		if skill == "" {
@@ -3909,6 +3935,121 @@ func registerSkill(root, skill string) map[string]any {
 		return map[string]any{"ok": false, "unsupported": true, "cmd": hint}
 	}
 	return map[string]any{"ok": true, "skills": registeredSkills(root)}
+}
+
+// t-d538: opt-in "Track changes" — mirror of server.py track_changes (byte-parity on the
+// .gitignore and the JSON shapes). The daemon only trusts git work trees, so a non-git
+// project can't run agents until it tracks changes.
+const trackChangesGitignore = "# Added by canon when this folder started tracking changes.\n" +
+	".DS_Store\nThumbs.db\ndesktop.ini\n" +
+	"node_modules/\n.venv/\n__pycache__/\ndist/\nbuild/\n" +
+	"*.mp4\n*.mov\n*.zip\n"
+
+const trackChangesMessage = "chore: start tracking changes with canon"
+
+// Path-segment prefix → service name. Warn-only: a miss just skips the warning.
+var syncedMarkers = [][2]string{{"mobile documents", "iCloud Drive"}, {"cloudstorage", "cloud storage"},
+	{"dropbox", "Dropbox"}, {"onedrive", "OneDrive"}, {"google drive", "Google Drive"}, {"my drive", "Google Drive"}}
+
+func syncedService(path string) any {
+	for _, seg := range regexp.MustCompile(`[\\/]+`).Split(strings.ToLower(path), -1) {
+		for _, m := range syncedMarkers {
+			if strings.HasPrefix(seg, m[0]) {
+				return m[1]
+			}
+		}
+	}
+	return nil
+}
+
+func insideWorkTree(root string) bool {
+	out, _, _ := gitOutIn(root, 10*time.Second, "rev-parse", "--is-inside-work-tree")
+	return strings.TrimSpace(out) == "true"
+}
+
+func trackChangesState(root string) map[string]any {
+	return map[string]any{"ok": true, "tracking": insideWorkTree(root), "synced": syncedService(root)}
+}
+
+// trackChanges refuses on any existing .git (a broken repo must never be reinitialized and
+// then deleted by the rollback) and inside a parent repo; on failure it removes only what
+// this call created.
+func trackChanges(root string, confirm any) map[string]any {
+	fail := func(msg string) map[string]any { return map[string]any{"ok": false, "error": msg} }
+	if confirm != true {
+		return fail("Track changes needs confirm: true.")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		return fail("git is not installed on this machine.")
+	}
+	gitDir, ignore := filepath.Join(root, ".git"), filepath.Join(root, ".gitignore")
+	if _, err := os.Lstat(gitDir); err == nil {
+		return fail("This folder already has a .git. Fix or remove it yourself; canon will not touch it.")
+	}
+	if insideWorkTree(root) {
+		return fail("This folder is already inside a git repository.")
+	}
+	_, statErr := os.Lstat(ignore)
+	hadIgnore := statErr == nil
+	created, wroteIgnore := false, false
+	git := func(args ...string) (string, error) {
+		out, errOut, err := gitOutIn(root, 20*time.Second, args...)
+		if err != nil {
+			msg := strings.TrimSpace(errOut)
+			if msg == "" {
+				msg = strings.TrimSpace(out)
+			}
+			if msg == "" {
+				msg = "git " + args[0] + " failed"
+			}
+			if len(msg) > 300 {
+				msg = msg[:300]
+			}
+			return "", errors.New(msg)
+		}
+		return strings.TrimSpace(out), nil
+	}
+	rollback := func(err error) map[string]any {
+		if created {
+			_ = os.RemoveAll(gitDir)
+		}
+		if wroteIgnore {
+			_ = os.Remove(ignore)
+		}
+		msg := "Could not start tracking changes: " + err.Error()
+		if len(msg) > 400 {
+			msg = msg[:400]
+		}
+		return fail(msg)
+	}
+	if _, err := git("init", "-q"); err != nil {
+		return rollback(err)
+	}
+	created = true
+	if !hadIgnore {
+		if err := os.WriteFile(ignore, []byte(trackChangesGitignore), 0o644); err != nil {
+			return rollback(err)
+		}
+		wroteIgnore = true
+	}
+	if _, err := git("add", "--", ".gitignore"); err != nil {
+		return rollback(err)
+	}
+	var identity []string
+	if _, _, err := gitOutIn(root, 10*time.Second, "config", "user.name"); err != nil {
+		identity = append(identity, "-c", "user.name=canon")
+	}
+	if _, _, err := gitOutIn(root, 10*time.Second, "config", "user.email"); err != nil {
+		identity = append(identity, "-c", "user.email=canon@localhost")
+	}
+	if _, err := git(append(identity, "commit", "-q", "-m", trackChangesMessage)...); err != nil {
+		return rollback(err)
+	}
+	sha, err := git("rev-parse", "--short", "HEAD")
+	if err != nil {
+		return rollback(err)
+	}
+	return map[string]any{"ok": true, "commit": sha}
 }
 
 func envOr(name, fallback string) string {

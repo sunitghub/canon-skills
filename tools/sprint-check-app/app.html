@@ -1201,9 +1201,11 @@
     }
     #drop-toast.warn  { border-color: rgba(251,191,36,.35); color: #fbbf24; background: rgba(251,191,36,.07); }
     #drop-toast.block { border-color: rgba(248,113,113,.35); color: var(--col-discarded); background: rgba(248,113,113,.07); }
+    #drop-toast.ok    { border-color: rgba(74,222,128,.35); color: var(--col-done); background: rgba(74,222,128,.07); }
     #drop-toast.show  { opacity: 1; pointer-events: auto; }
     #drop-toast.confirm { border-color: rgba(251,191,36,.35); color: #fbbf24; background: rgba(251,191,36,.07); }
     html[data-theme="light"] #drop-toast.warn  { border-color: #d97706; color: #92400e; background: #fef3c7; }
+    html[data-theme="light"] #drop-toast.ok    { border-color: #16a34a; color: #14532d; background: #dcfce7; }
     html[data-theme="light"] #drop-toast.block { border-color: #dc2626; color: #7f1d1d; background: #fee2e2; }
     html[data-theme="light"] #drop-toast.confirm { border-color: #d97706; color: #92400e; background: #fef3c7; }
     .toast-confirm { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: underline; color: inherit; margin-left: 8px; padding: 0; }
@@ -1722,6 +1724,20 @@
       color: var(--text-muted); font-family: var(--mono, monospace); font-size: 13px; padding: 24px;
       text-align: center; pointer-events: none;
     }
+    /* t-d538: the one action offered in place of the terminal for a non-git project */
+    .ck-track-actions {
+      position: absolute; left: 50%; top: calc(50% + 44px); transform: translateX(-50%);
+      display: flex; gap: 8px; z-index: 1;
+    }
+    .ck-track-cancel {
+      height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-muted); font-size: 12.5px; cursor: pointer;
+    }
+    .ck-track-btn {
+      height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--accent, #7c6af7);
+      background: var(--accent, #7c6af7); color: #fff; font-weight: 600; font-size: 12.5px; cursor: pointer;
+    }
+    .ck-track-btn[disabled] { opacity: .5; cursor: default; }
     .ck-preview {
       width: var(--ck-preview-w, 360px); flex-shrink: 0; border-left: 1px solid var(--border);
       background: var(--surface); display: flex; flex-direction: column; position: relative;
@@ -2105,6 +2121,10 @@
       </div>
       <div class="ck-term" id="ck-term">
         <div class="ck-term-msg" id="ck-term-msg"></div>
+        <div class="ck-track-actions" id="ck-track-actions" style="display:none">
+          <button class="ck-track-btn" id="ck-track-btn" type="button">Track changes</button>
+          <button class="ck-track-cancel" id="ck-track-cancel" type="button" style="display:none">Cancel</button>
+        </div>
       </div>
       <div class="ck-preview collapsed" id="ck-preview">
         <div class="ck-preview-resize" id="ck-preview-resize" title="Drag to resize"></div>
@@ -2453,7 +2473,7 @@
   // otherwise showed the shell's launch-time project's worktrees under any tab.
   // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
   // resolveMockupSrc scopes it itself — t-7d83.)
-  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/)/;
+  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|track-changes$)/;
   // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
   // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
   // create/unlock done inside a project tab target THAT project. Deliberately
@@ -2461,7 +2481,7 @@
   // headless-run) and /api/projects (registry add) — those stay unscoped.
   // t-d254: ticket-commit/ (GET plan + POST commit) — unscoped, a tab would classify
   // and COMMIT in the board's default project instead of the tab's (live-caught, VM).
-  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/)/;
+  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/|track-changes$)/;
   const _fetch = window.fetch.bind(window);
   window.fetch = function(input, init){
     try {
@@ -5136,6 +5156,7 @@ function setActiveTab(id) {
   document.getElementById('ck-preview').classList.toggle('collapsed', !cockpitState || cockpitState.previewCollapsed);
   const msgEl = document.getElementById('ck-term-msg');
   if (msgEl) msgEl.textContent = (cockpitState && cockpitState.pendingMessage) || '';
+  syncTrackButton();
 }
 
 // t-f6b6: the board and the daemon page are different origins (different
@@ -6658,8 +6679,71 @@ function renderCockpitTestPlan(content, t) {
 // yet is what "Start sprint stays disabled" means in practice. A Resume
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
+// t-d538: the daemon only runs agents in a git work tree, so a non-git project would fail Start
+// with "cwd not allowed". Offer the opt-in local history instead of mounting the terminal.
+const TRACK_INTRO = "This project doesn't track changes yet. Agents need it to run here and to check their work.";
+function syncTrackButton() {
+  const box = document.getElementById('ck-track-actions');
+  if (!box) return;
+  const tab = cockpitState;
+  box.style.display = (tab && tab.needsTracking) ? '' : 'none';
+  const confirming = !!(tab && tab.trackConfirming);
+  document.getElementById('ck-track-btn').textContent = confirming ? 'Yes, track changes' : 'Track changes';
+  document.getElementById('ck-track-cancel').style.display = confirming ? '' : 'none';
+}
+// Two steps inside the cockpit (the board's confirm toast sits under this overlay): the first
+// click explains, the second writes. The server still requires confirm:true and re-resolves the
+// folder from the registry.
+async function trackChangesFromCockpit() {
+  const tab = cockpitState, t = tab && tab.trackTicket;
+  if (!t) return;
+  const btn = document.getElementById('ck-track-btn');
+  if (!tab.trackConfirming) {
+    let synced = '';
+    try { const r = await fetch('/api/track-changes'); if (r.ok) synced = (await r.json()).synced || ''; } catch {}
+    if (cockpitState !== tab) return;
+    tab.trackConfirming = true;
+    setTermMessage('Create a local history (git) for this folder? Nothing is uploaded, and canon commits only a .gitignore; your files stay as they are.'
+      + (synced ? ' This folder is in ' + synced + ', which can damage that history — consider moving it first.' : ''));
+    syncTrackButton();
+    return;
+  }
+  btn.disabled = true;
+  const res = await postWrite('/api/track-changes', { confirm: true }, 'start tracking changes');
+  btn.disabled = false;
+  tab.trackConfirming = false;
+  if (!res.ok) {
+    if (cockpitState === tab) { setTermMessage("Couldn't start tracking changes: " + res.error); syncTrackButton(); }
+    return;
+  }
+  showToast('✓ This project now tracks changes', 'ok');
+  try {
+    const gd = await (await fetch('/api/git')).json();
+    state.isGitProject = gd?.is_git === true || typeof gd?.total_commits === 'number';
+    if (gd?.root) state.gitRoot = cockpitForwardSlash(gd.root);
+  } catch {}
+  if (cockpitState !== tab) return; // the user switched tabs meanwhile
+  await renderCockpitWorktree(t);
+  await maybeMountCockpitTerminal(t);
+}
+document.getElementById('ck-track-btn')?.addEventListener('click', trackChangesFromCockpit);
+document.getElementById('ck-track-cancel')?.addEventListener('click', () => {
+  if (!cockpitState) return;
+  cockpitState.trackConfirming = false;
+  setTermMessage(TRACK_INTRO);
+  syncTrackButton();
+});
+
 async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
+  cockpitState.needsTracking = !state.isGitProject;
+  cockpitState.trackTicket = t;
+  syncTrackButton();
+  if (cockpitState.needsTracking) {
+    iframe.style.visibility = 'hidden';
+    if (!cockpitState.trackConfirming) setTermMessage(TRACK_INTRO);
+    return;
+  }
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
     setTermMessage(cockpitState.wtPrefPending

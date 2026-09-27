@@ -422,6 +422,8 @@ Register canon in another project:
 ~/.canon/tools/skills.sh add context-check   # optional: context-budget audits
 ```
 
+**A project that isn't a git repo** (common for PM and design folders) registers fine, but agents can't run there until it tracks changes. Its card on the Projects page, and its ticket cockpit, offer **Track changes**: canon creates a local history in that folder (`git init`, a `.gitignore`, and a first commit containing only that `.gitignore`). Nothing is uploaded and your files stay uncommitted. canon refuses if the folder already has a `.git` or sits inside another repository, and warns for iCloud Drive, Dropbox, OneDrive and Google Drive folders, where sync can damage that history.
+
 - **[Full setup guide →](docs/setup.md)** — install, hook wiring, skill lifecycle, reference commands.
 - **[Production incident playbook →](docs/production-incident-playbook.md)** — Surface → Trace → Isolate → Resolve → Harden. The five-stage protocol for when an AI agent misbehaves in production.
 - **[Retrieval architecture playbook →](docs/retrieval-architecture-playbook.md)** — vector RAG or Graph RAG? Four ordered tests, cheapest first. Corpus size appears in none of them.

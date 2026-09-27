@@ -41,6 +41,7 @@ tests=(
   "$ROOT/tests/upkeep-skill-hash-parity.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"
   "$ROOT/tests/sprint-check-ticket-commit.sh"
+  "$ROOT/tests/sprint-check-track-changes.sh"
   "$ROOT/tests/board-origin-guard.sh"
   "$ROOT/tests/sprint-check-worktree-holds.sh"
   "$ROOT/tests/sprint-check-live-docs.sh"

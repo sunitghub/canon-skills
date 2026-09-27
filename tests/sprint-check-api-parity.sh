@@ -987,6 +987,20 @@ assert a==b, f"non-git add differ {a} {b}"
 assert a.get("ok") is True, f"non-git should now register (ok:true), got {a}"
 assert a.get("warning")=="Path is not a git repository!", f"expected git warning, got {a.get('warning')}"
 PY
+# t-d538: GET /api/track-changes answers identically for the registered non-git dir, and both
+# refuse a POST without confirm. The write path is covered by tests/sprint-check-track-changes.sh.
+plain_id="$(python3 -c "import sys,json;print(json.loads(sys.argv[1])['project']['id'])" "$py_err")"
+py_tc="$(curl -s "http://127.0.0.1:$PY_PORT/api/track-changes?project=$plain_id")"
+go_tc="$(curl -s "http://127.0.0.1:$GO_PORT/api/track-changes?project=$plain_id")"
+py_tcp="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$PY_PORT/api/track-changes?project=$plain_id")"
+go_tcp="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$GO_PORT/api/track-changes?project=$plain_id")"
+python3 - "$py_tc" "$go_tc" "$py_tcp" "$go_tcp" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/track-changes mismatch"
+import json, sys
+a,b,c,d=(json.loads(x) for x in sys.argv[1:5])
+assert a==b and a.get("ok") is True and set(a)=={"ok","tracking","synced"} and isinstance(a["tracking"],bool), f"track-changes GET differ {a} {b}"
+assert c==d and c.get("ok") is False, f"track-changes POST (no confirm) differ {c} {d}"
+PY
+[[ ! -e "$WORK/regplain/.git" ]] || fail "sprint-check-api-parity: FAIL — a POST without confirm initialized regplain"
 # deregister regplain from BOTH registries so it doesn't pollute the rest of the suite
 for port in "$PY_PORT" "$GO_PORT"; do
   pid_plain="$(curl -s "http://127.0.0.1:$port/api/projects" | python3 -c "import sys,json;print(next((e['id'] for e in json.load(sys.stdin) if e['path'].endswith('regplain')),''))")"
