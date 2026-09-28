@@ -1386,6 +1386,12 @@ func (s *server) handleAdopt(w http.ResponseWriter, r *http.Request, se *session
 		http.Error(w, "ticket not found in project", http.StatusBadRequest)
 		return
 	}
+	// Only a fresh ticket: an id the agent got wrong must not take over another ticket's
+	// conversation or directory (Save-then-end adopts without asking).
+	if _, err := os.Stat(filepath.Join(ticketDir, ".cockpit-session-id")); err == nil || s.ticketStatusIn(root, body.Ticket) != "open" {
+		http.Error(w, "ticket "+body.Ticket+" is not a new ticket — adopt only the one just created", http.StatusConflict)
+		return
+	}
 	scratchDir := s.sessionStateDir(root, se.ticket)
 	for _, f := range []string{".cockpit-session-id", ".cockpit-copilot-session-id", ".cockpit-agent"} {
 		if b, err := os.ReadFile(filepath.Join(scratchDir, f)); err == nil {

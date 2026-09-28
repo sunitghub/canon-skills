@@ -6245,6 +6245,22 @@ func TestScratchAdopt(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, ".tickets", "t-zz99")); !os.IsNotExist(err) {
 		t.Fatal("a refused adopt created a ticket folder")
 	}
+	// A ticket that isn't new — already started, or already holding a session — is refused untouched.
+	writeOpenTicket(t, root, "t-ip01")
+	os.WriteFile(filepath.Join(root, ".tickets", "t-ip01", "ticket.md"), []byte("---\nid: t-ip01\nstatus: in_progress\n---\n"), 0o644)
+	writeOpenTicket(t, root, "t-ss01")
+	os.WriteFile(filepath.Join(root, ".tickets", "t-ss01", ".cockpit-session-id"), []byte("keep-me\n"), 0o600)
+	for _, id := range []string{"t-ip01", "t-ss01"} {
+		if code, _ := postSession(t, base, st, "adopt", `{"ticket":"`+id+`"}`); code != http.StatusConflict {
+			t.Fatalf("adopt %s: %d, want 409", id, code)
+		}
+		if _, err := os.Stat(filepath.Join(root, ".tickets", id, ".cockpit-adopted")); !os.IsNotExist(err) {
+			t.Fatalf("a refused adopt marked %s adopted", id)
+		}
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, ".tickets", "t-ss01", ".cockpit-session-id")); string(b) != "keep-me\n" {
+		t.Fatalf("a refused adopt overwrote the session id: %q", b)
+	}
 	writeOpenTicket(t, root, "t-cd34")
 	s.mu.Lock()
 	se := s.sessions[st.Session]
