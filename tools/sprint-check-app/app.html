@@ -13,6 +13,8 @@
     html[data-theme="light"] { color-scheme: light; }
     option { background: var(--surface); color: var(--text); }
     :root {
+      /* t-28ec: session-state colours, Herdr's palette (Catppuccin Mocha / Latte) */
+      --st-need: #f38ba8; --st-work: #f9e2af; --st-done: #94e2d5; --st-idle: #a6e3a1; --st-ink: #1e1e2e;
       --bg:             #1b2330;
       --surface:        #232d3c;
       --surface-raised: #2a3547;
@@ -50,6 +52,7 @@
 
     /* ── Light mode overrides ─────────────────── */
     html[data-theme="light"] {
+      --st-need: #d20f39; --st-work: #df8e1d; --st-done: #179299; --st-idle: #40a02b; --st-ink: #fff;
       --bg:             #f2f2f7;
       --surface:        #ffffff;
       --surface-raised: #f7f7fc;
@@ -455,7 +458,8 @@
     .why-result-more { padding: 8px 12px; color: var(--text-muted); font-size: 12px; font-style: italic; }
     .column {
       display: flex; flex-direction: column;
-      min-width: 210px; flex: 1; max-width: 320px;
+      /* t-28ec: equal lanes that share the whole board width (basis 0: content can't skew them) */
+      min-width: 210px; flex: 1 1 0;
       background: var(--surface); border-radius: var(--radius);
       border: 1px solid var(--border); overflow: hidden;
       max-height: 100%;
@@ -496,7 +500,6 @@
 
     /* Discarded column is visually de-emphasized */
     .col-discarded  .column-body   { opacity: .55; }
-    .col-discarded  { max-width: 200px; min-width: 160px; }
 
     /* ── Show more / less ────────────────────────── */
     .col-show-more {
@@ -1490,9 +1493,10 @@
       border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700;
     }
     .ck-state-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-    .ck-state-chip.st-working { --st: var(--col-progress); }
-    .ck-state-chip.st-done, .ck-state-chip.st-running { --st: var(--col-done); }
-    .ck-state-chip.st-needs-you { background: #f4a300; border-color: #f4a300; color: #1a1a1f; animation: pulse 1.4s ease-in-out infinite; }
+    .ck-state-chip.st-working, .ck-state-chip.st-running { --st: var(--st-work); }
+    .ck-state-chip.st-done { --st: var(--st-done); }
+    .ck-state-chip.st-idle::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--st-idle); }
+    .ck-state-chip.st-needs-you { background: var(--st-need); border-color: var(--st-need); color: var(--st-ink); animation: pulse 1.4s ease-in-out infinite; }
     .ck-reaper { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
     /* t-8a2a: session sub-tabs — one pill per open ticket, on the board (visible
        when the overlay is closed) and mirrored in the topbar (visible while a
@@ -1510,7 +1514,7 @@
     .ck-tab-pill.active { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
     .ck-tab-pill-id { font-family: var(--mono, monospace); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ck-tab-pill-needsyou {
-      width: 7px; height: 7px; border-radius: 50%; background: #f4a300; flex-shrink: 0;
+      width: 7px; height: 7px; border-radius: 50%; background: var(--st-need); flex-shrink: 0;
       animation: pulse 1.4s ease-in-out infinite;
     }
     .ck-tab-pill-close {
@@ -1885,8 +1889,24 @@
     .cockpit-session-row .cs-where { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--border); color: var(--text); background: var(--surface-raised); white-space: nowrap; }
     .cockpit-session-row .cs-agent { color: var(--text-muted); }
     .cockpit-session-row .cs-status { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
-    .cockpit-session-row .cs-status.running { background: var(--col-progress); color: var(--badge-fg); }
-    .cockpit-session-row .cs-status.needs-you { background: #f59e0b; color: #0b0f14; }
+    .cockpit-session-row .cs-status { --st: var(--text-muted); background: var(--st); color: var(--badge-fg); }   /* t-2d8e ink on a solid fill */
+    .cockpit-session-row .cs-status.needs-you { --st: var(--st-need); }
+    .cockpit-session-row .cs-status.working, .cockpit-session-row .cs-status.running { --st: var(--st-work); }
+    .cockpit-session-row .cs-status.done { --st: var(--st-done); }
+    .cockpit-session-row .cs-status.idle { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1.5px var(--st-idle); }
+    /* t-28ec: a card with a live session carries its state, Herdr colours */
+    .card-state { --st: var(--text-muted); display: flex; align-items: center; gap: 7px; padding: 5px 10px; font-size: 11.5px; font-weight: 600; color: var(--st); background: color-mix(in srgb, var(--st) 14%, transparent); }
+    .card-state.st-needs-you { --st: var(--st-need); }
+    .card-state.st-working, .card-state.st-running { --st: var(--st-work); }
+    .card-state.st-done { --st: var(--st-done); }
+    .card-state .sdot { width: 8px; height: 8px; border-radius: 50%; background: var(--st); flex-shrink: 0; }
+    .card-state.st-needs-you .sdot { outline: 1.5px solid var(--st-need); outline-offset: 2px; }
+    .card-state.st-idle .sdot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--st-idle); }
+    .card.s-need { border-color: color-mix(in srgb, var(--st-need) 65%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-need) 30%, transparent); }
+    .card-start.answer { background: var(--st-need); color: var(--st-ink); }
+    .card-start.open { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-hover); }
+    .column-needs { font-size: 11px; font-weight: 600; color: var(--st-need); margin-left: auto; margin-right: 6px; }
+    .stat.needs { color: var(--st-need); border-color: color-mix(in srgb, var(--st-need) 50%, transparent); font-weight: 600; }
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */
@@ -1936,6 +1956,9 @@
         <div class="stat">
           <span class="dot" style="color:var(--col-progress)"></span>
           <span id="h-active">—</span> active
+        </div>
+        <div class="stat needs" id="h-needs-stat" style="display:none" title="Sessions in this project waiting on you">
+          <span class="dot"></span><span id="h-needs">0</span> needs you
         </div>
         <div class="stat" id="h-archived-stat" style="display:none;color:var(--text-muted)">
           <span id="h-archived">0</span> archived
@@ -2732,6 +2755,7 @@ function availableDocTypes(t) {
 const state = {
   tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(),
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
+  cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
 };
 
 // ── Data layer ───────────────────────────────────────────────────────────
@@ -3206,6 +3230,15 @@ async function refreshCockpitSessions() {
     const r = await fetch('/api/cockpit-sessions');
     if (r.ok) sessions = await r.json();
   } catch (e) { /* daemon absent → empty panel */ }
+  if (!Array.isArray(sessions)) sessions = [];
+  applyCardSessions(sessions);
+  // t-28ec: inside the Cockpit shell the Agents rail lists every project, so an embedded
+  // board lists only its own sessions. A standalone board keeps the cross-project list
+  // (t-391a) — it has no rail. Unknown root → unfiltered, as before.
+  const ownRoot = normProjectPath(state.gitRoot);
+  if (document.documentElement.classList.contains('canon-proj-embed') && ownRoot) {
+    sessions = sessions.filter(s => normProjectPath(s && s.project_root) === ownRoot);
+  }
   if (!Array.isArray(sessions) || sessions.length === 0) {
     panel.hidden = true;
     panel.innerHTML = '';
@@ -3216,7 +3249,7 @@ async function refreshCockpitSessions() {
     const project = String(s.project_root || '');
     const agent = String(s.agent || '');
     const st = ckRowState(s);
-    const statusCls = st === 'needs-you' ? 'needs-you' : 'running';
+    const statusCls = st;
     // t-19d1: where the session actually runs — "Main checkout", or the worktree's folder — not
     // just the project root (a worktree session used to look like it ran in main).
     const cwd = String(s.cwd || '');
@@ -3235,6 +3268,47 @@ async function refreshCockpitSessions() {
   panel.querySelectorAll('.cockpit-session-row').forEach(row => {
     row.addEventListener('click', () => openSessionRow(row.dataset.ticket, row.dataset.project));
   });
+}
+
+// t-28ec: this project's live sessions mark their board cards. The board re-renders only
+// when a card's state changes; the ages on the strips are refreshed in place every poll.
+function applyCardSessions(sessions) {
+  const root = normProjectPath(state.gitRoot);
+  const rows = new Map();
+  for (const s of sessions) {
+    const id = String((s && s.ticket) || '');
+    if (!root || !COCKPIT_TICKET_ID.test(id) || normProjectPath(s.project_root) !== root) continue;
+    rows.set(id, s);
+  }
+  const key = [...rows].map(([id, r]) => id + ':' + ckRowState(r)).sort().join('|');
+  state.cockpitRows = rows;
+  const needs = [...rows.values()].filter(r => ckRowState(r) === 'needs-you').length;
+  const chip = document.getElementById('h-needs-stat');
+  if (chip) { document.getElementById('h-needs').textContent = needs; chip.style.display = needs ? '' : 'none'; }
+  if (key !== state.cockpitRowsKey) { state.cockpitRowsKey = key; renderBoard(); return; }
+  document.querySelectorAll('#board .card-state[data-id]').forEach(el => {
+    const row = rows.get(el.dataset.id);
+    if (row) el.innerHTML = cardStateInner(row);
+  });
+}
+function ckDur(secs) {
+  secs = Math.max(0, Math.floor(secs));
+  if (secs < 60) return secs + 's';
+  const m = Math.floor(secs / 60);
+  return m < 60 ? m + 'm' : Math.floor(m / 60) + 'h ' + (m % 60) + 'm';
+}
+function cardStateInner(row) {
+  const st = ckRowState(row);
+  const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
+  const since = num(row.state_secs), idle = num(row.idle_secs), limit = num(row.idle_limit_secs);
+  const reap = st !== 'needs-you' && idle !== null && limit !== null ? ` \u00b7 reaps in ${ckDur(limit - idle)}` : '';
+  const label = { 'needs-you': 'Needs you', working: 'Working', idle: 'Idle', done: 'Done', running: 'Running' }[st];
+  const age = since !== null && st !== 'working' && st !== 'running' ? (st === 'needs-you' ? ' \u00b7 ' : ' ') + ckDur(since) : '';
+  return `<span class="sdot"></span>${esc(label + age + (st === 'idle' || st === 'done' ? reap : ''))}`;
+}
+function cardStateHTML(t, row) {
+  const st = ckRowState(row);
+  return `<div class="card-state st-${st}" data-id="${escAttr(t.id)}" title="${escAttr(CK_STATE_LABEL[st] + (CK_SIGNAL_LABEL[row.signal] ? ' \u00b7 state from: ' + CK_SIGNAL_LABEL[row.signal] : ''))}">${cardStateInner(row)}</div>`;
 }
 
 // t-2d2e: a row from another project can't open here (the ticket isn't in this
@@ -3455,9 +3529,11 @@ function renderBoard() {
     emptyEl.textContent = `No tickets match “${state.query}”.`;
   }
   board.innerHTML = COLUMNS.map(col => {
+    const waiting = t => { const r = state.cockpitRows.get(t.id); return !!r && ckRowState(r) === 'needs-you'; };
     const cards = tickets
       .filter(t => effectiveStatus(t) === col.status)
-      .sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+      .sort((a, b) => (col.status === 'in_progress' ? waiting(b) - waiting(a) : 0) || (b.created || '').localeCompare(a.created || ''));
+    const needsHere = col.status === 'in_progress' ? cards.filter(waiting).length : 0;
     const limited = COLLAPSE_STATUSES.has(col.status) && !state.expandedCols.has(col.status);
     const visible = limited ? cards.slice(0, COL_LIMIT) : cards;
     const hidden  = cards.length - visible.length;
@@ -3465,6 +3541,7 @@ function renderBoard() {
       <div class="column ${esc(col.cls)}">
         <div class="column-header">
           <div class="column-title"><div class="col-indicator"></div>${esc(col.label)}</div>
+          ${needsHere ? `<span class="column-needs">${needsHere} needs you</span>` : ''}
           ${cards.length > 0 ? `<span class="column-count">${cards.length}</span>` : ''}
         </div>
         <div class="column-body" data-status="${esc(col.status)}">
@@ -3773,7 +3850,12 @@ function cardHTML(t, idx) {
   // the board has no way to evaluate per-worktree without asking the daemon.
   let startBtn = '';
   const run = worktreeRun(t);
-  if (run) {
+  const live = state.cockpitRows.get(t.id);
+  if (live) {
+    startBtn = ckRowState(live) === 'needs-you'
+      ? `<button class="card-start answer" data-id="${esc(t.id)}" title="Answer — this session is waiting on you">Answer ▸</button>`
+      : `<button class="card-start open" data-id="${esc(t.id)}" title="Open this ticket's live session">Open ▸</button>`;
+  } else if (run) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint — it's in progress in worktree ${escAttr(run.branch)}">▶ Resume</button>`;
   } else if (t.status === 'open') {
     startBtn = `<button class="card-start" data-id="${esc(t.id)}" title="Start this sprint in the cockpit">▶ Start</button>`;
@@ -3781,7 +3863,8 @@ function cardHTML(t, idx) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
   }
   return `
-    <div class="card${t.id === state.selectedId ? ' focused' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
+    <div class="card${t.id === state.selectedId ? ' focused' : ''}${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
+      ${live ? cardStateHTML(t, live) : ''}
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
         <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID — double-click to copy the .tickets/ folder path">Copy</button>
