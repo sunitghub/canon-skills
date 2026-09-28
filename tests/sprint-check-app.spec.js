@@ -8466,7 +8466,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
   });
 });
 
-test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
+test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   // These test the shell page (tools/sprint-check-app/cockpit.html, served at
   // /cockpit by THIS board's own server), not app.html and not the separate
   // cockpit-daemon binary's own same-named cockpit.html served at a daemon addr.
@@ -8876,7 +8876,7 @@ test.describe('canon-cockpit Upkeep (t-7ae6)', () => {
   });
 });
 
-test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
+test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
   const PROJECTS = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-15' }];
   const chk = (id, stage, status, evidence = 'ok', fix = '') => ({ id, stage, status, evidence, fix });
   const GOOD = {
@@ -9062,7 +9062,7 @@ test.describe('canon-cockpit Skill Eval card (t-23d8)', () => {
   });
 });
 
-test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
+test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
   const PROJECTS = [{ id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-15' }];
   const CARDS = ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings', 'skill-eval'];
   async function open(page, width = 1100) {
@@ -9232,7 +9232,7 @@ test.describe('canon-cockpit "?" info popovers (t-576f)', () => {
 // wrote).
 // t-294b: model cards are read-only until Edit; Save/Cancel are explicit. The registry API is
 // stubbed so these tests never write the real (possibly user-local) model-tiers.json.
-test.describe('canon-cockpit Admin > Model Tiers editing (t-294b)', () => {
+test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   const FIXTURE = {
     defaults: { eval: { anthropic: 'm-sonnet', openai: 'o-luna' }, light: { anthropic: 'm-haiku', openai: 'o-luna' } },
     models: {
@@ -9396,7 +9396,7 @@ test.describe('canon-cockpit Admin > Model Tiers editing (t-294b)', () => {
   });
 });
 
-test.describe.serial('canon-cockpit Admin > Model Tiers (t-7e36)', () => {
+test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
   test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the OpenAI-inert banner', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -9695,7 +9695,7 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
   });
 });
 
-test.describe('canon-cockpit Projects card: Track changes (t-d538)', () => {
+test.describe('Canon Cockpit Projects card: Track changes (t-d538)', () => {
   const PROJECTS = [
     { id: 'proj-git', path: '/tmp/proj-git', name: 'proj-git', description: '', added: '2026-09-27' },
     { id: 'proj-plain', path: '/tmp/proj-plain', name: 'proj-plain', description: 'no git here', added: '2026-09-27' },

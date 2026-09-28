@@ -67,8 +67,14 @@ board_cmd() {
     status|sessions)
       local route="/api/cockpit-status"
       [[ "$cmd" == sessions ]] && route="/api/cockpit-sessions"
-      if [[ "$json" -eq 1 ]]; then curl -s --max-time 10 "$base$route"; echo
-      else curl -s --max-time 10 "$base$route?format=text"; fi
+      [[ "$json" -eq 1 ]] || route="$route?format=text"
+      local out
+      # --fail: a board started before this command existed answers 404 here; say so, don't print its error page.
+      if ! out="$(curl -sf --max-time 10 "$base$route")"; then
+        echo "The board on port $port doesn't support 'canon $cmd' (it predates it, or failed) — restart it: close its window, then run canon." >&2
+        exit 1
+      fi
+      printf '%s\n' "${out%$'\n'}"
       ;;
     stop|restart)
       local out

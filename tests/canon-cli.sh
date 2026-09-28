@@ -91,6 +91,28 @@ assert_eq "1" "$code"
 assert_contains "$out" "Canon isn't running on port $PORT"
 assert_eq "Canon isn't running on port $PORT — nothing to stop." "$(run stop)"
 
+# A board that predates these subcommands: /api/version answers, the new routes 404.
+PORT="$(free_port)"
+python3 - "$PORT" <<'PY' >/dev/null 2>&1 &
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/api/version":
+            self.send_response(200); self.end_headers(); self.wfile.write(b'{"version":"0.2.0"}')
+        else:
+            self.send_error(404)
+    def log_message(self, *a): pass
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+pid=$!; disown "$pid" 2>/dev/null || true; PIDS+=("$pid")
+wait_for "http://127.0.0.1:$PORT/api/version" || fail "canon-cli: stale-board stub did not start"
+for c in status sessions; do
+  set +e; out="$(run "$c" 2>&1)"; code=$?; set -e
+  assert_eq "1" "$code"
+  assert_contains "$out" "doesn't support 'canon $c'"
+  [[ "$out" != *"<html"* && "$out" != *"<!DOCTYPE"* ]] || fail "canon-cli: a stale board's error page was printed as output"
+done
+
 texts=()
 for b in "${BACKENDS[@]}"; do
   sd="$WORK/sd-$b"
