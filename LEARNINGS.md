@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-27-2026 21:38
+learnings-sweep last run: 09-28-2026 06:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-28 | [t-47f1](.tickets/t-47f1/learnings.md) | Create side-effect state (dirs, files) only after every refusal check in a request handler — a 409/400 that runs after an early mkdir leaves debris the happy-path tests never see; assert "nothing left behind" on each refusal path. | UNPROMOTED |
 | 2026-09-27 | [t-28ec](.tickets/t-28ec/learnings.md) | A "needs you" surface is only as good as its detector: the UI worked end-to-end in tests with mocked sessions, but the user's first live prompt was a Copilot menu variant the daemon's text match missed. Exercise status UIs against real agent prompts (each harness, each menu variant) before calling them done. | UNPROMOTED |
 | 2026-09-27 | [t-e69b](.tickets/t-e69b/learnings.md) | A layout assertion measured right after the table appeared passed even with the fix reverted: the element that widens the block (Admin's reaper line) loads later from a separate fetch. Wait for every contributor to be present before measuring, and revert-check width/position tests. | UNPROMOTED |
 | 2026-09-27 | [t-824e](.tickets/t-824e/learnings.md) | Adding a fourth tile to a grid tuned for three (`auto-fit, minmax(150px,1fr)` in a 620px column) silently wraps it 3+1 — no test caught it until the reviewer rendered Admin; assert row layout (tile tops equal) when a fixed-width panel gains items. | UNPROMOTED |

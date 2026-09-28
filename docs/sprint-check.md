@@ -179,6 +179,13 @@ sprint agent without leaving the browser — no second terminal.
   which keeps `DECISIONS.md`'s 2026-07-02 "zero Claude Code hooks in a project's
   settings" intact. The hook's callback credential lives in a `0600` curl `-K`
   config file, so it never appears in `ps`.
+- **Scratch sessions (`t-47f1`):** **+ Scratch** on a Projects card (or the **+** on
+  an Agents group) starts the plain agent in that project's main checkout with no
+  ticket, no sprint and no gates, labelled SCRATCH. Its per-session state lives in the
+  daemon's state dir, never in `.tickets/`. One per project for now (several, in
+  their own worktrees, arrive with `t-e162`); End has no save step, and the idle reaper
+  ends a scratch session only when its checkout has no uncommitted changes (a guard
+  for ending with changes arrives with `t-86fe`; promoting to a ticket with `t-f553`).
 - **Why a daemon:** the `sprint-check` board server is ephemeral and stdlib-only,
   and Go's stdlib has no PTY/WebSocket. The daemon is an isolated Go module
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board

@@ -190,6 +190,12 @@
   .ag-label{display:flex;justify-content:space-between;align-items:baseline;padding-right:18px;border-top:1px solid var(--border-muted);margin-top:8px;padding-top:14px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--text-body)}
   .ag-label span+span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted)}
   .ag-empty{font-size:12px;color:var(--text-muted);padding:4px 8px}
+  /* t-47f1: scratch sessions */
+  .scr-tag{font-size:9.5px;font-weight:700;letter-spacing:.08em;border-radius:4px;padding:0 5px;margin-right:6px;color:var(--text-body);border:1px dashed var(--text-muted);vertical-align:1px}
+  .ag-plus{margin-left:auto;border:0;background:transparent;color:var(--text-muted);font-size:15px;line-height:1;cursor:pointer;padding:0 6px;border-radius:5px}
+  .ag-plus:hover,.ag-plus:focus-visible{color:var(--text);background:var(--border-muted)}
+  .scratchbtn{height:40px;padding:0 12px;border-radius:9px;border:1px dashed var(--text-muted);background:transparent;color:var(--text-body);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .scratchbtn:hover{border-color:var(--accent);color:var(--text)}
   .ag-proj{display:flex;gap:6px;align-items:baseline;font-size:11.5px;color:var(--text-muted);padding:8px 8px 4px;white-space:nowrap;overflow:hidden}
   .ag-proj b{color:var(--text-body);font-weight:600;overflow:hidden;text-overflow:ellipsis}
   .ag-row{display:grid;grid-template-columns:12px minmax(0,1fr);column-gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body);width:100%}
@@ -959,6 +965,7 @@
       state, label:STATE_LABEL[state], short:STATE_SHORT[state], since, reaper, reapIn, pid:proj?proj.id:'', projName:proj?proj.name:'',
       signal:SIGNAL_LABEL[s.signal]||'',
       ticket:TICKET_ID_RE.test(ticket)?ticket:'',
+      scratch:SCRATCH_ID_RE.test(ticket)?ticket:'',   // t-47f1: a scratch session (s-xxxx), no ticket
       proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
       agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
     };
@@ -987,15 +994,16 @@
     for(const v of views){ const k=_projKey(v.proot); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); }
     const list=document.getElementById('ag-list');
     list.innerHTML=views.length===0 ? '<div class="ag-empty">No agents running</div>' : [...groups.values()].map(g=>
-      `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span></div>`+g.map(v=>{
+      `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span>${g[0].pid?`<button class="ag-plus" data-scratch="${escAttr(g[0].pid)}" title="New scratch session in ${escAttr(g[0].projName||g[0].name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
         const title=ticketTitle(v.pid,v.ticket);
         return `<button class="ag-row st st-${v.state}" data-i="${views.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
         `<span class="sdot"></span>`+
-        `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:'<span class="ag-none">no ticket</span>'}</span>`+
+        `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?'<span class="scr-tag">SCRATCH</span>Scratch session':'<span class="ag-none">no ticket</span>')}</span>`+
         `<span class="ag-s">${esc(agentLine(v))}</span></button>`;
       }).join('')
     ).join('');
     list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
+    list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     // Projects cards: counts by state.
     for(const p of (window._projects||[])){
       const sel=window.CSS&&CSS.escape?CSS.escape(p.id):p.id;
@@ -1026,7 +1034,7 @@
     for(const v of views){
       if(!v.sid || v.state!=='needs-you' || prev.get(v.sid)==='needs-you') continue;
       try{
-        const n=new Notification((v.ticket||'A session')+' needs you',{
+        const n=new Notification((v.ticket||(v.scratch?'A scratch session':'A session'))+' needs you',{
           body:[ticketTitle(v.pid,v.ticket), v.projName||v.name].filter(Boolean).join(' \u00b7 '),
           tag:'canon-cockpit-'+v.sid,
         });
@@ -1107,7 +1115,7 @@
         const since=v.since!==null ? ' \u00b7 '+fmtDur(v.since) : '';
         return `<tr class="st st-${v.state}">`+
         `<td title="${escAttr(v.label+(v.signal?' \u00b7 state from: '+v.signal:''))}"><span class="stcell"><span class="sdot"></span>${esc(v.short+since)}</span></td>`+
-        `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:'no ticket'}</div>`+
+        `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?'<span class="scr-tag">SCRATCH</span>Scratch session':'no ticket')}</div>`+
         `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir)}</div></td>`+
         `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
         `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;
@@ -1151,6 +1159,20 @@
   // only, sender must be one of our tab iframes, and the ticket id shape is checked
   // on both hops (the board re-checks before openCockpit).
   const TICKET_ID_RE=/^t-[a-z0-9]{4}$/;
+  // t-47f1: scratch sessions — an agent in a project with no ticket. The shell mints the id;
+  // a project with a live scratch session reopens it (one per project until t-e162).
+  const SCRATCH_ID_RE=/^s-[a-z0-9]{4}$/;
+  function newScratchId(){
+    const a='abcdefghijklmnopqrstuvwxyz0123456789', b=new Uint8Array(4);
+    crypto.getRandomValues(b);
+    return 's-'+[...b].map(x=>a[x%36]).join('');
+  }
+  function startScratch(projectId){
+    const proj=(window._projects||[]).find(p=>p.id===projectId);
+    if(!proj) return;
+    const live=lastSessions.map(sessionView).find(v=>v.scratch && _projKey(v.proot)===_projKey(proj.path));
+    openSessionInTab({proot:proj.path, scratch: live ? live.scratch : newScratchId()});
+  }
   const _projKey=p=>String(p||'').replace(/\\/g,'/').replace(/\/+$/,'').toLowerCase();
   window.addEventListener('message',function(e){
     if(e.origin!==location.origin) return;
@@ -1168,9 +1190,12 @@
     const proj=(window._projects||[]).find(p=>_projKey(p.path)===want);
     if(!proj){ toast('Project not registered: '+v.proot); return; }
     openProject(proj.id,proj.name);
-    if(!(typeof v.ticket==='string'&&TICKET_ID_RE.test(v.ticket))) return;
+    let msg=null;
+    if(typeof v.ticket==='string'&&TICKET_ID_RE.test(v.ticket)) msg={source:'canon-cockpit-shell',type:'open-ticket',ticket:v.ticket};
+    else if(typeof v.scratch==='string'&&SCRATCH_ID_RE.test(v.scratch)) msg={source:'canon-cockpit-shell',type:'open-scratch',id:v.scratch};
+    if(!msg) return;
     const ifr=document.getElementById('view-'+proj.id).querySelector('iframe');
-    const send=()=>{ try{ ifr.contentWindow.postMessage({source:'canon-cockpit-shell',type:'open-ticket',ticket:v.ticket}, location.origin); }catch(err){} };
+    const send=()=>{ try{ ifr.contentWindow.postMessage(msg, location.origin); }catch(err){} };
     // A just-created tab's iframe is still loading; its board's listener isn't up yet. A fresh iframe
     // reports readyState 'complete' for its initial about:blank, hence the href check.
     if(ifr.contentDocument&&ifr.contentDocument.readyState==='complete'&&ifr.contentWindow.location.href!=='about:blank') send();
@@ -2155,6 +2180,7 @@
               <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="This folder isn't a git repository — agents can't run here until it tracks changes" style="display:none">Track changes</button>
             </div>
             <div class="actions">
+              <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">+ Scratch</button>
               <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
               <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
             </div>
@@ -2164,6 +2190,7 @@
     // Delegated handlers (no inline onclick with interpolated user data — avoids
     // JS-string/attribute injection from a maliciously-named registered path).
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
+    grid.querySelectorAll('.scratchbtn').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
     grid.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
     grid.querySelectorAll('.trackchg').forEach(b=>b.addEventListener('click',()=>trackChanges(b.dataset.id,b.dataset.name,b)));

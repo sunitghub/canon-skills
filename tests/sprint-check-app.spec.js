@@ -3904,6 +3904,79 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await none.close();
     });
 
+    // t-47f1: scratch sessions — an agent in a project with no ticket.
+    const fakeLivePage = `<!doctype html><html><body><script>
+      window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+    </script></body></html>`;
+    // The embedded board asks /api/cockpit?project=… — stub that form too, so no real daemon is involved.
+    const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }) }));
+    const scratchRow = (id, root) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook' });
+
+    test('scratch (t-47f1): + Scratch opens a labelled scratch view in the project tab; a live scratch is reopened, not duplicated', async ({ page }) => {
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      await openShell(page, []);
+      await stubEmbeddedCockpit(page);
+      // The harness's proj-a isn't a real git checkout; scratch obeys the same Track-changes gate as tickets.
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => { state.isGitProject = true; });
+      await page.locator('.tab.pinned').click();
+      await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
+      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
+      await expect(board.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      const id = await board.locator('#ck-id').textContent();
+      expect(id).toMatch(/^s-[a-z0-9]{4}$/);
+      await expect(board.locator('#ck-scratch-note')).toBeVisible();
+      await expect(board.locator('#ck-scratch-note')).toContainText('SCRATCH · no ticket · no gates');
+      await expect(board.locator('#ck-worktree-section')).toBeHidden();
+      await expect(board.locator('#ck-plan-section')).toBeHidden();
+      await expect(board.locator('#ck-accept-section')).toBeHidden();
+      await expect(board.locator('#ck-status')).toHaveText('scratch');
+      await expect.poll(async () => board.locator('#ck-term iframe').first().getAttribute('src')).toContain(`ticket=${id}`);
+      // End: nothing to save — only End is offered.
+      await board.locator('#ck-end-session').click();
+      await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      await expect(board.locator('#ck-leave-save')).toBeHidden();
+      await expect(board.locator('#ck-leave-skip')).toHaveText('End');
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('A scratch session is still running');
+      await expect(board.locator('#ck-leave-confirm-body')).toContainText('scratch session');
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals'), { recursive: true });
+      await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals', 'scratch-view.png') });
+      await board.locator('#ck-leave-cancel').click();
+      // With a live scratch in proj-a, + Scratch reopens that one.
+      await page.unroute('**/api/cockpit-sessions');
+      await page.route('**/api/cockpit-sessions', sessionsBody([scratchRow('s-q7s1', '/tmp/proj-a')]));
+      await page.evaluate(() => pollSessions());
+      await page.locator('.tab.pinned').click();
+      await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
+      await expect(board.locator('#ck-id')).toHaveText('s-q7s1', { timeout: 8000 });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('scratch (t-47f1): rail and Admin show a SCRATCH row; the group + and a row click open it; hostile ids are inert', async ({ page }) => {
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      await openShell(page, [scratchRow('s-q7s1', 'c:/users/me/proj-x/')]);
+      await stubEmbeddedCockpit(page);
+      await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
+      const row = page.locator('#ag-list .ag-row');
+      await expect(row.locator('.ag-t1')).toHaveText('SCRATCHScratch session');
+      await expect(row.locator('.ag-s')).toHaveText('working · claude');
+      await expect(page.locator('#ag-list .ag-plus')).toHaveCount(1);
+      await row.click();
+      await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
+      await expect(page.frameLocator('#view-proj-x iframe').locator('#ck-id')).toHaveText('s-q7s1', { timeout: 8000 });
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('#ad-sessions .s1')).toHaveText('SCRATCHScratch session');
+      await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals', 'rail-row.png') });
+      // A hostile id in an open-scratch message opens nothing.
+      const before = await page.frameLocator('#view-proj-x iframe').locator('#ck-id').textContent();
+      await page.evaluate(() => document.querySelector('#view-proj-x iframe').contentWindow.postMessage({ source: 'canon-cockpit-shell', type: 'open-scratch', id: 's-../x"><img src=x onerror=window.__pwned=1>' }, location.origin));
+      await page.waitForTimeout(300);
+      await expect(page.frameLocator('#view-proj-x iframe').locator('#ck-id')).toHaveText(before);
+      expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('board Cockpit sessions panel (t-824e): shows the daemon state, never the raw awaiting-input status', async ({ page }) => {
       await stubCockpit(page);
       const rows = stateRows().filter(r => ['s3', 's4', 's5'].includes(r.session)).map(r => ({ ...r, project_root: PROJECT_ROOT }));

@@ -22,6 +22,7 @@ package main
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"embed"
 	"encoding/base64"
@@ -57,6 +58,17 @@ import (
 var webFS embed.FS
 
 var ticketRe = regexp.MustCompile(`^t-[a-z0-9]{4}$`)
+
+// sessionIDRe is what /cockpit and /session/start accept: a ticket id, or a scratch
+// session id (t-47f1: "s-" + 4 lowercase alphanumerics, minted by the board) for an
+// agent started without a ticket. Validated before any file-path or argv use.
+var sessionIDRe = regexp.MustCompile(`^[ts]-[a-z0-9]{4}$`)
+
+// isScratch reports whether a (validated) session id is a scratch session (t-47f1).
+func isScratch(id string) bool { return strings.HasPrefix(id, "s-") }
+
+// scratchRefusal is the 409 body for a second scratch session in one project (t-47f1).
+const scratchRefusal = "One scratch session per project for now — end it or use a ticket (several arrive with t-e162)."
 
 // cwdPrefillRe bounds the ?cwd= query param safe to embed in a JS string
 // literal on the (token-less, loopback-only) /cockpit page — no quotes,
@@ -113,7 +125,7 @@ type session struct {
 	hookDir      string    // daemon-owned ephemeral --settings dir; removed when the session ends
 	cwd          string    // t-cd06: resolved spawn cwd — read-only after spawn(), decides idle-timeout tier
 	projectRoot  string    // t-391a: per-session project root (git toplevel of cwd) — scopes ticket/preview, so one daemon serves many projects (nebula model)
-	ticketsDir   string    // t-ffb9: s.ticketsDirIn(projectRoot), resolved once at spawn() — lets debugf (a session method, no *server access) find .tickets/<ticket>/ without re-walking
+	ticketsDir   string    // t-ffb9: parent of the session's state dir, resolved once at spawn() — .tickets/ for a ticket, the daemon's scratch dir for a scratch session (t-47f1) — lets debugf (no *server access) find it without re-walking
 	agent        string    // t-391a: agent kind ("claude"/"pi"/"copilot") for the /sessions listing
 	started      time.Time // t-391a: spawn time for the /sessions listing
 	// copilotResumeAttempt is true iff this spawn used copilot's --resume=<id>
@@ -275,7 +287,7 @@ func (s *server) handleCockpit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ticket := r.URL.Query().Get("ticket")
-	if !ticketRe.MatchString(ticket) {
+	if !sessionIDRe.MatchString(ticket) {
 		ticket = ""
 	}
 	// embed=1 trims the daemon page's own chrome (brand + ticket input) when the
@@ -399,10 +411,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
-	if !ticketRe.MatchString(body.Ticket) {
+	if !sessionIDRe.MatchString(body.Ticket) {
 		http.Error(w, "invalid ticket id", http.StatusBadRequest)
 		return
 	}
+	scratch := isScratch(body.Ticket)
 	// t-0d67: the agent choice is client-supplied — validate against the fixed
 	// {claude, pi} allowlist here, so the daemon never resolves an arbitrary
 	// program. "" defaults to claude (back-compatible).
@@ -425,9 +438,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// Shape-valid is not enough: with no such ticket in the resolved project,
 	// spawn()'s fixed "sprint start <id>" prompt resolves to nothing, and the
 	// spawned agent goes hunting for context instead of failing clearly (t-842b).
-	if fi, err := os.Stat(filepath.Join(s.ticketsDirIn(projectRoot), body.Ticket)); err != nil || !fi.IsDir() {
-		http.Error(w, "ticket not found in project", http.StatusBadRequest)
-		return
+	if !scratch {
+		if fi, err := os.Stat(filepath.Join(s.ticketsDirIn(projectRoot), body.Ticket)); err != nil || !fi.IsDir() {
+			http.Error(w, "ticket not found in project", http.StatusBadRequest)
+			return
+		}
 	}
 	// t-cd06: the daemon re-validates cwd itself against a live `git worktree
 	// list` — it never trusts whatever cockpit.html relayed, mirroring
@@ -446,6 +461,10 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// For any cwd other than the project's main checkout, require the ticket dir
 	// to be physically present at that cwd. The main checkout already passed the
 	// existence check above.
+	if scratch && !pathsEqual(cwd, projectRoot) {
+		http.Error(w, "scratch sessions run in the project's main checkout for now (worktrees arrive with t-e162)", http.StatusBadRequest)
+		return
+	}
 	if !pathsEqual(cwd, projectRoot) {
 		if fi, serr := os.Stat(filepath.Join(cwd, ".tickets", body.Ticket)); serr != nil || !fi.IsDir() {
 			http.Error(w, "ticket not visible in this worktree (.tickets/ is gitignored) — start from the main checkout", http.StatusBadRequest)
@@ -459,10 +478,23 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// "reattach to a still-live session" behavior. Scoped by projectRoot too,
 	// not ticket ID alone: one daemon serves many projects (t-391a), and
 	// ticket IDs are only unique within one project's .tickets/.
+	if scratch && s.otherLiveScratch(projectRoot, body.Ticket) {
+		http.Error(w, scratchRefusal, http.StatusConflict)
+		return
+	}
 	if existing := s.liveSessionForTicket(projectRoot, body.Ticket); existing != nil {
 		existing.debugf("start attached to live session sid=%s cwd=%s requested=%s", existing.sid, existing.cwd, s.resolveRequestedEcho(body.Cwd))
 		writeJSON(w, map[string]string{"session": existing.sid, "token": existing.token, "previewToken": existing.previewToken, "cwd": existing.cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
 		return
+	}
+	if scratch {
+		// t-47f1: a scratch session has no ticket; its state lives under the daemon's own
+		// state dir (sessionStateDir). Created only now, after every refusal above, so a
+		// refused start leaves nothing behind.
+		if err := os.MkdirAll(s.sessionStateDir(projectRoot, body.Ticket), 0o700); err != nil {
+			http.Error(w, "scratch state unavailable", http.StatusInternalServerError)
+			return
+		}
 	}
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
 	if err != nil {
@@ -511,6 +543,22 @@ func (s *server) resolveRequestedEcho(cwdRequested string) string {
 		return rr
 	}
 	return cwdRequested
+}
+
+// otherLiveScratch reports whether projectRoot already has a live scratch session
+// other than id (t-47f1: one per project until t-e162's worktrees).
+func (s *server) otherLiveScratch(projectRoot, id string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, se := range s.sessions {
+		se.mu.Lock()
+		live := !se.exited && isScratch(se.ticket) && se.ticket != id && pathsEqual(se.projectRoot, projectRoot)
+		se.mu.Unlock()
+		if live {
+			return true
+		}
+	}
+	return false
 }
 
 // liveSessionForTicket returns the first non-exited session bound to ticket
@@ -598,9 +646,15 @@ func agentKind(a string) (string, bool) {
 // host.
 func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, settingsPath string) []string {
 	prompt := "sprint start " + ticket
+	if isScratch(ticket) {
+		prompt = "" // t-47f1: a scratch session is the plain agent — no sprint, no prompt
+	}
 	if kind == "pi" {
 		if resuming {
 			return []string{"-c"}
+		}
+		if prompt == "" {
+			return nil
 		}
 		return []string{prompt}
 	}
@@ -619,9 +673,15 @@ func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, se
 	}
 	switch {
 	case !resuming && kind == "copilot":
-		args = append(args, "--session-id", sessionID, "--interactive", prompt)
+		args = append(args, "--session-id", sessionID)
+		if prompt != "" {
+			args = append(args, "--interactive", prompt)
+		}
 	case !resuming:
-		args = append(args, "--session-id", sessionID, prompt)
+		args = append(args, "--session-id", sessionID)
+		if prompt != "" {
+			args = append(args, prompt)
+		}
 	case kind == "copilot":
 		args = append(args, "--resume="+sessionID)
 	default:
@@ -679,7 +739,7 @@ func agentDisplayModel(m string) string {
 // must never block a spawn that already succeeded.
 // persistAgentKindIn records the last-used agent under an arbitrary project root (t-391a).
 func (s *server) persistAgentKindIn(root, ticket, kind string) {
-	p := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-agent")
+	p := filepath.Join(s.sessionStateDir(root, ticket), ".cockpit-agent")
 	if b, err := os.ReadFile(p); err == nil && strings.TrimSpace(string(b)) == kind {
 		return
 	}
@@ -756,7 +816,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.logSessionStart(ticket, cwd, projectRoot)
 	se := &session{
 		sid: sid, ticket: ticket, token: tok, statusToken: statusTok, previewToken: previewTok,
-		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: s.ticketsDirIn(projectRoot),
+		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: filepath.Dir(s.sessionStateDir(projectRoot, ticket)), // Join(ticketsDir, ticket) = the session's state dir (t-47f1)
 		agent: kind, started: time.Now(), copilotResumeAttempt: copilotResuming,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
 		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
@@ -1096,6 +1156,11 @@ func (s *server) handleSaveAndEnd(w http.ResponseWriter, r *http.Request, se *se
 	}
 	if se.isExited() {
 		http.Error(w, "session has exited", http.StatusGone)
+		return
+	}
+	// t-47f1: a scratch session has no ticket to save state into — End it instead.
+	if isScratch(se.ticket) {
+		http.Error(w, "Scratch sessions have no save step — use End.", http.StatusConflict)
 		return
 	}
 	// t-f91a: never type into a pending copilot menu — that answers it.
@@ -1451,9 +1516,38 @@ func (s *server) reapIdleSessions() {
 		if !idle || blocked || exited || alreadyReaping {
 			continue
 		}
+		if isScratch(se.ticket) {
+			se.debugf("idle reap: scratch inactive for %s (timeout %s)", idleFor.Round(time.Second), idleLimit)
+			go s.endIdleScratch(se)
+			continue
+		}
 		se.debugf("idle reap: inactive for %s (timeout %s) — starting save-and-end", idleFor.Round(time.Second), idleLimit)
 		go s.saveAndEnd(se)
 	}
+}
+
+// endIdleScratch ends an idle scratch session (t-47f1). A scratch session has no ticket
+// to save state into, so there is no save prompt: a clean checkout is simply ended; one
+// with uncommitted changes is kept (never discarded or committed) until t-86fe's end guard.
+func (s *server) endIdleScratch(se *session) {
+	if dirty, err := checkoutDirty(se.cwd); err != nil || dirty {
+		se.mu.Lock()
+		se.reaping = false
+		se.mu.Unlock()
+		se.debugf("idle reap skipped: scratch checkout has uncommitted changes (or git failed: %v) — kept until t-86fe", err)
+		return
+	}
+	se.debugf("idle reap: scratch checkout clean — ending")
+	s.killSession(se)
+}
+
+// checkoutDirty reports whether a git working tree has uncommitted changes (t-47f1).
+func checkoutDirty(dir string) (bool, error) {
+	out, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
+	if err != nil {
+		return false, err
+	}
+	return len(strings.TrimSpace(string(out))) > 0, nil
 }
 
 // saveAndEndIdle mirrors t-f6b6's client-side Save & End, moved server-side
@@ -2542,6 +2636,17 @@ func (s *server) ticketsDir() string {
 	return s.ticketsDirIn(s.cfg.projectRoot)
 }
 
+// sessionStateDir is where a session's per-session state files live (t-47f1): a
+// ticket's own .tickets/<id>/, or — for a scratch session, which has no ticket — a
+// daemon-owned dir keyed by project, so nothing is written into the project.
+func (s *server) sessionStateDir(root, id string) string {
+	if isScratch(id) {
+		sum := sha256.Sum256([]byte(root))
+		return filepath.Join(s.cfg.stateDir, "scratch", hex.EncodeToString(sum[:])[:12], id)
+	}
+	return filepath.Join(s.ticketsDirIn(root), id)
+}
+
 // ticketsDirIn resolves the .tickets dir for an arbitrary project root by
 // walking up from it (t-391a: per-request project scoping — one daemon serves
 // many projects). ticketsDir() is the launch-default wrapper.
@@ -2677,7 +2782,7 @@ func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 // (re)opened from open/closed re-resolves and re-persists, same as a fresh
 // (non-resumed) claude session id.
 func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot string) (string, bool) {
-	cwdPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-cwd")
+	cwdPath := filepath.Join(s.sessionStateDir(projectRoot, ticket), ".cockpit-cwd")
 	keepPersisted := false
 	if s.ticketStatusIn(projectRoot, ticket) == "in_progress" {
 		if b, err := os.ReadFile(cwdPath); err == nil {
@@ -2732,7 +2837,7 @@ func (s *server) logSessionStart(ticket, cwd, projectRoot string) {
 		label = cwd
 	}
 	line := fmt.Sprintf("- %s: sprint start used %s\n", time.Now().UTC().Format("2006-01-02"), label)
-	path := filepath.Join(s.ticketsDirIn(projectRoot), ticket, "cockpit-sessions.md")
+	path := filepath.Join(s.sessionStateDir(projectRoot, ticket), "cockpit-sessions.md")
 
 	if existing, err := os.ReadFile(path); err == nil {
 		lines := strings.Split(strings.TrimRight(string(existing), "\r\n"), "\n")
@@ -2760,7 +2865,7 @@ var ticketStatusRe = regexp.MustCompile(`(?m)^status:\s*(\S+)`)
 // callers treat that the same as "not in_progress" (t-2e7e).
 // ticketStatusIn reads a ticket's status from an arbitrary project root (t-391a).
 func (s *server) ticketStatusIn(root, ticket string) string {
-	b, err := os.ReadFile(filepath.Join(s.ticketsDirIn(root), ticket, "ticket.md"))
+	b, err := os.ReadFile(filepath.Join(s.sessionStateDir(root, ticket), "ticket.md"))
 	if err != nil {
 		return ""
 	}
@@ -2793,7 +2898,7 @@ func (s *server) resolveClaudeSessionID(ticket string) (id string, resuming bool
 // resolveClaudeSessionIDIn is resolveClaudeSessionID scoped to an arbitrary
 // project root (t-391a).
 func (s *server) resolveClaudeSessionIDIn(root, ticket string) (id string, resuming bool) {
-	idPath := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-session-id")
+	idPath := filepath.Join(s.sessionStateDir(root, ticket), ".cockpit-session-id")
 	if s.ticketStatusIn(root, ticket) == "in_progress" {
 		if b, err := os.ReadFile(idPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
@@ -2824,7 +2929,7 @@ func (s *server) resolveClaudeSessionIDIn(root, ticket string) (id string, resum
 // than minting a brand new UUID, since the ticket-scoped file already names
 // one nothing else could be resuming.
 func (s *server) resolveCopilotSessionIDIn(root, ticket string) (id string, resuming bool) {
-	idPath := filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-copilot-session-id")
+	idPath := filepath.Join(s.sessionStateDir(root, ticket), ".cockpit-copilot-session-id")
 	if s.ticketStatusIn(root, ticket) == "in_progress" {
 		if b, err := os.ReadFile(idPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
@@ -2886,7 +2991,7 @@ func (s *server) recoverCopilotResumeIfFailed(se *session, ticket, cwd, projectR
 		if copilotResumeFailed(buf) {
 			se.debugf("resume-check matched dead-resume text — killing and retrying fresh")
 			s.killSession(se) // idempotent even if the process already exited naturally
-			idPath := filepath.Join(s.ticketsDirIn(projectRoot), ticket, ".cockpit-copilot-session-id")
+			idPath := filepath.Join(s.sessionStateDir(projectRoot, ticket), ".cockpit-copilot-session-id")
 			_ = os.WriteFile(idPath, []byte(newUUIDv4()+"\n"), 0o600)
 			return s.spawn(ticket, cwd, projectRoot, "copilot")
 		}
@@ -3124,7 +3229,7 @@ func (s *server) gateModel(ticket string) string {
 
 // gateModelIn is gateModel scoped to an arbitrary project root (t-391a).
 func (s *server) gateModelIn(root, ticket string) string {
-	plan := filepath.Join(s.ticketsDirIn(root), ticket, "plan.md")
+	plan := filepath.Join(s.sessionStateDir(root, ticket), "plan.md")
 	b, err := os.ReadFile(plan)
 	if err != nil {
 		return ""
