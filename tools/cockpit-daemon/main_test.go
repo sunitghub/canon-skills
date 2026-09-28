@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2116,6 +2117,8 @@ func TestIdleReapKillsIdleSessionAfterSaveMarker(t *testing.T) {
 		_, stillThere := s.sessions[out.Session]
 		s.mu.Unlock()
 		if !stillThere {
+			// t-d9e6: reaped on purpose — not offered after a restart.
+			waitSnapshotGone(t, s, "t-ab12")
 			return // reaped — success
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -2219,6 +2222,8 @@ func TestSaveAndEndFileSettleEndsSession(t *testing.T) {
 		_, stillThere := s.sessions[out.Session]
 		s.mu.Unlock()
 		if !stillThere {
+			// t-d9e6: ended on purpose — not offered after a restart.
+			waitSnapshotGone(t, s, "t-ab12")
 			return // ended via file-settle — success
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -6304,6 +6309,7 @@ func TestScratchAdopt(t *testing.T) {
 	if !se.isExited() {
 		t.Fatal("the scratch session must end after adopt")
 	}
+	waitSnapshotGone(t, s, "s-ab12") // t-d9e6: handed to the ticket — not offered after a restart
 	// Starting the adopted (still open) ticket resumes that conversation as its sprint.
 	claudeDir := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", claudeDir)
@@ -6786,4 +6792,16 @@ func TestShutdownForceKeepsSnapshot(t *testing.T) {
 	if got := snapIDs(t, s.snapshotPath()); strings.Join(got, ",") != "t-ab12" {
 		t.Fatalf("a forced shutdown must keep its session for resume: %v", got)
 	}
+}
+
+// waitSnapshotGone fails unless id leaves the live-session snapshot shortly after its
+// session ends (killSession drops the session, then the snapshot entry).
+func waitSnapshotGone(t *testing.T, s *server, id string) {
+	t.Helper()
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if !slices.Contains(snapIDs(t, s.snapshotPath()), id) {
+			return
+		}
+	}
+	t.Fatalf("%s is still in the session snapshot after ending on purpose: %v", id, snapIDs(t, s.snapshotPath()))
 }
