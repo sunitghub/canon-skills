@@ -106,6 +106,7 @@ type server struct {
 
 type session struct {
 	scratchWT *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
+	title     string           // t-f553: a scratch session's user-given title (sanitized)
 	sid       string
 	ticket    string
 	token     string
@@ -898,6 +899,10 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		// conversation, defeating the whole point.
 		claudeSessionID, resuming := s.resolveClaudeSessionIDIn(projectRoot, ticket)
 		args = agentSpawnArgs("claude", ticket, resuming, claudeSessionID, s.gateModelIn(projectRoot, ticket), settingsPath)
+		if resuming && s.adoptedTicket(projectRoot, ticket) && s.ticketStatusIn(projectRoot, ticket) == "open" {
+			// t-f553: the scratch conversation continues — as this ticket's sprint.
+			args = append(args, "sprint start "+ticket)
+		}
 	}
 	bin := resolveSpawnBin(program)
 	c := p.Command(bin, args...)
@@ -968,6 +973,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		IdleSecs      int64  `json:"idle_secs"`       // seconds since terminal output or input
 		IdleLimitSecs int64  `json:"idle_limit_secs"` // the reaper's timeout for this session
 		Signal        string `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
+		Title         string `json:"title,omitempty"` // t-f553: a scratch session's user-given title
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
 	s.mu.Lock()
@@ -981,6 +987,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			Started: se.started.UTC().Format(time.RFC3339),
 		}
 		info.State, info.StateSecs, info.IdleSecs, info.Signal = sessionStateLocked(se, time.Now())
+		info.Title = se.title
 		se.mu.Unlock()
 		if !exited {
 			out = append(out, info)
@@ -1093,6 +1100,12 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handleKill(w, r, se)
 	case "save-and-end":
 		s.handleSaveAndEnd(w, r, se)
+	case "title":
+		s.handleTitle(w, r, se)
+	case "promote":
+		s.handlePromote(w, r, se)
+	case "adopt":
+		s.handleAdopt(w, r, se)
 	case "preview-root":
 		s.handlePreviewRoot(w, r, se)
 	default:
@@ -1246,6 +1259,190 @@ func (s *server) handleKill(w http.ResponseWriter, r *http.Request, se *session)
 // Returns 202 immediately; the client ends on the "saved" SSE frame (or the
 // stream closing on kill). Guarded by se.reaping so it can't double-run or race
 // the idle reaper.
+// ── t-f553: scratch title, promote to a ticket, adopt ────────────────────────
+
+// cleanTitle drops control characters (so a title typed into the agent can never press
+// Enter), trims, and caps it at 80 runes.
+func cleanTitle(t string) string {
+	t = strings.TrimSpace(strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, t))
+	if rs := []rune(t); len(rs) > 80 {
+		t = strings.TrimSpace(string(rs[:80]))
+	}
+	return t
+}
+
+// handleTitle sets a scratch session's title (shown in /sessions and used by promote).
+func (s *server) handleTitle(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isScratch(se.ticket) {
+		http.Error(w, "only a scratch session has an editable title", http.StatusConflict)
+		return
+	}
+	var body struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	se.mu.Lock()
+	se.title = cleanTitle(body.Title)
+	se.mu.Unlock()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// promoteMarker is the line the daemon page watches for after a promote.
+const promoteMarker = "CANON_TICKET:"
+
+// promotePrompt asks the agent to create the ticket itself (the user reviews the
+// `tkt create` command in the agent's own permission prompt) and to report its id.
+func promotePrompt(title string, thenEnd bool) string {
+	name := "a short title you choose"
+	if title != "" {
+		name = `the title "` + strings.ReplaceAll(title, `"`, `'`) + `"`
+	}
+	stop := "Don't start a sprint."
+	if thenEnd {
+		stop = "Don't start a sprint and don't continue working."
+	}
+	return "Turn this scratch session into a canon ticket: run tkt create with " + name +
+		", -t feature, task or bug (whichever fits), -p 2, and -d with a short summary — not the transcript — " +
+		"under the headings ## Problem, ## Findings, ## Changes so far and ## Open questions. " + stop +
+		" Then print the exact line " + promoteMarker + " <the new ticket id> on its own, and stop."
+}
+
+// handlePromote types the promote prompt into a scratch session — never into a pending
+// prompt (needs-you or a Copilot menu), which the keystrokes would answer (t-f91a).
+func (s *server) handlePromote(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isScratch(se.ticket) {
+		http.Error(w, "only a scratch session can be promoted", http.StatusConflict)
+		return
+	}
+	if se.isExited() {
+		http.Error(w, "session has exited", http.StatusGone)
+		return
+	}
+	var body struct {
+		ThenEnd bool `json:"then_end"`
+	}
+	_ = json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body)
+	se.mu.Lock()
+	waiting := se.status == "needs-you" || se.menuPendingLocked()
+	title := se.title
+	se.mu.Unlock()
+	if waiting {
+		http.Error(w, "The agent is waiting on you — answer its prompt first, then promote.", http.StatusConflict)
+		return
+	}
+	if _, err := se.pty.Write([]byte(promotePrompt(title, body.ThenEnd))); err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	time.Sleep(300 * time.Millisecond) // text, then a separate Enter — as saveAndEnd does
+	if _, err := se.pty.Write([]byte("\r")); err != nil {
+		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	se.debugf("promote prompt sent then_end=%v", body.ThenEnd)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleAdopt hands a scratch session to the ticket its agent just created: the ticket
+// gets the conversation id, agent and directory (and a copy of its own folder in a scratch
+// worktree, which is no longer cleaned up), then the scratch session ends. The ticket id
+// comes from the agent's output, so it is validated and must exist in this project.
+func (s *server) handleAdopt(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isScratch(se.ticket) {
+		http.Error(w, "only a scratch session can be adopted", http.StatusConflict)
+		return
+	}
+	var body struct {
+		Ticket string `json:"ticket"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil || !ticketRe.MatchString(body.Ticket) {
+		http.Error(w, "invalid ticket id", http.StatusBadRequest)
+		return
+	}
+	root := se.projectRoot
+	ticketDir := filepath.Join(s.ticketsDirIn(root), body.Ticket)
+	if fi, err := os.Stat(filepath.Join(ticketDir, "ticket.md")); err != nil || !fi.Mode().IsRegular() {
+		http.Error(w, "ticket not found in project", http.StatusBadRequest)
+		return
+	}
+	scratchDir := s.sessionStateDir(root, se.ticket)
+	for _, f := range []string{".cockpit-session-id", ".cockpit-copilot-session-id", ".cockpit-agent"} {
+		if b, err := os.ReadFile(filepath.Join(scratchDir, f)); err == nil {
+			_ = os.WriteFile(filepath.Join(ticketDir, f), b, 0o600)
+		}
+	}
+	se.mu.Lock()
+	cwd := se.cwd
+	se.scratchWT = nil // the worktree now belongs to the ticket — never auto-removed
+	se.mu.Unlock()
+	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-cwd"), []byte(cwd+"\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-adopted"), []byte("from "+se.ticket+"\n"), 0o644)
+	if !pathsEqual(cwd, root) {
+		if err := copyTicketDir(ticketDir, filepath.Join(cwd, ".tickets", body.Ticket)); err != nil {
+			se.debugf("adopt: copying %s into the worktree failed: %v", body.Ticket, err)
+		}
+	}
+	se.debugf("adopted by %s — ending the scratch session", body.Ticket)
+	s.killSession(se)
+	writeJSON(w, map[string]string{"ticket": body.Ticket, "cwd": cwd})
+}
+
+// copyTicketDir copies a ticket folder's regular files and subfolders (never symlinks)
+// into dst, so a ticket adopted in a scratch worktree is visible there (t-e5ff).
+func copyTicketDir(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, p)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		switch {
+		case d.IsDir():
+			return os.MkdirAll(target, 0o755)
+		case d.Type().IsRegular():
+			b, err := os.ReadFile(p)
+			if err != nil {
+				return err
+			}
+			return os.WriteFile(target, b, 0o644)
+		}
+		return nil // symlinks and other types are skipped
+	})
+}
+
+// adoptedTicket reports whether a ticket took over a scratch session (t-f553): its saved
+// conversation id and directory are reused even before the sprint marks it in_progress.
+func (s *server) adoptedTicket(root, ticket string) bool {
+	if !ticketRe.MatchString(ticket) {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(s.ticketsDirIn(root), ticket, ".cockpit-adopted"))
+	return err == nil
+}
+
 func (s *server) handleSaveAndEnd(w http.ResponseWriter, r *http.Request, se *session) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -2889,7 +3086,7 @@ func (s *server) resolveSpawnCwd(cwd, projectRoot string) (string, bool) {
 func (s *server) resolveSpawnCwdForTicket(ticket, requestedCwd, projectRoot string) (string, bool) {
 	cwdPath := filepath.Join(s.sessionStateDir(projectRoot, ticket), ".cockpit-cwd")
 	keepPersisted := false
-	if s.ticketStatusIn(projectRoot, ticket) == "in_progress" {
+	if s.ticketStatusIn(projectRoot, ticket) == "in_progress" || s.adoptedTicket(projectRoot, ticket) {
 		if b, err := os.ReadFile(cwdPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
 				// .cockpit-cwd lives in agent-writable .tickets/, so re-validate it like
@@ -3004,7 +3201,7 @@ func (s *server) resolveClaudeSessionID(ticket string) (id string, resuming bool
 // project root (t-391a).
 func (s *server) resolveClaudeSessionIDIn(root, ticket string) (id string, resuming bool) {
 	idPath := filepath.Join(s.sessionStateDir(root, ticket), ".cockpit-session-id")
-	if s.ticketStatusIn(root, ticket) == "in_progress" {
+	if s.ticketStatusIn(root, ticket) == "in_progress" || s.adoptedTicket(root, ticket) {
 		if b, err := os.ReadFile(idPath); err == nil {
 			if existing := strings.TrimSpace(string(b)); existing != "" {
 				return existing, claudeConversationExists(existing)

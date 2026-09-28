@@ -6119,3 +6119,204 @@ func TestScratchWorktreeRemoveKeepsDirty(t *testing.T) {
 		t.Fatalf("work removed: %v", err)
 	}
 }
+
+// ── t-f553: scratch title, promote, adopt ────────────────────────────────────
+
+type scratchStarted struct{ Session, Token, Cwd string }
+
+func startScratchSession(t *testing.T, base, id, cwd string) scratchStarted {
+	t.Helper()
+	resp := startSessionCwd(t, base, id, cwd, bootTok)
+	var out scratchStarted
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start %s: status %d", id, resp.StatusCode)
+	}
+	return out
+}
+
+func postSession(t *testing.T, base string, st scratchStarted, action, body string) (int, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/"+st.Session+"/"+action, strings.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+st.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, _ := io.ReadAll(r.Body)
+	r.Body.Close()
+	return r.StatusCode, string(b)
+}
+
+func writeOpenTicket(t *testing.T, root, id string) {
+	t.Helper()
+	dir := filepath.Join(root, ".tickets", id)
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "ticket.md"), []byte("---\nid: "+id+"\nstatus: open\n---\n# Promoted\n"), 0o644)
+}
+
+func TestScratchTitle(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base, _ := newTestServerWithAddr(t, bin)
+	st := startScratchSession(t, base, "s-ab12", "")
+	long := strings.Repeat("x", 120)
+	if code, _ := postSession(t, base, st, "title", `{"title":"  Why\r\n does\u0007 it fail `+long+`"}`); code != http.StatusNoContent {
+		t.Fatalf("title: %d", code)
+	}
+	r, _ := http.Get(base + "/sessions")
+	var rows []map[string]any
+	json.NewDecoder(r.Body).Decode(&rows)
+	r.Body.Close()
+	title, _ := rows[0]["title"].(string)
+	if strings.ContainsAny(title, "\r\n\u0007") || len([]rune(title)) > 80 || !strings.HasPrefix(title, "Why does it fail") {
+		t.Fatalf("title not sanitized: %q", title)
+	}
+	tk := startScratchSession(t, base, "t-ab12", "")
+	if code, _ := postSession(t, base, tk, "title", `{"title":"x"}`); code != http.StatusConflict {
+		t.Fatalf("title on a ticket session: %d, want 409", code)
+	}
+}
+
+func TestScratchPromote(t *testing.T) {
+	dir := t.TempDir()
+	recv := filepath.Join(dir, "received.bin")
+	bin := filepath.Join(dir, "fake-agent.sh")
+	os.WriteFile(bin, []byte("#!/bin/sh\nprintf 'READY\\n'\ncat > \""+recv+"\"\n"), 0o755)
+	_, base, s := newTestServerWithAddr(t, bin)
+	st := startScratchSession(t, base, "s-ab12", "")
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	// Waiting on the human → refused, nothing typed.
+	se.setStatus("needs-you")
+	if code, _ := postSession(t, base, st, "promote", `{}`); code != http.StatusConflict {
+		t.Fatalf("promote while needs-you: %d, want 409", code)
+	}
+	se.setStatus("running")
+	se.mu.Lock()
+	savedBuf := se.buf
+	se.agent = "copilot"
+	se.buf, se.cols, se.rows = []byte("Do you want to allow this?\r\n1. Yes\r\n3. No (Esc)\r\n↑/↓ to navigate · enter to\r\nselect · esc to cancel\r\n"), 30, 12
+	se.mu.Unlock()
+	if code, _ := postSession(t, base, st, "promote", `{}`); code != http.StatusConflict {
+		t.Fatalf("promote on a Copilot menu: %d, want 409", code)
+	}
+	se.mu.Lock()
+	se.agent, se.buf = "claude", savedBuf
+	se.mu.Unlock()
+	time.Sleep(300 * time.Millisecond)
+	if b, _ := os.ReadFile(recv); len(b) != 0 {
+		t.Fatalf("a refused promote typed into the agent: %q", b)
+	}
+	postSession(t, base, st, "title", `{"title":"Skill Eval on Windows"}`)
+	if code, _ := postSession(t, base, st, "promote", `{"then_end":true}`); code != http.StatusNoContent {
+		t.Fatalf("promote: %d", code)
+	}
+	var got string
+	for i := 0; i < 30 && !strings.Contains(got, "\n"); i++ {
+		time.Sleep(100 * time.Millisecond)
+		b, _ := os.ReadFile(recv)
+		got = string(b)
+	}
+	for _, want := range []string{"tkt create", `"Skill Eval on Windows"`, "## Problem", "## Open questions", "CANON_TICKET:", "don't continue working"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("promote prompt missing %q:\n%q", want, got)
+		}
+	}
+	tk := startScratchSession(t, base, "t-ab12", "")
+	if code, _ := postSession(t, base, tk, "promote", `{}`); code != http.StatusConflict {
+		t.Fatalf("promote on a ticket session: %d, want 409", code)
+	}
+}
+
+func TestScratchAdopt(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	root := s.cfg.projectRoot
+	st := startScratchSession(t, base, "s-ab12", "")
+	scratchID, _ := os.ReadFile(filepath.Join(s.sessionStateDir(root, "s-ab12"), ".cockpit-session-id"))
+	// Untrusted id from the agent's output: malformed or missing → refused, nothing written.
+	for _, body := range []string{`{"ticket":"../x"}`, `{"ticket":"t-ZZZZ"}`, `{"ticket":"t-zz99"}`} {
+		if code, _ := postSession(t, base, st, "adopt", body); code != http.StatusBadRequest {
+			t.Fatalf("adopt %s: %d, want 400", body, code)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".tickets", "t-zz99")); !os.IsNotExist(err) {
+		t.Fatal("a refused adopt created a ticket folder")
+	}
+	writeOpenTicket(t, root, "t-cd34")
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	if code, body := postSession(t, base, st, "adopt", `{"ticket":"t-cd34"}`); code != http.StatusOK || !strings.Contains(body, `"ticket":"t-cd34"`) {
+		t.Fatalf("adopt: %d %s", code, body)
+	}
+	td := filepath.Join(root, ".tickets", "t-cd34")
+	id, _ := os.ReadFile(filepath.Join(td, ".cockpit-session-id"))
+	if strings.TrimSpace(string(id)) == "" || string(id) != string(scratchID) {
+		t.Fatalf("conversation id not handed over: %q vs %q", id, scratchID)
+	}
+	for _, f := range []string{".cockpit-agent", ".cockpit-cwd", ".cockpit-adopted"} {
+		if _, err := os.Stat(filepath.Join(td, f)); err != nil {
+			t.Errorf("%s missing after adopt: %v", f, err)
+		}
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for !se.isExited() && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !se.isExited() {
+		t.Fatal("the scratch session must end after adopt")
+	}
+	// Starting the adopted (still open) ticket resumes that conversation as its sprint.
+	claudeDir := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", claudeDir)
+	os.MkdirAll(filepath.Join(claudeDir, "projects", "p"), 0o755)
+	os.WriteFile(filepath.Join(claudeDir, "projects", "p", strings.TrimSpace(string(scratchID))+".jsonl"), []byte("{}\n"), 0o644)
+	os.Remove(argvFile)
+	startScratchSession(t, base, "t-cd34", "")
+	argv := waitFile(t, argvFile, 3*time.Second)
+	if !strings.Contains(argv, "ARG:--resume\nARG:"+strings.TrimSpace(string(scratchID))+"\n") || !strings.Contains(argv, "ARG:sprint start t-cd34") {
+		t.Fatalf("adopted ticket must resume the scratch conversation with sprint start:\n%s", argv)
+	}
+}
+
+func TestScratchAdoptKeepsWorktree(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	initGitRepo(t, root)
+	os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".tickets/\n"), 0o644)
+	for _, args := range [][]string{{"add", ".gitignore"}, {"commit", "-q", "-m", "ignore"}} {
+		exec.Command("git", append([]string{"-C", root}, args...)...).Run()
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resolved, _ := filepath.EvalSymlinks(root)
+	t.Cleanup(func() {
+		exec.Command("git", "-C", root, "worktree", "prune").Run()
+		os.RemoveAll(filepath.Join(filepath.Dir(resolved), filepath.Base(resolved)+"-worktrees"))
+	})
+	startScratchSession(t, ts.URL, "s-aa01", root)
+	wtSess := startScratchSession(t, ts.URL, "s-bb02", root)
+	if !strings.Contains(wtSess.Cwd, "-worktrees") {
+		t.Fatalf("expected a worktree, got %q", wtSess.Cwd)
+	}
+	writeOpenTicket(t, root, "t-cd34")
+	if code, body := postSession(t, ts.URL, wtSess, "adopt", `{"ticket":"t-cd34"}`); code != http.StatusOK {
+		t.Fatalf("adopt: %d %s", code, body)
+	}
+	time.Sleep(800 * time.Millisecond) // the scratch session ends; cleanup runs
+	if _, err := os.Stat(filepath.Join(wtSess.Cwd, ".tickets", "t-cd34", "ticket.md")); err != nil {
+		t.Fatalf("the ticket must be copied into the worktree: %v", err)
+	}
+	if exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "refs/heads/scratch/1").Run() != nil {
+		t.Fatal("an adopted scratch worktree's branch must be kept")
+	}
+	cwd, _ := os.ReadFile(filepath.Join(root, ".tickets", "t-cd34", ".cockpit-cwd"))
+	if strings.TrimSpace(string(cwd)) != wtSess.Cwd {
+		t.Fatalf(".cockpit-cwd = %q, want the worktree %q", cwd, wtSess.Cwd)
+	}
+}

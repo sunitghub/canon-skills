@@ -215,6 +215,10 @@
   // per-frame, or a marker that straddles a read boundary never matches.
   var markerBuf = "";
   var PREVIEW_TIMEOUT_MS = 60000;
+  // t-f553: after "Promote to ticket" the agent runs tkt create (the user approves the
+  // command), which can take a while — watch for its CANON_TICKET line for up to 15 min.
+  var promoteDeadline = 0;
+  var PROMOTE_TIMEOUT_MS = 15 * 60000;
   window.addEventListener("message", function(e){
     if(e.source !== window.parent) return;
     if(!LOOPBACK_ORIGIN.test(e.origin)) return;
@@ -269,6 +273,28 @@
           }
         }, PREVIEW_TIMEOUT_MS);
       }
+    } else if(d.type === "promote-request"){
+      // t-f553: the daemon types the prompt — and refuses while the agent waits on you.
+      var refuse = function(reason){ try{ window.parent.postMessage({ source: "canon-cockpit", type: "promote-refused", reason: String(reason || "") }, "*"); }catch(e){} };
+      if(!session){ refuse("Start the agent first."); return; }
+      markerBuf = "";
+      promoteDeadline = Date.now() + PROMOTE_TIMEOUT_MS;
+      fetch("/session/"+session+"/promote", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ then_end: !!d.thenEnd }) })
+        .then(function(r){ if(!r.ok){ promoteDeadline = 0; return r.text().then(refuse); } })
+        .catch(function(){ promoteDeadline = 0; refuse("Couldn't reach the daemon."); });
+    } else if(d.type === "adopt"){
+      if(!session || typeof d.ticket !== "string" || !/^t-[a-z0-9]{4}$/.test(d.ticket)) return;
+      fetch("/session/"+session+"/adopt", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ ticket: d.ticket }) })
+        .then(function(r){ return r.ok ? r.json().then(function(j){ return { ok: true, j: j }; }) : r.text().then(function(t){ return { ok: false, t: t }; }); })
+        .then(function(res){
+          try{ window.parent.postMessage(res.ok
+            ? { source: "canon-cockpit", type: "adopted", ticket: String(res.j.ticket || ""), cwd: String(res.j.cwd || "") }
+            : { source: "canon-cockpit", type: "adopt-failed", reason: String(res.t || "") }, "*"); }catch(e){}
+        })
+        .catch(function(){ try{ window.parent.postMessage({ source: "canon-cockpit", type: "adopt-failed", reason: "Couldn't reach the daemon." }, "*"); }catch(e){} });
+    } else if(d.type === "set-title"){
+      if(!session || typeof d.title !== "string") return;
+      fetch("/session/"+session+"/title", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ title: d.title }) }).catch(function(){});
     } else if(d.type === "daemon-build"){
       showStaleBanner(d.info);
     }
@@ -425,7 +451,8 @@
         if(ev==="out" && data){
           var bytes = Uint8Array.from(atob(data), function(c){return c.charCodeAt(0);});
           term.write(bytes);
-          if(pendingMarker || previewDeadline){
+          if(promoteDeadline && Date.now() > promoteDeadline) promoteDeadline = 0;
+          if(pendingMarker || previewDeadline || promoteDeadline){
             // Accumulate across frames — this frame may end mid-line (the
             // next PTY read continues it). Only the completed lines are
             // matched here; the trailing partial line carries over.
@@ -466,6 +493,14 @@
                 kill().then(function(){
                   try{ window.parent.postMessage({ source: "canon-cockpit", type: "ended" }, "*"); }catch(e){}
                 });
+                break;
+              }
+              // t-f553: the promoted ticket's id. Only a real t-xxxx counts — the echoed
+              // prompt's "<the new ticket id>" placeholder never matches.
+              var mTicket = promoteDeadline && clean.match(/^CANON_TICKET:\s*(t-[a-z0-9]{4})$/);
+              if(mTicket){
+                promoteDeadline = 0;
+                try{ window.parent.postMessage({ source: "canon-cockpit", type: "ticket-promoted", ticket: mTicket[1] }, "*"); }catch(e){}
                 break;
               }
               // Tolerant marker match: the label, optional whitespace (Claude

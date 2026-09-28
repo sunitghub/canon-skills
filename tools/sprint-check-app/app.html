@@ -1505,6 +1505,17 @@
     .ck-scratch-note { display: none; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-hover); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
     .ck-scratch-note b { color: var(--text); letter-spacing: .06em; }
     #cockpit.scratch-mode .ck-scratch-note { display: block; }
+    /* t-f553: editable scratch title, promote */
+    #cockpit.scratch-mode #ck-tc-title { cursor: text; border-radius: 4px; }
+    #cockpit.scratch-mode #ck-tc-title:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+    #cockpit.scratch-mode #ck-tc-title::after { content: " \270E"; opacity: 0; font-weight: 400; color: var(--text-muted); }
+    #cockpit.scratch-mode #ck-tc-title:hover::after { opacity: 1; }
+    .ck-title-input { width: 100%; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--accent); border-radius: 6px; padding: 3px 6px; }
+    .ck-scratch-actions { margin-top: 8px; display: flex; gap: 8px; }
+    .ck-scratch-btn { border: 1px solid var(--accent); background: var(--accent-dim); color: var(--text); border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .ck-scratch-btn:hover { background: var(--accent); color: #fff; }
+    .ck-scratch-btn.ghost { border-color: var(--border-hover); background: transparent; color: var(--text-muted); }
+    .ck-scratch-promoted { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-hover); color: var(--text); }
     /* t-8a2a: session sub-tabs — one pill per open ticket, on the board (visible
        when the overlay is closed) and mirrored in the topbar (visible while a
        session is open), same renderTabStrip() call filling both containers. */
@@ -2109,7 +2120,11 @@
           </div>
           <div class="ck-scratch-note" id="ck-scratch-note">
             <b>SCRATCH</b> · no ticket · no gates<br>
-            <span id="ck-scratch-where"></span> Promote to a ticket arrives with t-f553; End keeps any uncommitted changes in place.
+            <span id="ck-scratch-where"></span> End keeps any uncommitted changes in place.
+            <div class="ck-scratch-actions">
+              <button class="ck-scratch-btn" id="ck-promote" type="button" title="Ask the agent to create a ticket from this session (you approve its tkt create command), then continue this conversation as that ticket">Promote to ticket</button>
+            </div>
+            <div class="ck-scratch-promoted" id="ck-scratch-promoted" hidden></div>
           </div>
           <div class="ck-accordion-section" id="ck-worktree-section">
             <div class="ck-accordion-header" data-accordion="ck-worktree-section">
@@ -3935,6 +3950,83 @@ function findTicketById(id) {
 // ticket behind it. The cockpit treats it as a pseudo-ticket (id s-xxxx, minted by the
 // shell) so tabs, the terminal and End reuse the ticket paths; the rail shows only a label.
 const SCRATCH_ID = /^s-[a-z0-9]{4}$/;
+// t-f553: messages to the active tab's daemon page (which holds the session token).
+function postToActiveTerm(msg) {
+  const iframe = activeIframe();
+  if (!iframe || !iframe.contentWindow || !cockpitState || !cockpitState.addr) return false;
+  iframe.contentWindow.postMessage(Object.assign({ source: 'canon-cockpit' }, msg), 'http://' + cockpitState.addr);
+  return true;
+}
+function startPromote(thenEnd) {
+  cockpitState.promoteThenEnd = !!thenEnd;
+  if (!postToActiveTerm({ type: 'promote-request', thenEnd: !!thenEnd })) { showToast('⚠ Start the agent first', 'warn'); return; }
+  showToast('Asked the agent to create the ticket — approve its tkt create command in the terminal.');
+}
+// Click the scratch title to rename it (Enter saves, Esc cancels); the daemon keeps it so the
+// Agents rail, Admin and notifications show it too.
+function editScratchTitle() {
+  const t = findTicketById(activeTabId);
+  if (!t || !t.scratch) return;
+  const el = document.getElementById('ck-tc-title');
+  if (el.querySelector('input')) return;
+  const input = document.createElement('input');
+  input.className = 'ck-title-input';
+  input.maxLength = 80;
+  input.value = t.title === 'Scratch session' ? '' : t.title;
+  input.placeholder = 'Name this scratch session';
+  el.textContent = '';
+  el.appendChild(input);
+  input.focus();
+  let done = false;
+  const finish = (save) => {
+    if (done) return; done = true;
+    if (save) {
+      const v = input.value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80);
+      t.title = v || 'Scratch session';
+      postToActiveTerm({ type: 'set-title', title: v });
+    }
+    document.getElementById('ck-tc-title').textContent = t.title;
+    document.getElementById('ck-title').textContent = t.title;
+  };
+  // Esc/Enter belong to this field — not the board's own Escape (which closes the cockpit).
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+function postToTab(tab, msg) {
+  if (!tab || !tab.iframeEl || !tab.iframeEl.contentWindow || !tab.addr) return;
+  tab.iframeEl.contentWindow.postMessage(Object.assign({ source: 'canon-cockpit' }, msg), 'http://' + tab.addr);
+}
+// The agent reported the ticket it created: offer to continue this conversation as it.
+function showPromotedChoice(ticket) {
+  const box = document.getElementById('ck-scratch-promoted');
+  box.hidden = false;
+  box.textContent = '';
+  const p = document.createElement('div');
+  p.textContent = ticket + ' created. Continue this conversation as that ticket? The scratch session ends and the ticket\u2019s cockpit resumes it.';
+  const row = document.createElement('div');
+  row.className = 'ck-scratch-actions';
+  const yes = document.createElement('button');
+  yes.className = 'ck-scratch-btn'; yes.type = 'button'; yes.textContent = 'Continue as ' + ticket;
+  yes.addEventListener('click', () => { box.hidden = true; postToTab(cockpitState, { type: 'adopt', ticket }); });
+  const no = document.createElement('button');
+  no.className = 'ck-scratch-btn ghost'; no.type = 'button'; no.textContent = 'Not now';
+  no.addEventListener('click', () => { box.hidden = true; });
+  row.append(yes, no);
+  box.append(p, row);
+}
+// Adopted: the scratch session has ended; open the ticket there (or just report it).
+async function finishAdopt(scratchId, ticket, cwd, thenEnd) {
+  state.adoptCwd = state.adoptCwd || {};
+  state.adoptCwd[ticket] = cwd;
+  unmountTab(scratchId);
+  state.scratch.delete(scratchId);
+  try { await loadData(); render(); } catch { renderBoard(); }
+  if (thenEnd) { showToast('Saved as ' + ticket + ' \u2014 Resume it any time to continue this conversation.'); return; }
+  if (findTicketById(ticket)) openCockpit(ticket);
+}
 function newScratchId() {   // t-e162: the path bar's "+ Scratch" mints its own id
   const a = 'abcdefghijklmnopqrstuvwxyz0123456789', b = new Uint8Array(4);
   crypto.getRandomValues(b);
@@ -5333,6 +5425,16 @@ window.addEventListener('message', (e) => {
     else tab.actualCwd = d.cwd || '';
   } else if (d.type === 'ended' && tab._onEnded) {
     tab._onEnded();
+  } else if (d.type === 'promote-refused') {   // t-f553
+    showToast('⚠ ' + String(d.reason || 'Promote refused').slice(0, 200), 'warn');
+  } else if (d.type === 'ticket-promoted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
+    if (tab.promoteThenEnd) { postToTab(tab, { type: 'adopt', ticket: d.ticket }); }
+    else if (isActive) showPromotedChoice(d.ticket);
+    else tab.promotedTicket = d.ticket;
+  } else if (d.type === 'adopted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
+    finishAdopt(sourceId, d.ticket, String(d.cwd || ''), !!tab.promoteThenEnd);
+  } else if (d.type === 'adopt-failed') {
+    showToast('⚠ ' + String(d.reason || 'Could not continue as the ticket').slice(0, 200), 'warn');
   } else if (d.type === 'save-refused' && tab._onSaveRefused) {
     tab._onSaveRefused();   // t-f91a: copilot is on a menu waiting for the user — nothing was typed
   } else if (d.type === 'preview-file') {
@@ -5546,6 +5648,7 @@ function openLeaveConfirm() {
   document.getElementById('ck-leave-save').style.display = '';
   document.getElementById('ck-leave-skip').style.display = '';
   document.getElementById('ck-leave-skip').textContent = 'End without saving';
+  document.getElementById('ck-leave-save').textContent = 'Save & End';
   document.getElementById('ck-leave-confirm-title').textContent = 'A sprint session is still running';
   document.getElementById('ck-leave-cancel').textContent = 'Cancel';
   document.getElementById('ck-leave-confirm-body').textContent = needsYou
@@ -5555,11 +5658,12 @@ function openLeaveConfirm() {
   document.getElementById('ck-leave-confirm').classList.add('open');
   if (SCRATCH_ID.test(cockpitState.id || '')) {   // t-47f1: nothing to save — End only
     const changed = state.git && Number(state.git.modified) > 0;
-    document.getElementById('ck-leave-save').style.display = 'none';
-    document.getElementById('ck-leave-skip').textContent = 'End';
-    document.getElementById('ck-leave-confirm-title').textContent = 'A scratch session is still running';
-    document.getElementById('ck-leave-confirm-body').textContent = 'End this scratch session? There is no ticket to save state into.'
-      + (changed ? ' The main checkout has uncommitted changes — they stay in place.' : '');
+    // t-f553: offer to keep the work as a ticket before ending
+    document.getElementById('ck-leave-save').textContent = 'Save as ticket, then end';
+    document.getElementById('ck-leave-skip').textContent = 'Just end';
+    document.getElementById('ck-leave-confirm-title').textContent = 'Save this session as a ticket?';
+    document.getElementById('ck-leave-confirm-body').textContent = 'Save as ticket asks the agent to create a ticket from this session (you approve its tkt create command), then ends it — Resume the ticket later to continue the conversation. Just end ends it now.'
+      + (changed ? ' Uncommitted changes stay in place either way.' : '');
     return;
   }
   // t-b999: a closed ticket has nothing to save (t-98d8 force-ends it anyway), so don't offer
@@ -5679,6 +5783,11 @@ async function ckLeaveSaveAndEnd(skipSave) {
   // exact bug this ticket fixes. A second invocation is already handled by
   // the first sequence; there is nothing new to do here.
   if (cockpitState._ending) return;
+  if (!skipSave && SCRATCH_ID.test(cockpitState.id || '')) {   // t-f553: "Save as ticket, then end"
+    closeLeaveConfirm();
+    startPromote(true);
+    return;
+  }
   // t-8efc: the modal's liveness check runs once, at open time. If the
   // automatic idle-reap ends the session while the modal is still sitting
   // open, cockpitState.status already advances to non-live (the daemon's
@@ -6019,6 +6128,11 @@ async function openCockpit(id) {
   // server-side (the daemon owns that, not the board) — only a fresh OPEN
   // start needs an explicit row picked before the terminal is allowed to mount.
   cockpitState.worktreeCwd = (t.status === 'open') ? null : '';
+  if (state.adoptCwd && typeof state.adoptCwd[id] === 'string') {   // t-f553: continue where the scratch session ran
+    const c = state.adoptCwd[id];
+    cockpitState.worktreeCwd = (!c || normProjectPath(c) === normProjectPath(state.gitRoot)) ? '' : c;
+    delete state.adoptCwd[id];
+  }
   renderTabStrip();
   await renderCockpitRail(t);
   await maybeMountCockpitTerminal(t);
@@ -7691,6 +7805,8 @@ async function uploadVisual(ticketId, filename, base64) {
 
   document.getElementById('btn-create').addEventListener('click', open);
   document.getElementById('btn-scratch').addEventListener('click', () => openScratch(newScratchId()));   // t-e162
+  document.getElementById('ck-promote').addEventListener('click', () => startPromote(false));          // t-f553
+  document.getElementById('ck-tc-title').addEventListener('click', editScratchTitle);
   document.getElementById('create-close').addEventListener('click', close);
   document.getElementById('c-cancel').addEventListener('click', close);
   document.getElementById('c-submit').addEventListener('click', submit);

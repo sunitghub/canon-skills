@@ -966,6 +966,7 @@
       signal:SIGNAL_LABEL[s.signal]||'',
       ticket:TICKET_ID_RE.test(ticket)?ticket:'',
       scratch:SCRATCH_ID_RE.test(ticket)?ticket:'',   // t-47f1: a scratch session (s-xxxx), no ticket
+      scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||'').slice(0,80):'',   // t-f553: its user-given title
       proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
       agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
     };
@@ -998,7 +999,7 @@
         const title=ticketTitle(v.pid,v.ticket);
         return `<button class="ag-row st st-${v.state}" data-i="${views.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
         `<span class="sdot"></span>`+
-        `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?'<span class="scr-tag">SCRATCH</span>Scratch session':'<span class="ag-none">no ticket</span>')}</span>`+
+        `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`<span class="scr-tag">SCRATCH</span>${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
         `<span class="ag-s">${esc(agentLine(v))}</span></button>`;
       }).join('')
     ).join('');
@@ -1034,7 +1035,7 @@
     for(const v of views){
       if(!v.sid || v.state!=='needs-you' || prev.get(v.sid)==='needs-you') continue;
       try{
-        const n=new Notification((v.ticket||(v.scratch?'A scratch session':'A session'))+' needs you',{
+        const n=new Notification((v.ticket||(v.scratch?(v.scrTitle||'A scratch session'):'A session'))+' needs you',{
           body:[ticketTitle(v.pid,v.ticket), v.projName||v.name].filter(Boolean).join(' \u00b7 '),
           tag:'canon-cockpit-'+v.sid,
         });
@@ -1115,7 +1116,7 @@
         const since=v.since!==null ? ' \u00b7 '+fmtDur(v.since) : '';
         return `<tr class="st st-${v.state}">`+
         `<td title="${escAttr(v.label+(v.signal?' \u00b7 state from: '+v.signal:''))}"><span class="stcell"><span class="sdot"></span>${esc(v.short+since)}</span></td>`+
-        `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?'<span class="scr-tag">SCRATCH</span>Scratch session':'no ticket')}</div>`+
+        `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`<span class="scr-tag">SCRATCH</span>${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
         `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir)}</div></td>`+
         `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
         `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;

@@ -187,9 +187,17 @@ sprint agent without leaving the browser — no second terminal.
   gives the next one its own worktree on branch `scratch/<n>` at
   `<repo>/../<name>-worktrees/scratch-<n>`, and removes worktree and branch when the
   session ends only if nothing was done in it (no uncommitted changes, no new commits).
-  The board's path bar has a **+ Scratch** too. End has no save step, and the idle
-  reaper ends a scratch session only when its checkout has no uncommitted changes (a
-  guard for ending with changes arrives with `t-86fe`; promoting to a ticket with `t-f553`).
+  The board's path bar has a **+ Scratch** too. Click the scratch title to name it
+  (`t-f553`); the rail, Admin and notifications show that name. **Promote to ticket**
+  asks the agent to run `tkt create` with a summary of the session (you approve the
+  command) and print `CANON_TICKET: <id>`; **Continue as <id>** then hands the
+  conversation, agent and directory to that ticket (a scratch worktree carries over), ends
+  the scratch session and opens the ticket, whose Start resumes the same Claude
+  conversation with `sprint start <id>` (Copilot/Pi keep the directory but start fresh).
+  End asks **Save this session as a ticket?** — Save runs the same promote and ends
+  without opening the ticket; **Just end** ends it. The idle reaper ends a scratch
+  session only when its checkout has no uncommitted changes (a guard for ending with
+  changes arrives with `t-86fe`).
 - **Why a daemon:** the `sprint-check` board server is ephemeral and stdlib-only,
   and Go's stdlib has no PTY/WebSocket. The daemon is an isolated Go module
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board
