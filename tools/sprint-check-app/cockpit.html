@@ -191,10 +191,14 @@
   .ag-label span+span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted)}
   .ag-empty{font-size:12px;color:var(--text-muted);padding:4px 8px}
   /* t-47f1: scratch sessions */
-  .scr-tag{font-size:9.5px;font-weight:700;letter-spacing:.08em;border-radius:4px;padding:0 5px;margin-right:6px;color:var(--text-body);border:1px dashed var(--text-muted);vertical-align:1px}
+  .scr-ico{width:16px;height:16px;flex-shrink:0;vertical-align:-3px;margin-right:5px;color:var(--text-body)}
+  .scratchbtn .scr-ico{margin-right:5px;color:inherit}
+  .st-not-started{--st:var(--text-muted)}
+  .st-not-started .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--text-muted);opacity:.6}
+  .ag-row.st-not-started .ag-s{color:var(--text-muted);font-style:italic}
   .ag-plus{margin-left:auto;border:0;background:transparent;color:var(--text-muted);font-size:15px;line-height:1;cursor:pointer;padding:0 6px;border-radius:5px}
   .ag-plus:hover,.ag-plus:focus-visible{color:var(--text);background:var(--border-muted)}
-  .scratchbtn{height:40px;padding:0 12px;border-radius:9px;border:1px dashed var(--text-muted);background:transparent;color:var(--text-body);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .scratchbtn{display:inline-flex;align-items:center;height:40px;padding:0 12px;border-radius:9px;border:1px dashed var(--text-muted);background:transparent;color:var(--text-body);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
   .scratchbtn:hover{border-color:var(--accent);color:var(--text)}
   .ag-proj{display:flex;gap:6px;align-items:baseline;font-size:11.5px;color:var(--text-muted);padding:8px 8px 4px;white-space:nowrap;overflow:hidden}
   .ag-proj b{color:var(--text-body);font-weight:600;overflow:hidden;text-overflow:ellipsis}
@@ -966,9 +970,24 @@
       signal:SIGNAL_LABEL[s.signal]||'',
       ticket:TICKET_ID_RE.test(ticket)?ticket:'',
       scratch:SCRATCH_ID_RE.test(ticket)?ticket:'',   // t-47f1: a scratch session (s-xxxx), no ticket
+      scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||'').slice(0,80):'',   // t-f553: its user-given title
       proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
       agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
     };
+  }
+  // t-f553: open scratch tabs the daemon doesn't report yet — the agent picker is still up.
+  function notStartedScratch(live){
+    const out=[];
+    for(const [pid,tabs] of boardScratch){
+      const proj=(window._projects||[]).find(p=>p.id===pid);
+      if(!proj) continue;
+      for(const t of tabs) if(!live.has(t.id)) out.push({
+        state:'not-started', label:'not started \u00b7 pick an agent to start it', short:'not started', since:null, reaper:'', reapIn:null,
+        pid, projName:proj.name, signal:'', ticket:'', scratch:t.id, scrTitle:t.title, proot:proj.path,
+        name:String(proj.path).split(/[\\/]/).filter(Boolean).pop()||proj.path, agent:'', cwd:'', sid:'',
+      });
+    }
+    return out;
   }
   // Sidebar state line: short, with the countdown where the reaper applies.
   // Sidebar state line, Herdr-style: state (+ age), the agent, then the reap countdown where it applies.
@@ -977,6 +996,7 @@
     const agent=v.agent ? ' \u00b7 '+v.agent : '';
     const reaps=v.reapIn!==null ? ' \u00b7 reaps in '+fmtDur(v.reapIn) : '';
     if(v.state==='needs-you') return 'needs you'+(since?' \u00b7 '+since:'')+agent;
+    if(v.state==='not-started') return 'not started';
     if(v.state==='idle' || v.state==='done') return v.short+(since?' '+since:'')+agent+reaps;
     return v.short+agent;
   }
@@ -990,19 +1010,21 @@
     pill.textContent=waiting.length+' needs you';
     pill.onclick=()=>{ if(waiting.length) openSessionInTab([...waiting].sort((a,b)=>(b.since||0)-(a.since||0))[0]); };
     // Sidebar Agents, grouped by project.
+    const live=new Set(views.map(v=>v.scratch).filter(Boolean));
+    const rail=views.concat(notStartedScratch(live));
     const groups=new Map();
-    for(const v of views){ const k=_projKey(v.proot); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); }
+    for(const v of rail){ const k=_projKey(v.proot); if(!groups.has(k)) groups.set(k,[]); groups.get(k).push(v); }
     const list=document.getElementById('ag-list');
-    list.innerHTML=views.length===0 ? '<div class="ag-empty">No agents running</div>' : [...groups.values()].map(g=>
+    list.innerHTML=rail.length===0 ? '<div class="ag-empty">No agents running</div>' : [...groups.values()].map(g=>
       `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span>${g[0].pid?`<button class="ag-plus" data-scratch="${escAttr(g[0].pid)}" title="New scratch session in ${escAttr(g[0].projName||g[0].name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
         const title=ticketTitle(v.pid,v.ticket);
-        return `<button class="ag-row st st-${v.state}" data-i="${views.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
+        return `<button class="ag-row st st-${v.state}" data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
         `<span class="sdot"></span>`+
-        `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?'<span class="scr-tag">SCRATCH</span>Scratch session':'<span class="ag-none">no ticket</span>')}</span>`+
+        `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
         `<span class="ag-s">${esc(agentLine(v))}</span></button>`;
       }).join('')
     ).join('');
-    list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
+    list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(rail[+b.dataset.i])));
     list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     // Projects cards: counts by state.
     for(const p of (window._projects||[])){
@@ -1034,7 +1056,7 @@
     for(const v of views){
       if(!v.sid || v.state!=='needs-you' || prev.get(v.sid)==='needs-you') continue;
       try{
-        const n=new Notification((v.ticket||(v.scratch?'A scratch session':'A session'))+' needs you',{
+        const n=new Notification((v.ticket||(v.scratch?(v.scrTitle||'A scratch session'):'A session'))+' needs you',{
           body:[ticketTitle(v.pid,v.ticket), v.projName||v.name].filter(Boolean).join(' \u00b7 '),
           tag:'canon-cockpit-'+v.sid,
         });
@@ -1115,7 +1137,7 @@
         const since=v.since!==null ? ' \u00b7 '+fmtDur(v.since) : '';
         return `<tr class="st st-${v.state}">`+
         `<td title="${escAttr(v.label+(v.signal?' \u00b7 state from: '+v.signal:''))}"><span class="stcell"><span class="sdot"></span>${esc(v.short+since)}</span></td>`+
-        `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?'<span class="scr-tag">SCRATCH</span>Scratch session':'no ticket')}</div>`+
+        `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
         `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir)}</div></td>`+
         `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
         `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;
@@ -1161,6 +1183,11 @@
   const TICKET_ID_RE=/^t-[a-z0-9]{4}$/;
   // t-47f1: scratch sessions — an agent in a project with no ticket. The shell mints the id.
   const SCRATCH_ID_RE=/^s-[a-z0-9]{4}$/;
+  // t-f553: a scribble and a pencil, the scratch session mark on the rail, Admin and the Scratch buttons.
+  const SCRATCH_ICON='<svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Scratch session"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>';
+  // t-f553: scratch tabs each board has open, keyed by project id — shown on the rail before
+  // their agent starts (the daemon only reports running sessions).
+  const boardScratch=new Map();
   function newScratchId(){
     const a='abcdefghijklmnopqrstuvwxyz0123456789', b=new Uint8Array(4);
     crypto.getRandomValues(b);
@@ -1177,12 +1204,23 @@
   window.addEventListener('message',function(e){
     if(e.origin!==location.origin) return;
     const d=e.data;
+    if(d&&d.source==='canon-board'&&d.type==='scratch-tabs'){ onScratchTabs(d,e.source); return; }
     if(!d||d.source!=='canon-board'||d.type!=='open-session') return;
     if(typeof d.ticket!=='string'||!TICKET_ID_RE.test(d.ticket)) return;
     if(typeof d.project_root!=='string') return;
     if(![...document.querySelectorAll('.view iframe')].some(f=>f.contentWindow===e.source)) return;
     openSessionInTab({proot:d.project_root, ticket:d.ticket});
   });
+  // The project is the sender's own tab, never the message's word for it.
+  function onScratchTabs(d,src){
+    const view=[...document.querySelectorAll('.view')].find(v=>{ const f=v.querySelector('iframe'); return f&&f.contentWindow===src; });
+    if(!view||!Array.isArray(d.tabs)) return;
+    const pid=view.id.replace(/^view-/,'');
+    const tabs=d.tabs.filter(t=>t&&typeof t.id==='string'&&SCRATCH_ID_RE.test(t.id)).slice(0,20)
+      .map(t=>({id:t.id, title:typeof t.title==='string'?t.title.slice(0,80):''}));
+    if(tabs.length) boardScratch.set(pid,tabs); else boardScratch.delete(pid);
+    renderSessionSurfaces();
+  }
   // Open a session's project tab, then hand its ticket (if any) to that tab's board.
   // Shared by the board's open-session message and the t-824e session surfaces.
   function openSessionInTab(v){
@@ -2180,7 +2218,7 @@
               <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="This folder isn't a git repository — agents can't run here until it tracks changes" style="display:none">Track changes</button>
             </div>
             <div class="actions">
-              <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">+ Scratch</button>
+              <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
               <button class="dereg" title="Deregister" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#10005;</button>
               <button class="go" title="Open project" data-open="${escAttr(p.id)}" data-name="${escAttr(p.name)}">&#8250;</button>
             </div>

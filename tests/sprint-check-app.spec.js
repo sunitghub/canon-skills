@@ -3910,7 +3910,61 @@ test.describe('cockpit in board (t-ddc8)', () => {
     </script></body></html>`;
     // The embedded board asks /api/cockpit?project=… — stub that form too, so no real daemon is involved.
     const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }) }));
-    const scratchRow = (id, root) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook' });
+    const scratchRow = (id, root, title) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook', ...(title ? { title } : {}) });
+
+    test('scratch title (t-f553): the rail and Admin show a scratch session\u2019s title as text', async ({ page }) => {
+      await openShell(page, [scratchRow('s-q7s1', '/tmp/proj-a', 'Why <b>x</b> fails')]);
+      await page.evaluate(() => pollSessions());
+      await expect(page.locator('#ag-list .ag-row .ag-t1')).toHaveText('Why <b>x</b> fails');
+      await expect(page.locator('#ag-list .ag-row b')).toHaveCount(0);
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('#ad-sessions .s1')).toHaveText('Why <b>x</b> fails');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('scratch (t-f553): an open scratch tab shows on the rail before its agent starts, with the scribble mark', async ({ page }) => {
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      await openShell(page, []);
+      await stubEmbeddedCockpit(page);
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => { state.isGitProject = true; });
+      await page.locator('.tab.pinned').click();
+      const btn = page.locator('.scratchbtn[data-scratch="proj-a"]');
+      await expect(btn).toHaveText('Scratch');
+      await expect(btn.locator('svg.scr-ico')).toHaveCount(1);
+      await btn.click();
+      const board = page.frameLocator('#view-proj-a iframe');
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
+      const id = await board.locator('#ck-id').textContent();
+      const row = page.locator('#ag-list .ag-row');
+      await expect(row).toHaveCount(1);
+      await expect(row).toHaveClass(/st-not-started/);
+      await expect(row.locator('.ag-t1')).toHaveText('Scratch session');
+      await expect(row.locator('.ag-t1 svg.scr-ico')).toHaveCount(1);
+      await expect(row.locator('.ag-s')).toHaveText('not started');
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals'), { recursive: true });
+      await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals', 'rail-not-started.png') });
+      // Once the daemon reports it, the one row is the live one.
+      await page.unroute('**/api/cockpit-sessions');
+      await page.route('**/api/cockpit-sessions', sessionsBody([scratchRow(id, '/tmp/proj-a')]));
+      await page.evaluate(() => pollSessions());
+      await expect(row).toHaveCount(1);
+      await expect(row).toHaveClass(/st-working/);
+      await page.unroute('**/api/cockpit-sessions');
+      await page.route('**/api/cockpit-sessions', sessionsBody([]));
+      await page.evaluate(() => pollSessions());
+      await expect(row).toHaveClass(/st-not-started/);
+      // Closing the tab drops the row.
+      await board.locator('body').evaluate((_, i) => unmountTab(i), id);
+      await expect(page.locator('#ag-list .ag-empty')).toHaveText('No agents running');
+      // Only a tab's own board is heard, and hostile ids are dropped.
+      await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs: [{ id: 's-zz11', title: '' }] }, location.origin));
+      await page.waitForTimeout(300);
+      await expect(page.locator('#ag-list .ag-row')).toHaveCount(0);
+      await board.locator('body').evaluate(() => window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs: [{ id: 's-"><img src=x onerror=window.__pwned=1>', title: '' }] }, location.origin));
+      await page.waitForTimeout(300);
+      await expect(page.locator('#ag-list .ag-row')).toHaveCount(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
 
     test('scratch (t-47f1): + Scratch opens a labelled scratch view in the project tab; t-e162: a second + Scratch is a new session', async ({ page }) => {
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
@@ -3936,10 +3990,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // End: nothing to save — only End is offered.
       await board.locator('#ck-end-session').click();
       await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
-      await expect(board.locator('#ck-leave-save')).toBeHidden();
-      await expect(board.locator('#ck-leave-skip')).toHaveText('End');
-      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('A scratch session is still running');
-      await expect(board.locator('#ck-leave-confirm-body')).toContainText('scratch session');
+      // t-f553: End first offers to save the session as a ticket.
+      await expect(board.locator('#ck-leave-save')).toHaveText('Save as ticket, then end');
+      await expect(board.locator('#ck-leave-skip')).toHaveText('Just end');
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('Save this session as a ticket?');
+      await expect(board.locator('#ck-leave-confirm-body')).toContainText('Save as ticket asks the agent to create a ticket');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals'), { recursive: true });
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals', 'scratch-view.png') });
       await board.locator('#ck-leave-cancel').click();
@@ -3961,14 +4016,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubEmbeddedCockpit(page);
       await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
       const row = page.locator('#ag-list .ag-row');
-      await expect(row.locator('.ag-t1')).toHaveText('SCRATCHScratch session');
+      await expect(row.locator('.ag-t1')).toHaveText('Scratch session');
+      await expect(row.locator('.ag-t1 svg.scr-ico')).toHaveCount(1);   // t-f553: the scribble mark, not a SCRATCH tag
       await expect(row.locator('.ag-s')).toHaveText('working · claude');
       await expect(page.locator('#ag-list .ag-plus')).toHaveCount(1);
       await row.click();
       await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
       await expect(page.frameLocator('#view-proj-x iframe').locator('#ck-id')).toHaveText('s-q7s1', { timeout: 8000 });
       await page.locator('#nav-admin').click();
-      await expect(page.locator('#ad-sessions .s1')).toHaveText('SCRATCHScratch session');
+      await expect(page.locator('#ad-sessions .s1')).toHaveText('Scratch session');
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals', 'rail-row.png') });
       // A hostile id in an open-scratch message opens nothing.
       const before = await page.frameLocator('#view-proj-x iframe').locator('#ck-id').textContent();
@@ -3993,7 +4049,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       const btn = page.locator('#btn-scratch');
-      await expect(btn).toHaveText('+ Scratch');
+      await expect(btn).toHaveText('Scratch');
+      await expect(btn.locator('svg.scr-ico')).toHaveCount(1);   // t-f553
       await expect(btn).toHaveCSS('border-top-style', 'dashed');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e162', 'visuals'), { recursive: true });
       await page.locator('#btn-create').locator('xpath=..').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e162', 'visuals', 'path-bar.png') });
@@ -4013,6 +4070,159 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-scratch-where')).toHaveText('Running in the main checkout.');
       await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-f553: a fake daemon page that answers the promote/adopt protocol like the real one.
+    const promotePage = (ticket, reply) => `<!doctype html><html><body><script>
+      window.__seen = [];
+      window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+      window.addEventListener('message', function(e){
+        var d = e.data; if(!d || d.source !== 'canon-cockpit') return;
+        window.__seen.push(d);
+        window.parent.postMessage({source:'canon-cockpit', type:'__seen', msg:d}, '*');
+        if(d.type === 'promote-request') window.parent.postMessage({source:'canon-cockpit', type:'ticket-promoted', ticket:${JSON.stringify(reply || '')} || ${JSON.stringify(ticket)}}, '*');
+        if(d.type === 'adopt') window.parent.postMessage({source:'canon-cockpit', type:'adopted', ticket:d.ticket, cwd:''}, '*');
+      });
+    </script></body></html>`;
+    const recordSeen = page => page.evaluate(() => { window.__termSeen = []; window.addEventListener('message', e => { if (e.data && e.data.type === '__seen') window.__termSeen.push(e.data.msg); }); });
+
+    test('promote (t-f553): editable title with hover, Promote → Continue as the ticket opens its cockpit', async ({ page }) => {
+      const tid = 't-q9pr';
+      writeTicket(tid, 'open');
+      try {
+        await stubCockpit(page);
+        await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: promotePage(tid) }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await recordSeen(page);
+        await page.locator('#btn-scratch').click();
+        await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+        // Title: hover affordance, click to edit, Enter saves and reaches the daemon page.
+        const title = page.locator('#ck-tc-title');
+        await expect(title).toHaveCSS('cursor', 'text');
+        await title.hover();
+        await expect(title).toHaveCSS('text-decoration-line', 'underline');
+        fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals'), { recursive: true });
+        await page.locator('.ck-ticket-card').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals', 'title-hover.png') });
+        await title.click();
+        await page.locator('.ck-title-input').fill('Skill Eval on Windows');
+        await page.keyboard.press('Enter');
+        await expect(title).toHaveText('Skill Eval on Windows');
+        await expect(page.locator('#ck-title')).toHaveText('Skill Eval on Windows');
+        await expect.poll(() => page.evaluate(() => window.__termSeen.find(m => m.type === 'set-title'))).toMatchObject({ title: 'Skill Eval on Windows' });
+        // Esc cancels an edit.
+        await title.click();
+        await page.locator('.ck-title-input').fill('nope');
+        await page.keyboard.press('Escape');
+        await expect(title).toHaveText('Skill Eval on Windows');
+        // Promote → the agent reports the ticket → Continue → the ticket's cockpit.
+        await page.locator('#ck-promote').click();
+        await expect(page.locator('#ck-scratch-promoted')).toBeVisible();
+        await expect(page.locator('#ck-scratch-promoted')).toContainText(`${tid} created`);
+        expect(await page.evaluate(() => window.__termSeen.find(m => m.type === 'promote-request'))).toMatchObject({ thenEnd: false });
+        await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals', 'promoted.png') });
+        await page.locator('#ck-scratch-promoted button', { hasText: `Continue as ${tid}` }).click();
+        await expect(page.locator('#ck-id')).toHaveText(tid, { timeout: 8000 });
+        await expect(page.locator('#cockpit')).not.toHaveClass(/scratch-mode/);
+        await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(1);
+        await expect(page.locator('#ck-promote')).toBeHidden();   // a ticket session has no Promote
+      } finally {
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      }
+    });
+
+    test('promote (t-f553): a ticket created in a background scratch tab is offered when that tab is shown, and only there', async ({ page }) => {
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: promotePage('t-bg01') }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-scratch').click();
+      const a = await page.locator('#ck-id').textContent();
+      await page.locator('#ck-back').click();
+      await page.locator('#btn-scratch').click();
+      await expect(page.locator('#ck-id')).not.toHaveText(a);
+      // Tab A's agent reports its ticket while tab B is in front.
+      const frameA = await (await page.locator(`#ck-term iframe[data-tab-id="${a}"]`).elementHandle()).contentFrame();
+      await frameA.evaluate(() => window.parent.postMessage({ source: 'canon-cockpit', type: 'ticket-promoted', ticket: 't-bg01' }, '*'));
+      await page.waitForTimeout(300);
+      await expect(page.locator('#ck-scratch-promoted')).toBeHidden();
+      await page.locator('#ck-tab-strip-topbar .ck-tab-pill', { hasText: a }).click();
+      await expect(page.locator('#ck-id')).toHaveText(a);
+      await expect(page.locator('#ck-scratch-promoted')).toBeVisible();
+      await expect(page.locator('#ck-scratch-promoted')).toContainText('Continue as t-bg01');
+      const b = await page.locator('#ck-tab-strip-topbar .ck-tab-pill').filter({ hasNotText: a }).first();
+      await b.click();
+      await expect(page.locator('#ck-id')).not.toHaveText(a);
+      await expect(page.locator('#ck-scratch-promoted')).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('promote (t-f553): the title input stops at 80 characters; a refused promote shows the reason', async ({ page }) => {
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><script>
+        window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+        window.addEventListener('message', function(e){
+          var d = e.data; if(!d || d.source !== 'canon-cockpit') return;
+          if(d.type === 'promote-request') window.parent.postMessage({source:'canon-cockpit', type:'promote-refused', reason:'The agent is waiting on you \\u2014 answer its prompt first, then promote.'}, '*');
+        });
+      </script></body></html>` }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-scratch').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      await page.locator('#ck-tc-title').click();
+      await page.locator('.ck-title-input').pressSequentially('x'.repeat(90));
+      expect((await page.locator('.ck-title-input').inputValue()).length).toBe(80);
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#ck-tc-title')).toHaveText('x'.repeat(80));
+      await page.locator('#ck-promote').click();
+      await expect(page.locator('#drop-toast')).toHaveClass(/show/);
+      await expect(page.locator('#drop-toast')).toHaveText('\u26a0 The agent is waiting on you \u2014 answer its prompt first, then promote.');
+      await expect(page.locator('#ck-scratch-promoted')).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('promote (t-f553): End asks to save as a ticket; Save adopts and ends without opening it; a hostile id is inert', async ({ page }) => {
+      const tid = 't-q9ps';
+      writeTicket(tid, 'open');
+      try {
+        await stubCockpit(page);
+        let reply = '';
+        await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: promotePage(tid, reply) }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await recordSeen(page);
+        await page.locator('#btn-scratch').click();
+        await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+        await page.waitForTimeout(150);
+        await page.locator('#ck-end-session').click();
+        await expect(page.locator('#ck-leave-confirm-title')).toHaveText('Save this session as a ticket?');
+        await expect(page.locator('#ck-leave-save')).toHaveText('Save as ticket, then end');
+        await expect(page.locator('#ck-leave-skip')).toHaveText('Just end');
+        await page.locator('#ck-leave-confirm').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-f553', 'visuals', 'end-dialog.png') });
+        await page.locator('#ck-leave-save').click();
+        await expect(page.locator('#drop-toast')).toContainText(`Saved as ${tid}`, { timeout: 8000 });
+        expect(await page.evaluate(() => window.__termSeen.find(m => m.type === 'promote-request'))).toMatchObject({ thenEnd: true });
+        expect(await page.evaluate(() => window.__termSeen.find(m => m.type === 'adopt'))).toMatchObject({ ticket: tid });
+        await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(0);
+        // A hostile id in ticket-promoted never offers anything.
+        reply = 't-q9ps"><img src=x onerror=window.__pwned=1>';
+        await page.unroute('**/cockpit?**');
+        await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: promotePage(tid, reply) }));
+        await page.evaluate(() => { window.__pwned = 0; });
+        await page.locator('#btn-scratch').click();
+        await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+        await page.waitForTimeout(150);
+        await page.locator('#ck-promote').click();
+        await page.waitForTimeout(400);
+        await expect(page.locator('#ck-scratch-promoted')).toBeHidden();
+        await expect(page.locator('#ck-scratch-promoted img')).toHaveCount(0);
+        expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      } finally {
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
+      }
     });
 
     test('board Cockpit sessions panel (t-824e): shows the daemon state, never the raw awaiting-input status', async ({ page }) => {
@@ -6537,6 +6747,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(modal).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-confirm-body')).toContainText("still running in the daemon but isn't attached to this tab");
       await expect(page.locator('#ck-leave-confirm-body')).toContainText('Start sprint to reattach');
+      await expect(page.locator('#ck-leave-confirm-title')).toHaveText('A sprint session is still running');
       await expect(page.locator('#ck-leave-confirm-body')).toContainText('<img src=x onerror=1>'); // textContent — inert
       await expect(page.locator('#ck-leave-confirm-body img')).toHaveCount(0);
       // A notice, not a choice: the two actions are hidden and the dismiss button reads OK.
@@ -6559,6 +6770,22 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
+  });
+
+  test('End Session on an unattached scratch tab names Start agent, not a sprint (t-f553)', async ({ page }) => {
+    await stubSessions(page, [{ session: 's1', ticket: 's-dt01', project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
+    await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }) }));
+    await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => { state.isGitProject = true; openScratch('s-dt01'); });
+    await expect(page.locator('#ck-id')).toHaveText('s-dt01');
+    await page.locator('#ck-end-session').click();
+    await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+    await expect(page.locator('#ck-leave-confirm-title')).toHaveText('A scratch session is still running');
+    await expect(page.locator('#ck-leave-confirm-body')).toContainText('for this scratch session');
+    await expect(page.locator('#ck-leave-confirm-body')).toContainText('Start agent to reattach');
+    await expect(page.locator('#ck-leave-cancel')).toHaveText('OK');
   });
 
   for (const [label, list, status] of [

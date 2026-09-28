@@ -179,17 +179,30 @@ sprint agent without leaving the browser — no second terminal.
   which keeps `DECISIONS.md`'s 2026-07-02 "zero Claude Code hooks in a project's
   settings" intact. The hook's callback credential lives in a `0600` curl `-K`
   config file, so it never appears in `ps`.
-- **Scratch sessions (`t-47f1`):** **+ Scratch** on a Projects card (or the **+** on
+- **Scratch sessions (`t-47f1`):** **Scratch** on a Projects card (or the **+** on
   an Agents group) starts the plain agent in that project with no
-  ticket, no sprint and no gates, labelled SCRATCH. Its per-session state lives in the
+  ticket, no sprint and no gates, marked with a scribble-and-pencil icon. Its per-session state lives in the
   daemon's state dir, never in `.tickets/`. Several per project (`t-e162`): the first
   runs in the main checkout; while that is busy (any live session there), the daemon
   gives the next one its own worktree on branch `scratch/<n>` at
   `<repo>/../<name>-worktrees/scratch-<n>`, and removes worktree and branch when the
   session ends only if nothing was done in it (no uncommitted changes, no new commits).
-  The board's path bar has a **+ Scratch** too. End has no save step, and the idle
-  reaper ends a scratch session only when its checkout has no uncommitted changes (a
-  guard for ending with changes arrives with `t-86fe`; promoting to a ticket with `t-f553`).
+  The board's path bar has a **Scratch** too. An open scratch tab shows on the Agents
+  rail as *not started* until its agent runs (`t-f553`). Click the scratch title to name it
+  (`t-f553`); the rail, Admin and notifications show that name. **Promote to ticket**
+  asks the agent to run `tkt create` with a summary of the session (you approve the
+  command) and print `CANON_TICKET: <id>`; **Continue as <id>** then hands the
+  conversation, agent and directory to that ticket (a scratch worktree carries over), ends
+  the scratch session and opens the ticket, whose Start resumes the same Claude
+  conversation with `sprint start <id>` (Copilot/Pi keep the directory but start fresh).
+  Adopt takes only a new ticket (status open, no saved session), so a wrong id in the
+  agent's output can't take over another ticket. The resume needs a saved transcript: a
+  daemon launched from inside a Claude Code session inherits `CLAUDECODE`/`CLAUDE_CODE_*`,
+  which stops the spawned `claude` from saving one — start the board from a plain shell.
+  End asks **Save this session as a ticket?** — Save runs the same promote and ends
+  without opening the ticket; **Just end** ends it. The idle reaper ends a scratch
+  session only when its checkout has no uncommitted changes (a guard for ending with
+  changes arrives with `t-86fe`).
 - **Why a daemon:** the `sprint-check` board server is ephemeral and stdlib-only,
   and Go's stdlib has no PTY/WebSocket. The daemon is an isolated Go module
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board
