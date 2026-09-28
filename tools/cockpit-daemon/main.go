@@ -1313,10 +1313,11 @@ func promotePrompt(title string, thenEnd bool) string {
 	if thenEnd {
 		stop = "Don't start a sprint and don't continue working."
 	}
-	return "Turn this scratch session into a canon ticket: run tkt create with " + name +
-		", -t feature, task or bug (whichever fits), -p 2, and -d with a short summary — not the transcript — " +
-		"under the headings ## Problem, ## Findings, ## Changes so far and ## Open questions. " + stop +
-		" Then print the exact line " + promoteMarker + " <the new ticket id> on its own, and stop."
+	return "Turn this scratch session into a canon ticket now, without asking me anything: decide the details " +
+		"yourself from this session so far and run tkt create with " + name +
+		", -t feature, task or bug (whichever fits), -p 2, and -d with a short summary you write — not the transcript — " +
+		"under the headings ## Problem, ## Findings, ## Changes so far and ## Open questions (write 'None yet' where " +
+		"there's nothing). " + stop + " Then print the exact line " + promoteMarker + " <the new ticket id> on its own, and stop."
 }
 
 // handlePromote types the promote prompt into a scratch session — never into a pending
