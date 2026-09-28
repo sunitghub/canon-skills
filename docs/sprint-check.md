@@ -179,15 +179,16 @@ sprint agent without leaving the browser — no second terminal.
   which keeps `DECISIONS.md`'s 2026-07-02 "zero Claude Code hooks in a project's
   settings" intact. The hook's callback credential lives in a `0600` curl `-K`
   config file, so it never appears in `ps`.
-- **Scratch sessions (`t-47f1`):** **+ Scratch** on a Projects card (or the **+** on
+- **Scratch sessions (`t-47f1`):** **Scratch** on a Projects card (or the **+** on
   an Agents group) starts the plain agent in that project with no
-  ticket, no sprint and no gates, labelled SCRATCH. Its per-session state lives in the
+  ticket, no sprint and no gates, marked with a scribble-and-pencil icon. Its per-session state lives in the
   daemon's state dir, never in `.tickets/`. Several per project (`t-e162`): the first
   runs in the main checkout; while that is busy (any live session there), the daemon
   gives the next one its own worktree on branch `scratch/<n>` at
   `<repo>/../<name>-worktrees/scratch-<n>`, and removes worktree and branch when the
   session ends only if nothing was done in it (no uncommitted changes, no new commits).
-  The board's path bar has a **+ Scratch** too. Click the scratch title to name it
+  The board's path bar has a **Scratch** too. An open scratch tab shows on the Agents
+  rail as *not started* until its agent runs (`t-f553`). Click the scratch title to name it
   (`t-f553`); the rail, Admin and notifications show that name. **Promote to ticket**
   asks the agent to run `tkt create` with a summary of the session (you approve the
   command) and print `CANON_TICKET: <id>`; **Continue as <id>** then hands the

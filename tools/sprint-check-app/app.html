@@ -1288,6 +1288,8 @@
     }
     .create-btn:hover { background: var(--accent); color: #fff; }
     .create-btn.scratch-btn { border-style: dashed; border-color: var(--text-muted); background: transparent; color: var(--text); }   /* t-e162 */
+    .create-btn.scratch-btn { display: inline-flex; align-items: center; gap: 5px; }
+    .scr-ico { width: 15px; height: 15px; flex-shrink: 0; vertical-align: -3px; }   /* t-f553: scribble + pencil */
     .create-btn.scratch-btn:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
 
     /* ── Create modal ────────────────────────────── */
@@ -1983,7 +1985,7 @@
         </div>
       </div>
       <button class="create-btn" id="btn-create" title="Create new ticket">+ New</button>
-      <button class="create-btn scratch-btn" id="btn-scratch" title="Start an agent in this project with no ticket — no sprint, no gates">+ Scratch</button>
+      <button class="create-btn scratch-btn" id="btn-scratch" title="Start an agent in this project with no ticket — no sprint, no gates"><svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>Scratch</button>
       <button class="theme-toggle has-label" id="btn-ci-setup" title="Set up CI gate — write .github/workflows/canon-gate.yml so PRs are graded by canon" style="font-size:12px;font-weight:700;letter-spacing:-.3px">⚙ CI</button>
       <button class="theme-toggle tour-toggle" id="tour-btn" title="Feature tour" aria-label="Feature tour" style="font-size:13px;font-weight:700;letter-spacing:-.5px">?</button>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">🌙</button>
@@ -2119,7 +2121,7 @@
             <div class="ck-tc-title" id="ck-tc-title"></div>
           </div>
           <div class="ck-scratch-note" id="ck-scratch-note">
-            <b>SCRATCH</b> · no ticket · no gates<br>
+            <svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg> <b>SCRATCH</b> · no ticket · no gates<br>
             <span id="ck-scratch-where"></span> End keeps any uncommitted changes in place.
             <div class="ck-scratch-actions">
               <button class="ck-scratch-btn" id="ck-promote" type="button" title="Ask the agent to create a ticket from this session (you approve its tkt create command), then continue this conversation as that ticket">Promote to ticket</button>
@@ -3983,6 +3985,7 @@ function editScratchTitle() {
     if (save) {
       const v = input.value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80);
       t.title = v || 'Scratch session';
+      announceScratchTabs();
       postToActiveTerm({ type: 'set-title', title: v });
     }
     document.getElementById('ck-tc-title').textContent = t.title;
@@ -4026,6 +4029,16 @@ async function finishAdopt(scratchId, ticket, cwd, thenEnd) {
   try { await loadData(); render(); } catch { renderBoard(); }
   if (thenEnd) { showToast('Saved as ' + ticket + ' \u2014 Resume it any time to continue this conversation.'); return; }
   if (findTicketById(ticket)) openCockpit(ticket);
+}
+// t-f553: tell the shell which scratch tabs here haven't started their agent, so its Agents
+// list shows them (the daemon only reports running sessions).
+function announceScratchTabs() {
+  if (window.parent === window) return;
+  const tabs = Object.keys(cockpitTabs).filter(id => SCRATCH_ID.test(id) && !cockpitTabs[id].started).map(id => {
+    const t = state.scratch.get(id);
+    return { id, title: t && t.title !== 'Scratch session' ? t.title : '' };
+  });
+  try { window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs }, location.origin); } catch {}
 }
 function newScratchId() {   // t-e162: the path bar's "+ Scratch" mints its own id
   const a = 'abcdefghijklmnopqrstuvwxyz0123456789', b = new Uint8Array(4);
@@ -5419,6 +5432,7 @@ window.addEventListener('message', (e) => {
     // only (grill #1) — a background tab just remembers its own cwd for when
     // it becomes active later.
     if (SCRATCH_ID.test(tab.id || '')) {   // t-e162: scratch rail shows where it runs, no worktree picker
+      if (!tab.started) { tab.started = true; announceScratchTabs(); }   // t-f553: the daemon reports it now
       tab.actualCwd = d.cwd || '';
       if (isActive) renderScratchWhere(tab);
     } else if (isActive) applyActualWorkingCwd(d.cwd, d.requested);
@@ -5701,6 +5715,7 @@ function unmountTab(id) {
   // from the tab strip but still parented under #ck-preview-body.
   if (tab.previewEl && tab.previewEl.parentNode) tab.previewEl.parentNode.removeChild(tab.previewEl);
   delete cockpitTabs[id];
+  announceScratchTabs();
   if (activeTabId === id) {
     const remaining = Object.keys(cockpitTabs);
     if (remaining.length) {
@@ -6124,6 +6139,7 @@ async function openCockpit(id) {
   document.getElementById('ck-term').appendChild(iframe);
   cockpitTabs[id] = newCockpitTabState(id, iframe);
   setActiveTab(id);
+  announceScratchTabs();
   // t-cd06: resuming an in_progress ticket reuses its persisted worktree
   // server-side (the daemon owns that, not the board) — only a fresh OPEN
   // start needs an explicit row picked before the terminal is allowed to mount.
@@ -6175,9 +6191,12 @@ function openDetachedSessionNotice(s) {
   const ok = document.getElementById('ck-leave-cancel');
   ok.disabled = false;
   ok.textContent = 'OK';
+  // t-f553: a scratch tab has no sprint; its button is Start agent.
+  const scratch = SCRATCH_ID.test(String(s.ticket || ''));
+  document.getElementById('ck-leave-confirm-title').textContent = scratch ? 'A scratch session is still running' : 'A sprint session is still running';
   document.getElementById('ck-leave-confirm-body').textContent =
-    `A ${String(s.agent || 'agent')} session for this ticket is still running in the daemon but isn't attached to this tab, ` +
-    "so End Session can't end it from here. Click ▶ Start sprint to reattach, then End Session.";
+    `A ${String(s.agent || 'agent')} session for this ${scratch ? 'scratch session' : 'ticket'} is still running in the daemon but isn't attached to this tab, ` +
+    `so End Session can't end it from here. Click ▶ ${scratch ? 'Start agent' : 'Start sprint'} to reattach, then End Session.`;
   document.getElementById('ck-leave-confirm-status').textContent = '';
   document.getElementById('ck-leave-confirm').classList.add('open');
 }
