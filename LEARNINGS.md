@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-28-2026 11:12
+learnings-sweep last run: 09-28-2026 15:08
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-28 | [t-183f](.tickets/t-183f/learnings.md) | A "flaky" test's suspected cause can be wrong: reproduce under -count=N and read every failure message before fixing. Here it was teardown returning while background goroutines still wrote into t.TempDir — make teardown wait for them (WaitGroup) rather than retrying the read. Stamp every evidence log with HEAD and time on line 1. | UNPROMOTED |
 | 2026-09-28 | [t-f553](.tickets/t-f553/learnings.md) | The evaluator grades each sub-check a Test Plan line names, not the headline: three fails came from named checks with no assertion (UI cap, refusal toast, button absent; start cwd in the worktree variant) and from `./scripts/test.sh`, which auto mode denies to subagents. Before dispatch, map every named sub-check to a test and save a HEAD-matched `test.sh` log as evidence. | UNPROMOTED |
 | 2026-09-28 | [t-e162](.tickets/t-e162/learnings.md) | A guard can pass its revert check because another layer also enforces it (here `git worktree remove` refusing a dirty tree): revert-check each guard with a test that isolates it (a unit test on the guard's own decision), or the "protection" you rely on may be the other layer's. | UNPROMOTED |
 | 2026-09-28 | [t-47f1](.tickets/t-47f1/learnings.md) | Create side-effect state (dirs, files) only after every refusal check in a request handler — a 409/400 that runs after an early mkdir leaves debris the happy-path tests never see; assert "nothing left behind" on each refusal path. | UNPROMOTED |

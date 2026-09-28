@@ -110,6 +110,16 @@ func killAllSessions(s *server) {
 		se.markDone()
 		se.cleanup()
 	}
+	// t-183f: readLoop and waitExit still log into the ticket dir after the kill; wait for
+	// them so nothing writes while t.TempDir's cleanup is removing it.
+	for _, se := range sessions {
+		stopped := make(chan struct{})
+		go func() { se.bg.Wait(); close(stopped) }()
+		select {
+		case <-stopped:
+		case <-time.After(5 * time.Second):
+		}
+	}
 }
 
 // newTestServerWithAddr sets a callback addr (so the needs-you hook is written)

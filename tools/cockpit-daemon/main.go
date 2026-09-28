@@ -144,7 +144,8 @@ type session struct {
 	done          chan struct{}
 	reaped        chan struct{} // t-86fe: closed once the agent process has exited and been waited for
 	doneOnce      sync.Once
-	closeOnce     sync.Once // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
+	bg            sync.WaitGroup // t-183f: readLoop + waitExit, so teardown can wait until they stop writing
+	closeOnce     sync.Once      // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
 	exited        bool
 	killed        bool      // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
 	reaping       bool      // t-2e7e: set while saveAndEndIdle is in flight, guards against a second reap goroutine
@@ -960,8 +961,9 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.mu.Lock()
 	s.sessions[se.sid] = se
 	s.mu.Unlock()
-	go se.readLoop()
-	go se.waitExit(c.Wait, exitDrainGrace) // reaps the child (no zombie) and ends readLoop on Windows
+	se.bg.Add(2)
+	go func() { defer se.bg.Done(); se.readLoop() }()
+	go func() { defer se.bg.Done(); se.waitExit(c.Wait, exitDrainGrace) }() // reaps the child (no zombie) and ends readLoop on Windows
 	return se, nil
 }
 
