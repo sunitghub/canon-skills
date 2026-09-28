@@ -14,12 +14,19 @@
 # default immediately with no I/O at all — never inferred from the
 # environment. Absent that, behavior is unchanged: a real human running
 # `skills.sh add` directly still gets the interactive prompt.
+# _has_tty — can a prompt reach a human? SKILLS_SH_NO_TTY says no explicitly (scripts/test.sh
+# sets it, so a test run from a real terminal never stops for a prompt — t-2d74); otherwise a
+# /dev/tty that opens.
+_has_tty() {
+  [ -z "${SKILLS_SH_NO_TTY:-}" ] && { : <> /dev/tty; } 2>/dev/null
+}
+
 _prompt_or_auto_yes() {
   local question="$1"
   if [ -n "${SKILLS_SH_ASSUME_YES:-}" ]; then
     return 0
   fi
-  if ! { : <> /dev/tty; } 2>/dev/null; then
+  if ! _has_tty; then
     return 1
   fi
   printf "%s [y/N] (auto-skips in 15s) " "$question" > /dev/tty
@@ -34,7 +41,7 @@ offer_tkt_path() {
   [[ "${SHELL:-}" == */bash ]] && rc_file="$HOME/.bashrc"
   if grep -qF "$tools_dir" "$rc_file" 2>/dev/null; then return 0; fi
   if echo "$PATH" | tr ':' '\n' | grep -qxF "$tools_dir"; then return 0; fi
-  if ! { : <> /dev/tty; } 2>/dev/null; then
+  if ! _has_tty; then
     echo ""
     echo "canon/tools (sprint, tkt, sprint-check) is not on your PATH."
     printf "  Add it with: echo 'export PATH=\"\$PATH:%s\"' >> %s\n" "$tools_dir" "$rc_file"
@@ -116,7 +123,7 @@ offer_remove_model_tiers_note() {
   if ! grep -qF "<!-- MODEL-TIERS:BEGIN -->" "$target" 2>/dev/null; then
     return 0
   fi
-  if ! { : <> /dev/tty; } 2>/dev/null; then
+  if ! _has_tty; then
     return 0
   fi
   printf "Remove model-per-task note from AGENTS.md? [y/N] (auto-skips in 15s) " > /dev/tty
@@ -367,7 +374,7 @@ offer_remove_subagent_log_permission() {
   fi
   [ "$status" = "present" ] || return 0
 
-  if ! { : <> /dev/tty; } 2>/dev/null; then
+  if ! _has_tty; then
     return 0
   fi
 

@@ -131,6 +131,7 @@ import os, pty, sys, time
 cmd, answer = sys.argv[1], sys.argv[2]
 pid, master = pty.fork()
 if pid == 0:
+    os.environ.pop("SKILLS_SH_NO_TTY", None)  # t-2d74: this child has a real (pseudo) terminal
     os.execvp("/bin/bash", ["/bin/bash", "-c", cmd])
 else:
     time.sleep(0.5)

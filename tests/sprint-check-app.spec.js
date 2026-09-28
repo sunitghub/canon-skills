@@ -802,7 +802,7 @@ test.describe('board modal', () => {
 
       // The card renders the DEMO badge
       await expect(card.locator('.demo-badge')).toBeVisible();
-      await expect(card.locator('.demo-badge')).toHaveText('DEMO');
+      await expect(card.locator('.demo-badge')).toHaveText('DEMO/DOCS');   // widened to Demo/Docs/UX (6d7d646)
     } finally {
       if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
     }
@@ -2937,7 +2937,7 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
       const darkBg = await panel.evaluate(el => getComputedStyle(el).backgroundColor);
       const darkDocBg = await body.evaluate(el => getComputedStyle(el).backgroundColor);
-      expect(darkBg).toBe('rgb(25, 26, 39)');
+      expect(darkBg).toBe('rgb(32, 42, 57)');   // dark --scenario-bg #202a39 since t-65b0
       expect(darkBg).not.toBe(darkDocBg);
       const darkKw = await panel.locator('.doc-scenario-kw').first().evaluate(el => getComputedStyle(el).color);
       expect(darkKw).toBe('rgb(217, 140, 192)');
@@ -3168,7 +3168,7 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
       // Distinct, legible background in dark and light.
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
       const darkBg = await err.evaluate(el => getComputedStyle(el).backgroundColor);
-      expect(darkBg).toBe('rgb(25, 26, 39)');
+      expect(darkBg).toBe('rgb(32, 42, 57)');   // dark --scenario-bg #202a39 since t-65b0
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
       const lightBg = await err.evaluate(el => getComputedStyle(el).backgroundColor);
       expect(lightBg).toBe('rgb(244, 241, 251)');
@@ -6991,13 +6991,13 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     const id = `t-lcsave-${Date.now()}`;
     try {
       writeTicket(id, 'in_progress');
-      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 400 }));
+      await openResumedCockpit(page, id, fakeCockpitPage({ initialStatus: 'running', endDelayMs: 1500 }));   // long enough for expect's retry schedule to see the saving state
       await page.waitForTimeout(100);
       await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
       // Still open immediately after clicking — the fake page hasn't replied yet.
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText(/^Saving state/);
       // Once the fake page's delayed 'ended' arrives, teardown proceeds.
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/, { timeout: 3000 });
     } finally {
@@ -7185,14 +7185,14 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await page.waitForTimeout(100);
       await page.locator('#ck-end-session').click();
       await page.locator('#ck-leave-save').click();
-      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText(/^Saving state/);
       // Forged message sent from the TOP frame itself, not the iframe — wrong
       // source and wrong origin. If the board's listener didn't validate
       // e.source/e.origin, this alone would complete the flow.
       await page.evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'ended' }, '*'));
       await page.waitForTimeout(300);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('Saving state…');
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText(/^Saving state/);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
