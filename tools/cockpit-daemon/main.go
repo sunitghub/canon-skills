@@ -42,6 +42,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -102,6 +103,9 @@ type server struct {
 	mu        sync.Mutex
 	sessions  map[string]*session
 	scratchMu sync.Mutex // t-e162: serializes scratch starts (main-checkout-or-worktree choice)
+	// t-d9e6: set before a daemon shutdown ends its sessions, so their snapshot entries stay
+	// behind and are offered for resume on the next start.
+	shuttingDown atomic.Bool
 }
 
 type session struct {
@@ -952,6 +956,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
 	// own immediate delete is unaffected — it never sets onNaturalExit's timer.
 	se.onNaturalExit = func() {
+		s.snapshotRemove(se.sid) // the agent exited on its own: nothing to resume
 		time.AfterFunc(s.cfg.sessionReapTTL, func() {
 			s.mu.Lock()
 			delete(s.sessions, se.sid)
@@ -961,6 +966,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	s.mu.Lock()
 	s.sessions[se.sid] = se
 	s.mu.Unlock()
+	s.snapshotAdd(se)
 	se.bg.Add(2)
 	go func() { defer se.bg.Done(); se.readLoop() }()
 	go func() { defer se.bg.Done(); se.waitExit(c.Wait, exitDrainGrace) }() // reaps the child (no zombie) and ends readLoop on Windows
@@ -1752,6 +1758,119 @@ func (s *server) killSession(se *session) {
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
+	if !s.shuttingDown.Load() {
+		s.snapshotRemove(se.sid) // ended on purpose (Save & End, Kill, reap, End, adopt)
+	}
+}
+
+// ── t-d9e6: sessions running when the daemon stops are offered for resume ────
+
+// snapEntry is one live session in <stateDir>/sessions.json: enough for the board to
+// re-open it (id, project, directory, agent) — never a token or terminal content.
+type snapEntry struct {
+	Sid         string    `json:"sid"`
+	ID          string    `json:"id"` // ticket or scratch id
+	ProjectRoot string    `json:"project_root"`
+	Cwd         string    `json:"cwd"`
+	Agent       string    `json:"agent"`
+	Started     time.Time `json:"started"`
+}
+
+// snapMu serializes the daemon's read-modify-write of sessions.json.
+var snapMu sync.Mutex
+
+// interruptedMaxAge drops an interrupted entry nobody resumed or dismissed.
+const interruptedMaxAge = 7 * 24 * time.Hour
+
+func readSnap(p string) []snapEntry {
+	var es []snapEntry
+	if b, err := os.ReadFile(p); err == nil {
+		_ = json.Unmarshal(b, &es)
+	}
+	return es
+}
+
+// writeSnap replaces p atomically (temp file + rename), mode 0600; an empty list removes it.
+func writeSnap(p string, es []snapEntry) error {
+	if len(es) == 0 {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	b, err := json.MarshalIndent(es, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := p + ".tmp"
+	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, p)
+}
+
+func (s *server) snapshotPath() string { return filepath.Join(s.cfg.stateDir, "sessions.json") }
+
+func (s *server) snapshotAdd(se *session) {
+	snapMu.Lock()
+	defer snapMu.Unlock()
+	p := s.snapshotPath()
+	es := readSnap(p)
+	se.mu.Lock()
+	e := snapEntry{Sid: se.sid, ID: se.ticket, ProjectRoot: se.projectRoot, Cwd: se.cwd, Agent: se.agent, Started: se.started}
+	se.mu.Unlock()
+	if err := writeSnap(p, append(es, e)); err != nil {
+		se.debugf("session snapshot: %v", err)
+	}
+}
+
+func (s *server) snapshotRemove(sid string) {
+	snapMu.Lock()
+	defer snapMu.Unlock()
+	p := s.snapshotPath()
+	es := readSnap(p)
+	kept := es[:0]
+	for _, e := range es {
+		if e.Sid != sid {
+			kept = append(kept, e)
+		}
+	}
+	if len(kept) != len(es) {
+		_ = writeSnap(p, kept)
+	}
+}
+
+// rotateInterrupted runs once at daemon start: sessions a previous run left in
+// sessions.json (it stopped or crashed with them live) join interrupted.json — newest per
+// id, older than interruptedMaxAge dropped — and the snapshot starts empty. The board
+// servers own interrupted.json from then on (list and dismiss); the daemon never
+// touches it again.
+func rotateInterrupted(stateDir string, now time.Time) error {
+	snapMu.Lock()
+	defer snapMu.Unlock()
+	live := filepath.Join(stateDir, "sessions.json")
+	intr := filepath.Join(stateDir, "interrupted.json")
+	byID := map[string]snapEntry{}
+	for _, e := range append(readSnap(intr), readSnap(live)...) {
+		if e.ID == "" || now.Sub(e.Started) > interruptedMaxAge {
+			continue
+		}
+		if old, ok := byID[e.ID]; !ok || e.Started.After(old.Started) {
+			byID[e.ID] = e
+		}
+	}
+	out := make([]snapEntry, 0, len(byID))
+	for _, e := range byID {
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Started.Before(out[j].Started) })
+	if err := writeSnap(intr, out); err != nil {
+		return err
+	}
+	if err := os.Remove(live); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // handleShutdown terminates the daemon process so the board can replace a
@@ -1791,6 +1910,7 @@ func (s *server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	s.shuttingDown.Store(true)
 	for _, se := range live {
 		s.killSession(se) // force path only (live is empty otherwise)
 	}
@@ -1819,6 +1939,7 @@ var shutdownExit = func() {
 // teardown the SIGTERM/SIGINT handler runs (t-44d9) so a board force-restart
 // (pid SIGTERM) never orphans an agent, mirroring handleShutdown's force path.
 func (s *server) shutdownAllSessions() {
+	s.shuttingDown.Store(true)
 	s.mu.Lock()
 	sessions := make([]*session, 0, len(s.sessions))
 	for _, se := range s.sessions {
@@ -3921,6 +4042,9 @@ func main() {
 	// one the listener bound.
 	s.cfg.addr = ln.Addr().String()
 	s.sweepStaleHookDirs(24 * time.Hour)
+	if err := rotateInterrupted(s.cfg.stateDir, time.Now()); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: interrupted sessions:", err)
+	}
 	if err := writeStateFile(s.cfg.stateDir, ln.Addr().String(), cfg.token); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: state file:", err)
 	}

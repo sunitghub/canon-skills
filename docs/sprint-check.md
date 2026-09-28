@@ -209,6 +209,18 @@ sprint agent without leaving the browser — no second terminal.
   happens even with changes — is noted in the main checkout's `HANDOFF.md` under
   `## Scratch` (after canon's managed block; nothing else in the file changes). The reaper
   never discards or commits.
+- **Sessions interrupted by a daemon restart (`t-d9e6`):** the daemon keeps a small
+  `sessions.json` of its live sessions in its state dir (0600; id, project, directory,
+  agent — no tokens, no terminal content). A session that ends on purpose (Save & End,
+  Kill, End, idle end) or whose agent exits leaves it; a daemon stop (Admin Stop/Restart,
+  the stale-daemon replace) or crash doesn't. On the next start those become
+  `interrupted.json` (7-day expiry), and the Canon Cockpit shell shows a banner — "N
+  sessions were running when the daemon stopped" — with **Resume** / **Dismiss** each and
+  **Resume all**. Resume opens that project's tab on the ticket, ready to resume the same
+  conversation and directory with one click; nothing starts by itself. A ticket that is
+  gone or closed, a directory that is gone, or a scratch session shows why it can't be
+  resumed. The board reads and dismisses these via `/api/cockpit-interrupted*` — files
+  only, never the daemon token. `canon wait` (the ticket's Part 2) is `t-180d`.
 - **Why a daemon:** the `sprint-check` board server is ephemeral and stdlib-only,
   and Go's stdlib has no PTY/WebSocket. The daemon is an isolated Go module
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board

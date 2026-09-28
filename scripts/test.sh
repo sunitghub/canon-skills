@@ -43,6 +43,7 @@ tests=(
   "$ROOT/tests/build-zip-go-package.sh"
   "$ROOT/tests/sprint-check-server.sh"
   "$ROOT/tests/sprint-check-cockpit.sh"
+  "$ROOT/tests/sprint-check-interrupted.sh"
   "$ROOT/tests/sprint-check-upkeep.sh"
   "$ROOT/tests/upkeep-skill-hash-parity.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"

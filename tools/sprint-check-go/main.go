@@ -313,6 +313,8 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, cockpitDiscover())
 	case "/api/cockpit-sessions":
 		sendJSON(w, cockpitSessions())
+	case "/api/cockpit-interrupted":
+		sendJSON(w, cockpitInterrupted())
 	case "/api/version":
 		sendJSON(w, map[string]string{"version": canonVersion(), "commit": commit, "daemon": daemonVersion()})
 	case "/api/worktrees":
@@ -642,6 +644,18 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if path == "/api/cockpit-debug" {
 		sendJSON(w, cockpitSetDebug(boolValue(payload["enabled"])))
+		return
+	}
+	if path == "/api/cockpit-interrupted-dismiss" {
+		id, _ := payload["id"].(string)
+		result := cockpitInterruptedDismiss(id)
+		if result["ok"] != true {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(result)
+			return
+		}
+		sendJSON(w, result)
 		return
 	}
 	if path == "/api/cockpit-stop" {
@@ -3088,6 +3102,99 @@ func cockpitSessions() []map[string]any {
 		return empty
 	}
 	return sessions
+}
+
+// ── t-d9e6: sessions running when the daemon stopped ──────────────────────────
+// Mirrors server.py's cockpit_interrupted*: the daemon moves its leftover live-session
+// snapshot into interrupted.json at start and never touches it again; the board owns it
+// from there (list + dismiss), with no daemon token.
+
+var sessionIDRe = regexp.MustCompile(`^[ts]-[a-z0-9]{4}$`)
+
+var interruptedMu sync.Mutex
+
+func interruptedPath() string { return filepath.Join(cockpitStateDir(), "interrupted.json") }
+
+func readInterrupted() []map[string]any {
+	var es []map[string]any
+	if b, err := os.ReadFile(interruptedPath()); err == nil {
+		_ = json.Unmarshal(b, &es)
+	}
+	return es
+}
+
+// interruptedReason says why an entry can't be resumed ("" when it can) — the checks Start makes.
+func interruptedReason(id, root, cwd string) string {
+	if strings.HasPrefix(id, "s-") {
+		return "scratch session — its conversation can't be resumed; its changes stay in " + cwd
+	}
+	b, err := os.ReadFile(filepath.Join(root, ".tickets", id, "ticket.md"))
+	if err != nil {
+		return "ticket no longer exists in " + root
+	}
+	if frontmatterStatus(string(b)) == "closed" {
+		return "ticket is closed"
+	}
+	if fi, err := os.Stat(cwd); cwd == "" || err != nil || !fi.IsDir() {
+		return "working directory " + cwd + " no longer exists"
+	}
+	return ""
+}
+
+func cockpitInterrupted() []map[string]any {
+	live := map[string]bool{}
+	for _, s := range cockpitSessions() {
+		live[fmt.Sprint(s["ticket"])+"\x00"+fmt.Sprint(s["project_root"])] = true
+	}
+	out := []map[string]any{}
+	for _, raw := range readInterrupted() {
+		e := map[string]any{}
+		str := map[string]string{}
+		for _, k := range []string{"id", "project_root", "cwd", "agent", "started"} {
+			v, _ := raw[k].(string)
+			str[k] = v
+			e[k] = v
+		}
+		if !sessionIDRe.MatchString(str["id"]) || str["project_root"] == "" || live[str["id"]+"\x00"+str["project_root"]] {
+			continue
+		}
+		reason := interruptedReason(str["id"], str["project_root"], str["cwd"])
+		e["resumable"] = reason == ""
+		e["reason"] = reason
+		out = append(out, e)
+	}
+	return out
+}
+
+func cockpitInterruptedDismiss(id string) map[string]any {
+	if !sessionIDRe.MatchString(id) {
+		return map[string]any{"ok": false, "error": "invalid session id"}
+	}
+	interruptedMu.Lock()
+	defer interruptedMu.Unlock()
+	es := readInterrupted()
+	kept := []map[string]any{}
+	for _, e := range es {
+		if v, _ := e["id"].(string); v != id {
+			kept = append(kept, e)
+		}
+	}
+	p := interruptedPath()
+	if len(kept) == 0 {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return map[string]any{"ok": false, "error": err.Error()}
+		}
+	} else if len(kept) != len(es) {
+		b, _ := json.MarshalIndent(kept, "", "  ")
+		tmp := p + ".tmp"
+		if err := os.WriteFile(tmp, b, 0o600); err != nil {
+			return map[string]any{"ok": false, "error": err.Error()}
+		}
+		if err := os.Rename(tmp, p); err != nil {
+			return map[string]any{"ok": false, "error": err.Error()}
+		}
+	}
+	return map[string]any{"ok": true}
 }
 
 // readDaemonPID reads the daemon's own pid from daemon.json (t-44d9) so the board

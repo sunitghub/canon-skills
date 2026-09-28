@@ -18,6 +18,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -2115,6 +2117,8 @@ func TestIdleReapKillsIdleSessionAfterSaveMarker(t *testing.T) {
 		_, stillThere := s.sessions[out.Session]
 		s.mu.Unlock()
 		if !stillThere {
+			// t-d9e6: reaped on purpose — not offered after a restart.
+			waitSnapshotGone(t, s, "t-ab12")
 			return // reaped — success
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -2218,6 +2222,8 @@ func TestSaveAndEndFileSettleEndsSession(t *testing.T) {
 		_, stillThere := s.sessions[out.Session]
 		s.mu.Unlock()
 		if !stillThere {
+			// t-d9e6: ended on purpose — not offered after a restart.
+			waitSnapshotGone(t, s, "t-ab12")
 			return // ended via file-settle — success
 		}
 		time.Sleep(20 * time.Millisecond)
@@ -6303,6 +6309,7 @@ func TestScratchAdopt(t *testing.T) {
 	if !se.isExited() {
 		t.Fatal("the scratch session must end after adopt")
 	}
+	waitSnapshotGone(t, s, "s-ab12") // t-d9e6: handed to the ticket — not offered after a restart
 	// Starting the adopted (still open) ticket resumes that conversation as its sprint.
 	claudeDir := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", claudeDir)
@@ -6662,4 +6669,139 @@ func TestScratchChangesCap(t *testing.T) {
 	if code != http.StatusOK || ch["total"] != float64(53) || len(files) != 50 {
 		t.Fatalf("changes: %d total=%v files=%d, want total 53 and 50 listed", code, ch["total"], len(files))
 	}
+}
+
+// ── t-d9e6: interrupted sessions ──────────────────────────────────────────────
+
+func snapIDs(t *testing.T, p string) []string {
+	t.Helper()
+	var ids []string
+	for _, e := range readSnap(p) {
+		ids = append(ids, e.ID)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+func TestSessionSnapshotNormalEndsRemove(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	snap := s.snapshotPath()
+	a := startScratchSession(t, base, "s-sn01", root)
+	b := startScratchSession(t, base, "s-sn02", root)
+	if got := snapIDs(t, snap); strings.Join(got, ",") != "s-sn01,s-sn02" {
+		t.Fatalf("snapshot after two starts = %v", got)
+	}
+	if fi, err := os.Stat(snap); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("snapshot mode: %v %v", fi, err)
+	}
+	if b, _ := os.ReadFile(snap); strings.Contains(string(b), a.Token) || strings.Contains(string(b), bootTok) {
+		t.Fatal("the snapshot must never hold a token")
+	}
+	postSession(t, base, a, "kill", "")
+	if got := snapIDs(t, snap); strings.Join(got, ",") != "s-sn02" {
+		t.Fatalf("a killed session must leave the snapshot: %v", got)
+	}
+	postSession(t, base, b, "end-scratch", `{}`)
+	if _, err := os.Stat(snap); !os.IsNotExist(err) {
+		t.Fatal("an ended session must leave the snapshot (file removed when empty)")
+	}
+}
+
+func TestSessionSnapshotShutdownKeeps(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	startScratchSession(t, base, "s-sn03", root)
+	startScratchSession(t, base, "s-sn04", root)
+	s.shutdownAllSessions()
+	if got := snapIDs(t, s.snapshotPath()); strings.Join(got, ",") != "s-sn03,s-sn04" {
+		t.Fatalf("a daemon shutdown must keep its sessions for resume: %v", got)
+	}
+	if err := rotateInterrupted(s.cfg.stateDir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(s.snapshotPath()); !os.IsNotExist(err) {
+		t.Fatal("start must clear the live snapshot")
+	}
+	intr := filepath.Join(s.cfg.stateDir, "interrupted.json")
+	if got := snapIDs(t, intr); strings.Join(got, ",") != "s-sn03,s-sn04" {
+		t.Fatalf("interrupted after rotation = %v", got)
+	}
+	if fi, _ := os.Stat(intr); fi == nil || fi.Mode().Perm() != 0o600 {
+		t.Fatal("interrupted.json must be 0600")
+	}
+}
+
+func TestRotateInterruptedMergesAndExpires(t *testing.T) {
+	dir := t.TempDir()
+	now := time.Now()
+	writeSnap(filepath.Join(dir, "interrupted.json"), []snapEntry{
+		{Sid: "a", ID: "t-aa01", Started: now.Add(-2 * time.Hour)},
+		{Sid: "b", ID: "t-old1", Started: now.Add(-8 * 24 * time.Hour)},
+	})
+	writeSnap(filepath.Join(dir, "sessions.json"), []snapEntry{
+		{Sid: "c", ID: "t-aa01", Started: now.Add(-1 * time.Hour), Cwd: "/newer"},
+		{Sid: "d", ID: "t-bb02", Started: now.Add(-3 * time.Hour)},
+	})
+	if err := rotateInterrupted(dir, now); err != nil {
+		t.Fatal(err)
+	}
+	es := readSnap(filepath.Join(dir, "interrupted.json"))
+	got := map[string]string{}
+	for _, e := range es {
+		got[e.ID] = e.Sid
+	}
+	if len(es) != 2 || got["t-aa01"] != "c" || got["t-bb02"] != "d" {
+		t.Fatalf("want newest t-aa01 (c) and t-bb02, no expired t-old1; got %+v", es)
+	}
+}
+
+func TestSessionSnapshotAgentExitRemoves(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	bin := filepath.Join(t.TempDir(), "quick-agent.sh")
+	os.WriteFile(bin, []byte("#!/bin/sh\nsleep 0.3\nexit 0\n"), 0o755)
+	s.cfg.sprintBin = bin
+	startScratchSession(t, base, "s-sn05", root)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(s.snapshotPath()); os.IsNotExist(err) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("an agent that exits on its own leaves nothing to resume: %v", snapIDs(t, s.snapshotPath()))
+}
+
+// t-d9e6: a forced /shutdown (the stale-daemon replace) keeps its sessions for resume too.
+func TestShutdownForceKeepsSnapshot(t *testing.T) {
+	oldExit := shutdownExit
+	shutdownExit = func() {}
+	defer func() { shutdownExit = oldExit }()
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	startSession(t, base, "t-ab12", bootTok).Body.Close()
+	waitLiveSessions(t, s, 1)
+	req, _ := http.NewRequest(http.MethodPost, base+"/shutdown?force=1", nil)
+	req.Header.Set("Authorization", "Bearer "+bootTok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("forced /shutdown = %d", resp.StatusCode)
+	}
+	if got := snapIDs(t, s.snapshotPath()); strings.Join(got, ",") != "t-ab12" {
+		t.Fatalf("a forced shutdown must keep its session for resume: %v", got)
+	}
+}
+
+// waitSnapshotGone fails unless id leaves the live-session snapshot shortly after its
+// session ends (killSession drops the session, then the snapshot entry).
+func waitSnapshotGone(t *testing.T, s *server, id string) {
+	t.Helper()
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if !slices.Contains(snapIDs(t, s.snapshotPath()), id) {
+			return
+		}
+	}
+	t.Fatalf("%s is still in the session snapshot after ending on purpose: %v", id, snapIDs(t, s.snapshotPath()))
 }
