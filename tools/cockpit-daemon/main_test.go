@@ -6639,3 +6639,17 @@ func TestScratchEndGuardDiscardWaitsForAgent(t *testing.T) {
 		t.Fatalf("skipped discard not noted:\n%s", b)
 	}
 }
+
+// t-86fe: the changes list stops at 50 entries while the total stays exact.
+func TestScratchChangesCap(t *testing.T) {
+	root, base, _ := endGuardProject(t)
+	st := startScratchSession(t, base, "s-ii09", root)
+	for i := 0; i < 53; i++ {
+		os.WriteFile(filepath.Join(root, fmt.Sprintf("new-%02d.txt", i)), []byte("x\n"), 0o644)
+	}
+	code, ch := getChanges(t, base, st)
+	files, _ := ch["files"].([]any)
+	if code != http.StatusOK || ch["total"] != float64(53) || len(files) != 50 {
+		t.Fatalf("changes: %d total=%v files=%d, want total 53 and 50 listed", code, ch["total"], len(files))
+	}
+}
