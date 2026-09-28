@@ -1957,6 +1957,76 @@ def cockpit_sessions() -> list:
     except Exception:
         return []
 
+# ── t-d9e6: sessions running when the daemon stopped ──────────────────────────
+# The daemon moves its leftover live-session snapshot into interrupted.json at start and
+# never touches that file again; the board owns it from there (list + dismiss), so no
+# daemon token is involved. Mirrored in sprint-check-go (cockpitInterrupted*).
+_SESSION_ID_RE = re.compile(r'^[ts]-[a-z0-9]{4}$')
+_interrupted_lock = threading.Lock()
+
+def _interrupted_path() -> Path:
+    return Path(_cockpit_state_dir(), 'interrupted.json')
+
+def _read_interrupted() -> list:
+    try:
+        data = json.loads(_interrupted_path().read_text(encoding='utf-8'))
+    except Exception:
+        return []
+    return [e for e in data if isinstance(e, dict)] if isinstance(data, list) else []
+
+def _interrupted_reason(e: dict) -> str:
+    """Why an entry can't be resumed ('' when it can) — the checks Start makes."""
+    sid, root, cwd = e['id'], e['project_root'], e['cwd']
+    if sid.startswith('s-'):
+        return "scratch session — its conversation can't be resumed; its changes stay in " + cwd
+    ticket = Path(root, '.tickets', sid, 'ticket.md')
+    try:
+        status = _frontmatter_status(ticket.read_text(encoding='utf-8'))
+    except Exception:
+        return 'ticket no longer exists in ' + root
+    if status == 'closed':
+        return 'ticket is closed'
+    if not cwd or not Path(cwd).is_dir():
+        return 'working directory ' + cwd + ' no longer exists'
+    return ''
+
+def cockpit_interrupted() -> list:
+    """Sessions that were running when the daemon last stopped, minus any live again now,
+    each marked resumable or not (with the reason)."""
+    live = {(str(s.get('ticket', '')), str(s.get('project_root', ''))) for s in cockpit_sessions()}
+    out = []
+    for raw in _read_interrupted():
+        e = {k: str(raw.get(k, '')) for k in ('id', 'project_root', 'cwd', 'agent', 'started')}
+        if not _SESSION_ID_RE.match(e['id']) or not e['project_root']:
+            continue
+        if (e['id'], e['project_root']) in live:
+            continue
+        reason = _interrupted_reason(e)
+        e['resumable'] = reason == ''
+        e['reason'] = reason
+        out.append(e)
+    return out
+
+def cockpit_interrupted_dismiss(sid: str) -> dict:
+    if not isinstance(sid, str) or not _SESSION_ID_RE.match(sid):
+        return {'ok': False, 'error': 'invalid session id'}
+    with _interrupted_lock:
+        entries = _read_interrupted()
+        kept = [e for e in entries if e.get('id') != sid]
+        path = _interrupted_path()
+        try:
+            if not kept:
+                path.unlink(missing_ok=True)
+            elif len(kept) != len(entries):
+                tmp = path.with_suffix('.json.tmp')
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, 'w', encoding='utf-8') as f:
+                    json.dump(kept, f, indent=2)
+                os.replace(tmp, path)
+        except OSError as err:
+            return {'ok': False, 'error': str(err)}
+    return {'ok': True}
+
 def _read_daemon_pid():
     """t-44d9: the daemon's own pid from daemon.json (written by the daemon), so
     the board can force-restart it without holding the boot token (t-ddc8)."""
@@ -2693,6 +2763,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(cockpit_discover())
         elif path == '/api/cockpit-sessions':
             self.send_json(cockpit_sessions())
+        elif path == '/api/cockpit-interrupted':
+            self.send_json(cockpit_interrupted())
         elif path == '/api/version':
             self.send_json(board_version())
         elif path == '/api/worktrees':
@@ -2948,6 +3020,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(cockpit_stop(bool(payload.get('force', False)))); return
         if path == '/api/cockpit-debug':
             self.send_json(cockpit_set_debug(bool(payload.get('enabled', False)))); return
+        if path == '/api/cockpit-interrupted-dismiss':
+            result = cockpit_interrupted_dismiss(payload.get('id'))
+            self.send_json(result, status=200 if result.get('ok') else 400); return
 
         if path == '/api/worktrees':
             branch = str(payload.get('branch', ''))
