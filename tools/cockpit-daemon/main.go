@@ -438,16 +438,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// Shape-valid is not enough: with no such ticket in the resolved project,
 	// spawn()'s fixed "sprint start <id>" prompt resolves to nothing, and the
 	// spawned agent goes hunting for context instead of failing clearly (t-842b).
-	if scratch {
-		// t-47f1: a scratch session has no ticket; its state lives under the daemon's own
-		// state dir (sessionStateDir), created here so spawn's per-session writes land.
-		if err := os.MkdirAll(s.sessionStateDir(projectRoot, body.Ticket), 0o700); err != nil {
-			http.Error(w, "scratch state unavailable", http.StatusInternalServerError)
+	if !scratch {
+		if fi, err := os.Stat(filepath.Join(s.ticketsDirIn(projectRoot), body.Ticket)); err != nil || !fi.IsDir() {
+			http.Error(w, "ticket not found in project", http.StatusBadRequest)
 			return
 		}
-	} else if fi, err := os.Stat(filepath.Join(s.ticketsDirIn(projectRoot), body.Ticket)); err != nil || !fi.IsDir() {
-		http.Error(w, "ticket not found in project", http.StatusBadRequest)
-		return
 	}
 	// t-cd06: the daemon re-validates cwd itself against a live `git worktree
 	// list` — it never trusts whatever cockpit.html relayed, mirroring
@@ -491,6 +486,15 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		existing.debugf("start attached to live session sid=%s cwd=%s requested=%s", existing.sid, existing.cwd, s.resolveRequestedEcho(body.Cwd))
 		writeJSON(w, map[string]string{"session": existing.sid, "token": existing.token, "previewToken": existing.previewToken, "cwd": existing.cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
 		return
+	}
+	if scratch {
+		// t-47f1: a scratch session has no ticket; its state lives under the daemon's own
+		// state dir (sessionStateDir). Created only now, after every refusal above, so a
+		// refused start leaves nothing behind.
+		if err := os.MkdirAll(s.sessionStateDir(projectRoot, body.Ticket), 0o700); err != nil {
+			http.Error(w, "scratch state unavailable", http.StatusInternalServerError)
+			return
+		}
 	}
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
 	if err != nil {
@@ -2632,9 +2636,6 @@ func (s *server) ticketsDir() string {
 	return s.ticketsDirIn(s.cfg.projectRoot)
 }
 
-// ticketsDirIn resolves the .tickets dir for an arbitrary project root by
-// walking up from it (t-391a: per-request project scoping — one daemon serves
-// many projects). ticketsDir() is the launch-default wrapper.
 // sessionStateDir is where a session's per-session state files live (t-47f1): a
 // ticket's own .tickets/<id>/, or — for a scratch session, which has no ticket — a
 // daemon-owned dir keyed by project, so nothing is written into the project.
@@ -2646,6 +2647,9 @@ func (s *server) sessionStateDir(root, id string) string {
 	return filepath.Join(s.ticketsDirIn(root), id)
 }
 
+// ticketsDirIn resolves the .tickets dir for an arbitrary project root by
+// walking up from it (t-391a: per-request project scoping — one daemon serves
+// many projects). ticketsDir() is the launch-default wrapper.
 func (s *server) ticketsDirIn(root string) string {
 	dir := root
 	for dir != "" && dir != "/" {

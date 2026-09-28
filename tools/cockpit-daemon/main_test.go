@@ -5891,6 +5891,9 @@ func TestScratchSessionStart(t *testing.T) {
 	if second.StatusCode != http.StatusConflict || !strings.Contains(string(b), "t-e162") {
 		t.Fatalf("second scratch: status %d body %q", second.StatusCode, b)
 	}
+	if _, err := os.Stat(s.sessionStateDir(s.cfg.projectRoot, "s-cd34")); !os.IsNotExist(err) {
+		t.Fatalf("a refused scratch start must leave no state dir behind (stat err %v)", err)
+	}
 	// A ticket session in the same project is unaffected by the scratch rule.
 	tk := startSession(t, base, "t-ab12", bootTok)
 	tk.Body.Close()
@@ -5940,6 +5943,9 @@ func TestScratchRefusesWorktreeCwd(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(b), "scratch sessions run in the project's main checkout") {
 		t.Fatalf("scratch in a worktree: status %d body %q", resp.StatusCode, b)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(s.cfg.stateDir, "scratch")); len(entries) != 0 {
+		t.Fatalf("a refused scratch start left state behind: %v", entries)
 	}
 }
 

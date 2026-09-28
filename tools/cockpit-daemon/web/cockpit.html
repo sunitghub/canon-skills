@@ -362,7 +362,7 @@
 
   async function start(){
     var ticket = document.getElementById("ticket").value.trim();
-    if(!/^[ts]-[a-z0-9]{4}$/.test(ticket)){ term.writeln("\r\n\x1b[31minvalid ticket id (expected t-xxxx)\x1b[0m"); return; }
+    if(!/^[ts]-[a-z0-9]{4}$/.test(ticket)){ term.writeln("\r\n\x1b[31minvalid id (expected a ticket t-xxxx or a scratch session s-xxxx)\x1b[0m"); return; }
     document.getElementById("startBtn").classList.remove("pulse");
     setStatus("running","starting…");
     try{
