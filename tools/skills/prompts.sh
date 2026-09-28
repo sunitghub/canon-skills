@@ -5,7 +5,7 @@
 # opt-out setup action (append an import line, add a permission rule, ...).
 #
 # TTY *availability* is not evidence the right human is present to answer:
-# a long-lived server (canon-cockpit/sprint-check) keeps its launch terminal
+# a long-lived server (canon/sprint-check) keeps its launch terminal
 # as its controlling tty for its whole run, so a subprocess it shells out to
 # in response to an unrelated HTTP request can still open /dev/tty even
 # though nobody there is watching for this specific prompt (t-b47a). A
@@ -43,13 +43,13 @@ offer_tkt_path() {
   if echo "$PATH" | tr ':' '\n' | grep -qxF "$tools_dir"; then return 0; fi
   if ! _has_tty; then
     echo ""
-    echo "canon/tools (sprint, tkt, sprint-check) is not on your PATH."
+    echo "canon/tools (canon, sprint, tkt, sprint-check) is not on your PATH."
     printf "  Add it with: echo 'export PATH=\"\$PATH:%s\"' >> %s\n" "$tools_dir" "$rc_file"
     printf "  Then run: source %s\n" "$rc_file"
     return 0
   fi
   echo "" > /dev/tty
-  printf "canon/tools (sprint, tkt, sprint-check) is not on your PATH.\n" > /dev/tty
+  printf "canon/tools (canon, sprint, tkt, sprint-check) is not on your PATH.\n" > /dev/tty
   printf "Add %s to PATH in %s? [y/N] (auto-skips in 15s) " "$tools_dir" "$rc_file" > /dev/tty
   read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
   if [[ "$answer" =~ ^[Yy]$ ]]; then

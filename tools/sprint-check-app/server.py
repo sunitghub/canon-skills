@@ -2027,6 +2027,68 @@ def cockpit_interrupted_dismiss(sid: str) -> dict:
             return {'ok': False, 'error': str(err)}
     return {'ok': True}
 
+# ── t-03a8: `canon status` / `canon sessions` — rendered here so the CLI stays curl-only
+# (no Python or jq on a Git-only Windows machine). Mirrored in sprint-check-go
+# (cockpitStatus / cockpitStatusText / cockpitSessionsText); the text must match byte for byte.
+_STATE_ORDER = ('needs-you', 'working', 'done', 'idle', 'running')
+
+def _fmt_secs(n) -> str:
+    try:
+        n = int(n)
+    except Exception:
+        return '-'
+    if n < 0:
+        return '-'
+    if n >= 86400:
+        return '%dd %dh' % (n // 86400, n % 86400 // 3600)
+    if n >= 3600:
+        return '%dh %dm' % (n // 3600, n % 3600 // 60)
+    if n >= 60:
+        return '%dm' % (n // 60)
+    return '%ds' % n
+
+def _term_safe(v, width: int = 0) -> str:
+    """Text for a terminal: control characters (escape sequences) become '?'."""
+    t = ''.join('?' if ord(c) < 32 or ord(c) == 127 else c for c in str(v if v is not None else ''))
+    return t[:width] if width else t
+
+def cockpit_status() -> dict:
+    d = cockpit_discover()
+    sessions = cockpit_sessions()
+    by_state = {}
+    for x in sessions:
+        st = str(x.get('state') or 'running')
+        by_state[st] = by_state.get(st, 0) + 1
+    return {
+        'board': {'version': board_version().get('version', 'dev'), 'uptime_secs': d.get('shell_uptime_secs', 0)},
+        'daemon': {'running': bool(d.get('running')), 'addr': d.get('addr'), 'stale': bool(d.get('stale', False))},
+        'sessions': {'total': len(sessions), 'by_state': by_state},
+    }
+
+def cockpit_status_text(st: dict) -> str:
+    b, dm, ss = st['board'], st['daemon'], st['sessions']
+    lines = ['board:    running (version %s, up %s)' % (_term_safe(b['version']), _fmt_secs(b['uptime_secs']))]
+    if dm['running']:
+        lines.append('daemon:   running at %s%s' % (_term_safe(dm['addr']), ' (stale build: restart it with `canon restart`)' if dm['stale'] else ''))
+    else:
+        lines.append('daemon:   not running')
+    order = [k for k in _STATE_ORDER if k in ss['by_state']] + sorted(k for k in ss['by_state'] if k not in _STATE_ORDER)
+    parts = ', '.join('%d %s' % (ss['by_state'][k], _term_safe(k)) for k in order)
+    lines.append('sessions: %d%s' % (ss['total'], (' (' + parts + ')') if parts else ''))
+    return '\n'.join(lines) + '\n'
+
+def cockpit_sessions_text(sessions: list) -> str:
+    if not sessions:
+        return 'No sessions running.\n'
+    rows = [('ID', 'STATE', 'FOR', 'AGENT', 'PROJECT', 'SIGNAL', 'TITLE')]
+    for x in sessions:
+        root = str(x.get('project_root') or '').replace('\\', '/').rstrip('/')
+        rows.append((_term_safe(x.get('ticket'), 8), _term_safe(x.get('state') or 'running', 10), _fmt_secs(x.get('state_secs')),
+                     _term_safe(x.get('agent'), 8), _term_safe(root.rsplit('/', 1)[-1], 20), _term_safe(x.get('signal'), 12),
+                     _term_safe(x.get('title'), 50)))
+    widths = [max(len(r[i]) for r in rows) for i in range(6)]
+    return ''.join('  '.join(r[i].ljust(widths[i]) for i in range(6)) + '  ' + r[6] + '\n' for r in rows).replace('  \n', '\n')
+
 def _read_daemon_pid():
     """t-44d9: the daemon's own pid from daemon.json (written by the daemon), so
     the board can force-restart it without holding the boot token (t-ddc8)."""
@@ -2666,6 +2728,15 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_text(self, text: str, status=200):
+        body = text.encode('utf-8')
+        self.send_response(status)
+        self.send_header('Content-Type', 'text/plain; charset=utf-8')
+        self.send_header('Content-Length', len(body))
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_html(self, path: Path):
         try:
             body = path.read_bytes()
@@ -2762,7 +2833,16 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
         elif path == '/api/cockpit-sessions':
-            self.send_json(cockpit_sessions())
+            if parse_qs(parsed.query).get('format', [''])[0] == 'text':
+                self.send_text(cockpit_sessions_text(cockpit_sessions()))
+            else:
+                self.send_json(cockpit_sessions())
+        elif path == '/api/cockpit-status':
+            st = cockpit_status()
+            if parse_qs(parsed.query).get('format', [''])[0] == 'text':
+                self.send_text(cockpit_status_text(st))
+            else:
+                self.send_json(st)
         elif path == '/api/cockpit-interrupted':
             self.send_json(cockpit_interrupted())
         elif path == '/api/version':

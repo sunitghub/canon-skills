@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # cockpit-launch-lib.sh — shared launcher helpers for `sprint-check` and
-# `canon-cockpit` (t-4700). Source, don't execute: `source
+# `canon` (t-4700). Source, don't execute: `source
 # "$SCRIPT_DIR/cockpit-launch-lib.sh"`.
 #
 # t-55c1: nothing here may require Python. On Windows canon may assume only Git for Windows, so the
@@ -41,14 +41,14 @@ open_browser() {
 
 # start_cockpit_server <port> — background the board server; sets SERVER_PID. Python's server.py
 # where a working Python exists (unchanged); on Windows without one, the Go sprint-check-win.exe, the
-# same parity-tested server canon-cockpit-win.cmd runs (t-55c1). The caller opens the browser.
+# same parity-tested server canon-win.cmd runs (t-55c1). The caller opens the browser.
 start_cockpit_server() {
   local port="$1" dir
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if _is_windows && ! have_python; then
     local exe="$dir/sprint-check-win.exe"
     if [[ ! -f "$exe" ]]; then
-      echo "Error: no working Python and no $exe — run canon-cockpit-win instead." >&2
+      echo "Error: no working Python and no $exe — run canon-win instead." >&2
       return 1
     fi
     echo "No Python here — starting the Go board server (sprint-check-win.exe)." >&2

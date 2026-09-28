@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# canon — the single-window Canon Cockpit shell (t-9917, Phase 1; renamed from its old name in t-03a8).
+# Launch ONCE; it opens the Cockpit landing (registered projects). A second
+# launch does NOT start a second server — it just opens the already-running
+# window's URL (single-instance on a fixed port).
+#
+# Unlike `sprint-check` (one board per project, per cwd), canon is
+# project-agnostic: it serves the shell + the project registry, and you open
+# projects from within it. See tools/sprint-check-app/server.py registry_*.
+
+set -euo pipefail
+
+# Resolve symlinks so SCRIPT_DIR points to the real file location.
+_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$_SOURCE" ]; do
+  _DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+  _SOURCE="$(readlink "$_SOURCE")"
+  [[ "$_SOURCE" != /* ]] && _SOURCE="$_DIR/$_SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_SOURCE")" && pwd)"
+SERVER="$SCRIPT_DIR/sprint-check-app/server.py"
+# shellcheck source=cockpit-launch-lib.sh
+source "$SCRIPT_DIR/cockpit-launch-lib.sh"
+
+usage() {
+  cat <<'EOF'
+canon — the single-window Canon Cockpit shell
+
+Usage:
+  canon                    Open the Cockpit (registered projects); single-instance
+  canon <port>             Use a specific port (default 8899)
+  canon status [--json]    Board and daemon state, version, sessions by state
+  canon sessions [--json]  Every live agent session across projects
+  canon stop [--force]     Stop the cockpit daemon (--force ends live sessions)
+  canon restart [--force]  Restart the cockpit daemon (--force ends live sessions)
+  canon --help             Show this help
+
+Launch once and work from within it. A second launch focuses the running
+window instead of starting a second server. Set CANON_COCKPIT_PORT to change
+the default port. status/sessions/stop/restart talk to the running board and
+never need or print a session token.
+EOF
+}
+
+# t-03a8: the read and control subcommands go through the running board's own API — it
+# renders the text (?format=text), so this stays curl-only: no Python, no jq (a Git-only
+# Windows machine has neither).
+board_cmd() {
+  local cmd="$1"; shift
+  local json=0 force=0 a
+  for a in "$@"; do
+    case "$a" in
+      --json) json=1 ;;
+      --force) force=1 ;;
+      *) echo "Unknown option for canon $cmd: $a" >&2; exit 1 ;;
+    esac
+  done
+  local port="${CANON_COCKPIT_PORT:-8899}"
+  local base="http://127.0.0.1:$port"
+  if ! curl -s -o /dev/null --max-time 3 "$base/api/version"; then
+    case "$cmd" in
+      stop) echo "Canon isn't running on port $port — nothing to stop."; exit 0 ;;
+      *) echo "Canon isn't running on port $port — start it with: canon" >&2; exit 1 ;;
+    esac
+  fi
+  case "$cmd" in
+    status|sessions)
+      local route="/api/cockpit-status"
+      [[ "$cmd" == sessions ]] && route="/api/cockpit-sessions"
+      [[ "$json" -eq 1 ]] || route="$route?format=text"
+      local out
+      # --fail: a board started before this command existed answers 404 here; say so, don't print its error page.
+      if ! out="$(curl -sf --max-time 10 "$base$route")"; then
+        echo "The board on port $port doesn't support 'canon $cmd' (it predates it, or failed) — restart it: close its window, then run canon." >&2
+        exit 1
+      fi
+      printf '%s\n' "${out%$'\n'}"
+      ;;
+    stop|restart)
+      local out
+      out="$(curl -s --max-time 60 -X POST -H 'Content-Type: application/json' \
+        -d "{\"force\": $([[ "$force" -eq 1 ]] && echo true || echo false)}" "$base/api/cockpit-$cmd")"
+      if grep -qE '"busy": ?true' <<<"$out"; then
+        local n; n="$(sed -nE 's/.*"sessions": ?([0-9]+).*/\1/p' <<<"$out")"
+        echo "$n session(s) running — canon $cmd --force ends them (Save & End them first to keep their state)." >&2
+        exit 1
+      fi
+      if [[ "$cmd" == stop ]]; then
+        if grep -qE '"running": ?true' <<<"$out"; then echo "The daemon is still running — try: canon stop --force" >&2; exit 1; fi
+        echo "Cockpit daemon stopped."
+      else
+        if grep -qE '"restarted": ?true' <<<"$out"; then echo "Cockpit daemon restarted."
+        else echo "The daemon did not restart: $out" >&2; exit 1; fi
+      fi
+      ;;
+  esac
+}
+
+main() {
+  case "${1:-}" in
+    help|--help|-h) usage; exit 0 ;;
+    status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
+    "") : ;;
+    [0-9]*) PORT_ARG="$1" ;;
+    *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
+  esac
+
+  local port="${PORT_ARG:-${CANON_COCKPIT_PORT:-8899}}"
+  local url="http://127.0.0.1:$port/cockpit"
+
+  # Single-instance: if something is already serving that port, assume it's the
+  # Cockpit and just open its URL — never start a second server.
+  if _port_in_use "$port"; then
+    echo "Canon Cockpit already running on port $port — opening it." >&2
+    open_browser "$url"
+    exit 0
+  fi
+
+  if [[ ! -f "$SERVER" ]]; then
+    echo "Error: server.py not found at $SERVER" >&2
+    exit 1
+  fi
+
+  start_cockpit_server "$port" || exit 1
+  trap 'kill "$SERVER_PID" 2>/dev/null; exit 0' INT TERM EXIT
+  sleep 0.4
+  open_browser "$url"
+  wait "$SERVER_PID"
+}
+
+main "$@"

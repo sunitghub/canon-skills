@@ -21,11 +21,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -312,7 +314,18 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
 	case "/api/cockpit-sessions":
-		sendJSON(w, cockpitSessions())
+		if r.URL.Query().Get("format") == "text" {
+			sendText(w, cockpitSessionsText(cockpitSessions()))
+		} else {
+			sendJSON(w, cockpitSessions())
+		}
+	case "/api/cockpit-status":
+		st := cockpitStatus()
+		if r.URL.Query().Get("format") == "text" {
+			sendText(w, cockpitStatusText(st))
+		} else {
+			sendJSON(w, st)
+		}
 	case "/api/cockpit-interrupted":
 		sendJSON(w, cockpitInterrupted())
 	case "/api/version":
@@ -3104,6 +3117,141 @@ func cockpitSessions() []map[string]any {
 	return sessions
 }
 
+// ── t-03a8: `canon status` / `canon sessions` — mirrors server.py's cockpit_status /
+// cockpit_status_text / cockpit_sessions_text byte for byte, so the CLI stays curl-only.
+
+var stateOrder = []string{"needs-you", "working", "done", "idle", "running"}
+
+func fmtSecs(v any) string {
+	f, ok := v.(float64)
+	if i, isInt := v.(int64); isInt {
+		f, ok = float64(i), true
+	}
+	if !ok || f < 0 {
+		return "-"
+	}
+	n := int64(f)
+	switch {
+	case n >= 86400:
+		return fmt.Sprintf("%dd %dh", n/86400, n%86400/3600)
+	case n >= 3600:
+		return fmt.Sprintf("%dh %dm", n/3600, n%3600/60)
+	case n >= 60:
+		return fmt.Sprintf("%dm", n/60)
+	}
+	return fmt.Sprintf("%ds", n)
+}
+
+// termSafe is text for a terminal: control characters (escape sequences) become '?';
+// width > 0 keeps that many characters.
+func termSafe(v any, width int) string {
+	s := ""
+	if v != nil {
+		s = fmt.Sprint(v)
+	}
+	out := make([]rune, 0, len(s))
+	for _, c := range s {
+		if c < 32 || c == 127 {
+			c = '?'
+		}
+		out = append(out, c)
+	}
+	if width > 0 && len(out) > width {
+		out = out[:width]
+	}
+	return string(out)
+}
+
+func cockpitStatus() map[string]any {
+	d := cockpitDiscover()
+	sessions := cockpitSessions()
+	byState := map[string]int{}
+	for _, x := range sessions {
+		st, _ := x["state"].(string)
+		if st == "" {
+			st = "running"
+		}
+		byState[st]++
+	}
+	running, _ := d["running"].(bool)
+	stale, _ := d["stale"].(bool)
+	return map[string]any{
+		"board":    map[string]any{"version": canonVersion(), "uptime_secs": d["shell_uptime_secs"]},
+		"daemon":   map[string]any{"running": running, "addr": d["addr"], "stale": stale},
+		"sessions": map[string]any{"total": len(sessions), "by_state": byState},
+	}
+}
+
+func cockpitStatusText(st map[string]any) string {
+	b, dm, ss := st["board"].(map[string]any), st["daemon"].(map[string]any), st["sessions"].(map[string]any)
+	lines := []string{fmt.Sprintf("board:    running (version %s, up %s)", termSafe(b["version"], 0), fmtSecs(b["uptime_secs"]))}
+	if dm["running"] == true {
+		note := ""
+		if dm["stale"] == true {
+			note = " (stale build: restart it with `canon restart`)"
+		}
+		lines = append(lines, fmt.Sprintf("daemon:   running at %s%s", termSafe(dm["addr"], 0), note))
+	} else {
+		lines = append(lines, "daemon:   not running")
+	}
+	byState := ss["by_state"].(map[string]int)
+	var order, rest []string
+	for _, k := range stateOrder {
+		if _, ok := byState[k]; ok {
+			order = append(order, k)
+		}
+	}
+	for k := range byState {
+		if !slices.Contains(stateOrder, k) {
+			rest = append(rest, k)
+		}
+	}
+	sort.Strings(rest)
+	var parts []string
+	for _, k := range append(order, rest...) {
+		parts = append(parts, fmt.Sprintf("%d %s", byState[k], termSafe(k, 0)))
+	}
+	line := fmt.Sprintf("sessions: %d", ss["total"])
+	if len(parts) > 0 {
+		line += " (" + strings.Join(parts, ", ") + ")"
+	}
+	return strings.Join(append(lines, line), "\n") + "\n"
+}
+
+func cockpitSessionsText(sessions []map[string]any) string {
+	if len(sessions) == 0 {
+		return "No sessions running.\n"
+	}
+	rows := [][7]string{{"ID", "STATE", "FOR", "AGENT", "PROJECT", "SIGNAL", "TITLE"}}
+	for _, x := range sessions {
+		root := strings.TrimRight(strings.ReplaceAll(termSafe(x["project_root"], 0), "\\", "/"), "/")
+		state := x["state"]
+		if s, _ := state.(string); s == "" {
+			state = "running"
+		}
+		rows = append(rows, [7]string{termSafe(x["ticket"], 8), termSafe(state, 10), fmtSecs(x["state_secs"]),
+			termSafe(x["agent"], 8), termSafe(root[strings.LastIndex(root, "/")+1:], 20), termSafe(x["signal"], 12), termSafe(x["title"], 50)})
+	}
+	var widths [6]int
+	for _, r := range rows {
+		for i := 0; i < 6; i++ {
+			if n := utf8.RuneCountInString(r[i]); n > widths[i] {
+				widths[i] = n
+			}
+		}
+	}
+	var sb strings.Builder
+	for _, r := range rows {
+		line := ""
+		for i := 0; i < 6; i++ {
+			line += r[i] + strings.Repeat(" ", widths[i]-utf8.RuneCountInString(r[i])) + "  "
+		}
+		line += r[6]
+		sb.WriteString(strings.TrimSuffix(line, "  ") + "\n")
+	}
+	return sb.String()
+}
+
 // ── t-d9e6: sessions running when the daemon stopped ──────────────────────────
 // Mirrors server.py's cockpit_interrupted*: the daemon moves its leftover live-session
 // snapshot into interrupted.json at start and never touches it again; the board owns it
@@ -3648,6 +3796,12 @@ func serveFile(w http.ResponseWriter, path, contentType string) {
 		w.Header().Set("Cache-Control", "no-store") // t-07c8: always serve fresh (local dev tool)
 	}
 	w.Write(body)
+}
+
+func sendText(w http.ResponseWriter, text string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(len(text)))
+	w.Write([]byte(text))
 }
 
 func sendJSON(w http.ResponseWriter, data any) {
