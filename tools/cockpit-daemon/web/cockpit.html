@@ -172,7 +172,12 @@
   // context-aware: framed by the board (EMBED), the ticket is already chosen and
   // the button is "Start sprint" — there is no ticket id to enter, so don't tell
   // the user to enter one. Standalone, the page's own ticket-id input applies.
-  if (EMBED === "1") {
+  // t-47f1: a scratch session (s-xxxx) has no ticket and runs the plain agent.
+  var SCRATCH = /^s-[a-z0-9]{4}$/.test(PREFILL || "");
+  if (SCRATCH) {
+    document.getElementById("startBtn").textContent = "\u25B6 Start agent";
+    term.writeln("\x1b[38;5;244mcanon cockpit — scratch session: press \x1b[1m\u25B6 Start agent\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent\x1b[0m\x1b[38;5;244m in this project's main checkout. No ticket, no sprint, no gates.\x1b[0m");
+  } else if (EMBED === "1") {
     var who = PREFILL ? "\x1b[1m" + PREFILL + "\x1b[0m\x1b[38;5;244m" : "this ticket";
     term.writeln("\x1b[38;5;244mcanon cockpit — press \x1b[1m\u25B6 Start sprint\x1b[0m\x1b[38;5;244m to launch a real \x1b[1minteractive agent session\x1b[0m\x1b[38;5;244m for " + who + ".\x1b[0m");
   } else {
@@ -357,7 +362,7 @@
 
   async function start(){
     var ticket = document.getElementById("ticket").value.trim();
-    if(!/^t-[a-z0-9]{4}$/.test(ticket)){ term.writeln("\r\n\x1b[31minvalid ticket id (expected t-xxxx)\x1b[0m"); return; }
+    if(!/^[ts]-[a-z0-9]{4}$/.test(ticket)){ term.writeln("\r\n\x1b[31minvalid ticket id (expected t-xxxx)\x1b[0m"); return; }
     document.getElementById("startBtn").classList.remove("pulse");
     setStatus("running","starting…");
     try{

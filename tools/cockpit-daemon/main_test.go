@@ -5848,3 +5848,144 @@ func TestCopilotCommandMenuDetected(t *testing.T) {
 		t.Fatalf("after the menu closed: state %q menuSince %v", state, se.menuSince)
 	}
 }
+
+// t-47f1: a scratch session starts with no ticket, no sprint prompt, and keeps its state
+// out of the project's .tickets/.
+func TestScratchSessionStart(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	resp := startSession(t, base, "s-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || out.Session == "" {
+		t.Fatalf("scratch start: status %d", resp.StatusCode)
+	}
+	argv := string(waitFile(t, argvFile, 3*time.Second))
+	if strings.Contains(argv, "sprint start") || !strings.Contains(argv, "ARG:--session-id") || !strings.Contains(argv, "ARG:--settings") {
+		t.Fatalf("scratch argv must carry --session-id and the hook settings but no sprint prompt:\n%s", argv)
+	}
+	dir := s.sessionStateDir(s.cfg.projectRoot, "s-ab12")
+	if !strings.HasPrefix(dir, filepath.Join(s.cfg.stateDir, "scratch")+string(filepath.Separator)) {
+		t.Fatalf("scratch state dir %q is not under the daemon state dir", dir)
+	}
+	for _, f := range []string{".cockpit-session-id", ".cockpit-agent", "cockpit-sessions.md"} {
+		if _, err := os.Stat(filepath.Join(dir, f)); err != nil {
+			t.Errorf("scratch state file %s missing: %v", f, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(s.cfg.projectRoot, ".tickets", "s-ab12")); !os.IsNotExist(err) {
+		t.Fatalf("a scratch session must not write into the project's .tickets/ (stat err %v)", err)
+	}
+	// The same id attaches to the live session; a second scratch in the project is refused.
+	again := startSession(t, base, "s-ab12", bootTok)
+	var out2 struct{ Session string }
+	json.NewDecoder(again.Body).Decode(&out2)
+	again.Body.Close()
+	if out2.Session != out.Session {
+		t.Fatalf("same scratch id must attach: got %q want %q", out2.Session, out.Session)
+	}
+	second := startSession(t, base, "s-cd34", bootTok)
+	b, _ := io.ReadAll(second.Body)
+	second.Body.Close()
+	if second.StatusCode != http.StatusConflict || !strings.Contains(string(b), "t-e162") {
+		t.Fatalf("second scratch: status %d body %q", second.StatusCode, b)
+	}
+	// A ticket session in the same project is unaffected by the scratch rule.
+	tk := startSession(t, base, "t-ab12", bootTok)
+	tk.Body.Close()
+	if tk.StatusCode != http.StatusOK {
+		t.Fatalf("ticket start next to a scratch: status %d", tk.StatusCode)
+	}
+	// Save & End is refused for scratch.
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/save-and-end", nil)
+	req.Header.Set("Authorization", "Bearer "+out.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Body.Close()
+	if r.StatusCode != http.StatusConflict {
+		t.Fatalf("save-and-end on scratch: status %d, want 409", r.StatusCode)
+	}
+}
+
+// t-47f1: ids reach file paths and argv — only ^[ts]-[a-z0-9]{4}$ gets through.
+func TestScratchHostileIDsRejected(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	for _, id := range []string{"s-../x", "s-AAAA", "s-12345", "s-ab1", "x-abcd", "s-ab12\n", "s-ab/2", "../s-ab12"} {
+		resp := startSession(t, base, id, bootTok)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("id %q: status %d, want 400", id, resp.StatusCode)
+		}
+	}
+	if entries, _ := os.ReadDir(filepath.Join(s.cfg.stateDir, "scratch")); len(entries) != 0 {
+		t.Fatalf("a rejected id created scratch state: %v", entries)
+	}
+}
+
+// t-47f1: scratch sessions run in the main checkout only until t-e162.
+func TestScratchRefusesWorktreeCwd(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	wt := gitWorktreeFixture(t, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSessionCwd(t, ts.URL, "s-ab12", wt, bootTok)
+	b, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(b), "scratch sessions run in the project's main checkout") {
+		t.Fatalf("scratch in a worktree: status %d body %q", resp.StatusCode, b)
+	}
+}
+
+// t-47f1: an idle scratch session in a clean checkout is ended with no save prompt; one
+// with uncommitted changes is kept.
+func TestIdleReapScratch(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		dirty bool
+	}{{"clean checkout ends", false}, {"uncommitted changes kept", true}} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			recv := filepath.Join(dir, "received.bin")
+			bin := filepath.Join(dir, "fake-agent.sh")
+			if err := os.WriteFile(bin, []byte("#!/bin/sh\nprintf 'READY\\n'\ncat > \""+recv+"\"\n"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			root := t.TempDir()
+			initGitRepo(t, root)
+			if tc.dirty {
+				os.WriteFile(filepath.Join(root, "notes.txt"), []byte("work in progress\n"), 0o644)
+			}
+			s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), addr: "127.0.0.1:8455",
+				idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: time.Hour, saveFallback: 30 * time.Second})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			resp := startSession(t, ts.URL, "s-ab12", bootTok)
+			var out struct{ Session string }
+			json.NewDecoder(resp.Body).Decode(&out)
+			resp.Body.Close()
+			s.mu.Lock()
+			se := s.sessions[out.Session]
+			s.mu.Unlock()
+			deadline := time.Now().Add(3 * time.Second)
+			for time.Now().Before(deadline) && !se.isExited() {
+				time.Sleep(100 * time.Millisecond)
+				s.reapIdleSessions()
+			}
+			time.Sleep(300 * time.Millisecond)
+			if got := se.isExited(); got == tc.dirty {
+				t.Fatalf("dirty=%v: exited=%v", tc.dirty, got)
+			}
+			if b, _ := os.ReadFile(recv); len(b) != 0 {
+				t.Fatalf("the reaper typed into a scratch session: %q", b)
+			}
+		})
+	}
+}

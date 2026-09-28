@@ -1498,6 +1498,11 @@
     .ck-state-chip.st-idle::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--st-idle); }
     .ck-state-chip.st-needs-you { background: var(--st-need); border-color: var(--st-need); color: var(--st-ink); animation: pulse 1.4s ease-in-out infinite; }
     .ck-reaper { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+    /* t-47f1: a scratch session has no ticket docs — the rail shows only a label */
+    #cockpit.scratch-mode .ck-accordion-section { display: none; }
+    .ck-scratch-note { display: none; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-hover); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+    .ck-scratch-note b { color: var(--text); letter-spacing: .06em; }
+    #cockpit.scratch-mode .ck-scratch-note { display: block; }
     /* t-8a2a: session sub-tabs — one pill per open ticket, on the board (visible
        when the overlay is closed) and mirrored in the topbar (visible while a
        session is open), same renderTabStrip() call filling both containers. */
@@ -2099,6 +2104,10 @@
             <div class="ck-tc-idrow"><span class="ck-tc-id" id="ck-tc-id"></span><span class="ck-status-badge" id="ck-tc-status"></span></div>
             <div class="ck-tc-title" id="ck-tc-title"></div>
           </div>
+          <div class="ck-scratch-note" id="ck-scratch-note">
+            <b>SCRATCH</b> · no ticket · no gates<br>
+            Runs in the project's main checkout. Promote to a ticket arrives with t-f553; End keeps any uncommitted changes in place.
+          </div>
           <div class="ck-accordion-section" id="ck-worktree-section">
             <div class="ck-accordion-header" data-accordion="ck-worktree-section">
               <div class="ck-section-label">Worktree</div>
@@ -2181,7 +2190,7 @@
   <!-- t-f6b6: leaving a live session (Board button) must never silently orphan it. -->
   <div id="ck-leave-confirm" class="ck-leave-confirm-overlay">
     <div class="ck-leave-confirm">
-      <div class="ck-leave-confirm-title">A sprint session is still running</div>
+      <div class="ck-leave-confirm-title" id="ck-leave-confirm-title">A sprint session is still running</div>
       <div class="ck-leave-confirm-body" id="ck-leave-confirm-body">
         Save &amp; End saves this sprint's state to HANDOFF and ends the session. End without
         saving skips that and ends immediately — use it if the save is stuck. Cancel to keep
@@ -2756,6 +2765,7 @@ const state = {
   tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(),
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
   cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
+  scratch: new Map(),                           // t-47f1: open scratch sessions (s-xxxx) — no ticket behind them
 };
 
 // ── Data layer ───────────────────────────────────────────────────────────
@@ -3915,7 +3925,17 @@ function normalizeTicketId(id) {
 
 function findTicketById(id) {
   const want = normalizeTicketId(id);
-  return state.tickets.find(t => normalizeTicketId(t.id) === want);
+  return state.tickets.find(t => normalizeTicketId(t.id) === want) || state.scratch.get(want);
+}
+
+// t-47f1: a scratch session is the plain agent in the project's main checkout, with no
+// ticket behind it. The cockpit treats it as a pseudo-ticket (id s-xxxx, minted by the
+// shell) so tabs, the terminal and End reuse the ticket paths; the rail shows only a label.
+const SCRATCH_ID = /^s-[a-z0-9]{4}$/;
+function openScratch(id) {
+  if (!SCRATCH_ID.test(id)) return;
+  if (!state.scratch.has(id)) state.scratch.set(id, { id, title: 'Scratch session', status: 'scratch', scratch: true, docs: [] });
+  openCockpit(id);
 }
 
 // ── Modal ─────────────────────────────────────────────────────────────────
@@ -5505,12 +5525,23 @@ function openLeaveConfirm() {
   document.getElementById('ck-leave-cancel').disabled = false;
   document.getElementById('ck-leave-save').style.display = '';
   document.getElementById('ck-leave-skip').style.display = '';
+  document.getElementById('ck-leave-skip').textContent = 'End without saving';
+  document.getElementById('ck-leave-confirm-title').textContent = 'A sprint session is still running';
   document.getElementById('ck-leave-cancel').textContent = 'Cancel';
   document.getElementById('ck-leave-confirm-body').textContent = needsYou
     ? 'The agent is waiting on you right now — Cancel to go back and resolve the prompt, then you can Save & End, or End without saving.'
     : "Save & End saves this sprint's state to HANDOFF and ends the session. End without saving skips that and ends immediately — use it if the save is stuck. Cancel to keep working here.";
   document.getElementById('ck-leave-confirm-status').textContent = '';
   document.getElementById('ck-leave-confirm').classList.add('open');
+  if (SCRATCH_ID.test(cockpitState.id || '')) {   // t-47f1: nothing to save — End only
+    const changed = state.git && Number(state.git.modified) > 0;
+    document.getElementById('ck-leave-save').style.display = 'none';
+    document.getElementById('ck-leave-skip').textContent = 'End';
+    document.getElementById('ck-leave-confirm-title').textContent = 'A scratch session is still running';
+    document.getElementById('ck-leave-confirm-body').textContent = 'End this scratch session? There is no ticket to save state into.'
+      + (changed ? ' The main checkout has uncommitted changes — they stay in place.' : '');
+    return;
+  }
   // t-b999: a closed ticket has nothing to save (t-98d8 force-ends it anyway), so don't offer
   // Save & End. The in-memory status can be stale (sprint complete runs in the terminal), so
   // re-read it; a failed read keeps the normal dialog.
@@ -5738,12 +5769,17 @@ window.addEventListener('message', (e) => {
     if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
     return;
   }
+  if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened
+    if (typeof d.id === 'string' && SCRATCH_ID.test(d.id)) openScratch(d.id);
+    return;
+  }
   if (d.type !== 'save-and-end' && d.type !== 'end') return;
   if (!cockpitState) return;                            // t-8a2a: no active tab — nothing to end
   if (cockpitState._ending) return;                     // t-9eda: already ending — ckLeaveSaveAndEnd would no-op anyway
   if (!sessionIsLive()) return;                         // nothing live to end (shell poller reconciles)
   openLeaveConfirm();                                   // reuse the vetted flow's state setup
-  ckLeaveSaveAndEnd(d.type === 'end');                  // end === skip the save turn
+  // end === skip the save turn; a scratch session (t-47f1) has no save turn at all
+  ckLeaveSaveAndEnd(d.type === 'end' || SCRATCH_ID.test(cockpitState.id || ''));
 });
 
 // t-2d2e: a freshly opened project tab's ticket list loads after its iframe does.
@@ -5762,6 +5798,7 @@ function statusBadgeInfo(status) {
     case 'cancelled':   return { label: 'discarded',   cls: 'st-discarded' };
     case 'archived':    return { label: 'archived',    cls: 'st-discarded' };
     case 'open':        return { label: 'open',        cls: 'st-open' };
+    case 'scratch':     return { label: 'scratch',     cls: 'st-open' };
     default:            return { label: status || '',  cls: 'st-open' };
   }
 }
@@ -5859,11 +5896,16 @@ function renderTabStrip() {
 async function renderCockpitRail(t) {
   renderSessionStateChip();
   refreshSessionStateChip();
+  document.getElementById('cockpit').classList.toggle('scratch-mode', !!t.scratch);
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
   document.getElementById('ck-tc-id').textContent = displayTicketId(t);
   document.getElementById('ck-tc-title').textContent = t.title || '';
   renderCockpitStatusBadge(t);
+  if (t.scratch) {   // t-47f1: no worktree, plan, acceptance or state to show
+    document.getElementById('ck-model').textContent = 'model: agent default';
+    return;
+  }
   renderCockpitModel(t);
   renderCockpitPlan(t);
   await renderCockpitWorktree(t);
@@ -5908,7 +5950,7 @@ function ensureCockpitPollTimer() {
     } catch {}
     refreshSessionStateChip(); // t-824e: the active tab's state chip + reaper line
     const ct = findTicketById(activeTabId);
-    if (!ct) return;
+    if (!ct || ct.scratch) return;
     await fetchCockpitWorktreeDocs(ct);
     renderCockpitPlan(ct);
     renderCockpitDocs(ct);
@@ -6883,6 +6925,7 @@ async function maybeMountCockpitTerminal(t) {
     if (!cockpitState.trackConfirming) setTermMessage(TRACK_INTRO);
     return;
   }
+  if (t.scratch) { await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
     setTermMessage(cockpitState.wtPrefPending
