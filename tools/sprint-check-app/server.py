@@ -2077,6 +2077,13 @@ def cockpit_status_text(st: dict) -> str:
     lines.append('sessions: %d%s' % (ss['total'], (' (' + parts + ')') if parts else ''))
     return '\n'.join(lines) + '\n'
 
+def _root_key(p: str) -> str:
+    return str(p or '').replace('\\', '/').rstrip('/').lower()
+
+def cockpit_sessions_for(sessions: list, sid: str, root: str = '') -> list:
+    """t-180d: the live rows for one ticket/scratch id, optionally in one project."""
+    return [x for x in sessions if x.get('ticket') == sid and (not root or _root_key(x.get('project_root')) == _root_key(root))]
+
 def cockpit_sessions_text(sessions: list) -> str:
     if not sessions:
         return 'No sessions running.\n'
@@ -2833,10 +2840,20 @@ class Handler(BaseHTTPRequestHandler):
         elif path == '/api/cockpit':
             self.send_json(cockpit_discover())
         elif path == '/api/cockpit-sessions':
-            if parse_qs(parsed.query).get('format', [''])[0] == 'text':
-                self.send_text(cockpit_sessions_text(cockpit_sessions()))
+            q = parse_qs(parsed.query)
+            fmt = q.get('format', [''])[0]
+            sessions = cockpit_sessions()
+            sid = q.get('id', [''])[0]
+            if sid:   # t-180d: one session (canon wait); root= narrows it to one project
+                if not _SESSION_ID_RE.match(sid):
+                    self.send_error(400); return
+                sessions = cockpit_sessions_for(sessions, sid, q.get('root', [''])[0])
+            if fmt == 'state':
+                self.send_text(str(sessions[0].get('state') or 'running') if sessions else 'exited')
+            elif fmt == 'text':
+                self.send_text(cockpit_sessions_text(sessions))
             else:
-                self.send_json(cockpit_sessions())
+                self.send_json(sessions)
         elif path == '/api/cockpit-status':
             st = cockpit_status()
             if parse_qs(parsed.query).get('format', [''])[0] == 'text':

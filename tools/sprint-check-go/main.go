@@ -314,10 +314,29 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
 	case "/api/cockpit-sessions":
-		if r.URL.Query().Get("format") == "text" {
-			sendText(w, cockpitSessionsText(cockpitSessions()))
-		} else {
-			sendJSON(w, cockpitSessions())
+		q := r.URL.Query()
+		sessions := cockpitSessions()
+		if sid := q.Get("id"); sid != "" { // t-180d: one session (canon wait); root= narrows it to one project
+			if !sessionIDRe.MatchString(sid) {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			sessions = cockpitSessionsFor(sessions, sid, q.Get("root"))
+		}
+		switch q.Get("format") {
+		case "state":
+			state := "exited"
+			if len(sessions) > 0 {
+				state, _ = sessions[0]["state"].(string)
+				if state == "" {
+					state = "running"
+				}
+			}
+			sendText(w, state)
+		case "text":
+			sendText(w, cockpitSessionsText(sessions))
+		default:
+			sendJSON(w, sessions)
 		}
 	case "/api/cockpit-status":
 		st := cockpitStatus()
@@ -3216,6 +3235,23 @@ func cockpitStatusText(st map[string]any) string {
 		line += " (" + strings.Join(parts, ", ") + ")"
 	}
 	return strings.Join(append(lines, line), "\n") + "\n"
+}
+
+func rootKey(p string) string {
+	return strings.ToLower(strings.TrimRight(strings.ReplaceAll(p, "\\", "/"), "/"))
+}
+
+// cockpitSessionsFor is the live rows for one ticket/scratch id, optionally in one project (t-180d).
+func cockpitSessionsFor(sessions []map[string]any, sid, root string) []map[string]any {
+	out := []map[string]any{}
+	for _, x := range sessions {
+		t, _ := x["ticket"].(string)
+		pr, _ := x["project_root"].(string)
+		if t == sid && (root == "" || rootKey(pr) == rootKey(root)) {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 func cockpitSessionsText(sessions []map[string]any) string {

@@ -33,6 +33,10 @@ Usage:
   canon sessions [--json]  Every live agent session across projects
   canon stop [--force]     Stop the cockpit daemon (--force ends live sessions)
   canon restart [--force]  Restart the cockpit daemon (--force ends live sessions)
+  canon wait <id> --until <state>[,<state>...] [--timeout MS] [--project PATH] [--json]
+                           Block until a session (ticket or scratch id) is in a state:
+                           needs-you, working, done, idle, or exited. Exit 0 when
+                           reached, 1 on timeout, 2 on bad input or no board.
   canon --help             Show this help
 
 Launch once and work from within it. A second launch focuses the running
@@ -40,6 +44,56 @@ window instead of starting a second server. Set CANON_COCKPIT_PORT to change
 the default port. status/sessions/stop/restart talk to the running board and
 never need or print a session token.
 EOF
+}
+
+# t-180d: poll the board for one session's state (it answers with the state word, so no
+# JSON parsing here) until it's one of the wanted ones. Exit 0 reached, 1 timeout, 2 usage.
+wait_cmd() {
+  local id="${1:-}"; shift || true
+  local until="" timeout="" root="" json=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --until) until="${2:-}"; shift 2 || { echo "canon wait: --until needs a value" >&2; exit 2; } ;;
+      --timeout) timeout="${2:-}"; shift 2 || { echo "canon wait: --timeout needs a value" >&2; exit 2; } ;;
+      --project) root="${2:-}"; shift 2 || { echo "canon wait: --project needs a path" >&2; exit 2; } ;;
+      --json) json=1; shift ;;
+      *) echo "canon wait: unknown option: $1" >&2; exit 2 ;;
+    esac
+  done
+  [[ "$id" =~ ^[ts]-[a-z0-9]{4}$ ]] || { echo "canon wait: expected a ticket or scratch id (t-xxxx or s-xxxx), got '$id'" >&2; exit 2; }
+  [[ -n "$until" ]] || { echo "canon wait: --until <state> is required" >&2; exit 2; }
+  local st
+  for st in ${until//,/ }; do
+    case "$st" in needs-you|working|done|idle|exited) ;; *) echo "canon wait: unknown state '$st' (needs-you, working, done, idle, exited)" >&2; exit 2 ;; esac
+  done
+  [[ -z "$timeout" || "$timeout" =~ ^[0-9]+$ ]] || { echo "canon wait: --timeout is milliseconds, got '$timeout'" >&2; exit 2; }
+  local port="${CANON_COCKPIT_PORT:-8899}"
+  local base="http://127.0.0.1:$port"
+  curl -s -o /dev/null --max-time 3 "$base/api/version" || { echo "Canon isn't running on port $port — start it with: canon" >&2; exit 2; }
+  local q=(--data-urlencode "id=$id")
+  [[ -n "$root" ]] && q+=(--data-urlencode "root=$root")
+  local start=$SECONDS now
+  while :; do
+    if ! now="$(curl -sfG --max-time 10 "${q[@]}" --data format=state "$base/api/cockpit-sessions")"; then
+      echo "The board on port $port doesn't support 'canon wait' (it predates it, or failed) — restart it: close its window, then run canon." >&2
+      exit 2
+    fi
+    if [[ ",$until," == *",$now,"* ]]; then
+      if [[ "$json" -eq 0 ]]; then echo "$now"
+      elif [[ "$now" == exited ]]; then printf '{"ticket": "%s", "state": "exited"}\n' "$id"
+      else
+        local row; row="$(curl -sfG --max-time 10 "${q[@]}" "$base/api/cockpit-sessions")" || row="[]"
+        [[ "$row" == \[\{*\}\] && "$row" != *'},{'* && "$row" != *'}, {'* ]] && row="${row:1:${#row}-2}"
+        printf '%s\n' "$row"
+      fi
+      exit 0
+    fi
+    if [[ -n "$timeout" ]] && (( (SECONDS - start) * 1000 >= timeout )); then
+      echo "canon wait: timed out after ${timeout}ms — $id is $now" >&2
+      exit 1
+    fi
+    sleep 1
+  done
 }
 
 # t-03a8: the read and control subcommands go through the running board's own API — it
@@ -100,6 +154,7 @@ main() {
   case "${1:-}" in
     help|--help|-h) usage; exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
+    wait) shift; wait_cmd "$@" ;;
     "") : ;;
     [0-9]*) PORT_ARG="$1" ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
