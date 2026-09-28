@@ -6611,3 +6611,31 @@ func TestScratchNoteRefusesSymlink(t *testing.T) {
 		t.Fatalf("the link target was written: %q", b)
 	}
 }
+
+// t-86fe: Discard waits until the killed agent is really gone; one that won't die means
+// nothing is discarded (files kept and noted).
+func TestScratchEndGuardDiscardWaitsForAgent(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	// An agent that survives its terminal closing (ignores SIGHUP), so only the kill ends it.
+	bin := filepath.Join(t.TempDir(), "stubborn-agent.sh")
+	os.WriteFile(bin, []byte("#!/bin/sh\ntrap '' HUP\nwhile :; do sleep 0.05; done\n"), 0o755)
+	s.cfg.sprintBin = bin
+	st := startScratchSession(t, base, "s-hh08", root)
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	realKill, realWait := killProc, endScratchReapWait
+	killProc, endScratchReapWait = func(*pty.Cmd) {}, 300*time.Millisecond
+	t.Cleanup(func() { killProc, endScratchReapWait = realKill, realWait; killProcess(se.cmd) })
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	code, body := postSession(t, base, st, "end-scratch", `{"discard":true}`)
+	if code != http.StatusOK || !strings.Contains(body, "did not stop") {
+		t.Fatalf("end-scratch: %d %s", code, body)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "edited\n" {
+		t.Fatal("nothing may be discarded while the agent is still running")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "Discard skipped (the agent did not stop in time), kept") {
+		t.Fatalf("skipped discard not noted:\n%s", b)
+	}
+}

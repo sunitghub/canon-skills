@@ -142,6 +142,7 @@ type session struct {
 	status        string    // "running" | "needs-you" | "awaiting-input" (t-824e: finished, at the prompt)
 	statusSince   time.Time // t-824e: when status last changed — /sessions reports how long a session has waited
 	done          chan struct{}
+	reaped        chan struct{} // t-86fe: closed once the agent process has exited and been waited for
 	doneOnce      sync.Once
 	closeOnce     sync.Once // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
 	exited        bool
@@ -935,7 +936,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		hookDir: hookDir, cwd: cwd, projectRoot: projectRoot, ticketsDir: filepath.Dir(s.sessionStateDir(projectRoot, ticket)), // Join(ticketsDir, ticket) = the session's state dir (t-47f1)
 		agent: kind, started: time.Now(), copilotResumeAttempt: copilotResuming,
 		pty: p, cmd: c, max: s.cfg.scrollback, status: "running", statusSince: time.Now(),
-		subs: map[chan frame]struct{}{}, done: make(chan struct{}),
+		subs: map[chan frame]struct{}{}, done: make(chan struct{}), reaped: make(chan struct{}),
 		lastActivity: time.Now(), // not the zero value, or it reads as instantly idle
 	}
 	// t-75cb: the binary actually run and its full argv (flags, ids, the fixed prompt —
@@ -1519,6 +1520,12 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request, se *sessi
 	writeJSON(w, map[string]any{"files": files, "total": total, "commits": commits, "can_discard": startClean && total > 0})
 }
 
+// killProc is killProcess; a test swaps it to simulate an agent that won't die.
+var killProc = killProcess
+
+// endScratchReapWait bounds how long Discard waits for the killed agent to be gone.
+var endScratchReapWait = 5 * time.Second
+
 // discardChanges undoes staged and unstaged edits to tracked files and deletes untracked
 // files in dir. Never -x: ignored files (build output, .env) stay.
 func discardChanges(dir string) error {
@@ -1562,7 +1569,19 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 	reason, errMsg := "kept on End", ""
 	if body.Discard {
 		reason = "left after Discard"
-		if err := discardChanges(cwd); err != nil {
+		// Only once the agent is really gone — it must not write while files are restored.
+		gone := se.reaped == nil
+		if !gone {
+			select {
+			case <-se.reaped:
+				gone = true
+			case <-time.After(endScratchReapWait):
+			}
+		}
+		if !gone {
+			reason, errMsg = "Discard skipped (the agent did not stop in time), kept", "the agent did not stop in time — nothing was discarded"
+			se.debugf("discard skipped: agent not reaped within %s", endScratchReapWait)
+		} else if err := discardChanges(cwd); err != nil {
 			reason, errMsg = "Discard failed ("+err.Error()+"), kept", err.Error()
 			se.debugf("discard failed: %v", err)
 		}
@@ -1724,7 +1743,7 @@ func (s *server) killSession(se *session) {
 	se.killed = true
 	se.mu.Unlock()
 	se.debugf("kill invoked")
-	killProcess(se.cmd) // platform-specific: no orphaned children
+	killProc(se.cmd) // platform-specific: no orphaned children
 	se.closePty()
 	se.markDone()
 	se.cleanup()
@@ -1872,6 +1891,9 @@ const exitDrainGrace = 2 * time.Second
 // child wrote just before exiting; the grace bounds the Windows case.
 func (se *session) waitExit(wait func() error, grace time.Duration) {
 	code, msg := exitStatus(wait())
+	if se.reaped != nil {
+		close(se.reaped)
+	}
 	// t-75cb: the process's own status, which the readLoop `exit` line (killed/buf_len) can't give.
 	se.debugf("wait returned exit_code=%d wait_err=%q", code, msg)
 	select {
