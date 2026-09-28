@@ -183,6 +183,18 @@
   .tab .live.needs{background:var(--st-need);box-shadow:0 0 6px var(--st-need)}
   .needpill{display:flex;align-items:center;gap:7px;margin-right:12px;border:1px solid color-mix(in srgb, var(--st-need) 55%, transparent);background:color-mix(in srgb, var(--st-need) 14%, transparent);color:var(--st-need);border-radius:20px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
   .needpill[hidden]{display:none}
+  /* t-d9e6: sessions that were running when the daemon stopped */
+  .intr-banner{margin:10px 14px 0;border:1px solid color-mix(in srgb, var(--st-need) 45%, var(--border, #444));background:color-mix(in srgb, var(--st-need) 8%, transparent);border-radius:10px;padding:10px 12px;font-size:12.5px}
+  .intr-banner[hidden]{display:none}
+  .intr-head{display:flex;align-items:center;gap:10px;font-weight:700;margin-bottom:6px}
+  .intr-head span{flex:1}
+  .intr-row{display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid color-mix(in srgb, var(--text-muted) 20%, transparent)}
+  .intr-what{flex:1;min-width:0;overflow-wrap:anywhere}
+  .intr-what b{font-family:ui-monospace,monospace;font-weight:600;margin-right:6px}
+  .intr-meta{color:var(--text-muted)}
+  .intr-reason{color:var(--text-muted);font-style:italic}
+  .intr-btn{border:1px solid var(--text-muted);background:transparent;color:var(--text);border-radius:7px;padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .intr-btn.primary{border-color:var(--accent);color:var(--accent)}
   .needpill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
   .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
   .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
@@ -536,6 +548,7 @@
       <div id="tabstrip" class="tabstrip">
         <div class="tab pinned active" data-tab="projects" onclick="activateTab('projects')">&#9638; Projects</div>
       </div>
+      <div id="intr-banner" class="intr-banner" hidden></div>
       <div id="views" class="views">
         <section id="view-projects" class="view active">
           <div id="grid" class="grid"></div>
@@ -917,7 +930,71 @@
     for(const id of [...closingTabs]){ if(!next.has(id)){ closingTabs.delete(id); _removeTab(id); } }
     if(changed) renderTabs();
   }
-  function startSessionPoll(){ pollSessions(); setInterval(pollSessions, 5000); }
+  function startSessionPoll(){ pollSessions(); setInterval(pollSessions, 5000); pollInterrupted(); setInterval(pollInterrupted, 15000); }
+
+  // ── t-d9e6: sessions that were running when the daemon stopped ─────────────
+  // The board server lists them (resumable, or why not); Resume dismisses the entry and
+  // opens the ticket's cockpit, where Resume is one click — nothing starts by itself.
+  let interrupted=[];
+  async function pollInterrupted(){
+    let list=[];
+    try{ const r=await fetch('/api/cockpit-interrupted'); if(r.ok) list=await r.json(); }catch(e){}
+    interrupted=(Array.isArray(list)?list:[]).filter(e=>e && (TICKET_ID_RE.test(e.id)||SCRATCH_ID_RE.test(e.id)) && typeof e.project_root==='string');
+    renderInterrupted();
+  }
+  async function dismissInterrupted(id){
+    try{
+      const r=await fetch('/api/cockpit-interrupted-dismiss',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});
+      if(!r.ok) throw new Error();
+    }catch(e){ toast('Could not dismiss '+id); return false; }
+    interrupted=interrupted.filter(e=>e.id!==id);
+    renderInterrupted();
+    return true;
+  }
+  async function resumeInterrupted(e){
+    const proj=(window._projects||[]).find(p=>_projKey(p.path)===_projKey(e.project_root));
+    if(!proj){ toast('Project not registered: '+e.project_root); return; }
+    if(await dismissInterrupted(e.id)) openSessionInTab({proot:e.project_root, ticket:e.id});
+  }
+  function renderInterrupted(){
+    const box=document.getElementById('intr-banner');
+    box.hidden=interrupted.length===0;
+    box.textContent='';
+    if(!interrupted.length) return;
+    const projOf=e=>(window._projects||[]).find(p=>_projKey(p.path)===_projKey(e.project_root));
+    ensureTicketTitles(interrupted.map(e=>({pid:(projOf(e)||{}).id||'', ticket:TICKET_ID_RE.test(e.id)?e.id:''})));
+    const el=(tag,cls,text)=>{ const n=document.createElement(tag); if(cls) n.className=cls; if(text!=null) n.textContent=text; return n; };
+    const head=el('div','intr-head');
+    const n=interrupted.length;
+    head.append(el('span','',n+' session'+(n===1?' was':'s were')+' running when the daemon stopped'));
+    const resumable=interrupted.filter(e=>e.resumable===true);
+    if(resumable.length>1){
+      const all=el('button','intr-btn primary','Resume all');
+      all.id='intr-resume-all';
+      all.addEventListener('click',async()=>{ for(const e of resumable) await resumeInterrupted(e); });
+      head.append(all);
+    }
+    box.append(head);
+    for(const e of interrupted){
+      const proj=projOf(e);
+      const row=el('div','intr-row'); row.dataset.id=e.id;
+      const what=el('div','intr-what');
+      what.append(el('b','',e.id));
+      const title=proj&&TICKET_ID_RE.test(e.id)?ticketTitle(proj.id,e.id):'';
+      if(title) what.append(document.createTextNode(title+' '));
+      const started=new Date(e.started);
+      what.append(el('span','intr-meta','· '+(proj?proj.name:e.project_root)+(e.agent?' · '+e.agent:'')+(isNaN(started)?'':' · since '+started.toLocaleString())));
+      if(e.resumable!==true && e.reason){ what.append(document.createElement('br')); what.append(el('span','intr-reason','Can\u2019t resume: '+e.reason)); }
+      row.append(what);
+      if(e.resumable===true){
+        const b=el('button','intr-btn primary','Resume'); b.dataset.act='resume';
+        b.addEventListener('click',()=>resumeInterrupted(e)); row.append(b);
+      }
+      const d=el('button','intr-btn','Dismiss'); d.dataset.act='dismiss';
+      d.addEventListener('click',()=>dismissInterrupted(e.id)); row.append(d);
+      box.append(row);
+    }
+  }
 
   // ── Session state (t-824e) ─────────────────────────────────────────────────
   // The daemon owns each session's state (/sessions "state"); every surface below
@@ -1038,6 +1115,7 @@
       meta.querySelector('[data-f="sessions"]').textContent=[...counts].map(([k,n])=>n+' '+k).join(' \u00b7 ');
     }
     renderAdminSessions(views);
+    if(interrupted.length) renderInterrupted();   // t-d9e6: ticket titles arrive late
   }
   // ── Desktop notification (t-28ec) ──────────────────────────────────────────
   // The shell is the one page that sees every project, so it alone notifies (a board
