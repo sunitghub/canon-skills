@@ -4125,10 +4125,36 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#ck-id')).toHaveText(tid, { timeout: 8000 });
         await expect(page.locator('#cockpit')).not.toHaveClass(/scratch-mode/);
         await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(1);
+        await expect(page.locator('#ck-promote')).toBeHidden();   // a ticket session has no Promote
       } finally {
         await page.unrouteAll({ behavior: 'ignoreErrors' });
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', tid), { recursive: true, force: true });
       }
+    });
+
+    test('promote (t-f553): the title input stops at 80 characters; a refused promote shows the reason', async ({ page }) => {
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><script>
+        window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+        window.addEventListener('message', function(e){
+          var d = e.data; if(!d || d.source !== 'canon-cockpit') return;
+          if(d.type === 'promote-request') window.parent.postMessage({source:'canon-cockpit', type:'promote-refused', reason:'The agent is waiting on you \\u2014 answer its prompt first, then promote.'}, '*');
+        });
+      </script></body></html>` }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-scratch').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      await page.locator('#ck-tc-title').click();
+      await page.locator('.ck-title-input').pressSequentially('x'.repeat(90));
+      expect((await page.locator('.ck-title-input').inputValue()).length).toBe(80);
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#ck-tc-title')).toHaveText('x'.repeat(80));
+      await page.locator('#ck-promote').click();
+      await expect(page.locator('#drop-toast')).toHaveClass(/show/);
+      await expect(page.locator('#drop-toast')).toHaveText('\u26a0 The agent is waiting on you \u2014 answer its prompt first, then promote.');
+      await expect(page.locator('#ck-scratch-promoted')).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
     test('promote (t-f553): End asks to save as a ticket; Save adopts and ends without opening it; a hostile id is inert', async ({ page }) => {
