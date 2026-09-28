@@ -6335,4 +6335,8 @@ func TestScratchAdoptKeepsWorktree(t *testing.T) {
 	if strings.TrimSpace(string(cwd)) != wtSess.Cwd {
 		t.Fatalf(".cockpit-cwd = %q, want the worktree %q", cwd, wtSess.Cwd)
 	}
+	// Starting the adopted (still open) ticket runs it in that worktree, not the main checkout.
+	if st := startScratchSession(t, ts.URL, "t-cd34", ""); st.Cwd != wtSess.Cwd {
+		t.Fatalf("adopted ticket started in %q, want the scratch worktree %q", st.Cwd, wtSess.Cwd)
+	}
 }
