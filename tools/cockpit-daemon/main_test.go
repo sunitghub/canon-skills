@@ -6595,3 +6595,19 @@ func TestScratchIdleReapNotesDirty(t *testing.T) {
 		t.Fatal("a git error must keep the session")
 	}
 }
+
+// t-86fe: the note never writes through a link in HANDOFF.md's place.
+func TestScratchNoteRefusesSymlink(t *testing.T) {
+	root, other := t.TempDir(), t.TempDir()
+	target := filepath.Join(other, "victim.txt")
+	os.WriteFile(target, []byte("keep\n"), 0o644)
+	if err := os.Symlink(target, filepath.Join(root, "HANDOFF.md")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if err := noteScratchLeftover(root, "- note"); err == nil {
+		t.Fatal("a symlinked HANDOFF.md must be refused")
+	}
+	if b, _ := os.ReadFile(target); string(b) != "keep\n" {
+		t.Fatalf("the link target was written: %q", b)
+	}
+}

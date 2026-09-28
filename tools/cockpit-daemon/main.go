@@ -1596,6 +1596,10 @@ func noteScratchLeftover(root, line string) error {
 	handoffMu.Lock()
 	defer handoffMu.Unlock()
 	p := filepath.Join(root, "HANDOFF.md")
+	// The agent can write the project: never follow a link it put in HANDOFF.md's place.
+	if fi, err := os.Lstat(p); err == nil && !fi.Mode().IsRegular() {
+		return fmt.Errorf("HANDOFF.md is not a regular file")
+	}
 	b, err := os.ReadFile(p)
 	if err != nil && !os.IsNotExist(err) {
 		return err
