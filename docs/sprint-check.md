@@ -195,6 +195,10 @@ sprint agent without leaving the browser — no second terminal.
   conversation, agent and directory to that ticket (a scratch worktree carries over), ends
   the scratch session and opens the ticket, whose Start resumes the same Claude
   conversation with `sprint start <id>` (Copilot/Pi keep the directory but start fresh).
+  Adopt takes only a new ticket (status open, no saved session), so a wrong id in the
+  agent's output can't take over another ticket. The resume needs a saved transcript: a
+  daemon launched from inside a Claude Code session inherits `CLAUDECODE`/`CLAUDE_CODE_*`,
+  which stops the spawned `claude` from saving one — start the board from a plain shell.
   End asks **Save this session as a ticket?** — Save runs the same promote and ends
   without opening the ticket; **Just end** ends it. The idle reaper ends a scratch
   session only when its checkout has no uncommitted changes (a guard for ending with
