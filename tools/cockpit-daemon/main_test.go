@@ -5950,13 +5950,13 @@ func TestScratchRefusesWorktreeCwd(t *testing.T) {
 	}
 }
 
-// t-47f1: an idle scratch session in a clean checkout is ended with no save prompt; one
-// with uncommitted changes is kept.
+// t-47f1: an idle scratch session is ended with no save prompt. t-86fe: one with
+// uncommitted changes is ended too, its changes kept and noted in HANDOFF.md.
 func TestIdleReapScratch(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
 		dirty bool
-	}{{"clean checkout ends", false}, {"uncommitted changes kept", true}} {
+	}{{"clean checkout ends", false}, {"uncommitted changes: ends, keeps and notes them", true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			recv := filepath.Join(dir, "received.bin")
@@ -5987,8 +5987,16 @@ func TestIdleReapScratch(t *testing.T) {
 				s.reapIdleSessions()
 			}
 			time.Sleep(300 * time.Millisecond)
-			if got := se.isExited(); got == tc.dirty {
-				t.Fatalf("dirty=%v: exited=%v", tc.dirty, got)
+			if !se.isExited() {
+				t.Fatalf("dirty=%v: the idle scratch session must end", tc.dirty)
+			}
+			if tc.dirty {
+				if b, _ := os.ReadFile(filepath.Join(root, "notes.txt")); string(b) != "work in progress\n" {
+					t.Fatal("the reaper must keep the changes")
+				}
+				if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "s-ab12: 1 file changed in the main checkout — left by the idle auto-end") {
+					t.Fatalf("idle end not noted:\n%s", b)
+				}
 			}
 			if b, _ := os.ReadFile(recv); len(b) != 0 {
 				t.Fatalf("the reaper typed into a scratch session: %q", b)
@@ -6338,5 +6346,310 @@ func TestScratchAdoptKeepsWorktree(t *testing.T) {
 	// Starting the adopted (still open) ticket runs it in that worktree, not the main checkout.
 	if st := startScratchSession(t, ts.URL, "t-cd34", ""); st.Cwd != wtSess.Cwd {
 		t.Fatalf("adopted ticket started in %q, want the scratch worktree %q", st.Cwd, wtSess.Cwd)
+	}
+}
+
+// ── t-86fe: scratch end guard ─────────────────────────────────────────────────
+
+// endGuardProject is a git project with a committed a.txt and build/ ignored.
+func endGuardProject(t *testing.T) (string, string, *server) {
+	t.Helper()
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	initGitRepo(t, root)
+	os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".tickets/\nbuild/\nHANDOFF.md\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("original\n"), 0o644)
+	for _, args := range [][]string{{"add", ".gitignore", "a.txt"}, {"commit", "-q", "-m", "base"}} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resolved, _ := filepath.EvalSymlinks(root)
+	t.Cleanup(func() {
+		exec.Command("git", "-C", root, "worktree", "prune").Run()
+		os.RemoveAll(filepath.Join(filepath.Dir(resolved), filepath.Base(resolved)+"-worktrees"))
+	})
+	return root, ts.URL, s
+}
+
+func getChanges(t *testing.T, base string, st scratchStarted) (int, map[string]any) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, base+"/session/"+st.Session+"/changes", nil)
+	req.Header.Set("Authorization", "Bearer "+st.Token)
+	r, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Body.Close()
+	var out map[string]any
+	json.NewDecoder(r.Body).Decode(&out)
+	return r.StatusCode, out
+}
+
+func gitRun(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+
+func sessionGone(s *server, sid string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.sessions[sid] == nil
+}
+
+func TestScratchEndGuardDiscard(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	st := startScratchSession(t, base, "s-aa01", root)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "b.txt"), []byte("staged new\n"), 0o644)
+	gitRun(t, root, "add", "b.txt")
+	os.WriteFile(filepath.Join(root, "c.txt"), []byte("untracked\n"), 0o644)
+	os.MkdirAll(filepath.Join(root, "build"), 0o755)
+	os.WriteFile(filepath.Join(root, "build", "out.log"), []byte("ignored\n"), 0o644)
+	code, ch := getChanges(t, base, st)
+	if code != http.StatusOK || ch["total"] != float64(3) || ch["can_discard"] != true || ch["commits"] != float64(0) {
+		t.Fatalf("changes: %d %v", code, ch)
+	}
+	if b, _ := json.Marshal(ch["files"]); strings.Contains(string(b), "build/") {
+		t.Fatalf("an ignored file was listed: %s", b)
+	}
+	if code, body := postSession(t, base, st, "end-scratch", `{"discard":true}`); code != http.StatusOK {
+		t.Fatalf("end-scratch: %d %s", code, body)
+	}
+	if !sessionGone(s, st.Session) {
+		t.Fatal("the session must end")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "original\n" {
+		t.Fatalf("tracked edit not restored: %q", b)
+	}
+	for _, f := range []string{"b.txt", "c.txt"} {
+		if _, err := os.Stat(filepath.Join(root, f)); !os.IsNotExist(err) {
+			t.Fatalf("%s must be removed", f)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, "build", "out.log")); err != nil {
+		t.Fatal("an ignored file must be kept")
+	}
+	if _, err := os.Stat(filepath.Join(root, "HANDOFF.md")); !os.IsNotExist(err) {
+		t.Fatal("nothing was left, so nothing is noted")
+	}
+}
+
+func TestScratchEndGuardKeepNotes(t *testing.T) {
+	root, base, _ := endGuardProject(t)
+	prior := "# Handoff\n\n<!-- canon:handoff:BEGIN -->\n## Current Focus\n\nX\n<!-- canon:handoff:END -->\n\nMy own notes.\n"
+	os.WriteFile(filepath.Join(root, "HANDOFF.md"), []byte(prior), 0o644)
+	st := startScratchSession(t, base, "s-bb02", root)
+	postSession(t, base, st, "title", `{"title":"Why x fails"}`)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	if code, body := postSession(t, base, st, "end-scratch", `{"discard":false}`); code != http.StatusOK {
+		t.Fatalf("end-scratch: %d %s", code, body)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "edited\n" {
+		t.Fatal("Keep must leave the file as it was")
+	}
+	st2 := startScratchSession(t, base, "s-cc03", root)
+	if code, body := postSession(t, base, st2, "end-scratch", `{}`); code != http.StatusOK {
+		t.Fatalf("end-scratch 2: %d %s", code, body)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md"))
+	doc := string(b)
+	if !strings.HasPrefix(doc, prior) {
+		t.Fatalf("existing HANDOFF.md content changed:\n%s", doc)
+	}
+	rest := doc[len(prior):]
+	if strings.Count(doc, "## Scratch") != 1 || !strings.HasPrefix(rest, "\n## Scratch\n\n- ") {
+		t.Fatalf("## Scratch section not appended once after the managed block:\n%s", doc)
+	}
+	first, second := strings.Index(rest, "s-cc03:"), strings.Index(rest, `s-bb02 "Why x fails": 1 file changed in the main checkout — kept on End`)
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("notes missing or not newest first:\n%s", rest)
+	}
+}
+
+func TestScratchEndGuardDirtyStartRefusesDiscard(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("the user's own edit\n"), 0o644)
+	st := startScratchSession(t, base, "s-dd04", root)
+	if code, ch := getChanges(t, base, st); code != http.StatusOK || ch["can_discard"] != false || ch["total"] != float64(1) {
+		t.Fatalf("changes: %d %v", code, ch)
+	}
+	if code, _ := postSession(t, base, st, "end-scratch", `{"discard":true}`); code != http.StatusConflict {
+		t.Fatalf("discard after a dirty start: %d, want 409", code)
+	}
+	if sessionGone(s, st.Session) {
+		t.Fatal("a refused discard must not end the session")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "the user's own edit\n" {
+		t.Fatal("a refused discard touched the user's file")
+	}
+}
+
+func TestScratchEndGuardTicketRefused(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var st scratchStarted
+	json.NewDecoder(resp.Body).Decode(&st)
+	resp.Body.Close()
+	if code, _ := getChanges(t, base, st); code != http.StatusConflict {
+		t.Fatalf("changes on a ticket: %d, want 409", code)
+	}
+	for _, body := range []string{`{}`, `{"discard":true}`} {
+		if code, _ := postSession(t, base, st, "end-scratch", body); code != http.StatusConflict {
+			t.Fatalf("end-scratch %s on a ticket: %d, want 409", body, code)
+		}
+	}
+	if sessionGone(s, st.Session) {
+		t.Fatal("a refused end-scratch must not end a ticket session")
+	}
+}
+
+func TestScratchEndGuardWorktree(t *testing.T) {
+	root, base, _ := endGuardProject(t)
+	startScratchSession(t, base, "s-aa01", root)
+	wt := startScratchSession(t, base, "s-bb02", root)
+	if !strings.Contains(wt.Cwd, "-worktrees") {
+		t.Fatalf("expected a worktree, got %q", wt.Cwd)
+	}
+	os.WriteFile(filepath.Join(wt.Cwd, "new.txt"), []byte("x\n"), 0o644)
+	if code, body := postSession(t, base, wt, "end-scratch", `{"discard":true}`); code != http.StatusOK {
+		t.Fatalf("end-scratch: %d %s", code, body)
+	}
+	if _, err := os.Stat(wt.Cwd); !os.IsNotExist(err) {
+		t.Fatal("a worktree left clean by Discard must be removed")
+	}
+	// A worktree with a commit is kept and noted, with its branch.
+	wt2 := startScratchSession(t, base, "s-cc03", root)
+	os.WriteFile(filepath.Join(wt2.Cwd, "c.txt"), []byte("x\n"), 0o644)
+	gitRun(t, wt2.Cwd, "add", "c.txt")
+	gitRun(t, wt2.Cwd, "commit", "-q", "-m", "work")
+	if code, body := postSession(t, base, wt2, "end-scratch", `{"discard":true}`); code != http.StatusOK {
+		t.Fatalf("end-scratch 2: %d %s", code, body)
+	}
+	if _, err := os.Stat(wt2.Cwd); err != nil {
+		t.Fatal("a worktree with commits must be kept")
+	}
+	b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md"))
+	if !strings.Contains(string(b), "s-cc03: 1 commit in worktree "+filepath.Base(wt2.Cwd)+" (branch scratch/") || !strings.Contains(string(b), "left after Discard") {
+		t.Fatalf("worktree commit not noted:\n%s", b)
+	}
+}
+
+func TestScratchEndGuardDiscardErrorKeeps(t *testing.T) {
+	root, base, _ := endGuardProject(t)
+	st := startScratchSession(t, base, "s-ee05", root)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	os.WriteFile(filepath.Join(root, ".git", "index.lock"), nil, 0o644) // git restore can't take the index
+	t.Cleanup(func() { os.Remove(filepath.Join(root, ".git", "index.lock")) })
+	code, body := postSession(t, base, st, "end-scratch", `{"discard":true}`)
+	if code != http.StatusOK || !strings.Contains(body, `"error":"git restore`) {
+		t.Fatalf("end-scratch: %d %s", code, body)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "edited\n" {
+		t.Fatal("a failed discard must keep the file")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "s-ee05: 1 file changed in the main checkout — Discard failed (git restore") {
+		t.Fatalf("failed discard not noted:\n%s", b)
+	}
+}
+
+func TestScratchIdleReapNotesDirty(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	st := startScratchSession(t, base, "s-ff06", root)
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	os.WriteFile(filepath.Join(root, "u.txt"), []byte("new\n"), 0o644)
+	s.endIdleScratch(se)
+	if !sessionGone(s, st.Session) {
+		t.Fatal("the reaper must end a dirty scratch session now")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "edited\n" {
+		t.Fatal("the reaper must never discard")
+	}
+	if _, err := os.Stat(filepath.Join(root, "u.txt")); err != nil {
+		t.Fatal("the reaper must never delete untracked files")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "s-ff06: 2 files changed in the main checkout — left by the idle auto-end") {
+		t.Fatalf("idle end not noted:\n%s", b)
+	}
+	// A git failure keeps the session.
+	st2 := startScratchSession(t, base, "s-gg07", root)
+	s.mu.Lock()
+	se2 := s.sessions[st2.Session]
+	s.mu.Unlock()
+	se2.mu.Lock()
+	se2.cwd = filepath.Join(root, "missing")
+	se2.reaping = true
+	se2.mu.Unlock()
+	s.endIdleScratch(se2)
+	if sessionGone(s, st2.Session) {
+		t.Fatal("a git error must keep the session")
+	}
+}
+
+// t-86fe: the note never writes through a link in HANDOFF.md's place.
+func TestScratchNoteRefusesSymlink(t *testing.T) {
+	root, other := t.TempDir(), t.TempDir()
+	target := filepath.Join(other, "victim.txt")
+	os.WriteFile(target, []byte("keep\n"), 0o644)
+	if err := os.Symlink(target, filepath.Join(root, "HANDOFF.md")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if err := noteScratchLeftover(root, "- note"); err == nil {
+		t.Fatal("a symlinked HANDOFF.md must be refused")
+	}
+	if b, _ := os.ReadFile(target); string(b) != "keep\n" {
+		t.Fatalf("the link target was written: %q", b)
+	}
+}
+
+// t-86fe: Discard waits until the killed agent is really gone; one that won't die means
+// nothing is discarded (files kept and noted).
+func TestScratchEndGuardDiscardWaitsForAgent(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	// An agent that survives its terminal closing (ignores SIGHUP), so only the kill ends it.
+	bin := filepath.Join(t.TempDir(), "stubborn-agent.sh")
+	os.WriteFile(bin, []byte("#!/bin/sh\ntrap '' HUP\nwhile :; do sleep 0.05; done\n"), 0o755)
+	s.cfg.sprintBin = bin
+	st := startScratchSession(t, base, "s-hh08", root)
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	realKill, realWait := killProc, endScratchReapWait
+	killProc, endScratchReapWait = func(*pty.Cmd) {}, 300*time.Millisecond
+	t.Cleanup(func() { killProc, endScratchReapWait = realKill, realWait; killProcess(se.cmd) })
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	code, body := postSession(t, base, st, "end-scratch", `{"discard":true}`)
+	if code != http.StatusOK || !strings.Contains(body, "did not stop") {
+		t.Fatalf("end-scratch: %d %s", code, body)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "a.txt")); string(b) != "edited\n" {
+		t.Fatal("nothing may be discarded while the agent is still running")
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "Discard skipped (the agent did not stop in time), kept") {
+		t.Fatalf("skipped discard not noted:\n%s", b)
+	}
+}
+
+// t-86fe: the changes list stops at 50 entries while the total stays exact.
+func TestScratchChangesCap(t *testing.T) {
+	root, base, _ := endGuardProject(t)
+	st := startScratchSession(t, base, "s-ii09", root)
+	for i := 0; i < 53; i++ {
+		os.WriteFile(filepath.Join(root, fmt.Sprintf("new-%02d.txt", i)), []byte("x\n"), 0o644)
+	}
+	code, ch := getChanges(t, base, st)
+	files, _ := ch["files"].([]any)
+	if code != http.StatusOK || ch["total"] != float64(53) || len(files) != 50 {
+		t.Fatalf("changes: %d total=%v files=%d, want total 53 and 50 listed", code, ch["total"], len(files))
 	}
 }
