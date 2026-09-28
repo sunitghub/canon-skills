@@ -5152,6 +5152,7 @@ func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
 		reaped  bool
 	}{
 		{"copilot-approval-menu.bin", false},
+		{"copilot-command-menu.bin", false}, // t-7c4f: "… (Esc to stop)" variant, rebuilt from a user screenshot's text
 		{"copilot-composer-after-tool.bin", true},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
@@ -5190,7 +5191,14 @@ func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
 // saveAndEnd's own guard (the callers check too): a menu that appears after a caller's
 // check must still never receive the prompt, and the reaping flag is released.
 func TestSaveAndEndGuardRefusesMenuDirectly(t *testing.T) {
-	bin, recv := fakeAgentOnMenu(t, "copilot-approval-menu.bin")
+	// t-7c4f: the command-approval menu ("… (Esc to stop)") must be refused the same way.
+	for _, fixture := range []string{"copilot-approval-menu.bin", "copilot-command-menu.bin"} {
+		t.Run(fixture, func(t *testing.T) { saveAndEndRefusesMenu(t, fixture) })
+	}
+}
+
+func saveAndEndRefusesMenu(t *testing.T, fixture string) {
+	bin, recv := fakeAgentOnMenu(t, fixture)
 	s, _, sid, _ := startMenuSession(t, bin, config{
 		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
 		saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
