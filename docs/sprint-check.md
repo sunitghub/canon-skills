@@ -200,9 +200,15 @@ sprint agent without leaving the browser — no second terminal.
   daemon launched from inside a Claude Code session inherits `CLAUDECODE`/`CLAUDE_CODE_*`,
   which stops the spawned `claude` from saving one — start the board from a plain shell.
   End asks **Save this session as a ticket?** — Save runs the same promote and ends
-  without opening the ticket; **Just end** ends it. The idle reaper ends a scratch
-  session only when its checkout has no uncommitted changes (a guard for ending with
-  changes arrives with `t-86fe`).
+  without opening the ticket; **Just end** ends it. End guard (`t-86fe`): when the session
+  has changed files (or worktree commits), End lists them and offers **Save as ticket, then
+  end**, **Keep changes, end**, or **Discard changes, end** (a second click confirms; it
+  stops the agent, then undoes tracked edits and deletes untracked files — ignored files
+  stay; offered only if the checkout was clean when the session started). Whatever a
+  scratch session leaves behind — on End or when the idle reaper ends it, which now
+  happens even with changes — is noted in the main checkout's `HANDOFF.md` under
+  `## Scratch` (after canon's managed block; nothing else in the file changes). The reaper
+  never discards or commits.
 - **Why a daemon:** the `sprint-check` board server is ephemeral and stdlib-only,
   and Go's stdlib has no PTY/WebSocket. The daemon is an isolated Go module
   (canon's one third-party-dep binary — see `DECISIONS.md` 2026-08-23); the board

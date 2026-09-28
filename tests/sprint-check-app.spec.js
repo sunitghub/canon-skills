@@ -4158,6 +4158,80 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-86fe: a fake daemon page that answers the end guard's changes-request / end-scratch.
+    const endGuardPage = (changes, endReply) => `<!doctype html><html><body><script>
+      window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+      window.addEventListener('message', function(e){
+        var d = e.data; if(!d || d.source !== 'canon-cockpit') return;
+        window.parent.postMessage({source:'canon-cockpit', type:'__seen', msg:d}, '*');
+        if(d.type === 'changes-request') window.parent.postMessage(Object.assign({source:'canon-cockpit', type:'changes'}, ${JSON.stringify(changes)}), '*');
+        if(d.type === 'end-scratch') window.parent.postMessage(Object.assign({source:'canon-cockpit'}, ${JSON.stringify(endReply || { type: 'scratch-ended', files: 0, commits: 0, error: '', note_error: '' })}), '*');
+      });
+    </script></body></html>`;
+    const openGuardedScratch = async (page, changes, endReply) => {
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: endGuardPage(changes, endReply) }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await recordSeen(page);
+      await page.evaluate(() => { window.__pwned = 0; });
+      await page.locator('#btn-scratch').click();
+      await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      await page.waitForTimeout(200);
+      await page.locator('#ck-end-session').click();
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+    };
+    const sentEnd = page => page.evaluate(() => window.__termSeen.filter(m => m.type === 'end-scratch'));
+
+    test('end guard (t-86fe): a clean scratch session gets the plain End dialog; Just end goes through end-scratch, keeping', async ({ page }) => {
+      await openGuardedScratch(page, { total: 0, commits: 0, can_discard: false, files: [] });
+      await expect(page.locator('#ck-leave-confirm-status')).toHaveText('');
+      await expect(page.locator('#ck-leave-confirm-title')).toHaveText('Save this session as a ticket?');
+      await expect(page.locator('#ck-leave-discard')).toBeHidden();
+      await page.locator('#ck-leave-skip').click();
+      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false }]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('end guard (t-86fe): changed files are listed as text; Keep, and a two-step Discard', async ({ page }) => {
+      const files = Array.from({ length: 11 }, (_, i) => ({ status: 'M', path: `src/f${i}.js` }));
+      files[1] = { status: '??', path: '<img src=x onerror=window.__pwned=1>.txt' };
+      await openGuardedScratch(page, { total: 12, commits: 0, can_discard: true, files });
+      await expect(page.locator('#ck-leave-confirm-title')).toHaveText('This session has 12 changed files');
+      const items = page.locator('#ck-leave-confirm-body .ck-leave-files li');
+      await expect(items).toHaveCount(11);
+      await expect(items.nth(1)).toHaveText('?? <img src=x onerror=window.__pwned=1>.txt');
+      await expect(items.last()).toHaveText('and 2 more');
+      await expect(page.locator('#ck-leave-confirm-body img')).toHaveCount(0);
+      await expect(page.locator('#ck-leave-skip')).toHaveText('Keep changes, end');
+      const discard = page.locator('#ck-leave-discard');
+      await expect(discard).toBeVisible();
+      await discard.click();
+      await expect(discard).toHaveText('Discard 12 files \u2014 can\u2019t be undone');
+      await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      expect(await sentEnd(page)).toEqual([]);   // the first click only arms it
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-86fe', 'visuals'), { recursive: true });
+      await page.locator('#ck-leave-confirm .ck-leave-confirm').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-86fe', 'visuals', 'end-guard.png') });
+      await discard.click();
+      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: true }]);
+      expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('end guard (t-86fe): no Discard when the checkout started dirty; a refused end gives the terminal back', async ({ page }) => {
+      await openGuardedScratch(page, { total: 1, commits: 2, can_discard: false, files: [{ status: 'M', path: 'a.txt' }] },
+        { type: 'end-scratch-failed', reason: 'this checkout already had uncommitted changes' });
+      await expect(page.locator('#ck-leave-confirm-title')).toHaveText('This session has 1 changed file and 2 commits in its worktree');
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText('Discard isn\u2019t offered');
+      await expect(page.locator('#ck-leave-discard')).toBeHidden();
+      await page.locator('#ck-leave-skip').click();
+      await expect(page.locator('#drop-toast')).toContainText('this checkout already had uncommitted changes');
+      await expect(page.locator('#ck-term iframe').first()).toHaveCSS('visibility', 'visible');
+      expect(await page.evaluate(() => cockpitState._ending)).toBe(false);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('promote (t-f553): the title input stops at 80 characters; a refused promote shows the reason', async ({ page }) => {
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><script>

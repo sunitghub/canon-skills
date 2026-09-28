@@ -105,11 +105,12 @@ type server struct {
 }
 
 type session struct {
-	scratchWT *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
-	title     string           // t-f553: a scratch session's user-given title (sanitized)
-	sid       string
-	ticket    string
-	token     string
+	scratchWT  *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
+	title      string           // t-f553: a scratch session's user-given title (sanitized)
+	startClean bool             // t-86fe: its checkout had no uncommitted changes when it started — Discard is offered only then
+	sid        string
+	ticket     string
+	token      string
 	// statusToken authorizes ONLY POST /session/<id>/status. Separate from token
 	// because the needs-you hook's credential is reachable by the spawned agent.
 	statusToken string
@@ -511,7 +512,19 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// t-86fe: Discard must never touch work that was already uncommitted here before this
+	// session (the main checkout can hold the user's own edits), so remember a clean start.
+	startClean := false
+	if scratch {
+		dirty, err := checkoutDirty(cwd)
+		startClean = err == nil && !dirty
+	}
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
+	if err == nil && scratch {
+		se.mu.Lock()
+		se.startClean = startClean
+		se.mu.Unlock()
+	}
 	if err != nil && wt != nil {
 		wt.remove(projectRoot, func(format string, a ...any) {}) // nothing ran in it yet
 	}
@@ -639,24 +652,25 @@ func createScratchWorktree(root string) (*scratchWorktree, error) {
 // remove deletes the worktree and its branch only when nothing was done in it: no
 // uncommitted changes and no commits beyond Base (on HEAD or the branch). Any git
 // error keeps both — a kept worktree is recoverable, a deleted one is not.
-func (wt *scratchWorktree) remove(root string, logf func(string, ...any)) {
+func (wt *scratchWorktree) remove(root string, logf func(string, ...any)) bool {
 	if dirty, err := checkoutDirty(wt.Path); err != nil || dirty {
 		logf("scratch worktree %s kept: uncommitted changes (or git failed: %v)", wt.Branch, err)
-		return
+		return false
 	}
 	for _, ref := range []string{"HEAD", wt.Branch} {
 		out, err := exec.Command("git", "-C", wt.Path, "rev-list", "--count", wt.Base+".."+ref).Output()
 		if err != nil || strings.TrimSpace(string(out)) != "0" {
 			logf("scratch worktree %s kept: commits beyond its start on %s (or git failed: %v)", wt.Branch, ref, err)
-			return
+			return false
 		}
 	}
 	if out, err := exec.Command("git", "-C", root, "worktree", "remove", wt.Path).CombinedOutput(); err != nil {
 		logf("scratch worktree %s kept: git worktree remove failed: %s", wt.Branch, strings.TrimSpace(string(out)))
-		return
+		return false
 	}
 	_ = exec.Command("git", "-C", root, "branch", "-D", wt.Branch).Run()
 	logf("scratch worktree %s removed (nothing done in it)", wt.Branch)
+	return true
 }
 
 // liveSessionForTicket returns the first non-exited session bound to ticket
@@ -1106,6 +1120,10 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 		s.handlePromote(w, r, se)
 	case "adopt":
 		s.handleAdopt(w, r, se)
+	case "changes":
+		s.handleChanges(w, r, se)
+	case "end-scratch":
+		s.handleEndScratch(w, r, se)
 	case "preview-root":
 		s.handlePreviewRoot(w, r, se)
 	default:
@@ -1438,6 +1456,212 @@ func copyTicketDir(src, dst string) error {
 		}
 		return nil // symlinks and other types are skipped
 	})
+}
+
+// ── t-86fe: scratch end guard ────────────────────────────────────────────────
+
+// scratchChangesCap bounds the file list returned to the board (the total is still exact).
+const scratchChangesCap = 50
+
+type scratchChange struct {
+	Status string `json:"status"`
+	Path   string `json:"path"`
+}
+
+// scratchLeftovers lists a scratch checkout's uncommitted changes — tracked edits and
+// untracked files, never ignored ones — and, for a scratch worktree, its commits beyond
+// the commit it started from.
+func scratchLeftovers(cwd string, wt *scratchWorktree) (files []scratchChange, total, commits int, err error) {
+	out, err := exec.Command("git", "-C", cwd, "status", "--porcelain", "-uall").Output()
+	if err != nil {
+		return nil, 0, 0, err
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		total++
+		if len(files) < scratchChangesCap {
+			files = append(files, scratchChange{Status: strings.TrimSpace(line[:2]), Path: line[3:]})
+		}
+	}
+	if wt != nil {
+		out, err := exec.Command("git", "-C", wt.Path, "rev-list", "--count", wt.Base+"..HEAD").Output()
+		if err != nil {
+			return files, total, 0, err
+		}
+		commits, _ = strconv.Atoi(strings.TrimSpace(string(out)))
+	}
+	return files, total, commits, nil
+}
+
+// handleChanges reports what ending a scratch session would leave behind, for the End dialog.
+func (s *server) handleChanges(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isScratch(se.ticket) {
+		http.Error(w, "only a scratch session has an end guard", http.StatusConflict)
+		return
+	}
+	se.mu.Lock()
+	cwd, wt, startClean := se.cwd, se.scratchWT, se.startClean
+	se.mu.Unlock()
+	files, total, commits, err := scratchLeftovers(cwd, wt)
+	if err != nil {
+		http.Error(w, "could not read the checkout's changes: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if files == nil {
+		files = []scratchChange{}
+	}
+	writeJSON(w, map[string]any{"files": files, "total": total, "commits": commits, "can_discard": startClean && total > 0})
+}
+
+// discardChanges undoes staged and unstaged edits to tracked files and deletes untracked
+// files in dir. Never -x: ignored files (build output, .env) stay.
+func discardChanges(dir string) error {
+	for _, args := range [][]string{{"restore", "--staged", "--worktree", "--", "."}, {"clean", "-fd", "--", "."}} {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			return fmt.Errorf("git %s: %s", args[0], strings.TrimSpace(string(out)))
+		}
+	}
+	return nil
+}
+
+// handleEndScratch ends a scratch session from the End dialog: keep its changes, or discard
+// them (only when its checkout started clean). The agent is stopped before anything is
+// touched; whatever is left afterwards is noted in HANDOFF.md.
+func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *session) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !isScratch(se.ticket) {
+		http.Error(w, "only a scratch session has an end guard", http.StatusConflict)
+		return
+	}
+	var body struct {
+		Discard bool `json:"discard"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	se.mu.Lock()
+	if body.Discard && !se.startClean {
+		se.mu.Unlock()
+		http.Error(w, "this checkout already had uncommitted changes when the session started — discard isn't offered", http.StatusConflict)
+		return
+	}
+	cwd, wt := se.cwd, se.scratchWT
+	se.scratchWT = nil // removed below, after any discard — not by cleanup while still dirty
+	se.mu.Unlock()
+	s.killSession(se)
+	reason, errMsg := "kept on End", ""
+	if body.Discard {
+		reason = "left after Discard"
+		if err := discardChanges(cwd); err != nil {
+			reason, errMsg = "Discard failed ("+err.Error()+"), kept", err.Error()
+			se.debugf("discard failed: %v", err)
+		}
+	}
+	if wt != nil && wt.remove(se.projectRoot, se.debugf) {
+		writeJSON(w, map[string]any{"ended": true, "files": 0, "commits": 0, "error": errMsg})
+		return
+	}
+	_, total, commits, err := scratchLeftovers(cwd, wt)
+	if err != nil {
+		total, reason = -1, reason+"; could not check what is left: "+err.Error()
+	}
+	noteErr := ""
+	if total != 0 || commits > 0 {
+		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, reason)); err != nil {
+			noteErr = err.Error()
+		}
+	}
+	writeJSON(w, map[string]any{"ended": true, "files": total, "commits": commits, "error": errMsg, "note_error": noteErr})
+}
+
+// handoffMu serializes the daemon's HANDOFF.md read-modify-write (several sessions can end at once).
+var handoffMu sync.Mutex
+
+const scratchHeading = "## Scratch"
+
+// noteScratchLeftover adds a line to the project's HANDOFF.md `## Scratch` section — newest
+// first, the section appended at the end (after canon's managed block, which wrapup owns)
+// when missing, the file created when missing. Nothing else in the file changes.
+func noteScratchLeftover(root, line string) error {
+	handoffMu.Lock()
+	defer handoffMu.Unlock()
+	p := filepath.Join(root, "HANDOFF.md")
+	b, err := os.ReadFile(p)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	doc := string(b)
+	from := 0
+	if i := strings.Index(doc, "<!-- canon:handoff:END -->"); i >= 0 {
+		from = i
+	}
+	at := -1
+	if strings.HasPrefix(doc[from:], scratchHeading+"\n") {
+		at = from
+	} else if i := strings.Index(doc[from:], "\n"+scratchHeading+"\n"); i >= 0 {
+		at = from + i + 1
+	}
+	if at < 0 {
+		if doc != "" && !strings.HasSuffix(doc, "\n") {
+			doc += "\n"
+		}
+		if doc != "" {
+			doc += "\n"
+		}
+		doc += scratchHeading + "\n\n" + line + "\n"
+	} else {
+		pos := at + len(scratchHeading) + 1
+		if strings.HasPrefix(doc[pos:], "\n") {
+			pos++
+		}
+		doc = doc[:pos] + line + "\n" + doc[pos:]
+	}
+	return os.WriteFile(p, []byte(doc), 0o644)
+}
+
+// scratchNoteLine is one `## Scratch` entry: when, which session, what is left and where, why.
+func scratchNoteLine(se *session, wt *scratchWorktree, files, commits int, reason string) string {
+	se.mu.Lock()
+	title, cwd := se.title, se.cwd
+	se.mu.Unlock()
+	name := se.ticket
+	if title != "" {
+		name += ` "` + title + `"`
+	}
+	plural := func(n int, what string) string {
+		if n == 1 {
+			return "1 " + what
+		}
+		return strconv.Itoa(n) + " " + what + "s"
+	}
+	var left []string
+	switch {
+	case files > 0:
+		left = append(left, plural(files, "file")+" changed")
+	case files < 0:
+		left = append(left, "changes unknown")
+	}
+	if commits > 0 {
+		left = append(left, plural(commits, "commit"))
+	}
+	place := "the main checkout"
+	if !pathsEqual(cwd, se.projectRoot) {
+		place = "worktree " + filepath.Base(cwd)
+		if wt != nil {
+			place += " (branch " + wt.Branch + ")"
+		}
+	}
+	return fmt.Sprintf("- %s — %s: %s in %s — %s", time.Now().Format("2006-01-02 15:04"), name, strings.Join(left, ", "), place, reason)
 }
 
 // adoptedTicket reports whether a ticket took over a scratch session (t-f553): its saved
@@ -1836,17 +2060,31 @@ func (s *server) reapIdleSessions() {
 }
 
 // endIdleScratch ends an idle scratch session (t-47f1). A scratch session has no ticket
-// to save state into, so there is no save prompt: a clean checkout is simply ended; one
-// with uncommitted changes is kept (never discarded or committed) until t-86fe's end guard.
+// to save state into, so there is no save prompt. Anything it leaves behind — uncommitted
+// changes, worktree commits — is kept, never discarded or committed, and noted in
+// HANDOFF.md first (t-86fe); if git or the note fails, the session is kept instead.
 func (s *server) endIdleScratch(se *session) {
-	if dirty, err := checkoutDirty(se.cwd); err != nil || dirty {
+	keep := func(why string, err error) {
 		se.mu.Lock()
 		se.reaping = false
 		se.mu.Unlock()
-		se.debugf("idle reap skipped: scratch checkout has uncommitted changes (or git failed: %v) — kept until t-86fe", err)
+		se.debugf("idle reap skipped: %s: %v", why, err)
+	}
+	se.mu.Lock()
+	cwd, wt := se.cwd, se.scratchWT
+	se.mu.Unlock()
+	_, total, commits, err := scratchLeftovers(cwd, wt)
+	if err != nil {
+		keep("could not check the scratch checkout", err)
 		return
 	}
-	se.debugf("idle reap: scratch checkout clean — ending")
+	if total > 0 || commits > 0 {
+		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, "left by the idle auto-end")); err != nil {
+			keep("could not note its changes in HANDOFF.md", err)
+			return
+		}
+	}
+	se.debugf("idle reap: scratch ending (files=%d commits=%d)", total, commits)
 	s.killSession(se)
 }
 

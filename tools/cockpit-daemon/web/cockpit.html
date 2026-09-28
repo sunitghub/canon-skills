@@ -292,6 +292,27 @@
             : { source: "canon-cockpit", type: "adopt-failed", reason: String(res.t || "") }, "*"); }catch(e){}
         })
         .catch(function(){ try{ window.parent.postMessage({ source: "canon-cockpit", type: "adopt-failed", reason: "Couldn't reach the daemon." }, "*"); }catch(e){} });
+    } else if(d.type === "changes-request"){
+      // t-86fe: what ending this scratch session would leave behind, for the End dialog.
+      var failed = function(t){ try{ window.parent.postMessage({ source: "canon-cockpit", type: "changes-failed", reason: String(t || "") }, "*"); }catch(e){} };
+      if(!session){ failed("No session is running."); return; }
+      fetch("/session/"+session+"/changes", { headers: authHeaders(sessTok) })
+        .then(function(r){ return r.ok ? r.json() : r.text().then(function(t){ throw new Error(t); }); })
+        .then(function(j){
+          try{ window.parent.postMessage({ source: "canon-cockpit", type: "changes", total: Number(j.total) || 0, commits: Number(j.commits) || 0,
+            can_discard: j.can_discard === true, files: Array.isArray(j.files) ? j.files.slice(0, 50) : [] }, "*"); }catch(e){}
+        })
+        .catch(function(e){ failed(e && e.message || "Couldn't reach the daemon."); });
+    } else if(d.type === "end-scratch"){
+      if(!session) return;
+      fetch("/session/"+session+"/end-scratch", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ discard: d.discard === true }) })
+        .then(function(r){ return r.ok ? r.json().then(function(j){ return { ok: true, j: j }; }) : r.text().then(function(t){ return { ok: false, t: t }; }); })
+        .then(function(res){
+          try{ window.parent.postMessage(res.ok
+            ? { source: "canon-cockpit", type: "scratch-ended", files: Number(res.j.files) || 0, commits: Number(res.j.commits) || 0, error: String(res.j.error || ""), note_error: String(res.j.note_error || "") }
+            : { source: "canon-cockpit", type: "end-scratch-failed", reason: String(res.t || "") }, "*"); }catch(e){}
+        })
+        .catch(function(){ try{ window.parent.postMessage({ source: "canon-cockpit", type: "end-scratch-failed", reason: "Couldn't reach the daemon." }, "*"); }catch(e){} });
     } else if(d.type === "set-title"){
       if(!session || typeof d.title !== "string") return;
       fetch("/session/"+session+"/title", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ title: d.title }) }).catch(function(){});
