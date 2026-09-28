@@ -4218,6 +4218,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('end guard (t-86fe): with changes, Save as ticket is offered and Keep ends without discarding', async ({ page }) => {
+      await openGuardedScratch(page, { total: 2, commits: 0, can_discard: true, files: [{ status: 'M', path: 'a.txt' }, { status: '??', path: 'b.txt' }] });
+      await expect(page.locator('#ck-leave-confirm-title')).toHaveText('This session has 2 changed files');
+      await expect(page.locator('#ck-leave-save')).toBeVisible();
+      await expect(page.locator('#ck-leave-save')).toHaveText('Save as ticket, then end');
+      await expect(page.locator('#ck-leave-discard')).toBeVisible();
+      await page.locator('#ck-leave-skip').click();   // Keep changes, end
+      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false }]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('end guard (t-86fe): no Discard when the checkout started dirty; a refused end gives the terminal back', async ({ page }) => {
       await openGuardedScratch(page, { total: 1, commits: 2, can_discard: false, files: [{ status: 'M', path: 'a.txt' }] },
         { type: 'end-scratch-failed', reason: 'this checkout already had uncommitted changes' });
