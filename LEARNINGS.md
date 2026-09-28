@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-28-2026 18:21
+learnings-sweep last run: 09-28-2026 18:37
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-28 | [t-180d](.tickets/t-180d/learnings.md) | A timeout guard can't be revert-checked by an ordinary test — removing it makes the command hang, so the test never fails, it just stalls the suite. Revert-check it under a watchdog (run in the background, check it's still alive past the bound, end it by its PID), and keep a shipped test that asserts the timeout's exit code and message. | UNPROMOTED |
 | 2026-09-28 | [t-03a8](.tickets/t-03a8/learnings.md) | Renaming a command by string sweeps up identifiers that only share its prefix (postMessage sources, localStorage keys, state-dir names); classify every hit before replacing, keep the identifiers, and list them explicitly in acceptance.md — then make the evidence grep exclude exactly that list and nothing else, or it hides real leftovers (here six test labels). A CLI that probes liveness on an old route must also fail on HTTP errors from its new routes, or an older running server's 404 page prints as output. | UNPROMOTED |
 | 2026-09-28 | [t-d9e6](.tickets/t-d9e6/learnings.md) | When a live check stops or kills a process, record the process's own PID: `cmd & echo $!` on a compound command (`cd x && env … prog &`) captures the wrapper shell, so the "stop" hits the wrapper and the real process keeps running — use `( cd x && exec prog ) &` and assert the PID is gone afterward. Also: a Test Plan line naming several paths ("Save & End, Kill, reap, adopt") is graded per path — one shared code path covered by one test isn't enough. | UNPROMOTED |
 | 2026-09-28 | [t-2d74](.tickets/t-2d74/learnings.md) | A test that asserts an exact UI string breaks on every rewording and then fails quietly for weeks (5 such on main); assert the stable part (a prefix/regex) and give timing-sensitive states a window wider than expect's retry schedule. Separately: the reviewer report's `none` lines are checked literally ("none — checked …, file:line") — put that exact form in the dispatch prompt, or the close gate rejects it. | UNPROMOTED |

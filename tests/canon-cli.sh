@@ -33,12 +33,13 @@ TOKEN="SECRET-daemon-token-$$"
 stub_daemon() {
   local sd="$1" sessions="$2" port
   port="$(free_port)"
-  python3 - "$port" "$sessions" <<'PY' >/dev/null 2>&1 &
+  mkdir -p "$sd"; printf '%s' "$sessions" > "$sd/stub-sessions.json"   # re-read per request, so a test can change it
+  python3 - "$port" "$sd/stub-sessions.json" <<'PY' >/dev/null 2>&1 &
 import http.server, sys
-port, body = int(sys.argv[1]), sys.argv[2].encode()
+port, path = int(sys.argv[1]), sys.argv[2]
 class H(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        out = b"ok" if self.path == "/healthz" else body if self.path == "/sessions" else b""
+        out = b"ok" if self.path == "/healthz" else open(path, "rb").read() if self.path == "/sessions" else b""
         self.send_response(200 if out else 404); self.end_headers(); self.wfile.write(out)
     def log_message(self, *a): pass
 http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
@@ -82,11 +83,13 @@ fi
 grep -qF 'set "SCRIPT=%~dp0canon"' "$ROOT/tools/canon.cmd" || fail "canon-cli: tools/canon.cmd must run tools/canon"
 for f in canon canon.cmd canon-win canon-win.cmd; do [[ -f "$ROOT/tools/$f" ]] || fail "canon-cli: tools/$f missing"; done
 
-# Board down: status/sessions exit 1, stop is a no-op.
+# Board down: status/sessions exit 1, stop is a no-op, wait exits 2.
 PORT="$(free_port)"
 set +e
 out="$(run status 2>&1)"; code=$?
+run wait t-wt01 --until done >/dev/null 2>&1; wcode=$?
 set -e
+assert_eq "2" "$wcode"
 assert_eq "1" "$code"
 assert_contains "$out" "Canon isn't running on port $PORT"
 assert_eq "Canon isn't running on port $PORT — nothing to stop." "$(run stop)"
@@ -133,6 +136,36 @@ for b in "${BACKENDS[@]}"; do
   assert_eq "$raw" "$(run sessions --json)"
   texts+=("$tbl"$'\n'"$(sed -E 's/up [0-9]+[smhd]( [0-9]+[mh])?/up N/; s/127\.0\.0\.1:[0-9]+/127.0.0.1:PORT/' <<<"$st")")
 
+  # t-180d: canon wait — the stub's session list changes under it.
+  row() { printf '{"session":"sw%s","ticket":"t-wt01","project_root":"%s","cwd":"%s","agent":"claude","state":"%s","state_secs":3,"signal":"hook","title":""}' "$1" "$2" "$2" "$3"; }
+  setsess() { printf '[%s]' "$1" > "$sd/stub-sessions.json"; }
+  setsess "$(row 1 /work/a working)"
+  t0=$SECONDS
+  ( sleep 2; setsess "$(row 1 /work/a needs-you)" ) &
+  out="$(run wait t-wt01 --until needs-you --timeout 9000)"; no_token "$out"
+  assert_eq "needs-you" "$out"
+  (( SECONDS - t0 >= 2 && SECONDS - t0 < 9 )) || fail "canon-cli: wait returned at the wrong time ($((SECONDS - t0))s)"
+  set +e; out="$(run wait t-wt01 --until done --timeout 2000 2>&1)"; code=$?; set -e
+  assert_eq "1" "$code"; assert_contains "$out" "timed out after 2000ms — t-wt01 is needs-you"
+  assert_eq "needs-you" "$(run wait t-wt01 --until working,needs-you --timeout 3000)"
+  j="$(run wait t-wt01 --until needs-you --json)"; no_token "$j"
+  assert_eq "t-wt01 needs-you" "$(python3 -c 'import json,sys;d=json.loads(sys.argv[1]);print(d["ticket"],d["state"])' "$j")"
+  setsess "$(row 1 /work/a working),$(row 2 /work/b needs-you)"
+  assert_eq "needs-you" "$(run wait t-wt01 --until needs-you --project /work/b --timeout 3000)"
+  set +e; run wait t-wt01 --until needs-you --project /work/a --timeout 2000 >/dev/null 2>&1; code=$?; set -e
+  assert_eq "1" "$code"
+  setsess ""
+  assert_eq "exited" "$(run wait t-wt01 --until exited --timeout 3000)"
+  assert_eq '{"ticket": "t-wt01", "state": "exited"}' "$(run wait t-wt01 --until exited --json)"
+  for bad in "t-../x --until done" "t-wt01 --until sleeping" "t-wt01" "t-wt01 --until done --timeout soon"; do
+    set +e; run wait $bad >/dev/null 2>&1; code=$?; set -e
+    assert_eq "2" "$code"
+  done
+  assert_eq "400" "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-../x&format=state")"
+  setsess "$(row 1 /work/a working)"
+  texts+=("$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&format=state")|$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-zz99&format=state")|$(curl -s "http://127.0.0.1:$PORT/api/cockpit-sessions?id=t-wt01&root=/WORK/a/&format=text")")
+  printf '%s' "$SESSIONS" > "$sd/stub-sessions.json"
+
   # Busy: stop/restart refuse without --force and name the count.
   for c in stop restart; do
     set +e; out="$(run "$c" 2>&1)"; code=$?; set -e
@@ -148,7 +181,8 @@ for b in "${BACKENDS[@]}"; do
   echo "canon-cli: $b ok"
 done
 
-if [[ ${#texts[@]} -eq 2 ]]; then
-  assert_eq "${texts[0]}" "${texts[1]}"
+if [[ ${#texts[@]} -eq 4 ]]; then
+  assert_eq "${texts[0]}" "${texts[2]}"
+  assert_eq "${texts[1]}" "${texts[3]}"
 fi
-echo "canon-cli: ok (status/sessions text + --json, both backends identical, escapes neutralised, busy refusal, --force stop, board down, no token)"
+echo "canon-cli: ok (status/sessions text + --json, wait (reach/timeout/exited/list/--json/--project/bad input), both backends identical, escapes neutralised, busy refusal, --force stop, board down, no token)"
