@@ -1893,6 +1893,7 @@
     .cockpit-session-row .cs-status.needs-you { --st: var(--st-need); }
     .cockpit-session-row .cs-status.working, .cockpit-session-row .cs-status.running { --st: var(--st-work); }
     .cockpit-session-row .cs-status.done { --st: var(--st-done); }
+    .cockpit-session-row .cs-status.idle { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1.5px var(--st-idle); }
     /* t-28ec: a card with a live session carries its state, Herdr colours */
     .card-state { --st: var(--text-muted); display: flex; align-items: center; gap: 7px; padding: 5px 10px; font-size: 11.5px; font-weight: 600; color: var(--st); background: color-mix(in srgb, var(--st) 14%, transparent); }
     .card-state.st-needs-you { --st: var(--st-need); }
@@ -1901,7 +1902,6 @@
     .card-state .sdot { width: 8px; height: 8px; border-radius: 50%; background: var(--st); flex-shrink: 0; }
     .card-state.st-needs-you .sdot { outline: 1.5px solid var(--st-need); outline-offset: 2px; }
     .card-state.st-idle .sdot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--st-idle); }
-    .card-state .r { margin-left: auto; font-weight: 500; opacity: .85; }
     .card.s-need { border-color: color-mix(in srgb, var(--st-need) 65%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-need) 30%, transparent); }
     .card-start.answer { background: var(--st-need); color: var(--st-ink); }
     .card-start.open { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-hover); }
@@ -3301,10 +3301,10 @@ function cardStateInner(row) {
   const st = ckRowState(row);
   const num = v => (typeof v === 'number' && isFinite(v) && v >= 0) ? v : null;
   const since = num(row.state_secs), idle = num(row.idle_secs), limit = num(row.idle_limit_secs);
-  const reap = st !== 'needs-you' && idle !== null && limit !== null ? `<span class="r">reaps in ${esc(ckDur(limit - idle))}</span>` : '';
+  const reap = st !== 'needs-you' && idle !== null && limit !== null ? ` \u00b7 reaps in ${ckDur(limit - idle)}` : '';
   const label = { 'needs-you': 'Needs you', working: 'Working', idle: 'Idle', done: 'Done', running: 'Running' }[st];
   const age = since !== null && st !== 'working' && st !== 'running' ? (st === 'needs-you' ? ' \u00b7 ' : ' ') + ckDur(since) : '';
-  return `<span class="sdot"></span>${esc(label + age)}${st === 'idle' || st === 'done' ? reap : ''}`;
+  return `<span class="sdot"></span>${esc(label + age + (st === 'idle' || st === 'done' ? reap : ''))}`;
 }
 function cardStateHTML(t, row) {
   const st = ckRowState(row);

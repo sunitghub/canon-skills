@@ -3692,10 +3692,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(card(Q.need).locator('.card-start')).toHaveText('Answer ▸');
         await expect(card(Q.work).locator('.card-state')).toHaveText('Working');
         await expect(card(Q.work).locator('.card-start')).toHaveText('Open ▸');
-        await expect(card(Q.idle).locator('.card-state')).toHaveText('Idle 3mreaps in 2m');
-        await expect(card(Q.done).locator('.card-state')).toHaveText('Done 1mreaps in 28m');
+        await expect(card(Q.idle).locator('.card-state')).toHaveText('Idle 3m · reaps in 2m');
+        await expect(card(Q.done).locator('.card-state')).toHaveText('Done 1m · reaps in 28m');
         await expect(card(Q.old).locator('.card-state')).toHaveText('Running');          // older daemon: no countdown
         await expect(card(Q.other).locator('.card-state')).toHaveCount(0);               // another project's session
+        // The board's own sessions panel uses the same palette; idle is a hollow green ring.
+        const panelBadge = st => page.evaluate(st => { const e = document.querySelector(`#cockpit-sessions .cs-status.${st}`); const c = getComputedStyle(e); return { bg: c.backgroundColor, ring: c.boxShadow }; }, st);
+        expect((await panelBadge('idle')).ring).toContain('rgb(64, 160, 43)');           // light theme at load
+        expect((await panelBadge('idle')).bg).toBe('rgba(0, 0, 0, 0)');
+        expect((await panelBadge('needs-you')).bg).toBe('rgb(210, 15, 57)');
         await expect(card(Q.other).locator('.card-start')).toHaveText('▶ Resume');
         // Needs-you first in In Progress; the lane and the header count it.
         const lane = page.locator('.column-body[data-status="in_progress"]');
