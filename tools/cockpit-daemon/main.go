@@ -67,9 +67,6 @@ var sessionIDRe = regexp.MustCompile(`^[ts]-[a-z0-9]{4}$`)
 // isScratch reports whether a (validated) session id is a scratch session (t-47f1).
 func isScratch(id string) bool { return strings.HasPrefix(id, "s-") }
 
-// scratchRefusal is the 409 body for a second scratch session in one project (t-47f1).
-const scratchRefusal = "One scratch session per project for now — end it or use a ticket (several arrive with t-e162)."
-
 // cwdPrefillRe bounds the ?cwd= query param safe to embed in a JS string
 // literal on the (token-less, loopback-only) /cockpit page — no quotes,
 // backslashes, or newlines. /session/start re-validates the real value
@@ -101,15 +98,17 @@ type config struct {
 }
 
 type server struct {
-	cfg      config
-	mu       sync.Mutex
-	sessions map[string]*session
+	cfg       config
+	mu        sync.Mutex
+	sessions  map[string]*session
+	scratchMu sync.Mutex // t-e162: serializes scratch starts (main-checkout-or-worktree choice)
 }
 
 type session struct {
-	sid    string
-	ticket string
-	token  string
+	scratchWT *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
+	sid       string
+	ticket    string
+	token     string
 	// statusToken authorizes ONLY POST /session/<id>/status. Separate from token
 	// because the needs-you hook's credential is reachable by the spawned agent.
 	statusToken string
@@ -462,7 +461,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// to be physically present at that cwd. The main checkout already passed the
 	// existence check above.
 	if scratch && !pathsEqual(cwd, projectRoot) {
-		http.Error(w, "scratch sessions run in the project's main checkout for now (worktrees arrive with t-e162)", http.StatusBadRequest)
+		http.Error(w, "the daemon picks a scratch session's directory — start it from the project's main checkout", http.StatusBadRequest)
 		return
 	}
 	if !pathsEqual(cwd, projectRoot) {
@@ -478,25 +477,48 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 	// "reattach to a still-live session" behavior. Scoped by projectRoot too,
 	// not ticket ID alone: one daemon serves many projects (t-391a), and
 	// ticket IDs are only unique within one project's .tickets/.
-	if scratch && s.otherLiveScratch(projectRoot, body.Ticket) {
-		http.Error(w, scratchRefusal, http.StatusConflict)
-		return
+	if scratch {
+		// t-e162: scratch starts are serialized so two can't both see the main checkout free.
+		s.scratchMu.Lock()
+		defer s.scratchMu.Unlock()
 	}
 	if existing := s.liveSessionForTicket(projectRoot, body.Ticket); existing != nil {
 		existing.debugf("start attached to live session sid=%s cwd=%s requested=%s", existing.sid, existing.cwd, s.resolveRequestedEcho(body.Cwd))
 		writeJSON(w, map[string]string{"session": existing.sid, "token": existing.token, "previewToken": existing.previewToken, "cwd": existing.cwd, "requested": s.resolveRequestedEcho(body.Cwd)})
 		return
 	}
+	var wt *scratchWorktree
 	if scratch {
 		// t-47f1: a scratch session has no ticket; its state lives under the daemon's own
 		// state dir (sessionStateDir). Created only now, after every refusal above, so a
 		// refused start leaves nothing behind.
-		if err := os.MkdirAll(s.sessionStateDir(projectRoot, body.Ticket), 0o700); err != nil {
+		// t-e162: the main checkout is free → run there; otherwise in a new worktree.
+		if s.mainCheckoutBusy(projectRoot) {
+			created, err := createScratchWorktree(projectRoot)
+			if err != nil {
+				http.Error(w, "could not create a worktree for this scratch session: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
+			wt, cwd = created, created.Path
+		}
+		stateDir := s.sessionStateDir(projectRoot, body.Ticket)
+		if err := os.MkdirAll(stateDir, 0o700); err != nil {
+			if wt != nil {
+				wt.remove(projectRoot, func(string, ...any) {})
+			}
 			http.Error(w, "scratch state unavailable", http.StatusInternalServerError)
 			return
 		}
+		if wt != nil {
+			if b, err := json.Marshal(wt); err == nil {
+				_ = os.WriteFile(filepath.Join(stateDir, ".cockpit-scratch-worktree"), b, 0o600)
+			}
+		}
 	}
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
+	if err != nil && wt != nil {
+		wt.remove(projectRoot, func(format string, a ...any) {}) // nothing ran in it yet
+	}
 	if err != nil {
 		http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -506,6 +528,19 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, "spawn failed: "+err.Error(), http.StatusInternalServerError)
 			return
+		}
+	}
+	if wt != nil {
+		// t-e162: hand the worktree to the session so cleanup() removes it on exit if
+		// unused. An agent that already exited missed that cleanup — do it here.
+		se.mu.Lock()
+		exited := se.exited
+		if !exited {
+			se.scratchWT = wt
+		}
+		se.mu.Unlock()
+		if exited {
+			wt.remove(projectRoot, se.debugf)
 		}
 	}
 	// Record the last-used agent for the picker's default + hint (only when
@@ -545,20 +580,87 @@ func (s *server) resolveRequestedEcho(cwdRequested string) string {
 	return cwdRequested
 }
 
-// otherLiveScratch reports whether projectRoot already has a live scratch session
-// other than id (t-47f1: one per project until t-e162's worktrees).
-func (s *server) otherLiveScratch(projectRoot, id string) bool {
+// mainCheckoutBusy reports whether a live session (ticket or scratch) runs in
+// projectRoot's main checkout (t-e162: a new scratch then gets its own worktree).
+func (s *server) mainCheckoutBusy(projectRoot string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, se := range s.sessions {
 		se.mu.Lock()
-		live := !se.exited && isScratch(se.ticket) && se.ticket != id && pathsEqual(se.projectRoot, projectRoot)
+		busy := !se.exited && pathsEqual(se.projectRoot, projectRoot) && pathsEqual(se.cwd, projectRoot)
 		se.mu.Unlock()
-		if live {
+		if busy {
 			return true
 		}
 	}
 	return false
+}
+
+// scratchWorktree is a worktree the daemon created for a scratch session (t-e162).
+type scratchWorktree struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+	Base   string `json:"base"` // commit it started from
+}
+
+// createScratchWorktree adds a worktree on branch scratch/<n> — the smallest n ≥ 1 that
+// is neither a branch nor an existing path — at the board's sibling convention
+// <root>/../<name>-worktrees/scratch-<n>, from the main checkout's HEAD. Branch and path
+// are daemon-generated; git runs as an argv slice.
+func createScratchWorktree(root string) (*scratchWorktree, error) {
+	git := func(args ...string) (string, error) {
+		out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput()
+		return strings.TrimSpace(string(out)), err
+	}
+	base, err := git("rev-parse", "HEAD")
+	if err != nil {
+		return nil, fmt.Errorf("no commit to branch from (%s)", base)
+	}
+	parent := filepath.Join(filepath.Dir(root), filepath.Base(root)+"-worktrees")
+	for n := 1; n <= 1000; n++ {
+		branch := fmt.Sprintf("scratch/%d", n)
+		path := filepath.Join(parent, fmt.Sprintf("scratch-%d", n))
+		if _, err := git("rev-parse", "--verify", "--quiet", "refs/heads/"+branch); err == nil {
+			continue
+		}
+		if _, err := os.Stat(path); err == nil {
+			continue
+		}
+		if err := os.MkdirAll(parent, 0o755); err != nil {
+			return nil, err
+		}
+		if out, err := git("worktree", "add", path, "-b", branch, base); err != nil {
+			return nil, fmt.Errorf("git worktree add: %s", out)
+		}
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			path = resolved
+		}
+		return &scratchWorktree{Path: path, Branch: branch, Base: base}, nil
+	}
+	return nil, errors.New("no free scratch/<n> branch")
+}
+
+// remove deletes the worktree and its branch only when nothing was done in it: no
+// uncommitted changes and no commits beyond Base (on HEAD or the branch). Any git
+// error keeps both — a kept worktree is recoverable, a deleted one is not.
+func (wt *scratchWorktree) remove(root string, logf func(string, ...any)) {
+	if dirty, err := checkoutDirty(wt.Path); err != nil || dirty {
+		logf("scratch worktree %s kept: uncommitted changes (or git failed: %v)", wt.Branch, err)
+		return
+	}
+	for _, ref := range []string{"HEAD", wt.Branch} {
+		out, err := exec.Command("git", "-C", wt.Path, "rev-list", "--count", wt.Base+".."+ref).Output()
+		if err != nil || strings.TrimSpace(string(out)) != "0" {
+			logf("scratch worktree %s kept: commits beyond its start on %s (or git failed: %v)", wt.Branch, ref, err)
+			return
+		}
+	}
+	if out, err := exec.Command("git", "-C", root, "worktree", "remove", wt.Path).CombinedOutput(); err != nil {
+		logf("scratch worktree %s kept: git worktree remove failed: %s", wt.Branch, strings.TrimSpace(string(out)))
+		return
+	}
+	_ = exec.Command("git", "-C", root, "branch", "-D", wt.Branch).Run()
+	logf("scratch worktree %s removed (nothing done in it)", wt.Branch)
 }
 
 // liveSessionForTicket returns the first non-exited session bound to ticket
@@ -1368,10 +1470,18 @@ func exitStatus(err error) (int, string) {
 }
 
 // cleanup removes the daemon-owned --settings dir. Called on kill and on natural
-// exit, so a long-lived daemon doesn't accumulate hook dirs.
+// exit, so a long-lived daemon doesn't accumulate hook dirs. t-e162: it also removes a
+// scratch session's daemon-created worktree when nothing was done in it (once).
 func (se *session) cleanup() {
 	if se.hookDir != "" {
 		os.RemoveAll(se.hookDir)
+	}
+	se.mu.Lock()
+	wt := se.scratchWT
+	se.scratchWT = nil
+	se.mu.Unlock()
+	if wt != nil {
+		wt.remove(se.projectRoot, se.debugf)
 	}
 }
 
