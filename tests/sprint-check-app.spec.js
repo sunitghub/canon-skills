@@ -3956,6 +3956,19 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('interrupted (t-d9e6): each row shows the ticket title, as text', async ({ page }) => {
+      await stubTicketDocs(page);
+      const e = (id) => ({ id, project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:00:00Z', resumable: true, reason: '' });
+      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([e('t-aaa1'), e(XID)]) }));
+      await openShell(page, []);
+      await page.evaluate(() => { window.__pwned = 0; return pollInterrupted(); });
+      await expect(page.locator('#intr-banner .intr-row[data-id="t-aaa1"] .intr-what')).toContainText('t-aaa1Test scripts leak board servers');
+      await expect(page.locator(`#intr-banner .intr-row[data-id="${XID}"] .intr-what`)).toContainText(HOSTILE_TITLE);
+      await expect(page.locator('#intr-banner img')).toHaveCount(0);
+      expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('interrupted (t-d9e6): Resume all dismisses every resumable entry and opens each ticket', async ({ page }) => {
       const list = [
         { id: 't-d9e6', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:00:00Z', resumable: true, reason: '' },
