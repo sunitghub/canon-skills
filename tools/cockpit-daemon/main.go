@@ -509,11 +509,6 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "scratch state unavailable", http.StatusInternalServerError)
 			return
 		}
-		if wt != nil {
-			if b, err := json.Marshal(wt); err == nil {
-				_ = os.WriteFile(filepath.Join(stateDir, ".cockpit-scratch-worktree"), b, 0o600)
-			}
-		}
 	}
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
 	if err != nil && wt != nil {
@@ -598,9 +593,9 @@ func (s *server) mainCheckoutBusy(projectRoot string) bool {
 
 // scratchWorktree is a worktree the daemon created for a scratch session (t-e162).
 type scratchWorktree struct {
-	Path   string `json:"path"`
-	Branch string `json:"branch"`
-	Base   string `json:"base"` // commit it started from
+	Path   string
+	Branch string
+	Base   string // commit it started from
 }
 
 // createScratchWorktree adds a worktree on branch scratch/<n> — the smallest n ≥ 1 that
