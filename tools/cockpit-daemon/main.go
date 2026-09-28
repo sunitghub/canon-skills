@@ -145,7 +145,7 @@ type session struct {
 	reaped        chan struct{} // t-86fe: closed once the agent process has exited and been waited for
 	doneOnce      sync.Once
 	bg            sync.WaitGroup // t-183f: readLoop + waitExit, so teardown can wait until they stop writing
-	closeOnce     sync.Once // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
+	closeOnce     sync.Once      // t-b999: ConPTY's Close calls ClosePseudoConsole — never twice
 	exited        bool
 	killed        bool      // set by handleKill so readLoop's natural-exit path skips the reaper (already deleted)
 	reaping       bool      // t-2e7e: set while saveAndEndIdle is in flight, guards against a second reap goroutine
