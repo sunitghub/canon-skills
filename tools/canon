@@ -37,6 +37,14 @@ Usage:
                            Block until a session (ticket or scratch id) is in a state:
                            needs-you, working, done, idle, or exited. Exit 0 when
                            reached, 1 on timeout, 2 on bad input or no board.
+  canon update             Fast-forward this canon install (refuses if it has uncommitted
+                           changes, isn't on main, or can't fast-forward), then run
+                           `skills.sh refresh` on every project registered in the Cockpit
+  canon completion <bash|zsh|powershell>
+                           Print a completion script. bash: eval "$(canon completion bash)"
+                           in ~/.bashrc; zsh: eval "$(canon completion zsh)" in ~/.zshrc
+                           (after compinit); PowerShell: canon completion powershell |
+                           Out-String | Invoke-Expression in $PROFILE
   canon --help             Show this help
 
 Launch once and work from within it. A second launch focuses the running
@@ -44,6 +52,96 @@ window instead of starting a second server. Set CANON_COCKPIT_PORT to change
 the default port. status/sessions/stop/restart talk to the running board and
 never need or print a session token.
 EOF
+}
+
+# t-e3d2: update the canon install, then refresh every Cockpit project. The install is often
+# also a development checkout, so anything but a clean fast-forward on main is refused —
+# never merged or stashed.
+update_cmd() {
+  [[ $# -eq 0 ]] || { echo "canon update takes no arguments" >&2; exit 2; }
+  local repo; repo="$(cd "$SCRIPT_DIR/.." && pwd)"
+  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || { echo "canon update: $repo isn't a git clone — update it the way you installed it." >&2; exit 1; }
+  if [ -n "$(git -C "$repo" status --porcelain)" ]; then
+    echo "canon update: $repo has uncommitted changes — commit or stash them first. Nothing was changed." >&2; exit 1
+  fi
+  local branch before after
+  branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
+  [ "$branch" = main ] || { echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1; }
+  before="$(git -C "$repo" rev-parse --short HEAD)"
+  if ! git -C "$repo" pull --ff-only --quiet; then
+    echo "canon update: $repo can't fast-forward (local commits, or no upstream). Nothing was changed." >&2; exit 1
+  fi
+  after="$(git -C "$repo" rev-parse --short HEAD)"
+  if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
+  local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
+  [ -f "$registry" ] || { echo "No Cockpit projects registered — nothing to refresh."; return 0; }
+  local failed=0 raw p
+  # The board writes this file: pull each "path" string and undo JSON escaping (\\, \", \/).
+  while IFS= read -r raw; do
+    p="${raw#*\"path\"}"; p="${p#*\"}"; p="${p%\"}"
+    p="${p//\\\"/\"}"; p="${p//\\\//\/}"; p="${p//\\\\/\\}"
+    [ -n "$p" ] || continue
+    if [ ! -d "$p" ]; then echo "  skipped (folder missing): $p"; continue; fi
+    if "$SCRIPT_DIR/skills.sh" refresh "$p" >/dev/null 2>&1; then echo "  refreshed: $p"
+    else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; failed=1; fi
+  done < <(grep -oE '"path"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' "$registry")
+  return "$failed"
+}
+
+completion_bash() {
+  cat <<'COMP'
+_canon() {
+  local cur prev w
+  cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
+  if [ "$COMP_CWORD" -eq 1 ]; then
+    COMPREPLY=($(compgen -W "status sessions stop restart wait update completion help" -- "$cur")); return
+  fi
+  case "$prev" in
+    --until) COMPREPLY=($(compgen -W "needs-you working done idle exited" -- "$cur")); return ;;
+    --project) COMPREPLY=($(compgen -d -- "$cur")); return ;;
+    --timeout) COMPREPLY=(); return ;;
+  esac
+  case "${COMP_WORDS[1]}" in
+    status|sessions) w="--json" ;;
+    stop|restart) w="--force" ;;
+    wait) w="--until --timeout --project --json" ;;
+    completion) w="bash zsh powershell" ;;
+    *) w="" ;;
+  esac
+  COMPREPLY=($(compgen -W "$w" -- "$cur"))
+}
+complete -F _canon canon
+COMP
+}
+
+completion_powershell() {
+  cat <<'COMP'
+Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
+  param($wordToComplete, $commandAst, $cursorPosition)
+  $el = @($commandAst.CommandElements | ForEach-Object { $_.ToString() })
+  $n = $el.Count
+  $pos = if ($wordToComplete) { $n - 1 } else { $n }   # index of the word being completed
+  $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
+  $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
+  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','completion','help' }
+    elseif ($prev -eq '--until') { 'needs-you','working','done','idle','exited' }
+    else { switch ($sub) {
+      'status' { '--json' } 'sessions' { '--json' } 'stop' { '--force' } 'restart' { '--force' }
+      'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' }
+      default { @() } } }
+  $cands | Where-Object { $_ -like "$wordToComplete*" } |
+    ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
+}
+COMP
+}
+
+completion_cmd() {
+  case "${1:-}" in
+    bash) completion_bash ;;
+    zsh) echo 'autoload -U +X bashcompinit && bashcompinit'; completion_bash ;;
+    powershell|pwsh) completion_powershell ;;
+    *) echo "canon completion: choose bash, zsh or powershell" >&2; exit 2 ;;
+  esac
 }
 
 # t-180d: poll the board for one session's state (it answers with the state word, so no
@@ -155,6 +253,8 @@ main() {
     help|--help|-h) usage; exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
     wait) shift; wait_cmd "$@" ;;
+    update) shift; update_cmd "$@"; exit $? ;;
+    completion) shift; completion_cmd "$@"; exit 0 ;;
     "") : ;;
     [0-9]*) PORT_ARG="$1" ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 1 ;;
