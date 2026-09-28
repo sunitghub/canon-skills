@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-27-2026 17:23
+learnings-sweep last run: 09-27-2026 19:25
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-27 | [t-e69b](.tickets/t-e69b/learnings.md) | A layout assertion measured right after the table appeared passed even with the fix reverted: the element that widens the block (Admin's reaper line) loads later from a separate fetch. Wait for every contributor to be present before measuring, and revert-check width/position tests. | UNPROMOTED |
 | 2026-09-27 | [t-824e](.tickets/t-824e/learnings.md) | Adding a fourth tile to a grid tuned for three (`auto-fit, minmax(150px,1fr)` in a 620px column) silently wraps it 3+1 — no test caught it until the reviewer rendered Admin; assert row layout (tile tops equal) when a fixed-width panel gains items. | UNPROMOTED |
 | 2026-09-27 | [t-e555](.tickets/t-e555/learnings.md) | A stub that always exits 0 can't test exit-code handling: vary the stub's exit code and pipe behaviour per case. In Go, check `ctx.Err()` before `cancel()`; `cmd.WaitDelay` also fires after a normal exit and returns `ErrWaitDelay` only for exit 0 (a non-zero exit wins as `ExitError`) — so a test for that branch must use exit 0, and the branch should be revert-checked. | UNPROMOTED |
 | 2026-09-27 | [t-b9a7](.tickets/t-b9a7/learnings.md) | Porting a check to a second runtime: a parity test only proves both sides agree, so pin each rejection rule directly too (both sides could drop it together), and aim the fuzz at the known text-handling gaps (isspace, `\w`, code-point lengths, invalid UTF-8) or it proves nothing. Go 1.23+ on Windows: junctions report `ModeIrregular` and `EvalSymlinks` stops following them, so check every path component, not just the resolved path. A build script that compiles one file silently drops new files from the binary. | UNPROMOTED |
