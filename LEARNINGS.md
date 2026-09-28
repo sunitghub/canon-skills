@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-28-2026 08:18
+learnings-sweep last run: 09-28-2026 11:12
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-28 | [t-f553](.tickets/t-f553/learnings.md) | The evaluator grades each sub-check a Test Plan line names, not the headline: three fails came from named checks with no assertion (UI cap, refusal toast, button absent; start cwd in the worktree variant) and from `./scripts/test.sh`, which auto mode denies to subagents. Before dispatch, map every named sub-check to a test and save a HEAD-matched `test.sh` log as evidence. | UNPROMOTED |
 | 2026-09-28 | [t-e162](.tickets/t-e162/learnings.md) | A guard can pass its revert check because another layer also enforces it (here `git worktree remove` refusing a dirty tree): revert-check each guard with a test that isolates it (a unit test on the guard's own decision), or the "protection" you rely on may be the other layer's. | UNPROMOTED |
 | 2026-09-28 | [t-47f1](.tickets/t-47f1/learnings.md) | Create side-effect state (dirs, files) only after every refusal check in a request handler — a 409/400 that runs after an early mkdir leaves debris the happy-path tests never see; assert "nothing left behind" on each refusal path. | UNPROMOTED |
 | 2026-09-27 | [t-28ec](.tickets/t-28ec/learnings.md) | A "needs you" surface is only as good as its detector: the UI worked end-to-end in tests with mocked sessions, but the user's first live prompt was a Copilot menu variant the daemon's text match missed. Exercise status UIs against real agent prompts (each harness, each menu variant) before calling them done. | UNPROMOTED |
