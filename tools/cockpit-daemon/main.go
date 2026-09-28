@@ -137,6 +137,7 @@ type session struct {
 	onNaturalExit func()    // set by spawn(); schedules the reap-after-TTL cleanup
 	lastActivity  time.Time // t-2e7e: bumped on PTY output and on input; idle reaper's clock
 	cols, rows    int       // t-6291: last size from /resize (0 = unknown) — Save & End's screen model needs it to wrap and scroll like the terminal
+	menuSince     time.Time // t-7c4f: when a pending Copilot menu was first seen (zero when none)
 	humanInputAt  time.Time // t-2e7e: bumped ONLY by a real POST /input (not PTY output/echo);
 	// lets an in-flight save-and-kill detect a human actually came back and abort
 	previewRoot string // t-b19b: symlink-validated dir under projectRoot or the session's own worktree cwd (t-8e73); set once via /preview-root
@@ -855,11 +856,19 @@ func sessionStateLocked(se *session, now time.Time) (state string, stateSecs, id
 	default:
 		signal = "hook"
 	}
+	// t-7c4f: Copilot redraws while its menu waits, so the menu's age can't come from
+	// lastActivity — remember when it was first seen instead.
+	menu := se.menuPendingLocked()
+	if !menu {
+		se.menuSince = time.Time{}
+	} else if se.menuSince.IsZero() {
+		se.menuSince = now
+	}
 	switch {
 	case se.status == "needs-you":
 		return "needs-you", since, idleSecs, signal
-	case se.agent == "copilot" && se.menuPendingLocked():
-		return "needs-you", idleSecs, idleSecs, signal
+	case menu:
+		return "needs-you", int64(now.Sub(se.menuSince).Seconds()), idleSecs, signal
 	case se.status == "awaiting-input":
 		return "done", since, idleSecs, signal
 	case idle < workingWindow:
@@ -998,6 +1007,18 @@ func (s *server) handleStream(w http.ResponseWriter, r *http.Request, se *sessio
 	}
 }
 
+// terminalReportRe matches a payload made only of automatic terminal replies: focus
+// in/out (CSI I / CSI O), cursor-position (CSI r;c R), device status (CSI n), device
+// attributes (CSI ? … c / CSI > … c / CSI = … c), mode reports (CSI ?… ; … $y), kitty
+// keyboard flags (CSI ? n u), colour-scheme (CSI ? 997 ; n n), OSC replies (ESC ] … BEL
+// or ST) and DCS replies (ESC P … ST). Whole payload only: a key typed alongside a
+// report still counts as input.
+var terminalReportRe = regexp.MustCompile(`^(?:\x1b\[[IO]|\x1b\[\d+;\d+R|\x1b\[\d*n|\x1b\[[?>=][\d;]*c|\x1b\[\??\d+;\d+\$y|\x1b\[\?\d*u|\x1b\[\?997;\dn|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1bP[^\x1b]*\x1b\\)+$`)
+
+func isTerminalReport(data []byte) bool {
+	return len(data) > 0 && terminalReportRe.Match(data)
+}
+
 func (s *server) handleInput(w http.ResponseWriter, r *http.Request, se *session) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1014,6 +1035,15 @@ func (s *server) handleInput(w http.ResponseWriter, r *http.Request, se *session
 	}
 	if _, err := se.pty.Write(data); err != nil {
 		http.Error(w, "write failed", http.StatusInternalServerError)
+		return
+	}
+	// t-7c4f: an automatic terminal reply — focus in/out once the agent turned on focus
+	// reporting (Claude Code does), a cursor-position or device-attributes answer — is the
+	// terminal talking, not the human. It still reaches the agent (it asked), but opening
+	// a waiting session must not clear needs-you, reset the idle timer, or look like the
+	// human returning mid Save & End.
+	if isTerminalReport(data) {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	se.mu.Lock()
@@ -2218,7 +2248,8 @@ func copilotNeedsLogin(buf []byte) bool {
 //
 // The signature, taken from real captures (testdata/copilot-*-menu.bin), is the
 // footer both menus share — "↑/↓ to navigate · enter to select · esc to cancel" —
-// AND their last option, "3. No (Esc)". The footer alone is the phrase an agent
+// AND their last option, "3. No (Esc)" (or, on the command-approval menu, "… (Esc to
+// stop)", t-7c4f). The footer alone is the phrase an agent
 // would quote when discussing this very feature; requiring the option too makes a
 // quote-induced false positive need three menu phrases, not two. (A menu without a
 // "No (Esc)" option is not detected: that fails open, i.e. today's behavior.) It is
@@ -2247,7 +2278,10 @@ func copilotMenuPending(buf []byte, cols, rows int) bool {
 		}
 		return -1
 	}, b.String())
-	return strings.Contains(flat, "entertoselect") && strings.Contains(flat, "esctocancel") && strings.Contains(flat, "noesc")
+	// t-7c4f: the command-approval menu's last option reads "No, and tell Copilot what to
+	// do differently (Esc to stop)" — still three phrases with the footer.
+	return strings.Contains(flat, "entertoselect") && strings.Contains(flat, "esctocancel") &&
+		(strings.Contains(flat, "noesc") || strings.Contains(flat, "esctostop"))
 }
 
 // menuRefusal is the body of the 409 Save & End returns while a menu is pending.

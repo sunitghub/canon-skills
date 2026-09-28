@@ -5152,6 +5152,7 @@ func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
 		reaped  bool
 	}{
 		{"copilot-approval-menu.bin", false},
+		{"copilot-command-menu.bin", false}, // t-7c4f: "… (Esc to stop)" variant, rebuilt from a user screenshot's text
 		{"copilot-composer-after-tool.bin", true},
 	} {
 		t.Run(tc.fixture, func(t *testing.T) {
@@ -5190,7 +5191,14 @@ func TestIdleReaperSkipsCopilotOnMenu(t *testing.T) {
 // saveAndEnd's own guard (the callers check too): a menu that appears after a caller's
 // check must still never receive the prompt, and the reaping flag is released.
 func TestSaveAndEndGuardRefusesMenuDirectly(t *testing.T) {
-	bin, recv := fakeAgentOnMenu(t, "copilot-approval-menu.bin")
+	// t-7c4f: the command-approval menu ("… (Esc to stop)") must be refused the same way.
+	for _, fixture := range []string{"copilot-approval-menu.bin", "copilot-command-menu.bin"} {
+		t.Run(fixture, func(t *testing.T) { saveAndEndRefusesMenu(t, fixture) })
+	}
+}
+
+func saveAndEndRefusesMenu(t *testing.T, fixture string) {
+	bin, recv := fakeAgentOnMenu(t, fixture)
 	s, _, sid, _ := startMenuSession(t, bin, config{
 		idleTimeout: time.Hour, idleTimeoutMain: time.Hour, idleCheckInterval: time.Hour,
 		saveFallback: 30 * time.Second, saveQuiesce: time.Hour,
@@ -5554,7 +5562,7 @@ func TestSessionStateDerivation(t *testing.T) {
 		{"finished at the prompt", &session{agent: "claude", status: "awaiting-input", statusSince: now.Add(-70 * time.Second), lastActivity: now.Add(-90 * time.Second)}, "done", "hook", 70, 90},
 		{"output 5s ago", &session{agent: "claude", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-5 * time.Second)}, "working", "hook", 5, 5},
 		{"quiet 20s", &session{agent: "claude", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-20 * time.Second)}, "idle", "hook", 20, 20},
-		{"copilot menu pending", &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-30 * time.Second), buf: menu, cols: 30, rows: 12}, "needs-you", "copilot-menu", 30, 30},
+		{"copilot menu pending (first sighting)", &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-30 * time.Second), buf: menu, cols: 30, rows: 12}, "needs-you", "copilot-menu", 0, 30},
 		{"copilot working", &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-2 * time.Second)}, "working", "copilot-menu", 2, 2},
 		{"pi quiet", &session{agent: "pi", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now.Add(-3 * time.Minute)}, "idle", "activity", 180, 180},
 	}
@@ -5722,5 +5730,121 @@ func TestAwaitingInputStatusOverHTTP(t *testing.T) {
 	}
 	if r := row(); r["status"] != "running" || r["state"] != "working" {
 		t.Fatalf("input must reset awaiting-input to running: %v", r)
+	}
+}
+
+// t-7c4f: automatic terminal replies are not the human answering.
+func TestIsTerminalReport(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want bool
+	}{
+		{"\x1b[I", true}, {"\x1b[O", true}, {"\x1b[I\x1b[O", true},
+		{"\x1b[24;80R", true}, {"\x1b[0n", true}, {"\x1b[?1;2c", true}, {"\x1b[>0;276;0c", true},
+		{"\x1b[?2004;1$y", true}, {"\x1b[?0u", true}, {"\x1b[?997;1n", true},
+		{"\x1b]11;rgb:1b1b/2323/3030\x07", true}, {"\x1b]10;rgb:e6e6/ebeb/f2f2\x1b\\", true},
+		{"\x1bP>|xterm.js(5.5.0)\x1b\\", true},
+		{"", false}, {"y", false}, {"\r", false}, {"1", false}, {"\x1b", false}, // Esc alone is a real key
+		{"\x1b[A", false}, {"\x1b[B", false},                                    // arrow keys answer menus
+		{"\x1b[<0;10;5M", false},                                                // mouse
+		{"hello world", false}, {"\x1b[200~pasted\x1b[201~", false},             // typing, bracketed paste
+		{"\x1b[I1", false}, {"1\x1b[O", false},                                   // a key alongside a report
+	} {
+		if got := isTerminalReport([]byte(tc.in)); got != tc.want {
+			t.Errorf("isTerminalReport(%q) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}
+
+// t-7c4f: opening a waiting session sends a focus-in report; needs-you must survive it
+// (and the idle timer must not reset), while a real keystroke still answers.
+func TestFocusReportKeepsNeedsYou(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	_, base, s := newTestServerWithAddr(t, bin)
+	resp := startSession(t, base, "t-ab12", bootTok)
+	var out struct{ Session, Token string }
+	json.NewDecoder(resp.Body).Decode(&out)
+	resp.Body.Close()
+	s.mu.Lock()
+	se := s.sessions[out.Session]
+	s.mu.Unlock()
+	post := func(action, tok, body string) {
+		req, _ := http.NewRequest(http.MethodPost, base+"/session/"+out.Session+"/"+action, strings.NewReader(body))
+		req.Header.Set("Authorization", "Bearer "+tok)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		if r.StatusCode != http.StatusNoContent {
+			t.Fatalf("%s %q: status %d", action, body, r.StatusCode)
+		}
+	}
+	post("status", se.statusToken, "needs-you")
+	// humanInputAt is bumped only by input (lastActivity also moves on the agent's own
+	// output, which the fake agent's echo produces), so it shows what the input path did.
+	se.mu.Lock()
+	before := se.humanInputAt
+	se.mu.Unlock()
+	post("input", out.Token, "\x1b[I")
+	post("input", out.Token, "\x1b[24;80R")
+	se.mu.Lock()
+	status, human := se.status, se.humanInputAt
+	se.mu.Unlock()
+	if status != "needs-you" || !human.Equal(before) {
+		t.Fatalf("after focus/CPR reports: status %q, humanInputAt moved %v", status, human.Sub(before))
+	}
+	// The report still reached the agent: the fake agent's terminal echoes it back.
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		se.mu.Lock()
+		got := strings.Contains(string(se.buf), "[24;80R")
+		se.mu.Unlock()
+		if got {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	se.mu.Lock()
+	echoed := strings.Contains(string(se.buf), "[24;80R")
+	se.mu.Unlock()
+	if !echoed {
+		t.Fatal("the report never reached the PTY")
+	}
+	post("input", out.Token, "1")
+	se.mu.Lock()
+	status = se.status
+	se.mu.Unlock()
+	if status != "running" {
+		t.Fatalf("a real keystroke must answer: status %q", status)
+	}
+}
+
+// t-7c4f: Copilot's command-approval menu ends "… (Esc to stop)", not "No (Esc)".
+func TestCopilotCommandMenuDetected(t *testing.T) {
+	cmd := []byte("Start sprint ticket t-uep0\r\n  sprint start t-uep0\r\nDo you want to run this command?\r\n❯ 1. Yes\r\n  2. Yes, and don't ask again for `sprint` in this repo (~/Downloads/ToDo)\r\n" +
+		"  3. No, and tell Copilot what to do differently (Esc to stop)\r\n↑/↓ to navigate · enter to select · esc to cancel\r\n")
+	if !copilotMenuPending(cmd, 120, 40) {
+		t.Fatal("command-approval menu not detected")
+	}
+	if copilotMenuPending([]byte("the footer reads: ↑/↓ to navigate · enter to select · esc to cancel\r\n"), 120, 40) {
+		t.Fatal("a quoted footer alone must not count")
+	}
+	if copilotMenuPending([]byte("press Esc to stop the run\r\n↑/↓ to navigate · enter to select\r\n"), 120, 40) {
+		t.Fatal("\"esc to stop\" without the full footer must not count")
+	}
+	// Its age counts from the first sighting, not from Copilot's redraws.
+	now := time.Now()
+	se := &session{agent: "copilot", status: "running", statusSince: now.Add(-time.Hour), lastActivity: now, buf: cmd, cols: 120, rows: 40}
+	sessionStateLocked(se, now)
+	se.lastActivity = now.Add(45 * time.Second) // a redraw just now
+	state, secs, _, _ := sessionStateLocked(se, now.Add(45*time.Second))
+	if state != "needs-you" || secs != 45 {
+		t.Fatalf("menu age: state %q secs %d, want needs-you 45", state, secs)
+	}
+	se.buf = append(se.buf, []byte("\x1b[2J\x1b[H> ready")...) // answered: menu erased
+	state, _, _, _ = sessionStateLocked(se, now.Add(50*time.Second))
+	if state == "needs-you" || !se.menuSince.IsZero() {
+		t.Fatalf("after the menu closed: state %q menuSince %v", state, se.menuSince)
 	}
 }
