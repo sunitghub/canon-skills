@@ -1402,8 +1402,8 @@ func (s *server) handleAdopt(w http.ResponseWriter, r *http.Request, se *session
 	cwd := se.cwd
 	se.scratchWT = nil // the worktree now belongs to the ticket — never auto-removed
 	se.mu.Unlock()
-	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-cwd"), []byte(cwd+"\n"), 0o644)
-	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-adopted"), []byte("from "+se.ticket+"\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-cwd"), []byte(cwd+"\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(ticketDir, ".cockpit-adopted"), []byte("from "+se.ticket+"\n"), 0o600)
 	if !pathsEqual(cwd, root) {
 		if err := copyTicketDir(ticketDir, filepath.Join(cwd, ".tickets", body.Ticket)); err != nil {
 			se.debugf("adopt: copying %s into the worktree failed: %v", body.Ticket, err)

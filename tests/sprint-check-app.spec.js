@@ -4132,6 +4132,32 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
+    test('promote (t-f553): a ticket created in a background scratch tab is offered when that tab is shown, and only there', async ({ page }) => {
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: promotePage('t-bg01') }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-scratch').click();
+      const a = await page.locator('#ck-id').textContent();
+      await page.locator('#ck-back').click();
+      await page.locator('#btn-scratch').click();
+      await expect(page.locator('#ck-id')).not.toHaveText(a);
+      // Tab A's agent reports its ticket while tab B is in front.
+      const frameA = await (await page.locator(`#ck-term iframe[data-tab-id="${a}"]`).elementHandle()).contentFrame();
+      await frameA.evaluate(() => window.parent.postMessage({ source: 'canon-cockpit', type: 'ticket-promoted', ticket: 't-bg01' }, '*'));
+      await page.waitForTimeout(300);
+      await expect(page.locator('#ck-scratch-promoted')).toBeHidden();
+      await page.locator('#ck-tab-strip-topbar .ck-tab-pill', { hasText: a }).click();
+      await expect(page.locator('#ck-id')).toHaveText(a);
+      await expect(page.locator('#ck-scratch-promoted')).toBeVisible();
+      await expect(page.locator('#ck-scratch-promoted')).toContainText('Continue as t-bg01');
+      const b = await page.locator('#ck-tab-strip-topbar .ck-tab-pill').filter({ hasNotText: a }).first();
+      await b.click();
+      await expect(page.locator('#ck-id')).not.toHaveText(a);
+      await expect(page.locator('#ck-scratch-promoted')).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('promote (t-f553): the title input stops at 80 characters; a refused promote shows the reason', async ({ page }) => {
       await stubCockpit(page);
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><script>

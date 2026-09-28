@@ -3953,15 +3953,9 @@ function findTicketById(id) {
 // shell) so tabs, the terminal and End reuse the ticket paths; the rail shows only a label.
 const SCRATCH_ID = /^s-[a-z0-9]{4}$/;
 // t-f553: messages to the active tab's daemon page (which holds the session token).
-function postToActiveTerm(msg) {
-  const iframe = activeIframe();
-  if (!iframe || !iframe.contentWindow || !cockpitState || !cockpitState.addr) return false;
-  iframe.contentWindow.postMessage(Object.assign({ source: 'canon-cockpit' }, msg), 'http://' + cockpitState.addr);
-  return true;
-}
 function startPromote(thenEnd) {
   cockpitState.promoteThenEnd = !!thenEnd;
-  if (!postToActiveTerm({ type: 'promote-request', thenEnd: !!thenEnd })) { showToast('⚠ Start the agent first', 'warn'); return; }
+  if (!postToTab(cockpitState, { type: 'promote-request', thenEnd: !!thenEnd })) { showToast('⚠ Start the agent first', 'warn'); return; }
   showToast('Asked the agent to create the ticket — approve its tkt create command in the terminal.');
 }
 // Click the scratch title to rename it (Enter saves, Esc cancels); the daemon keeps it so the
@@ -3986,7 +3980,7 @@ function editScratchTitle() {
       const v = input.value.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80);
       t.title = v || 'Scratch session';
       announceScratchTabs();
-      postToActiveTerm({ type: 'set-title', title: v });
+      postToTab(cockpitState, { type: 'set-title', title: v });
     }
     document.getElementById('ck-tc-title').textContent = t.title;
     document.getElementById('ck-title').textContent = t.title;
@@ -3999,8 +3993,9 @@ function editScratchTitle() {
   input.addEventListener('blur', () => finish(true));
 }
 function postToTab(tab, msg) {
-  if (!tab || !tab.iframeEl || !tab.iframeEl.contentWindow || !tab.addr) return;
+  if (!tab || !tab.iframeEl || !tab.iframeEl.contentWindow || !tab.addr) return false;
   tab.iframeEl.contentWindow.postMessage(Object.assign({ source: 'canon-cockpit' }, msg), 'http://' + tab.addr);
+  return true;
 }
 // The agent reported the ticket it created: offer to continue this conversation as it.
 function showPromotedChoice(ticket) {
@@ -4013,10 +4008,10 @@ function showPromotedChoice(ticket) {
   row.className = 'ck-scratch-actions';
   const yes = document.createElement('button');
   yes.className = 'ck-scratch-btn'; yes.type = 'button'; yes.textContent = 'Continue as ' + ticket;
-  yes.addEventListener('click', () => { box.hidden = true; postToTab(cockpitState, { type: 'adopt', ticket }); });
+  yes.addEventListener('click', () => { box.hidden = true; cockpitState.promotedTicket = null; postToTab(cockpitState, { type: 'adopt', ticket }); });
   const no = document.createElement('button');
   no.className = 'ck-scratch-btn ghost'; no.type = 'button'; no.textContent = 'Not now';
-  no.addEventListener('click', () => { box.hidden = true; });
+  no.addEventListener('click', () => { box.hidden = true; cockpitState.promotedTicket = null; });
   row.append(yes, no);
   box.append(p, row);
 }
@@ -5401,6 +5396,9 @@ function setActiveTab(id) {
   document.getElementById('ck-preview').classList.toggle('collapsed', !cockpitState || cockpitState.previewCollapsed);
   const msgEl = document.getElementById('ck-term-msg');
   if (msgEl) msgEl.textContent = (cockpitState && cockpitState.pendingMessage) || '';
+  // t-f553: the "Continue as <id>" choice belongs to the tab whose agent created the ticket.
+  if (cockpitState && cockpitState.promotedTicket) showPromotedChoice(cockpitState.promotedTicket);
+  else document.getElementById('ck-scratch-promoted').hidden = true;
   syncTrackButton();
 }
 
@@ -5443,8 +5441,10 @@ window.addEventListener('message', (e) => {
     showToast('⚠ ' + String(d.reason || 'Promote refused').slice(0, 200), 'warn');
   } else if (d.type === 'ticket-promoted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
     if (tab.promoteThenEnd) { postToTab(tab, { type: 'adopt', ticket: d.ticket }); }
-    else if (isActive) showPromotedChoice(d.ticket);
-    else tab.promotedTicket = d.ticket;
+    else {
+      tab.promotedTicket = d.ticket;   // per tab: shown when this tab is (or becomes) active
+      if (isActive) showPromotedChoice(d.ticket);
+    }
   } else if (d.type === 'adopted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
     finishAdopt(sourceId, d.ticket, String(d.cwd || ''), !!tab.promoteThenEnd);
   } else if (d.type === 'adopt-failed') {
