@@ -3956,6 +3956,29 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('interrupted (t-d9e6): Resume all dismisses every resumable entry and opens each ticket', async ({ page }) => {
+      const list = [
+        { id: 't-d9e6', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:00:00Z', resumable: true, reason: '' },
+        { id: 't-2d74', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:05:00Z', resumable: true, reason: '' },
+        { id: 't-cc33', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T09:00:00Z', resumable: false, reason: 'ticket is closed' },
+      ];
+      const dismissed = [];
+      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(list.filter(e => !dismissed.includes(e.id))) }));
+      await page.route('**/api/cockpit-interrupted-dismiss', r => { dismissed.push(JSON.parse(r.request().postData()).id); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      await openShell(page, []);
+      await stubEmbeddedCockpit(page);
+      await page.evaluate(() => pollInterrupted());
+      await page.locator('#intr-resume-all').click();
+      await expect.poll(() => dismissed.slice().sort()).toEqual(['t-2d74', 't-d9e6']);   // the closed one stays
+      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
+      const board = page.frameLocator('#view-proj-a iframe');
+      await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2, { timeout: 8000 });
+      await expect(page.locator('#intr-banner .intr-row')).toHaveCount(1);
+      await expect(page.locator('#intr-banner .intr-row')).toHaveAttribute('data-id', 't-cc33');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('scratch title (t-f553): the rail and Admin show a scratch session\u2019s title as text', async ({ page }) => {
       await openShell(page, [scratchRow('s-q7s1', '/tmp/proj-a', 'Why <b>x</b> fails')]);
       await page.evaluate(() => pollSessions());
