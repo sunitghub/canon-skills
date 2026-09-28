@@ -165,8 +165,13 @@ sprint agent without leaving the browser — no second terminal.
   and other notifications change nothing. The daemon's `/sessions` turns this
   into one state per session — needs you, working (output or input in the last
   15 s), idle, or done — shown in the shell's Agents sidebar, the "N needs you"
-  pill, an amber tab dot, the Projects cards, Admin's session table and the
-  ticket cockpit's state chip. Copilot's needs you comes from its approval
+  pill, a tab dot, the Projects cards, Admin's session table, the
+  ticket cockpit's state chip and the board's cards (`t-28ec`: a state strip,
+  **Answer ▸** / **Open ▸**, waiting cards first in In Progress). Colours follow
+  Herdr's palette: needs you pink-red, working yellow, done teal, idle a hollow
+  green ring. Admin's **Desktop notifications** switch (off by default, per
+  browser) notifies you when a session starts waiting while the cockpit isn't in
+  view; the browser asks for permission only when you turn it on. Copilot's needs you comes from its approval
   menu; Pi has no question signal (working/idle only). Claude Code's
   folder-trust prompt sends no notification, so it shows as idle. The signal is
   Claude Code's own `Notification` hook, handed to the session via `claude --settings <file>`

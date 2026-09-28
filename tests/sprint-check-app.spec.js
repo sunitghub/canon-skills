@@ -3339,11 +3339,26 @@ test.describe('cockpit in board (t-ddc8)', () => {
       return page.frameLocator('#view-proj-a iframe');
     }
 
-    test('shell: cross-project row switches to the registered project tab and opens the cockpit there', async ({ page }) => {
+    // t-28ec: an embedded board lists only its own sessions (the shell's Agents rail has the rest),
+    // so a cross-project row no longer appears there; the shell still honours an open-session
+    // message from a tab's board (a board whose root isn't known yet lists everything).
+    const postOpenSession = (page, project_root, ticket) => page.frameLocator('#view-proj-a iframe').locator('body')
+      .evaluate((_, m) => window.parent.postMessage({ source: 'canon-board', type: 'open-session', ...m }, location.origin), { project_root, ticket });
+
+    test('shell (t-28ec): an embedded board lists only its own project\u2019s sessions', async ({ page }) => {
+      const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/'), row('t-own1', PROJECT_ROOT), row('t-nowh', '/tmp/nowhere')]);
+      await page.evaluate(() => pollSessions());
+      await expect(board.locator('.cockpit-session-row')).toHaveCount(1);
+      await expect(board.locator('.cockpit-session-row')).toHaveAttribute('data-ticket', 't-own1');
+      await expect(page.locator('#ag-list .ag-row')).toHaveCount(3);   // the rail still shows every project
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell: an open-session message for another project switches to its tab and opens the cockpit there', async ({ page }) => {
       writeTicket(XID, 'in_progress');
       try {
-        const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/')]);
-        await board.locator(`.cockpit-session-row[data-ticket="${XID}"]`).click();
+        await openShell(page, []);
+        await postOpenSession(page, 'c:/users/me/proj-x/', XID);
         await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
         await expect(page.frameLocator('#view-proj-x iframe').locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
       } finally {
@@ -3352,11 +3367,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
     });
 
-    test('shell: a project that is not registered toasts its name and opens no tab', async ({ page }) => {
-      const board = await openShell(page, [row(XID, '/tmp/nowhere')]);
-      await board.locator(`.cockpit-session-row[data-ticket="${XID}"]`).click();
+    test('shell: an open-session message for an unregistered project toasts its name and opens no tab', async ({ page }) => {
+      await openShell(page, []);
+      await postOpenSession(page, '/tmp/nowhere', XID);
       await expect(page.locator('#toast')).toContainText('/tmp/nowhere');
       await expect(page.locator('#view-nowhere, #view-proj-x')).toHaveCount(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
     test('hostile open-session / open-ticket messages are inert', async ({ page }) => {
@@ -3418,8 +3434,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(list.locator('.ag-proj b')).toHaveText(['proj-a', 'proj-x']);
         await expect(list.locator('.ag-row.st-needs-you')).toHaveCount(2);
         await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toContainText('needs you · 30s');
-        await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toContainText('done 1m · reaps in 28m');
-        await expect(list.locator('.ag-row', { hasText: 't-bbb2' })).toContainText('working');
+        await expect(list.locator('.ag-row', { hasText: 't-ccc3' })).toContainText('done 1m · claude · reaps in 28m');
+        await expect(list.locator('.ag-row', { hasText: 't-bbb2' })).toContainText('working · claude');
         await expect(list.locator('.ag-row', { hasText: 't-ddd4' })).toContainText('running'); // old-daemon fallback
         await expect(list.locator('.ag-row', { hasText: 't-aaa1' })).toHaveAttribute('title', 'needs you · state from: Claude Code notification hook');
         await expect(list.locator('.ag-row.st-idle')).toContainText('no ticket'); // hostile ticket id is dropped, not rendered
@@ -3478,7 +3494,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(copilot).toContainText('paused · waiting on you');
       await expect(copilot.locator('td').nth(0)).toHaveText('needs you · 1m');
       await expect(copilot.locator('td').nth(0)).toHaveAttribute('title', 'needs you · state from: Copilot approval menu');
-      await expect(copilot.locator('.s2')).toHaveText('proj-x · cp · wt');
+      await expect(copilot.locator('.s2')).toHaveText('proj-x · copilot · wt');
       await expect(box.locator('tbody tr').nth(2)).toContainText('auto-save & end in 29m');
       // Old-daemon row: status fallback, no countdown or signal, never "undefined".
       const old = box.locator('tbody tr').nth(4);
@@ -3536,6 +3552,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         't-aaa1': '---\nid: t-aaa1\nstatus: in_progress\n---\n# Test scripts leak board servers\n\nbody\n# not the title\n',
         [XID]: `---\nid: ${XID}\n---\n# ${HOSTILE_TITLE}\n`,
         't-ccc3': '# Due-date reminders\n',
+        't-ddd4': '---\nid: t-ddd4\ntitle: "Export ToDo to CSV"\nstatus: in_progress\n---\n\n## Description\n# not the title either\n',
       };
       await page.route(/\/api\/doc\/t-[a-z0-9]{4}\/ticket\.md\?project=/, route => {
         const u = new URL(route.request().url());
@@ -3565,15 +3582,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(list.locator('.ag-proj span')).toHaveText(['3', '3']);
       const row = id => list.locator('.ag-row', { has: page.locator('.ag-id', { hasText: id }) });
       await expect(row('t-aaa1').locator('.ag-t1')).toHaveText('t-aaa1Test scripts leak board servers');
-      await expect(row('t-aaa1').locator('.ag-a')).toHaveText('cc');
-      await expect(row('t-aaa1').locator('.ag-s')).toHaveText('needs you · 30s');
-      await expect(row(XID).locator('.ag-a')).toHaveText('cp');
+      // Herdr-style state line: state (+ age) · agent name (· reap countdown).
+      await expect(row('t-aaa1').locator('.ag-s')).toHaveText('needs you · 30s · claude');
+      await expect(row(XID).locator('.ag-s')).toHaveText('needs you · 1m · copilot');
+      await expect(list.locator('.ag-a')).toHaveCount(0);
       await expect(row('t-bbb2').locator('.ag-t1')).toHaveText('t-bbb2');            // 404 → id alone
-      await expect(row('t-bbb2').locator('.ag-s')).toHaveText('working');
+      await expect(row('t-bbb2').locator('.ag-s')).toHaveText('working · claude');
       await expect(row('t-ccc3').locator('.ag-t1')).toHaveText('t-ccc3Due-date reminders'); // no frontmatter
-      await expect(row('t-ccc3').locator('.ag-s')).toHaveText('done 1m · reaps in 28m');
-      await expect(row('t-ddd4').locator('.ag-s')).toHaveText('running');          // older daemon row
-      await expect(list.locator('.ag-row.st-idle .ag-s')).toHaveText('idle 6m');    // non-numeric limit → no countdown
+      await expect(row('t-ccc3').locator('.ag-s')).toHaveText('done 1m · claude · reaps in 28m');
+      await expect(row('t-ddd4').locator('.ag-s')).toHaveText('running · claude');  // older daemon row
+      await expect(row('t-ddd4').locator('.ag-t1')).toHaveText('t-ddd4Export ToDo to CSV'); // frontmatter title, quotes stripped
+      await expect(list.locator('.ag-row.st-idle .ag-s')).toHaveText('idle 6m · <img src=x onerror=window.__pwned=1>'); // no countdown; agent inert
       // Mockup type: 13px title line, 12px state line, 8px dot.
       const css = await row('t-aaa1').evaluate(el => ({
         t1: getComputedStyle(el.querySelector('.ag-t1')).fontSize,
@@ -3581,8 +3600,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
         dot: getComputedStyle(el.querySelector('.sdot')).width,
         id: getComputedStyle(el.querySelector('.ag-id')).fontFamily,
         t1font: getComputedStyle(el.querySelector('.ag-t1')).fontFamily,
+        idColor: getComputedStyle(el.querySelector('.ag-id')).color,
+        idWeight: getComputedStyle(el.querySelector('.ag-id')).fontWeight,
+        text: getComputedStyle(document.body).color,
       }));
-      expect(css).toMatchObject({ t1: '13px', s: '12px', dot: '8px' });
+      expect(css).toMatchObject({ t1: '13px', s: '12px', dot: '8px', idWeight: '700' });
+      expect(css.idColor).toBe(css.text);                                             // id as bright as body text (Herdr's name)
       expect(css.id).toMatch(/monospace/);
       expect(css.t1font).not.toMatch(/monospace/);
       // Hostile title: inert text, and the quote can't break out of the row's title attribute.
@@ -3616,11 +3639,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       });
       expect(order).toEqual([true, true, true]);
       await expect(box.locator('tbody tr').nth(0).locator('.s1')).toHaveText('t-aaa1Test scripts leak board servers');
-      await expect(box.locator('tbody tr').nth(0).locator('.s2')).toHaveText('proj-a · cc · main checkout');
+      await expect(box.locator('tbody tr').nth(0).locator('.s2')).toHaveText('proj-a · claude · main checkout');
       await expect(box.locator('tbody tr').nth(2).locator('.s1')).toHaveText('t-bbb2');
       await expect(box.locator('tbody tr').nth(2).locator('td').nth(0)).toHaveText('working · 0s');   // 0-second state
       // Project shows the registered name (as in the sidebar), not the folder: this row's root is C:\Users\me\Proj-X.
-      await expect(box.locator('tbody tr').nth(2).locator('.s2')).toHaveText('proj-x · cc · main checkout');
+      await expect(box.locator('tbody tr').nth(2).locator('.s2')).toHaveText('proj-x · claude · main checkout');
       // Same width as the other Admin sections, and the table fits without scrolling.
       await expect(page.locator('#ad-reaper')).toBeVisible();   // its long line is what used to widen the block
       const fit = await page.evaluate(() => {
@@ -3642,6 +3665,238 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#view-admin .sessions').scrollIntoViewIfNeeded();
       await page.locator('#view-admin .sessions').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals', 'admin.png') });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-28ec: board cards carry their session's state; Herdr colours; desktop notification in the shell.
+    const Q = { need: 't-q1n1', work: 't-q1w2', idle: 't-q1i3', done: 't-q1d4', old: 't-q1o5', other: 't-q1x6' };
+    const cardRows = () => [
+      { session: 'c1', ticket: Q.need, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 42, idle_secs: 42, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'c2', ticket: Q.work, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'c3', ticket: Q.idle, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT + '/wt', agent: 'pi', status: 'running', state: 'idle', state_secs: 180, idle_secs: 180, idle_limit_secs: 300, signal: 'activity' },
+      { session: 'c4', ticket: Q.done, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'awaiting-input', state: 'done', state_secs: 70, idle_secs: 70, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'c5', ticket: Q.old, project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' },
+      { session: 'c6', ticket: Q.other, project_root: '/tmp/some-other-project', cwd: '/tmp/some-other-project', agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 5, idle_secs: 5, idle_limit_secs: 1800, signal: 'hook' },
+    ];
+
+    test('board cards (t-28ec): state strips, Answer/Open, needs-you first, counts, Herdr colours, re-render only on change', async ({ page }) => {
+      for (const id of Object.values(Q)) writeTicket(id, 'in_progress');
+      try {
+        let rows = cardRows();
+        await stubCockpit(page);
+        await page.route('**/api/cockpit-sessions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(rows) }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        const card = id => page.locator(`.card[data-id="${id}"]`);
+        await expect(card(Q.need).locator('.card-state')).toHaveText('Needs you · 42s');
+        await expect(card(Q.need)).toHaveClass(/s-need/);
+        await expect(card(Q.need).locator('.card-start')).toHaveText('Answer ▸');
+        await expect(card(Q.work).locator('.card-state')).toHaveText('Working');
+        await expect(card(Q.work).locator('.card-start')).toHaveText('Open ▸');
+        await expect(card(Q.idle).locator('.card-state')).toHaveText('Idle 3mreaps in 2m');
+        await expect(card(Q.done).locator('.card-state')).toHaveText('Done 1mreaps in 28m');
+        await expect(card(Q.old).locator('.card-state')).toHaveText('Running');          // older daemon: no countdown
+        await expect(card(Q.other).locator('.card-state')).toHaveCount(0);               // another project's session
+        await expect(card(Q.other).locator('.card-start')).toHaveText('▶ Resume');
+        // Needs-you first in In Progress; the lane and the header count it.
+        const lane = page.locator('.column-body[data-status="in_progress"]');
+        await expect(lane.locator('.card').first()).toHaveAttribute('data-id', Q.need);
+        await expect(page.locator('.column', { has: lane }).locator('.column-needs')).toHaveText('1 needs you');
+        await expect(page.locator('#h-needs-stat')).toBeVisible();
+        await expect(page.locator('#h-needs')).toHaveText('1');
+        // Lanes are equal and fill the board's width (they were capped at 320px and skewed by content).
+        for (const width of [1600, 1300]) {
+          await page.setViewportSize({ width, height: 800 });
+          const lanes = await page.evaluate(() => {
+            const b = document.getElementById('board'), cs = getComputedStyle(b);
+            const cols = [...b.querySelectorAll(':scope > .column')].map(c => c.getBoundingClientRect().width);
+            const inner = b.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+            return { cols, inner, gaps: parseFloat(cs.columnGap) * (cols.length - 1) };
+          });
+          expect(Math.max(...lanes.cols) - Math.min(...lanes.cols)).toBeLessThan(1);
+          expect(Math.abs(lanes.cols.reduce((a, b) => a + b, 0) + lanes.gaps - lanes.inner)).toBeLessThan(2);
+        }
+        await page.setViewportSize({ width: 1280, height: 720 });
+        // Herdr palette, both themes.
+        const colours = () => page.evaluate(ids => Object.fromEntries(Object.entries(ids).map(([k, id]) =>
+          [k, getComputedStyle(document.querySelector(`.card[data-id="${id}"] .card-state`)).color])), { need: Q.need, work: Q.work, done: Q.done });
+        const ring = () => page.evaluate(id => getComputedStyle(document.querySelector(`.card[data-id="${id}"] .card-state .sdot`)).boxShadow, Q.idle);
+        await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));   // the board's dark theme = no attribute
+        expect(await colours()).toEqual({ need: 'rgb(243, 139, 168)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)' });
+        expect(await ring()).toContain('rgb(166, 227, 161)');
+        fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals'), { recursive: true });
+        await page.locator('.column', { has: lane }).screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'cards-dark.png') });
+        await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+        expect(await colours()).toEqual({ need: 'rgb(210, 15, 57)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)' });
+        expect(await ring()).toContain('rgb(64, 160, 43)');
+        await page.locator('.column', { has: lane }).screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'cards-light.png') });
+        // Same states, newer ages: strips update in place, no re-render.
+        await page.evaluate(id => { document.querySelector(`.card[data-id="${id}"]`).dataset.mark = '1'; }, Q.need);
+        rows = cardRows().map(r => (r.ticket === Q.need ? { ...r, state_secs: 50, idle_secs: 50 } : r));
+        await page.evaluate(() => refreshCockpitSessions());
+        await expect(card(Q.need).locator('.card-state')).toHaveText('Needs you · 50s');
+        await expect(card(Q.need)).toHaveAttribute('data-mark', '1');
+        // A state change re-renders: Q.work now needs you too and moves up.
+        rows = cardRows().map(r => (r.ticket === Q.work ? { ...r, status: 'needs-you', state: 'needs-you', state_secs: 1 } : r));
+        await page.evaluate(() => refreshCockpitSessions());
+        await expect(card(Q.need)).not.toHaveAttribute('data-mark', '1');
+        await expect(page.locator('#h-needs')).toHaveText('2');
+        await expect(card(Q.work).locator('.card-start')).toHaveText('Answer ▸');
+        // No sessions: chip hidden, cards back to Resume.
+        rows = [];
+        await page.evaluate(() => refreshCockpitSessions());
+        await expect(page.locator('#h-needs-stat')).toBeHidden();
+        await expect(card(Q.need).locator('.card-start')).toHaveText('▶ Resume');
+        // Answer opens the ticket's cockpit.
+        rows = cardRows();
+        await page.evaluate(() => refreshCockpitSessions());
+        await card(Q.need).locator('.card-start').click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      } finally {
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+        for (const id of Object.values(Q)) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('shell palette (t-28ec): Herdr state colours on the rail, pill, tab dot and Admin', async ({ page }) => {
+      await openShell(page, stateRows());
+      await page.evaluate(() => pollSessions());
+      const read = () => page.evaluate(() => {
+        const c = sel => getComputedStyle(document.querySelector(sel)).color;
+        return {
+          need: c('#ag-list .ag-row.st-needs-you .ag-s'), work: c('#ag-list .ag-row.st-working .ag-s'), done: c('#ag-list .ag-row.st-done .ag-s'),
+          pill: c('#needpill'), tab: getComputedStyle(document.querySelector('.tab[data-tab="proj-a"] .live.needs')).backgroundColor,
+          ring: getComputedStyle(document.querySelector('#ag-list .ag-row.st-idle .sdot')).boxShadow,
+        };
+      });
+      expect(await read()).toMatchObject({ need: 'rgb(243, 139, 168)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)', pill: 'rgb(243, 139, 168)', tab: 'rgb(243, 139, 168)' });
+      expect((await read()).ring).toContain('rgb(166, 227, 161)');
+      await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+      expect(await read()).toMatchObject({ need: 'rgb(210, 15, 57)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)', pill: 'rgb(210, 15, 57)' });
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals'), { recursive: true });
+      await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'rail-light.png') });
+      await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });
+      await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'rail-dark.png') });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-28ec): the sidebar divider resizes (drag, bounds, keyboard, double-click reset, remembered); Admin headings read as headings', async ({ page }) => {
+      await openShell(page, []);
+      const side = page.locator('aside.side'), handle = page.locator('#side-resize');
+      const width = async () => Math.round((await side.boundingBox()).width);
+      expect(await width()).toBe(230);
+      const drag = async x => {
+        const b = await handle.boundingBox();
+        await page.mouse.move(b.x + b.width / 2, b.y + 200);
+        await page.mouse.down();
+        await page.mouse.move(x, b.y + 220, { steps: 5 });
+        await page.mouse.up();
+      };
+      const left = (await side.boundingBox()).x;
+      await drag(left + 320); expect(await width()).toBe(320);
+      await drag(left + 1000); expect(await width()).toBe(420);   // clamped
+      await drag(left + 50); expect(await width()).toBe(200);     // clamped
+      await handle.focus(); await page.keyboard.press('ArrowRight'); expect(await width()).toBe(210);
+      await expect(handle).toHaveAttribute('aria-valuenow', '210');
+      await handle.dblclick(); expect(await width()).toBe(230);
+      await drag(left + 300); expect(await width()).toBe(300);
+      await page.reload(); await page.waitForLoadState('networkidle');
+      expect(await width()).toBe(300);                              // remembered per browser
+      // Admin section headings: 12px bold in the body colour, not the faint 10px label.
+      await page.locator('#nav-admin').click();
+      const h = await page.evaluate(() => {
+        const c = getComputedStyle(document.querySelector('#view-admin .sessions .slabel'));
+        const probe = document.createElement('span'); probe.style.color = 'var(--text-body)'; document.body.appendChild(probe);
+        const body = getComputedStyle(probe).color; probe.remove();
+        return { size: c.fontSize, weight: c.fontWeight, color: c.color, body };
+      });
+      expect(h).toMatchObject({ size: '12px', weight: '700' });
+      expect(h.color).toBe(h.body);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // A fake Notification + controllable document.hidden, installed before any page script runs.
+    const fakeNotifications = (page, { perm = 'default', nextPerm = 'granted', supported = true, hidden = false, on = false } = {}) => page.addInitScript(o => {
+      window.__notes = []; window.__permAsks = 0; window.__perm = o.perm; window.__hidden = o.hidden; window.__focused = !o.hidden;
+      document.hasFocus = () => window.__focused;
+      if (o.on) { try { localStorage.setItem('canon-cockpit-notify', 'on'); } catch (e) {} }
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => window.__hidden });
+      if (!o.supported) { delete window.Notification; return; }
+      window.Notification = class { constructor(title, opts) { window.__notes.push({ title, body: opts && opts.body, tag: opts && opts.tag }); window.__last = this; }
+        close() {} static get permission() { return window.__perm; }
+        static requestPermission() { window.__permAsks++; window.__perm = o.nextPerm; return Promise.resolve(window.__perm); } };
+    }, { perm, nextPerm, supported, hidden, on });
+    const setRows = async (page, rows) => { await page.unroute('**/api/cockpit-sessions'); await page.route('**/api/cockpit-sessions', sessionsBody(rows)); };
+    const one = (state, extra = {}) => ({ session: 's1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: state === 'needs-you' ? 'needs-you' : 'running', state, state_secs: 1, idle_secs: 1, idle_limit_secs: 1800, signal: 'hook', ...extra });
+
+    test('desktop notification (t-28ec): opt-in switch, one notification per move into needs-you while hidden, click opens it', async ({ page }) => {
+      await fakeNotifications(page);
+      await stubTicketDocs(page);
+      await openShell(page, [one('working')]);
+      await page.evaluate(() => pollSessions());
+      expect(await page.evaluate(() => window.__permAsks)).toBe(0);      // never asked on load
+      await page.locator('#nav-admin').click();
+      const toggle = page.locator('#ad-notify-toggle');
+      await expect(toggle).not.toBeChecked();
+      await toggle.click({ force: true });
+      await expect(toggle).toBeChecked();
+      expect(await page.evaluate(() => window.__permAsks)).toBe(1);      // asked from the click
+      // Hidden + a move into needs-you → exactly one notification.
+      await page.evaluate(() => { window.__hidden = true; window.__focused = false; });
+      await setRows(page, [one('needs-you')]);
+      await page.evaluate(() => pollSessions());
+      await page.evaluate(() => pollSessions());                          // still waiting: no repeat
+      expect(await page.evaluate(() => window.__notes)).toEqual([{ title: 't-aaa1 needs you', body: 'Test scripts leak board servers · proj-a', tag: 'canon-cockpit-s1' }]);
+      // Clicking it opens that session's project tab.
+      await page.locator('.tab.pinned').click();
+      await page.evaluate(() => window.__last.onclick());
+      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
+      // Visible and focused: no notification.
+      await page.evaluate(() => { window.__hidden = false; window.__focused = true; });
+      await setRows(page, [one('working')]); await page.evaluate(() => pollSessions());
+      await setRows(page, [one('needs-you')]); await page.evaluate(() => pollSessions());
+      expect(await page.evaluate(() => window.__notes.length)).toBe(1);
+      // Tab still showing but the window isn't focused (another app in front): notifies.
+      await page.evaluate(() => { window.__focused = false; });
+      await setRows(page, [one('working')]); await page.evaluate(() => pollSessions());
+      await setRows(page, [one('needs-you')]); await page.evaluate(() => pollSessions());
+      expect(await page.evaluate(() => window.__notes.length)).toBe(2);
+      await page.evaluate(() => { window.__focused = true; });
+      // Switch off: no notification even when hidden.
+      await page.locator('#nav-admin').click();
+      await toggle.click({ force: true });
+      await page.evaluate(() => { window.__hidden = true; });
+      await setRows(page, [one('working')]); await page.evaluate(() => pollSessions());
+      await setRows(page, [one('needs-you')]); await page.evaluate(() => pollSessions());
+      expect(await page.evaluate(() => window.__notes.length)).toBe(2);
+      await page.locator('#view-admin .admin-settings').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'admin-notify.png') });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('desktop notification (t-28ec): no burst for sessions already waiting at load; denied and unsupported are explained', async ({ page, browser }) => {
+      await fakeNotifications(page, { perm: 'granted', hidden: true, on: true });
+      await openShell(page, [one('needs-you')]);
+      for (let i = 0; i < 3; i++) await page.evaluate(() => pollSessions());
+      expect(await page.evaluate(() => window.__notes.length)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+
+      const denied = await browser.newPage();
+      await fakeNotifications(denied, { perm: 'default', nextPerm: 'denied' });
+      await openShell(denied, []);
+      await denied.locator('#nav-admin').click();
+      await denied.locator('#ad-notify-toggle').click({ force: true });
+      await expect(denied.locator('#ad-notify-toggle')).not.toBeChecked();
+      await expect(denied.locator('#ad-notify-note')).toContainText('Blocked');
+      await denied.unrouteAll({ behavior: 'ignoreErrors' });
+      await denied.close();
+
+      const none = await browser.newPage();
+      await fakeNotifications(none, { supported: false });
+      await openShell(none, []);
+      await none.locator('#nav-admin').click();
+      await expect(none.locator('#ad-notify-toggle')).toBeDisabled();
+      await expect(none.locator('#ad-notify-note')).toContainText('doesn’t support');
+      await none.unrouteAll({ behavior: 'ignoreErrors' });
+      await none.close();
     });
 
     test('board Cockpit sessions panel (t-824e): shows the daemon state, never the raw awaiting-input status', async ({ page }) => {
