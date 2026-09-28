@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # sprint-check — open the current project's board inside Canon Cockpit
 # (t-4700). No longer starts a private per-project server on its own port —
-# it delegates into the single canon-cockpit instance (starting it if none is
+# it delegates into the single canon instance (starting it if none is
 # running), registers the current project if needed, and deep-links into that
-# project's tab. See tools/canon-cockpit for the single-instance shell itself.
+# project's tab. See tools/canon for the single-instance shell itself.
 
 set -euo pipefail
 
@@ -29,7 +29,7 @@ Usage:
   sprint-check --help Show this help
 
 Reads .tickets/, HANDOFF.md, and git history from the current project.
-Delegates into the single canon-cockpit instance (starting it if none is
+Delegates into the single canon instance (starting it if none is
 running yet) rather than opening a private server of its own — this keeps
 every project's board inside one shared window instead of scattered across
 separate processes/ports. Set CANON_COCKPIT_PORT to change the default port
@@ -92,7 +92,7 @@ main() {
   fi
 
   # No cockpit instance running yet — start it (same foreground lifecycle as
-  # running `canon-cockpit` directly: it lives as long as this shell).
+  # running `canon` directly: it lives as long as this shell).
   start_cockpit_server "$port" || exit 1
   trap 'kill "$SERVER_PID" 2>/dev/null; exit 0' INT TERM EXIT
 

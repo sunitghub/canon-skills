@@ -3,9 +3,9 @@ setlocal enabledelayedexpansion
 
 rem sprint-check-win.cmd -- open the current project's board inside Canon
 rem Cockpit (t-4700). No longer starts a private per-project server of its
-rem own -- delegates into the single canon-cockpit instance (starting it if
+rem own -- delegates into the single canon instance (starting it if
 rem none is running), registers the current project, and deep-links into its
-rem tab. Mirrors tools/sprint-check (bash) and tools/canon-cockpit-win.cmd.
+rem tab. Mirrors tools/sprint-check (bash) and tools/canon-win.cmd.
 
 set "EXE=%~dp0sprint-check-win.exe"
 if not exist "%EXE%" (

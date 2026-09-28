@@ -19,7 +19,7 @@ tools/sprint-headless-eval|5|non-Windows JSON branch + the Linux-CI-only --allow
 
 # Everything an end user runs or that canon installs into a project.
 files=(tools/sprint tools/tkt tools/skills.sh tools/skills/*.sh tools/platform-lib.sh tools/cockpit-launch-lib.sh
-       tools/canon-cockpit tools/sprint-check tools/hooks-lib.sh tools/subagent-log.sh tools/frontmatter-lib.sh
+       tools/canon tools/sprint-check tools/hooks-lib.sh tools/subagent-log.sh tools/frontmatter-lib.sh
        tools/ticket-root.sh tools/gate-model.sh tools/gate-cache.sh tools/skill-lib.sh tools/upkeep-run
        tools/sprint-headless tools/sprint-headless-eval scripts/pre-commit-hook-template.sh)
 

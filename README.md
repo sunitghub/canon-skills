@@ -136,6 +136,7 @@ The distinction that matters: context files inject knowledge but gate nothing, a
 - **A local daemon that outlives the tab.** A small **cockpit daemon** owns the terminal, so a browser refresh never kills a running agent — and **one daemon serves all your projects**. The **Admin** page shows daemon health, version, uptime, one-click **Stop**/**Restart**, and every **active agent session** across projects with its directory.
 - **Worktree-aware.** Run in the main checkout or a git worktree — the cockpit spawns the agent in the directory you pick and shows *"Working in: …"*.
 - **Save & End.** One click saves the sprint's state to `HANDOFF.md` and ends the session cleanly — no orphaned agent left behind.
+- **One command.** `canon` opens the Cockpit (a second run focuses the same window). From a terminal: `canon status` (board, daemon, sessions by state), `canon sessions` (every live agent session across projects; `--json` for scripts), and `canon stop` / `canon restart` for the daemon (they refuse while sessions are running unless you add `--force`). None of them needs or prints a session token. *Renamed in t-03a8: this command was `canon-cockpit`; there is no alias.*
 
 <img src="meta/screenshots/cockpit-workspace.png" alt="A project's full board — kanban, search, git branch and status — open right inside the same Cockpit window as a tab." width="680">
 
@@ -404,12 +405,12 @@ canon enforces its own standards on itself. A git-native pre-commit hook runs th
 **Windows 11 — no WSL required:** install [Git for Windows](https://git-scm.com/download/win), then:
 1. Run **`install.cmd`** once — double-click it, or run `install.cmd` from any terminal. It launches `install.ps1` for you and adds `tools/` to your user PATH. (Running `install.ps1` directly can fail with *"install.ps1 is not digitally signed … UnauthorizedAccess"* — that's Windows' PowerShell execution policy blocking unsigned scripts, not a canon bug. `install.cmd` sidesteps it with a process-scoped bypass; if you prefer the `.ps1`, run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.)
 2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
-3. Use **PowerShell** for everything else. Each command has a `.cmd` wrapper in `tools/`, so run it by name: `canon-cockpit` or `sprint-check-win` opens the board, and `sprint`, `tkt` and `skills` (for example `skills refresh`) run canon's CLI through Git Bash for you.
+3. Use **PowerShell** for everything else. Each command has a `.cmd` wrapper in `tools/`, so run it by name: `canon` or `sprint-check-win` opens the board, and `sprint`, `tkt` and `skills` (for example `skills refresh`) run canon's CLI through Git Bash for you.
 
 In a **Git Bash** window the same tools work too, but use the script names: `skills.sh refresh`, not `skills refresh` (Git Bash doesn't run `.cmd` files, and `tools/skills` is a folder). See **[fresh-machine-test.md → Windows 11](docs/fresh-machine-test.md#windows-11)** for the full setup.
 
 **Git for Windows is the only dependency on Windows.** canon never requires Python there:
-- `canon-cockpit` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python.
+- `canon` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python.
 - `skills.sh` edits `.claude/settings.json` (the permission and deny rules) with Windows' built-in PowerShell.
 - `sprint`, `tkt` and the pre-commit hook use only bash.
 

@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set "SCRIPT=%~dp0canon-cockpit"
+set "SCRIPT=%~dp0canon"
 set "BASH="
 
 if exist "%ProgramFiles%\Git\bin\bash.exe" set "BASH=%ProgramFiles%\Git\bin\bash.exe"

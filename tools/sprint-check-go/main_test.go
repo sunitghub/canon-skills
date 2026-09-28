@@ -1443,7 +1443,7 @@ func TestRunSkillEvalExitCodes(t *testing.T) {
 
 // t-824e: the daemon's two reaper timeouts reach Admin through /api/cockpit's running_build; a
 // daemon predating them reports 0 (Admin then hides the reaper line). Mirrors server.py's check
-// in tests/canon-cockpit.sh.
+// in tests/canon.sh.
 func TestCockpitRunningBuildPassesReaperTimeouts(t *testing.T) {
 	for _, c := range []struct {
 		body           string

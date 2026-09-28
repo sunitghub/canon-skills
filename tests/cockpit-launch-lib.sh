@@ -75,6 +75,6 @@ assert_eq "python $fake/sprint-check-app/server.py 4321" "$(started 0 0)"       
 assert_eq "python $fake/sprint-check-app/server.py 4321" "$(started 1 1)"       # macOS/Linux
 rm "$fake/sprint-check-win.exe"
 out="$(bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321' _ "$fake" 2>&1 || true)"
-assert_contains "$out" "run canon-cockpit-win instead"
+assert_contains "$out" "run canon-win instead"
 
 printf 'cockpit-launch-lib: ok\n'
