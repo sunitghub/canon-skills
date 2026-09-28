@@ -3912,7 +3912,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }) }));
     const scratchRow = (id, root) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook' });
 
-    test('scratch (t-47f1): + Scratch opens a labelled scratch view in the project tab; a live scratch is reopened, not duplicated', async ({ page }) => {
+    test('scratch (t-47f1): + Scratch opens a labelled scratch view in the project tab; t-e162: a second + Scratch is a new session', async ({ page }) => {
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
@@ -3943,13 +3943,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals'), { recursive: true });
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-47f1', 'visuals', 'scratch-view.png') });
       await board.locator('#ck-leave-cancel').click();
-      // With a live scratch in proj-a, + Scratch reopens that one.
+      // t-e162: even with a live scratch in proj-a, + Scratch starts a new one (several per project).
       await page.unroute('**/api/cockpit-sessions');
       await page.route('**/api/cockpit-sessions', sessionsBody([scratchRow('s-q7s1', '/tmp/proj-a')]));
       await page.evaluate(() => pollSessions());
       await page.locator('.tab.pinned').click();
       await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
-      await expect(board.locator('#ck-id')).toHaveText('s-q7s1', { timeout: 8000 });
+      await expect(board.locator('#ck-id')).not.toHaveText(id, { timeout: 8000 });
+      await expect(board.locator('#ck-id')).not.toHaveText('s-q7s1');
+      await expect(board.locator('#ck-id')).toHaveText(/^s-[a-z0-9]{4}$/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -3974,6 +3976,42 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.waitForTimeout(300);
       await expect(page.frameLocator('#view-proj-x iframe').locator('#ck-id')).toHaveText(before);
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('scratch (t-e162): the board path bar has + Scratch; the scratch view says where it runs', async ({ page }) => {
+      const where = [];
+      await stubCockpit(page);
+      await page.route('**/cockpit?**', r => {
+        const id = new URL(r.request().url()).searchParams.get('ticket');
+        const cwd = where.length ? where.shift() : '';
+        return r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><script>
+          window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
+          window.parent.postMessage({source:'canon-cockpit', type:'started', cwd:${JSON.stringify(cwd)}, requested:''}, '*');
+        </script></body></html>` });
+      });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const btn = page.locator('#btn-scratch');
+      await expect(btn).toHaveText('+ Scratch');
+      await expect(btn).toHaveCSS('border-top-style', 'dashed');
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e162', 'visuals'), { recursive: true });
+      await page.locator('#btn-create').locator('xpath=..').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e162', 'visuals', 'path-bar.png') });
+      const root = await page.evaluate(() => state.gitRoot);
+      where.push(root.replace(/\/+$/, '') + '-worktrees/scratch-2');
+      await btn.click();
+      await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
+      const first = await page.locator('#ck-id').textContent();
+      expect(first).toMatch(/^s-[a-z0-9]{4}$/);
+      await expect(page.locator('#ck-scratch-where')).toHaveText('Running in worktree scratch-2 — removed on End if nothing was done in it.');
+      await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e162', 'visuals', 'scratch-worktree.png') });
+      // A second click is a second session; this one reports the main checkout.
+      where.push(root);
+      await page.locator('#ck-back').click();
+      await btn.click();
+      await expect(page.locator('#ck-id')).not.toHaveText(first);
+      await expect(page.locator('#ck-scratch-where')).toHaveText('Running in the main checkout.');
+      await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

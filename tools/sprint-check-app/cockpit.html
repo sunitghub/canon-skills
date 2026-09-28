@@ -1159,8 +1159,7 @@
   // only, sender must be one of our tab iframes, and the ticket id shape is checked
   // on both hops (the board re-checks before openCockpit).
   const TICKET_ID_RE=/^t-[a-z0-9]{4}$/;
-  // t-47f1: scratch sessions — an agent in a project with no ticket. The shell mints the id;
-  // a project with a live scratch session reopens it (one per project until t-e162).
+  // t-47f1: scratch sessions — an agent in a project with no ticket. The shell mints the id.
   const SCRATCH_ID_RE=/^s-[a-z0-9]{4}$/;
   function newScratchId(){
     const a='abcdefghijklmnopqrstuvwxyz0123456789', b=new Uint8Array(4);
@@ -1170,8 +1169,9 @@
   function startScratch(projectId){
     const proj=(window._projects||[]).find(p=>p.id===projectId);
     if(!proj) return;
-    const live=lastSessions.map(sessionView).find(v=>v.scratch && _projKey(v.proot)===_projKey(proj.path));
-    openSessionInTab({proot:proj.path, scratch: live ? live.scratch : newScratchId()});
+    // t-e162: always a new session — several per project, each extra one in its own worktree;
+    // reopening an existing scratch is the Agents row's job.
+    openSessionInTab({proot:proj.path, scratch:newScratchId()});
   }
   const _projKey=p=>String(p||'').replace(/\\/g,'/').replace(/\/+$/,'').toLowerCase();
   window.addEventListener('message',function(e){

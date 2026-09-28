@@ -1287,6 +1287,8 @@
       transition: background .1s, color .1s;
     }
     .create-btn:hover { background: var(--accent); color: #fff; }
+    .create-btn.scratch-btn { border-style: dashed; border-color: var(--text-muted); background: transparent; color: var(--text); }   /* t-e162 */
+    .create-btn.scratch-btn:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
 
     /* ── Create modal ────────────────────────────── */
     #create-overlay {
@@ -1970,6 +1972,7 @@
         </div>
       </div>
       <button class="create-btn" id="btn-create" title="Create new ticket">+ New</button>
+      <button class="create-btn scratch-btn" id="btn-scratch" title="Start an agent in this project with no ticket — no sprint, no gates">+ Scratch</button>
       <button class="theme-toggle has-label" id="btn-ci-setup" title="Set up CI gate — write .github/workflows/canon-gate.yml so PRs are graded by canon" style="font-size:12px;font-weight:700;letter-spacing:-.3px">⚙ CI</button>
       <button class="theme-toggle tour-toggle" id="tour-btn" title="Feature tour" aria-label="Feature tour" style="font-size:13px;font-weight:700;letter-spacing:-.5px">?</button>
       <button class="theme-toggle" id="theme-toggle" title="Toggle light/dark mode">🌙</button>
@@ -2106,7 +2109,7 @@
           </div>
           <div class="ck-scratch-note" id="ck-scratch-note">
             <b>SCRATCH</b> · no ticket · no gates<br>
-            Runs in the project's main checkout. Promote to a ticket arrives with t-f553; End keeps any uncommitted changes in place.
+            <span id="ck-scratch-where"></span> Promote to a ticket arrives with t-f553; End keeps any uncommitted changes in place.
           </div>
           <div class="ck-accordion-section" id="ck-worktree-section">
             <div class="ck-accordion-header" data-accordion="ck-worktree-section">
@@ -3932,6 +3935,20 @@ function findTicketById(id) {
 // ticket behind it. The cockpit treats it as a pseudo-ticket (id s-xxxx, minted by the
 // shell) so tabs, the terminal and End reuse the ticket paths; the rail shows only a label.
 const SCRATCH_ID = /^s-[a-z0-9]{4}$/;
+function newScratchId() {   // t-e162: the path bar's "+ Scratch" mints its own id
+  const a = 'abcdefghijklmnopqrstuvwxyz0123456789', b = new Uint8Array(4);
+  crypto.getRandomValues(b);
+  return 's-' + [...b].map(x => a[x % 36]).join('');
+}
+// Where a scratch session runs: the main checkout, or the daemon-made worktree (t-e162).
+function renderScratchWhere(tab) {
+  const el = document.getElementById('ck-scratch-where');
+  if (!el) return;
+  const cwd = tab && tab.actualCwd;
+  el.textContent = !cwd ? 'Starts in the main checkout, or its own scratch worktree when that is busy.'
+    : normProjectPath(cwd) === normProjectPath(state.gitRoot) ? 'Running in the main checkout.'
+    : 'Running in worktree ' + cwd.split(/[\\/]/).filter(Boolean).pop() + ' — removed on End if nothing was done in it.';
+}
 function openScratch(id) {
   if (!SCRATCH_ID.test(id)) return;
   if (!state.scratch.has(id)) state.scratch.set(id, { id, title: 'Scratch session', status: 'scratch', scratch: true, docs: [] });
@@ -5309,7 +5326,10 @@ window.addEventListener('message', (e) => {
     // applyActualWorkingCwd renders rail DOM that belongs to the active tab
     // only (grill #1) — a background tab just remembers its own cwd for when
     // it becomes active later.
-    if (isActive) applyActualWorkingCwd(d.cwd, d.requested);
+    if (SCRATCH_ID.test(tab.id || '')) {   // t-e162: scratch rail shows where it runs, no worktree picker
+      tab.actualCwd = d.cwd || '';
+      if (isActive) renderScratchWhere(tab);
+    } else if (isActive) applyActualWorkingCwd(d.cwd, d.requested);
     else tab.actualCwd = d.cwd || '';
   } else if (d.type === 'ended' && tab._onEnded) {
     tab._onEnded();
@@ -5904,6 +5924,7 @@ async function renderCockpitRail(t) {
   renderCockpitStatusBadge(t);
   if (t.scratch) {   // t-47f1: no worktree, plan, acceptance or state to show
     document.getElementById('ck-model').textContent = 'model: agent default';
+    renderScratchWhere(cockpitState);
     return;
   }
   renderCockpitModel(t);
@@ -7669,6 +7690,7 @@ async function uploadVisual(ticketId, filename, base64) {
   }
 
   document.getElementById('btn-create').addEventListener('click', open);
+  document.getElementById('btn-scratch').addEventListener('click', () => openScratch(newScratchId()));   // t-e162
   document.getElementById('create-close').addEventListener('click', close);
   document.getElementById('c-cancel').addEventListener('click', close);
   document.getElementById('c-submit').addEventListener('click', submit);

@@ -5877,7 +5877,7 @@ func TestScratchSessionStart(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(s.cfg.projectRoot, ".tickets", "s-ab12")); !os.IsNotExist(err) {
 		t.Fatalf("a scratch session must not write into the project's .tickets/ (stat err %v)", err)
 	}
-	// The same id attaches to the live session; a second scratch in the project is refused.
+	// The same id attaches to the live session.
 	again := startSession(t, base, "s-ab12", bootTok)
 	var out2 struct{ Session string }
 	json.NewDecoder(again.Body).Decode(&out2)
@@ -5885,11 +5885,12 @@ func TestScratchSessionStart(t *testing.T) {
 	if out2.Session != out.Session {
 		t.Fatalf("same scratch id must attach: got %q want %q", out2.Session, out.Session)
 	}
+	// t-e162: a second scratch needs a worktree; this root isn't a git repo, so it fails
+	// — and a failed start leaves no state dir behind.
 	second := startSession(t, base, "s-cd34", bootTok)
-	b, _ := io.ReadAll(second.Body)
 	second.Body.Close()
-	if second.StatusCode != http.StatusConflict || !strings.Contains(string(b), "t-e162") {
-		t.Fatalf("second scratch: status %d body %q", second.StatusCode, b)
+	if second.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("second scratch without git: status %d, want 500", second.StatusCode)
 	}
 	if _, err := os.Stat(s.sessionStateDir(s.cfg.projectRoot, "s-cd34")); !os.IsNotExist(err) {
 		t.Fatalf("a refused scratch start must leave no state dir behind (stat err %v)", err)
@@ -5941,7 +5942,7 @@ func TestScratchRefusesWorktreeCwd(t *testing.T) {
 	resp := startSessionCwd(t, ts.URL, "s-ab12", wt, bootTok)
 	b, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(b), "scratch sessions run in the project's main checkout") {
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(string(b), "the daemon picks a scratch session's directory") {
 		t.Fatalf("scratch in a worktree: status %d body %q", resp.StatusCode, b)
 	}
 	if entries, _ := os.ReadDir(filepath.Join(s.cfg.stateDir, "scratch")); len(entries) != 0 {
@@ -5993,5 +5994,128 @@ func TestIdleReapScratch(t *testing.T) {
 				t.Fatalf("the reaper typed into a scratch session: %q", b)
 			}
 		})
+	}
+}
+
+// t-e162: later scratch sessions get their own scratch/<n> worktree; it is removed on
+// exit only when nothing was done in it.
+func TestScratchWorktrees(t *testing.T) {
+	bin, _, _ := fakeSprint(t)
+	root := t.TempDir()
+	initGitRepo(t, root)
+	os.WriteFile(filepath.Join(root, ".gitignore"), []byte(".tickets/\n"), 0o644)
+	gitIn := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	gitIn(root, "add", ".gitignore")
+	gitIn(root, "commit", "-q", "-m", "ignore tickets")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(), addr: "127.0.0.1:8455"})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	t.Cleanup(func() { exec.Command("git", "-C", root, "worktree", "prune").Run() })
+	type started struct{ Session, Token, Cwd string }
+	start := func(id string) started {
+		t.Helper()
+		resp := startSessionCwd(t, ts.URL, id, root, bootTok)
+		var out started
+		json.NewDecoder(resp.Body).Decode(&out)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("start %s: status %d", id, resp.StatusCode)
+		}
+		return out
+	}
+	kill := func(st started) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+st.Session+"/kill", nil)
+		req.Header.Set("Authorization", "Bearer "+st.Token)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		s.mu.Lock()
+		se := s.sessions[st.Session]
+		s.mu.Unlock()
+		deadline := time.Now().Add(5 * time.Second)
+		for se != nil && !se.isExited() && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		time.Sleep(300 * time.Millisecond) // cleanup runs right after exit
+	}
+	resolvedRoot, _ := filepath.EvalSymlinks(root)
+	wtDir := func(n int) string {
+		return filepath.Join(filepath.Dir(resolvedRoot), filepath.Base(resolvedRoot)+"-worktrees", fmt.Sprintf("scratch-%d", n))
+	}
+	branchExists := func(b string) bool {
+		return exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "refs/heads/"+b).Run() == nil
+	}
+	t.Cleanup(func() { os.RemoveAll(filepath.Join(filepath.Dir(resolvedRoot), filepath.Base(resolvedRoot)+"-worktrees")) })
+
+	first := start("s-aa01")
+	if !pathsEqual(first.Cwd, resolvedRoot) && !pathsEqual(first.Cwd, root) {
+		t.Fatalf("first scratch should run in the main checkout, got %q", first.Cwd)
+	}
+	second := start("s-bb02")
+	if second.Cwd != wtDir(1) || !branchExists("scratch/1") {
+		t.Fatalf("second scratch cwd %q, want %q on scratch/1", second.Cwd, wtDir(1))
+	}
+	gitIn(root, "branch", "scratch/2") // taken → next free is 3
+	third := start("s-cc03")
+	if third.Cwd != wtDir(3) || !branchExists("scratch/3") {
+		t.Fatalf("third scratch cwd %q, want %q", third.Cwd, wtDir(3))
+	}
+	// Clean → removed with its branch.
+	kill(second)
+	if _, err := os.Stat(wtDir(1)); !os.IsNotExist(err) || branchExists("scratch/1") {
+		t.Fatalf("an unused scratch worktree must be removed (stat err %v, branch exists %v)", err, branchExists("scratch/1"))
+	}
+	// Uncommitted change → kept.
+	os.WriteFile(filepath.Join(wtDir(3), "notes.txt"), []byte("wip\n"), 0o644)
+	kill(third)
+	if _, err := os.Stat(filepath.Join(wtDir(3), "notes.txt")); err != nil || !branchExists("scratch/3") {
+		t.Fatalf("a scratch worktree with uncommitted changes must be kept (stat err %v)", err)
+	}
+	// A commit beyond its start → kept (the freed scratch/1 is reused).
+	fourth := start("s-dd04")
+	if fourth.Cwd != wtDir(1) {
+		t.Fatalf("fourth scratch cwd %q, want the freed %q", fourth.Cwd, wtDir(1))
+	}
+	os.WriteFile(filepath.Join(wtDir(1), "done.txt"), []byte("done\n"), 0o644)
+	gitIn(wtDir(1), "add", "done.txt")
+	gitIn(wtDir(1), "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "work")
+	kill(fourth)
+	if _, err := os.Stat(wtDir(1)); err != nil || !branchExists("scratch/1") {
+		t.Fatalf("a scratch worktree with commits must be kept (stat err %v)", err)
+	}
+}
+
+// t-e162: the daemon's own dirty check keeps a worktree with uncommitted work (git's
+// `worktree remove` refusing it too is a second layer, not the one relied on).
+func TestScratchWorktreeRemoveKeepsDirty(t *testing.T) {
+	root := t.TempDir()
+	initGitRepo(t, root)
+	wt, err := createScratchWorktree(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		exec.Command("git", "-C", root, "worktree", "remove", "--force", wt.Path).Run()
+		os.RemoveAll(filepath.Dir(wt.Path))
+	})
+	os.WriteFile(filepath.Join(wt.Path, "wip.txt"), []byte("wip\n"), 0o644)
+	var logged []string
+	wt.remove(root, func(f string, a ...any) { logged = append(logged, fmt.Sprintf(f, a...)) })
+	if len(logged) != 1 || !strings.Contains(logged[0], "kept: uncommitted changes") {
+		t.Fatalf("want the dirty check to keep it, got log %q", logged)
+	}
+	if _, err := os.Stat(filepath.Join(wt.Path, "wip.txt")); err != nil {
+		t.Fatalf("work removed: %v", err)
 	}
 }
