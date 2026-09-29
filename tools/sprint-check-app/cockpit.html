@@ -949,7 +949,7 @@
   // The board server lists them (resumable, or why not); Resume dismisses the entry and
   // opens the ticket's cockpit, where Resume is one click — nothing starts by itself.
   let interrupted=[];
-  let adminViews=[];   // last live rows, so the Admin card can redraw when stopped ones change
+  let adminViews=null;   // last live rows (null until the first sessions poll), so the Admin card can redraw when stopped ones change
   // A project banner's Dismiss only hides the entry there (remembered per browser); Admin keeps it
   // until it is dismissed there, which is the one real dismissal (plus Resume). Keyed id|started.
   const HIDE_KEY='ck-intr-hidden';
@@ -957,7 +957,7 @@
   try{ hiddenHere=new Set(JSON.parse(localStorage.getItem(HIDE_KEY)||'[]')); }catch(e){}
   const intrKey=e=>e.id+'|'+e.started;
   function saveHidden(){ try{ localStorage.setItem(HIDE_KEY,JSON.stringify([...hiddenHere])); }catch(e){} }
-  function pruneHidden(){ const live=new Set(interrupted.map(intrKey)); hiddenHere=new Set([...hiddenHere].filter(k=>live.has(k))); saveHidden(); }
+  function pruneHidden(){ const live=new Set(interrupted.map(intrKey)), kept=[...hiddenHere].filter(k=>live.has(k)); if(kept.length===hiddenHere.size) return; hiddenHere=new Set(kept); saveHidden(); }
   function hideInterrupted(e){ hiddenHere.add(intrKey(e)); saveHidden(); renderInterrupted(); }
   async function pollInterrupted(){
     let list=[], ok=false;
@@ -996,7 +996,7 @@
       fillInterrupted(box,mine,t.id);
     }
   }
-  function refreshInterrupted(){ renderInterrupted(); renderAdminSessions(adminViews); paintStopped(); }
+  function refreshInterrupted(){ renderInterrupted(); if(adminViews) renderAdminSessions(adminViews); paintStopped(); }
   // Attention outside the banner: a count bubble on the Admin nav item, and a Stopped row on each
   // project's card. Both count every entry the daemon still lists, hidden-in-project or not.
   function paintStopped(){
