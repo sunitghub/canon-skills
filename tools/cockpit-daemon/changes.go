@@ -15,6 +15,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -397,4 +398,72 @@ func compareBaseline(root, storeDir string) (*changesResult, error) {
 		_ = writeFileAtomic(filepath.Join(storeDir, "changes.json"), data)
 	}
 	return res, nil
+}
+
+// restoreOriginal puts back every file whose original text was kept at baseline time and that is now
+// missing or different, and returns the restored paths. Files added since the baseline, and files too
+// large or too sensitive to have been copied, are left alone — the caller reports how many changes remain.
+// Each file it overwrites is first saved under storeDir/before-restore, so a restore can itself be undone.
+// Paths come only from the baseline (never from a request) and must resolve inside root.
+func restoreOriginal(root, storeDir string) ([]string, error) {
+	b, err := loadBaseline(storeDir)
+	if err != nil {
+		return nil, fmt.Errorf("changes weren't tracked for this session")
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return nil, err
+	}
+	rels := make([]string, 0, len(b.Files))
+	for rel, f := range b.Files {
+		if f.Copy {
+			rels = append(rels, rel)
+		}
+	}
+	sort.Strings(rels)
+	saved := filepath.Join(storeDir, "before-restore", time.Now().UTC().Format("20060102T150405Z"))
+	var restored []string
+	for _, rel := range rels {
+		orig, err := os.ReadFile(filepath.Join(storeDir, "copies", copyName(rel)))
+		if err != nil {
+			continue
+		}
+		dst := filepath.Join(realRoot, filepath.FromSlash(rel))
+		// The agent can write the folder: never follow a link it put in the path of a file we restore.
+		if parent, err := filepath.EvalSymlinks(filepath.Dir(dst)); err != nil && !os.IsNotExist(err) || err == nil && !pathWithin(realRoot, parent) {
+			continue
+		}
+		mode := os.FileMode(0o644)
+		cur, err := os.ReadFile(dst)
+		if err == nil {
+			fi, lerr := os.Lstat(dst)
+			if lerr != nil || !fi.Mode().IsRegular() || bytes.Equal(cur, orig) {
+				continue
+			}
+			mode = fi.Mode().Perm()
+			if err := os.MkdirAll(filepath.Dir(filepath.Join(saved, filepath.FromSlash(rel))), 0o700); err != nil {
+				return restored, err
+			}
+			if err := writeFileAtomic(filepath.Join(saved, filepath.FromSlash(rel)), cur); err != nil {
+				return restored, err
+			}
+		} else if !os.IsNotExist(err) {
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return restored, err
+		}
+		if err := writeFileAtomic(dst, orig); err != nil {
+			return restored, err
+		}
+		_ = os.Chmod(dst, mode) // writeFileAtomic writes 0600; a person's file keeps its own permissions
+		restored = append(restored, rel)
+	}
+	return restored, nil
+}
+
+// pathWithin reports whether p is dir or inside it.
+func pathWithin(dir, p string) bool {
+	rel, err := filepath.Rel(dir, p)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

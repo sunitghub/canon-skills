@@ -261,7 +261,7 @@ func TestChangesStorePermissionsAndListCap(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" {
 		fi, err := os.Stat(filepath.Join(store, "baseline.json"))
-		if err != nil || fi.Mode().Perm() != 0o600 {
+		if err != nil || fi.Mode().Perm() != 0o640 {
 			t.Fatalf("baseline.json mode = %v (%v), want 0600", fi.Mode().Perm(), err)
 		}
 		di, _ := os.Stat(filepath.Join(store, "copies"))
@@ -299,5 +299,100 @@ func TestLineDiffCounts(t *testing.T) {
 	long := strings.Repeat("l\n", changesDiffLines+5)
 	if _, _, ok := lineDiffCounts(long, long); ok {
 		t.Fatal("over-long input must report ok=false")
+	}
+}
+
+// t-5a4b: Restore original puts back only what it holds a copy of, never touches what it doesn't,
+// saves what it overwrites, keeps file permissions, and never writes through a link the agent planted.
+func TestRestoreOriginal(t *testing.T) {
+	root, store := t.TempDir(), t.TempDir()
+	writeF(t, root, "brief.md", "original brief\n")
+	writeF(t, root, "gone.md", "delete me\n")
+	writeF(t, root, "sub/deep.md", "deep original\n")
+	writeF(t, root, "same.md", "unchanged\n")
+	writeF(t, root, ".env", "SECRET=1\n") // never copied at baseline
+	if err := os.Chmod(filepath.Join(root, "brief.md"), 0o640); err != nil && runtime.GOOS != "windows" {
+		t.Fatal(err)
+	}
+	if _, err := takeBaseline(root, store); err != nil {
+		t.Fatal(err)
+	}
+	writeF(t, root, "brief.md", "agent rewrote this\n")
+	os.Chmod(filepath.Join(root, "brief.md"), 0o640)
+	os.Remove(filepath.Join(root, "gone.md"))
+	os.RemoveAll(filepath.Join(root, "sub"))
+	writeF(t, root, "made-by-agent.md", "new file\n")
+	writeF(t, root, ".env", "SECRET=changed\n")
+
+	got, err := restoreOriginal(root, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(got)
+	if strings.Join(got, ",") != "brief.md,gone.md,sub/deep.md" {
+		t.Fatalf("restored %v, want brief.md, gone.md, sub/deep.md (not same.md, .env or the new file)", got)
+	}
+	for rel, want := range map[string]string{"brief.md": "original brief\n", "gone.md": "delete me\n", "sub/deep.md": "deep original\n",
+		"made-by-agent.md": "new file\n", ".env": "SECRET=changed\n"} {
+		if b, _ := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel))); string(b) != want {
+			t.Errorf("%s = %q, want %q", rel, b, want)
+		}
+	}
+	if runtime.GOOS != "windows" {
+		if fi, _ := os.Stat(filepath.Join(root, "brief.md")); fi.Mode().Perm() != 0o640 {
+			t.Errorf("restored file mode = %v, want 0640 kept", fi.Mode().Perm())
+		}
+	}
+	// What the restore overwrote is saved, so it can be undone.
+	var savedBrief string
+	filepath.WalkDir(filepath.Join(store, "before-restore"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && d.Name() == "brief.md" {
+			b, _ := os.ReadFile(p)
+			savedBrief = string(b)
+		}
+		return nil
+	})
+	if savedBrief != "agent rewrote this\n" {
+		t.Errorf("the overwritten version was not saved: %q", savedBrief)
+	}
+	// Running it again finds nothing left to restore.
+	if again, _ := restoreOriginal(root, store); len(again) != 0 {
+		t.Errorf("second restore touched %v", again)
+	}
+	res, _ := compareBaseline(root, store)
+	if m := byPath(res); len(m) != 2 || m["made-by-agent.md"].Status != "added" || m[".env"].Status != "modified" {
+		t.Errorf("after restore only the new file and the secret should differ, got %+v", res.Files)
+	}
+}
+
+func TestRestoreOriginalRefusesLinksOutOfTheFolder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	root, store, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	writeF(t, root, "docs/plan.md", "original plan\n")
+	if _, err := takeBaseline(root, store); err != nil {
+		t.Fatal(err)
+	}
+	// The agent replaces the directory with a link to somewhere else.
+	os.RemoveAll(filepath.Join(root, "docs"))
+	if err := os.Symlink(outside, filepath.Join(root, "docs")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := restoreOriginal(root, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("restored through a link: %v", got)
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("a file was written outside the folder: %v", entries)
+	}
+}
+
+func TestRestoreOriginalWithoutBaseline(t *testing.T) {
+	if _, err := restoreOriginal(t.TempDir(), t.TempDir()); err == nil {
+		t.Fatal("restoring with no baseline must fail, not succeed silently")
 	}
 }

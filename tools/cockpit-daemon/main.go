@@ -278,6 +278,7 @@ func (s *server) handler() http.Handler {
 	mux.HandleFunc("/session/start", s.guard(s.handleStart))
 	mux.HandleFunc("/sessions", s.guard(s.handleSessions))
 	mux.HandleFunc("/changes", s.guard(s.handleChangesQuery)) // t-5a4b: read-only, like /sessions
+	mux.HandleFunc("/changes/restore", s.guard(s.handleChangesRestore))
 	mux.HandleFunc("/session/", s.guard(s.handleSession))
 	return mux
 }
@@ -1643,6 +1644,63 @@ func (s *server) handleChangesQuery(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, res)
 }
 
+// liveSessionIn reports whether an agent is still running in root.
+func (s *server) liveSessionIn(root string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, se := range s.sessions {
+		if pathsEqual(se.projectRoot, root) && !se.isExited() {
+			return true
+		}
+	}
+	return false
+}
+
+// handleChangesRestore serves POST /changes/restore {root, id}: put back the originals of a folder
+// without git, from the copies kept when the session started. Refused while any agent works there.
+func (s *server) handleChangesRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.token == "" || !secureEqual(bearer(r), s.cfg.token) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		Root string `json:"root"`
+		ID   string `json:"id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || !sessionIDRe.MatchString(body.ID) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	root, ok := s.resolveProjectForCwd(body.Root)
+	if !ok || body.Root == "" || !s.noGit(root) {
+		http.Error(w, "root not allowed", http.StatusBadRequest)
+		return
+	}
+	if s.liveSessionIn(root) {
+		http.Error(w, "an agent is still working in this folder — end it first", http.StatusConflict)
+		return
+	}
+	s.restoreAndReport(w, root, body.ID)
+}
+
+func (s *server) restoreAndReport(w http.ResponseWriter, root, id string) {
+	store := s.changesStoreDir(root, id)
+	restored, err := restoreOriginal(root, store)
+	if err != nil {
+		http.Error(w, "could not restore: "+err.Error(), http.StatusConflict)
+		return
+	}
+	left := 0
+	if res, err := compareBaseline(root, store); err == nil {
+		left = res.Total
+	}
+	writeJSON(w, map[string]any{"restored": len(restored), "remaining": left})
+}
+
 // killProc is killProcess; a test swaps it to simulate an agent that won't die.
 var killProc = killProcess
 
@@ -1674,6 +1732,7 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 	}
 	var body struct {
 		Discard bool `json:"discard"`
+		Restore bool `json:"restore"` // t-5a4b: folder without git — put the originals back
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -1683,6 +1742,11 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 	if body.Discard && !se.startClean {
 		se.mu.Unlock()
 		http.Error(w, "this checkout already had uncommitted changes when the session started — discard isn't offered", http.StatusConflict)
+		return
+	}
+	if body.Restore && (body.Discard || !s.noGit(se.projectRoot)) {
+		se.mu.Unlock()
+		http.Error(w, "restore applies only to a folder without git", http.StatusConflict)
 		return
 	}
 	cwd, wt := se.cwd, se.scratchWT
@@ -1709,6 +1773,31 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 			se.debugf("discard failed: %v", err)
 		}
 	}
+	restored := 0
+	if body.Restore {
+		reason = "kept on End"
+		gone := se.reaped == nil
+		if !gone {
+			select {
+			case <-se.reaped:
+				gone = true
+			case <-time.After(endScratchReapWait):
+			}
+		}
+		switch {
+		case !gone:
+			reason, errMsg = "Restore skipped (the agent did not stop in time), kept", "the agent did not stop in time — nothing was restored"
+		case s.liveSessionIn(se.projectRoot):
+			reason, errMsg = "Restore skipped (another agent is working in this folder), kept", "another agent is still working in this folder — nothing was restored"
+		default:
+			files, err := restoreOriginal(se.projectRoot, s.changesStoreDir(se.projectRoot, se.ticket))
+			if err != nil {
+				reason, errMsg = "Restore failed ("+err.Error()+"), kept", err.Error()
+			} else {
+				restored, reason = len(files), "left after Restore original"
+			}
+		}
+	}
 	if wt != nil && wt.remove(se.projectRoot, se.debugf) {
 		writeJSON(w, map[string]any{"ended": true, "files": 0, "commits": 0, "error": errMsg})
 		return
@@ -1723,7 +1812,7 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 			noteErr = err.Error()
 		}
 	}
-	writeJSON(w, map[string]any{"ended": true, "files": total, "commits": commits, "error": errMsg, "note_error": noteErr})
+	writeJSON(w, map[string]any{"ended": true, "files": total, "commits": commits, "error": errMsg, "note_error": noteErr, "restored": restored})
 }
 
 // handoffMu serializes the daemon's HANDOFF.md read-modify-write (several sessions can end at once).

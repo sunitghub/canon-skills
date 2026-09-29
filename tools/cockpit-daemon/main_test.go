@@ -7200,3 +7200,107 @@ func TestIdleReapScratchWithoutGit(t *testing.T) {
 		t.Fatalf("idle end with changes not noted:\n%s", b)
 	}
 }
+
+func postJSON(t *testing.T, url, tok string, body any) (int, map[string]any) {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+func nonGitRestoreServer(t *testing.T) (*server, *httptest.Server, string) {
+	t.Helper()
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: writingAgent(t, false), projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	return s, ts, root
+}
+
+// End dialog "Restore original": the scratch session ends and the folder goes back to how it was.
+func TestEndScratchRestoreOriginalWithoutGit(t *testing.T) {
+	_, ts, root := nonGitRestoreServer(t)
+	if err := os.WriteFile(filepath.Join(root, "notes.md"), []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sid, tok, status := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	if status != http.StatusOK {
+		t.Fatalf("start = %d", status)
+	}
+	waitForFile(t, filepath.Join(root, "agent-out.md"))
+	code, out := postJSON(t, ts.URL+"/session/"+sid+"/end-scratch", tok, map[string]bool{"restore": true})
+	if code != http.StatusOK || out["restored"] != float64(1) {
+		t.Fatalf("end-scratch restore = %d %v, want 200 with restored=1 (notes.md)", code, out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "notes.md")); string(b) != "first\n" {
+		t.Fatalf("notes.md = %q, want the original", b)
+	}
+	if _, err := os.Stat(filepath.Join(root, "agent-out.md")); err != nil {
+		t.Fatalf("a file the agent added must stay (restore never deletes): %v", err)
+	}
+}
+
+func TestEndScratchRestoreRefusedInAGitProject(t *testing.T) {
+	root := t.TempDir()
+	initGitRepo(t, root)
+	s := newServer(config{token: bootTok, sprintBin: writingAgent(t, false), projectRoot: root, stateDir: t.TempDir(), changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	sid, tok, status := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	if status != http.StatusOK {
+		t.Fatalf("start = %d", status)
+	}
+	if code, _ := postJSON(t, ts.URL+"/session/"+sid+"/end-scratch", tok, map[string]bool{"restore": true}); code != http.StatusConflict {
+		t.Fatalf("restore in a git project = %d, want 409", code)
+	}
+}
+
+func TestChangesRestoreEndpoint(t *testing.T) {
+	_, ts, root := nonGitRestoreServer(t)
+	if err := os.WriteFile(filepath.Join(root, "notes.md"), []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sid, tok, _ := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	waitForFile(t, filepath.Join(root, "agent-out.md"))
+	if code, _ := postJSON(t, ts.URL+"/changes/restore", bootTok, map[string]string{"root": root, "id": "s-ab12"}); code != http.StatusConflict {
+		t.Fatalf("restore while an agent works = %d, want 409", code)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "notes.md")); string(b) == "first\n" {
+		t.Fatal("a refused restore must not touch files")
+	}
+	killSessionHTTP(t, ts.URL, sid, tok)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if code, out := postJSON(t, ts.URL+"/changes/restore", bootTok, map[string]string{"root": root, "id": "s-ab12"}); code == http.StatusOK {
+			if out["restored"] != float64(1) || out["remaining"] != float64(1) {
+				t.Fatalf("restore = %v, want restored 1 and 1 remaining (the added file)", out)
+			}
+			if b, _ := os.ReadFile(filepath.Join(root, "notes.md")); string(b) != "first\n" {
+				t.Fatalf("notes.md = %q", b)
+			}
+			// Roots that are not registered folders are refused, and a request without a token too.
+			if code, _ := postJSON(t, ts.URL+"/changes/restore", bootTok, map[string]string{"root": t.TempDir(), "id": "s-ab12"}); code != http.StatusBadRequest {
+				t.Fatalf("unregistered root = %d, want 400", code)
+			}
+			if code, _ := postJSON(t, ts.URL+"/changes/restore", "wrong", map[string]string{"root": root, "id": "s-ab12"}); code == http.StatusOK {
+				t.Fatal("restore without the daemon token must be refused")
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("restore never succeeded after the session ended")
+}
