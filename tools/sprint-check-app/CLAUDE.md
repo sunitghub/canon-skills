@@ -9,6 +9,7 @@ Any change to `app.html` requires Playwright verification — not just grep-base
 - Test file: `tests/sprint-check-app.spec.js`
 - Ticket card selector: `.card`; create button: `#btn-create`
 - `npm test` (bash suite) covers non-UI regressions; both must pass before `sprint complete`
+- Cockpit UI changes (`app.html`, `cockpit.html`, the daemon page): also run the spec with `--browser=webkit` before `sprint complete` — Safari differs (e.g. it reports the shell as `event.source` for a board's message, t-67ab). Stub a daemon on a normal port (`FAKE_DAEMON_ADDR`): WebKit refuses restricted ports like 1 before a route can fulfil them (t-df8e).
 
 ## Port
 

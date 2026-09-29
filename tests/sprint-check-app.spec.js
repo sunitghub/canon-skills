@@ -7,6 +7,8 @@ const net = require('net');
 
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
+// t-df8e: stubbed daemon address. Not port 1 — WebKit refuses restricted ports before a route can fulfil them.
+const FAKE_DAEMON_ADDR = '127.0.0.1:59999';
 
 // t-67ab: Upkeep lives inside a project tab (opened by its board's Upkeep button); open the
 // first registered project's Upkeep the way that button does.
@@ -489,7 +491,7 @@ test.describe('board modal', () => {
     }));
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, stale: false }),
     }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -506,7 +508,7 @@ test.describe('board modal', () => {
   test('Main checkout sends this board\u2019s project root as the cockpit cwd (t-fc91)', async ({ page }) => {
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR }),
     }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -540,7 +542,7 @@ test.describe('board modal', () => {
   test('a stale/empty state.gitRoot triggers a fresh /api/git verification before Main checkout mounts (t-0a73)', async ({ page }) => {
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR }),
     }));
     await page.route('**/api/git', r => r.fulfill({
       status: 200, contentType: 'application/json',
@@ -568,7 +570,7 @@ test.describe('board modal', () => {
   test('Main checkout refuses to mount (fail-safe) when no real project root can be verified (t-0a73)', async ({ page }) => {
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR }),
     }));
     await page.route('**/api/git', r => r.fulfill({
       status: 200, contentType: 'application/json',
@@ -597,7 +599,7 @@ test.describe('board modal', () => {
   test('a Windows-native git.root is normalized to forward slashes when state.gitRoot is set (t-1da3)', async ({ page }) => {
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR }),
     }));
     // t-1da3: server.py's load_git() returns str(Path) -- native OS separators,
     // backslashes on Windows -- unlike worktree cwd values (git worktree list
@@ -631,7 +633,7 @@ test.describe('board modal', () => {
   test('a POSIX git.root is unaffected by the forward-slash normalization (t-1da3)', async ({ page }) => {
     await page.route('**/api/cockpit', r => r.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:59999' }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR }),
     }));
     await page.route('**/api/git', r => r.fulfill({
       status: 200, contentType: 'application/json',
@@ -3227,7 +3229,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   async function stubCockpit(page) {
     await page.route('**/api/cockpit', route => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }),
     }));
   }
 
@@ -3479,7 +3481,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('shell Admin (t-824e): session table, Needs you tile, daemon line and reaper line; no Save & End or Stop', async ({ page }) => {
       await openShell(page, stateRows());
       await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false, running_build: { version: 'x', uptime_secs: 60, idle_timeout_secs: 300, idle_timeout_main_secs: 1800 } }) }));
+        body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, stale: false, running_build: { version: 'x', uptime_secs: 60, idle_timeout_secs: 300, idle_timeout_main_secs: 1800 } }) }));
       await page.evaluate(() => { window.__pwned = 0; });
       await page.locator('#nav-admin').click();
       const box = page.locator('#ad-sessions');
@@ -3635,7 +3637,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const rows = stateRows().map(r => (r.session === 's3' ? { ...r, state_secs: 0, idle_secs: 0 } : r));
       await openShell(page, rows);
       await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ running: true, addr: '127.0.0.1:1', stale: false, shell_uptime_secs: 0, running_build: { version: 'x', uptime_secs: 0, idle_timeout_secs: 300, idle_timeout_main_secs: 1800 } }) }));
+        body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, stale: false, shell_uptime_secs: 0, running_build: { version: 'x', uptime_secs: 0, idle_timeout_secs: 300, idle_timeout_main_secs: 1800 } }) }));
       await page.locator('#nav-admin').click();
       const box = page.locator('#ad-sessions');
       await expect(box.locator('tbody tr')).toHaveCount(6);
@@ -3913,7 +3915,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       window.parent.postMessage({source:'canon-cockpit', type:'status', status:'running'}, '*');
     </script></body></html>`;
     // The embedded board asks /api/cockpit?project=… — stub that form too, so no real daemon is involved.
-    const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }) }));
+    const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
     const scratchRow = (id, root, title) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook', ...(title ? { title } : {}) });
 
     test('interrupted (t-d9e6): the shell offers sessions that were running when the daemon stopped', async ({ page }) => {
@@ -6893,7 +6895,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
   async function openResumedCockpit(page, id, cockpitHtml) {
     await page.route('**/api/cockpit', route => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }),
     }));
     await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: cockpitHtml }));
     await page.goto(BASE);
@@ -7041,7 +7043,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
 
   test('End Session on an unattached scratch tab names Start agent, not a sprint (t-f553)', async ({ page }) => {
     await stubSessions(page, [{ session: 's1', ticket: 's-dt01', project_root: PROJECT_ROOT, cwd: PROJECT_ROOT, agent: 'claude', status: 'running' }]);
-    await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }) }));
+    await page.route('**/api/cockpit', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
     await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -7584,7 +7586,7 @@ test.describe('session sub-tabs (t-8a2a)', () => {
   async function stubCockpitTabs(page) {
     await page.route('**/api/cockpit', route => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }),
     }));
   }
 
@@ -7892,7 +7894,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   async function openResumedCockpit(page, id, cockpitHtml) {
     await page.route('**/api/cockpit', route => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({ running: true, addr: '127.0.0.1:1', launched: true }),
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }),
     }));
     await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: cockpitHtml }));
     await page.goto(BASE);
@@ -7920,7 +7922,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(page.locator('#ck-preview')).not.toHaveClass(/collapsed/);
       const iframe = page.locator('#ck-preview-body iframe');
       await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
-      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/ptok1/index.html');
+      await expect(iframe).toHaveAttribute('src', `http://${FAKE_DAEMON_ADDR}/session/sess1/preview/ptok1/index.html`);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -7929,9 +7931,10 @@ test.describe('cockpit preview pane (t-b19b)', () => {
   // --- t-533f: the sandbox silently blocks forms/storage — say so and offer the real file ---
   const NOTE = 'Preview is sandboxed — forms and storage are disabled. Open it in your browser to use the app.';
 
-  test('a static preview shows the sandbox note and Copy file link; the iframe stays sandboxed on the daemon URL (t-533f)', async ({ page, context }) => {
+  test('a static preview shows the sandbox note and Copy file link; the iframe stays sandboxed on the daemon URL (t-533f)', async ({ page, context, browserName }) => {
     const id = `t-pvnote-${Date.now()}`;
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    // t-df8e: clipboard permissions (and reading the clipboard back) are Chromium-only in Playwright.
+    if (browserName === 'chromium') await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     try {
       writeTicket(id, 'in_progress');
       await openResumedCockpit(page, id, fakePreviewCockpitPage({ respondWith: 'file', filePath: 'C:\\Users\\agentops\\Documents\\ToDo\\index.html' }));
@@ -7944,19 +7947,19 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       await expect(btn).toHaveAttribute('aria-label', 'Copy the file link for index.html to open in your browser');
       const iframe = page.locator('#ck-preview-body iframe');
       await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
-      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/ptok1/index.html');
+      await expect(iframe).toHaveAttribute('src', `http://${FAKE_DAEMON_ADDR}/session/sess1/preview/ptok1/index.html`);
 
       let popups = 0;
       page.on('popup', () => { popups++; });
       const before = page.url();
       await btn.click();
       await expect(note.locator('.ck-preview-copy-status')).toHaveText("Copied — paste it into your browser's address bar.");
-      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('file:///C:/Users/agentops/Documents/ToDo/index.html');
+      if (browserName === 'chromium') expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('file:///C:/Users/agentops/Documents/ToDo/index.html');
       await page.waitForTimeout(300);
       expect(popups).toBe(0);                              // never opens the daemon URL (it would share the daemon's origin)
       expect(page.url()).toBe(before);
       await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
-      await expect(iframe).toHaveAttribute('src', 'http://127.0.0.1:1/session/sess1/preview/ptok1/index.html');
+      await expect(iframe).toHaveAttribute('src', `http://${FAKE_DAEMON_ADDR}/session/sess1/preview/ptok1/index.html`);
       for (const theme of ['dark', 'light']) {
         await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
         await note.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-533f', 'visuals', `note-${theme}.png`) });
@@ -8414,10 +8417,10 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     expect(rightTok.status()).toBe(200);
     expect(await rightTok.text()).toContain('#marker');
   });
-  test('the real daemon page relays the accepted absolute path with preview-file (t-533f)', async ({ page, context }) => {
+  test('the real daemon page relays the accepted absolute path with preview-file (t-533f)', async ({ page, context, browserName }) => {
     // Playwright's Chromium blocks a page framing a loopback daemon port under Local Network
     // Access checks unless granted (net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS).
-    await context.grantPermissions(['local-network-access']);
+    if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);   // t-df8e: WebKit has no such permission
     const addr = await daemonAddr();
     const want = path.join(work, 'preview-app', 'index.html');
     // A loopback-origin parent (the board's own server), as the real board is — the daemon page
@@ -8917,7 +8920,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect.poll(() => capturedUrl).toContain('project=proj-a');
   });
 
-  test('a running skill disables its Agent/Model selects and Run button, and polling clears it', async ({ page }) => {
+  test('a running skill disables its Agent/Model selects and Run button, and polling clears it', async ({ page, browserName }) => {
     let pollCount = 0;
     await page.route('**/api/projects', route => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS),
@@ -8945,15 +8948,18 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(runBtn).toHaveCSS('cursor', 'not-allowed');
     await expect(runBtn).not.toHaveCSS('opacity', '1');
     // A real hover on a disabled button never matches reliably, so force :hover through CDP and read the computed filter.
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
-    const { root } = await cdp.send('DOM.getDocument');
-    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#up-card-context-check .rc-actions .btn' });
-    await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
-    await page.waitForTimeout(400); // let any filter transition finish before reading
-    // Read once, without toHaveCSS's auto-retry: the 3s poll re-renders the card, and a retry would eventually
-    // read the fresh, un-hovered button and pass even with the rule removed.
-    expect(await runBtn.evaluate(el => getComputedStyle(el).filter)).toBe('none'); // a disabled button must not brighten on hover
+    // t-df8e: CDP is Chromium-only, so WebKit skips this one check.
+    if (browserName === 'chromium') {
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
+      const { root } = await cdp.send('DOM.getDocument');
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: '#up-card-context-check .rc-actions .btn' });
+      await cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: ['hover'] });
+      await page.waitForTimeout(400); // let any filter transition finish before reading
+      // Read once, without toHaveCSS's auto-retry: the 3s poll re-renders the card, and a retry would eventually
+      // read the fresh, un-hovered button and pass even with the rule removed.
+      expect(await runBtn.evaluate(el => getComputedStyle(el).filter)).toBe('none'); // a disabled button must not brighten on hover
+    }
     // Poll interval is 3s in the client; wait long enough for one tick to land.
     await expect(page.locator('#up-card-context-check .up-status.ok, #up-card-context-check .up-status.run')).toHaveCount(1, { timeout: 6000 });
   });
