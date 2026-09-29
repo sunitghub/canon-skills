@@ -74,7 +74,7 @@ update_cmd() {
   after="$(git -C "$repo" rev-parse --short HEAD)"
   if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
   local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
-  [ -f "$registry" ] || { echo "No Cockpit projects registered — nothing to refresh."; return 0; }
+  [ -f "$registry" ] || { echo "No Cockpit projects registered — nothing to refresh."; exit 0; }
   local failed=0 raw p
   # The board writes this file: pull each "path" string and undo JSON escaping (\\, \", \/).
   while IFS= read -r raw; do
@@ -85,7 +85,7 @@ update_cmd() {
     if "$SCRIPT_DIR/skills.sh" refresh "$p" >/dev/null 2>&1; then echo "  refreshed: $p"
     else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; failed=1; fi
   done < <(grep -oE '"path"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' "$registry")
-  return "$failed"
+  exit "$failed"
 }
 
 completion_bash() {
@@ -120,7 +120,7 @@ Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
   param($wordToComplete, $commandAst, $cursorPosition)
   $el = @($commandAst.CommandElements | ForEach-Object { $_.ToString() })
   $n = $el.Count
-  $pos = if ($wordToComplete) { $n - 1 } else { $n }   # index of the word being completed
+  $pos = if ($wordToComplete) { $n - 1 } else { $n }
   $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
   $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
   $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','completion','help' }
@@ -139,7 +139,7 @@ completion_cmd() {
   case "${1:-}" in
     bash) completion_bash ;;
     zsh) echo 'autoload -U +X bashcompinit && bashcompinit'; completion_bash ;;
-    powershell|pwsh) completion_powershell ;;
+    powershell) completion_powershell ;;
     *) echo "canon completion: choose bash, zsh or powershell" >&2; exit 2 ;;
   esac
 }
@@ -253,7 +253,7 @@ main() {
     help|--help|-h) usage; exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
     wait) shift; wait_cmd "$@" ;;
-    update) shift; update_cmd "$@"; exit $? ;;
+    update) shift; update_cmd "$@" ;;
     completion) shift; completion_cmd "$@"; exit 0 ;;
     "") : ;;
     [0-9]*) PORT_ARG="$1" ;;
