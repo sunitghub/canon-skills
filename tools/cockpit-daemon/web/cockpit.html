@@ -584,6 +584,7 @@
         }
         else if(ev==="exit"){
           setStatus("done","finished");
+          unlockStart();
           document.getElementById("startBtn").disabled = false;
           document.getElementById("killBtn").disabled = true;
           // A Save & End in flight needs the parent told we're done here too —
@@ -618,7 +619,46 @@
     await fetch("/session/"+session+"/kill", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});
     if(streamAbort) streamAbort.abort();
     setStatus("","killed"); document.getElementById("killBtn").disabled = true; document.getElementById("startBtn").disabled = false; session=null; sessTok=null;
+    unlockStart();
   }
+
+  // t-61c7: a tab that opens an id with a live session says so and offers Attach
+  // (the daemon already attaches any Start for a live id, ignoring the picked agent).
+  var AGENT_LABEL = { claude: "Claude Code", pi: "Pi", copilot: "Copilot CLI" };
+  var START_LABEL = document.getElementById("startBtn").textContent;
+  async function checkLive(){
+    if(session || !PREFILL) return;
+    var rows = null;
+    try{ var r = await fetch("/sessions"); if(r.ok) rows = await r.json(); }catch(e){}
+    if(session) return;
+    var live = (rows || []).filter(function(x){ return x.ticket === PREFILL && (!PREFILL_CWD || x.project_root === PREFILL_CWD || x.cwd === PREFILL_CWD); });
+    live = live.length === 1 ? live[0] : null; // several projects share this id: don't guess
+    var sel = document.getElementById("agentSel"), btn = document.getElementById("startBtn"), h = document.getElementById("agentHint");
+    if(live){
+      if(AGENT_LABEL[live.agent]) sel.value = live.agent;
+      sel.disabled = true;
+      btn.textContent = "\u25B6 Attach";
+      h.textContent = "Running in another window \u00b7 " + (AGENT_LABEL[live.agent] || live.agent) + " \u00b7 " + live.state;
+    } else {
+      sel.disabled = false;
+      btn.textContent = START_LABEL;
+      h.textContent = AGENT_HINT;
+    }
+  }
+  function unlockStart(){
+    document.getElementById("agentSel").disabled = false;
+    document.getElementById("startBtn").textContent = START_LABEL;
+    document.getElementById("agentHint").textContent = AGENT_HINT;
+  }
+  async function checkShared(){
+    if(!session){ checkLive(); return; }
+    try{
+      var r = await fetch("/sessions"); if(!r.ok) return;
+      var me = (await r.json()).filter(function(x){ return x.session === session; })[0];
+      document.getElementById("agentHint").textContent = me && me.attached >= 2 ? "Also open in another window \u2014 both can type." : AGENT_HINT;
+    }catch(e){}
+  }
+  setInterval(checkShared, 5000);
 
   document.getElementById("startBtn").addEventListener("click", start);
   document.getElementById("killBtn").addEventListener("click", kill);
@@ -626,7 +666,7 @@
   if(PREFILL){ document.getElementById("ticket").value = PREFILL; }
   if(EMBED === "1"){ document.body.classList.add("embed"); }
   if(AUTOSTART === "1" && PREFILL){ start(); }
-  else if(PREFILL){ document.getElementById("startBtn").classList.add("pulse"); }
+  else if(PREFILL){ document.getElementById("startBtn").classList.add("pulse"); checkLive(); }
 })();
 </script>
 </body>
