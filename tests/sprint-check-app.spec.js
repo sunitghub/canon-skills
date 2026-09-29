@@ -10,6 +10,21 @@ const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 // t-df8e: stubbed daemon address. Not port 1 — WebKit refuses restricted ports before a route can fulfil them.
 const FAKE_DAEMON_ADDR = '127.0.0.1:59999';
 
+// t-5716: a top-level visit to the board root redirects to the Cockpit, so every top-level
+// navigation to `/` here (any origin: some tests start their own board) opts into the board with ?standalone=1. Iframes, API calls and
+// other paths are untouched. A test sets realLanding to exercise the redirect itself.
+let realLanding = false;
+test.beforeEach(async ({ context }) => {
+  await context.route(u => u.pathname === '/', route => {
+    const req = route.request();
+    const u = new URL(req.url());
+    if (realLanding || !req.isNavigationRequest() || req.frame().parentFrame() || u.searchParams.has('standalone')) return route.continue();
+    u.searchParams.set('standalone', '1');
+    return route.continue({ url: u.toString() });
+  });
+});
+test.afterEach(() => { realLanding = false; });
+
 // t-67ab: Upkeep lives inside a project tab (opened by its board's Upkeep button); open the
 // first registered project's Upkeep the way that button does.
 async function openUpkeepView(page) {
@@ -9879,3 +9894,35 @@ test.describe('Canon Cockpit Projects card: Track changes (t-d538)', () => {
   });
 });
 
+test.describe('board root redirect (t-5716)', () => {
+  const get = (request, url, dest) => request.get(BASE + url, { maxRedirects: 0, headers: dest ? { 'Sec-Fetch-Dest': dest } : {} });
+
+  test('a top-level visit to / redirects to the Cockpit, keeping a project as a deep link', async ({ request }) => {
+    let r = await get(request, '/', 'document');
+    expect(r.status()).toBe(302);
+    expect(r.headers()['location']).toBe('/cockpit');
+    r = await get(request, '/?project=abc123def456', 'document');
+    expect(r.status()).toBe(302);
+    expect(r.headers()['location']).toBe('/cockpit#open=abc123def456');
+  });
+
+  test('a hostile project id is percent-encoded in the redirect, never reflected raw', async ({ request }) => {
+    const r = await get(request, '/?project=' + encodeURIComponent('a b"c<d>\r\nX: y#z'), 'document');
+    expect(r.status()).toBe(302);
+    expect(r.headers()['location']).toBe('/cockpit#open=a%20b%22c%3Cd%3E%0D%0AX%3A%20y%23z');
+  });
+
+  test('iframes, ?standalone=1 and header-less requests still get the board', async ({ request }) => {
+    for (const [url, dest] of [['/?project=abc123def456&tab=x', 'iframe'], ['/?standalone=1', 'document'], ['/?standalone', 'document'], ['/', ''], ['/', 'empty']]) {
+      const r = await get(request, url, dest);
+      expect(r.status(), `${url} [${dest}]`).toBe(200);
+      expect(await r.text()).toContain('<title>');
+    }
+  });
+
+  test('in a real browser a bare / lands on the Cockpit', async ({ page }) => {
+    realLanding = true;
+    await page.goto(BASE + '/');
+    await expect(page).toHaveURL(/\/cockpit$/);
+  });
+});

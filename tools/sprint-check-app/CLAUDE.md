@@ -11,6 +11,10 @@ Any change to `app.html` requires Playwright verification — not just grep-base
 - `npm test` (bash suite) covers non-UI regressions; both must pass before `sprint complete`
 - Cockpit UI changes (`app.html`, `cockpit.html`, the daemon page): also run the spec with `--browser=webkit` before `sprint complete` — Safari differs (e.g. it reports the shell as `event.source` for a board's message, t-67ab). Stub a daemon on a normal port (`FAKE_DAEMON_ADDR`): WebKit refuses restricted ports like 1 before a route can fulfil them (t-df8e).
 
+## Board root redirect (t-5716)
+
+A top-level browser visit to `/` (`Sec-Fetch-Dest: document`) redirects to `/cockpit` (`/cockpit#open=<id>` with `?project=`), in both servers. The spec's `beforeEach` route adds `?standalone=1` to top-level `/` navigations so existing tests reach the board; set `realLanding = true` in a test that needs the real redirect. iframes and header-less clients (curl) are served the board as before.
+
 ## Port
 
 The server starts on `127.0.0.1:8423` and auto-increments if that port is busy. The URL is printed to the terminal on startup.
