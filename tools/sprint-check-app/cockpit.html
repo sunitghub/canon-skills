@@ -79,8 +79,8 @@
   .view{position:absolute;inset:0;overflow:auto;display:none}
   .view.active{display:block}
   /* t-5c3c: when a nudge banner is present, stack it above the board iframe */
-  .view.active.has-nudge{display:flex;flex-direction:column}
-  .view.has-nudge iframe{flex:1;height:auto;min-height:0}
+  .view.active.has-nudge,.view.active.has-intr{display:flex;flex-direction:column}
+  .view.has-nudge iframe,.view.has-intr iframe{flex:1;height:auto;min-height:0}
   .skill-nudge{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
   .skill-nudge .sn-msg{flex:1;min-width:0}
   .skill-nudge .sn-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -184,17 +184,26 @@
   .needpill{display:flex;align-items:center;gap:7px;margin-right:12px;border:1px solid color-mix(in srgb, var(--st-need) 55%, transparent);background:color-mix(in srgb, var(--st-need) 14%, transparent);color:var(--st-need);border-radius:20px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
   .needpill[hidden]{display:none}
   /* t-d9e6: sessions that were running when the daemon stopped */
-  .intr-banner{margin:10px 14px 0;border:1px solid color-mix(in srgb, var(--st-need) 45%, var(--border, #444));background:color-mix(in srgb, var(--st-need) 8%, transparent);border-radius:10px;padding:10px 12px;font-size:12.5px}
-  .intr-banner[hidden]{display:none}
-  .intr-head{display:flex;align-items:center;gap:10px;font-weight:700;margin-bottom:6px}
+  .intr-banner{flex-shrink:0;margin:10px 14px 0;border:1px solid color-mix(in srgb, var(--st-need) 45%, var(--border, #444));background:color-mix(in srgb, var(--st-need) 8%, transparent);border-radius:10px;padding:12px 14px;font-size:12.5px}
+  .intr-head{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;margin-bottom:8px}
   .intr-head span{flex:1}
-  .intr-row{display:flex;align-items:center;gap:10px;padding:5px 0;border-top:1px solid color-mix(in srgb, var(--text-muted) 20%, transparent)}
-  .intr-what{flex:1;min-width:0;overflow-wrap:anywhere}
+  .intr-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0 2px;border-top:1px solid color-mix(in srgb, var(--text-muted) 20%, transparent)}
+  .intr-what{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.5}
   .intr-what b{font-family:ui-monospace,monospace;font-weight:600;margin-right:6px}
-  .intr-meta{color:var(--text-muted)}
-  .intr-reason{color:var(--text-muted);font-style:italic}
-  .intr-btn{border:1px solid var(--text-muted);background:transparent;color:var(--text);border-radius:7px;padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+  .intr-meta{color:var(--text-muted);margin-left:8px}
+  .intr-reason{display:block;color:var(--text-muted);font-style:italic}
+  .intr-btn{border:1px solid var(--text-muted);background:transparent;color:var(--text);border-radius:7px;padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap;transition:background .12s ease,border-color .12s ease,color .12s ease}
+  .intr-btn:hover{border-color:var(--text);background:var(--border-muted)}
+  .intr-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   .intr-btn.primary{border-color:var(--accent);color:var(--accent)}
+  .intr-btn.primary:hover{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+  .st-stopped{--st:var(--st-need)} .st-stopped .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--st)}
+  .ad-table .s1 .s1meta{font-size:11.5px;font-weight:400;color:var(--text-muted);margin-left:8px}
+  .nav a .nav-bubble{background:color-mix(in srgb,var(--st-need) 22%,transparent);color:var(--st-need);font-weight:700}
+  .nav a .nav-bubble[hidden]{display:none}
+  .ad-table .st-stopped .s1{white-space:normal;overflow:visible}
+  .ad-table .s3{font-size:11.5px;color:var(--text-muted);font-style:italic;white-space:normal}
+  .ad-table .acts{display:flex;gap:6px;justify-content:flex-end}
   .needpill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
   .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
   .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
@@ -239,7 +248,7 @@
   .ad-table .s1{color:var(--text)}
   .ad-table .s2{font-size:11.5px;color:var(--text-muted)}
   /* t-25f9: names read as bright white in dark, like Herdr's; light keeps its own colours */
-  html[data-theme="dark"] .ag-proj b,html[data-theme="dark"] .ag-row .ag-t1,html[data-theme="dark"] .ag-id,html[data-theme="dark"] .ad-table .s1{color:#f5f8fc}
+  html[data-theme="dark"] .ag-proj b,html[data-theme="dark"] .ag-row .ag-t1,html[data-theme="dark"] .ag-id,html[data-theme="dark"] .ad-table .s1,html[data-theme="dark"] .intr-what b{color:#f5f8fc}
   .ad-table td.reap{font-size:12px}
   .ad-table .stcell{display:flex;align-items:center;gap:6px;font-weight:600}
   .ad-open{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
@@ -539,7 +548,7 @@
       <div class="navlabel">Workspace</div>
       <nav class="nav">
         <a id="nav-projects" class="active" onclick="showView('projects')"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
-        <a id="nav-admin" onclick="showView('admin')"><span class="ic">&#9881;</span> Admin</a>
+        <a id="nav-admin" onclick="showView('admin')"><span class="ic">&#9881;</span> Admin <span class="badge nav-bubble" id="admin-bubble" hidden></span></a>
       </nav>
       <div class="navlabel ag-label" id="ag-label"><span>Agents</span><span>by project</span></div>
       <div class="agents" id="ag-list"></div>
@@ -554,7 +563,6 @@
       <div id="tabstrip" class="tabstrip">
         <div class="tab pinned active" data-tab="projects" onclick="activateTab('projects')">&#9638; Projects</div>
       </div>
-      <div id="intr-banner" class="intr-banner" hidden></div>
       <div id="views" class="views">
         <section id="view-projects" class="view active">
           <div id="grid" class="grid"></div>
@@ -592,7 +600,7 @@
               <div class="tile"><div class="n b" id="ad-tile-active">—</div><div class="l">Active projects</div></div>
             </div>
             <div class="sessions">
-              <div class="slabel">Active agent sessions (all projects)</div>
+              <div class="slabel">Active &amp; stopped agents (all projects)</div>
               <div class="ad-reaper" id="ad-reaper" hidden></div>
               <div id="ad-sessions"></div>
             </div>
@@ -941,11 +949,22 @@
   // The board server lists them (resumable, or why not); Resume dismisses the entry and
   // opens the ticket's cockpit, where Resume is one click — nothing starts by itself.
   let interrupted=[];
+  let adminViews=null;   // last live rows (null until the first sessions poll), so the Admin card can redraw when stopped ones change
+  // A project banner's Dismiss only hides the entry there (remembered per browser); Admin keeps it
+  // until it is dismissed there, which is the one real dismissal (plus Resume). Keyed id|started.
+  const HIDE_KEY='ck-intr-hidden';
+  let hiddenHere=new Set();
+  try{ hiddenHere=new Set(JSON.parse(localStorage.getItem(HIDE_KEY)||'[]')); }catch(e){}
+  const intrKey=e=>e.id+'|'+e.started;
+  function saveHidden(){ try{ localStorage.setItem(HIDE_KEY,JSON.stringify([...hiddenHere])); }catch(e){} }
+  function pruneHidden(){ const live=new Set(interrupted.map(intrKey)), kept=[...hiddenHere].filter(k=>live.has(k)); if(kept.length===hiddenHere.size) return; hiddenHere=new Set(kept); saveHidden(); }
+  function hideInterrupted(e){ hiddenHere.add(intrKey(e)); saveHidden(); renderInterrupted(); }
   async function pollInterrupted(){
-    let list=[];
-    try{ const r=await fetch('/api/cockpit-interrupted'); if(r.ok) list=await r.json(); }catch(e){}
+    let list=[], ok=false;
+    try{ const r=await fetch('/api/cockpit-interrupted'); if(r.ok){ list=await r.json(); ok=true; } }catch(e){}
     interrupted=(Array.isArray(list)?list:[]).filter(e=>e && (TICKET_ID_RE.test(e.id)||SCRATCH_ID_RE.test(e.id)) && typeof e.project_root==='string');
-    renderInterrupted();
+    if(ok) pruneHidden();
+    refreshInterrupted();
   }
   async function dismissInterrupted(id){
     try{
@@ -953,7 +972,7 @@
       if(!r.ok) throw new Error();
     }catch(e){ toast('Could not dismiss '+id); return false; }
     interrupted=interrupted.filter(e=>e.id!==id);
-    renderInterrupted();
+    refreshInterrupted();
     return true;
   }
   async function resumeInterrupted(e){
@@ -961,42 +980,67 @@
     if(!proj){ toast('Project not registered: '+e.project_root); return; }
     if(await dismissInterrupted(e.id)) openSessionInTab({proot:e.project_root, ticket:e.id});
   }
+  const intrProj=e=>(window._projects||[]).find(p=>_projKey(p.path)===_projKey(e.project_root));
+  const intrSince=e=>{ const d=new Date(e.started); return isNaN(d)?'':d.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
+  // A stopped session belongs to its project: the banner sits in that project's tab, and the
+  // Admin card lists every one (an unregistered project has no tab, so Admin is its only home).
   function renderInterrupted(){
-    const box=document.getElementById('intr-banner');
-    box.hidden=interrupted.length===0;
+    ensureTicketTitles(interrupted.map(e=>({pid:(intrProj(e)||{}).id||'', ticket:TICKET_ID_RE.test(e.id)?e.id:''})));
+    for(const t of openTabs){
+      const v=document.getElementById('view-'+t.id); if(!v) continue;
+      let box=v.querySelector(':scope > .intr-banner');
+      const mine=interrupted.filter(e=>(intrProj(e)||{}).id===t.id && !hiddenHere.has(intrKey(e)));
+      if(!mine.length){ if(box) box.remove(); v.classList.remove('has-intr'); continue; }
+      if(!box){ box=document.createElement('div'); box.className='intr-banner'; v.insertBefore(box,v.firstChild); }
+      v.classList.add('has-intr');
+      fillInterrupted(box,mine,t.id);
+    }
+  }
+  function refreshInterrupted(){ renderInterrupted(); if(adminViews) renderAdminSessions(adminViews); paintStopped(); }
+  // Attention outside the banner: a count bubble on the Admin nav item, and a Stopped row on each
+  // project's card. Both count every entry the daemon still lists, hidden-in-project or not.
+  function paintStopped(){
+    const b=document.getElementById('admin-bubble');
+    if(b){ b.hidden=interrupted.length===0; b.textContent=interrupted.length; b.title=interrupted.length+' stopped agent session'+(interrupted.length===1?'':'s')+' waiting for you'; }
+    for(const p of (window._projects||[])){
+      const sel=window.CSS&&CSS.escape?CSS.escape(p.id):p.id;
+      const meta=document.querySelector('.meta[data-stats="'+sel+'"]');
+      const row=meta&&meta.querySelector('[data-f="stopped-row"]'); if(!row) continue;
+      const n=interrupted.filter(e=>_projKey(e.project_root)===_projKey(p.path)).length;
+      row.hidden=n===0;
+      row.querySelector('[data-f="stopped"]').textContent=n?String(n):'';
+    }
+  }
+  function fillInterrupted(box,list,pid){
     box.textContent='';
-    if(!interrupted.length) return;
-    const projOf=e=>(window._projects||[]).find(p=>_projKey(p.path)===_projKey(e.project_root));
-    ensureTicketTitles(interrupted.map(e=>({pid:(projOf(e)||{}).id||'', ticket:TICKET_ID_RE.test(e.id)?e.id:''})));
     const el=(tag,cls,text)=>{ const n=document.createElement(tag); if(cls) n.className=cls; if(text!=null) n.textContent=text; return n; };
     const head=el('div','intr-head');
-    const n=interrupted.length;
+    const n=list.length;
     head.append(el('span','',n+' session'+(n===1?' was':'s were')+' running when the daemon stopped'));
-    const resumable=interrupted.filter(e=>e.resumable===true);
+    const resumable=list.filter(e=>e.resumable===true);
     if(resumable.length>1){
       const all=el('button','intr-btn primary','Resume all');
-      all.id='intr-resume-all';
+      all.dataset.act='resume-all';
       all.addEventListener('click',async()=>{ for(const e of resumable) await resumeInterrupted(e); });
       head.append(all);
     }
     box.append(head);
-    for(const e of interrupted){
-      const proj=projOf(e);
+    for(const e of list){
       const row=el('div','intr-row'); row.dataset.id=e.id;
       const what=el('div','intr-what');
       what.append(el('b','',e.id));
-      const title=proj&&TICKET_ID_RE.test(e.id)?ticketTitle(proj.id,e.id):'';
-      if(title) what.append(document.createTextNode(title+' '));
-      const started=new Date(e.started);
-      what.append(el('span','intr-meta','· '+(proj?proj.name:e.project_root)+(e.agent?' · '+e.agent:'')+(isNaN(started)?'':' · since '+started.toLocaleString())));
-      if(e.resumable!==true && e.reason){ what.append(document.createElement('br')); what.append(el('span','intr-reason','Can\u2019t resume: '+e.reason)); }
+      const title=TICKET_ID_RE.test(e.id)?ticketTitle(pid,e.id):'';
+      if(title) what.append(document.createTextNode(title));
+      what.append(el('span','intr-meta',[e.agent,intrSince(e)&&'since '+intrSince(e)].filter(Boolean).join(' \u00b7 ')));
+      if(e.resumable!==true && e.reason) what.append(el('span','intr-reason','Can\u2019t resume: '+e.reason));
       row.append(what);
       if(e.resumable===true){
         const b=el('button','intr-btn primary','Resume'); b.dataset.act='resume';
         b.addEventListener('click',()=>resumeInterrupted(e)); row.append(b);
       }
       const d=el('button','intr-btn','Dismiss'); d.dataset.act='dismiss';
-      d.addEventListener('click',()=>dismissInterrupted(e.id)); row.append(d);
+      d.title='Hides it here \u2014 Admin keeps it until you dismiss it there.';
+      d.addEventListener('click',()=>hideInterrupted(e)); row.append(d);
       box.append(row);
     }
   }
@@ -1119,6 +1163,8 @@
       meta.querySelector('[data-f="sessions-row"]').hidden=mine.length===0;
       meta.querySelector('[data-f="sessions"]').textContent=[...counts].map(([k,n])=>n+' '+k).join(' \u00b7 ');
     }
+    paintStopped();
+    adminViews=views;
     renderAdminSessions(views);
     if(interrupted.length) renderInterrupted();   // t-d9e6: ticket titles arrive late
   }
@@ -1209,7 +1255,7 @@
     const needs=views.filter(v=>v.state==='needs-you').length;
     document.getElementById('ad-tile-agents').textContent=views.length;
     document.getElementById('ad-tile-needs').textContent=needs;
-    if(!views.length){ box.innerHTML='<div class="srow snone">No active agent sessions.</div>'; return; }
+    if(!views.length && !interrupted.length){ box.innerHTML='<div class="srow snone">No active agent sessions.</div>'; return; }
     // Metadata only: the board holds no session token, so there is deliberately
     // no Save & End / Stop here (t-391a) — Answer/Open jumps to the session's tab.
     box.innerHTML='<div class="ad-table-wrap"><table class="ad-table"><thead><tr>'+
@@ -1225,8 +1271,23 @@
         `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
         `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;
       }).join('')+
+      interrupted.map(e=>{
+        const proj=intrProj(e), pid=(proj||{}).id||'';
+        const title=TICKET_ID_RE.test(e.id)?ticketTitle(pid,e.id):'';
+        const who=TICKET_ID_RE.test(e.id)?`<span class="ag-id">${esc(e.id)}</span>${esc(title)}`:`${SCRATCH_ICON}${esc('Scratch session')} <span class="ag-id">${esc(e.id)}</span>`;
+        const meta=[proj?proj.name:e.project_root,e.agent,intrSince(e)&&'since '+intrSince(e)].filter(Boolean).join(' \u00b7 ');
+        return `<tr class="st st-stopped" data-id="${escAttr(e.id)}">`+
+        `<td><span class="stcell"><span class="sdot"></span>stopped</span></td>`+
+        `<td class="sess" colspan="2"><div class="s1" title="${escAttr(e.project_root)}">${who}<span class="s1meta">${esc(meta)}</span></div>`+
+        (e.resumable!==true&&e.reason?`<div class="s3">${esc('Can\u2019t resume: '+e.reason)}</div>`:'')+`</td>`+
+        `<td><div class="acts">${e.resumable===true?`<button class="intr-btn primary" data-act="resume" data-id="${escAttr(e.id)}">Resume</button>`:''}<button class="intr-btn" data-act="dismiss" data-id="${escAttr(e.id)}">Dismiss</button></div></td></tr>`;
+      }).join('')+
       '</tbody></table></div>';
     box.querySelectorAll('.ad-open').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
+    box.querySelectorAll('.intr-btn[data-id]').forEach(b=>b.addEventListener('click',()=>{
+      const e=interrupted.find(x=>x.id===b.dataset.id); if(!e) return;
+      if(b.dataset.act==='resume') resumeInterrupted(e); else dismissInterrupted(e.id);
+    }));
   }
 
   function openCloseWarn(id){
@@ -2195,6 +2256,7 @@
       f.title=name||id;
       v.appendChild(f);
       views.appendChild(v);
+      if(interrupted.length) renderInterrupted();   // a project's stopped-session banner belongs in its tab
     }
     return v;
   }
@@ -2310,6 +2372,7 @@
             <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
             <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
             <div class="metarow" data-f="sessions-row" hidden><span class="k">Sessions</span><span class="v" data-f="sessions"></span></div>
+            <div class="metarow" data-f="stopped-row" hidden><span class="k">Stopped</span><span class="v" data-f="stopped"></span></div>
             <div class="metarow"><span class="k">Branch</span><span class="v mono" data-f="branch">…</span></div>
             <div class="metarow upk-row" data-upkeep="${escAttr(p.id)}" title="Open this project's Upkeep"><span class="k">Upkeep</span><span class="v" data-f="upkeep">…</span></div>
           </div>

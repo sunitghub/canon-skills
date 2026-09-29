@@ -3338,6 +3338,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     const docsStubbed = new WeakSet();
     // Shell page with two registered projects; proj-x's board serves THIS repo's real ticket list.
+    const interruptedStubbed = new WeakSet();
     async function openShell(page, sessions) {
       const projects = [
         { id: 'proj-a', path: '/tmp/proj-a', name: 'proj-a', description: '', added: '2026-09-26' },
@@ -3345,6 +3346,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       ];
       await page.route('**/api/projects', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(projects) }));
       await page.route('**/api/cockpit-sessions', sessionsBody(sessions));
+      // t-6a05: Admin now lists stopped sessions, so a test that didn't stub them must not see this machine's real ones.
+      if (!interruptedStubbed.has(page)) await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: '[]' }));
       // t-e69b: the shell looks up ticket titles; unless a test stubbed them (stubTicketDocs), none exist.
       // (Later routes win in Playwright, so this default must not be registered over a test's stub.)
       if (!docsStubbed.has(page)) await page.route(/\/api\/doc\/t-[a-z0-9]{4}\/ticket\.md\?project=/, r => r.fulfill({ status: 404, body: '' }));
@@ -3958,83 +3961,197 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const stubEmbeddedCockpit = page => page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
     const scratchRow = (id, root, title) => ({ session: 'sx', ticket: id, project_root: root, cwd: root, agent: 'claude', status: 'running', state: 'working', state_secs: 4, idle_secs: 4, idle_limit_secs: 1800, signal: 'hook', ...(title ? { title } : {}) });
 
-    test('interrupted (t-d9e6): the shell offers sessions that were running when the daemon stopped', async ({ page }) => {
-      const list = [
-        { id: 't-d9e6', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:00:00Z', resumable: true, reason: '' },
-        { id: 't-2d74', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'copilot', started: '2026-09-28T10:05:00Z', resumable: true, reason: '' },
-        { id: 't-cc33', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T09:00:00Z', resumable: false, reason: 'ticket is closed' },
-        { id: 't-zz99', project_root: '/tmp/proj-a', cwd: '/x', agent: '<img src=x onerror=window.__pwned=1>', started: 'nope', resumable: false, reason: '<img src=x onerror=window.__pwned=1>' },
-        { id: '<b>x</b>', project_root: '/tmp/proj-a', cwd: '/x', agent: 'claude', started: '', resumable: true, reason: '' },
-      ];
-      const dismissed = [];
+    // t-6a05: a stopped session's banner sits under its own project's tab; Admin lists them all.
+    const stoppedEntry = (id, root, extra) => ({ id, project_root: root, cwd: root, agent: 'claude', started: '2026-09-28T10:00:00Z', resumable: true, reason: '', ...extra });
+    const stubInterrupted = async (page, list, dismissed) => {
+      interruptedStubbed.add(page);
       await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(list.filter(e => !dismissed.includes(e.id))) }));
       await page.route('**/api/cockpit-interrupted-dismiss', r => { dismissed.push(JSON.parse(r.request().postData()).id); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+    };
+
+    test('interrupted (t-d9e6, t-6a05): a stopped session shows under its own project, and Admin lists them all', async ({ page }) => {
+      const list = [
+        stoppedEntry('t-d9e6', '/tmp/proj-a', {}),
+        stoppedEntry('t-2d74', '/tmp/proj-a', { agent: 'copilot', started: '2026-09-28T10:05:00Z' }),
+        stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' }),
+        stoppedEntry('t-zz99', '/tmp/proj-a', { agent: '<img src=x onerror=window.__pwned=1>', started: 'nope', resumable: false, reason: '<img src=x onerror=window.__pwned=1>' }),
+        stoppedEntry('<b>x</b>', '/tmp/proj-a', {}),
+        stoppedEntry('t-px01', 'C:\\Users\\me\\Proj-X', {}),          // registered, tab not open
+        stoppedEntry('t-ux01', '/tmp/nowhere', { resumable: false, reason: 'project is gone' }),   // not registered: Admin only
+      ];
+      const dismissed = [];
+      await stubInterrupted(page, list, dismissed);
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
       await page.evaluate(() => { window.__pwned = 0; return pollInterrupted(); });
-      const banner = page.locator('#intr-banner');
+      const banner = page.locator('#view-proj-a > .intr-banner');
       await expect(banner).toBeVisible();
+      await expect(page.locator('.intr-banner')).toHaveCount(1);   // only proj-a's tab: not Projects, Admin, or a tab that isn't open
       await expect(banner.locator('.intr-head span')).toHaveText('4 sessions were running when the daemon stopped');
-      await expect(banner.locator('.intr-row')).toHaveCount(4);   // the malformed id is dropped
+      await expect(banner.locator('.intr-row')).toHaveCount(4);    // the malformed id is dropped; other projects' entries aren't here
       await expect(banner.locator('[data-act="resume"]')).toHaveCount(2);
-      await expect(banner.locator('#intr-resume-all')).toBeVisible();
+      await expect(banner.locator('[data-act="resume-all"]')).toBeVisible();
       await expect(banner.locator('.intr-row[data-id="t-cc33"] .intr-reason')).toHaveText('Can\u2019t resume: ticket is closed');
       await expect(banner.locator('.intr-row[data-id="t-zz99"] .intr-reason')).toHaveText('Can\u2019t resume: <img src=x onerror=window.__pwned=1>');
       await expect(banner.locator('img')).toHaveCount(0);
-      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-d9e6', 'visuals'), { recursive: true });
-      await banner.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-d9e6', 'visuals', 'banner.png') });
-      // Dismiss removes one entry.
+      // Admin: the card is renamed and lists every stopped session, including the other project's and the unregistered one.
+      await page.evaluate(() => showView('admin'));
+      await expect(page.locator('#view-admin .slabel', { hasText: 'Active & stopped agents (all projects)' })).toBeVisible();
+      await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(6);
+      await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] .s3')).toHaveText('Can\u2019t resume: project is gone');
+      await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="resume"]')).toHaveCount(0);
+      await expect(page.locator('#ad-tile-agents')).toHaveText('0');   // Running agents counts live sessions only
+      await expect(page.locator('#ad-sessions img')).toHaveCount(0);
+      await page.evaluate(() => activateTab('proj-a'));
+      // Dismiss in the project banner only hides it there: no request, still in Admin, on the bubble and the card.
       await banner.locator('.intr-row[data-id="t-cc33"] [data-act="dismiss"]').click();
       await expect(banner.locator('.intr-row')).toHaveCount(3);
-      expect(dismissed).toEqual(['t-cc33']);
+      expect(dismissed).toEqual([]);
+      await page.evaluate(() => showView('admin'));
+      await expect(page.locator('#ad-sessions tr[data-id="t-cc33"]')).toHaveCount(1);
+      await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(6);
+      // Admin's Dismiss is the real one: one request, gone from every surface.
+      await page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="dismiss"]').click();
+      await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(5);
+      expect(dismissed).toEqual(['t-ux01']);
+      await page.locator('#ad-sessions tr[data-id="t-cc33"] [data-act="dismiss"]').click();
+      await expect(page.locator('#ad-sessions tr[data-id="t-cc33"]')).toHaveCount(0);
+      expect(dismissed).toEqual(['t-ux01', 't-cc33']);
+      await page.evaluate(() => activateTab('proj-a'));
       // Resume dismisses it and opens that project's tab on the ticket — nothing starts by itself.
       await banner.locator('.intr-row[data-id="t-d9e6"] [data-act="resume"]').click();
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
       await expect(page.frameLocator('#view-proj-a iframe').locator('#ck-id')).toHaveText('t-d9e6', { timeout: 8000 });
-      expect(dismissed).toEqual(['t-cc33', 't-d9e6']);
+      expect(dismissed).toEqual(['t-ux01', 't-cc33', 't-d9e6']);
       await expect(banner.locator('.intr-row')).toHaveCount(2);
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
-      // Nothing left → no banner.
+      // Nothing left for this project → no banner element.
       dismissed.push('t-2d74', 't-zz99');
       await page.evaluate(() => pollInterrupted());
-      await expect(banner).toBeHidden();
+      await expect(page.locator('#view-proj-a > .intr-banner')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
     test('interrupted (t-d9e6): each row shows the ticket title, as text', async ({ page }) => {
       await stubTicketDocs(page);
-      const e = (id) => ({ id, project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:00:00Z', resumable: true, reason: '' });
-      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([e('t-aaa1'), e(XID)]) }));
+      interruptedStubbed.add(page);
+      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([stoppedEntry('t-aaa1', '/tmp/proj-a', {}), stoppedEntry(XID, '/tmp/proj-a', {})]) }));
       await openShell(page, []);
       await page.evaluate(() => { window.__pwned = 0; return pollInterrupted(); });
-      await expect(page.locator('#intr-banner .intr-row[data-id="t-aaa1"] .intr-what')).toContainText('t-aaa1Test scripts leak board servers');
-      await expect(page.locator(`#intr-banner .intr-row[data-id="${XID}"] .intr-what`)).toContainText(HOSTILE_TITLE);
-      await expect(page.locator('#intr-banner img')).toHaveCount(0);
+      await expect(page.locator('#view-proj-a .intr-row[data-id="t-aaa1"] .intr-what')).toContainText('t-aaa1Test scripts leak board servers');
+      await expect(page.locator(`#view-proj-a .intr-row[data-id="${XID}"] .intr-what`)).toContainText(HOSTILE_TITLE);
+      await expect(page.locator('.intr-banner img')).toHaveCount(0);
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
     test('interrupted (t-d9e6): Resume all dismisses every resumable entry and opens each ticket', async ({ page }) => {
       const list = [
-        { id: 't-d9e6', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:00:00Z', resumable: true, reason: '' },
-        { id: 't-2d74', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T10:05:00Z', resumable: true, reason: '' },
-        { id: 't-cc33', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-09-28T09:00:00Z', resumable: false, reason: 'ticket is closed' },
+        stoppedEntry('t-d9e6', '/tmp/proj-a', {}),
+        stoppedEntry('t-2d74', '/tmp/proj-a', { started: '2026-09-28T10:05:00Z' }),
+        stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' }),
       ];
       const dismissed = [];
-      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(list.filter(e => !dismissed.includes(e.id))) }));
-      await page.route('**/api/cockpit-interrupted-dismiss', r => { dismissed.push(JSON.parse(r.request().postData()).id); return r.fulfill({ status: 200, contentType: 'application/json', body: '{"ok":true}' }); });
-      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
+      await stubInterrupted(page, list, dismissed);
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
       await page.evaluate(() => pollInterrupted());
-      await page.locator('#intr-resume-all').click();
+      await page.locator('#view-proj-a [data-act="resume-all"]').click();
       await expect.poll(() => dismissed.slice().sort()).toEqual(['t-2d74', 't-d9e6']);   // the closed one stays
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
       const board = page.frameLocator('#view-proj-a iframe');
       await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2, { timeout: 8000 });
-      await expect(page.locator('#intr-banner .intr-row')).toHaveCount(1);
-      await expect(page.locator('#intr-banner .intr-row')).toHaveAttribute('data-id', 't-cc33');
+      await expect(page.locator('#view-proj-a .intr-row')).toHaveCount(1);
+      await expect(page.locator('#view-proj-a .intr-row')).toHaveAttribute('data-id', 't-cc33');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-6a05: polish — hover, focus ring, short time, bright id in dark.
+    test('interrupted (t-6a05): buttons react on hover, the time is short, the id is bright in dark', async ({ page }) => {
+      const list = [stoppedEntry('t-d9e6', '/tmp/proj-a', {}), stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' })];
+      await stubInterrupted(page, list, []);
+      await openShell(page, []);
+      await page.evaluate(() => pollInterrupted());
+      const banner = page.locator('#view-proj-a > .intr-banner');
+      await expect(banner).toBeVisible();
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      const css = (loc, prop) => loc.evaluate((el, p) => getComputedStyle(el)[p], prop);
+      const dismiss = banner.locator('.intr-row[data-id="t-cc33"] [data-act="dismiss"]');
+      const resume = banner.locator('.intr-row[data-id="t-d9e6"] [data-act="resume"]');
+      await dismiss.hover();
+      await expect.poll(() => css(dismiss, 'borderColor')).toBe('rgb(230, 235, 242)');
+      await expect.poll(() => css(dismiss, 'backgroundColor')).toBe('rgb(42, 53, 71)');
+      await resume.hover();
+      await expect.poll(() => css(resume, 'backgroundColor')).toBe('rgba(124, 106, 247, 0.14)');
+      await page.mouse.move(0, 0);
+      await page.keyboard.press('Shift');
+      await dismiss.focus();
+      expect(await css(dismiss, 'outlineStyle')).toBe('solid');
+      const meta = await banner.locator('.intr-row[data-id="t-d9e6"] .intr-meta').textContent();
+      expect(meta).toMatch(/^claude · since .*\d{1,2}:\d{2}/);
+      expect(meta).not.toContain('2026');      // no 9/28/2026, 10:00:00 AM
+      expect(await css(banner.locator('.intr-row[data-id="t-d9e6"] b'), 'color')).toBe('rgb(245, 248, 252)');
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      expect(await css(banner.locator('.intr-row[data-id="t-d9e6"] b'), 'color')).toBe('rgb(26, 26, 46)');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('interrupted (t-6a05): a row is one line plus the reason; Admin rows too', async ({ page }) => {
+      const list = [stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' })];
+      await stubInterrupted(page, list, []);
+      await openShell(page, []);
+      await page.evaluate(() => pollInterrupted());
+      const row = page.locator('#view-proj-a .intr-row');
+      await expect(row).toBeVisible();
+      const y = async loc => (await loc.boundingBox()).y;
+      const idBox = await row.locator('b').boundingBox(), metaBox = await row.locator('.intr-meta').boundingBox(), reasonBox = await row.locator('.intr-reason').boundingBox();
+      expect(Math.abs(metaBox.y - idBox.y)).toBeLessThan(idBox.height);          // id and meta share a line
+      expect(reasonBox.y).toBeGreaterThan(idBox.y + idBox.height - 1);            // the reason is below
+      await page.evaluate(() => showView('admin'));
+      const s1 = page.locator('#ad-sessions tr[data-id="t-cc33"] .s1');
+      await expect(s1).toBeVisible();
+      const nameBox = await s1.boundingBox(), metaA = await s1.locator('.s1meta').boundingBox();
+      expect(Math.abs(metaA.y - nameBox.y)).toBeLessThan(nameBox.height);
+      expect(await y(page.locator('#ad-sessions tr[data-id="t-cc33"] .s3'))).toBeGreaterThan(nameBox.y + nameBox.height - 1);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('interrupted (t-6a05): the Admin nav bubble and the project card count every stopped session; hiding in the project keeps them', async ({ page }) => {
+      const list = [stoppedEntry('t-d9e6', '/tmp/proj-a', {}), stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' }), stoppedEntry('t-ux01', '/tmp/nowhere', { resumable: false, reason: 'project is gone' })];
+      const dismissed = [];
+      await stubInterrupted(page, list, dismissed);
+      await openShell(page, []);
+      const bubble = page.locator('#nav-admin .nav-bubble');
+      await page.evaluate(() => pollInterrupted());
+      await expect(bubble).toHaveText('3');                                        // includes the unregistered project's
+      const card = page.locator('.meta[data-stats="proj-a"] [data-f="stopped-row"]');
+      await page.evaluate(() => showView('projects'));
+      await expect(card).toBeVisible();
+      await expect(card.locator('[data-f="stopped"]')).toHaveText('2');
+      await expect(page.locator('.meta[data-stats="proj-x"] [data-f="stopped-row"]')).toBeHidden();
+      // Hiding in the project changes neither count.
+      await page.evaluate(() => activateTab('proj-a'));
+      await page.locator('#view-proj-a .intr-row[data-id="t-cc33"] [data-act="dismiss"]').click();
+      expect(dismissed).toEqual([]);
+      await expect(bubble).toHaveText('3');
+      await page.evaluate(() => showView('projects'));
+      await expect(card.locator('[data-f="stopped"]')).toHaveText('2');
+      // It stays hidden in the project across a reload, and is still in Admin.
+      await page.reload();
+      await page.waitForLoadState('networkidle');
+      await page.evaluate(() => pollInterrupted());
+      await expect(page.locator('#view-proj-a .intr-row[data-id="t-d9e6"]')).toHaveCount(1);
+      await expect(page.locator('#view-proj-a .intr-row[data-id="t-cc33"]')).toHaveCount(0);
+      await page.evaluate(() => showView('admin'));
+      await expect(page.locator('#ad-sessions tr[data-id="t-cc33"]')).toHaveCount(1);
+      // Real dismissal in Admin drops the bubble count.
+      await page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="dismiss"]').click();
+      await expect(bubble).toHaveText('2');
+      for (const id of ['t-d9e6', 't-cc33']) await page.locator(`#ad-sessions tr[data-id="${id}"] [data-act="dismiss"]`).click();
+      await expect(bubble).toBeHidden();                                           // hidden at zero
+      await expect(card).toBeHidden();
+      await page.evaluate(() => localStorage.removeItem('ck-intr-hidden'));
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
