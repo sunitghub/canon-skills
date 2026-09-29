@@ -24,22 +24,11 @@
   body{background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;min-height:100vh}
   .app{display:flex;flex-direction:column;min-height:100vh}
 
-  /* Full-width top bar — its own horizontal section (Canon Cockpit | filter | + Add) */
-  .topbar{display:flex;align-items:center;gap:20px;height:64px;padding:0 24px;background:var(--panel);border-bottom:1px solid var(--border)}
-  .topbrand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.2px}
-  .topbrand .logo{width:30px;height:30px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:16px}
-  .topbrand small{font-weight:600;color:var(--card-stat);font-size:11px;margin-left:5px;letter-spacing:.02em}
-  .topbar .n{font-size:12px;font-weight:700;background:var(--accent-dim);color:var(--card-stat);border:1px solid var(--accent);border-radius:14px;padding:2px 10px;letter-spacing:.01em}
-  .topfilter{margin-left:24px}
-  .topfilter select{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:9px 34px 9px 13px;color:var(--text-body);font-size:13px;min-width:230px;cursor:pointer;
-    appearance:none;-webkit-appearance:none;
-    background-image:linear-gradient(45deg,transparent 50%,var(--text-muted) 50%),linear-gradient(135deg,var(--text-muted) 50%,transparent 50%);
-    background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
-  .topfilter select:hover{border-color:var(--border-hover)}
-  .topspacer{flex:1}
+  /* t-d34e: one row height shared by the sidebar brand and the tab strip, so their tops and dividers align */
+  :root{--strip-h:48px;--strip-pad:8px}   /* --strip-pad: breathing room above the tabs and the brand, same for both */
 
   .below{display:grid;grid-template-columns:var(--side-w,230px) 1fr;flex:1;min-height:0}
-  .side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:16px 0;position:relative}
+  .side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0 0 16px;position:relative}
   /* t-28ec: drag the sidebar's right edge to resize it (double-click or Home resets) */
   .side-resize{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:5;outline:none}
   .side-resize::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:2px;background:transparent;transition:background .12s ease}
@@ -49,9 +38,13 @@
   /* subtle gap between the top bar and the content area (the Fire Insights cue) */
   .side{box-shadow:inset 0 6px 8px -8px rgba(0,0,0,.5)}
   .main{box-shadow:inset 0 6px 8px -8px rgba(0,0,0,.5)}
-  .brand{display:flex;align-items:center;gap:9px;padding:0 18px 16px;font-weight:700;font-size:16px}
+  .brand{display:flex;align-items:center;gap:9px;height:var(--strip-h);padding:var(--strip-pad) 18px 0;margin-bottom:6px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px}
   .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:14px}
   .brand small{font-weight:500;color:var(--text-dim);font-size:10px;margin-left:auto}
+  .projbar{display:flex;align-items:center;gap:14px;padding:2px 0 16px}
+  .projbar h2{font-size:20px;font-weight:700;letter-spacing:-.2px}
+  .projbar .n{color:var(--text-muted);font-size:13px}
+  .projbar .sp{flex:1}
   .navlabel{font-size:10px;letter-spacing:.12em;color:var(--text-muted);text-transform:uppercase;padding:12px 18px 6px;font-weight:600}
   .nav a{display:flex;align-items:center;gap:12px;padding:11px 18px;color:var(--text-body);text-decoration:none;font-size:14px;border-left:3px solid transparent;cursor:pointer;transition:background .12s ease,color .12s ease}
   .nav a:hover{color:var(--text);background:var(--border-muted)}
@@ -66,7 +59,7 @@
   .foot button:hover{color:var(--text);border-color:var(--border-hover)}
   .main{overflow:hidden;display:flex;flex-direction:column}
   /* Tab bar: pinned Projects + closable project tabs */
-  .tabstrip{display:flex;align-items:center;gap:4px;height:40px;padding:0 14px;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
+  .tabstrip{display:flex;align-items:center;gap:4px;height:var(--strip-h);padding:var(--strip-pad) 14px 0;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
   .tab{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px 8px 0 0;font-size:13px;color:var(--text-muted);cursor:pointer;position:relative;top:1px;border:1px solid transparent;border-bottom:none;white-space:nowrap;transition:color .12s ease,background .12s ease}
   .tab:not(.active):hover{color:var(--text);background:var(--border-muted)}
   .tab.active{background:var(--bg);color:var(--text);border-color:var(--accent);border-bottom-color:var(--bg);box-shadow:0 -2px 12px -4px var(--accent),inset 0 2px 0 var(--accent)}
@@ -181,8 +174,6 @@
   .st-needs-you .sdot{outline:1.5px solid var(--st-need);outline-offset:2px}   /* ringed dot, like Herdr's blocked */
   .st-idle .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--st-idle)}   /* hollow ring */
   .tab .live.needs{background:var(--st-need);box-shadow:0 0 6px var(--st-need)}
-  .needpill{display:flex;align-items:center;gap:7px;margin-right:12px;border:1px solid color-mix(in srgb, var(--st-need) 55%, transparent);background:color-mix(in srgb, var(--st-need) 14%, transparent);color:var(--st-need);border-radius:20px;padding:5px 12px;font-size:12.5px;font-weight:700;cursor:pointer}
-  .needpill[hidden]{display:none}
   /* t-d9e6: sessions that were running when the daemon stopped */
   .intr-banner{flex-shrink:0;margin:10px 14px 0;border:1px solid color-mix(in srgb, var(--st-need) 45%, var(--border, #444));background:color-mix(in srgb, var(--st-need) 8%, transparent);border-radius:10px;padding:12px 14px;font-size:12.5px}
   .intr-head{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;margin-bottom:8px}
@@ -204,7 +195,6 @@
   .ad-table .st-stopped .s1{white-space:normal;overflow:visible}
   .ad-table .s3{font-size:11.5px;color:var(--text-muted);font-style:italic;white-space:normal}
   .ad-table .acts{display:flex;gap:6px;justify-content:flex-end}
-  .needpill::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor;box-shadow:0 0 6px currentColor}
   .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
   .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
   /* t-e69b: rows follow the t-f139 mockup — dot | id + title | agent code, state line below */
@@ -530,21 +520,9 @@
 </head>
 <body>
 <div class="app">
-  <div class="topbar">
-    <div class="topbrand"><span class="logo">&#9670;</span> Canon Cockpit <small id="ver"></small></div>
-    <div class="topfilter">
-      <select id="projFilter" onchange="load()">
-        <option value="">All projects</option>
-      </select>
-    </div>
-    <div class="topspacer"></div>
-    <button class="needpill" id="needpill" hidden title="Open the session that has waited longest"></button>
-    <span class="n" id="ncount" style="margin-right:14px"></span>
-    <button class="btn primary" onclick="openAdd()">+ Add Project</button>
-  </div>
-
   <div class="below">
     <aside class="side">
+      <div class="brand"><span class="logo">&#9670;</span> Canon Cockpit <small id="ver"></small></div>
       <div class="navlabel">Workspace</div>
       <nav class="nav">
         <a id="nav-projects" class="active" onclick="showView('projects')"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
@@ -565,6 +543,7 @@
       </div>
       <div id="views" class="views">
         <section id="view-projects" class="view active">
+          <div class="projbar"><h2>Projects</h2><span class="n" id="ncount"></span><span class="sp"></span><button class="btn primary" onclick="openAdd()">+ Add Project</button></div>
           <div id="grid" class="grid"></div>
         </section>
         <section id="view-admin" class="view">
@@ -1129,12 +1108,6 @@
   function renderSessionSurfaces(){
     const views=lastSessions.map(sessionView);
     ensureTicketTitles(views);
-    // Top-bar pill: only when something waits on you; opens the longest wait.
-    const waiting=views.filter(v=>v.state==='needs-you');
-    const pill=document.getElementById('needpill');
-    pill.hidden=waiting.length===0;
-    pill.textContent=waiting.length+' needs you';
-    pill.onclick=()=>{ if(waiting.length) openSessionInTab([...waiting].sort((a,b)=>(b.since||0)-(a.since||0))[0]); };
     // Sidebar Agents, grouped by project.
     const live=new Set(views.map(v=>v.scratch).filter(Boolean));
     const rail=views.concat(notStartedScratch(live));
@@ -1403,7 +1376,7 @@
   function updateActiveCount(){
     const n=openTabs.length;
     const el=document.getElementById('ncount');
-    if(el) el.textContent = n===0 ? 'None open' : (n+' active');
+    if(el) el.textContent = (window._projects||[]).length+' registered \u00b7 '+(n===0 ? 'none open' : n+' active');
   }
 
   // ── Views: Projects vs Admin vs Upkeep (t-5dc2, t-7ae6) ───────────────────
@@ -2343,24 +2316,14 @@
     knownIds=new Set(projects.map(p=>p.id));
     document.getElementById('pcount').textContent=projects.length;
 
-    // Populate the topbar filter dropdown (preserve current selection).
-    const filter=document.getElementById('projFilter');
-    const cur=filter.value;
-    filter.innerHTML='<option value="">All projects</option>'+
-      projects.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
-    if(projects.some(p=>p.id===cur)) filter.value=cur;
-
-    // Apply the filter to what's shown.
-    const sel=filter.value;
-    const shown=sel?projects.filter(p=>p.id===sel):projects;
-    updateActiveCount(); // topbar badge shows OPEN-TAB count (registered count is in the sidebar)
+    updateActiveCount(); // open-tab count; the registered count is in the sidebar too
 
     const grid=document.getElementById('grid');
     if(!projects.length){
       grid.innerHTML='<div class="empty">No projects registered yet.<br>Click <strong>+ Add Project</strong> to register a project folder.</div>';
       return;
     }
-    grid.innerHTML=shown.map(p=>`
+    grid.innerHTML=projects.map(p=>`
       <div class="card">
         <h3>${esc(p.name)}</h3>
         <div class="path" title="${escAttr(p.path)}">${esc(p.path)}</div>
@@ -2398,7 +2361,7 @@
     grid.querySelectorAll('.upk-row').forEach(r=>r.addEventListener('click',()=>openUpkeepFor(r.dataset.upkeep)));
     grid.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
     grid.querySelectorAll('.trackchg').forEach(b=>b.addEventListener('click',()=>trackChanges(b.dataset.id,b.dataset.name,b)));
-    shown.forEach(p=>fillCardStats(p.id));
+    projects.forEach(p=>fillCardStats(p.id));
     renderSessionSurfaces();
   }
 
