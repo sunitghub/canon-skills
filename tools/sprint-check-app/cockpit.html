@@ -1506,7 +1506,7 @@
   }
   // Open downward unless there is more room above; cap the body height to the room actually available.
   function upHelpPlace(pop){
-    // Room above is measured from #views' top edge: the top bar and the tab strip sit above it and would cover the panel.
+    // Room above is measured from #views' top edge: the tab strip sits above it and would cover the panel.
     const main=document.querySelector('.main'), mr=main?main.getBoundingClientRect():{left:0};
     const views=pop.closest('.views'), topEdge=views?views.getBoundingClientRect().top:0;
     const w=pop.parentElement.getBoundingClientRect(), below=window.innerHeight-w.bottom-44, above=w.top-topEdge-16;

@@ -3365,9 +3365,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       return page.frameLocator('#view-proj-a iframe');
     }
 
-    // t-28ec: an embedded board lists only its own sessions (the shell's Agents rail has the rest),
-    // so a cross-project row no longer appears there; the shell still honours an open-session
-    // message from a tab's board (a board whose root isn't known yet lists everything).
+    // t-28ec / t-d34e: an embedded board shows no sessions panel (the shell's Agents rail has them all);
+    // the shell still honours an open-session message from a tab's board.
     const postOpenSession = (page, project_root, ticket) => page.frameLocator('#view-proj-a iframe').locator('body')
       .evaluate((_, m) => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...m }, location.origin), { project_root, ticket });
 
@@ -3506,7 +3505,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       { session: 's6', ticket: 't-eee5" x="1', project_root: '/tmp/proj-a', cwd: HOSTILE_CWD, agent: '<img src=x onerror=window.__pwned=1>', status: 'running', state: 'idle', state_secs: 400, idle_secs: 400, idle_limit_secs: 'soon', signal: '<b>x</b>' },
     ];
 
-    test('shell (t-824e): Agents sidebar, needs-you pill, amber tab dot and Projects Sessions row', async ({ page }) => {
+    test('shell (t-824e): Agents sidebar, needs-you rail row, amber tab dot and Projects Sessions row', async ({ page }) => {
       writeTicket(XID, 'in_progress');
       try {
         await openShell(page, stateRows());
