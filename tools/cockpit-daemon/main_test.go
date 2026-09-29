@@ -6924,3 +6924,187 @@ func TestStartNonGitRegisteredRoot(t *testing.T) {
 		t.Fatalf("deregistered start = %d, want 400", got)
 	}
 }
+
+// ── t-5a4b: change tracking wired into sessions in a folder without git ──────────────────────
+
+// writingAgent is a stub agent: it writes a file into its working directory, then either exits
+// (exitAfter) or stays alive like a live session.
+func writingAgent(t *testing.T, exitAfter bool) string {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "agent.sh")
+	tail := "exec cat\n"
+	if exitAfter {
+		tail = "exit 0\n"
+	}
+	// The agent makes BOTH changes itself, so a natural exit records them deterministically.
+	script := "#!/bin/sh\nprintf 'the agent wrote this\\n' > \"$PWD/agent-out.md\"\nprintf 'a line the agent added\\n' >> \"$PWD/notes.md\"\n" + tail
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func startSessionFull(t *testing.T, base, ticket, cwd, agent string) (sid, tok string, status int) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"ticket": ticket, "cwd": cwd, "agent": agent})
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/start", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+bootTok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct{ Session, Token string }
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return out.Session, out.Token, resp.StatusCode
+}
+
+func waitForFile(t *testing.T, p string) []byte {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
+			return b
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("%s never appeared", p)
+	return nil
+}
+
+func killSessionHTTP(t *testing.T, base, sid, tok string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/"+sid+"/kill", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+}
+
+func TestNonGitSessionTracksChangesForEveryAgentKind(t *testing.T) {
+	for _, kind := range []string{"claude", "copilot", "pi"} {
+		for _, exit := range []bool{false, true} {
+			name := kind + "/kill"
+			if exit {
+				name = kind + "/natural-exit"
+			}
+			t.Run(name, func(t *testing.T) {
+				bin := writingAgent(t, exit)
+				t.Setenv("COCKPIT_COPILOT_BIN", bin)
+				t.Setenv("COCKPIT_PI_BIN", bin)
+				t.Setenv("COPILOT_HOME", t.TempDir())
+				root := t.TempDir()
+				seedTicketDir(t, root, "t-ab12")
+				writeF(t, root, "notes.md", "v1\n")
+				writeF(t, root, ".env", "KEY=secret-value\n")
+				reg := filepath.Join(t.TempDir(), "projects.json")
+				writeRegistry(t, reg, root)
+				home := t.TempDir()
+				s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: home})
+				ts := httptest.NewServer(s.handler())
+				t.Cleanup(ts.Close)
+				t.Cleanup(func() { killAllSessions(s) })
+				realRoot, _ := filepath.EvalSymlinks(root) // the daemon keys the store by the resolved root
+				store := s.changesStoreDir(realRoot, "t-ab12")
+
+				sid, tok, status := startSessionFull(t, ts.URL, "t-ab12", root, kind)
+				if status != http.StatusOK {
+					t.Fatalf("start (%s) = %d, want 200", kind, status)
+				}
+				if _, err := os.Stat(filepath.Join(store, "baseline.json")); err != nil {
+					t.Fatalf("no baseline after Start: %v", err)
+				}
+				waitForFile(t, filepath.Join(root, "agent-out.md"))
+				if !exit {
+					killSessionHTTP(t, ts.URL, sid, tok)
+				}
+				var res changesResult
+				if err := json.Unmarshal(waitForFile(t, filepath.Join(store, "changes.json")), &res); err != nil {
+					t.Fatal(err)
+				}
+				got := byPath(&res)
+				if got["agent-out.md"].Status != "added" || got["notes.md"].Status != "modified" {
+					t.Fatalf("changes = %+v, want agent-out.md added and notes.md modified", res.Files)
+				}
+				if _, touched := got[".env"]; touched {
+					t.Fatal(".env did not change but is listed")
+				}
+				// The same answer over HTTP, for the board.
+				resp, err := http.Get(ts.URL + "/changes?id=t-ab12&root=" + root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer resp.Body.Close()
+				var live changesResult
+				json.NewDecoder(resp.Body).Decode(&live)
+				if resp.StatusCode != http.StatusOK || !live.Tracked || byPath(&live)["agent-out.md"].Status != "added" {
+					t.Fatalf("GET /changes = %d %+v", resp.StatusCode, live)
+				}
+			})
+		}
+	}
+}
+
+// The changes endpoint applies the same trust rule as /session/start, and a git project isn't tracked.
+func TestChangesEndpointRefusesUntrustedRoots(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	get := func(q string) int {
+		resp, err := http.Get(ts.URL + "/changes?" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for name, q := range map[string]string{
+		"unregistered folder": "id=t-ab12&root=" + other,
+		"subfolder":           "id=t-ab12&root=" + filepath.Join(root, "sub"),
+		"no root":             "id=t-ab12",
+		"relative root":       "id=t-ab12&root=pm-project",
+		"bad id":              "id=../../etc&root=" + root,
+		"no id":               "root=" + root,
+	} {
+		if got := get(q); got != http.StatusBadRequest {
+			t.Errorf("%s: GET /changes = %d, want 400", name, got)
+		}
+	}
+	if got := get("id=t-ab12&root=" + root); got != http.StatusOK {
+		t.Errorf("registered root: GET /changes = %d, want 200", got)
+	}
+	gitRoot := t.TempDir()
+	initGitRepo(t, gitRoot)
+	resp, _ := http.Get(ts.URL + "/changes?id=t-ab12&root=" + gitRoot)
+	var body struct{ Git bool }
+	json.NewDecoder(resp.Body).Decode(&body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !body.Git {
+		t.Errorf("git project: GET /changes = %d git=%v, want 200 git=true (not tracked by snapshot)", resp.StatusCode, body.Git)
+	}
+}
+
+// A problem with the change store must never stop an agent from starting.
+func TestNonGitStartFailsOpenWhenTheStoreIsUnusable(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	os.WriteFile(blocker, []byte("x"), 0o644) // changesHome lives "under" a regular file: MkdirAll fails
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: filepath.Join(blocker, "sub")})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	if _, _, status := startSessionFull(t, ts.URL, "t-ab12", root, "claude"); status != http.StatusOK {
+		t.Fatalf("start with an unusable store = %d, want 200 (fail open)", status)
+	}
+}

@@ -277,6 +277,7 @@ func (s *server) handler() http.Handler {
 	}
 	mux.HandleFunc("/session/start", s.guard(s.handleStart))
 	mux.HandleFunc("/sessions", s.guard(s.handleSessions))
+	mux.HandleFunc("/changes", s.guard(s.handleChangesQuery)) // t-5a4b: read-only, like /sessions
 	mux.HandleFunc("/session/", s.guard(s.handleSession))
 	return mux
 }
@@ -527,6 +528,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		dirty, err := checkoutDirty(cwd)
 		startClean = err == nil && !dirty
 	}
+	s.baselineIfNoGit(projectRoot, body.Ticket) // t-5a4b: before the agent can change anything
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
 	if err == nil && scratch {
 		se.mu.Lock()
@@ -958,7 +960,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
 	// own immediate delete is unaffected — it never sets onNaturalExit's timer.
 	se.onNaturalExit = func() {
-		s.snapshotRemove(se.sid) // the agent exited on its own: nothing to resume
+		go s.recordChangesIfNoGit(se.projectRoot, se.ticket) // t-5a4b: what changed, kept for the board
+		s.snapshotRemove(se.sid)                             // the agent exited on its own: nothing to resume
 		time.AfterFunc(s.cfg.sessionReapTTL, func() {
 			s.mu.Lock()
 			delete(s.sessions, se.sid)
@@ -1521,7 +1524,7 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request, se *sessi
 	se.mu.Lock()
 	cwd, wt, startClean := se.cwd, se.scratchWT, se.startClean
 	se.mu.Unlock()
-	files, total, commits, err := scratchLeftovers(cwd, wt)
+	files, total, commits, noGit, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
 	if err != nil {
 		http.Error(w, "could not read the checkout's changes: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1529,7 +1532,95 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request, se *sessi
 	if files == nil {
 		files = []scratchChange{}
 	}
-	writeJSON(w, map[string]any{"files": files, "total": total, "commits": commits, "can_discard": startClean && total > 0})
+	writeJSON(w, map[string]any{"files": files, "total": total, "commits": commits, "can_discard": startClean && total > 0 && !noGit, "no_git": noGit})
+}
+
+// noGit reports whether root is not a git work tree (or git is not installed at all).
+func (s *server) noGit(root string) bool {
+	wts, err := s.listWorktreesIn(root)
+	return err != nil || len(wts) == 0
+}
+
+// baselineIfNoGit (t-5a4b) records a folder without git the first time a session starts on it.
+// Fail-open: a problem here must never stop the agent from starting.
+func (s *server) baselineIfNoGit(root, id string) {
+	if !s.noGit(root) {
+		return
+	}
+	if _, err := ensureBaseline(root, s.changesStoreDir(root, id)); err != nil {
+		fmt.Fprintf(os.Stderr, "cockpit-daemon: no baseline for %s in %s: %v\n", id, root, err)
+	}
+}
+
+// recordChangesIfNoGit compares a folder without git against its baseline and keeps the result.
+func (s *server) recordChangesIfNoGit(root, id string) {
+	if root == "" || !s.noGit(root) {
+		return
+	}
+	if _, err := compareBaseline(root, s.changesStoreDir(root, id)); err != nil {
+		fmt.Fprintf(os.Stderr, "cockpit-daemon: comparing changes for %s in %s: %v\n", id, root, err)
+	}
+}
+
+// changeSymbol is the one-character status shown next to a path in the End dialog.
+func changeSymbol(status string) string {
+	switch status {
+	case "added":
+		return "+"
+	case "deleted":
+		return "-"
+	case "renamed":
+		return ">"
+	}
+	return "~"
+}
+
+// leftovers is scratchLeftovers for a git checkout and the snapshot comparison for a folder without git.
+func (s *server) leftovers(root, id, cwd string, wt *scratchWorktree) (files []scratchChange, total, commits int, noGit bool, err error) {
+	if !s.noGit(root) {
+		files, total, commits, err = scratchLeftovers(cwd, wt)
+		return files, total, commits, false, err
+	}
+	res, err := compareBaseline(root, s.changesStoreDir(root, id))
+	if err != nil {
+		return nil, 0, 0, true, err
+	}
+	for _, f := range res.Files {
+		if len(files) < scratchChangesCap {
+			files = append(files, scratchChange{Status: changeSymbol(f.Status), Path: f.Path})
+		}
+	}
+	return files, res.Total, 0, true, nil
+}
+
+// handleChangesQuery serves GET /changes?root=<project folder>&id=<ticket|scratch id>: what changed in a
+// folder without git since the session's baseline. Read-only and token-free like /sessions (loopback +
+// Origin guarded); the root goes through the same trust rule as /session/start.
+func (s *server) handleChangesQuery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if !sessionIDRe.MatchString(id) {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	root, ok := s.resolveProjectForCwd(r.URL.Query().Get("root"))
+	if !ok || r.URL.Query().Get("root") == "" {
+		http.Error(w, "root not allowed", http.StatusBadRequest)
+		return
+	}
+	if !s.noGit(root) {
+		writeJSON(w, map[string]any{"git": true, "tracked": false, "files": []changeFile{}})
+		return
+	}
+	res, err := compareBaseline(root, s.changesStoreDir(root, id))
+	if err != nil {
+		http.Error(w, "could not compare: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, res)
 }
 
 // killProc is killProcess; a test swaps it to simulate an agent that won't die.
@@ -1602,7 +1693,7 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 		writeJSON(w, map[string]any{"ended": true, "files": 0, "commits": 0, "error": errMsg})
 		return
 	}
-	_, total, commits, err := scratchLeftovers(cwd, wt)
+	_, total, commits, _, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
 	if err != nil {
 		total, reason = -1, reason+"; could not check what is left: "+err.Error()
 	}
@@ -1762,6 +1853,7 @@ func (s *server) killSession(se *session) {
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
+	go s.recordChangesIfNoGit(se.projectRoot, se.ticket) // t-5a4b: what changed, kept for the board
 	if !s.shuttingDown.Load() {
 		s.snapshotRemove(se.sid) // ended on purpose (Save & End, Kill, reap, End, adopt)
 	}
