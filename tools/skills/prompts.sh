@@ -444,6 +444,8 @@ EOF
 ensure_gitattributes() {
   local project_dir="$1"
   [ "$(cd "$project_dir" && pwd -P)" = "$(cd "$SKILLS_ROOT" && pwd -P)" ] && return 0
+  # t-5a4b: a folder without git (or a machine without it) has no use for a git rule — and a stray file there is noise.
+  git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   local ga="$project_dir/.gitattributes"
   has_line "# canon:gitattributes:BEGIN" "$ga" && return 0
   if [ -f "$ga" ] && awk '{ sub(/\r$/, "") } $1 == "*.sh" { f=1; exit } END { exit !f }' "$ga"; then

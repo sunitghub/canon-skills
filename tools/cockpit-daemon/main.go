@@ -1578,8 +1578,20 @@ func (s *server) recordChangesIfNoGit(root, id string) {
 	if root == "" || !s.noGit(root) {
 		return
 	}
-	if _, err := compareBaseline(root, s.changesStoreDir(root, id)); err != nil {
+	res, err := compareBaseline(root, s.changesStoreDir(root, id))
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "cockpit-daemon: comparing changes for %s in %s: %v\n", id, root, err)
+		return
+	}
+	// The close gates read the list from the ticket folder (they have no git to ask). Paths and counts only.
+	if dir := filepath.Join(root, ".tickets", id); ticketRe.MatchString(id) && res.Tracked {
+		if fi, err := os.Lstat(dir); err == nil && fi.IsDir() {
+			if data, err := json.MarshalIndent(res, "", "  "); err == nil {
+				if err := writeFileAtomic(filepath.Join(dir, "changes.json"), data); err != nil {
+					fmt.Fprintf(os.Stderr, "cockpit-daemon: writing changes.json for %s: %v\n", id, err)
+				}
+			}
+		}
 	}
 }
 

@@ -7029,6 +7029,14 @@ func TestNonGitSessionTracksChangesForEveryAgentKind(t *testing.T) {
 				if _, touched := got[".env"]; touched {
 					t.Fatal(".env did not change but is listed")
 				}
+				// The close gates have no git: they read the same list from the ticket folder.
+				var inTicket changesResult
+				if err := json.Unmarshal(waitForFile(t, filepath.Join(root, ".tickets", "t-ab12", "changes.json")), &inTicket); err != nil {
+					t.Fatal(err)
+				}
+				if g := byPath(&inTicket); g["agent-out.md"].Status != "added" || g["notes.md"].Status != "modified" {
+					t.Fatalf(".tickets/t-ab12/changes.json = %+v, want the same changes", inTicket.Files)
+				}
 				// The same answer over HTTP, for the board.
 				resp, err := http.Get(ts.URL + "/changes?id=t-ab12&root=" + root)
 				if err != nil {
