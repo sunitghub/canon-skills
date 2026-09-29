@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-29-2026 11:58
+learnings-sweep last run: 09-29-2026 12:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-29 | [t-3447](.tickets/t-3447/learnings.md) | Verify a ticket's premise in the code before scoping: "skills aren't installed" was true only for a real `.claude/skills` dir (the common install is one whole-dir symlink). And a `depends:` edit drags the hidden-skill convention with it — lint SP-HIDDEN, `skills.sh list`, the catalog and `add`'s refusal all key off it — so read the linter/catalog generator before choosing hidden vs standalone. Scripts without a `--help` (update-upkeep-hashes.sh) run their action when probed. | UNPROMOTED |
 | 2026-09-29 | [t-d34e](.tickets/t-d34e/learnings.md) | Removing a UI element leaves prose behind that an id grep misses — comments, test titles and CSS rules that only existed to decorate it (a top-bar shadow); sweep by concept ("top bar", "pill"), not just the selectors. Also: a revert check must actually revert (`hidden` on a `display:flex` element is ignored), and an absence assertion needs a forced refresh first or it passes before anything loads. | UNPROMOTED |
 | 2026-09-29 | [t-5283](.tickets/t-5283/learnings.md) | When two layers guard the same bug (exit-event reset and Kill reset), reverting either alone leaves the test green — it looked like a passing revert check until the debug run showed the other layer covering it; revert ALL layers to prove the test sees the bug, and disclose any layer no test isolates. Also: a PTY echoes typed input even when the agent never reads it, and `term.clear()` keeps the cursor line, so compare before/after counts instead of asserting absence. | UNPROMOTED |
 | 2026-09-29 | [t-6a05](.tickets/t-6a05/learnings.md) | Making a surface read a new endpoint (Admin now lists `/api/cockpit-interrupted`) turns every existing test that renders it into a test of the machine's real state — 5 Admin tests failed only while a real stopped session existed; default-stub each new data source in the shared page helper, and full-suite runs against a live board can leave test artifacts (a `new-model` entry) in local config. | UNPROMOTED |
