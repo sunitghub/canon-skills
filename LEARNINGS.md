@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-29-2026 10:11
+learnings-sweep last run: 09-29-2026 10:45
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-29 | [t-5283](.tickets/t-5283/learnings.md) | When two layers guard the same bug (exit-event reset and Kill reset), reverting either alone leaves the test green — it looked like a passing revert check until the debug run showed the other layer covering it; revert ALL layers to prove the test sees the bug, and disclose any layer no test isolates. Also: a PTY echoes typed input even when the agent never reads it, and `term.clear()` keeps the cursor line, so compare before/after counts instead of asserting absence. | UNPROMOTED |
 | 2026-09-29 | [t-6a05](.tickets/t-6a05/learnings.md) | Making a surface read a new endpoint (Admin now lists `/api/cockpit-interrupted`) turns every existing test that renders it into a test of the machine's real state — 5 Admin tests failed only while a real stopped session existed; default-stub each new data source in the shared page helper, and full-suite runs against a live board can leave test artifacts (a `new-model` entry) in local config. | UNPROMOTED |
 | 2026-09-29 | [t-5716](.tickets/t-5716/learnings.md) | A criterion's "covered by existing test X" claim needs a read of X: two tests cited for the Cockpit iframe path both bypassed it (one rewritten to `standalone=1` by a spec-wide route, one injecting the header via `request`); only the shell tests exercised it. | UNPROMOTED |
 | 2026-09-28 | [t-e3d2](.tickets/t-e3d2/learnings.md) | Under `set -e`, `f; exit $?` never reaches the `exit` when `f` fails — errexit fires first — so the line reads as if it handles the failure but doesn't; have the function exit itself (or use `f || exit $?`). And a self-update that runs git must treat the install as someone's working checkout: refuse on dirty, non-main or non-fast-forward, never stash or merge. | UNPROMOTED |

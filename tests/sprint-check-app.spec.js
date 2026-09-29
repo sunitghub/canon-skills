@@ -8644,9 +8644,9 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
 
   // Spawn a fresh daemon (own state dir) so each test's restart/shutdown is
   // isolated; return its bound addr.
-  async function startDaemon() {
+  async function startDaemon(stubPath) {
     const stateDir = fs.mkdtempSync(path.join(work, 'state-'));
-    const stub = path.join(work, 'stub-agent.sh');
+    const stub = stubPath || path.join(work, 'stub-agent.sh');
     const proc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
       env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_COPILOT_BIN: stub, COPILOT_HOME: stateDir, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
       stdio: 'ignore',
@@ -8753,6 +8753,69 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       expect(rows.filter(r => r.ticket === 't-bnr1')).toHaveLength(1);
       await expect(b.locator('#agentHint')).toContainText('Also open in another window', { timeout: 12000 });
       await expect(page.locator('#agentHint')).toContainText('Also open in another window', { timeout: 12000 });
+    } finally { proc.kill('SIGKILL'); }
+  });
+
+  // t-5283: a session that turned on mouse tracking must not leave it on for the next one (or after it
+  // ends): mouse motion would then be sent to the PTY as ESC[<… text. The positive control proves the
+  // harness can see a report when tracking really is on.
+  const mouseStub = (body) => {
+    const dir = fs.mkdtempSync(path.join(work, 'mstub-'));
+    const file = path.join(dir, 'agent.sh');
+    fs.writeFileSync(file, `#!/usr/bin/env bash\n${body.replace(/MARK/g, path.join(dir, 'ran'))}\n`, { mode: 0o755 });
+    return file;
+  };
+  const MOUSE_ON = "printf '\\033[?1003h\\033[?1006h'";
+  const watchMouseReports = (page) => {
+    const bodies = [];
+    page.on('request', r => { if (/\/session\/[^/]+\/input$/.test(r.url())) bodies.push(r.postData() || ''); });
+    const reports = () => bodies.filter(b => b.includes('\x1b[<'));
+    const wiggle = async () => {
+      const box = await page.locator('#terminal').boundingBox();
+      for (let i = 1; i <= 8; i++) await page.mouse.move(box.x + 40 + i * 25, box.y + 40 + i * 9);
+      await page.waitForTimeout(300);
+    };
+    return { bodies, reports, wiggle };
+  };
+
+  test('after Kill, the next session in the same terminal gets no stray mouse reports (t-5283)', async ({ page }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const stub = mouseStub(`if [ ! -e MARK ]; then : > MARK; ${MOUSE_ON}; exec sleep 60; else exec cat; fi`);
+    const { addr, proc } = await startDaemon(stub);
+    try {
+      const m = watchMouseReports(page);
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await page.locator('#startBtn').click();
+      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+      await expect.poll(async () => { await m.wiggle(); return m.reports().length }, { timeout: 8000 }).toBeGreaterThan(0);   // control: tracking is on
+      await page.locator('#killBtn').click();
+      await expect(page.locator('#startBtn')).toBeEnabled();
+      m.bodies.length = 0;
+      await page.locator('#startBtn').click();                     // agent B: plain cat, never enables mouse
+      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+      await page.waitForTimeout(800);                              // let the injected start prompt settle
+      const count = async () => ((await page.locator('.xterm-rows').innerText()).match(/\[</g) || []).length;
+      const before = await count();                                // the control's own echoes survive on the cursor line
+      await m.wiggle();
+      expect(m.reports()).toEqual([]);
+      expect(await count()).toBe(before);                          // nothing new echoed into agent B's screen
+    } finally { proc.kill('SIGKILL'); }
+  });
+
+  test('after a session exits by itself, mouse motion over the terminal sends nothing (t-5283)', async ({ page }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const stub = mouseStub(`${MOUSE_ON}; sleep 2; exit 0`);
+    const { addr, proc } = await startDaemon(stub);
+    try {
+      const m = watchMouseReports(page);
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await page.locator('#startBtn').click();
+      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+      await expect.poll(async () => { await m.wiggle(); return m.reports().length }, { timeout: 1500 }).toBeGreaterThan(0).catch(() => {});   // control (best effort: the agent lives ~2s)
+      await expect(page.locator('#statusText')).toContainText('finished', { timeout: 10000 });
+      m.bodies.length = 0;
+      await m.wiggle();
+      expect(m.reports()).toEqual([]);
     } finally { proc.kill('SIGKILL'); }
   });
 

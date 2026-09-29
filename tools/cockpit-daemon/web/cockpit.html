@@ -144,6 +144,14 @@
     cursorBlink: true,
     theme: { background: "#0d131c", foreground: "#e6edf3", cursor: "#3b82f6" }
   });
+  // t-5283: the one Terminal outlives every session, so an agent's input modes (mouse tracking,
+  // focus reports, bracketed paste, app cursor) must be switched off when it ends and before the
+  // next starts — otherwise mouse motion becomes ESC[<… text in the next agent's banner. DECRST only:
+  // term.reset() would wipe scrollback and the finished session's last screen. The alternate
+  // screen is left only at start, so an exited agent's final full-screen view stays readable.
+  function resetTermModes(leaveAltScreen){
+    term.write("\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1005l\x1b[?1006l\x1b[?1015l\x1b[?1004l\x1b[?2004l\x1b[?1l\x1b[?25h" + (leaveAltScreen ? "\x1b[?1049l" : ""));
+  }
   var fit = new FitAddon.FitAddon();
   term.loadAddon(fit);
   term.open(document.getElementById("terminal"));
@@ -441,6 +449,7 @@
       document.getElementById("startBtn").disabled = true;
       document.getElementById("killBtn").disabled = false;
       setStatus("running","running · "+ticket);
+      resetTermModes(true);
       term.clear();
       resize();
       attachStream();
@@ -586,6 +595,7 @@
         }
         else if(ev==="exit"){
           setStatus("done","finished");
+          resetTermModes(false);
           unlockStart();
           document.getElementById("startBtn").disabled = false;
           document.getElementById("killBtn").disabled = true;
@@ -621,6 +631,7 @@
     await fetch("/session/"+session+"/kill", { method:"POST", headers: authHeaders(sessTok) }).catch(function(){});
     if(streamAbort) streamAbort.abort();
     setStatus("","killed"); document.getElementById("killBtn").disabled = true; document.getElementById("startBtn").disabled = false; session=null; sessTok=null;
+    resetTermModes(false);
     unlockStart();
   }
 
