@@ -8491,7 +8491,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     const stateDir = fs.mkdtempSync(path.join(work, 'state-'));
     const stub = path.join(work, 'stub-agent.sh');
     const proc = spawn(daemonBin, ['-addr', '127.0.0.1:0'], {
-      env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
+      env: { ...process.env, COCKPIT_TOKEN: bootToken, COCKPIT_SPRINT_BIN: stub, COCKPIT_COPILOT_BIN: stub, COPILOT_HOME: stateDir, COCKPIT_PROJECT_ROOT: work, COCKPIT_STATE_DIR: stateDir },
       stdio: 'ignore',
     });
     daemons.push(proc);
@@ -8567,6 +8567,46 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       // Idle daemon (no session) → /shutdown 200 → banner reports restarting.
       await page.locator('#sbRestart').click();
       await expect(page.locator('#sbMsg')).toContainText('Restarting', { timeout: 5000 });
+    } finally { proc.kill('SIGKILL'); }
+  });
+
+  // t-61c7: a second window on a live session offers Attach (agent locked to the live
+  // one), and both windows are told once two are attached.
+  test('a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice', async ({ page, context }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const { addr, proc } = await startDaemon();
+    try {
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await expect(page.locator('#startBtn')).toHaveText(/Start sprint/);
+      await page.selectOption('#agentSel', 'copilot');
+      await page.locator('#startBtn').click();
+      await expect(page.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+
+      const b = await context.newPage();
+      await b.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await expect(b.locator('#agentHint')).toContainText('Running in another window · Copilot CLI · ');
+      await expect(b.locator('#startBtn')).toHaveText(/Attach/);
+      await expect(b.locator('#agentSel')).toBeDisabled();
+      await expect(b.locator('#agentSel')).toHaveValue('copilot');
+      await b.screenshot({ path: test.info().outputPath('attach.png') });
+
+      await b.locator('#startBtn').click();
+      await expect(b.locator('#dot')).toHaveClass(/running/, { timeout: 8000 });
+      const rows = await (await fetch(`http://${addr}/sessions`)).json();
+      expect(rows.filter(r => r.ticket === 't-bnr1')).toHaveLength(1);
+      await expect(b.locator('#agentHint')).toContainText('Also open in another window', { timeout: 12000 });
+      await expect(page.locator('#agentHint')).toContainText('Also open in another window', { timeout: 12000 });
+    } finally { proc.kill('SIGKILL'); }
+  });
+
+  test('a tab with no live session keeps Start and an enabled picker', async ({ page }) => {
+    test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
+    const { addr, proc } = await startDaemon();
+    try {
+      await page.goto(`http://${addr}/cockpit?ticket=t-bnr1&embed=1`);
+      await expect(page.locator('#startBtn')).toHaveText(/Start sprint/);
+      await expect(page.locator('#agentSel')).toBeEnabled();
+      await expect(page.locator('#agentHint')).not.toContainText('another window');
     } finally { proc.kill('SIGKILL'); }
   });
 });

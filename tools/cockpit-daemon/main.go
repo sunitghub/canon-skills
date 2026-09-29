@@ -997,6 +997,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		IdleLimitSecs int64  `json:"idle_limit_secs"` // the reaper's timeout for this session
 		Signal        string `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
 		Title         string `json:"title,omitempty"` // t-f553: a scratch session's user-given title
+		Attached      int    `json:"attached"`        // t-61c7: browser streams attached right now
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
 	s.mu.Lock()
@@ -1011,6 +1012,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 		info.State, info.StateSecs, info.IdleSecs, info.Signal = sessionStateLocked(se, time.Now())
 		info.Title = se.title
+		info.Attached = len(se.subs)
 		se.mu.Unlock()
 		if !exited {
 			out = append(out, info)
