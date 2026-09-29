@@ -17,6 +17,7 @@ tests=(
   "$ROOT/tests/ticket-root-worktree.sh"
   "$ROOT/tests/frontmatter-lib.sh"
   "$ROOT/tests/skills-add-sprint.sh"
+  "$ROOT/tests/skills-sprint-deps.sh"
   "$ROOT/tests/skills-model-tiers-note.sh"
   "$ROOT/tests/skills-subagent-log-permission.sh"
   "$ROOT/tests/skills-assume-yes.sh"
