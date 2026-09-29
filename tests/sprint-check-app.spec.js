@@ -9797,13 +9797,28 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
 });
 
 test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
-  test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the OpenAI-inert banner', async ({ page }) => {
+  test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the one-line OpenAI note (t-9e5c)', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
     await page.locator('#nav-admin').click();
     await expect(page.locator('#view-admin')).toHaveClass(/active/);
-    await expect(page.locator('.mt-banner')).toContainText('Gate model: openai:<id>');   // t-ef27: was 'not yet dispatched'
-    await expect(page.locator('.mt-banner')).toContainText('OpenAI');
+    // t-9e5c: the amber banner is gone; one muted note under the default cards explains the OpenAI picker.
+    await expect(page.locator('.mt-banner')).toHaveCount(0);
+    const note = page.locator('#mt-openai-note');
+    await expect(note).toBeVisible();
+    await expect(note).toContainText('recorded only');
+    await expect(note).toContainText('Gate model: openai:<id>');
+    expect(await note.innerText()).not.toMatch(/\u26A0|t-ef27/);
+    const [defBox, noteBox, tabsBox] = [await page.locator('.mt-defaults').boundingBox(), await note.boundingBox(), await page.locator('#mt-tabs').boundingBox()];
+    expect(noteBox.y).toBeGreaterThanOrEqual(defBox.y + defBox.height);      // under the default cards
+    expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(tabsBox.y);        // above the provider tabs
+    expect(noteBox.height).toBeLessThan(40);                                  // two lines at most
+    // Muted in BOTH themes: the note's colour equals --text-muted, and the two themes differ (so the check can't pass by accident).
+    const mutedIn = theme => page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); const n = document.getElementById('mt-openai-note'); const probe = document.createElement('i'); probe.style.color = 'var(--text-muted)'; document.body.appendChild(probe); const r = [getComputedStyle(n).color, getComputedStyle(probe).color]; probe.remove(); return r; }, theme);
+    const [dark, light] = [await mutedIn('dark'), await mutedIn('light')];
+    expect(dark[0]).toBe(dark[1]);
+    expect(light[0]).toBe(light[1]);
+    expect(dark[0]).not.toBe(light[0]);
     // default pickers: one row per tier, each offering both providers
     await expect(page.locator('#mt-default-eval .mt-picker')).toHaveCount(2);
     await expect(page.locator('#mt-default-light .mt-picker')).toHaveCount(2);
@@ -9813,6 +9828,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     // switching to OpenAI shows its 3 seeded models
     await page.locator('.mt-tab', { hasText: 'OpenAI' }).click();
     await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toContainText(['GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna']);
+    await expect(note).toBeVisible();                                          // the note isn't tied to a tab
   });
 
   test('Review & Eval card states that gate effort comes from the agent definitions (t-c774)', async ({ page }) => {

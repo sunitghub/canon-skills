@@ -117,8 +117,7 @@
   .aswitch input:disabled+.strack{opacity:.5;cursor:not-allowed}
   /* ---- Admin > Model Tiers (t-7e36) ---- */
   .mt-wrap{margin-bottom:16px}
-  .mt-banner{display:flex;gap:9px;align-items:flex-start;border-left:3px solid var(--amber);background:color-mix(in srgb, var(--amber) 10%, transparent);border-radius:0 8px 8px 0;padding:10px 12px;margin-bottom:14px;font-size:11.5px;line-height:1.45;color:var(--text-body)}
-  .mt-banner b{color:var(--amber)}
+  .mt-openai-note{margin:2px 2px 14px;max-width:440px;color:var(--text-muted);font-size:12px;line-height:1.5}
   .mt-defaults{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
   @media (max-width:680px){.mt-defaults{grid-template-columns:1fr}}
   .mt-default-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
@@ -605,14 +604,6 @@
             </div>
             <div class="mt-wrap">
               <div class="slabel">Model Tiers</div>
-              <div class="mt-banner">
-                <span>&#9888;</span>
-                <span><b>OpenAI runs per ticket.</b> Anthropic picks are honored by Claude Code's
-                  close-gate dispatch. An OpenAI model runs the close gates under Copilot CLI only
-                  when a ticket sets <code>Gate model: openai:&lt;id&gt;</code> (Plan tab); the
-                  OpenAI defaults below are still recorded only, and Codex has no dispatch path
-                  (see <code>t-ef27</code>).</span>
-              </div>
               <div class="mt-defaults">
                 <div class="mt-default-card">
                   <div class="setting-k">Review &amp; Eval gates</div>
@@ -626,6 +617,7 @@
                   <div class="mt-picker-row" id="mt-default-light"></div>
                 </div>
               </div>
+              <div class="mt-openai-note" id="mt-openai-note">OpenAI picks are recorded only. A ticket can run its close gates on an OpenAI model under Copilot CLI with <code>Gate model: openai:&lt;id&gt;</code> (Plan tab).</div>
               <div class="mt-tabs" id="mt-tabs"></div>
               <div class="mt-grid" id="mt-grid"></div>
             </div>
@@ -1981,7 +1973,7 @@
   // panel and the per-ticket Gate-model dropdown in app.html. Anthropic
   // picks are dispatched by Claude Code; an OpenAI model runs close gates under
   // Copilot CLI only via a per-ticket `Gate model: openai:<id>` (t-ef27) — the
-  // OpenAI defaults here stay recorded only. See the mt-banner text.
+  // OpenAI defaults here stay recorded only. See #mt-openai-note.
   let mtData=null, mtProvider='anthropic';
   const MT_PROVIDER_LABEL={anthropic:'Anthropic',openai:'OpenAI'};
 
