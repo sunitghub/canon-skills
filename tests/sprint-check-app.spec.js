@@ -3402,12 +3402,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('shell (t-d34e): an embedded board shows no Cockpit sessions panel; the rail still lists every project', async ({ page }) => {
       const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/'), row('t-own1', PROJECT_ROOT), row('t-nowh', '/tmp/nowhere')]);
       await page.evaluate(() => pollSessions());
-      await expect(page.locator('#ag-list .ag-row')).toHaveCount(3);
       // An absence check can pass before the board has loaded anything: force its refresh, then look.
       await board.locator('html').evaluate(() => refreshCockpitSessions());
       await expect(board.locator('.cockpit-session-row')).toHaveCount(0);
       await expect(board.locator('#cockpit-sessions')).toBeHidden();
-      await expect(page.locator('#ag-list .ag-row')).toHaveCount(3);   // the rail still shows every project
+      await expect(page.locator('#ag-list .ag-row')).toHaveCount(3);   // still every project's rows after the board refreshed
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
