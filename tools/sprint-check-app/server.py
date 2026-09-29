@@ -1958,6 +1958,22 @@ def cockpit_sessions() -> list:
     except Exception:
         return []
 
+def cockpit_changes(root, sid: str) -> dict:
+    """t-5a4b: proxy the daemon's read-only GET /changes — what changed in a project WITHOUT git since
+    a session's baseline. The daemon applies the same trust rule as /session/start to `root`. Returns
+    {'tracked': False, ...} when no healthy daemon or on any error. Mirrored in sprint-check-go."""
+    empty = {'tracked': False, 'files': [], 'note': 'Changes are not available right now.'}
+    addr, ok = _discover_cockpit_addr()
+    if not ok:
+        return empty
+    try:
+        q = urllib.parse.urlencode({'id': sid, 'root': str(root)})
+        with urllib.request.urlopen(f'http://{addr}/changes?{q}', timeout=6) as r:
+            data = json.loads(r.read().decode('utf-8'))
+        return data if isinstance(data, dict) else empty
+    except Exception:
+        return empty
+
 # ── t-d9e6: sessions running when the daemon stopped ──────────────────────────
 # The daemon moves its leftover live-session snapshot into interrupted.json at start and
 # never touches that file again; the board owns it from there (list + dismiss), so no
@@ -2864,6 +2880,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_text(cockpit_sessions_text(sessions))
             else:
                 self.send_json(sessions)
+        elif path == '/api/cockpit-changes':   # t-5a4b
+            q = parse_qs(parsed.query)
+            sid = q.get('id', [''])[0]
+            if not _SESSION_ID_RE.match(sid):
+                self.send_error(400); return
+            try:
+                eroot = effective_root(q)
+            except UnknownProject:
+                self.send_error(400); return
+            self.send_json(cockpit_changes(eroot, sid))
         elif path == '/api/cockpit-status':
             st = cockpit_status()
             if parse_qs(parsed.query).get('format', [''])[0] == 'text':

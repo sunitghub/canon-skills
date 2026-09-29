@@ -324,6 +324,18 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, browseDirs(r.URL.Query().Get("path"), h == "1" || h == "true"))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
+	case "/api/cockpit-changes": // t-5a4b
+		id := r.URL.Query().Get("id")
+		if !sessionIDRe.MatchString(id) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, cockpitChanges(root, id))
 	case "/api/cockpit-sessions":
 		q := r.URL.Query()
 		sessions := cockpitSessions()
@@ -3146,6 +3158,28 @@ func cockpitSessions() []map[string]any {
 		return empty
 	}
 	return sessions
+}
+
+// cockpitChanges proxies the daemon's read-only GET /changes (t-5a4b): what changed in a project without
+// git since a session's baseline. The daemon applies the /session/start trust rule to root. Mirror of
+// server.py cockpit_changes: {"tracked": false, ...} when no healthy daemon or on any error.
+func cockpitChanges(root, id string) map[string]any {
+	empty := map[string]any{"tracked": false, "files": []any{}, "note": "Changes are not available right now."}
+	addr, ok := discoverCockpitAddr()
+	if !ok || addr == "" {
+		return empty
+	}
+	client := &http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Get("http://" + addr + "/changes?" + url.Values{"id": {id}, "root": {root}}.Encode())
+	if err != nil {
+		return empty
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&out) != nil || out == nil {
+		return empty
+	}
+	return out
 }
 
 // ── t-03a8: `canon status` / `canon sessions` — mirrors server.py's cockpit_status /

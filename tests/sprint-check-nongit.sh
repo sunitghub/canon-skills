@@ -13,8 +13,9 @@ command -v python3 >/dev/null 2>&1 && command -v go >/dev/null 2>&1 && command -
 
 WORK="$(mktemp -d)"
 BIN_DIR="$(mktemp -d)"
-PY_PID=""; GO_PID=""
+PY_PID=""; GO_PID=""; D_PID=""
 cleanup() {
+  [[ -n "$D_PID" ]] && kill "$D_PID" 2>/dev/null || true
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
   rm -rf "$WORK" "$BIN_DIR"
@@ -29,13 +30,22 @@ printf 'draft\n' > "$PROJ/notes.md"
 free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
 PY_PORT="$(free_port)"; GO_PORT="$(free_port)"
 (cd "$ROOT" && GO111MODULE=off go build -o "$BIN_DIR/sc-go" ./tools/sprint-check-go)
+(cd "$ROOT/tools/cockpit-daemon" && go build -o "$BIN_DIR/cockpit-daemon" .)
 PYTHON="$(command -v python3)"
 
-# An empty PATH directory: no git for either server (a PM's machine).
+# An empty PATH directory: no git for the boards or the daemon (a PM's machine).
 NOGIT_PATH="$BIN_DIR/empty"; mkdir -p "$NOGIT_PATH"
-env PATH="$NOGIT_PATH" SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$WORK/canon-py" "$PYTHON" "$ROOT/tools/sprint-check-app/server.py" "$PY_PORT" >/dev/null 2>&1 &
+export CANON_HOME="$WORK/canon-home" COCKPIT_STATE_DIR="$WORK/state"
+mkdir -p "$CANON_HOME/cockpit" "$COCKPIT_STATE_DIR"
+# The folder is a REGISTERED project (the daemon's trust rule for a folder without git).
+printf '[{"id":"aaaaaaaaaaaa","path":"%s","name":"pm-project","description":"","added":"2026-09-29"}]\n' "$PROJ" > "$CANON_HOME/cockpit/projects.json"
+# A stub agent: writes a file into its working directory, then stays alive like a live session.
+printf '#!/bin/sh\nprintf "the agent wrote this\\n" > "$PWD/agent-out.md"\nexec /bin/cat\n' > "$BIN_DIR/agent.sh"; chmod +x "$BIN_DIR/agent.sh"
+env PATH="$NOGIT_PATH" COCKPIT_TOKEN=tok COCKPIT_SPRINT_BIN="$BIN_DIR/agent.sh" COCKPIT_PROJECT_ROOT="$PROJ" "$BIN_DIR/cockpit-daemon" -addr 127.0.0.1:0 >/dev/null 2>&1 &
+D_PID=$!; disown "$D_PID" 2>/dev/null || true
+env PATH="$NOGIT_PATH" SPRINT_CHECK_ROOT="$PROJ" "$PYTHON" "$ROOT/tools/sprint-check-app/server.py" "$PY_PORT" >/dev/null 2>&1 &
 PY_PID=$!; disown "$PY_PID" 2>/dev/null || true
-env PATH="$NOGIT_PATH" SPRINT_CHECK_ROOT="$PROJ" CANON_HOME="$WORK/canon-go" SPRINT_CHECK_NO_BROWSER=1 "$BIN_DIR/sc-go" "$GO_PORT" >/dev/null 2>&1 &
+env PATH="$NOGIT_PATH" SPRINT_CHECK_ROOT="$PROJ" SPRINT_CHECK_NO_BROWSER=1 "$BIN_DIR/sc-go" "$GO_PORT" >/dev/null 2>&1 &
 GO_PID=$!; disown "$GO_PID" 2>/dev/null || true
 for port in "$PY_PORT" "$GO_PORT"; do
   ok=""; for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/api/git" && ok=1 && break; sleep 0.1; done
@@ -57,5 +67,28 @@ assert_eq "$want" "$go"
 for port in "$PY_PORT" "$GO_PORT"; do
   curl -s "http://127.0.0.1:$port/api/tickets" | grep -q '"t-ngit"' || fail "port $port: /api/tickets lost the ticket with no git"
 done
+
+# ── end to end: Start in the plain folder (no git anywhere), the agent writes a file, End; both boards ──
+for _ in $(seq 1 100); do [[ -f "$COCKPIT_STATE_DIR/daemon.json" ]] && break; sleep 0.1; done
+DADDR="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["addr"])' "$COCKPIT_STATE_DIR/daemon.json")"
+start="$(curl -s -X POST "http://$DADDR/session/start" -H "Authorization: Bearer tok" -d "{\"ticket\":\"t-ngit\",\"cwd\":\"$PROJ\",\"agent\":\"claude\"}")"
+SID="$(printf '%s' "$start" | python3 -c 'import json,sys;print(json.load(sys.stdin)["session"])')" || fail "no session started in a folder without git: $start"
+STOK="$(printf '%s' "$start" | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')"
+for _ in $(seq 1 100); do [[ -f "$PROJ/agent-out.md" ]] && break; sleep 0.1; done
+[[ -f "$PROJ/agent-out.md" ]] || fail "the agent never wrote its file"
+curl -s -X POST "http://$DADDR/session/$SID/kill" -H "Authorization: Bearer $STOK" >/dev/null
+changes() { # port -> the comparable part of the board's answer
+  curl -s "http://127.0.0.1:$1/api/cockpit-changes?id=t-ngit" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print(json.dumps({k:d.get(k) for k in ("tracked","complete","total","files")},sort_keys=True))'
+}
+want_changes='{"complete": true, "files": [{"path": "agent-out.md", "size": 21, "status": "added"}], "total": 1, "tracked": true}'
+got_py=""; got_go=""
+for _ in $(seq 1 50); do got_py="$(changes "$PY_PORT")"; got_go="$(changes "$GO_PORT")"; [[ "$got_py" == "$want_changes" && "$got_go" == "$want_changes" ]] && break; sleep 0.2; done
+assert_eq "$want_changes" "$got_py"
+assert_eq "$want_changes" "$got_go"
+# The project folder holds only the person's files plus what the agent wrote — no store, no .git.
+[[ ! -e "$PROJ/.git" ]] || fail "a .git appeared in the project folder"
 
 printf 'sprint-check-nongit: ok\n'
