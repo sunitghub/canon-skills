@@ -247,11 +247,14 @@
   .up-wrap{max-width:1080px}
   .up-h1{font-size:22px;margin:0 0 4px;letter-spacing:-.3px}
   .up-sub{color:var(--text-muted);font-size:13.5px;margin:0 0 20px;max-width:98ch}
-  .projrow{display:flex;align-items:center;gap:8px;margin-bottom:22px;flex-wrap:wrap}
-  .projrow .lbl{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-muted);margin-right:2px}
-  .projpill{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:20px;padding:6px 14px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;cursor:pointer}
-  .projpill .dot{width:6px;height:6px;border-radius:50%;background:var(--col-done)}
-  .projpill.active{border-color:var(--accent);background:var(--accent-dim);color:var(--accent)}
+  /* t-67ab: Upkeep is opened from a project's board, for that project only */
+  .up-top{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+  .up-top .up-h1{margin:0}
+  .up-proj{font-size:13px;font-weight:700;color:var(--accent);font-family:ui-monospace,monospace}
+  .up-back{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:8px;padding:5px 12px;font-size:12.5px;font-weight:600;cursor:pointer}
+  .up-back:hover{border-color:var(--accent);color:var(--text)}
+  .metarow.upk-row{cursor:pointer}
+  .metarow.upk-row:hover .v{text-decoration:underline}
   .sec-order{font-size:11.5px;color:var(--text-dim);text-align:right;margin-bottom:10px}
   .up-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-bottom:22px}
   @media (max-width:820px){.up-grid{grid-template-columns:1fr}}
@@ -533,7 +536,6 @@
       <nav class="nav">
         <a id="nav-projects" class="active" onclick="showView('projects')"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
         <a id="nav-admin" onclick="showView('admin')"><span class="ic">&#9881;</span> Admin</a>
-        <a id="nav-upkeep" onclick="showView('upkeep')"><span class="ic">&#9874;</span> Upkeep</a>
       </nav>
       <div class="navlabel ag-label" id="ag-label"><span>Agents</span><span>by project</span></div>
       <div class="agents" id="ag-list"></div>
@@ -643,9 +645,8 @@
         </section>
         <section id="view-upkeep" class="view">
           <div class="up-wrap">
-          <h1 class="up-h1">Upkeep</h1>
-          <p class="up-sub">Report-first repo hygiene, run on demand — no ticket, no sprint gate. Pick a project, run a check, read the report.</p>
-          <div class="projrow" id="up-projrow"></div>
+          <div class="up-top"><button type="button" class="up-back" id="up-back">&#8592; Board</button><h1 class="up-h1">Upkeep</h1><span class="up-proj" id="up-proj"></span></div>
+          <p class="up-sub">Report-first repo hygiene for this project, run on demand — no ticket, no sprint gate. Run a check, read the report.</p>
           <div class="sec-order">Sorted oldest run first &#8593;</div>
           <div class="up-grid" id="up-grid"></div>
           <div class="rcard se-card" id="se-card" data-help="skill-eval"></div>
@@ -1283,6 +1284,12 @@
     if(e.origin!==location.origin) return;
     const d=e.data;
     if(d&&d.source==='canon-board'&&d.type==='scratch-tabs'){ onScratchTabs(d,e.source); return; }
+    if(d&&d.source==='canon-board'&&d.type==='open-upkeep'){
+      // t-67ab: only a project tab's own board may open Upkeep, and only for that project.
+      const view=[...document.querySelectorAll('.view')].find(v=>{ const f=v.querySelector('iframe'); return f&&f.contentWindow===e.source; });
+      if(view) openUpkeepFor(view.id.replace(/^view-/,''));
+      return;
+    }
     if(!d||d.source!=='canon-board'||d.type!=='open-session') return;
     if(typeof d.ticket!=='string'||!TICKET_ID_RE.test(d.ticket)) return;
     if(typeof d.project_root!=='string') return;
@@ -1335,20 +1342,31 @@
   }
 
   // ── Views: Projects vs Admin vs Upkeep (t-5dc2, t-7ae6) ───────────────────
+  // t-67ab: the card's Branch and Upkeep rows (how many of the checks have never run).
+  async function fillCardBranchUpkeep(id,el){
+    const br=el.querySelector('[data-f="branch"]'), up=el.querySelector('[data-f="upkeep"]');
+    try{ const r=await fetch('/api/git?project='+encodeURIComponent(id)); br.textContent=(r.ok&&(await r.json()).branch)||'—'; }catch(e){ br.textContent='—'; }
+    try{
+      const st=await Promise.all(UPKEEP_SKILLS.map(s=>fetch('/api/upkeep/status?project='+encodeURIComponent(id)+'&skill='+encodeURIComponent(s.id)).then(r=>r.ok?r.json():null).catch(()=>null)));
+      if(st.some(x=>!x)) throw 0;
+      const never=st.filter(x=>!x.finished_at && x.status!=='running').length;
+      up.textContent= never===0 ? 'all checks run' : never+' check'+(never===1?'':'s')+' never run';
+    }catch(e){ up.textContent='—'; }
+  }
+
   function showView(v){
     if(v==='projects'){
       // Explicit click on the sidebar's Projects nav must always land on the
       // grid, even when a per-project tab (e.g. an open "ToDo" tab) is
       // currently active — previously this re-activated whatever tab was
       // already showing, a no-op that looked like the click did nothing.
-      // activateTab manages view/nav state itself (incl. clearing nav-admin/nav-upkeep).
+      // activateTab manages view/nav state itself (incl. clearing nav-admin).
       activateTab('projects');
       return;
     }
     document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
     document.getElementById('nav-projects').classList.remove('active');
     document.getElementById('nav-admin').classList.toggle('active',v==='admin');
-    document.getElementById('nav-upkeep').classList.toggle('active',v==='upkeep');
     if(v==='admin'){
       document.getElementById('view-admin').classList.add('active');
       loadAdmin();
@@ -1489,28 +1507,26 @@
   }
 
   async function loadUpkeep(){
-    const projects=window._projects||[];
-    const row=document.getElementById('up-projrow');
-    if(!projects.length){
-      row.innerHTML='<span class="up-empty">No registered projects yet — add one from the Projects tab first.</span>';
-      document.getElementById('up-grid').innerHTML='';
-      return;
-    }
-    if(!upProjectId || !projects.some(p=>p.id===upProjectId)) upProjectId=projects[0].id;
-    row.innerHTML='<span class="lbl">Project</span>'+projects.map(p=>
-      `<span class="projpill${p.id===upProjectId?' active':''}" onclick="upSelectProject('${p.id}')">`
-      + (p.id===upProjectId ? '<span class="dot"></span>' : '') + esc(p.name) + '</span>'
-    ).join('');
+    const proj=(window._projects||[]).find(p=>p.id===upProjectId);
+    document.getElementById('up-proj').textContent=proj?proj.name:'';
+    if(!proj){ document.getElementById('up-grid').innerHTML='<span class="up-empty">Open a project, then its Upkeep button.</span>'; return; }
     await upRenderGrid();
     seRender();
   }
 
-  function upSelectProject(id){
-    upProjectId=id;
-    seReset();
-    Object.keys(upPollTimers).forEach(k=>{clearInterval(upPollTimers[k]); delete upPollTimers[k];});
-    loadUpkeep();
+  // t-67ab: Upkeep belongs to a project tab — opened by that tab's board (or its Projects card),
+  // it shows only that project; ← Board returns to the tab.
+  function openUpkeepFor(pid){
+    if(!(window._projects||[]).some(p=>p.id===pid)) return;
+    if(pid!==upProjectId){
+      seReset();
+      Object.keys(upPollTimers).forEach(k=>{clearInterval(upPollTimers[k]); delete upPollTimers[k];});
+      upProjectId=pid;
+    }
+    if(activeTab!==pid){ const p=window._projects.find(x=>x.id===pid); openProject(pid,p.name); }
+    showView('upkeep');
   }
+  document.getElementById('up-back').addEventListener('click',()=>{ if(upProjectId) activateTab(upProjectId); });
 
   async function upFetchState(skill){
     try{
@@ -2182,10 +2198,9 @@
     const v=document.getElementById('view-'+id) || document.getElementById('view-projects');
     v.classList.add('active');
     // activating any tab means we're in the Projects workspace, not Admin/Upkeep (t-5dc2, t-7ae6)
-    const np=document.getElementById('nav-projects'), na=document.getElementById('nav-admin'), nu=document.getElementById('nav-upkeep');
+    const np=document.getElementById('nav-projects'), na=document.getElementById('nav-admin');
     if(np) np.classList.add('active');
     if(na) na.classList.remove('active');
-    if(nu) nu.classList.remove('active');
     renderTabs();
     saveTabs();
   }
@@ -2288,6 +2303,8 @@
             <div class="metarow"><span class="k">Total Tickets</span><span class="v" data-f="count">…</span></div>
             <div class="metarow"><span class="k">Skills</span><span class="v" data-f="skills">…</span></div>
             <div class="metarow" data-f="sessions-row" hidden><span class="k">Sessions</span><span class="v" data-f="sessions"></span></div>
+            <div class="metarow"><span class="k">Branch</span><span class="v mono" data-f="branch">…</span></div>
+            <div class="metarow upk-row" data-upkeep="${escAttr(p.id)}" title="Open this project's Upkeep"><span class="k">Upkeep</span><span class="v" data-f="upkeep">…</span></div>
           </div>
           <div class="card-divider"></div>
           <div class="cardbottom">
@@ -2308,6 +2325,7 @@
     grid.querySelectorAll('.dereg').forEach(b=>b.addEventListener('click',()=>dereg(b.dataset.id,b.dataset.name)));
     grid.querySelectorAll('.scratchbtn').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
+    grid.querySelectorAll('.upk-row').forEach(r=>r.addEventListener('click',()=>openUpkeepFor(r.dataset.upkeep)));
     grid.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
     grid.querySelectorAll('.trackchg').forEach(b=>b.addEventListener('click',()=>trackChanges(b.dataset.id,b.dataset.name,b)));
     shown.forEach(p=>fillCardStats(p.id));
@@ -2317,6 +2335,7 @@
   async function fillCardStats(id){
     const el=document.querySelector('.meta[data-stats="'+(window.CSS&&CSS.escape?CSS.escape(id):id)+'"]');
     if(!el) return;
+    fillCardBranchUpkeep(id,el);
     const up=el.querySelector('[data-f="updated"]'), ct=el.querySelector('[data-f="count"]'), sk=el.querySelector('[data-f="skills"]');
     try{
       const r=await fetch('/api/project-stats?project='+encodeURIComponent(id));

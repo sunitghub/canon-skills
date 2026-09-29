@@ -8,6 +8,15 @@ const net = require('net');
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 
+// t-67ab: Upkeep lives inside a project tab (opened by its board's Upkeep button); open the
+// first registered project's Upkeep the way that button does.
+async function openUpkeepView(page) {
+  await page.waitForFunction(() => (window._projects || []).length > 0);
+  await page.evaluate(() => openUpkeepFor(window._projects[0].id));
+  await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
+}
+
+
 // 1x1 transparent PNG, real decodable bytes (t-626d paste tests).
 const PASTE_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
 
@@ -1067,9 +1076,6 @@ test.describe('board modal', () => {
       await page.locator('#board-search').fill('');
       await page.waitForTimeout(200);
       await expect(page.locator('.col-done .card[data-id="' + createdId + '"]')).not.toBeVisible();
-
-      // Header archived count should appear
-      await expect(page.locator('#h-archived-stat')).toBeVisible();
 
       // Search should find the archived ticket
       await page.locator('#board-search').fill(createdId);
@@ -3702,12 +3708,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect((await panelBadge('idle')).bg).toBe('rgba(0, 0, 0, 0)');
         expect((await panelBadge('needs-you')).bg).toBe('rgb(210, 15, 57)');
         await expect(card(Q.other).locator('.card-start')).toHaveText('▶ Resume');
-        // Needs-you first in In Progress; the lane and the header count it.
+        // Needs-you first in In Progress; the lane header counts it (t-67ab: the path-bar chip is gone).
         const lane = page.locator('.column-body[data-status="in_progress"]');
         await expect(lane.locator('.card').first()).toHaveAttribute('data-id', Q.need);
         await expect(page.locator('.column', { has: lane }).locator('.column-needs')).toHaveText('1 needs you');
-        await expect(page.locator('#h-needs-stat')).toBeVisible();
-        await expect(page.locator('#h-needs')).toHaveText('1');
         // Lanes are equal and fill the board's width (they were capped at 320px and skewed by content).
         for (const width of [1600, 1300]) {
           await page.setViewportSize({ width, height: 800 });
@@ -3744,12 +3748,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
         rows = cardRows().map(r => (r.ticket === Q.work ? { ...r, status: 'needs-you', state: 'needs-you', state_secs: 1 } : r));
         await page.evaluate(() => refreshCockpitSessions());
         await expect(card(Q.need)).not.toHaveAttribute('data-mark', '1');
-        await expect(page.locator('#h-needs')).toHaveText('2');
         await expect(card(Q.work).locator('.card-start')).toHaveText('Answer ▸');
-        // No sessions: chip hidden, cards back to Resume.
+        // No sessions: cards back to Resume.
         rows = [];
         await page.evaluate(() => refreshCockpitSessions());
-        await expect(page.locator('#h-needs-stat')).toBeHidden();
         await expect(card(Q.need).locator('.card-start')).toHaveText('▶ Resume');
         // Answer opens the ticket's cockpit.
         rows = cardRows();
@@ -3989,6 +3991,94 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill')).toHaveCount(2, { timeout: 8000 });
       await expect(page.locator('#intr-banner .intr-row')).toHaveCount(1);
       await expect(page.locator('#intr-banner .intr-row')).toHaveAttribute('data-id', 't-cc33');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-67ab: Upkeep moved into each project tab.
+    const upkeepStatus = (page, doneFor = {}) => {
+      const asked = [];
+      return page.route('**/api/upkeep/status*', r => {
+        const u = new URL(r.request().url());
+        const pid = u.searchParams.get('project'), skill = u.searchParams.get('skill');
+        asked.push(pid);
+        const done = (doneFor[pid] || []).includes(skill);
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(done ? { status: 'done', finished_at: 1790600000, report_path: 'r.md' } : { status: 'idle', report_path: '' }) });
+      }).then(() => asked);
+    };
+
+    test('upkeep (t-67ab): the board\u2019s Upkeep button opens that project\u2019s Upkeep; \u2190 Board returns; another tab gets its own', async ({ page }) => {
+      const asked = await upkeepStatus(page);
+      const boardA = await openShell(page, []);
+      await expect(boardA.locator('#btn-upkeep')).toBeVisible();
+      asked.length = 0;
+      await boardA.locator('#btn-upkeep').click();
+      await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
+      await expect(page.locator('#up-proj')).toHaveText('proj-a');
+      await expect.poll(() => asked.length).toBeGreaterThanOrEqual(4);
+      expect([...new Set(asked)]).toEqual(['proj-a']);
+      await page.locator('#up-back').click();
+      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
+      // proj-x's board opens proj-x's Upkeep, and only proj-x is asked about.
+      await page.evaluate(() => openProject('proj-x', 'proj-x'));
+      const boardX = page.frameLocator('#view-proj-x iframe');
+      await expect(boardX.locator('#btn-upkeep')).toBeVisible({ timeout: 8000 });
+      asked.length = 0;
+      await boardX.locator('#btn-upkeep').click();
+      await expect(page.locator('#up-proj')).toHaveText('proj-x');
+      await expect.poll(() => asked.length).toBeGreaterThanOrEqual(4);
+      expect([...new Set(asked)]).toEqual(['proj-x']);
+      fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals'), { recursive: true });
+      await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'upkeep-in-tab.png') });
+      // Switching tabs shows that tab's board, never a stale Upkeep.
+      await page.locator('#up-back').click();
+      await page.evaluate(() => activateTab('proj-a'));
+      await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
+      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
+      // A forged open-upkeep from outside a tab's board opens nothing.
+      await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'open-upkeep' }, location.origin));
+      await page.waitForTimeout(300);
+      await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('upkeep (t-67ab): the board path bar — branch under the path, no counts, Upkeep · + New · Scratch · CI on the right', async ({ page }) => {
+      await upkeepStatus(page);
+      const board = await openShell(page, []);
+      await expect(board.locator('#btn-upkeep')).toBeVisible();
+      await expect(board.locator('#h-branch')).not.toHaveText('\u2014', { timeout: 8000 });   // data loaded
+      for (const id of ['h-open', 'h-active', 'h-needs-stat', 'h-archived-stat']) await expect(board.locator('#' + id)).toHaveCount(0);
+      const box = async sel => board.locator(sel).boundingBox();
+      const proj = await box('#h-project'), branch = await box('#h-branch');
+      expect(branch.y).toBeGreaterThan(proj.y + proj.height / 2);   // on the line below the path
+      expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 4).map(b => b.id)))
+        .toEqual(['btn-upkeep', 'btn-create', 'btn-scratch', 'btn-ci-setup']);
+      const right = await box('.header-right'), up = await box('#btn-upkeep');
+      expect(up.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
+      await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'path-bar.png') });
+      expect(right.x + right.width).toBeGreaterThan(up.x);
+      // A standalone board (no Cockpit shell) has no Upkeep button.
+      const solo = await page.context().newPage();
+      await solo.goto(BASE);
+      await solo.waitForLoadState('networkidle');
+      await expect(solo.locator('#btn-upkeep')).toBeHidden();
+      await solo.close();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('upkeep (t-67ab): each Projects card shows its branch and how many checks never ran; the row opens Upkeep', async ({ page }) => {
+      await upkeepStatus(page, { 'proj-a': ['context-check'], 'proj-x': ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings'] });
+      await openShell(page, []);
+      await page.locator('.tab.pinned').click();
+      const card = pid => page.locator(`.meta[data-stats="${pid}"]`);
+      await expect(card('proj-a').locator('[data-f="upkeep"]')).toHaveText('3 checks never run');
+      await expect(card('proj-x').locator('[data-f="upkeep"]')).toHaveText('all checks run');
+      const branch = await page.evaluate(async () => (await (await fetch('/api/git?project=proj-a')).json()).branch);
+      expect(branch).toBeTruthy();
+      await expect(card('proj-a').locator('[data-f="branch"]')).toHaveText(branch);
+      await page.locator('.meta[data-stats="proj-a"]').locator('xpath=ancestor::div[contains(@class,"card")][1]').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'project-card.png') });
+      await card('proj-a').locator('.upk-row').click();
+      await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
+      await expect(page.locator('#up-proj')).toHaveText('proj-a');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -8633,16 +8723,15 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     reg.release({ ok: false, error: 'x' });
   });
 
-  test('Upkeep nav item is present and switches to its own view', async ({ page }) => {
+  test('Upkeep has no sidebar entry and shows the chosen project\u2019s checks, no picker (t-67ab)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await expect(page.locator('#nav-upkeep')).toContainText('Upkeep');
-    await page.locator('#nav-upkeep').click();
-    await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
+    await expect(page.locator('#nav-upkeep')).toHaveCount(0);
+    await openUpkeepView(page);
     await expect(page.locator('#view-projects')).not.toHaveClass(/active/);
-    await expect(page.locator('#nav-upkeep')).toHaveClass(/active/);
-    await expect(page.locator('#nav-projects')).not.toHaveClass(/active/);
+    await expect(page.locator('#up-proj')).toHaveText(PROJECTS[0].name);
+    await expect(page.locator('#up-projrow')).toHaveCount(0);
     // All 4 skills render as cards.
     for (const id of ['context-check', 'context-doctor', 'dead-code-cleanup', 'promote-learnings']) {
       await expect(page.locator('#up-card-' + id)).toBeVisible();
@@ -8652,7 +8741,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   test('context-check "?" popover mentions trend tracking against the last run (t-c957)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await page.locator('#up-card-context-check .rc-help').click();
     await expect(page.locator('#up-help-context-check')).toContainText(
       'compares its finding count to your last run on this repo');
@@ -8661,7 +8750,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   test('promote-learnings and dead-code-cleanup "?" popovers name the concrete next step (t-a27a)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
 
     await page.locator('#up-card-promote-learnings .rc-help').click();
     await expect(page.locator('#up-help-promote-learnings')).toContainText(
@@ -8675,7 +8764,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   test('promote-learnings "?" popover mentions direct invocation and a captured example (t-5dd4)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await page.locator('#up-card-promote-learnings .rc-help').click();
     const panel = page.locator('#up-help-promote-learnings');
     await expect(panel).toContainText('/promote-learnings');
@@ -8688,7 +8777,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   test('promote-learnings "?" popover covers the consumer PROMOTED.md path (t-8b55)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await page.locator('#up-card-promote-learnings .rc-help').click();
     // Look sections up by their heading element, not by text order (the t-f5ab jump link repeats "What to do next").
     const section = (name) => page.locator('#up-help-promote-learnings .rc-pop-sec')
@@ -8702,10 +8791,10 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   });
 
   test('"What to do next" renders in the theme green with an unobstructed jump link (t-f5ab)', async ({ page }) => {
-    await page.setViewportSize({ width: 1300, height: 900 }); // promote-learnings' "?" opens upward at this size
+    await page.setViewportSize({ width: 1300, height: 760 }); // promote-learnings' "?" opens upward at this size (t-67ab: no picker row, cards sit higher)
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await page.locator('#up-card-promote-learnings .rc-help').click();
     const panel = page.locator('#up-help-promote-learnings');
     await expect(panel).toHaveClass(/\bup\b/);
@@ -8741,7 +8830,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   test('promote-learnings and skill-eval "?" popovers render numbered lists on separate lines (t-4254)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await expect(page.locator('#se-card .rc-title')).toBeVisible(); // seRender runs after the grid
 
     await page.locator('#up-card-promote-learnings .rc-help').click();
@@ -8758,7 +8847,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
   test('all 5 Upkeep "?" popovers have a "What to do next" section (t-d05b)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await expect(page.locator('#se-card .rc-title')).toBeVisible(); // seRender runs after the grid
 
     const cases = [
@@ -8789,14 +8878,14 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     expect(learningsText.match(/no promote command/g)?.length ?? 0).toBe(1);
   });
 
-  test('clicking a Projects tab clears the Upkeep nav active state (t-5dc2 3-way switch)', async ({ page }) => {
+  test('the Projects nav leaves Upkeep for the project grid (t-5dc2, t-67ab)', async ({ page }) => {
     await stubUpkeep(page);
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await page.locator('#nav-upkeep').click();
-    await expect(page.locator('#nav-upkeep')).toHaveClass(/active/);
+    await openUpkeepView(page);
     await page.locator('#nav-projects').click();
-    await expect(page.locator('#nav-upkeep')).not.toHaveClass(/active/);
+    await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
+    await expect(page.locator('#view-projects')).toHaveClass(/active/);
     await expect(page.locator('#nav-projects')).toHaveClass(/active/);
   });
 
@@ -8809,7 +8898,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await page.locator('#up-card-context-check button:has-text("Run")').click();
     await expect(page.locator('#cc-ok')).toBeVisible();
     await page.locator('#cc-ok').click();
@@ -8833,7 +8922,8 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await page.locator('#nav-upkeep').click();
+    pollCount = 0;   // t-67ab: the Projects cards already asked for status on load
+    await openUpkeepView(page);
     await expect(page.locator('#up-card-context-check .up-status.run')).toBeVisible();
     await expect(page.locator('#up-card-context-check .rc-select').first()).toBeDisabled();
     await expect(page.locator('#up-card-context-check')).toContainText('locked while running');
@@ -8864,7 +8954,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await page.locator('#up-card-context-check button:has-text("View report")').click();
     await expect(page.locator('#up-detail')).toHaveClass(/open/);
     // A leading `**Label:** value` line is a meta chip (5e5a6cf), not inline bold: <b> inside .up-meta .um.
@@ -8922,7 +9012,7 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
   }
   async function pick(page) {
     await page.locator('#se-card button:has-text("Browse")').click();
@@ -8966,7 +9056,7 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     await setup(page, { check: GOOD, capture });
     await page.unroute('**/api/skill-eval/status*');
     await page.route('**/api/skill-eval/status*', route => route.abort());
-    await page.reload(); await page.waitForLoadState('networkidle'); await page.locator('#nav-upkeep').click();
+    await page.reload(); await page.waitForLoadState('networkidle'); await openUpkeepView(page);
     await expect(page.locator('#se-card button:has-text("Browse")')).toBeEnabled();
     await pick(page);
     expect(capture.checkCount).toBe(1);
@@ -9071,7 +9161,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     await page.route('**/api/upkeep/status*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'idle', report_path: '' }) }));
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
-    await page.locator('#nav-upkeep').click();
+    await openUpkeepView(page);
     await expect(page.locator('#up-card-context-check')).toBeVisible();
     await expect(page.locator('#se-card .rc-title')).toBeVisible();   // seRender runs after the grid; clicking its "?" earlier races the re-render
   }
@@ -9098,7 +9188,8 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     for (const h of ['How it happens', 'Why it runs', 'Where learnings come from', 'What it does not do', 'Cost'])
       await expect(pop(page, 'promote-learnings')).toContainText(h, { ignoreCase: true });
     await expect(pop(page, 'promote-learnings')).toContainText('tkt learn');
-    await btn(page, 'skill-eval').click();
+    // t-67ab: with no picker row the open promote-learnings panel can cover this "?"; press it by keyboard.
+    await btn(page, 'skill-eval').focus(); await page.keyboard.press('Enter');
     for (const h of ['The three stages', 'What we hand to plugin eval', 'Limits'])
       await expect(pop(page, 'skill-eval')).toContainText(h, { ignoreCase: true });
     await expect(pop(page, 'promote-learnings')).toHaveCount(0);      // opening another closes the first
@@ -9200,7 +9291,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     await btn(page, 'promote-learnings').click({ force: true });
     await expect(pop(page, 'promote-learnings')).toContainText('the sprint agent runs this itself at close');
     await expect(pop(page, 'promote-learnings')).toContainText('also automatic, right after');   // learnings-sweep, not just tkt learn
-    await btn(page, 'skill-eval').click({ force: true });
+    await btn(page, 'skill-eval').focus(); await page.keyboard.press('Enter');   // the open panel can cover this "?" (t-67ab)
     const se = pop(page, 'skill-eval');
     await expect(se).toContainText('for most cases, a check that the skill actually fired');
     await expect(se).toContainText('needs your explicit OK');
