@@ -5686,6 +5686,7 @@ function openLeaveConfirm() {
   discardBtn.hidden = true;
   discardBtn.classList.remove('armed');
   discardBtn.disabled = false;
+  delete discardBtn.dataset.mode;
   document.getElementById('ck-leave-confirm').classList.add('open');
   if (SCRATCH_ID.test(cockpitState.id || '')) {   // t-47f1: nothing to save — End only
     // t-f553: offer to keep the work as a ticket before ending
@@ -5722,7 +5723,7 @@ function showScratchChanges(c) {
   document.getElementById('ck-leave-confirm-title').textContent = (c.no_git ? 'This session changed ' + plural(c.total, 'file') : 'This session has ' + what);
   const body = document.getElementById('ck-leave-confirm-body');
   body.textContent = 'Save as ticket hands them to a new ticket. Keep changes ends the session and leaves them in place, noted in HANDOFF.md.'
-    + (c.no_git ? ' Nothing is undone: ending keeps every change in your folder.'
+    + (c.no_git ? ' Ending keeps every change in your folder. Restore original puts back the files it edited or deleted, as they were when the session started; files it added stay.'
       : c.can_discard ? ' Discard throws away the file changes (edits and new files; ignored files stay).'
       : c.total ? ' Discard isn\u2019t offered: this checkout already had uncommitted changes when the session started.' : '');
   if (c.files.length) {
@@ -5742,8 +5743,9 @@ function showScratchChanges(c) {
   }
   document.getElementById('ck-leave-skip').textContent = 'Keep changes, end';
   const discardBtn = document.getElementById('ck-leave-discard');
-  discardBtn.textContent = 'Discard changes, end';
-  discardBtn.hidden = !c.can_discard;
+  discardBtn.textContent = c.no_git ? 'Restore original files, end' : 'Discard changes, end';
+  discardBtn.dataset.mode = c.no_git ? 'restore' : '';   // t-5a4b: without git, this button puts the originals back
+  discardBtn.hidden = c.no_git ? !c.total : !c.can_discard;
 }
 
 function showClosedLeave() {
@@ -5842,10 +5844,11 @@ document.getElementById('ck-leave-discard').addEventListener('click', (e) => {
   if (!btn.classList.contains('armed')) {
     const n = (cockpitState.leaveChanges && cockpitState.leaveChanges.total) || 0;
     btn.classList.add('armed');
-    btn.textContent = 'Discard ' + n + ' file' + (n === 1 ? '' : 's') + ' \u2014 can\u2019t be undone';
+    btn.textContent = btn.dataset.mode === 'restore' ? 'Replace my current files with the originals'
+      : 'Discard ' + n + ' file' + (n === 1 ? '' : 's') + ' \u2014 can\u2019t be undone';
     return;
   }
-  ckLeaveSaveAndEnd(true, { discard: true });
+  ckLeaveSaveAndEnd(true, btn.dataset.mode === 'restore' ? { restore: true } : { discard: true });
 });
 // t-0db3: extracted so the Canon Cockpit shell's close-tab guard can drive the
 // SAME vetted flow via postMessage. skipSave=true = "End without saving" (routes
@@ -5894,7 +5897,7 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
   // t-86fe: a scratch session ends through the daemon's end guard — it notes anything left
   // behind in HANDOFF.md, and discards only when asked.
   const scratchEnd = SCRATCH_ID.test(cockpitState.id || '')
-    ? { source: 'canon-cockpit', type: 'end-scratch', discard: !!(opts && opts.discard) } : null;
+    ? { source: 'canon-cockpit', type: 'end-scratch', discard: !!(opts && opts.discard), restore: !!(opts && opts.restore) } : null;
   if (skipSave) {
     closeLeaveConfirm();
     iframe.style.visibility = 'hidden';

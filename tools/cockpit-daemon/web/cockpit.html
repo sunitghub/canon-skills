@@ -313,7 +313,7 @@
         .catch(function(e){ failed(e && e.message || "Couldn't reach the daemon."); });
     } else if(d.type === "end-scratch"){
       if(!session) return;
-      fetch("/session/"+session+"/end-scratch", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ discard: d.discard === true }) })
+      fetch("/session/"+session+"/end-scratch", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ discard: d.discard === true, restore: d.restore === true }) })
         .then(function(r){ return r.ok ? r.json().then(function(j){ return { ok: true, j: j }; }) : r.text().then(function(t){ return { ok: false, t: t }; }); })
         .then(function(res){
           try{ window.parent.postMessage(res.ok

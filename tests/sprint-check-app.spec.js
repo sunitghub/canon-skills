@@ -4613,18 +4613,24 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-leave-confirm-title')).toHaveText('Save this session as a ticket?');
       await expect(page.locator('#ck-leave-discard')).toBeHidden();
       await page.locator('#ck-leave-skip').click();
-      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false }]);
+      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false, restore: false }]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('end guard (t-5a4b): a folder without git lists what changed in plain words and offers no Discard', async ({ page }) => {
+    test('end guard (t-5a4b): a folder without git lists what changed in plain words; Restore original takes two clicks', async ({ page }) => {
       const files = [{ status: '+', path: 'brief.md' }, { status: '~', path: 'roadmap.md' }, { status: '-', path: 'old-draft.md' }];
       await openGuardedScratch(page, { total: 3, commits: 0, can_discard: false, no_git: true, files });
       await expect(page.locator('#ck-leave-confirm-title')).toHaveText('This session changed 3 files');
-      await expect(page.locator('#ck-leave-confirm-body')).toContainText('Nothing is undone: ending keeps every change in your folder.');
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText('Ending keeps every change in your folder.');
       await expect(page.locator('#ck-leave-confirm-body')).not.toContainText(/commit|checkout|worktree|Discard/);
       await expect(page.locator('#ck-leave-confirm-body .ck-leave-files li')).toHaveText(['+ brief.md', '~ roadmap.md', '- old-draft.md']);
-      await expect(page.locator('#ck-leave-discard')).toBeHidden();
+      const restore = page.locator('#ck-leave-discard');
+      await expect(restore).toHaveText('Restore original files, end');
+      await restore.click();
+      await expect(restore).toHaveText('Replace my current files with the originals');
+      expect(await sentEnd(page)).toEqual([]);   // the first click only arms it
+      await restore.click();
+      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false, restore: true }]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -4648,7 +4654,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-86fe', 'visuals'), { recursive: true });
       await page.locator('#ck-leave-confirm .ck-leave-confirm').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-86fe', 'visuals', 'end-guard.png') });
       await discard.click();
-      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: true }]);
+      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: true, restore: false }]);
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -4660,7 +4666,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-leave-save')).toHaveText('Save as ticket, then end');
       await expect(page.locator('#ck-leave-discard')).toBeVisible();
       await page.locator('#ck-leave-skip').click();   // Keep changes, end
-      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false }]);
+      await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false, restore: false }]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
