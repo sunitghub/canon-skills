@@ -3,6 +3,7 @@ name: promote-learnings
 description: Reviews LEARNINGS.md's UNPROMOTED rows as a fresh, no-implementation-history reader and proposes where each durable one belongs. Report-only, except that in a consumer project it writes the proposals you confirm to PROMOTED.md. Use as one of Upkeep's four report-only checks, or by hand when the UNPROMOTED queue needs triage.
 category: agent-ops
 tags: [learnings, sprint, memory, promotion]
+hidden: true
 ---
 
 # Promote Learnings

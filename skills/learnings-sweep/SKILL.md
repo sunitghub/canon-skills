@@ -3,6 +3,7 @@ name: learnings-sweep
 description: Aggregates per-ticket UNPROMOTED .tickets/<id>/learnings.md candidates into a single capped root LEARNINGS.md index, without promoting any of them. Use after `tkt learn <id>` confirms a candidate (single-ticket mode, called from sprint complete), or run `--full` by hand to backfill/reconcile the whole repo.
 category: agent-ops
 tags: [learnings, sprint, memory, aggregation]
+hidden: true
 ---
 
 # Learnings Sweep
