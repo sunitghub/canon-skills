@@ -3377,6 +3377,32 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-25f9: the rail's project and session names and the Admin table's session name read as bright
+    // white in dark (Herdr-like); light keeps its own colours. Computed styles — logic tests are render-blind.
+    test('shell (t-25f9): rail and Admin session names are bright white in dark, unchanged in light', async ({ page }) => {
+      await openShell(page, [row('t-own1', PROJECT_ROOT)]);
+      await page.evaluate(() => pollSessions());
+      // The rail re-renders on every poll, so read every element in one synchronous pass: a locator
+      // handle can detach between two calls and its computed style then reads back empty.
+      const SEL = { proj: '#ag-list .ag-proj b', name: '#ag-list .ag-row .ag-t1', id: '#ag-list .ag-row .ag-id', adName: '#ad-sessions .ad-table .s1', sub: '#ad-sessions .ad-table .s2' };
+      const read = () => page.evaluate(sel => Object.fromEntries(Object.entries(sel).map(([k, q]) => {
+        const cs = getComputedStyle(document.querySelector(q)); return [k, { color: cs.color, size: cs.fontSize }];
+      })), SEL);
+      await page.evaluate(() => showView('admin'));
+      for (const q of Object.values(SEL)) await expect(page.locator(q).first()).toBeVisible();
+      const WHITE = 'rgb(245, 248, 252)';
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+      const dark = await read();
+      for (const k of ['proj', 'name', 'id', 'adName']) expect(dark[k].color, k).toBe(WHITE);
+      expect(dark.sub.color).not.toBe(WHITE);            // the muted subline stays muted
+      expect(dark.proj.size).toBe('13px');
+      expect(dark.name.size).toBe('14px');
+      await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+      const light = await read();
+      expect([light.proj.color, light.name.color, light.id.color, light.adName.color]).toEqual(['rgb(66, 66, 105)', 'rgb(66, 66, 105)', 'rgb(26, 26, 46)', 'rgb(26, 26, 46)']);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('shell: an open-session message for another project switches to its tab and opens the cockpit there', async ({ page }) => {
       writeTicket(XID, 'in_progress');
       try {
@@ -3618,7 +3644,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(row('t-ddd4').locator('.ag-s')).toHaveText('running · claude');  // older daemon row
       await expect(row('t-ddd4').locator('.ag-t1')).toHaveText('t-ddd4Export ToDo to CSV'); // frontmatter title, quotes stripped
       await expect(list.locator('.ag-row.st-idle .ag-s')).toHaveText('idle 6m · <img src=x onerror=window.__pwned=1>'); // no countdown; agent inert
-      // Mockup type: 13px title line, 12px state line, 8px dot.
+      // Mockup type: 14px title line (t-25f9, was 13px), 12px state line, 8px dot.
       const css = await row('t-aaa1').evaluate(el => ({
         t1: getComputedStyle(el.querySelector('.ag-t1')).fontSize,
         s: getComputedStyle(el.querySelector('.ag-s')).fontSize,
@@ -3627,10 +3653,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         t1font: getComputedStyle(el.querySelector('.ag-t1')).fontFamily,
         idColor: getComputedStyle(el.querySelector('.ag-id')).color,
         idWeight: getComputedStyle(el.querySelector('.ag-id')).fontWeight,
-        text: getComputedStyle(document.body).color,
       }));
-      expect(css).toMatchObject({ t1: '13px', s: '12px', dot: '8px', idWeight: '700' });
-      expect(css.idColor).toBe(css.text);                                             // id as bright as body text (Herdr's name)
+      expect(css).toMatchObject({ t1: '14px', s: '12px', dot: '8px', idWeight: '700' });  // t-25f9: 13px -> 14px
+      expect(css.idColor).toBe('rgb(245, 248, 252)');                                 // t-25f9: id is Herdr-bright white (was: body text)
       expect(css.id).toMatch(/monospace/);
       expect(css.t1font).not.toMatch(/monospace/);
       // Hostile title: inert text, and the quote can't break out of the row's title attribute.
