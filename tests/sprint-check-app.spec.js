@@ -4036,6 +4036,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => activateTab('proj-a'));
       await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
+      // A closed tab's token is dropped: a message carrying it opens nothing.
+      const oldTok = await page.evaluate(() => {
+        const t = new URL(document.querySelector('#view-proj-x iframe').src).searchParams.get('tab');
+        closeTab('proj-x');
+        return t;
+      });
+      await page.evaluate(t => window.postMessage({ source: 'canon-board', type: 'open-upkeep', tab: t }, location.origin), oldTok);
+      await page.waitForTimeout(300);
+      await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
+      await expect(page.locator('#view-proj-x')).toHaveCount(0);
       // A forged open-upkeep from outside a tab's board opens nothing.
       await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'open-upkeep' }, location.origin));
       await page.waitForTimeout(300);

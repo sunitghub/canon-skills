@@ -2246,6 +2246,7 @@
   }
   function _removeTab(id){
     openTabs=openTabs.filter(t=>t.id!==id);
+    for(const [tok,pid] of tabTokens) if(pid===id) tabTokens.delete(tok);
     const v=document.getElementById('view-'+id); if(v) v.remove();
     if(activeTab===id) activeTab='projects';
     activateTab(activeTab);
