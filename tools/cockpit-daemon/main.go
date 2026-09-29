@@ -95,6 +95,7 @@ type config struct {
 	idleTimeoutMain   time.Duration // t-cd06: longer idle timeout for a main-checkout session (default 30m) — nebula's own 5m default assumes a disposable worktree; the main checkout has no such disposability, so it keeps a longer but still-bounded safety net rather than running forever unreaped
 	idleCheckInterval time.Duration // t-2e7e: how often to scan for idle sessions (default 30s)
 	saveFallback      time.Duration // t-2e7e: force-kill if the save marker never appears within this long (default 60s)
+	registryFile      string        // t-5a4b: projects.json path override (tests); default $CANON_HOME|~/.canon /cockpit/projects.json
 	saveQuiesce       time.Duration // t-2c9e: after a watched state file changes, conclude "saved" once writes quiesce for this long (default 2s) — mtime-bump != save-complete, so this debounce avoids killing mid-multi-file-write
 }
 
@@ -3414,12 +3415,62 @@ func (s *server) resolveProjectForCwd(cwd string) (string, bool) {
 	}
 	wts, err := s.listWorktreesIn(resolved)
 	if err != nil || len(wts) == 0 {
-		return "", false // not a git working tree — never assume a project
+		// t-5a4b: not a git working tree (or git is not installed). A folder that is exactly a
+		// REGISTERED project root is still trusted — nothing else is: never assume a project.
+		return s.registeredRoot(resolved)
 	}
 	if main, err := filepath.EvalSymlinks(wts[0]); err == nil {
 		return main, true
 	}
 	return wts[0], true
+}
+
+// registeredRoot reports whether resolved (an absolute, symlink-resolved path) is exactly a project
+// root registered through the board (t-5a4b: non-git projects for people without git). The registry
+// is read on EVERY call, so a deregistration takes effect on the next start; anything unreadable,
+// oversized or malformed trusts nothing. Only an exact match counts — a subfolder of a registered
+// root, or a symlink leading out of one, resolves to a different path and is refused.
+func (s *server) registeredRoot(resolved string) (string, bool) {
+	f := s.cfg.registryFile
+	if f == "" {
+		f = defaultRegistryFile()
+	}
+	fi, err := os.Stat(f)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > 1<<20 {
+		return "", false
+	}
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return "", false
+	}
+	var entries []struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal(b, &entries) != nil {
+		return "", false
+	}
+	for _, e := range entries {
+		if e.Path == "" || !filepath.IsAbs(e.Path) {
+			continue
+		}
+		p, err := filepath.EvalSymlinks(e.Path)
+		if err != nil {
+			continue
+		}
+		if pathsEqual(p, resolved) {
+			return resolved, true
+		}
+	}
+	return "", false
+}
+
+// defaultRegistryFile is where the boards keep the registered projects (server.py _registry_file).
+func defaultRegistryFile() string {
+	if h := os.Getenv("CANON_HOME"); h != "" {
+		return filepath.Join(h, "cockpit", "projects.json")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".canon", "cockpit", "projects.json")
 }
 
 // pathsEqual compares two already-resolved absolute paths. Windows paths are

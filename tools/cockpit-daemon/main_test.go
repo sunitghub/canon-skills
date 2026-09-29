@@ -4341,7 +4341,7 @@ func TestResolveProjectForCwd(t *testing.T) {
 		t.Fatal("nonexistent cwd accepted, want rejected")
 	}
 	if _, ok := s.resolveProjectForCwd(t.TempDir()); ok {
-		t.Fatal("non-git cwd accepted, want rejected")
+		t.Fatal("unregistered non-git cwd accepted, want rejected")   // t-5a4b: only a REGISTERED root is trusted
 	}
 	got, ok := s.resolveProjectForCwd(root)
 	wantResolved, _ := filepath.EvalSymlinks(root)
@@ -6804,4 +6804,123 @@ func waitSnapshotGone(t *testing.T, s *server, id string) {
 		}
 	}
 	t.Fatalf("%s is still in the session snapshot after ending on purpose: %v", id, snapIDs(t, s.snapshotPath()))
+}
+
+
+// writeRegistry writes a board-style projects.json (t-5a4b) listing the given paths.
+func writeRegistry(t *testing.T, file string, paths ...string) {
+	t.Helper()
+	type entry struct {
+		ID   string `json:"id"`
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	var es []entry
+	for i, p := range paths {
+		es = append(es, entry{ID: fmt.Sprintf("id%d", i), Path: p, Name: filepath.Base(p)})
+	}
+	b, _ := json.Marshal(es)
+	if err := os.WriteFile(file, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// t-5a4b: a non-git folder is trusted ONLY when it is exactly a registered project root. Every other
+// shape — the hostile ones especially — must fail closed, and the registry is re-read on each call.
+func TestNonGitTrustRule(t *testing.T) {
+	base := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	root := filepath.Join(base, "pm-project")
+	other := filepath.Join(base, "other")
+	for _, d := range []string{filepath.Join(root, "docs"), other} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	realRoot, _ := filepath.EvalSymlinks(root)
+	s := newServer(config{projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg})
+	want := func(name, cwd string, ok bool) {
+		t.Helper()
+		got, gotOK := s.resolveProjectForCwd(cwd)
+		if gotOK != ok || (ok && !pathsEqual(got, realRoot)) {
+			t.Fatalf("%s: resolveProjectForCwd(%q) = (%q,%v), want ok=%v", name, cwd, got, gotOK, ok)
+		}
+	}
+
+	// Nothing registered (no registry file at all) -> refused.
+	want("no registry", root, false)
+	writeRegistry(t, reg, root)
+	want("registered root", root, true)
+	want("root via a dot-dot detour", filepath.Join(root, "docs", ".."), true)
+	want("registered SUBFOLDER", filepath.Join(root, "docs"), false)
+	want("unregistered sibling", other, false)
+	want("escape via dot-dot", filepath.Join(root, "..", "other"), false)
+	want("relative path", "pm-project", false)
+	want("empty-ish relative", ".", false)
+
+	// A symlink leading OUT of the registered root is not the root.
+	if err := os.Symlink(other, filepath.Join(root, "escape")); err == nil {
+		want("symlink out of the root", filepath.Join(root, "escape"), false)
+	}
+	// A symlink leading INTO the root resolves to the registered root itself — that IS the project.
+	link := filepath.Join(base, "alias")
+	if err := os.Symlink(root, link); err == nil {
+		want("symlink to the root", link, true)
+	}
+
+	// Registry hygiene: relative / missing / non-string paths are skipped, garbage trusts nothing.
+	writeRegistry(t, reg, "relative/dir", filepath.Join(base, "missing"), other)
+	want("root not in registry", root, false)
+	os.WriteFile(reg, []byte("not json"), 0o600)
+	want("garbage registry", root, false)
+	os.WriteFile(reg, []byte(`[{"path":123},{"path":null},{}]`), 0o600)
+	want("wrong-typed entries", root, false)
+	os.WriteFile(reg, []byte(strings.Repeat(" ", (1<<20)+1)), 0o600)
+	want("oversized registry", root, false)
+	os.Remove(reg)
+	if err := os.Mkdir(reg, 0o755); err == nil {
+		want("registry is a directory", root, false)
+	}
+	os.Remove(reg)
+
+	// Deregistered mid-flight: registered, accepted; entry removed, refused on the very next call.
+	writeRegistry(t, reg, root)
+	want("registered again", root, true)
+	writeRegistry(t, reg, other)
+	want("deregistered", root, false)
+}
+
+// t-5a4b end to end through /session/start: a registered non-git root with the ticket starts; the same
+// folder unregistered, or a registered one without the ticket, is refused.
+func TestStartNonGitRegisteredRoot(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	writeTicketStatus(t, root, "t-ab12", "open")
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	status := func(ticket, cwd string) int {
+		resp := startSessionCwd(t, ts.URL, ticket, cwd, bootTok)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := status("t-ab12", root); got != http.StatusBadRequest {
+		t.Fatalf("unregistered non-git start = %d, want 400", got)
+	}
+	writeRegistry(t, reg, root)
+	if got := status("t-zz99", root); got != http.StatusBadRequest {
+		t.Fatalf("registered root but no such ticket = %d, want 400", got)
+	}
+	if got := status("t-ab12", root); got != http.StatusOK {
+		t.Fatalf("registered non-git start = %d, want 200", got)
+	}
+	killAllSessions(s)
+	writeRegistry(t, reg) // deregistered
+	if got := status("t-ab12", root); got != http.StatusBadRequest {
+		t.Fatalf("deregistered start = %d, want 400", got)
+	}
 }
