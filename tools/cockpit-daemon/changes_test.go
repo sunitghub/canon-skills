@@ -261,7 +261,7 @@ func TestChangesStorePermissionsAndListCap(t *testing.T) {
 	}
 	if runtime.GOOS != "windows" {
 		fi, err := os.Stat(filepath.Join(store, "baseline.json"))
-		if err != nil || fi.Mode().Perm() != 0o640 {
+		if err != nil || fi.Mode().Perm() != 0o600 {
 			t.Fatalf("baseline.json mode = %v (%v), want 0600", fi.Mode().Perm(), err)
 		}
 		di, _ := os.Stat(filepath.Join(store, "copies"))

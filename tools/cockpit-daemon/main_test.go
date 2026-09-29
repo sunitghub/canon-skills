@@ -5901,15 +5901,12 @@ func TestScratchSessionStart(t *testing.T) {
 	if out2.Session != out.Session {
 		t.Fatalf("same scratch id must attach: got %q want %q", out2.Session, out.Session)
 	}
-	// t-e162: a second scratch needs a worktree; this root isn't a git repo, so it fails
-	// — and a failed start leaves no state dir behind.
+	// t-e162 / t-5a4b: a second scratch normally needs a worktree, but a folder without git can't
+	// have one, so the sessions share the folder instead of failing.
 	second := startSession(t, base, "s-cd34", bootTok)
 	second.Body.Close()
-	if second.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("second scratch without git: status %d, want 500", second.StatusCode)
-	}
-	if _, err := os.Stat(s.sessionStateDir(s.cfg.projectRoot, "s-cd34")); !os.IsNotExist(err) {
-		t.Fatalf("a refused scratch start must leave no state dir behind (stat err %v)", err)
+	if second.StatusCode != http.StatusOK {
+		t.Fatalf("second scratch without git: status %d, want 200 (shared folder)", second.StatusCode)
 	}
 	// A ticket session in the same project is unaffected by the scratch rule.
 	tk := startSession(t, base, "t-ab12", bootTok)
