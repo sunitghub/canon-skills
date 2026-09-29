@@ -328,8 +328,12 @@ grep -qF "openProject(b.dataset.open,b.dataset.name,{nudge:true})" <<<"$page" ||
 grep -q "function restoreTabs" <<<"$page" || fail "canon: missing restoreTabs"
 restore_body="$(sed -n '/function restoreTabs(){/,/^  }/p' <<<"$page")"
 grep -q "nudge:true" <<<"$restore_body" && fail "canon: restoreTabs must not nudge"
+# t-5a4b: session-driven opens (Scratch, Continue as ticket, Agents-rail rows) nudge too, quietly — a banner
+# already dismissed is not re-shown by them (nudgeDismissed).
+grep -qF "openProject(proj.id,proj.name,{nudge:true,quiet:true})" <<<"$page" || fail "canon: session-driven opens must nudge quietly (openSessionInTab)"
+grep -qF "nudgeDismissed" <<<"$page" || fail "canon: a dismissed nudge must be remembered for session-driven opens"
 nudge_true_count="$(grep -c "nudge:true" <<<"$page")"
-[[ "$nudge_true_count" == "2" ]] || fail "canon: expected exactly 2 uses of nudge:true (card open + #open= deep link), got $nudge_true_count"
+[[ "$nudge_true_count" == "3" ]] || fail "canon: expected exactly 3 uses of nudge:true (card open + #open= deep link + session-driven opens), got $nudge_true_count"
 # Register reuses the existing registerSkill/cockpitConfirm flow; Dismiss clears the banner
 grep -qE "registerSkill\(id, *name, *proj\.path" <<<"$page" || fail "canon: nudge Register button must reuse registerSkill(id,name,path,'sprint')"
 grep -qF "bar.remove(); v.classList.remove('has-nudge')" <<<"$page" || fail "canon: nudge Dismiss/Register-success must remove the banner and has-nudge class"

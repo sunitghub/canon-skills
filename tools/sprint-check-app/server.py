@@ -525,7 +525,9 @@ def run(cmd: list, cwd: Path) -> str:
 
 def load_git(root: Path = None) -> dict:
     cwd = root if root is not None else PROJECT_ROOT
-    branch   = run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd) or 'main'
+    # t-5a4b: a project with no git has no branch — report '' rather than inventing 'main'.
+    is_git   = run(['git', 'rev-parse', '--is-inside-work-tree'], cwd).strip() == 'true'
+    branch   = run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd) or ('main' if is_git else '')
     project  = cwd.name
     status   = run(['git', 'status', '--porcelain'], cwd)
     modified = len([l for l in status.splitlines() if l.strip()]) if status else 0
@@ -540,8 +542,7 @@ def load_git(root: Path = None) -> dict:
                 break
     total_commits_raw = run(['git', 'rev-list', '--count', 'HEAD'], cwd)
     total_commits = int(total_commits_raw) if total_commits_raw.isdigit() else None
-    # t-d218: a repo with no commits yet has no total_commits, but it IS git (worktree rail, Start gate).
-    is_git = run(['git', 'rev-parse', '--is-inside-work-tree'], cwd).strip() == 'true'
+    # t-d218: a repo with no commits yet has no total_commits, but it IS git (worktree rail, Start gate) — see is_git above.
     return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log, 'total_commits': total_commits, 'is_git': is_git}
 
 # ── Worktrees (t-cd06) ───────────────────────────────────────────────────
@@ -1806,7 +1807,7 @@ def track_changes(root: Path, confirm) -> dict:
     if confirm is not True:
         return {'ok': False, 'error': 'Track changes needs confirm: true.'}
     if not shutil.which('git'):
-        return {'ok': False, 'error': 'git is not installed on this machine.'}
+        return {'ok': False, 'error': "Version history needs Git, which isn't installed on this computer. You can keep working without it."}
     git_dir, ignore = root / '.git', root / '.gitignore'
     if os.path.lexists(git_dir):
         return {'ok': False, 'error': 'This folder already has a .git. Fix or remove it yourself; canon will not touch it.'}

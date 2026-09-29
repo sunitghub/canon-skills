@@ -1765,17 +1765,8 @@
     .ck-term-msg {
       color: var(--text-muted); font-family: var(--mono, monospace); font-size: 13px; text-align: center;
     }
-    /* t-d538: the one action offered in place of the terminal for a non-git project */
-    .ck-track-actions { display: flex; gap: 8px; pointer-events: auto; }
-    .ck-track-cancel {
-      height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border);
-      background: transparent; color: var(--text-muted); font-size: 12.5px; cursor: pointer;
-    }
-    .ck-track-btn {
-      height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--accent, #7c6af7);
-      background: var(--accent, #7c6af7); color: #fff; font-weight: 600; font-size: 12.5px; cursor: pointer;
-    }
-    .ck-track-btn[disabled] { opacity: .5; cursor: default; }
+    /* t-5a4b: a project with no git shows none of the git-derived surfaces (branch, commits, commit-prefix copy) */
+    html.no-git .git-only { display: none !important; }
     .ck-preview {
       width: var(--ck-preview-w, 360px); flex-shrink: 0; border-left: 1px solid var(--border);
       background: var(--surface); display: flex; flex-direction: column; position: relative;
@@ -1968,7 +1959,7 @@
           <span class="header-project" id="h-project">—</span>
           <span class="header-version" id="h-version" title="board build"></span>
         </div>
-        <div class="header-branch">
+        <div class="header-branch git-only">
           <div class="refresh-dot loading" id="refresh-dot"></div>
           <span>⎇</span>
           <span class="branch-name" id="h-branch">—</span>
@@ -1996,13 +1987,13 @@
         <div class="rail-icon" data-section="s-wip" title="Now Working On">
           <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
         </div>
-        <div class="rail-icon" data-section="s-branch" title="Git">
+        <div class="rail-icon git-only" data-section="s-branch" title="Git">
           <svg viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         </div>
         <div class="rail-icon" data-section="s-focus" title="Current Focus">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
         </div>
-        <div class="rail-icon" data-section="s-commits" title="Recent Commits">
+        <div class="rail-icon git-only" data-section="s-commits" title="Recent Commits">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
         <div class="rail-icon" data-section="s-summary" title="Tickets">
@@ -2015,7 +2006,7 @@
           <div id="s-wip-items"></div>
         </div>
 
-        <div class="sidebar-section">
+        <div class="sidebar-section git-only">
           <div class="sidebar-label">Git</div>
           <div class="branch-row">
             <span style="color:var(--text-dim)">⎇</span>
@@ -2029,7 +2020,7 @@
           <div class="focus-text" id="s-focus">—</div>
         </div>
 
-        <div class="sidebar-section">
+        <div class="sidebar-section git-only">
           <div class="sidebar-label">Recent Commits<span class="commit-total-badge" id="s-commits-total" style="display:none"></span></div>
           <div class="commit-list" id="s-commits"></div>
         </div>
@@ -2177,10 +2168,6 @@
       <div class="ck-term" id="ck-term">
         <div class="ck-term-msg-wrap">
           <div class="ck-term-msg" id="ck-term-msg"></div>
-          <div class="ck-track-actions" id="ck-track-actions" style="display:none">
-            <button class="ck-track-btn" id="ck-track-btn" type="button">Track changes</button>
-            <button class="ck-track-cancel" id="ck-track-cancel" type="button" style="display:none">Cancel</button>
-          </div>
         </div>
       </div>
       <div class="ck-preview collapsed" id="ck-preview">
@@ -3360,6 +3347,7 @@ function renderHeader() {
   // happens and this project's header next re-renders.
   // t-d218: is_git from the server; total_commits is absent in a repo with no commits yet (still git).
   state.isGitProject = git?.is_git === true || typeof git?.total_commits === 'number';
+  document.documentElement.classList.toggle('no-git', !state.isGitProject);   // t-5a4b
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
   const mod = document.getElementById('s-modified');
@@ -3380,7 +3368,7 @@ function renderSidebar() {
       `<div class="wip-item" data-id="${esc(t.id)}" role="button" tabindex="0" title="Open ticket">` +
         `<span class="wip-id">${esc(t.id)}</span>` +
         `<span class="wip-title">${esc(t.title)}</span>` +
-        `<button class="wip-copy" data-copy="${esc(t.id)}: " title="Copy commit prefix — paste into your git commit message">copy</button>` +
+        `<button class="wip-copy git-only" data-copy="${esc(t.id)}: " title="Copy commit prefix — paste into your git commit message">copy</button>` +
       `</div>`
     ).join('');
     wipItems.querySelectorAll('.wip-item').forEach(row => {
@@ -5385,7 +5373,6 @@ function setActiveTab(id) {
   // t-f553: the "Continue as <id>" choice belongs to the tab whose agent created the ticket.
   if (cockpitState && cockpitState.promotedTicket) showPromotedChoice(cockpitState.promotedTicket);
   else document.getElementById('ck-scratch-promoted').hidden = true;
-  syncTrackButton();
 }
 
 // t-f6b6: the board and the daemon page are different origins (different
@@ -7067,75 +7054,8 @@ function renderCockpitTestPlan(content, t) {
 // yet is what "Start sprint stays disabled" means in practice. A Resume
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
-// t-d538: the daemon only runs agents in a git work tree, so a non-git project would fail Start
-// with "cwd not allowed". Offer the opt-in local history instead of mounting the terminal.
-const TRACK_INTRO = "This project doesn't track changes yet. Agents need it to run here and to check their work.";
-// In a Cockpit project tab the fetch wrapper adds ?project=<id>; a standalone board names its own
-// folder explicitly with `default` — the server never falls back to a default folder silently.
-const TRACK_URL = document.documentElement.classList.contains('canon-proj-embed')
-  ? '/api/track-changes' : '/api/track-changes?project=default';
-function syncTrackButton() {
-  const box = document.getElementById('ck-track-actions');
-  if (!box) return;
-  const tab = cockpitState;
-  box.style.display = (tab && tab.needsTracking) ? '' : 'none';
-  const confirming = !!(tab && tab.trackConfirming);
-  document.getElementById('ck-track-btn').textContent = confirming ? 'Yes, track changes' : 'Track changes';
-  document.getElementById('ck-track-cancel').style.display = confirming ? '' : 'none';
-}
-// Two steps inside the cockpit (the board's confirm toast sits under this overlay): the first
-// click explains, the second writes. The server still requires confirm:true and re-resolves the
-// folder from the registry.
-async function trackChangesFromCockpit() {
-  const tab = cockpitState, t = tab && tab.trackTicket;
-  if (!t) return;
-  const btn = document.getElementById('ck-track-btn');
-  if (!tab.trackConfirming) {
-    let synced = '';
-    try { const r = await fetch(TRACK_URL); if (r.ok) synced = (await r.json()).synced || ''; } catch {}
-    if (cockpitState !== tab) return;
-    tab.trackConfirming = true;
-    setTermMessage('Create a local history (git) for this folder? Nothing is uploaded, and canon commits only a .gitignore; your files stay as they are.'
-      + (synced ? ' This folder is in ' + synced + ', which can damage that history — consider moving it first.' : ''));
-    syncTrackButton();
-    return;
-  }
-  btn.disabled = true;
-  const res = await postWrite(TRACK_URL, { confirm: true }, 'start tracking changes');
-  btn.disabled = false;
-  tab.trackConfirming = false;
-  if (!res.ok) {
-    if (cockpitState === tab) { setTermMessage("Couldn't start tracking changes: " + res.error); syncTrackButton(); }
-    return;
-  }
-  showToast('✓ This project now tracks changes', 'ok');
-  try {
-    const gd = await (await fetch('/api/git')).json();
-    state.isGitProject = gd?.is_git === true || typeof gd?.total_commits === 'number';
-    if (gd?.root) state.gitRoot = cockpitForwardSlash(gd.root);
-  } catch {}
-  if (cockpitState !== tab) return; // the user switched tabs meanwhile
-  await renderCockpitWorktree(t);
-  await maybeMountCockpitTerminal(t);
-}
-document.getElementById('ck-track-btn')?.addEventListener('click', trackChangesFromCockpit);
-document.getElementById('ck-track-cancel')?.addEventListener('click', () => {
-  if (!cockpitState) return;
-  cockpitState.trackConfirming = false;
-  setTermMessage(TRACK_INTRO);
-  syncTrackButton();
-});
-
 async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
-  cockpitState.needsTracking = !state.isGitProject;
-  cockpitState.trackTicket = t;
-  syncTrackButton();
-  if (cockpitState.needsTracking) {
-    iframe.style.visibility = 'hidden';
-    if (!cockpitState.trackConfirming) setTermMessage(TRACK_INTRO);
-    return;
-  }
   if (t.scratch) { await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';

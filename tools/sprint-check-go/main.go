@@ -997,8 +997,10 @@ func loadGit(root string) map[string]any {
 			}
 		}
 	}
+	// t-5a4b: a project with no git has no branch — report "" rather than inventing "main".
+	isGit := strings.TrimSpace(runGitIn(root, "rev-parse", "--is-inside-work-tree")) == "true"
 	branch := runGitIn(root, "rev-parse", "--abbrev-ref", "HEAD")
-	if branch == "" {
+	if branch == "" && isGit {
 		branch = "main"
 	}
 	var totalCommits any
@@ -1006,8 +1008,7 @@ func loadGit(root string) map[string]any {
 		totalCommits = n
 	}
 	cwd := rootOr(root)
-	// t-d218: parity with server.py — a repo with no commits yet has no total_commits but IS git.
-	isGit := strings.TrimSpace(runGitIn(root, "rev-parse", "--is-inside-work-tree")) == "true"
+	// t-d218: parity with server.py — a repo with no commits yet has no total_commits but IS git (isGit above).
 	return map[string]any{"branch": branch, "project": filepath.Base(cwd), "root": cwd, "modified": modified, "log": log, "total_commits": totalCommits, "is_git": isGit}
 }
 
@@ -4343,7 +4344,7 @@ func trackChanges(root string, confirm any) map[string]any {
 		return fail("Track changes needs confirm: true.")
 	}
 	if _, err := exec.LookPath("git"); err != nil {
-		return fail("git is not installed on this machine.")
+		return fail("Version history needs Git, which isn't installed on this computer. You can keep working without it.")
 	}
 	gitDir, ignore := filepath.Join(root, ".git"), filepath.Join(root, ".gitignore")
 	if _, err := os.Lstat(gitDir); err == nil {

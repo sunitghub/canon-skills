@@ -3396,6 +3396,33 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-5a4b: the register-the-sprint-skill nudge shows from every way a project tab opens, not only the card's open
+    // button — a person starting Scratch or continuing a ticket in a project without the skill sees it too. Dismissing
+    // it once keeps session-driven opens quiet; a project that has the skill never sees it.
+    test('shell (t-5a4b): the sprint-skill nudge shows on Scratch and session opens, stays quiet once dismissed', async ({ page }) => {
+      const skills = { 'proj-a': [], 'proj-x': ['sprint'] };
+      await page.route('**/api/project-stats*', r => {
+        const pid = new URL(r.request().url()).searchParams.get('project');
+        return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ skills: skills[pid] || [] }) });
+      });
+      await openShell(page, []);
+      await page.evaluate(() => { _removeTab('proj-a'); });               // start from a closed tab
+      await page.evaluate(() => startScratch('proj-a'));                  // the Scratch button's path
+      const nudge = page.locator('#view-proj-a .skill-nudge');
+      await expect(nudge).toBeVisible();
+      await expect(nudge).toContainText('sprint');
+      await nudge.locator('.sn-x').click();
+      await expect(nudge).toHaveCount(0);
+      await page.evaluate(() => startScratch('proj-a'));                  // a second, session-driven open after dismissing
+      await page.waitForTimeout(600);
+      await expect(page.locator('#view-proj-a .skill-nudge')).toHaveCount(0);
+      // A project that already has the skill is never nudged.
+      await page.evaluate(() => startScratch('proj-x'));
+      await page.waitForTimeout(600);
+      await expect(page.locator('#view-proj-x .skill-nudge')).toHaveCount(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // t-d34e (was t-28ec: only its own project's rows): a board inside a Cockpit tab has no sessions panel at all —
     // the shell's Agents rail, the card strips and Admin show them.
     test('shell (t-d34e): an embedded board shows no Cockpit sessions panel; the rail still lists every project', async ({ page }) => {
@@ -4999,89 +5026,22 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  // --- t-d538: a non-git project offers Track changes instead of a terminal that would fail ---
-  test('a non-git project shows Track changes instead of the terminal (t-d538)', async ({ page }) => {
+  // --- t-5a4b (was t-d538's gate): a project with no git opens the terminal directly and shows no git-derived surfaces ---
+  test('a non-git project opens the terminal directly, with no Track-changes gate and no git surfaces (t-5a4b)', async ({ page }) => {
     const id = `t-ckd538-${Date.now()}`;
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
       await stubCockpit(page);
       await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false }) }));
+        body: JSON.stringify({ branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false, total_commits: null }) }));
       await openFromCard(page, id);
-      await expect(page.locator('#ck-term-msg')).toContainText("doesn't track changes yet");
-      await expect(page.locator('#ck-track-btn')).toBeVisible();
-      await expect(page.locator('#ck-iframe')).toBeHidden();
-      await page.locator('#cockpit-overlay').screenshot({ path: path.join(require('os').tmpdir(), 'canon-d538-cockpit-untracked.png') });
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
-
-  test('Track changes confirms, POSTs confirm:true, then shows the terminal (t-d538)', async ({ page }) => {
-    const id = `t-ckd538b-${Date.now()}`;
-    try {
-      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
-      await stubCockpit(page);
-      let tracked = false; const posts = [];
-      await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify(tracked
-          ? { branch: 'main', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], total_commits: 1, is_git: true }
-          : { branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false }) }));
-      await page.route('**/api/worktrees**', onlyMain);
-      await page.route('**/api/track-changes**', route => {
-        // standalone board (no Cockpit ?project): it must name its own folder, never omit project
-        expect(new URL(route.request().url()).searchParams.get('project')).toBe('default');
-        if (route.request().method() === 'POST') {
-          posts.push(route.request().postDataJSON()); tracked = true;
-          return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, commit: 'abc1234' }) });
-        }
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking: tracked, synced: 'Dropbox' }) });
-      });
-      await openFromCard(page, id);
-      await page.locator('#ck-track-btn').click();
-      await expect(page.locator('#ck-term-msg')).toContainText('local history');
-      await expect(page.locator('#ck-term-msg')).toContainText('Dropbox');
-      await expect(page.locator('#ck-track-btn')).toHaveText('Yes, track changes');
-      expect(posts.length).toBe(0); // nothing is written before the confirm
-      // reviewer (t-d538): in a narrow terminal pane the wrapped message must push the buttons
-      // down, never cover them
-      await page.evaluate(() => { document.querySelector('.ck-term').style.maxWidth = '240px'; });
-      const msgBox = await page.locator('#ck-term-msg').boundingBox();
-      const actBox = await page.locator('#ck-track-actions').boundingBox();
-      expect(msgBox.height).toBeGreaterThan(60);                      // it really wrapped
-      expect(actBox.y).toBeGreaterThanOrEqual(msgBox.y + msgBox.height); // buttons sit below the text
-      await page.evaluate(() => { document.querySelector('.ck-term').style.maxWidth = ''; });
-      await page.locator('#ck-track-cancel').click();              // Cancel backs out, still nothing written
-      await expect(page.locator('#ck-track-btn')).toHaveText('Track changes');
-      expect(posts.length).toBe(0);
-      await page.locator('#ck-track-btn').click();
-      await page.locator('#ck-track-btn').click();
-      await expect.poll(() => posts.length).toBe(1);
-      expect(posts[0]).toEqual({ confirm: true });
-      await expect(page.locator('#ck-track-btn')).toBeHidden();
-      await expect(page.locator('#ck-term-msg')).not.toContainText("doesn't track changes yet");
-      await expect(page.locator('#ck-worktree-section')).toBeVisible();
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
-
-  test('a refused Track changes keeps the offer and says why (t-d538, t-1940)', async ({ page }) => {
-    const id = `t-ckd538c-${Date.now()}`;
-    try {
-      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'] });
-      await stubCockpit(page);
-      await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false }) }));
-      await page.route('**/api/track-changes**', route => route.request().method() === 'POST'
-        ? route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'This folder already has a .git.' }) })
-        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, tracking: false, synced: null }) }));
-      await openFromCard(page, id);
-      await page.locator('#ck-track-btn').click();
-      await page.locator('#ck-track-btn').click();
-      await expect(page.locator('#ck-term-msg')).toContainText('already has a .git');
-      await expect(page.locator('#ck-track-btn')).toBeVisible();
-      await expect(page.locator('#ck-track-btn')).toHaveText('Track changes');
+      await expect(page.locator('#ck-iframe')).toBeVisible();                       // the terminal mounts — nothing gates it
+      await expect(page.locator('#ck-term-msg')).not.toContainText('track changes');
+      for (const gone of ['#ck-track-btn', '#ck-track-actions', '#ck-track-cancel']) await expect(page.locator(gone)).toHaveCount(0);
+      // Nothing git-derived is shown: the class hides the branch chip, the Git and Recent Commits sections, the commit-prefix copy.
+      await expect(page.locator('html')).toHaveClass(/no-git/);
+      for (const sel of ['.header-branch', '.sidebar-section.git-only']) for (const el of await page.locator(sel).all()) await expect(el).toBeHidden();
+      await page.locator('#cockpit-overlay').screenshot({ path: path.join(require('os').tmpdir(), 'canon-5a4b-cockpit-nongit.png') });
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
