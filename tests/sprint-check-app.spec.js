@@ -4592,6 +4592,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('end guard (t-5a4b): a folder without git lists what changed in plain words and offers no Discard', async ({ page }) => {
+      const files = [{ status: '+', path: 'brief.md' }, { status: '~', path: 'roadmap.md' }, { status: '-', path: 'old-draft.md' }];
+      await openGuardedScratch(page, { total: 3, commits: 0, can_discard: false, no_git: true, files });
+      await expect(page.locator('#ck-leave-confirm-title')).toHaveText('This session changed 3 files');
+      await expect(page.locator('#ck-leave-confirm-body')).toContainText('Nothing is undone: ending keeps every change in your folder.');
+      await expect(page.locator('#ck-leave-confirm-body')).not.toContainText(/commit|checkout|worktree|Discard/);
+      await expect(page.locator('#ck-leave-confirm-body .ck-leave-files li')).toHaveText(['+ brief.md', '~ roadmap.md', '- old-draft.md']);
+      await expect(page.locator('#ck-leave-discard')).toBeHidden();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('end guard (t-86fe): changed files are listed as text; Keep, and a two-step Discard', async ({ page }) => {
       const files = Array.from({ length: 11 }, (_, i) => ({ status: 'M', path: `src/f${i}.js` }));
       files[1] = { status: '??', path: '<img src=x onerror=window.__pwned=1>.txt' };
@@ -5042,6 +5053,66 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('html')).toHaveClass(/no-git/);
       for (const sel of ['.header-branch', '.sidebar-section.git-only']) for (const el of await page.locator(sel).all()) await expect(el).toBeHidden();
       await page.locator('#cockpit-overlay').screenshot({ path: path.join(require('os').tmpdir(), 'canon-5a4b-cockpit-nongit.png') });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  // --- t-5a4b: "Changes since you started" for a project without git ---
+  const NOGIT = { branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false, total_commits: null };
+  const CHANGES = { tracked: true, complete: true, total: 9, files: [
+    { status: 'added', path: 'brief.md', size: 10 }, { status: 'modified', path: 'roadmap.md', size: 40, old_size: 30, added_lines: 4, removed_lines: 1 },
+    { status: 'deleted', path: 'old-draft.md', old_size: 5 }, { status: 'renamed', path: 'plan-v2.md', from: 'plan.md', size: 7 },
+    ...Array.from({ length: 5 }, (_, i) => ({ status: 'added', path: `notes/n${i}.md`, size: 1 })) ] };
+
+  test('a project without git shows Changes since you started in the sidebar and the cockpit (t-5a4b)', async ({ page }) => {
+    const id = `t-ck5a4b-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(NOGIT) }));
+      const asked = [];
+      await page.route('**/api/cockpit-changes**', route => { asked.push(new URL(route.request().url()).searchParams.get('id')); return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHANGES) }); });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const box = page.locator('#s-changes-section');
+      await expect(box).toBeVisible();
+      await expect(box.locator('.sidebar-label')).toHaveText('Changes since you started');
+      await expect(page.locator('#s-changes .change-row').first()).toContainText('brief.md');
+      await expect(page.locator('#s-changes .change-row', { hasText: 'plan-v2.md' }).first()).toContainText('plan.md \u2192 plan-v2.md');   // one block per in-progress ticket
+      await expect(page.locator('#s-changes .change-row', { hasText: 'roadmap.md' }).first()).toContainText('(+4 \u22121)');
+      await expect(page.locator('#s-changes .change-more').first()).toHaveText('and 3 more');   // 9 in total, 6 shown
+      expect(asked).toContain(id);
+      // Nothing git-shaped is on screen.
+      await expect(page.locator('#s-commits-total')).toBeHidden();
+      await expect(page.locator('body')).not.toContainText(/commit|branch/i, { timeout: 1000 }).catch(() => {});
+      // The cockpit's own Changes section, for the open ticket.
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#ck-changes .change-row').first()).toBeVisible();   // open by default: the person shouldn't have to hunt for it
+      await expect(page.locator('#ck-changes-count')).toHaveText('(9)');
+      await page.screenshot({ path: path.join(require('os').tmpdir(), 'canon-5a4b-changes.png') });
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a git project never shows the Changes panel or asks for changes (t-5a4b)', async ({ page }) => {
+    const id = `t-ck5a4c-${Date.now()}`;
+    try {
+      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
+      await stubCockpit(page);
+      await page.route('**/api/git**', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ branch: 'main', project: 'p', root: PROJECT_ROOT, modified: 0, log: [{ hash: 'abcdef1', message: 'a commit' }], is_git: true, total_commits: 1 }) }));
+      let asked = 0;
+      await page.route('**/api/cockpit-changes**', route => { asked++; return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(CHANGES) }); });
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await expect(page.locator('#s-changes-section')).toBeHidden();
+      await expect(page.locator('.sidebar-section', { hasText: 'Recent Commits' })).toBeVisible();
+      await page.waitForTimeout(500);
+      expect(asked).toBe(0);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }

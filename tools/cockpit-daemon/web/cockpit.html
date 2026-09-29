@@ -308,7 +308,7 @@
         .then(function(r){ return r.ok ? r.json() : r.text().then(function(t){ throw new Error(t); }); })
         .then(function(j){
           try{ window.parent.postMessage({ source: "canon-cockpit", type: "changes", total: Number(j.total) || 0, commits: Number(j.commits) || 0,
-            can_discard: j.can_discard === true, files: Array.isArray(j.files) ? j.files.slice(0, 50) : [] }, "*"); }catch(e){}
+            can_discard: j.can_discard === true, no_git: j.no_git === true, files: Array.isArray(j.files) ? j.files.slice(0, 50) : [] }, "*"); }catch(e){}
         })
         .catch(function(e){ failed(e && e.message || "Couldn't reach the daemon."); });
     } else if(d.type === "end-scratch"){

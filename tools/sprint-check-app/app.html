@@ -1767,6 +1767,14 @@
     }
     /* t-5a4b: a project with no git shows none of the git-derived surfaces (branch, commits, commit-prefix copy) */
     html.no-git .git-only { display: none !important; }
+    .no-git-only { display: none; }
+    html.no-git .no-git-only { display: block; }
+    .change-row { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 1px 0; }
+    .change-sym { width: 12px; flex-shrink: 0; text-align: center; font-family: ui-monospace, monospace; color: var(--accent); }
+    .change-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .change-lines { flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+    .change-more, .change-empty { font-size: 12px; color: var(--text-muted); padding: 2px 0; }
+    .change-ticket { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-muted); margin: 6px 0 2px; }
     .ck-preview {
       width: var(--ck-preview-w, 360px); flex-shrink: 0; border-left: 1px solid var(--border);
       background: var(--surface); display: flex; flex-direction: column; position: relative;
@@ -2025,6 +2033,11 @@
           <div class="commit-list" id="s-commits"></div>
         </div>
 
+        <div class="sidebar-section no-git-only" id="s-changes-section">
+          <div class="sidebar-label">Changes since you started</div>
+          <div id="s-changes"></div>
+        </div>
+
         <div class="sidebar-section" style="border-bottom:none">
           <div class="sidebar-label">Tickets</div>
           <div class="sidebar-summary" id="s-summary"></div>
@@ -2157,6 +2170,16 @@
             </div>
             <div class="ck-accordion-body">
               <div class="ck-testplan" id="ck-testplan"></div>
+            </div>
+          </div>
+          <div class="ck-accordion-section no-git-only" id="ck-changes-section">
+            <div class="ck-accordion-header" data-accordion="ck-changes-section">
+              <div class="ck-section-label">Changes</div>
+              <span class="ck-section-count" id="ck-changes-count"></span>
+              <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="ck-accordion-body">
+              <div id="ck-changes"></div>
             </div>
           </div>
         </div>
@@ -2518,7 +2541,7 @@
   // otherwise showed the shell's launch-time project's worktrees under any tab.
   // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
   // resolveMockupSrc scopes it itself — t-7d83.)
-  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|track-changes$)/;
+  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|track-changes$|cockpit-changes$)/;
   // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
   // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
   // create/unlock done inside a project tab target THAT project. Deliberately
@@ -3410,6 +3433,7 @@ function renderSidebar() {
   commitsEl.querySelectorAll('.commit-item').forEach(el => {
     el.addEventListener('click', () => openCommitPanel(el.dataset.hash));
   });
+  renderSidebarChanges();   // t-5a4b: only for a project without git
 
   const STATUS_ICONS = {
     open:        `<svg class="summary-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2 1.5"/></svg>`,
@@ -5412,6 +5436,7 @@ window.addEventListener('message', (e) => {
     tab._onEnded();
   } else if (d.type === 'changes') {   // t-86fe
     if (isActive) showScratchChanges({ total: Number(d.total) || 0, commits: Number(d.commits) || 0, can_discard: d.can_discard === true,
+      no_git: d.no_git === true,
       files: Array.isArray(d.files) ? d.files.filter(f => f && typeof f.path === 'string').map(f => ({ status: String(f.status || '').slice(0, 2), path: f.path })) : [] });
   } else if (d.type === 'changes-failed') {
     if (isActive) document.getElementById('ck-leave-confirm-status').textContent = 'Couldn\u2019t check for changes \u2014 Just end keeps any changes in place.';
@@ -5694,10 +5719,11 @@ function showScratchChanges(c) {
   if (!c.total && !c.commits) return;   // clean: the t-f553 dialog as it is
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const what = [c.total ? plural(c.total, 'changed file') : '', c.commits ? plural(c.commits, 'commit') + ' in its worktree' : ''].filter(Boolean).join(' and ');
-  document.getElementById('ck-leave-confirm-title').textContent = 'This session has ' + what;
+  document.getElementById('ck-leave-confirm-title').textContent = (c.no_git ? 'This session changed ' + plural(c.total, 'file') : 'This session has ' + what);
   const body = document.getElementById('ck-leave-confirm-body');
   body.textContent = 'Save as ticket hands them to a new ticket. Keep changes ends the session and leaves them in place, noted in HANDOFF.md.'
-    + (c.can_discard ? ' Discard throws away the file changes (edits and new files; ignored files stay).'
+    + (c.no_git ? ' Nothing is undone: ending keeps every change in your folder.'
+      : c.can_discard ? ' Discard throws away the file changes (edits and new files; ignored files stay).'
       : c.total ? ' Discard isn\u2019t offered: this checkout already had uncommitted changes when the session started.' : '');
   if (c.files.length) {
     const ul = document.createElement('ul');
@@ -6349,6 +6375,47 @@ async function renderCockpitDocs(t) {
   const content = await fetchAcceptanceContent(t);
   renderCockpitAcceptance(content, t);
   renderCockpitTestPlan(content, t);
+  renderCockpitChanges(t);
+}
+
+// t-5a4b: "Changes since you started" for a project without git — the daemon's snapshot comparison
+// (added / edited / deleted / renamed since the session's baseline), shown in the sidebar and the cockpit.
+const CHANGE_SYMBOL = { added: '+', modified: '~', deleted: '\u2212', renamed: '\u2192' };
+async function fetchChanges(id) {
+  try { const r = await fetch('/api/cockpit-changes?id=' + encodeURIComponent(id)); return r.ok ? await r.json() : null; } catch { return null; }
+}
+function changeRows(c, max) {
+  const files = Array.isArray(c && c.files) ? c.files : [];
+  const rows = files.slice(0, max).map(f => {
+    const what = f.status === 'renamed' ? `${f.from} \u2192 ${f.path}` : f.path;
+    const lines = (f.added_lines || f.removed_lines) ? ` (+${f.added_lines || 0} \u2212${f.removed_lines || 0})` : '';
+    return `<div class="change-row"><span class="change-sym">${esc(CHANGE_SYMBOL[f.status] || '~')}</span><span class="change-path" title="${escAttr(what)}">${esc(what)}</span><span class="change-lines">${esc(lines)}</span></div>`;
+  });
+  const total = Number(c && c.total) || files.length;
+  if (total > max) rows.push(`<div class="change-more">and ${total - max} more</div>`);
+  if (!rows.length) rows.push(`<div class="change-empty">${esc((c && c.note) || 'Nothing has changed yet.')}</div>`);
+  else if (c && c.note) rows.push(`<div class="change-empty">${esc(c.note)}</div>`);
+  return rows.join('');
+}
+async function renderCockpitChanges(t) {
+  if (state.isGitProject || !t || !t.id) return;
+  const box = document.getElementById('ck-changes');
+  if (!box) return;
+  const c = await fetchChanges(t.id);
+  box.innerHTML = changeRows(c, 20);
+  const n = c && Number(c.total);
+  document.getElementById('ck-changes-count').textContent = n ? `(${n})` : '';
+}
+let sidebarChangesStamp = 0;
+async function renderSidebarChanges() {
+  if (state.isGitProject) return;
+  const box = document.getElementById('s-changes');
+  if (!box || Date.now() - sidebarChangesStamp < 8000) return;
+  sidebarChangesStamp = Date.now();
+  const active = (state.tickets || []).filter(t => effectiveStatus(t) === 'in_progress').slice(0, 3);
+  if (!active.length) { box.innerHTML = '<div class="change-empty">No sprint is running.</div>'; return; }
+  const parts = await Promise.all(active.map(async t => `<div class="change-ticket">${esc(t.id)}</div>` + changeRows(await fetchChanges(t.id), 6)));
+  box.innerHTML = parts.join('');
 }
 
 // Finds this ticket's own bullet under HANDOFF.md's "## In Progress" section
