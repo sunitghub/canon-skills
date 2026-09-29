@@ -7108,3 +7108,95 @@ func TestNonGitStartFailsOpenWhenTheStoreIsUnusable(t *testing.T) {
 		t.Fatalf("start with an unusable store = %d, want 200 (fail open)", status)
 	}
 }
+
+// t-5a4b: a second (third...) scratch session in a folder without git shares the folder instead of
+// failing to make a worktree, and /sessions says the sessions are sharing.
+func TestNonGitConcurrentScratchSessionsShareTheFolder(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	for _, id := range []string{"s-aaaa", "s-bbbb", "s-cccc"} {
+		if _, _, status := startSessionFull(t, ts.URL, id, root, "claude"); status != http.StatusOK {
+			t.Fatalf("scratch %s in a folder without git = %d, want 200 (shared folder, no worktree)", id, status)
+		}
+	}
+	realRoot, _ := filepath.EvalSymlinks(root)
+	rows := listSessions(t, ts.URL)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %+v, want 3", rows)
+	}
+	resp, _ := http.Get(ts.URL + "/sessions")
+	var full []struct {
+		Cwd    string `json:"cwd"`
+		Shared bool   `json:"shared"`
+	}
+	json.NewDecoder(resp.Body).Decode(&full)
+	resp.Body.Close()
+	for _, r := range full {
+		if !pathsEqual(r.Cwd, realRoot) || !r.Shared {
+			t.Fatalf("row %+v: want every session in %s flagged shared", r, realRoot)
+		}
+	}
+}
+
+// A lone session is not "shared", and a git project's sessions never are (worktrees keep them apart).
+func TestSharedFlagOnlyForSessionsSharingAFolderWithoutGit(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	startSessionFull(t, ts.URL, "s-aaaa", root, "claude")
+	resp, _ := http.Get(ts.URL + "/sessions")
+	var one []struct{ Shared bool }
+	json.NewDecoder(resp.Body).Decode(&one)
+	resp.Body.Close()
+	if len(one) != 1 || one[0].Shared {
+		t.Fatalf("a lone session = %+v, want shared=false", one)
+	}
+}
+
+// The idle reaper judges a folder without git by the snapshot: it ends the session, and what the
+// agent changed is noted (not thrown away).
+func TestIdleReapScratchWithoutGit(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: time.Hour, saveFallback: 30 * time.Second})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	sid, _, status := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	if status != http.StatusOK {
+		t.Fatalf("start = %d", status)
+	}
+	waitForFile(t, filepath.Join(root, "agent-out.md"))
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) && !se.isExited() {
+		time.Sleep(100 * time.Millisecond)
+		s.reapIdleSessions()
+	}
+	time.Sleep(300 * time.Millisecond)
+	if !se.isExited() {
+		t.Fatal("the idle scratch session in a folder without git must end (judged by the snapshot, not git status)")
+	}
+	if b, err := os.ReadFile(filepath.Join(root, "agent-out.md")); err != nil || string(b) == "" {
+		t.Fatalf("the reaper must keep what the agent wrote: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "s-ab12") {
+		t.Fatalf("idle end with changes not noted:\n%s", b)
+	}
+}

@@ -3396,6 +3396,31 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-5a4b: two sessions in one folder without git can overwrite each other. The daemon flags them `shared`; the
+    // shell warns once under that project, a dismissal sticks while the sharing lasts, and the warning goes away
+    // when the sharing stops. A lone session, or one the daemon doesn't flag, shows nothing.
+    test('shell (t-5a4b): a folder shared by several agents shows a dismissible warning under its project', async ({ page }) => {
+      const mk = (id, shared) => ({ session: id, ticket: id, project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', started: '2026-09-29T00:00:00Z', shared });
+      await openShell(page, [mk('s-aaaa', false)]);
+      await page.waitForTimeout(400);
+      await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);
+      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      const warn = page.locator('#view-proj-a .shared-warn');
+      await expect(warn).toBeVisible();
+      await expect(warn).toContainText('overwrite');
+      await expect(page.locator('#view-proj-x .shared-warn')).toHaveCount(0);
+      await warn.locator('.sn-x').click();
+      await expect(warn).toHaveCount(0);
+      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);            // dismissed stays dismissed
+      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
+      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await expect(page.locator('#view-proj-a .shared-warn')).toBeVisible();              // sharing stopped, then began again
+      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
+      await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // t-5a4b: the register-the-sprint-skill nudge shows from every way a project tab opens, not only the card's open
     // button — a person starting Scratch or continuing a ticket in a project without the skill sees it too. Dismissing
     // it once keeps session-driven opens quiet; a project that has the skill never sees it.

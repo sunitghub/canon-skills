@@ -69,14 +69,14 @@
   .view{position:absolute;inset:0;overflow:auto;display:none}
   .view.active{display:block}
   /* t-5c3c: when a nudge banner is present, stack it above the board iframe */
-  .view.active.has-nudge,.view.active.has-intr{display:flex;flex-direction:column}
-  .view.has-nudge iframe,.view.has-intr iframe{flex:1;height:auto;min-height:0}
-  .skill-nudge{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
-  .skill-nudge .sn-msg{flex:1;min-width:0}
+  .view.active.has-nudge,.view.active.has-intr,.view.active.has-shared{display:flex;flex-direction:column}
+  .view.has-nudge iframe,.view.has-intr iframe,.view.has-shared iframe{flex:1;height:auto;min-height:0}
+  .skill-nudge,.shared-warn{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
+  .skill-nudge .sn-msg,.shared-warn .sn-msg{flex:1;min-width:0}
   .skill-nudge .sn-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
   .skill-nudge .sn-reg{font-size:12px;padding:6px 12px}
-  .skill-nudge .sn-x{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
-  .skill-nudge .sn-x:hover{color:var(--text);border-color:var(--border-hover)}
+  .skill-nudge .sn-x,.shared-warn .sn-x{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
+  .skill-nudge .sn-x:hover,.shared-warn .sn-x:hover{color:var(--text);border-color:var(--border-hover)}
   #view-projects{padding:24px 30px}
   #view-admin{padding:24px 30px}
   #view-upkeep{padding:24px 30px}
@@ -1067,6 +1067,7 @@
       scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||'').slice(0,80):'',   // t-f553: its user-given title
       proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
       agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
+      shared:s.shared===true,   // t-5a4b: another live session works in this same folder, and there is no git to keep them apart
     };
   }
   // t-f553: open scratch tabs the daemon doesn't report yet — the agent picker is still up.
@@ -1094,6 +1095,25 @@
     if(v.state==='idle' || v.state==='done') return v.short+(since?' '+since:'')+agent+reaps;
     return v.short+agent;
   }
+  // t-5a4b: two sessions in one folder without git can overwrite each other — say so, once, under
+  // the project. Dismissing hides it until the sharing stops and starts again.
+  const sharedDismissed=new Set();
+  function syncSharedWarnings(views){
+    const sharing=new Set(views.filter(v=>v.shared&&v.pid).map(v=>v.pid));
+    for(const id of [...sharedDismissed]) if(!sharing.has(id)) sharedDismissed.delete(id);
+    document.querySelectorAll('.shared-warn').forEach(b=>{ if(!sharing.has(b.dataset.pid)||sharedDismissed.has(b.dataset.pid)){ const v=b.parentElement; b.remove(); if(v) v.classList.remove('has-shared'); } });
+    for(const id of sharing){
+      const v=document.getElementById('view-'+id);
+      if(!v||sharedDismissed.has(id)||v.querySelector('.shared-warn')) continue;
+      const bar=document.createElement('div'); bar.className='shared-warn'; bar.dataset.pid=id; bar.setAttribute('role','status');
+      const msg=document.createElement('span'); msg.className='sn-msg';
+      msg.textContent='More than one agent is working in this folder. They can overwrite each other\u2019s changes \u2014 fine for reading and running tests, risky if both edit the same files.';
+      const x=document.createElement('button'); x.className='sn-x'; x.title='Dismiss'; x.textContent='\u2715';
+      x.addEventListener('click',()=>{ sharedDismissed.add(id); bar.remove(); v.classList.remove('has-shared'); });
+      bar.appendChild(msg); bar.appendChild(x);
+      v.classList.add('has-shared'); v.insertBefore(bar,v.firstChild);
+    }
+  }
   function renderSessionSurfaces(){
     const views=lastSessions.map(sessionView);
     ensureTicketTitles(views);
@@ -1112,6 +1132,7 @@
         `<span class="ag-s">${esc(agentLine(v))}</span></button>`;
       }).join('')
     ).join('');
+    syncSharedWarnings(views);
     list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(rail[+b.dataset.i])));
     list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     // Projects cards: counts by state.

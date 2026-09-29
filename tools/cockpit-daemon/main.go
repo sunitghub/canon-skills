@@ -504,7 +504,9 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		// state dir (sessionStateDir). Created only now, after every refusal above, so a
 		// refused start leaves nothing behind.
 		// t-e162: the main checkout is free → run there; otherwise in a new worktree.
-		if s.mainCheckoutBusy(projectRoot) {
+		// t-5a4b: a folder without git can't have worktrees (and copies can't be merged back), so several
+		// scratch sessions share the folder — the board warns that they can overwrite each other.
+		if s.mainCheckoutBusy(projectRoot) && !s.noGit(projectRoot) {
 			created, err := createScratchWorktree(projectRoot)
 			if err != nil {
 				http.Error(w, "could not create a worktree for this scratch session: "+err.Error(), http.StatusInternalServerError)
@@ -1003,6 +1005,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Signal        string `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
 		Title         string `json:"title,omitempty"` // t-f553: a scratch session's user-given title
 		Attached      int    `json:"attached"`        // t-61c7: browser streams attached right now
+		Shared        bool   `json:"shared"`          // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
 	s.mu.Lock()
@@ -1024,6 +1027,23 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.mu.Unlock()
+	// t-5a4b: sessions sharing one folder without git can overwrite each other — say so. Only when
+	// two rows share a cwd is git asked at all, once per project.
+	byCwd, noGit := map[string]int{}, map[string]bool{}
+	for _, o := range out {
+		byCwd[o.Cwd]++
+	}
+	for i := range out {
+		if byCwd[out[i].Cwd] < 2 {
+			continue
+		}
+		g, seen := noGit[out[i].ProjectRoot]
+		if !seen {
+			g = s.noGit(out[i].ProjectRoot)
+			noGit[out[i].ProjectRoot] = g
+		}
+		out[i].Shared = g
+	}
 	// idleTimeoutFor resolves symlinks on disk — done outside the locks.
 	for i := range out {
 		out[i].IdleLimitSecs = int64(s.idleTimeoutFor(out[i].ProjectRoot, out[i].Cwd).Seconds())
@@ -2318,7 +2338,7 @@ func (s *server) endIdleScratch(se *session) {
 	se.mu.Lock()
 	cwd, wt := se.cwd, se.scratchWT
 	se.mu.Unlock()
-	_, total, commits, err := scratchLeftovers(cwd, wt)
+	_, total, commits, _, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
 	if err != nil {
 		keep("could not check the scratch checkout", err)
 		return
