@@ -19,7 +19,7 @@ import time
 from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 # ── Locate project root ───────────────────────────────────────────────────
 
@@ -2777,6 +2777,15 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path.rstrip('/')
         if path in ('', '/'):
+            # t-5716: a top-level visit lands on the Cockpit; its tab iframes, ?standalone=1
+            # and header-less clients (curl, tools) still get the board.
+            q = parse_qs(parsed.query, keep_blank_values=True)  # `?standalone` alone counts, as in Go
+            if self.headers.get('Sec-Fetch-Dest') == 'document' and 'standalone' not in q:
+                pid = (q.get('project') or [''])[0]
+                self.send_response(302)
+                self.send_header('Location', '/cockpit' + ('#open=' + quote(pid, safe='') if pid else ''))
+                self.send_header('Content-Length', '0')
+                self.end_headers(); return
             self.send_html(APP_HTML)
         elif path == '/cockpit':
             # Canon Cockpit shell landing (t-9917). Falls back to the board if

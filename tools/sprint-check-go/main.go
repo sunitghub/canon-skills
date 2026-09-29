@@ -236,6 +236,17 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimRight(r.URL.Path, "/")
 	switch path {
 	case "", "/":
+		// t-5716: a top-level visit lands on the Cockpit; its tab iframes, ?standalone=1 and
+		// header-less clients (curl, tools) still get the board.
+		q := r.URL.Query()
+		if _, standalone := q["standalone"]; r.Header.Get("Sec-Fetch-Dest") == "document" && !standalone {
+			loc := "/cockpit"
+			if pid := q.Get("project"); pid != "" {
+				loc += "#open=" + strings.ReplaceAll(url.QueryEscape(pid), "+", "%20")
+			}
+			http.Redirect(w, r, loc, http.StatusFound)
+			return
+		}
 		serveFile(w, appHTML, "text/html; charset=utf-8")
 	case "/cockpit":
 		if exists(cockpitHTML) {
