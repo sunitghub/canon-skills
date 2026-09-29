@@ -3458,13 +3458,18 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('hostile open-session / open-ticket messages are inert', async ({ page }) => {
       writeTicket(XID, 'in_progress');   // real ticket, so a wrongly-accepted open-ticket WOULD open the overlay
+      // t-a2f9: the proj-a board iframe commits its navigation some time after openShell returns (slower in WebKit).
+      // Hold its document request so that is true on every run — a lookup that doesn't wait then fails every time.
+      await page.route(/\/\?project=proj-a(&|$)/, async route => { await new Promise(r => setTimeout(r, 1500)); await route.continue().catch(() => {}); });
       const board = await openShell(page, []);
       const send = m => page.evaluate(m => { window.__pwned = 0; window.postMessage(m, location.origin); }, m);
       const tabsBefore = await page.locator('.view').count();
       // Sender is the shell page itself (not a tab iframe, no tab token) → rejected even with a valid payload.
       await send({ source: 'canon-board', type: 'open-session', project_root: 'C:\\Users\\me\\Proj-X', ticket: XID });
       // Sender is a real tab iframe, but the payload is hostile.
-      const frame = page.frames().find(f => f.url().includes('project=proj-a'));
+      const boardFrame = () => page.frames().find(f => f.url().includes('project=proj-a'));
+      await expect.poll(() => !!boardFrame(), { timeout: 10_000 }).toBe(true);   // wait for the commit; never sample it
+      const frame = boardFrame();
       const hostile = [
         { project_root: 'C:\\Users\\me\\Proj-X', ticket: 't-abcd" onmouseover="window.__pwned=1' },
         { project_root: 'C:\\Users\\me\\Proj-X', ticket: { a: 1 } },
