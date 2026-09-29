@@ -412,6 +412,7 @@
     if(!/^[ts]-[a-z0-9]{4}$/.test(ticket)){ term.writeln("\r\n\x1b[31minvalid id (expected a ticket t-xxxx or a scratch session s-xxxx)\x1b[0m"); return; }
     document.getElementById("startBtn").classList.remove("pulse");
     setStatus("running","starting…");
+    starting = true;
     try{
       var agent = (document.getElementById("agentSel") || {}).value || AGENT || "claude";
       var r = await fetch("/session/start", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(TOKEN)), body: JSON.stringify({ticket:ticket, cwd:PREFILL_CWD, agent:agent}) });
@@ -444,6 +445,7 @@
       resize();
       attachStream();
     }catch(e){ setStatus("error","error"); term.writeln("\r\n\x1b[31m"+e+"\x1b[0m"); }
+    finally{ starting = false; }
   }
 
   async function attachStream(){
@@ -625,12 +627,13 @@
   // t-61c7: a tab that opens an id with a live session says so and offers Attach
   // (the daemon already attaches any Start for a live id, ignoring the picked agent).
   var AGENT_LABEL = { claude: "Claude Code", pi: "Pi", copilot: "Copilot CLI" };
+  var starting = false; // a Start is in flight: its own new row must not read as another window's
   var START_LABEL = document.getElementById("startBtn").textContent;
   async function checkLive(){
-    if(session || !PREFILL) return;
+    if(session || starting || !PREFILL || AUTOSTART === "1") return; // autostart already attaches
     var rows = null;
     try{ var r = await fetch("/sessions"); if(r.ok) rows = await r.json(); }catch(e){}
-    if(session) return;
+    if(session || starting) return;
     var live = (rows || []).filter(function(x){ return x.ticket === PREFILL && (!PREFILL_CWD || x.project_root === PREFILL_CWD || x.cwd === PREFILL_CWD); });
     live = live.length === 1 ? live[0] : null; // several projects share this id: don't guess
     var sel = document.getElementById("agentSel"), btn = document.getElementById("startBtn"), h = document.getElementById("agentHint");
