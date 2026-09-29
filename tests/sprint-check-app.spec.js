@@ -3365,18 +3365,47 @@ test.describe('cockpit in board (t-ddc8)', () => {
       return page.frameLocator('#view-proj-a iframe');
     }
 
-    // t-28ec: an embedded board lists only its own sessions (the shell's Agents rail has the rest),
-    // so a cross-project row no longer appears there; the shell still honours an open-session
-    // message from a tab's board (a board whose root isn't known yet lists everything).
+    // t-28ec / t-d34e: an embedded board shows no sessions panel (the shell's Agents rail has them all);
+    // the shell still honours an open-session message from a tab's board.
     const postOpenSession = (page, project_root, ticket) => page.frameLocator('#view-proj-a iframe').locator('body')
       .evaluate((_, m) => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...m }, location.origin), { project_root, ticket });
 
-    test('shell (t-28ec): an embedded board lists only its own project\u2019s sessions', async ({ page }) => {
+    // t-d34e: no top bar. A sidebar brand row shares the tab strip's height (tops and dividers align), and the Projects view
+    // opens with a section bar: title, "N registered · M active", + Add Project — aligned with the card grid.
+    test('shell (t-d34e): no top bar; brand row level with the tab strip; Projects section bar', async ({ page }) => {
+      await openShell(page, []);
+      for (const sel of ['.topbar', '#projFilter', '#needpill']) await expect(page.locator(sel)).toHaveCount(0);
+      const box = sel => page.locator(sel).first().boundingBox();
+      const brand = await box('aside.side .brand'), strip = await box('#tabstrip');
+      expect(Math.round(brand.y)).toBe(Math.round(strip.y));
+      expect(Math.round(brand.y + brand.height)).toBe(Math.round(strip.y + strip.height));   // one divider line
+      expect(Math.round(strip.y)).toBe(0);                                                   // the strip is the first row
+      await expect(page.locator('#ver')).toBeVisible();
+      await page.locator('.tab.pinned').click();
+      const bar = page.locator('#view-projects .projbar');
+      await expect(bar.locator('h2')).toHaveText('Projects');
+      await expect(page.locator('#ncount')).toHaveText('2 registered \u00b7 1 active');      // proj-a is open (openShell)
+      await page.evaluate(() => _removeTab('proj-a'));
+      await expect(page.locator('#ncount')).toHaveText('2 registered \u00b7 none open');
+      await expect(bar.locator('button', { hasText: '+ Add Project' })).toBeVisible();
+      const barBox = await bar.boundingBox(), first = await page.locator('#grid .card').first().boundingBox();
+      expect(first.y - (barBox.y + barBox.height)).toBeLessThan(24);                        // the cards start right under the bar
+      expect(Math.round(barBox.x)).toBe(Math.round(first.x));                               // and share its left edge
+      await bar.locator('button', { hasText: '+ Add Project' }).click();
+      await expect(page.locator('#addModal')).toHaveClass(/show/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // t-d34e (was t-28ec: only its own project's rows): a board inside a Cockpit tab has no sessions panel at all —
+    // the shell's Agents rail, the card strips and Admin show them.
+    test('shell (t-d34e): an embedded board shows no Cockpit sessions panel; the rail still lists every project', async ({ page }) => {
       const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/'), row('t-own1', PROJECT_ROOT), row('t-nowh', '/tmp/nowhere')]);
       await page.evaluate(() => pollSessions());
-      await expect(board.locator('.cockpit-session-row')).toHaveCount(1);
-      await expect(board.locator('.cockpit-session-row')).toHaveAttribute('data-ticket', 't-own1');
-      await expect(page.locator('#ag-list .ag-row')).toHaveCount(3);   // the rail still shows every project
+      // An absence check can pass before the board has loaded anything: force its refresh, then look.
+      await board.locator('html').evaluate(() => refreshCockpitSessions());
+      await expect(board.locator('.cockpit-session-row')).toHaveCount(0);
+      await expect(board.locator('#cockpit-sessions')).toBeHidden();
+      await expect(page.locator('#ag-list .ag-row')).toHaveCount(3);   // still every project's rows after the board refreshed
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -3476,7 +3505,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       { session: 's6', ticket: 't-eee5" x="1', project_root: '/tmp/proj-a', cwd: HOSTILE_CWD, agent: '<img src=x onerror=window.__pwned=1>', status: 'running', state: 'idle', state_secs: 400, idle_secs: 400, idle_limit_secs: 'soon', signal: '<b>x</b>' },
     ];
 
-    test('shell (t-824e): Agents sidebar, needs-you pill, amber tab dot and Projects Sessions row', async ({ page }) => {
+    test('shell (t-824e): Agents sidebar, needs-you rail row, amber tab dot and Projects Sessions row', async ({ page }) => {
       writeTicket(XID, 'in_progress');
       try {
         await openShell(page, stateRows());
@@ -3503,17 +3532,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('.meta[data-stats="proj-a"] [data-f="sessions-row"]')).toBeVisible();
         fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals'), { recursive: true });
         await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals', 'shell.png') });
-        // Pill: 2 waiting; opens the longest wait (XID in Proj-X, 95s) and its ticket cockpit.
-        const pill = page.locator('#needpill');
-        await expect(pill).toHaveText('2 needs you');
-        await pill.click();
+        // t-d34e: no needs-you pill any more — the pink rail row opens the waiting session (XID in Proj-X) and its ticket cockpit.
+        await list.locator('.ag-row.st-needs-you', { hasText: XID }).click();
         await expect(page.locator('#view-proj-x')).toHaveClass(/active/);
         await expect(page.frameLocator('#view-proj-x iframe').locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
-        // With nothing waiting the pill goes away and the Sessions row hides for an idle project.
+        // With nothing waiting no row is pink and the Sessions row hides for an idle project.
         await page.unroute('**/api/cockpit-sessions');
         await page.route('**/api/cockpit-sessions', sessionsBody(stateRows().filter(r => r.state !== 'needs-you' && r.project_root !== '/tmp/proj-a')));
         await page.evaluate(() => pollSessions());
-        await expect(pill).toBeHidden();
+        await expect(list.locator('.ag-row.st-needs-you')).toHaveCount(0);
         await expect(page.locator('.tab[data-tab="proj-a"] .live')).not.toHaveClass(/needs/);
         expect(await page.evaluate(() => window.__pwned)).toBe(0);
       } finally {
@@ -3579,7 +3606,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
       await page.evaluate(() => pollSessions());
-      await expect(page.locator('#needpill')).toHaveText('1 needs you');
       await expect(page.locator('#ag-list .ag-row')).toContainText('needs you');
       await expect(page.locator('#ag-list')).not.toContainText('undefined');
       await page.locator('#nav-admin').click();
@@ -3588,7 +3614,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unroute('**/api/cockpit-sessions');
       await page.route('**/api/cockpit-sessions', sessionsBody([]));
       await page.evaluate(() => pollSessions());
-      await expect(page.locator('#needpill')).toBeHidden();
+      await expect(page.locator('#ag-list .ag-row.st-needs-you')).toHaveCount(0);
       await expect(page.locator('#ag-label')).toBeVisible();   // t-e69b: the section is always there
       await expect(page.locator('#ag-list')).toHaveText('No agents running');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals'), { recursive: true });
@@ -3818,14 +3844,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const c = sel => getComputedStyle(document.querySelector(sel)).color;
         return {
           need: c('#ag-list .ag-row.st-needs-you .ag-s'), work: c('#ag-list .ag-row.st-working .ag-s'), done: c('#ag-list .ag-row.st-done .ag-s'),
-          pill: c('#needpill'), tab: getComputedStyle(document.querySelector('.tab[data-tab="proj-a"] .live.needs')).backgroundColor,
+          tab: getComputedStyle(document.querySelector('.tab[data-tab="proj-a"] .live.needs')).backgroundColor,
           ring: getComputedStyle(document.querySelector('#ag-list .ag-row.st-idle .sdot')).boxShadow,
         };
       });
-      expect(await read()).toMatchObject({ need: 'rgb(243, 139, 168)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)', pill: 'rgb(243, 139, 168)', tab: 'rgb(243, 139, 168)' });
+      expect(await read()).toMatchObject({ need: 'rgb(243, 139, 168)', work: 'rgb(249, 226, 175)', done: 'rgb(148, 226, 213)', tab: 'rgb(243, 139, 168)' });
       expect((await read()).ring).toContain('rgb(166, 227, 161)');
       await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
-      expect(await read()).toMatchObject({ need: 'rgb(210, 15, 57)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)', pill: 'rgb(210, 15, 57)' });
+      expect(await read()).toMatchObject({ need: 'rgb(210, 15, 57)', work: 'rgb(223, 142, 29)', done: 'rgb(23, 146, 153)' });
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals'), { recursive: true });
       await page.locator('aside.side').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'rail-light.png') });
       await page.evaluate(() => { document.documentElement.dataset.theme = 'dark'; });

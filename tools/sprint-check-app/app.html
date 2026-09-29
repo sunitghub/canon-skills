@@ -3259,13 +3259,10 @@ async function refreshCockpitSessions() {
   } catch (e) { /* daemon absent → empty panel */ }
   if (!Array.isArray(sessions)) sessions = [];
   applyCardSessions(sessions);
-  // t-28ec: inside the Cockpit shell the Agents rail lists every project, so an embedded
-  // board lists only its own sessions. A standalone board keeps the cross-project list
-  // (t-391a) — it has no rail. Unknown root → unfiltered, as before.
-  const ownRoot = normProjectPath(state.gitRoot);
-  if (document.documentElement.classList.contains('canon-proj-embed') && ownRoot) {
-    sessions = sessions.filter(s => normProjectPath(s && s.project_root) === ownRoot);
-  }
+  // t-d34e: inside a Cockpit tab the Agents rail, the card strips (applied above) and Admin already
+  // show every session, so the embedded board has no panel. A standalone board keeps the
+  // cross-project list (t-391a) — it has no rail.
+  if (document.documentElement.classList.contains('canon-proj-embed')) sessions = [];
   if (!Array.isArray(sessions) || sessions.length === 0) {
     panel.hidden = true;
     panel.innerHTML = '';
