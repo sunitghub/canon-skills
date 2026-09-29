@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-29-2026 10:45
+learnings-sweep last run: 09-29-2026 11:58
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-29 | [t-d34e](.tickets/t-d34e/learnings.md) | Removing a UI element leaves prose behind that an id grep misses — comments, test titles and CSS rules that only existed to decorate it (a top-bar shadow); sweep by concept ("top bar", "pill"), not just the selectors. Also: a revert check must actually revert (`hidden` on a `display:flex` element is ignored), and an absence assertion needs a forced refresh first or it passes before anything loads. | UNPROMOTED |
 | 2026-09-29 | [t-5283](.tickets/t-5283/learnings.md) | When two layers guard the same bug (exit-event reset and Kill reset), reverting either alone leaves the test green — it looked like a passing revert check until the debug run showed the other layer covering it; revert ALL layers to prove the test sees the bug, and disclose any layer no test isolates. Also: a PTY echoes typed input even when the agent never reads it, and `term.clear()` keeps the cursor line, so compare before/after counts instead of asserting absence. | UNPROMOTED |
 | 2026-09-29 | [t-6a05](.tickets/t-6a05/learnings.md) | Making a surface read a new endpoint (Admin now lists `/api/cockpit-interrupted`) turns every existing test that renders it into a test of the machine's real state — 5 Admin tests failed only while a real stopped session existed; default-stub each new data source in the shared page helper, and full-suite runs against a live board can leave test artifacts (a `new-model` entry) in local config. | UNPROMOTED |
 | 2026-09-29 | [t-5716](.tickets/t-5716/learnings.md) | A criterion's "covered by existing test X" claim needs a read of X: two tests cited for the Cockpit iframe path both bypassed it (one rewritten to `standalone=1` by a spec-wide route, one injecting the header via `request`); only the shell tests exercised it. | UNPROMOTED |
