@@ -9813,8 +9813,12 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     expect(noteBox.y).toBeGreaterThanOrEqual(defBox.y + defBox.height);      // under the default cards
     expect(noteBox.y + noteBox.height).toBeLessThanOrEqual(tabsBox.y);        // above the provider tabs
     expect(noteBox.height).toBeLessThan(40);                                  // two lines at most
-    const muted = await page.evaluate(() => { const n = document.getElementById('mt-openai-note'); const probe = document.createElement('i'); probe.style.color = 'var(--text-muted)'; document.body.appendChild(probe); const r = [getComputedStyle(n).color, getComputedStyle(probe).color]; probe.remove(); return r; });
-    expect(muted[0]).toBe(muted[1]);
+    // Muted in BOTH themes: the note's colour equals --text-muted, and the two themes differ (so the check can't pass by accident).
+    const mutedIn = theme => page.evaluate(t => { document.documentElement.setAttribute('data-theme', t); const n = document.getElementById('mt-openai-note'); const probe = document.createElement('i'); probe.style.color = 'var(--text-muted)'; document.body.appendChild(probe); const r = [getComputedStyle(n).color, getComputedStyle(probe).color]; probe.remove(); return r; }, theme);
+    const [dark, light] = [await mutedIn('dark'), await mutedIn('light')];
+    expect(dark[0]).toBe(dark[1]);
+    expect(light[0]).toBe(light[1]);
+    expect(dark[0]).not.toBe(light[0]);
     // default pickers: one row per tier, each offering both providers
     await expect(page.locator('#mt-default-eval .mt-picker')).toHaveCount(2);
     await expect(page.locator('#mt-default-light .mt-picker')).toHaveCount(2);
