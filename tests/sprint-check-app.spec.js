@@ -3349,7 +3349,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // so a cross-project row no longer appears there; the shell still honours an open-session
     // message from a tab's board (a board whose root isn't known yet lists everything).
     const postOpenSession = (page, project_root, ticket) => page.frameLocator('#view-proj-a iframe').locator('body')
-      .evaluate((_, m) => window.parent.postMessage({ source: 'canon-board', type: 'open-session', ...m }, location.origin), { project_root, ticket });
+      .evaluate((_, m) => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...m }, location.origin), { project_root, ticket });
 
     test('shell (t-28ec): an embedded board lists only its own project\u2019s sessions', async ({ page }) => {
       const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/'), row('t-own1', PROJECT_ROOT), row('t-nowh', '/tmp/nowhere')]);
@@ -3386,7 +3386,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const board = await openShell(page, []);
       const send = m => page.evaluate(m => { window.__pwned = 0; window.postMessage(m, location.origin); }, m);
       const tabsBefore = await page.locator('.view').count();
-      // Sender is the shell page itself (not a tab iframe) → rejected even with a valid payload.
+      // Sender is the shell page itself (not a tab iframe, no tab token) → rejected even with a valid payload.
       await send({ source: 'canon-board', type: 'open-session', project_root: 'C:\\Users\\me\\Proj-X', ticket: XID });
       // Sender is a real tab iframe, but the payload is hostile.
       const frame = page.frames().find(f => f.url().includes('project=proj-a'));
@@ -3396,7 +3396,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         { project_root: '"><img src=x onerror=window.__pwned=1>', ticket: XID },
         { project_root: ['C:\\Users\\me\\Proj-X'], ticket: XID },
       ];
-      for (const h of hostile) await frame.evaluate(h => window.parent.postMessage({ source: 'canon-board', type: 'open-session', ...h }, location.origin), h);
+      for (const h of hostile) await frame.evaluate(h => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...h }, location.origin), h);
+      // t-67ab: a valid payload with a wrong tab token is rejected too.
+      await frame.evaluate(() => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: 'not-a-real-token', project_root: 'C:\\Users\\me\\Proj-X', ticket: 't-2d2e' }, location.origin));
       await page.waitForTimeout(400);
       expect(await page.locator('.view').count()).toBe(tabsBefore);
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
@@ -4130,7 +4132,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs: [{ id: 's-zz11', title: '' }] }, location.origin));
       await page.waitForTimeout(300);
       await expect(page.locator('#ag-list .ag-row')).toHaveCount(0);
-      await board.locator('body').evaluate(() => window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs: [{ id: 's-"><img src=x onerror=window.__pwned=1>', title: '' }] }, location.origin));
+      await board.locator('body').evaluate(() => window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tab: SHELL_TAB, tabs: [{ id: 's-"><img src=x onerror=window.__pwned=1>', title: '' }] }, location.origin));
       await page.waitForTimeout(300);
       await expect(page.locator('#ag-list .ag-row')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });

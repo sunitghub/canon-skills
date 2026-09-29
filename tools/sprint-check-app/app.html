@@ -2629,6 +2629,9 @@ function ago(days) {
 const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
 const COL_LIMIT = 5;
 const DEBUG = new URLSearchParams(location.search).has('debug');
+// t-67ab: the token the Canon Cockpit gave this tab's iframe; echoed on every message to the
+// shell so it knows which tab sent it (Safari reports the shell itself as event.source).
+const SHELL_TAB = new URLSearchParams(location.search).get('tab') || '';
 function debugLog(...args) {
   if (DEBUG) console.log('[sprint-check]', ...args);
 }
@@ -3338,7 +3341,7 @@ function cardStateHTML(t, row) {
 function openSessionRow(ticket, project) {
   if (!project || normProjectPath(project) === normProjectPath(state.gitRoot)) { openCockpit(ticket); return; }
   if (window.parent !== window && COCKPIT_TICKET_ID.test(ticket)) {
-    window.parent.postMessage({ source: 'canon-board', type: 'open-session', project_root: project, ticket }, location.origin);
+    window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, project_root: project, ticket }, location.origin);
     return;
   }
   showToast(`⚠ ${ticket} belongs to ${project} — open that project's board`, 'warn');
@@ -4019,7 +4022,7 @@ function announceScratchTabs() {
     const t = state.scratch.get(id);
     return { id, title: t && t.title !== 'Scratch session' ? t.title : '' };
   });
-  try { window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs }, location.origin); } catch {}
+  try { window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tab: SHELL_TAB, tabs }, location.origin); } catch {}
 }
 function newScratchId() {   // t-e162: the path bar's "+ Scratch" mints its own id
   const a = 'abcdefghijklmnopqrstuvwxyz0123456789', b = new Uint8Array(4);
@@ -7885,7 +7888,7 @@ async function uploadVisual(ticketId, filename, base64) {
   if (window.parent !== window) {
     const up = document.getElementById('btn-upkeep');
     up.hidden = false;
-    up.addEventListener('click', () => window.parent.postMessage({ source: 'canon-board', type: 'open-upkeep' }, location.origin));
+    up.addEventListener('click', () => window.parent.postMessage({ source: 'canon-board', type: 'open-upkeep', tab: SHELL_TAB }, location.origin));
   }
   document.getElementById('ck-promote').addEventListener('click', () => startPromote(false));          // t-f553
   document.getElementById('ck-tc-title').addEventListener('click', editScratchTitle);
