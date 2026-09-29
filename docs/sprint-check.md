@@ -59,7 +59,7 @@ A ticket can also carry maintenance skills via `tkt create --skills a,b` (or by 
 
 ## Upkeep Dashboard
 
-The **Upkeep** sidebar tab runs `context-check`, `context-doctor`, `dead-code-cleanup`, or `promote-learnings` headlessly against any registered project — no ticket, no sprint gate, always read-only (a run only ever writes its own `.reports/<skill>_<timestamp>.md`; it never modifies or deletes anything else, even when `dead-code-cleanup` finds a confirmed-dead symbol). Pick a project, pick a model (Haiku 4.5 default, Sonnet 5 available), click **Run** — a confirmation dialog names the model and notes the dispatch is a real LLM call that will incur API cost. Each report ends with its own **Next Steps**: the exact follow-up command or file edit a human would run to act on the findings, never auto-executed.
+**Upkeep** (the Upkeep button on a project's board, t-67ab — it shows that project only; each Projects card says how many checks have never run) runs `context-check`, `context-doctor`, `dead-code-cleanup`, or `promote-learnings` headlessly against that project — no ticket, no sprint gate, always read-only (a run only ever writes its own `.reports/<skill>_<timestamp>.md`; it never modifies or deletes anything else, even when `dead-code-cleanup` finds a confirmed-dead symbol). Pick a model (Haiku 4.5 default, Sonnet 5 available), click **Run** — a confirmation dialog names the model and notes the dispatch is a real LLM call that will incur API cost. Each report ends with its own **Next Steps**: the exact follow-up command or file edit a human would run to act on the findings, never auto-executed.
 
 ## Ticket Completeness
 

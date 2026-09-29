@@ -168,10 +168,13 @@ for tok in $(grep -oE 'var\(--col-[a-z]+\)' "$CKHTML" | sed 's/var(//;s/)//' | s
 done
 
 # ── Phase 2b-iv: Upkeep view (t-7ae6) ─────────────────────────────────────────
-grep -qF 'id="nav-upkeep"' <<<"$page" || fail "canon: missing Upkeep nav item"
-grep -qF "showView('upkeep')" <<<"$page" || fail "canon: Upkeep nav not wired to showView"
+# t-67ab: Upkeep lives in each project tab (the board's Upkeep button), not the sidebar; no picker.
+! grep -qF 'id="nav-upkeep"' <<<"$page" || fail "canon: Upkeep must not have a sidebar entry (t-67ab)"
+grep -qF "showView('upkeep')" <<<"$page" || fail "canon: openUpkeepFor must show the Upkeep view"
+grep -qF "type==='open-upkeep'" <<<"$page" || fail "canon: the shell must handle the board's open-upkeep message"
 grep -qF 'id="view-upkeep"' <<<"$page" || fail "canon: missing #view-upkeep section"
-grep -qF 'id="up-projrow"' <<<"$page" || fail "canon: Upkeep missing project picker row"
+! grep -qF 'id="up-projrow"' <<<"$page" || fail "canon: Upkeep must not have its own project picker (t-67ab)"
+grep -qF 'id="up-back"' <<<"$page" || fail "canon: Upkeep missing its ← Board button"
 grep -qF 'id="up-grid"' <<<"$page" || fail "canon: Upkeep missing report card grid"
 grep -qF 'id="up-detail"' <<<"$page" || fail "canon: Upkeep missing the single report-detail panel"
 for skill in "context-check" "context-doctor" "dead-code-cleanup" "promote-learnings"; do

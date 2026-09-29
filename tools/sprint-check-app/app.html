@@ -124,12 +124,13 @@
     .refresh-dot.loading { background: var(--col-progress); animation: pulse 1s infinite; }
     .refresh-dot.error   { background: var(--col-discarded); }
     @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:.4 } }
-    .header-stats { display: flex; gap: 8px; }
-    .stat {
-      display: flex; align-items: center; gap: 5px;
-      padding: 3px 9px; background: var(--surface-raised);
-      border: 1px solid var(--border); border-radius: 20px; font-size: 11px;
-    }
+    /* t-67ab: the path with the branch under it; the counts moved out (lane headers, sidebar). */
+    .header-where { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .header-where-top { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+    .header-where .header-branch { font-size: 11.5px; }
+    .create-btn.upkeep-btn { display: inline-flex; align-items: center; gap: 5px; background: transparent; color: var(--text); border: 1px solid var(--border-hover); }
+    .create-btn.upkeep-btn[hidden] { display: none; }
+    .create-btn.upkeep-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
     .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink:0; }
 
     /* ── Main layout ──────────────────────────── */
@@ -1930,7 +1931,6 @@
     .card-start.answer { background: var(--st-need); color: var(--st-ink); }
     .card-start.open { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-hover); }
     .column-needs { font-size: 11px; font-weight: 600; color: var(--st-need); margin-left: auto; margin-right: 6px; }
-    .stat.needs { color: var(--st-need); border-color: color-mix(in srgb, var(--st-need) 50%, transparent); font-weight: 600; }
     .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
 
     /* ── Scrollbars ───────────────────────────── */
@@ -1963,31 +1963,20 @@
         <span class="brand-text">sprint-check</span>
       </div>
       <span class="header-sep">/</span>
-      <span class="header-project" id="h-project">—</span>
-      <span class="header-version" id="h-version" title="board build"></span>
+      <div class="header-where">
+        <div class="header-where-top">
+          <span class="header-project" id="h-project">—</span>
+          <span class="header-version" id="h-version" title="board build"></span>
+        </div>
+        <div class="header-branch">
+          <div class="refresh-dot loading" id="refresh-dot"></div>
+          <span>⎇</span>
+          <span class="branch-name" id="h-branch">—</span>
+        </div>
+      </div>
     </div>
     <div class="header-right">
-      <div class="header-branch">
-        <div class="refresh-dot loading" id="refresh-dot"></div>
-        <span>⎇</span>
-        <span class="branch-name" id="h-branch">—</span>
-      </div>
-      <div class="header-stats">
-        <div class="stat">
-          <span class="dot" style="color:var(--col-open)"></span>
-          <span id="h-open">—</span> open
-        </div>
-        <div class="stat">
-          <span class="dot" style="color:var(--col-progress)"></span>
-          <span id="h-active">—</span> active
-        </div>
-        <div class="stat needs" id="h-needs-stat" style="display:none" title="Sessions in this project waiting on you">
-          <span class="dot"></span><span id="h-needs">0</span> needs you
-        </div>
-        <div class="stat" id="h-archived-stat" style="display:none;color:var(--text-muted)">
-          <span id="h-archived">0</span> archived
-        </div>
-      </div>
+      <button class="create-btn upkeep-btn" id="btn-upkeep" title="This project's Upkeep checks (context-check, context-doctor, dead-code-cleanup, promote-learnings)" hidden><svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Upkeep</button>
       <button class="create-btn" id="btn-create" title="Create new ticket">+ New</button>
       <button class="create-btn scratch-btn" id="btn-scratch" title="Start an agent in this project with no ticket — no sprint, no gates"><svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>Scratch</button>
       <button class="theme-toggle has-label" id="btn-ci-setup" title="Set up CI gate — write .github/workflows/canon-gate.yml so PRs are graded by canon" style="font-size:12px;font-weight:700;letter-spacing:-.3px">⚙ CI</button>
@@ -2640,6 +2629,9 @@ function ago(days) {
 const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
 const COL_LIMIT = 5;
 const DEBUG = new URLSearchParams(location.search).has('debug');
+// t-67ab: the token the Canon Cockpit gave this tab's iframe; echoed on every message to the
+// shell so it knows which tab sent it (Safari reports the shell itself as event.source).
+const SHELL_TAB = new URLSearchParams(location.search).get('tab') || '';
 function debugLog(...args) {
   if (DEBUG) console.log('[sprint-check]', ...args);
 }
@@ -3317,9 +3309,6 @@ function applyCardSessions(sessions) {
   }
   const key = [...rows].map(([id, r]) => id + ':' + ckRowState(r)).sort().join('|');
   state.cockpitRows = rows;
-  const needs = [...rows.values()].filter(r => ckRowState(r) === 'needs-you').length;
-  const chip = document.getElementById('h-needs-stat');
-  if (chip) { document.getElementById('h-needs').textContent = needs; chip.style.display = needs ? '' : 'none'; }
   if (key !== state.cockpitRowsKey) { state.cockpitRowsKey = key; renderBoard(); return; }
   document.querySelectorAll('#board .card-state[data-id]').forEach(el => {
     const row = rows.get(el.dataset.id);
@@ -3352,7 +3341,7 @@ function cardStateHTML(t, row) {
 function openSessionRow(ticket, project) {
   if (!project || normProjectPath(project) === normProjectPath(state.gitRoot)) { openCockpit(ticket); return; }
   if (window.parent !== window && COCKPIT_TICKET_ID.test(ticket)) {
-    window.parent.postMessage({ source: 'canon-board', type: 'open-session', project_root: project, ticket }, location.origin);
+    window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, project_root: project, ticket }, location.origin);
     return;
   }
   showToast(`⚠ ${ticket} belongs to ${project} — open that project's board`, 'warn');
@@ -3376,11 +3365,6 @@ function renderHeader() {
   state.isGitProject = git?.is_git === true || typeof git?.total_commits === 'number';
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
-  setText('h-open',     tickets.filter(t => effectiveStatus(t) === 'open').length);
-  setText('h-active',   tickets.filter(t => effectiveStatus(t) === 'in_progress').length);
-  const archivedCount = tickets.filter(t => t.status === 'archived').length;
-  setText('h-archived', archivedCount);
-  document.getElementById('h-archived-stat').style.display = archivedCount > 0 ? '' : 'none';
   const mod = document.getElementById('s-modified');
   if ((git?.modified ?? 0) > 0) { mod.textContent = `${git.modified} modified`; mod.style.display=''; }
   else mod.style.display = 'none';
@@ -4038,7 +4022,7 @@ function announceScratchTabs() {
     const t = state.scratch.get(id);
     return { id, title: t && t.title !== 'Scratch session' ? t.title : '' };
   });
-  try { window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs }, location.origin); } catch {}
+  try { window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tab: SHELL_TAB, tabs }, location.origin); } catch {}
 }
 function newScratchId() {   // t-e162: the path bar's "+ Scratch" mints its own id
   const a = 'abcdefghijklmnopqrstuvwxyz0123456789', b = new Uint8Array(4);
@@ -7900,6 +7884,12 @@ async function uploadVisual(ticketId, filename, base64) {
 
   document.getElementById('btn-create').addEventListener('click', open);
   document.getElementById('btn-scratch').addEventListener('click', () => openScratch(newScratchId()));   // t-e162
+  // t-67ab: Upkeep lives in the Canon Cockpit shell; ask it to show this project's checks.
+  if (window.parent !== window) {
+    const up = document.getElementById('btn-upkeep');
+    up.hidden = false;
+    up.addEventListener('click', () => window.parent.postMessage({ source: 'canon-board', type: 'open-upkeep', tab: SHELL_TAB }, location.origin));
+  }
   document.getElementById('ck-promote').addEventListener('click', () => startPromote(false));          // t-f553
   document.getElementById('ck-tc-title').addEventListener('click', editScratchTitle);
   document.getElementById('create-close').addEventListener('click', close);
