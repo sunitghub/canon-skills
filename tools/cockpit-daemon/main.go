@@ -96,6 +96,7 @@ type config struct {
 	idleCheckInterval time.Duration // t-2e7e: how often to scan for idle sessions (default 30s)
 	saveFallback      time.Duration // t-2e7e: force-kill if the save marker never appears within this long (default 60s)
 	registryFile      string        // t-5a4b: projects.json path override (tests); default $CANON_HOME|~/.canon /cockpit/projects.json
+	changesHome       string        // t-5a4b: override of canon's per-user cockpit dir (tests); default $CANON_HOME|~/.canon /cockpit
 	saveQuiesce       time.Duration // t-2c9e: after a watched state file changes, conclude "saved" once writes quiesce for this long (default 2s) — mtime-bump != save-complete, so this debounce avoids killing mid-multi-file-write
 }
 
@@ -3466,11 +3467,7 @@ func (s *server) registeredRoot(resolved string) (string, bool) {
 
 // defaultRegistryFile is where the boards keep the registered projects (server.py _registry_file).
 func defaultRegistryFile() string {
-	if h := os.Getenv("CANON_HOME"); h != "" {
-		return filepath.Join(h, "cockpit", "projects.json")
-	}
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".canon", "cockpit", "projects.json")
+	return filepath.Join(defaultCanonCockpitDir(), "projects.json")
 }
 
 // pathsEqual compares two already-resolved absolute paths. Windows paths are
