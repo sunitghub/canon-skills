@@ -1679,6 +1679,7 @@
     /* t-e78b: a worktree-bound ticket's live sprint docs — read-only on the board. */
     .doc-live-badge { font-size: 11.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
       padding: 3px 10px; white-space: nowrap; cursor: help; }
+    .doc-working-note { font-size: 11.5px; color: var(--st-work); border: 1px solid var(--st-work); border-radius: 999px; padding: 2px 10px; margin-left: 6px; white-space: nowrap; }
     .create-wt-held { align-self: center; font-size: 11.5px; color: var(--text-muted); cursor: help; margin-left: 4px; }
     /* t-d254: busy spinner for the commit + worktree-create steps (slow on a big repo).
        aria-busy keeps a busy button at full strength so it reads as working, not disabled. */
@@ -2785,7 +2786,9 @@ function docFileFor(t, slug) {
 
 function availableDocTypes(t) {
   const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
-  return DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug));
+  // t-26f9: in a worktree the board writes only acceptance.md, plan.md and research.md
+  const writable = dt => !t.docs_from || ['acceptance', 'plan', 'research'].includes(dt.slug);
+  return DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug) && writable(dt));
 }
 
 const state = {
@@ -3797,7 +3800,7 @@ let _pendingConfirm = null;
 // network error is a failure: the reason is toasted, and the caller keeps or
 // reverts its own UI. (403 from the origin guard answers HTML, hence the
 // tolerant JSON parse.)
-async function postWrite(url, body, what) {
+async function postWrite(url, body, what, opts = {}) {
   let r, d = {};
   try {
     r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -3808,10 +3811,35 @@ async function postWrite(url, body, what) {
   }
   if (!r.ok || (d && d.ok === false)) {
     const why = (d && d.error) || `HTTP ${r.status}`;
-    showToast(`⚠ Couldn't ${what}: ${why}`, 'block');
-    return { ok: false, error: why };
+    const stale = !!(d && d.code === 'stale');   // t-26f9: the doc changed since the page read it
+    if (!(stale && opts.quietStale)) showToast(`⚠ Couldn't ${what}: ${why}`, 'block');
+    return { ok: false, error: why, stale };
   }
   return { ok: true, data: d };
+}
+
+// t-26f9: a doc write echoes the etag its page read (sha256 of the file's bytes, or "absent") as base_hash, so it can
+// never silently replace a change made since; a bound ticket's docs are written in its worktree.
+async function fetchDoc(file) {
+  try {
+    const r = await fetch(`/api/doc/${encodeURIComponent(file)}`);
+    if (!r.ok) return null;
+    const d = await r.json();
+    return { content: d.content || '', etag: d.etag || '' };
+  } catch { return null; }
+}
+// Read-modify-write: when the file changed under us, re-read and re-apply once; a second collision is reported.
+async function updateDoc(file, transform, what) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const cur = await fetchDoc(file);
+    if (!cur) { showToast(`⚠ Couldn't ${what}: the doc couldn't be read`, 'block'); return { ok: false }; }
+    let next;
+    try { next = transform(cur.content, attempt); }
+    catch (e) { showToast(`⚠ Couldn't ${what}: ${e.message}`, 'block'); return { ok: false }; }
+    const res = await postWrite(`/api/doc/${encodeURIComponent(file)}`, { content: next, base_hash: cur.etag }, what, { quietStale: attempt === 0 });
+    if (!res.stale) return res;
+  }
+  return { ok: false, stale: true };
 }
 
 function showToast(msg, type = 'warn') {
@@ -4055,7 +4083,35 @@ function openScratch(id) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-const modalState = { editMode: false, activeDoc: null, renderSeq: 0 };
+const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', activeDocEtag() { return this.docEtag || ''; } };
+
+// t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
+// box; they choose to load theirs or to overwrite knowingly.
+function showStaleEditNotice() {
+  const editEl = document.getElementById('m-edit-area');
+  if (!editEl || !modalState.activeDoc) return;
+  let n = document.getElementById('stale-edit-notice');
+  if (!n) {
+    n = document.createElement('div');
+    n.id = 'stale-edit-notice';
+    n.className = 'acceptance-warning';
+    editEl.parentNode.insertBefore(n, editEl);
+  }
+  n.innerHTML = '⚠ This doc changed since you opened it (the agent may have edited it). Your text is kept. '
+    + '<button type="button" class="doc-cancel-btn" id="stale-reload">Reload theirs</button> '
+    + '<button type="button" class="doc-save-btn" id="stale-overwrite">Overwrite with mine</button>';
+  n.querySelector('#stale-reload').onclick = async () => {
+    const cur = await fetchDoc(modalState.activeDoc);
+    if (!cur) return;
+    editEl.value = cur.content; modalState.docEtag = cur.etag; n.remove();
+  };
+  n.querySelector('#stale-overwrite').onclick = async () => {
+    const cur = await fetchDoc(modalState.activeDoc);
+    if (!cur) return;
+    modalState.docEtag = cur.etag; n.remove();
+    document.getElementById('btn-save-top')?.click();
+  };
+}
 
 function openModal(id) {
   const t = findTicketById(id);
@@ -4282,13 +4338,17 @@ function renderModalDocs(t) {
   // tab is main's ticket.md and stays editable.
   const liveBranch = t.docs_from && t.docs_from.branch;
   const liveDoc = !!(liveBranch && modalState.activeDoc);
+  // t-26f9: a bound ticket's docs are editable now; the badge says where edits land, and warns when the agent is working.
+  const liveRow = liveDoc ? state.cockpitRows.get(t.id) : null;
+  const liveBadge = liveDoc
+    ? `<span class="doc-live-badge" id="doc-live-badge" title="${escAttr(`Edits save to ${liveBranch}'s copy of these files — the sprint session's working files`)}">Live from ${esc(liveBranch)} · edits save to its copy</span>`
+      + (liveRow && ckRowState(liveRow) === 'working' ? `<span class="doc-working-note" id="doc-working-note">the agent is working in ${esc(liveBranch)} — your edit may collide</span>` : '')
+    : '';
   const rightControls = modalState.editMode
     ? `<div class="doc-tab-right">${navPrev}${navNext}<button class="doc-save-btn" id="btn-save-top">Save</button><button class="doc-cancel-btn" id="btn-cancel-top">Cancel</button></div>`
-    : liveDoc
-      ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-live-badge" id="doc-live-badge" title="${escAttr(`The sprint session in ${liveBranch} owns these files — edit them there`)}">Live from ${esc(liveBranch)} · edit in its sprint session</span></div>`
     : locked
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
-      : `<div class="doc-tab-right">${navPrev}${navNext}${canAddDoc && !liveBranch ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<button class="doc-edit-btn" id="btn-edit-doc">Edit</button></div>`;
+      : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<button class="doc-edit-btn" id="btn-edit-doc">Edit</button></div>`;
 
   bar.innerHTML = descTab + docs.map(d => {
     const active = d.file === modalState.activeDoc;
@@ -4451,8 +4511,8 @@ function injectSignoffControls(container, content, t) {
   bar.querySelectorAll('.signoff-controls').forEach(el => el.remove());   // t-8c73: never two control sets in one bar
 
   // t-e78b: a live worktree plan.md is owned by the sprint session; these controls write plan.md.
-  const locked = t.status === 'closed' || t.status === 'cancelled' || !!t.docs_from;
-  const lockedTip = t.docs_from ? `Live from ${t.docs_from.branch} — the sprint session owns plan.md; edit it there.` : 'Ticket is closed — no further edits.';
+  const locked = t.status === 'closed' || t.status === 'cancelled';
+  const lockedTip = 'Ticket is closed — no further edits.';
   const wrap = document.createElement('span');
   wrap.className = 'signoff-controls';
 
@@ -4498,11 +4558,8 @@ function injectSignoffControls(container, content, t) {
       riskWarning.style.display = 'none';
       tierSelect.disabled = true; riskInput.disabled = true;
       try {
-        const r = await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`);
-        const d = await r.json();
-        const updated = withSignoffBase(d.content, tierSelect.value, risk);
-        await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content: updated }, 'save the Sign-off tier/risk');
-      } catch { /* the read failed — the re-render below shows the saved value */ } finally {
+        await updateDoc(modalState.activeDoc, content => withSignoffBase(content, tierSelect.value, risk), 'save the Sign-off tier/risk');
+      } catch { /* the re-render below shows the saved value */ } finally {
         const cur = state.tickets.find(tk => tk.id === state.selectedId);
         if (cur) renderModalBody(cur);
       }
@@ -4540,11 +4597,8 @@ function injectSignoffControls(container, content, t) {
   select.addEventListener('change', async () => {
     select.disabled = true;
     try {
-      const r = await fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`);
-      const d = await r.json();
-      const updated = withGateModel(d.content, select.value);
-      await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content: updated }, 'save the Gate model');
-    } catch { /* the read failed — the re-render below shows the saved value */ } finally {
+      await updateDoc(modalState.activeDoc, content => withGateModel(content, select.value), 'save the Gate model');
+    } catch { /* the re-render below shows the saved value */ } finally {
       const cur = state.tickets.find(tk => tk.id === state.selectedId);
       if (cur) renderModalBody(cur);
     }
@@ -4658,9 +4712,7 @@ function renderModalBody(t) {
           }
         }
         bodyEl.innerHTML = warning + md(d.content, t.id);
-        // t-e78b follow-up: a live worktree doc's checkboxes aren't toggleable here, so don't
-        // tag them — no hover highlight or pointer suggesting otherwise.
-        if (!t.docs_from) tagCheckboxes(bodyEl);
+        tagCheckboxes(bodyEl);   // t-26f9: a live worktree doc's checkboxes toggle too (guarded by the etag)
         injectSectionJumps(bodyEl);
         hydrateFeatureRefs(bodyEl, t.id);
         if (slug === 'plan') injectSignoffControls(bodyEl, d.content, t);
@@ -4671,8 +4723,8 @@ function renderModalBody(t) {
 
 function enterEditMode(t) {
   if (modalState.editMode) return;
+  document.getElementById('stale-edit-notice')?.remove();
   if (t.status === 'closed' || t.status === 'cancelled') return;
-  if (t.docs_from && modalState.activeDoc) return; // t-e78b: live worktree doc — read-only here
   modalState.editMode = true;
   renderModalDocs(t);
   document.getElementById('m-docs').classList.add('editing');
@@ -4683,6 +4735,7 @@ function enterEditMode(t) {
     fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`)
       .then(r => r.ok ? r.json() : { content: '' })
       .then(d => {
+        modalState.docEtag = (d && d.etag) || '';   // t-26f9: what Save must echo as base_hash
         editEl.value = ensureDocGuideComments(t, d.content || '');
         // On opening the Acceptance doc, drop the caret at the end of the last ## Criteria line so
         // authoring (and the Scenario button) starts under Criteria, not Test Plan. Runs after the
@@ -4734,7 +4787,8 @@ async function saveEdit(t) {
     return;
   }
   if (modalState.activeDoc) {
-    const res = await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content }, 'save this doc');
+    const res = await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content, base_hash: modalState.activeDocEtag() }, 'save this doc', { quietStale: true });
+    if (res.stale) { showStaleEditNotice(); return; }   // t-26f9: keep the text, let the person choose
     if (!res.ok) return; // stay in edit mode with the text intact
   } else {
     const res = await postWrite(`/api/ticket/${t.id}/body`, { body: content }, 'save the description');
@@ -5000,8 +5054,9 @@ function selectDocType(t, slug, name) {
   const rawTemplate = DOC_TYPES.find(d => d.slug === slug)?.template || `# ${name}\n\n`;
   const template = rawTemplate.replaceAll('<id>', t.id);
 
-  postWrite(`/api/doc/${encodeURIComponent(file)}`, { content: template }, `create ${name}`).then(res => {
+  postWrite(`/api/doc/${encodeURIComponent(file)}`, { content: template, base_hash: 'absent' }, `create ${name}`).then(res => {
     if (!res.ok) { renderModalDocs(t); return; } // no tab for a doc that wasn't created
+    modalState.docEtag = (res.data && res.data.etag) || '';
     t.docs = t.docs || [];
     if (!t.docs.some(d => d.file === file)) t.docs.push({ name, file });
     modalState.activeDoc = file;
@@ -7543,17 +7598,20 @@ function tagCheckboxes(el) {
 }
 
 async function toggleCheckbox(docFile, checkIdx) {
-  let r, d;
-  try {
-    r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
-    d = await r.json();
-  } catch { showToast("⚠ Couldn't update that checkbox: the doc couldn't be read", 'block'); return false; }
-  let i = 0;
-  const updated = d.content.replace(/^(- \[)([ xX])(\] .+)$/gm, (m, pre, mark, rest) => {
-    if (i++ === checkIdx) return pre + (mark.trim() === '' ? 'x' : ' ') + rest;
-    return m;
-  });
-  return (await postWrite(`/api/doc/${encodeURIComponent(docFile)}`, { content: updated }, 'update that checkbox')).ok;
+  let firstText = null;
+  const res = await updateDoc(docFile, (content, attempt) => {
+    let i = 0, seen = null;
+    const updated = content.replace(/^(- \[)([ xX])(\] .+)$/gm, (m, pre, mark, rest) => {
+      if (i++ === checkIdx) { seen = rest; return pre + (mark.trim() === '' ? 'x' : ' ') + rest; }
+      return m;
+    });
+    if (seen === null) throw new Error('that checklist item is gone — reload');
+    // On a re-apply after a collision, flip the same item only if it is still the item the person clicked.
+    if (attempt === 0) firstText = seen;
+    else if (seen !== firstText) throw new Error('the checklist changed — reload');
+    return updated;
+  }, 'update that checkbox');
+  return !!res.ok;
 }
 
 // Delegated handler — fires once, lives on #m-body permanently
@@ -7563,7 +7621,6 @@ document.getElementById('m-body').addEventListener('click', async e => {
   if (!bullet || !modalState.activeDoc) return;
   const currentTicket = state.tickets.find(tk => tk.id === state.selectedId);
   if (!currentTicket || currentTicket.status === 'closed' || currentTicket.status === 'cancelled') return;
-  if (currentTicket.docs_from) return; // t-e78b: live worktree doc — the sprint session owns it
   e.stopPropagation();
 
   const idx = Number(bullet.dataset.checkIdx);

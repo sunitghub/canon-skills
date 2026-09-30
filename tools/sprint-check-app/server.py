@@ -674,7 +674,7 @@ def _live_worktree(t: dict, root: Path, wts: list):
         return None
     if not (tdir / 'ticket.md').is_file():
         return None
-    return {'dir': tdir, 'branch': cand.get('branch') or ''}
+    return {'dir': tdir, 'branch': cand.get('branch') or '', 'wt': str(cand['path'])}
 
 def annotate_live_docs(tickets: list, root: Path = None) -> None:
     root = root if root is not None else PROJECT_ROOT
@@ -708,6 +708,107 @@ def _live_for_doc(doc_file: str, root: Path = None):
         return None
     wts = _registered_worktrees(root)
     return _live_worktree(t, root, wts) if wts else None
+
+# ── Writing a worktree-bound ticket's docs from the board (t-26f9) ─────────
+# Mirrors sprint-check-go (liveDocTargetFrom / writeLiveDoc), parity-tested by tests/sprint-check-live-docs.sh.
+# Replaces t-e78b's read-only rule: the worktree copy owns a bound ticket's docs and the board may edit them,
+# guarded by the etag the client read (sha256 of the file's exact bytes, or "absent"). The target is
+# re-validated here, at the point of use, because the .cockpit-cwd lock that binds the ticket is agent-writable.
+DOC_ETAG_ABSENT = 'absent'
+LIVE_DOC_MAX_BYTES = 1 << 20
+_LIVE_DOC_NAMES = ('acceptance.md', 'plan.md', 'research.md')
+_live_doc_lock = threading.Lock()
+
+def doc_etag(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+def _live_doc_target(doc_file: str, live: dict):
+    """(target Path, None) for a bound ticket's allowed doc, or (None, (status, code, message))."""
+    bad = (400, 'bad_doc', "that doc can't be written from the board")
+    parts = doc_file.split('/')
+    # The raw name, compared exactly: NTFS ignores a trailing dot or space and treats `:` as a stream, so a
+    # normalised comparison would let `plan.md.`, `plan.md::$DATA` or `TICKET~1.MD` through.
+    if any(c in doc_file for c in '\\:\x00') or len(parts) != 2 or parts[0] in ('', '.', '..'):
+        return None, bad
+    name = parts[1].lower()
+    if name not in _LIVE_DOC_NAMES:
+        return None, bad
+    trust = (403, 'unsafe_path', 'that ticket folder is not a plain folder inside its worktree')
+    wt = Path(live['wt'])
+    tickets_dir = wt / '.tickets'
+    t_dir = tickets_dir / parts[0]
+    try:
+        for q in (tickets_dir, t_dir):
+            if q.is_symlink() or not q.is_dir():
+                return None, trust  # a symlink or a junction (reparse point)
+        real_wt = wt.resolve()
+    except (OSError, RuntimeError):
+        return None, trust
+    # Belt and braces: the resolved folder must be exactly where the worktree says it is.
+    if _path_key(str(live['dir'])) != _path_key(str(real_wt / '.tickets' / parts[0])):
+        return None, trust
+    target = live['dir'] / name
+    if os.path.lexists(target) and (target.is_symlink() or not target.is_file()):
+        return None, trust
+    return target, None
+
+def _live_doc_etag_of(target: Path) -> str:
+    try:
+        return doc_etag(target.read_bytes())
+    except OSError:
+        return DOC_ETAG_ABSENT
+
+def _atomic_write(target: Path, data: bytes) -> None:
+    """Temp file in the same folder, then a rename: no reader ever sees a half-written doc. Windows refuses to
+    replace a file another process has open, so the rename is retried briefly."""
+    import tempfile
+    fd, tmp = tempfile.mkstemp(prefix='.board-', suffix='.tmp', dir=str(target.parent))
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, 0o644)
+        for i in range(6):
+            try:
+                os.replace(tmp, target)
+                return
+            except OSError:
+                if i == 5:
+                    raise
+                time.sleep(0.05)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+def write_live_doc(doc_file: str, payload: dict, root: Path = None):
+    """POST /api/doc/<doc> for a worktree-bound ticket: (status, body), or None when the ticket is not bound."""
+    live = _live_for_doc(doc_file, root)
+    if not live:
+        return None
+    def fail(status, code, msg):
+        return status, {'ok': False, 'code': code, 'error': msg}
+    target, err = _live_doc_target(doc_file, live)
+    if err:
+        return fail(*err)
+    content = payload.get('content')
+    if not isinstance(content, str):
+        return fail(400, 'bad_content', 'content must be text')
+    if len(content.encode('utf-8', errors='replace')) > LIVE_DOC_MAX_BYTES:
+        return fail(400, 'too_large', 'that doc is too large to save from the board')
+    base = payload.get('base_hash')
+    with _live_doc_lock:
+        if not isinstance(base, str) or base == '' or base != _live_doc_etag_of(target):
+            return fail(409, 'stale', f'{target.name} changed since you read it — reload it and try again')
+        data = (content.strip() + '\n').encode('utf-8')
+        try:
+            _atomic_write(target, data)
+        except OSError:
+            return fail(500, 'write_failed', f"couldn't save {target.name} — is another program holding it open? Try again")
+    return 200, {'ok': True, 'etag': doc_etag(data)}
 
 # ── Worktree holds (t-2241) ───────────────────────────────────────────────
 # Which non-main worktrees another ticket still needs, so the pickers stop
@@ -1579,23 +1680,35 @@ def write_body(ticket_id: str, new_body: str, root: Path = None) -> bool:
 def read_doc(doc_file: str, root: Path = None) -> str | None:
     """Read a companion doc file safely from TICKETS_DIR — or, for a ticket
     bound to a worktree (t-e78b), from that worktree's copy."""
+    got = read_doc_with_etag(doc_file, root)
+    return got[0] if got else None
+
+def read_doc_with_etag(doc_file: str, root: Path = None):
+    """(content, etag) or None. The etag is what a write must echo back as base_hash. For a bound ticket it
+    describes the WORKTREE file (sha256 of its bytes, or "absent"), even when the text shown falls back to main's
+    copy, so saving an edit of a doc the worktree does not have yet works; '' means not writable from the board."""
     live = _live_for_doc(doc_file, root)
+    etag = ''
     if live:
+        target, err = _live_doc_target(doc_file, live)
+        if not err:
+            etag = _live_doc_etag_of(target)
         rel = Path(doc_file)
         if not rel.is_absolute() and '..' not in rel.parts and rel.suffix.lower() == '.md':
             try:
-                target = (live['dir'].parent / rel).resolve()
-                target.relative_to(live['dir'])
+                t2 = (live['dir'].parent / rel).resolve()
+                t2.relative_to(live['dir'])
             except (OSError, ValueError, RuntimeError):
-                target = None
-            if target is not None and target.is_file():
-                return target.read_text(encoding='utf-8', errors='replace')
+                t2 = None
+            if t2 is not None and t2.is_file():
+                return t2.read_bytes().decode('utf-8', errors='replace'), etag
     p = _safe_ticket_doc(doc_file, root=root)
     if p is None or not p.is_file():
         p = legacy_doc_target(doc_file, root)
     if p is None or not p.is_file():
         return None
-    return p.read_text(encoding='utf-8', errors='replace')
+    raw = p.read_bytes()
+    return raw.decode('utf-8', errors='replace'), (etag if live else doc_etag(raw))
 
 def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', worktree_preference: str = '', root: Path = None) -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
@@ -2936,10 +3049,10 @@ class Handler(BaseHTTPRequestHandler):
                     eroot = effective_root(parse_qs(parsed.query))
                 except UnknownProject:
                     self.send_error(400); return
-                content = read_doc(unquote(m.group(1)), eroot)
-                if content is None:
+                got = read_doc_with_etag(unquote(m.group(1)), eroot)
+                if got is None:
                     self.send_error(404); return
-                self.send_json({'content': content})
+                self.send_json({'content': got[0], 'etag': got[1]})
                 return
             m = re.match(r'^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$', path)
             if m:
@@ -3114,9 +3227,9 @@ class Handler(BaseHTTPRequestHandler):
         m = re.match(r'^/api/doc/(.+)$', path)
         if m:
             doc = unquote(m.group(1))
-            live = _live_for_doc(doc, eroot)
-            if live:  # t-e78b: the sprint session in that worktree owns these files
-                self.send_json({'ok': False, 'error': f"{Path(doc).parts[0]} is live in worktree {live['branch']} — edit it in the sprint session"}, status=409); return
+            res = write_live_doc(doc, payload, eroot)  # t-26f9: a bound ticket's docs are written in its worktree, guarded by base_hash
+            if res is not None:
+                self.send_json(res[1], status=res[0]); return
             ok = write_doc(doc, str(payload.get('content', '')), eroot)
             self.send_json({'ok': ok}); return
 
