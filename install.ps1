@@ -5,7 +5,6 @@
 # Bootstrap mode (no tools\ beside this script) installs Git for Windows' bash if missing, fetches canon as a zip
 # into ~\.canon, then runs finish mode there. `return` (never `exit`) so `| iex` doesn't close the user's window.
 
-$ErrorActionPreference = "Stop"
 $ZipUrl = "https://github.com/sunitghub/canon-skills/archive/refs/heads/main.zip"
 $GitDownload = "https://git-scm.com/download/win"
 $RerunCmd = "irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1 | iex"
@@ -39,6 +38,7 @@ function Install-GitForWindows {
 }
 
 function Install-CanonFiles($Dest) {
+  $ErrorActionPreference = "Stop"  # function-scoped; must not leak into the user's session under | iex
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ("canon-install-" + [guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -60,7 +60,7 @@ function Install-CanonFiles($Dest) {
 
 $ScriptPath = $MyInvocation.MyCommand.Path
 $CanonRoot = if ($ScriptPath) { Split-Path -Parent $ScriptPath } else { $null }
-$Bootstrap = -not ($CanonRoot -and (Test-Path (Join-Path $CanonRoot "tools")))
+$Bootstrap = -not ($CanonRoot -and (Test-Path (Join-Path $CanonRoot "tools\canon.cmd")))
 
 if ($Bootstrap) {
   $CanonRoot = Join-Path $env:USERPROFILE ".canon"

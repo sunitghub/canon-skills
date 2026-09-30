@@ -8,7 +8,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 PS1="$ROOT/install.ps1"
 CMD="$ROOT/install.cmd"
-code() { grep -v '^\s*#' "$1"; }
+code() { grep -hv '^\s*#' "$@"; }
 
 # Never change the machine/user execution policy, never depend on Python.
 if code "$PS1" | grep -qi 'Set-ExecutionPolicy'; then fail "install.ps1 sets an execution policy"; fi

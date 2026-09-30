@@ -266,7 +266,7 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 1. In PowerShell: `irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1 | iex`. Pass when it explains Git Bash, prompts `[Y/n]`, warns about UAC, installs via winget, fetches canon, and prints `canon` as the next command.
 2. Answer `n` on a second clean VM (or with winget unavailable): it stops with the download link and the re-run command, and `~\.canon` does not exist.
 3. Re-run with `$env:CANON_YES=1`: no prompt, `~\.canon\cockpit` is kept, and the user PATH has one `tools\` entry.
-4. `install.cmd` alone (fetched with `curl.exe`) does the same. Record date, Windows build and outcome here, then run the non-git steps below.
+4. From cmd: `curl.exe -fsSLO https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.cmd && install.cmd` does the same. Also try the read-first path: download `install.ps1`, open it, then `powershell -ExecutionPolicy Bypass -File .\install.ps1`. Record date, Windows build and outcome here, then run the non-git steps below.
 
 ## Non-git project (t-5a4b, Windows VM with Git uninstalled)
 
