@@ -27,6 +27,7 @@ echo "$*" >> "$REFRESH_LOG"
 echo "prompts off: ${SKILLS_SH_NO_TTY:-unset}" >> "$REFRESH_LOG"
 # A project whose refresh leaves a background process holding stdout/stderr (as a daemon would).
 if [[ "$(basename "$2")" == spawner ]]; then (sleep 4 &); fi
+if [[ "$(basename "$2")" == slow ]]; then sleep 2.5; fi
 if [[ "$(basename "$2")" == empty ]]; then echo "No canon skills registered in: $2"; exit 1; fi
 [[ "$(basename "$2")" != bad ]] || { echo "boom: bad project"; exit 1; }
 SH
@@ -133,6 +134,30 @@ out="$("$CANON" update --refresh-only)"
 [[ $SECONDS -lt 3 ]] || fail "canon-update: refresh waited ${SECONDS}s for a background process"
 assert_contains "$out" "refreshed: $WORK/spawner"
 echo "canon-update: refresh does not wait on background processes"
+
+# On a terminal a slow refresh shows "refreshing <project> ." dots; off a terminal (every run above) it prints none.
+mkdir -p "$WORK/slow"
+sed -i.bak "s|\"$WORK/spawner\"|\"$WORK/slow\"|" "$CANON_HOME/cockpit/projects.json"
+tty_out="$(python3 - "$CANON" <<'PYEOF'
+import os, pty, sys
+pid, master = pty.fork()
+if pid == 0:
+    os.execvp("/bin/bash", ["/bin/bash", sys.argv[1], "update", "--refresh-only"])
+chunks = []
+try:
+    while True:
+        chunk = os.read(master, 4096)
+        if not chunk: break
+        chunks.append(chunk)
+except OSError:
+    pass
+os.waitpid(pid, 0)
+sys.stdout.write(b"".join(chunks).decode(errors="replace"))
+PYEOF
+)"
+assert_contains "$tty_out" "refreshing $WORK/slow .."
+assert_contains "$tty_out" "refreshed: $WORK/slow"
+echo "canon-update: dots shown on a terminal while a refresh runs"
 
 # Completion.
 bash_out="$(bash -c 'eval "$("$1" completion bash)"

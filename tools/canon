@@ -65,7 +65,7 @@ EOF
 refresh_projects() {
   local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
   [ -f "$registry" ] || { echo "No Cockpit projects registered — nothing to refresh."; exit 0; }
-  local failed=0 raw p outfile; outfile="$(mktemp)"
+  local failed=0 raw p outfile dots rc; outfile="$(mktemp)"
   # The board writes this file: pull each "path" string and undo JSON escaping (\\, \", \/).
   while IFS= read -r raw; do
     p="${raw#*\"path\"}"; p="${p#*\"}"; p="${p%\"}"
@@ -75,7 +75,15 @@ refresh_projects() {
     # SKILLS_SH_NO_TTY: a bulk refresh must not stop to ask each project the permission-rule questions.
     # Output goes to a file, not $(...): a command substitution waits for every process holding its pipe, so a
     # background process left by skills.sh would hang the update. stdin is closed for the same reason.
-    if SKILLS_SH_NO_TTY=1 "$SCRIPT_DIR/skills.sh" refresh "$p" >"$outfile" 2>&1 </dev/null; then echo "  refreshed: $p"
+    # On a terminal, a dot a second shows a slow refresh is alive (each bash spawn is slow on Windows ARM64).
+    dots=""
+    if [ -t 1 ]; then
+      printf '  refreshing %s ' "$p"
+      ( while :; do sleep 1; printf '.'; done ) & dots=$!
+    fi
+    SKILLS_SH_NO_TTY=1 "$SCRIPT_DIR/skills.sh" refresh "$p" >"$outfile" 2>&1 </dev/null && rc=0 || rc=$?
+    if [ -n "$dots" ]; then kill "$dots" 2>/dev/null; wait "$dots" 2>/dev/null || true; echo; fi
+    if [ "$rc" = 0 ]; then echo "  refreshed: $p"
     elif grep -q "No canon skills registered" "$outfile"; then echo "  skipped (no skills installed): $p"
     else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; echo "    $(tail -n 1 "$outfile")"; failed=1; fi
   done < <(grep -oE '"path"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' "$registry")
