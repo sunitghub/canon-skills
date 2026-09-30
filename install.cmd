@@ -10,7 +10,20 @@ REM process only) and makes no persistent change to your system policy.
 REM
 REM Usage: double-click install.cmd, or run  install.cmd  from any terminal.
 
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0install.ps1" %*
+REM Downloaded alone (no install.ps1 beside it)? Fetch it first; it then installs canon itself.
+set "PS1=%~dp0install.ps1"
+set "TMPPS1=%TEMP%\canon-install-%RANDOM%%RANDOM%.ps1"
+if not exist "%PS1%" (
+  set "PS1=%TMPPS1%"
+  curl.exe -fsSL -o "%TMPPS1%" https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1
+  if errorlevel 1 (
+    echo Could not download install.ps1. Check your connection and try again.
+    pause
+    exit /b 1
+  )
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -File "%PS1%" %*
 if errorlevel 1 (
   echo.
   echo install.ps1 exited with an error ^(code %errorlevel%^).

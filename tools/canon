@@ -45,6 +45,7 @@ Usage:
                            in ~/.bashrc; zsh: eval "$(canon completion zsh)" in ~/.zshrc
                            (after compinit); PowerShell: canon completion powershell |
                            Out-String | Invoke-Expression in $PROFILE
+  canon --version          Print the installed canon version
   canon --help             Show this help
 
 Launch once and work from within it. A second launch focuses the running
@@ -94,7 +95,7 @@ _canon() {
   local cur prev w
   cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "status sessions stop restart wait update completion help" -- "$cur")); return
+    COMPREPLY=($(compgen -W "status sessions stop restart wait update completion version help" -- "$cur")); return
   fi
   case "$prev" in
     --until) COMPREPLY=($(compgen -W "needs-you working done idle exited" -- "$cur")); return ;;
@@ -123,7 +124,7 @@ Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
   $pos = if ($wordToComplete) { $n - 1 } else { $n }
   $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
   $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
-  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','completion','help' }
+  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','completion','version','help' }
     elseif ($prev -eq '--until') { 'needs-you','working','done','idle','exited' }
     else { switch ($sub) {
       'status' { '--json' } 'sessions' { '--json' } 'stop' { '--force' } 'restart' { '--force' }
@@ -251,6 +252,7 @@ board_cmd() {
 main() {
   case "${1:-}" in
     help|--help|-h) usage; exit 0 ;;
+    version|--version|-V) echo "canon $({ tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION"; } 2>/dev/null || echo unknown)"; exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
     wait) shift; wait_cmd "$@" ;;
     update) shift; update_cmd "$@" ;;

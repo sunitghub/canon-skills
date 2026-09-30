@@ -261,6 +261,21 @@ claude login
 
 Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, and board all behave identically.
 
+## One-line install (t-8716, Windows VM with Git uninstalled, then restarted)
+
+1. In PowerShell: `irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1 | iex`. Pass when it explains Git Bash, prompts `[Y/n]`, warns about UAC, installs via winget, fetches canon, and prints `canon` as the next command.
+2. Answer `n` on a second clean VM (or with winget unavailable): it stops with the download link and the re-run command, and `~\.canon` does not exist.
+3. Re-run with `$env:CANON_YES=1`: no prompt, `~\.canon\cockpit` is kept, and the user PATH has one `tools\` entry.
+4. From cmd: `curl.exe -fsSLO https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.cmd && install.cmd` does the same. Also try the read-first path: download `install.ps1`, open it, then `powershell -ExecutionPolicy Bypass -File .\install.ps1`. Record date, Windows build and outcome here, then run the non-git steps below.
+
+**Result, 2026-09-30, Windows ARM64 VM, Git for Windows uninstalled and VM restarted** (run from branch `feat/t-8716`, `irm .../feat/t-8716/install.ps1 | iex`):
+- Step 1 pass: explained Git Bash, `[Y/n]`, UAC, winget installed Git 2.55.0.5 (native ARM64), canon fetched, success line printed; `canon` then started Cockpit 0.3.0 with no Python.
+- Step 3 pass: re-run skipped the Git prompt, kept `~\.canon\cockpit\keep.txt`, and left exactly one `~\.canon\tools` user PATH entry.
+- Step 2 pass: answering `n` printed the download link and re-run command, kept the window open, and left no `~\.canon`.
+- Step 4 pass (`install.cmd` via `curl.exe`, with the URL pointed at the branch since `main` had the old script): fetched `install.ps1`, ran the bootstrap to the success line. The read-first path and the non-git steps below are not run.
+- Found: the download crawled with the default progress bar (fixed with `$ProgressPreference = "SilentlyContinue"`), and `Expand-Archive` showed its own slow progress bar (replaced with `ZipFile.ExtractToDirectory`).
+- The one-liner and `install.cmd` only fetch the new script once this branch is on public `main`.
+
 ## Non-git project (t-5a4b, Windows VM with Git uninstalled)
 
 Add a plain folder in the Cockpit, create a ticket, Start an agent, edit/create/delete a file, End. Pass when the Changes panel lists the changes in plain words (no branch/commit/worktree vocabulary), "Restore original files, end" puts the edited file back, and a case-variant or drive/UNC form of the registered folder is refused ("cwd not allowed"). Record date, Windows build and outcome here.
