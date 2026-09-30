@@ -114,7 +114,7 @@ if (-not $Bootstrap -and -not (Get-Command bash -ErrorAction SilentlyContinue)) 
 }
 
 if ($Bootstrap) {
-  Write-Host "==> Added $ToolsPath to your user PATH"
+  Write-Host "==> Your user PATH includes $ToolsPath"
   if (-not $ScriptPath) {
     Write-Host "==> This PowerShell window: run canon"
     Write-Host "==> Future PowerShell windows: open a new window and run canon"
