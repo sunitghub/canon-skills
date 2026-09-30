@@ -268,6 +268,12 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 3. Re-run with `$env:CANON_YES=1`: no prompt, `~\.canon\cockpit` is kept, and the user PATH has one `tools\` entry.
 4. From cmd: `curl.exe -fsSLO https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.cmd && install.cmd` does the same. Also try the read-first path: download `install.ps1`, open it, then `powershell -ExecutionPolicy Bypass -File .\install.ps1`. Record date, Windows build and outcome here, then run the non-git steps below.
 
+**Result, 2026-09-30, Windows ARM64 VM, Git for Windows uninstalled and VM restarted** (run from branch `feat/t-8716`, `irm .../feat/t-8716/install.ps1 | iex`):
+- Step 1 pass: explained Git Bash, `[Y/n]`, UAC, winget installed Git 2.55.0.5 (native ARM64), canon fetched, success line printed; `canon` then started Cockpit 0.3.0 with no Python.
+- Step 3 pass: re-run skipped the Git prompt, kept `~\.canon\cockpit\keep.txt`, and left exactly one `~\.canon\tools` user PATH entry.
+- Not run: step 2 (`n` / no winget), step 4 (`install.cmd` via `curl.exe`, read-first path), and the non-git steps below.
+- Found: the download crawled with the default progress bar; fixed by `$ProgressPreference = "SilentlyContinue"` in `Install-CanonFiles`.
+
 ## Non-git project (t-5a4b, Windows VM with Git uninstalled)
 
 Add a plain folder in the Cockpit, create a ticket, Start an agent, edit/create/delete a file, End. Pass when the Changes panel lists the changes in plain words (no branch/commit/worktree vocabulary), "Restore original files, end" puts the edited file back, and a case-variant or drive/UNC form of the registered folder is refused ("cwd not allowed"). Record date, Windows build and outcome here.
