@@ -308,12 +308,12 @@
         .then(function(r){ return r.ok ? r.json() : r.text().then(function(t){ throw new Error(t); }); })
         .then(function(j){
           try{ window.parent.postMessage({ source: "canon-cockpit", type: "changes", total: Number(j.total) || 0, commits: Number(j.commits) || 0,
-            can_discard: j.can_discard === true, files: Array.isArray(j.files) ? j.files.slice(0, 50) : [] }, "*"); }catch(e){}
+            can_discard: j.can_discard === true, no_git: j.no_git === true, files: Array.isArray(j.files) ? j.files.slice(0, 50) : [] }, "*"); }catch(e){}
         })
         .catch(function(e){ failed(e && e.message || "Couldn't reach the daemon."); });
     } else if(d.type === "end-scratch"){
       if(!session) return;
-      fetch("/session/"+session+"/end-scratch", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ discard: d.discard === true }) })
+      fetch("/session/"+session+"/end-scratch", { method:"POST", headers: Object.assign({"Content-Type":"application/json"}, authHeaders(sessTok)), body: JSON.stringify({ discard: d.discard === true, restore: d.restore === true }) })
         .then(function(r){ return r.ok ? r.json().then(function(j){ return { ok: true, j: j }; }) : r.text().then(function(t){ return { ok: false, t: t }; }); })
         .then(function(res){
           try{ window.parent.postMessage(res.ok
@@ -431,6 +431,9 @@
         try { detail = (await r.text()).trim(); } catch(e){}
         setStatus("error","start failed ("+r.status+")");
         term.writeln("\r\n\x1b[31mstart failed ("+r.status+")"+(detail ? ": "+detail : "")+"\x1b[0m");
+        if(r.status===400 && /cwd not allowed/i.test(detail)){
+          term.writeln("\x1b[33mThis folder isn't a registered canon project. Register it from the Projects page, then start again.\x1b[0m");
+        }
         if(r.status===400 && /not visible in this worktree/i.test(detail)){
           term.writeln("\x1b[33mThis ticket is locked to a worktree that doesn't contain it. In the board's WORKTREE panel, click \u201CUnlock worktree\u201D to run in the Main checkout, or commit .tickets/ into that worktree.\x1b[0m");
         }

@@ -244,7 +244,7 @@ check_no_git() {
   start_server "$kind" "$dflt" "$home" "/var/empty"
   new_dir; proj="$NEW_DIR"; register "$SERVER_PORT" "$proj"; snap="$(snapshot "$proj")"
   r="$(req POST "$SERVER_PORT" "?project=$PROJ_ID" '{"confirm":true}')"
-  assert_eq "400" "${r%% *}"; assert_contains "${r#* }" "git is not installed"; assert_eq "$snap" "$(snapshot "$proj")"
+  assert_eq "400" "${r%% *}"; assert_contains "${r#* }" "Version history needs Git, which isn't installed"; assert_eq "$snap" "$(snapshot "$proj")"
 }
 
 check_backend py

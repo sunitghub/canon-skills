@@ -95,6 +95,8 @@ type config struct {
 	idleTimeoutMain   time.Duration // t-cd06: longer idle timeout for a main-checkout session (default 30m) — nebula's own 5m default assumes a disposable worktree; the main checkout has no such disposability, so it keeps a longer but still-bounded safety net rather than running forever unreaped
 	idleCheckInterval time.Duration // t-2e7e: how often to scan for idle sessions (default 30s)
 	saveFallback      time.Duration // t-2e7e: force-kill if the save marker never appears within this long (default 60s)
+	registryFile      string        // t-5a4b: projects.json path override (tests); default $CANON_HOME|~/.canon /cockpit/projects.json
+	changesHome       string        // t-5a4b: override of canon's per-user cockpit dir (tests); default $CANON_HOME|~/.canon /cockpit
 	saveQuiesce       time.Duration // t-2c9e: after a watched state file changes, conclude "saved" once writes quiesce for this long (default 2s) — mtime-bump != save-complete, so this debounce avoids killing mid-multi-file-write
 }
 
@@ -102,7 +104,8 @@ type server struct {
 	cfg       config
 	mu        sync.Mutex
 	sessions  map[string]*session
-	scratchMu sync.Mutex // t-e162: serializes scratch starts (main-checkout-or-worktree choice)
+	scratchMu sync.Mutex     // t-e162: serializes scratch starts (main-checkout-or-worktree choice)
+	recording sync.WaitGroup // t-5a4b: in-flight change recordings, so teardown can wait for them
 	// t-d9e6: set before a daemon shutdown ends its sessions, so their snapshot entries stay
 	// behind and are offered for resume on the next start.
 	shuttingDown atomic.Bool
@@ -275,6 +278,8 @@ func (s *server) handler() http.Handler {
 	}
 	mux.HandleFunc("/session/start", s.guard(s.handleStart))
 	mux.HandleFunc("/sessions", s.guard(s.handleSessions))
+	mux.HandleFunc("/changes", s.guard(s.handleChangesQuery)) // t-5a4b: read-only, like /sessions
+	mux.HandleFunc("/changes/restore", s.guard(s.handleChangesRestore))
 	mux.HandleFunc("/session/", s.guard(s.handleSession))
 	return mux
 }
@@ -450,6 +455,12 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "ticket not found in project", http.StatusBadRequest)
 			return
 		}
+		// t-5a4b: a folder without git is trusted only through its own real .tickets/<id> — not a link, not a parent's.
+		// The cheap check comes first so a normal project never pays for a git call here.
+		if !(plainDir(filepath.Join(projectRoot, ".tickets")) && plainDir(filepath.Join(projectRoot, ".tickets", body.Ticket))) && s.noGit(projectRoot) {
+			http.Error(w, "cwd not allowed", http.StatusBadRequest)
+			return
+		}
 	}
 	// t-cd06: the daemon re-validates cwd itself against a live `git worktree
 	// list` — it never trusts whatever cockpit.html relayed, mirroring
@@ -501,7 +512,9 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		// state dir (sessionStateDir). Created only now, after every refusal above, so a
 		// refused start leaves nothing behind.
 		// t-e162: the main checkout is free → run there; otherwise in a new worktree.
-		if s.mainCheckoutBusy(projectRoot) {
+		// t-5a4b: a folder without git can't have worktrees (and copies can't be merged back), so several
+		// scratch sessions share the folder — the board warns that they can overwrite each other.
+		if s.mainCheckoutBusy(projectRoot) && !s.noGit(projectRoot) {
 			created, err := createScratchWorktree(projectRoot)
 			if err != nil {
 				http.Error(w, "could not create a worktree for this scratch session: "+err.Error(), http.StatusInternalServerError)
@@ -525,6 +538,7 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 		dirty, err := checkoutDirty(cwd)
 		startClean = err == nil && !dirty
 	}
+	s.baselineIfNoGit(projectRoot, body.Ticket) // t-5a4b: before the agent can change anything
 	se, err := s.spawn(body.Ticket, cwd, projectRoot, kind)
 	if err == nil && scratch {
 		se.mu.Lock()
@@ -956,6 +970,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
 	// own immediate delete is unaffected — it never sets onNaturalExit's timer.
 	se.onNaturalExit = func() {
+		s.recordChangesAsync(se) // t-5a4b: what changed, kept for the board
 		s.snapshotRemove(se.sid) // the agent exited on its own: nothing to resume
 		time.AfterFunc(s.cfg.sessionReapTTL, func() {
 			s.mu.Lock()
@@ -998,6 +1013,7 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		Signal        string `json:"signal"`          // where needs-you comes from: hook | copilot-menu | activity
 		Title         string `json:"title,omitempty"` // t-f553: a scratch session's user-given title
 		Attached      int    `json:"attached"`        // t-61c7: browser streams attached right now
+		Shared        bool   `json:"shared"`          // t-5a4b: another live session works in the same folder, and it has no git to keep them apart
 	}
 	// Lock order is s.mu (outer) then se.mu (inner), matching handleShutdown.
 	s.mu.Lock()
@@ -1019,6 +1035,23 @@ func (s *server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.mu.Unlock()
+	// t-5a4b: sessions sharing one folder without git can overwrite each other — say so. Only when
+	// two rows share a cwd is git asked at all, once per project.
+	byCwd, noGit := map[string]int{}, map[string]bool{}
+	for _, o := range out {
+		byCwd[o.Cwd]++
+	}
+	for i := range out {
+		if byCwd[out[i].Cwd] < 2 {
+			continue
+		}
+		g, seen := noGit[out[i].ProjectRoot]
+		if !seen {
+			g = s.noGit(out[i].ProjectRoot)
+			noGit[out[i].ProjectRoot] = g
+		}
+		out[i].Shared = g
+	}
 	// idleTimeoutFor resolves symlinks on disk — done outside the locks.
 	for i := range out {
 		out[i].IdleLimitSecs = int64(s.idleTimeoutFor(out[i].ProjectRoot, out[i].Cwd).Seconds())
@@ -1519,7 +1552,7 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request, se *sessi
 	se.mu.Lock()
 	cwd, wt, startClean := se.cwd, se.scratchWT, se.startClean
 	se.mu.Unlock()
-	files, total, commits, err := scratchLeftovers(cwd, wt)
+	files, total, commits, noGit, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
 	if err != nil {
 		http.Error(w, "could not read the checkout's changes: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -1527,7 +1560,200 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request, se *sessi
 	if files == nil {
 		files = []scratchChange{}
 	}
-	writeJSON(w, map[string]any{"files": files, "total": total, "commits": commits, "can_discard": startClean && total > 0})
+	writeJSON(w, map[string]any{"files": files, "total": total, "commits": commits, "can_discard": startClean && total > 0 && !noGit, "no_git": noGit})
+}
+
+// noGit reports whether root is not a git work tree (or git is not installed at all).
+func (s *server) noGit(root string) bool {
+	wts, err := s.listWorktreesIn(root)
+	if err == nil && len(wts) > 0 {
+		return false
+	}
+	// A transient git failure inside a real repo must not read as "no git": that would share the main
+	// checkout and skip the leftovers check. Only a folder with no .git anywhere above it is non-git.
+	return !insideDotGit(root)
+}
+
+// insideDotGit reports whether root or an ancestor holds a .git entry (a directory, or a worktree's file).
+func insideDotGit(root string) bool {
+	for d := root; ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return true
+		}
+		if filepath.Dir(d) == d {
+			return false
+		}
+	}
+}
+
+// plainDir reports whether p is a real directory, not a link to one.
+func plainDir(p string) bool {
+	fi, err := os.Lstat(p)
+	return err == nil && fi.IsDir()
+}
+
+// baselineIfNoGit (t-5a4b) records a folder without git the first time a session starts on it.
+// Fail-open: a problem here must never stop the agent from starting.
+func (s *server) baselineIfNoGit(root, id string) {
+	if !s.noGit(root) {
+		return
+	}
+	if _, err := ensureBaseline(root, s.changesStoreDir(root, id)); err != nil {
+		fmt.Fprintf(os.Stderr, "cockpit-daemon: no baseline for %s in %s: %v\n", id, root, err)
+	}
+}
+
+// recordChangesAsync runs recordChangesIfNoGit off the caller's path. It joins the session's bg group so
+// teardown (and tests) can wait for it to stop writing into the ticket folder — the session may
+// already be gone from s.sessions by then, so the server counts them too.
+func (s *server) recordChangesAsync(se *session) {
+	se.bg.Add(1)
+	s.recording.Add(1)
+	go func() {
+		defer se.bg.Done()
+		defer s.recording.Done()
+		s.recordChangesIfNoGit(se.projectRoot, se.ticket)
+	}()
+}
+
+// recordChangesIfNoGit compares a folder without git against its baseline and keeps the result.
+func (s *server) recordChangesIfNoGit(root, id string) {
+	if root == "" || !s.noGit(root) {
+		return
+	}
+	res, err := compareBaseline(root, s.changesStoreDir(root, id))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "cockpit-daemon: comparing changes for %s in %s: %v\n", id, root, err)
+		return
+	}
+	// The close gates read the list from the ticket folder (they have no git to ask). Paths and counts only.
+	if dir := filepath.Join(root, ".tickets", id); ticketRe.MatchString(id) && res.Tracked {
+		if fi, err := os.Lstat(dir); err == nil && fi.IsDir() {
+			if data, err := json.MarshalIndent(res, "", "  "); err == nil {
+				if err := writeFileAtomic(filepath.Join(dir, "changes.json"), data); err != nil {
+					fmt.Fprintf(os.Stderr, "cockpit-daemon: writing changes.json for %s: %v\n", id, err)
+				}
+			}
+		}
+	}
+}
+
+// changeSymbol is the one-character status shown next to a path in the End dialog.
+func changeSymbol(status string) string {
+	switch status {
+	case "added":
+		return "+"
+	case "deleted":
+		return "-"
+	case "renamed":
+		return ">"
+	}
+	return "~"
+}
+
+// leftovers is scratchLeftovers for a git checkout and the snapshot comparison for a folder without git.
+func (s *server) leftovers(root, id, cwd string, wt *scratchWorktree) (files []scratchChange, total, commits int, noGit bool, err error) {
+	if !s.noGit(root) {
+		files, total, commits, err = scratchLeftovers(cwd, wt)
+		return files, total, commits, false, err
+	}
+	res, err := compareBaseline(root, s.changesStoreDir(root, id))
+	if err != nil {
+		return nil, 0, 0, true, err
+	}
+	for _, f := range res.Files {
+		if len(files) < scratchChangesCap {
+			files = append(files, scratchChange{Status: changeSymbol(f.Status), Path: f.Path})
+		}
+	}
+	return files, res.Total, 0, true, nil
+}
+
+// handleChangesQuery serves GET /changes?root=<project folder>&id=<ticket|scratch id>: what changed in a
+// folder without git since the session's baseline. Read-only and token-free like /sessions (loopback +
+// Origin guarded); the root goes through the same trust rule as /session/start.
+func (s *server) handleChangesQuery(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if !sessionIDRe.MatchString(id) {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+	root, ok := s.resolveProjectForCwd(r.URL.Query().Get("root"))
+	if !ok || r.URL.Query().Get("root") == "" {
+		http.Error(w, "root not allowed", http.StatusBadRequest)
+		return
+	}
+	if !s.noGit(root) {
+		writeJSON(w, map[string]any{"git": true, "tracked": false, "files": []changeFile{}})
+		return
+	}
+	res, err := compareBaseline(root, s.changesStoreDir(root, id))
+	if err != nil {
+		http.Error(w, "could not compare: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, res)
+}
+
+// liveSessionIn reports whether an agent is still running in root.
+func (s *server) liveSessionIn(root string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, se := range s.sessions {
+		if pathsEqual(se.projectRoot, root) && !se.isExited() {
+			return true
+		}
+	}
+	return false
+}
+
+// handleChangesRestore serves POST /changes/restore {root, id}: put back the originals of a folder
+// without git, from the copies kept when the session started. Refused while any agent works there.
+func (s *server) handleChangesRestore(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.cfg.token == "" || !secureEqual(bearer(r), s.cfg.token) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var body struct {
+		Root string `json:"root"`
+		ID   string `json:"id"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || !sessionIDRe.MatchString(body.ID) {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	root, ok := s.resolveProjectForCwd(body.Root)
+	if !ok || body.Root == "" || !s.noGit(root) {
+		http.Error(w, "root not allowed", http.StatusBadRequest)
+		return
+	}
+	if s.liveSessionIn(root) {
+		http.Error(w, "an agent is still working in this folder — end it first", http.StatusConflict)
+		return
+	}
+	s.restoreAndReport(w, root, body.ID)
+}
+
+func (s *server) restoreAndReport(w http.ResponseWriter, root, id string) {
+	store := s.changesStoreDir(root, id)
+	restored, err := restoreOriginal(root, store)
+	if err != nil {
+		http.Error(w, "could not restore: "+err.Error(), http.StatusConflict)
+		return
+	}
+	left := 0
+	if res, err := compareBaseline(root, store); err == nil {
+		left = res.Total
+	}
+	writeJSON(w, map[string]any{"restored": len(restored), "remaining": left})
 }
 
 // killProc is killProcess; a test swaps it to simulate an agent that won't die.
@@ -1561,6 +1787,7 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 	}
 	var body struct {
 		Discard bool `json:"discard"`
+		Restore bool `json:"restore"` // t-5a4b: folder without git — put the originals back
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1024)).Decode(&body); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -1570,6 +1797,11 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 	if body.Discard && !se.startClean {
 		se.mu.Unlock()
 		http.Error(w, "this checkout already had uncommitted changes when the session started — discard isn't offered", http.StatusConflict)
+		return
+	}
+	if body.Restore && (body.Discard || !s.noGit(se.projectRoot)) {
+		se.mu.Unlock()
+		http.Error(w, "restore applies only to a folder without git", http.StatusConflict)
 		return
 	}
 	cwd, wt := se.cwd, se.scratchWT
@@ -1596,11 +1828,36 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 			se.debugf("discard failed: %v", err)
 		}
 	}
+	restored := 0
+	if body.Restore {
+		reason = "kept on End"
+		gone := se.reaped == nil
+		if !gone {
+			select {
+			case <-se.reaped:
+				gone = true
+			case <-time.After(endScratchReapWait):
+			}
+		}
+		switch {
+		case !gone:
+			reason, errMsg = "Restore skipped (the agent did not stop in time), kept", "the agent did not stop in time — nothing was restored"
+		case s.liveSessionIn(se.projectRoot):
+			reason, errMsg = "Restore skipped (another agent is working in this folder), kept", "another agent is still working in this folder — nothing was restored"
+		default:
+			files, err := restoreOriginal(se.projectRoot, s.changesStoreDir(se.projectRoot, se.ticket))
+			if err != nil {
+				reason, errMsg = "Restore failed ("+err.Error()+"), kept", err.Error()
+			} else {
+				restored, reason = len(files), "left after Restore original"
+			}
+		}
+	}
 	if wt != nil && wt.remove(se.projectRoot, se.debugf) {
 		writeJSON(w, map[string]any{"ended": true, "files": 0, "commits": 0, "error": errMsg})
 		return
 	}
-	_, total, commits, err := scratchLeftovers(cwd, wt)
+	_, total, commits, _, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
 	if err != nil {
 		total, reason = -1, reason+"; could not check what is left: "+err.Error()
 	}
@@ -1610,7 +1867,7 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 			noteErr = err.Error()
 		}
 	}
-	writeJSON(w, map[string]any{"ended": true, "files": total, "commits": commits, "error": errMsg, "note_error": noteErr})
+	writeJSON(w, map[string]any{"ended": true, "files": total, "commits": commits, "error": errMsg, "note_error": noteErr, "restored": restored})
 }
 
 // handoffMu serializes the daemon's HANDOFF.md read-modify-write (several sessions can end at once).
@@ -1760,6 +2017,7 @@ func (s *server) killSession(se *session) {
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
+	s.recordChangesAsync(se) // t-5a4b: what changed, kept for the board
 	if !s.shuttingDown.Load() {
 		s.snapshotRemove(se.sid) // ended on purpose (Save & End, Kill, reap, End, adopt)
 	}
@@ -2224,7 +2482,7 @@ func (s *server) endIdleScratch(se *session) {
 	se.mu.Lock()
 	cwd, wt := se.cwd, se.scratchWT
 	se.mu.Unlock()
-	_, total, commits, err := scratchLeftovers(cwd, wt)
+	_, total, commits, _, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
 	if err != nil {
 		keep("could not check the scratch checkout", err)
 		return
@@ -3414,12 +3672,58 @@ func (s *server) resolveProjectForCwd(cwd string) (string, bool) {
 	}
 	wts, err := s.listWorktreesIn(resolved)
 	if err != nil || len(wts) == 0 {
-		return "", false // not a git working tree — never assume a project
+		// t-5a4b: not a git working tree (or git is not installed). A folder that is exactly a
+		// REGISTERED project root is still trusted — nothing else is: never assume a project.
+		return s.registeredRoot(resolved)
 	}
 	if main, err := filepath.EvalSymlinks(wts[0]); err == nil {
 		return main, true
 	}
 	return wts[0], true
+}
+
+// registeredRoot reports whether resolved (an absolute, symlink-resolved path) is exactly a project
+// root registered through the board (t-5a4b: non-git projects for people without git). The registry
+// is read on EVERY call, so a deregistration takes effect on the next start; anything unreadable,
+// oversized or malformed trusts nothing. Only an exact match counts — a subfolder of a registered
+// root, or a symlink leading out of one, resolves to a different path and is refused.
+func (s *server) registeredRoot(resolved string) (string, bool) {
+	f := s.cfg.registryFile
+	if f == "" {
+		f = defaultRegistryFile()
+	}
+	fi, err := os.Stat(f)
+	if err != nil || !fi.Mode().IsRegular() || fi.Size() > 1<<20 {
+		return "", false
+	}
+	b, err := os.ReadFile(f)
+	if err != nil {
+		return "", false
+	}
+	var entries []struct {
+		Path string `json:"path"`
+	}
+	if json.Unmarshal(b, &entries) != nil {
+		return "", false
+	}
+	for _, e := range entries {
+		if e.Path == "" || !filepath.IsAbs(e.Path) {
+			continue
+		}
+		p, err := filepath.EvalSymlinks(e.Path)
+		if err != nil {
+			continue
+		}
+		if pathsEqual(p, resolved) {
+			return resolved, true
+		}
+	}
+	return "", false
+}
+
+// defaultRegistryFile is where the boards keep the registered projects (server.py _registry_file).
+func defaultRegistryFile() string {
+	return filepath.Join(defaultCanonCockpitDir(), "projects.json")
 }
 
 // pathsEqual compares two already-resolved absolute paths. Windows paths are

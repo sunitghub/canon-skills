@@ -525,7 +525,9 @@ def run(cmd: list, cwd: Path) -> str:
 
 def load_git(root: Path = None) -> dict:
     cwd = root if root is not None else PROJECT_ROOT
-    branch   = run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd) or 'main'
+    # t-5a4b: a project with no git has no branch — report '' rather than inventing 'main'.
+    is_git   = run(['git', 'rev-parse', '--is-inside-work-tree'], cwd).strip() == 'true'
+    branch   = run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], cwd) or ('main' if is_git else '')
     project  = cwd.name
     status   = run(['git', 'status', '--porcelain'], cwd)
     modified = len([l for l in status.splitlines() if l.strip()]) if status else 0
@@ -540,8 +542,7 @@ def load_git(root: Path = None) -> dict:
                 break
     total_commits_raw = run(['git', 'rev-list', '--count', 'HEAD'], cwd)
     total_commits = int(total_commits_raw) if total_commits_raw.isdigit() else None
-    # t-d218: a repo with no commits yet has no total_commits, but it IS git (worktree rail, Start gate).
-    is_git = run(['git', 'rev-parse', '--is-inside-work-tree'], cwd).strip() == 'true'
+    # t-d218: a repo with no commits yet has no total_commits, but it IS git (worktree rail, Start gate) — see is_git above.
     return {'branch': branch, 'project': project, 'root': str(cwd), 'modified': modified, 'log': log, 'total_commits': total_commits, 'is_git': is_git}
 
 # ── Worktrees (t-cd06) ───────────────────────────────────────────────────
@@ -1797,7 +1798,7 @@ def track_changes_root(query: dict) -> Path:
     return effective_root(query)
 
 def track_changes_state(root: Path) -> dict:
-    return {'ok': True, 'tracking': _inside_work_tree(root), 'synced': synced_service(root)}
+    return {'ok': True, 'tracking': _inside_work_tree(root), 'synced': synced_service(root), 'git_available': shutil.which('git') is not None}
 
 def track_changes(root: Path, confirm) -> dict:
     """git init + a .gitignore-only first commit in a registry-resolved folder. Refuses on any
@@ -1806,7 +1807,7 @@ def track_changes(root: Path, confirm) -> dict:
     if confirm is not True:
         return {'ok': False, 'error': 'Track changes needs confirm: true.'}
     if not shutil.which('git'):
-        return {'ok': False, 'error': 'git is not installed on this machine.'}
+        return {'ok': False, 'error': "Version history needs Git, which isn't installed on this computer. You can keep working without it."}
     git_dir, ignore = root / '.git', root / '.gitignore'
     if os.path.lexists(git_dir):
         return {'ok': False, 'error': 'This folder already has a .git. Fix or remove it yourself; canon will not touch it.'}
@@ -1956,6 +1957,22 @@ def cockpit_sessions() -> list:
         return data if isinstance(data, list) else []
     except Exception:
         return []
+
+def cockpit_changes(root, sid: str) -> dict:
+    """t-5a4b: proxy the daemon's read-only GET /changes — what changed in a project WITHOUT git since
+    a session's baseline. The daemon applies the same trust rule as /session/start to `root`. Returns
+    {'tracked': False, ...} when no healthy daemon or on any error. Mirrored in sprint-check-go."""
+    empty = {'tracked': False, 'files': [], 'note': 'Changes are not available right now.'}
+    addr, ok = _discover_cockpit_addr()
+    if not ok:
+        return empty
+    try:
+        q = urllib.parse.urlencode({'id': sid, 'root': str(root)})
+        with urllib.request.urlopen(f'http://{addr}/changes?{q}', timeout=6) as r:
+            data = json.loads(r.read().decode('utf-8'))
+        return data if isinstance(data, dict) else empty
+    except Exception:
+        return empty
 
 # ── t-d9e6: sessions running when the daemon stopped ──────────────────────────
 # The daemon moves its leftover live-session snapshot into interrupted.json at start and
@@ -2863,6 +2880,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_text(cockpit_sessions_text(sessions))
             else:
                 self.send_json(sessions)
+        elif path == '/api/cockpit-changes':   # t-5a4b
+            q = parse_qs(parsed.query)
+            sid = q.get('id', [''])[0]
+            if not _SESSION_ID_RE.match(sid):
+                self.send_error(400); return
+            try:
+                eroot = effective_root(q)
+            except UnknownProject:
+                self.send_error(400); return
+            self.send_json(cockpit_changes(eroot, sid))
         elif path == '/api/cockpit-status':
             st = cockpit_status()
             if parse_qs(parsed.query).get('format', [''])[0] == 'text':

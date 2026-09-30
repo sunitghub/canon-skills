@@ -69,14 +69,14 @@
   .view{position:absolute;inset:0;overflow:auto;display:none}
   .view.active{display:block}
   /* t-5c3c: when a nudge banner is present, stack it above the board iframe */
-  .view.active.has-nudge,.view.active.has-intr{display:flex;flex-direction:column}
-  .view.has-nudge iframe,.view.has-intr iframe{flex:1;height:auto;min-height:0}
-  .skill-nudge{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
-  .skill-nudge .sn-msg{flex:1;min-width:0}
+  .view.active.has-nudge,.view.active.has-intr,.view.active.has-shared{display:flex;flex-direction:column}
+  .view.has-nudge iframe,.view.has-intr iframe,.view.has-shared iframe{flex:1;height:auto;min-height:0}
+  .skill-nudge,.shared-warn{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
+  .skill-nudge .sn-msg,.shared-warn .sn-msg{flex:1;min-width:0}
   .skill-nudge .sn-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
   .skill-nudge .sn-reg{font-size:12px;padding:6px 12px}
-  .skill-nudge .sn-x{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
-  .skill-nudge .sn-x:hover{color:var(--text);border-color:var(--border-hover)}
+  .skill-nudge .sn-x,.shared-warn .sn-x{width:26px;height:26px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:12px}
+  .skill-nudge .sn-x:hover,.shared-warn .sn-x:hover{color:var(--text);border-color:var(--border-hover)}
   #view-projects{padding:24px 30px}
   #view-admin{padding:24px 30px}
   #view-upkeep{padding:24px 30px}
@@ -1067,6 +1067,7 @@
       scrTitle:SCRATCH_ID_RE.test(ticket)?String(s.title||'').slice(0,80):'',   // t-f553: its user-given title
       proot, name:proot.split(/[\\/]/).filter(Boolean).pop()||proot,
       agent:String(s.agent||''), cwd:String(s.cwd||''), sid:String(s.session||''),
+      shared:s.shared===true,   // t-5a4b: another live session works in this same folder, and there is no git to keep them apart
     };
   }
   // t-f553: open scratch tabs the daemon doesn't report yet — the agent picker is still up.
@@ -1094,6 +1095,25 @@
     if(v.state==='idle' || v.state==='done') return v.short+(since?' '+since:'')+agent+reaps;
     return v.short+agent;
   }
+  // t-5a4b: two sessions in one folder without git can overwrite each other — say so, once, under
+  // the project. Dismissing hides it until the sharing stops and starts again.
+  const sharedDismissed=new Set();
+  function syncSharedWarnings(views){
+    const sharing=new Set(views.filter(v=>v.shared&&v.pid).map(v=>v.pid));
+    for(const id of [...sharedDismissed]) if(!sharing.has(id)) sharedDismissed.delete(id);
+    document.querySelectorAll('.shared-warn').forEach(b=>{ if(!sharing.has(b.dataset.pid)||sharedDismissed.has(b.dataset.pid)){ const v=b.parentElement; b.remove(); if(v) v.classList.remove('has-shared'); } });
+    for(const id of sharing){
+      const v=document.getElementById('view-'+id);
+      if(!v||sharedDismissed.has(id)||v.querySelector('.shared-warn')) continue;
+      const bar=document.createElement('div'); bar.className='shared-warn'; bar.dataset.pid=id; bar.setAttribute('role','status');
+      const msg=document.createElement('span'); msg.className='sn-msg';
+      msg.textContent='More than one agent is working in this folder. They can overwrite each other\u2019s changes \u2014 fine for reading and running tests, risky if both edit the same files.';
+      const x=document.createElement('button'); x.className='sn-x'; x.title='Dismiss'; x.textContent='\u2715';
+      x.addEventListener('click',()=>{ sharedDismissed.add(id); bar.remove(); v.classList.remove('has-shared'); });
+      bar.appendChild(msg); bar.appendChild(x);
+      v.classList.add('has-shared'); v.insertBefore(bar,v.firstChild);
+    }
+  }
   function renderSessionSurfaces(){
     const views=lastSessions.map(sessionView);
     ensureTicketTitles(views);
@@ -1112,6 +1132,7 @@
         `<span class="ag-s">${esc(agentLine(v))}</span></button>`;
       }).join('')
     ).join('');
+    syncSharedWarnings(views);
     list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(rail[+b.dataset.i])));
     list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     // Projects cards: counts by state.
@@ -1339,7 +1360,7 @@
     const want=_projKey(v.proot);
     const proj=(window._projects||[]).find(p=>_projKey(p.path)===want);
     if(!proj){ toast('Project not registered: '+v.proot); return; }
-    openProject(proj.id,proj.name);
+    openProject(proj.id,proj.name,{nudge:true,quiet:true});   // t-5a4b: Scratch / Continue / rail rows nudge too
     let msg=null;
     if(typeof v.ticket==='string'&&TICKET_ID_RE.test(v.ticket)) msg={source:'canon-cockpit-shell',type:'open-ticket',ticket:v.ticket};
     else if(typeof v.scratch==='string'&&SCRATCH_ID_RE.test(v.scratch)) msg={source:'canon-cockpit-shell',type:'open-scratch',id:v.scratch};
@@ -1372,7 +1393,12 @@
   // t-67ab: the card's Branch and Upkeep rows (how many of the checks have never run).
   async function fillCardBranchUpkeep(id,el){
     const br=el.querySelector('[data-f="branch"]'), up=el.querySelector('[data-f="upkeep"]');
-    try{ const r=await fetch('/api/git?project='+encodeURIComponent(id)); br.textContent=(r.ok&&(await r.json()).branch)||'—'; }catch(e){ br.textContent='—'; }
+    try{
+      const r=await fetch('/api/git?project='+encodeURIComponent(id)); const g=r.ok?await r.json():null;
+      const row=br.closest('.metarow');
+      if(g&&g.is_git===false){ if(row) row.hidden=true; }   // t-5a4b: no git, no branch to show
+      else{ if(row) row.hidden=false; br.textContent=(g&&g.branch)||'—'; }
+    }catch(e){ br.textContent='—'; }
     try{
       const st=await Promise.all(UPKEEP_SKILLS.map(s=>fetch('/api/upkeep/status?project='+encodeURIComponent(id)+'&skill='+encodeURIComponent(s.id)).then(r=>r.ok?r.json():null).catch(()=>null)));
       if(st.some(x=>!x)) throw 0;
@@ -2238,7 +2264,7 @@
     opts=opts||{};
     if(!openTabs.some(t=>t.id===id)){ openTabs.push({id,name}); ensureView(id,name); }
     activateTab(id);
-    if(opts.nudge) maybeNudgeSkill(id,name);   // t-5c3c: only on explicit open, never on restore
+    if(opts.nudge) maybeNudgeSkill(id,name,opts.quiet);   // t-5c3c: only on explicit open, never on restore
   }
   async function hasSprintSkill(id){
     try{ const s=await fetch('/api/project-stats?project='+encodeURIComponent(id)); if(s.ok) return ((await s.json()).skills||[]).includes('sprint'); }catch(e){}
@@ -2247,9 +2273,11 @@
   // t-5c3c: soft nudge — when a project opened via the card lacks the sprint
   // skill, show an inline banner offering to register it. The board still opens;
   // Dismiss hides it for this open (reopening nudges again). Never a hard block.
-  async function maybeNudgeSkill(id,name){
+  const nudgeDismissed=new Set();   // t-5a4b: a banner dismissed once isn't re-shown by session-driven opens (until reload)
+  async function maybeNudgeSkill(id,name,quiet){
     const v=document.getElementById('view-'+id);
     if(!v || v.querySelector('.skill-nudge')) return;
+    if(quiet && nudgeDismissed.has(id)) return;
     if(await hasSprintSkill(id)) return;
     if(v.querySelector('.skill-nudge')) return;   // re-check post-await: a concurrent open may have inserted one
     const proj=(window._projects||[]).find(p=>p.id===id)||{};
@@ -2264,7 +2292,7 @@
     bar.appendChild(msg); bar.appendChild(actions);
     v.classList.add('has-nudge');
     v.insertBefore(bar, v.firstChild);
-    x.addEventListener('click',()=>{ bar.remove(); v.classList.remove('has-nudge'); });
+    x.addEventListener('click',()=>{ bar.remove(); v.classList.remove('has-nudge'); nudgeDismissed.add(id); });
     reg.addEventListener('click',async()=>{
       await registerSkill(id, name, proj.path||'', 'sprint', reg);  // reuses the themed cockpitConfirm flow
       if(await hasSprintSkill(id)){ bar.remove(); v.classList.remove('has-nudge'); }
@@ -2332,7 +2360,7 @@
           <div class="cardbottom">
             <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
               ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
-              <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="This folder isn't a git repository — agents can't run here until it tracks changes" style="display:none">Track changes</button>
+              <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="Optional: keep a full history of this folder's files so you can go back to earlier versions. Agents run here without it." style="display:none">Version history</button>
             </div>
             <div class="actions">
               <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
@@ -2383,7 +2411,7 @@
         if(tc){
           let st=null;
           try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok) st=await t.json(); }catch(e){}
-          const show=!!(st&&st.ok&&st.tracking===false);
+          const show=!!(st&&st.ok&&st.tracking===false&&st.git_available!==false);   // no Git on this computer: nothing to offer
           tc.style.display = show ? '' : 'none';
           tc.dataset.synced = (st&&st.synced) || '';
           any = any || show;
@@ -2435,16 +2463,16 @@
   async function trackChanges(id,name,btn){
     if(btn&&btn.disabled) return;
     const synced=btn&&btn.dataset.synced;
-    const body='Creates a local history for this folder (git) so agents can run here and their work can be checked. Nothing is uploaded. canon adds a .gitignore and commits only that; your files stay as they are.'
+    const body='Keeps a full history of this folder\u2019s files on this computer, so you can go back to earlier versions. It needs Git installed. Nothing is uploaded and your files stay exactly as they are. Agents can run here without it.'
       +(synced?' Note: this folder is in '+synced+'. Sync services can damage this history — consider moving the project out of '+synced+' first.':'');
-    if(!(await cockpitConfirm({title:'Track changes in “'+name+'”?', body, okLabel:'Track changes'}))) return;
+    if(!(await cockpitConfirm({title:'Turn on version history for “'+name+'”?', body, okLabel:'Turn on'}))) return;
     const saved=btn?btn.innerHTML:'';
     if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>Starting…'; }
     try{
       const r=await fetch('/api/track-changes?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
       const res=await r.json().catch(()=>({}));
-      if(res&&res.ok){ toast('✓ '+name+' now tracks changes'); load(); return; }
-      toast((res&&res.error)?res.error:'Could not start tracking changes (HTTP '+r.status+')');
+      if(res&&res.ok){ toast('✓ '+name+' now keeps a version history'); load(); return; }
+      toast((res&&res.error)?res.error:'Could not turn on version history (HTTP '+r.status+')');
     }catch(e){ toast('Request failed'); }
     finally{ if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; } }
   }

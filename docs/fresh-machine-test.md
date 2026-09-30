@@ -261,6 +261,10 @@ claude login
 
 Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, and board all behave identically.
 
+## Non-git project (t-5a4b, Windows VM with Git uninstalled)
+
+Add a plain folder in the Cockpit, create a ticket, Start an agent, edit/create/delete a file, End. Pass when the Changes panel lists the changes in plain words (no branch/commit/worktree vocabulary), "Restore original files, end" puts the edited file back, and a case-variant or drive/UNC form of the registered folder is refused ("cwd not allowed"). Record date, Windows build and outcome here.
+
 ---
 
 ## Pass criteria

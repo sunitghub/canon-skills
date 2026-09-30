@@ -324,6 +324,18 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, browseDirs(r.URL.Query().Get("path"), h == "1" || h == "true"))
 	case "/api/cockpit":
 		sendJSON(w, cockpitDiscover())
+	case "/api/cockpit-changes": // t-5a4b
+		id := r.URL.Query().Get("id")
+		if !sessionIDRe.MatchString(id) {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		root, ok := effectiveRoot(r)
+		if !ok {
+			http.Error(w, "unknown project", http.StatusBadRequest)
+			return
+		}
+		sendJSON(w, cockpitChanges(root, id))
 	case "/api/cockpit-sessions":
 		q := r.URL.Query()
 		sessions := cockpitSessions()
@@ -997,8 +1009,10 @@ func loadGit(root string) map[string]any {
 			}
 		}
 	}
+	// t-5a4b: a project with no git has no branch — report "" rather than inventing "main".
+	isGit := strings.TrimSpace(runGitIn(root, "rev-parse", "--is-inside-work-tree")) == "true"
 	branch := runGitIn(root, "rev-parse", "--abbrev-ref", "HEAD")
-	if branch == "" {
+	if branch == "" && isGit {
 		branch = "main"
 	}
 	var totalCommits any
@@ -1006,8 +1020,7 @@ func loadGit(root string) map[string]any {
 		totalCommits = n
 	}
 	cwd := rootOr(root)
-	// t-d218: parity with server.py — a repo with no commits yet has no total_commits but IS git.
-	isGit := strings.TrimSpace(runGitIn(root, "rev-parse", "--is-inside-work-tree")) == "true"
+	// t-d218: parity with server.py — a repo with no commits yet has no total_commits but IS git (isGit above).
 	return map[string]any{"branch": branch, "project": filepath.Base(cwd), "root": cwd, "modified": modified, "log": log, "total_commits": totalCommits, "is_git": isGit}
 }
 
@@ -3147,6 +3160,28 @@ func cockpitSessions() []map[string]any {
 	return sessions
 }
 
+// cockpitChanges proxies the daemon's read-only GET /changes (t-5a4b): what changed in a project without
+// git since a session's baseline. The daemon applies the /session/start trust rule to root. Mirror of
+// server.py cockpit_changes: {"tracked": false, ...} when no healthy daemon or on any error.
+func cockpitChanges(root, id string) map[string]any {
+	empty := map[string]any{"tracked": false, "files": []any{}, "note": "Changes are not available right now."}
+	addr, ok := discoverCockpitAddr()
+	if !ok || addr == "" {
+		return empty
+	}
+	client := &http.Client{Timeout: 6 * time.Second}
+	resp, err := client.Get("http://" + addr + "/changes?" + url.Values{"id": {id}, "root": {root}}.Encode())
+	if err != nil {
+		return empty
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	if resp.StatusCode != http.StatusOK || json.NewDecoder(resp.Body).Decode(&out) != nil || out == nil {
+		return empty
+	}
+	return out
+}
+
 // ── t-03a8: `canon status` / `canon sessions` — mirrors server.py's cockpit_status /
 // cockpit_status_text / cockpit_sessions_text byte for byte, so the CLI stays curl-only.
 
@@ -4331,7 +4366,8 @@ func trackChangesRoot(r *http.Request) (string, string, bool) {
 }
 
 func trackChangesState(root string) map[string]any {
-	return map[string]any{"ok": true, "tracking": insideWorkTree(root), "synced": syncedService(root)}
+	_, gitErr := exec.LookPath("git")
+	return map[string]any{"ok": true, "tracking": insideWorkTree(root), "synced": syncedService(root), "git_available": gitErr == nil}
 }
 
 // trackChanges refuses on any existing .git (a broken repo must never be reinitialized and
@@ -4343,7 +4379,7 @@ func trackChanges(root string, confirm any) map[string]any {
 		return fail("Track changes needs confirm: true.")
 	}
 	if _, err := exec.LookPath("git"); err != nil {
-		return fail("git is not installed on this machine.")
+		return fail("Version history needs Git, which isn't installed on this computer. You can keep working without it.")
 	}
 	gitDir, ignore := filepath.Join(root, ".git"), filepath.Join(root, ".gitignore")
 	if _, err := os.Lstat(gitDir); err == nil {

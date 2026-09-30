@@ -122,6 +122,7 @@ func killAllSessions(s *server) {
 		case <-time.After(5 * time.Second):
 		}
 	}
+	s.recording.Wait() // t-5a4b: change recordings write into the ticket folder too
 }
 
 // newTestServerWithAddr sets a callback addr (so the needs-you hook is written)
@@ -4341,7 +4342,7 @@ func TestResolveProjectForCwd(t *testing.T) {
 		t.Fatal("nonexistent cwd accepted, want rejected")
 	}
 	if _, ok := s.resolveProjectForCwd(t.TempDir()); ok {
-		t.Fatal("non-git cwd accepted, want rejected")
+		t.Fatal("unregistered non-git cwd accepted, want rejected")   // t-5a4b: only a REGISTERED root is trusted
 	}
 	got, ok := s.resolveProjectForCwd(root)
 	wantResolved, _ := filepath.EvalSymlinks(root)
@@ -5901,15 +5902,12 @@ func TestScratchSessionStart(t *testing.T) {
 	if out2.Session != out.Session {
 		t.Fatalf("same scratch id must attach: got %q want %q", out2.Session, out.Session)
 	}
-	// t-e162: a second scratch needs a worktree; this root isn't a git repo, so it fails
-	// — and a failed start leaves no state dir behind.
+	// t-e162 / t-5a4b: a second scratch normally needs a worktree, but a folder without git can't
+	// have one, so the sessions share the folder instead of failing.
 	second := startSession(t, base, "s-cd34", bootTok)
 	second.Body.Close()
-	if second.StatusCode != http.StatusInternalServerError {
-		t.Fatalf("second scratch without git: status %d, want 500", second.StatusCode)
-	}
-	if _, err := os.Stat(s.sessionStateDir(s.cfg.projectRoot, "s-cd34")); !os.IsNotExist(err) {
-		t.Fatalf("a refused scratch start must leave no state dir behind (stat err %v)", err)
+	if second.StatusCode != http.StatusOK {
+		t.Fatalf("second scratch without git: status %d, want 200 (shared folder)", second.StatusCode)
 	}
 	// A ticket session in the same project is unaffected by the scratch rule.
 	tk := startSession(t, base, "t-ab12", bootTok)
@@ -6804,4 +6802,566 @@ func waitSnapshotGone(t *testing.T, s *server, id string) {
 		}
 	}
 	t.Fatalf("%s is still in the session snapshot after ending on purpose: %v", id, snapIDs(t, s.snapshotPath()))
+}
+
+
+// writeRegistry writes a board-style projects.json (t-5a4b) listing the given paths.
+func writeRegistry(t *testing.T, file string, paths ...string) {
+	t.Helper()
+	type entry struct {
+		ID   string `json:"id"`
+		Path string `json:"path"`
+		Name string `json:"name"`
+	}
+	var es []entry
+	for i, p := range paths {
+		es = append(es, entry{ID: fmt.Sprintf("id%d", i), Path: p, Name: filepath.Base(p)})
+	}
+	b, _ := json.Marshal(es)
+	if err := os.WriteFile(file, b, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// t-5a4b: a non-git folder is trusted ONLY when it is exactly a registered project root. Every other
+// shape — the hostile ones especially — must fail closed, and the registry is re-read on each call.
+func TestNonGitTrustRule(t *testing.T) {
+	base := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	root := filepath.Join(base, "pm-project")
+	other := filepath.Join(base, "other")
+	for _, d := range []string{filepath.Join(root, "docs"), other} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	realRoot, _ := filepath.EvalSymlinks(root)
+	s := newServer(config{projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg})
+	want := func(name, cwd string, ok bool) {
+		t.Helper()
+		got, gotOK := s.resolveProjectForCwd(cwd)
+		if gotOK != ok || (ok && !pathsEqual(got, realRoot)) {
+			t.Fatalf("%s: resolveProjectForCwd(%q) = (%q,%v), want ok=%v", name, cwd, got, gotOK, ok)
+		}
+	}
+
+	// Nothing registered (no registry file at all) -> refused.
+	want("no registry", root, false)
+	writeRegistry(t, reg, root)
+	want("registered root", root, true)
+	want("root via a dot-dot detour", filepath.Join(root, "docs", ".."), true)
+	want("registered SUBFOLDER", filepath.Join(root, "docs"), false)
+	want("unregistered sibling", other, false)
+	want("escape via dot-dot", filepath.Join(root, "..", "other"), false)
+	want("relative path", "pm-project", false)
+	want("empty-ish relative", ".", false)
+
+	// A symlink leading OUT of the registered root is not the root.
+	if err := os.Symlink(other, filepath.Join(root, "escape")); err == nil {
+		want("symlink out of the root", filepath.Join(root, "escape"), false)
+	}
+	// A symlink leading INTO the root resolves to the registered root itself — that IS the project.
+	link := filepath.Join(base, "alias")
+	if err := os.Symlink(root, link); err == nil {
+		want("symlink to the root", link, true)
+	}
+
+	// Registry hygiene: relative / missing / non-string paths are skipped, garbage trusts nothing.
+	writeRegistry(t, reg, "relative/dir", filepath.Join(base, "missing"), other)
+	want("root not in registry", root, false)
+	os.WriteFile(reg, []byte("not json"), 0o600)
+	want("garbage registry", root, false)
+	os.WriteFile(reg, []byte(`[{"path":123},{"path":null},{}]`), 0o600)
+	want("wrong-typed entries", root, false)
+	os.WriteFile(reg, []byte(strings.Repeat(" ", (1<<20)+1)), 0o600)
+	want("oversized registry", root, false)
+	os.Remove(reg)
+	if err := os.Mkdir(reg, 0o755); err == nil {
+		want("registry is a directory", root, false)
+	}
+	os.Remove(reg)
+
+	// Deregistered mid-flight: registered, accepted; entry removed, refused on the very next call.
+	writeRegistry(t, reg, root)
+	want("registered again", root, true)
+	writeRegistry(t, reg, other)
+	want("deregistered", root, false)
+}
+
+// t-5a4b end to end through /session/start: a registered non-git root with the ticket starts; the same
+// folder unregistered, or a registered one without the ticket, is refused.
+func TestStartNonGitRegisteredRoot(t *testing.T) {
+	bin, _ := fakeSprintCwd(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	writeTicketStatus(t, root, "t-ab12", "open")
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	status := func(ticket, cwd string) int {
+		resp := startSessionCwd(t, ts.URL, ticket, cwd, bootTok)
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := status("t-ab12", root); got != http.StatusBadRequest {
+		t.Fatalf("unregistered non-git start = %d, want 400", got)
+	}
+	writeRegistry(t, reg, root)
+	if got := status("t-zz99", root); got != http.StatusBadRequest {
+		t.Fatalf("registered root but no such ticket = %d, want 400", got)
+	}
+	if got := status("t-ab12", root); got != http.StatusOK {
+		t.Fatalf("registered non-git start = %d, want 200", got)
+	}
+	killAllSessions(s)
+	writeRegistry(t, reg) // deregistered
+	if got := status("t-ab12", root); got != http.StatusBadRequest {
+		t.Fatalf("deregistered start = %d, want 400", got)
+	}
+}
+
+// ── t-5a4b: change tracking wired into sessions in a folder without git ──────────────────────
+
+// writingAgent is a stub agent: it writes a file into its working directory, then either exits
+// (exitAfter) or stays alive like a live session.
+func writingAgent(t *testing.T, exitAfter bool) string {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "agent.sh")
+	tail := "exec cat\n"
+	if exitAfter {
+		tail = "exit 0\n"
+	}
+	// The agent makes BOTH changes itself, so a natural exit records them deterministically.
+	script := "#!/bin/sh\nprintf 'the agent wrote this\\n' > \"$PWD/agent-out.md\"\nprintf 'a line the agent added\\n' >> \"$PWD/notes.md\"\n" + tail
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func startSessionFull(t *testing.T, base, ticket, cwd, agent string) (sid, tok string, status int) {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"ticket": ticket, "cwd": cwd, "agent": agent})
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/start", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+bootTok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out struct{ Session, Token string }
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return out.Session, out.Token, resp.StatusCode
+}
+
+func waitForFile(t *testing.T, p string) []byte {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if b, err := os.ReadFile(p); err == nil && len(b) > 0 {
+			return b
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("%s never appeared", p)
+	return nil
+}
+
+func killSessionHTTP(t *testing.T, base, sid, tok string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodPost, base+"/session/"+sid+"/kill", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+}
+
+func TestNonGitSessionTracksChangesForEveryAgentKind(t *testing.T) {
+	for _, kind := range []string{"claude", "copilot", "pi"} {
+		for _, exit := range []bool{false, true} {
+			name := kind + "/kill"
+			if exit {
+				name = kind + "/natural-exit"
+			}
+			t.Run(name, func(t *testing.T) {
+				bin := writingAgent(t, exit)
+				t.Setenv("COCKPIT_COPILOT_BIN", bin)
+				t.Setenv("COCKPIT_PI_BIN", bin)
+				t.Setenv("COPILOT_HOME", t.TempDir())
+				root := t.TempDir()
+				seedTicketDir(t, root, "t-ab12")
+				writeF(t, root, "notes.md", "v1\n")
+				writeF(t, root, ".env", "KEY=secret-value\n")
+				reg := filepath.Join(t.TempDir(), "projects.json")
+				writeRegistry(t, reg, root)
+				home := t.TempDir()
+				s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: home})
+				ts := httptest.NewServer(s.handler())
+				t.Cleanup(ts.Close)
+				t.Cleanup(func() { killAllSessions(s) })
+				realRoot, _ := filepath.EvalSymlinks(root) // the daemon keys the store by the resolved root
+				store := s.changesStoreDir(realRoot, "t-ab12")
+
+				sid, tok, status := startSessionFull(t, ts.URL, "t-ab12", root, kind)
+				if status != http.StatusOK {
+					t.Fatalf("start (%s) = %d, want 200", kind, status)
+				}
+				if _, err := os.Stat(filepath.Join(store, "baseline.json")); err != nil {
+					t.Fatalf("no baseline after Start: %v", err)
+				}
+				waitForFile(t, filepath.Join(root, "agent-out.md"))
+				if !exit {
+					killSessionHTTP(t, ts.URL, sid, tok)
+				}
+				var res changesResult
+				if err := json.Unmarshal(waitForFile(t, filepath.Join(store, "changes.json")), &res); err != nil {
+					t.Fatal(err)
+				}
+				got := byPath(&res)
+				if got["agent-out.md"].Status != "added" || got["notes.md"].Status != "modified" {
+					t.Fatalf("changes = %+v, want agent-out.md added and notes.md modified", res.Files)
+				}
+				if _, touched := got[".env"]; touched {
+					t.Fatal(".env did not change but is listed")
+				}
+				// The close gates have no git: they read the same list from the ticket folder.
+				var inTicket changesResult
+				if err := json.Unmarshal(waitForFile(t, filepath.Join(root, ".tickets", "t-ab12", "changes.json")), &inTicket); err != nil {
+					t.Fatal(err)
+				}
+				if g := byPath(&inTicket); g["agent-out.md"].Status != "added" || g["notes.md"].Status != "modified" {
+					t.Fatalf(".tickets/t-ab12/changes.json = %+v, want the same changes", inTicket.Files)
+				}
+				// The same answer over HTTP, for the board.
+				resp, err := http.Get(ts.URL + "/changes?id=t-ab12&root=" + root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer resp.Body.Close()
+				var live changesResult
+				json.NewDecoder(resp.Body).Decode(&live)
+				if resp.StatusCode != http.StatusOK || !live.Tracked || byPath(&live)["agent-out.md"].Status != "added" {
+					t.Fatalf("GET /changes = %d %+v", resp.StatusCode, live)
+				}
+			})
+		}
+	}
+}
+
+// The changes endpoint applies the same trust rule as /session/start, and a git project isn't tracked.
+func TestChangesEndpointRefusesUntrustedRoots(t *testing.T) {
+	root := t.TempDir()
+	other := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	get := func(q string) int {
+		resp, err := http.Get(ts.URL + "/changes?" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	for name, q := range map[string]string{
+		"unregistered folder": "id=t-ab12&root=" + other,
+		"subfolder":           "id=t-ab12&root=" + filepath.Join(root, "sub"),
+		"no root":             "id=t-ab12",
+		"relative root":       "id=t-ab12&root=pm-project",
+		"bad id":              "id=../../etc&root=" + root,
+		"no id":               "root=" + root,
+	} {
+		if got := get(q); got != http.StatusBadRequest {
+			t.Errorf("%s: GET /changes = %d, want 400", name, got)
+		}
+	}
+	if got := get("id=t-ab12&root=" + root); got != http.StatusOK {
+		t.Errorf("registered root: GET /changes = %d, want 200", got)
+	}
+	gitRoot := t.TempDir()
+	initGitRepo(t, gitRoot)
+	resp, _ := http.Get(ts.URL + "/changes?id=t-ab12&root=" + gitRoot)
+	var body struct{ Git bool }
+	json.NewDecoder(resp.Body).Decode(&body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !body.Git {
+		t.Errorf("git project: GET /changes = %d git=%v, want 200 git=true (not tracked by snapshot)", resp.StatusCode, body.Git)
+	}
+}
+
+// A problem with the change store must never stop an agent from starting.
+func TestNonGitStartFailsOpenWhenTheStoreIsUnusable(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	blocker := filepath.Join(t.TempDir(), "not-a-dir")
+	os.WriteFile(blocker, []byte("x"), 0o644) // changesHome lives "under" a regular file: MkdirAll fails
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: filepath.Join(blocker, "sub")})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	if _, _, status := startSessionFull(t, ts.URL, "t-ab12", root, "claude"); status != http.StatusOK {
+		t.Fatalf("start with an unusable store = %d, want 200 (fail open)", status)
+	}
+}
+
+// t-5a4b: a second (third...) scratch session in a folder without git shares the folder instead of
+// failing to make a worktree, and /sessions says the sessions are sharing.
+func TestNonGitConcurrentScratchSessionsShareTheFolder(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	for _, id := range []string{"s-aaaa", "s-bbbb", "s-cccc"} {
+		if _, _, status := startSessionFull(t, ts.URL, id, root, "claude"); status != http.StatusOK {
+			t.Fatalf("scratch %s in a folder without git = %d, want 200 (shared folder, no worktree)", id, status)
+		}
+	}
+	realRoot, _ := filepath.EvalSymlinks(root)
+	rows := listSessions(t, ts.URL)
+	if len(rows) != 3 {
+		t.Fatalf("rows = %+v, want 3", rows)
+	}
+	resp, _ := http.Get(ts.URL + "/sessions")
+	var full []struct {
+		Cwd    string `json:"cwd"`
+		Shared bool   `json:"shared"`
+	}
+	json.NewDecoder(resp.Body).Decode(&full)
+	resp.Body.Close()
+	for _, r := range full {
+		if !pathsEqual(r.Cwd, realRoot) || !r.Shared {
+			t.Fatalf("row %+v: want every session in %s flagged shared", r, realRoot)
+		}
+	}
+}
+
+// A lone session is not "shared", and a git project's sessions never are (worktrees keep them apart).
+func TestSharedFlagOnlyForSessionsSharingAFolderWithoutGit(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	startSessionFull(t, ts.URL, "s-aaaa", root, "claude")
+	resp, _ := http.Get(ts.URL + "/sessions")
+	var one []struct{ Shared bool }
+	json.NewDecoder(resp.Body).Decode(&one)
+	resp.Body.Close()
+	if len(one) != 1 || one[0].Shared {
+		t.Fatalf("a lone session = %+v, want shared=false", one)
+	}
+}
+
+// The idle reaper judges a folder without git by the snapshot: it ends the session, and what the
+// agent changed is noted (not thrown away).
+func TestIdleReapScratchWithoutGit(t *testing.T) {
+	bin := writingAgent(t, false)
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: time.Hour, saveFallback: 30 * time.Second})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	sid, _, status := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	if status != http.StatusOK {
+		t.Fatalf("start = %d", status)
+	}
+	waitForFile(t, filepath.Join(root, "agent-out.md"))
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	deadline := time.Now().Add(4 * time.Second)
+	for time.Now().Before(deadline) && !se.isExited() {
+		time.Sleep(100 * time.Millisecond)
+		s.reapIdleSessions()
+	}
+	time.Sleep(300 * time.Millisecond)
+	if !se.isExited() {
+		t.Fatal("the idle scratch session in a folder without git must end (judged by the snapshot, not git status)")
+	}
+	if b, err := os.ReadFile(filepath.Join(root, "agent-out.md")); err != nil || string(b) == "" {
+		t.Fatalf("the reaper must keep what the agent wrote: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "s-ab12") {
+		t.Fatalf("idle end with changes not noted:\n%s", b)
+	}
+}
+
+func postJSON(t *testing.T, url, tok string, body any) (int, map[string]any) {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req, _ := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out map[string]any
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+func nonGitRestoreServer(t *testing.T) (*server, *httptest.Server, string) {
+	t.Helper()
+	root := t.TempDir()
+	reg := filepath.Join(t.TempDir(), "projects.json")
+	writeRegistry(t, reg, root)
+	s := newServer(config{token: bootTok, sprintBin: writingAgent(t, false), projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	return s, ts, root
+}
+
+// End dialog "Restore original": the scratch session ends and the folder goes back to how it was.
+func TestEndScratchRestoreOriginalWithoutGit(t *testing.T) {
+	_, ts, root := nonGitRestoreServer(t)
+	if err := os.WriteFile(filepath.Join(root, "notes.md"), []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sid, tok, status := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	if status != http.StatusOK {
+		t.Fatalf("start = %d", status)
+	}
+	waitForFile(t, filepath.Join(root, "agent-out.md"))
+	code, out := postJSON(t, ts.URL+"/session/"+sid+"/end-scratch", tok, map[string]bool{"restore": true})
+	if code != http.StatusOK || out["restored"] != float64(1) {
+		t.Fatalf("end-scratch restore = %d %v, want 200 with restored=1 (notes.md)", code, out)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "notes.md")); string(b) != "first\n" {
+		t.Fatalf("notes.md = %q, want the original", b)
+	}
+	if _, err := os.Stat(filepath.Join(root, "agent-out.md")); err != nil {
+		t.Fatalf("a file the agent added must stay (restore never deletes): %v", err)
+	}
+}
+
+func TestEndScratchRestoreRefusedInAGitProject(t *testing.T) {
+	root := t.TempDir()
+	initGitRepo(t, root)
+	s := newServer(config{token: bootTok, sprintBin: writingAgent(t, false), projectRoot: root, stateDir: t.TempDir(), changesHome: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	sid, tok, status := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	if status != http.StatusOK {
+		t.Fatalf("start = %d", status)
+	}
+	if code, _ := postJSON(t, ts.URL+"/session/"+sid+"/end-scratch", tok, map[string]bool{"restore": true}); code != http.StatusConflict {
+		t.Fatalf("restore in a git project = %d, want 409", code)
+	}
+}
+
+func TestChangesRestoreEndpoint(t *testing.T) {
+	_, ts, root := nonGitRestoreServer(t)
+	if err := os.WriteFile(filepath.Join(root, "notes.md"), []byte("first\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sid, tok, _ := startSessionFull(t, ts.URL, "s-ab12", root, "claude")
+	waitForFile(t, filepath.Join(root, "agent-out.md"))
+	if code, _ := postJSON(t, ts.URL+"/changes/restore", bootTok, map[string]string{"root": root, "id": "s-ab12"}); code != http.StatusConflict {
+		t.Fatalf("restore while an agent works = %d, want 409", code)
+	}
+	if b, _ := os.ReadFile(filepath.Join(root, "notes.md")); string(b) == "first\n" {
+		t.Fatal("a refused restore must not touch files")
+	}
+	killSessionHTTP(t, ts.URL, sid, tok)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if code, out := postJSON(t, ts.URL+"/changes/restore", bootTok, map[string]string{"root": root, "id": "s-ab12"}); code == http.StatusOK {
+			if out["restored"] != float64(1) || out["remaining"] != float64(1) {
+				t.Fatalf("restore = %v, want restored 1 and 1 remaining (the added file)", out)
+			}
+			if b, _ := os.ReadFile(filepath.Join(root, "notes.md")); string(b) != "first\n" {
+				t.Fatalf("notes.md = %q", b)
+			}
+			// Roots that are not registered folders are refused, and a request without a token too.
+			if code, _ := postJSON(t, ts.URL+"/changes/restore", bootTok, map[string]string{"root": t.TempDir(), "id": "s-ab12"}); code != http.StatusBadRequest {
+				t.Fatalf("unregistered root = %d, want 400", code)
+			}
+			if code, _ := postJSON(t, ts.URL+"/changes/restore", "wrong", map[string]string{"root": root, "id": "s-ab12"}); code == http.StatusOK {
+				t.Fatal("restore without the daemon token must be refused")
+			}
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("restore never succeeded after the session ended")
+}
+
+// t-5a4b: a folder without git is trusted only through its OWN real .tickets/<id> — a link, or a
+// parent folder's .tickets, does not count.
+func TestStartNonGitRefusesLinkedOrInheritedTicketDirs(t *testing.T) {
+	bin := writingAgent(t, false)
+	for name, setup := range map[string]func(root string){
+		"symlinked ticket dir": func(root string) {
+			elsewhere := t.TempDir()
+			os.MkdirAll(filepath.Join(root, ".tickets"), 0o755)
+			os.Symlink(elsewhere, filepath.Join(root, ".tickets", "t-ab12"))
+		},
+		"symlinked .tickets dir": func(root string) {
+			elsewhere := t.TempDir()
+			os.MkdirAll(filepath.Join(elsewhere, "t-ab12"), 0o755)
+			os.Symlink(elsewhere, filepath.Join(root, ".tickets"))
+		},
+		"ticket only in a parent folder": func(root string) {
+			os.MkdirAll(filepath.Join(filepath.Dir(root), ".tickets", "t-ab12"), 0o755)
+		},
+		"no .tickets at all": func(root string) {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			parent := t.TempDir()
+			root := filepath.Join(parent, "proj")
+			os.MkdirAll(root, 0o755)
+			setup(root)
+			reg := filepath.Join(t.TempDir(), "projects.json")
+			writeRegistry(t, reg, root)
+			s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			if _, _, status := startSessionFull(t, ts.URL, "t-ab12", root, "claude"); status != http.StatusBadRequest {
+				t.Fatalf("start = %d, want 400", status)
+			}
+		})
+	}
+}
+
+// A git failure inside a real repository is not "no git": it must not turn the folder into a shared,
+// snapshot-tracked one.
+func TestNoGitIsFalseInsideARepoEvenWhenGitFails(t *testing.T) {
+	root := t.TempDir()
+	os.Mkdir(filepath.Join(root, ".git"), 0o755) // present but unusable: git errors on it
+	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+	if _, err := s.listWorktreesIn(root); err == nil {
+		t.Skip("git accepted the empty .git directory")
+	}
+	if s.noGit(root) || s.noGit(filepath.Join(root, "sub")) {
+		t.Fatal("a folder with a .git must not read as non-git when git errors")
+	}
+	if !s.noGit(t.TempDir()) {
+		t.Fatal("a folder with no .git anywhere above it must read as non-git")
+	}
 }

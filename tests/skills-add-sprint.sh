@@ -281,4 +281,10 @@ ga_seed "$ga6" >/dev/null
 assert_eq "0" "$(autocrlf_checkout_has_cr "$ga6")"
 [ "$(autocrlf_checkout_has_cr "$ga7")" -gt 0 ] || fail "control: autocrlf checkout without the rule should be CRLF"
 
+# t-5a4b: a folder without git gets no .gitattributes (it has no use for it, and it's a stray file there).
+ga8="$(mktemp -d)"; ga_trap "$ga8"
+printf '# Agents\n' > "$ga8/AGENTS.md"
+"$SKILLS" add sprint "$ga8" >/dev/null
+[ ! -e "$ga8/.gitattributes" ] || fail "a folder without git got a .gitattributes"
+
 printf 'skills-add-sprint: ok\n'

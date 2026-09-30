@@ -1765,17 +1765,16 @@
     .ck-term-msg {
       color: var(--text-muted); font-family: var(--mono, monospace); font-size: 13px; text-align: center;
     }
-    /* t-d538: the one action offered in place of the terminal for a non-git project */
-    .ck-track-actions { display: flex; gap: 8px; pointer-events: auto; }
-    .ck-track-cancel {
-      height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border);
-      background: transparent; color: var(--text-muted); font-size: 12.5px; cursor: pointer;
-    }
-    .ck-track-btn {
-      height: 32px; padding: 0 14px; border-radius: 8px; border: 1px solid var(--accent, #7c6af7);
-      background: var(--accent, #7c6af7); color: #fff; font-weight: 600; font-size: 12.5px; cursor: pointer;
-    }
-    .ck-track-btn[disabled] { opacity: .5; cursor: default; }
+    /* t-5a4b: a project with no git shows none of the git-derived surfaces (branch, commits, commit-prefix copy) */
+    html.no-git .git-only { display: none !important; }
+    .no-git-only { display: none; }
+    html.no-git .no-git-only { display: block; }
+    .change-row { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 1px 0; }
+    .change-sym { width: 12px; flex-shrink: 0; text-align: center; font-family: ui-monospace, monospace; color: var(--accent); }
+    .change-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .change-lines { flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+    .change-more, .change-empty { font-size: 12px; color: var(--text-muted); padding: 2px 0; }
+    .change-ticket { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-muted); margin: 6px 0 2px; }
     .ck-preview {
       width: var(--ck-preview-w, 360px); flex-shrink: 0; border-left: 1px solid var(--border);
       background: var(--surface); display: flex; flex-direction: column; position: relative;
@@ -1970,8 +1969,8 @@
         </div>
         <div class="header-branch">
           <div class="refresh-dot loading" id="refresh-dot"></div>
-          <span>⎇</span>
-          <span class="branch-name" id="h-branch">—</span>
+          <span class="git-only">⎇</span>
+          <span class="branch-name git-only" id="h-branch">—</span>
         </div>
       </div>
     </div>
@@ -1996,13 +1995,13 @@
         <div class="rail-icon" data-section="s-wip" title="Now Working On">
           <svg viewBox="0 0 24 24"><polygon points="5,3 19,12 5,21"/></svg>
         </div>
-        <div class="rail-icon" data-section="s-branch" title="Git">
+        <div class="rail-icon git-only" data-section="s-branch" title="Git">
           <svg viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
         </div>
         <div class="rail-icon" data-section="s-focus" title="Current Focus">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
         </div>
-        <div class="rail-icon" data-section="s-commits" title="Recent Commits">
+        <div class="rail-icon git-only" data-section="s-commits" title="Recent Commits">
           <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         </div>
         <div class="rail-icon" data-section="s-summary" title="Tickets">
@@ -2015,7 +2014,7 @@
           <div id="s-wip-items"></div>
         </div>
 
-        <div class="sidebar-section">
+        <div class="sidebar-section git-only">
           <div class="sidebar-label">Git</div>
           <div class="branch-row">
             <span style="color:var(--text-dim)">⎇</span>
@@ -2029,9 +2028,14 @@
           <div class="focus-text" id="s-focus">—</div>
         </div>
 
-        <div class="sidebar-section">
+        <div class="sidebar-section git-only">
           <div class="sidebar-label">Recent Commits<span class="commit-total-badge" id="s-commits-total" style="display:none"></span></div>
           <div class="commit-list" id="s-commits"></div>
+        </div>
+
+        <div class="sidebar-section no-git-only" id="s-changes-section">
+          <div class="sidebar-label">Changes since you started</div>
+          <div id="s-changes"></div>
         </div>
 
         <div class="sidebar-section" style="border-bottom:none">
@@ -2168,6 +2172,16 @@
               <div class="ck-testplan" id="ck-testplan"></div>
             </div>
           </div>
+          <div class="ck-accordion-section no-git-only" id="ck-changes-section">
+            <div class="ck-accordion-header" data-accordion="ck-changes-section">
+              <div class="ck-section-label">Changes</div>
+              <span class="ck-section-count" id="ck-changes-count"></span>
+              <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="ck-accordion-body">
+              <div id="ck-changes"></div>
+            </div>
+          </div>
         </div>
         <div class="ck-rail-icons">
           <span class="ck-rail-icon">☰</span>
@@ -2177,10 +2191,6 @@
       <div class="ck-term" id="ck-term">
         <div class="ck-term-msg-wrap">
           <div class="ck-term-msg" id="ck-term-msg"></div>
-          <div class="ck-track-actions" id="ck-track-actions" style="display:none">
-            <button class="ck-track-btn" id="ck-track-btn" type="button">Track changes</button>
-            <button class="ck-track-cancel" id="ck-track-cancel" type="button" style="display:none">Cancel</button>
-          </div>
         </div>
       </div>
       <div class="ck-preview collapsed" id="ck-preview">
@@ -2531,7 +2541,7 @@
   // otherwise showed the shell's launch-time project's worktrees under any tab.
   // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
   // resolveMockupSrc scopes it itself — t-7d83.)
-  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|track-changes$)/;
+  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|cockpit-changes$)/;
   // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
   // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
   // create/unlock done inside a project tab target THAT project. Deliberately
@@ -2539,7 +2549,7 @@
   // headless-run) and /api/projects (registry add) — those stay unscoped.
   // t-d254: ticket-commit/ (GET plan + POST commit) — unscoped, a tab would classify
   // and COMMIT in the board's default project instead of the tab's (live-caught, VM).
-  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/|track-changes$)/;
+  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/)/;
   const _fetch = window.fetch.bind(window);
   window.fetch = function(input, init){
     try {
@@ -3360,6 +3370,7 @@ function renderHeader() {
   // happens and this project's header next re-renders.
   // t-d218: is_git from the server; total_commits is absent in a repo with no commits yet (still git).
   state.isGitProject = git?.is_git === true || typeof git?.total_commits === 'number';
+  document.documentElement.classList.toggle('no-git', !state.isGitProject);   // t-5a4b
   setText('h-branch',   git?.branch  || '—');
   setText('s-branch',   git?.branch  || '—');
   const mod = document.getElementById('s-modified');
@@ -3380,7 +3391,7 @@ function renderSidebar() {
       `<div class="wip-item" data-id="${esc(t.id)}" role="button" tabindex="0" title="Open ticket">` +
         `<span class="wip-id">${esc(t.id)}</span>` +
         `<span class="wip-title">${esc(t.title)}</span>` +
-        `<button class="wip-copy" data-copy="${esc(t.id)}: " title="Copy commit prefix — paste into your git commit message">copy</button>` +
+        `<button class="wip-copy git-only" data-copy="${esc(t.id)}: " title="Copy commit prefix — paste into your git commit message">copy</button>` +
       `</div>`
     ).join('');
     wipItems.querySelectorAll('.wip-item').forEach(row => {
@@ -3422,6 +3433,7 @@ function renderSidebar() {
   commitsEl.querySelectorAll('.commit-item').forEach(el => {
     el.addEventListener('click', () => openCommitPanel(el.dataset.hash));
   });
+  renderSidebarChanges();   // t-5a4b: only for a project without git
 
   const STATUS_ICONS = {
     open:        `<svg class="summary-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5l2 1.5"/></svg>`,
@@ -5385,7 +5397,6 @@ function setActiveTab(id) {
   // t-f553: the "Continue as <id>" choice belongs to the tab whose agent created the ticket.
   if (cockpitState && cockpitState.promotedTicket) showPromotedChoice(cockpitState.promotedTicket);
   else document.getElementById('ck-scratch-promoted').hidden = true;
-  syncTrackButton();
 }
 
 // t-f6b6: the board and the daemon page are different origins (different
@@ -5425,6 +5436,7 @@ window.addEventListener('message', (e) => {
     tab._onEnded();
   } else if (d.type === 'changes') {   // t-86fe
     if (isActive) showScratchChanges({ total: Number(d.total) || 0, commits: Number(d.commits) || 0, can_discard: d.can_discard === true,
+      no_git: d.no_git === true,
       files: Array.isArray(d.files) ? d.files.filter(f => f && typeof f.path === 'string').map(f => ({ status: String(f.status || '').slice(0, 2), path: f.path })) : [] });
   } else if (d.type === 'changes-failed') {
     if (isActive) document.getElementById('ck-leave-confirm-status').textContent = 'Couldn\u2019t check for changes \u2014 Just end keeps any changes in place.';
@@ -5674,6 +5686,7 @@ function openLeaveConfirm() {
   discardBtn.hidden = true;
   discardBtn.classList.remove('armed');
   discardBtn.disabled = false;
+  delete discardBtn.dataset.mode;
   document.getElementById('ck-leave-confirm').classList.add('open');
   if (SCRATCH_ID.test(cockpitState.id || '')) {   // t-47f1: nothing to save — End only
     // t-f553: offer to keep the work as a ticket before ending
@@ -5707,10 +5720,11 @@ function showScratchChanges(c) {
   if (!c.total && !c.commits) return;   // clean: the t-f553 dialog as it is
   const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const what = [c.total ? plural(c.total, 'changed file') : '', c.commits ? plural(c.commits, 'commit') + ' in its worktree' : ''].filter(Boolean).join(' and ');
-  document.getElementById('ck-leave-confirm-title').textContent = 'This session has ' + what;
+  document.getElementById('ck-leave-confirm-title').textContent = (c.no_git ? 'This session changed ' + plural(c.total, 'file') : 'This session has ' + what);
   const body = document.getElementById('ck-leave-confirm-body');
   body.textContent = 'Save as ticket hands them to a new ticket. Keep changes ends the session and leaves them in place, noted in HANDOFF.md.'
-    + (c.can_discard ? ' Discard throws away the file changes (edits and new files; ignored files stay).'
+    + (c.no_git ? ' Ending keeps every change in your folder. Restore original puts back the files it edited or deleted, as they were when the session started; files it added stay.'
+      : c.can_discard ? ' Discard throws away the file changes (edits and new files; ignored files stay).'
       : c.total ? ' Discard isn\u2019t offered: this checkout already had uncommitted changes when the session started.' : '');
   if (c.files.length) {
     const ul = document.createElement('ul');
@@ -5729,8 +5743,9 @@ function showScratchChanges(c) {
   }
   document.getElementById('ck-leave-skip').textContent = 'Keep changes, end';
   const discardBtn = document.getElementById('ck-leave-discard');
-  discardBtn.textContent = 'Discard changes, end';
-  discardBtn.hidden = !c.can_discard;
+  discardBtn.textContent = c.no_git ? 'Restore original files, end' : 'Discard changes, end';
+  discardBtn.dataset.mode = c.no_git ? 'restore' : '';   // t-5a4b: without git, this button puts the originals back
+  discardBtn.hidden = c.no_git ? !c.total : !c.can_discard;
 }
 
 function showClosedLeave() {
@@ -5829,10 +5844,11 @@ document.getElementById('ck-leave-discard').addEventListener('click', (e) => {
   if (!btn.classList.contains('armed')) {
     const n = (cockpitState.leaveChanges && cockpitState.leaveChanges.total) || 0;
     btn.classList.add('armed');
-    btn.textContent = 'Discard ' + n + ' file' + (n === 1 ? '' : 's') + ' \u2014 can\u2019t be undone';
+    btn.textContent = btn.dataset.mode === 'restore' ? 'Replace my current files with the originals'
+      : 'Discard ' + n + ' file' + (n === 1 ? '' : 's') + ' \u2014 can\u2019t be undone';
     return;
   }
-  ckLeaveSaveAndEnd(true, { discard: true });
+  ckLeaveSaveAndEnd(true, btn.dataset.mode === 'restore' ? { restore: true } : { discard: true });
 });
 // t-0db3: extracted so the Canon Cockpit shell's close-tab guard can drive the
 // SAME vetted flow via postMessage. skipSave=true = "End without saving" (routes
@@ -5881,7 +5897,7 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
   // t-86fe: a scratch session ends through the daemon's end guard — it notes anything left
   // behind in HANDOFF.md, and discards only when asked.
   const scratchEnd = SCRATCH_ID.test(cockpitState.id || '')
-    ? { source: 'canon-cockpit', type: 'end-scratch', discard: !!(opts && opts.discard) } : null;
+    ? { source: 'canon-cockpit', type: 'end-scratch', discard: !!(opts && opts.discard), restore: !!(opts && opts.restore) } : null;
   if (skipSave) {
     closeLeaveConfirm();
     iframe.style.visibility = 'hidden';
@@ -6362,6 +6378,47 @@ async function renderCockpitDocs(t) {
   const content = await fetchAcceptanceContent(t);
   renderCockpitAcceptance(content, t);
   renderCockpitTestPlan(content, t);
+  renderCockpitChanges(t);
+}
+
+// t-5a4b: "Changes since you started" for a project without git — the daemon's snapshot comparison
+// (added / edited / deleted / renamed since the session's baseline), shown in the sidebar and the cockpit.
+const CHANGE_SYMBOL = { added: '+', modified: '~', deleted: '\u2212', renamed: '\u2192' };
+async function fetchChanges(id) {
+  try { const r = await fetch('/api/cockpit-changes?id=' + encodeURIComponent(id)); return r.ok ? await r.json() : null; } catch { return null; }
+}
+function changeRows(c, max) {
+  const files = Array.isArray(c && c.files) ? c.files : [];
+  const rows = files.slice(0, max).map(f => {
+    const what = f.status === 'renamed' ? `${f.from} \u2192 ${f.path}` : f.path;
+    const lines = (f.added_lines || f.removed_lines) ? ` (+${f.added_lines || 0} \u2212${f.removed_lines || 0})` : '';
+    return `<div class="change-row"><span class="change-sym">${esc(CHANGE_SYMBOL[f.status] || '~')}</span><span class="change-path" title="${escAttr(what)}">${esc(what)}</span><span class="change-lines">${esc(lines)}</span></div>`;
+  });
+  const total = Number(c && c.total) || files.length;
+  if (total > max) rows.push(`<div class="change-more">and ${total - max} more</div>`);
+  if (!rows.length) rows.push(`<div class="change-empty">${esc((c && c.note) || 'Nothing has changed yet.')}</div>`);
+  else if (c && c.note) rows.push(`<div class="change-empty">${esc(c.note)}</div>`);
+  return rows.join('');
+}
+async function renderCockpitChanges(t) {
+  if (state.isGitProject || !t || !t.id) return;
+  const box = document.getElementById('ck-changes');
+  if (!box) return;
+  const c = await fetchChanges(t.id);
+  box.innerHTML = changeRows(c, 20);
+  const n = c && Number(c.total);
+  document.getElementById('ck-changes-count').textContent = n ? `(${n})` : '';
+}
+let sidebarChangesStamp = 0;
+async function renderSidebarChanges() {
+  if (state.isGitProject) return;
+  const box = document.getElementById('s-changes');
+  if (!box || Date.now() - sidebarChangesStamp < 8000) return;
+  sidebarChangesStamp = Date.now();
+  const active = (state.tickets || []).filter(t => effectiveStatus(t) === 'in_progress').slice(0, 3);
+  if (!active.length) { box.innerHTML = '<div class="change-empty">No sprint is running.</div>'; return; }
+  const parts = await Promise.all(active.map(async t => `<div class="change-ticket">${esc(t.id)}</div>` + changeRows(await fetchChanges(t.id), 6)));
+  box.innerHTML = parts.join('');
 }
 
 // Finds this ticket's own bullet under HANDOFF.md's "## In Progress" section
@@ -7067,75 +7124,8 @@ function renderCockpitTestPlan(content, t) {
 // yet is what "Start sprint stays disabled" means in practice. A Resume
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
-// t-d538: the daemon only runs agents in a git work tree, so a non-git project would fail Start
-// with "cwd not allowed". Offer the opt-in local history instead of mounting the terminal.
-const TRACK_INTRO = "This project doesn't track changes yet. Agents need it to run here and to check their work.";
-// In a Cockpit project tab the fetch wrapper adds ?project=<id>; a standalone board names its own
-// folder explicitly with `default` — the server never falls back to a default folder silently.
-const TRACK_URL = document.documentElement.classList.contains('canon-proj-embed')
-  ? '/api/track-changes' : '/api/track-changes?project=default';
-function syncTrackButton() {
-  const box = document.getElementById('ck-track-actions');
-  if (!box) return;
-  const tab = cockpitState;
-  box.style.display = (tab && tab.needsTracking) ? '' : 'none';
-  const confirming = !!(tab && tab.trackConfirming);
-  document.getElementById('ck-track-btn').textContent = confirming ? 'Yes, track changes' : 'Track changes';
-  document.getElementById('ck-track-cancel').style.display = confirming ? '' : 'none';
-}
-// Two steps inside the cockpit (the board's confirm toast sits under this overlay): the first
-// click explains, the second writes. The server still requires confirm:true and re-resolves the
-// folder from the registry.
-async function trackChangesFromCockpit() {
-  const tab = cockpitState, t = tab && tab.trackTicket;
-  if (!t) return;
-  const btn = document.getElementById('ck-track-btn');
-  if (!tab.trackConfirming) {
-    let synced = '';
-    try { const r = await fetch(TRACK_URL); if (r.ok) synced = (await r.json()).synced || ''; } catch {}
-    if (cockpitState !== tab) return;
-    tab.trackConfirming = true;
-    setTermMessage('Create a local history (git) for this folder? Nothing is uploaded, and canon commits only a .gitignore; your files stay as they are.'
-      + (synced ? ' This folder is in ' + synced + ', which can damage that history — consider moving it first.' : ''));
-    syncTrackButton();
-    return;
-  }
-  btn.disabled = true;
-  const res = await postWrite(TRACK_URL, { confirm: true }, 'start tracking changes');
-  btn.disabled = false;
-  tab.trackConfirming = false;
-  if (!res.ok) {
-    if (cockpitState === tab) { setTermMessage("Couldn't start tracking changes: " + res.error); syncTrackButton(); }
-    return;
-  }
-  showToast('✓ This project now tracks changes', 'ok');
-  try {
-    const gd = await (await fetch('/api/git')).json();
-    state.isGitProject = gd?.is_git === true || typeof gd?.total_commits === 'number';
-    if (gd?.root) state.gitRoot = cockpitForwardSlash(gd.root);
-  } catch {}
-  if (cockpitState !== tab) return; // the user switched tabs meanwhile
-  await renderCockpitWorktree(t);
-  await maybeMountCockpitTerminal(t);
-}
-document.getElementById('ck-track-btn')?.addEventListener('click', trackChangesFromCockpit);
-document.getElementById('ck-track-cancel')?.addEventListener('click', () => {
-  if (!cockpitState) return;
-  cockpitState.trackConfirming = false;
-  setTermMessage(TRACK_INTRO);
-  syncTrackButton();
-});
-
 async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
-  cockpitState.needsTracking = !state.isGitProject;
-  cockpitState.trackTicket = t;
-  syncTrackButton();
-  if (cockpitState.needsTracking) {
-    iframe.style.visibility = 'hidden';
-    if (!cockpitState.trackConfirming) setTermMessage(TRACK_INTRO);
-    return;
-  }
   if (t.scratch) { await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
   if (cockpitState.worktreeCwd === null) {
     iframe.style.visibility = 'hidden';
