@@ -28,6 +28,7 @@ tests=(
   "$ROOT/tests/skills-agents.sh"
   "$ROOT/tests/windows-no-python.sh"
   "$ROOT/tests/windows-install.sh"
+  "$ROOT/tests/canon-version.sh"
   "$ROOT/tests/cockpit-launch-lib.sh"
   "$ROOT/tests/no-python-windows-paths.sh"
   "$ROOT/tests/hooks-lib-settings.sh"
