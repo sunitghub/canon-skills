@@ -285,7 +285,7 @@ Git for Windows stays installed (canon's tools need its bash); the folder is wha
 - Scratch End dialog: "This session changed 3 files" with Save as ticket / Keep changes, end / Restore original files, end. Restore put `a.txt` back and brought `b.txt` back; `c.txt` stayed, as the dialog says.
 - A case-variant path (`c:\users\...\mealsplit`) gave "Project already registered."; the UNC form was refused with "Path does not exist." (the registration check failed before the daemon's "cwd not allowed" guard, which Go tests cover but the VM did not exercise).
 - Found and fixed: the HANDOFF note said "in the main checkout" (now "in your folder") and the Add Project label said "absolute path to a git repo" (now "absolute path"). Not fixed: a ticket session has no Restore button (the endpoint exists, the page never calls it), and "Path does not exist." is shown for a UNC path that does exist.
-- Pending: exact text of `a.txt` after restore (Notepad showed a capital O).
+- `a.txt` read `Original` after restore; restore copies the session-start snapshot byte for byte (covered by `TestEndScratchRestoreOriginalWithoutGit`), so the file most likely started with a capital O (the start-of-session text was not recorded separately).
 
 ---
 
