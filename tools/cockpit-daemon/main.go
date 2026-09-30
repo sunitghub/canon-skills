@@ -456,7 +456,8 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// t-5a4b: a folder without git is trusted only through its own real .tickets/<id> — not a link, not a parent's.
-		if s.noGit(projectRoot) && !plainDir(filepath.Join(projectRoot, ".tickets")) || s.noGit(projectRoot) && !plainDir(filepath.Join(projectRoot, ".tickets", body.Ticket)) {
+		// The cheap check comes first so a normal project never pays for a git call here.
+		if !(plainDir(filepath.Join(projectRoot, ".tickets")) && plainDir(filepath.Join(projectRoot, ".tickets", body.Ticket))) && s.noGit(projectRoot) {
 			http.Error(w, "cwd not allowed", http.StatusBadRequest)
 			return
 		}
