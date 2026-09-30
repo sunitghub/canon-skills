@@ -206,7 +206,7 @@ grep -qF "Help (coming soon)" <<<"$page" && fail "canon: Help is still a 'coming
 grep -qF 'id="help-close"' <<<"$page" || fail "canon: Help overlay missing a close control"
 grep -qF "closeHelp" <<<"$page" || fail "canon: Help overlay missing close handler"
 grep -qF "hv-canon" <<<"$page" || fail "canon: Help missing the Versions block"
-for kw in "One window" "Admin" "Coming next"; do
+for kw in "One window" "Admin" "Update"; do
   grep -qF "$kw" <<<"$page" || fail "canon: Help content missing section '$kw'"
 done
 grep -qF "/api/version" <<<"$page" || fail "canon: Help should read /api/version for the Versions block"
