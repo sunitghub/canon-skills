@@ -91,6 +91,27 @@ assert_eq "1" "$code"
 assert_contains "$out" "refresh FAILED: $WORK/bad"
 echo "canon-update: fast-forward, up to date, registry parsing, failed refresh ok"
 
+# A non-git install (zip): on macOS/Linux it is refused with the reinstall command and changes nothing;
+# --refresh-only refreshes the registered projects without pulling.
+cp -R "$INSTALL" "$WORK/zipinstall" && rm -rf "$WORK/zipinstall/.git"
+: > "$REFRESH_LOG"
+set +e; out="$("$WORK/zipinstall/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"
+assert_contains "$out" "isn't a git clone"
+assert_contains "$out" "install.sh | bash"
+assert_eq "" "$(cat "$REFRESH_LOG")"
+sed -i.bak "s|\"$WORK/bad\"|\"$WORK/gone\"|" "$CANON_HOME/cockpit/projects.json"
+before="$(head_of)"
+out="$("$CANON" update --refresh-only)"
+assert_contains "$out" "refreshed: $WORK/p1"
+assert_eq "$before" "$(head_of)"
+set +e; "$CANON" update --bogus >/dev/null 2>&1; code=$?; set -e
+assert_eq "2" "$code"
+# Windows hands over to the installer by exec (never overwrites the running script) and then refreshes.
+grep -q 'exec powershell.exe .*-Command' "$ROOT/tools/canon" || fail "canon-update: the Windows non-git path no longer execs PowerShell"
+grep -q 'url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1"' "$ROOT/tools/canon" || fail "canon-update: no installer URL"
+echo "canon-update: non-git install refused off Windows; --refresh-only ok"
+
 # Completion.
 bash_out="$(bash -c 'eval "$("$1" completion bash)"
   COMP_WORDS=(canon st); COMP_CWORD=1; _canon; echo "${COMPREPLY[*]}"
@@ -104,7 +125,7 @@ if command -v zsh >/dev/null 2>&1; then
   assert_eq "registered" "$(zsh -fc 'autoload -U compinit && compinit -u -d "$1/.zcompdump"; source "$2"; (( $+_comps[canon] )) && echo registered' _ "$WORK" "$WORK/comp.zsh")"
 fi
 ps="$("$CANON" completion powershell)"
-for w in Register-ArgumentCompleter status sessions stop restart wait update completion help needs-you working done idle exited --json --force --until --timeout --project; do
+for w in Register-ArgumentCompleter status sessions stop restart wait update completion version help needs-you working done idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"
 done
 set +e; "$CANON" completion fish >/dev/null 2>&1; code=$?; set -e
