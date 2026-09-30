@@ -40,6 +40,9 @@ Usage:
   canon update             Fast-forward this canon install (refuses if it has uncommitted
                            changes, isn't on main, or can't fast-forward), then run
                            `skills.sh refresh` on every project registered in the Cockpit
+                           A Windows install without git (the one-line installer) is updated by
+                           re-running that installer. `canon update --refresh-only` skips the
+                           update and only refreshes the registered projects.
   canon completion <bash|zsh|powershell>
                            Print a completion script. bash: eval "$(canon completion bash)"
                            in ~/.bashrc; zsh: eval "$(canon completion zsh)" in ~/.zshrc
@@ -58,10 +61,51 @@ EOF
 # t-e3d2: update the canon install, then refresh every Cockpit project. The install is often
 # also a development checkout, so anything but a clean fast-forward on main is refused —
 # never merged or stashed.
+# Refresh every project registered in the Cockpit; exit 1 if any refresh failed.
+refresh_projects() {
+  local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
+  [ -f "$registry" ] || { echo "No Cockpit projects registered — nothing to refresh."; exit 0; }
+  local failed=0 raw p
+  # The board writes this file: pull each "path" string and undo JSON escaping (\\, \", \/).
+  while IFS= read -r raw; do
+    p="${raw#*\"path\"}"; p="${p#*\"}"; p="${p%\"}"
+    p="${p//\\\"/\"}"; p="${p//\\\//\/}"; p="${p//\\\\/\\}"
+    [ -n "$p" ] || continue
+    if [ ! -d "$p" ]; then echo "  skipped (folder missing): $p"; continue; fi
+    # SKILLS_SH_NO_TTY: a bulk refresh must not stop to ask each project the permission-rule questions.
+    if out="$(SKILLS_SH_NO_TTY=1 "$SCRIPT_DIR/skills.sh" refresh "$p" 2>&1)"; then echo "  refreshed: $p"
+    elif [[ "$out" == *"No canon skills registered"* ]]; then echo "  skipped (no skills installed): $p"
+    else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; echo "    ${out##*$'\n'}"; failed=1; fi
+  done < <(grep -oE '"path"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' "$registry")
+  exit "$failed"
+}
+
+# A folder with no .git is a zip install. On Windows the one-line installer updates it in place (it keeps
+# cockpit\); exec hands over to PowerShell first so the running script is never overwritten under bash.
+update_without_git() {
+  local repo="$1" url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1"
+  if _is_windows && [ "$repo" = "$(cygpath -u "$USERPROFILE\\.canon" 2>/dev/null)" ]; then
+    echo "Updating canon by re-running the installer..."
+    exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+      "irm $url | iex; if (\$?) { & '$(cygpath -w "$SCRIPT_DIR/canon.cmd")' update --refresh-only }"
+  fi
+  if _is_windows; then
+    echo "canon update: $repo isn't the installer's folder (%USERPROFILE%\\.canon) — re-run the installer to update the copy there." >&2
+  else
+    echo "canon update: $repo isn't a git clone — reinstall with: curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash" >&2
+  fi
+  exit 1
+}
+
 update_cmd() {
-  [[ $# -eq 0 ]] || { echo "canon update takes no arguments" >&2; exit 2; }
+  local refresh_only=0
+  [[ "${1:-}" == --refresh-only ]] && { refresh_only=1; shift; }
+  [[ $# -eq 0 ]] || { echo "canon update takes no arguments (except --refresh-only)" >&2; exit 2; }
   local repo; repo="$(cd "$SCRIPT_DIR/.." && pwd)"
-  git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || { echo "canon update: $repo isn't a git clone — update it the way you installed it." >&2; exit 1; }
+  if [ "$refresh_only" = 1 ]; then refresh_projects; fi
+  if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
+    update_without_git "$repo"
+  fi
   if [ -n "$(git -C "$repo" status --porcelain)" ]; then
     echo "canon update: $repo has uncommitted changes — commit or stash them first. Nothing was changed." >&2; exit 1
   fi
@@ -74,19 +118,7 @@ update_cmd() {
   fi
   after="$(git -C "$repo" rev-parse --short HEAD)"
   if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
-  local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
-  [ -f "$registry" ] || { echo "No Cockpit projects registered — nothing to refresh."; exit 0; }
-  local failed=0 raw p
-  # The board writes this file: pull each "path" string and undo JSON escaping (\\, \", \/).
-  while IFS= read -r raw; do
-    p="${raw#*\"path\"}"; p="${p#*\"}"; p="${p%\"}"
-    p="${p//\\\"/\"}"; p="${p//\\\//\/}"; p="${p//\\\\/\\}"
-    [ -n "$p" ] || continue
-    if [ ! -d "$p" ]; then echo "  skipped (folder missing): $p"; continue; fi
-    if "$SCRIPT_DIR/skills.sh" refresh "$p" >/dev/null 2>&1; then echo "  refreshed: $p"
-    else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; failed=1; fi
-  done < <(grep -oE '"path"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' "$registry")
-  exit "$failed"
+  refresh_projects
 }
 
 completion_bash() {

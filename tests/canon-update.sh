@@ -24,7 +24,9 @@ cat > "$WORK/seed/tools/skills.sh" <<'SH'
 #!/usr/bin/env bash
 # stub: log each refresh; a project folder named "bad" fails
 echo "$*" >> "$REFRESH_LOG"
-[[ "$(basename "$2")" != bad ]]
+echo "prompts off: ${SKILLS_SH_NO_TTY:-unset}" >> "$REFRESH_LOG"
+if [[ "$(basename "$2")" == empty ]]; then echo "No canon skills registered in: $2"; exit 1; fi
+[[ "$(basename "$2")" != bad ]] || { echo "boom: bad project"; exit 1; }
 SH
 chmod +x "$WORK/seed/tools/skills.sh"
 git -C "$WORK/seed" "${ident[@]}" add -A && git -C "$WORK/seed" "${ident[@]}" commit -qm seed && git -C "$WORK/seed" push -q origin main 2>/dev/null
@@ -62,7 +64,7 @@ assert_contains "$out" "refreshed: $WORK/p1"
 assert_contains "$out" "refreshed: $WORK/p2"
 assert_contains "$out" 'skipped (folder missing): C:\Users\me\Proj'
 assert_contains "$out" "skipped (folder missing): $WORK/gone"
-assert_eq "refresh $WORK/p1"$'\n'"refresh $WORK/p2" "$(cat "$REFRESH_LOG")"
+assert_eq "refresh $WORK/p1"$'\n'"prompts off: 1"$'\n'"refresh $WORK/p2"$'\n'"prompts off: 1" "$(cat "$REFRESH_LOG")"
 
 # A new upstream commit: fast-forward.
 echo change > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" add NEWS && git -C "$WORK/seed" "${ident[@]}" commit -qm news && git -C "$WORK/seed" push -q origin main 2>/dev/null
@@ -89,7 +91,36 @@ sed -i.bak "s|\"$WORK/gone\"|\"$WORK/bad\"|" "$CANON_HOME/cockpit/projects.json"
 set +e; out="$("$CANON" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"
 assert_contains "$out" "refresh FAILED: $WORK/bad"
+assert_contains "$out" "boom: bad project"   # the failing refresh's own message is shown, not swallowed
+
+# A project with no skills installed is skipped, not a failure.
+mkdir -p "$WORK/empty"
+sed -i.bak "s|\"$WORK/bad\"|\"$WORK/empty\"|" "$CANON_HOME/cockpit/projects.json"
+set +e; out="$("$CANON" update 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"
+assert_contains "$out" "skipped (no skills installed): $WORK/empty"
 echo "canon-update: fast-forward, up to date, registry parsing, failed refresh ok"
+
+# A non-git install (zip): on macOS/Linux it is refused with the reinstall command and changes nothing;
+# --refresh-only refreshes the registered projects without pulling.
+cp -R "$INSTALL" "$WORK/zipinstall" && rm -rf "$WORK/zipinstall/.git"
+: > "$REFRESH_LOG"
+set +e; out="$("$WORK/zipinstall/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"
+assert_contains "$out" "isn't a git clone"
+assert_contains "$out" "install.sh | bash"
+assert_eq "" "$(cat "$REFRESH_LOG")"
+sed -i.bak "s|\"$WORK/bad\"|\"$WORK/gone\"|" "$CANON_HOME/cockpit/projects.json"
+before="$(head_of)"
+out="$("$CANON" update --refresh-only)"
+assert_contains "$out" "refreshed: $WORK/p1"
+assert_eq "$before" "$(head_of)"
+set +e; "$CANON" update --bogus >/dev/null 2>&1; code=$?; set -e
+assert_eq "2" "$code"
+# Windows hands over to the installer by exec (never overwrites the running script) and then refreshes.
+grep -q 'exec powershell.exe .*-Command' "$ROOT/tools/canon" || fail "canon-update: the Windows non-git path no longer execs PowerShell"
+grep -q 'url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1"' "$ROOT/tools/canon" || fail "canon-update: no installer URL"
+echo "canon-update: non-git install refused off Windows; --refresh-only ok"
 
 # Completion.
 bash_out="$(bash -c 'eval "$("$1" completion bash)"
@@ -104,7 +135,7 @@ if command -v zsh >/dev/null 2>&1; then
   assert_eq "registered" "$(zsh -fc 'autoload -U compinit && compinit -u -d "$1/.zcompdump"; source "$2"; (( $+_comps[canon] )) && echo registered' _ "$WORK" "$WORK/comp.zsh")"
 fi
 ps="$("$CANON" completion powershell)"
-for w in Register-ArgumentCompleter status sessions stop restart wait update completion help needs-you working done idle exited --json --force --until --timeout --project; do
+for w in Register-ArgumentCompleter status sessions stop restart wait update completion version help needs-you working done idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"
 done
 set +e; "$CANON" completion fish >/dev/null 2>&1; code=$?; set -e
