@@ -276,9 +276,16 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 - Found: the download crawled with the default progress bar (fixed with `$ProgressPreference = "SilentlyContinue"`), and `Expand-Archive` showed its own slow progress bar (replaced with `ZipFile.ExtractToDirectory`).
 - The one-liner and `install.cmd` only fetch the new script once this branch is on public `main`.
 
-## Non-git project (t-5a4b, Windows VM with Git uninstalled)
+## Non-git project (t-5a4b, Windows VM; a plain folder with no .git)
 
-Add a plain folder in the Cockpit, create a ticket, Start an agent, edit/create/delete a file, End. Pass when the Changes panel lists the changes in plain words (no branch/commit/worktree vocabulary), "Restore original files, end" puts the edited file back, and a case-variant or drive/UNC form of the registered folder is refused ("cwd not allowed"). Record date, Windows build and outcome here.
+Git for Windows stays installed (canon's tools need its bash); the folder is what has no git. Register a plain folder, click **+ sprint**, create a ticket, Start an agent, edit one file, create one and delete one, and watch the ticket's **Changes** panel. **Restore original files, end** lives in the End dialog of a **Scratch** session (Scratch button on the project card), not in a ticket session. Pass when the Changes panel and End dialog use plain words (no branch/commit/worktree/checkout vocabulary), restore puts the edited and deleted files back while the added one stays, and a case-variant or drive/UNC form of the registered folder does not register a second project.
+
+**Result, 2026-09-30, Windows ARM64 VM, folder `Documents\MealSplit`:**
+- `+ sprint` through the board worked (`Skills sprint`), New Ticket offered no worktree option, and the ticket's Changes panel listed `~ a.txt (+1 −1)`, `− b.txt`, `+ c.txt` with no git wording; canon's own files were not listed.
+- Scratch End dialog: "This session changed 3 files" with Save as ticket / Keep changes, end / Restore original files, end. Restore put `a.txt` back and brought `b.txt` back; `c.txt` stayed, as the dialog says.
+- A case-variant path (`c:\users\...\mealsplit`) gave "Project already registered."; the UNC form was refused with "Path does not exist." (the registration check failed before the daemon's "cwd not allowed" guard, which Go tests cover but the VM did not exercise).
+- Found and fixed: the HANDOFF note said "in the main checkout" (now "in your folder") and the Add Project label said "absolute path to a git repo" (now "absolute path"). Not fixed: a ticket session has no Restore button (the endpoint exists, the page never calls it), and "Path does not exist." is shown for a UNC path that does exist.
+- Pending: exact text of `a.txt` after restore (Notepad showed a capital O).
 
 ---
 
