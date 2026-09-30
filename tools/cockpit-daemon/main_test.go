@@ -7256,6 +7256,10 @@ func TestEndScratchRestoreOriginalWithoutGit(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "agent-out.md")); err != nil {
 		t.Fatalf("a file the agent added must stay (restore never deletes): %v", err)
 	}
+	// A folder without git has no "checkout": the note speaks of the folder (live on a Windows VM: it said "main checkout").
+	if b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md")); !strings.Contains(string(b), "s-ab12: 1 file changed in your folder — left after Restore original") || strings.Contains(string(b), "checkout") {
+		t.Fatalf("HANDOFF.md note = %q, want it to say \"in your folder\" and never \"checkout\"", b)
+	}
 }
 
 func TestEndScratchRestoreRefusedInAGitProject(t *testing.T) {

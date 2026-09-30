@@ -1863,7 +1863,7 @@ func (s *server) handleEndScratch(w http.ResponseWriter, r *http.Request, se *se
 	}
 	noteErr := ""
 	if total != 0 || commits > 0 {
-		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, reason)); err != nil {
+		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, s.noGit(se.projectRoot), reason)); err != nil {
 			noteErr = err.Error()
 		}
 	}
@@ -1920,7 +1920,7 @@ func noteScratchLeftover(root, line string) error {
 }
 
 // scratchNoteLine is one `## Scratch` entry: when, which session, what is left and where, why.
-func scratchNoteLine(se *session, wt *scratchWorktree, files, commits int, reason string) string {
+func scratchNoteLine(se *session, wt *scratchWorktree, files, commits int, noGit bool, reason string) string {
 	se.mu.Lock()
 	title, cwd := se.title, se.cwd
 	se.mu.Unlock()
@@ -1945,6 +1945,9 @@ func scratchNoteLine(se *session, wt *scratchWorktree, files, commits int, reaso
 		left = append(left, plural(commits, "commit"))
 	}
 	place := "the main checkout"
+	if noGit {
+		place = "your folder" // a folder without git has no checkout to speak of
+	}
 	if !pathsEqual(cwd, se.projectRoot) {
 		place = "worktree " + filepath.Base(cwd)
 		if wt != nil {
@@ -2488,7 +2491,7 @@ func (s *server) endIdleScratch(se *session) {
 		return
 	}
 	if total > 0 || commits > 0 {
-		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, "left by the idle auto-end")); err != nil {
+		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, s.noGit(se.projectRoot), "left by the idle auto-end")); err != nil {
 			keep("could not note its changes in HANDOFF.md", err)
 			return
 		}
