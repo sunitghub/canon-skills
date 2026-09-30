@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-29-2026 16:57
+learnings-sweep last run: 09-30-2026 02:50
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-30 | [t-5a4b](.tickets/t-5a4b/learnings.md) | A change that adds a git call to a hot path (every session Start) can break an unrelated timing test — order the cheap check first — and a background goroutine that writes into a directory must join the same wait group teardown waits on, or `go test` flakes on cleanup; a cached `ok` hid both. | UNPROMOTED |
 | 2026-09-29 | [t-9e5c](.tickets/t-9e5c/learnings.md) | A test-plan line that says "in dark and light" must have an assertion per theme — a single computed-colour comparison silently covered only the default theme and the evaluator caught it; assert each theme and that the two differ. Also: before promising a placement, read what the element actually explains (the note lived beside the always-visible default pickers, not the provider tab it was first assigned to). | UNPROMOTED |
 | 2026-09-29 | [t-a2f9](.tickets/t-a2f9/learnings.md) | Reporter output can hide failures: Playwright's line reporter prefixes `N failed` with a terminal escape, so a `^\s+N failed` grep read a failing run as clean — strip ANSI (`sed 's/\x1b\[[0-9;]*[A-Za-z]//g'`) before counting. And make a race deterministic in the test itself (delay the resource) instead of loop-running until it flakes; a flake bucket is several causes — classify each failure's error text first (one of three types here had a fully explained cause). | UNPROMOTED |
 | 2026-09-29 | [t-3447](.tickets/t-3447/learnings.md) | Verify a ticket's premise in the code before scoping: "skills aren't installed" was true only for a real `.claude/skills` dir (the common install is one whole-dir symlink). And a `depends:` edit drags the hidden-skill convention with it — lint SP-HIDDEN, `skills.sh list`, the catalog and `add`'s refusal all key off it — so read the linter/catalog generator before choosing hidden vs standalone. Scripts without a `--help` (update-upkeep-hashes.sh) run their action when probed. | UNPROMOTED |
