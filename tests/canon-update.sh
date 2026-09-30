@@ -161,6 +161,12 @@ assert_contains "$tty_out" "refreshed: $WORK/slow"
 if grep -q '( while' "$ROOT/tools/canon"; then fail "canon-update: a background loop crept back into the refresh (deadlocked Git Bash)"; fi
 echo "canon-update: a please-wait line is shown on a terminal"
 
+# The cockpit's ? help tells people how to update (a section of its own, naming the command).
+help_update="$(awk '/<div class="help-sect">Update<\/div>/{f=1} f&&/<div class="help-sect">Theme/{exit} f' "$ROOT/tools/sprint-check-app/cockpit.html")"
+assert_contains "$help_update" "canon update"
+assert_contains "$help_update" "Stop Daemon"
+echo "canon-update: the cockpit help has an Update section"
+
 # Completion.
 bash_out="$(bash -c 'eval "$("$1" completion bash)"
   COMP_WORDS=(canon st); COMP_CWORD=1; _canon; echo "${COMPREPLY[*]}"

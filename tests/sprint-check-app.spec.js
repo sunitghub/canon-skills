@@ -10267,3 +10267,26 @@ test.describe('board root redirect (t-5716)', () => {
     await expect(page).toHaveURL(/\/cockpit$/);
   });
 });
+
+// The Cockpit's ? help: it tells people how to update, and a Versions block that failed to load once (the board
+// restarting) must load on the next open instead of staying blank until a page reload.
+test.describe('Canon Cockpit help', () => {
+  test('has an Update section, and the Versions block retries after a failed load', async ({ page }) => {
+    let refuse = true;   // the board is "restarting" until we say otherwise
+    await page.route('**/api/version', route => {
+      if (refuse) return route.abort();
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', commit: 'abc1234', daemon: 'v9.9.9' }) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await expect(page.locator('#help-btn')).toBeVisible();   // the cockpit polls, so networkidle never settles
+    await page.locator('#help-btn').click();
+    await expect(page.locator('.help-panel')).toContainText('canon update');
+    await expect(page.locator('.help-panel')).toContainText('Stop Daemon');
+    await expect(page.locator('#hv-canon')).toHaveText('—');     // the first fetch was refused
+    refuse = false;
+    await page.waitForTimeout(4500);                                    // past the "nothing arrived" check
+    await page.locator('#help-close').click();
+    await page.locator('#help-btn').click();
+    await expect(page.locator('#hv-canon')).toHaveText('v9.9.9');
+  });
+});
