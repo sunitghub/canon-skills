@@ -126,4 +126,12 @@ assert_eq "$before" "$after"
 assert_contains "$output" "[fail]"
 assert_contains "$output" "not valid JSON"
 
+# --- a Windows console ends the answer with \r: "y\r" must still mean yes ---
+
+project5="$(make_project)"
+trap 'rm -rf "$tmp_home" "$project" "$project_scope" "$project2" "$project3" "$project4" "$project5"' EXIT
+run_with_tty "stty -icrnl; '$SKILLS' add sprint '$project5'" $'y\r'
+assert_file_exists "$project5/.claude/settings.json"
+assert_count 1 "$RULE" "$project5/.claude/settings.json"
+
 printf 'skills-subagent-log-permission: ok\n'

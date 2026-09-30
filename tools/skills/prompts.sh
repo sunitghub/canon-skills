@@ -21,6 +21,13 @@ _has_tty() {
   [ -z "${SKILLS_SH_NO_TTY:-}" ] && { : <> /dev/tty; } 2>/dev/null
 }
 
+# Read one answer from the terminal into the caller's `answer`. A Windows terminal ends the line with \r, so
+# "y" arrives as "y\r" and never matched ^[Yy]$ — every prompt silently answered "no".
+_read_tty_answer() {
+  read -r -t 15 answer </dev/tty || return 1
+  answer="${answer%$'\r'}"
+}
+
 _prompt_or_auto_yes() {
   local question="$1"
   if [ -n "${SKILLS_SH_ASSUME_YES:-}" ]; then
@@ -31,7 +38,7 @@ _prompt_or_auto_yes() {
   fi
   printf "%s [y/N] (auto-skips in 15s) " "$question" > /dev/tty
   local answer
-  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 1; }
+  _read_tty_answer || { echo "" > /dev/tty; return 1; }
   [[ "$answer" =~ ^[Yy]$ ]]
 }
 
@@ -51,7 +58,7 @@ offer_tkt_path() {
   echo "" > /dev/tty
   printf "canon/tools (canon, sprint, tkt, sprint-check) is not on your PATH.\n" > /dev/tty
   printf "Add %s to PATH in %s? [y/N] (auto-skips in 15s) " "$tools_dir" "$rc_file" > /dev/tty
-  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
+  _read_tty_answer || { echo "" > /dev/tty; return 0; }
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     printf '\n# canon tools\nexport PATH="$PATH:%s"\n' "$tools_dir" >> "$rc_file"
     echo "  Added. Run: source $rc_file" > /dev/tty
@@ -127,7 +134,7 @@ offer_remove_model_tiers_note() {
     return 0
   fi
   printf "Remove model-per-task note from AGENTS.md? [y/N] (auto-skips in 15s) " > /dev/tty
-  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
+  _read_tty_answer || { echo "" > /dev/tty; return 0; }
   if [[ "$answer" =~ ^[Yy]$ ]]; then
     # offer_model_tiers_note always inserts its separator blank line BEFORE
     # BEGIN (never after END) — removal must undo exactly that, via one line
@@ -379,7 +386,7 @@ offer_remove_subagent_log_permission() {
   fi
 
   printf "Remove the subagent-log.sh permission rule from %s? [y/N] (auto-skips in 15s) " "$settings" > /dev/tty
-  read -r -t 15 answer </dev/tty || { echo "" > /dev/tty; return 0; }
+  _read_tty_answer || { echo "" > /dev/tty; return 0; }
   [[ "$answer" =~ ^[Yy]$ ]] || return 0
 
   if [ "$backend" = powershell ]; then
