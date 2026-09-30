@@ -25,6 +25,8 @@ cat > "$WORK/seed/tools/skills.sh" <<'SH'
 # stub: log each refresh; a project folder named "bad" fails
 echo "$*" >> "$REFRESH_LOG"
 echo "prompts off: ${SKILLS_SH_NO_TTY:-unset}" >> "$REFRESH_LOG"
+# A project whose refresh leaves a background process holding stdout/stderr (as a daemon would).
+if [[ "$(basename "$2")" == spawner ]]; then (sleep 4 &); fi
 if [[ "$(basename "$2")" == empty ]]; then echo "No canon skills registered in: $2"; exit 1; fi
 [[ "$(basename "$2")" != bad ]] || { echo "boom: bad project"; exit 1; }
 SH
@@ -121,6 +123,15 @@ assert_eq "2" "$code"
 grep -q 'exec powershell.exe .*-Command' "$ROOT/tools/canon" || fail "canon-update: the Windows non-git path no longer execs PowerShell"
 grep -q 'url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1"' "$ROOT/tools/canon" || fail "canon-update: no installer URL"
 echo "canon-update: non-git install refused off Windows; --refresh-only ok"
+
+# A refresh that leaves a background process behind must not hang the update (a $(...) capture waits for it).
+mkdir -p "$WORK/spawner"
+sed -i.bak "s|\"$WORK/empty\"|\"$WORK/spawner\"|" "$CANON_HOME/cockpit/projects.json"
+SECONDS=0
+out="$("$CANON" update --refresh-only)"
+[[ $SECONDS -lt 3 ]] || fail "canon-update: refresh waited ${SECONDS}s for a background process"
+assert_contains "$out" "refreshed: $WORK/spawner"
+echo "canon-update: refresh does not wait on background processes"
 
 # Completion.
 bash_out="$(bash -c 'eval "$("$1" completion bash)"
