@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 09-30-2026 17:31
+learnings-sweep last run: 09-30-2026 18:03
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-09-30 | [t-626a](.tickets/t-626a/learnings.md) | A docs sync added the `t-5a4b` no-git passage beyond its plan (it corrected a stale "agents can't run without git" line) and repeated the git-icon tooltip text in README and `docs/sprint-check.md`, so the two copies can drift — pick one owner and link. | UNPROMOTED |
 | 2026-09-30 | [t-8d72](.tickets/t-8d72/learnings.md) | Playwright treats `aria-disabled="true"` as not enabled and refuses a normal click, so a test that proves "clicking does nothing" needs `click({ force: true })`; and plain `npm run test:ui` starts no server, use `tests/sprint-check-go-ui.sh` | UNPROMOTED |
 | 2026-09-30 | [t-8716](.tickets/t-8716/learnings.md) | A script-scope `$ErrorActionPreference = "Stop"` turns a later `Write-Error` into a throw (the pause and `return` after it never ran) and leaks into the user's session under `irm \| iex` — set it inside the function that needs it | UNPROMOTED |
 | 2026-09-30 | [t-5a4b](.tickets/t-5a4b/learnings.md) | A change that adds a git call to a hot path (every session Start) can break an unrelated timing test — order the cheap check first — and a background goroutine that writes into a directory must join the same wait group teardown waits on, or `go test` flakes on cleanup; a cached `ok` hid both. | UNPROMOTED |

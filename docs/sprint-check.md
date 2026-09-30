@@ -189,7 +189,7 @@ sprint agent without leaving the browser — no second terminal.
   first-class project (`t-5a4b`). An agent starts there with no git step; canon records what changed from a snapshot kept
   under `~/.canon/cockpit/changes/` (never inside the project), the End dialog says how many files the session changed,
   and the ticket's **Changes** panel lists them. **Restore original** puts back only files canon holds a copy of and never
-  deletes a file the agent added. Several sessions can share such a folder, with a warning, because copies cannot be
+  deletes a file the agent added. Several scratch sessions can share such a folder, with a warning, because copies cannot be
   merged back.
 - **Scratch sessions (`t-47f1`):** **Scratch** on a Projects card (or the **+** on
   an Agents group) starts the plain agent in that project with no
