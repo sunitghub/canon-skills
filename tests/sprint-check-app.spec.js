@@ -10244,6 +10244,10 @@ test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
     await expect(icon(page, 'proj-nogit')).toHaveAttribute('title', TIP.none);
     await expect(icon(page, 'proj-nogit')).toHaveAttribute('aria-disabled', 'true');
     await expect(icon(page, 'proj-err')).toBeHidden();        // no claim when the status request fails
+    // The head row keeps one height whether or not the icon shows, and a truncated name keeps its full text as a title.
+    const heads = await page.locator('.card .cardhead').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+    expect(new Set(heads).size).toBe(1);
+    await expect(page.locator('.card h3').first()).toHaveAttribute('title', 'proj-git');
     await expect(icon(page, 'proj-git').locator('svg')).toHaveAttribute('aria-hidden', 'true');
     // The chip is gone; the skill chips still work (only `sprint` is registered, so + efficiency is offered).
     await expect(page.locator('.trackchg')).toHaveCount(0);
