@@ -52,9 +52,16 @@ function Install-CanonFiles($Dest) {
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)
     $src = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
     if (-not $src -or -not (Test-Path (Join-Path $src.FullName "tools"))) { throw "The download did not contain canon's tools folder." }
+    # Windows will not overwrite a running .exe, and robocopy's default is to retry a locked file a million
+    # times at 30s each, silently (live: the update hung with the board open). Ask first, and fail fast below.
+    $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith("$Dest\", [StringComparison]::OrdinalIgnoreCase) })
+    if ($running.Count -gt 0) {
+      $names = ($running | ForEach-Object { $_.ProcessName } | Sort-Object -Unique) -join ", "
+      throw "canon is running ($names). Run 'canon stop' (or close the board), then run this again."
+    }
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
     # No /MIR: cockpit\ (registry, change store) must survive an update. Stale removed files linger; acceptable.
-    robocopy $src.FullName $Dest /E /XD cockpit .git /NFL /NDL /NJH /NJS /NP | Out-Null
+    robocopy $src.FullName $Dest /E /XD cockpit .git /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Copying canon into $Dest failed (robocopy code $LASTEXITCODE)." }
   } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
@@ -67,19 +74,21 @@ $Bootstrap = -not ($CanonRoot -and (Test-Path (Join-Path $CanonRoot "tools\canon
 
 if ($Bootstrap) {
   $CanonRoot = Join-Path $env:USERPROFILE ".canon"
+  $global:CanonInstallFailed = $false  # `canon update` reads this: `return` leaves $? true, so it cannot tell an install stopped
   Write-Host "==> Installing canon into $CanonRoot"
   if (-not (Find-GitBash)) {
     if (-not (Install-GitForWindows)) {
       Write-Host ""
       Write-Host "Nothing was installed. Get Git for Windows from $GitDownload, then run this again:"
       Write-Host "  $RerunCmd"
+      $global:CanonInstallFailed = $true
       return
     }
   }
   if (Test-Path (Join-Path $CanonRoot ".git")) {
     Write-Host "==> $CanonRoot holds a developer checkout (.git); leaving its files as they are"
   } else {
-    try { Install-CanonFiles $CanonRoot } catch { Write-Host "Install failed: $_"; return }
+    try { Install-CanonFiles $CanonRoot } catch { Write-Host "Install failed: $_"; $global:CanonInstallFailed = $true; return }
   }
 }
 
