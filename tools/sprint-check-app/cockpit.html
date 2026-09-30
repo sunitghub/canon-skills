@@ -445,6 +445,18 @@
   .regskill:hover{background:var(--col-discarded);color:#fff}
   .regskill:disabled{cursor:default;opacity:.55;background:var(--accent-dim);color:var(--accent);border-color:var(--accent)}
   .regskill[aria-busy="true"],.sn-reg[aria-busy="true"]{opacity:1}
+  /* t-8d72: Git status icon beside the project name. On = accent, off = muted and clickable, none = faded. */
+  .card .cardhead{display:flex;align-items:center;gap:8px;min-width:0;min-height:28px}
+  .card .cardhead h3{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .gitstate{flex:none;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--text-muted);cursor:pointer}
+  .gitstate[hidden]{display:none}
+  .gitstate svg{width:18px;height:18px}
+  .gitstate.is-on{color:var(--accent);cursor:default}
+  .gitstate.is-off:hover{color:var(--accent);background:var(--accent-dim)}
+  .gitstate.is-none{opacity:.45;cursor:default}
+  .gitstate:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .gitstate[aria-busy="true"]{cursor:progress}
+  .gitstate .reg-spin{margin:0;width:12px;height:12px}
   /* t-7d8d: shown while skills.sh add runs (slow on Windows). currentColor follows the theme. */
   .reg-spin{display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:reg-spin .8s linear infinite}
   @keyframes reg-spin{to{transform:rotate(360deg)}}
@@ -1312,6 +1324,8 @@
   const TICKET_ID_RE=/^t-[a-z0-9]{4}$/;
   // t-47f1: scratch sessions — an agent in a project with no ticket. The shell mints the id.
   const SCRATCH_ID_RE=/^s-[a-z0-9]{4}$/;
+  // t-8d72: the Git status icon on a project card (a branch: three nodes and a curve).
+  const GIT_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>';
   // t-f553: a scribble and a pencil, the scratch session mark on the rail, Admin and the Scratch buttons.
   const SCRATCH_ICON='<svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Scratch session"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>';
   // t-f553: scratch tabs each board has open, keyed by project id — shown on the rail before
@@ -2344,7 +2358,7 @@
     }
     grid.innerHTML=projects.map(p=>`
       <div class="card">
-        <h3>${esc(p.name)}</h3>
+        <div class="cardhead"><h3 title="${escAttr(p.name)}">${esc(p.name)}</h3><button type="button" class="gitstate" hidden data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}">${GIT_ICON}</button></div>
         <div class="path" title="${escAttr(p.path)}">${esc(p.path)}</div>
         <div class="desc">${esc(p.description||'')}</div>
         <div class="cardfoot">
@@ -2362,7 +2376,6 @@
           <div class="cardbottom">
             <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
               ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
-              <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="Optional: keep a full history of this folder's files so you can go back to earlier versions. Agents run here without it." style="display:none">Version history</button>
             </div>
             <div class="actions">
               <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
@@ -2378,8 +2391,8 @@
     grid.querySelectorAll('.scratchbtn').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     grid.querySelectorAll('.go').forEach(b=>b.addEventListener('click',()=>openProject(b.dataset.open,b.dataset.name,{nudge:true})));
     grid.querySelectorAll('.upk-row').forEach(r=>r.addEventListener('click',()=>openUpkeepFor(r.dataset.upkeep)));
-    grid.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
-    grid.querySelectorAll('.trackchg').forEach(b=>b.addEventListener('click',()=>trackChanges(b.dataset.id,b.dataset.name,b)));
+    grid.querySelectorAll('.regskill').forEach(b=>b.addEventListener('click',()=>registerSkill(b.dataset.id,b.dataset.name,b.dataset.path,b.dataset.skill,b)));
+    grid.querySelectorAll('.gitstate').forEach(b=>b.addEventListener('click',()=>{ if(b.classList.contains('is-off')) trackChanges(b.dataset.id,b.dataset.name,b); }));
     projects.forEach(p=>fillCardStats(p.id));
     renderSessionSurfaces();
   }
@@ -2403,24 +2416,39 @@
       const reg=card&&card.querySelector('.regbtns');
       if(reg){
         let any=false;
-        reg.querySelectorAll('.regskill:not(.trackchg)').forEach(b=>{
+        reg.querySelectorAll('.regskill').forEach(b=>{
           const show=!skills.includes(b.dataset.skill);
           b.style.display = show ? '' : 'none';
           any = any || show;
         });
-        // t-d538: a non-git folder can't run agents until it tracks changes.
-        const tc=reg.querySelector('.trackchg');
-        if(tc){
-          let st=null;
-          try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok) st=await t.json(); }catch(e){}
-          const show=!!(st&&st.ok&&st.tracking===false&&st.git_available!==false);   // no Git on this computer: nothing to offer
-          tc.style.display = show ? '' : 'none';
-          tc.dataset.synced = (st&&st.synced) || '';
-          any = any || show;
-        }
         reg.style.display = any ? '' : 'none';
       }
+      // t-8d72 (was the t-d538 chip): the Git icon reads the same status and stays hidden when it cannot say.
+      const gs=card&&card.querySelector('.gitstate');
+      if(gs){
+        let st=null;
+        try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok) st=await t.json(); }catch(e){}
+        setGitState(gs,st);
+      }
     }catch(e){ up.textContent='—'; ct.textContent='—'; if(sk) sk.textContent='—'; }
+  }
+
+  // t-8d72: the icon's three states, from GET /api/track-changes. A non-git folder cannot run agents until it is
+  // tracked (t-d538), so Off is clickable; On and None only explain (aria-disabled, so the tooltip still shows).
+  function setGitState(gs,st){
+    gs.classList.remove('is-on','is-off','is-none');
+    gs.dataset.synced=(st&&st.synced)||'';
+    let cls='', tip='';
+    if(st&&st.ok){
+      if(st.tracking===true){ cls='is-on'; tip='Git enabled — this project keeps a version history'; }
+      else if(st.git_available===false){ cls='is-none'; tip="Version history needs Git, which isn't installed on this computer"; }
+      else if(st.tracking===false){ cls='is-off'; tip='Git not enabled — click to turn on version history'; }
+    }
+    if(!cls){ gs.hidden=true; return; }
+    gs.classList.add(cls);
+    gs.title=tip; gs.setAttribute('aria-label',tip);
+    gs.setAttribute('aria-disabled', cls==='is-off' ? 'false' : 'true');
+    gs.hidden=false;
   }
 
   // t-7485/t-96c3: register one of the "important" skills (sprint / efficiency)
@@ -2463,20 +2491,20 @@
   // non-git folder. The server re-resolves the folder from the registry and refuses on any
   // existing .git; this only explains and confirms.
   async function trackChanges(id,name,btn){
-    if(btn&&btn.disabled) return;
-    const synced=btn&&btn.dataset.synced;
+    if(btn.disabled) return;
+    const synced=btn.dataset.synced;
     const body='Keeps a full history of this folder\u2019s files on this computer, so you can go back to earlier versions. It needs Git installed. Nothing is uploaded and your files stay exactly as they are. Agents can run here without it.'
       +(synced?' Note: this folder is in '+synced+'. Sync services can damage this history — consider moving the project out of '+synced+' first.':'');
     if(!(await cockpitConfirm({title:'Turn on version history for “'+name+'”?', body, okLabel:'Turn on'}))) return;
-    const saved=btn?btn.innerHTML:'';
-    if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>Starting…'; }
+    const saved=btn.innerHTML;
+    btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>';
     try{
       const r=await fetch('/api/track-changes?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
       const res=await r.json().catch(()=>({}));
       if(res&&res.ok){ toast('✓ '+name+' now keeps a version history'); load(); return; }
       toast((res&&res.error)?res.error:'Could not turn on version history (HTTP '+r.status+')');
     }catch(e){ toast('Request failed'); }
-    finally{ if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; } }
+    finally{ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; }
   }
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';hideBrowse();document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}

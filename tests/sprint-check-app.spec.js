@@ -10188,50 +10188,154 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
   });
 });
 
-test.describe('Canon Cockpit Projects card: Track changes (t-d538)', () => {
+test.describe('Canon Cockpit Projects card: Git status icon (t-8d72)', () => {
+  // The icon replaced the t-d538 "Version history" chip; the confirm and the POST are unchanged.
   const PROJECTS = [
     { id: 'proj-git', path: '/tmp/proj-git', name: 'proj-git', description: '', added: '2026-09-27' },
     { id: 'proj-plain', path: '/tmp/proj-plain', name: 'proj-plain', description: 'no git here', added: '2026-09-27' },
+    { id: 'proj-nogit', path: '/tmp/proj-nogit', name: 'proj-nogit', description: '', added: '2026-09-27' },
+    { id: 'proj-err', path: '/tmp/proj-err', name: 'proj-err', description: '', added: '2026-09-27' },
   ];
-  test('only a non-git project card offers Track changes, and it POSTs confirm:true after the confirm', async ({ page }) => {
+  const json = (route, body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+  const TIP = {
+    on: 'Git enabled — this project keeps a version history',
+    off: 'Git not enabled — click to turn on version history',
+    none: "Version history needs Git, which isn't installed on this computer",
+  };
+
+  // status(pid) -> the GET body; post(route, pid) -> handles the POST (default: ok).
+  async function stubBoard(page, { status, post, gate } = {}) {
     const posts = [];
-    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
-    await page.route('**/api/project-stats*', route => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ updated: '2026-09-27', ticket_count: 0, skills: ['sprint', 'efficiency'] }) }));
-    await page.route('**/api/track-changes*', route => {
+    await page.route('**/api/projects', route => json(route, PROJECTS));
+    await page.route('**/api/project-stats*', route => json(route, { updated: '2026-09-27', ticket_count: 0, skills: ['sprint'] }));
+    await page.route('**/api/track-changes*', async route => {
       const pid = new URL(route.request().url()).searchParams.get('project');
       if (route.request().method() === 'POST') {
         posts.push({ pid, body: route.request().postDataJSON() });
-        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, commit: 'abc1234' }) });
+        if (gate) await gate;
+        return post ? post(route, pid) : json(route, { ok: true, commit: 'abc1234' });
       }
-      return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, tracking: pid === 'proj-git', synced: pid === 'proj-plain' ? 'iCloud Drive' : null, git_available: true }) });
+      const st = status(pid);
+      return st === 'error' ? json(route, { ok: false, error: 'boom' }, 500) : json(route, st);
     });
     await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    const plainBtn = page.locator('.trackchg[data-id="proj-plain"]'), gitBtn = page.locator('.trackchg[data-id="proj-git"]');
-    await expect(plainBtn).toBeVisible();
-    await expect(gitBtn).toBeHidden();
-    await page.locator('.regbtns[data-reg="proj-plain"]').screenshot({ path: path.join(require('os').tmpdir(), 'canon-d538-card.png') });
-    await plainBtn.click();
-    await expect(page.locator('body')).toContainText('Turn on version history for “proj-plain”?');
-    await expect(page.locator('body')).toContainText('iCloud Drive');
-    expect(posts.length).toBe(0);
-    await page.getByRole('button', { name: 'Turn on', exact: true }).last().click();
-    await expect.poll(() => posts.length).toBe(1);
-    expect(posts[0]).toEqual({ pid: 'proj-plain', body: { confirm: true } });
+    await expect(page.locator('.card')).toHaveCount(PROJECTS.length);
+    await expect(page.locator('.gitstate:not([hidden])')).toHaveCount(PROJECTS.length - 1);   // the status requests have settled (proj-err stays hidden)
+    return posts;
+  }
+  const defaultStatus = pid => ({
+    'proj-git': { ok: true, tracking: true, synced: null, git_available: true },
+    'proj-plain': { ok: true, tracking: false, synced: null, git_available: true },
+    'proj-nogit': { ok: true, tracking: false, synced: null, git_available: false },
+    'proj-err': 'error',
+  })[pid];
+  const icon = (page, pid) => page.locator(`.gitstate[data-id="${pid}"]`);
+
+  test('each card shows On, Off or None from the status, hides itself when it cannot tell, and the old chip is gone', async ({ page }) => {
+    await stubBoard(page, { status: defaultStatus });
+    await expect(icon(page, 'proj-git')).toHaveClass(/is-on/);
+    await expect(icon(page, 'proj-git')).toHaveAttribute('title', TIP.on);
+    await expect(icon(page, 'proj-git')).toHaveAttribute('aria-label', TIP.on);
+    await expect(icon(page, 'proj-git')).toHaveAttribute('aria-disabled', 'true');
+    await expect(icon(page, 'proj-plain')).toHaveClass(/is-off/);
+    await expect(icon(page, 'proj-plain')).toHaveAttribute('title', TIP.off);
+    await expect(icon(page, 'proj-plain')).toHaveAttribute('aria-disabled', 'false');
+    await expect(icon(page, 'proj-nogit')).toHaveClass(/is-none/);
+    await expect(icon(page, 'proj-nogit')).toHaveAttribute('title', TIP.none);
+    await expect(icon(page, 'proj-nogit')).toHaveAttribute('aria-disabled', 'true');
+    await expect(icon(page, 'proj-err')).toBeHidden();        // no claim when the status request fails
+    // The head row keeps one height whether or not the icon shows, and a truncated name keeps its full text as a title.
+    const heads = await page.locator('.card .cardhead').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+    expect(new Set(heads).size).toBe(1);
+    await expect(page.locator('.card h3').first()).toHaveAttribute('title', 'proj-git');
+    await expect(icon(page, 'proj-git').locator('svg')).toHaveAttribute('aria-hidden', 'true');
+    // The chip is gone; the skill chips still work (only `sprint` is registered, so + efficiency is offered).
+    await expect(page.locator('.trackchg')).toHaveCount(0);
+    await expect(page.locator('.regskill[data-skill="efficiency"]').first()).toBeVisible();
+    await expect(page.locator('.regskill[data-skill="sprint"]').first()).toBeHidden();
   });
 
-  // t-5a4b: with no Git on the computer there is nothing to offer, so the action stays hidden.
-  test('Version history is hidden when Git is not installed on this computer', async ({ page }) => {
-    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
-    await page.route('**/api/project-stats*', route => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ updated: '2026-09-27', ticket_count: 0, skills: ['sprint', 'efficiency'] }) }));
-    await page.route('**/api/track-changes*', route => route.fulfill({ status: 200, contentType: 'application/json',
-      body: JSON.stringify({ ok: true, tracking: false, synced: null, git_available: false }) }));
-    await page.goto(BASE + '/cockpit');
-    await page.waitForLoadState('networkidle');
-    await expect(page.locator('.trackchg[data-id="proj-plain"]')).toBeHidden();
+  test('clicking Off confirms first; Cancel sends nothing, Turn on sends one {confirm:true} POST with a busy spinner, then the card turns On', async ({ page }) => {
+    let release; const gate = new Promise(r => { release = r; });
+    let turnedOn = false;
+    const posts = await stubBoard(page, {
+      gate,
+      status: pid => (pid === 'proj-plain' && turnedOn ? { ok: true, tracking: true, synced: null, git_available: true } : defaultStatus(pid)),
+      post: (route) => { turnedOn = true; return json(route, { ok: true, commit: 'abc1234' }); },
+    });
+    await icon(page, 'proj-plain').click();
+    await expect(page.locator('#cconfirm')).toContainText('Turn on version history for “proj-plain”?');
+    await page.locator('#cc-cancel').click();
+    await page.waitForTimeout(300);
+    expect(posts.length).toBe(0);
+
+    await icon(page, 'proj-plain').click();
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0]).toEqual({ pid: 'proj-plain', body: { confirm: true } });
+    await expect(icon(page, 'proj-plain')).toHaveAttribute('aria-busy', 'true');
+    await expect(icon(page, 'proj-plain').locator('.reg-spin')).toBeVisible();
+    await expect(icon(page, 'proj-plain')).toBeDisabled();
+    release();
+    await expect(page.locator('#toast')).toContainText('✓ proj-plain now keeps a version history');
+    await expect(icon(page, 'proj-plain')).toHaveClass(/is-on/);
+    expect(posts.length).toBe(1);
+  });
+
+  test('a failed request re-enables the icon and shows the error; On and None do nothing when clicked; a synced folder is warned about', async ({ page }) => {
+    const posts = await stubBoard(page, {
+      status: pid => (pid === 'proj-plain' ? { ok: true, tracking: false, synced: 'iCloud Drive', git_available: true } : defaultStatus(pid)),
+      post: route => json(route, { ok: false, error: 'This folder is already inside a git repository.' }, 400),
+    });
+    await icon(page, 'proj-git').click({ force: true });      // aria-disabled: Playwright refuses a normal click
+    await icon(page, 'proj-nogit').click({ force: true });
+    await page.waitForTimeout(300);
+    await expect(page.locator('#cconfirm.show')).toHaveCount(0);
+    expect(posts.length).toBe(0);
+
+    await icon(page, 'proj-plain').click();
+    await expect(page.locator('#cconfirm')).toContainText('iCloud Drive');
+    await page.locator('#cc-ok').click();
+    await expect(page.locator('#toast')).toContainText('already inside a git repository');
+    await expect(icon(page, 'proj-plain')).toBeEnabled();
+    await expect(icon(page, 'proj-plain')).not.toHaveAttribute('aria-busy', 'true');
+    await expect(icon(page, 'proj-plain')).toHaveClass(/is-off/);
+  });
+
+  test('rendered: state colours differ, None is faded, the hit target is at least 28px, focus shows a ring, and a long name never runs under the icon (dark and light)', async ({ page }) => {
+    await stubBoard(page, { status: defaultStatus });
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+      const read = pid => icon(page, pid).evaluate(el => {
+        const cs = getComputedStyle(el), r = el.getBoundingClientRect(), v = el.querySelector('svg').getBoundingClientRect();
+        return { color: cs.color, opacity: parseFloat(cs.opacity), w: r.width, h: r.height, icon: v.width };
+      });
+      const on = await read('proj-git'), off = await read('proj-plain'), none = await read('proj-nogit');
+      expect(on.color, theme).not.toBe(off.color);
+      expect(none.opacity, theme).toBeLessThanOrEqual(0.5);
+      expect(on.opacity, theme).toBe(1);
+      expect(off.opacity, theme).toBe(1);
+      for (const st of [on, off, none]) { expect(st.w).toBeGreaterThanOrEqual(28); expect(st.h).toBeGreaterThanOrEqual(28); expect(st.icon).toBe(18); }
+      await icon(page, 'proj-plain').focus();
+      const outline = await icon(page, 'proj-plain').evaluate(el => getComputedStyle(el).outlineStyle + ' ' + getComputedStyle(el).outlineWidth);
+      expect(outline, theme).toBe('solid 2px');
+      for (const pid of ['proj-git', 'proj-plain', 'proj-nogit']) {
+        await page.locator('.card', { has: icon(page, pid) }).screenshot({ path: path.join(require('os').tmpdir(), `canon-8d72-${pid}-${theme}.png`) });
+      }
+    }
+    // A 320px-wide card with a very long name: the name ellipsises, the icon stays whole and beside it.
+    await page.evaluate(() => {
+      const c = document.querySelectorAll('.card')[1];
+      c.style.width = '320px';
+      c.querySelector('h3').textContent = 'a-very-long-project-name-that-would-push-the-icon-out-of-the-card';
+    });
+    const box = await page.evaluate(() => {
+      const c = document.querySelectorAll('.card')[1], h = c.querySelector('h3').getBoundingClientRect(),
+        g = c.querySelector('.gitstate').getBoundingClientRect(), cr = c.getBoundingClientRect();
+      return { hRight: h.right, gLeft: g.left, gRight: g.right, cRight: cr.right };
+    });
+    expect(box.hRight).toBeLessThanOrEqual(box.gLeft + 1);
+    expect(box.gRight).toBeLessThanOrEqual(box.cRight);
   });
 });
 
