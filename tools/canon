@@ -41,8 +41,7 @@ Usage:
                            changes, isn't on main, or can't fast-forward), then run
                            `skills.sh refresh` on every project registered in the Cockpit
                            A Windows install without git (the one-line installer) is updated by
-                           re-running that installer. `canon update --refresh-only` skips the
-                           update and only refreshes the registered projects.
+                           re-running that installer.
   canon completion <bash|zsh|powershell>
                            Print a completion script. bash: eval "$(canon completion bash)"
                            in ~/.bashrc; zsh: eval "$(canon completion zsh)" in ~/.zshrc
