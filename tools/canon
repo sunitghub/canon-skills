@@ -89,8 +89,9 @@ update_without_git() {
   local repo="$1" url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1"
   if _is_windows && [ "$repo" = "$(cygpath -u "$USERPROFILE\\.canon" 2>/dev/null)" ]; then
     echo "Updating canon by re-running the installer..."
+    # </dev/null: with the console's stdin inherited, the nested canon.cmd -> bash refresh hung (live-reproduced).
     exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
-      "irm $url | iex; if (\$?) { & '$(cygpath -w "$SCRIPT_DIR/canon.cmd")' update --refresh-only }"
+      "irm $url | iex; if (\$?) { & '$(cygpath -w "$SCRIPT_DIR/canon.cmd")' update --refresh-only }" </dev/null
   fi
   if _is_windows; then
     echo "canon update: $repo isn't the installer's folder (%USERPROFILE%\\.canon) — re-run the installer to update the copy there." >&2

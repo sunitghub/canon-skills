@@ -121,6 +121,7 @@ set +e; "$CANON" update --bogus >/dev/null 2>&1; code=$?; set -e
 assert_eq "2" "$code"
 # Windows hands over to the installer by exec (never overwrites the running script) and then refreshes.
 grep -q 'exec powershell.exe .*-Command' "$ROOT/tools/canon" || fail "canon-update: the Windows non-git path no longer execs PowerShell"
+grep -A2 'exec powershell.exe' "$ROOT/tools/canon" | grep -q '</dev/null' || fail "canon-update: the PowerShell handover inherits stdin (hangs the nested refresh on Windows)"
 grep -q 'url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1"' "$ROOT/tools/canon" || fail "canon-update: no installer URL"
 echo "canon-update: non-git install refused off Windows; --refresh-only ok"
 
