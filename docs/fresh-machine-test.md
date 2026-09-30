@@ -274,7 +274,7 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 - Step 2 pass: answering `n` printed the download link and re-run command, kept the window open, and left no `~\.canon`.
 - Step 4 pass (`install.cmd` via `curl.exe`, with the URL pointed at the branch since `main` had the old script): fetched `install.ps1`, ran the bootstrap to the success line. The read-first path and the non-git steps below are not run.
 - Found: the download crawled with the default progress bar (fixed with `$ProgressPreference = "SilentlyContinue"`), and `Expand-Archive` showed its own slow progress bar (replaced with `ZipFile.ExtractToDirectory`).
-- The one-liner and `install.cmd` only fetch the new script once this branch is on public `main`.
+- The branch is now merged to public `main` (2026-09-30), so the plain one-liner and `install.cmd` fetch the new script; `canon update` on a zip install re-runs the installer and then refreshes the registered projects.
 
 ## Non-git project (t-5a4b, Windows VM; a plain folder with no .git)
 
