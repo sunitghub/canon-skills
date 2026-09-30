@@ -185,7 +185,12 @@ sprint agent without leaving the browser — no second terminal.
   icon is disabled. Only the "not enabled" icon is clickable: it asks you to confirm, then runs `git init` with one
   commit holding only a default `.gitignore` (`POST /api/track-changes`, `t-d538`). Nothing is uploaded and your files stay
   uncommitted. A folder that is already a repo, or sits inside one, is refused, and a folder inside iCloud Drive,
-  Dropbox, OneDrive or Google Drive gets a sync warning first. A non-git project cannot run an agent until its icon is on.
+  Dropbox, OneDrive or Google Drive gets a sync warning first. The icon is optional: a folder without git is a
+  first-class project (`t-5a4b`). An agent starts there with no git step; canon records what changed from a snapshot kept
+  under `~/.canon/cockpit/changes/` (never inside the project), the End dialog says how many files the session changed,
+  and the ticket's **Changes** panel lists them. **Restore original** puts back only files canon holds a copy of and never
+  deletes a file the agent added. Several sessions can share such a folder, with a warning, because copies cannot be
+  merged back.
 - **Scratch sessions (`t-47f1`):** **Scratch** on a Projects card (or the **+** on
   an Agents group) starts the plain agent in that project with no
   ticket, no sprint and no gates, marked with a scribble-and-pencil icon. Its per-session state lives in the
