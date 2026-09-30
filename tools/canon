@@ -72,8 +72,10 @@ refresh_projects() {
     p="${p//\\\"/\"}"; p="${p//\\\//\/}"; p="${p//\\\\/\\}"
     [ -n "$p" ] || continue
     if [ ! -d "$p" ]; then echo "  skipped (folder missing): $p"; continue; fi
-    if "$SCRIPT_DIR/skills.sh" refresh "$p" >/dev/null 2>&1; then echo "  refreshed: $p"
-    else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; failed=1; fi
+    # SKILLS_SH_NO_TTY: a bulk refresh must not stop to ask each project the permission-rule questions.
+    if out="$(SKILLS_SH_NO_TTY=1 "$SCRIPT_DIR/skills.sh" refresh "$p" 2>&1)"; then echo "  refreshed: $p"
+    elif [[ "$out" == *"No canon skills registered"* ]]; then echo "  skipped (no skills installed): $p"
+    else echo "  refresh FAILED: $p (run: skills.sh refresh \"$p\")"; echo "    ${out##*$'\n'}"; failed=1; fi
   done < <(grep -oE '"path"[[:space:]]*:[[:space:]]*"([^"\\]|\\.)*"' "$registry")
   exit "$failed"
 }

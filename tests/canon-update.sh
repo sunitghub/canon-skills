@@ -24,7 +24,9 @@ cat > "$WORK/seed/tools/skills.sh" <<'SH'
 #!/usr/bin/env bash
 # stub: log each refresh; a project folder named "bad" fails
 echo "$*" >> "$REFRESH_LOG"
-[[ "$(basename "$2")" != bad ]]
+echo "prompts off: ${SKILLS_SH_NO_TTY:-unset}" >> "$REFRESH_LOG"
+if [[ "$(basename "$2")" == empty ]]; then echo "No canon skills registered in: $2"; exit 1; fi
+[[ "$(basename "$2")" != bad ]] || { echo "boom: bad project"; exit 1; }
 SH
 chmod +x "$WORK/seed/tools/skills.sh"
 git -C "$WORK/seed" "${ident[@]}" add -A && git -C "$WORK/seed" "${ident[@]}" commit -qm seed && git -C "$WORK/seed" push -q origin main 2>/dev/null
@@ -62,7 +64,7 @@ assert_contains "$out" "refreshed: $WORK/p1"
 assert_contains "$out" "refreshed: $WORK/p2"
 assert_contains "$out" 'skipped (folder missing): C:\Users\me\Proj'
 assert_contains "$out" "skipped (folder missing): $WORK/gone"
-assert_eq "refresh $WORK/p1"$'\n'"refresh $WORK/p2" "$(cat "$REFRESH_LOG")"
+assert_eq "refresh $WORK/p1"$'\n'"prompts off: 1"$'\n'"refresh $WORK/p2"$'\n'"prompts off: 1" "$(cat "$REFRESH_LOG")"
 
 # A new upstream commit: fast-forward.
 echo change > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" add NEWS && git -C "$WORK/seed" "${ident[@]}" commit -qm news && git -C "$WORK/seed" push -q origin main 2>/dev/null
@@ -89,6 +91,14 @@ sed -i.bak "s|\"$WORK/gone\"|\"$WORK/bad\"|" "$CANON_HOME/cockpit/projects.json"
 set +e; out="$("$CANON" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"
 assert_contains "$out" "refresh FAILED: $WORK/bad"
+assert_contains "$out" "boom: bad project"   # the failing refresh's own message is shown, not swallowed
+
+# A project with no skills installed is skipped, not a failure.
+mkdir -p "$WORK/empty"
+sed -i.bak "s|\"$WORK/bad\"|\"$WORK/empty\"|" "$CANON_HOME/cockpit/projects.json"
+set +e; out="$("$CANON" update 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"
+assert_contains "$out" "skipped (no skills installed): $WORK/empty"
 echo "canon-update: fast-forward, up to date, registry parsing, failed refresh ok"
 
 # A non-git install (zip): on macOS/Linux it is refused with the reinstall command and changes nothing;
