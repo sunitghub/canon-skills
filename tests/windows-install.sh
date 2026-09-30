@@ -27,6 +27,16 @@ if code "$PS1" | grep -qE 'git +clone'; then fail "install.ps1 uses git clone"; 
 if code "$PS1" | grep -qiE 'robocopy.*(/MIR|/PURGE)'; then fail "robocopy would delete files under ~\\.canon"; fi
 code "$PS1" | grep -qE 'robocopy .*/XD cockpit \.git' || fail "robocopy does not exclude cockpit and .git"
 
+# A running canon locks its .exe files: the installer must ask first, and robocopy must not retry forever.
+code "$PS1" | grep -q "daemon is running. Run 'canon stop'" || fail "installer does not stop when the daemon is running (it owns live sessions)"
+code "$PS1" | grep -q 'Stop-Process -Id' || fail "installer does not close the running board server before copying"
+if code "$PS1" | grep -qiE 'Stop-Process +-Name|taskkill|pkill'; then fail "installer kills by name instead of by exact PID"; fi
+code "$PS1" | grep -qE 'robocopy .*/R:[0-9]+ /W:[0-9]+' || fail "robocopy has no retry limit (hangs on a locked file)"
+
+# A stopped install must tell `canon update` (it would otherwise refresh projects after a failed install).
+[[ "$(code "$PS1" | grep -c 'CanonInstallFailed = \$true')" -ge 2 ]] || fail "a failed or declined install does not set CanonInstallFailed"
+grep -q 'global:CanonInstallFailed' "$ROOT/tools/canon" || fail "canon update ignores a failed install"
+
 # Prompt precedes winget; CANON_YES skips it; a decline stops before anything is installed.
 prompt_line="$(grep -n 'Install Git for Windows now? \[Y/n\]' "$PS1" | head -1 | cut -d: -f1)"
 winget_line="$(grep -n '^\s*winget install' "$PS1" | head -1 | cut -d: -f1)"
