@@ -402,7 +402,15 @@ canon enforces its own standards on itself. A git-native pre-commit hook runs th
 | Bash | Yes | CLI tools (`sprint`, `tkt`, `skills.sh`) |
 | Python 3 | `sprint-check` on macOS/Linux | the board — Windows uses the Go binary, no Python needed |
 
-**Windows 11 — no WSL required:** install [Git for Windows](https://git-scm.com/download/win), then:
+**Windows 11 — no WSL, no git clone needed.** In PowerShell, run the one-liner. It offers to install Git for Windows (for its bash) with winget if missing, fetches canon as a zip into `%USERPROFILE%\.canon`, and adds `tools\` to your user PATH; re-running updates in place and keeps `cockpit\`:
+
+```powershell
+irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1 | iex
+```
+
+No PowerShell policy change is made. Prefer to read it first? Download `install.ps1`, open it, then run `powershell -ExecutionPolicy Bypass -File .\install.ps1` (process-scoped). From cmd: `curl.exe -fsSLO https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.cmd && install.cmd`. Set `$env:CANON_YES=1` to skip the Git prompt. Then open a new terminal and run `canon`.
+
+Already have a clone? Install [Git for Windows](https://git-scm.com/download/win), then:
 1. Run **`install.cmd`** once — double-click it, or run `install.cmd` from any terminal. It launches `install.ps1` for you and adds `tools/` to your user PATH. (Running `install.ps1` directly can fail with *"install.ps1 is not digitally signed … UnauthorizedAccess"* — that's Windows' PowerShell execution policy blocking unsigned scripts, not a canon bug. `install.cmd` sidesteps it with a process-scoped bypass; if you prefer the `.ps1`, run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.)
 2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
 3. Use **PowerShell** for everything else. Each command has a `.cmd` wrapper in `tools/`, so run it by name: `canon` or `sprint-check-win` opens the board, and `sprint`, `tkt` and `skills` (for example `skills refresh`) run canon's CLI through Git Bash for you.
