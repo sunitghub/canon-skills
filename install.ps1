@@ -55,9 +55,15 @@ function Install-CanonFiles($Dest) {
     # Windows will not overwrite a running .exe, and robocopy's default is to retry a locked file a million
     # times at 30s each, silently (live: the update hung with the board open). Ask first, and fail fast below.
     $running = @(Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -and $_.Path.StartsWith("$Dest\", [StringComparison]::OrdinalIgnoreCase) })
-    if ($running.Count -gt 0) {
-      $names = ($running | ForEach-Object { $_.ProcessName } | Sort-Object -Unique) -join ", "
-      throw "canon is running ($names). Run 'canon stop' (or close the board), then run this again."
+    # The daemon owns live agent sessions, so only `canon stop` (which refuses while agents run) may end it.
+    if (@($running | Where-Object { $_.ProcessName -like "cockpit-daemon*" }).Count -gt 0) {
+      throw "canon's daemon is running. Run 'canon stop', then run this again."
+    }
+    # The board server holds no state: end exactly the processes running from the folder we are replacing.
+    foreach ($p in $running) {
+      Write-Host "==> Closing the running canon board ($($p.ProcessName))"
+      Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+      $p.WaitForExit(5000) | Out-Null
     }
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null
     # No /MIR: cockpit\ (registry, change store) must survive an update. Stale removed files linger; acceptable.

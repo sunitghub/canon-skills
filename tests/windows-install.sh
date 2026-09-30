@@ -28,7 +28,9 @@ if code "$PS1" | grep -qiE 'robocopy.*(/MIR|/PURGE)'; then fail "robocopy would 
 code "$PS1" | grep -qE 'robocopy .*/XD cockpit \.git' || fail "robocopy does not exclude cockpit and .git"
 
 # A running canon locks its .exe files: the installer must ask first, and robocopy must not retry forever.
-code "$PS1" | grep -q "canon is running" || fail "installer does not stop when canon is running"
+code "$PS1" | grep -q "daemon is running. Run 'canon stop'" || fail "installer does not stop when the daemon is running (it owns live sessions)"
+code "$PS1" | grep -q 'Stop-Process -Id' || fail "installer does not close the running board server before copying"
+if code "$PS1" | grep -qiE 'Stop-Process +-Name|taskkill|pkill'; then fail "installer kills by name instead of by exact PID"; fi
 code "$PS1" | grep -qE 'robocopy .*/R:[0-9]+ /W:[0-9]+' || fail "robocopy has no retry limit (hangs on a locked file)"
 
 # A stopped install must tell `canon update` (it would otherwise refresh projects after a failed install).
