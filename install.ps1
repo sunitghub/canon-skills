@@ -47,7 +47,9 @@ function Install-CanonFiles($Dest) {
     $zip = Join-Path $tmp "canon.zip"
     Write-Host "==> Downloading canon"
     Invoke-WebRequest -UseBasicParsing -Uri $ZipUrl -OutFile $zip
-    Expand-Archive -Path $zip -DestinationPath $tmp
+    # Expand-Archive is very slow in Windows PowerShell 5.1 and its progress bar ignores $ProgressPreference.
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)
     $src = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
     if (-not $src -or -not (Test-Path (Join-Path $src.FullName "tools"))) { throw "The download did not contain canon's tools folder." }
     New-Item -ItemType Directory -Force -Path $Dest | Out-Null

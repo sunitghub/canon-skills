@@ -271,8 +271,10 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 **Result, 2026-09-30, Windows ARM64 VM, Git for Windows uninstalled and VM restarted** (run from branch `feat/t-8716`, `irm .../feat/t-8716/install.ps1 | iex`):
 - Step 1 pass: explained Git Bash, `[Y/n]`, UAC, winget installed Git 2.55.0.5 (native ARM64), canon fetched, success line printed; `canon` then started Cockpit 0.3.0 with no Python.
 - Step 3 pass: re-run skipped the Git prompt, kept `~\.canon\cockpit\keep.txt`, and left exactly one `~\.canon\tools` user PATH entry.
-- Not run: step 2 (`n` / no winget), step 4 (`install.cmd` via `curl.exe`, read-first path), and the non-git steps below.
-- Found: the download crawled with the default progress bar; fixed by `$ProgressPreference = "SilentlyContinue"` in `Install-CanonFiles`.
+- Step 2 pass: answering `n` printed the download link and re-run command, kept the window open, and left no `~\.canon`.
+- Step 4 pass (`install.cmd` via `curl.exe`, with the URL pointed at the branch since `main` had the old script): fetched `install.ps1`, ran the bootstrap to the success line. The read-first path and the non-git steps below are not run.
+- Found: the download crawled with the default progress bar (fixed with `$ProgressPreference = "SilentlyContinue"`), and `Expand-Archive` showed its own slow progress bar (replaced with `ZipFile.ExtractToDirectory`).
+- The one-liner and `install.cmd` only fetch the new script once this branch is on public `main`.
 
 ## Non-git project (t-5a4b, Windows VM with Git uninstalled)
 
