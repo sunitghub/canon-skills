@@ -6,6 +6,15 @@ const { execFileSync, spawn } = require('child_process');
 const net = require('net');
 
 const BASE = process.env.SPRINT_CHECK_BASE || 'http://localhost:8423';
+// t-5a4b: acceptance visuals — light and dark, written under the ticket folder (gitignored in canon).
+async function shots5a4b(page, name, locator) {
+  const dir = path.join(__dirname, '..', '.tickets', 't-5a4b', 'visuals');
+  fs.mkdirSync(dir, { recursive: true });
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+    await (locator || page).screenshot({ path: path.join(dir, `${name}-${theme}.png`) });
+  }
+}
 const PROJECT_ROOT = process.env.SPRINT_CHECK_TEST_ROOT || process.cwd();
 // t-df8e: stubbed daemon address. Not port 1 — WebKit refuses restricted ports before a route can fulfil them.
 const FAKE_DAEMON_ADDR = '127.0.0.1:59999';
@@ -3408,6 +3417,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const warn = page.locator('#view-proj-a .shared-warn');
       await expect(warn).toBeVisible();
       await expect(warn).toContainText('overwrite');
+      await shots5a4b(page, 'concurrency-warning');
       await expect(page.locator('#view-proj-x .shared-warn')).toHaveCount(0);
       await warn.locator('.sn-x').click();
       await expect(warn).toHaveCount(0);
@@ -4626,8 +4636,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-leave-confirm-body .ck-leave-files li')).toHaveText(['+ brief.md', '~ roadmap.md', '- old-draft.md']);
       const restore = page.locator('#ck-leave-discard');
       await expect(restore).toHaveText('Restore original files, end');
+      await shots5a4b(page, 'end-dialog-changes', page.locator('#ck-leave-confirm .ck-leave-confirm'));
       await restore.click();
       await expect(restore).toHaveText('Replace my current files with the originals');
+      await shots5a4b(page, 'restore-confirm', page.locator('#ck-leave-confirm .ck-leave-confirm'));
       expect(await sentEnd(page)).toEqual([]);   // the first click only arms it
       await restore.click();
       await expect.poll(() => sentEnd(page)).toEqual([{ source: 'canon-cockpit', type: 'end-scratch', discard: false, restore: true }]);
@@ -5078,6 +5090,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         body: JSON.stringify({ branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false, total_commits: null }) }));
       await openFromCard(page, id);
       await expect(page.locator('#ck-iframe')).toBeVisible();                       // the terminal mounts — nothing gates it
+      await shots5a4b(page, 'terminal-open-no-git');
       await expect(page.locator('#ck-term-msg')).not.toContainText('track changes');
       for (const gone of ['#ck-track-btn', '#ck-track-actions', '#ck-track-cancel']) await expect(page.locator(gone)).toHaveCount(0);
       // Nothing git-derived is shown: the class hides the branch chip, the Git and Recent Commits sections, the commit-prefix copy.
@@ -5123,7 +5136,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('#ck-changes .change-row').first()).toBeVisible();   // open by default: the person shouldn't have to hunt for it
       await expect(page.locator('#ck-changes-count')).toHaveText('(9)');
-      await page.screenshot({ path: path.join(require('os').tmpdir(), 'canon-5a4b-changes.png') });
+      await shots5a4b(page, 'changes-panel-cockpit');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
