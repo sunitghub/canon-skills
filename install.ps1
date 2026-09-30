@@ -39,6 +39,7 @@ function Install-GitForWindows {
 
 function Install-CanonFiles($Dest) {
   $ErrorActionPreference = "Stop"  # function-scoped; must not leak into the user's session under | iex
+  $ProgressPreference = "SilentlyContinue"  # Windows PowerShell 5.1 redraws the progress bar per chunk, making downloads ~10x slower
   [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ("canon-install-" + [guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Path $tmp | Out-Null
