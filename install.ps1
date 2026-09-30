@@ -155,4 +155,4 @@ Write-Host ""
 Write-Host "For a guided example:"
 Write-Host "  Read $CanonRoot\examples\restaurant-bill-split\README.md"
 Write-Host "  and give its starting prompt to your agent."
-if (-not $Bootstrap) { Read-Host "Press Enter to close" }
+Read-Host "Press Enter to close"

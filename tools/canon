@@ -57,9 +57,6 @@ never need or print a session token.
 EOF
 }
 
-# t-e3d2: update the canon install, then refresh every Cockpit project. The install is often
-# also a development checkout, so anything but a clean fast-forward on main is refused —
-# never merged or stashed.
 # Refresh every project registered in the Cockpit; exit 1 if any refresh failed.
 refresh_projects() {
   local registry="${CANON_HOME:-$HOME/.canon}/cockpit/projects.json"
@@ -104,6 +101,11 @@ update_without_git() {
   exit 1
 }
 
+# t-e3d2: update the canon install, then refresh every Cockpit project. The install is often
+# also a development checkout, so anything but a clean fast-forward on main is refused —
+# never merged or stashed.
+# --refresh-only is internal: the Windows zip update hands over to PowerShell (the installer cannot overwrite this
+# running script), which then calls it to do just the project refresh. It is deliberately left out of --help.
 update_cmd() {
   local refresh_only=0
   [[ "${1:-}" == --refresh-only ]] && { refresh_only=1; shift; }
