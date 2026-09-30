@@ -396,3 +396,48 @@ func TestRestoreOriginalWithoutBaseline(t *testing.T) {
 		t.Fatal("restoring with no baseline must fail, not succeed silently")
 	}
 }
+
+// The escape a direct-child check misses: an ANCESTOR is replaced by a link and the file's own parent
+// no longer exists, so a resolve-the-parent test sees "not found" and lets MkdirAll follow the link.
+func TestRestoreOriginalRefusesALinkedAncestor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks need privileges on Windows")
+	}
+	root, store, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	writeF(t, root, "a/b/f.txt", "original\n")
+	if _, err := takeBaseline(root, store); err != nil {
+		t.Fatal(err)
+	}
+	os.RemoveAll(filepath.Join(root, "a"))
+	if err := os.Symlink(outside, filepath.Join(root, "a")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := restoreOriginal(root, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("restored through a linked ancestor: %v", got)
+	}
+	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+		t.Fatalf("something was created outside the folder: %v", entries)
+	}
+}
+
+// A restore's temp file is uniquely named: a person's own "<name>.tmp" is never touched.
+func TestWriteFileAtomicLeavesAnExistingTmpFileAlone(t *testing.T) {
+	dir := t.TempDir()
+	writeF(t, dir, "notes.md.tmp", "the person's own file\n")
+	if err := writeFileAtomic(filepath.Join(dir, "notes.md"), []byte("new\n")); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "notes.md.tmp")); string(b) != "the person's own file\n" {
+		t.Fatalf("notes.md.tmp was clobbered: %q", b)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "notes.md")); string(b) != "new\n" {
+		t.Fatalf("notes.md = %q", b)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
+		t.Fatalf("a temp file was left behind: %v", entries)
+	}
+}

@@ -7309,3 +7309,58 @@ func TestChangesRestoreEndpoint(t *testing.T) {
 	}
 	t.Fatal("restore never succeeded after the session ended")
 }
+
+// t-5a4b: a folder without git is trusted only through its OWN real .tickets/<id> — a link, or a
+// parent folder's .tickets, does not count.
+func TestStartNonGitRefusesLinkedOrInheritedTicketDirs(t *testing.T) {
+	bin := writingAgent(t, false)
+	for name, setup := range map[string]func(root string){
+		"symlinked ticket dir": func(root string) {
+			elsewhere := t.TempDir()
+			os.MkdirAll(filepath.Join(root, ".tickets"), 0o755)
+			os.Symlink(elsewhere, filepath.Join(root, ".tickets", "t-ab12"))
+		},
+		"symlinked .tickets dir": func(root string) {
+			elsewhere := t.TempDir()
+			os.MkdirAll(filepath.Join(elsewhere, "t-ab12"), 0o755)
+			os.Symlink(elsewhere, filepath.Join(root, ".tickets"))
+		},
+		"ticket only in a parent folder": func(root string) {
+			os.MkdirAll(filepath.Join(filepath.Dir(root), ".tickets", "t-ab12"), 0o755)
+		},
+		"no .tickets at all": func(root string) {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			parent := t.TempDir()
+			root := filepath.Join(parent, "proj")
+			os.MkdirAll(root, 0o755)
+			setup(root)
+			reg := filepath.Join(t.TempDir(), "projects.json")
+			writeRegistry(t, reg, root)
+			s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: t.TempDir(), stateDir: t.TempDir(), registryFile: reg, changesHome: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			if _, _, status := startSessionFull(t, ts.URL, "t-ab12", root, "claude"); status != http.StatusBadRequest {
+				t.Fatalf("start = %d, want 400", status)
+			}
+		})
+	}
+}
+
+// A git failure inside a real repository is not "no git": it must not turn the folder into a shared,
+// snapshot-tracked one.
+func TestNoGitIsFalseInsideARepoEvenWhenGitFails(t *testing.T) {
+	root := t.TempDir()
+	os.Mkdir(filepath.Join(root, ".git"), 0o755) // present but unusable: git errors on it
+	s := newServer(config{projectRoot: root, stateDir: t.TempDir()})
+	if _, err := s.listWorktreesIn(root); err == nil {
+		t.Skip("git accepted the empty .git directory")
+	}
+	if s.noGit(root) || s.noGit(filepath.Join(root, "sub")) {
+		t.Fatal("a folder with a .git must not read as non-git when git errors")
+	}
+	if !s.noGit(t.TempDir()) {
+		t.Fatal("a folder with no .git anywhere above it must read as non-git")
+	}
+}

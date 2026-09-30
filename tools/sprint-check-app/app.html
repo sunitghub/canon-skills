@@ -1967,10 +1967,10 @@
           <span class="header-project" id="h-project">—</span>
           <span class="header-version" id="h-version" title="board build"></span>
         </div>
-        <div class="header-branch git-only">
+        <div class="header-branch">
           <div class="refresh-dot loading" id="refresh-dot"></div>
-          <span>⎇</span>
-          <span class="branch-name" id="h-branch">—</span>
+          <span class="git-only">⎇</span>
+          <span class="branch-name git-only" id="h-branch">—</span>
         </div>
       </div>
     </div>
@@ -2541,7 +2541,7 @@
   // otherwise showed the shell's launch-time project's worktrees under any tab.
   // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
   // resolveMockupSrc scopes it itself — t-7d83.)
-  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|track-changes$|cockpit-changes$)/;
+  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|cockpit-changes$)/;
   // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
   // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
   // create/unlock done inside a project tab target THAT project. Deliberately
@@ -2549,7 +2549,7 @@
   // headless-run) and /api/projects (registry add) — those stay unscoped.
   // t-d254: ticket-commit/ (GET plan + POST commit) — unscoped, a tab would classify
   // and COMMIT in the board's default project instead of the tab's (live-caught, VM).
-  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/|track-changes$)/;
+  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/)/;
   const _fetch = window.fetch.bind(window);
   window.fetch = function(input, init){
     try {

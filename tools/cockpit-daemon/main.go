@@ -454,6 +454,11 @@ func (s *server) handleStart(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "ticket not found in project", http.StatusBadRequest)
 			return
 		}
+		// t-5a4b: a folder without git is trusted only through its own real .tickets/<id> — not a link, not a parent's.
+		if s.noGit(projectRoot) && !plainDir(filepath.Join(projectRoot, ".tickets")) || s.noGit(projectRoot) && !plainDir(filepath.Join(projectRoot, ".tickets", body.Ticket)) {
+			http.Error(w, "cwd not allowed", http.StatusBadRequest)
+			return
+		}
 	}
 	// t-cd06: the daemon re-validates cwd itself against a live `git worktree
 	// list` — it never trusts whatever cockpit.html relayed, mirroring
@@ -1559,7 +1564,30 @@ func (s *server) handleChanges(w http.ResponseWriter, r *http.Request, se *sessi
 // noGit reports whether root is not a git work tree (or git is not installed at all).
 func (s *server) noGit(root string) bool {
 	wts, err := s.listWorktreesIn(root)
-	return err != nil || len(wts) == 0
+	if err == nil && len(wts) > 0 {
+		return false
+	}
+	// A transient git failure inside a real repo must not read as "no git": that would share the main
+	// checkout and skip the leftovers check. Only a folder with no .git anywhere above it is non-git.
+	return !insideDotGit(root)
+}
+
+// insideDotGit reports whether root or an ancestor holds a .git entry (a directory, or a worktree's file).
+func insideDotGit(root string) bool {
+	for d := root; ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return true
+		}
+		if filepath.Dir(d) == d {
+			return false
+		}
+	}
+}
+
+// plainDir reports whether p is a real directory, not a link to one.
+func plainDir(p string) bool {
+	fi, err := os.Lstat(p)
+	return err == nil && fi.IsDir()
 }
 
 // baselineIfNoGit (t-5a4b) records a folder without git the first time a session starts on it.

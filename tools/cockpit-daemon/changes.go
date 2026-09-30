@@ -127,12 +127,28 @@ func copyName(rel string) string {
 	return hex.EncodeToString(sum[:])[:24]
 }
 
+// writeFileAtomic writes through a uniquely named temp file beside p, so concurrent writers never share
+// one and a person's own file can never be mistaken for it.
 func writeFileAtomic(p string, data []byte) error {
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(p), ".canon-*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, p)
+	tmp := f.Name()
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	if err := os.Rename(tmp, p); err != nil {
+		os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func hashFile(p string) (string, error) {
@@ -429,8 +445,8 @@ func restoreOriginal(root, storeDir string) ([]string, error) {
 			continue
 		}
 		dst := filepath.Join(realRoot, filepath.FromSlash(rel))
-		// The agent can write the folder: never follow a link it put in the path of a file we restore.
-		if parent, err := filepath.EvalSymlinks(filepath.Dir(dst)); err != nil && !os.IsNotExist(err) || err == nil && !pathWithin(realRoot, parent) {
+		// The agent can write the folder: never follow a link it put anywhere in the path of a file we restore.
+		if !plainPath(realRoot, filepath.Dir(rel)) {
 			continue
 		}
 		mode := os.FileMode(0o644)
@@ -462,8 +478,22 @@ func restoreOriginal(root, storeDir string) ([]string, error) {
 	return restored, nil
 }
 
-// pathWithin reports whether p is dir or inside it.
-func pathWithin(dir, p string) bool {
-	rel, err := filepath.Rel(dir, p)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+// plainPath reports whether every directory of rel (slash-separated, relative to root) that already
+// exists is a real directory, not a link. Directories that don't exist yet are fine: we create them.
+func plainPath(root, rel string) bool {
+	cur := root
+	for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+		if part == "." || part == "" {
+			continue
+		}
+		cur = filepath.Join(cur, part)
+		fi, err := os.Lstat(cur)
+		if os.IsNotExist(err) {
+			return true
+		}
+		if err != nil || !fi.IsDir() {
+			return false
+		}
+	}
+	return true
 }

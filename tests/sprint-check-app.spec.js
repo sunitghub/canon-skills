@@ -5090,12 +5090,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
         body: JSON.stringify({ branch: '', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], is_git: false, total_commits: null }) }));
       await openFromCard(page, id);
       await expect(page.locator('#ck-iframe')).toBeVisible();                       // the terminal mounts — nothing gates it
+      await expect(page.locator('#refresh-dot')).toBeVisible();                    // the live/error indicator isn't a git surface
       await shots5a4b(page, 'terminal-open-no-git');
       await expect(page.locator('#ck-term-msg')).not.toContainText('track changes');
       for (const gone of ['#ck-track-btn', '#ck-track-actions', '#ck-track-cancel']) await expect(page.locator(gone)).toHaveCount(0);
       // Nothing git-derived is shown: the class hides the branch chip, the Git and Recent Commits sections, the commit-prefix copy.
       await expect(page.locator('html')).toHaveClass(/no-git/);
-      for (const sel of ['.header-branch', '.sidebar-section.git-only']) for (const el of await page.locator(sel).all()) await expect(el).toBeHidden();
+      for (const sel of ['#h-branch', '.header-branch .git-only', '.sidebar-section.git-only']) for (const el of await page.locator(sel).all()) await expect(el).toBeHidden();
       await page.locator('#cockpit-overlay').screenshot({ path: path.join(require('os').tmpdir(), 'canon-5a4b-cockpit-nongit.png') });
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
