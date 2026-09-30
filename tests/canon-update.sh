@@ -135,7 +135,8 @@ out="$("$CANON" update --refresh-only)"
 assert_contains "$out" "refreshed: $WORK/spawner"
 echo "canon-update: refresh does not wait on background processes"
 
-# On a terminal a slow refresh shows "refreshing <project> ." dots; off a terminal (every run above) it prints none.
+# On a terminal each project first prints "refreshing <project> (please wait)..." (no background animation:
+# a forking loop deadlocked Git Bash on Windows); off a terminal (every run above) it prints nothing extra.
 mkdir -p "$WORK/slow"
 sed -i.bak "s|\"$WORK/spawner\"|\"$WORK/slow\"|" "$CANON_HOME/cockpit/projects.json"
 tty_out="$(python3 - "$CANON" <<'PYEOF'
@@ -155,9 +156,10 @@ os.waitpid(pid, 0)
 sys.stdout.write(b"".join(chunks).decode(errors="replace"))
 PYEOF
 )"
-assert_contains "$tty_out" "refreshing $WORK/slow .."
+assert_contains "$tty_out" "refreshing $WORK/slow (please wait)..."
 assert_contains "$tty_out" "refreshed: $WORK/slow"
-echo "canon-update: dots shown on a terminal while a refresh runs"
+if grep -q '( while' "$ROOT/tools/canon"; then fail "canon-update: a background loop crept back into the refresh (deadlocked Git Bash)"; fi
+echo "canon-update: a please-wait line is shown on a terminal"
 
 # Completion.
 bash_out="$(bash -c 'eval "$("$1" completion bash)"
