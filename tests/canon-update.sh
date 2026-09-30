@@ -165,6 +165,7 @@ echo "canon-update: a please-wait line is shown on a terminal"
 help_update="$(awk '/<div class="help-sect">Update<\/div>/{f=1} f&&/<div class="help-sect">Theme/{exit} f' "$ROOT/tools/sprint-check-app/cockpit.html")"
 assert_contains "$help_update" "canon update"
 assert_contains "$help_update" "Stop Daemon"
+assert_contains "$help_update" "canon update</code> again"   # after stopping the daemon, update again (not just start canon)
 echo "canon-update: the cockpit help has an Update section"
 
 # Completion.

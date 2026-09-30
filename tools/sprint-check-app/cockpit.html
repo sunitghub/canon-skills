@@ -733,19 +733,16 @@
       <p>Register a project folder with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
 
       <div class="help-sect">Tabs</div>
-      <p>Open projects become folder-named tabs beside the pinned <b>Projects</b> tab; close a tab with its <b>&#10005;</b>. The embedded board is read-only in this phase.</p>
+      <p>Open projects become folder-named tabs beside the pinned <b>Projects</b> tab; close a tab with its <b>&#10005;</b>.</p>
 
       <div class="help-sect">Admin</div>
       <p>The <b>Admin</b> view shows the cockpit daemon (health, version, uptime, Restart) and every active agent session across all projects.</p>
 
       <div class="help-sect">Update</div>
-      <p>In a terminal run <code>canon update</code>. It brings canon up to date and refreshes your registered projects (about 20 seconds each on Windows). On Windows, stop the daemon first (<b>Admin &#8250; Stop Daemon</b>); the update stops and tells you if it is still running. Then run <code>canon</code> again.</p>
+      <p>In a terminal run <code>canon update</code>. It brings canon up to date and refreshes your registered projects (about 20 seconds each on Windows). On Windows the daemon has to be stopped first: if <code>canon update</code> says it is still running, use <b>Admin &#8250; Stop Daemon</b> (or run <code>canon stop</code>), then run <code>canon update</code> again. When it finishes, run <code>canon</code> to start the Cockpit.</p>
 
       <div class="help-sect">Theme</div>
       <p>The footer toggle flips dark / light and applies to the shell and every open board.</p>
-
-      <div class="help-sect">Coming next</div>
-      <p>Editing tickets from inside a project tab (writes) and running an agent session in-tab arrive in upcoming phases.</p>
 
       <hr class="help-divider">
       <div class="help-sect">Versions</div>
@@ -754,7 +751,7 @@
         <div class="hvrow"><span class="hvk">Board build</span><span class="hvv" id="hv-board">&mdash;</span></div>
         <div class="hvrow"><span class="hvk">cockpit-daemon</span><span class="hvv" id="hv-daemon">&mdash;</span></div>
       </div>
-      <div class="help-credits">Contributors: sunit joshi, Claude Code 2.1.270, <a href="https://github.com/sunitghub/canon-skills" target="_blank" rel="noopener">canon</a></div>
+      <div class="help-credits">Contributors: sunit joshi, Claude Code, <a href="https://github.com/sunitghub/canon-skills" target="_blank" rel="noopener">canon</a></div>
     </div>
   </div>
 </div>

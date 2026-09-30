@@ -10282,6 +10282,8 @@ test.describe('Canon Cockpit help', () => {
     await page.locator('#help-btn').click();
     await expect(page.locator('.help-panel')).toContainText('canon update');
     await expect(page.locator('.help-panel')).toContainText('Stop Daemon');
+    await expect(page.locator('.help-credits')).toContainText('Claude Code');
+    await expect(page.locator('.help-credits')).not.toContainText(/Claude Code \d/);   // a pinned version goes stale
     await expect(page.locator('#hv-canon')).toHaveText('—');     // the first fetch was refused
     refuse = false;
     await page.waitForTimeout(4500);                                    // past the "nothing arrived" check
