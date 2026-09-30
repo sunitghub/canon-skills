@@ -59,7 +59,7 @@ A ticket can also carry maintenance skills via `tkt create --skills a,b` (or by 
 
 ## Upkeep Dashboard
 
-**Upkeep** (the Upkeep button on a project's board, t-67ab — it shows that project only; each Projects card says how many checks have never run) runs `context-check`, `context-doctor`, `dead-code-cleanup`, or `promote-learnings` headlessly against that project — no ticket, no sprint gate, always read-only (a run only ever writes its own `.reports/<skill>_<timestamp>.md`; it never modifies or deletes anything else, even when `dead-code-cleanup` finds a confirmed-dead symbol). Pick a model (Haiku 4.5 default, Sonnet 5 available), click **Run** — a confirmation dialog names the model and notes the dispatch is a real LLM call that will incur API cost. Each report ends with its own **Next Steps**: the exact follow-up command or file edit a human would run to act on the findings, never auto-executed.
+**Upkeep** (the Upkeep button on a project's board, t-67ab — it shows that project only; each Projects card says how many checks have never run) runs `context-check`, `context-doctor`, `dead-code-cleanup`, or `promote-learnings` headlessly against that project — no ticket, no sprint gate, always read-only (a run only ever writes its own `.reports/<skill>_<timestamp>.md`; it never modifies or deletes anything else, even when `dead-code-cleanup` finds a confirmed-dead symbol). Pick a model (Claude models only for now: Haiku 4.5 default, Sonnet 5 available), click **Run** — a confirmation dialog names the model and notes the dispatch is a real LLM call that will incur API cost. Each report ends with its own **Next Steps**: the exact follow-up command or file edit a human would run to act on the findings, never auto-executed.
 
 ## Ticket Completeness
 
@@ -179,6 +179,13 @@ sprint agent without leaving the browser — no second terminal.
   which keeps `DECISIONS.md`'s 2026-07-02 "zero Claude Code hooks in a project's
   settings" intact. The hook's callback credential lives in a `0600` curl `-K`
   config file, so it never appears in `ps`.
+- **Git icon on each project card (`t-8d72`):** a git icon beside the project name shows whether the folder keeps a
+  version history. Hover it for the state: *Git enabled — this project keeps a version history*; *Git not enabled —
+  click to turn on version history*; or *Version history needs Git, which isn't installed on this computer*, where the
+  icon is disabled. Only the "not enabled" icon is clickable: it asks you to confirm, then runs `git init` with one
+  commit holding only a default `.gitignore` (`POST /api/track-changes`, `t-d538`). Nothing is uploaded and your files stay
+  uncommitted. A folder that is already a repo, or sits inside one, is refused, and a folder inside iCloud Drive,
+  Dropbox, OneDrive or Google Drive gets a sync warning first. A non-git project cannot run an agent until its icon is on.
 - **Scratch sessions (`t-47f1`):** **Scratch** on a Projects card (or the **+** on
   an Agents group) starts the plain agent in that project with no
   ticket, no sprint and no gates, marked with a scribble-and-pencil icon. Its per-session state lives in the
@@ -253,6 +260,10 @@ sprint agent without leaving the browser — no second terminal.
   check a box that isn't actually verified. The rail **polls** every 5s while
   the cockpit is open, so edits the running agent (or anyone else) makes to
   `acceptance.md` show up without closing/reopening the cockpit.
+- **Several sessions, several agents:** one project can run more than one session at a time, and each session picks its
+  own agent (Claude Code, Pi or Copilot CLI) — for example Claude Code on one ticket while Pi takes another. The Agents
+  rail groups them by project and shows each one's state and agent. Give each ticket its own worktree (next bullet)
+  so two sessions don't edit the same checkout.
 - **Worktree picker (`t-cd06`):** the rail's **WORKTREE** accordion lets a
   sprint start inside a fresh or existing git worktree instead of always the
   main checkout — rows for **Main checkout (current)**, every real entry from
