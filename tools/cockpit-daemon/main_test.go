@@ -122,6 +122,7 @@ func killAllSessions(s *server) {
 		case <-time.After(5 * time.Second):
 		}
 	}
+	s.recording.Wait() // t-5a4b: change recordings write into the ticket folder too
 }
 
 // newTestServerWithAddr sets a callback addr (so the needs-you hook is written)

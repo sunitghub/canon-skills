@@ -104,7 +104,8 @@ type server struct {
 	cfg       config
 	mu        sync.Mutex
 	sessions  map[string]*session
-	scratchMu sync.Mutex // t-e162: serializes scratch starts (main-checkout-or-worktree choice)
+	scratchMu sync.Mutex     // t-e162: serializes scratch starts (main-checkout-or-worktree choice)
+	recording sync.WaitGroup // t-5a4b: in-flight change recordings, so teardown can wait for them
 	// t-d9e6: set before a daemon shutdown ends its sessions, so their snapshot entries stay
 	// behind and are offered for resume on the next start.
 	shuttingDown atomic.Bool
@@ -968,8 +969,8 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 	// long-lived daemon doesn't accumulate dead sessions forever. handleKill's
 	// own immediate delete is unaffected — it never sets onNaturalExit's timer.
 	se.onNaturalExit = func() {
-		go s.recordChangesIfNoGit(se.projectRoot, se.ticket) // t-5a4b: what changed, kept for the board
-		s.snapshotRemove(se.sid)                             // the agent exited on its own: nothing to resume
+		s.recordChangesAsync(se) // t-5a4b: what changed, kept for the board
+		s.snapshotRemove(se.sid) // the agent exited on its own: nothing to resume
 		time.AfterFunc(s.cfg.sessionReapTTL, func() {
 			s.mu.Lock()
 			delete(s.sessions, se.sid)
@@ -1601,6 +1602,19 @@ func (s *server) baselineIfNoGit(root, id string) {
 	}
 }
 
+// recordChangesAsync runs recordChangesIfNoGit off the caller's path. It joins the session's bg group so
+// teardown (and tests) can wait for it to stop writing into the ticket folder — the session may
+// already be gone from s.sessions by then, so the server counts them too.
+func (s *server) recordChangesAsync(se *session) {
+	se.bg.Add(1)
+	s.recording.Add(1)
+	go func() {
+		defer se.bg.Done()
+		defer s.recording.Done()
+		s.recordChangesIfNoGit(se.projectRoot, se.ticket)
+	}()
+}
+
 // recordChangesIfNoGit compares a folder without git against its baseline and keeps the result.
 func (s *server) recordChangesIfNoGit(root, id string) {
 	if root == "" || !s.noGit(root) {
@@ -2002,7 +2016,7 @@ func (s *server) killSession(se *session) {
 	s.mu.Lock()
 	delete(s.sessions, se.sid)
 	s.mu.Unlock()
-	go s.recordChangesIfNoGit(se.projectRoot, se.ticket) // t-5a4b: what changed, kept for the board
+	s.recordChangesAsync(se) // t-5a4b: what changed, kept for the board
 	if !s.shuttingDown.Load() {
 		s.snapshotRemove(se.sid) // ended on purpose (Save & End, Kill, reap, End, adopt)
 	}

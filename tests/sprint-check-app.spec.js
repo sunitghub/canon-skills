@@ -5130,14 +5130,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(asked).toContain(id);
       // Nothing git-shaped is on screen.
       await expect(page.locator('#s-commits-total')).toBeHidden();
-      await expect(page.locator('body')).not.toContainText(/commit|branch/i, { timeout: 1000 }).catch(() => {});
+      expect(await page.locator('.sidebar-content').first().innerText()).not.toMatch(/commit|branch/i);   // visible sidebar text only
       // The cockpit's own Changes section, for the open ticket.
       await page.locator('#board-search').fill(id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('#ck-changes .change-row').first()).toBeVisible();   // open by default: the person shouldn't have to hunt for it
       await expect(page.locator('#ck-changes-count')).toHaveText('(9)');
-      await shots5a4b(page, 'changes-panel-cockpit');
+      await page.locator('#ck-changes-section').scrollIntoViewIfNeeded();
+      await shots5a4b(page, 'changes-panel-cockpit', page.locator('#ck-changes-section'));
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -10204,7 +10205,7 @@ test.describe('Canon Cockpit Projects card: Track changes (t-d538)', () => {
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, commit: 'abc1234' }) });
       }
       return route.fulfill({ status: 200, contentType: 'application/json',
-        body: JSON.stringify({ ok: true, tracking: pid === 'proj-git', synced: pid === 'proj-plain' ? 'iCloud Drive' : null }) });
+        body: JSON.stringify({ ok: true, tracking: pid === 'proj-git', synced: pid === 'proj-plain' ? 'iCloud Drive' : null, git_available: true }) });
     });
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');
@@ -10213,12 +10214,24 @@ test.describe('Canon Cockpit Projects card: Track changes (t-d538)', () => {
     await expect(gitBtn).toBeHidden();
     await page.locator('.regbtns[data-reg="proj-plain"]').screenshot({ path: path.join(require('os').tmpdir(), 'canon-d538-card.png') });
     await plainBtn.click();
-    await expect(page.locator('body')).toContainText('Track changes in “proj-plain”?');
+    await expect(page.locator('body')).toContainText('Turn on version history for “proj-plain”?');
     await expect(page.locator('body')).toContainText('iCloud Drive');
     expect(posts.length).toBe(0);
-    await page.getByRole('button', { name: 'Track changes', exact: true }).last().click();
+    await page.getByRole('button', { name: 'Turn on', exact: true }).last().click();
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0]).toEqual({ pid: 'proj-plain', body: { confirm: true } });
+  });
+
+  // t-5a4b: with no Git on the computer there is nothing to offer, so the action stays hidden.
+  test('Version history is hidden when Git is not installed on this computer', async ({ page }) => {
+    await page.route('**/api/projects', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(PROJECTS) }));
+    await page.route('**/api/project-stats*', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ updated: '2026-09-27', ticket_count: 0, skills: ['sprint', 'efficiency'] }) }));
+    await page.route('**/api/track-changes*', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, tracking: false, synced: null, git_available: false }) }));
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('.trackchg[data-id="proj-plain"]')).toBeHidden();
   });
 });
 

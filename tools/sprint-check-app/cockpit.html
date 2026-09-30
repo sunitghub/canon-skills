@@ -2360,7 +2360,7 @@
           <div class="cardbottom">
             <div class="regbtns" data-reg="${escAttr(p.id)}" aria-live="polite" style="display:none">
               ${IMPORTANT_SKILLS.map(sk=>`<button class="regskill" data-skill="${sk}" title="Not set up in this project yet — click to register the ${sk} skill" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" data-path="${escAttr(p.path)}" style="display:none">+ ${sk}</button>`).join('')}
-              <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="Optional: keep a full history of this folder's files so you can go back to earlier versions. Agents run here without it." style="display:none">Track changes</button>
+              <button class="regskill trackchg" data-id="${escAttr(p.id)}" data-name="${escAttr(p.name)}" title="Optional: keep a full history of this folder's files so you can go back to earlier versions. Agents run here without it." style="display:none">Version history</button>
             </div>
             <div class="actions">
               <button class="scratchbtn" title="Start an agent in this project with no ticket" data-scratch="${escAttr(p.id)}">${SCRATCH_ICON}Scratch</button>
@@ -2411,7 +2411,7 @@
         if(tc){
           let st=null;
           try{ const t=await fetch('/api/track-changes?project='+encodeURIComponent(id)); if(t.ok) st=await t.json(); }catch(e){}
-          const show=!!(st&&st.ok&&st.tracking===false);
+          const show=!!(st&&st.ok&&st.tracking===false&&st.git_available!==false);   // no Git on this computer: nothing to offer
           tc.style.display = show ? '' : 'none';
           tc.dataset.synced = (st&&st.synced) || '';
           any = any || show;
@@ -2465,14 +2465,14 @@
     const synced=btn&&btn.dataset.synced;
     const body='Keeps a full history of this folder\u2019s files on this computer, so you can go back to earlier versions. It needs Git installed. Nothing is uploaded and your files stay exactly as they are. Agents can run here without it.'
       +(synced?' Note: this folder is in '+synced+'. Sync services can damage this history — consider moving the project out of '+synced+' first.':'');
-    if(!(await cockpitConfirm({title:'Track changes in “'+name+'”?', body, okLabel:'Track changes'}))) return;
+    if(!(await cockpitConfirm({title:'Turn on version history for “'+name+'”?', body, okLabel:'Turn on'}))) return;
     const saved=btn?btn.innerHTML:'';
     if(btn){ btn.disabled=true; btn.setAttribute('aria-busy','true'); btn.innerHTML='<span class="reg-spin" aria-hidden="true"></span>Starting…'; }
     try{
       const r=await fetch('/api/track-changes?project='+encodeURIComponent(id),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({confirm:true})});
       const res=await r.json().catch(()=>({}));
-      if(res&&res.ok){ toast('✓ '+name+' now tracks changes'); load(); return; }
-      toast((res&&res.error)?res.error:'Could not start tracking changes (HTTP '+r.status+')');
+      if(res&&res.ok){ toast('✓ '+name+' now keeps a version history'); load(); return; }
+      toast((res&&res.error)?res.error:'Could not turn on version history (HTTP '+r.status+')');
     }catch(e){ toast('Request failed'); }
     finally{ if(btn){ btn.disabled=false; btn.removeAttribute('aria-busy'); btn.innerHTML=saved; } }
   }

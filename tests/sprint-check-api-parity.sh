@@ -997,7 +997,7 @@ go_tcp="$(curl -s -X POST -H 'Origin: http://localhost' -H 'Content-Type: applic
 python3 - "$py_tc" "$go_tc" "$py_tcp" "$go_tcp" <<'PY' || fail "sprint-check-api-parity: FAIL — /api/track-changes mismatch"
 import json, sys
 a,b,c,d=(json.loads(x) for x in sys.argv[1:5])
-assert a==b and a.get("ok") is True and set(a)=={"ok","tracking","synced"} and isinstance(a["tracking"],bool), f"track-changes GET differ {a} {b}"
+assert a==b and a.get("ok") is True and set(a)=={"ok","tracking","synced","git_available"} and isinstance(a["tracking"],bool), f"track-changes GET differ {a} {b}"
 assert c==d and c.get("ok") is False, f"track-changes POST (no confirm) differ {c} {d}"
 PY
 [[ ! -e "$WORK/regplain/.git" ]] || fail "sprint-check-api-parity: FAIL — a POST without confirm initialized regplain"

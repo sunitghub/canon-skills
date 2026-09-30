@@ -4366,7 +4366,8 @@ func trackChangesRoot(r *http.Request) (string, string, bool) {
 }
 
 func trackChangesState(root string) map[string]any {
-	return map[string]any{"ok": true, "tracking": insideWorkTree(root), "synced": syncedService(root)}
+	_, gitErr := exec.LookPath("git")
+	return map[string]any{"ok": true, "tracking": insideWorkTree(root), "synced": syncedService(root), "git_available": gitErr == nil}
 }
 
 // trackChanges refuses on any existing .git (a broken repo must never be reinitialized and

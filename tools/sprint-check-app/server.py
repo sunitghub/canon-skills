@@ -1798,7 +1798,7 @@ def track_changes_root(query: dict) -> Path:
     return effective_root(query)
 
 def track_changes_state(root: Path) -> dict:
-    return {'ok': True, 'tracking': _inside_work_tree(root), 'synced': synced_service(root)}
+    return {'ok': True, 'tracking': _inside_work_tree(root), 'synced': synced_service(root), 'git_available': shutil.which('git') is not None}
 
 def track_changes(root: Path, confirm) -> dict:
     """git init + a .gitignore-only first commit in a registry-resolved folder. Refuses on any
