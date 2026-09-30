@@ -44,7 +44,7 @@ function Install-CanonFiles($Dest) {
   New-Item -ItemType Directory -Path $tmp | Out-Null
   try {
     $zip = Join-Path $tmp "canon.zip"
-    Write-Host "Downloading canon..."
+    Write-Host "==> Downloading canon"
     Invoke-WebRequest -UseBasicParsing -Uri $ZipUrl -OutFile $zip
     Expand-Archive -Path $zip -DestinationPath $tmp
     $src = Get-ChildItem -Path $tmp -Directory | Select-Object -First 1
@@ -64,9 +64,7 @@ $Bootstrap = -not ($CanonRoot -and (Test-Path (Join-Path $CanonRoot "tools\canon
 
 if ($Bootstrap) {
   $CanonRoot = Join-Path $env:USERPROFILE ".canon"
-  Write-Host "canon installer"
-  Write-Host "  installs canon into $CanonRoot and adds its tools folder to your user PATH."
-  Write-Host ""
+  Write-Host "==> Installing canon into $CanonRoot"
   if (-not (Find-GitBash)) {
     if (-not (Install-GitForWindows)) {
       Write-Host ""
@@ -76,7 +74,7 @@ if ($Bootstrap) {
     }
   }
   if (Test-Path (Join-Path $CanonRoot ".git")) {
-    Write-Host "$CanonRoot holds a developer checkout (.git); leaving its files as they are."
+    Write-Host "==> $CanonRoot holds a developer checkout (.git); leaving its files as they are"
   } else {
     try { Install-CanonFiles $CanonRoot } catch { Write-Host "Install failed: $_"; return }
   }
@@ -90,9 +88,11 @@ if (-not (Test-Path $ToolsPath)) {
   return
 }
 
-Write-Host "Using canon from:"
-Write-Host "  $CanonRoot"
-Write-Host ""
+if (-not $Bootstrap) {
+  Write-Host "Using canon from:"
+  Write-Host "  $CanonRoot"
+  Write-Host ""
+}
 
 $CurrentPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
 if (($CurrentPath -split ';') -notcontains $ToolsPath) {
@@ -112,15 +112,22 @@ if (-not $Bootstrap -and -not (Get-Command bash -ErrorAction SilentlyContinue)) 
   Write-Host ""
 }
 
+if ($Bootstrap) {
+  Write-Host "==> Added $ToolsPath to your user PATH"
+  if (-not $ScriptPath) {
+    Write-Host "==> This PowerShell window: run canon"
+    Write-Host "==> Future PowerShell windows: open a new window and run canon"
+  } else {
+    Write-Host "==> Open a new PowerShell window and run: canon"
+  }
+  Write-Host "canon installed successfully."
+  return
+}
+
 Write-Host "Done. Added this workshop tools folder to your user PATH:"
 Write-Host "  $ToolsPath"
 Write-Host ""
 
-if ($Bootstrap) {
-  Write-Host "Open a new terminal, then run:"
-  Write-Host "  canon"
-  Write-Host ""
-}
 Write-Host "Fully quit and reopen VS Code, then from your project folder run:"
 Write-Host "  skills add sprint"
 Write-Host ""
