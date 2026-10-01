@@ -126,7 +126,7 @@ tkt reopen <id>                   # reopen a closed ticket
 | `context-check` | `/context-check` | Context audit; writes context-check-report.md at the project root |
 | `doc-audit` | `/doc-audit` | README/guides audit; findings appended to doc-findings.md |
 | `output-validator` | `/output-validator` | Pre/post-generation report validation |
-| `skill-export` | `skill-export <name>` | Exports flat skill as paste-ready text |
+| `skill-export` | `/skill-export <name>` | Exports flat skill as paste-ready text |
 
 ## Staying updated
 

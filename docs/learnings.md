@@ -35,7 +35,7 @@ evaluator findings still writes nothing.
 
 ## 3. Close: `learnings-sweep` adds one row to `LEARNINGS.md`
 
-Right after `tkt learn`, the protocol tells the agent to run `learnings-sweep t-6328` (single-ticket mode).
+Right after `tkt learn`, the protocol tells the agent to run the `learnings-sweep` skill for `t-6328` (single-ticket mode; a skill, not a shell command).
 It upserts one row into the root `LEARNINGS.md` index — newest first, status `UNPROMOTED`, linked back to the
 source file.
 
@@ -235,7 +235,7 @@ Same capture steps, but the project's own files hold the queue, and the only pro
 flowchart TD
     S["skills.sh add sprint<br/>(or skills.sh refresh)"] --> T["Creates PROMOTED.md at project root<br/>adds @PROMOTED.md to project AGENTS.md"]
     A["1. sprint complete<br/>reviewer writes review-notes.md"] --> B["2. tkt learn<br/>auto-run by sprint complete (step 8)<br/>.tickets/ID/learnings.md<br/>status UNPROMOTED"]
-    B --> E["3. learnings-sweep<br/>auto-run by sprint complete<br/>(protocol step the agent follows)<br/>one row into project LEARNINGS.md<br/>(not imported: unreviewed queue)"]
+    B --> E["3. learnings-sweep<br/>run by the sprint agent at close<br/>(protocol step, not a command)<br/>one row into project LEARNINGS.md<br/>(not imported: unreviewed queue)"]
     E --> U{"Who runs<br/>promote-learnings?"}
     U -- "Upkeep card (headless)" --> V["Report only<br/>never writes PROMOTED.md<br/>? panel points to interactive step"]
     U -- "Interactive /promote-learnings" --> F["Fresh read-only report<br/>then asks which proposals to apply"]

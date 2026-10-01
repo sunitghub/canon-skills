@@ -20,6 +20,7 @@ tests=(
   "$ROOT/tests/skills-sprint-deps.sh"
   "$ROOT/tests/sprint-check-nongit.sh"
   "$ROOT/tests/skills-model-tiers-note.sh"
+  "$ROOT/tests/skills-not-commands.sh"
   "$ROOT/tests/skills-subagent-log-permission.sh"
   "$ROOT/tests/skills-assume-yes.sh"
   "$ROOT/tests/skills-refresh.sh"
