@@ -5,6 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SITE="${SITE_DIR:-$ROOT/site}"
+BOARD="${BOARD_DIR:-$ROOT/tools/sprint-check-app}"
 PAGES="${SITE_PAGES:-index.html compare.html learnings.html}"
 
 # scripts/test.sh runs this unconditionally; a machine without python3 (Git for Windows only) must skip it,
@@ -14,11 +15,11 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 0
 fi
 
-python3 - "$ROOT" "$SITE" "$PAGES" <<'PY'
+python3 - "$ROOT" "$SITE" "$PAGES" "$BOARD" <<'PY'
 import os, re, sys
 from html.parser import HTMLParser
 
-root, site, pages = sys.argv[1], sys.argv[2], sys.argv[3].split()
+root, site, pages, board = sys.argv[1], sys.argv[2], sys.argv[3].split(), sys.argv[4]
 REPO = re.compile(r'^https://github\.com/sunitghub/canon-skills/(?:blob|tree)/main/([^#?]*)')
 MAX_ASSET = 300 * 1024
 errors = []
@@ -107,6 +108,36 @@ if os.path.isdir(assets):
         rel = os.path.join('assets', f)
         if rel not in referenced: errors.append(f'{rel}: orphan asset, no page uses it')
         if os.path.getsize(os.path.join(assets, f)) > MAX_ASSET: errors.append(f'{rel}: larger than 300 KB')
+
+
+# the cannon: one source (site/icons/*.svg), inlined elsewhere. The header mark must carry the full icon's
+# path data and every favicon and the Cockpit logo the small icon's (t-3fa3).
+import urllib.parse
+def paths(svg): return sorted(re.findall(r' d="([^"]+)"', svg))
+def icon(name):
+    f = os.path.join(site, 'icons', name)
+    return paths(open(f, encoding='utf-8').read()) if os.path.isfile(f) else None
+FULL, SMALL = icon('canon-cannon.svg'), icon('canon-cannon-small.svg')
+if not FULL or not SMALL: errors.append('site/icons/canon-cannon.svg or canon-cannon-small.svg is missing')
+else:
+    def favicon_paths(text):
+        m = re.search(r'<link rel="icon" href="([^"]*)"', text)
+        return paths(urllib.parse.unquote(m.group(1).split(',', 1)[1])) if m and ',' in m.group(1) else None
+    def logo_paths(text, cls):
+        m = re.search(r'<svg class="' + cls + r'[^"]*"[^>]*>(.*?)</svg>', text, flags=re.S)
+        return paths(m.group(0)) if m else None
+    checks = []
+    for name in pages:
+        t = open(os.path.join(site, name), encoding='utf-8').read()
+        checks += [(name + ' header mark', logo_paths(t, 'mk'), FULL), (name + ' favicon', favicon_paths(t), SMALL)]
+    for f, cls in (('cockpit.html', 'logo'), ('cockpit.html', None), ('app.html', None)):
+        fp = os.path.join(board, f)
+        if not os.path.isfile(fp): continue
+        t = open(fp, encoding='utf-8').read()
+        if cls: checks.append((f + ' logo', logo_paths(t, cls), SMALL))
+        else: checks.append((f + ' favicon', favicon_paths(t), SMALL))
+    for label, got, want in checks:
+        if got != want: errors.append(f'{label} does not match the icon source in site/icons (drifted or missing)')
 
 if errors:
     print('site check FAILED:')

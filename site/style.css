@@ -57,7 +57,7 @@ p { margin: 0; }
 .nav { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
 .nav .wrap { display: flex; align-items: center; gap: 20px; min-height: 60px; flex-wrap: wrap; padding-block: 8px; }
 .brand { display: flex; align-items: center; gap: 10px; font-family: var(--f-display); font-weight: 800; font-size: 22px; letter-spacing: -0.03em; }
-.brand svg { width: 26px; height: 26px; }
+.brand .mk { width: 42px; height: 26px; color: var(--accent); }
 .nav-links { display: flex; gap: 24px; margin-left: auto; font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--fg-dim); flex-wrap: wrap; }
 .nav-links a:hover { color: var(--fg); }
 .nav-tools { display: flex; gap: 8px; align-items: center; }
@@ -79,8 +79,8 @@ p { margin: 0; }
 .hero h1 em { font-style: normal; color: var(--accent); }
 .hero .sub { max-width: 58ch; color: var(--fg-dim); font-size: 18px; }
 .hero .sub strong { color: var(--fg); font-weight: 600; }
-.hero-mark { position: absolute; right: clamp(16px, 4vw, 64px); top: 24px; width: min(440px, 40vw); opacity: 0.9; pointer-events: none; }
-@media (max-width: 760px) { .hero-mark { opacity: 0.3; width: 56vw; right: 16px; } }
+.hero-mark { position: absolute; right: -3%; top: 84px; width: min(620px, 54vw); pointer-events: none; }
+@media (max-width: 760px) { .hero-mark { width: 130vw; right: -34vw; top: 36px; opacity: 0.6; } }
 .install { display: flex; flex-direction: column; gap: 10px; max-width: 900px; }
 .install-tabs { display: flex; gap: 0; }
 .install-tabs button { background: transparent; border: 1px solid var(--line-strong); border-bottom: 0; color: var(--fg-mute); font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; padding: 7px 14px; cursor: pointer; }
@@ -195,8 +195,8 @@ section.block > .wrap { padding-block: 72px; display: flex; flex-direction: colu
 .stage.st-start { --sc: var(--info); }
 .stage.st-close { --sc: var(--ok); }
 .stage.st-mem { --sc: var(--work); }
-.stage:not(:last-child)::after { content: ""; position: absolute; top: 34px; right: -45px; width: 44px; height: 12px; background: linear-gradient(var(--fg-mute), var(--fg-mute)) left center / 34px 2px no-repeat; }
-.stage:not(:last-child)::before { content: ""; position: absolute; top: 34px; right: -43px; width: 9px; height: 9px; border-top: 2px solid var(--fg-mute); border-right: 2px solid var(--fg-mute); transform: translateY(1px) rotate(45deg); z-index: 1; }
+.stage:not(:last-child)::after { content: ""; position: absolute; top: 34px; right: -45px; width: 44px; height: 12px; background: linear-gradient(var(--arrow, var(--fg-mute)), var(--arrow, var(--fg-mute))) left center / 34px 2px no-repeat; }
+.stage:not(:last-child)::before { content: ""; position: absolute; top: 34px; right: -43px; width: 9px; height: 9px; border-top: 2px solid var(--arrow, var(--fg-mute)); border-right: 2px solid var(--arrow, var(--fg-mute)); transform: translateY(1px) rotate(45deg); z-index: 1; }
 .stage-head { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px 14px; }
 .stage-head code { font-size: 16px; color: var(--fg); font-weight: 500; }
 .stage-head span { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--sc); }
@@ -327,3 +327,34 @@ footer b { color: var(--fg); }
 .matrix.loose { table-layout: auto; min-width: 760px; }
 .matrix th.w38 { width: 38%; }
 .rail-steps { display: flex; flex-direction: column; }
+
+/* single theme toggle: shows the current theme, click switches */
+.theme-toggle { font-family: var(--f-body); font-size: 14px; letter-spacing: 0; text-transform: none; gap: 8px; }
+.theme-toggle .ic { color: #f5b301; flex: none; }
+
+/* daily-loop autoplay: header with a pause button, and a progress line under the active command */
+.rail-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); background: var(--panel-2); padding-right: 10px; }
+.rail-head h4 { border: 0; background: none; flex: 1; }
+.mini { background: transparent; border: 1px solid var(--line-strong); color: var(--fg-dim); font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 8px; border-radius: 6px; cursor: pointer; }
+.mini:hover { color: var(--accent); border-color: var(--accent); }
+.step { position: relative; }
+.panel.auto .step[aria-selected="true"]::after { content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: var(--accent); transform-origin: left; animation: loop-tick 8s linear forwards; }
+@keyframes loop-tick { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .panel.auto .step[aria-selected="true"]::after { animation: none; display: none; } }
+
+/* sprint crew: a pulse walks each stage's steps, crosses the arrow, and carries on to the next stage */
+.flow-ctl { display: flex; justify-content: flex-end; margin-bottom: -12px; }
+.act { transition: background 0.3s; }
+.act.pulse { background: var(--accent-soft); background: color-mix(in srgb, var(--sc) 14%, transparent); }
+.act.pulse .bub { animation: bub-pulse 0.9s ease-out; }
+@keyframes bub-pulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 4px var(--panel), 0 0 0 4px transparent; }
+  35% { transform: scale(1.4); box-shadow: 0 0 0 4px var(--panel), 0 0 0 11px color-mix(in srgb, var(--sc) 40%, transparent); }
+  100% { transform: scale(1); box-shadow: 0 0 0 4px var(--panel), 0 0 0 4px transparent; }
+}
+.stage.arrow-on { --arrow: var(--accent); }
+.stage.arrow-on::after { animation: arrow-line 0.9s ease-in-out; }
+.stage.arrow-on::before { animation: arrow-head 0.9s ease-in-out; }
+@keyframes arrow-line { 0% { transform: translateX(-8px); opacity: 0.3; } 60% { opacity: 1; } 100% { transform: translateX(0); opacity: 1; } }
+@keyframes arrow-head { 0% { transform: translate(-8px, 1px) rotate(45deg); opacity: 0.3; } 60% { opacity: 1; } 100% { transform: translate(0, 1px) rotate(45deg); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .act.pulse .bub, .stage.arrow-on::after, .stage.arrow-on::before { animation: none; } }

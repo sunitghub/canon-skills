@@ -4,22 +4,25 @@
 
   function $(id) { return document.getElementById(id); }
 
-  // Theme: Ink (dark) and Paper (light). With no choice made, the system setting decides via CSS.
+  // Theme: one button shows the current theme and switches it. With no choice made the system setting decides.
   var root = document.documentElement;
-  var ink = $('t-ink'), paper = $('t-paper');
-  if (ink && paper) {
-    var setTheme = function (t) {
-      root.dataset.theme = t;
-      ink.setAttribute('aria-pressed', t === 'dark');
-      paper.setAttribute('aria-pressed', t === 'light');
+  var themeBtn = $('theme-toggle');
+  if (themeBtn) {
+    var systemLight = window.matchMedia ? matchMedia('(prefers-color-scheme: light)') : null;
+    var currentTheme = function () { return root.dataset.theme || (systemLight && systemLight.matches ? 'light' : 'dark'); };
+    var paintTheme = function () {
+      var t = currentTheme();
+      $('theme-label').textContent = t === 'dark' ? 'Dark' : 'Light';
+      // SVG elements have no .hidden property, so toggle the attribute
+      themeBtn.querySelectorAll('.ic').forEach(function (ic) { ic.toggleAttribute('hidden', ic.dataset.for !== t); });
+      themeBtn.setAttribute('aria-label', 'Switch to ' + (t === 'dark' ? 'light' : 'dark') + ' theme');
     };
-    var prefersLight = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches;
-    if (!root.dataset.theme) {
-      ink.setAttribute('aria-pressed', !prefersLight);
-      paper.setAttribute('aria-pressed', prefersLight);
-    }
-    ink.onclick = function () { setTheme('dark'); };
-    paper.onclick = function () { setTheme('light'); };
+    themeBtn.onclick = function () {
+      root.dataset.theme = currentTheme() === 'dark' ? 'light' : 'dark';
+      paintTheme();
+    };
+    if (systemLight && systemLight.addEventListener) systemLight.addEventListener('change', paintTheme);
+    paintTheme();
   }
 
   // Install box: optional OS tabs, copy button.
@@ -90,8 +93,83 @@
       treeNote.textContent = s.note;
       steps.forEach(function (_, j) { $('s' + (j + 1)).setAttribute('aria-selected', j === i); });
     };
-    steps.forEach(function (_, j) { $('s' + (j + 1)).onclick = function () { showStep(j); }; });
-    showStep(0);
+    // Auto-advance every few seconds while the panel is on screen. It pauses on hover and focus, stops for good
+    // after a click, never runs under reduced motion, and has a Pause button (WCAG 2.2.2).
+    var panel = term.closest('.panel');
+    var pauseBtn = $('loop-pause');
+    var current = 0, timer = null, userStopped = false, hovering = false, onScreen = false;
+    var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var STEP_MS = 8000;
+    var select = function (i) { current = i; showStep(i); };
+    var running = function () { return !userStopped && !hovering && onScreen && !document.hidden && !reduceMotion; };
+    var schedule = function () {
+      clearTimeout(timer);
+      panel.classList.remove('auto');
+      if (!running()) return;
+      void panel.offsetWidth; // restart the progress line
+      panel.classList.add('auto');
+      timer = setTimeout(function () { select((current + 1) % steps.length); schedule(); }, STEP_MS);
+    };
+    var paintPause = function () { if (pauseBtn) pauseBtn.textContent = userStopped ? 'Play' : 'Pause'; };
+    steps.forEach(function (_, k) {
+      $('s' + (k + 1)).onclick = function () { userStopped = true; paintPause(); select(k); schedule(); };
+    });
+    if (pauseBtn) {
+      if (reduceMotion) pauseBtn.hidden = true;
+      pauseBtn.onclick = function () { userStopped = !userStopped; paintPause(); schedule(); };
+    }
+    panel.addEventListener('mouseenter', function () { hovering = true; schedule(); });
+    panel.addEventListener('mouseleave', function () { hovering = false; schedule(); });
+    panel.addEventListener('focusin', function () { hovering = true; schedule(); });
+    panel.addEventListener('focusout', function () { hovering = false; schedule(); });
+    document.addEventListener('visibilitychange', schedule);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) { onScreen = entries[0].isIntersecting; schedule(); }, { threshold: 0.35 }).observe(panel);
+    }
+    select(0);
+  }
+
+  // Home: the sprint crew. A pulse walks each stage's steps in order, crosses the arrow, and moves on to the next
+  // stage, then starts over. Same rules as the daily loop: on screen only, paused on hover or focus, a Pause
+  // button, and none of it under reduced motion.
+  var crew = document.querySelector('#skills .flow');
+  if (crew) {
+    var crewPause = $('flow-pause');
+    var crewReduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var beats = [];
+    var crewStages = [].slice.call(crew.querySelectorAll('.stage'));
+    crewStages.forEach(function (st, i) {
+      st.querySelectorAll('.act').forEach(function (a) { beats.push({ el: a, cls: 'pulse', ms: 520 }); });
+      if (i < crewStages.length - 1) beats.push({ el: st, cls: 'arrow-on', ms: 900 });
+    });
+    var beat = 0, crewTimer = null, crewStopped = false, crewHover = false, crewOnScreen = false;
+    var crewRunning = function () { return !crewStopped && !crewHover && crewOnScreen && !document.hidden && !crewReduce; };
+    var clearBeats = function () { beats.forEach(function (b) { b.el.classList.remove(b.cls); }); };
+    var playBeat = function () {
+      clearTimeout(crewTimer);
+      clearBeats();
+      crew.classList.toggle('playing', crewRunning());
+      if (!crewRunning()) return;
+      var b = beats[beat];
+      b.el.classList.add(b.cls);
+      crewTimer = setTimeout(function () {
+        b.el.classList.remove(b.cls);
+        beat = (beat + 1) % beats.length;
+        if (beat === 0) crewTimer = setTimeout(playBeat, 1800); else playBeat();
+      }, b.ms);
+    };
+    if (crewPause) {
+      if (crewReduce) crewPause.hidden = true;
+      crewPause.onclick = function () { crewStopped = !crewStopped; crewPause.textContent = crewStopped ? 'Play' : 'Pause'; playBeat(); };
+    }
+    crew.addEventListener('mouseenter', function () { crewHover = true; playBeat(); });
+    crew.addEventListener('mouseleave', function () { crewHover = false; playBeat(); });
+    crew.addEventListener('focusin', function () { crewHover = true; playBeat(); });
+    crew.addEventListener('focusout', function () { crewHover = false; playBeat(); });
+    document.addEventListener('visibilitychange', playBeat);
+    if ('IntersectionObserver' in window) {
+      new IntersectionObserver(function (entries) { crewOnScreen = entries[0].isIntersecting; playBeat(); }, { threshold: 0.15 }).observe(crew);
+    }
   }
 
   // Home: agent tabs switch the screenshot.
