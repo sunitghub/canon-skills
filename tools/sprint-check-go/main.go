@@ -2376,6 +2376,25 @@ func isWorktreeNoise(path string) bool {
 	return isCanonRuntimePath(path) || path[strings.LastIndex(path, "/")+1:] == "cockpit-sessions.md"
 }
 
+// isCanonSkillsLink: t-07a8 — canon links its skills into every worktree it
+// creates, so a project that does not gitignore them sees UNTRACKED
+// .agents/skills and .claude/skills (a Windows junction lists its contents
+// under --untracked-files=all). That is canon's own, not user work. Only an
+// untracked entry at exactly those paths; a tracked or modified file there, or
+// a sibling like .claude/notes.md, still counts. Parity with server.py's
+// _is_canon_skills_link.
+func isCanonSkillsLink(status, path string) bool {
+	if status != "??" {
+		return false
+	}
+	for _, d := range []string{".agents/skills", ".claude/skills"} {
+		if path == d || strings.HasPrefix(path, d+"/") {
+			return true
+		}
+	}
+	return false
+}
+
 func worktreeDirty(path string) bool {
 	out, _, err := gitOutIn(path, 10*time.Second, "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
@@ -2390,7 +2409,7 @@ func worktreeDirty(path string) bool {
 		if strings.ContainsAny(entry[:2], "RC") {
 			i++
 		}
-		if !isWorktreeNoise(entry[3:]) {
+		if !isWorktreeNoise(entry[3:]) && !isCanonSkillsLink(entry[:2], entry[3:]) {
 			return true
 		}
 	}
