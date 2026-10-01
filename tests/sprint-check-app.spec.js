@@ -6380,14 +6380,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
   });
 
   // t-e78b bound the docs to the worktree; t-26f9 made them editable there, guarded by the etag each read returned.
-  const liveBoard = async (page, { post, working } = {}) => {
+  const liveBoard = async (page, { post, working, branch = 'sprint/e7lv' } = {}) => {
     const live = 't-e7lv', plain = 't-e7pl';
     const docs = id => [{ name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }, { name: 'Design', file: `${id}/design.md` }];
     const base = id => ({ id, title: `Ticket ${id}`, status: 'open', type: 'task', priority: 2, layout: 'folder',
       created: '2026-09-25T00:00:00Z', body: `# Ticket ${id}\n\nDescription text.`, docs: docs(id) });
     const tickets = [
       { ...base(live), acceptance_has_items: true, acceptance_unchecked: true, plan_has_approach: true, plan_approved: true,
-        docs_from: { branch: 'sprint/e7lv' } },
+        docs_from: { branch } },
       { ...base(plain), acceptance_has_items: false, acceptance_unchecked: null, plan_has_approach: null, plan_approved: null },
     ];
     await page.route('**/api/tickets**', route => route.request().method() === 'GET'
@@ -6505,10 +6505,34 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[2].body.base_hash).toMatch(/^etag-\d+$/);
   });
 
+  test('with a long branch name and a narrow window the working note still leaves Edit and + New doc inside the modal (t-26f9)', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 700 });
+    await liveBoard(page, { working: true, branch: 'sprint/a-very-long-branch-name-for-an-end-user-demo' });
+    await expect(page.locator('#doc-working-note')).toBeVisible();
+    const bad = await page.evaluate(() => {
+      const m = document.querySelector('#modal').getBoundingClientRect();
+      return ['#btn-edit-doc', '#btn-new-doc', '#doc-working-note', '#doc-live-badge']
+        .map(sel => { const r = document.querySelector(sel)?.getBoundingClientRect(); return { sel, r }; })
+        .filter(x => !x.r || x.r.left < m.left - 1 || x.r.right > m.right + 1).map(x => x.sel);
+    });
+    expect(bad).toEqual([]);
+    await page.locator('#btn-edit-doc').click();                       // and Edit is really clickable
+    await expect(page.locator('#m-edit-area')).toBeVisible();
+  });
+
   test('a working agent shows one warning line and never blocks the edit (t-26f9)', async ({ page }) => {
     await liveBoard(page, { working: true });
     await expect(page.locator('#doc-working-note')).toContainText('the agent is working in sprint/e7lv');
     await expect(page.locator('#btn-edit-doc')).toBeEnabled();
+    // The evaluator found Edit pushed outside the modal while the note was showing: every control must lie inside it.
+    const inside = async () => page.evaluate(() => {
+      const m = document.querySelector('#modal').getBoundingClientRect();
+      return ['#btn-edit-doc', '#btn-new-doc', '#doc-working-note', '#doc-live-badge'].map(sel => {
+        const r = document.querySelector(sel)?.getBoundingClientRect();
+        return { sel, ok: !!r && r.left >= m.left - 1 && r.right <= m.right + 1 && r.width > 0 };
+      });
+    });
+    for (const c of await inside()) expect(c.ok, `${c.sel} must lie inside the modal`).toBe(true);
     const box = await page.locator('#doc-working-note').boundingBox();
     const tabs = await page.locator('.doc-tab').last().boundingBox();
     expect(box.x).toBeGreaterThanOrEqual(tabs.x + tabs.width - 1);          // beside the tabs, never over them

@@ -783,7 +783,11 @@ def _atomic_write(target: Path, data: bytes) -> None:
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        os.chmod(tmp, 0o644)
+        try:
+            mode = os.stat(target).st_mode & 0o777   # an existing doc keeps the mode it had
+        except OSError:
+            mode = 0o644                              # a new doc
+        os.chmod(tmp, mode)
         for i in range(6):
             try:
                 os.replace(tmp, target)

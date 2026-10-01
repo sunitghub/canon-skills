@@ -2254,7 +2254,11 @@ func atomicWriteFile(target string, data []byte) error {
 		os.Remove(name)
 		return werr
 	}
-	_ = os.Chmod(name, 0o644)
+	mode := os.FileMode(0o644) // a new doc; an existing one keeps the mode it had
+	if fi, err := os.Stat(target); err == nil {
+		mode = fi.Mode().Perm()
+	}
+	_ = os.Chmod(name, mode)
 	var rerr error
 	for i := 0; i < 6; i++ {
 		if rerr = os.Rename(name, target); rerr == nil {

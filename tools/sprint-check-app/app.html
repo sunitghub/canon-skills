@@ -927,7 +927,9 @@
     }
     .doc-tab-new:hover { color: var(--text); border-color: var(--accent); }
     .doc-tab-right {
-      margin-left: auto; display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+      /* t-26f9: wraps inside the modal; the live badge, the working note, + New doc and Edit never clip off the right edge */
+      margin-left: auto; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px;
+      min-width: 0; max-width: 100%;
     }
     .doc-nav-btn {
       padding: 3px 8px; border-radius: 999px; font-size: 13px; font-weight: 700; line-height: 1;
