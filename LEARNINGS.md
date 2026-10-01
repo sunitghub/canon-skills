@@ -1,10 +1,12 @@
 # Learnings
 
-learnings-sweep last run: 10-01-2026 14:43
+learnings-sweep last run: 10-01-2026 16:03
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-01 | [t-b91f](.tickets/t-b91f/learnings.md) | A layout test that injects state into a live page (a chip, text, markup) races the page's own renderers and polls and passes only by measuring first: silence those renderers before injecting, prove stability with a pause past the poll interval plus a control that fails without the silencing, and build fixtures from the real markup (an invented class hid a real wrap) | UNPROMOTED |
+| 2026-10-01 | [t-31a8](.tickets/t-31a8/learnings.md) | A guard that only checks a share tag is non-empty lets it drift from the page text it duplicates; tie og:title and og:description to the page's own title and description. | UNPROMOTED |
 | 2026-10-01 | [t-07a8](.tickets/t-07a8/learnings.md) | A test of "this untracked file is not user work" passes vacuously on any machine whose global git ignore already covers the path (git also reads $XDG_CONFIG_HOME/git/ignore regardless of GIT_CONFIG_GLOBAL): pin GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM and XDG_CONFIG_HOME in the script and prove it by running with a hostile external ignore and the fix reverted; and a hold rule keyed on a path must also key on the git status code, or a modified tracked file under that path is hidden too | UNPROMOTED |
 | 2026-10-01 | [t-0124](.tickets/t-0124/learnings.md) | A guard that moves to another repo must not map every HTTP error to "path missing" (a 403 or rate limit made later pages fail by order) and must print a visible skip when its sibling input is absent, or it looks like a pass. | UNPROMOTED |
 | 2026-10-01 | [t-3fa3](.tickets/t-3fa3/learnings.md) | The icon-drift guard compares only `d="…"` path data, so a changed circle radius or stroke in an inlined cannon is not caught; widen it if the mark gains circle detail. | UNPROMOTED |
