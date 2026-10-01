@@ -3,9 +3,8 @@
 Not a general Gherkin engine — a small fixed-pattern step-matcher. It only recognizes the
 exact step shapes used in specs/discount.feature. That's a deliberate choice, not a shortcut:
 a step-matcher this size is easy to read and trust in full; a general natural-language parser
-would be neither. The same idea scales to real domains — see overtone_demo/scenarios.py in
-the CFIHOS/Overtone work this example is drawn from, a spec runner for a plant-equipment
-conformance engine built the same way.
+would be neither. The same idea scales to real domains: a spec runner for a plant-equipment
+conformance engine, built the same way, in a separate repo.
 
 Run:  python dsl_runner.py specs/discount.feature
 

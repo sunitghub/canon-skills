@@ -313,7 +313,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
       <div class="caught-copy">
         <h3>A test that could not fail.</h3>
         <p>Across two sprints on a real agentic app, the gates never found a wrong number. They found <b>a check that agreed with itself</b>, safety branches nobody had ever executed, and screenshots timestamped 13 minutes before the commit that replaced the feature.</p>
-        <p>The evaluator also re-checks its own earlier findings and declines to over-reach when a criterion is out of scope.</p>
+        <p>Each criterion gets a pass or fail with the file and line that back it, and nothing closes on a fail.</p>
         <div class="code"><span class="dim"># both sides read the same list</span>
 <span class="bad">assert button.disabled == live_only</span>
 
@@ -321,7 +321,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
 offline_safe = {"question A", "question B"}
 <span class="ok">assert button.disabled == (q not in offline_safe)</span></div>
       </div>
-      <img class="shot" src="assets/eval-disposition.jpg" alt="Evaluator re-checking its own prior findings: a table of evidence it derived itself, each finding marked fixed or partial." loading="lazy">
+      <img class="shot" src="assets/eval-report.jpg" alt="An evaluator report for a closed ticket: each acceptance criterion with a pass and the file and line that proves it." loading="lazy">
     </div>
   </div>
 </section>

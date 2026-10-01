@@ -44,7 +44,7 @@
   <div class="wrap">
     <div class="eyebrow">Compare</div>
     <h1>Others keep agents running. Canon <em>checks the work.</em></h1>
-    <p class="sub">Terminals and runtimes keep your agents alive and visible. Canon adds what they don't document: an approved plan, acceptance criteria, an independent reviewer and a close that <strong>refuses by default</strong> until the evidence is there. They work side by side.</p>
+    <p class="sub">Terminals and runtimes keep your agents alive and visible. Canon puts an approved plan, acceptance criteria, an independent reviewer and a close that <strong>refuses by default</strong> in your repo, enforced by its CLI. They work side by side.</p>
     <div class="legend" aria-label="Legend">
       <span class="cell"><i class="dot y"></i>Built in</span>
       <span class="cell"><i class="dot p"></i>Partial or different</span>
@@ -94,7 +94,7 @@
             <td class="us"><div class="cell"><i class="dot y"></i><span><b>Yes.</b> The CLI refuses on an unchecked box, missing summary or non-pass verdict. Bypass needs an explicit flag or a recorded waiver</span></div></td>
             <td><div class="cell"><i class="dot n"></i><span>None documented</span></div></td>
             <td><div class="cell"><i class="dot n"></i><span>Not its job</span></div></td>
-            <td><div class="cell"><i class="dot n"></i><span>None documented</span></div></td>
+            <td><div class="cell"><i class="dot p"></i><span>Approval gates in a Factories config</span></div></td>
           </tr>
           <tr>
             <th scope="row">Evidence behind each verdict</th>
@@ -162,18 +162,25 @@
             <td><div class="cell"><i class="dot n"></i><span>Task lists for agent work only</span></div></td>
           </tr>
           <tr>
+            <th scope="row">Repo health checks</th>
+            <td class="us"><div class="cell"><i class="dot y"></i><span><b>Yes.</b> Upkeep runs <code>context-check</code>, <code>context-doctor</code>, <code>dead-code-cleanup</code> and <code>promote-learnings</code>, read-only</span></div></td>
+            <td><div class="cell"><i class="dot n"></i><span>None documented</span></div></td>
+            <td><div class="cell"><i class="dot n"></i><span>Not its job</span></div></td>
+            <td><div class="cell"><i class="dot n"></i><span>None documented</span></div></td>
+          </tr>
+          <tr>
             <th scope="row">Runs in your existing terminal</th>
             <td class="us"><div class="cell"><i class="dot p"></i><span>Cockpit is a browser window. The CLI works in any terminal</span></div></td>
             <td><div class="cell"><i class="dot y"></i><span><b>Yes.</b> TUI, CLI and plain SSH</span></div></td>
             <td><div class="cell"><i class="dot y"></i><span><b>Yes.</b> It is one</span></div></td>
-            <td><div class="cell"><i class="dot n"></i><span>Replaces it</span></div></td>
+            <td><div class="cell"><i class="dot p"></i><span>Its Terminal replaces yours. Its Agent CLI works in any terminal</span></div></td>
           </tr>
 
           <tr class="grp"><td colspan="5">Ownership</td></tr>
           <tr>
             <th scope="row">Local-first, no account</th>
             <td class="us"><div class="cell"><i class="dot y"></i><span><b>Yes.</b> No SaaS, nothing hosted</span></div></td>
-            <td><div class="cell"><i class="dot y"></i><span><b>Yes.</b> Paid Herdr Cloud is announced</span></div></td>
+            <td><div class="cell"><i class="dot y"></i><span><b>Yes.</b> Herdr Cloud is coming soon</span></div></td>
             <td><div class="cell"><i class="dot y"></i><span><b>Yes.</b></span></div></td>
             <td><div class="cell"><i class="dot p"></i><span>Terminal downloads freely. Factories needs signup</span></div></td>
           </tr>
@@ -194,7 +201,7 @@
         </tbody>
       </table>
     </div>
-    <p class="note" style="margin-top:16px">Checked 2026-09-30 against each product's own pages. Canon's gate was run against a scratch ticket, and it refused on a missing summary and on empty acceptance checklists. "None documented" means we found no such feature there, not that it cannot exist. Something out of date? <a href="https://github.com/sunitghub/canon-skills/issues" target="_blank" rel="noopener">Open an issue</a>.</p>
+    <p class="note" style="margin-top:16px">Checked 2026-10-01 against each product's own pages. Canon's gate was run against a scratch ticket, and it refused on a missing summary and on empty acceptance checklists. "None documented" means we found no such feature there, not that it cannot exist. Next check due 2026-12-31. Something out of date? <a href="https://github.com/sunitghub/canon-skills/issues" target="_blank" rel="noopener">Open an issue</a>.</p>
   </div>
 </section>
 
@@ -221,7 +228,7 @@
       <article class="verdict">
         <span class="tag">vs Warp</span>
         <h3>Warp moves the work into its window. Canon keeps it in your repo.</h3>
-        <p>Warp pairs a terminal with agents, planning and code review, and Factories adds team orchestration across Slack, Linear, Jira and GitHub. Canon stays local: plans and verdicts are markdown files in your repo, graded by a second agent, enforced by the CLI.</p>
+        <p>Warp pairs a terminal with agents, planning and code review, and Factories adds team orchestration, approval gates and run scoring across Slack, Linear, Jira and GitHub. Canon stays local: plans and verdicts are markdown files in your repo, graded by a second agent, enforced by the CLI.</p>
         <p class="win"><b>Warp wins</b> on team workflows, integrations and cloud agents. <b>Use both:</b> canon's sprint runs under Claude Code, which Warp can also run.</p>
       </article>
     </div>
