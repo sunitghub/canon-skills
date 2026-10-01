@@ -1459,6 +1459,11 @@
     .ck-leave-btn-skip:disabled:hover { color: var(--text-muted); border-color: var(--border); }
     /* t-d254: commit-the-ticket-first dialog (reuses the leave-confirm overlay). */
     #ck-tcommit .ck-leave-confirm { max-width: 520px; }
+    /* t-ccd6: the board's own confirm/notice dialog (replaces browser alert/confirm in the worktree flow). */
+    #app-dialog .ck-leave-confirm { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column; box-sizing: border-box; }
+    #app-dialog .ck-leave-confirm-title { overflow-wrap: anywhere; }
+    #app-dialog .ck-leave-confirm-body { white-space: pre-line; overflow-wrap: anywhere; overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+    #app-dialog .ck-leave-confirm-actions { flex: none; }
     .ck-tcm-files { max-height: 280px; overflow-y: auto; margin-top: 10px; }
     .ck-tcm-group { margin-top: 10px; }
     .ck-tcm-group-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin-bottom: 4px; }
@@ -2228,6 +2233,17 @@
         <button class="ck-leave-btn ck-leave-btn-skip" id="ck-leave-skip" type="button">End without saving</button>
         <button class="ck-leave-btn ck-leave-btn-discard" id="ck-leave-discard" type="button" hidden>Discard changes, end</button>
         <button class="ck-leave-btn ck-leave-btn-cancel" id="ck-leave-cancel" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <!-- t-ccd6: styled confirm/notice for the worktree flow; text is set with textContent only. -->
+  <div id="app-dialog" class="ck-leave-confirm-overlay" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title">
+    <div class="ck-leave-confirm">
+      <div class="ck-leave-confirm-title" id="app-dialog-title"></div>
+      <div class="ck-leave-confirm-body" id="app-dialog-body"></div>
+      <div class="ck-leave-confirm-actions">
+        <button class="ck-leave-btn ck-leave-btn-save" id="app-dialog-ok" type="button">OK</button>
+        <button class="ck-leave-btn ck-leave-btn-cancel" id="app-dialog-cancel" type="button">Cancel</button>
       </div>
     </div>
   </div>
@@ -6600,6 +6616,61 @@ async function renderCockpitState(t) {
 // the switch-worktree confirm, and the Status line) — one fetch shape, one
 // fail-safe default, so a request failure never silently degrades to
 // "treat as unlocked" in one caller and "skip the check" in another.
+// t-ccd6: promise-returning confirm/notice in the board's own style. okOnly = a
+// notice (resolves true on OK, false on Escape). Escape cancels, Enter confirms
+// (a focused button handles its own Enter), focus returns to the opener.
+let appDialogDismiss = null;
+function appDialog({ title, body, okLabel = 'OK', cancelLabel = 'Cancel', okOnly = false }) {
+  if (appDialogDismiss) appDialogDismiss(false);
+  return new Promise(resolve => {
+    const ov = document.getElementById('app-dialog');
+    const ok = document.getElementById('app-dialog-ok');
+    const cancel = document.getElementById('app-dialog-cancel');
+    const opener = document.activeElement;
+    document.getElementById('app-dialog-title').textContent = title;
+    document.getElementById('app-dialog-body').textContent = body;
+    ok.textContent = okLabel;
+    cancel.textContent = cancelLabel;
+    cancel.hidden = okOnly;
+    const done = v => {
+      appDialogDismiss = null;
+      ov.classList.remove('open');
+      document.removeEventListener('keydown', onKey, true);
+      ok.onclick = cancel.onclick = null;
+      if (opener && opener.focus) opener.focus();
+      resolve(v);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); done(false); }
+      else if (e.key === 'Tab') {
+        const order = okOnly ? [ok] : [ok, cancel];
+        const i = order.indexOf(document.activeElement);
+        e.preventDefault();
+        order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length].focus();
+      }
+    };
+    appDialogDismiss = done;
+    ok.onclick = () => done(true);
+    cancel.onclick = () => done(false);
+    document.addEventListener('keydown', onKey, true);
+    ov.classList.add('open');
+    // Deferred: opened from an Enter keydown, a synchronous focus would send that
+    // same keypress to the OK button and confirm the dialog it just opened.
+    setTimeout(() => { if (appDialogDismiss === done) ok.focus(); }, 0);
+  });
+}
+
+// t-ccd6: one place for the unlock request (the Unlock button and the switch
+// dialog both use it). Resolves null on success, else the reason to show.
+async function unlockTicketWorktree(ticketId) {
+  try {
+    const r = await fetch(`/api/worktree-unlock/${encodeURIComponent(ticketId)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) return d && d.error ? d.error : `HTTP ${r.status}`;
+    return null;
+  } catch (err) { return String(err); }
+}
+
 async function fetchWorktreeLock(ticketId) {
   try {
     const r = await fetch(`/api/worktree-lock/${encodeURIComponent(ticketId)}`);
@@ -6663,6 +6734,7 @@ async function renderCockpitWorktree(t) {
     if (hit) return hit.branch || '(detached)';
     return String(cwd).replace(/[\\/]+$/, '').split(/[\\/]/).pop() || cwd;
   };
+  cockpitState.worktreeLabel = worktreeLabelForCwd;   // t-ccd6: selectCockpitWorktree names worktrees too
 
   // t-e5ff: track which worktree cwds can actually see the ticket. The daemon
   // reports tickets_visible=false for a non-main worktree when .tickets/ is
@@ -6845,14 +6917,10 @@ async function renderCockpitWorktree(t) {
         + `Unlocking clears the saved worktree AND the saved session, so the next Start begins a `
         + `fresh session in the worktree you pick next (e.g. the Main checkout) — it does not resume `
         + `the current conversation in a different directory. `
-        + `A currently-running session keeps its directory until it ends.\n\n`
-        + `Unlock this ticket's worktree?`;
-      if (!confirm(msg)) return;
-      try {
-        const r = await fetch(`/api/worktree-unlock/${encodeURIComponent(t.id)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.ok) { alert('Could not unlock: ' + (d && d.error ? d.error : `HTTP ${r.status}`)); return; }
-      } catch (err) { alert('Could not unlock: ' + err); return; }
+        + `A currently-running session keeps its directory until it ends.`;
+      if (!await appDialog({ title: "Unlock this ticket's worktree?", body: msg, okLabel: 'Unlock' })) return;
+      const unlockErr = await unlockTicketWorktree(t.id);
+      if (unlockErr) { await appDialog({ title: 'Could not unlock', body: unlockErr, okOnly: true }); return; }
       // Lock cleared → drop the stale pre-selection, re-render (picker + t-e5ff
       // bubble re-evaluate), and refresh the terminal panel to the new state.
       cockpitState.worktreeCwd = null;
@@ -6867,7 +6935,7 @@ async function renderCockpitWorktree(t) {
   // server's "path already exists" round-trip surface as a generic alert.
   const existingBranches = new Set(others.map(e => e.branch).filter(Boolean));
   // t-29cc: one rule for click and Enter, the untouched suggestion included —
-  // create()'s confirm() is the guard against an unwanted worktree. The main
+  // create()'s confirm dialog is the guard against an unwanted worktree. The main
   // checkout's branch is excluded too: it's never a row in `others`, and a
   // `main` preference pre-fills it (git refuses a second checkout of it).
   const mainBranch = mainEntry ? mainEntry.branch : '';
@@ -6882,16 +6950,16 @@ async function renderCockpitWorktree(t) {
     if (branch.length <= 3 || branch === mainBranch) return;
     if (existingBranches.has(branch)) {
       const h = held.find(e => e.branch === branch);
-      alert(h && h.held_by.reason === 'folder missing'
+      await appDialog({ title: `Can't create "${branch}"`, okOnly: true, body: h && h.held_by.reason === 'folder missing'
         ? `"${branch}" has a stale worktree entry (its folder is gone). Run "git worktree prune" in the project, or pick another name.`
         : h
         ? `"${branch}" is in use by ${h.held_by.ticket || 'another ticket'} (${h.held_by.reason}) — pick another name.`
-        : `"${branch}" already has a worktree — select it from the list above instead.`);
+        : `"${branch}" already has a worktree — select it from the list above instead.` });
       return;
     }
     if (needsCommit) {
       if (await openTicketCommitDialog(t.id, commitPlan, branch) === 'cancel') return;
-    } else if (!confirm(`Create a new git worktree for branch "${branch}"?`)) return;
+    } else if (!await appDialog({ title: 'Create a new worktree?', body: `Create a new git worktree for branch "${branch}"?`, okLabel: 'Create worktree' })) return;
     input.disabled = true;
     btn.disabled = true;
     setButtonBusy(btn, 'Creating…');
@@ -6902,7 +6970,7 @@ async function renderCockpitWorktree(t) {
       });
       const d = await r.json();
       if (!r.ok || !d.ok) {
-        alert('Could not create worktree: ' + (d && d.error ? d.error : `HTTP ${r.status}`));
+        await appDialog({ title: 'Could not create worktree', body: d && d.error ? d.error : `HTTP ${r.status}`, okOnly: true });
         setButtonBusy(btn, null, '+ New');
         input.disabled = false;
         btn.disabled = false;
@@ -6918,7 +6986,7 @@ async function renderCockpitWorktree(t) {
         .find(row => cockpitPathKey(row.dataset.cwd) === createdKey);
       selectCockpitWorktree(t, createdRow ? createdRow.dataset.cwd : d.path);
     } catch (err) {
-      alert('Could not create worktree: ' + err);
+      await appDialog({ title: 'Could not create worktree', body: String(err), okOnly: true });
       setButtonBusy(btn, null, '+ New');
       input.disabled = false;
       btn.disabled = false;
@@ -7037,26 +7105,35 @@ async function selectCockpitWorktree(t, cwd) {
     // on any error, so a fetch failure still warns rather than silently
     // skipping the confirm at exactly the moment it can't be verified.
     const lock = await fetchWorktreeLock(t.id);
+    const labelOf = cockpitState.worktreeLabel || (c => String(c || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'a worktree');
+    const wtLabel = cwd === '' ? 'the Main checkout' : labelOf(cwd);
+    const risk = lock.main_dirty === true
+      ? 'The main checkout has uncommitted changes that will NOT carry over — a worktree only has committed history.'
+      : lock.main_dirty === false
+        ? 'A worktree only has this repo\'s committed history — any future uncommitted work in the main checkout will not be shared with it.'
+        : 'A worktree only has this repo\'s committed history — uncommitted work does not carry over between checkouts.';
     if (lock.locked) {
       // t-9203: while locked, the daemon reuses the locked cwd and IGNORES the
-      // picker — so switching here would only mislead ("Working in:" would claim
-      // a worktree the session isn't actually running in, the wrong-tree danger).
-      // Require an explicit Unlock first. cockpitState.worktreeCwd was set to the
-      // effective locked cwd on render, so any different pick is a real switch.
+      // picker, so a different pick must clear the lock first. t-ccd6: one
+      // confirm does both — it names the lock, then unlocks and selects.
+      // cockpitState.worktreeCwd was set to the effective locked cwd on render,
+      // so any different pick is a real switch.
       if (cwd !== cockpitState.worktreeCwd) {
-        alert(`This ticket is locked to:\n\n  ${lock.cwd || 'a worktree'}\n\n`
-          + `The running/next session uses that directory and the worktree picker is `
-          + `ignored until you unlock. Click "Unlock worktree" to switch — it starts a `
-          + `fresh session in the worktree you pick next.`);
-        return;
+        if (!await appDialog({
+          title: `Switch this ticket to ${wtLabel}?`,
+          body: `This ticket is locked to:\n\n  ${labelOf(lock.cwd)} (${lock.cwd || 'a worktree'})\n\n`
+            + `Switching clears that lock and the saved session, so the next Start begins a fresh session in ${wtLabel} — it does not resume the current conversation there. `
+            + `A currently-running session keeps its directory until it ends.`
+            + (cwd !== '' ? `\n\n${risk}` : ''),
+          okLabel: 'Switch'
+        })) return;
+        const unlockErr = await unlockTicketWorktree(t.id);
+        if (unlockErr) { await appDialog({ title: 'Could not switch', body: unlockErr, okOnly: true }); return; }
+        cockpitState.worktreeCwd = null;
+        await renderCockpitWorktree(t);
       }
     } else if (cwd !== '') {
-      const risk = lock.main_dirty === true
-        ? 'The main checkout has uncommitted changes that will NOT carry over — a worktree only has committed history.'
-        : lock.main_dirty === false
-          ? 'A worktree only has this repo\'s committed history — any future uncommitted work in the main checkout will not be shared with it.'
-          : 'A worktree only has this repo\'s committed history — uncommitted work does not carry over between checkouts.';
-      if (!confirm(`${risk}\n\nThis also locks this ticket to that worktree for every future Resume. Continue?`)) return;
+      if (!await appDialog({ title: `Use ${wtLabel} for this ticket?`, body: `${risk}\n\nThis also locks this ticket to that worktree for every future Resume.`, okLabel: 'Continue' })) return;
     }
   }
   cockpitState.worktreeCwd = cwd;

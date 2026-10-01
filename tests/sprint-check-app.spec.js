@@ -3250,6 +3250,12 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
 test.describe('cockpit in board (t-ddc8)', () => {
   // Stub /api/cockpit so no real daemon is ever spawned — these tests exercise
   // the board's mode switch + rail + inline acceptance, not the PTY.
+  // t-ccd6: the board's own dialog replaces native alert/confirm in the worktree flow.
+  async function dialogText(page) {
+    const box = page.locator('#app-dialog.open');
+    await expect(box).toBeVisible();
+    return (await box.locator('.ck-leave-confirm-title').innerText()) + '\n' + (await box.locator('.ck-leave-confirm-body').innerText());
+  }
   async function stubCockpit(page) {
     await page.route('**/api/cockpit', route => route.fulfill({
       status: 200, contentType: 'application/json',
@@ -4968,8 +4974,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
         if (created) entries.push({ path: listPath, branch: 'feat/3e58', is_main: false, tickets_visible: true, ticket_present: true });
         return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(entries) });
       });
-      // create() confirms twice (a window.confirm to create); auto-accept.
-      page.on('dialog', d => d.accept());
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
@@ -4978,6 +4982,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       await page.locator('#ck-worktree-new-input').fill('feat/3e58');
       await page.locator('.ck-worktree-new-plus').click();
+      await page.locator('#app-dialog-ok').click();   // t-ccd6: the create confirm is the board's own dialog
 
       // The new row (rendered with the forward-slash data-cwd) must auto-select
       // despite the backslash create-response path — the whole point of t-3e58.
@@ -5530,9 +5535,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(unlockBtn).toContainText('feat/unlockme');
 
       // The confirm dialog names the branch too, and keeps the t-fe3c phrases.
-      let msg = '';
-      page.once('dialog', d => { msg = d.message(); d.dismiss(); });
       await unlockBtn.click();
+      const msg = await dialogText(page);
+      await page.locator('#app-dialog-cancel').click();
       expect(msg).toContain('feat/unlockme');
       expect(msg).toContain('locked to');
       expect(msg).toContain('fresh session');
@@ -5581,15 +5586,18 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.screenshot({ path: '/tmp/fe3c-light.png' });
 
       // Cancel the confirm → no request, button stays, lock intact.
-      page.once('dialog', d => d.dismiss());
       await unlockBtn.click();
+      await expect(page.locator('#app-dialog.open')).toBeVisible();
+      await page.locator('#app-dialog-cancel').click();
       expect(unlockPosts).toBe(0);
       await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
 
       // Confirm → the dialog explains (names the locked dir), posts unlock, and
       // the re-render (lock now false) removes the button.
-      page.once('dialog', d => { expect(d.message()).toContain('locked to'); expect(d.message()).toContain('fresh session'); d.accept(); });
       await page.locator('#ck-worktree-unlock').click();
+      const unlockMsg = await dialogText(page);
+      expect(unlockMsg).toContain('locked to'); expect(unlockMsg).toContain('fresh session');
+      await page.locator('#app-dialog-ok').click();
       await expect(page.locator('#ck-worktree-unlock')).toHaveCount(0);
       expect(unlockPosts).toBe(1);
     } finally {
@@ -5597,7 +5605,237 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('while locked, picking a different worktree is blocked and directs to Unlock (t-9203)', async ({ page }) => {
+  // t-ccd6: shared fixture — a ticket locked to feat-x with a second worktree feat-y.
+  async function openLockedRail(page, id, { mainDirty = true, branchX = 'feat-x', extraWorktrees = [], locked = true } = {}) {
+    const state = { unlocked: !locked, unlockPosts: 0, created: null };
+    const lockedCwd = '/tmp/wt-ccd6/feat-x', otherCwd = '/tmp/wt-ccd6/feat-y';
+    writeTicket(id, 'in_progress', {
+      acceptanceCriteria: ['- [ ] c'],
+      plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+    });
+    await stubCockpit(page);
+    await page.route('**/api/worktrees**', route => {
+      if (route.request().method() === 'POST') {
+        state.created = JSON.parse(route.request().postData());
+        return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, path: '/tmp/wt-ccd6/created' }) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
+        { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true },
+        { path: lockedCwd, branch: branchX, is_main: false, tickets_visible: true },
+        { path: otherCwd, branch: 'feat-y', is_main: false, tickets_visible: true },
+        ...(state.created ? [{ path: '/tmp/wt-ccd6/created', branch: state.created.branch, is_main: false, tickets_visible: true }] : []),
+        ...extraWorktrees,
+      ]) });
+    });
+    await page.route('**/api/worktree-lock/**', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(state.unlocked ? { locked: false, cwd: null, main_dirty: mainDirty } : { locked: true, cwd: lockedCwd, main_dirty: mainDirty }),
+    }));
+    await page.route('**/api/worktree-unlock/**', route => {
+      state.unlockPosts++; state.unlocked = true;
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, unlocked: true }) });
+    });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"] .card-start`).click();
+    await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    if (locked) await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
+    return { state, lockedCwd, otherCwd };
+  }
+
+  test('one-step switch: picking another worktree for a locked ticket asks once, then unlocks and selects it (t-ccd6)', async ({ page }) => {
+    const id = `t-ccd6a-${Date.now()}`;
+    const native = [];
+    page.on('dialog', d => { native.push(d.message()); d.dismiss(); });
+    try {
+      const { state, otherCwd } = await openLockedRail(page, id, { mainDirty: true });
+      await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+      const text = await dialogText(page);
+      expect(text).toContain('Switch this ticket to feat-y?');
+      expect(text).toContain('locked to');
+      expect(text).toContain('feat-x');
+      expect(text).toContain('fresh session');
+      expect(text).toContain('does not resume');
+      expect(text).toContain('running session keeps its directory');
+      expect(text).toContain('uncommitted changes that will NOT carry over');
+      // Cancel sends nothing and keeps the lock.
+      await page.locator('#app-dialog-cancel').click();
+      expect(state.unlockPosts).toBe(0);
+      await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
+      // OK: exactly one unlock, then the picked worktree is selected, with no second dialog.
+      await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+      await expect(page.locator('#app-dialog.open')).toBeVisible();
+      await page.locator('#app-dialog-ok').click();
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).toHaveClass(/selected/);
+      await expect(page.locator('#ck-worktree-note')).toContainText('Working in: feat-y');
+      await expect(page.locator('#app-dialog.open')).toHaveCount(0);
+      expect(state.unlockPosts).toBe(1);
+      expect(native).toEqual([]);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('an unlocked in-progress ticket gets one styled carry-over confirm before it is locked to a worktree (t-ccd6)', async ({ page }) => {
+    const id = `t-ccd6g-${Date.now()}`;
+    const native = [];
+    page.on('dialog', d => { native.push(d.message()); d.dismiss(); });
+    try {
+      const { state, otherCwd } = await openLockedRail(page, id, { locked: false, mainDirty: true });
+      await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+      const text = await dialogText(page);
+      expect(text).toContain('Use feat-y for this ticket?');
+      expect(text).toContain('uncommitted changes that will NOT carry over');
+      expect(text).toContain('locks this ticket to that worktree');
+      await page.locator('#app-dialog-cancel').click();
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).not.toHaveClass(/selected/);
+      await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+      await page.locator('#app-dialog-ok').click();
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).toHaveClass(/selected/);
+      expect(state.unlockPosts).toBe(0);
+      expect(native).toEqual([]);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('the switch dialog words the uncommitted-changes warning for every main_dirty value (t-ccd6)', async ({ page }) => {
+    const id = `t-ccd6b-${Date.now()}`;
+    try {
+      const wanted = { false: 'future uncommitted work in the main checkout will not be shared', null: 'uncommitted work does not carry over between checkouts' };
+      for (const dirty of [false, null]) {
+        const { otherCwd } = await openLockedRail(page, id, { mainDirty: dirty });
+        await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+        expect(await dialogText(page)).toContain(wanted[dirty]);
+        await page.locator('#app-dialog-cancel').click();
+        await page.unroute('**/api/worktrees**'); await page.unroute('**/api/worktree-lock/**'); await page.unroute('**/api/worktree-unlock/**'); await page.unroute('**/api/cockpit');
+      }
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('creating a worktree for a locked ticket ends in the switch dialog naming the new branch (t-ccd6)', async ({ page }) => {
+    const id = `t-ccd6c-${Date.now()}`;
+    const native = [];
+    page.on('dialog', d => { native.push(d.message()); d.dismiss(); });
+    try {
+      const { state } = await openLockedRail(page, id, { mainDirty: false });
+      await page.locator('#ck-worktree-new-input').fill('sprint/created-one');
+      await page.locator('.ck-worktree-new-plus').click();
+      expect(await dialogText(page)).toContain('Create a new git worktree for branch "sprint/created-one"');
+      await page.locator('#app-dialog-ok').click();
+      await expect.poll(() => state.created).toEqual({ branch: 'sprint/created-one' });
+      await expect.poll(async () => (await page.locator('#app-dialog-title').innerText())).toContain('Switch this ticket to sprint/created-one?');
+      expect(state.unlockPosts).toBe(0);
+      await page.locator('#app-dialog-ok').click();
+      await expect(page.locator('.ck-worktree-row[data-cwd="/tmp/wt-ccd6/created"]')).toHaveClass(/selected/);
+      await expect(page.locator('#app-dialog.open')).toHaveCount(0);
+      expect(state.unlockPosts).toBe(1);
+      expect(native).toEqual([]);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('a failed unlock shows a styled notice with the reason and changes nothing (t-ccd6)', async ({ page }) => {
+    const id = `t-ccd6d-${Date.now()}`;
+    const native = [];
+    page.on('dialog', d => { native.push(d.message()); d.dismiss(); });
+    try {
+      const { otherCwd } = await openLockedRail(page, id);
+      await page.unroute('**/api/worktree-unlock/**');
+      await page.route('**/api/worktree-unlock/**', route => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'disk is read-only' }) }));
+      await page.locator('#ck-worktree-unlock').click();
+      await page.locator('#app-dialog-ok').click();
+      expect(await dialogText(page)).toContain('Could not unlock');
+      expect(await dialogText(page)).toContain('disk is read-only');
+      await expect(page.locator('#app-dialog-cancel')).toBeHidden();
+      await page.locator('#app-dialog-ok').click();
+      await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
+      await page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`).click();
+      await page.locator('#app-dialog-ok').click();
+      expect(await dialogText(page)).toContain('Could not switch');
+      await page.locator('#app-dialog-ok').click();
+      await expect(page.locator(`.ck-worktree-row[data-cwd="${otherCwd}"]`)).not.toHaveClass(/selected/);
+      expect(native).toEqual([]);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('the dialog is inert for hostile names, keyboard-operable, and returns focus (t-ccd6)', async ({ page }) => {
+    const id = `t-ccd6e-${Date.now()}`;
+    const evil = '<img src=x onerror=window.__pwn=1> a"b';
+    try {
+      const { state, otherCwd } = await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/evil', branch: evil, is_main: false, tickets_visible: true }] });
+      await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-ccd6/evil"]').click();
+      const box = page.locator('#app-dialog.open');
+      expect(await dialogText(page)).toContain(`Switch this ticket to ${evil}?`);
+      await expect(box.locator('img')).toHaveCount(0);
+      expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+      expect(await page.locator('#app-dialog').getAttribute('role')).toBe('dialog');
+      expect(await page.locator('#app-dialog').getAttribute('aria-modal')).toBe('true');
+      await expect(page.locator('#app-dialog-ok')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#app-dialog.open')).toHaveCount(0);
+      expect(state.unlockPosts).toBe(0);
+      // Escape/Enter on the Unlock button's confirm; focus returns to the button.
+      const unlock = page.locator('#ck-worktree-unlock');
+      await unlock.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#app-dialog-ok')).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('#app-dialog-cancel')).toBeFocused();
+      await page.keyboard.press('Tab');
+      await expect(page.locator('#app-dialog-ok')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#app-dialog.open')).toHaveCount(0);
+      await expect(unlock).toBeFocused();
+      expect(state.unlockPosts).toBe(0);
+      await unlock.focus();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#app-dialog-ok')).toBeFocused();
+      expect(state.unlockPosts).toBe(0);    // the Enter that opened the dialog must not also confirm it
+      await page.keyboard.press('Enter');   // Enter on the focused OK button confirms
+      await expect.poll(() => state.unlockPosts).toBe(1);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('the dialog lies inside the viewport in both themes at desktop and phone width (t-ccd6)', async ({ page }) => {
+    const id = `t-ccd6f-${Date.now()}`;
+    try {
+      const longBranch = 'feature/' + 'a-very-long-branch-name-'.repeat(6);
+      const { otherCwd } = await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/long', branch: longBranch, is_main: false, tickets_visible: true }] });
+      for (const [w, h] of [[1280, 720], [360, 640], [360, 420]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-ccd6/long"]').click();
+        await expect(page.locator('#app-dialog.open')).toBeVisible();
+        for (const theme of ['dark', 'light']) {
+          await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+          for (const sel of ['#app-dialog .ck-leave-confirm', '#app-dialog-ok', '#app-dialog-cancel']) {
+            const b = await page.locator(sel).boundingBox();
+            expect(b, `${sel} ${w}x${h} ${theme}`).not.toBeNull();
+            expect(b.x, `${sel} left ${w} ${theme}`).toBeGreaterThanOrEqual(0);
+            expect(b.y, `${sel} top ${h} ${theme}`).toBeGreaterThanOrEqual(0);
+            expect(b.x + b.width, `${sel} right ${w} ${theme}`).toBeLessThanOrEqual(w);
+            expect(b.y + b.height, `${sel} bottom ${h} ${theme}`).toBeLessThanOrEqual(h);
+          }
+          await page.screenshot({ path: `/private/tmp/ccd6-${w}-${theme}.png` });
+        }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        await page.locator('#app-dialog-cancel').click();
+      }
+      void otherCwd;
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('while locked, picking a different worktree asks to switch and Cancel keeps the lock (t-9203, t-ccd6)', async ({ page }) => {
     const id = `t-ck92-${Date.now()}`;
     const lockedCwd = '/tmp/wt-9203/feat-x';
     try {
@@ -5626,14 +5864,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await expect(page.locator('#ck-worktree-unlock')).toBeVisible(); // locked → Unlock present
 
-      // Clicking the Main row (data-cwd="") while locked must be BLOCKED with an
-      // alert directing to Unlock — not silently switch (the wrong-tree danger).
-      // The alert fires after an async lock fetch, so wait for the dialog event.
-      const dialogPromise = page.waitForEvent('dialog');
+      // Clicking the Main row (data-cwd="") while locked must ask first — never
+      // silently switch (the wrong-tree danger). The dialog appears after an
+      // async lock fetch; Cancel leaves the lock and the selection alone.
       await page.locator('.ck-worktree-row[data-cwd=""]').click();
-      const dialog = await dialogPromise;
-      expect(dialog.message()).toContain('Unlock worktree');
-      await dialog.accept();
+      const switchMsg = await dialogText(page);
+      expect(switchMsg).toContain('Switch this ticket to the Main checkout?');
+      expect(switchMsg).toContain('fresh session');
+      await page.locator('#app-dialog-cancel').click();
       // The Main row must NOT become the selection — the effective cwd stays the lock.
       await expect(page.locator('.ck-worktree-row[data-cwd=""]')).not.toHaveClass(/selected/);
     } finally {
@@ -5688,8 +5926,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-worktree-unlock')).toBeVisible();
 
       // Unlock → re-render clears the lock; nothing is selected yet.
-      page.once('dialog', d => d.accept());
       await page.locator('#ck-worktree-unlock').click();
+      await page.locator('#app-dialog-ok').click();
       await expect(page.locator('#ck-worktree-unlock')).toHaveCount(0);
       await expect(page.locator('#ck-iframe')).toHaveCSS('visibility', 'hidden');
 
@@ -5881,15 +6119,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ck-term-msg')).toContainText('You chose "sprint/wt-15ee" when creating this ticket');
 
       // Dismissing the confirm creates nothing.
-      let dialogText = '';
-      page.once('dialog', d => { dialogText = d.message(); d.dismiss(); });
       await page.locator('.ck-worktree-new-plus').click();
-      await expect.poll(() => dialogText).toContain('Create a new git worktree for branch "sprint/wt-15ee"');
+      expect(await dialogText(page)).toContain('Create a new git worktree for branch "sprint/wt-15ee"');
+      await page.locator('#app-dialog-cancel').click();
       expect(posts).toHaveLength(0);
 
       // Accepting it creates exactly that worktree.
-      page.once('dialog', d => d.accept());
       await page.locator('.ck-worktree-new-plus').click();
+      await page.locator('#app-dialog-ok').click();
       await expect.poll(() => posts.length).toBe(1);
       expect(JSON.parse(posts[0])).toEqual({ branch: 'sprint/wt-15ee' });
     } finally {
@@ -5973,15 +6210,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
 
       // Dismissing the confirm creates nothing.
-      let dialogText = '';
-      page.once('dialog', d => { dialogText = d.message(); d.dismiss(); });
       await plus.click();
-      await expect.poll(() => dialogText).toContain(`Create a new git worktree for branch "sprint/${id}"`);
+      expect(await dialogText(page)).toContain(`Create a new git worktree for branch "sprint/${id}"`);
+      await page.locator('#app-dialog-cancel').click();
       expect(posts).toHaveLength(0);
 
       // Enter follows the same rule as the click: confirm, then exactly one POST.
-      page.once('dialog', d => d.accept());
       await input.press('Enter');
+      await page.locator('#app-dialog-ok').click();
       await expect.poll(() => posts.length).toBe(1);
       expect(JSON.parse(posts[0])).toEqual({ branch: `sprint/${id}` });
     } finally {
@@ -6026,13 +6262,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await input.fill('sprint/taken');
       await expect(plus).toBeDisabled();
       await input.press('Enter');
+      expect(await dialogText(page)).toContain('"sprint/taken" already has a worktree');
+      await page.locator('#app-dialog-ok').click();
       // Too short.
       await input.fill('abc');
       await expect(plus).toBeDisabled();
       await input.press('Enter');
       await page.waitForTimeout(300);
       expect(posts).toHaveLength(0);
-      expect(dialogs).toBe(1); // only the existing-branch alert; no create confirm ever opened
+      expect(dialogs).toBe(0); // t-ccd6: never a native dialog
+      await expect(page.locator('#app-dialog.open')).toHaveCount(0);   // and no create confirm ever opened
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -6240,10 +6479,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openRailWithPlan(page, id, d254Plan(id, { required: [], recommended: [], message: '' }), log);
       await expect(page.locator('.ck-worktree-new-plus')).toBeEnabled();
       await expect(page.locator('#ck-worktree-uncommitted')).toHaveCount(0);
-      let dialogText = '';
-      page.once('dialog', d => { dialogText = d.message(); d.dismiss(); });
       await page.locator('.ck-worktree-new-plus').click();
-      await expect.poll(() => dialogText).toContain('Create a new git worktree for branch');
+      expect(await dialogText(page)).toContain('Create a new git worktree for branch');
+      await page.locator('#app-dialog-cancel').click();
       await expect(page.locator('#ck-tcommit')).not.toHaveClass(/open/);
       expect(log).toHaveLength(0);
     } finally {
@@ -6310,10 +6548,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const input = page.locator('#ck-worktree-new-input');
       await input.fill('sprint/bnd');
       await expect(page.locator('.ck-worktree-new-plus')).toBeDisabled();
-      let alertText = '';
-      page.once('dialog', d => { alertText = d.message(); d.dismiss(); });
       await input.press('Enter');
-      await expect.poll(() => alertText).toContain('"sprint/bnd" is in use by t-bnd1 (in progress)');
+      expect(await dialogText(page)).toContain('"sprint/bnd" is in use by t-bnd1 (in progress)');
+      await page.locator('#app-dialog-ok').click();
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
