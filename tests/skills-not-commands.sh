@@ -4,6 +4,10 @@
 # `skill-export <name>`) teaches agents to type a command that does not exist ("command not found"), and the
 # step it carried silently never runs. Slash forms (`/doc-audit`) and bare mentions of a skill name stay fine.
 #
+# Limits (deliberate, kept simple): only a backticked span closed on the same line is seen; the argument shapes
+# are <x>, --flag, a ticket id, $var and [x]; only *.md files are scanned. A skill named like a common word
+# (capture, mikado) fails on prose such as `capture t-ab12`: reword it or use the slash form.
+#
 # Skill names come from skills/*/SKILL.md; a name that is also an executable in tools/ (sprint) is a real
 # command and is skipped. Derived from the tree, so a skill added later is covered without editing this file.
 
