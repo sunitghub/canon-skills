@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-01-2026 05:45
+learnings-sweep last run: 10-01-2026 09:31
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-01 | [t-afe2](.tickets/t-afe2/learnings.md) | A hand-blurred screenshot shipped to the public repo with a private project tab still readable, and the guard added to stop that name returning spelled the name itself, so a repo search still found it — audit every image before publishing, and build a banned string from parts so its own guard stays clean. | UNPROMOTED |
 | 2026-10-01 | [t-4a1b](.tickets/t-4a1b/learnings.md) | Public site copy drifted from the code in three places (a ticket stat not reproducible from the repo, demo terminal lines unlike what the tools print, "no servers to run" while a daemon runs) — verify each public claim against code or date it; and a CSS dedupe that moved a rule past its media query was caught only because a 400px no-sideways-scroll test existed. | UNPROMOTED |
 | 2026-09-30 | [t-626a](.tickets/t-626a/learnings.md) | A docs sync added the `t-5a4b` no-git passage beyond its plan (it corrected a stale "agents can't run without git" line) and repeated the git-icon tooltip text in README and `docs/sprint-check.md`, so the two copies can drift — pick one owner and link. | UNPROMOTED |
 | 2026-09-30 | [t-8d72](.tickets/t-8d72/learnings.md) | Playwright treats `aria-disabled="true"` as not enabled and refuses a normal click, so a test that proves "clicking does nothing" needs `click({ force: true })`; and plain `npm run test:ui` starts no server, use `tests/sprint-check-go-ui.sh` | UNPROMOTED |
