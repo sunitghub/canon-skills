@@ -626,10 +626,12 @@ Opus` default, scoped only to the two close-gate dispatches below.
    is a candidate durable, does it generalize — still belongs solely to the later non-builder
    reader (`promote-learnings`), never to this sprint's own agent.
 
-   If `tkt learn <id>` confirms/writes `.tickets/<id>/learnings.md`, follow it immediately with
-   `learnings-sweep <id>` (single-ticket mode — see `skills/learnings-sweep/SKILL.md`): it upserts
-   that one row into root `LEARNINGS.md` so the pending queue stays current without a repo-wide
-   scan. This is pure aggregation, not promotion — it never changes a row's `Status` away from
+   If `tkt learn <id>` confirms/writes `.tickets/<id>/learnings.md`, follow it immediately by
+   running the `learnings-sweep` skill in single-ticket mode for that ticket id (the Skill tool in
+   Claude Code; in other harnesses read `skills/learnings-sweep/SKILL.md` and do its single-ticket
+   steps). It is a skill, not a shell command — typing it in a shell fails with "command not
+   found". It upserts that one row into root `LEARNINGS.md` so the pending queue stays current
+   without a repo-wide scan. This is pure aggregation, not promotion — it never changes a row's `Status` away from
    `UNPROMOTED`, so it does not violate the non-self-promote rule above. This `learnings-sweep`
    call was already yours to make before this ticket — the pre-existing text already had you
    follow the user's own `tkt learn` run with it; that mechanics is unchanged. What moved is only

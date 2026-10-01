@@ -34,10 +34,13 @@ something to choose from.
 
 ## When to use
 
-- **Single-ticket** (`learnings-sweep <id>`) — called from `skills/sprint/reference/complete.md`
-  step 8, right after `tkt learn <id>` confirms/writes `.tickets/<id>/learnings.md`. Also runnable
+This is a skill, not a shell command: invoke it through the Skill tool (Claude Code), or read this file
+and follow its steps (other harnesses). There is no `learnings-sweep` executable on PATH.
+
+- **Single-ticket** (the skill with a ticket id) — run from `skills/sprint/reference/complete.md`
+  step 8, right after `tkt learn <id>` confirms/writes `.tickets/<id>/learnings.md`. Also usable
   by hand to re-sync one ticket's row after manually editing its `learnings.md`.
-- **`--full`** (`learnings-sweep --full`) — manual only, never auto-called. Backfills
+- **Full** (the skill with the argument `--full`) — manual only, never auto-called. Backfills
   `LEARNINGS.md` from scratch, or reconciles drift (a `learnings.md` created outside `sprint
   complete`, or the root file hand-edited).
 

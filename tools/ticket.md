@@ -32,8 +32,9 @@ tkt learn <id> [--force]      # distill a closed sprint's deviations/findings in
 
 After `tkt learn <id>` writes a candidate, the `learnings-sweep` skill (not a `tkt` subcommand —
 see `skills/learnings-sweep/SKILL.md`) upserts one row into root `LEARNINGS.md`, an always-current
-index across tickets. `sprint complete` calls it automatically in single-ticket mode; run
-`learnings-sweep --full` by hand to backfill or reconcile the whole repo.
+index across tickets. The sprint close protocol has the agent run it in single-ticket mode (the
+`sprint complete` CLI does not call it); run the skill in its `--full` mode by hand to backfill or
+reconcile the whole repo.
 
 ## Sprint Artifacts
 

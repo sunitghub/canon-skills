@@ -35,7 +35,7 @@ evaluator findings still writes nothing.
 
 ## 3. Close: `learnings-sweep` adds one row to `LEARNINGS.md`
 
-Right after `tkt learn`, the protocol tells the agent to run `learnings-sweep t-6328` (single-ticket mode).
+Right after `tkt learn`, the protocol tells the agent to run the `learnings-sweep` skill for `t-6328` (single-ticket mode; a skill, not a shell command).
 It upserts one row into the root `LEARNINGS.md` index — newest first, status `UNPROMOTED`, linked back to the
 source file.
 
