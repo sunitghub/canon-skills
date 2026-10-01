@@ -9,7 +9,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Canon Cockpit</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c6af7'/%3E%3Cpath d='M16 7l9 9-9 9-9-9z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%20-19%20100%20100%22%20fill%3D%22%237c6af7%22%20color%3D%22%237c6af7%22%3E%3Cdefs%3E%3Cmask%20id%3D%22cuts%22%20maskUnits%3D%22userSpaceOnUse%22%20x%3D%220%22%20y%3D%220%22%20width%3D%22100%22%20height%3D%2262%22%3E%3Crect%20width%3D%22100%22%20height%3D%2262%22%20fill%3D%22%23fff%22/%3E%3Ccircle%20cx%3D%2245.1%22%20cy%3D%2241.2%22%20r%3D%2221.5%22%20fill%3D%22%23000%22/%3E%3C/mask%3E%3C/defs%3E%3Cg%20transform%3D%22translate%28100%200%29%20scale%28-1%201%29%22%3E%3Cg%20fill%3D%22currentColor%22%20mask%3D%22url%28%23cuts%29%22%3E%3Cpath%20d%3D%22M95.1%200.4%20L100%2017.6%20L55%2032%20L38%2038.5%20L21%2040.5%20C14%2041%209.5%2037%208.6%2031%20C8%2024%2011%2017.5%2017.5%2014.6%20C22.5%2012.3%2028%2011.8%2033.3%2011.4%20Z%22/%3E%0A%3Cpath%20d%3D%22M3.4%2033.8%20L9.6%2032.6%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222.4%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22/%3E%0A%3Ccircle%20cx%3D%223.3%22%20cy%3D%2233.8%22%20r%3D%223.2%22/%3E%0A%3Cpath%20d%3D%22M23.5%2040%20C23.8%2046.5%2019.5%2050.5%2013.5%2053.2%20C10.5%2054.5%208.5%2055.3%206.3%2056%22%20stroke%3D%22currentColor%22%20stroke-width%3D%225.2%22%20stroke-linecap%3D%22round%22%20fill%3D%22none%22/%3E%0A%3Ccircle%20cx%3D%225.9%22%20cy%3D%2256%22%20r%3D%223.2%22/%3E%3C/g%3E%3Ccircle%20cx%3D%2245.1%22%20cy%3D%2241.2%22%20r%3D%2217.2%22%20fill%3D%22none%22%20stroke%3D%22currentColor%22%20stroke-width%3D%223.6%22/%3E%0A%3Cpath%20d%3D%22M45.1%2025.200000000000003%20V57.2%20M29.1%2041.2%20H61.1%22%20stroke%3D%22currentColor%22%20stroke-width%3D%222%22%20fill%3D%22none%22/%3E%0A%3Ccircle%20cx%3D%2245.1%22%20cy%3D%2241.2%22%20r%3D%223.6%22/%3E%3C/g%3E%3C/svg%3E">
 <style>
   html[data-theme="dark"]{--bg:#1b2330;--panel:#232d3c;--border:#313d50;--border-hover:#3f4d63;--border-muted:#2a3547;--text:#e6ebf2;--text-body:#a7b0c0;--text-muted:#97a1b4;--text-dim:#4a566b;--accent:#7c6af7;--accent-dim:rgba(124,106,247,0.14);--col-done:#4ade80;--col-progress:#60a5fa;--col-discarded:#f87171;--amber:#fbbf24;--card-stat:#c7bfff;--scrim:rgba(0,0,0,.6)}
   html[data-theme="light"]{--bg:#f2f2f7;--panel:#fff;--border:#dcdce8;--border-hover:#c0c0d4;--border-muted:#e8e8f2;--text:#1a1a2e;--text-body:#424269;--text-muted:#52527a;--text-dim:#b8b8d0;--accent:#6c5cf7;--accent-dim:rgba(108,92,247,0.10);--col-done:#16a34a;--col-progress:#2563eb;--col-discarded:#dc2626;--amber:#b45309;--card-stat:#5a3ff0;--scrim:rgba(20,20,40,.35)}
@@ -35,8 +35,8 @@
   .side-resize:hover::after,.side-resize.drag::after,.side-resize:focus-visible::after{background:var(--accent)}
   body.resizing{cursor:col-resize;user-select:none}
   body.resizing iframe{pointer-events:none}
-  .brand{display:flex;align-items:center;gap:9px;height:var(--strip-h);padding:var(--strip-pad) 18px 0;margin-bottom:6px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px}
-  .brand .logo{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,var(--accent),var(--col-done));display:grid;place-items:center;color:#fff;font-size:14px}
+  .brand{display:flex;align-items:center;gap:9px;white-space:nowrap;height:var(--strip-h);padding:var(--strip-pad) 18px 0;margin-bottom:6px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px}
+  .brand .logo{width:30px;height:19px;flex:none;color:var(--accent)}
   .brand small{font-weight:500;color:var(--text-dim);font-size:10px;margin-left:auto}
   .projbar{display:flex;align-items:center;gap:14px;padding:2px 0 16px}
   .projbar h2{font-size:20px;font-weight:700;letter-spacing:-.2px}
@@ -530,7 +530,13 @@
 <div class="app">
   <div class="below">
     <aside class="side">
-      <div class="brand"><span class="logo">&#9670;</span> Canon Cockpit <small id="ver"></small></div>
+      <div class="brand"><svg class="logo" viewBox="0 0 100 62" fill="currentColor" aria-hidden="true"><defs><mask id="cockpitcut" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="62"><rect width="100" height="62" fill="#fff"/><circle cx="45.1" cy="41.2" r="21.5" fill="#000"/></mask></defs><g transform="translate(100 0) scale(-1 1)"><g fill="currentColor" mask="url(#cockpitcut)"><path d="M95.1 0.4 L100 17.6 L55 32 L38 38.5 L21 40.5 C14 41 9.5 37 8.6 31 C8 24 11 17.5 17.5 14.6 C22.5 12.3 28 11.8 33.3 11.4 Z"/>
+<path d="M3.4 33.8 L9.6 32.6" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+<circle cx="3.3" cy="33.8" r="3.2"/>
+<path d="M23.5 40 C23.8 46.5 19.5 50.5 13.5 53.2 C10.5 54.5 8.5 55.3 6.3 56" stroke="currentColor" stroke-width="5.2" stroke-linecap="round" fill="none"/>
+<circle cx="5.9" cy="56" r="3.2"/></g><circle cx="45.1" cy="41.2" r="17.2" fill="none" stroke="currentColor" stroke-width="3.6"/>
+<path d="M45.1 25.200000000000003 V57.2 M29.1 41.2 H61.1" stroke="currentColor" stroke-width="2" fill="none"/>
+<circle cx="45.1" cy="41.2" r="3.6"/></g></svg> Canon Cockpit <small id="ver"></small></div>
       <div class="navlabel">Workspace</div>
       <nav class="nav">
         <a id="nav-projects" class="active" onclick="showView('projects')"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
