@@ -6612,10 +6612,6 @@ async function renderCockpitState(t) {
   box.innerHTML = worktreeLine + stateHtml + nextHtml;
 }
 
-// t-cd06: shared by every /api/worktree-lock caller below (init-selection,
-// the switch-worktree confirm, and the Status line) — one fetch shape, one
-// fail-safe default, so a request failure never silently degrades to
-// "treat as unlocked" in one caller and "skip the check" in another.
 // t-ccd6: promise-returning confirm/notice in the board's own style. okOnly = a
 // notice (resolves true on OK, false on Escape). Escape cancels, Enter confirms
 // (a focused button handles its own Enter), focus returns to the opener.
@@ -6671,6 +6667,10 @@ async function unlockTicketWorktree(ticketId) {
   } catch (err) { return String(err); }
 }
 
+// t-cd06: shared by every /api/worktree-lock caller below (init-selection,
+// the switch-worktree confirm, and the Status line) — one fetch shape, one
+// fail-safe default, so a request failure never silently degrades to
+// "treat as unlocked" in one caller and "skip the check" in another.
 async function fetchWorktreeLock(ticketId) {
   try {
     const r = await fetch(`/api/worktree-lock/${encodeURIComponent(ticketId)}`);
@@ -7105,7 +7105,7 @@ async function selectCockpitWorktree(t, cwd) {
     // on any error, so a fetch failure still warns rather than silently
     // skipping the confirm at exactly the moment it can't be verified.
     const lock = await fetchWorktreeLock(t.id);
-    const labelOf = cockpitState.worktreeLabel || (c => String(c || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop() || 'a worktree');
+    const labelOf = cockpitState.worktreeLabel;
     const wtLabel = cwd === '' ? 'the Main checkout' : labelOf(cwd);
     const risk = lock.main_dirty === true
       ? 'The main checkout has uncommitted changes that will NOT carry over — a worktree only has committed history.'
@@ -7121,7 +7121,7 @@ async function selectCockpitWorktree(t, cwd) {
       if (cwd !== cockpitState.worktreeCwd) {
         if (!await appDialog({
           title: `Switch this ticket to ${wtLabel}?`,
-          body: `This ticket is locked to:\n\n  ${labelOf(lock.cwd)} (${lock.cwd || 'a worktree'})\n\n`
+          body: `This ticket is locked to:\n\n  ${lock.cwd ? `${labelOf(lock.cwd)} (${lock.cwd})` : 'a worktree'}\n\n`
             + `Switching clears that lock and the saved session, so the next Start begins a fresh session in ${wtLabel} — it does not resume the current conversation there. `
             + `A currently-running session keeps its directory until it ends.`
             + (cwd !== '' ? `\n\n${risk}` : ''),

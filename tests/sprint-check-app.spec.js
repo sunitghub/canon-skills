@@ -5809,7 +5809,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const id = `t-ccd6f-${Date.now()}`;
     try {
       const longBranch = 'feature/' + 'a-very-long-branch-name-'.repeat(6);
-      const { otherCwd } = await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/long', branch: longBranch, is_main: false, tickets_visible: true }] });
+      await openLockedRail(page, id, { extraWorktrees: [{ path: '/tmp/wt-ccd6/long', branch: longBranch, is_main: false, tickets_visible: true }] });
       for (const [w, h] of [[1280, 720], [360, 640], [360, 420]]) {
         await page.setViewportSize({ width: w, height: h });
         await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-ccd6/long"]').click();
@@ -5824,12 +5824,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
             expect(b.x + b.width, `${sel} right ${w} ${theme}`).toBeLessThanOrEqual(w);
             expect(b.y + b.height, `${sel} bottom ${h} ${theme}`).toBeLessThanOrEqual(h);
           }
-          await page.screenshot({ path: `/private/tmp/ccd6-${w}-${theme}.png` });
         }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
         await page.locator('#app-dialog-cancel').click();
       }
-      void otherCwd;
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
