@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-01-2026 14:24
+learnings-sweep last run: 10-01-2026 15:05
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-01 | [t-31a8](.tickets/t-31a8/learnings.md) | A guard that only checks a share tag is non-empty lets it drift from the page text it duplicates; tie og:title and og:description to the page's own title and description. | UNPROMOTED |
 | 2026-10-01 | [t-0124](.tickets/t-0124/learnings.md) | A guard that moves to another repo must not map every HTTP error to "path missing" (a 403 or rate limit made later pages fail by order) and must print a visible skip when its sibling input is absent, or it looks like a pass. | UNPROMOTED |
 | 2026-10-01 | [t-3fa3](.tickets/t-3fa3/learnings.md) | The icon-drift guard compares only `d="…"` path data, so a changed circle radius or stroke in an inlined cannon is not caught; widen it if the mark gains circle detail. | UNPROMOTED |
 | 2026-10-01 | [t-ccd6](.tickets/t-ccd6/learnings.md) | A dialog opened from an Enter keydown that focuses its OK button synchronously gets that same keypress delivered to the button and confirms itself: defer the focus past the key event, and add a test that opens it by keyboard; also a "no native dialog" guard must live in a shared beforeEach/afterEach, not be copied into some tests, or a reverted notice survives | UNPROMOTED |
