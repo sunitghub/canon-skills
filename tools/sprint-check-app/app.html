@@ -1475,27 +1475,30 @@
     .ck-topbar {
       display: flex; align-items: center; gap: 12px; padding: 8px 14px;
       background: var(--surface); border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
+      flex-shrink: 0; min-width: 0;
     }
-    .ck-topbar .spacer { flex: 1; }
+    .ck-topbar .spacer { flex: 1; min-width: 0; }
     .ck-back {
       display: flex; align-items: center; gap: 7px;
       background: var(--surface-raised); color: var(--text); border: 1px solid var(--border);
       border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
       transition: background .15s, border-color .15s, box-shadow .15s, transform .15s;
+      white-space: nowrap; flex: none;   /* t-b91f: never wrap or shrink */
     }
     .ck-back-icon { display: flex; flex-shrink: 0; border-radius: 4px; overflow: hidden; }
     .ck-back:hover {
       background: var(--surface-hover); border-color: var(--accent);
       box-shadow: 0 0 0 2px var(--accent-dim); transform: translateY(-1px);
     }
-    .ck-id { font-family: var(--mono, monospace); font-size: 12px; color: var(--text-muted); }
+    .ck-id { font-family: var(--mono, monospace); font-size: 12px; color: var(--text-muted); white-space: nowrap; flex: none; }   /* t-b91f */
     .ck-title { font-size: 14px; font-weight: 600; color: var(--text);
       max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .ck-model {
       font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted);
       background: var(--surface-raised); border: 1px solid var(--border);
       border-radius: 6px; padding: 3px 8px;
+      /* t-b91f: the long text gives way (ellipsis) so End Session is never pushed off screen */
+      white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
     }
     /* Always in the topbar (not the collapsible rail) so it's visible even
        rail-collapsed — t-2e7e's grill required this be unmissable. */
@@ -1513,7 +1516,7 @@
     .ck-state-chip.st-done { --st: var(--st-done); }
     .ck-state-chip.st-idle::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--st-idle); }
     .ck-state-chip.st-needs-you { background: var(--st-need); border-color: var(--st-need); color: var(--st-ink); animation: pulse 1.4s ease-in-out infinite; }
-    .ck-reaper { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; }
+    .ck-reaper { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* t-b91f */
     /* t-47f1: a scratch session has no ticket docs — the rail shows only a label */
     #cockpit.scratch-mode .ck-accordion-section { display: none; }
     .ck-scratch-note { display: none; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-hover); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
@@ -1535,7 +1538,7 @@
        session is open), same renderTabStrip() call filling both containers. */
     .ck-tab-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
     .ck-tab-strip:empty { display: none; }
-    .ck-tab-strip-topbar { flex: 0 1 auto; margin: 0; overflow: hidden; }
+    .ck-tab-strip-topbar { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; margin: 0; overflow: hidden; }   /* t-b91f: one row, shrinks before the controls */
     .ck-tab-pill {
       display: flex; align-items: center; gap: 6px;
       background: var(--surface-raised); border: 1px solid var(--border); border-radius: 999px;
@@ -1558,6 +1561,7 @@
     .ck-end-session {
       background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border);
       border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+      white-space: nowrap; flex: none;   /* t-b91f: always visible */
     }
     .ck-end-session:hover { color: var(--text); border-color: var(--accent); }
     .ck-body { flex: 1; min-height: 0; display: flex; }
@@ -4030,6 +4034,7 @@ function editScratchTitle() {
     }
     document.getElementById('ck-tc-title').textContent = t.title;
     document.getElementById('ck-title').textContent = t.title;
+    document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it
   };
   // Esc/Enter belong to this field — not the board's own Escape (which closes the cockpit).
   input.addEventListener('keydown', e => {
@@ -6194,6 +6199,7 @@ async function renderCockpitRail(t) {
   document.getElementById('cockpit').classList.toggle('scratch-mode', !!t.scratch);
   document.getElementById('ck-id').textContent = displayTicketId(t);
   document.getElementById('ck-title').textContent = t.title || '';
+  document.getElementById('ck-title').title = t.title || '';   // t-b91f: the full title when the bar truncates it
   document.getElementById('ck-tc-id').textContent = displayTicketId(t);
   document.getElementById('ck-tc-title').textContent = t.title || '';
   renderCockpitStatusBadge(t);

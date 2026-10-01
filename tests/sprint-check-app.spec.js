@@ -5605,6 +5605,103 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  // t-b91f: the session top bar must never wrap a control or push one past the window edge, even with the
+  // rail collapsed (which shows id/status/title too) and the worst-case right-hand content. Asserted from
+  // measured boxes, not from a screenshot (the t-26f9 lesson).
+  test.describe('cockpit top bar fits (t-b91f)', () => {
+    const LONG = 'Read the Anthropic API key from the environment only and refuse to start when it is missing or malformed ' + 'x'.repeat(40);
+    async function openBar(page, id, { collapse }) {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] c'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low', '', '- [x] Plan approved', '', '## Approach', 'x', ''],
+      });
+      const tf = path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md');
+      fs.writeFileSync(tf, fs.readFileSync(tf, 'utf8').replace(/^# .*$/m, `# ${LONG}`));
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      if (collapse) await page.locator('#ck-rail-toggle').click();
+      // Worst case for the right-hand side: a state chip, the auto-save text, a second tab chip, a long model.
+      await page.evaluate(() => {
+        const chip = document.getElementById('ck-state-chip'); chip.className = 'ck-state-chip st-working'; chip.textContent = 'working'; chip.hidden = false;
+        const r = document.getElementById('ck-reaper'); r.textContent = 'Auto-save & end in 30m \u00b7 resets on activity'; r.hidden = false;
+        const ts = document.getElementById('ck-tab-strip-topbar'); ts.hidden = false;
+        ts.innerHTML = ['t-a319', 't-b91f', 't-ccd6', 't-07a8'].map(n => `<span class="ck-tab-pill"><span class="ck-tab-pill-id">${n}</span><button class="ck-tab-pill-close" type="button">\u00d7</button></span>`).join('');   // the real pill markup (renderTabStrip)
+        document.getElementById('ck-model').textContent = 'model: claude-sonnet-5 (Admin Review & Eval default)';
+      });
+    }
+    const CONTROLS = ['#ck-back', '#ck-id', '#ck-status', '#ck-title', '#ck-tab-strip-topbar', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-model'];
+    const ONE_LINE = { '#ck-back': 42, '#ck-id': 22, '#ck-status': 22, '#ck-state-chip': 28, '#ck-end-session': 36, '#ck-tab-strip-topbar': 32 };
+
+    test('collapsed rail: every control lies inside the bar and the window, nothing wraps (t-b91f)', async ({ page }) => {
+      const id = `t-b91fa-${Date.now()}`;
+      try {
+        await openBar(page, id, { collapse: true });
+        for (const w of [1280, 1024, 900]) {
+          await page.setViewportSize({ width: w, height: 720 });
+          for (const theme of ['dark', 'light']) {
+            await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+            const bar = await page.locator('.ck-topbar').boundingBox();
+            expect(bar.x + bar.width, `bar right ${w}`).toBeLessThanOrEqual(w + 0.5);
+            for (const sel of CONTROLS) {
+              const loc = page.locator(sel);
+              await expect(loc, `${sel} visible at ${w}`).toBeVisible();
+              const b = await loc.boundingBox();
+              const tag = `${sel} ${w} ${theme}`;
+              expect(b.x, `${tag} left`).toBeGreaterThanOrEqual(bar.x - 0.5);
+              expect(b.x + b.width, `${tag} right (bar ${bar.x + bar.width}, window ${w})`).toBeLessThanOrEqual(Math.min(bar.x + bar.width, w) + 0.5);
+              if (ONE_LINE[sel]) expect(b.height, `${tag} wrapped (height ${b.height})`).toBeLessThanOrEqual(ONE_LINE[sel]);
+            }
+            const tw = (await page.locator('#ck-title').boundingBox()).width;
+            expect(tw, `the title is squeezed to nothing at ${w}`).toBeGreaterThanOrEqual(60);
+            expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `page scrolls sideways at ${w}`).toBe(true);
+          }
+        }
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('long text gives way with an ellipsis, the title keeps a tooltip, End Session is reachable (t-b91f)', async ({ page }) => {
+      const id = `t-b91fb-${Date.now()}`;
+      try {
+        await openBar(page, id, { collapse: true });
+        await page.setViewportSize({ width: 900, height: 720 });
+        for (const sel of ['#ck-title', '#ck-reaper', '#ck-model']) {
+          const css = await page.locator(sel).evaluate(el => { const c = getComputedStyle(el); return { o: c.overflow, t: c.textOverflow, w: c.whiteSpace }; });
+          expect(css, sel).toMatchObject({ o: 'hidden', t: 'ellipsis', w: 'nowrap' });
+        }
+        expect(await page.locator('#ck-title').getAttribute('title')).toBe(LONG);
+        // A trial click checks the button is visible, stable and not covered by anything, without pressing it
+        // (pressing it with no live session closes the cockpit).
+        await page.locator('#ck-end-session').click({ trial: true });
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('expanded rail: id, status and title stay hidden and the rest still fits (t-b91f)', async ({ page }) => {
+      const id = `t-b91fc-${Date.now()}`;
+      try {
+        await openBar(page, id, { collapse: false });
+        for (const w of [1280, 900]) {
+          await page.setViewportSize({ width: w, height: 720 });
+          for (const sel of ['#ck-id', '#ck-status', '#ck-title']) await expect(page.locator(sel), `${sel} hidden at ${w}`).toBeHidden();
+          for (const sel of ['#ck-back', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-model']) {
+            const b = await page.locator(sel).boundingBox();
+            expect(b.x + b.width, `${sel} right at ${w}`).toBeLessThanOrEqual(w + 0.5);
+            if (ONE_LINE[sel]) expect(b.height, `${sel} wrapped at ${w}`).toBeLessThanOrEqual(ONE_LINE[sel]);
+          }
+        }
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+  });
+
   // t-ccd6: every test in this group fails if ANY native alert/confirm/prompt appears.
   test.describe('worktree flow without native dialogs (t-ccd6)', () => {
     let native = [];
