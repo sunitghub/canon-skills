@@ -40,7 +40,7 @@
 </header>
 
 <main>
-<section class="cmp-hero" style="border-bottom:1px solid var(--line)">
+<section class="cmp-hero">
   <div class="wrap">
     <div class="eyebrow">Learnings</div>
     <h1>Lessons that <em>earn</em> their place in your next session.</h1>
@@ -50,7 +50,7 @@
 
 <section class="block">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">How a finding becomes a rule</div>
       <h2>Capture automatically. Promote deliberately.</h2>
       <p class="lead">The first three steps run every time a sprint closes. Nothing becomes a standing rule until a fresh reader recommends it and you agree.</p>
@@ -61,7 +61,7 @@
 
 <section class="block">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">A real ticket, end to end</div>
       <h2>One missed quote mark became a rule.</h2>
       <p class="lead">Ticket <code>t-6328</code> added a board label for branches that diverge. Everything below is quoted from its ticket files.</p>
@@ -78,14 +78,14 @@
 
 <section class="block">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">Where a lesson goes</div>
       <h2>The narrowest home that is read at the right moment.</h2>
       <p class="lead">A rule that is always loaded costs tokens on every turn. Ask when a future session would make the mistake, then pick the smallest place read at that point.</p>
     </div>
     <div class="matrix-wrap" tabindex="0" aria-label="Destinations table, scrolls sideways on small screens">
-      <table class="matrix" style="table-layout:auto;min-width:760px">
-        <thead><tr><th scope="col" style="width:38%">If the lesson…</th><th scope="col">Goes to</th><th scope="col">Example</th></tr></thead>
+      <table class="matrix loose">
+        <thead><tr><th scope="col" class="w38">If the lesson…</th><th scope="col">Goes to</th><th scope="col">Example</th></tr></thead>
         <tbody>
           <tr><th scope="row">applies to every session, whatever it is doing</th><td><div class="cell"><span><code>CLAUDE.md</code> or <code>AGENTS.md</code>. Rare.</span></div></td><td><div class="cell"><span>"Fail loudly, surface ambiguity"</span></div></td></tr>
           <tr><th scope="row">applies while writing code, tests, commits or reviews</th><td><div class="cell"><span><code>standards/efficiency.md</code>, auto-loaded</span></div></td><td><div class="cell"><span><code>t-6328</code>: a hostile-input test must match the sink's context</span></div></td></tr>
@@ -99,13 +99,13 @@
 
 <section class="block">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">Claude already has memory</div>
       <h2>Memory remembers you. Learnings remember what the codebase taught.</h2>
       <p class="lead">They are complementary. Use memory for how a person works, and this flow for engineering mistakes worth not repeating.</p>
     </div>
     <div class="matrix-wrap" tabindex="0" aria-label="Memory compared with the learnings flow, scrolls sideways on small screens">
-      <table class="matrix" style="table-layout:auto;min-width:760px">
+      <table class="matrix loose">
         <thead><tr><th scope="col" style="width:20%">&nbsp;</th><th scope="col">Claude memory and <code>CLAUDE.md</code></th><th scope="col" class="us">Canon learnings flow</th></tr></thead>
         <tbody>
           <tr><th scope="row">Who writes it</th><td><div class="cell"><span>The working agent, from what it recalls or was told</span></div></td><td class="us"><div class="cell"><span>A reviewer and evaluator with no build history find it. <code>tkt learn</code> copies the text</span></div></td></tr>
@@ -122,7 +122,7 @@
 
 <section class="block">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">In your own project</div>
       <h2>Your project gets its own <code style="font-size:0.8em">PROMOTED.md</code>.</h2>
       <p class="lead">Canon's <code>standards/</code> and skill references belong to canon, so a project never writes into them. It keeps its own destination instead.</p>
@@ -168,8 +168,8 @@
 </main>
 
 <footer>
-  <div class="wrap" style="border-top:1px solid var(--line)">
-    <b style="color:var(--fg)">canon</b>
+  <div class="wrap foot-line">
+    <b>canon</b>
     <a href="https://github.com/sunitghub/canon-skills/tree/main/docs" target="_blank" rel="noopener">Docs</a><a href="index.html#skills">Skills</a><a href="index.html#cockpit">Cockpit</a><a href="compare.html">Compare</a><a href="learnings.html">Learnings</a>
     <a href="https://github.com/sunitghub/canon-skills" target="_blank" rel="noopener">GitHub</a>
     <span class="spacer">MIT licensed · local-first</span>

@@ -51,20 +51,33 @@ test.describe('home flow', () => {
 });
 
 test.describe('tabs and popup', () => {
-  test('loop tabs select exactly the clicked step', async ({ page }) => {
+  test('every loop tab selects exactly itself', async ({ page }) => {
     await page.goto(urlOf('index.html'));
-    await page.click('#s3');
-    const sel = await page.$$eval('#loop .step', (els) => els.map((e) => e.getAttribute('aria-selected')));
-    expect(sel).toEqual(['false', 'false', 'true', 'false']);
-    await expect(page.locator('#term')).toContainText('sprint-check');
+    const words = ['canon', 'sprint start', 'sprint-check', 'sprint complete'];
+    for (let i = 0; i < 4; i++) {
+      await page.click(`#s${i + 1}`);
+      const sel = await page.$$eval('#loop .step', (els) => els.map((e) => e.getAttribute('aria-selected')));
+      expect(sel).toEqual([0, 1, 2, 3].map((j) => String(j === i)));
+      await expect(page.locator('#term')).toContainText(words[i]);
+    }
   });
-  test('agent tabs switch the screenshot', async ({ page }) => {
+  test('every agent tab switches the screenshot', async ({ page }) => {
     await page.goto(urlOf('index.html'));
-    await page.click('#ag-pi');
-    await expect(page.locator('#img-pi')).toBeVisible();
-    await expect(page.locator('#img-claude')).toBeHidden();
-    await expect(page.locator('#ag-pi')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.locator('#ag-claude')).toHaveAttribute('aria-pressed', 'false');
+    const agents = ['claude', 'pi', 'copilot'];
+    for (const a of agents) {
+      await page.click(`#ag-${a}`);
+      for (const b of agents) {
+        await expect(page.locator(`#img-${b}`))[b === a ? 'toBeVisible' : 'toBeHidden']();
+        await expect(page.locator(`#ag-${b}`)).toHaveAttribute('aria-pressed', String(b === a));
+      }
+    }
+  });
+  test('the install box switches to the Windows command', async ({ page }) => {
+    await page.goto(urlOf('index.html'));
+    await page.click('#os-win');
+    await expect(page.locator('#install-cmd')).toContainText('irm ');
+    await page.click('#os-unix');
+    await expect(page.locator('#install-cmd')).toContainText('curl ');
   });
   test('the flowchart window opens and Escape closes it', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -74,6 +87,18 @@ test.describe('tabs and popup', () => {
     await expect(page.locator('#flowwin')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('#flowwin')).toBeHidden();
+  });
+  test('the card arrows open the flowchart window too', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(urlOf('learnings.html'));
+    const arrows = page.locator('.go[data-open-flow]');
+    expect(await arrows.count()).toBe(2);
+    for (let i = 0; i < 2; i++) {
+      await arrows.nth(i).click();
+      await expect(page.locator('#flowwin')).toBeVisible();
+      await page.click('#fw-close');
+      await expect(page.locator('#flowwin')).toBeHidden();
+    }
   });
 });
 

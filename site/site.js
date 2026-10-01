@@ -61,7 +61,7 @@
   if (term && tree && treeNote) {
     var steps = [
       {
-        term: '<span class="p">$</span> canon\n<span class="ok">✓</span> Cockpit  http://127.0.0.1:8899/cockpit\n\n<span class="dim"># in the Cockpit</span>\n<span class="acc">+ Add Project</span>  ~/Developer/my-app  <span class="dim">git repo</span>\n<span class="acc">+ sprint</span>       skill registered\n<span class="acc">Scratch</span>       agent open, no ticket yet',
+        term: '<span class="p">$</span> canon\nCanon Cockpit already running on port 8899 — opening it.\n\n<span class="dim"># in the Cockpit</span>\n<span class="acc">+ Add Project</span>  ~/Developer/my-app  <span class="dim">git repo</span>\n<span class="acc">+ sprint</span>       skill registered\n<span class="acc">Scratch</span>       agent open, no ticket yet',
         tree: [['dir', 'my-app/'], ['kid hot', 'AGENTS.md', 'sprint registered'], ['kid hot', 'CLAUDE.md', '@AGENTS.md import'], ['kid hot', '.claude/skills/', 'sprint symlink'], ['kid', '.tickets/']],
         note: 'Registering a skill from the card does what skills.sh add does. Folders without git work too; the git icon turns on version history.'
       },
@@ -71,7 +71,7 @@
         note: 'The plan is on disk before the agent writes a line of code. You approve it, or change it. Started from a scratch session, it resumes the same conversation.'
       },
       {
-        term: '<span class="p">$</span> sprint-check\n<span class="ok">✓</span> board  http://127.0.0.1:8899/cockpit\n\n  <span class="dim">open</span> 11   <span class="dim">in progress</span> 1   <span class="dim">done</span> 771   <span class="dim">discarded</span> 32\n\n<span class="dim">reads .tickets/, HANDOFF.md and git log. No account, no remote.</span>',
+        term: '<span class="p">$</span> sprint-check\nOpening this project in the running Canon Cockpit (port 8899).\n\n  <span class="dim">open</span> 11   <span class="dim">in progress</span> 1   <span class="dim">done</span> 771   <span class="dim">discarded</span> 32\n\n<span class="dim">reads .tickets/, HANDOFF.md and git log. No account, no remote.</span>',
         tree: [['dir', '.tickets/'], ['kid hot', 't-4f2a/', 'card: in progress'], ['dir hot', 'HANDOFF.md', 'current focus'], ['dir hot', '.git/', 'commits link to tickets']],
         note: 'The board is a view over files you already have. It opens this project’s tab in the Cockpit.'
       },

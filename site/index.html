@@ -61,7 +61,7 @@
         <code id="install-cmd"><i>$</i>curl -fsSL https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.sh | bash</code>
         <button type="button" id="copy-install">Copy</button>
       </div>
-      <div class="fine"><span>MIT</span><span>·</span><span>Local-first</span><span>·</span><span>No account, no SaaS</span><span>·</span><span>Then run <code style="color:var(--fg)">canon</code></span><span>·</span><a href="#docs">Setup guide →</a></div>
+      <div class="fine"><span>MIT</span><span>·</span><span>Local-first</span><span>·</span><span>No account, no SaaS</span><span>·</span><span>Then run <code class="fg">canon</code></span><span>·</span><a href="#docs">Setup guide →</a></div>
     </div>
 
     <div class="hero-foot">
@@ -73,7 +73,7 @@
 
 <section class="stats" aria-label="Canon by the numbers">
   <div class="wrap">
-    <div class="stat"><b>771</b><span>Tickets done in canon's own repo</span></div>
+    <div class="stat"><b>771</b><span>Tickets done in canon's own repo, Sep 30</span></div>
     <div class="stat"><b>21</b><span>Skills in the repo</span></div>
     <div class="stat"><b>3</b><span>Agent CLIs in the cockpit</span></div>
     <div class="stat"><b>0</b><span>Accounts or hosted services</span></div>
@@ -92,7 +92,7 @@
 
 <section class="block" id="daemon">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">The daemon</div>
       <h2>A small daemon owns your terminals.</h2>
       <p class="lead">Agents run under a local daemon, not inside the browser tab. Refresh or close the tab and they keep working. Restart the daemon and each interrupted session can be resumed.</p>
@@ -120,7 +120,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
 
 <section class="block" id="agents">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">Your agents</div>
       <h2>Claude Code, Pi and Copilot CLI. Side by side in one project.</h2>
       <p class="lead">Start as many sessions in a project as you need, each with its own agent. Claude Code can take one ticket while Pi takes another, each in its own worktree, all tracked on one board.</p>
@@ -132,10 +132,10 @@ canon update           <span class="dim"># refresh canon + every project</span><
       <span class="an-row"><i class="an-dot idle"></i><b>t-uep0</b> Export ToDo to CSV <em>idle · pi</em></span>
     </div>
 
-    <div class="seg agent-tabs" role="tablist" aria-label="Agent">
-      <button type="button" role="tab" id="ag-claude" aria-pressed="true">Claude Code</button>
-      <button type="button" role="tab" id="ag-pi" aria-pressed="false">Pi</button>
-      <button type="button" role="tab" id="ag-copilot" aria-pressed="false">Copilot CLI</button>
+    <div class="seg agent-tabs" role="group" aria-label="Agent">
+      <button type="button" id="ag-claude" aria-pressed="true">Claude Code</button>
+      <button type="button" id="ag-pi" aria-pressed="false">Pi</button>
+      <button type="button" id="ag-copilot" aria-pressed="false">Copilot CLI</button>
     </div>
     <div class="agent-shot">
       <img class="shot" id="img-claude" src="assets/agent-claude.png" alt="Claude Code running a sprint for ticket t-iqo4 in the Cockpit, with the worktree, status, plan and acceptance rail beside the terminal." loading="lazy">
@@ -155,19 +155,21 @@ canon update           <span class="dim"># refresh canon + every project</span><
 <section class="block" id="loop">
   <div class="wrap">
     <div class="head-row">
-      <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="head-stack">
         <div class="eyebrow">The daily loop</div>
         <h2>Open canon. Three commands. Everything lands in the repo.</h2>
       </div>
       <span class="hint">Click a command · example output</span>
     </div>
     <div class="panel">
-      <div class="rail" role="tablist" aria-label="Sprint commands">
+      <div class="rail">
         <h4>Commands</h4>
+        <div class="rail-steps" role="tablist" aria-label="Sprint commands">
         <button class="step" role="tab" id="s1" aria-selected="true" type="button"><code>canon</code><small>Open the Cockpit. Add a project, register the sprint skill, start an agent.</small></button>
         <button class="step" role="tab" id="s2" aria-selected="false" type="button"><code>sprint start</code><small>Agent plans the work and writes a ticket. You approve before any code.</small></button>
         <button class="step" role="tab" id="s3" aria-selected="false" type="button"><code>sprint-check</code><small>Local kanban board built from your tickets, HANDOFF.md and git log.</small></button>
         <button class="step" role="tab" id="s4" aria-selected="false" type="button"><code>sprint complete</code><small>A fresh evaluator grades every criterion. A fail blocks the close.</small></button>
+        </div>
       </div>
       <div class="term-wrap">
         <div class="pane-title">terminal · your-project</div>
@@ -184,7 +186,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
 
 <section class="block" id="gates">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">What makes canon different</div>
       <h2>The agent that wrote the code is the worst reviewer of it.</h2>
       <p class="lead">Most harnesses ask the same agent to check its own work. Canon makes that structurally impossible.</p>
@@ -223,12 +225,12 @@ canon update           <span class="dim"># refresh canon + every project</span><
 <section class="block" id="learnings">
   <div class="wrap">
     <div class="head-row">
-      <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="head-stack">
         <div class="eyebrow">Learnings</div>
         <h2>Lessons that earn their place.</h2>
         <p class="lead">Claude's memory stores what the agent remembers. Canon stores what a fresh reviewer proved, then lets a second fresh agent and you decide what becomes a rule.</p>
       </div>
-      <a class="hint" href="learnings.html" style="color:var(--accent)">How it works →</a>
+      <a class="hint hint-link" href="learnings.html">How it works →</a>
     </div>
     <div class="learn-strip">
       <div class="ls-step"><span class="tag">At close</span><b>Captured</b><p>The reviewer's findings become a candidate on the ticket and one row in <code>LEARNINGS.md</code>. Automatic.</p></div>
@@ -241,7 +243,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
 <section class="block" id="cockpit">
   <div class="wrap">
     <div class="head-row">
-      <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="head-stack">
         <div class="eyebrow">The Cockpit</div>
         <h2>One window for every project and every agent.</h2>
         <p class="lead">Type <code>canon</code> and the Cockpit opens in your browser. A second run focuses the same window. It runs on your machine, on loopback only, with no account.</p>
@@ -263,7 +265,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
 
     <div class="cockpit-grid flip">
       <div class="cockpit-side">
-        <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="head-stack tight">
           <span class="tag">Scratch sessions</span>
           <h3>Think first. Make it a ticket when it earns one.</h3>
         </div>
@@ -278,7 +280,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
 
     <div class="cockpit-grid flip">
       <div class="cockpit-side">
-        <div style="display:flex;flex-direction:column;gap:12px">
+        <div class="head-stack tight">
           <span class="tag">Upkeep</span>
           <h3>Repo hygiene on demand. Run a check, read the report.</h3>
         </div>
@@ -303,7 +305,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
 
 <section class="block">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">What it actually caught</div>
       <h2>Things a test suite can't reach.</h2>
     </div>
@@ -327,12 +329,12 @@ offline_safe = {"question A", "question B"}
 <section class="block" id="skills">
   <div class="wrap">
     <div class="head-row">
-      <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="head-stack">
         <div class="eyebrow">Skills</div>
         <h2>One skill, one job. Sprint brings its own crew.</h2>
         <p class="lead">Registering <code>sprint</code> also loads the sub-skills that plan, check and close the work. They run on their own at the right tier, so a one-line fix stays light and a risky change gets the full pipeline.</p>
       </div>
-      <a class="hint" href="https://github.com/sunitghub/canon-skills/blob/main/CATALOG.md" style="color:var(--accent)">Full catalog →</a>
+      <a class="hint hint-link" href="https://github.com/sunitghub/canon-skills/blob/main/CATALOG.md">Full catalog →</a>
     </div>
 
     <div class="flow">
@@ -367,7 +369,7 @@ offline_safe = {"question A", "question B"}
 
 <section class="block" id="docs">
   <div class="wrap">
-    <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="head-stack">
       <div class="eyebrow">Guides</div>
       <h2>Read the details.</h2>
     </div>
@@ -393,8 +395,8 @@ offline_safe = {"question A", "question B"}
 </main>
 
 <footer>
-  <div class="wrap" style="border-top:1px solid var(--line)">
-    <b style="color:var(--fg)">canon</b>
+  <div class="wrap foot-line">
+    <b>canon</b>
     <a href="https://github.com/sunitghub/canon-skills/tree/main/docs" target="_blank" rel="noopener">Docs</a><a href="index.html#skills">Skills</a><a href="index.html#cockpit">Cockpit</a><a href="compare.html">Compare</a><a href="learnings.html">Learnings</a>
     <a href="https://github.com/sunitghub/canon-skills" target="_blank" rel="noopener">GitHub</a>
     <span class="spacer">MIT licensed · local-first</span>

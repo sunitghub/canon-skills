@@ -29,6 +29,7 @@ class Page(HTMLParser):
         self.links, self.ids, self.srcs = [], set(), []
         self.styles = self.inline_scripts = 0
         self.has_css = self.has_js = False
+        self.js_defer = False
         self.title, self._in_title, self._in_script = '', False, False
     def handle_starttag(self, tag, attrs):
         a = dict(attrs)
@@ -38,7 +39,7 @@ class Page(HTMLParser):
         if tag == 'style': self.styles += 1
         if tag == 'link' and a.get('rel') == 'stylesheet' and a.get('href') == 'style.css': self.has_css = True
         if tag == 'script':
-            if a.get('src') == 'site.js': self.has_js = True
+            if a.get('src') == 'site.js': self.has_js = True; self.js_defer = 'defer' in a
             elif 'src' not in a: self.inline_scripts += 1
         if tag == 'title': self._in_title = True
     def handle_endtag(self, tag):
@@ -56,6 +57,7 @@ for name in pages:
     p = Page(); p.feed(text); parsed[name] = p
     if not p.has_css: errors.append(f'{name}: does not load style.css')
     if not p.has_js: errors.append(f'{name}: does not load site.js')
+    elif not p.js_defer: errors.append(f'{name}: site.js is not loaded with defer')
     if p.styles: errors.append(f'{name}: has {p.styles} inline <style> block(s)')
     if p.inline_scripts: errors.append(f'{name}: has {p.inline_scripts} inline <script> block(s)')
     if 'MOCKUP' in text: errors.append(f'{name}: still contains MOCKUP')
