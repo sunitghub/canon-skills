@@ -857,6 +857,22 @@ def _is_worktree_noise(path: str) -> bool:
     them is work a user would lose by reusing the worktree."""
     return _is_canon_runtime_path(path) or path.rsplit('/', 1)[-1] == 'cockpit-sessions.md'
 
+def _is_canon_skills_link(status: str, path: str) -> bool:
+    """t-07a8: canon links its skills into every worktree it creates
+    (_link_skills_into_worktree). A project that does not gitignore them sees
+    them as UNTRACKED `.agents/skills` / `.claude/skills` (a Windows junction
+    lists its contents under --untracked-files=all), which is not user work.
+    Only an untracked entry at exactly those paths; a tracked or modified file
+    there, or a sibling like `.claude/notes.md`, still counts. Known trade-off:
+    the prefix match also hides a user's NEW untracked file inside a tracked,
+    project-local skills directory; the junction case needs the prefix, and
+    the hold only guards against offering a worktree that carries work, which
+    reuse does not destroy. Parity with
+    sprint-check-go's isCanonSkillsLink."""
+    if status != '??':
+        return False
+    return any(path == d or path.startswith(d + '/') for d in ('.agents/skills', '.claude/skills'))
+
 def _worktree_dirty(path: str) -> bool:
     try:
         out = subprocess.run(['git', '-C', path, 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
@@ -874,7 +890,7 @@ def _worktree_dirty(path: str) -> bool:
             continue
         if 'R' in entry[:2] or 'C' in entry[:2]:
             i += 1
-        if not _is_worktree_noise(entry[3:]):
+        if not _is_worktree_noise(entry[3:]) and not _is_canon_skills_link(entry[:2], entry[3:]):
             return True
     return False
 

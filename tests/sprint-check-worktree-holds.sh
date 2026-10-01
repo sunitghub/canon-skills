@@ -16,20 +16,30 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || 
   exit 0
 fi
 
+# t-07a8: the free-worktree checks must not depend on the machine's git ignore rules (a global ignore that
+# covers .claude/ or .agents/ would make them pass vacuously). git also reads $XDG_CONFIG_HOME/git/ignore,
+# independent of any config file, so point that at an empty dir too; the servers inherit all of this.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 GO_BIN=""
 PIDS=()
 TMP="$(mktemp -d)"
+export XDG_CONFIG_HOME="$TMP/xdg"   # t-07a8: no machine-level git ignore (see GIT_CONFIG_GLOBAL above)
 cleanup() {
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   rm -rf "$TMP"
-  [[ -n "$GO_BIN" ]] && rm -rf "$(dirname "$GO_BIN")"
+  [[ -n "${GO_LAYOUT:-}" ]] && rm -rf "$GO_LAYOUT"
   return 0
 }
 trap cleanup EXIT
 
 if command -v go >/dev/null 2>&1; then
-  GO_BIN="$(mktemp -d)/sprint-check-go-bin"
+  # Built into a miniature install (tools/ + skills beside it) because the Go backend finds the skills
+  # it links into new worktrees (t-07a8) relative to its own tools/ directory.
+  GO_LAYOUT="$(mktemp -d)"
+  mkdir -p "$GO_LAYOUT/tools"
+  ln -s "$ROOT/skills" "$GO_LAYOUT/skills"; ln -s "$ROOT/tools/sprint-check-app" "$GO_LAYOUT/tools/sprint-check-app"
+  GO_BIN="$GO_LAYOUT/tools/sprint-check-go-bin"
   (cd "$ROOT" && GO111MODULE=off go build -o "$GO_BIN" ./tools/sprint-check-go)
 fi
 
@@ -54,8 +64,21 @@ ticket "$REPO" t-mine open sprint/mine   # the requester in the own-view checks
 ticket "$REPO" t-want open sprint/bnd    # prefers a branch another ticket is running in
 echo a > "$REPO/a.txt"
 git -C "$REPO" add -A && git -C "$REPO" commit -q -m init
-for b in bnd res dirty unmerged noise free mine gone; do git -C "$REPO" worktree add -q -b "sprint/$b" "$WT/$b"; done
+for b in bnd res dirty unmerged noise free mine gone lnk jnc cfg extra trk; do git -C "$REPO" worktree add -q -b "sprint/$b" "$WT/$b"; done
 rm -rf "$WT/gone"                                                       # deleted folder: git lists it as prunable
+# t-07a8: canon links its skills into every new worktree (.agents/skills, .claude/skills); a project that does
+# not gitignore them sees them untracked. lnk = real symlinks, jnc = real dirs with files (what a Windows
+# junction lists under --untracked-files=all). Both are canon's own and must stay free. The next three are
+# real work that must STILL hold the worktree: a notes file next to the links, a lookalike dir, and a
+# tracked file under .claude/skills that was then modified.
+mkdir -p "$WT/lnk/.agents" "$WT/lnk/.claude"
+ln -s "$ROOT/skills" "$WT/lnk/.agents/skills"; ln -s "$ROOT/skills" "$WT/lnk/.claude/skills"
+mkdir -p "$WT/jnc/.agents/skills/x" "$WT/jnc/.claude/skills/x"
+echo s > "$WT/jnc/.agents/skills/x/SKILL.md"; echo s > "$WT/jnc/.claude/skills/x/SKILL.md"
+mkdir -p "$WT/cfg/.claude"; echo n > "$WT/cfg/.claude/notes.md"
+mkdir -p "$WT/extra/.claude/skills-extra"; echo x > "$WT/extra/.claude/skills-extra/x"
+mkdir -p "$WT/trk/.claude/skills/t"; echo v1 > "$WT/trk/.claude/skills/t/SKILL.md"
+git -C "$WT/trk" add .claude/skills/t/SKILL.md; git -C "$WT/trk" commit -q -m trk; echo v2 > "$WT/trk/.claude/skills/t/SKILL.md"
 # Bindings: the daemon writes the absolute worktree path into the main checkout's lock file.
 echo "$WT/bnd" > "$REPO/.tickets/t-bnd1/.cockpit-cwd"
 echo "$WT/dirty" > "$REPO/.tickets/t-cls1/.cockpit-cwd"
@@ -95,10 +118,13 @@ want = {
   'sprint/unmerged': {'ticket': '',       'reason': 'branch not merged'},
   'sprint/mine':     {'ticket': 't-mine', 'reason': 'reserved'},
   'sprint/gone':     {'ticket': '',       'reason': 'folder missing'},
+  'sprint/cfg':      {'ticket': '',       'reason': 'uncommitted changes'},
+  'sprint/extra':    {'ticket': '',       'reason': 'uncommitted changes'},
+  'sprint/trk':      {'ticket': '',       'reason': 'uncommitted changes'},
 }
 for br, hb in want.items():
     assert a[br].get('held_by') == hb, f'{label}: {br} held_by {a[br].get("held_by")} != {hb}'
-for br in ('sprint/noise', 'sprint/free'):
+for br in ('sprint/noise', 'sprint/free', 'sprint/lnk', 'sprint/jnc'):
     assert 'held_by' not in a[br], f'{label}: {br} should be free, got {a[br].get("held_by")}'
 assert not any(e.get('own') for e in anon), f'{label}: no ticket given, nothing is own'
 m = by_branch(mine)
@@ -118,6 +144,19 @@ t = next((t for t in tickets if t.get('id') == 't-bnd1'), None)
 d = (t or {}).get('branch_divergence') or {}
 assert d.get('where') == 'worktree' and d.get('status') == 'in_progress', f'{label}: expected worktree divergence, got {d}'
 assert d.get('dirty') is True, f'{label}: branch_divergence.dirty must be true for uncommitted worktree edits, got {d}'
+EOF
+  # t-07a8: end to end — a worktree created through the API with a custom (non sprint/<ticket-id>) name gets the
+  # skill links, and must be offered, not hidden as "uncommitted changes" the moment it exists.
+  local nb="sprint/custom-$kind"
+  curl -s -X POST -H 'Content-Type: application/json' -d "{\"branch\":\"$nb\"}" "$base/api/worktrees" | grep -q '"ok": *true' \
+    || fail "$label: creating $nb through the API failed"
+  [[ -e "$WT/sprint-custom-$kind/.claude/skills" ]] || fail "$label: the created worktree got no .claude/skills link (the premise of this check)"
+  python3 - "$label" "$nb" "$(curl -s "$base/api/worktrees?ticket=t-mine")" <<'EOF'
+import json, sys
+label, nb, lst = sys.argv[1], sys.argv[2], json.loads(sys.argv[3])
+e = next((e for e in lst if e.get('branch') == nb), None)
+assert e is not None, f'{label}: {nb} missing from /api/worktrees'
+assert 'held_by' not in e, f'{label}: a freshly created {nb} must be offered, got held_by {e.get("held_by")}'
 EOF
   echo "  $label: worktree holds ok"
 }
