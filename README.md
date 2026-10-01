@@ -247,8 +247,9 @@ Each sprint produces up to eight docs:
 | `summary.md` | sprint complete | Plan-vs-actual table · close prose |
 
 Root `LEARNINGS.md` keeps a capped, always-current index of every open `learnings.md` candidate —
-`learnings-sweep <id>` upserts one row per ticket close (called automatically right after `tkt
-learn`), `learnings-sweep --full` backfills/reconciles by hand. It's read alongside `HANDOFF.md` at
+the `learnings-sweep` skill upserts one row per ticket close (the sprint agent runs it right after
+`tkt learn`, per the close protocol), and its `--full` mode backfills/reconciles by hand; it is a
+skill, not a shell command. It's read alongside `HANDOFF.md` at
 every `sprint start`, and never promotes anything itself — see `skills/learnings-sweep/SKILL.md`.
 
 All are plain markdown in `.tickets/<id>/` and are read into the agent's context by `sprint start` — so a context reset or a fresh session never loses the thread. Projects can track that workflow state in git or keep it local; canon itself keeps its working tickets ignored.
