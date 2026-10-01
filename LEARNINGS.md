@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-01-2026 10:18
+learnings-sweep last run: 10-01-2026 12:58
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-01 | [t-ccd6](.tickets/t-ccd6/learnings.md) | A dialog opened from an Enter keydown that focuses its OK button synchronously gets that same keypress delivered to the button and confirms itself: defer the focus past the key event, and add a test that opens it by keyboard; also a "no native dialog" guard must live in a shared beforeEach/afterEach, not be copied into some tests, or a reverted notice survives | UNPROMOTED |
 | 2026-10-01 | [t-26f9](.tickets/t-26f9/learnings.md) | A test that asserts only `toBeEnabled()` cannot see a control pushed outside a clipped (`overflow: hidden`) container: assert the control's bounding box lies inside it at the default viewport; and a worktree commit runs the shared post-commit hook against the MAIN checkout, so verify a shipped binary with `strings -a` before telling anyone to install it | UNPROMOTED |
 | 2026-10-01 | [t-afe2](.tickets/t-afe2/learnings.md) | A hand-blurred screenshot shipped to the public repo with a private project tab still readable, and the guard added to stop that name returning spelled the name itself, so a repo search still found it — audit every image before publishing, and build a banned string from parts so its own guard stays clean. | UNPROMOTED |
 | 2026-10-01 | [t-4a1b](.tickets/t-4a1b/learnings.md) | Public site copy drifted from the code in three places (a ticket stat not reproducible from the repo, demo terminal lines unlike what the tools print, "no servers to run" while a daemon runs) — verify each public claim against code or date it; and a CSS dedupe that moved a rule past its media query was caught only because a 400px no-sideways-scroll test existed. | UNPROMOTED |
