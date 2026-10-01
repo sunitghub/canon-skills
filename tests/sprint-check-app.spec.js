@@ -5624,7 +5624,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       if (collapse) await page.locator('#ck-rail-toggle').click();
-      // Worst case for the right-hand side: a state chip, the auto-save text, a second tab chip, a long model.
+      // The page's own renderers (and its 5s poll) would overwrite the injected state a moment later (the stubbed
+      // session is never live), so silence them first: the test then measures what it set, not a race.
+      await page.evaluate(() => { window.renderSessionStateChip = () => {}; window.refreshSessionStateChip = async () => {}; window.renderCockpitModel = async () => {}; });
+      // Worst case for the right-hand side: a state chip, the auto-save text, four tab pills, a long model.
       await page.evaluate(() => {
         const chip = document.getElementById('ck-state-chip'); chip.className = 'ck-state-chip st-working'; chip.textContent = 'working'; chip.hidden = false;
         const r = document.getElementById('ck-reaper'); r.textContent = 'Auto-save & end in 30m \u00b7 resets on activity'; r.hidden = false;

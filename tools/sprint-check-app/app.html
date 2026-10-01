@@ -5869,7 +5869,7 @@ function unmountTab(id) {
       // The ticket vanished from state.tickets between that tab opening and
       // this switch (e.g. archived/deleted elsewhere while backgrounded) —
       // don't leave the previous tab's stale labels on screen.
-      else { document.getElementById('ck-id').textContent = nextId; document.getElementById('ck-title').textContent = ''; }
+      else { document.getElementById('ck-id').textContent = nextId; document.getElementById('ck-title').textContent = ''; document.getElementById('ck-title').title = ''; }
     } else {
       activeTabId = null;
       cockpitState = null;
