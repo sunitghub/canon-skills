@@ -2381,7 +2381,11 @@ func isWorktreeNoise(path string) bool {
 // .agents/skills and .claude/skills (a Windows junction lists its contents
 // under --untracked-files=all). That is canon's own, not user work. Only an
 // untracked entry at exactly those paths; a tracked or modified file there, or
-// a sibling like .claude/notes.md, still counts. Parity with server.py's
+// a sibling like .claude/notes.md, still counts. Known trade-off: the prefix
+// match also hides a user's NEW untracked file inside a tracked, project-local
+// skills directory; the junction case needs the prefix, and the hold only
+// guards against offering a worktree that carries work, which reuse does not
+// destroy. Parity with server.py's
 // _is_canon_skills_link.
 func isCanonSkillsLink(status, path string) bool {
 	if status != "??" {

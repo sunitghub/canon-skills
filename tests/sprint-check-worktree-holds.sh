@@ -16,10 +16,15 @@ if ! command -v python3 >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1 || 
   exit 0
 fi
 
+# t-07a8: the free-worktree checks must not depend on the machine's git ignore rules (a global ignore that
+# covers .claude/ or .agents/ would make them pass vacuously). git also reads $XDG_CONFIG_HOME/git/ignore,
+# independent of any config file, so point that at an empty dir too; the servers inherit all of this.
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 SERVER_PY="$ROOT/tools/sprint-check-app/server.py"
 GO_BIN=""
 PIDS=()
 TMP="$(mktemp -d)"
+export XDG_CONFIG_HOME="$TMP/xdg"   # t-07a8: no machine-level git ignore (see GIT_CONFIG_GLOBAL above)
 cleanup() {
   for p in "${PIDS[@]:-}"; do [[ -n "$p" ]] && kill "$p" 2>/dev/null || true; done
   rm -rf "$TMP"
