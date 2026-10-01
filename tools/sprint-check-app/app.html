@@ -1676,7 +1676,7 @@
     .ck-worktree-held-why { font-size: 11px; color: var(--text-muted); }
     .ck-worktree-change { background: none; border: 0; padding: 4px 2px; color: var(--accent); font-size: 12px; cursor: pointer; }
     .ck-worktree-change:hover { text-decoration: underline; }
-    /* t-e78b: a worktree-bound ticket's live sprint docs — read-only on the board. */
+    /* t-e78b, t-26f9: a worktree-bound ticket's live sprint docs; the badge says where board edits are saved. */
     .doc-live-badge { font-size: 11.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
       padding: 3px 10px; white-space: nowrap; cursor: help; }
     .doc-working-note { font-size: 11.5px; color: var(--st-work); border: 1px solid var(--st-work); border-radius: 999px; padding: 2px 10px; margin-left: 6px; white-space: nowrap; }
@@ -2784,10 +2784,12 @@ function docFileFor(t, slug) {
   return t.layout === 'folder' ? `${id}/${slug}.md` : `${id}-${slug}.md`;
 }
 
+// t-26f9: the docs the server will write in a worktree (acceptance.md, plan.md, research.md)
+const LIVE_EDITABLE_SLUGS = ['acceptance', 'plan', 'research'];
 function availableDocTypes(t) {
   const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
   // t-26f9: in a worktree the board writes only acceptance.md, plan.md and research.md
-  const writable = dt => !t.docs_from || ['acceptance', 'plan', 'research'].includes(dt.slug);
+  const writable = dt => !t.docs_from || LIVE_EDITABLE_SLUGS.includes(dt.slug);
   return DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug) && writable(dt));
 }
 
@@ -4083,7 +4085,7 @@ function openScratch(id) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', activeDocEtag() { return this.docEtag || ''; } };
+const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: '' };
 
 // t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
 // box; they choose to load theirs or to overwrite knowingly.
@@ -4333,19 +4335,22 @@ function renderModalDocs(t) {
   const navPrev = `<button class="doc-nav-btn" id="btn-ticket-prev" title="Previous ticket"${ticketIdx <= 0 ? ' disabled' : ''}>‹</button>`;
   const navNext = `<button class="doc-nav-btn" id="btn-ticket-next" title="Next ticket"${ticketIdx >= ticketIds.length - 1 ? ' disabled' : ''}>›</button>`;
 
-  // t-e78b: a worktree-bound ticket's sprint docs are the live worktree copy — the
-  // sprint session owns them (the server refuses board writes too). The Description
-  // tab is main's ticket.md and stays editable.
+  // t-e78b, t-26f9: a worktree-bound ticket's sprint docs are the live worktree copy, and board edits are saved there
+  // (guarded by the etag each read returned). The Description tab is main's ticket.md, edited as before.
   const liveBranch = t.docs_from && t.docs_from.branch;
   const liveDoc = !!(liveBranch && modalState.activeDoc);
   // t-26f9: a bound ticket's docs are editable now; the badge says where edits land, and warns when the agent is working.
   const liveRow = liveDoc ? state.cockpitRows.get(t.id) : null;
+  // The server writes only these three docs in a worktree; any other file there (design.md, eval-report.md) stays read-only.
+  const liveReadOnly = liveDoc && !LIVE_EDITABLE_SLUGS.includes(docSlug(t, modalState.activeDoc));
   const liveBadge = liveDoc
     ? `<span class="doc-live-badge" id="doc-live-badge" title="${escAttr(`Edits save to ${liveBranch}'s copy of these files — the sprint session's working files`)}">Live from ${esc(liveBranch)} · edits save to its copy</span>`
       + (liveRow && ckRowState(liveRow) === 'working' ? `<span class="doc-working-note" id="doc-working-note">the agent is working in ${esc(liveBranch)} — your edit may collide</span>` : '')
     : '';
   const rightControls = modalState.editMode
     ? `<div class="doc-tab-right">${navPrev}${navNext}<button class="doc-save-btn" id="btn-save-top">Save</button><button class="doc-cancel-btn" id="btn-cancel-top">Cancel</button></div>`
+    : liveReadOnly
+      ? `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}<span class="doc-locked-badge" title="The board edits only acceptance, plan and research in a worktree; the sprint session owns this file">read-only here</span></div>`
     : locked
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
       : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<button class="doc-edit-btn" id="btn-edit-doc">Edit</button></div>`;
@@ -4787,7 +4792,7 @@ async function saveEdit(t) {
     return;
   }
   if (modalState.activeDoc) {
-    const res = await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content, base_hash: modalState.activeDocEtag() }, 'save this doc', { quietStale: true });
+    const res = await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content, base_hash: modalState.docEtag || '' }, 'save this doc', { quietStale: true });
     if (res.stale) { showStaleEditNotice(); return; }   // t-26f9: keep the text, let the person choose
     if (!res.ok) return; // stay in edit mode with the text intact
   } else {

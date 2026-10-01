@@ -195,7 +195,7 @@ NAMES = ['plan.md', 'acceptance.md', 'research.md', 'ticket.md', 'PLAN.MD', 'Pla
          'NUL.md', 'CON.md', 'TICKET~1.MD', '..', '.', '', 'a' * 300 + '.md', 'plan.md/', '/plan.md', 'sub/plan.md', '../plan.md',
          '..\\plan.md', 'plan.md\x00', 'pla\u202en.md', 'ünï.md', 'plan.md%00', '.board-x.tmp', '.cockpit-cwd', 'research.txt']
 def content():
-    k = rnd.randrange(14)
+    k = rnd.randrange(17)
     if k == 0: return None
     if k == 1: return rnd.randrange(-5, 10**9)
     if k == 2: return rnd.random() * 1e9
@@ -211,6 +211,9 @@ def content():
         d = []
         for _ in range(400): d = [d]
         return d
+    if k == 12: return 'a\ud800b'                            # a lone surrogate: must never drop the connection
+    if k == 13: return 'zz\x1c\x1d   \u0085'        # whitespace Go and Python disagree on
+    if k == 14: return '﻿# bom first\r\n'
     return '# Acceptance\n\n- [ ] ok\n'
 def base_hash(name):
     k = rnd.randrange(8)
@@ -268,6 +271,34 @@ if bad:
     print('FUZZ DEFECTS:', len(bad), bad[:6]); sys.exit(1)
 print(f'fuzz: {cases} cases ok')
 PY
+
+  # 2k. Review findings (t-26f9): a lone surrogate and Go-vs-Python whitespace give identical bytes; an unreadable file is
+  # never "absent"; two writers holding the same etag can never both win.
+  hexof() { python3 -c 'import sys; sys.stdout.write(open(sys.argv[1], "rb").read().hex())' "$1"; }
+  e="$(etag_of research.md)"
+  code="$(post t-lv01/research.md "{\"content\":\"a\\ud800b\",\"base_hash\":\"$e\"}")"
+  [[ "$code" == 200 && "$(hexof "$wt/.tickets/t-lv01/research.md")" == "61efbfbd620a" ]] \
+    || fail "$label: a lone surrogate must be stored as U+FFFD with a 200, got $code"
+  e="$(etag_of research.md)"
+  code="$(post t-lv01/research.md "{\"content\":\"zz\\u001c\",\"base_hash\":\"$e\"}")"
+  [[ "$code" == 200 && "$(hexof "$wt/.tickets/t-lv01/research.md")" == "7a7a1c0a" ]] \
+    || fail "$label: a trailing \\x1c must be kept (Go's TrimSpace does not strip it), got $code"
+  if [[ "$(id -u)" != 0 ]]; then
+    chmod 000 "$wt/.tickets/t-lv01/research.md"
+    code="$(post t-lv01/research.md '{"content":"bypass","base_hash":"absent"}')"
+    chmod 644 "$wt/.tickets/t-lv01/research.md"
+    [[ "$code" == 500 && "$(pj code)" == read_failed ]] || fail "$label: an unreadable doc must not count as absent (500 read_failed), got $code"
+    [[ "$(cat "$wt/.tickets/t-lv01/research.md" | head -c 6)" != bypass ]] || fail "$label: an unreadable doc was overwritten through base_hash 'absent'"
+  fi
+  local round wins
+  for round in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    e="$(etag_of research.md)"
+    ( curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d "{\"content\":\"writer A $round\",\"base_hash\":\"$e\"}" "$base/api/doc/t-lv01/research.md" > "$TMP/$kind/ra" ) &
+    ( curl -s -o /dev/null -w '%{http_code}\n' -X POST -H 'Content-Type: application/json' -d "{\"content\":\"writer B $round\",\"base_hash\":\"$e\"}" "$base/api/doc/t-lv01/research.md" > "$TMP/$kind/rb" ) &
+    wait
+    wins="$(cat "$TMP/$kind/ra" "$TMP/$kind/rb" | sort | tr -d '\n')"
+    [[ "$wins" == 200409 ]] || fail "$label: two writers with the same etag must give exactly one 200 and one 409, round $round got $wins"
+  done
 
   # 3. A lock naming anything but a registered worktree is ignored (lock is agent-writable).
   fm t-lv01 open > "$wt/.tickets/t-lv01/ticket.md"      # drop the in-progress fallback

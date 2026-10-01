@@ -1512,7 +1512,9 @@ func readDocWithEtag(docFile string, root string) (string, string, bool) {
 	etag := ""
 	if live {
 		if target, derr := liveDocTargetFrom(docFile, dir, wtPath); derr == nil {
-			etag = liveDocEtagOf(target)
+			if e, err := liveDocEtagOf(target); err == nil {
+				etag = e
+			}
 		}
 	}
 	// t-e78b: a worktree-bound ticket's docs come from that worktree's copy.
@@ -2220,12 +2222,17 @@ func liveDocTargetFrom(docFile, dir, wtPath string) (string, *liveDocErr) {
 	return target, nil
 }
 
-func liveDocEtagOf(target string) string {
+// liveDocEtagOf is "absent" ONLY when the file does not exist: any other read error (permissions, a Windows sharing
+// violation) must not read as absent, or a write with base_hash "absent" would bypass the guard.
+func liveDocEtagOf(target string) (string, error) {
 	raw, err := os.ReadFile(target)
-	if err != nil {
-		return docEtagAbsent
+	if errors.Is(err, os.ErrNotExist) {
+		return docEtagAbsent, nil
 	}
-	return docEtag(raw)
+	if err != nil {
+		return "", err
+	}
+	return docEtag(raw), nil
 }
 
 // atomicWriteFile writes via a temp file in the same folder and a rename, so no reader ever sees a half-written
@@ -2282,7 +2289,11 @@ func writeLiveDoc(docFile string, payload map[string]any, root string) (handled 
 	base, _ := payload["base_hash"].(string)
 	liveDocMu.Lock()
 	defer liveDocMu.Unlock()
-	if base == "" || base != liveDocEtagOf(target) {
+	cur, rerr := liveDocEtagOf(target)
+	if rerr != nil {
+		return fail(http.StatusInternalServerError, "read_failed", "couldn't read "+filepath.Base(target)+" to check it hasn't changed — is another program holding it open? Try again")
+	}
+	if base == "" || base != cur {
 		return fail(http.StatusConflict, "stale", filepath.Base(target)+" changed since you read it — reload it and try again")
 	}
 	data := []byte(strings.TrimSpace(content) + "\n")

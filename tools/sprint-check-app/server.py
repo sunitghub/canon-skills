@@ -16,6 +16,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -636,8 +637,8 @@ def list_worktrees(ticket_id: str = '', root: Path = None, annotate: bool = True
 # A sprint running in a worktree edits .tickets/<id>/{plan,acceptance,…}.md
 # THERE; the board serves the main checkout, so its card and modal showed the
 # stale copy until merge. For a bound ticket (its .cockpit-cwd lock, else an
-# in-progress worktree copy), the board reads those docs from the worktree and
-# refuses board writes to them (the sprint session owns them). The lock file is
+# in-progress worktree copy), the board reads those docs from the worktree and (t-26f9)
+# writes acceptance/plan/research there, guarded by an etag. The lock file is
 # agent-writable, so the path is re-validated against `git worktree list` and
 # every read stays inside <worktree>/.tickets/<id>/ — same trust model as
 # cockpit_docs (t-1357). Mirrored in sprint-check-go (liveWorktree et al.).
@@ -753,10 +754,24 @@ def _live_doc_target(doc_file: str, live: dict):
     return target, None
 
 def _live_doc_etag_of(target: Path) -> str:
+    """"absent" ONLY when the file does not exist: any other read error (permissions, a Windows sharing violation)
+    must not read as absent, or a write with base_hash "absent" would bypass the guard (it raises OSError instead)."""
     try:
         return doc_etag(target.read_bytes())
-    except OSError:
+    except FileNotFoundError:
         return DOC_ETAG_ABSENT
+
+def _go_space(ch: str) -> bool:
+    """Go's unicode.IsSpace, so strip() below matches main.go's strings.TrimSpace byte for byte."""
+    return ch in '\t\n\v\f\r \x85\xa0' or unicodedata.category(ch) in ('Zs', 'Zl', 'Zp')
+
+def _go_trim(text: str) -> str:
+    i, j = 0, len(text)
+    while i < j and _go_space(text[i]):
+        i += 1
+    while j > i and _go_space(text[j - 1]):
+        j -= 1
+    return text[i:j]
 
 def _atomic_write(target: Path, data: bytes) -> None:
     """Temp file in the same folder, then a rename: no reader ever sees a half-written doc. Windows refuses to
@@ -801,9 +816,14 @@ def write_live_doc(doc_file: str, payload: dict, root: Path = None):
         return fail(400, 'too_large', 'that doc is too large to save from the board')
     base = payload.get('base_hash')
     with _live_doc_lock:
-        if not isinstance(base, str) or base == '' or base != _live_doc_etag_of(target):
+        try:
+            cur = _live_doc_etag_of(target)
+        except OSError:
+            return fail(500, 'read_failed', f"couldn't read {target.name} to check it hasn't changed — is another program holding it open? Try again")
+        if not isinstance(base, str) or base == '' or base != cur:
             return fail(409, 'stale', f'{target.name} changed since you read it — reload it and try again')
-        data = (content.strip() + '\n').encode('utf-8')
+        # A lone surrogate becomes U+FFFD, as Go's JSON decoding does, never an uncaught encode error
+        data = (re.sub('[\ud800-\udfff]', '\ufffd', _go_trim(content)) + '\n').encode('utf-8')
         try:
             _atomic_write(target, data)
         except OSError:
@@ -1692,7 +1712,10 @@ def read_doc_with_etag(doc_file: str, root: Path = None):
     if live:
         target, err = _live_doc_target(doc_file, live)
         if not err:
-            etag = _live_doc_etag_of(target)
+            try:
+                etag = _live_doc_etag_of(target)
+            except OSError:
+                etag = ''   # unreadable: not writable from the board
         rel = Path(doc_file)
         if not rel.is_absolute() and '..' not in rel.parts and rel.suffix.lower() == '.md':
             try:

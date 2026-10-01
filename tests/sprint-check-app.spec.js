@@ -6382,7 +6382,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   // t-e78b bound the docs to the worktree; t-26f9 made them editable there, guarded by the etag each read returned.
   const liveBoard = async (page, { post, working } = {}) => {
     const live = 't-e7lv', plain = 't-e7pl';
-    const docs = id => [{ name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }];
+    const docs = id => [{ name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }, { name: 'Design', file: `${id}/design.md` }];
     const base = id => ({ id, title: `Ticket ${id}`, status: 'open', type: 'task', priority: 2, layout: 'folder',
       created: '2026-09-25T00:00:00Z', body: `# Ticket ${id}\n\nDescription text.`, docs: docs(id) });
     const tickets = [
@@ -6430,6 +6430,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(page.locator('.signoff-demo-toggle')).toBeEnabled();
     await expect(page.locator('.signoff-controls select').first()).toBeEnabled();
     await expect(page.locator('#doc-working-note')).toHaveCount(0);       // no session is working
+    // A file the server will not write in a worktree (here design.md) is offered read-only, never an Edit that cannot save.
+    await page.locator('.doc-tab', { hasText: 'Design' }).click();
+    await expect(page.locator('.doc-locked-badge')).toContainText('read-only here');
+    await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
+    await page.locator('.doc-tab', { hasText: 'Plan' }).click();
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
       await page.locator('#modal').screenshot({ path: path.join(require('os').tmpdir(), `canon-26f9-live-plan-${theme}.png`) });
