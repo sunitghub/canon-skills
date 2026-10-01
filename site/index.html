@@ -313,7 +313,7 @@ canon update           <span class="dim"># refresh canon + every project</span><
       <div class="caught-copy">
         <h3>A test that could not fail.</h3>
         <p>Across two sprints on a real agentic app, the gates never found a wrong number. They found <b>a check that agreed with itself</b>, safety branches nobody had ever executed, and screenshots timestamped 13 minutes before the commit that replaced the feature.</p>
-        <p>The evaluator also re-checks its own earlier findings and declines to over-reach when a criterion is out of scope.</p>
+        <p>Each criterion gets a pass or fail with the file and line that back it, and nothing closes on a fail.</p>
         <div class="code"><span class="dim"># both sides read the same list</span>
 <span class="bad">assert button.disabled == live_only</span>
 
