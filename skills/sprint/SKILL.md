@@ -132,7 +132,7 @@ explicit **user flag, not structural risk** — the one documented place canon b
 "only structural risk may reduce gates" invariant, justified as the same explicit/auditable
 override class as `eval_override` / `Gate model:` and paid for by being loud (Demo/Docs markers on
 the Wrapup Gates rows + a `summary.md` demo line). See `reference/complete.md`'s "Demo mode"
-(step 1) for the full close-path and `AGENTS.md`'s north-star exception.
+(step 1) for the full close-path and the north-star exception in canon's own `AGENTS.md` (`## Model Tiers: canon internals`, not copied to projects).
 **Headless/CI never reduces the gate set for `demo`: `sprint-headless` runs its full pipeline and ignores `demo` entirely; `sprint-headless-eval` (already eval-only) also runs its full gate set but reads `demo: true` to default the evaluator to Haiku when no `--model` is given — a model choice, never a skipped gate.**
 (ticket-id mode; explicit `--model` wins.)
 
