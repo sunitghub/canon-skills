@@ -6379,56 +6379,66 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(await info({ ...base, merged: true, dirty: true })).toMatch(/^Showing this checkout's copy \(open\)/);
   });
 
-  test('a worktree-bound ticket shows its live docs read-only; an unbound one is unchanged (t-e78b)', async ({ page }) => {
+  // t-e78b bound the docs to the worktree; t-26f9 made them editable there, guarded by the etag each read returned.
+  const liveBoard = async (page, { post, working, branch = 'sprint/e7lv' } = {}) => {
     const live = 't-e7lv', plain = 't-e7pl';
-    const docs = id => [{ name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }];
+    const docs = id => [{ name: 'Acceptance', file: `${id}/acceptance.md` }, { name: 'Plan', file: `${id}/plan.md` }, { name: 'Design', file: `${id}/design.md` }];
     const base = id => ({ id, title: `Ticket ${id}`, status: 'open', type: 'task', priority: 2, layout: 'folder',
       created: '2026-09-25T00:00:00Z', body: `# Ticket ${id}\n\nDescription text.`, docs: docs(id) });
     const tickets = [
       { ...base(live), acceptance_has_items: true, acceptance_unchecked: true, plan_has_approach: true, plan_approved: true,
-        docs_from: { branch: 'sprint/e7lv' } },
+        docs_from: { branch } },
       { ...base(plain), acceptance_has_items: false, acceptance_unchecked: null, plan_has_approach: null, plan_approved: null },
     ];
     await page.route('**/api/tickets**', route => route.request().method() === 'GET'
       ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(tickets) })
       : route.continue());
-    const posts = [];
+    if (working) await page.route('**/api/cockpit-sessions**', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify([{ ticket: live, project_root: PROJECT_ROOT, agent: 'claude', state: 'working', status: 'running', cwd: '/tmp/wt' }]) }));
+    const gets = [], posts = [];
+    const plan = '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n- [ ] second box\n\n## Approach\n\nlive approach from the worktree\n';
     await page.route('**/api/doc/**', route => {
-      if (route.request().method() === 'POST') { posts.push(route.request().url()); return route.fulfill({ status: 409, contentType: 'application/json', body: '{"ok":false}' }); }
-      const plan = '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\nlive approach from the worktree\n';
-      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ content: route.request().url().includes('plan.md') ? plan : '# Acceptance\n' }) });
+      const req = route.request();
+      if (req.method() === 'POST') {
+        const body = req.postDataJSON(); posts.push({ url: req.url(), body });
+        return post ? post(route, body, posts.length) : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: 'etag-after' }) });
+      }
+      gets.push(req.url());
+      return route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify({ content: req.url().includes('plan.md') ? plan : '# Acceptance\n', etag: `etag-${gets.length}` }) });
     });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
-
-    // Live ticket: readiness comes from the overlaid (worktree) fields, so no "needs acc".
     await page.locator('#board-search').fill(live);
-    const card = page.locator(`.card[data-id="${live}"]`);
-    await expect(card).toBeVisible();
-    await expect(card).not.toContainText('needs acc');
-    await card.click();
+    // Readiness comes from the overlaid (worktree) fields, so the card never says "needs acc".
+    await expect(page.locator(`.card[data-id="${live}"]`)).not.toContainText('needs acc');
+    await page.locator(`.card[data-id="${live}"]`).click();
     await page.locator('.doc-tab', { hasText: 'Plan' }).click();
     await expect(page.locator('#m-body')).toContainText('live approach from the worktree');
+    return { live, plain, posts, gets, tickets };
+  };
+
+  test('a worktree-bound ticket shows its live docs editable, with the badge saying where edits land; an unbound one is unchanged (t-e78b, t-26f9)', async ({ page }) => {
+    const { live, plain, posts } = await liveBoard(page);
     const badge = page.locator('#doc-live-badge');
     await expect(badge).toContainText('Live from sprint/e7lv');
-    expect(await badge.getAttribute('title')).toContain('The sprint session in sprint/e7lv owns these files');
-    await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
-    await expect(page.locator('#btn-new-doc')).toHaveCount(0);
-    await expect(page.locator('#m-check-tip')).toHaveCount(0);
-    // Live doc checkboxes aren't tagged as toggleable at all (no hover/pointer, no click write).
-    await expect(page.locator('#m-body .doc-bullet[data-check-idx]')).toHaveCount(0);
-    // The Demo/Docs/UX toggle writes main's ticket.md frontmatter, so it stays usable.
+    await expect(badge).toContainText('edits save to its copy');
+    expect(await badge.getAttribute('title')).toContain("Edits save to sprint/e7lv's copy");
+    await expect(page.locator('#btn-edit-doc')).toBeVisible();
+    await expect(page.locator('#btn-new-doc')).toBeVisible();            // research.md is still available to create
+    await expect(page.locator('#m-body .doc-bullet[data-check-idx]')).toHaveCount(2);   // the checkboxes toggle now
     await expect(page.locator('.signoff-demo-toggle')).toBeEnabled();
-    const tier = page.locator('.signoff-controls select').first();
-    await expect(tier).toBeDisabled();
-    expect(await tier.getAttribute('title')).toContain('Live from sprint/e7lv');
+    await expect(page.locator('.signoff-controls select').first()).toBeEnabled();
+    await expect(page.locator('#doc-working-note')).toHaveCount(0);       // no session is working
+    // A file the server will not write in a worktree (here design.md) is offered read-only, never an Edit that cannot save.
+    await page.locator('.doc-tab', { hasText: 'Design' }).click();
+    await expect(page.locator('.doc-locked-badge')).toContainText('read-only here');
+    await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
+    await page.locator('.doc-tab', { hasText: 'Plan' }).click();
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
-      await page.locator('#modal').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e78b', 'visuals', `live-plan-${theme}.png`) });
+      await page.locator('#modal').screenshot({ path: path.join(require('os').tmpdir(), `canon-26f9-live-plan-${theme}.png`) });
     }
-    // The Description tab is main's ticket.md and stays editable.
-    await page.locator('.doc-tab', { hasText: 'Description' }).click();
-    await expect(page.locator('#btn-edit-doc')).toBeVisible();
     await page.keyboard.press('Escape');
 
     // Unbound ticket: Plan tab keeps Edit, no live badge.
@@ -6438,6 +6448,103 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(page.locator('#btn-edit-doc')).toBeVisible();
     await expect(page.locator('#doc-live-badge')).toHaveCount(0);
     expect(posts).toHaveLength(0);
+  });
+
+  test('a checkbox toggle on a live doc sends base_hash; a collision re-reads and re-applies once, a second one says so (t-26f9)', async ({ page }) => {
+    const replies = [{ status: 409, code: 'stale' }, { status: 200 }];
+    const { posts } = await liveBoard(page, { post: (route, body, n) => {
+      const r = replies[n - 1] || { status: 200 };
+      return route.fulfill({ status: r.status, contentType: 'application/json',
+        body: JSON.stringify(r.status === 200 ? { ok: true, etag: 'etag-new' } : { ok: false, code: r.code, error: 'plan.md changed since you read it — reload it and try again' }) });
+    } });
+    await page.locator('#m-body .doc-bullet[data-check-idx="1"]').click();
+    await expect.poll(() => posts.length).toBe(2);                      // collided once, re-read, re-applied, saved
+    expect(posts[0].body.base_hash).toMatch(/^etag-\d+$/);
+    expect(posts[1].body.base_hash).toMatch(/^etag-\d+$/);
+    expect(posts[1].body.base_hash).not.toBe(posts[0].body.base_hash);   // the retry used the fresh read
+    expect(posts[1].body.content).toContain('- [x] second box');
+    await expect(page.locator('#drop-toast')).not.toContainText("Couldn't");
+  });
+
+  test('two collisions in a row are reported, never shown as saved (t-26f9, t-1940)', async ({ page }) => {
+    const { posts } = await liveBoard(page, { post: (route) => route.fulfill({ status: 409, contentType: 'application/json',
+      body: JSON.stringify({ ok: false, code: 'stale', error: 'plan.md changed since you read it — reload it and try again' }) }) });
+    await page.locator('#m-body .doc-bullet[data-check-idx="1"]').click();
+    await expect.poll(() => posts.length).toBe(2);
+    await expect(page.locator('#drop-toast')).toContainText("Couldn't update that checkbox");
+    await expect(page.locator('#drop-toast')).toContainText('changed since you read it');
+  });
+
+  test('the editor keeps the text on a collision and offers Reload theirs or Overwrite (t-26f9)', async ({ page }) => {
+    let stale = true;
+    const { posts } = await liveBoard(page, { post: (route) => stale
+      ? route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'stale', error: 'plan.md changed since you read it' }) })
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: 'etag-saved' }) }) });
+    // A plan the editor accepts (it checks the Ticket line and the required headings before it saves).
+    const mine = words => `# Plan\n\nTicket: \`t-e7lv\`\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\n${words}\n\n## Decisions\n\nnone\n`;
+    await page.locator('#btn-edit-doc').click();
+    const box = page.locator('#m-edit-area');
+    await expect(box).toHaveValue(/live approach from the worktree/);   // the editor fills itself asynchronously: wait, or it overwrites my text
+    await box.fill(mine('my unsaved words'));
+    await page.locator('#btn-save-top').click();
+    await expect(page.locator('#stale-edit-notice')).toBeVisible();
+    await expect(box).toHaveValue(mine('my unsaved words'));              // the text is kept
+    expect(posts).toHaveLength(1);
+    expect(posts[0].body.base_hash).toMatch(/^etag-\d+$/);
+    await page.locator('#stale-reload').click();                           // Reload theirs: their text replaces mine
+    await expect(box).toHaveValue(/live approach from the worktree/);
+    await expect(page.locator('#stale-edit-notice')).toHaveCount(0);
+    // Overwrite with mine: a fresh etag, then the save goes through.
+    await box.fill(mine('mine again'));
+    await page.locator('#btn-save-top').click();
+    await expect(page.locator('#stale-edit-notice')).toBeVisible();
+    stale = false;
+    await page.locator('#stale-overwrite').click();
+    await expect.poll(() => posts.length).toBe(3);
+    expect(posts[2].body.content).toContain('mine again');
+    expect(posts[2].body.base_hash).toMatch(/^etag-\d+$/);
+  });
+
+  test('with a long branch name and a narrow window the working note still leaves Edit and + New doc inside the modal (t-26f9)', async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 700 });
+    await liveBoard(page, { working: true, branch: 'sprint/a-very-long-branch-name-for-an-end-user-demo' });
+    await expect(page.locator('#doc-working-note')).toBeVisible();
+    const bad = await page.evaluate(() => {
+      const m = document.querySelector('#modal').getBoundingClientRect();
+      return ['#btn-edit-doc', '#btn-new-doc', '#doc-working-note', '#doc-live-badge']
+        .map(sel => { const r = document.querySelector(sel)?.getBoundingClientRect(); return { sel, r }; })
+        .filter(x => !x.r || x.r.left < m.left - 1 || x.r.right > m.right + 1).map(x => x.sel);
+    });
+    expect(bad).toEqual([]);
+    await page.locator('#btn-edit-doc').click();                       // and Edit is really clickable
+    await expect(page.locator('#m-edit-area')).toBeVisible();
+  });
+
+  test('a working agent shows one warning line and never blocks the edit (t-26f9)', async ({ page }) => {
+    await liveBoard(page, { working: true });
+    await expect(page.locator('#doc-working-note')).toContainText('the agent is working in sprint/e7lv');
+    await expect(page.locator('#btn-edit-doc')).toBeEnabled();
+    // The evaluator found Edit pushed outside the modal while the note was showing: every control must lie inside it.
+    const inside = async () => page.evaluate(() => {
+      const m = document.querySelector('#modal').getBoundingClientRect();
+      return ['#btn-edit-doc', '#btn-new-doc', '#doc-working-note', '#doc-live-badge'].map(sel => {
+        const r = document.querySelector(sel)?.getBoundingClientRect();
+        return { sel, ok: !!r && r.left >= m.left - 1 && r.right <= m.right + 1 && r.width > 0 };
+      });
+    });
+    for (const c of await inside()) expect(c.ok, `${c.sel} must lie inside the modal`).toBe(true);
+    const box = await page.locator('#doc-working-note').boundingBox();
+    const tabs = await page.locator('.doc-tab').last().boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(tabs.x + tabs.width - 1);          // beside the tabs, never over them
+    // It is styled as a note (the working-state colour with a border), not left as bare text.
+    const style = await page.locator('#doc-working-note').evaluate(el => { const c = getComputedStyle(el); return { border: c.borderTopWidth, color: c.color, radius: c.borderTopLeftRadius }; });
+    expect(style.border).toBe('1px');
+    expect(style.radius).not.toBe('0px');
+    expect(style.color).not.toBe(await page.locator('#m-body').evaluate(el => getComputedStyle(el).color));
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      await page.locator('#m-docs').screenshot({ path: path.join(require('os').tmpdir(), `canon-26f9-working-${theme}.png`) });
+    }
   });
 
   // t-1940: a refused or failed board save must never look saved.

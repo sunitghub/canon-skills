@@ -417,12 +417,12 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "unknown project", http.StatusBadRequest)
 				return
 			}
-			content, dok := readDoc(unescape(m[1]), root)
+			content, etag, dok := readDocWithEtag(unescape(m[1]), root)
 			if !dok {
 				http.NotFound(w, r)
 				return
 			}
-			sendJSON(w, map[string]string{"content": content})
+			sendJSON(w, map[string]string{"content": content, "etag": etag})
 			return
 		}
 		if m := regexp.MustCompile(`^/api/ticket-image/(t-[a-z0-9]{4})/(.+)$`).FindStringSubmatch(path); m != nil {
@@ -643,9 +643,8 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 	if m := regexp.MustCompile(`^/api/doc/(.+)$`).FindStringSubmatch(path); m != nil {
 		doc := unescape(m[1])
-		if _, branch, live := liveForDoc(doc, eroot); live { // t-e78b: the sprint session owns these files
-			tid := strings.Split(filepath.ToSlash(filepath.Clean(filepath.FromSlash(doc))), "/")[0]
-			sendJSONStatus(w, map[string]any{"ok": false, "error": tid + " is live in worktree " + branch + " — edit it in the sprint session"}, http.StatusConflict)
+		if handled, st, res := writeLiveDoc(doc, payload, eroot); handled { // t-26f9: a bound ticket's docs are written in its worktree, guarded by base_hash
+			sendJSONStatus(w, res, st)
 			return
 		}
 		sendJSON(w, map[string]bool{"ok": writeDoc(doc, fmt.Sprint(payload["content"]), eroot)})
@@ -1501,14 +1500,31 @@ func findTicketPath(id string, root string) string {
 }
 
 func readDoc(docFile string, root string) (string, bool) {
+	content, _, ok := readDocWithEtag(docFile, root)
+	return content, ok
+}
+
+// readDocWithEtag also returns the etag a write must echo back as base_hash. For a bound ticket it describes the
+// WORKTREE file (sha256 of its bytes, or "absent"), even when the text shown falls back to main's copy, so saving
+// an edit of a doc the worktree does not have yet works; "" means the doc is not writable from the board.
+func readDocWithEtag(docFile string, root string) (string, string, bool) {
+	dir, _, wtPath, live := liveForDocFull(docFile, root)
+	etag := ""
+	if live {
+		if target, derr := liveDocTargetFrom(docFile, dir, wtPath); derr == nil {
+			if e, err := liveDocEtagOf(target); err == nil {
+				etag = e
+			}
+		}
+	}
 	// t-e78b: a worktree-bound ticket's docs come from that worktree's copy.
-	if dir, _, live := liveForDoc(docFile, root); live {
+	if live {
 		clean := filepath.Clean(filepath.FromSlash(docFile))
 		if !filepath.IsAbs(clean) && !strings.HasPrefix(clean, "..") && strings.ToLower(filepath.Ext(clean)) == ".md" {
 			if target, err := filepath.EvalSymlinks(filepath.Join(filepath.Dir(dir), clean)); err == nil {
 				if rel, err := filepath.Rel(dir, target); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 					if raw, err := os.ReadFile(target); err == nil {
-						return string(raw), true
+						return string(raw), etag, true
 					}
 				}
 			}
@@ -1519,11 +1535,14 @@ func readDoc(docFile string, root string) (string, bool) {
 		if legacy, legacyOK := legacyDocTarget(docFile, root); legacyOK {
 			p = legacy
 		} else {
-			return "", false
+			return "", "", false
 		}
 	}
 	raw, err := os.ReadFile(p)
-	return string(raw), err == nil
+	if !live {
+		etag = docEtag(raw)
+	}
+	return string(raw), etag, err == nil
 }
 
 // Must stay behaviorally identical to server.py's _safe_ticket_doc
@@ -2087,9 +2106,16 @@ func registeredWorktrees(root string) []map[string]any {
 
 // liveWorktree returns (<wt>/.tickets/<id> resolved, branch, true) for a bound ticket.
 func liveWorktree(t ticket, root string, wts []map[string]any) (string, string, bool) {
+	dir, branch, _, ok := liveWorktreeFull(t, root, wts)
+	return dir, branch, ok
+}
+
+// liveWorktreeFull is liveWorktree plus the bound worktree's own path (t-26f9: the write path re-checks the
+// unresolved .tickets and ticket folders under it).
+func liveWorktreeFull(t ticket, root string, wts []map[string]any) (string, string, string, bool) {
 	tid, _ := t["id"].(string)
 	if t["layout"] != "folder" || tid == "" || tid == "." || tid == ".." || strings.ContainsAny(tid, "/\\") {
-		return "", "", false
+		return "", "", "", false
 	}
 	var cand map[string]any
 	if raw, err := os.ReadFile(filepath.Join(ticketsDirForRoot(root), tid, ".cockpit-cwd")); err == nil {
@@ -2114,24 +2140,171 @@ func liveWorktree(t ticket, root string, wts []map[string]any) (string, string, 
 		}
 	}
 	if cand == nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	base, err := filepath.EvalSymlinks(filepath.Join(fmt.Sprint(cand["path"]), ".tickets"))
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	dir, err := filepath.EvalSymlinks(filepath.Join(base, tid))
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	if rel, err := filepath.Rel(base, dir); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
-		return "", "", false
+		return "", "", "", false
 	}
 	if fi, err := os.Stat(filepath.Join(dir, "ticket.md")); err != nil || fi.IsDir() {
-		return "", "", false
+		return "", "", "", false
 	}
 	branch, _ := cand["branch"].(string)
-	return dir, branch, true
+	return dir, branch, fmt.Sprint(cand["path"]), true
+}
+
+// ── Writing a worktree-bound ticket's docs from the board (t-26f9) ─────────
+// Replaces t-e78b's read-only rule: the worktree copy owns a bound ticket's docs, and the board may edit them.
+// Every write is guarded by the etag the client read (sha256 of the file's exact bytes, or "absent"), so the board
+// and the agent can never silently overwrite each other; the target is re-validated here, at the point of use,
+// because the .cockpit-cwd lock that binds the ticket is agent-writable.
+const (
+	docEtagAbsent   = "absent"
+	liveDocMaxBytes = 1 << 20
+)
+
+var liveDocNames = map[string]bool{"acceptance.md": true, "plan.md": true, "research.md": true}
+var liveDocMu sync.Mutex
+
+func docEtag(b []byte) string {
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+type liveDocErr struct {
+	status int
+	code   string
+	msg    string
+}
+
+// liveDocTargetFrom returns the file a board write to docFile would replace in the bound worktree, or why not.
+// dir is liveWorktreeFull's resolved <worktree>/.tickets/<id>; wtPath is the worktree itself.
+func liveDocTargetFrom(docFile, dir, wtPath string) (string, *liveDocErr) {
+	bad := &liveDocErr{http.StatusBadRequest, "bad_doc", "that doc can't be written from the board"}
+	parts := strings.Split(docFile, "/")
+	// The raw name, compared exactly: NTFS ignores a trailing dot or space and treats `:` as a stream, so a
+	// normalised comparison would let `plan.md.`, `plan.md::$DATA` or `TICKET~1.MD` through.
+	if strings.ContainsAny(docFile, "\\:\x00") || len(parts) != 2 || parts[0] == "" || parts[0] == "." || parts[0] == ".." {
+		return "", bad
+	}
+	name := strings.ToLower(parts[1])
+	if !liveDocNames[name] {
+		return "", bad
+	}
+	trust := &liveDocErr{http.StatusForbidden, "unsafe_path", "that ticket folder is not a plain folder inside its worktree"}
+	realWT, err := filepath.EvalSymlinks(wtPath)
+	if err != nil {
+		return "", trust
+	}
+	ticketsDir := filepath.Join(wtPath, ".tickets")
+	tDir := filepath.Join(ticketsDir, parts[0])
+	for _, q := range []string{ticketsDir, tDir} {
+		fi, err := os.Lstat(q)
+		if err != nil || !fi.IsDir() || fi.Mode()&(os.ModeSymlink|os.ModeIrregular) != 0 {
+			return "", trust // a symlink or a junction (reparse point), however Lstat reports it
+		}
+	}
+	// Belt and braces: the resolved folder must be exactly where the worktree says it is.
+	if pathKey(dir) != pathKey(filepath.Join(realWT, ".tickets", parts[0])) {
+		return "", trust
+	}
+	target := filepath.Join(dir, name)
+	if fi, err := os.Lstat(target); err == nil && !fi.Mode().IsRegular() {
+		return "", trust
+	}
+	return target, nil
+}
+
+// liveDocEtagOf is "absent" ONLY when the file does not exist: any other read error (permissions, a Windows sharing
+// violation) must not read as absent, or a write with base_hash "absent" would bypass the guard.
+func liveDocEtagOf(target string) (string, error) {
+	raw, err := os.ReadFile(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return docEtagAbsent, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return docEtag(raw), nil
+}
+
+// atomicWriteFile writes via a temp file in the same folder and a rename, so no reader ever sees a half-written
+// doc. Windows refuses to replace a file another process has open, so the rename is retried briefly.
+func atomicWriteFile(target string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(target), ".board-*.tmp")
+	if err != nil {
+		return err
+	}
+	name := tmp.Name()
+	_, werr := tmp.Write(data)
+	if werr == nil {
+		werr = tmp.Sync()
+	}
+	if cerr := tmp.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr != nil {
+		os.Remove(name)
+		return werr
+	}
+	mode := os.FileMode(0o644) // a new doc; an existing one keeps the mode it had
+	if fi, err := os.Stat(target); err == nil {
+		mode = fi.Mode().Perm()
+	}
+	_ = os.Chmod(name, mode)
+	var rerr error
+	for i := 0; i < 6; i++ {
+		if rerr = os.Rename(name, target); rerr == nil {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	os.Remove(name)
+	return rerr
+}
+
+// writeLiveDoc handles POST /api/doc/<doc> for a worktree-bound ticket. handled is false for an unbound one.
+func writeLiveDoc(docFile string, payload map[string]any, root string) (handled bool, status int, res map[string]any) {
+	dir, _, wtPath, live := liveForDocFull(docFile, root)
+	if !live {
+		return false, 0, nil
+	}
+	fail := func(st int, code, msg string) (bool, int, map[string]any) {
+		return true, st, map[string]any{"ok": false, "code": code, "error": msg}
+	}
+	target, derr := liveDocTargetFrom(docFile, dir, wtPath)
+	if derr != nil {
+		return fail(derr.status, derr.code, derr.msg)
+	}
+	content, isStr := payload["content"].(string)
+	if !isStr {
+		return fail(http.StatusBadRequest, "bad_content", "content must be text")
+	}
+	if len(content) > liveDocMaxBytes {
+		return fail(http.StatusBadRequest, "too_large", "that doc is too large to save from the board")
+	}
+	base, _ := payload["base_hash"].(string)
+	liveDocMu.Lock()
+	defer liveDocMu.Unlock()
+	cur, rerr := liveDocEtagOf(target)
+	if rerr != nil {
+		return fail(http.StatusInternalServerError, "read_failed", "couldn't read "+filepath.Base(target)+" to check it hasn't changed — is another program holding it open? Try again")
+	}
+	if base == "" || base != cur {
+		return fail(http.StatusConflict, "stale", filepath.Base(target)+" changed since you read it — reload it and try again")
+	}
+	data := []byte(strings.TrimSpace(content) + "\n")
+	if err := atomicWriteFile(target, data); err != nil {
+		return fail(http.StatusInternalServerError, "write_failed", "couldn't save "+filepath.Base(target)+" — is another program holding it open? Try again")
+	}
+	return true, http.StatusOK, map[string]any{"ok": true, "etag": docEtag(data)}
 }
 
 func annotateLiveDocs(tickets []ticket, root string) {
@@ -2159,10 +2332,15 @@ func annotateLiveDocs(tickets []ticket, root string) {
 // liveForDoc computes a doc's ticket binding exactly like /api/tickets (full
 // load + divergence, so the TTL-cached scan is never seeded with a partial set).
 func liveForDoc(docFile, root string) (string, string, bool) {
+	dir, branch, _, ok := liveForDocFull(docFile, root)
+	return dir, branch, ok
+}
+
+func liveForDocFull(docFile, root string) (string, string, string, bool) {
 	root = rootOr(root)
 	parts := strings.Split(filepath.ToSlash(filepath.Clean(filepath.FromSlash(docFile))), "/")
 	if len(parts) == 0 || parts[0] == "" {
-		return "", "", false
+		return "", "", "", false
 	}
 	tickets := loadTickets(root)
 	annotateBranchDivergence(tickets, root)
@@ -2170,12 +2348,12 @@ func liveForDoc(docFile, root string) (string, string, bool) {
 		if t["id"] == parts[0] {
 			wts := registeredWorktrees(root)
 			if len(wts) == 0 {
-				return "", "", false
+				return "", "", "", false
 			}
-			return liveWorktree(t, root, wts)
+			return liveWorktreeFull(t, root, wts)
 		}
 	}
-	return "", "", false
+	return "", "", "", false
 }
 
 // ── Worktree holds (t-2241) ───────────────────────────────────────────────
