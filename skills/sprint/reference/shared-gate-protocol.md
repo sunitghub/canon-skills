@@ -116,7 +116,7 @@ in the diff: a change touching no `.css`/`.html` file can still be a UI change.
 that is in-scope and behaviorally correct can still silently break the *rendered*
 styling of a nearby element — e.g. wrapping an input in a form changes a widget's
 rendered testid, so CSS selectors defined elsewhere stop matching and the element
-reverts to default styling (live case: overtone `t-b75f` — a button lost its
+reverts to default styling (live case: a consumer project's `t-b75f` — a button lost its
 gradient this exact way, invisible to code review and to logic-only tests like
 Streamlit AppTest). When you render, confirm the affected element AND the elements
 around it still match their intended appearance, and flag any unintended visual

@@ -429,7 +429,7 @@ Condensed recap, for running this live in front of a group:
 
 ## Related material
 
-- The real-world version of this pattern: a CFIHOS-style conformance engine for plant equipment data,
-  with the same spec/runner/live-break structure, in `overtone_demo/scenarios.py` (separate repo).
+- The real-world version of this pattern: a conformance engine for plant equipment data, with the
+  same spec/runner/live-break structure (in a separate repo).
 - `posts/dsl-for-agentic-coding-session.md` in this repo — the talk this workshop is built from,
   including a longer treatment of the "where it doesn't fit" section above.

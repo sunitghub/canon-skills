@@ -6,7 +6,7 @@ updated: 2026-08-16
 
 # Agentic App Playbook
 
-A living checklist of the patterns and practices we follow when building a **grounded agentic app** — an app where an LLM agent answers questions or takes actions over real data or a knowledge base (diagnostics, analytics, root-cause, retrieval, decision support), like `overtone-app`. Follow it when building any future such app; append to it as we learn.
+A living checklist of the patterns and practices we follow when building a **grounded agentic app** — an app where an LLM agent answers questions or takes actions over real data or a knowledge base (diagnostics, analytics, root-cause, retrieval, decision support). Follow it when building any future such app; append to it as we learn.
 
 It is language-agnostic (Python, TypeScript, shell — anything). Each item is a check you can hold your build against. Where canon already gives you a practice for free, a `canon:` note says how — canon is the harness you `sprint` these apps in, so its own mechanics live in canon's docs, not here.
 

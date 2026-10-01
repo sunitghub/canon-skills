@@ -61,6 +61,9 @@ for name in pages:
     if p.styles: errors.append(f'{name}: has {p.styles} inline <style> block(s)')
     if p.inline_scripts: errors.append(f'{name}: has {p.inline_scripts} inline <script> block(s)')
     if 'MOCKUP' in text: errors.append(f'{name}: still contains MOCKUP')
+    # claims and names that were corrected or removed must not come back (t-afe2)
+    for banned in ('Paid Herdr', 'overtone'):
+        if banned.lower() in text.lower(): errors.append(f'{name}: contains "{banned}"')
     if p.title.strip().lower().endswith('mockup'): errors.append(f'{name}: title ends in Mockup')
     if 'href="#"' in text: errors.append(f'{name}: has a placeholder href="#"')
 
