@@ -57,8 +57,8 @@ then, this skill is the portable alternative, not a guarantee.
   is confirmed working under Claude Code. Under Codex, the generic `spawn_agent` call has no
   `model` field, but a named custom subagent defined in `~/.codex/agents/*.toml` can set its
   own `model`, overriding `agents.default_subagent_model` — don't assume the cost savings hold
-  under Codex without setting up and testing such an agent file live (same caveat `AGENTS.md`'s
-  Model Tiers section already carries for `explore`).
+  under Codex without setting up and testing such an agent file live (same caveat canon's own
+  `AGENTS.md` carries under `## Model Tiers: canon internals`, not copied to projects, for `explore`).
 - **A vague question produces a vague citation set.** If the subagent's answer doesn't actually
   resolve what you needed, that's a sign the question was under-specified, not that this skill
   failed — re-dispatch with a sharper question rather than falling back to a direct `Read`.
