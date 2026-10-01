@@ -219,7 +219,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
   **does** apply to high-risk sprints too (that is the accepted tradeoff above); an explicit
   `Gate model:` override is how a high-risk ticket opts into something stronger.
 - **Cross-harness caveat.** Applying the Admin default is confirmed only under Claude
-  Code. Per `AGENTS.md`'s `## Model Tiers` note, Codex's generic `spawn_agent` call has no
+  Code. Per canon's own `AGENTS.md` (`## Model Tiers: canon internals`, not copied to projects), Codex's generic `spawn_agent` call has no
   `model` field, but a named custom subagent defined in a `~/.codex/agents/*.toml` file can
   set its own `model`, overriding `agents.default_subagent_model`. Don't assume the default
   takes effect under Codex without setting up and testing such an agent file live — an
