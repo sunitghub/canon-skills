@@ -68,6 +68,7 @@ tests=(
   "$ROOT/tests/no-browser-in-tests.sh"
   "$ROOT/tests/sprint-check-delegate.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
+  "$ROOT/tests/site.sh"
   "$ROOT/tests/gate-model-parity.sh"
   "$ROOT/tests/jtbd-routing.sh"
   "$ROOT/tests/why-cap.sh"
