@@ -71,7 +71,6 @@ harness-scoped recipe.
 
 **North-star (gate floor).** Only structural risk may reduce close gates, and a sprint never drops below the binding evaluator. The one documented exception is a user-set `demo: true` light-close (the evaluator still runs). The full policy — demo mode, the model tier for gates, and the north-star amendments — lives in `skills/sprint/reference/complete.md` (see also `DECISIONS.md` 2026-07-25 / 07-30 / 08-02).
 
-
 <!-- AI-SKILLS:BEGIN -->
 ## Active canon skills
 > Managed by `skills.sh` — use `add`/`remove` to change.

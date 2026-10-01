@@ -170,7 +170,7 @@ lines="$(printf '%s\n' "$block" | wc -l | tr -d ' ')"
 for needle in '## Model Tiers' '`explore` → Haiku' '`plan creation` → Fable or Opus' '`implement` → Haiku/Sonnet' '`review` / `grill` → Opus' 'skills/sprint/reference/complete.md'; do
   printf '%s\n' "$block" | grep -qF -- "$needle" || fail "the MODEL-TIERS block lost '$needle'"
 done
-for internal in 'tools/sprint-check-app' 'model-tiers.json' 'agents/canon-' 'spawn_agent' 'Cross-harness' 'Gate model' 't-7e36' 't-ef27' 't-c774'; do
+for internal in 'tools/sprint-check-app' 'model-tiers.json' 'agents/canon-' 'spawn_agent' 'Cross-harness' 'Gate model' 't-7e36' 't-ef27' 't-c774' 'North-star' 'Close-gate effort' 'pi session'; do
   if printf '%s\n' "$block" | grep -qF -- "$internal"; then fail "the MODEL-TIERS block carries canon-internal text: $internal"; fi
 done
 
