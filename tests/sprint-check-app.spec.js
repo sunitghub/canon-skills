@@ -10230,6 +10230,25 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     expect(favicon).toEqual([]);
   });
 
+  test('the Cockpit header shows the cannon mark, not the diamond, in the accent colour in both themes (t-3fa3)', async ({ page }) => {
+    await page.goto(BASE + '/cockpit');
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+      const info = await page.evaluate(() => {
+        const svg = document.querySelector('.brand svg.logo');
+        const probe = document.createElement('span');
+        probe.style.color = 'var(--accent)';
+        document.body.appendChild(probe);
+        const accent = getComputedStyle(probe).color;
+        probe.remove();
+        return { has: !!svg, color: svg ? getComputedStyle(svg).color : null, accent, text: document.querySelector('.brand').textContent };
+      });
+      expect(info.has).toBe(true);
+      expect(info.color).toBe(info.accent);
+      expect(info.text).not.toContain('\u25C6');
+    }
+  });
+
   test('Admin default pickers have a solid themed background, not transparent (Edge popup source) (t-294b)', async ({ page }) => {
     await openModelTiers(page);
     for (const theme of ['dark', 'light']) {

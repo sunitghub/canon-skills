@@ -31,6 +31,40 @@ for (const scheme of /** @type {const} */ (['dark', 'light'])) {
   }
 }
 
+test.describe('brand', () => {
+  for (const scheme of /** @type {const} */ (['dark', 'light'])) {
+    for (const file of PAGES) {
+      test(`${file} (${scheme}): the header brand is the cannon in the accent colour, and the favicon is the cannon`, async ({ page }) => {
+        await page.emulateMedia({ colorScheme: scheme });
+        await page.goto(urlOf(file));
+        const info = await page.evaluate(() => {
+          const mark = document.querySelector('.brand svg.mk');
+          const probe = document.createElement('span');
+          probe.style.color = 'var(--accent)';
+          document.body.appendChild(probe);
+          const accent = getComputedStyle(probe).color;
+          probe.remove();
+          const icon = document.querySelector('link[rel="icon"]').getAttribute('href');
+          return { hasMark: !!mark, color: mark ? getComputedStyle(mark).color : null, accent, icon };
+        });
+        expect(info.hasMark).toBe(true);
+        expect(info.color).toBe(info.accent);
+        expect(info.accent).toBe(scheme === 'dark' ? 'rgb(139, 123, 255)' : 'rgb(108, 92, 247)');
+        const icon = decodeURIComponent(info.icon);
+        expect(icon).toContain('<mask');
+        expect(icon).not.toContain('M16 6.5l9.5 9.5');
+      });
+    }
+  }
+  test('the hero cannon stays small and sits low', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto(urlOf('index.html'));
+    const box = await page.$eval('.hero-mark', (e) => { const r = e.getBoundingClientRect(); return { w: r.width, top: r.top + window.scrollY }; });
+    expect(box.w).toBeLessThanOrEqual(620);
+    expect(box.top).toBeGreaterThanOrEqual(80);
+  });
+});
+
 test.describe('home flow', () => {
   test.use({ colorScheme: 'dark' });
   test('three stage cards side by side on a wide screen', async ({ page }) => {
@@ -60,6 +94,76 @@ test.describe('tabs and popup', () => {
       expect(sel).toEqual([0, 1, 2, 3].map((j) => String(j === i)));
       await expect(page.locator('#term')).toContainText(words[i]);
     }
+  });
+  test('the daily loop advances by itself, stops on a click and has a pause button', async ({ page }) => {
+    await page.clock.install();
+    await page.goto(urlOf('index.html'));
+    const panel = page.locator('#loop .panel');
+    await panel.scrollIntoViewIfNeeded();
+    await expect(panel).toHaveClass(/auto/); // the observer has seen the panel on screen
+    await page.clock.runFor(8200);
+    await expect(page.locator('#s2')).toHaveAttribute('aria-selected', 'true');
+    await page.clock.runFor(8000);
+    await expect(page.locator('#s3')).toHaveAttribute('aria-selected', 'true');
+    await page.click('#loop-pause');
+    await expect(page.locator('#loop-pause')).toHaveText('Play');
+    await expect(panel).not.toHaveClass(/auto/);
+    await page.clock.runFor(17000);
+    await expect(page.locator('#s3')).toHaveAttribute('aria-selected', 'true');
+    await page.click('#loop-pause');
+    await expect(page.locator('#loop-pause')).toHaveText('Pause');
+    await page.mouse.move(0, 0);
+    await expect(panel).toHaveClass(/auto/);
+    await page.clock.runFor(8200);
+    await expect(page.locator('#s4')).toHaveAttribute('aria-selected', 'true');
+    await page.click('#s1');
+    await page.mouse.move(0, 0);
+    await expect(panel).not.toHaveClass(/auto/);
+    await page.clock.runFor(17000);
+    await expect(page.locator('#s1')).toHaveAttribute('aria-selected', 'true');
+  });
+  test('the daily loop stays put under reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.clock.install();
+    await page.goto(urlOf('index.html'));
+    await page.locator('#loop .panel').scrollIntoViewIfNeeded();
+    await page.clock.runFor(20000);
+    await expect(page.locator('#s1')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('#loop-pause')).toBeHidden();
+  });
+  test('the sprint crew pulses step by step, crosses each arrow, and can be paused', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.clock.install();
+    await page.goto(urlOf('index.html'));
+    const flow = page.locator('#skills .flow');
+    await flow.scrollIntoViewIfNeeded();
+    await expect(flow).toHaveClass(/playing/);
+    const pulsing = () => page.$$eval('#skills .flow .act.pulse .act-top code', (els) => els.map((e) => e.textContent));
+    expect(await pulsing()).toEqual(['research']);
+    await page.clock.runFor(530);
+    expect(await pulsing()).toEqual(['orient']);
+    await page.clock.runFor(530 * 4); // grill, impact-analysis, root-why, then the first arrow
+    await expect(page.locator('#skills .stage.st-start')).toHaveClass(/arrow-on/);
+    await page.clock.runFor(910);
+    expect(await pulsing()).toEqual(['code-simplifier']);
+    await page.click('#flow-pause');
+    await expect(page.locator('#flow-pause')).toHaveText('Play');
+    await expect(flow).not.toHaveClass(/playing/);
+    expect(await pulsing()).toEqual([]);
+  });
+  test('the sprint crew does not animate under reduced motion', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.clock.install();
+    await page.goto(urlOf('index.html'));
+    await page.locator('#skills .flow').scrollIntoViewIfNeeded();
+    await page.clock.runFor(20000);
+    expect(await page.$$eval('#skills .flow .pulse, #skills .flow .arrow-on', (els) => els.length)).toBe(0);
+    await expect(page.locator('#flow-pause')).toBeHidden();
+  });
+  test('the sprint complete stage names every wrapup gate, the review and eval agents, and the summary', async ({ page }) => {
+    await page.goto(urlOf('index.html'));
+    const names = await page.$$eval('#skills .st-close .act-top code', (els) => els.map((e) => e.textContent));
+    expect(names).toEqual(['code-simplifier', 'code-reviewer', 'security-review', 'repo-check', 'doc-audit', 'mutation-test', 'break-it', 'reviewer', 'evaluator', 'summary']);
   });
   test('every agent tab switches the screenshot', async ({ page }) => {
     await page.goto(urlOf('index.html'));
@@ -103,16 +207,28 @@ test.describe('tabs and popup', () => {
 });
 
 test.describe('theme toggle', () => {
-  test.use({ colorScheme: 'dark' });
   for (const file of PAGES) {
-    test(`${file}: Paper is light and Ink is dark`, async ({ page }) => {
+    test(`${file}: the button shows the system theme and switches it both ways`, async ({ page }) => {
+      await page.emulateMedia({ colorScheme: 'dark' });
       await page.goto(urlOf(file));
       const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
       expect(luminance(await bg())).toBeLessThan(0.3);
-      await page.click('#t-paper');
+      await expect(page.locator('#theme-label')).toHaveText('Dark');
+      await page.click('#theme-toggle');
       expect(luminance(await bg())).toBeGreaterThan(0.7);
-      await page.click('#t-ink');
+      await expect(page.locator('#theme-label')).toHaveText('Light');
+      await expect(page.locator('#theme-toggle .ic[data-for="light"]')).toBeVisible();
+      await expect(page.locator('#theme-toggle .ic[data-for="dark"]')).toBeHidden();
+      await page.click('#theme-toggle');
       expect(luminance(await bg())).toBeLessThan(0.3);
+      await expect(page.locator('#theme-label')).toHaveText('Dark');
+      await expect(page.locator('#theme-toggle .ic[data-for="dark"]')).toBeVisible();
     });
   }
+  test('a light system setting starts the button on Light', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    await page.goto(urlOf('index.html'));
+    await expect(page.locator('#theme-label')).toHaveText('Light');
+    expect(luminance(await page.evaluate(() => getComputedStyle(document.body).backgroundColor))).toBeGreaterThan(0.7);
+  });
 });
