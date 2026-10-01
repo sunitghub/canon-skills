@@ -346,7 +346,7 @@ footer b { color: var(--fg); }
 .flow-ctl { display: flex; justify-content: flex-end; margin-bottom: -12px; }
 .act { transition: background 0.3s; }
 .act.pulse { background: var(--accent-soft); background: color-mix(in srgb, var(--sc) 14%, transparent); }
-.act.pulse .bub { animation: bub-pulse 0.9s ease-out; }
+.act.pulse .bub { animation: bub-pulse 0.5s ease-out; }
 @keyframes bub-pulse {
   0% { transform: scale(1); box-shadow: 0 0 0 4px var(--panel), 0 0 0 4px transparent; }
   35% { transform: scale(1.4); box-shadow: 0 0 0 4px var(--panel), 0 0 0 11px color-mix(in srgb, var(--sc) 40%, transparent); }

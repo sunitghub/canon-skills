@@ -56,7 +56,7 @@ test.describe('brand', () => {
       });
     }
   }
-  test('the hero cannon stays small and sits low, and the page does not scroll sideways', async ({ page }) => {
+  test('the hero cannon stays small and sits low', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(urlOf('index.html'));
     const box = await page.$eval('.hero-mark', (e) => { const r = e.getBoundingClientRect(); return { w: r.width, top: r.top + window.scrollY }; });
