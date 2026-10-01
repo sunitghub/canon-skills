@@ -7,6 +7,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SITE="${SITE_DIR:-$ROOT/site}"
 PAGES="${SITE_PAGES:-index.html compare.html learnings.html}"
 
+# scripts/test.sh runs this unconditionally; a machine without python3 (Git for Windows only) must skip it,
+# not abort the whole suite.
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "site: python3 absent — skipped"
+  exit 0
+fi
+
 python3 - "$ROOT" "$SITE" "$PAGES" <<'PY'
 import os, re, sys
 from html.parser import HTMLParser
