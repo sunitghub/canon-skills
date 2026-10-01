@@ -13,7 +13,6 @@ Quick orientation for arriving agents. One line per directory.
 | `posts/` | Long-form writing and blog drafts |
 | `PRs/` | Tracking notes for external PR review |
 | `scripts/` | Lifecycle shell scripts — `pre-commit-hook-template.sh` (git-native pre-commit hook body), `test.sh` |
-| `site/` | The public website (presentation only): `index.html`, `compare.html`, `learnings.html`, shared `style.css` and `site.js`, `assets/` screenshots, `icons/` (the cannon mark: the source for the copies inlined in the pages and the Cockpit). Docs content stays in `docs/`; guards are `tests/site.sh` and `tests/site.spec.js` (`npm run test:site`) |
 | `skills/` | On-demand agent skills — each in `skills/<name>/SKILL.md`; loaded via `skills.sh add` |
 | `standards/` | Always-injected agent standards — `efficiency.md` (code/git/token rules), `skill-setup-std.md` |
 | `tests/` | Shell + Playwright test suite — `npm test` runs shell suite; `npm run test:ui` runs Playwright |
