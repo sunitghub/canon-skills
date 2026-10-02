@@ -3875,8 +3875,24 @@ var ticketStatusRe = regexp.MustCompile(`(?m)^status:\s*(\S+)`)
 // ticket.md. Empty string (never an error) if the file or field is absent —
 // callers treat that the same as "not in_progress" (t-2e7e).
 // ticketStatusIn reads a ticket's status from an arbitrary project root (t-391a).
+//
+// t-f1b6: the status is read where the sprint RUNS. A ticket locked to a worktree (its .cockpit-cwd) keeps `open` in
+// main's copy — the sprint writes the worktree's copy, and the board never writes main's for a bound ticket — so
+// reading main's would make the daemon treat every worktree sprint as not started: never resumed, never sent
+// `sprint continue`. Every status reader (both session resolvers, pi's check, the continue flag, the cwd lock gate)
+// goes through here, so they cannot disagree.
 func (s *server) ticketStatusIn(root, ticket string) string {
-	b, err := os.ReadFile(filepath.Join(s.sessionStateDir(root, ticket), "ticket.md"))
+	if wt := s.boundWorktreeIn(root, ticket); wt != "" {
+		if st := ticketStatusOf(filepath.Join(wt, ".tickets", ticket, "ticket.md")); st != "" {
+			return st
+		}
+	}
+	return ticketStatusOf(filepath.Join(s.sessionStateDir(root, ticket), "ticket.md"))
+}
+
+// ticketStatusOf is the `status:` of one ticket.md, "" when the file or field is absent.
+func ticketStatusOf(path string) string {
+	b, err := os.ReadFile(path)
 	if err != nil {
 		return ""
 	}
@@ -3885,6 +3901,45 @@ func (s *server) ticketStatusIn(root, ticket string) string {
 		return ""
 	}
 	return string(m[1])
+}
+
+// boundWorktreeIn is the worktree a ticket's sprint runs in: the folder its .cockpit-cwd names, but only when git
+// registers it for this project as a worktree other than the main checkout, and only when the ticket's own folder
+// in it is plain (no link or junction at .tickets, the ticket folder or ticket.md). The lock lives in agent-writable
+// .tickets/, so anything else — an unregistered folder, the main checkout, a relative path, a vanished folder, a
+// link — yields "" and the caller falls back to main's copy; nothing outside a registered worktree is ever read.
+// A ticket with no lock file costs one stat and no git call.
+func (s *server) boundWorktreeIn(root, ticket string) string {
+	if isScratch(ticket) {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(s.sessionStateDir(root, ticket), ".cockpit-cwd"))
+	if err != nil {
+		return ""
+	}
+	lock := strings.TrimSpace(string(b))
+	if lock == "" || !filepath.IsAbs(lock) {
+		return ""
+	}
+	resolved, err := filepath.EvalSymlinks(lock)
+	if err != nil {
+		return ""
+	}
+	wts, err := s.listWorktreesIn(root)
+	if err != nil || len(wts) < 2 {
+		return ""
+	}
+	for _, w := range wts[1:] { // the first entry is the main checkout
+		if cand, err := filepath.EvalSymlinks(w); err == nil && pathsEqual(cand, resolved) {
+			tdir := filepath.Join(resolved, ".tickets", ticket)
+			fi, ferr := os.Lstat(filepath.Join(tdir, "ticket.md"))
+			if !plainDir(filepath.Join(resolved, ".tickets")) || !plainDir(tdir) || ferr != nil || !fi.Mode().IsRegular() {
+				return ""
+			}
+			return resolved
+		}
+	}
+	return ""
 }
 
 // resolveClaudeSessionID decides whether to resume a persisted claude
