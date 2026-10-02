@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-01-2026 18:16
+learnings-sweep last run: 10-01-2026 19:22
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-01 | [t-d659](.tickets/t-d659/learnings.md) | New CSS for a new page area leaked onto the existing pages (an unscoped header rule and a phone-width rule) and a guard grid that only loops over the new pages cannot see it; scope new styles to the new area and test the old pages' header at phone and wide widths. | UNPROMOTED |
 | 2026-10-01 | [t-ceec](.tickets/t-ceec/learnings.md) | A close-protocol step that says to run a SKILL as a shell command fails silently ("command not found", the close carries on, the row is skipped): word skill steps as "run the skill" and enforce it with a lint that derives skill names and executables from the tree; and fix a reported mistake by scanning every name, not only the one reported (the same error existed for a second skill) | UNPROMOTED |
 | 2026-10-01 | [t-70ea](.tickets/t-70ea/learnings.md) | A skills refresh test must start from a REGISTERED project (`refresh` exits at once with "No canon skills registered" and a grep filter hides it), and a throwaway project's first `add` already performs the block replacement, so splice the legacy block in after registering; and when text shipped into projects is shrunk, grep the shipped skills for pointers at the moved text (a "north-star exception" pointer was missed by the plan) | UNPROMOTED |
 | 2026-10-01 | [t-b91f](.tickets/t-b91f/learnings.md) | A layout test that injects state into a live page (a chip, text, markup) races the page's own renderers and polls and passes only by measuring first: silence those renderers before injecting, prove stability with a pause past the poll interval plus a control that fails without the silencing, and build fixtures from the real markup (an invented class hid a real wrap) | UNPROMOTED |
