@@ -6460,7 +6460,37 @@ test.describe('cockpit in board (t-ddc8)', () => {
     other_dirty_count: 3,
     message: `chore: add ticket ${id}`,
     blocked: '',
+    ticket_in_head: false,   // t-b59d: never committed
     ...over,
+  });
+
+  test('a committed ticket with local edits says so truthfully; a never-committed one and an older server keep the old sentence (t-b59d)', async ({ page }) => {
+    const id = `t-b59d-${Date.now()}`;
+    const log = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      // Committed (ticket_in_head true) with a real edit: lags, is not missing.
+      await openRailWithPlan(page, id, d254Plan(id, { ticket_in_head: true, required: [`.tickets/${id}/ticket.md`], message: `chore: update ticket ${id}` }), log);
+      const warn = page.locator('#ck-worktree-uncommitted');
+      await expect(warn).toContainText(`${id} has uncommitted changes`);
+      await expect(warn).toContainText('a new worktree gets its last committed version');
+      await expect(warn).not.toContainText("isn't committed yet");
+      await expect(warn).not.toContainText("won't contain it");
+      // + New still offers the commit dialog (the flow is unchanged).
+      await page.locator('.ck-worktree-new-plus').click();
+      await expect(page.locator('#ck-tcommit')).toHaveClass(/open/);
+      await page.locator('#ck-tcm-cancel').click();
+      // A server that does not send the field keeps the old, cautious sentence.
+      const legacy = d254Plan(id); delete legacy.ticket_in_head;
+      await page.unroute('**/api/ticket-commit/**');
+      await page.route('**/api/ticket-commit/**', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(legacy) }));
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#ck-worktree-uncommitted')).toContainText(`${id} isn't committed yet`);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
   });
 
   test('uncommitted ticket: rail warns, + New opens the grouped commit dialog, Commit & create commits then creates (t-d254)', async ({ page }) => {

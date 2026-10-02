@@ -1343,10 +1343,22 @@ def _ticket_commit_blocked(root: Path) -> str:
             return 'a merge, rebase or cherry-pick is in progress'
     return ''
 
+def _in_head(path: str, root: Path) -> bool:
+    return _git_out(['cat-file', '-e', 'HEAD:' + path], root)[0] == 0
+
+def _whitespace_only_change(path: str, root: Path) -> bool:
+    """t-b59d: True when `path` (already in HEAD) differs from HEAD in whitespace only (trailing spaces, the
+    amount of space between words, CR/LF endings). The diff OUTPUT decides (`-b --numstat` prints nothing for
+    such a change), not an exit status. A failed git call counts as a real change, so nothing is hidden by
+    accident. Parity with sprint-check-go's whitespaceOnlyChange."""
+    rc, out = _git_out(['diff', '-b', '--numstat', 'HEAD', '--', path], root)
+    return rc == 0 and out.strip() == ''
+
 def ticket_commit_plan(ticket_id: str, root: Path = None) -> dict:
     root = root if root is not None else PROJECT_ROOT
     plan = {'required': [], 'recommended': [], 'optional': [], 'other_dirty': [],
-            'other_dirty_count': 0, 'message': '', 'blocked': _ticket_commit_blocked(root)}
+            'other_dirty_count': 0, 'message': '', 'blocked': _ticket_commit_blocked(root),
+            'ticket_in_head': False}
     if plan['blocked'] in ('not a git repository', '.tickets/ is gitignored'):
         return plan
     rc, out = _git_out(['status', '--porcelain=v1', '-z', '--untracked-files=all'], root)
@@ -1370,6 +1382,8 @@ def ticket_commit_plan(ticket_id: str, root: Path = None) -> dict:
             name = path.rsplit('/', 1)[-1]
             if name in _TICKET_RUNTIME_FILES or name.startswith('.cockpit-'):
                 plan['optional'].append(path)
+            elif xy != '??' and _in_head(path, root) and _whitespace_only_change(path, root):
+                continue   # t-b59d: a committed file with a whitespace-only edit needs no commit
             else:
                 plan['required'].append(path)
                 untracked_required = untracked_required or xy == '??'
@@ -1379,6 +1393,7 @@ def ticket_commit_plan(ticket_id: str, root: Path = None) -> dict:
             other.append(path)
     for k in ('required', 'recommended', 'optional'):
         plan[k].sort()
+    plan['ticket_in_head'] = _in_head(prefix + 'ticket.md', root)   # t-b59d: a new worktree has the last committed version
     other.sort()
     plan['other_dirty'] = other[:_OTHER_DIRTY_CAP]
     plan['other_dirty_count'] = len(other)
