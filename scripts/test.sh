@@ -60,6 +60,7 @@ tests=(
   "$ROOT/tests/board-origin-guard.sh"
   "$ROOT/tests/sprint-check-worktree-holds.sh"
   "$ROOT/tests/sprint-check-live-docs.sh"
+  "$ROOT/tests/sprint-check-live-ticket.sh"
   "$ROOT/tests/helpers-sweep.sh"
   "$ROOT/tests/sprint-check-app.sh"
   "$ROOT/tests/sprint-check-api-parity.sh"

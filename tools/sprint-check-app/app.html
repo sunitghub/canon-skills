@@ -3009,6 +3009,9 @@ function demoBadge(t) {
 function divergenceInfo(t) {
   const d = t && t.branch_divergence;
   if (!d || !d.branch || !d.status) return null;
+  // t-8be2: a bound ticket shows its worktree's own status, so a divergence that says the same thing warns of nothing
+  // (the field still carries dirty/merged for whoever needs them).
+  if (t.docs_from && d.status === t.status) return null;
   const where = d.where === 'worktree' ? `in worktree ${d.branch}` : `on ${d.branch}`;
   // t-2241: uncommitted work in the worktree is never "merged", whatever merge-base
   // says about its commits (the VM case: a sprint's unsaved plan edits read as merged).
@@ -4112,9 +4115,22 @@ const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: ''
 
 // t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
 // box; they choose to load theirs or to overwrite knowingly.
-function showStaleEditNotice() {
+// A ticket's own fields (its Description) are read through /api/tickets, which carries the ticket_etag (t-8be2).
+async function fetchTicketFresh(id) {
+  try {
+    const r = await fetch('/api/tickets');
+    if (!r.ok) return null;
+    const t = (await r.json()).find(x => x.id === id);
+    return t ? { content: t.body || '', etag: t.ticket_etag || '' } : null;
+  } catch { return null; }
+}
+
+function showStaleEditNotice(t) {
   const editEl = document.getElementById('m-edit-area');
-  if (!editEl || !modalState.activeDoc) return;
+  if (!editEl || (!modalState.activeDoc && !t)) return;
+  const isDoc = !!modalState.activeDoc;
+  const fetchCur = () => isDoc ? fetchDoc(modalState.activeDoc) : fetchTicketFresh(t.id);
+  const setEtag = e => { if (isDoc) modalState.docEtag = e; else t.ticket_etag = e; };
   let n = document.getElementById('stale-edit-notice');
   if (!n) {
     n = document.createElement('div');
@@ -4122,18 +4138,18 @@ function showStaleEditNotice() {
     n.className = 'acceptance-warning';
     editEl.parentNode.insertBefore(n, editEl);
   }
-  n.innerHTML = '⚠ This doc changed since you opened it (the agent may have edited it). Your text is kept. '
+  n.innerHTML = `⚠ This ${isDoc ? 'doc' : 'description'} changed since you opened it (the agent may have edited it). Your text is kept. `
     + '<button type="button" class="doc-cancel-btn" id="stale-reload">Reload theirs</button> '
     + '<button type="button" class="doc-save-btn" id="stale-overwrite">Overwrite with mine</button>';
   n.querySelector('#stale-reload').onclick = async () => {
-    const cur = await fetchDoc(modalState.activeDoc);
+    const cur = await fetchCur();
     if (!cur) return;
-    editEl.value = cur.content; modalState.docEtag = cur.etag; n.remove();
+    editEl.value = cur.content; setEtag(cur.etag); n.remove();
   };
   n.querySelector('#stale-overwrite').onclick = async () => {
-    const cur = await fetchDoc(modalState.activeDoc);
+    const cur = await fetchCur();
     if (!cur) return;
-    modalState.docEtag = cur.etag; n.remove();
+    setEtag(cur.etag); n.remove();
     document.getElementById('btn-save-top')?.click();
   };
 }
@@ -4672,7 +4688,7 @@ function injectSignoffControls(container, content, t) {
     demoBtn.disabled = true;
     try {
       const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/UX');
-      if (res.ok) t.demo = next ? 'true' : 'false';
+      if (res.ok) { t.demo = next ? 'true' : 'false'; if (res.data && res.data.etag) t.ticket_etag = res.data.etag; }
     } finally {
       renderBoard();
       const cur = state.tickets.find(tk => tk.id === state.selectedId);
@@ -4816,12 +4832,14 @@ async function saveEdit(t) {
   }
   if (modalState.activeDoc) {
     const res = await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content, base_hash: modalState.docEtag || '' }, 'save this doc', { quietStale: true });
-    if (res.stale) { showStaleEditNotice(); return; }   // t-26f9: keep the text, let the person choose
+    if (res.stale) { showStaleEditNotice(t); return; }   // t-26f9: keep the text, let the person choose
     if (!res.ok) return; // stay in edit mode with the text intact
   } else {
-    const res = await postWrite(`/api/ticket/${t.id}/body`, { body: content }, 'save the description');
+    const res = await postWrite(`/api/ticket/${t.id}/body`, { body: content, base_hash: t.ticket_etag || '' }, 'save the description', { quietStale: true });
+    if (res.stale) { showStaleEditNotice(t); return; }   // t-8be2: keep the text, let the person choose
     if (!res.ok) return;
     t.body = content;
+    if (res.data && res.data.etag) t.ticket_etag = res.data.etag;
     const headingMatch = content.match(/^#\s+(.+)$/m);
     if (headingMatch) t.title = headingMatch[1].trim();
   }
@@ -5368,6 +5386,7 @@ async function moveCard(t, newStatus) {
   const res = await postWrite(`/api/ticket/${t.id}/status`, { status: newStatus }, `move ${t.id}`);
   if (!res.ok) { renderBoard(); return; }
   t.status = newStatus;
+  if (res.data && res.data.etag) t.ticket_etag = res.data.etag;   // t-8be2: a bound ticket's own write moved its etag
   renderHeader();
   renderSidebar();
   const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
@@ -8011,7 +8030,7 @@ async function uploadVisual(ticketId, filename, base64) {
         }
         if (body !== ticket.body) {
           // The ticket exists either way; a failed body write is reported, not fatal.
-          if ((await postWrite(`/api/ticket/${ticket.id}/body`, { body }, `save ${ticket.id}'s pasted images`)).ok) ticket.body = body;
+          if ((await postWrite(`/api/ticket/${ticket.id}/body`, { body, base_hash: ticket.ticket_etag || '' }, `save ${ticket.id}'s pasted images`)).ok) ticket.body = body;
         }
       }
 
