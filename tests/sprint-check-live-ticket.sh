@@ -163,6 +163,44 @@ PY
   code="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary '{"status":"closed"}' "$base/api/ticket/..%2foutside%2ft-lv03/status")"
   [[ "$(sha "$out/.tickets/t-lv03/ticket.md")" == "$snap" ]] || fail "$label: a path-shaped id must not write outside the tickets folder (got $code)"
 
+  # 5b. Reads never go through a link the agent made (break-it): a symlinked ticket.md or .tickets shows main's copy.
+  cp "$wtf" "$TMP/$kind/ticket.keep"
+  printf -- '---\nid: x\nstatus: closed\n---\n# SECRET title\n\nSECRET body\n' > "$out/secret.md"
+  rm "$wtf"; ln -s "$out/secret.md" "$wtf"
+  [[ "$(tfield t-lv01 status title ticket_etag)" == '{"status": "open", "ticket_etag": null, "title": "t-lv01"}' ]] || fail "$label: a symlinked ticket.md must not be read through, got $(tfield t-lv01 status title ticket_etag)"
+  rm "$wtf"; cp "$TMP/$kind/ticket.keep" "$wtf"
+  mv "$wt/.tickets" "$wt/.tickets.real"; mkdir -p "$out/tix/t-lv01"
+  printf -- '---\nid: t-lv01\nstatus: closed\n---\n# LEAK title\n\nLEAK body\n' > "$out/tix/t-lv01/ticket.md"; printf 'LEAKDOC\n' > "$out/tix/t-lv01/plan.md"
+  ln -s "$out/tix" "$wt/.tickets"
+  [[ "$(tfield t-lv01 status title)" == '{"status": "open", "title": "t-lv01"}' ]] || fail "$label: a symlinked .tickets must not be read through, got $(tfield t-lv01 status title)"
+  [[ -z "$(curl -s "$base/api/doc/t-lv01/plan.md" | grep LEAKDOC || true)" ]] || fail "$label: a doc must not be read through a symlinked .tickets"
+  code="$(post t-lv01/status '{"status":"closed"}')"
+  [[ "$code" == 403 && "$(pj code)" == unsafe_path ]] || fail "$label: a write through a symlinked .tickets must be refused, got $code"
+  rm "$wt/.tickets"; mv "$wt/.tickets.real" "$wt/.tickets"
+
+  # 5c. Odd ticket.md shapes: refused or preserved byte for byte, never wiped or reinterpreted.
+  printf -- '---\nstatus: in_progress\ntype: bug\n---' > "$wtf"              # no newline after the closing fence
+  code="$(post t-lv01/body "{\"body\":\"hello\",\"base_hash\":\"$(sha "$wtf")\"}")"
+  [[ "$code" == 409 && "$(pj code)" == bad_ticket && "$(cat "$wtf")" == $'---\nstatus: in_progress\ntype: bug\n---' ]] || fail "$label: a body save over an unparsable frontmatter must be 409 bad_ticket and write nothing, got $code"
+  printf -- '---\r\nid: t-lv01\r\nstatus: in_progress\r\ntype: bug\r\n---\r\n# T\r\n\r\nold\r\n' > "$wtf"
+  printf -- '---\r\nid: t-lv01\r\nstatus: closed\r\ntype: bug\r\n---\r\n# T\r\n\r\nold\r\n' > "$TMP/$kind/crlf.want"
+  code="$(post t-lv01/status '{"status":"closed"}')"
+  [[ "$code" == 200 ]] && cmp -s "$wtf" "$TMP/$kind/crlf.want" || fail "$label: a CRLF ticket.md must take a status edit with every other byte kept, got $code"
+  printf -- '---\nid: t-lv01\nstatus: in_progress\n---\n# T\n\nbad \377\376 byte\n' > "$wtf"       # not valid UTF-8
+  printf -- '---\nid: t-lv01\nstatus: closed\n---\n# T\n\nbad \377\376 byte\n' > "$TMP/$kind/utf8.want"
+  code="$(post t-lv01/status '{"status":"closed"}')"
+  [[ "$code" == 200 ]] && cmp -s "$wtf" "$TMP/$kind/utf8.want" || fail "$label: bytes that are not valid UTF-8 must survive a status edit unchanged, got $code"
+  printf -- '---\nid: t-lv01\nstatus: open\n---\n# T\n' > "$wtf"
+  code="$(post t-lv01/demo '{"demo":"false"}')"
+  [[ "$code" == 200 && -z "$(grep '^demo:' "$wtf" || true)" ]] || fail "$label: demo \"false\" must not turn Demo on"
+  # Lone surrogates are written as 3 bytes each, so they cannot slip a body past the 1 MiB cap.
+  cp "$TMP/$kind/ticket.keep" "$wtf"; etag="$(sha "$wtf")"
+  python3 -c 'import sys; sys.stdout.write("{\"body\":\"" + "\\ud800" * 1048576 + "\",\"base_hash\":\"" + sys.argv[1] + "\"}")' "$etag" > "$TMP/$kind/surr.json"
+  code="$(curl -s -o "$TMP/$kind/post.json" -w '%{http_code}' -X POST -H 'Content-Type: application/json' --data-binary @"$TMP/$kind/surr.json" "$base/api/ticket/t-lv01/body")"
+  [[ "$code" == 400 && "$(pj code)" == too_large && "$(sha "$wtf")" == "$etag" ]] || fail "$label: a body of lone surrogates over the cap must be 400 too_large, got $code"
+  rm -f "$wt/.tickets/ACTIVE"
+  cp "$TMP/$kind/ticket.keep" "$wtf"
+
   # 6. Concurrency: board writes racing a second writer (as tkt does) never tear the file or lose the id/status.
   ( for i in $(seq 1 40); do
       python3 - "$wtf" "$i" <<'PY'

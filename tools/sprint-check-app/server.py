@@ -686,7 +686,7 @@ def annotate_live_docs(tickets: list, root: Path = None) -> None:
         return
     for t in tickets:
         live = _live_worktree(t, root, wts)
-        if not live:
+        if not live or not _live_safe(str(t.get('id') or ''), live):
             continue
         try:
             # Read the bytes BEFORE parsing: an etag older than the text shown can only make a save stale,
@@ -758,6 +758,22 @@ def _live_doc_target(doc_file: str, live: dict, names=None):
     if os.path.lexists(target) and (target.is_symlink() or not target.is_file()):
         return None, trust
     return target, None
+
+def _live_safe(tid: str, live: dict) -> bool:
+    """t-8be2: a bound ticket's folder is plain (no link or junction at .tickets, the ticket folder or ticket.md).
+    Reads (the overlay, a doc's text) require it, because the board must not show a file outside the worktree through a
+    link an agent made; a write re-checks on its own and answers 403."""
+    return _live_doc_target(tid + '/ticket.md', live, names=('ticket.md',))[1] is None
+
+def _json_bool(v) -> bool:
+    """main.go's boolValue, so both servers read a JSON `demo` the same way ("false" is not true)."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return v != 0
+    if isinstance(v, str):
+        return v in ('true', '1')
+    return False
 
 def _live_doc_etag_of(target: Path) -> str:
     """"absent" ONLY when the file does not exist: any other read error (permissions, a Windows sharing violation)
@@ -889,7 +905,9 @@ def write_live_ticket(ticket_id: str, kind: str, payload: dict, root: Path = Non
         new_body = payload.get('body')
         if not isinstance(new_body, str):
             return fail(400, 'bad_content', 'body must be text')
-        if len(new_body.encode('utf-8', errors='replace')) > LIVE_DOC_MAX_BYTES:
+        # A lone surrogate is written as U+FFFD (3 bytes), as Go's JSON decoding does: measure what is written.
+        new_body = re.sub('[\ud800-\udfff]', '\ufffd', _go_trim(new_body))
+        if len(new_body.encode('utf-8')) > LIVE_DOC_MAX_BYTES:
             return fail(400, 'too_large', 'that description is too large to save from the board')
     with _live_doc_lock:
         try:
@@ -898,32 +916,32 @@ def write_live_ticket(ticket_id: str, kind: str, payload: dict, root: Path = Non
             return fail(404, 'not_found', 'that ticket has no ticket.md in its worktree')
         except OSError:
             return fail(500, 'read_failed', "couldn't read ticket.md — is another program holding it open? Try again")
-        text = raw.decode('utf-8', errors='replace')
+        # surrogateescape: bytes that are not valid UTF-8 survive a single-field edit unchanged (as in Go)
+        text = raw.decode('utf-8', errors='surrogateescape')
         fm = _FRONTMATTER.match(text)
+        if not fm:
+            return fail(409, 'bad_ticket', 'that ticket.md has no frontmatter')
         if kind == 'body':
             base = payload.get('base_hash')
             if not isinstance(base, str) or base == '' or base != doc_etag(raw):
                 return fail(409, 'stale', 'ticket.md changed since you read it — reload it and try again')
-            clean = re.sub('[\ud800-\udfff]', '\ufffd', _go_trim(new_body))
-            updated = (text[:fm.end()] if fm else '') + clean + '\n'
-        elif not fm:
-            return fail(409, 'bad_ticket', 'that ticket.md has no frontmatter')
+            updated = text[:fm.end()] + new_body + '\n'
         elif kind == 'status':
             lines = fm.group(1).split('\n')
             for i, ln in enumerate(lines):
-                m = re.match(r'^(status:[ \t]*)(\S+)([ \t]*)$', ln)
+                m = re.match(r'^(status:[ \t]*)(\S+)([ \t\r]*)$', ln)
                 if m:
                     lines[i] = m.group(1) + new_status + m.group(3)
                     break
             else:
                 return fail(409, 'bad_ticket', 'that ticket.md has no status line')
-            updated = '---\n' + '\n'.join(lines) + '\n---\n' + text[fm.end():]
+            updated = text[:fm.start(1)] + '\n'.join(lines) + text[fm.end(1):]
         else:
             kept = [ln for ln in fm.group(1).split('\n') if not ln.startswith('demo:')]
-            if bool(payload.get('demo', False)):
+            if _json_bool(payload.get('demo')):
                 kept.append('demo: true')
-            updated = '---\n' + '\n'.join(kept) + '\n---\n' + text[fm.end():]
-        data = updated.encode('utf-8')
+            updated = text[:fm.start(1)] + '\n'.join(kept) + text[fm.end(1):]
+        data = updated.encode('utf-8', errors='surrogateescape')
         try:
             if updated != text:
                 _atomic_write(target, data)
@@ -1842,6 +1860,8 @@ def read_doc_with_etag(doc_file: str, root: Path = None):
     describes the WORKTREE file (sha256 of its bytes, or "absent"), even when the text shown falls back to main's
     copy, so saving an edit of a doc the worktree does not have yet works; '' means not writable from the board."""
     live = _live_for_doc(doc_file, root)
+    if live and not _live_safe(Path(doc_file).parts[0], live):
+        live = None   # t-8be2: never read through a linked ticket folder; a write to it is refused on its own
     etag = ''
     if live:
         target, err = _live_doc_target(doc_file, live)
@@ -3387,7 +3407,7 @@ class Handler(BaseHTTPRequestHandler):
             res = write_live_ticket(m.group(1), 'demo', payload, eroot)
             if res is not None:
                 self.send_json(res[1], status=res[0]); return
-            ok = write_demo(m.group(1), bool(payload.get('demo', False)), eroot)
+            ok = write_demo(m.group(1), _json_bool(payload.get('demo')), eroot)
             self.send_json({'ok': ok}); return
 
         m = re.match(r'^/api/doc/(.+)$', path)

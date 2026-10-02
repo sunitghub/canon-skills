@@ -1521,6 +1521,9 @@ func readDoc(docFile string, root string) (string, bool) {
 // an edit of a doc the worktree does not have yet works; "" means the doc is not writable from the board.
 func readDocWithEtag(docFile string, root string) (string, string, bool) {
 	dir, _, wtPath, live := liveForDocFull(docFile, root)
+	if live && !liveSafe(strings.SplitN(filepath.ToSlash(docFile), "/", 2)[0], dir, wtPath) {
+		live = false // t-8be2: never read through a linked ticket folder; a write to it is refused on its own
+	}
 	etag := ""
 	if live {
 		if target, derr := liveDocTargetFrom(docFile, dir, wtPath); derr == nil {
@@ -2333,7 +2336,15 @@ func writeLiveDoc(docFile string, payload map[string]any, root string) (handled 
 // moment; a body save is guarded by base_hash like a doc. ACTIVE follows tkt's per-checkout file.
 var liveTicketNames = map[string]bool{"ticket.md": true}
 var liveTicketStatuses = map[string]bool{"open": true, "in_progress": true, "closed": true, "cancelled": true, "archived": true}
-var liveStatusLineRe = regexp.MustCompile(`^(status:[ \t]*)(\S+)([ \t]*)$`)
+var liveStatusLineRe = regexp.MustCompile(`^(status:[ \t]*)(\S+)([ \t\r]*)$`)
+
+// liveSafe: a bound ticket's folder is plain (no link or junction at .tickets, the ticket folder or ticket.md). Reads
+// (the overlay, a doc's text) require it, because the board must not show a file outside the worktree through a link
+// an agent made; a write re-checks on its own and answers 403.
+func liveSafe(id, dir, wtPath string) bool {
+	_, derr := liveTargetFrom(id+"/ticket.md", dir, wtPath, liveTicketNames)
+	return derr == nil
+}
 
 // liveActivePath is <worktree>/.tickets/ACTIVE when it is safe to write or remove (absent or a plain file).
 func liveActivePath(wtPath string) (string, bool) {
@@ -2409,6 +2420,9 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	}
 	text := string(raw)
 	m := frontmatterRe.FindStringSubmatchIndex(text)
+	if m == nil {
+		return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no frontmatter")
+	}
 	var updated string
 	switch kind {
 	case "body":
@@ -2416,15 +2430,8 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		if base == "" || base != docEtag(raw) {
 			return fail(http.StatusConflict, "stale", "ticket.md changed since you read it — reload it and try again")
 		}
-		head := ""
-		if m != nil {
-			head = text[:m[1]]
-		}
-		updated = head + strings.TrimSpace(newBody) + "\n"
+		updated = text[:m[1]] + strings.TrimSpace(newBody) + "\n"
 	case "status":
-		if m == nil {
-			return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no frontmatter")
-		}
 		lines := strings.Split(text[m[2]:m[3]], "\n")
 		found := false
 		for i, ln := range lines {
@@ -2437,11 +2444,8 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		if !found {
 			return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no status line")
 		}
-		updated = "---\n" + strings.Join(lines, "\n") + "\n---\n" + text[m[1]:]
+		updated = text[:m[2]] + strings.Join(lines, "\n") + text[m[3]:]
 	default:
-		if m == nil {
-			return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no frontmatter")
-		}
 		var kept []string
 		for _, ln := range strings.Split(text[m[2]:m[3]], "\n") {
 			if !strings.HasPrefix(ln, "demo:") {
@@ -2451,7 +2455,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		if boolValue(payload["demo"]) {
 			kept = append(kept, "demo: true")
 		}
-		updated = "---\n" + strings.Join(kept, "\n") + "\n---\n" + text[m[1]:]
+		updated = text[:m[2]] + strings.Join(kept, "\n") + text[m[3]:]
 	}
 	data := []byte(updated)
 	if updated == text {
@@ -2477,8 +2481,8 @@ func annotateLiveDocs(tickets []ticket, root string) {
 		return
 	}
 	for _, t := range tickets {
-		dir, branch, ok := liveWorktree(t, root, wts)
-		if !ok {
+		dir, branch, wtPath, ok := liveWorktreeFull(t, root, wts)
+		if !ok || !liveSafe(fmt.Sprint(t["id"]), dir, wtPath) {
 			continue
 		}
 		// Read the bytes BEFORE parsing: an etag older than the text shown can only make a save stale, never let
