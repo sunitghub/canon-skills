@@ -7599,3 +7599,30 @@ func TestStartWithoutACwdHonoursTheWorktreeLockOfABoundTicket(t *testing.T) {
 		t.Fatalf("a start with no cwd must run in the locked worktree %q, got %q", wt, got)
 	}
 }
+
+// t-f1b6: copilot on a worktree-bound in_progress ticket whose session exists on disk resumes it (--resume=<sid>),
+// whatever main's copy says; the evaluator found nothing pinned this, so a copilot resolver reading main's `open`
+// would mint a new session on every start and never resume.
+func TestCopilotResumesAWorktreeBoundTicketWithASession(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root, _ := boundTicketFixture(t, "open", "in_progress")
+	home := t.TempDir()
+	t.Setenv("COPILOT_HOME", home)
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	sid := "11111111-2222-4333-8444-555555555555"
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-copilot-session-id"), []byte(sid+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeCopilotSessionState(t, home, sid)
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	if _, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "copilot", bootTok); status != http.StatusOK {
+		t.Fatalf("start: %d", status)
+	}
+	argv := waitFile(t, argvFile, 3*time.Second)
+	if !strings.Contains(argv, "ARG:--resume="+sid+"\n") {
+		t.Fatalf("copilot on a worktree-bound in_progress ticket with a session on disk must resume it: argv %q", argv)
+	}
+}
