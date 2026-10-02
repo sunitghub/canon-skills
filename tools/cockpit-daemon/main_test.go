@@ -7459,6 +7459,19 @@ func TestTicketStatusIgnoresALockThatIsNotARegisteredWorktree(t *testing.T) {
 		{"unregistered folder", func(t *testing.T, root, wt string) string { return outside(t) }},
 		{"the main checkout", func(t *testing.T, root, wt string) string { return root }},
 		{"a relative path", func(t *testing.T, root, wt string) string { return "../" + filepath.Base(wt) }},
+		{"a relative symlink that resolves to the worktree", func(t *testing.T, root, wt string) string {
+			// EvalSymlinks turns this into the absolute worktree path, so only the IsAbs check refuses it.
+			d := t.TempDir()
+			if err := os.Symlink(wt, filepath.Join(d, "lnk")); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			old, _ := os.Getwd()
+			if err := os.Chdir(d); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Chdir(old) })
+			return "lnk"
+		}},
 		{"a folder that is gone", func(t *testing.T, root, wt string) string { return filepath.Join(t.TempDir(), "nope") }},
 		{"junk after the path", func(t *testing.T, root, wt string) string { return wt + "/../other" }},
 	}
