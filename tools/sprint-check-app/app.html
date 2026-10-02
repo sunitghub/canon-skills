@@ -7407,7 +7407,9 @@ async function mountCockpitTerminal(t, cwd) {
     iframe.style.visibility = 'hidden';
     return;
   }
-  url += `&cwd=${encodeURIComponent(effectiveCwd)}`;
+  // t-29fb: a locked ticket's cwd is daemon-native (.cockpit-cwd, backslashes on Windows) and the daemon's cwdPrefillRe
+  // drops a backslash path to "" (then runs from its launch folder: "ticket not found") — send the forward-slashed form.
+  url += `&cwd=${encodeURIComponent(cockpitForwardSlash(effectiveCwd))}`;
   // t-74d6: once the cockpit page loads, relay the daemon build status so it can
   // render (or hide) the stale banner. Sent on load so the listener is ready.
   const bi = cockpitState.buildInfo || { stale: false, running_build: null, latest_build: null };
