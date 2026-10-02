@@ -167,6 +167,7 @@ cmd_continue() {
   fi
   tdir="$(ticket_dir_for "$id")"
   echo "Continuing sprint: $id"
+  echo "Status: $status"
   echo "Ticket: $tdir/ticket.md"
   echo ""
   echo "Sprint files:"
