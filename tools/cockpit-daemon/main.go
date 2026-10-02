@@ -774,10 +774,15 @@ func agentKind(a string) (string, bool) {
 // `copilot --help`, t-842b's claude-positional trick does not carry over): the
 // fresh-start prompt must go through -i/--interactive, not a bare positional —
 // a bare positional fails with "error: too many arguments. Expected 0
-// arguments but got 1". Pure/side-effect-free so it is unit-testable on any
+// arguments but got 1". continuing (t-577e): an in_progress ticket with no
+// resumable conversation gets "sprint continue <id>", since "sprint start"
+// refuses it. Pure/side-effect-free so it is unit-testable on any
 // host.
-func agentSpawnArgs(kind, ticket string, resuming bool, sessionID, gateModel, settingsPath string) []string {
+func agentSpawnArgs(kind, ticket string, resuming, continuing bool, sessionID, gateModel, settingsPath string) []string {
 	prompt := "sprint start " + ticket
+	if continuing {
+		prompt = "sprint continue " + ticket // t-577e: `sprint start` refuses an in_progress ticket
+	}
 	if isScratch(ticket) {
 		prompt = "" // t-47f1: a scratch session is the plain agent — no sprint, no prompt
 	}
@@ -907,13 +912,13 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		program = envOr("COCKPIT_PI_BIN", "pi")
 		// Resume (pi -c) when the ticket is already in_progress; else a fresh
 		// positional "sprint start <ticket>". Option B — see agentSpawnArgs.
-		args = agentSpawnArgs("pi", ticket, s.ticketStatusIn(projectRoot, ticket) == "in_progress", "", "", "")
+		args = agentSpawnArgs("pi", ticket, s.ticketStatusIn(projectRoot, ticket) == "in_progress", false, "", "", "")
 	case "copilot":
 		program = envOr("COCKPIT_COPILOT_BIN", "copilot")
 		copilotSessionID, resuming := s.resolveCopilotSessionIDIn(projectRoot, ticket)
 		copilotResuming = resuming
 		copilotGate = s.gateModelIn(projectRoot, ticket)
-		args = agentSpawnArgs("copilot", ticket, resuming, copilotSessionID, copilotGate, "")
+		args = agentSpawnArgs("copilot", ticket, resuming, !resuming && s.ticketStatusIn(projectRoot, ticket) == "in_progress", copilotSessionID, copilotGate, "")
 	default:
 		// The Notification hook goes in via --settings, which loads ADDITIONAL
 		// settings (verified: the project's own permissions.ask rules still fire), so
@@ -932,7 +937,7 @@ func (s *server) spawn(ticket, cwd, projectRoot, kind string) (*session, error) 
 		// --resume — that mints a NEW id instead of continuing the real
 		// conversation, defeating the whole point.
 		claudeSessionID, resuming := s.resolveClaudeSessionIDIn(projectRoot, ticket)
-		args = agentSpawnArgs("claude", ticket, resuming, claudeSessionID, s.gateModelIn(projectRoot, ticket), settingsPath)
+		args = agentSpawnArgs("claude", ticket, resuming, !resuming && s.ticketStatusIn(projectRoot, ticket) == "in_progress", claudeSessionID, s.gateModelIn(projectRoot, ticket), settingsPath)
 		if resuming && s.adoptedTicket(projectRoot, ticket) && s.ticketStatusIn(projectRoot, ticket) == "open" {
 			// t-f553: the scratch conversation continues — as this ticket's sprint.
 			args = append(args, "sprint start "+ticket)

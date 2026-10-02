@@ -13,6 +13,7 @@ CLI-backed commands:
 | Command | When |
 |---|---|
 | `sprint start` | Any normal or high-risk dev request |
+| `sprint continue <id>` | Resume an in_progress ticket (the cockpit sends it when no conversation can be resumed) |
 | `sprint complete` | When you believe the work is done |
 
 The `sprint` CLI owns deterministic workflow state: ticket creation, active

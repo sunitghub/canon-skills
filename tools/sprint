@@ -154,6 +154,34 @@ Agent next steps:
 EOF
 }
 
+cmd_continue() {
+  local arg="${1:-}"
+  [[ -z "$arg" ]] && { echo "Usage: sprint continue <ticket-id>" >&2; exit 1; }
+  local id status tdir
+  id="$("$TKT_BIN" show "$arg" 2>/dev/null | awk '/^ID:/{print $2}' || true)"
+  [[ -z "$id" ]] && { echo "No ticket matches '$arg'." >&2; exit 1; }
+  status="$("$TKT_BIN" show "$id" 2>/dev/null | awk '/^Status:/{print $2}' || true)"
+  if [[ "$status" != "in_progress" ]]; then
+    echo "$id is ${status:-unknown}, not in_progress. Use 'sprint start $id' to begin it." >&2
+    exit 1
+  fi
+  tdir="$(ticket_dir_for "$id")"
+  echo "Continuing sprint: $id"
+  echo "Ticket: $tdir/ticket.md"
+  echo ""
+  echo "Sprint files:"
+  for f in ticket.md acceptance.md plan.md summary.md; do
+    if [[ -f "$tdir/$f" ]]; then echo "  [ok]      $tdir/$f"; fi
+  done
+  cat <<EOF
+
+Agent next steps:
+1. Read DECISIONS.md, HANDOFF.md, and everything in $tdir/.
+2. Find the first unchecked item in plan.md (approval) and acceptance.md.
+3. Resume from there — do not restart orientation or re-ask for plan approval already recorded.
+EOF
+}
+
 cmd_current() {
   "$TKT_BIN" current
 }
@@ -731,6 +759,7 @@ sprint — canon workflow spine
 Usage:
   sprint start "title"      Create a new ticket and start the sprint
   sprint start <ticket-id>  Start the sprint on an existing ticket (no new ticket created)
+  sprint continue <ticket-id>  Resume an in_progress ticket (read-only; prints state)
   sprint current            Show the active sprint ticket
   sprint status             Show active ticket and required sprint files
   sprint complete           Validate acceptance checklist and close ticket
@@ -752,6 +781,7 @@ main() {
 
   case "$cmd" in
     start) cmd_start "$@" ;;
+    continue) cmd_continue "$@" ;;
     current) cmd_current ;;
     status) cmd_status ;;
     complete) cmd_complete ;;
