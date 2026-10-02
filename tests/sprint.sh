@@ -387,6 +387,8 @@ EOF
 missing_eval_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_eval_output" "eval-report.md is missing"
 assert_gate_notice "$missing_eval_output" eval-report.md evaluator
+assert_contains "$missing_eval_output" "Tier: trivial"
+assert_contains "$missing_eval_output" "four not-trivial triggers"
 
 # eval-report.md with non-pass verdict should block — give it a matching
 # jsonl entry first so this test exercises the verdict check, not the
@@ -436,6 +438,29 @@ assert_contains "$jsonl_nomatch_output" "no matching subagent entry"
 assert_gate_notice "$jsonl_nomatch_output" eval-report.md evaluator
 # t-c94f: a well-formed but out-of-window entry gets the plain message — no malformed-entry hint.
 [[ "$jsonl_nomatch_output" == *"no ISO"* ]] && fail "out-of-window ISO entry must not trigger the malformed hint: $jsonl_nomatch_output"
+
+# t-b2a9: a run-id without a timestamp prefix is the other message a model could "fix" by editing the report.
+cat > ".tickets/$id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: abc-1
+Model: test-model
+## Verdict
+pass: all criteria met
+EOF
+badprefix_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$badprefix_output" "no valid timestamp prefix"
+assert_gate_notice "$badprefix_output" eval-report.md evaluator
+cat > ".tickets/$id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-99999
+Model: test-model
+## Criteria
+| Criterion | Status | Evidence |
+|---|---|---|
+| Required item remains | pass | acceptance.md:4 |
+## Verdict
+pass: all criteria met
+EOF
 
 # t-c94f: an entry with an integer "timestamp" and no ISO "ts" is still rejected (a hand-written
 # record must not satisfy the audit trail) — but the message now names why and how to fix it.

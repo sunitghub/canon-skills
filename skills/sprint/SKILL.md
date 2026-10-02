@@ -21,8 +21,8 @@ ticket tracking, context file creation, and close validation. The agent owns
 sprint doc creation, orientation, gray-area resolution, impact analysis,
 implementation, review, and test judgment.
 
-**Gate reports are never hand-written.** `eval-report.md` and `review-notes.md` are written only by the fresh
-evaluator and reviewer subagents that `sprint complete` calls for (`reference/complete.md` steps 2-3). If the CLI says
+**Gate reports are never hand-written.** `review-notes.md` and `eval-report.md` are written only by the fresh
+reviewer and evaluator subagents that `sprint complete` calls for (`reference/complete.md` steps 2-3). If the CLI says
 one is missing or fails to verify it, dispatch that gate — do not create or edit the file yourself.
 
 Every `Read skills/...` reference in this file and its `reference/*.md` docs is a plain relative

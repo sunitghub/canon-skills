@@ -340,7 +340,7 @@ _gate_eval_report_exists() {
   if [[ ! -f "$report" ]]; then
     echo "Sprint $id cannot close: eval-report.md is missing."
     _gate_dispatch_notice evaluator eval-report.md
-    echo "(Only if the work is genuinely trivial: plan.md's Sign-off says Tier: trivial — complete.md step 2.)"
+    echo "(Only if the work is genuinely trivial and none of SKILL.md's four not-trivial triggers applies: plan.md's Sign-off says Tier: trivial — complete.md step 3.)"
     return 1
   fi
   if ! grep -qE '^evaluator-run-id:[[:space:]]+\S' "$report"; then
@@ -381,12 +381,13 @@ _gate_eval_report_authentic() {
   jsonl="$(project_root)/.claude/subagent-runs.jsonl"
   if [[ ! -f "$jsonl" ]]; then
     echo "Sprint $id cannot close: .claude/subagent-runs.jsonl not found — cannot verify evaluator-run-id '$run_id' against a real subagent run."
-    echo "Log the evaluator subagent run with subagent-log.sh before closing."
+    echo "After a real evaluator subagent run, log it with subagent-log.sh (it records a run that happened; it does not create one)."
     _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
   if [[ ! "$run_epoch" =~ ^[0-9]+$ ]]; then
     echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no valid timestamp prefix. See eval.md step 1: generate it with 'date +%s'/'\$RANDOM', never uuidgen/PowerShell."
+    _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
   # t-bdfb: some evaluators emit a JS Date.now() *millisecond* timestamp instead
