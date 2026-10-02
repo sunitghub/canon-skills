@@ -7550,3 +7550,52 @@ func TestSpawnOfAWorktreeBoundTicketContinuesOrResumes(t *testing.T) {
 		t.Fatalf("a worktree-bound in_progress ticket with a conversation must resume: argv = %q, want %q", argv2, want)
 	}
 }
+
+// t-f1b6, criterion 3 for the other agents: copilot continues, pi resumes with -c, both for a worktree-bound ticket.
+func TestSpawnOfAWorktreeBoundTicketForCopilotAndPi(t *testing.T) {
+	for _, agent := range []string{"copilot", "pi"} {
+		t.Run(agent, func(t *testing.T) {
+			bin, argvFile, _ := fakeSprint(t)
+			root, _ := boundTicketFixture(t, "open", "in_progress")
+			t.Setenv("COPILOT_HOME", t.TempDir())
+			t.Setenv("COCKPIT_COPILOT_BIN", bin)
+			t.Setenv("COCKPIT_PI_BIN", bin)
+			s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			if _, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", agent, bootTok); status != http.StatusOK {
+				t.Fatalf("start: %d", status)
+			}
+			argv := waitFile(t, argvFile, 3*time.Second)
+			switch agent {
+			case "copilot":
+				if !strings.Contains(argv, "ARG:--interactive\nARG:sprint continue t-ab12\n") {
+					t.Fatalf("copilot on a worktree-bound in_progress ticket must continue: argv %q", argv)
+				}
+			case "pi":
+				if argv != "ARGC:1\nARG:-c\n" {
+					t.Fatalf("pi on a worktree-bound in_progress ticket must resume with -c: argv %q", argv)
+				}
+			}
+		})
+	}
+}
+
+// t-f1b6, criterion 4: a start that sends no cwd lands in the worktree the lock names, although main's copy says open.
+func TestStartWithoutACwdHonoursTheWorktreeLockOfABoundTicket(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root, wt := boundTicketFixture(t, "open", "in_progress")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok) // sends no cwd at all
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if got := strings.TrimSpace(waitFile(t, cwdFile, 3*time.Second)); got != wt {
+		t.Fatalf("a start with no cwd must run in the locked worktree %q, got %q", wt, got)
+	}
+}
