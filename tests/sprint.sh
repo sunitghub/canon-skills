@@ -4,6 +4,14 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
+# t-b2a9: every message about a missing or unverifiable gate report says a fresh subagent writes it and the file is never hand-made.
+assert_gate_notice() { # <output> <file> <evaluator|reviewer>
+  assert_contains "$1" "Never create or edit $2 yourself"
+  assert_contains "$1" "subagent_type \"canon-$3\""
+}
+# ...and the skill says it once up front, where a model that never opens complete.md still reads it.
+grep -q 'Gate reports are never hand-written' "$ROOT/skills/sprint/SKILL.md" || fail "skills/sprint/SKILL.md must say gate reports are never hand-written"
+
 project="$(make_project)"
 trap 'rm -rf "$project"' EXIT
 cd "$project"
@@ -378,6 +386,9 @@ EOF
 # eval-report.md gate — missing report should block
 missing_eval_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_eval_output" "eval-report.md is missing"
+assert_gate_notice "$missing_eval_output" eval-report.md evaluator
+assert_contains "$missing_eval_output" "Tier: trivial"
+assert_contains "$missing_eval_output" "four not-trivial triggers"
 
 # eval-report.md with non-pass verdict should block — give it a matching
 # jsonl entry first so this test exercises the verdict check, not the
@@ -403,6 +414,7 @@ pass: all criteria met
 EOF
 missing_runid_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_runid_output" "missing evaluator-run-id"
+assert_gate_notice "$missing_runid_output" eval-report.md evaluator
 
 # JSONL present, no matching entry within ±60 min → should block
 # run-id epoch = 1000000000 (2001-09-09T01:46:40Z); entry is 2h before = out of window
@@ -423,8 +435,32 @@ pass: all criteria met
 EOF
 jsonl_nomatch_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$jsonl_nomatch_output" "no matching subagent entry"
+assert_gate_notice "$jsonl_nomatch_output" eval-report.md evaluator
 # t-c94f: a well-formed but out-of-window entry gets the plain message — no malformed-entry hint.
 [[ "$jsonl_nomatch_output" == *"no ISO"* ]] && fail "out-of-window ISO entry must not trigger the malformed hint: $jsonl_nomatch_output"
+
+# t-b2a9: a run-id without a timestamp prefix is the other message a model could "fix" by editing the report.
+cat > ".tickets/$id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: abc-1
+Model: test-model
+## Verdict
+pass: all criteria met
+EOF
+badprefix_output="$(run_fail "$SPRINT" complete)"
+assert_contains "$badprefix_output" "no valid timestamp prefix"
+assert_gate_notice "$badprefix_output" eval-report.md evaluator
+cat > ".tickets/$id/eval-report.md" <<'EOF'
+# Eval Report
+evaluator-run-id: 1000000000-99999
+Model: test-model
+## Criteria
+| Criterion | Status | Evidence |
+|---|---|---|
+| Required item remains | pass | acceptance.md:4 |
+## Verdict
+pass: all criteria met
+EOF
 
 # t-c94f: an entry with an integer "timestamp" and no ISO "ts" is still rejected (a hand-written
 # record must not satisfy the audit trail) — but the message now names why and how to fix it.
@@ -499,6 +535,7 @@ EOF
 rm -f .claude/subagent-runs.jsonl
 jsonl_absent_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$jsonl_absent_output" "subagent-runs.jsonl not found"
+assert_gate_notice "$jsonl_absent_output" eval-report.md evaluator
 
 # Provide a matching entry — now it can close
 # entry ts 30 min after run epoch (2001-09-09T02:16:40Z) = within window. A malformed line ahead of it
@@ -596,6 +633,7 @@ pass: all criteria met
 EOF
 model_missing_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$model_missing_output" "eval-report.md is missing the 'Model:' line"
+assert_gate_notice "$model_missing_output" eval-report.md evaluator
 
 # add the Model line → eval-report gate satisfied (no review-notes.md yet → its gate is a no-op)
 cat > ".tickets/$model_id/eval-report.md" <<'EOF'
@@ -613,6 +651,7 @@ YES
 EOF
 review_missing_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$review_missing_output" "review-notes.md is missing the 'Model:' line"
+assert_gate_notice "$review_missing_output" review-notes.md reviewer
 
 # t-de16: the reviewer's passes must be SHOWN. A bare "No findings. / YES" report — the
 # t-294b live defect, two runs with the same 111 bytes, one over an empty diff — is rejected.
@@ -626,6 +665,7 @@ YES
 EOF
 bare_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$bare_output" "does not show the reviewer's passes"
+assert_gate_notice "$bare_output" review-notes.md reviewer
 assert_contains "$bare_output" 'no `Changed files:` line'
 assert_contains "$bare_output" 'no line for the "Scope creep" concern'
 
