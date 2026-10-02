@@ -7408,3 +7408,234 @@ func TestNoGitIsFalseInsideARepoEvenWhenGitFails(t *testing.T) {
 		t.Fatal("a folder with no .git anywhere above it must read as non-git")
 	}
 }
+
+// t-f1b6: a ticket whose sprint runs in a worktree keeps `open` in main's copy (the sprint writes the worktree's copy,
+// and the board never writes main's for a bound ticket). The daemon must read the status where the sprint runs, or a
+// worktree sprint is never resumed and never sent `sprint continue`.
+func boundTicketFixture(t *testing.T, mainStatus, wtStatus string) (root, wt string) {
+	t.Helper()
+	root = t.TempDir()
+	wt = gitWorktreeFixture(t, root)
+	writeTicketStatus(t, root, "t-ab12", mainStatus)
+	writeTicketStatus(t, wt, "t-ab12", wtStatus)
+	writeLockFile(t, root, "t-ab12", wt)
+	return root, wt
+}
+
+func writeLockFile(t *testing.T, root, ticket, cwd string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(root, ".tickets", ticket, ".cockpit-cwd"), []byte(cwd+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTicketStatusFollowsTheBoundWorktree(t *testing.T) {
+	root, _ := boundTicketFixture(t, "open", "in_progress")
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	if got := s.ticketStatusIn(root, "t-ab12"); got != "in_progress" {
+		t.Fatalf("a worktree-bound ticket must report the worktree's status: got %q, want in_progress", got)
+	}
+	// No lock: main's own copy, as before.
+	if err := os.Remove(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-cwd")); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.ticketStatusIn(root, "t-ab12"); got != "open" {
+		t.Fatalf("an unlocked ticket must report main's status: got %q, want open", got)
+	}
+}
+
+// The lock lives in agent-writable .tickets/, so a lock that does not name a registered worktree, or that leads through a
+// link, must never make the daemon read a file outside a worktree.
+func TestTicketStatusIgnoresALockThatIsNotARegisteredWorktree(t *testing.T) {
+	outside := func(t *testing.T) string { // an in_progress ticket.md in a folder git does not know
+		d := filepath.Join(t.TempDir(), "decoy")
+		writeTicketStatus(t, d, "t-ab12", "in_progress")
+		return d
+	}
+	cases := []struct {
+		name string
+		lock func(t *testing.T, root, wt string) string
+	}{
+		{"unregistered folder", func(t *testing.T, root, wt string) string { return outside(t) }},
+		{"the main checkout", func(t *testing.T, root, wt string) string { return root }},
+		{"a relative path", func(t *testing.T, root, wt string) string { return "../" + filepath.Base(wt) }},
+		{"a relative symlink that resolves to the worktree", func(t *testing.T, root, wt string) string {
+			// EvalSymlinks turns this into the absolute worktree path, so only the IsAbs check refuses it.
+			d := t.TempDir()
+			if err := os.Symlink(wt, filepath.Join(d, "lnk")); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			old, _ := os.Getwd()
+			if err := os.Chdir(d); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { os.Chdir(old) })
+			return "lnk"
+		}},
+		{"a folder that is gone", func(t *testing.T, root, wt string) string { return filepath.Join(t.TempDir(), "nope") }},
+		{"junk after the path", func(t *testing.T, root, wt string) string { return wt + "/../other" }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			root, wt := boundTicketFixture(t, "open", "in_progress")
+			writeLockFile(t, root, "t-ab12", c.lock(t, root, wt))
+			s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+			if got := s.ticketStatusIn(root, "t-ab12"); got != "open" {
+				t.Fatalf("a lock naming %s must be ignored (main says open), got %q", c.name, got)
+			}
+		})
+	}
+}
+
+func TestTicketStatusIgnoresALinkInsideTheWorktree(t *testing.T) {
+	for _, link := range []string{"ticket.md", "ticket dir", ".tickets"} {
+		t.Run(link, func(t *testing.T) {
+			root, wt := boundTicketFixture(t, "open", "open")
+			victim := filepath.Join(t.TempDir(), "victim")
+			writeTicketStatus(t, victim, "t-ab12", "in_progress")
+			var err error
+			switch link {
+			case "ticket.md":
+				p := filepath.Join(wt, ".tickets", "t-ab12", "ticket.md")
+				os.Remove(p)
+				err = os.Symlink(filepath.Join(victim, ".tickets", "t-ab12", "ticket.md"), p)
+			case "ticket dir":
+				p := filepath.Join(wt, ".tickets", "t-ab12")
+				os.RemoveAll(p)
+				err = os.Symlink(filepath.Join(victim, ".tickets", "t-ab12"), p)
+			case ".tickets":
+				p := filepath.Join(wt, ".tickets")
+				os.RemoveAll(p)
+				err = os.Symlink(filepath.Join(victim, ".tickets"), p)
+			}
+			if err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+			if got := s.ticketStatusIn(root, "t-ab12"); got != "open" {
+				t.Fatalf("a linked %s in the worktree must not be read through: got %q, want main's open", link, got)
+			}
+		})
+	}
+}
+
+// The spawn decisions follow: no conversation to resume -> `sprint continue`; a conversation on disk -> --resume.
+func TestSpawnOfAWorktreeBoundTicketContinuesOrResumes(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root, wt := boundTicketFixture(t, "open", "in_progress")
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+
+	resp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	var first struct{ Session, Token string }
+	if err := json.NewDecoder(resp.Body).Decode(&first); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	argv := waitFile(t, argvFile, 3*time.Second)
+	sid := assertFreshSpawnArgv(t, argv, "sprint continue t-ab12") // in_progress in the worktree, no conversation: continue
+
+	killReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/session/"+first.Session+"/kill", nil)
+	killReq.Header.Set("Authorization", "Bearer "+first.Token)
+	if kr, err := http.DefaultClient.Do(killReq); err != nil {
+		t.Fatal(err)
+	} else {
+		kr.Body.Close()
+	}
+	// Now the conversation exists on disk: the next start resumes it, whatever main's copy says.
+	writeClaudeConversation(t, os.Getenv("CLAUDE_CONFIG_DIR"), sid)
+	if err := os.Truncate(argvFile, 0); err != nil {
+		t.Fatal(err)
+	}
+	resp2 := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("second start: %d", resp2.StatusCode)
+	}
+	resp2.Body.Close()
+	argv2 := waitFile(t, argvFile, 3*time.Second)
+	if want := "ARGC:2\nARG:--resume\nARG:" + sid + "\n"; argv2 != want {
+		t.Fatalf("a worktree-bound in_progress ticket with a conversation must resume: argv = %q, want %q", argv2, want)
+	}
+}
+
+// t-f1b6, criterion 3 for the other agents: copilot continues, pi resumes with -c, both for a worktree-bound ticket.
+func TestSpawnOfAWorktreeBoundTicketForCopilotAndPi(t *testing.T) {
+	for _, agent := range []string{"copilot", "pi"} {
+		t.Run(agent, func(t *testing.T) {
+			bin, argvFile, _ := fakeSprint(t)
+			root, _ := boundTicketFixture(t, "open", "in_progress")
+			t.Setenv("COPILOT_HOME", t.TempDir())
+			t.Setenv("COCKPIT_COPILOT_BIN", bin)
+			t.Setenv("COCKPIT_PI_BIN", bin)
+			s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+			if _, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", agent, bootTok); status != http.StatusOK {
+				t.Fatalf("start: %d", status)
+			}
+			argv := waitFile(t, argvFile, 3*time.Second)
+			switch agent {
+			case "copilot":
+				if !strings.Contains(argv, "ARG:--interactive\nARG:sprint continue t-ab12\n") {
+					t.Fatalf("copilot on a worktree-bound in_progress ticket must continue: argv %q", argv)
+				}
+			case "pi":
+				if argv != "ARGC:1\nARG:-c\n" {
+					t.Fatalf("pi on a worktree-bound in_progress ticket must resume with -c: argv %q", argv)
+				}
+			}
+		})
+	}
+}
+
+// t-f1b6, criterion 4: a start that sends no cwd lands in the worktree the lock names, although main's copy says open.
+func TestStartWithoutACwdHonoursTheWorktreeLockOfABoundTicket(t *testing.T) {
+	bin, cwdFile := fakeSprintCwd(t)
+	root, wt := boundTicketFixture(t, "open", "in_progress")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	resp := startSession(t, ts.URL, "t-ab12", bootTok) // sends no cwd at all
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("start: %d", resp.StatusCode)
+	}
+	resp.Body.Close()
+	if got := strings.TrimSpace(waitFile(t, cwdFile, 3*time.Second)); got != wt {
+		t.Fatalf("a start with no cwd must run in the locked worktree %q, got %q", wt, got)
+	}
+}
+
+// t-f1b6: copilot on a worktree-bound in_progress ticket whose session exists on disk resumes it (--resume=<sid>),
+// whatever main's copy says; the evaluator found nothing pinned this, so a copilot resolver reading main's `open`
+// would mint a new session on every start and never resume.
+func TestCopilotResumesAWorktreeBoundTicketWithASession(t *testing.T) {
+	bin, argvFile, _ := fakeSprint(t)
+	root, _ := boundTicketFixture(t, "open", "in_progress")
+	home := t.TempDir()
+	t.Setenv("COPILOT_HOME", home)
+	t.Setenv("COCKPIT_COPILOT_BIN", bin)
+	sid := "11111111-2222-4333-8444-555555555555"
+	if err := os.WriteFile(filepath.Join(root, ".tickets", "t-ab12", ".cockpit-copilot-session-id"), []byte(sid+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeCopilotSessionState(t, home, sid)
+	s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	if _, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "copilot", bootTok); status != http.StatusOK {
+		t.Fatalf("start: %d", status)
+	}
+	argv := waitFile(t, argvFile, 3*time.Second)
+	if !strings.Contains(argv, "ARG:--resume="+sid+"\n") {
+		t.Fatalf("copilot on a worktree-bound in_progress ticket with a session on disk must resume it: argv %q", argv)
+	}
+}

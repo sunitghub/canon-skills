@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-02-2026 13:10
+learnings-sweep last run: 10-02-2026 15:33
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-02 | [t-f1b6](.tickets/t-f1b6/learnings.md) | When a change moves the OWNER of a field (t-8be2 stopped writing main's ticket.md for a worktree-bound ticket), grep every reader of that field: the daemon still read main's `open`, so t-577e's `sprint continue` shipped verified only on a main-checkout ticket and failed on the first real worktree sprint; and an evaluator forbidden to run a Test Plan item grades it not-run (a blocking fail), so hand it the evidence (the log, with the clone's tip and tree to compare) instead of forbidding the item. | UNPROMOTED |
 | 2026-10-02 | [t-b2a9](.tickets/t-b2a9/learnings.md) | A gate message that says a report is "missing" reads as "create it" to a weaker model (a Haiku session on Windows hand-wrote eval-report.md): every message about a missing or unverifiable gate report must say who writes it and never to hand-write it, and the list of such messages must be swept for EVERY path that invites hand-editing, not just the obvious one (the reviewer found the timestamp-prefix message the plan left out, the evaluator two more). | UNPROMOTED |
 | 2026-10-02 | [t-8be2](.tickets/t-8be2/learnings.md) | A guard only sequential tests exercise is unverified: the write lock and the ACTIVE owner rule could be deleted with the suite green until two simultaneous board writes and a foreign ACTIVE were tested (the evaluator found both); a revert that does not compile or never reaches its line proves nothing (this sprint had three), so confirm each mutant ran and failed on the assertion it targets; and a new READ path (the overlay) needs the same link and containment checks as the write path, which the break-it pass proved with a symlinked ticket.md leaking a file outside the worktree. | UNPROMOTED |
 | 2026-10-02 | [t-577e](.tickets/t-577e/learnings.md) | A pure-function table test does not pin the caller's computed argument (reverting the copilot caller's `continuing` expression passed the whole suite until a spawn-level test existed), and a criterion naming four statuses with tests for two let a `== open` guard mutant survive round 1: derive one test case per status the criterion names and mutate the guard to prove it; also the post-commit hook (t-c184) auto-commits the MAIN checkout's stale exe on a worktree commit, so `strings`-verify the committed binary. | UNPROMOTED |
