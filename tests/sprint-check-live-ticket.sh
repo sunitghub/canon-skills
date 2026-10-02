@@ -244,6 +244,14 @@ PY
   [[ "$(tr -d '[:space:]' < "$wt/.tickets/ACTIVE")" == t-lv01 ]] || fail "$label: starting a ticket must claim ACTIVE"
   rm -f "$wt/.tickets/ACTIVE"; cp "$TMP/$kind/ticket.keep" "$wtf"
 
+  # 5f. A ticket.md write is an atomic replace (a new file moved into place), never an in-place rewrite: the inode changes.
+  cp "$TMP/$kind/ticket.keep" "$wtf"
+  ino1="$(python3 -c 'import os,sys; print(os.stat(sys.argv[1]).st_ino)' "$wtf")"
+  post t-lv01/status '{"status":"open"}' >/dev/null          # the kept file says in_progress, so this really changes it
+  ino2="$(python3 -c 'import os,sys; print(os.stat(sys.argv[1]).st_ino)' "$wtf")"
+  [[ "$ino1" != "$ino2" ]] || fail "$label: a ticket.md write must replace the file atomically (same inode before and after: it was rewritten in place)"
+  rm -f "$wt/.tickets/ACTIVE"; cp "$TMP/$kind/ticket.keep" "$wtf"
+
   # 6a. Two board writes at once never lose a field: the write lock, not luck, keeps each read-modify-write whole.
   lost=0
   for i in $(seq 1 20); do
