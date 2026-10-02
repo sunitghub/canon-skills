@@ -164,6 +164,60 @@ So each project that adds the sprint skill gets its own destination (`t-f65c`):
 
 Because `PROMOTED.md` is always loaded, keep it short. The skill warns when its entries pass 60 lines.
 
+#### Worked example: a ToDo app
+
+A real run on 2026-10-02 in a small single-file ToDo app that uses canon (not canon itself). Everything quoted is copied from that project's files and terminal.
+
+**1. The reviewer catches it, the evaluator passes.** Sprint `t-i9yl` built the app. At close the evaluator's verdict was `pass`, and the advisory reviewer's was `NO`, with two findings in `review-notes.md`:
+
+> `render()` rebuilds the whole list via `list.replaceChildren()` (index.html:40) after every toggle/delete, destroying the focused checkbox/button, so keyboard focus drops to `<body>` after Space on a checkbox or Enter on Delete
+
+> every row's checkbox has the identical `aria-label` "Toggle task" and every Delete button is just "Delete", so screen-reader users cannot tell which task a control acts on.
+
+`tkt learn` wrote `.tickets/t-i9yl/learnings.md` and `learnings-sweep` added this row to `LEARNINGS.md`:
+
+```
+| 2026-10-02 | [t-i9yl](.tickets/t-i9yl/learnings.md) | Full `replaceChildren()` re-render drops keyboard focus and identical aria-labels hide which task a control acts on (index.html:40,48,53) | UNPROMOTED |
+```
+
+**2. A fresh session judges it.** In a new Scratch session in the project, `/promote-learnings` read the row in full and reported:
+
+> Durable: yes. Both are general UI mistakes, not specific to this ticket's code.
+
+> Proposed destination: PROMOTED.md. It applies while writing UI code, and a narrower home doesn't exist in a consumer project.
+
+It drafted the rule and asked:
+
+> Do you want me to apply it? Reply "yes" to promote, "dismiss" to dismiss the row, or give edits to the rule text.
+
+The answer was `yes`.
+
+**3. What changed on disk.** `PROMOTED.md` gained one line and nothing else:
+
+> `UI lists: after a re-render (replaceChildren/innerHTML) restore keyboard focus to the acted-on control or its neighbor, and give repeated controls per-item aria-labels (e.g. "Delete: <task text>"), not identical ones. (t-i9yl)`
+
+The `t-i9yl` row's status became `` `promoted → PROMOTED.md` ``, and the project committed both files.
+
+**4. The next sprint starts with it.** A new ticket, "Edit a task in place", with a description that says nothing about focus or labels:
+
+> Let me change a task's text after adding it. Double-click the task text to turn it into an input; Enter saves, Escape cancels.
+
+`sprint start` ran in a fresh session. It wrote this in `research.md`:
+
+> PROMOTED.md: restore focus after re-render; per-item aria-labels.
+
+and this among the criteria in `acceptance.md`:
+
+> After save or cancel, keyboard focus lands on that task's checkbox (not `body`); the edit input has `aria-label="Edit task: <task text>"` (per PROMOTED.md).
+
+`/memory` in that session lists the file as loaded, `@-imported` under the project's `AGENTS.md`:
+
+> L /private/tmp/ToDo/AGENTS.md @-imported
+
+> · L /private/tmp/ToDo/PROMOTED.md @-imported
+
+**What this shows, and what it does not.** The line reached the next session through the `@PROMOTED.md` import, as `/memory` shows, and the agent turned it into an acceptance criterion for a ticket that never mentioned it. The session was stopped at the plan, so no evaluator has yet graded whether the built code keeps focus. It is one project and one lesson.
+
 ## 7. The question: "Claude already has memory. Why a separate learnings flow?"
 
 Fair question, and the two are complementary, not rivals. Claude Code's auto-memory (the per-project
