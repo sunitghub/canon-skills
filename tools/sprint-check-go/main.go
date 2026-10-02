@@ -2346,6 +2346,29 @@ func liveSafe(id, dir, wtPath string) bool {
 	return derr == nil
 }
 
+// liveClosedMarker is tkt's close marker (t-dec8): `closed: <UTC time>` while closed, none otherwise. The
+// pre-commit hook blocks a staged ticket.md that says `status: closed` without it.
+func liveClosedMarker(lines []string, status string) []string {
+	out := make([]string, 0, len(lines)+1)
+	for _, ln := range lines {
+		if !strings.HasPrefix(ln, "closed:") {
+			out = append(out, ln)
+		}
+	}
+	if status == "closed" {
+		out = append(out, "closed: "+time.Now().UTC().Format("2006-01-02T15:04:05Z"))
+	}
+	return out
+}
+
+// liveBodyOf is the Description as /api/tickets shows it: everything after the frontmatter, trimmed.
+func liveBodyOf(text string) string {
+	if m := frontmatterRe.FindStringIndex(text); m != nil {
+		text = text[m[1]:]
+	}
+	return strings.ToValidUTF8(strings.TrimSpace(text), "\uFFFD")
+}
+
 // liveActivePath is <worktree>/.tickets/ACTIVE when it is safe to write or remove (absent or a plain file).
 func liveActivePath(wtPath string) (string, bool) {
 	p := filepath.Join(wtPath, ".tickets", "ACTIVE")
@@ -2405,6 +2428,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		if !isStr {
 			return fail(http.StatusBadRequest, "bad_content", "body must be text")
 		}
+		newBody = strings.TrimSpace(newBody) // what is written is what is measured (as in server.py)
 		if len(newBody) > liveDocMaxBytes {
 			return fail(http.StatusBadRequest, "too_large", "that description is too large to save from the board")
 		}
@@ -2430,7 +2454,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		if base == "" || base != docEtag(raw) {
 			return fail(http.StatusConflict, "stale", "ticket.md changed since you read it — reload it and try again")
 		}
-		updated = text[:m[1]] + strings.TrimSpace(newBody) + "\n"
+		updated = text[:m[1]] + newBody + "\n"
 	case "status":
 		lines := strings.Split(text[m[2]:m[3]], "\n")
 		found := false
@@ -2444,7 +2468,7 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 		if !found {
 			return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no status line")
 		}
-		updated = text[:m[2]] + strings.Join(lines, "\n") + text[m[3]:]
+		updated = text[:m[2]] + strings.Join(liveClosedMarker(lines, newStatus), "\n") + text[m[3]:]
 	default:
 		var kept []string
 		for _, ln := range strings.Split(text[m[2]:m[3]], "\n") {
@@ -2471,7 +2495,13 @@ func writeLiveTicket(id, kind string, payload map[string]any, root string) (hand
 	if werr != nil {
 		return fail(http.StatusInternalServerError, "write_failed", "couldn't save ticket.md — is another program holding it open? Try again")
 	}
-	return true, http.StatusOK, map[string]any{"ok": true, "etag": docEtag(data)}
+	out := map[string]any{"ok": true, "etag": docEtag(data)}
+	if kind != "body" {
+		// The page keeps its text and its etag as a pair: hand back the Description this etag describes, so a later
+		// edit never starts from older text under a newer etag.
+		out["body"] = liveBodyOf(updated)
+	}
+	return true, http.StatusOK, out
 }
 
 func annotateLiveDocs(tickets []ticket, root string) {

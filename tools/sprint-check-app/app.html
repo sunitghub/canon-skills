@@ -4115,10 +4115,24 @@ const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: ''
 
 // t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
 // box; they choose to load theirs or to overwrite knowingly.
+// t-8be2: a status/Demo write of a bound ticket returns the file's new etag AND the Description that etag describes.
+// Adopt both on the ticket the board holds NOW (a poll may have replaced the object the handler started with), so the
+// page's text and etag stay a pair: an edit never starts from older text under a newer etag.
+function adoptTicketWrite(id, data) {
+  const cur = findTicketById(id);
+  if (!cur || !data) return;
+  if (data.etag) cur.ticket_etag = data.etag;
+  if (typeof data.body === 'string') {
+    cur.body = data.body;
+    const h = data.body.match(/^#{1,6}\s+(.+)$/m);
+    if (h) cur.title = h[1].trim();
+  }
+}
+
 // A ticket's own fields (its Description) are read through /api/tickets, which carries the ticket_etag (t-8be2).
 async function fetchTicketFresh(id) {
   try {
-    const r = await fetch('/api/tickets');
+    const r = await fetch('/api/tickets?all=1');
     if (!r.ok) return null;
     const t = (await r.json()).find(x => x.id === id);
     return t ? { content: t.body || '', etag: t.ticket_etag || '' } : null;
@@ -4688,7 +4702,7 @@ function injectSignoffControls(container, content, t) {
     demoBtn.disabled = true;
     try {
       const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/UX');
-      if (res.ok) { t.demo = next ? 'true' : 'false'; if (res.data && res.data.etag) t.ticket_etag = res.data.etag; }
+      if (res.ok) { t.demo = next ? 'true' : 'false'; const cur0 = findTicketById(t.id); if (cur0) cur0.demo = t.demo; adoptTicketWrite(t.id, res.data); }
     } finally {
       renderBoard();
       const cur = state.tickets.find(tk => tk.id === state.selectedId);
@@ -4839,7 +4853,8 @@ async function saveEdit(t) {
     if (res.stale) { showStaleEditNotice(t); return; }   // t-8be2: keep the text, let the person choose
     if (!res.ok) return;
     t.body = content;
-    if (res.data && res.data.etag) t.ticket_etag = res.data.etag;
+    const etag = res.data && res.data.etag;
+    if (etag) { t.ticket_etag = etag; const cur = findTicketById(t.id); if (cur) cur.ticket_etag = etag; }
     const headingMatch = content.match(/^#\s+(.+)$/m);
     if (headingMatch) t.title = headingMatch[1].trim();
   }
@@ -5386,7 +5401,7 @@ async function moveCard(t, newStatus) {
   const res = await postWrite(`/api/ticket/${t.id}/status`, { status: newStatus }, `move ${t.id}`);
   if (!res.ok) { renderBoard(); return; }
   t.status = newStatus;
-  if (res.data && res.data.etag) t.ticket_etag = res.data.etag;   // t-8be2: a bound ticket's own write moved its etag
+  adoptTicketWrite(t.id, res.data);   // t-8be2: a bound ticket's own write moved its etag (and says what its text is)
   renderHeader();
   renderSidebar();
   const modalOpen = document.getElementById('modal-overlay').classList.contains('open');

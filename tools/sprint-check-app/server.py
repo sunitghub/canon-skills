@@ -862,6 +862,25 @@ def write_live_doc(doc_file: str, payload: dict, root: Path = None):
 # at that moment; a body save is guarded by base_hash like a doc. ACTIVE follows tkt's per-checkout file.
 _LIVE_TICKET_STATUSES = ('open', 'in_progress', 'closed', 'cancelled', 'archived')
 
+# Go's regexp classes are ASCII-only; the live write path is held to the same reading (re.ASCII) so both servers
+# accept and refuse the same bytes (a non-breaking space after the fence or a status value is not whitespace to either).
+_LIVE_FRONTMATTER = re.compile(r'^---\s*\n(.*?)\n---\s*\n', re.DOTALL | re.ASCII)
+_LIVE_STATUS_LINE = re.compile(r'^(status:[ \t]*)(\S+)([ \t\r]*)$', re.ASCII)
+
+def _live_closed_marker(lines: list, status: str) -> list:
+    """tkt's close marker (t-dec8): `closed: <UTC time>` while closed, none otherwise. The pre-commit hook blocks a
+    staged ticket.md that says `status: closed` without it."""
+    out = [ln for ln in lines if not ln.startswith('closed:')]
+    if status == 'closed':
+        out.append('closed: ' + time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()))
+    return out
+
+def _live_body_of(text: str) -> str:
+    """The Description as /api/tickets shows it (everything after the frontmatter, trimmed), as clean text."""
+    m = _LIVE_FRONTMATTER.match(text)
+    body = _go_trim(text[m.end():] if m else text)
+    return body.encode('utf-8', errors='surrogateescape').decode('utf-8', errors='replace')
+
 def _live_active_path(live: dict):
     """<worktree>/.tickets/ACTIVE when it is safe to write or remove (absent or a plain file), else None."""
     p = Path(live['wt']) / '.tickets' / 'ACTIVE'
@@ -918,7 +937,7 @@ def write_live_ticket(ticket_id: str, kind: str, payload: dict, root: Path = Non
             return fail(500, 'read_failed', "couldn't read ticket.md — is another program holding it open? Try again")
         # surrogateescape: bytes that are not valid UTF-8 survive a single-field edit unchanged (as in Go)
         text = raw.decode('utf-8', errors='surrogateescape')
-        fm = _FRONTMATTER.match(text)
+        fm = _LIVE_FRONTMATTER.match(text)
         if not fm:
             return fail(409, 'bad_ticket', 'that ticket.md has no frontmatter')
         if kind == 'body':
@@ -929,12 +948,13 @@ def write_live_ticket(ticket_id: str, kind: str, payload: dict, root: Path = Non
         elif kind == 'status':
             lines = fm.group(1).split('\n')
             for i, ln in enumerate(lines):
-                m = re.match(r'^(status:[ \t]*)(\S+)([ \t\r]*)$', ln)
+                m = _LIVE_STATUS_LINE.match(ln)
                 if m:
                     lines[i] = m.group(1) + new_status + m.group(3)
                     break
             else:
                 return fail(409, 'bad_ticket', 'that ticket.md has no status line')
+            lines = _live_closed_marker(lines, new_status)
             updated = text[:fm.start(1)] + '\n'.join(lines) + text[fm.end(1):]
         else:
             kept = [ln for ln in fm.group(1).split('\n') if not ln.startswith('demo:')]
@@ -949,7 +969,12 @@ def write_live_ticket(ticket_id: str, kind: str, payload: dict, root: Path = Non
                 _live_set_active(active, ticket_id, new_status)
         except OSError:
             return fail(500, 'write_failed', "couldn't save ticket.md — is another program holding it open? Try again")
-    return 200, {'ok': True, 'etag': doc_etag(data if updated != text else raw)}
+    res = {'ok': True, 'etag': doc_etag(data)}
+    if kind != 'body':
+        # The page keeps its text and its etag as a pair: hand back the Description this etag describes, so a later
+        # edit never starts from older text under a newer etag.
+        res['body'] = _live_body_of(updated)
+    return 200, res
 
 # ── Worktree holds (t-2241) ───────────────────────────────────────────────
 # Which non-main worktrees another ticket still needs, so the pickers stop

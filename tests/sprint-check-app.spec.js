@@ -6928,9 +6928,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       mk(live, { status: 'in_progress', docs_from: { branch: 'sprint/8b' }, ticket_etag: 'tk-1', branch_divergence: div, body: '# Ticket t-8b01\n\nworktree description' }),
       mk(plain, { status: 'open', branch_divergence: { branch: 'sprint/8b2', status: 'closed', where: 'branch', merged: false, dirty: false } }),
     ] };
-    await page.route('**/api/tickets**', route => route.request().method() === 'GET'
-      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data.tickets) })
-      : route.continue());
+    data.gets = [];
+    await page.route('**/api/tickets**', route => { if (route.request().method() === 'GET') data.gets.push(route.request().url());
+      return route.request().method() === 'GET'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data.tickets) })
+        : route.continue(); });
     await page.route('**/api/doc/**', route => route.fulfill({ status: 200, contentType: 'application/json',
       body: JSON.stringify({ content: '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\nx\n', etag: 'd-1' }) }));
     const posts = [];
@@ -6939,7 +6941,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       if (req.method() !== 'POST') return route.continue();
       const body = req.postDataJSON(); posts.push({ url: req.url(), body });
       return post ? post(route, body, posts.length)
-        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: `tk-${posts.length + 1}` }) });
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: `tk-${posts.length + 1}`,
+          ...(/\/(status|demo)$/.test(req.url()) ? { body: '# Ticket t-8b01\n\nagent edited body' } : {}) }) });   // a status/Demo write also returns the Description its etag describes
     });
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
@@ -6986,8 +6989,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(page.locator('#m-edit-area')).toHaveValue(mine);          // the text is kept
     // Someone else (tkt, the sprint) changed the worktree copy meanwhile.
     data.tickets[0].body = '# Ticket t-8b01\n\ntheirs, from the worktree'; data.tickets[0].ticket_etag = 'tk-9';
+    data.gets.length = 0;                                                  // only what the Reload click itself asks for
     await page.locator('#stale-reload').click();
     await expect(page.locator('#m-edit-area')).toHaveValue(/theirs, from the worktree/);
+    expect(data.gets[0]).toContain('all=1');                               // an archived bound ticket must still reload
     await expect(notice).toHaveCount(0);
     await page.locator('#m-edit-area').fill(mine);
     await page.locator('#btn-save-top').click();                           // still stale: the next save must carry the etag Reload fetched
@@ -7007,7 +7012,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await page.evaluate(id => moveCard(findTicketById(id), 'open'), live);
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/status$/);
-    await editDescription(page, live, '# Ticket t-8b01\n\nafter the move');
+    await page.locator(`.card[data-id="${live}"]`).click();
+    await page.locator('.doc-tab', { hasText: 'Description' }).click();
+    await page.locator('#btn-edit-doc').click();
+    await expect(page.locator('#m-edit-area')).toHaveValue(/agent edited body/);   // the text and the etag arrive as a pair
+    await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nafter the move');
+    await page.locator('#btn-save-top').click();
     await expect.poll(() => posts.length).toBe(2);
     expect(posts[1].body.base_hash).toBe('tk-2');                          // the status write's etag, not the stale tk-1
   });
@@ -7020,6 +7030,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/demo$/);
     await page.locator('.doc-tab', { hasText: 'Description' }).click();
     await page.locator('#btn-edit-doc').click();
+    await expect(page.locator('#m-edit-area')).toHaveValue(/agent edited body/);   // the text and the etag arrive as a pair
     await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nafter the toggle');
     await page.locator('#btn-save-top').click();
     await expect.poll(() => posts.length).toBe(2);
