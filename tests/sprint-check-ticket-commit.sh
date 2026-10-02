@@ -127,6 +127,7 @@ exp = {
   'optional': ['.tickets/t-ab12/cockpit-sessions.md'],
   'other_dirty': ['.tickets/t-zz99/ticket.md', 'staged.txt'],
   'other_dirty_count': 2, 'message': 'chore: add ticket t-ab12', 'blocked': '',
+  'ticket_in_head': False,   # t-b59d: never committed
 }
 assert d == exp, f'{label}: plan mismatch:\n{json.dumps(d, indent=1)}'
 EOF
@@ -181,6 +182,42 @@ EOF
   wt="$(curl -s -X POST "http://127.0.0.1:$port/api/worktrees" -H 'Content-Type: application/json' -d '{"branch":"sprint/t-ab12"}')"
   wt="$(python3 -c "import json,sys; d=json.loads(sys.argv[1]); assert d['ok'], d; print(d['path'])" "$wt")"
   [[ -f "$wt/.tickets/t-ab12/ticket.md" ]] || fail "$label: new worktree lacks the committed ticket"
+
+  # t-b59d: a ticket that IS in HEAD with local edits is not "uncommitted": whitespace-only edits (trailing
+  # spaces, the amount of space between words, CR/LF endings: what `git diff -b` ignores) are not reported at
+  # all; a real edit or a new doc is, with ticket_in_head true so the rail can say so truthfully. The commit
+  # endpoint must agree with the plan (a hidden file is not eligible).
+  local tdir="$repo/.tickets/t-ab12" tp
+  tp() { curl -s "http://127.0.0.1:$port/api/ticket-commit/t-ab12"; }
+  plan="$(tp)"
+  [[ "$(jget "$plan" ticket_in_head)" == "true" && "$(jget "$plan" required)" == "[]" ]] || fail "$label: a committed, clean ticket must have no required files and ticket_in_head true: $plan"
+  printf 'plan  \n' > "$tdir/plan.md"                      # trailing spaces
+  plan="$(tp)"; [[ "$(jget "$plan" required)" == "[]" ]] || fail "$label: a trailing-space edit must not be reported: $plan"
+  printf 'plan\r\n' > "$tdir/plan.md"                      # CRLF only
+  plan="$(tp)"; [[ "$(jget "$plan" required)" == "[]" ]] || fail "$label: a CRLF-only edit must not be reported: $plan"
+  git -C "$repo" checkout -q -- .tickets/t-ab12/plan.md
+  printf -- '---\nstatus:  open\n---\n# x\n' > "$tdir/ticket.md"   # two spaces between words (original: one)
+  plan="$(tp)"; [[ "$(jget "$plan" required)" == "[]" ]] || fail "$label: a space-amount edit must not be reported: $plan"
+  git -C "$repo" checkout -q -- .tickets/t-ab12/ticket.md
+  # A real edit is reported (ticket_in_head true, "update"), and a whitespace-only edit beside it is not.
+  echo "a real change" >> "$tdir/ticket.md"
+  printf 'plan  \n' > "$tdir/plan.md"
+  plan="$(tp)"
+  [[ "$(jget "$plan" required)" == '[".tickets/t-ab12/ticket.md"]' ]] || fail "$label: only the really edited file may be required: $plan"
+  [[ "$(jget "$plan" ticket_in_head)" == "true" && "$(jget "$plan" message)" == '"chore: update ticket t-ab12"' ]] || fail "$label: committed ticket with a real edit: $plan"
+  # The commit endpoint agrees: the whitespace-only file is not eligible (400), a nothing-but-whitespace ticket 409s.
+  res="$(post_commit "$port" t-ab12 '[".tickets/t-ab12/ticket.md",".tickets/t-ab12/plan.md"]')"
+  [[ "${res%% *}" == 400 && "$res" == *"not eligible"* ]] || fail "$label: a whitespace-only file must not be committable: $res"
+  git -C "$repo" checkout -q -- .tickets/t-ab12/ticket.md
+  res="$(post_commit "$port" t-ab12 '[".tickets/t-ab12/plan.md"]')"
+  [[ "${res%% *}" == 409 ]] || fail "$label: only whitespace-only changes must 409 (no uncommitted files), got: $res"
+  git -C "$repo" checkout -q -- .tickets/t-ab12/plan.md
+  # A brand-new doc in a committed ticket is reported ("add"), ticket_in_head true.
+  echo notes > "$tdir/research.md"
+  plan="$(tp)"
+  [[ "$(jget "$plan" required)" == '[".tickets/t-ab12/research.md"]' && "$(jget "$plan" ticket_in_head)" == "true" && "$(jget "$plan" message)" == '"chore: add ticket t-ab12"' ]] || fail "$label: new doc in a committed ticket: $plan"
+  rm "$tdir/research.md"
+  [[ -z "$(git -C "$repo" status --porcelain -- .tickets/t-ab12 | grep -v cockpit-sessions)" ]] || fail "$label: the t-b59d fixtures left the ticket dirty"
 
   # Blocked states → plan.blocked set, POST 409, HEAD unchanged.
   echo new > "$repo/.tickets/t-ab12/new.md"

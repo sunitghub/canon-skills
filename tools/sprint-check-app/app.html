@@ -6876,7 +6876,14 @@ async function renderCockpitWorktree(t) {
   } catch {}
   const needsCommit = !!(commitPlan && !commitPlan.blocked && Array.isArray(commitPlan.required) && commitPlan.required.length);
   if (needsCommit) {
-    html += `<div class="ck-worktree-warn" id="ck-worktree-uncommitted" role="status">
+    // t-b59d: a ticket already in HEAD only lags: a new worktree gets its last committed version, it is not
+    // missing. Only an explicit ticket_in_head === true takes the new wording; a server without the field
+    // keeps the old sentence.
+    html += commitPlan.ticket_in_head === true
+      ? `<div class="ck-worktree-warn" id="ck-worktree-uncommitted" role="status">
+      <strong>${esc(t.id)} has uncommitted changes</strong> — a new worktree gets its last committed version. + New will offer to commit them first.
+    </div>`
+      : `<div class="ck-worktree-warn" id="ck-worktree-uncommitted" role="status">
       <strong>${esc(t.id)} isn't committed yet</strong> — a new worktree won't contain it. + New will offer to commit it first.
     </div>`;
   }

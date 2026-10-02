@@ -2813,11 +2813,26 @@ func ticketCommitBlocked(root string) string {
 	return ""
 }
 
+// inHead: is path in the last commit. whitespaceOnlyChange (t-b59d): path (already in HEAD) differs from HEAD
+// in whitespace only (trailing spaces, the amount of space between words, CR/LF endings). The diff OUTPUT
+// decides (`-b --numstat` prints nothing for such a change), not an exit status. A failed git call counts as
+// a real change, so nothing is hidden by accident. Parity with server.py's _whitespace_only_change.
+func inHead(path, root string) bool {
+	_, _, err := gitOutIn(root, 10*time.Second, "cat-file", "-e", "HEAD:"+path)
+	return err == nil
+}
+
+func whitespaceOnlyChange(path, root string) bool {
+	out, _, err := gitOutIn(root, 10*time.Second, "diff", "-b", "--numstat", "HEAD", "--", path)
+	return err == nil && strings.TrimSpace(out) == ""
+}
+
 func ticketCommitPlan(ticketID, root string) map[string]any {
 	root = rootOr(root)
 	required, recommended, optional, other := []string{}, []string{}, []string{}, []string{}
 	plan := map[string]any{"required": required, "recommended": recommended, "optional": optional,
-		"other_dirty": other, "other_dirty_count": 0, "message": "", "blocked": ticketCommitBlocked(root)}
+		"other_dirty": other, "other_dirty_count": 0, "message": "", "blocked": ticketCommitBlocked(root),
+		"ticket_in_head": false}
 	if b := plan["blocked"]; b == "not a git repository" || b == ".tickets/ is gitignored" {
 		return plan
 	}
@@ -2843,6 +2858,8 @@ func ticketCommitPlan(ticketID, root string) map[string]any {
 			name := path[strings.LastIndex(path, "/")+1:]
 			if name == "cockpit-sessions.md" || strings.HasPrefix(name, ".cockpit-") {
 				optional = append(optional, path)
+			} else if xy != "??" && inHead(path, root) && whitespaceOnlyChange(path, root) {
+				continue // t-b59d: a committed file with a whitespace-only edit needs no commit
 			} else {
 				required = append(required, path)
 				untrackedRequired = untrackedRequired || xy == "??"
@@ -2857,6 +2874,7 @@ func ticketCommitPlan(ticketID, root string) map[string]any {
 	sort.Strings(recommended)
 	sort.Strings(optional)
 	sort.Strings(other)
+	plan["ticket_in_head"] = inHead(prefix+"ticket.md", root) // t-b59d: a new worktree has the last committed version
 	plan["required"], plan["recommended"], plan["optional"] = required, recommended, optional
 	plan["other_dirty_count"] = len(other)
 	if len(other) > otherDirtyCap {
