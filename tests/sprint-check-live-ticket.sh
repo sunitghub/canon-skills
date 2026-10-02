@@ -226,6 +226,36 @@ PY
   rm -f "$wt/.tickets/ACTIVE"
   cp "$TMP/$kind/ticket.keep" "$wtf"
 
+  # 5d2. A ticket folder that is itself a link out of the worktree is not bound: nothing reaches what it points at.
+  cp "$mainf" "$TMP/$kind/main.keep"
+  mv "$wt/.tickets/t-lv01" "$wt/.tickets/t-lv01.real"; mkdir -p "$out/tdirvic"
+  printf -- '---\nid: t-lv01\nstatus: open\n---\n# VICTIM\n' > "$out/tdirvic/ticket.md"; ln -s "$out/tdirvic" "$wt/.tickets/t-lv01"
+  snap="$(sha "$out/tdirvic/ticket.md")"
+  post t-lv01/status '{"status":"closed"}' >/dev/null; post t-lv01/body "{\"body\":\"x\",\"base_hash\":\"deadbeef\"}" >/dev/null
+  [[ "$(sha "$out/tdirvic/ticket.md")" == "$snap" ]] || fail "$label: a symlinked ticket folder must never be written through"
+  rm "$wt/.tickets/t-lv01"; mv "$wt/.tickets/t-lv01.real" "$wt/.tickets/t-lv01"; cp "$TMP/$kind/main.keep" "$mainf"
+  main_before="$(sha "$mainf")"
+
+  # 5e. ACTIVE follows tkt: closing releases it only when it names THIS ticket, never another's.
+  cp "$TMP/$kind/ticket.keep" "$wtf"; printf 't-other\n' > "$wt/.tickets/ACTIVE"
+  post t-lv01/status '{"status":"closed"}' >/dev/null
+  [[ "$(tr -d '[:space:]' < "$wt/.tickets/ACTIVE")" == t-other ]] || fail "$label: closing a ticket must not clear an ACTIVE that names another ticket"
+  post t-lv01/status '{"status":"in_progress"}' >/dev/null
+  [[ "$(tr -d '[:space:]' < "$wt/.tickets/ACTIVE")" == t-lv01 ]] || fail "$label: starting a ticket must claim ACTIVE"
+  rm -f "$wt/.tickets/ACTIVE"; cp "$TMP/$kind/ticket.keep" "$wtf"
+
+  # 6a. Two board writes at once never lose a field: the write lock, not luck, keeps each read-modify-write whole.
+  lost=0
+  for i in $(seq 1 20); do
+    printf -- '---\nid: t-lv01\nstatus: open\ntype: task\n---\n# T\n\nbody\n' > "$wtf"
+    curl -s -o /dev/null -X POST -H 'Content-Type: application/json' --data-binary '{"status":"in_progress"}' "$base/api/ticket/t-lv01/status" &
+    curl -s -o /dev/null -X POST -H 'Content-Type: application/json' --data-binary '{"demo":true}' "$base/api/ticket/t-lv01/demo" &
+    wait
+    if ! grep -q '^status: in_progress$' "$wtf" || ! grep -q '^demo: true$' "$wtf"; then lost=$((lost + 1)); fi
+  done
+  [[ "$lost" -eq 0 ]] || fail "$label: two simultaneous board writes lost a field in $lost of 20 rounds (the write lock is not held across read and rename)"
+  rm -f "$wt/.tickets/ACTIVE"; cp "$TMP/$kind/ticket.keep" "$wtf"
+
   # 6. Concurrency: board writes racing a second writer (as tkt does) never tear the file or lose the id/status.
   ( for i in $(seq 1 40); do
       python3 - "$wtf" "$i" <<'PY'

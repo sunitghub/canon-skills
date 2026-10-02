@@ -6987,6 +6987,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(notice).toBeVisible();
     await expect(notice).toContainText('description');
     await expect(page.locator('#m-edit-area')).toHaveValue(mine);          // the text is kept
+    // The notice and the controls stay inside the modal, measured from boxes (not a screenshot), at a normal and a narrow window.
+    const inModal = async loc => {
+      const m = await page.locator('#modal').boundingBox(); const b = await loc.boundingBox();
+      expect(b).not.toBeNull();
+      expect(b.x).toBeGreaterThanOrEqual(m.x - 1); expect(b.y).toBeGreaterThanOrEqual(m.y - 1);
+      expect(b.x + b.width).toBeLessThanOrEqual(m.x + m.width + 1); expect(b.y + b.height).toBeLessThanOrEqual(m.y + m.height + 1);
+    };
+    for (const w of [1280, 480]) {
+      await page.setViewportSize({ width: w, height: 800 });
+      for (const loc of [notice, page.locator('#stale-reload'), page.locator('#stale-overwrite'), page.locator('#btn-save-top'), page.locator('#btn-cancel-top')]) await inModal(loc);
+    }
     // Someone else (tkt, the sprint) changed the worktree copy meanwhile.
     data.tickets[0].body = '# Ticket t-8b01\n\ntheirs, from the worktree'; data.tickets[0].ticket_etag = 'tk-9';
     data.gets.length = 0;                                                  // only what the Reload click itself asks for
@@ -7009,7 +7020,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
   test('a status move on a bound ticket keeps the page current, so the next Description save is not stale (t-8be2)', async ({ page }) => {
     const { live, posts } = await ownBoard(page);
-    await page.evaluate(id => moveCard(findTicketById(id), 'open'), live);
+    await page.locator(`.card[data-id="${live}"]`).dragTo(page.locator('.column-body[data-status="open"]'));   // a real drag, not a direct call
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/status$/);
     await page.locator(`.card[data-id="${live}"]`).click();
