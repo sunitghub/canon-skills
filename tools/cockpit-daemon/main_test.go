@@ -1790,6 +1790,35 @@ func TestHandleStartDoesNotRetryHealthyCopilotResume(t *testing.T) {
 	}
 }
 
+// t-577e: a copilot ticket that is in_progress but has no resumable session
+// starts fresh with "sprint continue", an open one with "sprint start".
+func TestSpawnCopilotContinuesInProgressTicketWithoutSession(t *testing.T) {
+	for _, tc := range []struct{ status, prompt string }{
+		{"in_progress", "sprint continue t-ab12"},
+		{"open", "sprint start t-ab12"},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			bin, argvFile, _ := fakeSprint(t)
+			root := t.TempDir()
+			writeTicketStatus(t, root, "t-ab12", tc.status)
+			t.Setenv("COPILOT_HOME", t.TempDir())
+			t.Setenv("COCKPIT_COPILOT_BIN", bin)
+			s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+
+			if _, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "copilot", bootTok); status != http.StatusOK {
+				t.Fatalf("start: %d", status)
+			}
+			argv := waitFile(t, argvFile, 3*time.Second)
+			if !strings.Contains(argv, "ARG:--interactive\nARG:"+tc.prompt+"\n") {
+				t.Fatalf("argv %q lacks --interactive %q", argv, tc.prompt)
+			}
+		})
+	}
+}
+
 // t-6ce0: claude/pi (and any copilot FRESH start) must never enter the
 // grace-check at all — proves the copilotResumeAttempt scoping is a real
 // guard, not decorative. If claude were subjected to the same grace-check by
