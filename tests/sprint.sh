@@ -28,6 +28,26 @@ assert_grep "## Test Plan" ".tickets/$id/acceptance.md"
 second_start_output="$(run_fail "$SPRINT" start "Another sprint")"
 assert_contains "$second_start_output" "Active sprint already exists:"
 
+# t-577e: sprint continue resumes an in_progress ticket read-only; start refuses it.
+before_continue="$(cat ".tickets/$id/ticket.md" ".tickets/$id/plan.md" ".tickets/ACTIVE")"
+continue_output="$("$SPRINT" continue "$id")"
+assert_contains "$continue_output" "Continuing sprint: $id"
+assert_contains "$continue_output" "Status: in_progress"
+assert_contains "$continue_output" "Agent next steps:"
+assert_contains "$continue_output" "HANDOFF.md"
+assert_eq "$before_continue" "$(cat ".tickets/$id/ticket.md" ".tickets/$id/plan.md" ".tickets/ACTIVE")"
+assert_contains "$(run_fail "$SPRINT" continue t-nope)" "No ticket"
+open_id="$("$TKT" create "Not started yet" -t task -p 2)"
+assert_contains "$(run_fail "$SPRINT" continue "$open_id")" "sprint start $open_id"
+# a closed or archived ticket is not resumable either
+done_id="$("$TKT" create "Already closed" -t task -p 2)"
+"$TKT" close "$done_id" --no-sprint >/dev/null
+assert_contains "$(run_fail "$SPRINT" continue "$done_id")" "closed"
+archived_id="$("$TKT" create "Shelved" -t task -p 2)"
+"$TKT" archive "$archived_id" >/dev/null
+assert_contains "$(run_fail "$SPRINT" continue "$archived_id")" "archived"
+assert_contains "$(run_fail "$SPRINT" continue)" "Usage: sprint continue"
+
 # summary.md gate — must block before any other check
 missing_summary_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_summary_output" "Missing required sprint file"

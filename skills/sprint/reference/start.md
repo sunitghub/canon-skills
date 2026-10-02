@@ -10,6 +10,8 @@ hidden: true
 
 **Trigger:** "sprint start", "start a sprint for X", "let's work on X" — or any normal/high-risk request to add, fix, update, debug, implement, or build something.
 
+**Resuming:** `sprint start <id>` refuses an in_progress ticket. When asked to `sprint continue <id>`, run it: it is read-only and prints the ticket's state. Then read DECISIONS.md, HANDOFF.md and `.tickets/<id>/`, find the first unchecked plan/acceptance item, and carry on from there. Do not re-orient from scratch or re-ask for a plan approval already recorded in `plan.md`.
+
 ## Contents
 
 Steps (normal-tier skips 7-9; high-risk runs the full pipeline):

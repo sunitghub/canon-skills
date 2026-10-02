@@ -1790,6 +1790,35 @@ func TestHandleStartDoesNotRetryHealthyCopilotResume(t *testing.T) {
 	}
 }
 
+// t-577e: a copilot ticket that is in_progress but has no resumable session
+// starts fresh with "sprint continue", an open one with "sprint start".
+func TestSpawnCopilotContinuesInProgressTicketWithoutSession(t *testing.T) {
+	for _, tc := range []struct{ status, prompt string }{
+		{"in_progress", "sprint continue t-ab12"},
+		{"open", "sprint start t-ab12"},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			bin, argvFile, _ := fakeSprint(t)
+			root := t.TempDir()
+			writeTicketStatus(t, root, "t-ab12", tc.status)
+			t.Setenv("COPILOT_HOME", t.TempDir())
+			t.Setenv("COCKPIT_COPILOT_BIN", bin)
+			s := newServer(config{token: bootTok, projectRoot: root, stateDir: t.TempDir()})
+			ts := httptest.NewServer(s.handler())
+			t.Cleanup(ts.Close)
+			t.Cleanup(func() { killAllSessions(s) })
+
+			if _, _, status := startSessionWithAgentBody(t, ts.URL, "t-ab12", "copilot", bootTok); status != http.StatusOK {
+				t.Fatalf("start: %d", status)
+			}
+			argv := waitFile(t, argvFile, 3*time.Second)
+			if !strings.Contains(argv, "ARG:--interactive\nARG:"+tc.prompt+"\n") {
+				t.Fatalf("argv %q lacks --interactive %q", argv, tc.prompt)
+			}
+		})
+	}
+}
+
 // t-6ce0: claude/pi (and any copilot FRESH start) must never enter the
 // grace-check at all — proves the copilotResumeAttempt scoping is a real
 // guard, not decorative. If claude were subjected to the same grace-check by
@@ -1989,8 +2018,9 @@ func TestSpawnResumesPersistedSessionOnlyWhenInProgress(t *testing.T) {
 // TestSpawnStartsFreshWhenPersistedSessionHasNoConversation is the t-77d7
 // regression: an in_progress ticket whose persisted id names no resumable
 // conversation (minted before claude ever wrote a turn) must start FRESH via
-// --session-id + the sprint-start prompt, never `--resume <id>` — which claude
-// rejects with "No conversation found with session ID".
+// --session-id + the sprint-continue prompt (t-577e: `sprint start` refuses an
+// in_progress ticket), never `--resume <id>` — which claude rejects with "No
+// conversation found with session ID".
 func TestSpawnStartsFreshWhenPersistedSessionHasNoConversation(t *testing.T) {
 	bin, argvFile, _ := fakeSprint(t)
 	root := t.TempDir()
@@ -2021,7 +2051,7 @@ func TestSpawnStartsFreshWhenPersistedSessionHasNoConversation(t *testing.T) {
 		t.Fatalf("ghost id must not trigger --resume: %q", argv)
 	}
 	// Fresh start reuses the SAME persisted id (not a newly minted one).
-	usedID := assertFreshSpawnArgv(t, argv, "sprint start t-ab12")
+	usedID := assertFreshSpawnArgv(t, argv, "sprint continue t-ab12")
 	if usedID != ghostID {
 		t.Fatalf("fresh fallback must reuse the persisted id %q, got %q", ghostID, usedID)
 	}
@@ -3908,51 +3938,60 @@ func TestAgentSpawnArgs(t *testing.T) {
 		}
 	}
 	eq("claude fresh",
-		agentSpawnArgs("claude", "t-ab12", false, "SID", "sonnet", "/tmp/s.json"),
+		agentSpawnArgs("claude", "t-ab12", false, false, "SID", "sonnet", "/tmp/s.json"),
 		[]string{"--model", "sonnet", "--settings", "/tmp/s.json", "--session-id", "SID", "sprint start t-ab12"})
 	eq("claude fresh minimal",
-		agentSpawnArgs("claude", "t-ab12", false, "SID", "", ""),
+		agentSpawnArgs("claude", "t-ab12", false, false, "SID", "", ""),
 		[]string{"--session-id", "SID", "sprint start t-ab12"})
 	eq("claude resume",
-		agentSpawnArgs("claude", "t-ab12", true, "SID", "", ""),
+		agentSpawnArgs("claude", "t-ab12", true, false, "SID", "", ""),
 		[]string{"--resume", "SID"})
 	eq("pi fresh",
-		agentSpawnArgs("pi", "t-ab12", false, "", "", ""),
+		agentSpawnArgs("pi", "t-ab12", false, false, "", "", ""),
 		[]string{"sprint start t-ab12"})
 	eq("pi resume",
-		agentSpawnArgs("pi", "t-ab12", true, "", "", ""),
+		agentSpawnArgs("pi", "t-ab12", true, false, "", "", ""),
 		[]string{"-c"})
 	eq("copilot fresh",
-		agentSpawnArgs("copilot", "t-ab12", false, "SID", "gpt-5.4", ""),
+		agentSpawnArgs("copilot", "t-ab12", false, false, "SID", "gpt-5.4", ""),
 		[]string{"--model", "gpt-5.4", "--session-id", "SID", "--interactive", "sprint start t-ab12"})
 	// t-d8b0: Copilot's --model takes its own ids, never Claude Code aliases.
 	eq("copilot haiku maps to Copilot's id",
-		agentSpawnArgs("copilot", "t-ab12", false, "SID", "haiku", ""),
+		agentSpawnArgs("copilot", "t-ab12", false, false, "SID", "haiku", ""),
 		[]string{"--model", "claude-haiku-4.5", "--session-id", "SID", "--interactive", "sprint start t-ab12"})
 	eq("copilot sonnet maps to Copilot's id",
-		agentSpawnArgs("copilot", "t-ab12", true, "SID", "sonnet", ""),
+		agentSpawnArgs("copilot", "t-ab12", true, false, "SID", "sonnet", ""),
 		[]string{"--model", "claude-sonnet-5", "--resume=SID"})
 	eq("copilot alias match is case-insensitive",
-		agentSpawnArgs("copilot", "t-ab12", true, "SID", "HAIKU", ""),
+		agentSpawnArgs("copilot", "t-ab12", true, false, "SID", "HAIKU", ""),
 		[]string{"--model", "claude-haiku-4.5", "--resume=SID"})
 	eq("copilot opus has no verified id: no --model",
-		agentSpawnArgs("copilot", "t-ab12", true, "SID", "opus", ""),
+		agentSpawnArgs("copilot", "t-ab12", true, false, "SID", "opus", ""),
 		[]string{"--resume=SID"})
 	eq("copilot fable has no verified id: no --model",
-		agentSpawnArgs("copilot", "t-ab12", true, "SID", "Fable", ""),
+		agentSpawnArgs("copilot", "t-ab12", true, false, "SID", "Fable", ""),
 		[]string{"--resume=SID"})
 	eq("copilot full id passes through",
-		agentSpawnArgs("copilot", "t-ab12", true, "SID", "claude-sonnet-5", ""),
+		agentSpawnArgs("copilot", "t-ab12", true, false, "SID", "claude-sonnet-5", ""),
 		[]string{"--model", "claude-sonnet-5", "--resume=SID"})
 	eq("claude keeps the alias",
-		agentSpawnArgs("claude", "t-ab12", true, "SID", "haiku", ""),
+		agentSpawnArgs("claude", "t-ab12", true, false, "SID", "haiku", ""),
 		[]string{"--model", "haiku", "--resume", "SID"})
 	eq("copilot fresh minimal",
-		agentSpawnArgs("copilot", "t-ab12", false, "SID", "", ""),
+		agentSpawnArgs("copilot", "t-ab12", false, false, "SID", "", ""),
 		[]string{"--session-id", "SID", "--interactive", "sprint start t-ab12"})
 	eq("copilot resume",
-		agentSpawnArgs("copilot", "t-ab12", true, "SID", "", ""),
+		agentSpawnArgs("copilot", "t-ab12", true, false, "SID", "", ""),
 		[]string{"--resume=SID"})
+	eq("claude continue an in_progress ticket",
+		agentSpawnArgs("claude", "t-ab12", false, true, "SID", "", ""),
+		[]string{"--session-id", "SID", "sprint continue t-ab12"})
+	eq("copilot continue an in_progress ticket",
+		agentSpawnArgs("copilot", "t-ab12", false, true, "SID", "", ""),
+		[]string{"--session-id", "SID", "--interactive", "sprint continue t-ab12"})
+	eq("a live resume ignores continuing",
+		agentSpawnArgs("claude", "t-ab12", true, true, "SID", "", ""),
+		[]string{"--resume", "SID"})
 }
 
 func readAgentFile(t *testing.T, root, ticket string) string {
