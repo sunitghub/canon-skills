@@ -6917,6 +6917,137 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[2].body.base_hash).toMatch(/^etag-\d+$/);
   });
 
+  // t-8be2: a worktree-bound ticket's own fields (status, Description, Demo) come from its worktree copy, and a Description
+  // save is guarded by the ticket_etag the page read. The server is stubbed; the real one is tests/sprint-check-live-ticket.sh.
+  const ownBoard = async (page, { post } = {}) => {
+    const live = 't-8b01', plain = 't-8b02';
+    const div = { branch: 'sprint/8b', status: 'in_progress', where: 'worktree', merged: false, dirty: true };
+    const mk = (id, extra) => ({ id, title: `Ticket ${id}`, type: 'task', priority: 2, layout: 'folder', created: '2026-09-25T00:00:00Z',
+      body: `# Ticket ${id}\n\nDescription of ${id}.`, docs: [{ name: 'Plan', file: `${id}/plan.md` }], ...extra });
+    const data = { tickets: [
+      mk(live, { status: 'in_progress', docs_from: { branch: 'sprint/8b' }, ticket_etag: 'tk-1', branch_divergence: div, body: '# Ticket t-8b01\n\nworktree description' }),
+      mk(plain, { status: 'open', branch_divergence: { branch: 'sprint/8b2', status: 'closed', where: 'branch', merged: false, dirty: false } }),
+    ] };
+    data.gets = [];
+    await page.route('**/api/tickets**', route => { if (route.request().method() === 'GET') data.gets.push(route.request().url());
+      return route.request().method() === 'GET'
+        ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data.tickets) })
+        : route.continue(); });
+    await page.route('**/api/doc/**', route => route.fulfill({ status: 200, contentType: 'application/json',
+      body: JSON.stringify({ content: '# Plan\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\nx\n', etag: 'd-1' }) }));
+    const posts = [];
+    await page.route('**/api/ticket/*/*', route => {
+      const req = route.request();
+      if (req.method() !== 'POST') return route.continue();
+      const body = req.postDataJSON(); posts.push({ url: req.url(), body });
+      return post ? post(route, body, posts.length)
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: `tk-${posts.length + 1}`,
+          ...(/\/(status|demo)$/.test(req.url()) ? { body: '# Ticket t-8b01\n\nagent edited body' } : {}) }) });   // a status/Demo write also returns the Description its etag describes
+    });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    return { live, plain, posts, data };
+  };
+  const editDescription = async (page, id, text) => {
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.locator('.doc-tab', { hasText: 'Description' }).click();
+    await page.locator('#btn-edit-doc').click();
+    await page.locator('#m-edit-area').fill(text);
+    await page.locator('#btn-save-top').click();
+  };
+
+  test('a bound ticket sits in its worktree status lane with no "status differs" banner; an unbound divergence still warns (t-8be2)', async ({ page }) => {
+    const { live, plain } = await ownBoard(page);
+    await expect(page.locator(`.column-body[data-status="in_progress"] .card[data-id="${live}"]`)).toHaveCount(1);
+    await expect(page.locator(`.card[data-id="${live}"] .card-diverge`)).toHaveCount(0);
+    await expect(page.locator(`.card[data-id="${plain}"] .card-diverge`)).toHaveCount(1);
+  });
+
+  test('a Description save echoes the ticket_etag, and the next save uses the one the server returned (t-8be2)', async ({ page }) => {
+    const { live, posts } = await ownBoard(page);
+    await editDescription(page, live, '# Ticket t-8b01\n\nfirst edit');
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/body$/);
+    expect(posts[0].body.base_hash).toBe('tk-1');
+    await page.locator('#btn-edit-doc').click();
+    await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nsecond edit');
+    await page.locator('#btn-save-top').click();
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts[1].body.base_hash).toBe('tk-2');
+  });
+
+  test('a stale Description keeps the text and offers Reload theirs or Overwrite, both using a fresh etag (t-8be2)', async ({ page }) => {
+    let stale = true;
+    const { live, posts, data } = await ownBoard(page, { post: route => stale
+      ? route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ ok: false, code: 'stale', error: 'ticket.md changed since you read it' }) })
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: 'tk-saved' }) }) });
+    const mine = '# Ticket t-8b01\n\nmy unsaved words';
+    await editDescription(page, live, mine);
+    const notice = page.locator('#stale-edit-notice');
+    await expect(notice).toBeVisible();
+    await expect(notice).toContainText('description');
+    await expect(page.locator('#m-edit-area')).toHaveValue(mine);          // the text is kept
+    // The notice and the controls stay inside the modal, measured from boxes (not a screenshot), at a normal and a narrow window.
+    const inModal = async loc => {
+      const m = await page.locator('#modal').boundingBox(); const b = await loc.boundingBox();
+      expect(b).not.toBeNull();
+      expect(b.x).toBeGreaterThanOrEqual(m.x - 1); expect(b.y).toBeGreaterThanOrEqual(m.y - 1);
+      expect(b.x + b.width).toBeLessThanOrEqual(m.x + m.width + 1); expect(b.y + b.height).toBeLessThanOrEqual(m.y + m.height + 1);
+    };
+    for (const w of [1280, 480]) {
+      await page.setViewportSize({ width: w, height: 800 });
+      for (const loc of [notice, page.locator('#stale-reload'), page.locator('#stale-overwrite'), page.locator('#btn-save-top'), page.locator('#btn-cancel-top')]) await inModal(loc);
+    }
+    // Someone else (tkt, the sprint) changed the worktree copy meanwhile.
+    data.tickets[0].body = '# Ticket t-8b01\n\ntheirs, from the worktree'; data.tickets[0].ticket_etag = 'tk-9';
+    data.gets.length = 0;                                                  // only what the Reload click itself asks for
+    await page.locator('#stale-reload').click();
+    await expect(page.locator('#m-edit-area')).toHaveValue(/theirs, from the worktree/);
+    expect(data.gets[0]).toContain('all=1');                               // an archived bound ticket must still reload
+    await expect(notice).toHaveCount(0);
+    await page.locator('#m-edit-area').fill(mine);
+    await page.locator('#btn-save-top').click();                           // still stale: the next save must carry the etag Reload fetched
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts[1].body.base_hash).toBe('tk-9');
+    await expect(notice).toBeVisible();
+    data.tickets[0].ticket_etag = 'tk-12';                                 // changed again before the person chose Overwrite
+    stale = false;
+    await page.locator('#stale-overwrite').click();
+    await expect.poll(() => posts.length).toBe(3);
+    expect(posts[2].body.base_hash).toBe('tk-12');                         // Overwrite re-reads the etag, never reuses an older one
+    expect(posts[2].body.body).toContain('my unsaved words');
+  });
+
+  test('a status move on a bound ticket keeps the page current, so the next Description save is not stale (t-8be2)', async ({ page }) => {
+    const { live, posts } = await ownBoard(page);
+    await page.locator(`.card[data-id="${live}"]`).dragTo(page.locator('.column-body[data-status="open"]'));   // a real drag, not a direct call
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/status$/);
+    await page.locator(`.card[data-id="${live}"]`).click();
+    await page.locator('.doc-tab', { hasText: 'Description' }).click();
+    await page.locator('#btn-edit-doc').click();
+    await expect(page.locator('#m-edit-area')).toHaveValue(/agent edited body/);   // the text and the etag arrive as a pair
+    await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nafter the move');
+    await page.locator('#btn-save-top').click();
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts[1].body.base_hash).toBe('tk-2');                          // the status write's etag, not the stale tk-1
+  });
+
+  test('a Demo toggle on a bound ticket keeps the page current, so the next Description save is not stale (t-8be2)', async ({ page }) => {
+    const { live, posts } = await ownBoard(page);
+    await page.locator(`.card[data-id="${live}"]`).click();
+    await page.locator('.signoff-demo-toggle').click();
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/demo$/);
+    await page.locator('.doc-tab', { hasText: 'Description' }).click();
+    await page.locator('#btn-edit-doc').click();
+    await expect(page.locator('#m-edit-area')).toHaveValue(/agent edited body/);   // the text and the etag arrive as a pair
+    await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nafter the toggle');
+    await page.locator('#btn-save-top').click();
+    await expect.poll(() => posts.length).toBe(2);
+    expect(posts[1].body.base_hash).toBe('tk-2');                          // the Demo write's etag, not the stale tk-1
+  });
+
   test('with a long branch name and a narrow window the working note still leaves Edit and + New doc inside the modal (t-26f9)', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 700 });
     await liveBoard(page, { working: true, branch: 'sprint/a-very-long-branch-name-for-an-end-user-demo' });

@@ -626,10 +626,18 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/status$`).FindStringSubmatch(path); m != nil {
+		if handled, st, res := writeLiveTicket(m[1], "status", payload, eroot); handled { // t-8be2: a bound ticket's fields live in its worktree
+			sendJSONStatus(w, res, st)
+			return
+		}
 		sendJSON(w, map[string]bool{"ok": writeStatus(m[1], fmt.Sprint(payload["status"]), eroot)})
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/([^/]+)/body$`).FindStringSubmatch(path); m != nil {
+		if handled, st, res := writeLiveTicket(m[1], "body", payload, eroot); handled {
+			sendJSONStatus(w, res, st)
+			return
+		}
 		sendJSON(w, map[string]bool{"ok": writeBody(m[1], fmt.Sprint(payload["body"]), eroot)})
 		return
 	}
@@ -638,6 +646,10 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if m := regexp.MustCompile(`^/api/ticket/(t-[a-z0-9]{4})/demo$`).FindStringSubmatch(path); m != nil {
+		if handled, st, res := writeLiveTicket(m[1], "demo", payload, eroot); handled {
+			sendJSONStatus(w, res, st)
+			return
+		}
 		sendJSON(w, map[string]bool{"ok": writeDemo(m[1], boolValue(payload["demo"]), eroot)})
 		return
 	}
@@ -1509,6 +1521,9 @@ func readDoc(docFile string, root string) (string, bool) {
 // an edit of a doc the worktree does not have yet works; "" means the doc is not writable from the board.
 func readDocWithEtag(docFile string, root string) (string, string, bool) {
 	dir, _, wtPath, live := liveForDocFull(docFile, root)
+	if live && !liveSafe(strings.SplitN(filepath.ToSlash(docFile), "/", 2)[0], dir, wtPath) {
+		live = false // t-8be2: never read through a linked ticket folder; a write to it is refused on its own
+	}
 	etag := ""
 	if live {
 		if target, derr := liveDocTargetFrom(docFile, dir, wtPath); derr == nil {
@@ -2090,6 +2105,9 @@ func listWorktreesBase(ticketID, root string) []map[string]any {
 var docOverlayFields = []string{"docs", "acceptance_has_items", "acceptance_unchecked",
 	"models_used", "plan_has_approach", "plan_approved"}
 
+// t-8be2: the worktree copy also owns the ticket's own fields (title is the body's first heading).
+var ticketOverlayFields = []string{"status", "title", "body", "demo"}
+
 func registeredWorktrees(root string) []map[string]any {
 	out := []map[string]any{}
 	for _, e := range listWorktreesBase("", root) {
@@ -2187,6 +2205,11 @@ type liveDocErr struct {
 // liveDocTargetFrom returns the file a board write to docFile would replace in the bound worktree, or why not.
 // dir is liveWorktreeFull's resolved <worktree>/.tickets/<id>; wtPath is the worktree itself.
 func liveDocTargetFrom(docFile, dir, wtPath string) (string, *liveDocErr) {
+	return liveTargetFrom(docFile, dir, wtPath, liveDocNames)
+}
+
+// liveTargetFrom is liveDocTargetFrom for an arbitrary exact-name allowlist (t-8be2: a bound ticket's own ticket.md).
+func liveTargetFrom(docFile, dir, wtPath string, names map[string]bool) (string, *liveDocErr) {
 	bad := &liveDocErr{http.StatusBadRequest, "bad_doc", "that doc can't be written from the board"}
 	parts := strings.Split(docFile, "/")
 	// The raw name, compared exactly: NTFS ignores a trailing dot or space and treats `:` as a stream, so a
@@ -2195,7 +2218,7 @@ func liveDocTargetFrom(docFile, dir, wtPath string) (string, *liveDocErr) {
 		return "", bad
 	}
 	name := strings.ToLower(parts[1])
-	if !liveDocNames[name] {
+	if !names[name] {
 		return "", bad
 	}
 	trust := &liveDocErr{http.StatusForbidden, "unsafe_path", "that ticket folder is not a plain folder inside its worktree"}
@@ -2307,6 +2330,180 @@ func writeLiveDoc(docFile string, payload map[string]any, root string) (handled 
 	return true, http.StatusOK, map[string]any{"ok": true, "etag": docEtag(data)}
 }
 
+// ── Writing a worktree-bound ticket's own fields from the board (t-8be2) ───
+// Mirrors server.py's write_live_ticket, parity-tested by tests/sprint-check-live-ticket.sh. The worktree copy owns a
+// bound ticket's status, Description and Demo too. status/demo are single-field edits of the bytes on disk at that
+// moment; a body save is guarded by base_hash like a doc. ACTIVE follows tkt's per-checkout file.
+var liveTicketNames = map[string]bool{"ticket.md": true}
+var liveTicketStatuses = map[string]bool{"open": true, "in_progress": true, "closed": true, "cancelled": true, "archived": true}
+var liveStatusLineRe = regexp.MustCompile(`^(status:[ \t]*)(\S+)([ \t\r]*)$`)
+
+// liveSafe: a bound ticket's folder is plain (no link or junction at .tickets, the ticket folder or ticket.md). Reads
+// (the overlay, a doc's text) require it, because the board must not show a file outside the worktree through a link
+// an agent made; a write re-checks on its own and answers 403.
+func liveSafe(id, dir, wtPath string) bool {
+	_, derr := liveTargetFrom(id+"/ticket.md", dir, wtPath, liveTicketNames)
+	return derr == nil
+}
+
+// liveClosedMarker is tkt's close marker (t-dec8): `closed: <UTC time>` while closed, none otherwise. The
+// pre-commit hook blocks a staged ticket.md that says `status: closed` without it.
+func liveClosedMarker(lines []string, status string) []string {
+	out := make([]string, 0, len(lines)+1)
+	for _, ln := range lines {
+		if !strings.HasPrefix(ln, "closed:") {
+			out = append(out, ln)
+		}
+	}
+	if status == "closed" {
+		out = append(out, "closed: "+time.Now().UTC().Format("2006-01-02T15:04:05Z"))
+	}
+	return out
+}
+
+// liveBodyOf is the Description as /api/tickets shows it: everything after the frontmatter, trimmed.
+func liveBodyOf(text string) string {
+	if m := frontmatterRe.FindStringIndex(text); m != nil {
+		text = text[m[1]:]
+	}
+	return strings.ToValidUTF8(strings.TrimSpace(text), "\uFFFD")
+}
+
+// liveActivePath is <worktree>/.tickets/ACTIVE when it is safe to write or remove (absent or a plain file).
+func liveActivePath(wtPath string) (string, bool) {
+	p := filepath.Join(wtPath, ".tickets", "ACTIVE")
+	if fi, err := os.Lstat(p); err == nil && !fi.Mode().IsRegular() {
+		return "", false
+	}
+	return p, true
+}
+
+// liveSetActive is tkt's set_active / clear_active_if on the worktree's own file.
+func liveSetActive(active, id, status string) error {
+	if status == "in_progress" {
+		return atomicWriteFile(active, []byte(id+"\n"))
+	}
+	raw, err := os.ReadFile(active)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(raw)) == id {
+		return os.Remove(active)
+	}
+	return nil
+}
+
+// writeLiveTicket handles POST /api/ticket/<id>/{status,demo,body} for a worktree-bound ticket. handled is false
+// for an unbound one (the caller then writes main's copy as before).
+func writeLiveTicket(id, kind string, payload map[string]any, root string) (handled bool, status int, res map[string]any) {
+	dir, _, wtPath, live := liveForDocFull(id+"/ticket.md", root)
+	if !live {
+		return false, 0, nil
+	}
+	fail := func(st int, code, msg string) (bool, int, map[string]any) {
+		return true, st, map[string]any{"ok": false, "code": code, "error": msg}
+	}
+	target, derr := liveTargetFrom(id+"/ticket.md", dir, wtPath, liveTicketNames)
+	if derr != nil {
+		return fail(derr.status, derr.code, derr.msg)
+	}
+	var newStatus, newBody, active string
+	switch kind {
+	case "status":
+		var isStr bool
+		newStatus, isStr = payload["status"].(string)
+		if !isStr || !liveTicketStatuses[newStatus] {
+			return fail(http.StatusBadRequest, "bad_status", "that is not a ticket status")
+		}
+		var ok bool
+		if active, ok = liveActivePath(wtPath); !ok {
+			return fail(http.StatusForbidden, "unsafe_path", "that worktree's ACTIVE file is not a plain file")
+		}
+	case "body":
+		var isStr bool
+		newBody, isStr = payload["body"].(string)
+		if !isStr {
+			return fail(http.StatusBadRequest, "bad_content", "body must be text")
+		}
+		newBody = strings.TrimSpace(newBody) // what is written is what is measured (as in server.py)
+		if len(newBody) > liveDocMaxBytes {
+			return fail(http.StatusBadRequest, "too_large", "that description is too large to save from the board")
+		}
+	}
+	liveDocMu.Lock()
+	defer liveDocMu.Unlock()
+	raw, rerr := os.ReadFile(target)
+	if errors.Is(rerr, os.ErrNotExist) {
+		return fail(http.StatusNotFound, "not_found", "that ticket has no ticket.md in its worktree")
+	}
+	if rerr != nil {
+		return fail(http.StatusInternalServerError, "read_failed", "couldn't read ticket.md — is another program holding it open? Try again")
+	}
+	text := string(raw)
+	m := frontmatterRe.FindStringSubmatchIndex(text)
+	if m == nil {
+		return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no frontmatter")
+	}
+	var updated string
+	switch kind {
+	case "body":
+		base, _ := payload["base_hash"].(string)
+		if base == "" || base != docEtag(raw) {
+			return fail(http.StatusConflict, "stale", "ticket.md changed since you read it — reload it and try again")
+		}
+		updated = text[:m[1]] + newBody + "\n"
+	case "status":
+		lines := strings.Split(text[m[2]:m[3]], "\n")
+		found := false
+		for i, ln := range lines {
+			if sm := liveStatusLineRe.FindStringSubmatch(ln); sm != nil {
+				lines[i] = sm[1] + newStatus + sm[3]
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fail(http.StatusConflict, "bad_ticket", "that ticket.md has no status line")
+		}
+		updated = text[:m[2]] + strings.Join(liveClosedMarker(lines, newStatus), "\n") + text[m[3]:]
+	default:
+		var kept []string
+		for _, ln := range strings.Split(text[m[2]:m[3]], "\n") {
+			if !strings.HasPrefix(ln, "demo:") {
+				kept = append(kept, ln)
+			}
+		}
+		if boolValue(payload["demo"]) {
+			kept = append(kept, "demo: true")
+		}
+		updated = text[:m[2]] + strings.Join(kept, "\n") + text[m[3]:]
+	}
+	data := []byte(updated)
+	if updated == text {
+		data = raw
+	}
+	var werr error
+	if updated != text {
+		werr = atomicWriteFile(target, data)
+	}
+	if werr == nil && kind == "status" {
+		werr = liveSetActive(active, id, newStatus)
+	}
+	if werr != nil {
+		return fail(http.StatusInternalServerError, "write_failed", "couldn't save ticket.md — is another program holding it open? Try again")
+	}
+	out := map[string]any{"ok": true, "etag": docEtag(data)}
+	if kind != "body" {
+		// The page keeps its text and its etag as a pair: hand back the Description this etag describes, so a later
+		// edit never starts from older text under a newer etag.
+		out["body"] = liveBodyOf(updated)
+	}
+	return true, http.StatusOK, out
+}
+
 func annotateLiveDocs(tickets []ticket, root string) {
 	root = rootOr(root)
 	wts := registeredWorktrees(root)
@@ -2314,8 +2511,14 @@ func annotateLiveDocs(tickets []ticket, root string) {
 		return
 	}
 	for _, t := range tickets {
-		dir, branch, ok := liveWorktree(t, root, wts)
-		if !ok {
+		dir, branch, wtPath, ok := liveWorktreeFull(t, root, wts)
+		if !ok || !liveSafe(fmt.Sprint(t["id"]), dir, wtPath) {
+			continue
+		}
+		// Read the bytes BEFORE parsing: an etag older than the text shown can only make a save stale, never let
+		// it overwrite a newer write.
+		raw, rerr := os.ReadFile(filepath.Join(dir, "ticket.md"))
+		if rerr != nil {
 			continue
 		}
 		w, err := parseTicket(filepath.Join(dir, "ticket.md"))
@@ -2325,6 +2528,10 @@ func annotateLiveDocs(tickets []ticket, root string) {
 		for _, k := range docOverlayFields {
 			t[k] = w[k]
 		}
+		for _, k := range ticketOverlayFields {
+			t[k] = w[k]
+		}
+		t["ticket_etag"] = docEtag(raw)
 		t["docs_from"] = map[string]any{"branch": branch}
 	}
 }
