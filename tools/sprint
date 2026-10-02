@@ -323,18 +323,29 @@ _gate_visual_embed() {
   "$script_dir/validate-visuals.sh" "$id" "$2" "$3"
 }
 
+# _gate_dispatch_notice <evaluator|reviewer> <file> — the closing lines of every message about a gate report that is
+# missing or cannot be verified. t-b2a9: a weak model read "eval-report.md is missing" as "create it" and hand-wrote the
+# file, bypassing the gate; say who writes it and that it is never hand-made.
+_gate_dispatch_notice() {
+  local role="$1" file="$2" step=3
+  [[ "$role" == reviewer ]] && step=2
+  echo "$file is written ONLY by a fresh $role SUBAGENT: dispatch one (Agent tool, subagent_type \"canon-$role\"; skills/sprint/reference/complete.md step $step)."
+  echo "Never create or edit $file yourself — a hand-made report is a bypassed gate."
+}
+
 # _gate_eval_report_exists <id> <tdir> — report file present, evaluator-run-id
 # field present. Fails closed: missing report or field blocks close.
 _gate_eval_report_exists() {
   local id="$1" tdir="$2" report="$tdir/eval-report.md"
   if [[ ! -f "$report" ]]; then
     echo "Sprint $id cannot close: eval-report.md is missing."
-    echo "Run the evaluator (eval skill) before closing, or confirm trivial tier in plan.md."
+    _gate_dispatch_notice evaluator eval-report.md
+    echo "(Only if the work is genuinely trivial: plan.md's Sign-off says Tier: trivial — complete.md step 2.)"
     return 1
   fi
   if ! grep -qE '^evaluator-run-id:[[:space:]]+\S' "$report"; then
     echo "Sprint $id cannot close: eval-report.md is missing evaluator-run-id field."
-    echo "Ensure the evaluator subagent wrote the run-id before grading."
+    _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
 }
@@ -351,6 +362,7 @@ _gate_eval_report_model() {
   if ! grep -qE '^Model:[[:space:]]+\S' "$report"; then
     echo "Sprint $id cannot close: eval-report.md is missing the 'Model:' line (HARD RULE)."
     echo "The evaluator must record the model it ran on, verbatim, per eval.md's report template (e.g. 'Model: claude-opus-4.8')."
+    _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
 }
@@ -370,6 +382,7 @@ _gate_eval_report_authentic() {
   if [[ ! -f "$jsonl" ]]; then
     echo "Sprint $id cannot close: .claude/subagent-runs.jsonl not found — cannot verify evaluator-run-id '$run_id' against a real subagent run."
     echo "Log the evaluator subagent run with subagent-log.sh before closing."
+    _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
   if [[ ! "$run_epoch" =~ ^[0-9]+$ ]]; then
@@ -408,6 +421,7 @@ _gate_eval_report_authentic() {
   if [[ "$matched" != "1" ]]; then
     echo "Sprint $id cannot close: evaluator-run-id '$run_id' has no matching subagent entry in .claude/subagent-runs.jsonl (±60 min window)."
     echo "The eval must be run as a real subagent invocation — inline writes are not accepted."
+    _gate_dispatch_notice evaluator eval-report.md
     # t-c94f: entries without an ISO "ts" (e.g. an integer "timestamp" from a hand-written or
     # non-canon writer) are skipped above. Say so, or the closer sees only the generic line.
     if (( malformed > 0 )); then
@@ -495,6 +509,7 @@ _gate_review_notes_model() {
   if ! grep -qE '^Model:[[:space:]]+\S' "$report"; then
     echo "Sprint $id cannot close: review-notes.md is missing the 'Model:' line (HARD RULE)."
     echo "The reviewer must record the model it ran on, verbatim, per review.md's report template (e.g. 'Model: claude-opus-4.8')."
+    _gate_dispatch_notice reviewer review-notes.md
     return 1
   fi
 }
@@ -538,6 +553,7 @@ _gate_review_notes_shape() {
   if [[ -n "$problems" ]]; then
     echo "Sprint $id cannot close: review-notes.md does not show the reviewer's passes (t-de16):$problems"
     echo "Re-dispatch the reviewer per review.md's report template: 'Changed files:' with paths, then one line per concern — a finding, or 'none — checked <what>, <file:line>'."
+    _gate_dispatch_notice reviewer review-notes.md
     return 1
   fi
 }
