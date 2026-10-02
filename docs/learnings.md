@@ -166,7 +166,7 @@ Because `PROMOTED.md` is always loaded, keep it short. The skill warns when its 
 
 #### Worked example: a ToDo app
 
-A real run on 2026-10-02 in a small single-file ToDo app that uses canon (not canon itself). Everything quoted is copied from that project's files and terminal.
+A real run on 2026-10-02 in a small single-file ToDo app that uses canon (not canon itself). Everything quoted is copied from that project's files and terminal; the column spacing in the two `/memory` lines is collapsed to single spaces.
 
 **1. The reviewer catches it, the evaluator passes.** Sprint `t-i9yl` built the app. At close the evaluator's verdict was `pass`, and the advisory reviewer's was `NO`, with two findings in `review-notes.md`:
 
@@ -180,7 +180,7 @@ A real run on 2026-10-02 in a small single-file ToDo app that uses canon (not ca
 | 2026-10-02 | [t-i9yl](.tickets/t-i9yl/learnings.md) | Full `replaceChildren()` re-render drops keyboard focus and identical aria-labels hide which task a control acts on (index.html:40,48,53) | UNPROMOTED |
 ```
 
-**2. A fresh session judges it.** In a new Scratch session in the project, `/promote-learnings` read the row in full and reported:
+**2. A fresh session judges it.** In a new Scratch session in the project, `/promote-learnings` read the row and its source file, `.tickets/t-i9yl/learnings.md`, in full, and reported:
 
 > Durable: yes. Both are general UI mistakes, not specific to this ticket's code.
 
@@ -202,7 +202,7 @@ The `t-i9yl` row's status became `` `promoted → PROMOTED.md` ``, and the proje
 
 > Let me change a task's text after adding it. Double-click the task text to turn it into an input; Enter saves, Escape cancels.
 
-`sprint start` ran in a fresh session. It wrote this in `research.md`:
+`sprint start` ran in that ticket's own session. It wrote this in `research.md`:
 
 > PROMOTED.md: restore focus after re-render; per-item aria-labels.
 
@@ -216,7 +216,13 @@ and this among the criteria in `acceptance.md`:
 
 > · L /private/tmp/ToDo/PROMOTED.md @-imported
 
-**What this shows, and what it does not.** The line reached the next session through the `@PROMOTED.md` import, as `/memory` shows, and the agent turned it into an acceptance criterion for a ticket that never mentioned it. The session was stopped at the plan, so no evaluator has yet graded whether the built code keeps focus. It is one project and one lesson.
+**One more route.** The project's `HANDOFF.md`, which `sprint start` also reads, already listed the same two findings under Next Steps:
+
+> Optional: fix the two low a11y findings (focus loss after render, generic aria-labels)
+
+So the new session had two ways to learn about them, and this example cannot separate the effect of `PROMOTED.md` from that of `HANDOFF.md`.
+
+**What this shows, and what it does not.** The promoted line was loaded into the next session through the `@PROMOTED.md` import, as `/memory` shows, and the agent's plan cites it ("per PROMOTED.md") and turns it into an acceptance criterion. It does not show that the line was the cause: `HANDOFF.md` pointed at the same findings, and the only direct sign that `PROMOTED.md` was used is the agent's own attribution. The session was stopped at the plan, so no evaluator has yet graded whether the built code keeps focus. It is one project and one lesson.
 
 ## 7. The question: "Claude already has memory. Why a separate learnings flow?"
 
