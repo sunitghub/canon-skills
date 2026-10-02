@@ -679,6 +679,34 @@ test.describe('board modal', () => {
     expect(result.src).toContain('cwd=' + encodeURIComponent('/Users/me/canon'));
   });
 
+  test('a daemon-native (backslash) worktree cwd from a lock is sent forward-slashed (t-29fb)', async ({ page }) => {
+    await page.route('**/api/cockpit', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR }),
+    }));
+    await page.route('**/api/git', r => r.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ branch: 'main', project: 'ToDo', root: 'C:\\Users\\agentops\\Documents\\ToDo', modified: 0, log: [] }),
+    }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+
+    // t-29fb: the lock's cwd is read from .cockpit-cwd, which the daemon writes natively (backslashes on Windows).
+    // The daemon's cwdPrefillRe drops a backslash path to "" and it then runs from its launch folder ("ticket not
+    // found in project"), so Resume must send the same forward-slashed form a fresh Start does.
+    const result = await page.evaluate(async () => {
+      const iframe = document.createElement('iframe');
+      document.getElementById('ck-term').appendChild(iframe);
+      cockpitTabs['t-ab12'] = newCockpitTabState('t-ab12', iframe);
+      setActiveTab('t-ab12');
+      // The locked row's selection is `worktreeCwd = lock.cwd` (raw), and maybeMountCockpitTerminal passes it straight on.
+      await mountCockpitTerminal({ id: 't-ab12', status: 'in_progress' }, 'C:\\Users\\agentops\\Documents\\ToDo-worktrees\\t-ab12');
+      return document.getElementById('ck-iframe').src;
+    });
+    expect(result).toContain('cwd=' + encodeURIComponent('C:/Users/agentops/Documents/ToDo-worktrees/t-ab12'));
+    expect(result).not.toContain(encodeURIComponent('\\'));
+  });
+
   test('"No description." placeholder is gone', async ({ page }) => {
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
