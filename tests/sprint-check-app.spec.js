@@ -7354,6 +7354,42 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('worktree chip names the branch when the lock and /api/worktrees disagree on separators and case (t-44b0)', async ({ page }) => {
+    const wtId = `t-wtwin-a-${Date.now()}`;
+    const mainId = `t-wtwin-b-${Date.now()}`;
+    const goneId = `t-wtwin-c-${Date.now()}`;
+    try {
+      for (const id of [wtId, mainId, goneId]) writeTicket(id, 'in_progress');
+      await page.route('**/api/worktrees**', route => route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          { path: 'C:/Users/agentops/Documents/ToDo', branch: 'master', is_main: true },
+          { path: 'c:/Users/agentops/Documents/ToDo-worktrees/sprint-restyle-ui', branch: 'sprint/restyle-ui', is_main: false },
+        ]),
+      }));
+      const locks = {
+        [wtId]: 'C:\\Users\\agentops\\Documents\\ToDo-worktrees\\sprint-restyle-ui',
+        [mainId]: 'C:\\Users\\agentops\\Documents\\ToDo\\',
+        [goneId]: 'C:\\Users\\agentops\\Documents\\ToDo-worktrees\\gone',
+      };
+      for (const [id, cwd] of Object.entries(locks)) {
+        await page.route(`**/api/worktree-lock/${id}`, route => route.fulfill({
+          status: 200, contentType: 'application/json',
+          body: JSON.stringify({ locked: true, cwd, main_dirty: false }),
+        }));
+      }
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      const chip = id => page.locator(`.card[data-id="${id}"] .card-wt-chip`);
+      await expect(chip(wtId)).toHaveText('sprint/restyle-ui');
+      await expect(chip(wtId)).toHaveAttribute('title', 'Worktree: sprint/restyle-ui');
+      await expect(chip(mainId)).toHaveText('main');
+      await expect(chip(goneId)).toHaveText('gone');
+    } finally {
+      for (const id of [wtId, mainId, goneId]) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('non-git project hides the New Ticket Worktree row; it reappears once git becomes available (t-644a)', async ({ page }) => {
     let gitBody = { branch: '', project: 'nogit', modified: 0, log: [] }; // no total_commits -> non-git
     await page.route('**/api/git', route => route.fulfill({
