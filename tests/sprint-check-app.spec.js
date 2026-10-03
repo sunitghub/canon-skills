@@ -5474,7 +5474,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // ticket context is never lost.
       await page.locator('#ck-rail-toggle').click();
       await expect(page.locator('#cockpit')).toHaveClass(/rail-collapsed/);
-      await expect(page.locator('#ck-id')).toBeVisible();
+      // t-614c: the id is carried by the topbar tab pill, so the separate id text is not shown a second time.
+      await expect(page.locator('#ck-tab-strip-topbar .ck-tab-pill-id')).toContainText(id);
+      await expect(page.locator('#ck-id')).toBeHidden();
       await expect(page.locator('#ck-status')).toBeVisible();
       await expect(page.locator('#ck-title')).toBeVisible();
     } finally {
@@ -5677,8 +5679,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
             await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
             const bar = await page.locator('.ck-topbar').boundingBox();
             expect(bar.x + bar.width, `bar right ${w}`).toBeLessThanOrEqual(w + 0.5);
+            // t-614c: the pill already names the ticket, so the id text is gone; the title is gone at or below 1000px.
+            const gone = ['#ck-id', ...(w <= 1000 ? ['#ck-title'] : [])];
             for (const sel of CONTROLS) {
               const loc = page.locator(sel);
+              if (gone.includes(sel)) { await expect(loc, `${sel} hidden at ${w}`).toBeHidden(); continue; }
               await expect(loc, `${sel} visible at ${w}`).toBeVisible();
               const b = await loc.boundingBox();
               const tag = `${sel} ${w} ${theme}`;
@@ -5686,8 +5691,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
               expect(b.x + b.width, `${tag} right (bar ${bar.x + bar.width}, window ${w})`).toBeLessThanOrEqual(Math.min(bar.x + bar.width, w) + 0.5);
               if (ONE_LINE[sel]) expect(b.height, `${tag} wrapped (height ${b.height})`).toBeLessThanOrEqual(ONE_LINE[sel]);
             }
-            const tw = (await page.locator('#ck-title').boundingBox()).width;
-            expect(tw, `the title is squeezed to nothing at ${w}`).toBeGreaterThanOrEqual(60);
+            if (w > 1000) {
+              const tw = (await page.locator('#ck-title').boundingBox()).width;
+              expect(tw, `the title is squeezed to nothing at ${w}`).toBeGreaterThanOrEqual(60);
+            }
             expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `page scrolls sideways at ${w}`).toBe(true);
           }
         }
@@ -5709,6 +5716,30 @@ test.describe('cockpit in board (t-ddc8)', () => {
         // A trial click checks the button is visible, stable and not covered by anything, without pressing it
         // (pressing it with no live session closes the cockpit).
         await page.locator('#ck-end-session').click({ trial: true });
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+      }
+    });
+
+    test('collapsed rail: the id shows once (the pill) and the title drops on narrow widths (t-614c)', async ({ page }) => {
+      const id = `t-614ca-${Date.now()}`;
+      try {
+        await openBar(page, id, { collapse: true });
+        const pill = page.locator('#ck-tab-strip-topbar .ck-tab-pill-id').first();
+        for (const w of [800, 1000]) {
+          await page.setViewportSize({ width: w, height: 720 });
+          await expect(pill, `pill at ${w}`).toBeVisible();
+          await expect(page.locator('#ck-id'), `the id text repeats the pill at ${w}`).toBeHidden();
+          await expect(page.locator('#ck-title'), `title at ${w}`).toBeHidden();
+          await expect(page.locator('#ck-status'), `status chip at ${w}`).toBeVisible();
+          await page.locator('#ck-end-session').click({ trial: true });
+        }
+        await page.setViewportSize({ width: 1400, height: 720 });
+        await expect(page.locator('#ck-title'), 'a wide window keeps the title').toBeVisible();
+        await expect(page.locator('#ck-id')).toBeHidden();
+        // Only hidden while the pills show: with no pill strip the id text is the one place that names the ticket.
+        await page.evaluate(() => { document.getElementById('ck-tab-strip-topbar').hidden = true; });
+        await expect(page.locator('#ck-id'), 'no pills, so the id text is shown').toBeVisible();
       } finally {
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
       }
