@@ -1378,6 +1378,13 @@ tx_cfg="$(mktemp -d)"
   transcript real canon-evaluator "evaluator-run-id: $rid9" "$gid" "pass: true"
   assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
 
+  # (p) a short `fail:` line cannot pass the verdict gate on its own, so the length rule skips it instead of blocking: a real evaluator
+  # that wrote a terse `fail: x` next to a verified `pass:` line is not refused for the short one.
+  gate_ticket shortfail; rid10="$now-1010"
+  printf '# Eval Report\nevaluator-run-id: %s\nModel: test-model\n## Verdict\npass: all criteria met\nfail: x\n' "$rid10" > ".tickets/$gid/eval-report.md"
+  transcript real canon-evaluator "evaluator-run-id: $rid10" "$gid" "pass: all criteria met"
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+
   # (h) fail open: not Claude Code (no CLAUDECODE), or Claude Code with a layout never seen (no subagents dir anywhere).
   gate_ticket noclaude; report "$now-1111" "pass: all criteria met"
   assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "transcript check skipped"
