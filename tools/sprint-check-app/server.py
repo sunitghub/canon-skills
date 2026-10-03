@@ -1935,7 +1935,7 @@ def read_doc_with_etag(doc_file: str, root: Path = None):
     raw = p.read_bytes()
     return raw.decode('utf-8', errors='replace'), (etag if live else doc_etag(raw))
 
-def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, eval_override: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', worktree_preference: str = '', root: Path = None) -> dict:
+def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', worktree_preference: str = '', root: Path = None) -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
     tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
     tdir.mkdir(exist_ok=True)
@@ -1982,7 +1982,7 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str,
     safe_wt = worktree_preference.strip().replace('\n', ' ')
     if safe_wt:
         fm_lines.append(f'worktree_preference: {safe_wt}')
-    fm_lines.append(f'eval_override: {"true" if eval_override else "false"}')
+    fm_lines.append('eval_override: false')
     fm_lines.append('---\n')
     fm = '\n'.join(fm_lines)
     full = fm + '\n' + body.strip() + '\n' if body.strip() else fm
@@ -3532,7 +3532,6 @@ class Handler(BaseHTTPRequestHandler):
                 priority = int(payload.get('priority', 2)),
                 body     = str(payload.get('body', '')),
                 ci       = bool(payload.get('ci', False)),
-                eval_override = bool(payload.get('eval_override', False)),
                 gate     = 'eval' if str(payload.get('gate', '')).lower() == 'eval' else 'full',
                 demo     = bool(payload.get('demo', False)),
                 skills   = str(payload.get('skills', '')),

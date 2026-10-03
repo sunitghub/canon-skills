@@ -553,7 +553,7 @@ an upper limit on the people count — that gap is what this session exposes.
    - **Priority:** P2
    - Toggle **CI** on (this marks the ticket for headless grading)
 
-   ![New Ticket modal — title, Type, Priority, and the CI / Eval-only / Eval Override options](images/new-ticket.png)
+   ![New Ticket modal — title, Type, Priority, and the CI / Eval-only options](images/new-ticket.png)
 
    Click **Create →**. The ticket appears on the board as a new card.
 

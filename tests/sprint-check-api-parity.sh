@@ -597,6 +597,17 @@ for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
   if grep -q '^gate:' "$WORK/.tickets/$fid/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label full create wrote a gate line ($fid)"; fi
 done
 
+# ── eval_override is human-only (t-e53c): POST /api/tickets ignores a client's eval_override:true on BOTH backends ──
+py_ov_id=""; go_ov_id=""
+for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do
+  label="${be%%:*}"; port="${be##*:}"
+  oid="$(curl -s -X POST "http://127.0.0.1:$port/api/tickets" -d '{"title":"override create","type":"task","eval_override":true}' | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
+  grep -q '^eval_override: false$' "$WORK/.tickets/$oid/ticket.md" || fail "sprint-check-api-parity: FAIL — $label create did not write 'eval_override: false' ($oid)"
+  if grep -q 'eval_override: true' "$WORK/.tickets/$oid/ticket.md"; then fail "sprint-check-api-parity: FAIL — $label honored a client's eval_override:true ($oid)"; fi
+  if [[ "$label" == "server.py" ]]; then py_ov_id="$oid"; else go_ov_id="$oid"; fi
+done
+[[ "$(grep '^eval_override:' "$WORK/.tickets/$py_ov_id/ticket.md")" == "$(grep '^eval_override:' "$WORK/.tickets/$go_ov_id/ticket.md")" ]] || fail "sprint-check-api-parity: FAIL — eval_override line differs between server.py and main.go"
+
 # ── create-with-skills parity (t-354b): POST /api/tickets writes an allowlisted, deduped skills line; absent otherwise ──
 py_sk_id=""; go_sk_id=""
 for be in "server.py:$PY_PORT" "main.go:$GO_PORT"; do

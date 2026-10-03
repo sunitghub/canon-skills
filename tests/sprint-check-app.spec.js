@@ -799,6 +799,18 @@ test.describe('board modal', () => {
     expect(placeholder).not.toMatch(/^Description$/i);
   });
 
+  test('New Ticket Options row has no Eval Override pill; the override stays human-only (t-e53c)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#btn-create').click();
+    await page.waitForSelector('#create-modal', { timeout: 3000 });
+    await expect(page.locator('#c-eval-override')).toHaveCount(0);
+    await expect(page.locator('#create-modal')).not.toContainText('Eval Override');
+    await expect(page.locator('#c-gate-eval')).toBeDisabled(); // the open-time reset ran (syncGate) — no leftover reference to the removed pill
+    const options = page.locator('#c-ci').locator('xpath=..').locator('button');
+    await expect(options).toHaveText(['CI', 'Eval-only', 'Demo/UX']);
+  });
+
   test('New Ticket Eval-only toggle is CI-gated and writes gate: eval (t-4e57)', async ({ page }) => {
     const title = `Eval-only test ${Date.now()}`;
     let createdId = '';
