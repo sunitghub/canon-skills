@@ -3798,6 +3798,18 @@ function renderBoard() {
   renderCardWorktreeChips();
 }
 
+// t-44b0: the chip's label for a ticket locked to `cwd`. Paths are compared by the same fold the servers use
+// (`pathKey`/`_path_key`: \ -> /, trailing / dropped, lowercased) because on Windows `git worktree list`
+// prints C:/... while the daemon writes the native C:\... into .cockpit-cwd. A lock that matches no entry
+// shows its folder name, never 'main' (that would read as a main-checkout ticket).
+function worktreeChipLabel(entries, cwd) {
+  const key = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+  const folder = p => String(p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
+  const match = Array.isArray(entries) ? entries.find(e => e && key(e.path) && key(e.path) === key(cwd)) : null;
+  if (match && match.is_main) return 'main';
+  return (match && match.branch) || folder(cwd);
+}
+
 // t-644a: read-only worktree chip on each IN PROGRESS card, sourced from
 // /api/worktree-lock/<id> (.cockpit-cwd) + /api/worktrees (branch names).
 // Gated on state.isGitProject, same live /api/git check every other worktree
@@ -3816,9 +3828,7 @@ async function renderCardWorktreeChips() {
     const id = chip.dataset.id;
     const lock = await fetchWorktreeLock(id);
     if (!lock.locked || !lock.cwd) return;
-    const norm = p => (p || '').replace(/\/+$/, '');
-    const match = entries.find(e => norm(e.path) === norm(lock.cwd));
-    const label = match ? (match.is_main ? 'main' : (match.branch || 'main')) : 'main';
+    const label = worktreeChipLabel(entries, lock.cwd);
     if (!document.body.contains(chip)) return; // board may have re-rendered mid-fetch
     chip.textContent = label;
     chip.title = 'Worktree: ' + label;
