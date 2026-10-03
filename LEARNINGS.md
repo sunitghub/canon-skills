@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-02-2026 19:46
+learnings-sweep last run: 10-02-2026 20:55
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-02 | [t-9c87](.tickets/t-9c87/learnings.md) | A "safe path" helper reused in a new caller must be checked for WHAT it compares: t-8be2's resolved-folder comparison is a tautology (`_path_key`/`pathKey` resolve both sides), so on Windows Python could not see a junction (`is_symlink()` is False before 3.12) — my first fix (resolve `dir`) changed nothing and only a simulation test (is_symlink blind + lstat reparse attribute) proved it; and a user's live check filed as an unchecked Test Plan row makes the evaluator return `fail` (not-run), so keep it in the QA `Tested locally` line. | UNPROMOTED |
 | 2026-10-02 | [t-614c](.tickets/t-614c/learnings.md) | Hiding a duplicate is only safe if the surviving copy cannot disappear: the id text now hides while the tab pills show, and the evaluator noted an overflowing `overflow: hidden` strip could clip the active pill, leaving the ticket named nowhere (filed t-2542); pin the other direction too (the id returns when the strip is hidden), and grep for tests that assert the duplicate visible before changing it (t-b91f and t-4272 did). | UNPROMOTED |
 | 2026-10-02 | [t-165f](.tickets/t-165f/learnings.md) | A test fixture can encode the behaviour a ticket removes: two existing tests used a Main-only rail, which preselects Main, so they pinned the old always-show warning — find which fixtures reach the changed state before promising "existing tests stay green"; and a state shown by one-time render must be re-derived where a click changes it (a row click does not re-render the rail), which only a click-driven test caught. | UNPROMOTED |
 | 2026-10-02 | [t-29fb](.tickets/t-29fb/learnings.md) | A UI-spec pass count is only reproducible against the same board seed, and `npm test` does not run the Playwright spec at all: my "316 passed" came from one throwaway board, the evaluator's minimal board gave 15 failures that were identical on base — record the board and root a count was taken on, and prove pre-existing failures by re-running the same names from a base clone. | UNPROMOTED |
