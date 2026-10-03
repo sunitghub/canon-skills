@@ -66,13 +66,24 @@ _remove_dir_link() {
 _ensure_mirror_gitignored() {
   local project_dir="$1"
   git -C "$project_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-  local gi="$project_dir/.gitignore" entry rel
-  for entry in "/.claude/skills/" "/.agents/skills/"; do
-    if ! grep -qxF "$entry" "$gi" 2>/dev/null; then
+  local gi="$project_dir/.gitignore" entry rel tmp
+  # t-c433: no trailing slash — git treats a symlink as a file, so "/.claude/skills/" (directories only) never
+  # matched the link on macOS/Linux; the slash-less form matches a symlink, a directory and a Windows junction.
+  for entry in "/.claude/skills" "/.agents/skills"; do
+    # The directory-only line an earlier canon wrote: replace it in place, or drop it if the slash-less line exists.
+    if has_line "$entry/" "$gi"; then
+      tmp="$(mktemp)"
+      HAVE="$(has_line "$entry" "$gi" && echo 1 || echo 0)" E="$entry" awk 'BEGIN { e = ENVIRON["E"] }
+        { l = $0; sub(/\r$/, "", l) } l == e "/" { if (ENVIRON["HAVE"] == "0") print e; next } { print }' "$gi" > "$tmp"
+      cat "$tmp" > "$gi"; rm -f "$tmp"
+      echo "  [gitignore] $entry (replaced $entry/)"
+    fi
+    if ! has_line "$entry" "$gi"; then
+      [ -s "$gi" ] && [ -n "$(tail -c1 "$gi")" ] && echo >> "$gi"
       printf '%s\n' "$entry" >> "$gi"
       echo "  [gitignore] $entry"
     fi
-    rel="${entry#/}"; rel="${rel%/}"
+    rel="${entry#/}"
     if [ -n "$(git -C "$project_dir" ls-files -- "$rel" 2>/dev/null | head -1)" ]; then
       git -C "$project_dir" rm -r --cached --quiet -- "$rel" >/dev/null 2>&1 || true
       echo "  [gitignore] untracked previously-committed mirror: $rel"
