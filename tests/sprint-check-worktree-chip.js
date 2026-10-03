@@ -22,7 +22,6 @@ sandbox.window = sandbox; sandbox.globalThis = sandbox;
 const ctx = vm.createContext(sandbox);
 for (const s of scripts) { try { vm.runInContext(s, ctx, { timeout: 5000 }); } catch (_) { /* hoisted fns still bound */ } }
 
-const { statusBadgeInfo } = ctx;
 let fails = 0;
 function ok(name, cond, detail) {
   if (cond) { console.log('  ok   ' + name); }
