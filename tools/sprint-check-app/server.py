@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import stat
 import random
 import re
 import shutil
@@ -729,6 +730,17 @@ _live_doc_lock = threading.Lock()
 def doc_etag(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
+def _is_link(p: Path) -> bool:
+    """A symlink, or on Windows any reparse point: `Path.is_symlink()` is False for a junction before Python 3.12, and
+    `_path_key` resolves both sides of the "resolved folder" comparison below, so that comparison cannot see one either.
+    An unreadable path counts as a link (refuse)."""
+    if p.is_symlink():
+        return True
+    try:
+        return bool(getattr(os.lstat(p), 'st_file_attributes', 0) & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    except OSError:
+        return True
+
 def _live_doc_target(doc_file: str, live: dict, names=None):
     """(target Path, None) for a bound ticket's allowed doc, or (None, (status, code, message))."""
     bad = (400, 'bad_doc', "that doc can't be written from the board")
@@ -746,7 +758,7 @@ def _live_doc_target(doc_file: str, live: dict, names=None):
     t_dir = tickets_dir / parts[0]
     try:
         for q in (tickets_dir, t_dir):
-            if q.is_symlink() or not q.is_dir():
+            if _is_link(q) or not q.is_dir():
                 return None, trust  # a symlink or a junction (reparse point)
         real_wt = wt.resolve()
     except (OSError, RuntimeError):
@@ -755,7 +767,7 @@ def _live_doc_target(doc_file: str, live: dict, names=None):
     if _path_key(str(live['dir'])) != _path_key(str(real_wt / '.tickets' / parts[0])):
         return None, trust
     target = live['dir'] / name
-    if os.path.lexists(target) and (target.is_symlink() or not target.is_file()):
+    if os.path.lexists(target) and (_is_link(target) or not target.is_file()):
         return None, trust
     return target, None
 
@@ -1154,6 +1166,15 @@ def _changed_ticket_ids(diff_out: str, ids: set) -> set:
             out.add(m.group(1))
     return out
 
+def _scan_ticket_safe(wt: str, tid: str) -> bool:
+    """t-9c87: the scan may read <worktree>/.tickets/<tid>/ticket.md only when it is a plain file in plain folders
+    (the t-8be2 `_live_safe` check, whose `_is_link` also sees a Windows junction); a resolve error counts as not safe."""
+    try:
+        real = Path(wt).resolve()
+    except (OSError, RuntimeError):
+        return False
+    return _live_safe(tid, {'wt': wt, 'dir': real / '.tickets' / tid})
+
 def _scan_other_checkouts(root: Path, ids: set) -> dict:
     """{ticket_id: [{branch, status, where, merged}, ...]} for every live
     non-main worktree and every unmerged local branch (no worktree) that itself
@@ -1182,6 +1203,8 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
             run(['git', 'diff', '--name-only', base, '--', '.tickets/*/ticket.md'], Path(e['path'])), ids)
         merged = _git_ok(['merge-base', '--is-ancestor', e['head'], 'HEAD'], root)
         for tid in sorted(names):
+            if not _scan_ticket_safe(e['path'], tid):
+                continue   # t-9c87: never read a status through a link or junction an agent made in the worktree
             try:
                 st = _frontmatter_status((tdir / tid / 'ticket.md').read_text(encoding='utf-8', errors='replace'))
             except OSError:
