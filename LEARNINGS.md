@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-02-2026 18:57
+learnings-sweep last run: 10-02-2026 19:46
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-02 | [t-614c](.tickets/t-614c/learnings.md) | Hiding a duplicate is only safe if the surviving copy cannot disappear: the id text now hides while the tab pills show, and the evaluator noted an overflowing `overflow: hidden` strip could clip the active pill, leaving the ticket named nowhere (filed t-2542); pin the other direction too (the id returns when the strip is hidden), and grep for tests that assert the duplicate visible before changing it (t-b91f and t-4272 did). | UNPROMOTED |
 | 2026-10-02 | [t-165f](.tickets/t-165f/learnings.md) | A test fixture can encode the behaviour a ticket removes: two existing tests used a Main-only rail, which preselects Main, so they pinned the old always-show warning — find which fixtures reach the changed state before promising "existing tests stay green"; and a state shown by one-time render must be re-derived where a click changes it (a row click does not re-render the rail), which only a click-driven test caught. | UNPROMOTED |
 | 2026-10-02 | [t-29fb](.tickets/t-29fb/learnings.md) | A UI-spec pass count is only reproducible against the same board seed, and `npm test` does not run the Playwright spec at all: my "316 passed" came from one throwaway board, the evaluator's minimal board gave 15 failures that were identical on base — record the board and root a count was taken on, and prove pre-existing failures by re-running the same names from a base clone. | UNPROMOTED |
 | 2026-10-02 | [t-f1b6](.tickets/t-f1b6/learnings.md) | When a change moves the OWNER of a field (t-8be2 stopped writing main's ticket.md for a worktree-bound ticket), grep every reader of that field: the daemon still read main's `open`, so t-577e's `sprint continue` shipped verified only on a main-checkout ticket and failed on the first real worktree sprint; and an evaluator forbidden to run a Test Plan item grades it not-run (a blocking fail), so hand it the evidence (the log, with the clone's tip and tree to compare) instead of forbidding the item. | UNPROMOTED |

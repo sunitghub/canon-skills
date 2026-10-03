@@ -1834,6 +1834,11 @@
     #cockpit:not(.rail-collapsed) .ck-topbar .ck-id,
     #cockpit:not(.rail-collapsed) .ck-topbar #ck-status,
     #cockpit:not(.rail-collapsed) .ck-topbar .ck-title { display: none; }
+    /* t-614c: the tab strip's active pill already names the ticket, so the id text beside the status chip would
+       repeat it (#ck-id precedes the strip in the markup, so a sibling selector cannot reach it: :has() does). The
+       title is cut to a few letters at half-screen widths and adds nothing there; the rail card keeps it. */
+    .ck-topbar:has(#ck-tab-strip-topbar:not([hidden])) .ck-id { display: none; }
+    @media (max-width: 1000px) { .ck-topbar .ck-title { display: none; } }
     /* t-4272: the open badge used the muted --col-open slate (also used by the
        board columns), which read as dull. Give the badge its own brighter,
        legible slate per theme WITHOUT touching --col-open (board unchanged). */
