@@ -6452,7 +6452,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
   // t-d254: rail with a stubbed /api/ticket-commit plan; `log` records every
   // POST in order as "<route>:<body>" so tests can assert commit-then-create.
-  async function openRailWithPlan(page, id, plan, log, { commitReply } = {}) {
+  async function openRailWithPlan(page, id, plan, log, { commitReply, withOtherRow } = {}) {
     await stubCockpit(page);
     await page.route('**/api/worktrees**', route => {
       if (route.request().method() === 'POST') {
@@ -6461,6 +6461,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }
       return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([
         { path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+        // t-165f: with only Main present it is preselected (and the box is hidden); another row leaves nothing picked.
+        ...(withOtherRow ? [{ path: '/tmp/wt-165f/other', branch: 'sprint/other', is_main: false, tickets_visible: true, ticket_present: true }] : []),
       ]) });
     });
     await page.route('**/api/worktree-lock/**', route => route.fulfill({
@@ -6498,7 +6500,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       // Committed (ticket_in_head true) with a real edit: lags, is not missing.
-      await openRailWithPlan(page, id, d254Plan(id, { ticket_in_head: true, required: [`.tickets/${id}/ticket.md`], message: `chore: update ticket ${id}` }), log);
+      await openRailWithPlan(page, id, d254Plan(id, { ticket_in_head: true, required: [`.tickets/${id}/ticket.md`], message: `chore: update ticket ${id}` }), log, { withOtherRow: true });
       const warn = page.locator('#ck-worktree-uncommitted');
       await expect(warn).toContainText(`${id} has uncommitted changes`);
       await expect(warn).toContainText('a new worktree gets its last committed version');
@@ -6521,13 +6523,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
+  test('with the Main checkout row selected the "isn\'t committed yet" box is hidden, and + New still offers the commit (t-165f)', async ({ page }) => {
+    const id = `t-165f-${Date.now()}`;
+    const log = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      // Only the Main checkout exists, so it is the selected row: a main-checkout session reads .tickets/ straight
+      // from the folder, nothing is missing, and the warning would read as an action the user must take.
+      await openRailWithPlan(page, id, d254Plan(id), log);
+      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
+      await expect(page.locator('#ck-worktree-uncommitted')).toBeHidden();
+      // The + New flow is unchanged: it still opens the grouped commit dialog.
+      await page.locator('.ck-worktree-new-plus').click();
+      await expect(page.locator('#ck-tcommit')).toHaveClass(/open/);
+      await page.locator('#ck-tcm-cancel').click();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('picking Main hides the "isn\'t committed yet" box that showed while nothing was picked (t-165f)', async ({ page }) => {
+    const id = `t-165f-pick-${Date.now()}`;
+    const log = [];
+    try {
+      writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
+      await openRailWithPlan(page, id, d254Plan(id), log, { withOtherRow: true });
+      await expect(page.locator('#ck-worktree-uncommitted')).toContainText(`${id} isn't committed yet`);
+      await page.locator('.ck-worktree-row[data-cwd=""]').click();
+      await expect(page.locator('.ck-worktree-row[data-cwd=""]')).toHaveClass(/selected/);
+      await expect(page.locator('#ck-worktree-uncommitted')).toBeHidden();
+      // Picking a real worktree row brings the warning back: a new worktree would not contain the ticket.
+      await page.locator('.ck-worktree-row[data-cwd="/tmp/wt-165f/other"]').click();
+      await expect(page.locator('#ck-worktree-uncommitted')).toBeVisible();
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
   test('uncommitted ticket: rail warns, + New opens the grouped commit dialog, Commit & create commits then creates (t-d254)', async ({ page }) => {
     const id = `t-wtp-c-${Date.now()}`;
     const log = [];
     try {
       writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], plan: OPEN_PLAN });
       const plan = d254Plan(id);
-      await openRailWithPlan(page, id, plan, log);
+      await openRailWithPlan(page, id, plan, log, { withOtherRow: true });
       await expect(page.locator('#ck-worktree-uncommitted')).toContainText(`${id} isn't committed yet`);
 
       await page.locator('.ck-worktree-new-plus').click();
