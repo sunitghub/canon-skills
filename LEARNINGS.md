@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-02-2026 20:55
+learnings-sweep last run: 10-02-2026 21:28
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-02 | [t-91c5](.tickets/t-91c5/learnings.md) | The throwaway-board recipe for a Playwright UI check must use a REALPATH for both `SPRINT_CHECK_ROOT` and `SPRINT_CHECK_TEST_ROOT` on macOS (`mktemp -d` returns `/var/...`, a symlink to `/private/var`; the board reports the realpath as its git root and `findLiveDaemonSession` matches `project_root`, so a stubbed daemon row is silently ignored and the first assertion fails with a harness error, not a code defect) — use `pwd -P`; and a tooltip-only explanation is not keyboard/screen-reader reachable (no aria-label), acceptable only while the same fact is shown elsewhere (here the Agents sidebar). | UNPROMOTED |
 | 2026-10-02 | [t-9c87](.tickets/t-9c87/learnings.md) | A "safe path" helper reused in a new caller must be checked for WHAT it compares: t-8be2's resolved-folder comparison is a tautology (`_path_key`/`pathKey` resolve both sides), so on Windows Python could not see a junction (`is_symlink()` is False before 3.12) — my first fix (resolve `dir`) changed nothing and only a simulation test (is_symlink blind + lstat reparse attribute) proved it; and a user's live check filed as an unchecked Test Plan row makes the evaluator return `fail` (not-run), so keep it in the QA `Tested locally` line. | UNPROMOTED |
 | 2026-10-02 | [t-614c](.tickets/t-614c/learnings.md) | Hiding a duplicate is only safe if the surviving copy cannot disappear: the id text now hides while the tab pills show, and the evaluator noted an overflowing `overflow: hidden` strip could clip the active pill, leaving the ticket named nowhere (filed t-2542); pin the other direction too (the id returns when the strip is hidden), and grep for tests that assert the duplicate visible before changing it (t-b91f and t-4272 did). | UNPROMOTED |
 | 2026-10-02 | [t-165f](.tickets/t-165f/learnings.md) | A test fixture can encode the behaviour a ticket removes: two existing tests used a Main-only rail, which preselects Main, so they pinned the old always-show warning — find which fixtures reach the changed state before promising "existing tests stay green"; and a state shown by one-time render must be re-derived where a click changes it (a row click does not re-render the rail), which only a click-driven test caught. | UNPROMOTED |

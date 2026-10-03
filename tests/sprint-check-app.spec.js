@@ -8530,7 +8530,9 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await poke();
       await expect(chip).toHaveText('working');
       await expect(chip).toHaveAttribute('title', 'State from: Claude Code notification hook');
-      await expect(reaper).toHaveText('Auto-save & end in 4m · resets on activity');
+      // t-91c5: the Agents sidebar already shows the countdown, so the top bar says only "Auto Save"; the sentence is the tooltip.
+      await expect(reaper).toHaveText('Auto Save');
+      await expect(reaper).toHaveAttribute('title', 'Auto-save & end in 4m · resets on activity');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals'), { recursive: true });
       await page.locator('#cockpit-overlay .ck-topbar').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-824e', 'visuals', 'ticket-cockpit.png') });
 
@@ -8538,18 +8540,21 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await poke();
       await expect(chip).toHaveText('done · waiting for your next prompt');
       await expect(chip).toHaveClass(/st-done/);
-      await expect(reaper).toHaveText('Auto-save & end in 28m · resets on activity');
+      await expect(reaper).toHaveText('Auto Save');
+      await expect(reaper).toHaveAttribute('title', 'Auto-save & end in 28m · resets on activity');
 
       rows = [{ ...base, agent: 'copilot', state: 'needs-you', state_secs: 12, idle_secs: 12, idle_limit_secs: 300, signal: 'copilot-menu' }];
       await poke();
       await expect(chip).toHaveText('needs you');
       await expect(chip).toHaveAttribute('title', 'State from: Copilot approval menu');
-      await expect(reaper).toHaveText('Auto-save paused · waiting on you');
+      await expect(reaper).toHaveText('Auto Save paused');
+      await expect(reaper).toHaveAttribute('title', 'Auto-save paused · waiting on you');
 
       rows = [{ ...base }]; // pre-t-824e daemon: status only
       await poke();
       await expect(chip).toHaveText('running');
       await expect(reaper).toBeHidden();
+      await expect(reaper).not.toHaveAttribute('title', /Auto-save/);   // no stale tooltip once the text is gone
       await expect(page.locator('#cockpit-overlay')).not.toContainText('undefined');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });

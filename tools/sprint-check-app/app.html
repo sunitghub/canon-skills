@@ -5638,10 +5638,14 @@ function renderSessionStateChip() {
   chip.title = signal ? 'State from: ' + signal : 'State from the session\u2019s status';
   chip.hidden = false;
   const idle = row && num(row.idle_secs), limit = row && num(row.idle_limit_secs);
-  if (st === 'needs-you') reaper.textContent = 'Auto-save paused \u00b7 waiting on you';
-  else if (idle !== null && limit !== null) reaper.textContent = 'Auto-save & end in ' + fmtWait(Math.max(0, limit - idle)) + ' \u00b7 resets on activity';
-  else reaper.textContent = '';
-  reaper.hidden = !reaper.textContent;
+  // t-91c5: the Agents sidebar already shows the countdown ("reaps in 29m"), so the top bar says only "Auto Save" and
+  // keeps the full sentence as the tooltip.
+  let reaperText = '', reaperTip = '';
+  if (st === 'needs-you') { reaperText = 'Auto Save paused'; reaperTip = 'Auto-save paused \u00b7 waiting on you'; }
+  else if (idle !== null && limit !== null) { reaperText = 'Auto Save'; reaperTip = 'Auto-save & end in ' + fmtWait(Math.max(0, limit - idle)) + ' \u00b7 resets on activity'; }
+  reaper.textContent = reaperText;
+  if (reaperTip) reaper.title = reaperTip; else reaper.removeAttribute('title');
+  reaper.hidden = !reaperText;
 }
 async function refreshSessionStateChip() {
   const tab = cockpitState, id = activeTabId;
