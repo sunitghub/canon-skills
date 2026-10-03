@@ -33,19 +33,19 @@ git -C "$PROJ" add -A && git -C "$PROJ" commit -qm "committed mirror"
 
 _ensure_mirror_gitignored "$PROJ"
 
-grep -qxF "/.agents/skills/" "$PROJ/.gitignore" || fail "gitignore missing /.agents/skills/"
-grep -qxF "/.claude/skills/" "$PROJ/.gitignore" || fail "gitignore missing /.claude/skills/"
+grep -qxF "/.agents/skills" "$PROJ/.gitignore" || fail "gitignore missing /.agents/skills"
+grep -qxF "/.claude/skills" "$PROJ/.gitignore" || fail "gitignore missing /.claude/skills"
 [ -z "$(git -C "$PROJ" ls-files .agents/skills)" ] || fail "mirror still tracked after untrack"
 # idempotent: second run adds no duplicate lines
 _ensure_mirror_gitignored "$PROJ" >/dev/null
-[ "$(grep -c '/.agents/skills/' "$PROJ/.gitignore")" -eq 1 ] || fail "gitignore line duplicated (not idempotent)"
+[ "$(grep -c '/.agents/skills' "$PROJ/.gitignore")" -eq 1 ] || fail "gitignore line duplicated (not idempotent)"
 
 # ── 2. link_worktree: creates a link resolving to CURRENT canon + gitignores ──
 git -C "$WT" init -q
 link_worktree "$WT" >/dev/null
 [ -e "$WT/.agents/skills/sprint/SKILL.md" ] || fail "worktree link does not resolve to canon skills"
 [ "$(cat "$WT/.agents/skills/sprint/SKILL.md")" = "CURRENT-CANON-MARKER" ] || fail "worktree link resolves to STALE content, not current canon"
-grep -qxF "/.agents/skills/" "$WT/.gitignore" || fail "worktree .gitignore missing mirror entry"
+grep -qxF "/.agents/skills" "$WT/.gitignore" || fail "worktree .gitignore missing mirror entry"
 
 # ── 3. link_worktree REPLACES a committed (tracked) stale mirror (t-9e55) ──
 # `git worktree add` on a repo that committed the mirror materializes the stale
@@ -99,5 +99,52 @@ PY
 else
   echo "skills-mirror-gitignore: python3 absent — skipped Python board parity (part 5)"
 fi
+
+# ── 6. t-c433: git must not list the mirror as untracked — as symlinks (macOS/Linux) or real dirs (Windows) ──
+mirror_listed() { git -C "$1" status --porcelain --untracked-files=all | grep -E '^\?\? \.(claude|agents)/skills' || true; }
+SYM="$(mktemp -d)"; git -C "$SYM" init -q
+upsert_skills_symlinks "$SYM" >/dev/null; _ensure_mirror_gitignored "$SYM" >/dev/null
+_is_dir_link "$SYM/.claude/skills" && _is_dir_link "$SYM/.agents/skills" || fail "symlink fixture: mirror links not created"
+[ -z "$(mirror_listed "$SYM")" ] || fail "symlinked mirror listed by git status: $(mirror_listed "$SYM")"
+git -C "$SYM" check-ignore -q .claude/skills && git -C "$SYM" check-ignore -q .agents/skills || fail "git check-ignore misses a symlinked mirror"
+[ "$(cat "$SYM/.gitignore")" = "$(printf '/.claude/skills\n/.agents/skills')" ] || fail "fresh .gitignore content: $(cat "$SYM/.gitignore")"
+RD="$(mktemp -d)"; git -C "$RD" init -q
+mkdir -p "$RD/.claude/skills/x" "$RD/.agents/skills/x"; echo s > "$RD/.claude/skills/x/f"; echo s > "$RD/.agents/skills/x/f"
+_ensure_mirror_gitignored "$RD" >/dev/null
+[ -z "$(mirror_listed "$RD")" ] || fail "real-dir mirror listed by git status: $(mirror_listed "$RD")"
+
+# ── 7. t-c433: repair an old directory-only line in place; idempotent; no leftover or duplicate ──
+RP="$(mktemp -d)"; git -C "$RP" init -q
+printf 'node_modules/\n/.claude/skills/\ndist/\n' > "$RP/.gitignore"
+_ensure_mirror_gitignored "$RP" >/dev/null
+[ "$(cat "$RP/.gitignore")" = "$(printf 'node_modules/\n/.claude/skills\ndist/\n/.agents/skills')" ] || fail "repaired .gitignore: $(cat "$RP/.gitignore")"
+before="$(cksum < "$RP/.gitignore")"; _ensure_mirror_gitignored "$RP" >/dev/null
+[ "$(cksum < "$RP/.gitignore")" = "$before" ] || fail "repair is not idempotent"
+printf '/.claude/skills/\n/.claude/skills\n' > "$RP/.gitignore"        # both forms already present
+_ensure_mirror_gitignored "$RP" >/dev/null
+[ "$(grep -c '^/.claude/skills' "$RP/.gitignore")" -eq 1 ] || fail "both forms: expected one slash-less line, got: $(cat "$RP/.gitignore")"
+grep -qxF "/.claude/skills/" "$RP/.gitignore" && fail "both forms: directory-only line left behind"
+
+# ── 8. t-c433: a .gitignore with no trailing newline is not corrupted ──
+NN="$(mktemp -d)"; git -C "$NN" init -q
+printf 'dist/' > "$NN/.gitignore"
+_ensure_mirror_gitignored "$NN" >/dev/null
+[ "$(cat "$NN/.gitignore")" = "$(printf 'dist/\n/.claude/skills\n/.agents/skills')" ] || fail "no-trailing-newline .gitignore: $(cat "$NN/.gitignore")"
+
+# ── 9. t-c433 end to end through the real client: skills.sh add, then refresh over the old lines ──
+E2E="$(mktemp -d)"; E2E_HOME="$(mktemp -d)"
+git -C "$E2E" init -q
+(
+  unset SKILLS_ROOT
+  export HOME="$E2E_HOME" SHELL=/bin/zsh SKILLS_SH_NO_TTY=1
+  touch "$E2E_HOME/.zshrc"
+  "$ROOT/tools/skills.sh" add sprint "$E2E" >/dev/null 2>&1
+  [ -z "$(mirror_listed "$E2E")" ] || fail "skills.sh add left the mirror listed: $(mirror_listed "$E2E")"
+  printf '/.claude/skills/\n/.agents/skills/\n' > "$E2E/.gitignore"     # what an older canon wrote
+  [ -n "$(mirror_listed "$E2E")" ] || fail "fixture: the old directory-only lines should leave the symlinks listed"
+  "$ROOT/tools/skills.sh" refresh "$E2E" >/dev/null 2>&1
+  [ -z "$(mirror_listed "$E2E")" ] || fail "skills.sh refresh did not repair the old lines: $(mirror_listed "$E2E")"
+)
+rm -rf "$SYM" "$RD" "$RP" "$NN" "$E2E" "$E2E_HOME"
 
 echo "skills-mirror-gitignore: ok"
