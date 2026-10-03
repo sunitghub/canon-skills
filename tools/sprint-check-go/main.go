@@ -1866,7 +1866,7 @@ func scanTicketSafe(wt, id string) bool {
 	if err != nil {
 		return false
 	}
-	return liveSafe(id, filepath.Join(real, ".tickets", id), wt)
+	return liveSafe(id, filepath.Join(real, ".tickets", id), wt) // liveTargetFrom's Lstat sees a junction (ModeIrregular)
 }
 
 // scanOtherCheckouts returns statuses for every live non-main worktree and every

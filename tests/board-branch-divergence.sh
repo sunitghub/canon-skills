@@ -14,10 +14,12 @@ command -v python3 >/dev/null 2>&1 && command -v go >/dev/null 2>&1 && command -
 
 WORK="$(mktemp -d)"
 BIN_DIR="$(mktemp -d)"
-PY_PID=""; GO_PID=""
+PY_PID=""; GO_PID=""; LP_PID=""; LG_PID=""
 cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
+  [[ -n "$LP_PID" ]] && kill "$LP_PID" 2>/dev/null || true   # t-9c87: the link-fixture servers must not outlive a failed check
+  [[ -n "$LG_PID" ]] && kill "$LG_PID" 2>/dev/null || true
   rm -rf "$WORK" "$BIN_DIR" "${WORK}-worktrees"
 }
 trap cleanup EXIT
@@ -186,6 +188,28 @@ if [[ -L "${WORK}-worktrees/lnka/.tickets/t-lnka" && -L "${WORK}-worktrees/lnkb/
   lcheck t-lnka NONE   # ticket folder is a link
   lcheck t-lnkb NONE   # ticket.md is a link
   lcheck t-lnkc NONE   # .tickets is a link
+  # Windows: before Python 3.12 Path.is_symlink() is False for a junction, and _path_key's "resolved folder" comparison
+  # resolves both sides, so only the reparse-point attribute of lstat can refuse one. Simulate exactly that (a POSIX symlink
+  # stands in for the junction: is_symlink blind, lstat flagging FILE_ATTRIBUTE_REPARSE_POINT) for all three link variants.
+  CANON_HOME="$WORK/canon-imp" python3 - "$ROOT/tools/sprint-check-app/server.py" "${WORK}-worktrees" <<'PYEOF' || fail "server.py _scan_ticket_safe does not refuse a linked ticket when is_symlink is blind (Windows junction)"
+import importlib.util, os, pathlib, stat, sys, types
+spec = importlib.util.spec_from_file_location("scsrv", sys.argv[1]); srv = importlib.util.module_from_spec(spec); spec.loader.exec_module(srv)
+wts = sys.argv[2]
+real_lstat = os.lstat
+def junction_lstat(p, *a, **k):
+    st = real_lstat(p, *a, **k)
+    if not stat.S_ISLNK(st.st_mode):
+        return st
+    fake = types.SimpleNamespace(**{n: getattr(st, n) for n in dir(st) if n.startswith('st_')})
+    fake.st_mode = stat.S_IFDIR | 0o755
+    fake.st_file_attributes = stat.FILE_ATTRIBUTE_REPARSE_POINT   # what Windows reports for a junction
+    return fake
+pathlib.Path.is_symlink = lambda self: False
+os.lstat = junction_lstat
+assert srv._scan_ticket_safe(wts + '/lnkp', 't-lnkp') is True, 'a plain worktree ticket must still be readable'
+for wt, tid, what in (('lnka', 't-lnka', 'ticket folder'), ('lnkb', 't-lnkb', 'ticket.md'), ('lnkc', 't-lnkc', '.tickets')):
+    assert srv._scan_ticket_safe(wts + '/' + wt, tid) is False, f'a linked {what} must be refused when is_symlink cannot see it'
+PYEOF
   kill "$LP_PID" "$LG_PID" 2>/dev/null || true
 else
   echo "board-branch-divergence: link cases skipped (this filesystem cannot create symlinks)"
