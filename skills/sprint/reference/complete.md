@@ -521,13 +521,14 @@ Opus` default, scoped only to the two close-gate dispatches below.
    **The report must be backed by a real transcript (`t-0231`).** `.claude/subagent-runs.jsonl` cannot prove a dispatch:
    `subagent-log.sh` writes whatever `--agent-id` it is given, so an agent that hand-writes `eval-report.md` can also log a
    fake run. Under Claude Code, `sprint complete` therefore also requires the harness's own transcript of the dispatch
-   (`<config>/projects/*/*/subagents/agent-*.jsonl` with a `.meta.json` whose `agentType` is `canon-evaluator`, from any
-   session, modified within an hour of the run-id) to contain the report's `evaluator-run-id`, this ticket's id and the
-   report's verdict line. A hand-written report, a run-id copied from another ticket, a dispatch of another agent type, and
-   a `fail:` hand-flipped to `pass:` are each refused. It fails open, with a `Note:`, where it cannot check: outside Claude
-   Code (Copilot CLI, pi, Codex) or where no subagent transcripts exist under the config root. It guards against a weak
-   model re-creating the report, not against someone who unsets `CLAUDECODE`. If it refuses a report a real evaluator
-   wrote, re-dispatch the evaluator; never edit the report.
+   (`<config>/projects/*/*/subagents/agent-*.jsonl`, from any session, modified from a minute before the run-id to an hour
+   after it) to contain the report's `evaluator-run-id`, this ticket's id and the report's verdict line. The transcript's
+   `.meta.json` must name a `canon-evaluator`, or `Plan` (the fallback above) whose transcript shows `reference/eval.md`.
+   A hand-written report, a run-id copied from another ticket, a dispatch of another agent type, a `fail:` hand-flipped to
+   `pass:`, and a verdict line too short to verify (bare `pass:`) are each refused. It fails open, with a `Note:`, where it
+   cannot check: outside Claude Code (Copilot CLI, pi, Codex) or where no subagent transcripts exist under the config root.
+   It guards against a weak model re-creating the report, not against someone who unsets `CLAUDECODE`. If it refuses a
+   report a real evaluator wrote, re-dispatch the evaluator; never edit the report.
 
 4. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - **Coverage check, before grading individual items.** Confirm every `acceptance.md ## Criteria`

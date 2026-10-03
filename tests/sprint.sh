@@ -1281,6 +1281,8 @@ tx_cfg="$(mktemp -d)"
     printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > ".tickets/$gid/summary.md"
     printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$stamp" > .claude/subagent-runs.jsonl
   }
+  stamp_for() { date -u -r "$1" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
+  touch_at() { touch -t "$(date -r "$2" +%Y%m%d%H%M.%S 2>/dev/null || date -d "@$2" +%Y%m%d%H%M.%S)" "$1"; }
   report() { # <run-id> <verdict line>
     printf '# Eval Report\nevaluator-run-id: %s\nModel: test-model\n## Verdict\n%s\n' "$1" "$2" > ".tickets/$gid/eval-report.md"
   }
@@ -1329,10 +1331,46 @@ tx_cfg="$(mktemp -d)"
   printf 'evaluator-run-id: %s\n%s\npass: all criteria met\n' "$rid2" "$gid" > "$tx_cfg/projects/-other/sess9/subagents/agent-old.jsonl"
   assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
 
+  # (i) the documented fallback dispatches the evaluator as `Plan` when canon's agent files are not installed (complete.md step 3):
+  # it counts only when its transcript shows the evaluator protocol; a Plan agent doing something else, or a reviewer, does not.
+  gate_ticket planfallback; rid3="$now-3333"; report "$rid3" "pass: all criteria met"
+  transcript real Plan "evaluator-run-id: $rid3" "$gid" "pass: all criteria met"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+  transcript real Plan "Read skills/sprint/reference/eval.md" "evaluator-run-id: $rid3" "$gid" "pass: all criteria met"
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+  # (j) a symlinked projects dir is searched as well as recognised
+  gate_ticket symlinked; rid4="$now-4444"; report "$rid4" "pass: all criteria met"
+  sym_real="$(mktemp -d)"; sym_cfg="$(mktemp -d)"; ln -s "$sym_real" "$sym_cfg/projects"
+  mkdir -p "$sym_real/-p/s1/subagents"
+  printf '{"agentType": "canon-evaluator"}\n' > "$sym_real/-p/s1/subagents/agent-x.meta.json"
+  printf 'evaluator-run-id: %s\n%s\npass: all criteria met\n' "$rid4" "$gid" > "$sym_real/-p/s1/subagents/agent-x.jsonl"
+  assert_contains "$(CLAUDE_CONFIG_DIR="$sym_cfg" "$SPRINT" complete 2>&1)" "Sprint completed"
+  rm -rf "$sym_real" "$sym_cfg"
+  # (k) a verdict line too short to verify: bare `pass:` is a substring of every evaluator transcript
+  gate_ticket shortverdict; rid5="$now-5555"; report "$rid5" "pass:"
+  transcript real canon-evaluator "evaluator-run-id: $rid5" "$gid" "pass: all criteria met"
+  out="$(run_fail "$SPRINT" complete)"
+  assert_contains "$out" "too short to verify"
+  assert_gate_notice "$out" eval-report.md evaluator
+  "$TKT" close "$gid" --no-sprint >/dev/null   # a blocked scenario leaves its sprint active; the next one starts a new sprint
+  # (l) the window's END edge: a transcript written more than an hour after the run-id does not count; one 5 minutes after does
+  gate_ticket lateedge; old=$((now - 7200)); rid6="$old-6666"; report "$rid6" "pass: all criteria met"
+  printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$(stamp_for "$old")" > .claude/subagent-runs.jsonl
+  transcript real canon-evaluator "evaluator-run-id: $rid6" "$gid" "pass: all criteria met"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"   # its mtime is now: 2 hours after the run-id
+  touch_at "$tx_cfg/projects/-proj/sess1/subagents/agent-real.jsonl" $((old + 300))
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+  # (m) a millisecond run-id (13 digits, eval.md says never, but t-bdfb tolerates it) is normalised for the window too
+  gate_ticket millis; rid7="${now}000-7777"; report "$rid7" "pass: all criteria met"
+  transcript real canon-evaluator "evaluator-run-id: $rid7" "$gid" "pass: all criteria met"
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+
   # (h) fail open: not Claude Code (no CLAUDECODE), or Claude Code with a layout never seen (no subagents dir anywhere).
   gate_ticket noclaude; report "$now-1111" "pass: all criteria met"
   assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "transcript check skipped"
   gate_ticket nolayout; report "$now-2222" "pass: all criteria met"
-  assert_contains "$(CLAUDE_CONFIG_DIR="$(mktemp -d)" "$SPRINT" complete 2>&1)" "transcript check skipped"
+  empty_cfg="$(mktemp -d)"
+  assert_contains "$(CLAUDE_CONFIG_DIR="$empty_cfg" "$SPRINT" complete 2>&1)" "transcript check skipped"
+  rm -rf "$empty_cfg"
 )
 rm -rf "$tx_project" "$tx_cfg"

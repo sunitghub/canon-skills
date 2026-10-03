@@ -473,13 +473,25 @@ _gate_eval_report_transcript() {
   end_min=$(( (now - run_epoch - 3600) / 60 ))
   local prefix
   prefix="$(grep -E '^(pass|fail):' "$report" | head -1 | tr -d '\r' | LC_ALL=C sed -E 's/[^ -~].*$//; s/["\\].*$//' | cut -c1-60)"
+  if (( ${#prefix} < 12 )); then
+    # `pass:` alone is a substring of every evaluator transcript (the eval.md template says `pass: <one sentence>`), so it verifies nothing
+    echo "Sprint $id cannot close: eval-report.md's verdict line is too short to verify against a transcript (it should read 'pass: <one sentence>')."
+    _gate_dispatch_notice evaluator eval-report.md
+    return 1
+  fi
   local f meta found=0
-  local -a find_args=("$cfg/projects" -path '*/subagents/agent-*.jsonl' -type f -mmin "-$start_min")
+  local -a find_args=("$cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin "-$start_min")
   (( end_min > 0 )) && find_args+=(! -mmin "-$end_min")
   while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     meta="${f%.jsonl}.meta.json"
-    [[ -f "$meta" ]] && grep -qE '"agentType"[[:space:]]*:[[:space:]]*"canon-evaluator"' "$meta" || continue
+    [[ -f "$meta" ]] || continue
+    if ! grep -qE '"agentType"[[:space:]]*:[[:space:]]*"canon-evaluator"' "$meta"; then
+      # The documented fallback (complete.md step 3) dispatches the evaluator as `Plan` when canon's agent files are not installed
+      # (an unrefreshed project, Codex/Pi): accept it only when the transcript shows the evaluator protocol it was told to follow.
+      # A canon-reviewer, a general-purpose agent, or a Plan agent doing something else still does not count.
+      grep -qE '"agentType"[[:space:]]*:[[:space:]]*"Plan"' "$meta" && grep -qF -e "reference/eval.md" "$f" || continue
+    fi
     grep -qF -e "$run_id" "$f" || continue
     grep -qF -e "$id" "$f" || continue
     grep -qF -e "$prefix" "$f" || continue
@@ -488,7 +500,7 @@ _gate_eval_report_transcript() {
   done < <(find "${find_args[@]}" 2>/dev/null)
   if (( ! found )); then
     echo "Sprint $id cannot close: no canon-evaluator transcript backs evaluator-run-id '$run_id'."
-    echo "Looked in $cfg/projects/*/*/subagents for a canon-evaluator transcript, modified within an hour of the run-id, that contains the run-id, this ticket's id and the report's verdict line. A report no real evaluator run wrote — typed by hand, edited after the run, or copied from another ticket — has none."
+    echo "Looked in $cfg/projects/*/*/subagents for a canon-evaluator transcript (or a Plan one that shows reference/eval.md), modified from a minute before the run-id to an hour after it, that contains the run-id, this ticket's id and the report's verdict line. A report no real evaluator run wrote — typed by hand, edited after the run, or copied from another ticket — has none."
     _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi

@@ -105,7 +105,9 @@ right-sizing, snippet, and evidence principles apply.
    (`>`, not `>>`) the file with just this new line — this deliberately replaces step 1's
    provisional stamp, unlike every other write in this step, which appends. Then continue
    normally: append (`>>`) the rest of the report in sections, verify each append, and
-   follow the retry pattern in "Report-writing safety" above. **HARD RULE (t-072d): the
+   follow the retry pattern in "Report-writing safety" above. After the final append,
+   `cat` the report once: Claude Code records tool output in your transcript, and `sprint complete`
+   looks for your `evaluator-run-id` there (t-0231) to prove this report came from a real dispatch. **HARD RULE (t-072d): the
    `Model:` line below is mandatory — `sprint complete` blocks the close if
    `eval-report.md` has no `^Model:` line. Do not drop it, even if you write the rest of
    the report free-form.**
