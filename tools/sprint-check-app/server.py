@@ -1154,6 +1154,15 @@ def _changed_ticket_ids(diff_out: str, ids: set) -> set:
             out.add(m.group(1))
     return out
 
+def _scan_ticket_safe(wt: str, tid: str) -> bool:
+    """t-9c87: the scan may read <worktree>/.tickets/<tid>/ticket.md only when it is a plain file in plain folders
+    (the t-8be2 `_live_safe` check); a resolve error counts as not safe."""
+    try:
+        real = Path(wt).resolve()
+    except (OSError, RuntimeError):
+        return False
+    return _live_safe(tid, {'wt': wt, 'dir': real / '.tickets' / tid})
+
 def _scan_other_checkouts(root: Path, ids: set) -> dict:
     """{ticket_id: [{branch, status, where, merged}, ...]} for every live
     non-main worktree and every unmerged local branch (no worktree) that itself
@@ -1182,6 +1191,8 @@ def _scan_other_checkouts(root: Path, ids: set) -> dict:
             run(['git', 'diff', '--name-only', base, '--', '.tickets/*/ticket.md'], Path(e['path'])), ids)
         merged = _git_ok(['merge-base', '--is-ancestor', e['head'], 'HEAD'], root)
         for tid in sorted(names):
+            if not _scan_ticket_safe(e['path'], tid):
+                continue   # t-9c87: never read a status through a link or junction an agent made in the worktree
             try:
                 st = _frontmatter_status((tdir / tid / 'ticket.md').read_text(encoding='utf-8', errors='replace'))
             except OSError:

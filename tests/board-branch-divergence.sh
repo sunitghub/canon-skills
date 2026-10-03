@@ -153,6 +153,44 @@ for port in "$IP_PORT" "$IG_PORT"; do
 done
 kill "$IP_PID" "$IG_PID" 2>/dev/null || true
 
+# t-9c87: a worktree whose ticket folder, ticket.md or .tickets is a symlink (a junction on Windows) must not have its
+# status read through the link: the board would show a status out of a file outside the worktree. Own repo, so the
+# worktree-cap section below keeps its exact counts; a plain edited worktree is the positive control (the scan works here).
+LNK="$WORK/links"; OUT="$WORK/outside"; mkdir -p "$LNK" "$OUT/t-lnka" "$OUT/tix/t-lnkc"
+cd "$LNK" && git init -q -b main . && git config user.email t@t.com && git config user.name t
+for id in t-lnka t-lnkb t-lnkc t-lnkp; do mk_ticket "$id" open; done
+git add -A && git commit -q -m base
+for n in a b c p; do git worktree add -q "${WORK}-worktrees/lnk$n" -b "sprint/lnk$n"; done
+closed_ticket() { printf -- '---\nid: %s\nstatus: closed\ntype: task\npriority: 2\ncreated: 2026-09-23T00:00:00Z\n---\n# Outside %s\n' "$1" "$1"; }
+closed_ticket t-lnka > "$OUT/t-lnka/ticket.md"; closed_ticket t-lnkb > "$OUT/b.md"; closed_ticket t-lnkc > "$OUT/tix/t-lnkc/ticket.md"
+rm -rf "${WORK}-worktrees/lnka/.tickets/t-lnka"      && ln -s "$OUT/t-lnka" "${WORK}-worktrees/lnka/.tickets/t-lnka"
+rm -f  "${WORK}-worktrees/lnkb/.tickets/t-lnkb/ticket.md" && ln -s "$OUT/b.md" "${WORK}-worktrees/lnkb/.tickets/t-lnkb/ticket.md"
+rm -rf "${WORK}-worktrees/lnkc/.tickets"             && ln -s "$OUT/tix" "${WORK}-worktrees/lnkc/.tickets"
+(cd "${WORK}-worktrees/lnkp" && mk_ticket t-lnkp in_progress)
+if [[ -L "${WORK}-worktrees/lnka/.tickets/t-lnka" && -L "${WORK}-worktrees/lnkb/.tickets/t-lnkb/ticket.md" && -L "${WORK}-worktrees/lnkc/.tickets" ]]; then
+  LP_PORT="$(free_port)"; LG_PORT="$(free_port)"
+  SPRINT_CHECK_ROOT="$LNK" CANON_HOME="$WORK/canon-lp" python3 "$ROOT/tools/sprint-check-app/server.py" "$LP_PORT" >/dev/null 2>&1 &
+  LP_PID=$!; disown "$LP_PID" 2>/dev/null || true
+  SPRINT_CHECK_ROOT="$LNK" CANON_HOME="$WORK/canon-lg" SPRINT_CHECK_NO_BROWSER=1 "$BIN_DIR/sc-go" "$LG_PORT" >/dev/null 2>&1 &
+  LG_PID=$!; disown "$LG_PID" 2>/dev/null || true
+  for port in "$LP_PORT" "$LG_PORT"; do
+    for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$port/api/tickets" && break; sleep 0.1; done
+  done
+  lcheck() { # id expected, against the link-fixture servers
+    local py go
+    py="$(div "$LP_PORT" "$1")"; go="$(div "$LG_PORT" "$1")"
+    [[ "$py" == "$2" ]] || fail "server.py branch_divergence for $1 (links): expected '$2', got '$py'"
+    [[ "$go" == "$2" ]] || fail "main.go branch_divergence for $1 (links): expected '$2', got '$go'"
+  }
+  lcheck t-lnkp '{"branch": "sprint/lnkp", "dirty": true, "merged": true, "status": "in_progress", "where": "worktree"}'   # control
+  lcheck t-lnka NONE   # ticket folder is a link
+  lcheck t-lnkb NONE   # ticket.md is a link
+  lcheck t-lnkc NONE   # .tickets is a link
+  kill "$LP_PID" "$LG_PID" 2>/dev/null || true
+else
+  echo "board-branch-divergence: link cases skipped (this filesystem cannot create symlinks)"
+fi
+
 # Worktree cap: 10 more worktrees each edit a distinct tracked ticket; with sprint-t-wtre that is 11
 # non-main worktrees, only the first 8 are scanned -> sprint-t-wtre + 7 of the new ones flagged.
 cd "$REPO"
@@ -171,4 +209,4 @@ assert_eq 7 "$(count_wc "$PY_PORT")"
 assert_eq 7 "$(count_wc "$GO_PORT")"
 check t-wtre '{"branch": "sprint/t-wtre", "dirty": true, "merged": true, "status": "in_progress", "where": "worktree"}'
 
-echo "board-branch-divergence: ok (unmerged branch, live worktree, unchanged, merged, main-catches-up, non-git, TTL cache, 8-branch cap, 8-worktree cap, gitignored-tickets skip — server.py == main.go)"
+echo "board-branch-divergence: ok (unmerged branch, live worktree, unchanged, merged, main-catches-up, non-git, TTL cache, 8-branch cap, 8-worktree cap, gitignored-tickets skip, linked worktree tickets not read — server.py == main.go)"

@@ -1859,6 +1859,16 @@ func changedTicketIDs(diffOut string, ids map[string]bool) map[string]bool {
 	return out
 }
 
+// scanTicketSafe: the scan may read <worktree>/.tickets/<id>/ticket.md only when it is a plain file in plain folders
+// (the t-8be2 liveSafe check); a resolve error counts as not safe. t-9c87.
+func scanTicketSafe(wt, id string) bool {
+	real, err := filepath.EvalSymlinks(wt)
+	if err != nil {
+		return false
+	}
+	return liveSafe(id, filepath.Join(real, ".tickets", id), wt)
+}
+
 // scanOtherCheckouts returns statuses for every live non-main worktree and every
 // unmerged local branch (no worktree) that itself CHANGED a ticket since its fork
 // point from HEAD — an older branch also holds stale copies of tickets that have
@@ -1909,6 +1919,9 @@ func scanOtherCheckouts(root string, ids map[string]bool) map[string][]divergenc
 		}
 		sort.Strings(names)
 		for _, id := range names {
+			if !scanTicketSafe(fmt.Sprint(e["path"]), id) {
+				continue // t-9c87: never read a status through a link or junction an agent made in the worktree
+			}
 			raw, err := os.ReadFile(filepath.Join(tdir, id, "ticket.md"))
 			if err != nil {
 				continue
