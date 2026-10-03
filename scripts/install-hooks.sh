@@ -22,7 +22,7 @@ if [ "$LAST_MSG" = "chore: update dist zips" ]; then
   exit 0
 fi
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel)"
 
 # Build artifacts build-zip.sh may touch. Each is a hardcoded entry, not
 # auto-discovered — adding a new build-zip.sh artifact output also needs a
