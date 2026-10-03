@@ -1365,6 +1365,19 @@ tx_cfg="$(mktemp -d)"
   transcript real canon-evaluator "evaluator-run-id: $rid7" "$gid" "pass: all criteria met"
   assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
 
+  # (n) EVERY verdict line must be backed: the verdict gate accepts any `^pass:` line, so a `pass:` appended under a genuine `fail:`
+  # must not ride on the transcript's `fail:` (the check once looked only at the first verdict line).
+  gate_ticket appended; rid8="$now-8888"
+  printf '# Eval Report\nevaluator-run-id: %s\nModel: test-model\n## Verdict\nfail: criterion 2 not met\npass: all criteria met\n' "$rid8" > ".tickets/$gid/eval-report.md"
+  transcript real canon-evaluator "evaluator-run-id: $rid8" "$gid" "fail: criterion 2 not met"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+  "$TKT" close "$gid" --no-sprint >/dev/null
+  # (o) a terse but real verdict (eval.md asks for a sentence, real evaluators have written `pass: true`) still verifies; only a
+  # line too short to be distinctive (bare `pass:`, case (k)) is refused
+  gate_ticket terse; rid9="$now-9999"; report "$rid9" "pass: true"
+  transcript real canon-evaluator "evaluator-run-id: $rid9" "$gid" "pass: true"
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+
   # (h) fail open: not Claude Code (no CLAUDECODE), or Claude Code with a layout never seen (no subagents dir anywhere).
   gate_ticket noclaude; report "$now-1111" "pass: all criteria met"
   assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "transcript check skipped"

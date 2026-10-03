@@ -433,6 +433,16 @@ _gate_eval_report_authentic() {
   fi
 }
 
+# _transcript_has_all <file> <newline-separated fixed strings> — every non-empty string occurs in the file.
+_transcript_has_all() {
+  local f="$1" needle
+  while IFS= read -r needle; do
+    [[ -n "$needle" ]] || continue
+    grep -qF -e "$needle" "$f" || return 1
+  done <<< "$2"
+  return 0
+}
+
 # _gate_eval_report_transcript <id> <tdir> — t-0231: the report must be backed by the harness's own transcript of a real
 # canon-evaluator dispatch. subagent-runs.jsonl cannot prove one (subagent-log.sh writes whatever --agent-id it is given,
 # with empty session and transcript fields), but Claude Code keeps every subagent's transcript, which an agent cannot write:
@@ -471,14 +481,23 @@ _gate_eval_report_transcript() {
   # window: from a minute before the run-id to an hour after it (find -mmin counts minutes AGO)
   start_min=$(( (now - run_epoch + 60) / 60 + 1 ))
   end_min=$(( (now - run_epoch - 3600) / 60 ))
-  local prefix
-  prefix="$(grep -E '^(pass|fail):' "$report" | head -1 | tr -d '\r' | LC_ALL=C sed -E 's/[^ -~].*$//; s/["\\].*$//' | cut -c1-60)"
-  if (( ${#prefix} < 12 )); then
-    # `pass:` alone is a substring of every evaluator transcript (the eval.md template says `pass: <one sentence>`), so it verifies nothing
-    echo "Sprint $id cannot close: eval-report.md's verdict line is too short to verify against a transcript (it should read 'pass: <one sentence>')."
-    _gate_dispatch_notice evaluator eval-report.md
-    return 1
-  fi
+  # EVERY verdict line must be backed, not just the first: the verdict gate accepts any `^pass:` line, so a `pass:` line appended
+  # under a genuine `fail:` would otherwise ride on it. A short `pass:` line verifies nothing (bare `pass:` is a substring of every
+  # evaluator transcript: the eval.md template reads `pass: <one sentence>`), so it is refused; a short `fail:` line cannot
+  # pass the verdict gate by itself and is not checked here.
+  local vline vprefix prefixes=""
+  while IFS= read -r vline; do
+    [[ -n "$vline" ]] || continue
+    vprefix="$(printf '%s' "$vline" | LC_ALL=C sed -E 's/[^ -~].*$//; s/["\\].*$//' | cut -c1-60)"
+    if (( ${#vprefix} < 8 )); then
+      [[ "$vline" == pass:* ]] || continue
+      echo "Sprint $id cannot close: eval-report.md's verdict line is too short to verify against a transcript (it should read 'pass: <one sentence>')."
+      _gate_dispatch_notice evaluator eval-report.md
+      return 1
+    fi
+    prefixes="$prefixes$vprefix"$'\n'
+  done < <(grep -E '^(pass|fail):' "$report" | tr -d '\r')
+  local needles="$run_id"$'\n'"$id"$'\n'"$prefixes"
   local f meta found=0
   local -a find_args=("$cfg/projects/" -path '*/subagents/agent-*.jsonl' -type f -mmin "-$start_min")
   (( end_min > 0 )) && find_args+=(! -mmin "-$end_min")
@@ -492,15 +511,13 @@ _gate_eval_report_transcript() {
       # A canon-reviewer, a general-purpose agent, or a Plan agent doing something else still does not count.
       grep -qE '"agentType"[[:space:]]*:[[:space:]]*"Plan"' "$meta" && grep -qF -e "reference/eval.md" "$f" || continue
     fi
-    grep -qF -e "$run_id" "$f" || continue
-    grep -qF -e "$id" "$f" || continue
-    grep -qF -e "$prefix" "$f" || continue
+    _transcript_has_all "$f" "$needles" || continue
     found=1
     break
   done < <(find "${find_args[@]}" 2>/dev/null)
   if (( ! found )); then
     echo "Sprint $id cannot close: no canon-evaluator transcript backs evaluator-run-id '$run_id'."
-    echo "Looked in $cfg/projects/*/*/subagents for a canon-evaluator transcript (or a Plan one that shows reference/eval.md), modified from a minute before the run-id to an hour after it, that contains the run-id, this ticket's id and the report's verdict line. A report no real evaluator run wrote — typed by hand, edited after the run, or copied from another ticket — has none."
+    echo "Looked in $cfg/projects/*/*/subagents for a canon-evaluator transcript (or a Plan one that shows reference/eval.md), modified from a minute before the run-id to an hour after it, that contains the run-id, this ticket's id and the report's verdict line. A report no real evaluator run wrote — typed by hand, edited after the run, or copied from another ticket — has none. (Claude Code deletes old subagent transcripts after a while: for a long-finished evaluator run, dispatch the evaluator again.)"
     _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
