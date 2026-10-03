@@ -518,6 +518,17 @@ Opus` default, scoped only to the two close-gate dispatches below.
    (advisory)` or `skipped | <reason>`). One pass; a second only if the first found a medium-or-higher
    defect you fixed.
 
+   **The report must be backed by a real transcript (`t-0231`).** `.claude/subagent-runs.jsonl` cannot prove a dispatch:
+   `subagent-log.sh` writes whatever `--agent-id` it is given, so an agent that hand-writes `eval-report.md` can also log a
+   fake run. Under Claude Code, `sprint complete` therefore also requires the harness's own transcript of the dispatch
+   (`<config>/projects/*/*/subagents/agent-*.jsonl` with a `.meta.json` whose `agentType` is `canon-evaluator`, from any
+   session, modified within an hour of the run-id) to contain the report's `evaluator-run-id`, this ticket's id and the
+   report's verdict line. A hand-written report, a run-id copied from another ticket, a dispatch of another agent type, and
+   a `fail:` hand-flipped to `pass:` are each refused. It fails open, with a `Note:`, where it cannot check: outside Claude
+   Code (Copilot CLI, pi, Codex) or where no subagent transcripts exist under the config root. It guards against a weak
+   model re-creating the report, not against someone who unsets `CLAUDECODE`. If it refuses a report a real evaluator
+   wrote, re-dispatch the evaluator; never edit the report.
+
 4. **Test verification.** Review each item in `acceptance.md ## Test Plan`:
    - **Coverage check, before grading individual items.** Confirm every `acceptance.md ## Criteria`
      item has at least one `## Test Plan` line that actually exercises it — not just restates

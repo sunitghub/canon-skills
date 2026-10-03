@@ -427,8 +427,69 @@ _gate_eval_report_authentic() {
     # non-canon writer) are skipped above. Say so, or the closer sees only the generic line.
     if (( malformed > 0 )); then
       echo "Note: $malformed entr$([[ $malformed -eq 1 ]] && echo y || echo ies) in .claude/subagent-runs.jsonl ha$([[ $malformed -eq 1 ]] && echo s || echo ve) no ISO \"ts\" field (e.g. an integer \"timestamp\") and $([[ $malformed -eq 1 ]] && echo is || echo are) ignored."
-      echo "Log the evaluator with: subagent-log.sh --agent-id $run_id --agent-type evaluator — do not hand-edit the file."
+      echo "After a real evaluator subagent run, log it with subagent-log.sh --agent-type evaluator (it records a run that happened; it does not create one) — do not hand-edit the file."
     fi
+    return 1
+  fi
+}
+
+# _gate_eval_report_transcript <id> <tdir> — t-0231: the report must be backed by the harness's own transcript of a real
+# canon-evaluator dispatch. subagent-runs.jsonl cannot prove one (subagent-log.sh writes whatever --agent-id it is given,
+# with empty session and transcript fields), but Claude Code keeps every subagent's transcript, which an agent cannot write:
+#   <config>/projects/<slug>/<session>/subagents/agent-<id>.jsonl  +  agent-<id>.meta.json ("agentType": "canon-evaluator")
+# The evaluator writes its report in one Bash call and prints its run-id, so the transcript holds the run-id, the ticket id
+# (it works in .tickets/<id>) and the verdict line. Required, in one canon-evaluator transcript from ANY session or project
+# (a sprint resumed in a new session must still verify) modified inside the run-id's window: the run-id, this ticket's id,
+# and the report's verdict-line prefix (a hand-flipped fail: -> pass: no longer appears). It guards against a weak model
+# re-creating the report, not against someone who unsets CLAUDECODE. Fails OPEN, with a Note, where the check cannot be
+# made: not under Claude Code (Copilot, pi, Codex), or a config root with no subagent transcripts ever (layout unrecognised,
+# e.g. a Windows install not yet confirmed). Fails CLOSED once Claude Code and its layout are recognised.
+_gate_eval_report_transcript() {
+  local id="$1" tdir="$2"
+  local report="$tdir/eval-report.md"   # a separate `local`: under bash 3.2 + set -u one word cannot use the previous word's value
+  local cfg="${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"
+  if [[ -z "${CLAUDECODE:-}" ]]; then
+    echo "Note: transcript check skipped (not running under Claude Code): eval-report.md is not verified against a harness transcript here."
+    return 0
+  fi
+  local d recognised=0
+  for d in "$cfg"/projects/*/*/subagents; do
+    [[ -d "$d" ]] && { recognised=1; break; }
+  done
+  if (( ! recognised )); then
+    echo "Note: transcript check skipped (no Claude Code subagent transcripts under $cfg/projects, so the layout is not recognised): eval-report.md is not verified against a harness transcript here."
+    return 0
+  fi
+  local run_id run_epoch run_len now start_min end_min
+  run_id="$(grep -E '^evaluator-run-id:[[:space:]]+\S' "$report" | head -1 | sed 's/^evaluator-run-id:[[:space:]]*//; s/[[:space:]]*$//')"
+  run_epoch="${run_id%%-*}"
+  [[ "$run_epoch" =~ ^[0-9]+$ ]] || return 0   # _gate_eval_report_authentic already blocked a run-id with no timestamp prefix
+  run_len=${#run_epoch}
+  run_epoch=$(( 10#$run_epoch ))
+  (( run_len >= 13 )) && run_epoch=$(( run_epoch / 1000 ))
+  now="$(date +%s)"
+  # window: from a minute before the run-id to an hour after it (find -mmin counts minutes AGO)
+  start_min=$(( (now - run_epoch + 60) / 60 + 1 ))
+  end_min=$(( (now - run_epoch - 3600) / 60 ))
+  local prefix
+  prefix="$(grep -E '^(pass|fail):' "$report" | head -1 | tr -d '\r' | LC_ALL=C sed -E 's/[^ -~].*$//; s/["\\].*$//' | cut -c1-60)"
+  local f meta found=0
+  local -a find_args=("$cfg/projects" -path '*/subagents/agent-*.jsonl' -type f -mmin "-$start_min")
+  (( end_min > 0 )) && find_args+=(! -mmin "-$end_min")
+  while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    meta="${f%.jsonl}.meta.json"
+    [[ -f "$meta" ]] && grep -qE '"agentType"[[:space:]]*:[[:space:]]*"canon-evaluator"' "$meta" || continue
+    grep -qF -e "$run_id" "$f" || continue
+    grep -qF -e "$id" "$f" || continue
+    grep -qF -e "$prefix" "$f" || continue
+    found=1
+    break
+  done < <(find "${find_args[@]}" 2>/dev/null)
+  if (( ! found )); then
+    echo "Sprint $id cannot close: no canon-evaluator transcript backs evaluator-run-id '$run_id'."
+    echo "Looked in $cfg/projects/*/*/subagents for a canon-evaluator transcript, modified within an hour of the run-id, that contains the run-id, this ticket's id and the report's verdict line. A report no real evaluator run wrote — typed by hand, edited after the run, or copied from another ticket — has none."
+    _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
 }
@@ -452,6 +513,7 @@ _gate_eval_report_verdict() {
     fi
     echo "Sprint $id cannot close: eval-report.md verdict is not pass."
     grep -E '^(pass|fail):' "$report" | head -1 || echo "(no verdict line found)"
+    _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
 }
@@ -480,6 +542,7 @@ _gate_eval_report_consistency() {
     echo "Sprint $id cannot close: eval-report.md verdict is 'pass:' but a status row is graded 'not-run' or 'partial'."
     echo "Per eval.md's verdict rule, any not-run (a check that could not execute) or partial forces the verdict to 'fail:' — a pass cannot stand while a check's result is unknown or incomplete."
     grep -nE '\|[[:space:]]*(not-run|partial)[[:space:]]*\|' "$report" | head -3
+    _gate_dispatch_notice evaluator eval-report.md
     return 1
   fi
 }
@@ -495,6 +558,7 @@ _gate_eval_report() {
   fi
   _gate_eval_report_exists      "$id" "$tdir" || return 1
   _gate_eval_report_authentic   "$id" "$tdir" || return 1
+  _gate_eval_report_transcript  "$id" "$tdir" || return 1
   _gate_eval_report_verdict     "$id" "$tdir" || return 1
   _gate_eval_report_consistency "$id" "$tdir" || return 1
   _gate_eval_report_model       "$id" "$tdir" || return 1

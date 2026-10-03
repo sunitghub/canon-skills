@@ -8,6 +8,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 assert_gate_notice() { # <output> <file> <evaluator|reviewer>
   assert_contains "$1" "Never create or edit $2 yourself"
   assert_contains "$1" "subagent_type \"canon-$3\""
+  # t-0231: the step number is part of the notice (3 = evaluator, 2 = reviewer), so a wrong pointer is a test failure
+  assert_contains "$1" "complete.md step $([[ "$3" == reviewer ]] && echo 2 || echo 3))"
 }
 # ...and the skill says it once up front, where a model that never opens complete.md still reads it.
 grep -q 'Gate reports are never hand-written' "$ROOT/skills/sprint/SKILL.md" || fail "skills/sprint/SKILL.md must say gate reports are never hand-written"
@@ -405,6 +407,7 @@ fail: criterion 1 not met
 EOF
 fail_eval_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$fail_eval_output" "eval-report.md verdict is not pass"
+assert_gate_notice "$fail_eval_output" eval-report.md evaluator   # t-0231: the message that invites flipping fail: to pass: by hand
 
 # eval-report.md missing evaluator-run-id should block
 cat > ".tickets/$id/eval-report.md" <<'EOF'
@@ -470,7 +473,11 @@ EOF
 int_ts_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$int_ts_output" "no matching subagent entry"
 assert_contains "$int_ts_output" "1 entry in .claude/subagent-runs.jsonl has no ISO"
-assert_contains "$int_ts_output" "subagent-log.sh --agent-id 1000000000-99999 --agent-type evaluator"
+# t-0231: this line used to read "Log the evaluator with: subagent-log.sh --agent-id <the report's run-id>", which on its own invites
+# logging a fake run to satisfy the window match. It now says the log records a run that happened, and no longer hands over a ready-made command.
+assert_contains "$int_ts_output" "it records a run that happened"
+[[ "$int_ts_output" != *"Log the evaluator with"* ]] || fail "the malformed-entry note must not hand over a ready-made subagent-log.sh command"
+[[ "$int_ts_output" != *"--agent-id 1000000000-99999"* ]] || fail "the malformed-entry note must not echo the report's run-id into a subagent-log.sh command"
 assert_contains "$int_ts_output" "do not hand-edit"
 
 # t-c94f: untrusted log input never crashes or matches — empty, garbage, CRLF, a 100 KB line, and a
@@ -769,6 +776,7 @@ fail: one criterion partial
 EOF
 no_override_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$no_override_output" "eval-report.md verdict is not pass"
+assert_gate_notice "$no_override_output" eval-report.md evaluator
 
 # eval_override: true, acceptance.md has a dated waiver → allowed (coarse check)
 # ticket.md already has "eval_override: false" seeded by tkt create — replace it,
@@ -1121,6 +1129,7 @@ pass: all criteria met
 EOF
 notrun_verdict_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$notrun_verdict_output" "verdict is 'pass:' but a status row is graded 'not-run' or 'partial'"
+assert_gate_notice "$notrun_verdict_output" eval-report.md evaluator   # t-0231: invites editing the rows or the verdict
 
 # T2: pass: verdict + a `partial` status row → blocked
 cat > ".tickets/$consist_id/eval-report.md" <<'EOF'
@@ -1136,6 +1145,7 @@ pass: all criteria met
 EOF
 partial_verdict_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$partial_verdict_output" "verdict is 'pass:' but a status row is graded 'not-run' or 'partial'"
+assert_gate_notice "$partial_verdict_output" eval-report.md evaluator
 
 # T7: CRLF eval-report (Windows Git Bash) with pass: + not-run → still blocked
 printf '# Eval Report\r\nevaluator-run-id: 1000000000-consist3\r\nModel: test-model\r\n## Test Plan\r\n| Item | Status | Notes |\r\n|---|---|---|\r\n| run the suite | not-run | interpreter missing |\r\n## Verdict\r\npass: all criteria met\r\n' > ".tickets/$consist_id/eval-report.md"
@@ -1250,3 +1260,79 @@ sp_project="$(make_project)"
 )
 
 rm -rf "$sp_project" "$sp_project-worktrees"
+
+# ── t-0231: eval-report.md must be backed by a real canon-evaluator transcript ──────────────────────────────
+# Claude Code keeps every subagent's transcript (agent-<id>.jsonl) and meta (agent-<id>.meta.json) under
+# <config>/projects/<slug>/<session>/subagents/. An agent cannot write those, so a hand-written report, however well formed
+# and however it was logged, has nothing behind it. Fixture config root; CLAUDECODE=1 turns the check on.
+tx_project="$(make_project)"
+tx_cfg="$(mktemp -d)"
+(
+  cd "$tx_project"
+  mkdir -p .claude
+  export CLAUDECODE=1 CLAUDE_CONFIG_DIR="$tx_cfg"
+  now="$(date +%s)"
+  stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  gate_ticket() { # starts a sprint with every doc valid except the report; sets gid
+    local out; out="$("$SPRINT" start "transcript gate $1")"
+    gid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+    printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$gid/plan.md"
+    printf '# Acceptance\n## Criteria\n- [x] item\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > ".tickets/$gid/acceptance.md"
+    printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > ".tickets/$gid/summary.md"
+    printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$stamp" > .claude/subagent-runs.jsonl
+  }
+  report() { # <run-id> <verdict line>
+    printf '# Eval Report\nevaluator-run-id: %s\nModel: test-model\n## Verdict\n%s\n' "$1" "$2" > ".tickets/$gid/eval-report.md"
+  }
+  transcript() { # <name> <agentType> <text...>: a harness transcript + meta
+    local d="$tx_cfg/projects/-proj/sess1/subagents"; mkdir -p "$d"
+    printf '{"agentType": "%s", "description": "t"}\n' "$2" > "$d/agent-$1.meta.json"
+    printf '%s\n' "${@:3}" > "$d/agent-$1.jsonl"
+  }
+  rid="$now-4242"
+
+  gate_ticket blocked
+  # (a) Claude Code is recognised (a subagents dir exists) and a genuine transcript exists, but the report's run-id was made up.
+  transcript real canon-evaluator "evaluator-run-id: $now-9999" "$gid" "pass: all criteria met"
+  report "$rid" "pass: all criteria met"
+  out="$(run_fail "$SPRINT" complete)"
+  assert_contains "$out" "no canon-evaluator transcript"
+  assert_contains "$out" "$rid"
+  assert_gate_notice "$out" eval-report.md evaluator
+  # (b) the run-id is real but belongs to another ticket's run: the ticket id is not in the transcript.
+  transcript real canon-evaluator "evaluator-run-id: $rid" "t-zzzz" "pass: all criteria met"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+  # (c) the right text, but the dispatch was not a canon-evaluator.
+  transcript real canon-reviewer "evaluator-run-id: $rid" "$gid" "pass: all criteria met"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+  transcript real general-purpose "evaluator-run-id: $rid" "$gid" "pass: all criteria met"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+  # (d) a genuine run said fail:, and the report was hand-flipped to pass:.
+  transcript real canon-evaluator "evaluator-run-id: $rid" "$gid" "fail: criterion 2 not met"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+  # (e) the transcript is too old for the run-id (3 hours before it).
+  transcript real canon-evaluator "evaluator-run-id: $rid" "$gid" "pass: all criteria met"
+  touch -t "$(date -v-3H +%Y%m%d%H%M.%S 2>/dev/null || date -d '3 hours ago' +%Y%m%d%H%M.%S)" "$tx_cfg/projects/-proj/sess1/subagents/agent-real.jsonl"
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+  # (f) Claude Code is recognised but no evaluator transcript exists at all.
+  rm -f "$tx_cfg"/projects/-proj/sess1/subagents/agent-*
+  out="$(run_fail "$SPRINT" complete)"; assert_contains "$out" "no canon-evaluator transcript"
+
+  # (g) a genuine dispatch: the transcript carries the run-id, the ticket id and the verdict -> the close goes through
+  transcript real canon-evaluator "evaluator-run-id: $rid" "cd .tickets/$gid" "pass: all criteria met"
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+  # ...even in a later session: transcripts of every session in the window count
+  gate_ticket resumed
+  rid2="$now-5151"; report "$rid2" "pass: all criteria met"
+  mkdir -p "$tx_cfg/projects/-other/sess9/subagents"
+  printf '{"agentType": "canon-evaluator"}\n' > "$tx_cfg/projects/-other/sess9/subagents/agent-old.meta.json"
+  printf 'evaluator-run-id: %s\n%s\npass: all criteria met\n' "$rid2" "$gid" > "$tx_cfg/projects/-other/sess9/subagents/agent-old.jsonl"
+  assert_contains "$("$SPRINT" complete 2>&1)" "Sprint completed"
+
+  # (h) fail open: not Claude Code (no CLAUDECODE), or Claude Code with a layout never seen (no subagents dir anywhere).
+  gate_ticket noclaude; report "$now-1111" "pass: all criteria met"
+  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "transcript check skipped"
+  gate_ticket nolayout; report "$now-2222" "pass: all criteria met"
+  assert_contains "$(CLAUDE_CONFIG_DIR="$(mktemp -d)" "$SPRINT" complete 2>&1)" "transcript check skipped"
+)
+rm -rf "$tx_project" "$tx_cfg"
