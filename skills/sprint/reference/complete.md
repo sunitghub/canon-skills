@@ -525,7 +525,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    after it) to contain the report's `evaluator-run-id`, this ticket's id and every `pass:`/`fail:` line of the report (a `fail:` line under 8 characters is skipped). The transcript's
    `.meta.json` must name a `canon-evaluator`, or `Plan` (the fallback above) whose transcript shows `reference/eval.md`.
    A hand-written report, a run-id copied from another ticket, a dispatch of another agent type, a `fail:` hand-flipped to
-   `pass:` (or a `pass:` line added under a real `fail:`), and a `pass:` line too short to verify (bare `pass:`, or one whose first 8 characters are not plain ASCII, e.g. `pass: ✓`) are each refused. It fails open, with a `Note:`, where it
+   `pass:` (or a `pass:` line added under a real `fail:`), and a `pass:` line too short to verify (bare `pass:`, or one whose first 8 characters are not plain ASCII or contain a quote or backslash, e.g. `pass: ✓` or `pass: "all" met`) are each refused. It fails open, with a `Note:`, where it
    cannot check: outside Claude Code (Copilot CLI, pi, Codex) or where no subagent transcripts exist under the config root.
    It guards against a weak model re-creating the report, not against someone who unsets `CLAUDECODE`. If it refuses a
    report a real evaluator wrote (for instance one so old that Claude Code has since deleted the harness's transcripts),
