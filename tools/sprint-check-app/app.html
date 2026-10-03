@@ -2380,7 +2380,6 @@
         <div class="create-pills">
           <button class="create-pill" id="c-ci" type="button" title="Mark ticket CI-eligible for headless grading">CI</button>
           <button class="create-pill" id="c-gate-eval" type="button" title="Eval-only headless gate: the run button uses sprint-headless-eval (evaluator only) instead of the full pipeline. Requires CI.">Eval-only</button>
-          <button class="create-pill" id="c-eval-override" type="button" title="Allow closing even if evaluator reports partial/fail">Eval Override</button>
           <button class="create-pill" id="c-demo" type="button" title="Demo/Docs/UX light-close: for live demos AND docs/research/UX-mockup (.md/.pen) work — sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.">Demo/UX</button>
         </div>
       </div>
@@ -7871,7 +7870,6 @@ async function uploadVisual(ticketId, filename, base64) {
   let selectedType = 'task';
   let selectedPri  = 2;
   let ciEnabled = false;
-  let evalOverride = false;
   let gateEval = false;
   let demoEnabled = false;
   let templateUntouched = true;
@@ -7890,7 +7888,6 @@ async function uploadVisual(ticketId, filename, base64) {
   });
 
   const ciBtn = document.getElementById('c-ci');
-  const evalBtn = document.getElementById('c-eval-override');
   const gateBtn = document.getElementById('c-gate-eval');
   const demoBtn = document.getElementById('c-demo');
 
@@ -7903,7 +7900,6 @@ async function uploadVisual(ticketId, filename, base64) {
 
   ciBtn.addEventListener('click', () => { ciEnabled = !ciEnabled; ciBtn.classList.toggle('active', ciEnabled); syncGate(); });
   gateBtn.addEventListener('click', () => { if (!ciEnabled) return; gateEval = !gateEval; gateBtn.classList.toggle('active', gateEval); });
-  evalBtn.addEventListener('click', () => { evalOverride = !evalOverride; evalBtn.classList.toggle('active', evalOverride); });
   // Demo is independent of CI (no gate coupling).
   demoBtn.addEventListener('click', () => { demoEnabled = !demoEnabled; demoBtn.classList.toggle('active', demoEnabled); });
 
@@ -7974,9 +7970,9 @@ async function uploadVisual(ticketId, filename, base64) {
 
   function open() {
     selectedType = 'task'; selectedPri = 2; templateUntouched = true;
-    ciEnabled = false; evalOverride = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
+    ciEnabled = false; gateEval = false; demoEnabled = false; stagedVisuals = [];
     wtMode = 'main'; wtNewValue = ''; wtNewTouched = false;
-    ciBtn.classList.remove('active'); evalBtn.classList.remove('active');
+    ciBtn.classList.remove('active');
     gateBtn.classList.remove('active'); demoBtn.classList.remove('active'); syncGate();
     refreshWorktreeRow();
     titleEl.value = ''; detectEl.textContent = '';
@@ -8056,7 +8052,7 @@ async function uploadVisual(ticketId, filename, base64) {
     titleEl.style.borderColor = '';
     document.getElementById('c-submit').disabled = true;
     try {
-      const created = await postWrite('/api/tickets', { title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, eval_override: evalOverride, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, worktree_preference: worktreePreferenceValue() }, 'create the ticket');
+      const created = await postWrite('/api/tickets', { title, type: selectedType, status: 'open', priority: selectedPri, body: bodyEl.value, ci: ciEnabled, gate: gateEval ? 'eval' : 'full', demo: demoEnabled, worktree_preference: worktreePreferenceValue() }, 'create the ticket');
       if (!created.ok) { document.getElementById('c-submit').disabled = false; return; }
       const ticket = created.data;
 
