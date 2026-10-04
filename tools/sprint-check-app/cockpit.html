@@ -1501,6 +1501,7 @@ function canonPrefixKeys(emit) {
     try{ if(f) f.focus(); else window.focus(); }catch(e){}
   }
   function prefixAction(key){
+    if(key===canonPrefixLabel().slice(5)){ toggleKeysSheet(true); return; }   // the prefix twice opens the sheet, even if it is rebound to a key below
     const all=['projects'].concat(openTabs.map(t=>t.id));
     if(/^[1-9]$/.test(key)){ const t=openTabs[+key-1]; if(t) goTab(t.id); return; }
     if(key==='n'||key==='b'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
@@ -1526,7 +1527,7 @@ function canonPrefixKeys(emit) {
       if(!isProjectTab(activeTab)||!other||other===activeTab||!isProjectTab(other)){ toast('No '+(next?'next':'previous')+' project tab to open '+(beside?'beside':'below')); return; }
       openSplit(activeTab,other,beside?'h':'v'); return;
     }
-    if(key==='u'){ closeSplit(); return; }
+    if(key==='u'){ if(!split){ toast('No split to close'); return; } closeSplit(); return; }
     if(key==='o'||key==='s'||key==='r'){   // t-416c: act on the split that is on screen
       if(!splitShown()){ toast('No split on screen'); return; }
       if(key==='o'){ goTab(activeTab===split.a?split.b:split.a); return; }
@@ -1534,7 +1535,7 @@ function canonPrefixKeys(emit) {
       else split.dir=split.dir==='v'?'h':'v';
       saveSplit(); applySplit(); renderTabs(); return;
     }
-    if(key==='?'||key===canonPrefixLabel().slice(5)) toggleKeysSheet(true);   // the prefix pressed twice opens the sheet too
+    if(key==='?') toggleKeysSheet(true);
   }
   const shellKeys=canonPrefixKeys((type,key)=>{
     if(type==='armed'){ showKeyHint(true); return; }
@@ -2611,8 +2612,10 @@ function canonPrefixKeys(emit) {
       const b=document.createElement('button'); b.type='button'; b.setAttribute('role','menuitem'); b.textContent=label; b.disabled=!!disabled;
       b.addEventListener('click',()=>{ closeTabMenu(); fn(); }); tabMenu.appendChild(b);
     };
-    add('Open beside the active tab',()=>openSplit(activeTab,tid,'h'),!canPair);
-    add('Open below the active tab',()=>openSplit(activeTab,tid,'v'),!canPair);
+    const paired=!!split&&(split.a===tid||split.b===tid);   // already in the split: nothing is added, the direction changes and that pane takes focus
+    const open=dir=>{ if(openSplit(activeTab,tid,dir)&&paired) goTab(tid); };
+    add('Open beside the active tab',()=>open('h'),!canPair);
+    add('Open below the active tab',()=>open('v'),!canPair);
     if(split) add('Close split',closeSplit);
     tabMenu.hidden=false;
     tabMenu.style.left=Math.max(4,Math.min(x,window.innerWidth-tabMenu.offsetWidth-4))+'px';

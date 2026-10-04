@@ -3703,6 +3703,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => showView('admin'));                                  // Admin suspends it too
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await page.evaluate(() => activateTab('proj-a'));
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      await page.evaluate(() => showView('upkeep'));                                 // ... and so does Upkeep
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
+      await page.evaluate(() => activateTab('proj-a'));
       for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // no iframe was reloaded or replaced
       await expect(page.locator('#split-close')).toBeVisible();
       await page.locator('#split-close').click();                                    // one click back to the normal layout
@@ -3716,6 +3721,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     test('split view (t-416c): the divider drags, clamps, answers the keyboard and resets on a double click', async ({ page }) => {
+      await page.setViewportSize({ width: 1300, height: 800 });
       await openShell(page, []);
       await splitTabs(page);
       for (const id of ['proj-a', 'proj-x']) await page.frameLocator(`#view-${id} iframe`).locator('body').evaluate((_, id) => { window.__marker = id; }, id);
@@ -3755,6 +3761,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const top = (await bbox(page, '#view-proj-a iframe')).height;
       expect(top).toBeGreaterThanOrEqual(219); expect(top).toBeLessThanOrEqual(223);
       for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // dragging, keys and switching beside/below reloaded nothing
+      await page.evaluate(() => activateTab('proj-a'));
+      await splitVia(page, 'proj-x', 'beside');                                      // the minimum also holds when the WINDOW shrinks
+      const v3 = await bbox(page, '#views'), h3 = await bbox(page, '#split-handle');
+      await page.mouse.move(h3.x + 3, h3.y + 40); await page.mouse.down(); await page.mouse.move(v3.x + v3.width * 0.3, h3.y + 40, { steps: 8 }); await page.mouse.up();
+      expect((await bbox(page, '#view-proj-a iframe')).width).toBeLessThan(v3.width * 0.31);
+      await page.setViewportSize({ width: 900, height: 800 });                       // the views area is about 670 px: 30% would be 200
+      await expect.poll(async () => (await bbox(page, '#view-proj-a iframe')).width).toBeGreaterThanOrEqual(279);
+      expect((await bbox(page, '#view-proj-x iframe')).width).toBeGreaterThanOrEqual(279);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -3769,6 +3783,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(await page.evaluate(() => split)).toBeNull();
       await splitVia(page, 'proj-x', 'beside');
       expect(await page.evaluate(() => document.querySelectorAll('#views iframe').length)).toBe(2);
+      await splitVia(page, 'proj-x', 'below');                                       // already in the split: nothing added, direction flips, that pane takes focus
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      expect(await page.evaluate(() => document.querySelectorAll('#views iframe').length)).toBe(2);
+      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-a', 'proj-x']);
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      expect(await page.evaluate(() => document.activeElement.closest('.view').id)).toBe('view-proj-x');
+      await page.evaluate(() => activateTab('proj-a'));
       await page.evaluate(() => { openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-y'); });
       expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-y', 'proj-x']);   // proj-y took the focused pane
       await expect(page.locator('#view-proj-a')).toBeHidden();
@@ -3827,11 +3848,19 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#views')).toHaveClass(/split-h/);
       expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-a', 'proj-x']);
       await pressPrefix(page, 'u');
+      await pressPrefix(page, 'u');                                                  // nothing left to close: it says so
+      await expect(page.locator('#toast')).toContainText('No split to close');
       await page.evaluate(() => activateTab('proj-y'));
       await pressPrefix(page, '_');                                                  // from the last tab it wraps to the first
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-y', 'proj-a']);
       await pressPrefix(page, 'u');
+      await page.evaluate(() => { closeTab('proj-y'); closeTab('proj-x'); activateTab('proj-a'); });   // one project tab left: no next tab to take
+      await pressPrefix(page, 'V');
+      await expect(page.locator('#toast')).toContainText('No next project tab to open beside');
+      await pressPrefix(page, '_');
+      await expect(page.locator('#toast')).toContainText('No next project tab to open below');
+      expect(await page.evaluate(() => split)).toBeNull();
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -3887,6 +3916,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     });
 
     test('keyboard sheet (t-416c): the keys are grouped into Tabs, Split view, and Sessions and search, in two columns', async ({ page }) => {
+      await page.setViewportSize({ width: 1300, height: 800 });
       await openShell(page, []);
       await pressPrefix(page, '?');
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
@@ -3913,6 +3943,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, '.');                                                  // ... or ctrl+. , release, then .
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
       await page.keyboard.press('Escape');
+      await splitTabs(page);                                                         // a rebound prefix of ctrl+- : twice must open the sheet, not split below
+      await page.evaluate(() => { activateTab('proj-x'); activateTab('proj-a'); localStorage.setItem('canon-prefix', 'ctrl+-'); });
+      await boardsKeyReady(page, ['proj-a', 'proj-x']);
+      await page.keyboard.press('Control+-'); await page.keyboard.press('Control+-');
+      await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
+      expect(await page.evaluate(() => split)).toBeNull();
+      await page.keyboard.press('Escape');
+      await page.evaluate(() => localStorage.removeItem('canon-prefix'));
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
