@@ -4,8 +4,8 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.8
-updated: 2026-09-23
+version: 1.0.9
+updated: 2026-10-04
 ---
 
 # Agent Standards
@@ -17,6 +17,7 @@ updated: 2026-09-23
 - No feature flags or backwards-compat shims — change the code directly.
 - Match the surrounding code's comment density, naming, and idiom — add a comment only where the WHY isn't clear from the code.
 - Don't reformat, rename, or add type hints to adjacent code — fix only what was asked.
+- Inserting a block mid-file: check you aren't landing between an existing comment and the code it describes.
 - Out-of-scope issues found while working: `NOTICED: <what>` — don't fix silently.
 - Never introduce OWASP Top 10 vulnerabilities or commit secrets, credentials, or `.env` files.
 - No new dependencies for problems existing tools solve.
@@ -67,7 +68,9 @@ Act on these when you see them — don't wait to be told.
 - A test asserts against a re-implementation of the logic under test → call the production function instead. A locally rebuilt sort key or a hand-copied constant list passes while the real thing is broken.
 - A guard exercised only against inputs it already handles is unverified → feed it the cases it must *reject*.
 - Writing a parser for an existing artifact family (reports, tickets, logs) → count the shapes across all real instances and read the producer's own template first; run it on a real instance, not only fixtures shaped like the parser.
-- New security/validation/race guard → ship a test that fails when the guard is reverted, and run the revert. Two causes for one symptom → prove each fix necessary by reverting it alone, plus one end-to-end test through the real client path.
+- New security/validation/race guard → ship a test that fails when the guard is reverted, and run the revert. Two causes for one symptom → prove each fix necessary by reverting it alone, plus one end-to-end test through the real client path. A revert counts only if the mutant ran and failed on its own assertion; redundant layers mask a lone revert, so test each layer separately. Run reverts only in a scratch copy, never on tracked files.
+- A green run where something didn't run proves nothing → treat "command not found", a silent skip, an early exit hidden behind a `grep` filter, or a test file missing from the entrypoint as a failure.
+- Git config leaks into tests → pin `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM` and `XDG_CONFIG_HOME`. Worktrees share one hooks directory, so a hook finds its checkout with `git rev-parse --show-toplevel`, never from its own path. Ignore a symlink without a trailing slash (`/x/` matches directories only).
 - A hostile-input test must match the sink's context: escaped text in `title="…"` needs a quote-breakout payload (`a"onmouseover="x`), not just `<img onerror>`.
 - Widening what a security check allows → re-validate the new value at the point of use; never lean on an earlier check you haven't read, especially for files an agent can write (`.tickets/`).
 - A guard that fails closed then falls through → check what the fall-through *writes*: a transient error (git, network) must not overwrite the state the guard protects. Pin it with a file-content assertion.
@@ -81,7 +84,7 @@ Act on these when you see them — don't wait to be told.
 
 - Most token spend is re-reading history, not generating output — verbose replies compound across every future turn. Keep it tight.
 - Before planning: catalog existing files, patterns, and prior implementations. Name what's reusable before writing new code.
-- Read a file before editing it. Grep for callers before modifying a function.
+- Read a file before editing it. Grep for callers before modifying a function — and for every reader, sibling, test and fixture when a change moves a field's owner, adds a derived value, removes a control, or fixes one of two parallel helpers.
 - Reference exact file paths and line numbers — don't re-read files already in context.
 - Skip `node_modules`, `.git`, `dist`, `build`, `__pycache__`, `.next` unless asked.
 - Use targeted bash commands — avoid ones that dump large output for a narrow query.
