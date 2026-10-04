@@ -3449,6 +3449,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => shellTab(page)).toBe('proj-x');
       await pressPrefix(page, 'n');                       // wraps through the pinned Projects tab
       await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, 'f'); await expect.poll(() => shellTab(page)).toBe('proj-a');   // first project tab
+      await pressPrefix(page, 'l'); await expect.poll(() => shellTab(page)).toBe('proj-x');   // last project tab
+      await pressPrefix(page, 'h'); await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, 'z');                       // unbound
       await pressPrefix(page, '9');                       // no ninth tab
       await page.keyboard.press('Control+.'); await page.keyboard.press('Escape');
@@ -3509,6 +3512,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, '2');
       await expect.poll(() => shellTab(page)).toBe('proj-x');
       await page.evaluate(() => goTab('proj-a'));
+      await pressPrefix(page, 'e');                       // no live session in this board: nothing opens
+      await page.waitForTimeout(200);
+      await expect(frame.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       await pressPrefix(page, '/');
       await expect(frame.locator('#board-search')).toBeFocused();
       await pressPrefix(page, 'h');                       // focus is in a field now: the prefix is ignored there, by design
@@ -3566,6 +3572,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await btn.click();
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
       await expect(page.locator('#keys-prefix')).toHaveText('ctrl+.');
+      // the End Session row is drawn in the danger colour, and only that row
+      const colours = await page.evaluate(() => [...document.querySelectorAll('#keys-sheet .keys-table tr')].map(tr => ({ key: tr.querySelector('kbd').textContent, kbd: getComputedStyle(tr.querySelector('kbd')).color, text: getComputedStyle(tr.children[1]).color })));
+      const danger = colours.find(c => c.key === 'e'), others = colours.filter(c => c.key !== 'e');
+      expect(danger).toBeTruthy();
+      for (const o of others) { expect(o.text).not.toBe(danger.text); expect(o.kbd).not.toBe(danger.kbd); }
+      const [r, g, b] = danger.text.match(/\d+/g).map(Number);
+      expect(r, 'the danger row reads red: ' + danger.text).toBeGreaterThan(Math.max(g, b) + 40);
       await page.keyboard.press('Escape');
       await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
       await page.evaluate(() => setSideWidth(200, false));   // the narrowest the divider allows
@@ -3585,6 +3598,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
         <button id="arm" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-armed',key:''},'*')">arm</button>
         <button id="home" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'h'},'*')">home</button>
         <button id="long" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'hhh'},'*')">long</button>
+        <button id="end" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'e'},'*')">end</button>
+        <script>window.__got=[]; addEventListener('message',function(e){ var d=e.data; if(!d||d.source!=='canon-cockpit') return; __got.push(d.type);
+          if(d.type==='changes-request') parent.postMessage({source:'canon-cockpit',type:'changes',total:2,commits:0,can_discard:false,files:[{status:'M',path:'HANDOFF.md'},{status:'??',path:'.tickets/t-p7az/cockpit-sessions.md'}]},'*'); });</script>
         <script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*')</script></body></html>`;
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: relayPage }));
       await openShell(page, []);
@@ -3607,6 +3623,21 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await term.locator('#long').click();                  // a key longer than two characters is never an action
       await page.waitForTimeout(200);
       expect(await shellTab(page)).toBe('proj-a');
+      // prefix then e on a LIVE session only opens the board's own confirmation; nothing is ended
+      await board.locator('body').evaluate(() => window.postMessage({ source: 'canon-cockpit-shell', type: 'end-session-request' }, location.origin));
+      await page.waitForTimeout(200);
+      await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);   // a forged request (not from the shell) is ignored
+      await term.locator('#end').click();
+      await expect(board.locator('#ck-leave-confirm')).toHaveClass(/open/);
+      // the same dialog the End Session button brings up: a scratch session lists what ending would leave behind
+      await expect(board.locator('#ck-leave-confirm-title')).toHaveText('This session has 2 changed files');
+      await expect(board.locator('#ck-leave-confirm-body')).toContainText('Discard isn\u2019t offered');
+      await expect(board.locator('.ck-leave-files li')).toHaveText(['M HANDOFF.md', '?? .tickets/t-p7az/cockpit-sessions.md']);
+      await expect(board.locator('#ck-leave-save')).toHaveText('Save as ticket, then end');
+      await expect(board.locator('#ck-leave-skip')).toHaveText('Keep changes, end');
+      expect(await term.locator('body').evaluate(() => window.__got.join(','))).not.toMatch(/end|kill/);   // the terminal frame was never told to end
+      await board.locator('#ck-leave-cancel').click();
+      await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       await term.locator('#home').click();
       await expect.poll(() => shellTab(page)).toBe('projects');
       await page.unrouteAll({ behavior: 'ignoreErrors' });

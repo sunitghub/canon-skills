@@ -6127,6 +6127,10 @@ window.addEventListener('message', (e) => {
     if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
     return;
   }
+  if (d.type === 'end-session-request') {                // t-a198: prefix then e. Opens the existing confirmation for a LIVE session; never ends anything itself
+    if (cockpitState && !cockpitState._ending && sessionIsLive()) openLeaveConfirm();
+    return;
+  }
   if (d.type === 'focus-search') {                       // t-a198: prefix then /
     const s = document.getElementById('board-search');
     if (s) { s.focus(); s.select(); }

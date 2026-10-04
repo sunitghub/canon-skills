@@ -511,6 +511,8 @@
   .keys-table{width:100%;border-collapse:collapse;font-size:13px}
   .keys-table td{padding:4px 0;border-top:1px solid var(--border-muted);color:var(--text-body)}
   .keys-table td:first-child{white-space:nowrap;padding-right:16px}
+  .keys-table tr.keys-danger td{color:var(--col-discarded)}
+  .keys-table tr.keys-danger kbd{color:var(--col-discarded);border-color:var(--col-discarded)}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;display:none}
   .toast.show{display:block}
   /* Help/tour overlay (t-c5e7) — slide-in from the right */
@@ -732,6 +734,8 @@
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump to the nth project tab</td></tr>
       <tr><td><kbd>n</kbd> / <kbd>p</kbd></td><td>Next / previous tab</td></tr>
       <tr><td><kbd>h</kbd></td><td>Projects</td></tr>
+      <tr><td><kbd>f</kbd> / <kbd>l</kbd></td><td>First / last project tab</td></tr>
+      <tr class="keys-danger"><td><kbd>e</kbd></td><td>End this tab's agent session (asks first)</td></tr>
       <tr><td><kbd>x</kbd></td><td>Close this tab (a live session still asks first)</td></tr>
       <tr><td><kbd>/</kbd></td><td>Search tickets in this project</td></tr>
       <tr><td><kbd>?</kbd></td><td>This sheet</td></tr>
@@ -1447,6 +1451,13 @@ function canonPrefixKeys(emit) {
     if(/^[1-9]$/.test(key)){ const t=openTabs[+key-1]; if(t) goTab(t.id); return; }
     if(key==='n'||key==='p'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
     if(key==='h'){ goTab('projects'); return; }
+    if(key==='f'||key==='l'){ if(openTabs.length) goTab(openTabs[key==='f'?0:openTabs.length-1].id); return; }   // first / last project tab
+    if(key==='e'){
+      // Only asks the active board to open its own end-session confirmation; ending is never done from here.
+      const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
+      if(f){ try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'end-session-request'},location.origin); }catch(e){} }
+      return;
+    }
     if(key==='x'){ if(activeTab!=='projects') closeTab(activeTab); return; }
     if(key==='/'){
       const f=document.querySelector('#view-'+activeTab+' iframe');
