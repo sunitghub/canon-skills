@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # run-board-spec — t-4469: run the full board Playwright spec (tests/sprint-check-app.spec.js) the one reproducible way.
 #
-#   tests/run-board-spec.sh [--runs N] [--browsers chromium,webkit] [--out DIR] [--grep PATTERN] [--no-guard] [--keep]
+#   tests/run-board-spec.sh [--runs N] [--browsers chromium,webkit] [--out DIR] [--grep PATTERN] [--strict] [--no-guard] [--keep]
 #
 # Why a copy: the spec writes and deletes tickets under its project root, so it must never run against canon's own
 # tree. Why not an empty repo: several tests expect a populated board, and the timing differs from real use (an empty
@@ -12,13 +12,14 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
-RUNS=3; BROWSERS="chromium,webkit"; OUT=""; GREP=""; GUARD=1; KEEP=0
+RUNS=3; BROWSERS="chromium,webkit"; OUT=""; GREP=""; STRICT=""; GUARD=1; KEEP=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --runs) RUNS="$2"; shift 2 ;;
     --browsers) BROWSERS="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
     --grep) GREP="$2"; shift 2 ;;
+    --strict) STRICT="--strict"; shift ;;
     --no-guard) GUARD=0; shift ;;
     --keep) KEEP=1; shift ;;
     -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
@@ -103,7 +104,7 @@ if [ -n "$LEFT" ]; then echo "run-board-spec: processes from the copy are still 
 if [ "$BEFORE" != "$AFTER" ]; then echo "run-board-spec: canon's own tree CHANGED during the run (before/after above)" >&2; status=2; else echo "run-board-spec: canon's own tree is unchanged"; fi
 
 if [ "$GUARD" = 1 ]; then
-  node "$ROOT/tests/board-spec-guard.js" ${GREP:+--partial} "$OUT"/board-spec-*-run*.json || status=$?
+  node "$ROOT/tests/board-spec-guard.js" ${GREP:+--partial} ${STRICT} "$OUT"/board-spec-*-run*.json || status=$?
 else
   echo "run-board-spec: guard skipped (--no-guard); reports are in $OUT"
 fi

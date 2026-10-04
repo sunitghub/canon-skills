@@ -3,8 +3,10 @@
 // named board-spec-<browser>-run<N>.json), classifies each test per browser as passing, flaky (failed in some runs) or
 // failing (failed in every run), and checks the result against tests/board-spec-baseline.json and the QUARANTINE markers
 // in the spec. Exit 1 on any violation. Usage:
-//   node tests/board-spec-guard.js [--baseline FILE] [--spec FILE] [--partial] REPORT.json...
-// --partial: the reports come from a filtered run (--grep), so a baseline entry for a test that is not in them is not stale.
+//   node tests/board-spec-guard.js [--baseline FILE] [--spec FILE] [--partial] [--strict] REPORT.json...
+// --partial: the reports come from a filtered run (--grep), so a baseline entry for a test that is not in them is not stale and the
+//   minimum test count is not checked.
+// --strict: warnings fail too (a listed flaky test that failed every run, a quarantined test that healed).
 const fs = require('fs');
 const path = require('path');
 
@@ -35,11 +37,15 @@ function evaluate({ reports, baseline, specText, partial }) {
   for (const b of browsers) {
     const runs = reports.filter((r) => r.browser === b);
     const titles = new Set(); runs.forEach((r) => Object.keys(r.tests).forEach((t) => titles.add(t)));
-    const c = { failing: [], flaky: [], skipped: [], passing: 0, total: titles.size, runs: runs.length };
+    const c = { failing: [], flaky: [], skipped: [], missing: [], passing: 0, total: titles.size, runs: runs.length };
     for (const t of titles) {
       known.add(t);
       const failed = runs.filter((r) => isFailure(r.tests[t])).length;
-      if (runs.every((r) => r.tests[t] === 'skipped')) c.skipped.push(t);
+      const skippedRuns = runs.filter((r) => r.tests[t] === 'skipped').length;
+      const absent = runs.filter((r) => !(t in r.tests)).length;
+      if (skippedRuns > 0) c.skipped.push(t);
+      if (absent > 0) c.missing.push(t);
+      if (skippedRuns === runs.length) continue;
       else if (failed === runs.length) c.failing.push(t);
       else if (failed > 0) c.flaky.push(t);
       else c.passing++;
@@ -56,13 +62,19 @@ function evaluate({ reports, baseline, specText, partial }) {
     }
     for (const t of classes[b].flaky) if (!listed('flaky', t, b) && !listed('failing', t, b)) violations.push(`${b}: "${t}" failed in ${runsFailed(reports, b, t)} of ${classes[b].runs} runs and is not listed in the baseline`);
   }
-  for (const kind of ['failing', 'flaky']) {
+  for (const b of browsers) {
+    for (const t of classes[b].skipped) if (!listed('skipped', t, b)) violations.push(`${b}: "${t}" was skipped in some or all runs and is not listed under skipped in the baseline (a skipped test hides a gap: a precondition, or a serial group that stopped after a failure)`);
+    for (const t of classes[b].missing) violations.push(`${b}: "${t}" is missing from some runs (a run that did not report every test)`);
+    const floor = (baseline.min_tests || {})[b];
+    if (!partial && floor && classes[b].total < floor) violations.push(`${b}: only ${classes[b].total} tests were reported; the baseline expects at least ${floor} (tests disappeared or did not run)`);
+  }
+  for (const kind of ['failing', 'flaky', 'skipped']) {
     for (const e of baseline[kind] || []) {
       const where = `baseline ${kind} entry "${e.title}"`;
       if (!e.title || !e.reason) violations.push(`${where} needs a title and a reason`);
       if (!Array.isArray(e.browsers) || !e.browsers.length) violations.push(`${where} needs a browsers list`);
       if (kind === 'failing' && !TICKET.test(e.ticket || '')) violations.push(`${where} needs a ticket id (t-xxxx)`);
-      if (kind === 'flaky' && e.ticket && !TICKET.test(e.ticket)) violations.push(`${where} has a malformed ticket id`);
+      if (kind !== 'failing' && !TICKET.test(e.ticket || '')) violations.push(`${where} needs a ticket id (t-xxxx)`);
       if (!known.has(e.title) && reports.length && !partial) violations.push(`${where} matches no test in the reports (stale or renamed)`);
       if (kind === 'failing') for (const b of e.browsers || []) if (classes[b] && !classes[b].failing.includes(e.title) && known.has(e.title)) warnings.push(`${b}: quarantined "${e.title}" did not fail in every run (stale? ${classes[b].flaky.includes(e.title) ? 'flaky' : 'passing'})`);
     }
@@ -90,9 +102,10 @@ function runsFailed(reports, b, t) { return reports.filter((r) => r.browser === 
 
 function main(argv) {
   let baselineFile = path.join(__dirname, 'board-spec-baseline.json'), specFile = path.join(__dirname, 'sprint-check-app.spec.js');
-  const files = []; let partial = false;
+  const files = []; let partial = false, strict = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--partial') partial = true;
+    else if (argv[i] === '--strict') strict = true;
     else if (argv[i] === '--baseline') baselineFile = argv[++i];
     else if (argv[i] === '--spec') specFile = argv[++i];
     else files.push(argv[i]);
@@ -112,9 +125,12 @@ function main(argv) {
     for (const t of c.skipped) console.log(`   skipped ${t}`);
   }
   for (const w of r.warnings) console.log(`warning: ${w}`);
-  for (const v of r.violations) console.log(`VIOLATION: ${v}`);
-  console.log(r.violations.length ? `board-spec-guard: ${r.violations.length} violation(s)` : 'board-spec-guard: ok (every failure is listed in the baseline)');
-  return r.violations.length ? 1 : 0;
+  const violations = r.violations.concat(strict ? r.warnings.map((w) => `(--strict) ${w}`) : []);
+  for (const v of violations) console.log(`VIOLATION: ${v}`);
+  if (violations.length) console.log(`board-spec-guard: ${violations.length} violation(s)`);
+  else if (r.warnings.length) console.log(`board-spec-guard: ok with ${r.warnings.length} warning(s) — every failure is listed, but listed tests are failing or healed (run with --strict to fail on that)`);
+  else console.log('board-spec-guard: ok (every failure is listed in the baseline)');
+  return violations.length ? 1 : 0;
 }
 
 module.exports = { evaluate, testsOf, browserOf };

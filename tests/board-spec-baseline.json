@@ -1,5 +1,9 @@
 {
-  "_about": "t-4469: tests seen failing in five real-data runs per browser (tests/run-board-spec.sh). failing = failed in every run (quarantined, needs a ticket and a QUARANTINE marker in the spec); flaky = failed in some runs. failed_runs is information only.",
+  "_about": "t-4469: tests seen failing in five real-data runs per browser (tests/run-board-spec.sh). failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec); flaky = may fail any number of runs, including all runs of one batch (the guard warns; --strict fails): needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the number of tests reported (a drop means tests did not run). failed_runs is information only.",
+  "min_tests": {
+    "chromium": 343,
+    "webkit": 343
+  },
   "failing": [
     {
       "title": "cockpit stale-daemon banner (t-74d6) > with a live session the plain Restart is disabled and Force restart is confirmed",
@@ -129,7 +133,7 @@
         "webkit"
       ],
       "ticket": "t-359b",
-      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "reason": "suspected: a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board (read from the code, not yet proven by a fix; t-359b)",
       "failed_runs": {
         "webkit": "1/5"
       }
@@ -140,7 +144,7 @@
         "chromium"
       ],
       "ticket": "t-359b",
-      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "reason": "suspected: a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board (read from the code, not yet proven by a fix; t-359b)",
       "failed_runs": {
         "chromium": "1/5"
       }
@@ -151,7 +155,7 @@
         "chromium"
       ],
       "ticket": "t-359b",
-      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "reason": "suspected: a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board (read from the code, not yet proven by a fix; t-359b)",
       "failed_runs": {
         "chromium": "1/5"
       }
@@ -163,7 +167,7 @@
         "webkit"
       ],
       "ticket": "t-359b",
-      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "reason": "suspected: a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board (read from the code, not yet proven by a fix; t-359b)",
       "failed_runs": {
         "chromium": "3/5",
         "webkit": "1/5"
@@ -175,7 +179,7 @@
         "chromium"
       ],
       "ticket": "t-359b",
-      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "reason": "suspected: a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board (read from the code, not yet proven by a fix; t-359b)",
       "failed_runs": {
         "chromium": "1/5"
       }
@@ -186,7 +190,7 @@
         "webkit"
       ],
       "ticket": "t-359b",
-      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "reason": "suspected: a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board (read from the code, not yet proven by a fix; t-359b)",
       "failed_runs": {
         "webkit": "1/5"
       }
@@ -197,7 +201,7 @@
         "webkit"
       ],
       "ticket": "t-359b",
-      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "reason": "suspected: a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board (read from the code, not yet proven by a fix; t-359b)",
       "failed_runs": {
         "webkit": "1/5"
       }
@@ -268,5 +272,6 @@
         "chromium": "1/5"
       }
     }
-  ]
+  ],
+  "skipped": []
 }
