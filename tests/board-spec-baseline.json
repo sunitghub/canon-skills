@@ -1,0 +1,272 @@
+{
+  "_about": "t-4469: tests seen failing in five real-data runs per browser (tests/run-board-spec.sh). failing = failed in every run (quarantined, needs a ticket and a QUARANTINE marker in the spec); flaky = failed in some runs. failed_runs is information only.",
+  "failing": [
+    {
+      "title": "cockpit stale-daemon banner (t-74d6) > with a live session the plain Restart is disabled and Force restart is confirmed",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-b546",
+      "reason": "\"Restarting cockpit daemon…\" is overwritten within 1 ms by the status refresh after a confirmed force restart (the daemon returns 200); real UI bug, reproduced with a mutation log; passes on webkit only because Playwright happens to observe the flash"
+    }
+  ],
+  "flaky": [
+    {
+      "title": "Canon Cockpit \"?\" info popovers (t-576f) > the popover stays inside the window and clear of the sidebar at 1100px",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "Canon Cockpit Skill Eval card (t-23d8) > a skill with hooks needs an explicit acknowledgement before Run is enabled",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "Canon Cockpit Skill Eval card (t-23d8) > a stale board server (404 without JSON) says to restart it, not \"request failed\"",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "board modal > headless grading trigger (t-200b) > a second trigger while one is running does not start a second subprocess",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "3/5"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > a checkbox toggle on a live doc sends base_hash; a collision re-reads and re-applies once, a second one says so (t-26f9)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > commit dialog: Cancel, a failed commit, and no create-without-committing escape (t-d254)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > end guard (t-86fe): with changes, Save as ticket is offered and Keep ends without discarding",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > interrupted (t-6a05): a row is one line plus the reason; Admin rows too",
+      "browsers": [
+        "chromium",
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/5",
+        "webkit": "4/5"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > the shared poll timer starts once per open tab (not per switch) and clears only when the last tab closes (t-96a8/t-8a2a)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "2/5"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > worktree preference (t-15ee): edge cases — existing worktree, main branch, unlocked in_progress, hostile name in the rail",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > Cancel is disabled mid-save",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-359b",
+      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > Save & End on an already-closed ticket skips the save prompt and force-ends (t-98d8)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-359b",
+      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > Start sprint attaching during the sessions lookup gives the live dialog, never a notice or teardown, when the lookup finds nothing (t-2687)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-359b",
+      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > a fresh modal open resets buttons left disabled by a prior session's mid-save state",
+      "browsers": [
+        "chromium",
+        "webkit"
+      ],
+      "ticket": "t-359b",
+      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "failed_runs": {
+        "chromium": "3/5",
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > a live tab keeps the normal Save & End dialog even when the daemon lists its session (t-2687)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-359b",
+      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > a refused Save & End keeps the session, explains why, and re-enables the controls (t-f91a)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-359b",
+      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > re-clicking Back mid-teardown does not reopen the modal or restart the end sequence (t-9eda)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-359b",
+      "reason": "a fixed 100 ms wait for the fake terminal status postMessage races it on the real-data board",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > PREVIEW_SERVER_CMD shows a static run-yourself message with the exact command, no iframe",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > a static preview shows the sandbox note and Copy file link; the iframe stays sandboxed on the daemon URL (t-533f)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > closing a tab with an open preview frees its iframe from the DOM (t-82f4)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > no live session (e.g. idle Resume, pre-Start) shows a message, not an infinite \"Asking…\"",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    },
+    {
+      "title": "session sub-tabs (t-8a2a) > a background tab's needs-you status renders in the tab strip",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/5"
+      }
+    },
+    {
+      "title": "session sub-tabs (t-8a2a) > starting a second ticket adds a tab without disturbing the first (persistently mounted, no reconnect)",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
+      "failed_runs": {
+        "chromium": "1/5"
+      }
+    }
+  ]
+}

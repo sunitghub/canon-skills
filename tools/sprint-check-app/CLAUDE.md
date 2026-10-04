@@ -4,12 +4,24 @@
 
 Any change to `app.html` requires Playwright verification — not just grep-based tests.
 
-- Run UI tests: `npm run test:ui` (requires the sprint-check server running — start with `npm run sprint-check`)
+- **Full spec, the one way (t-4469): `tests/run-board-spec.sh`** (both browsers, 3 runs; `--runs 1 --browsers chromium --grep "<title>"` for a quick look). It copies the working tree (the gitignored `.tickets` included) to a temp dir, starts the Go board **from the copy**, runs `tests/sprint-check-app.spec.js`, proves canon's own tree did not change, then runs `tests/board-spec-guard.js` against `tests/board-spec-baseline.json`: exit 0 means every failure seen is listed there. About 8 minutes per browser per run.
+- **Never run the spec against canon's own tree.** It writes and deletes tickets in its project root (ids from `Math.random` — `t-eb92`), and the board's `model-tiers.json` is shared state.
+- **An empty repo is not a baseline.** It once hid 9 tests per browser (the serial "Admin > Model Tiers" group skips the rest after one failure) and fails tests that expect a populated board. On a copy of the real tree, 343 tests run per browser, 0 skipped. Real-data numbers (5 runs per browser, 2026-10-04): chromium 1 failing and 10 flaky, webkit 0 failing and 15 flaky.
+- **The baseline file.** `failing` = failed in every run: quarantined, with a ticket id and a `// QUARANTINE t-xxxx: reason` comment directly above the test in the spec; the test keeps running, and the guard warns when it starts passing. `flaky` = may fail any number of runs, including every run of one batch (the guard then warns): listed with a reason (a ticket when diagnosed). A new, unlisted failure is a violation: rerun it; if it passes, list it as flaky with evidence, otherwise it is a regression. Remove an entry in the same change that fixes its test.
+- Run the spec by hand against a board you started yourself: `npm run test:ui` (the board must already be running — `npm run sprint-check`; port 8423 is the default, `SPRINT_CHECK_BASE` overrides). `tests/sprint-check-go-ui.sh` runs a subset on an empty repo; `npm test` runs neither.
 - Start server: `npm run sprint-check` (auto-selects a free port starting at 8423)
 - Test file: `tests/sprint-check-app.spec.js`
 - Ticket card selector: `.card`; create button: `#btn-create`
 - `npm test` (bash suite) covers non-UI regressions; both must pass before `sprint complete`
 - Cockpit UI changes (`app.html`, `cockpit.html`, the daemon page): also run the spec with `--browser=webkit` before `sprint complete` — Safari differs (e.g. it reports the shell as `event.source` for a board's message, t-67ab). Stub a daemon on a normal port (`FAKE_DAEMON_ADDR`): WebKit refuses restricted ports like 1 before a route can fulfil them (t-df8e).
+
+## Writing board tests that hold under load
+
+- Never `waitForTimeout` for something the page will tell you: poll the state (`expect.poll(() => page.evaluate(() => cockpitState.status))`). Twenty-three fixed 100 ms status waits in the leave-session group are the flakes `t-359b` removes.
+- Before pressing keys in a frame, wait until that frame's handler exists (`boardKeys` in the board); a key pressed earlier goes nowhere.
+- Mock every new endpoint in the shared page helper so a real daemon or real data never leaks in; assert the stable part of UI strings, not the whole sentence.
+- Use `pwd -P` for temp roots on macOS (`mktemp -d` returns a `/var` symlink), and record which board and which data a count came from.
+- A helper that a vm-loaded unit test (the `tests/sprint-check-*.js` pattern) exercises must be self-contained: reusing a top-level `const` makes every case throw.
 
 ## Board root redirect (t-5716)
 
