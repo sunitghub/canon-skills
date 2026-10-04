@@ -732,8 +732,9 @@
     <p class="keys-sub">Press <kbd id="keys-prefix">ctrl+.</kbd>, release, then one of:</p>
     <table class="keys-table">
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump to the nth project tab</td></tr>
-      <tr><td><kbd>n</kbd> / <kbd>p</kbd></td><td>Next / previous tab</td></tr>
-      <tr><td><kbd>h</kbd></td><td>Projects</td></tr>
+      <tr><td><kbd>n</kbd> / <kbd>b</kbd></td><td>Next / previous tab (back)</td></tr>
+      <tr><td><kbd>p</kbd></td><td>Projects</td></tr>
+      <tr><td><kbd>a</kbd></td><td>Admin</td></tr>
       <tr><td><kbd>f</kbd> / <kbd>l</kbd></td><td>First / last project tab</td></tr>
       <tr class="keys-danger"><td><kbd>e</kbd></td><td>End this tab's agent session (asks first)</td></tr>
       <tr><td><kbd>x</kbd></td><td>Close this tab (a live session still asks first)</td></tr>
@@ -1449,8 +1450,9 @@ function canonPrefixKeys(emit) {
   function prefixAction(key){
     const all=['projects'].concat(openTabs.map(t=>t.id));
     if(/^[1-9]$/.test(key)){ const t=openTabs[+key-1]; if(t) goTab(t.id); return; }
-    if(key==='n'||key==='p'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
-    if(key==='h'){ goTab('projects'); return; }
+    if(key==='n'||key==='b'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
+    if(key==='p'){ goTab('projects'); return; }
+    if(key==='a'){ showView('admin'); try{ window.focus(); }catch(e){} return; }   // Admin, like clicking it in the sidebar
     if(key==='f'||key==='l'){ if(openTabs.length) goTab(openTabs[key==='f'?0:openTabs.length-1].id); return; }   // first / last project tab
     if(key==='e'){
       // Only asks the active board to open its own end-session confirmation; ending is never done from here.

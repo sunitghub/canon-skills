@@ -3443,7 +3443,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#keyhint')).not.toHaveClass(/show/);
       await pressPrefix(page, '2');
       await expect.poll(() => shellTab(page)).toBe('proj-x');
-      await pressPrefix(page, 'p');
+      await pressPrefix(page, 'b');                       // previous
       await expect.poll(() => shellTab(page)).toBe('proj-a');
       await pressPrefix(page, 'n');
       await expect.poll(() => shellTab(page)).toBe('proj-x');
@@ -3451,17 +3451,29 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, 'f'); await expect.poll(() => shellTab(page)).toBe('proj-a');   // first project tab
       await pressPrefix(page, 'l'); await expect.poll(() => shellTab(page)).toBe('proj-x');   // last project tab
-      await pressPrefix(page, 'h'); await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, 'p'); await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, 'a');                       // Admin, then back with h
+      await expect(page.locator('#view-admin')).toHaveClass(/active/);
+      await expect(page.locator('#nav-admin')).toHaveClass(/active/);
+      await pressPrefix(page, 'p');
+      await expect(page.locator('#view-projects')).toHaveClass(/active/);
+      await expect(page.locator('#view-admin')).not.toHaveClass(/active/);
+      await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, 'z');                       // unbound
+      await page.evaluate(() => activateTab('proj-a'));
+      await pressPrefix(page, 'h');                       // h is no longer bound (Projects is p): the tab stays
+      await page.waitForTimeout(150);
+      expect(await shellTab(page)).toBe('proj-a');
+      await page.evaluate(() => activateTab('projects'));
       await pressPrefix(page, '9');                       // no ninth tab
       await page.keyboard.press('Control+.'); await page.keyboard.press('Escape');
       await page.keyboard.press('1');                     // the prefix was cancelled, so this is a plain key
       await page.waitForTimeout(150);
       expect(await shellTab(page)).toBe('projects');
       await expect(page.locator('#keyhint')).not.toHaveClass(/show/);
-      await pressPrefix(page, 'h'); await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, 'p'); await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, '1'); await expect.poll(() => shellTab(page)).toBe('proj-a');
-      await pressPrefix(page, 'h'); await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, 'p'); await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, '?');
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
       await expect(page.locator('#keys-prefix')).toHaveText('ctrl+.');
@@ -3492,11 +3504,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(await shellTab(page)).toBe('proj-a');
       await page.evaluate(() => toggleKeysSheet(false));
       // a message with an unknown tab token, and one from a tab that is not the visible one, are dropped
-      await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'h', tab: 'bogus' }, location.origin));
+      await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'p', tab: 'bogus' }, location.origin));
       await page.evaluate(() => {
         activateTab('proj-x');
         const tok = [...tabTokens.entries()].find(([, id]) => id === 'proj-a')[0];
-        window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'h', tab: tok }, location.origin);
+        window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'p', tab: tok }, location.origin);
       });
       await page.waitForTimeout(200);
       expect(await shellTab(page)).toBe('proj-x');
@@ -3512,16 +3524,21 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, '2');
       await expect.poll(() => shellTab(page)).toBe('proj-x');
       await page.evaluate(() => goTab('proj-a'));
+      await page.evaluate(() => goTab('proj-a'));
+      await pressPrefix(page, 'a');                       // from a board's focus too
+      await expect(page.locator('#view-admin')).toHaveClass(/active/);
+      await page.evaluate(() => goTab('proj-a'));
+      await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
       await pressPrefix(page, 'e');                       // no live session in this board: nothing opens
       await page.waitForTimeout(200);
       await expect(frame.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       await pressPrefix(page, '/');
       await expect(frame.locator('#board-search')).toBeFocused();
-      await pressPrefix(page, 'h');                       // focus is in a field now: the prefix is ignored there, by design
+      await pressPrefix(page, 'p');                       // focus is in a field now: the prefix is ignored there, by design
       await page.waitForTimeout(150);
       expect(await shellTab(page)).toBe('proj-a');
       await frame.locator('#board-search').evaluate(el => el.blur());
-      await pressPrefix(page, 'h');                       // out of the field it works again
+      await pressPrefix(page, 'p');                       // out of the field it works again
       await expect.poll(() => shellTab(page)).toBe('projects');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -3596,7 +3613,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('keyboard prefix (t-a198): the terminal frame\'s keys reach the shell through the board; a forged or over-long relay is dropped', async ({ page }) => {
       const relayPage = `<!doctype html><html><body>
         <button id="arm" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-armed',key:''},'*')">arm</button>
-        <button id="home" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'h'},'*')">home</button>
+        <button id="home" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'p'},'*')">home</button>
         <button id="long" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'hhh'},'*')">long</button>
         <button id="end" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'e'},'*')">end</button>
         <script>window.__got=[]; addEventListener('message',function(e){ var d=e.data; if(!d||d.source!=='canon-cockpit') return; __got.push(d.type);
@@ -3615,7 +3632,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await boardsKeyReady(page, ['proj-a']);
       const term = board.frameLocator('#cockpit-overlay iframe');
       // not from the board's own terminal frame (here: the board window itself): dropped
-      await board.locator('body').evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'prefix-key', key: 'h' }, location.origin));
+      await board.locator('body').evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'prefix-key', key: 'p' }, location.origin));
       await page.waitForTimeout(200);
       expect(await shellTab(page)).toBe('proj-a');
       await term.locator('#arm').click();
