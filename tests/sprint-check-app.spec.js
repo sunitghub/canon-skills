@@ -3425,6 +3425,171 @@ test.describe('cockpit in board (t-ddc8)', () => {
     const postOpenSession = (page, project_root, ticket) => page.frameLocator('#view-proj-a iframe').locator('body')
       .evaluate((_, m) => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...m }, location.origin), { project_root, ticket });
 
+    // ── t-a198: the keyboard prefix (ctrl+. then a key). Real key events in Chromium and WebKit. ──
+    const shellTab = page => page.evaluate(() => activeTab);
+    const pressPrefix = async (page, key) => { await page.keyboard.press('Control+.'); if (key) await page.keyboard.press(key); };
+    // A board has no key handler until its script has run; under load a key pressed earlier goes nowhere (the handler is the last thing it sets up).
+    const boardsKeyReady = (page, ids) => Promise.all(ids.map(id => expect.poll(() => page.frameLocator('#view-' + id + ' iframe').locator('body')
+      .evaluate(() => { try { return !!boardKeys; } catch (e) { return false; } }).catch(() => false)).toBe(true)));
+
+    test('keyboard prefix (t-a198): ctrl+. then a key drives the tabs; Escape, unbound and missing tabs do nothing', async ({ page }) => {
+      await openShell(page, []);
+      await page.evaluate(() => { openProject('proj-x', 'proj-x'); activateTab('projects'); });
+      await boardsKeyReady(page, ['proj-a', 'proj-x']);
+      await page.keyboard.press('Control+.');
+      await expect(page.locator('#keyhint')).toHaveClass(/show/);
+      await page.keyboard.press('1');
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      await expect(page.locator('#keyhint')).not.toHaveClass(/show/);
+      await pressPrefix(page, '2');
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      await pressPrefix(page, 'p');
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      await pressPrefix(page, 'n');
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      await pressPrefix(page, 'n');                       // wraps through the pinned Projects tab
+      await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, 'z');                       // unbound
+      await pressPrefix(page, '9');                       // no ninth tab
+      await page.keyboard.press('Control+.'); await page.keyboard.press('Escape');
+      await page.keyboard.press('1');                     // the prefix was cancelled, so this is a plain key
+      await page.waitForTimeout(150);
+      expect(await shellTab(page)).toBe('projects');
+      await expect(page.locator('#keyhint')).not.toHaveClass(/show/);
+      await pressPrefix(page, 'h'); await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, '1'); await expect.poll(() => shellTab(page)).toBe('proj-a');
+      await pressPrefix(page, 'h'); await expect.poll(() => shellTab(page)).toBe('projects');
+      await pressPrefix(page, '?');
+      await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
+      await expect(page.locator('#keys-prefix')).toHaveText('ctrl+.');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
+      await page.evaluate(() => activateTab('proj-a'));
+      await pressPrefix(page, 'x');                       // closes the active tab (no live session here)
+      await expect(page.locator('#view-proj-a')).toHaveCount(0);
+      expect(await shellTab(page)).toBe('projects');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('keyboard prefix (t-a198): never hijacks typing in a field or a dialog, and ignores a forged or background relay', async ({ page }) => {
+      const frame = await openShell(page, []);
+      await page.evaluate(() => { openProject('proj-x', 'proj-x'); activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a', 'proj-x']);
+      const search = frame.locator('#board-search');
+      await search.focus();
+      await page.keyboard.press('Control+.');
+      await page.keyboard.type('2');
+      await expect(search).toHaveValue('2');              // typed into the field, nothing consumed
+      await expect(page.locator('#keyhint')).not.toHaveClass(/show/);
+      expect(await shellTab(page)).toBe('proj-a');
+      // a dialog open in the shell: the prefix is ignored
+      await page.evaluate(() => { document.activeElement && document.activeElement.blur(); toggleKeysSheet(true); });
+      await pressPrefix(page, '2');
+      await page.waitForTimeout(150);
+      expect(await shellTab(page)).toBe('proj-a');
+      await page.evaluate(() => toggleKeysSheet(false));
+      // a message with an unknown tab token, and one from a tab that is not the visible one, are dropped
+      await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'h', tab: 'bogus' }, location.origin));
+      await page.evaluate(() => {
+        activateTab('proj-x');
+        const tok = [...tabTokens.entries()].find(([, id]) => id === 'proj-a')[0];
+        window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'h', tab: tok }, location.origin);
+      });
+      await page.waitForTimeout(200);
+      expect(await shellTab(page)).toBe('proj-x');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('keyboard prefix (t-a198): works with focus inside a board; prefix then / focuses that board\'s search', async ({ page }) => {
+      const frame = await openShell(page, []);
+      await page.evaluate(() => { openProject('proj-x', 'proj-x'); });
+      await boardsKeyReady(page, ['proj-a', 'proj-x']);
+      await page.evaluate(() => goTab('proj-a'));
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      await pressPrefix(page, '2');
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      await page.evaluate(() => goTab('proj-a'));
+      await pressPrefix(page, '/');
+      await expect(frame.locator('#board-search')).toBeFocused();
+      await pressPrefix(page, 'h');                       // focus is in a field now: the prefix is ignored there, by design
+      await page.waitForTimeout(150);
+      expect(await shellTab(page)).toBe('proj-a');
+      await frame.locator('#board-search').evaluate(el => el.blur());
+      await pressPrefix(page, 'h');                       // out of the field it works again
+      await expect.poll(() => shellTab(page)).toBe('projects');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // The real xterm, the real snippet and the real wiring lines (cut out of the daemon page itself), in an iframe like the
+    // board's rail: only the prefix and the key after it are withheld from term.onData; ctrl+c and friends reach it.
+    test('keyboard prefix (t-a198): in a real xterm only the prefix chord is withheld; ctrl+c, ctrl+d and typing reach the terminal', async ({ page }) => {
+      const web = path.join(__dirname, '..', 'tools', 'cockpit-daemon', 'web');
+      const daemonPage = fs.readFileSync(path.join(web, 'cockpit.html'), 'utf8');
+      const a = daemonPage.indexOf('  // t-a198: the prefix key.');
+      const endMarker = '    term.attachCustomKeyEventHandler(function (ev) { return !prefixKeys.handle(ev); });\n  }\n';
+      const b = daemonPage.indexOf(endMarker);
+      expect(a).toBeGreaterThan(0); expect(b).toBeGreaterThan(a);
+      const wiring = daemonPage.slice(a, b + endMarker.length);
+      await page.route('**/__pk/host', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><body><iframe id="t" src="/__pk/term" style="width:600px;height:300px"></iframe><script>
+        window.__msgs=[]; window.addEventListener('message',function(e){ if(e.data&&e.data.source==='canon-cockpit') window.__msgs.push(e.data.type+':'+(e.data.key||'')); });</script></body>` }));
+      await page.route('**/__pk/term', r => r.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><link rel="stylesheet" href="/__pk/xterm.css"><body><div id="terminal"></div>
+        <script src="/__pk/xterm.js"></script><script>
+        var term = new Terminal({}); term.open(document.getElementById("terminal"));
+        window.__data = []; term.onData(function(d){ window.__data.push(d); });
+        ${wiring}
+        </script></body>` }));
+      await page.route('**/__pk/xterm.js', r => r.fulfill({ status: 200, contentType: 'application/javascript', body: fs.readFileSync(path.join(web, 'vendor', 'xterm.js'), 'utf8') }));
+      await page.route('**/__pk/xterm.css', r => r.fulfill({ status: 200, contentType: 'text/css', body: fs.readFileSync(path.join(web, 'vendor', 'xterm.css'), 'utf8') }));
+      await page.goto(BASE + '/__pk/host');
+      const term = page.frameLocator('#t');
+      await term.locator('.xterm-helper-textarea').focus();
+      const data = () => term.locator('body').evaluate(() => window.__data.join('|'));
+      await page.keyboard.press('Control+c'); await page.keyboard.press('Control+d'); await page.keyboard.type('ab');
+      await expect.poll(data).toBe('\x03|\x04|a|b');
+      await page.keyboard.press('Control+.'); await page.keyboard.press('2');
+      await page.waitForTimeout(150);
+      expect(await data()).toBe('\x03|\x04|a|b');         // neither the prefix nor the key after it reached the terminal
+      expect(await page.evaluate(() => window.__msgs.join(','))).toBe('prefix-armed:,prefix-key:2');
+      await page.keyboard.type('c');                       // the terminal is back to normal afterwards
+      await expect.poll(data).toBe('\x03|\x04|a|b|c');
+      await page.keyboard.press('Control+.'); await page.keyboard.press('Escape'); await page.keyboard.type('d');
+      await expect.poll(data).toBe('\x03|\x04|a|b|c|d');
+      expect(await page.evaluate(() => window.__msgs.join(','))).toBe('prefix-armed:,prefix-key:2,prefix-armed:,prefix-cancel:');
+    });
+
+    // The terminal frame's relay goes terminal page -> board -> shell. The board must only pass on what its own terminal frame sent.
+    test('keyboard prefix (t-a198): the terminal frame\'s keys reach the shell through the board; a forged or over-long relay is dropped', async ({ page }) => {
+      const relayPage = `<!doctype html><html><body>
+        <button id="arm" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-armed',key:''},'*')">arm</button>
+        <button id="home" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'h'},'*')">home</button>
+        <button id="long" onclick="parent.postMessage({source:'canon-cockpit',type:'prefix-key',key:'hhh'},'*')">long</button>
+        <script>parent.postMessage({source:'canon-cockpit',type:'status',status:'running'},'*')</script></body></html>`;
+      await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: relayPage }));
+      await openShell(page, []);
+      await stubCockpit(page);
+      await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => { state.isGitProject = true; });
+      await page.locator('.tab.pinned').click();
+      await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
+      const board = page.frameLocator('#view-proj-a iframe');
+      await expect(board.locator('#cockpit-overlay')).toHaveClass(/open/, { timeout: 8000 });
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      await boardsKeyReady(page, ['proj-a']);
+      const term = board.frameLocator('#cockpit-overlay iframe');
+      // not from the board's own terminal frame (here: the board window itself): dropped
+      await board.locator('body').evaluate(() => window.postMessage({ source: 'canon-cockpit', type: 'prefix-key', key: 'h' }, location.origin));
+      await page.waitForTimeout(200);
+      expect(await shellTab(page)).toBe('proj-a');
+      await term.locator('#arm').click();
+      await expect(page.locator('#keyhint')).toHaveClass(/show/);
+      await term.locator('#long').click();                  // a key longer than two characters is never an action
+      await page.waitForTimeout(200);
+      expect(await shellTab(page)).toBe('proj-a');
+      await term.locator('#home').click();
+      await expect.poll(() => shellTab(page)).toBe('projects');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // t-d34e: no top bar. A sidebar brand row shares the tab strip's height (tops and dividers align), and the Projects view
     // opens with a section bar: title, "N registered · M active", + Add Project — aligned with the card grid.
     test('shell (t-d34e): no top bar; brand row level with the tab strip; Projects section bar', async ({ page }) => {

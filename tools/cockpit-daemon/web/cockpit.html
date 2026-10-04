@@ -156,6 +156,53 @@
   term.loadAddon(fit);
   term.open(document.getElementById("terminal"));
   fit.fit();
+  // t-a198: the prefix key. Only the prefix and the one key after it are withheld from the terminal, so ctrl+c and every
+  // other key still reach term.onData; the board relays what we post to the shell.
+// canon:prefix-keys:begin (t-a198) — identical in cockpit.html, app.html and cockpit-daemon/web/cockpit.html; tests/prefix-keys-parity.sh pins the copies
+function canonPrefixLabel() {
+  var v = 'ctrl+.';
+  try { var s = localStorage.getItem('canon-prefix'); if (s && /^ctrl\+[^A-Za-z0-9\s\\+]$/.test(s)) v = s; } catch (e) {}
+  return v;
+}
+function canonPrefixKeys(emit) {
+  var armed = false, timer = null, swallow = null;
+  function disarm() { armed = false; if (timer) { clearTimeout(timer); timer = null; } }
+  function handle(e) {
+    var t = e.type, k = e.key;
+    if (swallow !== null && e.code === swallow && (t === 'keypress' || t === 'keyup')) {
+      if (t === 'keyup') swallow = null;
+      e.preventDefault(); e.stopPropagation();
+      return true;
+    }
+    if (t !== 'keydown' || e.isComposing) return false;
+    if (k === 'Control' || k === 'Shift' || k === 'Alt' || k === 'Meta' || k === 'AltGraph' || k === 'CapsLock') return false;
+    swallow = null;
+    if (armed) {
+      disarm();
+      swallow = e.code;
+      e.preventDefault(); e.stopPropagation();
+      if (k === 'Escape') emit('cancel', ''); else emit('key', k);
+      return true;
+    }
+    var altgr = e.getModifierState && e.getModifierState('AltGraph');
+    if (e.ctrlKey && !e.altKey && !altgr && !e.metaKey && !e.shiftKey && !e.repeat && k === canonPrefixLabel().slice(5)) {
+      armed = true; swallow = e.code;
+      timer = setTimeout(function () { if (armed) { disarm(); emit('cancel', ''); } }, 1500);
+      e.preventDefault(); e.stopPropagation();
+      emit('armed', '');
+      return true;
+    }
+    return false;
+  }
+  return { handle: handle, cancel: function () { if (armed) { disarm(); emit('cancel', ''); } } };
+}
+// canon:prefix-keys:end
+  if (window.parent !== window) {
+    var prefixKeys = canonPrefixKeys(function (type, key) {
+      try { window.parent.postMessage({ source: "canon-cockpit", type: "prefix-" + type, key: key }, "*"); } catch (e) {}
+    });
+    term.attachCustomKeyEventHandler(function (ev) { return !prefixKeys.handle(ev); });
+  }
   // Live font control: apply to the running terminal, persist, and reflow so
   // the PTY is told the new column/row count.
   function setTermFont(n){
