@@ -3452,7 +3452,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await pressPrefix(page, 'f'); await expect.poll(() => shellTab(page)).toBe('proj-a');   // first project tab
       await pressPrefix(page, 'l'); await expect.poll(() => shellTab(page)).toBe('proj-x');   // last project tab
       await pressPrefix(page, 'p'); await expect.poll(() => shellTab(page)).toBe('projects');
-      await pressPrefix(page, 'a');                       // Admin, then back with h
+      await pressPrefix(page, 'a');                       // Admin, then back with p
       await expect(page.locator('#view-admin')).toHaveClass(/active/);
       await expect(page.locator('#nav-admin')).toHaveClass(/active/);
       await pressPrefix(page, 'p');

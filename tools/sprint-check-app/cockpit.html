@@ -732,7 +732,7 @@
     <p class="keys-sub">Press <kbd id="keys-prefix">ctrl+.</kbd>, release, then one of:</p>
     <table class="keys-table">
       <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump to the nth project tab</td></tr>
-      <tr><td><kbd>n</kbd> / <kbd>b</kbd></td><td>Next / previous tab (back)</td></tr>
+      <tr><td><kbd>n</kbd> / <kbd>b</kbd></td><td>Next / previous tab</td></tr>
       <tr><td><kbd>p</kbd></td><td>Projects</td></tr>
       <tr><td><kbd>a</kbd></td><td>Admin</td></tr>
       <tr><td><kbd>f</kbd> / <kbd>l</kbd></td><td>First / last project tab</td></tr>
@@ -1384,8 +1384,6 @@
     openSessionInTab({proot:proj.path, scratch:newScratchId()});
   }
   const _projKey=p=>String(p||'').replace(/\\/g,'/').replace(/\/+$/,'').toLowerCase();
-  // t-67ab: which tab's board sent a message. Each tab's iframe gets a random token in its URL
-  // (ensureView) and its board echoes it; a page without the token can't pose as a tab. Not
   // ── Keyboard prefix (t-a198) ─────────────────────────────────────────────
   // Press the prefix (default ctrl+., rebind with localStorage "canon-prefix"), release, then one key. Keys typed in
   // this page are handled here; keys typed inside a board or its terminal arrive as validated messages (below).
@@ -1488,6 +1486,8 @@ function canonPrefixKeys(emit) {
     const kb=document.getElementById('keys-btn'); if(kb) kb.title='Keyboard shortcuts — '+canonPrefixLabel()+' then ?';
     const s=document.getElementById('keys-sheet'); if(s) s.addEventListener('click',e=>{ if(e.target===s) toggleKeysSheet(false); });
   });
+  // t-67ab: which tab's board sent a message. Each tab's iframe gets a random token in its URL
+  // (ensureView) and its board echoes it; a page without the token can't pose as a tab. Not
   // event.source: Safari/WebKit reports this page itself as the source of a board's message.
   const tabTokens=new Map();
   function senderTab(d){ return d && typeof d.tab==='string' ? tabTokens.get(d.tab) || null : null; }
