@@ -110,6 +110,12 @@
                     box-shadow: 0 0 10px 1px rgba(0,255,255,.35), 0 0 2px rgba(0,255,255,.5); }
     .header-sep   { color: var(--border-hover); font-size: 16px; }
     .header-project { font-size: 13px; color: var(--text-muted); }
+    /* t-416c: in a split view the focused pane reads brighter, and a pane that just took focus pulses until first used */
+    html[data-pane="focused"] .header-project { color: var(--text); }
+    html[data-pane="focused"] .header-branch { color: var(--text); }
+    html[data-pane-pulse="1"] .header-left { border-radius: 8px; animation: pane-pulse 1.1s ease-out infinite; }
+    @keyframes pane-pulse { 0% { box-shadow: 0 0 0 0 var(--accent); } 70%,100% { box-shadow: 0 0 0 8px transparent; } }
+    @media (prefers-reduced-motion: reduce) { html[data-pane-pulse="1"] .header-left { animation: none; box-shadow: 0 0 0 2px var(--accent); } }
     .header-version { font-size: 11px; color: var(--text-muted); font-family: 'JetBrains Mono','Fira Code',monospace; opacity: .7; margin-left: 2px; }
     .header-version:empty { display: none; }
     .header-right { display: flex; align-items: center; gap: 14px; }
@@ -6117,6 +6123,9 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
 // served by the same board server; the daemon terminal is a DIFFERENT origin and
 // is handled by the daemon-iframe listener above). We only ever invoke the board's
 // own existing, vetted controls — this exposes NO new daemon capability.
+// t-416c: the first interaction inside a pane (a click, a key, or focus moving into its terminal frame) ends its pulse
+['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, function () { delete document.documentElement.dataset.panePulse; }, true); });
+window.addEventListener('blur', function () { delete document.documentElement.dataset.panePulse; });
 window.addEventListener('message', (e) => {
   if (window.parent === window) return;                 // standalone board — no shell
   if (e.origin !== location.origin) return;             // reject cross-origin senders
@@ -6129,6 +6138,12 @@ window.addEventListener('message', (e) => {
   }
   if (d.type === 'end-session-request') {                // t-a198: prefix then e. Opens the existing confirmation for a LIVE session; never ends anything itself
     if (cockpitState && !cockpitState._ending && sessionIsLive()) openLeaveConfirm();
+    return;
+  }
+  if (d.type === 'pane-state') {                         // t-416c: the shell says whether this board is a split pane, the focused one, and pulsing
+    const root = document.documentElement;
+    if (d.split === true) root.dataset.pane = d.focused === true ? 'focused' : 'idle'; else delete root.dataset.pane;
+    if (d.split === true && d.pulse === true) root.dataset.panePulse = '1'; else delete root.dataset.panePulse;
     return;
   }
   if (d.type === 'focus-search') {                       // t-a198: prefix then /
