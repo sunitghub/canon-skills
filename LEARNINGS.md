@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-04-2026 12:00
+learnings-sweep last run: 10-04-2026 17:02
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-04 | [t-416c](.tickets/t-416c/learnings.md) | A new "press the prefix again" key must be tested against every rebindable prefix: checked after the split keys, a prefix rebound to `-` or `_` opened a split instead of the sheet (only the advisory reviewer caught it); and a shell must ask `contentDocument.hasFocus()`, not `document.activeElement`, which goes stale after a script-set iframe focus. | UNPROMOTED |
 | 2026-10-04 | [t-4469](.tickets/t-4469/learnings.md) | A test baseline taken on an empty repo is not a baseline (it hid 9 tests behind a serial group's first failure and failed ones that expect data): measure on real data, several runs, and classify stable versus flaky before writing the list. An allowlist guard must also catch skips, tests missing from a run and a floor on the test count (the very gap the ticket was about), and a "flaky" allowance needs a visible warning line and a strict mode, or a broken test stays green. Read a subagent report's run-id age BEFORE recording its verdict. | UNPROMOTED |
 | 2026-10-02 | [t-0231](.tickets/t-0231/learnings.md) | Replay a new gate over the REAL artifacts before trusting its fixtures: my fixtures assumed the agent type and passed, but a replay over the last 60 real eval reports blocked 20 (all the documented `Plan` fallback dispatches); two reviews then found a forgery (a `pass:` appended under a real `fail:`, because the new check read the first verdict line while the old gate accepts any `^pass:` line — derive both from the same lines) and a too-high length minimum; also under bash 3.2 + `set -u` one `local` word cannot use the previous word's value, so six existing gates work only through the caller's `tdir`, and a harness that `source`s extracted functions must extract every helper they call. | UNPROMOTED |
 | 2026-10-02 | [t-614c](.tickets/t-614c/learnings.md) | Hiding a duplicate is only safe if the surviving copy cannot disappear: the id text now hides while the tab pills show, and the evaluator noted an overflowing `overflow: hidden` strip could clip the active pill, leaving the ticket named nowhere (filed t-2542); pin the other direction too (the id returns when the strip is hidden), and grep for tests that assert the duplicate visible before changing it (t-b91f and t-4272 did). | UNPROMOTED |
