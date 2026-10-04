@@ -72,6 +72,27 @@
   /* t-5c3c: when a nudge banner is present, stack it above the board iframe */
   .view.active.has-nudge,.view.active.has-intr,.view.active.has-shared{display:flex;flex-direction:column}
   .view.has-nudge iframe,.view.has-intr iframe,.view.has-shared iframe{flex:1;height:auto;min-height:0}
+  /* t-416c: two panes. Placement is CSS only: an iframe moved in the DOM reloads, so no view is ever moved. */
+  .view.pane1,.view.pane2{display:block}
+  .view.pane1.has-nudge,.view.pane1.has-intr,.view.pane1.has-shared,.view.pane2.has-nudge,.view.pane2.has-intr,.view.pane2.has-shared{display:flex;flex-direction:column}
+  .views.split-h .view.pane1{inset:0 auto 0 0;width:calc(var(--r)*100% - 3px)}
+  .views.split-h .view.pane2{inset:0 0 0 auto;width:calc((1 - var(--r))*100% - 3px)}
+  .views.split-v .view.pane1{inset:0 0 auto 0;height:calc(var(--r)*100% - 3px)}
+  .views.split-v .view.pane2{inset:auto 0 0 0;height:calc((1 - var(--r))*100% - 3px)}
+  .views.split-h .view.active iframe,.views.split-v .view.active iframe{outline:2px solid var(--accent);outline-offset:-2px}
+  #split-handle{position:absolute;z-index:6;display:none;background:var(--border);touch-action:none;transition:background .12s}
+  #split-handle:hover,#split-handle:focus-visible,#split-handle.drag{background:var(--accent);outline:none}
+  .views.split-h #split-handle{display:block;top:0;bottom:0;left:calc(var(--r)*100% - 3px);width:6px;cursor:col-resize}
+  .views.split-v #split-handle{display:block;left:0;right:0;top:calc(var(--r)*100% - 3px);height:6px;cursor:row-resize}
+  .tab.insplit:not(.active){box-shadow:inset 0 -2px 0 var(--accent)}
+  .splitclose{margin-left:auto;position:sticky;right:0;flex-shrink:0;background:var(--panel);color:var(--text-muted);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:12px;cursor:pointer}
+  .splitclose:hover,.splitclose:focus-visible{color:var(--text);border-color:var(--accent);outline:none}
+  .splitclose[hidden]{display:none}
+  .tabmenu{position:fixed;z-index:70;min-width:230px;background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .tabmenu[hidden]{display:none}
+  .tabmenu button{display:block;width:100%;text-align:left;background:transparent;border:0;border-radius:6px;color:var(--text);padding:7px 10px;font-size:13px;cursor:pointer}
+  .tabmenu button:hover:not(:disabled),.tabmenu button:focus-visible{background:var(--border-muted);outline:none}
+  .tabmenu button:disabled{color:var(--text-dim);cursor:default}
   .skill-nudge,.shared-warn{display:flex;align-items:center;gap:12px;padding:9px 16px;background:var(--accent-dim);border-bottom:1px solid var(--accent);color:var(--text);font-size:13px;flex-shrink:0}
   .skill-nudge .sn-msg,.shared-warn .sn-msg{flex:1;min-width:0}
   .skill-nudge .sn-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
@@ -505,7 +526,13 @@
   .keyhint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);color:var(--text);border:1px solid var(--accent);border-radius:8px;padding:8px 14px;font-size:13px;display:none;z-index:60}
   .keyhint.show{display:block}
   kbd{font:12px ui-monospace,Menlo,Consolas,monospace;background:var(--bg);color:var(--text);border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
-  .keys-modal{text-align:left;width:420px}
+  .keys-modal{text-align:left;width:min(880px,94vw);max-height:90vh;overflow:auto}
+  .keys-modal .cfoot{margin-top:20px}
+  .keys-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 28px}
+  .keys-grid h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted);margin:12px 0 4px}
+  .keys-grid section>h3:first-child{margin-top:4px}
+  @media(min-width:760px){.keys-grid .keys-table td:last-child{white-space:nowrap}}   /* wide enough: every row on one line */
+  @media(max-width:759px){.keys-grid{grid-template-columns:1fr}}
   .keys-modal h2{margin-bottom:6px}
   .keys-sub{color:var(--text-muted);font-size:13px;margin-bottom:10px}
   .keys-table{width:100%;border-collapse:collapse;font-size:13px}
@@ -567,8 +594,10 @@
     <main class="main">
       <div id="tabstrip" class="tabstrip">
         <div class="tab pinned active" data-tab="projects" onclick="activateTab('projects')">&#9638; Projects</div>
+        <button type="button" id="split-close" class="splitclose" hidden title="Back to one project (ctrl+. then u)" aria-label="Close split view">&#10005; Close split</button>
       </div>
       <div id="views" class="views">
+        <div id="split-handle" role="separator" tabindex="0" aria-label="Resize the split panes" aria-orientation="vertical" aria-valuemin="50" aria-valuemax="50" aria-valuenow="50"></div>
         <section id="view-projects" class="view active">
           <div class="projbar"><h2>Projects</h2><span class="n" id="ncount"></span><span class="sp"></span><button class="btn primary" onclick="openAdd()">+ Add Project</button></div>
           <div id="grid" class="grid"></div>
@@ -730,22 +759,42 @@
   <div class="cmodal keys-modal" role="dialog" aria-label="Keyboard shortcuts">
     <h2>Keyboard</h2>
     <p class="keys-sub">Press <kbd id="keys-prefix">ctrl+.</kbd>, release, then one of:</p>
-    <table class="keys-table">
-      <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump to the nth project tab</td></tr>
-      <tr><td><kbd>n</kbd> / <kbd>b</kbd></td><td>Next / previous tab</td></tr>
-      <tr><td><kbd>p</kbd></td><td>Projects</td></tr>
-      <tr><td><kbd>a</kbd></td><td>Admin</td></tr>
-      <tr><td><kbd>f</kbd> / <kbd>l</kbd></td><td>First / last project tab</td></tr>
-      <tr class="keys-danger"><td><kbd>e</kbd></td><td>End this tab's agent session (asks first)</td></tr>
-      <tr><td><kbd>x</kbd></td><td>Close this tab (a live session still asks first)</td></tr>
-      <tr><td><kbd>/</kbd></td><td>Search tickets in this project</td></tr>
-      <tr><td><kbd>?</kbd></td><td>This sheet</td></tr>
-      <tr><td><kbd>Esc</kbd></td><td>Cancel</td></tr>
-    </table>
+    <div class="keys-grid">
+      <section>
+        <h3>Tabs</h3>
+        <table class="keys-table">
+          <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump to the nth project tab</td></tr>
+          <tr><td><kbd>f</kbd> / <kbd>l</kbd></td><td>First / last project tab</td></tr>
+          <tr><td><kbd>n</kbd> / <kbd>b</kbd></td><td>Next / previous tab</td></tr>
+          <tr><td><kbd>p</kbd></td><td>Projects</td></tr>
+          <tr><td><kbd>a</kbd></td><td>Admin</td></tr>
+          <tr><td><kbd>x</kbd></td><td>Close this tab (a live session still asks first)</td></tr>
+        </table>
+        <h3>Sessions and search</h3>
+        <table class="keys-table">
+          <tr class="keys-danger"><td><kbd>e</kbd></td><td>End this tab's agent session (asks first)</td></tr>
+          <tr><td><kbd>/</kbd></td><td>Search tickets in this project</td></tr>
+          <tr><td><kbd>?</kbd> / the prefix again</td><td>This sheet</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>Cancel</td></tr>
+        </table>
+      </section>
+      <section>
+        <h3>Split view</h3>
+        <table class="keys-table">
+          <tr><td><kbd>v</kbd> / <kbd>-</kbd></td><td>Open the previous tab beside / below</td></tr>
+          <tr><td><kbd>V</kbd> / <kbd>_</kbd></td><td>Open the next tab beside / below</td></tr>
+          <tr><td><kbd>o</kbd></td><td>Focus the other pane</td></tr>
+          <tr><td><kbd>s</kbd></td><td>Swap the two panes</td></tr>
+          <tr><td><kbd>r</kbd></td><td>Switch beside / below</td></tr>
+          <tr><td><kbd>u</kbd></td><td>Close the split</td></tr>
+        </table>
+      </section>
+    </div>
     <div class="cfoot"><button class="btn" id="keys-close">Close</button></div>
   </div>
 </div>
 <div class="keyhint" id="keyhint" role="status" aria-live="polite"></div>
+<div class="tabmenu" id="tabmenu" role="menu" hidden></div>
 <div class="toast" id="toast"></div>
 
 <!-- Reusable canon-styled confirm (t-5849) — replaces native confirm()/prompt().
@@ -782,6 +831,9 @@
 
       <div class="help-sect">Projects</div>
       <p>Register a project folder with <b>+ Add Project</b>; each card shows when it was updated and its ticket count. Click the green <b>&#8250;</b> to open a project in a tab.</p>
+
+      <div class="help-sect">Two projects at once</div>
+      <p>Right-click a project tab to open it <b>beside</b> or <b>below</b> the tab you are on. Drag the divider (or focus it and use the arrow keys) to resize, double-click it to reset. <kbd>ctrl+.</kbd> then <kbd>v</kbd> (beside) or <kbd>-</kbd> (below) does the same with the tab you came from (<kbd>shift</kbd> for the next tab in the strip); <kbd>o</kbd> moves to the other pane, <kbd>s</kbd> swaps them, <kbd>r</kbd> switches beside and below, and <kbd>u</kbd> closes the split. Projects, Admin and Upkeep still show full size.</p>
 
       <div class="help-sect">Tabs</div>
       <p>Open projects become folder-named tabs beside the pinned <b>Projects</b> tab; close a tab with its <b>&#10005;</b>.</p>
@@ -906,6 +958,7 @@
       if(cw&&cw.classList.contains('show')){ hideCloseWarn(); return; }
       const ov=document.getElementById('help-overlay'); if(ov&&ov.classList.contains('open')){ closeHelp(); }
       const ks=document.getElementById('keys-sheet'); if(ks&&ks.classList.contains('show')){ toggleKeysSheet(false); }
+      closeTabMenu();
     }
   });
 
@@ -1441,8 +1494,10 @@ function canonPrefixKeys(emit) {
     s.classList.toggle('show',want);
   }
   function goTab(id){
+    if(split&&splitShown()&&id!==activeTab) startPulse(id);
     activateTab(id);
     const f=document.querySelector('#view-'+id+' iframe');
+    lastScriptFocus=Date.now();
     try{ if(f) f.focus(); else window.focus(); }catch(e){}
   }
   function prefixAction(key){
@@ -1464,7 +1519,22 @@ function canonPrefixKeys(emit) {
       if(f){ try{ f.focus(); f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'focus-search'},location.origin); }catch(e){} }
       return;
     }
-    if(key==='?') toggleKeysSheet(true);
+    if(key==='v'||key==='-'||key==='V'||key==='_'){   // t-416c: v - take the tab you came from; V _ take the next project tab in the strip
+      const beside=key==='v'||key==='V', next=key==='V'||key==='_';
+      let other=prevTab;
+      if(next){ const i=openTabs.findIndex(t=>t.id===activeTab); other=(i>=0&&openTabs.length>1)?openTabs[(i+1)%openTabs.length].id:null; }
+      if(!isProjectTab(activeTab)||!other||other===activeTab||!isProjectTab(other)){ toast('No '+(next?'next':'previous')+' project tab to open '+(beside?'beside':'below')); return; }
+      openSplit(activeTab,other,beside?'h':'v'); return;
+    }
+    if(key==='u'){ closeSplit(); return; }
+    if(key==='o'||key==='s'||key==='r'){   // t-416c: act on the split that is on screen
+      if(!splitShown()){ toast('No split on screen'); return; }
+      if(key==='o'){ goTab(activeTab===split.a?split.b:split.a); return; }
+      if(key==='s'){ const t=split.a; split.a=split.b; split.b=t; split.ratio=1-split.ratio; }
+      else split.dir=split.dir==='v'?'h':'v';
+      saveSplit(); applySplit(); renderTabs(); return;
+    }
+    if(key==='?'||key===canonPrefixLabel().slice(5)) toggleKeysSheet(true);   // the prefix pressed twice opens the sheet too
   }
   const shellKeys=canonPrefixKeys((type,key)=>{
     if(type==='armed'){ showKeyHint(true); return; }
@@ -1592,6 +1662,7 @@ function canonPrefixKeys(emit) {
       document.getElementById('view-upkeep').classList.add('active');
       loadUpkeep();
     }
+    applySplit();   // t-416c: Admin and Upkeep show full size and suspend the split
   }
 
   function fmtUptime(secs){
@@ -2385,13 +2456,16 @@ function canonPrefixKeys(emit) {
     strip.querySelectorAll('.tab.project').forEach(n=>n.remove());
     for(const t of openTabs){
       const el=document.createElement('div');
-      el.className='tab project'+(activeTab===t.id?' active':'');
+      el.className='tab project'+(activeTab===t.id?' active':'')+(split&&(t.id===split.a||t.id===split.b)?' insplit':'');
+      if(split&&(t.id===split.a||t.id===split.b)) el.title='In split view';
+      el.addEventListener('contextmenu',ev=>{ ev.preventDefault(); openTabMenu(t.id,ev.clientX,ev.clientY); });
       el.dataset.tab=t.id;
       const liveCls = liveTabIds.has(t.id) ? (needsTabIds.has(t.id) ? ' on needs' : ' on') : '';
       el.innerHTML='<span class="live'+liveCls+'"></span> '+esc(t.name)+' <span class="tx" title="Close tab">&#10005;</span>';
-      el.addEventListener('click',(ev)=>{ if(ev.target.classList.contains('tx')){closeTab(t.id);} else {activateTab(t.id);} });
+      el.addEventListener('click',(ev)=>{ if(ev.target.classList.contains('tx')){closeTab(t.id);} else if(split&&splitShown()){goTab(t.id);} else {activateTab(t.id);} });
       strip.appendChild(el);
     }
+    strip.appendChild(document.getElementById('split-close'));   // keep it last, after the rebuilt tabs
     strip.querySelector('.tab.pinned').classList.toggle('active',activeTab==='projects');
     updateActiveCount();
   }
@@ -2407,13 +2481,153 @@ function canonPrefixKeys(emit) {
       tabTokens.set(tok,id);
       f.src='/?project='+encodeURIComponent(id)+'&theme='+currentTheme()+'&tab='+tok;
       f.title=name||id;
+      f.addEventListener('load',()=>{ delete paneSent[id]; sendPaneState(); });   // t-416c: a board that loads late still learns its pane state
       v.appendChild(f);
       views.appendChild(v);
       if(interrupted.length) renderInterrupted();   // a project's stopped-session banner belongs in its tab
     }
     return v;
   }
+  // ── Split view (t-416c): two project panes side by side or stacked ───────────
+  // split = {a,b,dir:'h'|'v',ratio}: pane1 is `a` (left/top), pane2 is `b`. `activeTab` stays the FOCUSED pane. Both views
+  // are shown by CSS classes only (see .pane1/.pane2); nothing is ever moved in the DOM, because that reloads an iframe.
+  const LS_SPLIT='canon-cockpit-split';
+  let split=null, prevTab=null, lastScriptFocus=0;
+  const SPLIT_MIN={h:280,v:220};
+  // Each visible board is told whether it is in a split and whether it is the focused pane; `pulse` marks a pane that took
+  // focus by a tab click or a key (not by a click inside it), which the board shows as a pulsing header until its first interaction.
+  let pulseTab=null, pulseTimer=null;
+  const paneSent={};
+  function sendPaneState(){
+    const on=splitShown(), ids=new Set(Object.keys(paneSent));
+    if(split){ ids.add(split.a); ids.add(split.b); }
+    ids.forEach(id=>{
+      const inPair=on&&(id===split.a||id===split.b);
+      const st={split:inPair,focused:inPair&&id===activeTab,pulse:inPair&&id===activeTab&&id===pulseTab};
+      const key=JSON.stringify(st);
+      if(paneSent[id]===key) return;
+      const f=document.querySelector('#view-'+id+' iframe');
+      if(!f||!f.contentWindow){ delete paneSent[id]; return; }
+      try{ f.contentWindow.postMessage(Object.assign({source:'canon-cockpit-shell',type:'pane-state'},st),location.origin); paneSent[id]=key; }catch(e){}
+      if(!inPair) delete paneSent[id];
+    });
+  }
+  function startPulse(id){
+    pulseTab=id; clearTimeout(pulseTimer);
+    pulseTimer=setTimeout(()=>{ pulseTab=null; sendPaneState(); },4000);
+  }
+  const isProjectTab=id=>openTabs.some(t=>t.id===id);
+  function splitShown(){
+    if(!split||(activeTab!==split.a&&activeTab!==split.b)) return false;
+    const v=document.getElementById('view-'+activeTab);
+    return !!v&&v.classList.contains('active');
+  }
+  function clampRatio(r){
+    const views=document.getElementById('views');
+    const total=split.dir==='v'?views.clientHeight:views.clientWidth, edge=SPLIT_MIN[split.dir]+3;
+    if(!(total>2*edge)) return .5;
+    return Math.min(1-edge/total,Math.max(edge/total,r));
+  }
+  function saveSplit(){
+    try{ if(split) localStorage.setItem(LS_SPLIT,JSON.stringify(split)); else localStorage.removeItem(LS_SPLIT); }catch(e){}
+  }
+  function restoreSplit(){
+    let s=null; try{ s=JSON.parse(localStorage.getItem(LS_SPLIT)||'null'); }catch(e){}
+    if(!s||typeof s!=='object'||!isProjectTab(s.a)||!isProjectTab(s.b)||s.a===s.b) return;
+    split={a:s.a,b:s.b,dir:s.dir==='v'?'v':'h',ratio:(typeof s.ratio==='number'&&s.ratio>.05&&s.ratio<.95)?s.ratio:.5};
+  }
+  function applySplit(){
+    const views=document.getElementById('views'), handle=document.getElementById('split-handle');
+    document.querySelectorAll('.view.pane1,.view.pane2').forEach(v=>v.classList.remove('pane1','pane2'));
+    views.classList.remove('split-h','split-v');
+    const sc=document.getElementById('split-close'); if(sc) sc.hidden=!splitShown();
+    if(!splitShown()){ sendPaneState(); return; }
+    const va=document.getElementById('view-'+split.a), vb=document.getElementById('view-'+split.b);
+    if(!va||!vb){ split=null; saveSplit(); sendPaneState(); return; }
+    va.classList.add('pane1'); vb.classList.add('pane2');
+    views.classList.add(split.dir==='v'?'split-v':'split-h');
+    split.ratio=clampRatio(split.ratio);
+    views.style.setProperty('--r',split.ratio);
+    const total=split.dir==='v'?views.clientHeight:views.clientWidth, edge=SPLIT_MIN[split.dir]+3;
+    handle.setAttribute('aria-orientation',split.dir==='v'?'horizontal':'vertical');
+    handle.setAttribute('aria-valuenow',Math.round(split.ratio*100));
+    handle.setAttribute('aria-valuemin',total>2*edge?Math.ceil(edge/total*100):50);
+    handle.setAttribute('aria-valuemax',total>2*edge?Math.floor((1-edge/total)*100):50);
+    sendPaneState();
+  }
+  function openSplit(a,b,dir){
+    // A project is never in two panes: the same tab, or one that is not open, is refused.
+    if(a===b||!isProjectTab(a)||!isProjectTab(b)){ toast('Pick another open project tab'); return false; }
+    const same=split&&((split.a===a&&split.b===b)||(split.a===b&&split.b===a));
+    split=same?Object.assign({},split,{dir}):{a,b,dir,ratio:.5};
+    saveSplit(); activateTab(a); return true;
+  }
+  function closeSplit(){ split=null; pulseTab=null; saveSplit(); applySplit(); renderTabs(); }
+  (function wireSplitHandle(){
+    const handle=document.getElementById('split-handle'), views=document.getElementById('views');
+    if(!handle) return;
+    let dragging=false;
+    const move=e=>{
+      if(!dragging||!split) return;
+      const r=views.getBoundingClientRect();
+      split.ratio=clampRatio(split.dir==='v'?(e.clientY-r.top)/r.height:(e.clientX-r.left)/r.width);
+      applySplit();
+    };
+    handle.addEventListener('pointerdown',e=>{ dragging=true; handle.classList.add('drag'); try{ handle.setPointerCapture(e.pointerId); }catch(err){} e.preventDefault(); });
+    handle.addEventListener('pointermove',move);
+    const stop=()=>{ if(!dragging) return; dragging=false; handle.classList.remove('drag'); saveSplit(); };
+    handle.addEventListener('pointerup',stop); handle.addEventListener('pointercancel',stop);
+    handle.addEventListener('dblclick',()=>{ if(!split) return; split.ratio=.5; applySplit(); saveSplit(); });
+    handle.addEventListener('keydown',e=>{
+      if(!split) return;
+      const step=e.shiftKey?.1:.02, back=split.dir==='v'?'ArrowUp':'ArrowLeft', fwd=split.dir==='v'?'ArrowDown':'ArrowRight';
+      if(e.key===back||e.key===fwd){ e.preventDefault(); split.ratio+=(e.key===fwd?step:-step); }
+      else if(e.key==='Home'){ e.preventDefault(); split.ratio=.5; }
+      else return;
+      applySplit(); saveSplit();
+    });
+    window.addEventListener('resize',applySplit);
+    // Which pane has focus: ask each pane's own document (the boards are same-origin; a nested terminal frame counts as inside it).
+    // document.activeElement here is NOT reliable: after the shell focuses a pane by script, a later click into the other pane
+    // leaves it pointing at the old iframe. The first entry into a frame blurs this window; moving between two panes fires
+    // nothing at all, so a light poll runs while a split is on screen.
+    const paneHasFocus=id=>{ try{ const f=document.querySelector('#view-'+id+' iframe'); return !!(f&&f.contentDocument&&f.contentDocument.hasFocus()); }catch(e){ return false; } };
+    const syncFocusedPane=()=>{
+      if(!splitShown()||Date.now()-lastScriptFocus<500) return;   // a focus the shell just set takes a moment to land
+      const id=[split.a,split.b].find(paneHasFocus);
+      if(id&&id!==activeTab){ pulseTab=null; activateTab(id); }
+    };
+    window.addEventListener('blur',()=>setTimeout(syncFocusedPane,0));
+    setInterval(syncFocusedPane,200);
+  })();
+  document.getElementById('split-close').addEventListener('click',closeSplit);
+  const tabMenu=document.getElementById('tabmenu');
+  function closeTabMenu(){ if(tabMenu) tabMenu.hidden=true; }
+  function openTabMenu(tid,x,y){
+    if(!tabMenu) return;
+    tabMenu.innerHTML='';
+    const canPair=isProjectTab(activeTab)&&tid!==activeTab;
+    const add=(label,fn,disabled)=>{
+      const b=document.createElement('button'); b.type='button'; b.setAttribute('role','menuitem'); b.textContent=label; b.disabled=!!disabled;
+      b.addEventListener('click',()=>{ closeTabMenu(); fn(); }); tabMenu.appendChild(b);
+    };
+    add('Open beside the active tab',()=>openSplit(activeTab,tid,'h'),!canPair);
+    add('Open below the active tab',()=>openSplit(activeTab,tid,'v'),!canPair);
+    if(split) add('Close split',closeSplit);
+    tabMenu.hidden=false;
+    tabMenu.style.left=Math.max(4,Math.min(x,window.innerWidth-tabMenu.offsetWidth-4))+'px';
+    tabMenu.style.top=Math.max(4,Math.min(y,window.innerHeight-tabMenu.offsetHeight-4))+'px';
+    const first=tabMenu.querySelector('button:not(:disabled)'); if(first) first.focus();
+  }
+  document.addEventListener('pointerdown',e=>{ if(tabMenu&&!tabMenu.hidden&&!tabMenu.contains(e.target)) closeTabMenu(); },true);
   function activateTab(id){
+    const from=activeTab;
+    if(from!==id&&isProjectTab(from)) prevTab=from;   // where "v" and "-" take the second pane from
+    // While the split is on screen, a project tab outside the pair takes over the focused pane.
+    if(split&&splitShown()&&isProjectTab(id)&&id!==split.a&&id!==split.b){
+      if(from===split.a) split.a=id; else if(from===split.b) split.b=id;
+      saveSplit();
+    }
     activeTab=id;
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
     const v=document.getElementById('view-'+id) || document.getElementById('view-projects');
@@ -2424,6 +2638,7 @@ function canonPrefixKeys(emit) {
     if(na) na.classList.remove('active');
     renderTabs();
     saveTabs();
+    applySplit();
   }
   function openProject(id,name,opts){
     opts=opts||{};
@@ -2467,7 +2682,12 @@ function canonPrefixKeys(emit) {
     openTabs=openTabs.filter(t=>t.id!==id);
     for(const [tok,pid] of tabTokens) if(pid===id) tabTokens.delete(tok);
     const v=document.getElementById('view-'+id); if(v) v.remove();
-    if(activeTab===id) activeTab='projects';
+    // Closing either paired tab ends the split; the other one stays, full size.
+    if(split&&(id===split.a||id===split.b)){
+      const other=id===split.a?split.b:split.a;
+      split=null; saveSplit();
+      if(activeTab===id) activeTab=isProjectTab(other)?other:'projects';
+    } else if(activeTab===id) activeTab='projects';
     activateTab(activeTab);
   }
   // t-0db3: closing a tab with a LIVE agent session warns first (Save & End /
@@ -2488,6 +2708,7 @@ function canonPrefixKeys(emit) {
       if(p && !openTabs.some(t=>t.id===id)){ openTabs.push({id:p.id,name:p.name}); ensureView(p.id,p.name); }
     }
     if(saved.active && (saved.active==='projects' || byId.has(saved.active))) activeTab=saved.active;
+    restoreSplit();
     renderTabs(); activateTab(activeTab);
   }
 

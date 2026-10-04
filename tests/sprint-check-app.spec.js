@@ -3461,7 +3461,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, 'z');                       // unbound
       await page.evaluate(() => activateTab('proj-a'));
-      await pressPrefix(page, 'h');                       // h is no longer bound (Projects is p): the tab stays
+      await pressPrefix(page, 'k');                       // k is not bound: the tab stays
       await page.waitForTimeout(150);
       expect(await shellTab(page)).toBe('proj-a');
       await page.evaluate(() => activateTab('projects'));
@@ -3657,6 +3657,297 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(board.locator('#ck-leave-confirm')).not.toHaveClass(/open/);
       await term.locator('#home').click();
       await expect.poll(() => shellTab(page)).toBe('projects');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // ── t-416c: split view — two project panes by CSS placement, never moved in the DOM ──
+    const splitTabs = async (page) => {
+      await page.evaluate(() => { openProject('proj-a', 'proj-a'); openProject('proj-x', 'proj-x'); activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a', 'proj-x']);
+    };
+    const bbox = (page, sel) => page.locator(sel).boundingBox();
+    const splitVia = async (page, tab, label) => {
+      await page.locator(`.tab.project[data-tab="${tab}"]`).click({ button: 'right' });
+      await page.locator('#tabmenu button', { hasText: label }).click();
+    };
+    const boardMarker = (page, id) => page.frameLocator(`#view-${id} iframe`).locator('body').evaluate(() => window.__marker);
+
+    test('split view (t-416c): beside and below place two live boards and never reload one', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      for (const id of ['proj-a', 'proj-x']) await page.frameLocator(`#view-${id} iframe`).locator('body').evaluate((_, id) => { window.__marker = id; }, id);
+      await splitVia(page, 'proj-x', 'beside');
+      await expect(page.locator('#views')).toHaveClass(/split-h/);
+      const v = await bbox(page, '#views'), a = await bbox(page, '#view-proj-a iframe'), x = await bbox(page, '#view-proj-x iframe'), h = await bbox(page, '#split-handle');
+      expect(Math.abs(a.width + h.width + x.width - v.width)).toBeLessThanOrEqual(1);
+      expect(a.x + a.width).toBeLessThanOrEqual(h.x + 1);
+      expect(h.x + h.width).toBeLessThanOrEqual(x.x + 1);
+      expect(Math.abs(a.height - v.height)).toBeLessThanOrEqual(1); expect(Math.abs(x.height - v.height)).toBeLessThanOrEqual(1);
+      await splitVia(page, 'proj-x', 'below');
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      const a2 = await bbox(page, '#view-proj-a iframe'), x2 = await bbox(page, '#view-proj-x iframe'), h2 = await bbox(page, '#split-handle');
+      expect(Math.abs(a2.height + h2.height + x2.height - v.height)).toBeLessThanOrEqual(1);
+      expect(a2.y + a2.height).toBeLessThanOrEqual(h2.y + 1);
+      expect(h2.y + h2.height).toBeLessThanOrEqual(x2.y + 1);
+      expect(Math.abs(a2.width - v.width)).toBeLessThanOrEqual(1);
+      await page.locator('.tab.project[data-tab="proj-x"]').click();                 // focus the other pane by its tab
+      expect(await shellTab(page)).toBe('proj-x');
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      await expect(page.locator('.tab.project[data-tab="proj-a"]')).toHaveClass(/insplit/);
+      await expect(page.locator('#split-close')).toBeVisible();                      // the way out is on screen while a split is
+      await page.evaluate(() => activateTab('projects'));                            // Projects suspends the split ...
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      await expect(page.locator('#view-projects')).toHaveClass(/active/);
+      await page.evaluate(() => activateTab('proj-a'));                              // ... and a paired tab brings it back
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      await page.evaluate(() => showView('admin'));                                  // Admin suspends it too
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      await page.evaluate(() => activateTab('proj-a'));
+      for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // no iframe was reloaded or replaced
+      await expect(page.locator('#split-close')).toBeVisible();
+      await page.locator('#split-close').click();                                    // one click back to the normal layout
+      expect(await page.evaluate(() => split)).toBeNull();
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      await expect(page.locator('#split-close')).toBeHidden();
+      await expect(page.locator('#view-proj-x')).toBeHidden();
+      await expect(page.locator('#view-proj-a')).toBeVisible();
+      expect(await page.evaluate(() => localStorage.getItem('canon-cockpit-split'))).toBeNull();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('split view (t-416c): the divider drags, clamps, answers the keyboard and resets on a double click', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      for (const id of ['proj-a', 'proj-x']) await page.frameLocator(`#view-${id} iframe`).locator('body').evaluate((_, id) => { window.__marker = id; }, id);
+      await splitVia(page, 'proj-x', 'beside');
+      const handle = page.locator('#split-handle');
+      await expect(handle).toHaveAttribute('role', 'separator');
+      await expect(handle).toHaveAttribute('tabindex', '0');
+      const v = await bbox(page, '#views');
+      const dragTo = async (px) => {
+        const h = await bbox(page, '#split-handle');
+        await page.mouse.move(h.x + h.width / 2, h.y + 40); await page.mouse.down();
+        await page.mouse.move(px, h.y + 40, { steps: 8 }); await page.mouse.up();
+      };
+      await dragTo(v.x + v.width * 0.3);
+      expect(Math.abs((await bbox(page, '#view-proj-a iframe')).width - (v.width * 0.3 - 3))).toBeLessThanOrEqual(3);
+      await dragTo(v.x + 4);                                                         // dragged past the limit: clamps at 280
+      const left = (await bbox(page, '#view-proj-a iframe')).width;
+      expect(left).toBeGreaterThanOrEqual(279); expect(left).toBeLessThanOrEqual(283);
+      await dragTo(v.x + v.width - 4);
+      const right = (await bbox(page, '#view-proj-x iframe')).width;
+      expect(right).toBeGreaterThanOrEqual(279); expect(right).toBeLessThanOrEqual(283);
+      await handle.dblclick();                                                       // double click: 50/50
+      expect(Math.abs((await bbox(page, '#view-proj-a iframe')).width - (v.width / 2 - 3))).toBeLessThanOrEqual(2);
+      const before = (await bbox(page, '#view-proj-a iframe')).width;
+      await handle.focus(); await page.keyboard.press('ArrowRight');
+      const after = (await bbox(page, '#view-proj-a iframe')).width;
+      expect(after - before).toBeGreaterThan(v.width * 0.015);                       // about 2 percent per step
+      await page.keyboard.press('Home');
+      expect(Math.abs((await bbox(page, '#view-proj-a iframe')).width - before)).toBeLessThanOrEqual(2);
+      const now = Number(await handle.getAttribute('aria-valuenow'));
+      expect(now).toBe(50);
+      expect(Number(await handle.getAttribute('aria-valuemin'))).toBeLessThan(now);
+      expect(Number(await handle.getAttribute('aria-valuemax'))).toBeGreaterThan(now);
+      await splitVia(page, 'proj-x', 'below');                                       // the vertical minimum is 220
+      const v2 = await bbox(page, '#views'), h2 = await bbox(page, '#split-handle');
+      await page.mouse.move(h2.x + 60, h2.y + 3); await page.mouse.down(); await page.mouse.move(h2.x + 60, v2.y + 3, { steps: 8 }); await page.mouse.up();
+      const top = (await bbox(page, '#view-proj-a iframe')).height;
+      expect(top).toBeGreaterThanOrEqual(219); expect(top).toBeLessThanOrEqual(223);
+      for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // dragging, keys and switching beside/below reloaded nothing
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('split view (t-416c): a project is never in two panes; a third tab replaces the focused one; closing ends the split', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      await page.locator('.tab.project[data-tab="proj-a"]').click({ button: 'right' });   // the active tab cannot be paired with itself
+      await expect(page.locator('#tabmenu button:disabled')).toHaveCount(2);
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      expect(await page.evaluate(() => openSplit('proj-a', 'proj-a', 'h'))).toBe(false);
+      expect(await page.evaluate(() => split)).toBeNull();
+      await splitVia(page, 'proj-x', 'beside');
+      expect(await page.evaluate(() => document.querySelectorAll('#views iframe').length)).toBe(2);
+      await page.evaluate(() => { openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-y'); });
+      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-y', 'proj-x']);   // proj-y took the focused pane
+      await expect(page.locator('#view-proj-a')).toBeHidden();
+      await expect(page.locator('#view-proj-y')).toBeVisible();
+      await expect(page.locator('#view-proj-x')).toBeVisible();
+      await page.evaluate(() => liveTabIds.add('proj-x'));                           // a live session still gets the warning first
+      await page.evaluate(() => closeTab('proj-x'));
+      await expect(page.locator('#closeWarn')).toHaveClass(/show/);
+      expect(await page.evaluate(() => split && split.b)).toBe('proj-x');
+      await page.evaluate(() => { hideCloseWarn(); liveTabIds.delete('proj-x'); });
+      await page.evaluate(() => closeTab('proj-x'));                                 // idle: closes, the split ends, proj-y stays full size
+      expect(await page.evaluate(() => split)).toBeNull();
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      expect(await shellTab(page)).toBe('proj-y');
+      await expect(page.locator('#view-proj-y')).toBeVisible();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('split view (t-416c): reload restores the split; stale or malformed saved data is ignored; the keys v - V _ u work', async ({ page }) => {
+      const errors = []; page.on('pageerror', e => errors.push(e.message));
+      await openShell(page, []);
+      await splitTabs(page);
+      await splitVia(page, 'proj-x', 'below');
+      await page.locator('#split-handle').focus(); await page.keyboard.press('ArrowDown');
+      const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('canon-cockpit-split')));
+      expect(saved).toMatchObject({ a: 'proj-a', b: 'proj-x', dir: 'v' });
+      expect(saved.ratio).toBeCloseTo(0.52, 2);
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      expect(await page.evaluate(() => [split.a, split.b, split.dir])).toEqual(['proj-a', 'proj-x', 'v']);
+      expect(Number(await page.locator('#split-handle').getAttribute('aria-valuenow'))).toBe(52);
+      for (const bad of [JSON.stringify({ a: 'proj-a', b: 'gone', dir: 'h', ratio: 0.5 }), 'not json', JSON.stringify({ a: 'proj-a', b: 'proj-a', dir: 'h', ratio: 0.5 }), JSON.stringify([1, 2])]) {
+        await page.evaluate(b => localStorage.setItem('canon-cockpit-split', b), bad);
+        await page.reload(); await page.waitForLoadState('networkidle');
+        await expect(page.locator('#views')).not.toHaveClass(/split-/);
+        await expect(page.locator('.tab.project[data-tab="proj-a"]')).toBeVisible();
+      }
+      expect(errors).toEqual([]);
+      // keys: the tab you came from goes beside / below; u closes. With no previous tab, a message and nothing else.
+      await page.evaluate(() => localStorage.removeItem('canon-cockpit-split'));
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await page.evaluate(() => activateTab('proj-a'));
+      await pressPrefix(page, 'v');
+      await expect(page.locator('#toast')).toContainText('No previous project tab');
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      await page.evaluate(() => { activateTab('proj-x'); activateTab('proj-a'); });
+      await boardsKeyReady(page, ['proj-a', 'proj-x']);
+      await pressPrefix(page, 'v');
+      await expect(page.locator('#views')).toHaveClass(/split-h/);
+      await pressPrefix(page, '-');
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      await pressPrefix(page, 'u');
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      await page.evaluate(() => { openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-a'); prevTab = null; });
+      await pressPrefix(page, 'V');                                                  // the NEXT tab in the strip (proj-x), whatever was visited before
+      await expect(page.locator('#views')).toHaveClass(/split-h/);
+      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-a', 'proj-x']);
+      await pressPrefix(page, 'u');
+      await page.evaluate(() => activateTab('proj-y'));
+      await pressPrefix(page, '_');                                                  // from the last tab it wraps to the first
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-y', 'proj-a']);
+      await pressPrefix(page, 'u');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('split view (t-416c): focusing inside a pane makes it the active one', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      await splitVia(page, 'proj-x', 'beside');
+      expect(await shellTab(page)).toBe('proj-a');
+      await page.frameLocator('#view-proj-x iframe').locator('body').click({ position: { x: 4, y: 400 } });
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      await expect(page.locator('.tab.project[data-tab="proj-x"]')).toHaveClass(/active/);
+      await page.frameLocator('#view-proj-a iframe').locator('body').click({ position: { x: 4, y: 400 } });
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      await expect(page.locator('#views')).toHaveClass(/split-h/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('split view (t-416c): keys o s r focus, swap and rotate the split on screen without reloading a board; with no split they only say so', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      await pressPrefix(page, 'o');
+      await expect(page.locator('#toast')).toContainText('No split on screen');
+      for (const id of ['proj-a', 'proj-x']) await page.frameLocator(`#view-${id} iframe`).locator('body').evaluate((_, id) => { window.__marker = id; }, id);
+      await splitVia(page, 'proj-x', 'beside');
+      await page.evaluate(() => { split.ratio = 0.3; applySplit(); });
+      expect(await shellTab(page)).toBe('proj-a');
+      await pressPrefix(page, 'o');                                                  // the other pane takes focus
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      expect(await page.evaluate(() => document.activeElement.closest('.view').id)).toBe('view-proj-x');
+      await pressPrefix(page, 'o');
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      const a0 = await bbox(page, '#view-proj-a iframe'), x0 = await bbox(page, '#view-proj-x iframe');
+      expect(a0.x).toBeLessThan(x0.x);
+      await pressPrefix(page, 's');                                                  // swap: positions flip, the ratio mirrors
+      await expect.poll(async () => (await bbox(page, '#view-proj-a iframe')).x).toBeGreaterThan(x0.x - 1);
+      const a1 = await bbox(page, '#view-proj-a iframe'), x1 = await bbox(page, '#view-proj-x iframe');
+      expect(x1.x).toBeLessThan(a1.x);
+      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-x', 'proj-a']);
+      expect(await page.evaluate(() => split.ratio)).toBeCloseTo(0.7, 2);
+      expect(Math.abs(x1.width - x0.width)).toBeLessThanOrEqual(2);                  // proj-x kept its own size, now on the left
+      expect(await shellTab(page)).toBe('proj-a');                                   // focus does not move on a swap
+      await pressPrefix(page, 'r');                                                  // rotate: beside becomes below and back
+      await expect(page.locator('#views')).toHaveClass(/split-v/);
+      const a2 = await bbox(page, '#view-proj-a iframe'), x2 = await bbox(page, '#view-proj-x iframe');
+      expect(x2.y).toBeLessThan(a2.y);
+      await pressPrefix(page, 'r');
+      await expect(page.locator('#views')).toHaveClass(/split-h/);
+      for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // none of that reloaded a board
+      await pressPrefix(page, 'u');
+      await pressPrefix(page, 's');
+      await expect(page.locator('#toast')).toContainText('No split on screen');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('keyboard sheet (t-416c): the keys are grouped into Tabs, Split view, and Sessions and search, in two columns', async ({ page }) => {
+      await openShell(page, []);
+      await pressPrefix(page, '?');
+      await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
+      await expect(page.locator('#keys-sheet .keys-grid h3')).toHaveText(['Tabs', 'Sessions and search', 'Split view']);
+      const sections = page.locator('#keys-sheet .keys-grid > section');
+      await expect(sections).toHaveCount(2);
+      const left = await sections.nth(0).boundingBox(), right = await sections.nth(1).boundingBox();
+      expect(right.x).toBeGreaterThan(left.x + left.width - 1);                      // side by side, not stacked
+      await expect(sections.nth(0).locator('h3')).toHaveText(['Tabs', 'Sessions and search']);   // Sessions and search sits under Tabs, on the left
+      await expect(sections.nth(1).locator('h3')).toHaveText(['Split view']);
+      const rowHeights = await page.locator('#keys-sheet .keys-table td:last-child').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
+      expect(Math.max(...rowHeights), 'no description wraps onto a second line').toBeLessThanOrEqual(30);
+      const keys = await page.locator('#keys-sheet .keys-table kbd').allTextContents();
+      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', '/', '?', 'Esc']) expect(keys, `the sheet lists ${k}`).toContain(k);
+      const lastRow = await bbox(page, '#keys-sheet .keys-grid > section:first-child .keys-table:last-child tr:last-child'), closeBtn = await bbox(page, '#keys-close');
+      expect(closeBtn.y - (lastRow.y + lastRow.height), 'the Close button has room below the last row').toBeGreaterThanOrEqual(16);
+      const box = await bbox(page, '#keys-sheet .keys-modal');
+      expect(box.y).toBeGreaterThanOrEqual(0); expect(box.y + box.height).toBeLessThanOrEqual(800);   // fits the 800 px viewport
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
+      await page.keyboard.press('Control+.'); await page.keyboard.press('Control+.');   // the prefix twice, ctrl held throughout
+      await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
+      await page.keyboard.press('Escape');
+      await pressPrefix(page, '.');                                                  // ... or ctrl+. , release, then .
+      await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
+      await page.keyboard.press('Escape');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    const paneAttr = (page, id, name) => page.frameLocator(`#view-${id} iframe`).locator('html').evaluate((h, n) => h.dataset[n] ?? null, name);
+    const hdrColor = (page, id) => page.frameLocator(`#view-${id} iframe`).locator('#h-project').evaluate(e => getComputedStyle(e).color);
+
+    test('split view (t-416c): a tab click moves keyboard focus into its pane; the focused pane reads brighter and pulses until first used', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      expect(await paneAttr(page, 'proj-a', 'pane')).toBeNull();                      // no split yet: boards are untouched
+      await splitVia(page, 'proj-x', 'below');
+      await expect.poll(() => paneAttr(page, 'proj-a', 'pane')).toBe('focused');
+      await expect.poll(() => paneAttr(page, 'proj-x', 'pane')).toBe('idle');
+      expect(await paneAttr(page, 'proj-a', 'panePulse')).toBeNull();                 // opening the split is not a focus change
+      expect(await hdrColor(page, 'proj-a')).not.toBe(await hdrColor(page, 'proj-x')); // the focused path is brighter than the idle one
+      await page.locator('.tab.project[data-tab="proj-x"]').click();                  // click the lower pane's tab
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      expect(await page.evaluate(() => document.activeElement.closest('.view').id)).toBe('view-proj-x');   // focus really moved
+      await expect.poll(() => paneAttr(page, 'proj-x', 'pane')).toBe('focused');
+      await expect.poll(() => paneAttr(page, 'proj-a', 'pane')).toBe('idle');
+      await expect.poll(() => paneAttr(page, 'proj-x', 'panePulse')).toBe('1');       // the pane that took focus pulses ...
+      expect(await paneAttr(page, 'proj-a', 'panePulse')).toBeNull();                 // ... and only that one
+      await page.frameLocator('#view-proj-x iframe').locator('body').click({ position: { x: 4, y: 150 } });
+      await expect.poll(() => paneAttr(page, 'proj-x', 'panePulse')).toBeNull();      // the first click inside stops it
+      await expect.poll(() => paneAttr(page, 'proj-x', 'pane')).toBe('focused');
+      await pressPrefix(page, 'o');                                                   // a key moves focus: the other pane pulses
+      await expect.poll(() => paneAttr(page, 'proj-a', 'panePulse')).toBe('1');
+      await expect.poll(() => paneAttr(page, 'proj-a', 'panePulse'), { timeout: 8000 }).toBeNull();   // and it stops by itself
+      await page.frameLocator('#view-proj-x iframe').locator('body').click({ position: { x: 4, y: 150 } });   // clicking into a pane is the interaction: no pulse
+      await expect.poll(() => shellTab(page)).toBe('proj-x');
+      await expect.poll(() => paneAttr(page, 'proj-x', 'pane')).toBe('focused');
+      expect(await paneAttr(page, 'proj-x', 'panePulse')).toBeNull();
+      await page.locator('#split-close').click();                                     // closing the split returns both boards to normal
+      await expect.poll(() => paneAttr(page, 'proj-a', 'pane')).toBeNull();
+      await expect.poll(() => paneAttr(page, 'proj-x', 'pane')).toBeNull();
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

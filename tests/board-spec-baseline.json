@@ -1,8 +1,8 @@
 {
   "_about": "t-4469: tests seen failing in five real-data runs per browser (tests/run-board-spec.sh). failing = failed in every run (quarantined: needs a ticket id and a QUARANTINE marker in the spec); flaky = may fail any number of runs, including all runs of one batch (the guard warns; --strict fails): needs a reason and a ticket id; skipped = allowed to be skipped; min_tests = per-browser floor on the number of tests reported (a drop means tests did not run). failed_runs is information only.",
   "min_tests": {
-    "chromium": 343,
-    "webkit": 343
+    "chromium": 351,
+    "webkit": 351
   },
   "failing": [
     {
@@ -231,12 +231,14 @@
     {
       "title": "cockpit preview pane (t-b19b) > closing a tab with an open preview frees its iframe from the DOM (t-82f4)",
       "browsers": [
-        "chromium"
+        "chromium",
+        "webkit"
       ],
       "ticket": "t-8aa6",
       "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
       "failed_runs": {
-        "chromium": "1/5"
+        "chromium": "1/5",
+        "webkit": "1/3"
       }
     },
     {
@@ -270,6 +272,61 @@
       "reason": "timing flake seen in some of five real-data runs; cause not yet diagnosed",
       "failed_runs": {
         "chromium": "1/5"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > scratch (t-47f1): + Scratch opens a labelled scratch view in the project tab; t-e162: a second + Scratch is a new session",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "WebKit timeout under full-suite load, seen once on the t-416c tree; passed 5/5 in isolation and did not recur in a second batch; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > slow repo: Commit & create and + New show a spinner while each step runs (t-d254)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "WebKit timeout under full-suite load, seen once on the t-416c tree; passed 5/5 in isolation and did not recur in a second batch; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
+    },
+    {
+      "title": "cockpit stale-daemon banner (t-74d6) > a tab with no live session keeps Start and an enabled picker",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "WebKit timeout under full-suite load, seen once on the t-416c tree; passed 5/5 in isolation and did not recur in a second batch; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
+    },
+    {
+      "title": "Canon Cockpit \"?\" info popovers (t-576f) > every card has a real \"?\" button that toggles a non-modal popover with the expected sections",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "WebKit timeout under full-suite load, seen once on the t-416c tree; passed 5/5 in isolation and did not recur in a second batch; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
+      }
+    },
+    {
+      "title": "Canon Cockpit Upkeep (t-7ae6) > registering a skill shows a spinner, disables the card's buttons, and sends one request; success reloads (t-7d8d)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "WebKit timeout under full-suite load, seen once on the t-416c tree; passed 5/5 in isolation and did not recur in a second batch; cause not yet diagnosed",
+      "failed_runs": {
+        "webkit": "1/3"
       }
     }
   ],
