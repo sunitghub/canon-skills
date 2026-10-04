@@ -9831,6 +9831,7 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     } finally { proc.kill('SIGKILL'); }
   });
 
+  // QUARANTINE t-b546: "Restarting…" is overwritten within 1 ms by the status refresh after a confirmed force restart (chromium)
   test('with a live session the plain Restart is disabled and Force restart is confirmed', async ({ page }) => {
     test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
     const { addr, proc } = await startDaemon();
