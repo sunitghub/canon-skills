@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-03-2026 14:20
+learnings-sweep last run: 10-03-2026 15:40
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-03 | [t-a198](.tickets/t-a198/learnings.md) | A key handler copied byte-for-byte into pages with no shared module is pinned by a parity test, but the parity test pins only the snippet, not the wiring around each copy — pin the call sites with a real-environment test (here the real xterm plus the wiring lines cut from the page itself); and a Playwright key test needs the target frame's handler to exist first (wait for it), since under suite load a key pressed earlier goes nowhere. Inserting a block mid-file can also split an existing multi-line comment from its code. | UNPROMOTED |
 | 2026-10-03 | [t-e53c](.tickets/t-e53c/learnings.md) | When removing a UI control, grep for every identifier of its wiring (`evalBtn` as well as `evalOverride` / the element id): a leftover reference in the modal's open-time reset threw a ReferenceError and silently broke ten neighbouring tests while the new test (which only asserted absence) passed — always run the neighbours of the changed widget, and assert a sibling still works. | UNPROMOTED |
 | 2026-10-03 | [t-c433](.tickets/t-c433/learnings.md) | A gitignore entry for a path that can be a symlink must have no trailing slash (a trailing `/` matches directories only, git sees a symlink as a file), and the same fix already existed in the sibling `_ensure_agents_link_gitignored` — when one of two parallel helpers is fixed, grep for its siblings; a stale doc line naming the old entries also made a one-file fix a two-file (normal-tier) change. | UNPROMOTED |
 | 2026-10-03 | [t-44b0](.tickets/t-44b0/learnings.md) | A client helper meant to be unit-tested through the vm loader must be self-contained: reusing an existing top-level `const` (`normProjectPath`) made every case throw, because the loader's try/catch lets the page script die before that line; the reviewer's duplicate-helper note was right in the browser and wrong for the test. | UNPROMOTED |
