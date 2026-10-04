@@ -52,8 +52,9 @@
   .nav a .badge{margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);border-radius:9px;padding:1px 7px}
   .spacer{flex:1}
   .foot{padding:6px 12px 0;display:flex;gap:8px}
-  .foot button{flex:1;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px;font-size:12px;cursor:pointer}
+  .foot button{flex:1 1 0;min-width:0;white-space:nowrap;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px 4px;font-size:12px;cursor:pointer}
   .foot button:hover{color:var(--text);border-color:var(--border-hover)}
+  .foot button.icon{flex:0 0 32px;padding:8px 0;display:flex;align-items:center;justify-content:center}
   .main{overflow:hidden;display:flex;flex-direction:column}
   /* Tab bar: pinned Projects + closable project tabs */
   .tabstrip{display:flex;align-items:center;gap:4px;height:var(--strip-h);padding:var(--strip-pad) 14px 0;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
@@ -501,6 +502,17 @@
   .cc-code{display:flex;gap:8px;align-items:center;margin:0 0 16px}
   .cc-code input{flex:1;min-width:0;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;color:var(--text);font-family:ui-monospace,monospace;font-size:12px}
   .cc-code .btn{flex-shrink:0;font-size:12px;padding:8px 12px}
+  .keyhint{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);color:var(--text);border:1px solid var(--accent);border-radius:8px;padding:8px 14px;font-size:13px;display:none;z-index:60}
+  .keyhint.show{display:block}
+  kbd{font:12px ui-monospace,Menlo,Consolas,monospace;background:var(--bg);color:var(--text);border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+  .keys-modal{text-align:left;width:420px}
+  .keys-modal h2{margin-bottom:6px}
+  .keys-sub{color:var(--text-muted);font-size:13px;margin-bottom:10px}
+  .keys-table{width:100%;border-collapse:collapse;font-size:13px}
+  .keys-table td{padding:4px 0;border-top:1px solid var(--border-muted);color:var(--text-body)}
+  .keys-table td:first-child{white-space:nowrap;padding-right:16px}
+  .keys-table tr.keys-danger td{color:var(--col-discarded)}
+  .keys-table tr.keys-danger kbd{color:var(--col-discarded);border-color:var(--col-discarded)}
   .toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 16px;font-size:13px;display:none}
   .toast.show{display:block}
   /* Help/tour overlay (t-c5e7) — slide-in from the right */
@@ -548,6 +560,7 @@
       <div class="foot">
         <button id="theme-btn" onclick="toggleTheme()">&#127769; Dark</button>
         <button id="help-btn" onclick="openHelp()">? Help</button>
+        <button id="keys-btn" class="icon" type="button" onclick="toggleKeysSheet(true)" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9.5 14h5"/></svg></button>
       </div>
       <div class="side-resize" id="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="200" aria-valuemax="420" aria-valuenow="230" tabindex="0" title="Drag to resize · double-click to reset"></div>
     </aside>
@@ -713,6 +726,26 @@
     </div>
   </div>
 </div>
+<div class="scrim" id="keys-sheet">
+  <div class="cmodal keys-modal" role="dialog" aria-label="Keyboard shortcuts">
+    <h2>Keyboard</h2>
+    <p class="keys-sub">Press <kbd id="keys-prefix">ctrl+.</kbd>, release, then one of:</p>
+    <table class="keys-table">
+      <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Jump to the nth project tab</td></tr>
+      <tr><td><kbd>n</kbd> / <kbd>b</kbd></td><td>Next / previous tab</td></tr>
+      <tr><td><kbd>p</kbd></td><td>Projects</td></tr>
+      <tr><td><kbd>a</kbd></td><td>Admin</td></tr>
+      <tr><td><kbd>f</kbd> / <kbd>l</kbd></td><td>First / last project tab</td></tr>
+      <tr class="keys-danger"><td><kbd>e</kbd></td><td>End this tab's agent session (asks first)</td></tr>
+      <tr><td><kbd>x</kbd></td><td>Close this tab (a live session still asks first)</td></tr>
+      <tr><td><kbd>/</kbd></td><td>Search tickets in this project</td></tr>
+      <tr><td><kbd>?</kbd></td><td>This sheet</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Cancel</td></tr>
+    </table>
+    <div class="cfoot"><button class="btn" id="keys-close">Close</button></div>
+  </div>
+</div>
+<div class="keyhint" id="keyhint" role="status" aria-live="polite"></div>
 <div class="toast" id="toast"></div>
 
 <!-- Reusable canon-styled confirm (t-5849) — replaces native confirm()/prompt().
@@ -872,6 +905,7 @@
       const cw=document.getElementById('closeWarn');
       if(cw&&cw.classList.contains('show')){ hideCloseWarn(); return; }
       const ov=document.getElementById('help-overlay'); if(ov&&ov.classList.contains('open')){ closeHelp(); }
+      const ks=document.getElementById('keys-sheet'); if(ks&&ks.classList.contains('show')){ toggleKeysSheet(false); }
     }
   });
 
@@ -1350,6 +1384,108 @@
     openSessionInTab({proot:proj.path, scratch:newScratchId()});
   }
   const _projKey=p=>String(p||'').replace(/\\/g,'/').replace(/\/+$/,'').toLowerCase();
+  // ── Keyboard prefix (t-a198) ─────────────────────────────────────────────
+  // Press the prefix (default ctrl+., rebind with localStorage "canon-prefix"), release, then one key. Keys typed in
+  // this page are handled here; keys typed inside a board or its terminal arrive as validated messages (below).
+  // Ignored in fields and under a dialog, so typing is never hijacked.
+// canon:prefix-keys:begin (t-a198) — identical in cockpit.html, app.html and cockpit-daemon/web/cockpit.html; tests/prefix-keys-parity.sh pins the copies
+function canonPrefixLabel() {
+  var v = 'ctrl+.';
+  try { var s = localStorage.getItem('canon-prefix'); if (s && /^ctrl\+[^A-Za-z0-9\s\\+]$/.test(s)) v = s; } catch (e) {}
+  return v;
+}
+function canonPrefixKeys(emit) {
+  var armed = false, timer = null, swallow = null;
+  function disarm() { armed = false; if (timer) { clearTimeout(timer); timer = null; } }
+  function handle(e) {
+    var t = e.type, k = e.key;
+    if (swallow !== null && e.code === swallow && (t === 'keypress' || t === 'keyup')) {
+      if (t === 'keyup') swallow = null;
+      e.preventDefault(); e.stopPropagation();
+      return true;
+    }
+    if (t !== 'keydown' || e.isComposing) return false;
+    if (k === 'Control' || k === 'Shift' || k === 'Alt' || k === 'Meta' || k === 'AltGraph' || k === 'CapsLock') return false;
+    swallow = null;
+    if (armed) {
+      disarm();
+      swallow = e.code;
+      e.preventDefault(); e.stopPropagation();
+      if (k === 'Escape') emit('cancel', ''); else emit('key', k);
+      return true;
+    }
+    var altgr = e.getModifierState && e.getModifierState('AltGraph');
+    if (e.ctrlKey && !e.altKey && !altgr && !e.metaKey && !e.shiftKey && !e.repeat && k === canonPrefixLabel().slice(5)) {
+      armed = true; swallow = e.code;
+      timer = setTimeout(function () { if (armed) { disarm(); emit('cancel', ''); } }, 1500);
+      e.preventDefault(); e.stopPropagation();
+      emit('armed', '');
+      return true;
+    }
+    return false;
+  }
+  return { handle: handle, cancel: function () { if (armed) { disarm(); emit('cancel', ''); } } };
+}
+// canon:prefix-keys:end
+  let keyHintTimer=null;
+  function showKeyHint(on){
+    const h=document.getElementById('keyhint'); if(!h) return;
+    clearTimeout(keyHintTimer);
+    if(on){ h.innerHTML='<kbd>'+esc(canonPrefixLabel())+'</kbd> then a key — <kbd>?</kbd> help, <kbd>Esc</kbd> cancel'; h.classList.add('show'); keyHintTimer=setTimeout(()=>showKeyHint(false),2000); }
+    else h.classList.remove('show');
+  }
+  function toggleKeysSheet(open){
+    const s=document.getElementById('keys-sheet'); if(!s) return;
+    const want=open===undefined?!s.classList.contains('show'):open;
+    if(want) document.getElementById('keys-prefix').textContent=canonPrefixLabel();
+    s.classList.toggle('show',want);
+  }
+  function goTab(id){
+    activateTab(id);
+    const f=document.querySelector('#view-'+id+' iframe');
+    try{ if(f) f.focus(); else window.focus(); }catch(e){}
+  }
+  function prefixAction(key){
+    const all=['projects'].concat(openTabs.map(t=>t.id));
+    if(/^[1-9]$/.test(key)){ const t=openTabs[+key-1]; if(t) goTab(t.id); return; }
+    if(key==='n'||key==='b'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
+    if(key==='p'){ goTab('projects'); return; }
+    if(key==='a'){ showView('admin'); try{ window.focus(); }catch(e){} return; }   // Admin, like clicking it in the sidebar
+    if(key==='f'||key==='l'){ if(openTabs.length) goTab(openTabs[key==='f'?0:openTabs.length-1].id); return; }   // first / last project tab
+    if(key==='e'){
+      // Only asks the active board to open its own end-session confirmation; ending is never done from here.
+      const f=activeTab!=='projects'&&document.querySelector('#view-'+activeTab+' iframe');
+      if(f){ try{ f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'end-session-request'},location.origin); }catch(e){} }
+      return;
+    }
+    if(key==='x'){ if(activeTab!=='projects') closeTab(activeTab); return; }
+    if(key==='/'){
+      const f=document.querySelector('#view-'+activeTab+' iframe');
+      if(f){ try{ f.focus(); f.contentWindow.postMessage({source:'canon-cockpit-shell',type:'focus-search'},location.origin); }catch(e){} }
+      return;
+    }
+    if(key==='?') toggleKeysSheet(true);
+  }
+  const shellKeys=canonPrefixKeys((type,key)=>{
+    if(type==='armed'){ showKeyHint(true); return; }
+    showKeyHint(false);
+    if(type==='key') prefixAction(key);
+  });
+  function shellDialogOpen(){ return !!document.querySelector('.scrim.show,.help-overlay.open'); }
+  function shellKeyBlocked(e){
+    const t=e.target;
+    if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return true;
+    return shellDialogOpen();
+  }
+  ['keydown','keypress','keyup'].forEach(type=>document.addEventListener(type,e=>{
+    if(type==='keydown'&&shellKeyBlocked(e)){ shellKeys.cancel(); return; }
+    shellKeys.handle(e);
+  },true));
+  document.addEventListener('DOMContentLoaded',()=>{
+    const c=document.getElementById('keys-close'); if(c) c.addEventListener('click',()=>toggleKeysSheet(false));
+    const kb=document.getElementById('keys-btn'); if(kb) kb.title='Keyboard shortcuts — '+canonPrefixLabel()+' then ?';
+    const s=document.getElementById('keys-sheet'); if(s) s.addEventListener('click',e=>{ if(e.target===s) toggleKeysSheet(false); });
+  });
   // t-67ab: which tab's board sent a message. Each tab's iframe gets a random token in its URL
   // (ensureView) and its board echoes it; a page without the token can't pose as a tab. Not
   // event.source: Safari/WebKit reports this page itself as the source of a board's message.
@@ -1363,6 +1499,13 @@
     if(!pid) return;   // only a project tab's own board
     if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
     if(d.type==='open-upkeep'){ openUpkeepFor(pid); return; }   // for that tab's project only
+    if(d.type==='prefix-armed'||d.type==='prefix-cancel'||d.type==='prefix-key'){   // t-a198: only the visible tab's board speaks
+      if(pid!==activeTab||shellDialogOpen()) return;   // a dialog in the shell swallows it, whichever frame had focus
+      if(d.type==='prefix-armed'){ showKeyHint(true); return; }
+      showKeyHint(false);
+      if(d.type==='prefix-key'&&typeof d.key==='string'&&d.key.length<=2) prefixAction(d.key);
+      return;
+    }
     if(d.type!=='open-session') return;
     if(typeof d.ticket!=='string'||!TICKET_ID_RE.test(d.ticket)) return;
     if(typeof d.project_root!=='string') return;

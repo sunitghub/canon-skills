@@ -36,6 +36,7 @@ tests=(
   "$ROOT/tests/hooks-lib-settings.sh"
   "$ROOT/tests/git-precommit-hook.sh"
   "$ROOT/tests/post-commit-worktree.sh"
+  "$ROOT/tests/prefix-keys-parity.sh"
   "$ROOT/tests/subagent-log-cli.sh"
   "$ROOT/tests/disposable-cred.sh"
   "$ROOT/tests/skills-std.sh"
@@ -127,6 +128,8 @@ if command -v node >/dev/null 2>&1; then
   node "$ROOT/tests/sprint-check-status-badge.js"
   printf '==> %s\n' "tests/sprint-check-worktree-chip.js"
   node "$ROOT/tests/sprint-check-worktree-chip.js"
+  printf '==> %s\n' "tests/prefix-keys.js"
+  node "$ROOT/tests/prefix-keys.js"
   printf '==> %s\n' "tests/sprint-check-api-scoping.js"
   node "$ROOT/tests/sprint-check-api-scoping.js"
 else

@@ -5549,6 +5549,12 @@ window.addEventListener('message', (e) => {
   const d = e.data;
   if (!d || d.source !== 'canon-cockpit') return;
   const isActive = sourceId === activeTabId;
+  if (d.type === 'prefix-armed' || d.type === 'prefix-cancel' || d.type === 'prefix-key') {   // t-a198: relay the terminal's prefix to the shell
+    if (isActive && window.parent !== window && (d.type !== 'prefix-key' || (typeof d.key === 'string' && d.key.length <= 2))) {
+      window.parent.postMessage({ source: 'canon-board', type: d.type, key: typeof d.key === 'string' ? d.key : '', tab: SHELL_TAB }, location.origin);
+    }
+    return;
+  }
   if (d.type === 'status') {
     tab.status = d.status;
     if (isActive) { renderSessionStateChip(); refreshSessionStateChip(); }
@@ -6121,6 +6127,15 @@ window.addEventListener('message', (e) => {
     if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
     return;
   }
+  if (d.type === 'end-session-request') {                // t-a198: prefix then e. Opens the existing confirmation for a LIVE session; never ends anything itself
+    if (cockpitState && !cockpitState._ending && sessionIsLive()) openLeaveConfirm();
+    return;
+  }
+  if (d.type === 'focus-search') {                       // t-a198: prefix then /
+    const s = document.getElementById('board-search');
+    if (s) { s.focus(); s.select(); }
+    return;
+  }
   if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened
     if (typeof d.id === 'string' && SCRATCH_ID.test(d.id)) openScratch(d.id);
     return;
@@ -6133,6 +6148,62 @@ window.addEventListener('message', (e) => {
   // end === skip the save turn; a scratch session (t-47f1) has no save turn at all
   ckLeaveSaveAndEnd(d.type === 'end' || SCRATCH_ID.test(cockpitState.id || ''));
 });
+
+// t-a198: the keyboard prefix (see the shell). Keys typed with focus in the board come here; the terminal frame's
+// come through the message relay above. Ignored in fields and under a modal; a standalone board has no shell.
+// canon:prefix-keys:begin (t-a198) — identical in cockpit.html, app.html and cockpit-daemon/web/cockpit.html; tests/prefix-keys-parity.sh pins the copies
+function canonPrefixLabel() {
+  var v = 'ctrl+.';
+  try { var s = localStorage.getItem('canon-prefix'); if (s && /^ctrl\+[^A-Za-z0-9\s\\+]$/.test(s)) v = s; } catch (e) {}
+  return v;
+}
+function canonPrefixKeys(emit) {
+  var armed = false, timer = null, swallow = null;
+  function disarm() { armed = false; if (timer) { clearTimeout(timer); timer = null; } }
+  function handle(e) {
+    var t = e.type, k = e.key;
+    if (swallow !== null && e.code === swallow && (t === 'keypress' || t === 'keyup')) {
+      if (t === 'keyup') swallow = null;
+      e.preventDefault(); e.stopPropagation();
+      return true;
+    }
+    if (t !== 'keydown' || e.isComposing) return false;
+    if (k === 'Control' || k === 'Shift' || k === 'Alt' || k === 'Meta' || k === 'AltGraph' || k === 'CapsLock') return false;
+    swallow = null;
+    if (armed) {
+      disarm();
+      swallow = e.code;
+      e.preventDefault(); e.stopPropagation();
+      if (k === 'Escape') emit('cancel', ''); else emit('key', k);
+      return true;
+    }
+    var altgr = e.getModifierState && e.getModifierState('AltGraph');
+    if (e.ctrlKey && !e.altKey && !altgr && !e.metaKey && !e.shiftKey && !e.repeat && k === canonPrefixLabel().slice(5)) {
+      armed = true; swallow = e.code;
+      timer = setTimeout(function () { if (armed) { disarm(); emit('cancel', ''); } }, 1500);
+      e.preventDefault(); e.stopPropagation();
+      emit('armed', '');
+      return true;
+    }
+    return false;
+  }
+  return { handle: handle, cancel: function () { if (armed) { disarm(); emit('cancel', ''); } } };
+}
+// canon:prefix-keys:end
+const boardKeys = canonPrefixKeys((type, key) => {
+  if (window.parent === window) return;
+  try { window.parent.postMessage({ source: 'canon-board', type: 'prefix-' + type, key, tab: SHELL_TAB }, location.origin); } catch {}
+});
+function boardKeyBlocked(e) {
+  const t = e.target;
+  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return true;
+  return !!document.querySelector('#commit-overlay.open, #create-overlay.open, #modal-overlay.open, #tour-overlay.open');
+}
+['keydown', 'keypress', 'keyup'].forEach(type => document.addEventListener(type, e => {
+  if (window.parent === window) return;
+  if (type === 'keydown' && boardKeyBlocked(e)) { boardKeys.cancel(); return; }
+  boardKeys.handle(e);
+}, true));
 
 // t-2d2e: a freshly opened project tab's ticket list loads after its iframe does.
 function openTicketWhenLoaded(ticket, tries) {
