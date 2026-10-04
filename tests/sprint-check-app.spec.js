@@ -3557,6 +3557,28 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(await page.evaluate(() => window.__msgs.join(','))).toBe('prefix-armed:,prefix-key:2,prefix-armed:,prefix-cancel:');
     });
 
+    test('keyboard prefix (t-a198): the sidebar keyboard button opens the cheat sheet, and the footer still fits at the narrowest sidebar', async ({ page }) => {
+      await openShell(page, []);
+      const btn = page.locator('#keys-btn');
+      await expect(btn).toBeVisible();
+      await expect(btn).toHaveAttribute('title', 'Keyboard shortcuts — ctrl+. then ?');
+      await expect(btn).toHaveAttribute('aria-label', 'Keyboard shortcuts');
+      await btn.click();
+      await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
+      await expect(page.locator('#keys-prefix')).toHaveText('ctrl+.');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
+      await page.evaluate(() => setSideWidth(200, false));   // the narrowest the divider allows
+      const fit = await page.evaluate(() => [...document.querySelectorAll('.foot button')].map(b => ({ id: b.id, over: b.scrollWidth - b.clientWidth, w: Math.round(b.getBoundingClientRect().width) })));
+      for (const b of fit) expect(b.over, b.id + ' overflows at 200px').toBeLessThanOrEqual(1);
+      const row = await page.evaluate(() => { const f = document.querySelector('.foot'); return f.scrollWidth - f.clientWidth; });
+      expect(row).toBeLessThanOrEqual(1);
+      const heights = await page.evaluate(() => [...document.querySelectorAll('.foot button')].map(b => Math.round(b.getBoundingClientRect().height)));
+      expect(Math.max(...heights) - Math.min(...heights), 'a footer button wrapped onto two lines: ' + heights).toBeLessThanOrEqual(2);
+      expect(Math.max(...heights), 'footer buttons are one line tall: ' + heights).toBeLessThan(40);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // The terminal frame's relay goes terminal page -> board -> shell. The board must only pass on what its own terminal frame sent.
     test('keyboard prefix (t-a198): the terminal frame\'s keys reach the shell through the board; a forged or over-long relay is dropped', async ({ page }) => {
       const relayPage = `<!doctype html><html><body>

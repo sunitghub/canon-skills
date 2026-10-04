@@ -52,8 +52,9 @@
   .nav a .badge{margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);border-radius:9px;padding:1px 7px}
   .spacer{flex:1}
   .foot{padding:6px 12px 0;display:flex;gap:8px}
-  .foot button{flex:1;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px;font-size:12px;cursor:pointer}
+  .foot button{flex:1 1 0;min-width:0;white-space:nowrap;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px 4px;font-size:12px;cursor:pointer}
   .foot button:hover{color:var(--text);border-color:var(--border-hover)}
+  .foot button.icon{flex:0 0 32px;padding:8px 0;display:flex;align-items:center;justify-content:center}
   .main{overflow:hidden;display:flex;flex-direction:column}
   /* Tab bar: pinned Projects + closable project tabs */
   .tabstrip{display:flex;align-items:center;gap:4px;height:var(--strip-h);padding:var(--strip-pad) 14px 0;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
@@ -557,6 +558,7 @@
       <div class="foot">
         <button id="theme-btn" onclick="toggleTheme()">&#127769; Dark</button>
         <button id="help-btn" onclick="openHelp()">? Help</button>
+        <button id="keys-btn" class="icon" type="button" onclick="toggleKeysSheet(true)" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9.5 14h5"/></svg></button>
       </div>
       <div class="side-resize" id="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="200" aria-valuemax="420" aria-valuenow="230" tabindex="0" title="Drag to resize · double-click to reset"></div>
     </aside>
@@ -1470,6 +1472,7 @@ function canonPrefixKeys(emit) {
   },true));
   document.addEventListener('DOMContentLoaded',()=>{
     const c=document.getElementById('keys-close'); if(c) c.addEventListener('click',()=>toggleKeysSheet(false));
+    const kb=document.getElementById('keys-btn'); if(kb) kb.title='Keyboard shortcuts — '+canonPrefixLabel()+' then ?';
     const s=document.getElementById('keys-sheet'); if(s) s.addEventListener('click',e=>{ if(e.target===s) toggleKeysSheet(false); });
   });
   // event.source: Safari/WebKit reports this page itself as the source of a board's message.
