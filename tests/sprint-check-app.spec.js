@@ -10160,7 +10160,6 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
     } finally { proc.kill('SIGKILL'); }
   });
 
-  // QUARANTINE t-b546: "Restarting…" is overwritten within 1 ms by the status refresh after a confirmed force restart (chromium)
   test('with a live session the plain Restart is disabled and Force restart is confirmed', async ({ page }) => {
     test.skip(!goOk, 'go toolchain not spawnable in this worker — cannot build cockpit-daemon');
     const { addr, proc } = await startDaemon();
@@ -10183,6 +10182,12 @@ test.describe('cockpit stale-daemon banner (t-74d6)', () => {
       await page.locator('#sbForce').click();
       await expect(page.locator('#sbMsg')).toContainText('Restarting', { timeout: 5000 });
       expect(confirmed).toBe(true);
+      // The session dying must not overwrite the message or re-enable the plain Restart.
+      // The daemon may exit before the page sees the session end, so a timeout here is fine.
+      await page.waitForFunction(() => !document.getElementById('dot').classList.contains('running'), null, { timeout: 3000 }).catch(() => {});
+      await expect(page.locator('#sbMsg')).toContainText('Restarting');
+      await expect(page.locator('#sbRestart')).toBeDisabled();
+      await expect(page.locator('#sbForce')).toHaveCount(0);
     } finally { proc.kill('SIGKILL'); }
   });
 

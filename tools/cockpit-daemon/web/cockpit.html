@@ -388,6 +388,7 @@ function canonPrefixKeys(emit) {
   var sbRestart = document.getElementById("sbRestart");
   var sbBaseMsg = "";        // the stale message without any busy suffix
   var lastStatusCls = "";    // mirrors setStatus's cls so the banner knows if a session is live
+  var sbRestarting = false;  // set once /shutdown answers 200; the status refresh must not overwrite the message
   function sbFmtTime(unix){ try { return new Date(unix*1000).toLocaleTimeString(); } catch(e){ return String(unix); } }
   function sbSessionLive(){ return lastStatusCls === "running" || lastStatusCls === "needsyou"; }
   function sbEnsureForce(){
@@ -407,7 +408,11 @@ function canonPrefixKeys(emit) {
   // backstop guarantee if a session starts between render and click.
   function sbUpdateControls(){
     if(!staleBanner || staleBanner.hidden) return;
-    if(sbSessionLive()){
+    if(sbRestarting){
+      sbRestart.disabled = true;
+      sbMsg.textContent = "Restarting cockpit daemon\u2026";
+      sbRemoveForce();
+    } else if(sbSessionLive()){
       sbRestart.disabled = true;
       sbMsg.textContent = sbBaseMsg + " — finish or Kill the running session first.";
       sbEnsureForce();
@@ -433,8 +438,8 @@ function canonPrefixKeys(emit) {
     fetch("/shutdown" + (force ? "?force=1" : ""), { method:"POST", headers: authHeaders(TOKEN) })
       .then(function(r){
         if(r.status === 200){
-          sbMsg.textContent = "Restarting cockpit daemon\u2026";
-          sbRemoveForce();
+          sbRestarting = true;
+          sbUpdateControls();
           try{ window.parent.postMessage({ source:"canon-cockpit", type:"daemon-restarting" }, "*"); }catch(e){}
         } else if(r.status === 409){
           // A session became live between render and click — reflect busy state.

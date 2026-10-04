@@ -4,16 +4,7 @@
     "chromium": 351,
     "webkit": 351
   },
-  "failing": [
-    {
-      "title": "cockpit stale-daemon banner (t-74d6) > with a live session the plain Restart is disabled and Force restart is confirmed",
-      "browsers": [
-        "chromium"
-      ],
-      "ticket": "t-b546",
-      "reason": "\"Restarting cockpit daemon…\" is overwritten within 1 ms by the status refresh after a confirmed force restart (the daemon returns 200); real UI bug, reproduced with a mutation log; passes on webkit only because Playwright happens to observe the flash"
-    }
-  ],
+  "failing": [],
   "flaky": [
     {
       "title": "Canon Cockpit \"?\" info popovers (t-576f) > the popover stays inside the window and clear of the sidebar at 1100px",
