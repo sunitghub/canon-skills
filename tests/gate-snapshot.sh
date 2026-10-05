@@ -66,6 +66,55 @@ take; git commit -q --amend -m "rewritten base"; differs "HEAD moved"
 echo 'dirty' >> src/app.js
 take; assert_contains "$(cat "$scratch/pre.out")" "recovery"; git checkout -q src/app.js
 
+# a commit in a sibling worktree during the dispatch is not a gate's doing (refs are compared by name); a branch a gate creates still is
+sib="$(mktemp -d)/sib"; git worktree add -q -b sibling "$sib"
+take; ( cd "$sib"; echo c > sib.txt; git add sib.txt; git commit -qm "sibling work" )
+"$TOOL" post "$snap" >/dev/null || fail "a commit in a sibling worktree must not trip the snapshot"
+take; git branch gate-made; differs "refs changed"; git branch -q -D gate-made
+git worktree remove --force "$sib"; git branch -q -D sibling
+
+# run from a linked worktree the audit log is the project's (the main checkout's, where subagent-log.sh writes it; .tickets/ is not tracked there)
+wp="$(make_project)"; wt="$(mktemp -d)/wt"
+( cd "$wp"; git config user.email t@example.com; git config user.name test
+  mkdir -p .claude .tickets/t-w; echo '{}' > .claude/subagent-runs.jsonl; echo s > a.txt; printf '.claude/\n.tickets/\n' > .gitignore
+  git add -A >/dev/null && git commit -qm base
+  git worktree add -q -b wtb "$wt"
+  cd "$wt"; "$TOOL" pre "$scratch/wsnap" >/dev/null
+  echo '{"w":1}' > "$wp/.claude/subagent-runs.jsonl"
+  out="$(run_fail "$TOOL" post "$scratch/wsnap")"; assert_contains "$out" "audit log" )
+rm -rf "$wp" "$(dirname "$wt")"
+
+# a consumer project tracks .tickets/ and .claude/: the gate's report is fine, an audit-log append is the one thing named (not also a tree change)
+tc="$(make_project)"
+( cd "$tc"; git config user.email t@example.com; git config user.name test
+  mkdir -p .claude .tickets/t-y; echo '{}' > .claude/subagent-runs.jsonl; echo t > .tickets/t-y/ticket.md; echo s > a.txt
+  git add -A >/dev/null && git commit -qm base
+  "$TOOL" pre "$scratch/tc" >/dev/null
+  echo r > .tickets/t-y/eval-report.md; echo e >> .tickets/t-y/ticket.md
+  "$TOOL" post "$scratch/tc" >/dev/null || fail "tracked .tickets/ changes must be ignored"
+  echo '{"a":1}' >> .claude/subagent-runs.jsonl
+  out="$(run_fail "$TOOL" post "$scratch/tc")"; assert_contains "$out" "audit log"
+  [[ "$out" != *"working-tree paths changed"* && "$out" != *"uncommitted content"* ]] || fail "a tracked audit log must be reported once, as the audit log: $out" )
+rm -rf "$tc"
+
+# a project in a subdirectory of a larger repository: its .tickets/ is excluded at any depth
+mono="$(make_project)"
+( cd "$mono"; git config user.email t@example.com; git config user.name test
+  mkdir -p proj/.tickets/t-z proj/.claude; echo t > proj/.tickets/t-z/ticket.md; echo s > proj/a.txt; git add -A >/dev/null && git commit -qm base
+  cd proj; "$TOOL" pre "$scratch/mono" >/dev/null
+  echo r > .tickets/t-z/eval-report.md; echo e >> .tickets/t-z/ticket.md
+  "$TOOL" post "$scratch/mono" >/dev/null || fail "a subdirectory project's .tickets/ must be ignored"
+  echo j > junk.txt; out="$(run_fail "$TOOL" post "$scratch/mono")"; assert_contains "$out" "junk.txt" )
+rm -rf "$mono"
+
+# unmerged paths: `git stash create` prints "f: needs merge" and exits 0; that text is not a recovery hash
+um="$(make_project)"
+( cd "$um"; git config user.email t@example.com; git config user.name test
+  echo a > f; git add f; git commit -qm base; b="$(git branch --show-current)"
+  git checkout -q -b other; echo x > f; git commit -qam x; git checkout -q "$b"; echo y > f; git commit -qam y; git merge other >/dev/null 2>&1 || true
+  out="$("$TOOL" pre "$scratch/um" 2>&1)"; assert_contains "$out" "not available"; [[ "$out" != *"needs merge"* ]] || fail "the stash error must not be reported as a hash: $out" )
+rm -rf "$um"
+
 # usage errors
 run_fail "$TOOL" >/dev/null; run_fail "$TOOL" bogus "$snap" >/dev/null; run_fail "$TOOL" post "$scratch/missing-file" >/dev/null
 
@@ -75,4 +124,4 @@ nogit="$(mktemp -d)"
 nocommit="$(make_project)"
 ( cd "$nocommit"; out="$("$TOOL" pre "$scratch/nc" 2>&1)"; assert_contains "$out" "skipped" ); rm -rf "$nocommit"
 
-echo "gate-snapshot: ok (clean pass, .tickets/ ignored, commit/branch/ref/tag/untracked/deleted/edited/staged/audit-log each named, incident reproduced, no-git warns)"
+echo "gate-snapshot: ok (clean pass, .tickets/ ignored, commit/branch/ref/tag/untracked/deleted/edited/staged/audit-log each named, incident reproduced, sibling and linked worktrees, tracked .tickets/.claude, subdirectory project, unmerged stash, no-git warns)"

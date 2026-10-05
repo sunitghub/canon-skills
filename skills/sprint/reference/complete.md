@@ -300,10 +300,10 @@ Opus` default, scoped only to the two close-gate dispatches below.
 
 7. **Snapshot the repo before AND after every subagent dispatch** with `gate-snapshot.sh` (bare — it is on PATH, same as `sprint`/`tkt`) — a gate is
    read-only by contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own `.tickets/<id>/` files is out-of-scope by definition,
-   and an after-only check misses a discard (see below). Immediately **before** dispatching run `snap="$(mktemp)"; gate-snapshot.sh pre "$snap"`: it records
-   the branch, HEAD, every ref, the porcelain lines (untracked files expanded), a digest of the uncommitted tracked content (`git diff HEAD`) and a digest of
-   `.claude/subagent-runs.jsonl`, and prints a recovery hash (`git stash create` — non-destructive; "nothing to recover" means no uncommitted tracked changes).
-   Immediately **after** the gate completes, before reading its report, run `gate-snapshot.sh post "$snap"`. Exit 0 means nothing moved; exit 1 names each
+   and an after-only check misses a discard (see below). Immediately **before** dispatching run `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt` (a fixed path inside the ticket folder, so it survives separate Bash calls and the tool ignores it): it records
+   the branch, HEAD, every ref, the branch and tag names (not their shas, so a commit in a sibling worktree is not a false alarm), the porcelain lines (untracked files expanded),
+   a digest of the uncommitted tracked content (`git diff HEAD`) and a digest of the project's `.claude/subagent-runs.jsonl` (all of `.tickets/` is ignored, at any depth), and prints a recovery hash (`git stash create` — non-destructive; "nothing to recover" means no uncommitted tracked changes).
+   Immediately **after** the gate completes, before reading its report, run `gate-snapshot.sh post .tickets/<id>/gate-snapshot.txt`, and only then `subagent-log.sh` (its append to `.claude/subagent-runs.jsonl` is a change the tool flags; run the next `pre` after it). Exit 0 means nothing moved; exit 1 names each
    difference (`BRANCH changed`, `HEAD moved`, `refs changed`, `working-tree paths changed`, `uncommitted content … changed`, the audit log). On any difference:
    - **Stop and surface it to the user with the PRE recovery hash** — do not silently continue, and do not auto-apply the stash (its content may conflict with
      changes made since). Do not "repair" on your own beyond what the user asks: a rename or junk commits are undone by hand (`git branch -m` back, `git reset
@@ -384,7 +384,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    The evaluator (step 3) owns the binding gate. Record the reviewer outcome in the Wrapup
    Gates table with the Reason prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
-   **Log the subagent run.** Immediately after the reviewer subagent completes, run
+   **Log the subagent run.** Immediately after the reviewer subagent completes (and after `gate-snapshot.sh post`, step 7), run
    `subagent-log.sh --agent-id <id> --agent-type reviewer` (bare — it's on PATH, same as
    `sprint`/`tkt`). This writes to the same `.claude/subagent-runs.jsonl` audit trail as the
    evaluator's own log call (step 3) — required now that no `SubagentStop` hook does this
@@ -443,7 +443,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    call. Do this even when the verdict is `pass`, to reset the counter. See
    `standards/ticket-layout.md`'s `eval_fail_count` field contract for the full mechanics.
 
-   **Log the subagent run.** Immediately after the evaluator subagent completes, read the
+   **Log the subagent run.** Immediately after the evaluator subagent completes (and after `gate-snapshot.sh post`, step 7), read the
    `evaluator-run-id:` field it wrote as the first line of `.tickets/<id>/eval-report.md`. **Before
    trusting it, verify it's genuine:** run `date +%s` yourself and diff against the run-id's
    embedded epoch (the number before the `-`). **What this measures (t-a29b):** `eval.md` step 8

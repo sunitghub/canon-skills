@@ -240,6 +240,7 @@ SCRATCH_RULE_FRAGMENTS=(
   'cd "$S/…" || exit 1'
   'never a bare `cd`'
   '`git init`, `add`, `commit`, `branch`, `config` or `worktree`'
+  'write nothing outside the scratch directory'
 )
 for file in "$SHARED" "$EVAL" "$REVIEW"; do
   label="$(basename "$file")"
