@@ -12,7 +12,7 @@
 set -euo pipefail
 
 # Bumped on every change to this command, and shown in the plan and --help, so a stale copy of the script is obvious on a machine that was updated by hand.
-UNINSTALL_REV=7
+UNINSTALL_REV=8
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # shellcheck source=platform-lib.sh
@@ -83,6 +83,13 @@ install_verdict() {
     if [ -z "$up" ]; then VERDICT_WHY="the git clone has no upstream branch, so unpushed work cannot be ruled out"; return 0; fi
     ahead="$(git -C "$INSTALL" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead="?"
     if [ "$ahead" != 0 ]; then VERDICT_WHY="the git clone has $ahead commit(s) not on its upstream ($up, as last fetched)"; return 0; fi
+    # Work that is not in the working tree or on HEAD's upstream, and that deleting the clone would lose.
+    local other
+    other="$(git -C "$INSTALL" rev-list --branches --not --remotes 2>/dev/null | head -1)" || other="?"
+    if [ -n "$other" ]; then VERDICT_WHY="the git clone has a local branch with commits that are on no remote"; return 0; fi
+    if git -C "$INSTALL" rev-parse -q --verify refs/stash >/dev/null 2>&1; then VERDICT_WHY="the git clone has stashed changes"; return 0; fi
+    if [ "$(git -C "$INSTALL" worktree list --porcelain 2>/dev/null | grep -c '^worktree ')" -gt 1 ]; then VERDICT_WHY="the git clone has linked worktrees (they would be left pointing at a deleted folder)"; return 0; fi
+    if [ -n "$(git -C "$INSTALL" ls-files -v 2>/dev/null | grep -m1 '^[Sh] ')" ]; then VERDICT_WHY="the git clone has local edits hidden with skip-worktree or assume-unchanged"; return 0; fi
   fi
   VERDICT=ok; VERDICT_WHY=""
 }
@@ -164,7 +171,7 @@ n_projects=0; [ -z "$projects" ] || n_projects="$(printf '%s\n' "$projects" | wc
 have_data=0; [ -d "$DATA_DIR" ] && have_data=1
 n_snapshots=0
 [ "$have_data" = 0 ] || [ ! -d "$DATA_DIR/changes" ] || n_snapshots="$(find "$DATA_DIR/changes" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l | tr -d ' ')"
-data_inside=0; case "$DATA_DIR" in "$INSTALL"/*) data_inside=1 ;; esac
+data_inside=0; keep_top=cockpit; case "$DATA_DIR" in "$INSTALL"/*) data_inside=1; keep_top="${DATA_DIR#"$INSTALL"/}"; keep_top="${keep_top%%/*}" ;; esac
 procs="$(install_processes)"
 board=0; board_up && board=1 || true
 
@@ -173,7 +180,7 @@ print_plan() {
   echo ""
   echo "Install folder: $INSTALL"
   if [ "$VERDICT" = ok ]; then
-    if [ "$keep" = 1 ] && [ "$data_inside" = 1 ]; then echo "  -> DELETE everything in it except cockpit/ (kept: --keep-data)"
+    if [ "$keep" = 1 ] && [ "$data_inside" = 1 ]; then echo "  -> DELETE everything in it except $keep_top/ (kept: --keep-data)"
     else echo "  -> DELETE"; fi
   else
     echo "  -> KEEP: $VERDICT_WHY"
@@ -306,10 +313,10 @@ elif _is_windows; then
   tmpd="$(mktemp -d)"; cp "$SCRIPT_DIR/canon-uninstall.ps1" "$tmpd/canon-uninstall.ps1"
   ps_keep=0; [ "$keep" = 1 ] && [ "$data_inside" = 1 ] && ps_keep=1
   exec "${CANON_UNINSTALL_POWERSHELL:-powershell.exe}" -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$tmpd/canon-uninstall.ps1")" \
-    -InstallDir "$(cygpath -w "$INSTALL")" -ToolsEntry "$(windows_path_entry)" -KeepCockpit "$ps_keep" -LogFile "$(cygpath -w "$tmpd/canon-uninstall.log")"
+    -InstallDir "$(cygpath -w "$INSTALL")" -ToolsEntry "$(windows_path_entry)" -KeepCockpit "$ps_keep" -KeepName "$keep_top" -LogFile "$(cygpath -w "$tmpd/canon-uninstall.log")"
 else
   if [ "$keep" = 1 ] && [ "$data_inside" = 1 ]; then
-    find "$INSTALL" -mindepth 1 -maxdepth 1 ! -name cockpit -exec rm -rf -- {} + && echo "  [removed]  everything in $INSTALL except cockpit/" || { echo "  [fail]  could not clear $INSTALL" >&2; failed=1; }
+    find "$INSTALL" -mindepth 1 -maxdepth 1 ! -name "$keep_top" -exec rm -rf -- {} + && echo "  [removed]  everything in $INSTALL except $keep_top/" || { echo "  [fail]  could not clear $INSTALL" >&2; failed=1; }
   else
     rm -rf -- "$INSTALL" && echo "  [removed]  $INSTALL" || { echo "  [fail]  could not remove $INSTALL" >&2; failed=1; }
   fi

@@ -6,6 +6,7 @@ param(
   [Parameter(Mandatory = $true)][string]$InstallDir,
   [Parameter(Mandatory = $true)][string]$ToolsEntry,
   [int]$KeepCockpit = 0,
+  [string]$KeepName = 'cockpit',
   [Parameter(Mandatory = $true)][string]$LogFile
 )
 
@@ -13,7 +14,9 @@ param(
 function Remove-PathEntry([string]$PathValue, [string]$Entry) {
   if ([string]::IsNullOrEmpty($PathValue)) { return $PathValue }
   $want = $Entry.TrimEnd('\').ToLowerInvariant()
-  $kept = @($PathValue -split ';' | Where-Object { $_ -ne '' -and $_.TrimEnd('\').ToLowerInvariant() -ne $want })
+  $parts = @($PathValue -split ';')
+  $kept = @($parts | Where-Object { $_.TrimEnd('\').ToLowerInvariant() -ne $want })
+  if ($kept.Count -eq $parts.Count) { return $PathValue }   # no such entry: leave the value byte-identical
   return ($kept -join ';')
 }
 
@@ -46,15 +49,15 @@ if ($new -ne $old) {
 # The helper: its own script file so quoting survives; runs hidden, detached from this console.
 $helper = Join-Path ([IO.Path]::GetDirectoryName($LogFile)) 'canon-uninstall-helper.ps1'
 @'
-param([string]$InstallDir, [int]$KeepCockpit, [string]$LogFile)
+param([string]$InstallDir, [int]$KeepCockpit, [string]$KeepName, [string]$LogFile)
 $ErrorActionPreference = 'Continue'
 function Log($m) { Add-Content -LiteralPath $LogFile -Value ("{0}  {1}" -f (Get-Date -Format s), $m) }
 Log "start: removing $InstallDir (keep cockpit: $KeepCockpit)"
 $deadline = (Get-Date).AddSeconds(60)
 do {
   if ($KeepCockpit -eq 1) {
-    Get-ChildItem -LiteralPath $InstallDir -Force | Where-Object { $_.Name -ne 'cockpit' } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
-    $left = @(Get-ChildItem -LiteralPath $InstallDir -Force | Where-Object { $_.Name -ne 'cockpit' })
+    Get-ChildItem -LiteralPath $InstallDir -Force | Where-Object { $_.Name -ne $KeepName } | ForEach-Object { Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+    $left = @(Get-ChildItem -LiteralPath $InstallDir -Force | Where-Object { $_.Name -ne $KeepName })
   } else {
     if (Test-Path -LiteralPath $InstallDir) { Remove-Item -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue }
     $left = @(); if (Test-Path -LiteralPath $InstallDir) { $left = @(Get-ChildItem -LiteralPath $InstallDir -Recurse -Force -ErrorAction SilentlyContinue) }
@@ -65,5 +68,5 @@ do {
 if ($left.Count -eq 0) { Log "done: removed" } else { Log ("incomplete: {0} item(s) are still in use, e.g. {1}; close canon windows and delete {2} by hand" -f $left.Count, $left[0].FullName, $InstallDir) }
 '@ | Set-Content -LiteralPath $helper -Encoding UTF8
 
-Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $helper, '-InstallDir', $InstallDir, '-KeepCockpit', $KeepCockpit, '-LogFile', $LogFile)
+Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$helper`"", '-InstallDir', "`"$InstallDir`"", '-KeepCockpit', $KeepCockpit, '-KeepName', "`"$KeepName`"", '-LogFile', "`"$LogFile`"")   # Start-Process does not quote: a profile path with a space needs it
 Write-Host "The install folder is being removed in the background (it can take a few seconds). Result: $LogFile"

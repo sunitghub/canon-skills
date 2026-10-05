@@ -95,6 +95,11 @@ run "$h" "$inst" --yes --keep-data
 assert_contains "$out" "[3/5] Cockpit data: kept (--keep-data)"
 assert_eq "cockpit" "$(ls -A "$inst")"; [[ -f "$inst/cockpit/changes/aa/t-x/f" && -f "$inst/cockpit/projects.json" ]] || fail "--keep-data must keep the Cockpit data"
 assert_contains "$(cat "$h/.config/canon/projects")" "$WORK/p3"   # registrations restored after skills.sh uninstall removed them
+# data nested one level down (CANON_HOME inside the install): the whole top-level folder that holds it is kept, not just a folder named cockpit
+inst="$WORK/i3n"; h="$WORK/h3n"; mk_install "$inst"; mk_home "$h" "$inst"; mkdir -p "$inst/data/cockpit"; echo '{}' > "$inst/data/cockpit/projects.json"
+out="$(HOME="$h" STUB_LOG="$WORK/stub.log" CANON_COCKPIT_PORT=1 CANON_HOME="$inst/data" bash "$inst/tools/canon-uninstall.sh" --yes --keep-data </dev/null 2>&1)" && rc=0 || rc=$?
+[[ "$rc" == 0 && -f "$inst/data/cockpit/projects.json" ]] || fail "nested CANON_HOME: --keep-data deleted the data it said it kept ($rc): $out"
+assert_eq "data" "$(ls -A "$inst")"
 # data outside the install, kept
 inst="$WORK/i3b"; h="$WORK/h3b"; mk_install "$inst"; mk_home "$h" "$inst"; mkdir -p "$h/.canon/cockpit"; echo '{}' > "$h/.canon/cockpit/projects.json"
 run "$h" "$inst" --yes --keep-data; [[ "$rc" == 0 && ! -e "$inst" && -f "$h/.canon/cockpit/projects.json" ]] || fail "kept data outside the install must survive: $out"
@@ -111,6 +116,10 @@ check_kept() { # <name> <why substring>   (uses $inst $h; the clone was altered 
 inst="$WORK/i4"; h="$WORK/h4"; mk_install "$inst" clone; mk_home "$h" "$inst"; echo x > "$inst/untracked.txt"; check_kept dirty "the git clone has uncommitted or untracked changes"
 inst="$WORK/i5"; h="$WORK/h5"; mk_install "$inst" clone; mk_home "$h" "$inst"; echo y >> "$inst/VERSION"; git -C "$inst" "${ident[@]}" commit -qam local; check_kept unpushed "the git clone has 1 commit(s) not on its upstream"
 inst="$WORK/i6"; h="$WORK/h6"; mk_install "$inst" clone; mk_home "$h" "$inst"; git -C "$inst" remote remove origin; check_kept noupstream "the git clone has no upstream branch"
+inst="$WORK/i4b"; h="$WORK/h4b"; mk_install "$inst" clone; mk_home "$h" "$inst"; git -C "$inst" checkout -q -b wip; echo w >> "$inst/VERSION"; git -C "$inst" "${ident[@]}" commit -qam wip; git -C "$inst" checkout -q main; check_kept localbranch "the git clone has a local branch with commits that are on no remote"
+inst="$WORK/i4c"; h="$WORK/h4c"; mk_install "$inst" clone; mk_home "$h" "$inst"; echo s >> "$inst/VERSION"; git -C "$inst" "${ident[@]}" stash -q; check_kept stash "the git clone has stashed changes"
+inst="$WORK/i4d"; h="$WORK/h4d"; mk_install "$inst" clone; mk_home "$h" "$inst"; git -C "$inst" worktree add -q "$WORK/wt4d" -b wt4d; git -C "$inst" push -q origin wt4d 2>/dev/null; check_kept worktree "the git clone has linked worktrees"
+inst="$WORK/i4e"; h="$WORK/h4e"; mk_install "$inst" clone; mk_home "$h" "$inst"; git -C "$inst" update-index --skip-worktree VERSION; echo hidden >> "$inst/VERSION"; check_kept skipworktree "the git clone has local edits hidden with skip-worktree"
 h="$WORK/h7"; inst="$h/.canon"; mkdir -p "$h"; mk_install "$inst" clone; mk_home "$h" "$inst"; mkdir -p "$inst/cockpit"; echo '{}' > "$inst/cockpit/projects.json"   # the default layout: the Cockpit data dir inside a clean pushed clone is not "dirty"
 run "$h" "$inst" --yes; [[ "$rc" == 0 && ! -e "$inst" ]] || fail "a clean pushed clone (data dir inside) should be deleted: $out"
 # a safety rule rejection is not overridden by anything else
@@ -210,6 +219,8 @@ assert_eq 1 "$(grep -c "cleaned $WORK/p15" "$WORK/stub.log")"; refute_contains "
 # ── the PowerShell tail: structure always, the PATH logic when pwsh exists ──────────────────────────────────────────────────────────────────
 ps1="$ROOT/tools/canon-uninstall.ps1"
 grep -q 'function Remove-PathEntry' "$ps1" && grep -q "Test-CanonInstall" "$ps1" && grep -q "User PATH before:" "$ps1" || fail "canon-uninstall.ps1 lost a load-bearing piece"
+grep -q '"`"$helper`""' "$ps1" && grep -q '"`"$InstallDir`""' "$ps1" || fail "canon-uninstall.ps1 must quote the helper arguments (Start-Process does not; a profile path with a space breaks)"
+grep -q 'no such entry' "$ps1" || fail "Remove-PathEntry must leave the PATH byte-identical when the entry is absent"
 if command -v pwsh >/dev/null 2>&1; then
   r="$(pwsh -NoProfile -Command ". '$ps1' -InstallDir x -ToolsEntry x -LogFile x; (Remove-PathEntry 'C:\\A;C:\\canon\\tools\\;C:\\B;c:\\CANON\\TOOLS' 'C:\\canon\\tools')")"
   assert_eq 'C:\A;C:\B' "$r"

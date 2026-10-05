@@ -57,7 +57,7 @@ What it does, in order: stops the Cockpit daemon (refusing while sessions are li
 
 Left on purpose: your projects' `.gitignore` canon lines, the `.gitattributes` canon block, the `@` imports in `AGENTS.md` and `CLAUDE.md`, `PROMOTED.md` and `.tickets/`. Shell rc lines such as `export PATH="$PATH:<install>/tools"` are reported with file and line number, never edited.
 
-Safety: the install folder is deleted only when it is a canon install (`tools/canon` and `tools/skills.sh` exist, it matches `~/.config/canon/install_path`, it is not `/` or your home folder or a parent of it) and, if it is a git clone, when it has no uncommitted or untracked changes and nothing unpushed. Otherwise it is kept and the exact `rm -rf` is printed, even with `--yes`. A process running from the install folder blocks the run; it is never killed.
+Safety: the install folder is deleted only when it is a canon install (`tools/canon` and `tools/skills.sh` exist, it matches `~/.config/canon/install_path` when that file exists, it is not `/` or your home folder or a parent of it) and, if it is a git clone, when it has no uncommitted or untracked changes, an upstream branch with nothing unpushed, no local branch with commits on no remote, no stash, no linked worktree and no skip-worktree edits. Otherwise it is kept and the exact `rm -rf` is printed, even with `--yes`. A process running from the install folder blocks the run; it is never killed.
 
 ## Session continuity
 
