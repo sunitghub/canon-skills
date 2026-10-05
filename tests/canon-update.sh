@@ -181,7 +181,7 @@ if command -v zsh >/dev/null 2>&1; then
   assert_eq "registered" "$(zsh -fc 'autoload -U compinit && compinit -u -d "$1/.zcompdump"; source "$2"; (( $+_comps[canon] )) && echo registered' _ "$WORK" "$WORK/comp.zsh")"
 fi
 ps="$("$CANON" completion powershell)"
-for w in Register-ArgumentCompleter status sessions stop restart wait update completion version help needs-you working done idle exited --json --force --until --timeout --project; do
+for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"
 done
 set +e; "$CANON" completion fish >/dev/null 2>&1; code=$?; set -e

@@ -42,6 +42,12 @@ Usage:
                            `skills.sh refresh` on every project registered in the Cockpit
                            A Windows install without git (the one-line installer) is updated by
                            re-running that installer.
+  canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
+                           Remove canon from this machine: shows a plan, asks, stops the daemon,
+                           cleans every registered project, deletes the Cockpit data (unless
+                           --keep-data) and the install folder (a dirty or unpushed git clone is
+                           never deleted), and on Windows the user PATH entry. --dry-run changes
+                           nothing; with no terminal and no --yes it only prints the plan.
   canon completion <bash|zsh|powershell>
                            Print a completion script. bash: eval "$(canon completion bash)"
                            in ~/.bashrc; zsh: eval "$(canon completion zsh)" in ~/.zshrc
@@ -136,7 +142,7 @@ _canon() {
   local cur prev w
   cur="${COMP_WORDS[COMP_CWORD]}"; prev="${COMP_WORDS[COMP_CWORD-1]}"
   if [ "$COMP_CWORD" -eq 1 ]; then
-    COMPREPLY=($(compgen -W "status sessions stop restart wait update completion version help" -- "$cur")); return
+    COMPREPLY=($(compgen -W "status sessions stop restart wait update uninstall completion version help" -- "$cur")); return
   fi
   case "$prev" in
     --until) COMPREPLY=($(compgen -W "needs-you working done idle exited" -- "$cur")); return ;;
@@ -148,6 +154,7 @@ _canon() {
     stop|restart) w="--force" ;;
     wait) w="--until --timeout --project --json" ;;
     completion) w="bash zsh powershell" ;;
+    uninstall) w="--dry-run --yes --keep-data --force" ;;
     *) w="" ;;
   esac
   COMPREPLY=($(compgen -W "$w" -- "$cur"))
@@ -165,11 +172,11 @@ Register-ArgumentCompleter -Native -CommandName canon, canon.cmd -ScriptBlock {
   $pos = if ($wordToComplete) { $n - 1 } else { $n }
   $prev = if ($pos -ge 1) { $el[$pos - 1] } else { '' }
   $sub = if ($n -ge 2 -and $pos -gt 1) { $el[1] } else { '' }
-  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','completion','version','help' }
+  $cands = if ($pos -eq 1) { 'status','sessions','stop','restart','wait','update','uninstall','completion','version','help' }
     elseif ($prev -eq '--until') { 'needs-you','working','done','idle','exited' }
     else { switch ($sub) {
       'status' { '--json' } 'sessions' { '--json' } 'stop' { '--force' } 'restart' { '--force' }
-      'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' }
+      'wait' { '--until','--timeout','--project','--json' } 'completion' { 'bash','zsh','powershell' } 'uninstall' { '--dry-run','--yes','--keep-data','--force' }
       default { @() } } }
   $cands | Where-Object { $_ -like "$wordToComplete*" } |
     ForEach-Object { [System.Management.Automation.CompletionResult]::new($_, $_, 'ParameterValue', $_) }
@@ -297,6 +304,7 @@ main() {
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
     wait) shift; wait_cmd "$@" ;;
     update) shift; update_cmd "$@" ;;
+    uninstall) shift; exec bash "$SCRIPT_DIR/canon-uninstall.sh" "$@" ;;
     completion) shift; completion_cmd "$@"; exit 0 ;;
     "") : ;;
     [0-9]*) PORT_ARG="$1" ;;

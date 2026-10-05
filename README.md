@@ -34,12 +34,14 @@ If the installer prompts to add `~/.canon/tools` to PATH, answer `y` and run the
 printed `source` command before using bare `skills.sh`, `sprint`, or
 `sprint-check` — see **[Full setup guide →](docs/setup.md)** for the full steps.
 
-To uninstall — cleans up canon's git-native pre-commit hook (and any legacy Claude Code hooks from older installs) and removes canon skill symlinks from all registered projects:
+To uninstall, close the Cockpit window and run `canon uninstall`. It prints a plan, asks, stops the daemon, cleans canon's hooks and skill symlinks out of every registered project, deletes the Cockpit data and the install folder, and on Windows removes canon from your user PATH:
 
 ```bash
-skills.sh uninstall
-rm -rf ~/.canon
+canon uninstall --dry-run   # show the plan, change nothing
+canon uninstall             # ask, then remove (add --keep-data to keep the Cockpit data)
 ```
+
+It never deletes a git clone that has uncommitted or unpushed work: it prints the exact `rm -rf` for you instead. See **[Uninstall →](docs/setup.md#uninstall)**.
 
 Daily workflow:
 

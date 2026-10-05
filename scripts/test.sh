@@ -54,6 +54,7 @@ tests=(
   "$ROOT/tests/sprint-check-interrupted.sh"
   "$ROOT/tests/canon-cli.sh"
   "$ROOT/tests/canon-update.sh"
+  "$ROOT/tests/canon-uninstall.sh"
   "$ROOT/tests/sprint-check-upkeep.sh"
   "$ROOT/tests/upkeep-skill-hash-parity.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"

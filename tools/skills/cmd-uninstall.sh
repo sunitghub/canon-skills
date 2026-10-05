@@ -62,6 +62,9 @@ cmd_uninstall() {
   else
     echo "Uninstall cleanup finished with errors — check items marked [fail] above."
   fi
-  echo "You can now delete this install directory if desired:"
-  echo "  rm -rf \"$SKILLS_ROOT\""
+  if [ -z "${CANON_UNINSTALL_RUNNING:-}" ]; then   # `canon uninstall` removes the folder itself and prints its own report
+    echo "To remove canon itself (data, install folder, Windows PATH entry), run: canon uninstall"
+    echo "Or delete this install directory yourself if it has no work you want to keep:"
+    echo "  rm -rf \"$SKILLS_ROOT\""
+  fi
 }
