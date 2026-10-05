@@ -65,6 +65,8 @@ self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `r
 dispatched to fresh subagents independently; the invariant phrase is locked across all three by
 `tests/doc-mirror-parity.sh` Check J. Keep it in sync.)
 
+**Probe only in a scratch copy** (`t-bb2d`, live-reproduced: an evaluator's probe script ran with the real checkout as its working directory because an unchecked `cd` failed, and renamed the branch, committed junk over the sprint's commits, wrote files in and outside the repo and overwrote `.claude/subagent-runs.jsonl`). The real repo is read-only for a gate except the one report file you were told to write: use only read-only git there (`git diff`, `log`, `show`, `rev-parse`, `merge-base`, `rev-list`, `status`). Run every test, mutant and probe from a scratch copy: `S="$(mktemp -d)" || exit 1`, copy the repo into it, and start every script with `set -u` and `cd "$S/…" || exit 1` — never a bare `cd`, never a variable in a path without checking it is non-empty. Never run `git init`, `add`, `commit`, `branch`, `config` or `worktree` where the working directory could be the real repo, and write nothing outside the scratch directory. The orchestrator compares the repo before and after every dispatch (`complete.md` step 7, `tools/gate-snapshot.sh`) and stops the close on any difference. (Locked verbatim across `shared-gate-protocol.md`, `eval.md` and `review.md` by `tests/doc-mirror-parity.sh` Check L.)
+
 ## Skills-path resolution
 
 Every `skills/...` reference in these docs (e.g. `skills/wrapup/SKILL.md`) is a plain relative

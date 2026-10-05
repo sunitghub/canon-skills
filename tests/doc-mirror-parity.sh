@@ -230,4 +230,23 @@ for file in "$SPRINT_SKILL" "$COMPLETE"; do
   grep -qF "$DEMO_HEADLESS" "$file" || fail "doc-mirror-parity: $label is missing the demo-mode headless carve-out phrase verbatim — this is the exact fact that drifted in t-8f16"
 done
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md)"
+# ── Check L: the "probe only in a scratch copy" rule (t-bb2d) is mirrored in shared-gate-protocol.md, eval.md and review.md — each gate doc is
+# dispatched to a fresh subagent on its own (same reasoning as Checks F and J), so each must carry the load-bearing fragments verbatim. Live
+# trigger: an evaluator's probe ran with the real checkout as its cwd (an unchecked cd failed) and renamed the branch, committed junk and wrote
+# files in and outside the repo.
+SCRATCH_RULE_FRAGMENTS=(
+  '**Probe only in a scratch copy**'
+  'S="$(mktemp -d)" || exit 1'
+  'cd "$S/…" || exit 1'
+  'never a bare `cd`'
+  '`git init`, `add`, `commit`, `branch`, `config` or `worktree`'
+  'write nothing outside the scratch directory'
+)
+for file in "$SHARED" "$EVAL" "$REVIEW"; do
+  label="$(basename "$file")"
+  for frag in "${SCRATCH_RULE_FRAGMENTS[@]}"; do
+    grep -qF -- "$frag" "$file" || fail "doc-mirror-parity: $label is missing the scratch-copy rule fragment verbatim: $frag (t-bb2d, Check L)"
+  done
+done
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md)"
