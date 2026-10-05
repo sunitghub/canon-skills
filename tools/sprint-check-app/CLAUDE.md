@@ -22,6 +22,9 @@ Any change to `app.html` requires Playwright verification — not just grep-base
 - Mock every new endpoint in the shared page helper so a real daemon or real data never leaks in; assert the stable part of UI strings, not the whole sentence.
 - Use `pwd -P` for temp roots on macOS (`mktemp -d` returns a `/var` symlink), and record which board and which data a count came from.
 - A helper that a vm-loaded unit test (the `tests/sprint-check-*.js` pattern) exercises must be self-contained: reusing a top-level `const` makes every case throw.
+- When a fixed-width container gains or hides items, assert where things are: each control's bounding box lies inside the container, and items that belong on one row share a `top`. `toBeVisible`/`toBeEnabled` still pass for a control that is clipped or wrapped. When you hide a duplicate, prove the surviving copy cannot be clipped away (`t-614c`, `t-824e`).
+- A screenshot for one theme must show the embedded boards in that theme too: set the theme through the app's real path (not only the shell's `data-theme`), wait out the 0.12 s fade, and look at the iframe content before using the shot as evidence (`t-9a6c`, `t-bcce`).
+- Covering a view with an overlay is not hiding it: the covered iframe keeps focus and tab order. Mark it `inert`, make focus code skip it, and grep the in-page help sheet when a UI rule is retired (`t-bcce`).
 
 ## Board root redirect (t-5716)
 

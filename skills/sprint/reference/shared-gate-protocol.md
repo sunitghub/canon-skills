@@ -42,6 +42,8 @@ You will receive:
 
 Use Read, Grep, Glob, LS and your shell tool (`Bash` in Claude Code, `execute` in Copilot CLI) only — this matches what both real dispatch mechanisms actually grant (interactive dispatch as `canon-reviewer`/`canon-evaluator` grants Read, Grep, Glob and a shell — `Bash` in Claude Code, `execute` in Copilot CLI; list files with `ls` through it — and its `Plan` fallback excludes only Edit/Write/Agent at the harness level; headless CI's hardcoded `tools/sprint-headless` allowlist explicitly includes Grep/Glob/LS too). Do not use the Edit or Write tools, or Agent, or any other tool beyond that set — save output via Bash (e.g. `cat >>`), never the Write tool. Never write to, edit, or modify `acceptance.md`, `plan.md`, or any ticket file other than your own report — findings go there only.
 
+**Start and stop any server you launch in the same Bash call** — shell state, `$!` included, does not survive between calls (`t-d538`, live-reproduced: a gate lost its daemon PID and fell back to `pkill -f`). Never kill by name, and a process that is new since your baseline is not necessarily yours (`t-8765`): kill only PIDs you started yourself.
+
 **Never write into `tools/` outside this ticket's own files** (t-1781, live-reproduced twice: a
 gate dispatch corrupted the real `tools/sprint-headless` script with a test-stub-shaped
 replacement while verifying a headless/CI-grading criterion). If a Test Plan item needs to run a
