@@ -3980,6 +3980,37 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('split view (t-320d): the active tab and the focused board share one dimmer edge colour, in the strip and in the bar, in both themes', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      await splitVia(page, 'proj-x', 'below');
+      const alphaOf = (c) => Number((c.match(/(?:^rgba\([^)]*,\s*|\/\s*)([0-9.]+)\)$/) || [0, '1'])[1]);
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+        await page.waitForTimeout(500);                                              // the tab fades its colours over 0.12 s
+        const seen = {};
+        for (const id of ['proj-a', 'proj-x']) {
+          await page.evaluate(i => activateTab(i), id);
+          await page.waitForTimeout(400);
+          seen[id] = await page.evaluate((i) => {
+            const t = getComputedStyle(document.querySelector('.tab.project[data-tab="' + i + '"]'));
+            const r = getComputedStyle(document.querySelector('.view.active'), '::after');
+            return { bg: t.backgroundColor, tabBorder: t.borderLeftColor, shadow: t.boxShadow, ring: r.borderTopColor, parent: document.querySelector('.tab.project[data-tab="' + i + '"]').parentElement.id };
+          }, id);
+        }
+        expect([seen['proj-a'].parent, seen['proj-x'].parent]).toEqual(['tabstrip', 'panebar']);
+        for (const id of ['proj-a', 'proj-x']) {
+          expect(seen[id].tabBorder, theme + ' ' + id + ': the tab border matches the board ring').toBe(seen[id].ring);
+          const a = alphaOf(seen[id].ring);
+          expect(a, theme + ': dimmer than the old 0.55').toBeLessThan(0.5); expect(a).toBeGreaterThan(0.25);
+        }
+        expect(seen['proj-a'].bg, theme + ': the strip tab and the bar tab fill the same').toBe(seen['proj-x'].bg);
+        expect(seen['proj-a'].tabBorder).toBe(seen['proj-x'].tabBorder);
+        expect(seen['proj-a'].shadow).toBe(seen['proj-x'].shadow);
+      }
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('split view (t-f769): a pane focus that lands late does not bounce the active pane back', async ({ page }) => {
       const warns = []; page.on('console', m => { if (m.type() === 'warning' && /t-f769/.test(m.text())) warns.push(m.text()); });
       await openShell(page, []);

@@ -25,7 +25,7 @@
   .app{display:flex;flex-direction:column;min-height:100vh}
 
   /* t-d34e: one row height shared by the sidebar brand and the tab strip, so their tops and dividers align */
-  :root{--strip-h:48px;--strip-pad:8px}   /* --strip-pad: breathing room above the tabs and the brand, same for both */
+  :root{--strip-h:48px;--strip-pad:8px;--edge:color-mix(in srgb,var(--accent) 38%,transparent)}   /* --edge: the one dimmer blue shared by the focused board's ring and the active tab's border (t-320d) */   /* --strip-pad: breathing room above the tabs and the brand, same for both */
 
   .below{display:grid;grid-template-columns:var(--side-w,230px) 1fr;flex:1;min-height:0}
   .side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0 0 16px;position:relative}
@@ -60,7 +60,7 @@
   .tabstrip{display:flex;align-items:center;gap:4px;height:var(--strip-h);padding:var(--strip-pad) 14px 0;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}
   .tab{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px 8px 0 0;font-size:13px;color:var(--text-muted);cursor:pointer;position:relative;top:1px;border:1px solid transparent;border-bottom:none;white-space:nowrap;transition:color .12s ease,background .12s ease}
   .tab:not(.active):hover{color:var(--text);background:var(--border-muted)}
-  .tab.active{background:var(--bg);color:var(--text);border-color:var(--accent);border-bottom-color:var(--bg);box-shadow:0 -2px 12px -4px var(--accent),inset 0 2px 0 var(--accent)}
+  .tab.active{background:var(--bg);color:var(--text);border-color:var(--edge);border-bottom-color:var(--bg);box-shadow:0 -2px 12px -4px var(--edge),inset 0 2px 0 var(--accent)}
   .tab.pinned{font-weight:600}
   .tab .live{width:6px;height:6px;border-radius:50%;background:var(--col-done);display:none}
   .tab .live.on{display:inline-block;box-shadow:0 0 6px var(--col-done)}
@@ -81,7 +81,7 @@
   .views.split-v .view.pane2{inset:auto 0 0 0;height:calc((1 - var(--r))*100% - 3px)}
   /* t-c0c8: the focused pane's ring belongs to its view, not its iframe: an iframe outline lost its right and bottom edges on Windows */
   .view#view-upkeep.pane1,.view#view-upkeep.pane2{z-index:1;background:var(--bg)}   /* t-bcce: Upkeep covers its own pane's board, under the focus ring */
-  .views.split-h .view.active::after,.views.split-v .view.active::after{content:"";position:absolute;inset:0;border:2px solid color-mix(in srgb,var(--accent) 55%,transparent);pointer-events:none;z-index:2}
+  .views.split-h .view.active::after,.views.split-v .view.active::after{content:"";position:absolute;inset:0;border:2px solid var(--edge);pointer-events:none;z-index:2}
   #split-handle{position:absolute;z-index:6;display:none;background:var(--border);touch-action:none;transition:background .12s}
   #split-handle:hover,#split-handle:focus-visible,#split-handle.drag{background:var(--accent);outline:none}
   .views.split-h #split-handle{display:block;top:0;bottom:0;left:calc(var(--r)*100% - 3px);width:6px;cursor:col-resize}
