@@ -80,7 +80,8 @@
   .views.split-v .view.pane1{inset:0 0 auto 0;height:calc(var(--r)*100% - 3px)}
   .views.split-v .view.pane2{inset:auto 0 0 0;height:calc((1 - var(--r))*100% - 3px)}
   /* t-c0c8: the focused pane's ring belongs to its view, not its iframe: an iframe outline lost its right and bottom edges on Windows */
-  .views.split-h .view.active::after,.views.split-v .view.active::after{content:"";position:absolute;inset:0;border:2px solid var(--accent);pointer-events:none;z-index:2}
+  .view#view-upkeep.pane1,.view#view-upkeep.pane2{z-index:1;background:var(--bg)}   /* t-bcce: Upkeep covers its own pane's board, under the focus ring */
+  .views.split-h .view.active::after,.views.split-v .view.active::after{content:"";position:absolute;inset:0;border:2px solid color-mix(in srgb,var(--accent) 55%,transparent);pointer-events:none;z-index:2}
   #split-handle{position:absolute;z-index:6;display:none;background:var(--border);touch-action:none;transition:background .12s}
   #split-handle:hover,#split-handle:focus-visible,#split-handle.drag{background:var(--accent);outline:none}
   .views.split-h #split-handle{display:block;top:0;bottom:0;left:calc(var(--r)*100% - 3px);width:6px;cursor:col-resize}
@@ -1665,17 +1666,21 @@ function canonPrefixKeys(emit) {
       activateTab('projects');
       return;
     }
-    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
-    document.getElementById('nav-projects').classList.remove('active');
-    document.getElementById('nav-admin').classList.toggle('active',v==='admin');
+    const inSplit=v==='upkeep'&&splitShown();   // t-bcce: with a split on screen, Upkeep opens inside its project's pane and the split stays
+    upkeepPane=inSplit?activeTab:null;
+    if(!inSplit){
+      document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+      document.getElementById('nav-projects').classList.remove('active');
+      document.getElementById('nav-admin').classList.toggle('active',v==='admin');
+    }
     if(v==='admin'){
       document.getElementById('view-admin').classList.add('active');
       loadAdmin();
     } else if(v==='upkeep'){
-      document.getElementById('view-upkeep').classList.add('active');
+      if(!inSplit) document.getElementById('view-upkeep').classList.add('active');
       loadUpkeep();
     }
-    applySplit();   // t-416c: Admin and Upkeep show full size and suspend the split
+    applySplit();   // t-416c: Admin shows full size and suspends the split
   }
 
   function fmtUptime(secs){
@@ -1828,7 +1833,7 @@ function canonPrefixKeys(emit) {
     if(activeTab!==pid){ const p=window._projects.find(x=>x.id===pid); openProject(pid,p.name); }
     showView('upkeep');
   }
-  document.getElementById('up-back').addEventListener('click',()=>{ if(upProjectId) activateTab(upProjectId); });
+  document.getElementById('up-back').addEventListener('click',()=>{ upkeepPane=null; if(upProjectId) activateTab(upProjectId); else applySplit(); });
 
   async function upFetchState(skill){
     try{
@@ -2508,7 +2513,7 @@ function canonPrefixKeys(emit) {
   // split = {a,b,dir:'h'|'v',ratio}: pane1 is `a` (left/top), pane2 is `b`. `activeTab` stays the FOCUSED pane. Both views
   // are shown by CSS classes only (see .pane1/.pane2); nothing is ever moved in the DOM, because that reloads an iframe.
   const LS_SPLIT='canon-cockpit-split';
-  let split=null, prevTab=null, lastScriptFocus=0, focusWant=null;
+  let split=null, prevTab=null, lastScriptFocus=0, focusWant=null, upkeepPane=null;   // upkeepPane: the tab whose pane shows Upkeep (t-bcce)
   const SPLIT_MIN={h:280,v:220};
   // Each visible board is told whether it is in a split and whether it is the focused pane; `pulse` marks a pane that took
   // focus by a tab click or a key (not by a click inside it), which the board shows as a pulsing header until its first interaction.
@@ -2558,10 +2563,12 @@ function canonPrefixKeys(emit) {
     document.querySelectorAll('.view.pane1,.view.pane2').forEach(v=>v.classList.remove('pane1','pane2'));
     views.classList.remove('split-h','split-v');
     const sc=document.getElementById('split-close'); if(sc) sc.hidden=!splitShown();
-    if(!splitShown()){ sendPaneState(); return; }
+    if(!splitShown()){ upkeepPane=null; sendPaneState(); return; }
     const va=document.getElementById('view-'+split.a), vb=document.getElementById('view-'+split.b);
-    if(!va||!vb){ split=null; saveSplit(); sendPaneState(); return; }
+    if(!va||!vb){ split=null; upkeepPane=null; saveSplit(); sendPaneState(); return; }
     va.classList.add('pane1'); vb.classList.add('pane2');
+    const uv=document.getElementById('view-upkeep');   // t-bcce: Upkeep sits over its own pane
+    if(upkeepPane===split.a) uv.classList.add('pane1'); else if(upkeepPane===split.b) uv.classList.add('pane2'); else upkeepPane=null;
     views.classList.add(split.dir==='v'?'split-v':'split-h');
     split.ratio=clampRatio(split.ratio);
     views.style.setProperty('--r',split.ratio);
@@ -2579,7 +2586,7 @@ function canonPrefixKeys(emit) {
     split=same?Object.assign({},split,{dir}):{a,b,dir,ratio:.5};
     saveSplit(); activateTab(a); return true;
   }
-  function closeSplit(){ split=null; pulseTab=null; saveSplit(); applySplit(); renderTabs(); }
+  function closeSplit(){ split=null; upkeepPane=null; pulseTab=null; saveSplit(); applySplit(); renderTabs(); }
   (function wireSplitHandle(){
     const handle=document.getElementById('split-handle'), views=document.getElementById('views');
     if(!handle) return;
