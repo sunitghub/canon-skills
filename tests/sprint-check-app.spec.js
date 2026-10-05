@@ -3913,6 +3913,32 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('split view (t-c0c8): the focused pane\'s ring is drawn by its view on all four edges and follows focus', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      const ring = (id) => page.evaluate((id) => {
+        const v = document.getElementById('view-' + id), cs = getComputedStyle(v, '::after'), f = v.querySelector('iframe');
+        return { border: cs.borderTopWidth + ' ' + cs.borderTopStyle, rightW: cs.borderRightWidth, bottomW: cs.borderBottomWidth, leftW: cs.borderLeftWidth,
+                 pos: cs.position, ev: cs.pointerEvents, top: cs.top, right: cs.right, bottom: cs.bottom, left: cs.left, content: cs.content,
+                 w: parseFloat(cs.width), h: parseFloat(cs.height), vw: v.clientWidth, vh: v.clientHeight, iframeOutline: getComputedStyle(f).outlineStyle };
+      }, id);
+      expect((await ring('proj-a')).content).toBe('none');                           // no split: no ring
+      for (const dir of ['beside', 'below']) {
+        await splitVia(page, 'proj-x', dir);
+        await page.evaluate(() => activateTab('proj-x'));
+        const r = await ring('proj-x');
+        expect([r.border, r.rightW, r.bottomW, r.leftW]).toEqual(['2px solid', '2px', '2px', '2px']);   // all four edges
+        expect([r.pos, r.ev, r.top, r.right, r.bottom, r.left]).toEqual(['absolute', 'none', '0px', '0px', '0px', '0px']);
+        expect(Math.abs(r.w + 4 - r.vw)).toBeLessThanOrEqual(1); expect(Math.abs(r.h + 4 - r.vh)).toBeLessThanOrEqual(1);   // content box plus the 2px borders is the view's own box
+        expect(r.iframeOutline).toBe('none');                                        // the iframe no longer carries it
+        expect((await ring('proj-a')).content).toBe('none');                         // only the focused pane
+        await page.evaluate(() => activateTab('proj-a'));
+        expect((await ring('proj-a')).border).toBe('2px solid');                     // follows focus
+        expect((await ring('proj-x')).content).toBe('none');                         // proj-a stays active: the next split needs another tab active
+      }
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('split view (t-f769): a pane focus that lands late does not bounce the active pane back', async ({ page }) => {
       const warns = []; page.on('console', m => { if (m.type() === 'warning' && /t-f769/.test(m.text())) warns.push(m.text()); });
       await openShell(page, []);

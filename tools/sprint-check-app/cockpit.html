@@ -79,7 +79,8 @@
   .views.split-h .view.pane2{inset:0 0 0 auto;width:calc((1 - var(--r))*100% - 3px)}
   .views.split-v .view.pane1{inset:0 0 auto 0;height:calc(var(--r)*100% - 3px)}
   .views.split-v .view.pane2{inset:auto 0 0 0;height:calc((1 - var(--r))*100% - 3px)}
-  .views.split-h .view.active iframe,.views.split-v .view.active iframe{outline:2px solid var(--accent);outline-offset:-2px}
+  /* t-c0c8: the focused pane's ring belongs to its view, not its iframe: an iframe outline lost its right and bottom edges on Windows */
+  .views.split-h .view.active::after,.views.split-v .view.active::after{content:"";position:absolute;inset:0;border:2px solid var(--accent);pointer-events:none;z-index:2}
   #split-handle{position:absolute;z-index:6;display:none;background:var(--border);touch-action:none;transition:background .12s}
   #split-handle:hover,#split-handle:focus-visible,#split-handle.drag{background:var(--accent);outline:none}
   .views.split-h #split-handle{display:block;top:0;bottom:0;left:calc(var(--r)*100% - 3px);width:6px;cursor:col-resize}
