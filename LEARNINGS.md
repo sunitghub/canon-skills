@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-04-2026 21:10
+learnings-sweep last run: 10-05-2026 09:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-05 | [t-bcce](.tickets/t-bcce/learnings.md) | Replacing "hide the view" with "overlay it" leaves the covered iframe focusable and in tab order: mark it `inert` and sweep the in-page help text, which still described the retired rule | UNPROMOTED |
 | 2026-10-04 | [t-f769](.tickets/t-f769/learnings.md) | A focus-timing test must start with the OTHER pane really holding focus (click into it), or a delayed-focus fake never reproduces the jump back; and when a fix replaces a grace guard, keep the old guard: dropping it made neighbouring tests flaky under group load (3 of 6 runs vs 0 on base) | UNPROMOTED |
 | 2026-10-04 | [t-9a6c](.tickets/t-9a6c/learnings.md) | Light/dark screenshots made by setting `dataset.theme` only caught tabs mid-fade (the 0.12 s transition) and left the embedded boards dark: wait out transitions and use the real theme path, or the screenshot is not evidence of the other theme | UNPROMOTED |
 | 2026-10-04 | [t-b0e5](.tickets/t-b0e5/learnings.md) | Flip a LEARNINGS row to promoted only when every proposed half has landed in a destination line (or the report explicitly dropped it); a partial flip removes the unapplied half from future review, so keep the row UNPROMOTED and say which half is pending | UNPROMOTED |
