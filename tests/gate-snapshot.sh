@@ -94,7 +94,10 @@ tc="$(make_project)"
   "$TOOL" post "$scratch/tc" >/dev/null || fail "tracked .tickets/ changes must be ignored"
   echo '{"a":1}' >> .claude/subagent-runs.jsonl
   out="$(run_fail "$TOOL" post "$scratch/tc")"; assert_contains "$out" "audit log"
-  [[ "$out" != *"working-tree paths changed"* && "$out" != *"uncommitted content"* ]] || fail "a tracked audit log must be reported once, as the audit log: $out" )
+  [[ "$out" != *"working-tree paths changed"* && "$out" != *"uncommitted content"* ]] || fail "a tracked audit log must be reported once, as the audit log: $out"
+  echo '{}' > .claude/subagent-runs.jsonl; git checkout -q .claude/subagent-runs.jsonl
+  "$TOOL" pre "$scratch/tc" >/dev/null; mkdir -p sub/.claude; echo j > sub/.claude/subagent-runs.jsonl
+  out="$(run_fail "$TOOL" post "$scratch/tc")"; assert_contains "$out" "sub/.claude/subagent-runs.jsonl" )
 rm -rf "$tc"
 
 # a project in a subdirectory of a larger repository: its .tickets/ is excluded at any depth
@@ -104,7 +107,9 @@ mono="$(make_project)"
   cd proj; "$TOOL" pre "$scratch/mono" >/dev/null
   echo r > .tickets/t-z/eval-report.md; echo e >> .tickets/t-z/ticket.md
   "$TOOL" post "$scratch/mono" >/dev/null || fail "a subdirectory project's .tickets/ must be ignored"
-  echo j > junk.txt; out="$(run_fail "$TOOL" post "$scratch/mono")"; assert_contains "$out" "junk.txt" )
+  echo j > junk.txt; out="$(run_fail "$TOOL" post "$scratch/mono")"; assert_contains "$out" "junk.txt"
+  rm junk.txt; "$TOOL" pre "$scratch/mono" >/dev/null; mkdir -p ../other/.tickets; echo j > ../other/.tickets/x
+  out="$(run_fail "$TOOL" post "$scratch/mono")"; assert_contains "$out" "other/.tickets/x" )
 rm -rf "$mono"
 
 # unmerged paths: `git stash create` prints "f: needs merge" and exits 0; that text is not a recovery hash
@@ -114,6 +119,14 @@ um="$(make_project)"
   git checkout -q -b other; echo x > f; git commit -qam x; git checkout -q "$b"; echo y > f; git commit -qam y; git merge other >/dev/null 2>&1 || true
   out="$("$TOOL" pre "$scratch/um" 2>&1)"; assert_contains "$out" "not available"; [[ "$out" != *"needs merge"* ]] || fail "the stash error must not be reported as a hash: $out" )
 rm -rf "$um"
+
+# another branch (checked out nowhere) reset by a gate is a change, and so is a force-moved tag; only branches checked out in ANOTHER worktree are exempt
+git commit -q --allow-empty -m "c2"; git branch side HEAD~1; git tag t1 HEAD~1
+take; git branch -f side HEAD; differs "refs changed"; git branch -q -D side
+take; git tag -f t1 HEAD >/dev/null; differs "refs changed"; git tag -d t1 >/dev/null
+
+# only the project's own .tickets/ is excluded: a nested one is a path like any other
+take; mkdir -p src/.tickets; echo j > src/.tickets/junk; differs "src/.tickets/junk"; rm -rf src/.tickets
 
 # usage errors
 run_fail "$TOOL" >/dev/null; run_fail "$TOOL" bogus "$snap" >/dev/null; run_fail "$TOOL" post "$scratch/missing-file" >/dev/null

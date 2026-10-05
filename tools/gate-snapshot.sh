@@ -10,9 +10,11 @@
 # surface it, never auto-apply the hash. Where git cannot be asked (no repository, no commit yet) both modes warn and exit 0.
 # Not seen: the content of untracked files, and anything outside the repository.
 #
-# Refs are compared by NAME (branches and tags only): a commit in a sibling worktree, a fetch or a stash moves a ref's sha without any gate being
-# involved, while a created, renamed or deleted branch or tag is exactly what a stray `git branch`/`git init` probe does. The current branch's sha is
-# covered by HEAD. The audit log is the project's (`project_root`, like subagent-log.sh), also when run from a linked worktree.
+# Branches and tags are compared with their shas (a gate that resets or force-updates another branch is a change), except branches checked out in
+# ANOTHER worktree: a commit there is that session's work, not a gate's, so only the name is compared (a created, renamed or deleted branch still
+# shows). `refs/remotes` and the stash are not compared (a fetch moves them). The current branch's sha is covered by HEAD. Only this project's own
+# `.tickets/` and `.claude/subagent-runs.jsonl` are excluded from the tree comparison, found relative to the repository root (a project may sit in a
+# subdirectory); the audit log is the project's (`project_root`, like subagent-log.sh), also when run from a linked worktree.
 # Order around a dispatch: `pre`, the gate, `post`, THEN subagent-log.sh (its append is a change this tool would flag), then the next `pre`.
 #
 # Usage: gate-snapshot.sh pre <snapshot-file> | gate-snapshot.sh post <snapshot-file>
@@ -33,9 +35,6 @@ if [[ -z "$root" ]] || ! git -C "$root" rev-parse --verify -q HEAD >/dev/null 2>
   exit 0
 fi
 
-# `.tickets/` (the gate writes its report there) and the audit log are never part of the tree comparison, at any depth (a project may sit in a subdirectory)
-EXCLUDES=(':(exclude,glob)**/.tickets/**' ':(exclude,glob)**/.claude/subagent-runs.jsonl')
-
 digest() {  # stdin -> sha256 hex (sha256sum, shasum, else cksum)
   if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1
   elif command -v shasum >/dev/null 2>&1; then shasum -a 256 | cut -d' ' -f1
@@ -44,12 +43,22 @@ digest() {  # stdin -> sha256 hex (sha256sum, shasum, else cksum)
 }
 
 snapshot() {
-  local audit_file; audit_file="$(project_root)/.claude/subagent-runs.jsonl"
+  local audit_file proot ptop prel others EXCLUDES
+  audit_file="$(project_root)/.claude/subagent-runs.jsonl"
+  # this project's path relative to the repository root (empty when the project is the repository)
+  proot="$(cd "$(project_root)" && pwd -P)"
+  ptop="$(git -C "$proot" rev-parse --show-toplevel 2>/dev/null)" || ptop=""
+  prel=""; if [[ -n "$ptop" && "$proot" != "$ptop" ]]; then prel="${proot#"$ptop"/}/"; fi
+  EXCLUDES=(":(exclude)${prel}.tickets" ":(exclude)${prel}.claude/subagent-runs.jsonl")
+  # branches checked out in a worktree other than this one: their sha is not compared
+  others="$(git -C "$root" worktree list --porcelain | awk -v me="$root" '/^worktree /{wt=substr($0,10)} /^branch /{ if (wt != me) print substr($0,8) }')"
   echo "branch=$(git -C "$root" symbolic-ref -q --short HEAD || echo DETACHED)"
   echo "head=$(git -C "$root" rev-parse HEAD)"
   echo "diff=$(git -C "$root" diff HEAD --binary -- . "${EXCLUDES[@]}" | digest)"
   if [[ -f "$audit_file" ]]; then echo "audit=$(digest < "$audit_file")"; else echo "audit=absent"; fi
-  git -C "$root" for-each-ref --format='ref %(refname)' refs/heads refs/tags | sort
+  git -C "$root" for-each-ref --format='%(refname) %(objectname)' refs/heads refs/tags | while read -r name sha; do
+    if grep -qxF "$name" <<< "$others"; then echo "ref $name -"; else echo "ref $name $sha"; fi
+  done | sort
   git -C "$root" status --porcelain --untracked-files=all -- . "${EXCLUDES[@]}" | sed 's/^/status /' | sort
 }
 
@@ -94,7 +103,7 @@ fi
 ref_added="$(grep '^ref ' "$now" | sort | comm -13 <(grep '^ref ' "$file" | sort) - || true)"
 ref_gone="$(grep '^ref ' "$file" | sort | comm -13 <(grep '^ref ' "$now" | sort) - || true)"
 if [[ -n "$ref_added$ref_gone" ]]; then
-  say "refs changed (a branch or tag was created, renamed or deleted):"
+  say "refs changed (a branch or tag was created, renamed, deleted or moved):"
   [[ -z "$ref_added" ]] || printf '%s\n' "$ref_added" | sed 's/^ref /  + /'
   [[ -z "$ref_gone" ]] || printf '%s\n' "$ref_gone" | sed 's/^ref /  - /'
 fi

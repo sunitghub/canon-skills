@@ -301,8 +301,9 @@ Opus` default, scoped only to the two close-gate dispatches below.
 7. **Snapshot the repo before AND after every subagent dispatch** with `gate-snapshot.sh` (bare — it is on PATH, same as `sprint`/`tkt`) — a gate is
    read-only by contract (`shared-gate-protocol.md ## Tools`), so any change outside the ticket's own `.tickets/<id>/` files is out-of-scope by definition,
    and an after-only check misses a discard (see below). Immediately **before** dispatching run `gate-snapshot.sh pre .tickets/<id>/gate-snapshot.txt` (a fixed path inside the ticket folder, so it survives separate Bash calls and the tool ignores it): it records
-   the branch, HEAD, every ref, the branch and tag names (not their shas, so a commit in a sibling worktree is not a false alarm), the porcelain lines (untracked files expanded),
-   a digest of the uncommitted tracked content (`git diff HEAD`) and a digest of the project's `.claude/subagent-runs.jsonl` (all of `.tickets/` is ignored, at any depth), and prints a recovery hash (`git stash create` — non-destructive; "nothing to recover" means no uncommitted tracked changes).
+   the branch, HEAD, every ref, every branch and tag with its sha (a branch checked out in another worktree keeps only its name: a commit there is that session's work, not the gate's), the
+   porcelain lines (untracked files expanded), a digest of the uncommitted tracked content (`git diff HEAD`) and a digest of the project's
+   `.claude/subagent-runs.jsonl` (only this project's own `.tickets/` and that audit log are excluded from the tree comparison), and prints a recovery hash (`git stash create` — non-destructive; "nothing to recover" means no uncommitted tracked changes).
    Immediately **after** the gate completes, before reading its report, run `gate-snapshot.sh post .tickets/<id>/gate-snapshot.txt`, and only then `subagent-log.sh` (its append to `.claude/subagent-runs.jsonl` is a change the tool flags; run the next `pre` after it). Exit 0 means nothing moved; exit 1 names each
    difference (`BRANCH changed`, `HEAD moved`, `refs changed`, `working-tree paths changed`, `uncommitted content … changed`, the audit log). On any difference:
    - **Stop and surface it to the user with the PRE recovery hash** — do not silently continue, and do not auto-apply the stash (its content may conflict with
