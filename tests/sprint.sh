@@ -1454,5 +1454,87 @@ fr_project="$(make_project)"
   out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "src/app.js"
   git checkout -q src/app.js
   assert_contains "$(fr_complete)" "Sprint completed: $fid"
+
+  # graded-head must be a full hex commit sha: an abbreviation or a ref name is refused (HEAD would hide committed changes)
+  fr_ticket refs; fr_report "$(git rev-parse --short HEAD)"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "is not a commit"
+  fr_report "HEAD"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "is not a commit"
+
+  # a tracked .tickets/ (consumer projects), AGENTS.md and any CLAUDE.md are written after grading by complete.md steps 6-7: allowed
+  fr_report "$(git rev-parse HEAD)"
+  mkdir -p docs; echo 'c' > AGENTS.md; echo 'c' > CLAUDE.md; echo 'c' > docs/CLAUDE.md
+  git add -f -A .tickets AGENTS.md CLAUDE.md docs/CLAUDE.md; git commit -qm "ticket docs and convention files"
+  assert_contains "$(fr_complete)" "Sprint completed: $fid"
+
+  # a rename counts through its old path; a non-ASCII code path is named verbatim; a long change list still gets the full message
+  fr_ticket rename; fr_report "$(git rev-parse HEAD)"
+  git mv src/app.js dist/app.js; git commit -qm "move code into dist"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "src/app.js"
+  git mv dist/app.js src/app.js; git commit -qm "move it back"
+  fr_report "$(git rev-parse HEAD)"; printf 'q\n' > "é.js"; git add "é.js"; git commit -qm "non-ascii code"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "é.js"
+  fr_report "$(git rev-parse HEAD)"; mkdir -p many
+  for i in $(seq 1 500); do : > "many/file-$(printf '%0150d' "$i").js"; done
+  git add many; git commit -qm "many files"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "tracked files changed after the evaluator graded"; assert_contains "$out" "500 file(s)"
 )
 rm -rf "$fr_project"
+
+# t-1b74: the allow-list names the same hook-built artifacts as scripts/install-hooks.sh (they are a second copy of ARTIFACT_PATHS)
+art_line="$(grep '^ARTIFACT_PATHS=' "$ROOT/scripts/install-hooks.sh")"
+art_line="${art_line#ARTIFACT_PATHS=(}"; art_line="${art_line%)*}"
+for art in $art_line; do
+  sed 's/\\//g' "$ROOT/tools/sprint" | grep -qF "$art" || fail "tools/sprint's late-path list is missing the hook artifact $art (scripts/install-hooks.sh ARTIFACT_PATHS)"
+done
+
+# t-1b74: shared fixture for the repository-shape cases below
+fr_gate_docs() { # <ticket dir> <jsonl file> <run-id> <graded-head>
+  local t="$1"
+  printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > "$t/plan.md"
+  printf '# Acceptance\n## Criteria\n- [x] item\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > ""$t/acceptance.md""
+  printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > "$t/summary.md"
+  printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$2"
+  printf '# Eval Report\nevaluator-run-id: %s\ngraded-head: %s\nModel: test-model\n## Verdict\npass: all criteria met\n' "$3" "$4" > "$t/eval-report.md"
+}
+
+# t-1b74: a sprint run from a linked worktree is graded against the worktree's own commits, not the main checkout's working tree
+wt_main="$(make_project)"; wt_dir="$(mktemp -d)/wt"
+(
+  cd "$wt_main"; git config user.email t@example.com; git config user.name test
+  mkdir -p src .claude; echo 'a' > src/app.js; git add -A >/dev/null && git commit -qm base
+  git worktree add -q -b wtb "$wt_dir"
+  cd "$wt_dir"; echo 'b' >> src/app.js; git add src/app.js; git commit -qm "work done in the worktree"
+  out="$("$SPRINT" start "worktree stale eval")"; wid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+  fr_gate_docs "$wt_main/.tickets/$wid" "$wt_main/.claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $wid"
+)
+rm -rf "$wt_main" "$(dirname "$wt_dir")"
+
+# t-1b74: a project that is a subdirectory of a larger repository is graded on its own subtree only
+sub_top="$(make_project)"
+(
+  cd "$sub_top"; git config user.email t@example.com; git config user.name test
+  mkdir -p proj/src other proj/.tickets proj/.claude; echo 'a' > proj/src/app.js; echo 'a' > other/x.js; git add -A >/dev/null && git commit -qm base
+  cd proj
+  out="$("$SPRINT" start "subtree stale eval")"; sid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+  fr_gate_docs ".tickets/$sid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  echo 'b' >> ../other/x.js; git add ../other/x.js; git commit -qm "outside the project"
+  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $sid"
+  out="$("$SPRINT" start "subtree stale eval 2")"; sid2="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+  fr_gate_docs ".tickets/$sid2" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  echo 'c' >> src/app.js; git add src/app.js; git commit -qm "inside the project"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "tracked files changed after the evaluator graded"; assert_contains "$out" "src/app.js"
+)
+rm -rf "$sub_top"
+
+# t-1b74: a folder without git has nothing to compare, so the gate is skipped and a report without graded-head closes
+ng_dir="$(mktemp -d)"
+(
+  cd "$ng_dir"; mkdir -p .claude
+  out="$("$SPRINT" start "no git stale eval")"; nid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+  fr_gate_docs ".tickets/$nid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "ignored"
+  sed -i.bak '/^graded-head:/d' ".tickets/$nid/eval-report.md" && rm -f ".tickets/$nid/eval-report.md.bak"
+  assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $nid"
+)
+rm -rf "$ng_dir"
