@@ -437,6 +437,12 @@ Opus` default, scoped only to the two close-gate dispatches below.
    Check whether `.tickets/<id>/eval-report.md` exists after dispatch; if not, save the
    returned report text yourself.
 
+   **Stale-eval guard (t-1b74).** The report's `graded-head:` line is the commit the evaluator graded. `sprint complete` blocks the close when it is
+   missing, ambiguous or not a commit, or when any tracked file other than the late docs (`.tickets/`, LEARNINGS, DECISIONS, HANDOFF, PROMOTED, AGENTS.md, any CLAUDE.md, `.claude/subagent-runs.jsonl`) and the
+   hook-built artifacts differs from that commit, committed or not, in the worktree the sprint ran in (a linked worktree is graded on its own commits); `eval_override` does not bypass it. So **any change after grading, including
+   fixes made after the advisory reviewer, needs a fresh evaluator dispatch** (re-run the step); never edit `graded-head:` to match. Untracked files
+   are ignored.
+
    **Record the verdict.** Immediately after reading `.tickets/<id>/eval-report.md`'s verdict
    line, run `sprint eval-verdict <id>` (bare — it's on PATH, same as `sprint`/`tkt`). This
    writes the outcome into `ticket.md`'s `eval_fail_count` field — incrementing on `fail`,
