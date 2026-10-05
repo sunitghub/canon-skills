@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-04-2026 19:10
+learnings-sweep last run: 10-04-2026 20:10
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-04 | [t-9a6c](.tickets/t-9a6c/learnings.md) | Light/dark screenshots made by setting `dataset.theme` only caught tabs mid-fade (the 0.12 s transition) and left the embedded boards dark: wait out transitions and use the real theme path, or the screenshot is not evidence of the other theme | UNPROMOTED |
 | 2026-10-04 | [t-b0e5](.tickets/t-b0e5/learnings.md) | Flip a LEARNINGS row to promoted only when every proposed half has landed in a destination line (or the report explicitly dropped it); a partial flip removes the unapplied half from future review, so keep the row UNPROMOTED and say which half is pending | UNPROMOTED |
 | 2026-10-04 | [t-b546](.tickets/t-b546/learnings.md) | A test wait on state the daemon's own exit can preempt (`#dot` after a force restart) raced and failed the evaluator's round 1; tolerating the timeout fixes the flake but leaves the post-exit assertions best-effort, and the revert mutant fails at the original assertion, so the added ones are not proven red | dismissed |
 | 2026-10-04 | [t-416c](.tickets/t-416c/learnings.md) | A new "press the prefix again" key must be tested against every rebindable prefix: checked after the split keys, a prefix rebound to `-` or `_` opened a split instead of the sheet (only the advisory reviewer caught it); and a shell must ask `contentDocument.hasFocus()`, not `document.activeElement`, which goes stale after a script-set iframe focus. | `promoted → tools/sprint-check-app/CLAUDE.md` |

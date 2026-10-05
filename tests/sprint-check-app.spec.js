@@ -3678,15 +3678,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       for (const id of ['proj-a', 'proj-x']) await page.frameLocator(`#view-${id} iframe`).locator('body').evaluate((_, id) => { window.__marker = id; }, id);
       await splitVia(page, 'proj-x', 'beside');
       await expect(page.locator('#views')).toHaveClass(/split-h/);
-      const v = await bbox(page, '#views'), a = await bbox(page, '#view-proj-a iframe'), x = await bbox(page, '#view-proj-x iframe'), h = await bbox(page, '#split-handle');
+      const v = await bbox(page, '#views'), a = await bbox(page, '#view-proj-a iframe'), x = await bbox(page, '#view-proj-x iframe'), h = await bbox(page, '#split-handle'), bar = await bbox(page, '#panebar');
       expect(Math.abs(a.width + h.width + x.width - v.width)).toBeLessThanOrEqual(1);
       expect(a.x + a.width).toBeLessThanOrEqual(h.x + 1);
       expect(h.x + h.width).toBeLessThanOrEqual(x.x + 1);
-      expect(Math.abs(a.height - v.height)).toBeLessThanOrEqual(1); expect(Math.abs(x.height - v.height)).toBeLessThanOrEqual(1);
+      expect(Math.abs(a.height - v.height)).toBeLessThanOrEqual(1); expect(Math.abs(x.height + bar.height - v.height)).toBeLessThanOrEqual(1);   // pane 2 sits under its tab bar (t-9a6c)
       await splitVia(page, 'proj-x', 'below');
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       const a2 = await bbox(page, '#view-proj-a iframe'), x2 = await bbox(page, '#view-proj-x iframe'), h2 = await bbox(page, '#split-handle');
-      expect(Math.abs(a2.height + h2.height + x2.height - v.height)).toBeLessThanOrEqual(1);
+      const bar2 = await bbox(page, '#panebar');
+      expect(Math.abs(a2.height + h2.height + bar2.height + x2.height - v.height)).toBeLessThanOrEqual(1);
       expect(a2.y + a2.height).toBeLessThanOrEqual(h2.y + 1);
       expect(h2.y + h2.height).toBeLessThanOrEqual(x2.y + 1);
       expect(Math.abs(a2.width - v.width)).toBeLessThanOrEqual(1);
@@ -3717,6 +3718,38 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#view-proj-x')).toBeHidden();
       await expect(page.locator('#view-proj-a')).toBeVisible();
       expect(await page.evaluate(() => localStorage.getItem('canon-cockpit-split'))).toBeNull();
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('split view (t-9a6c): each pane\'s project tab sits with its pane and returns to the strip when the split ends', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      await splitVia(page, 'proj-x', 'beside');
+      const inside = (t, p) => t.x >= p.x - 1 && t.x + t.width <= p.x + p.width + 1;
+      let a = await bbox(page, '#view-proj-a'), x = await bbox(page, '#view-proj-x'), ta = await bbox(page, '.tab.project[data-tab="proj-a"]'), tx = await bbox(page, '.tab.project[data-tab="proj-x"]');
+      expect(inside(ta, a)).toBe(true);                                              // pane 1's tab is over pane 1
+      expect(inside(tx, x)).toBe(true);                                              // pane 2's tab is over pane 2, not at the far left
+      expect(tx.y + tx.height).toBeLessThanOrEqual(x.y + 60);                        // at the top of the pane (its bar is above the board)
+      await expect(page.locator('#tabstrip .tab.project[data-tab="proj-x"]')).toHaveCount(0);
+      await splitVia(page, 'proj-x', 'below');
+      x = await bbox(page, '#view-proj-x'); tx = await bbox(page, '.tab.project[data-tab="proj-x"]');
+      const h = await bbox(page, '#split-handle');
+      expect(tx.y).toBeGreaterThanOrEqual(h.y);                                      // below the divider, with the bottom pane
+      expect(tx.y + tx.height).toBeLessThanOrEqual(x.y + 60);
+      await expect(page.locator('#tabstrip .tab.project[data-tab="proj-a"]')).toHaveCount(1);
+      await page.locator('#split-close').click();
+      await expect(page.locator('#tabstrip .tab.project[data-tab="proj-x"]')).toHaveCount(1);   // back in the strip
+      await expect(page.locator('#tabstrip .tab.project')).toHaveCount(2);
+      // The moved tab keeps its menu and its close button.
+      await page.evaluate(() => activateTab('proj-a'));                              // the menu's "beside" needs another tab to be active
+      await splitVia(page, 'proj-x', 'beside');
+      await page.locator('#panebar .tab.project[data-tab="proj-x"]').click({ button: 'right' });
+      await expect(page.locator('.tabmenu')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await page.locator('#panebar .tab.project[data-tab="proj-x"] .tx').click();
+      await expect(page.locator('#panebar .tab.project')).toHaveCount(0);
+      await expect(page.locator('#tabstrip .tab.project')).toHaveCount(1);
+      expect(await page.evaluate(() => split)).toBeNull();
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -3821,11 +3854,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       expect(await page.evaluate(() => [split.a, split.b, split.dir])).toEqual(['proj-a', 'proj-x', 'v']);
       expect(Number(await page.locator('#split-handle').getAttribute('aria-valuenow'))).toBe(52);
+      await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);   // t-9a6c: the restored split puts pane 2's tab in its bar
       for (const bad of [JSON.stringify({ a: 'proj-a', b: 'gone', dir: 'h', ratio: 0.5 }), 'not json', JSON.stringify({ a: 'proj-a', b: 'proj-a', dir: 'h', ratio: 0.5 }), JSON.stringify([1, 2])]) {
         await page.evaluate(b => localStorage.setItem('canon-cockpit-split', b), bad);
         await page.reload(); await page.waitForLoadState('networkidle');
         await expect(page.locator('#views')).not.toHaveClass(/split-/);
         await expect(page.locator('.tab.project[data-tab="proj-a"]')).toBeVisible();
+        await expect(page.locator('#tabstrip .tab.project')).toHaveCount(2);                     // ignored saved data leaves every tab in the strip
       }
       expect(errors).toEqual([]);
       // keys: the tab you came from goes beside / below; u closes. With no previous tab, a message and nothing else.
