@@ -110,10 +110,12 @@ right-sizing, snippet, and evidence principles apply.
    looks for your `evaluator-run-id` there (t-0231) to prove this report came from a real dispatch. **HARD RULE (t-072d): the
    `Model:` line below is mandatory — `sprint complete` blocks the close if
    `eval-report.md` has no `^Model:` line. Do not drop it, even if you write the rest of
-   the report free-form.**
+   the report free-form.** The `graded-head:` line (t-1b74) is mandatory too: run `git rev-parse HEAD` yourself and record its output, so
+   `sprint complete` can refuse a close whose tracked files changed after you graded; never copy a commit from your inputs.
 
 ```markdown
 evaluator-run-id: <re-stamped at the start of this step — leave as line 1, do not re-write again>
+graded-head: <the output of `git rev-parse HEAD`, run by you in this evaluation>
 
 # Eval Report
 

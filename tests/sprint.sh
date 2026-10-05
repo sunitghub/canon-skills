@@ -1394,3 +1394,65 @@ tx_cfg="$(mktemp -d)"
   rm -rf "$empty_cfg"
 )
 rm -rf "$tx_project" "$tx_cfg"
+
+# t-1b74: a stale evaluator report. The report records the commit it graded (graded-head:), and `sprint complete` refuses when a
+# tracked file outside the late-doc/artifact allow-list differs from that commit; honest path easy, a forgotten re-grade loud.
+fr_project="$(make_project)"
+(
+  cd "$fr_project"
+  git config user.email t@example.com; git config user.name test
+  mkdir -p .claude src dist tools
+  echo 'a' > src/app.js; echo '# L' > LEARNINGS.md; echo 'z' > dist/a.zip; echo 'x' > tools/cockpit-daemon-win.exe
+  git add -A >/dev/null && git commit -qm base
+  now="$(date +%s)"; stamp="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  fr_ticket() { # starts a sprint with every doc valid except the report; sets fid
+    local out; out="$("$SPRINT" start "stale eval $1")"
+    fid="$(printf '%s\n' "$out" | awk '/Sprint started:/ { print $3 }')"
+    printf '# Plan\n## Sign-off\n- [x] Plan approved\n## Approach\ntest\n' > ".tickets/$fid/plan.md"
+    printf '# Acceptance\n## Criteria\n- [x] item\n## Test Plan\n- [x] npm test\n## Wrapup Gates\n| Gate | Status | Reason |\n|------|--------|--------|\n| eval | ran | pass |\n' > ".tickets/$fid/acceptance.md"
+    printf '# Summary\n| Item | Status |\n|---|---|\n| done | delivered |\n' > ".tickets/$fid/summary.md"
+    printf '{"ts":"%s","session_id":"s1","agent_id":"x","agent_type":"evaluator","transcript_path":""}\n' "$stamp" > .claude/subagent-runs.jsonl
+  }
+  fr_report() { # <graded-head value>...: a passing report that records each value as a graded-head line
+    { printf '# Eval Report\nevaluator-run-id: %s\n' "$now-7000"; local g; for g in "$@"; do printf 'graded-head: %s\n' "$g"; done
+      printf 'Model: test-model\n## Verdict\npass: all criteria met\n'; } > ".tickets/$fid/eval-report.md"
+  }
+  fr_complete() { env -u CLAUDECODE "$SPRINT" complete 2>&1; }   # not Claude Code: the transcript check fails open, the rest still runs
+  head0="$(git rev-parse HEAD)"
+
+  fr_ticket missing; fr_report
+  # a report without the line, two different values, and a value that is not a commit are each refused
+  sed -i.bak '/^graded-head:/d' ".tickets/$fid/eval-report.md" && rm -f ".tickets/$fid/eval-report.md.bak"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "missing graded-head"; assert_gate_notice "$out" eval-report.md evaluator
+  fr_report "$head0" "0000000000000000000000000000000000000001"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "more than one graded-head"; assert_gate_notice "$out" eval-report.md evaluator
+  fr_report "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "is not a commit"; assert_gate_notice "$out" eval-report.md evaluator
+
+  # a code commit after grading is stale, and eval_override does not bypass it
+  fr_report "$head0"
+  echo 'b' >> src/app.js; git add src/app.js; git commit -qm "code after grading"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"
+  assert_contains "$out" "tracked files changed after the evaluator graded"; assert_contains "$out" "src/app.js"; assert_contains "$out" "re-dispatch a fresh evaluator"
+  assert_gate_notice "$out" eval-report.md evaluator
+  sed -i.bak 's/^eval_override: false/eval_override: true/' ".tickets/$fid/ticket.md" && rm -f ".tickets/$fid/ticket.md.bak"
+  printf '\nwaived 2026-01-01 test\n' >> ".tickets/$fid/acceptance.md"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "tracked files changed after the evaluator graded"
+  head1="$(git rev-parse HEAD)"
+
+  # re-graded at the new HEAD: only late docs, hook-built artifacts and untracked files differ afterwards, which is allowed
+  "$TKT" close "$fid" --no-sprint >/dev/null
+  fr_ticket late; fr_report "$head1"
+  echo '| row |' >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm "learnings"
+  echo 'zz' > dist/a.zip; echo 'xx' > tools/cockpit-daemon-win.exe; git add dist tools; git commit -qm "hook artifacts"
+  echo 'scratch' > untracked-scratch.txt
+  assert_contains "$(fr_complete)" "Sprint completed: $fid"
+
+  # an uncommitted edit to a tracked code file is stale too
+  fr_ticket dirty; fr_report "$(git rev-parse HEAD)"
+  echo 'c' >> src/app.js
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "src/app.js"
+  git checkout -q src/app.js
+  assert_contains "$(fr_complete)" "Sprint completed: $fid"
+)
+rm -rf "$fr_project"

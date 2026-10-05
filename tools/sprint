@@ -576,6 +576,46 @@ _gate_eval_report_consistency() {
   fi
 }
 
+# _gate_eval_report_fresh <id> <tdir> — t-1b74: the report must record the commit the evaluator graded (graded-head:,
+# eval.md step 8), and no tracked file outside the late-doc/artifact paths below may differ from it. Without this a code change made
+# after the binding verdict closes on stale evidence. The evaluator attests the commit (it is what that fresh run read), so this guards
+# a forgotten re-grade, not a lying evaluator (same stance as _gate_eval_report_consistency). Fails closed on a missing, ambiguous or
+# non-commit value; skipped where git cannot be asked (no repository or no commit yet). eval_override does not bypass it: the override
+# covers a failing verdict, not stale evidence. Untracked files are ignored: a tree always has some, and sprint files are committed
+# before grading (complete.md step 1). The paths below are written after grading by design (complete.md steps 6-8) or are rebuilt by the
+# post-commit hook; anything else an agent touches after grading is stale.
+_gate_eval_report_fresh() {
+  local id="$1" tdir="$2" report="$tdir/eval-report.md" root heads graded changed n shown
+  local late_re='^(\.tickets/|LEARNINGS\.md$|LEARNINGS-archive\.md$|DECISIONS\.md$|DECISIONS-archive\.md$|HANDOFF\.md$|PROMOTED\.md$|dist/|tools/sprint-check-win\.exe$|tools/sprint-headless-json-win\.exe$|tools/cockpit-daemon-win\.exe$)'
+  root="$(project_root)"
+  git -C "$root" rev-parse --verify -q HEAD >/dev/null 2>&1 || return 0
+  heads="$(sed -n 's/^graded-head:[[:space:]]*//p' "$report" | tr -d '\r' | sort -u)"
+  if [[ -z "$heads" ]]; then
+    echo "Sprint $id cannot close: eval-report.md is missing graded-head: (the commit the evaluator graded, eval.md step 8)."
+    _gate_dispatch_notice evaluator eval-report.md
+    return 1
+  fi
+  if [[ "$(printf '%s\n' "$heads" | wc -l | tr -d ' ')" -gt 1 ]]; then
+    echo "Sprint $id cannot close: eval-report.md has more than one graded-head value, so the graded commit is ambiguous."
+    _gate_dispatch_notice evaluator eval-report.md
+    return 1
+  fi
+  graded="$heads"
+  if ! git -C "$root" cat-file -e "${graded}^{commit}" 2>/dev/null; then
+    echo "Sprint $id cannot close: eval-report.md graded-head '$graded' is not a commit in this repository."
+    _gate_dispatch_notice evaluator eval-report.md
+    return 1
+  fi
+  changed="$(git -C "$root" diff --relative --name-only "$graded" -- . 2>/dev/null | grep -vE "$late_re" || true)"
+  [[ -n "$changed" ]] || return 0
+  n="$(printf '%s\n' "$changed" | wc -l | tr -d ' ')"
+  shown="$(printf '%s\n' "$changed" | head -5 | tr '\n' ',' | sed 's/,$//; s/,/, /g')"
+  echo "Sprint $id cannot close: tracked files changed after the evaluator graded (graded-head ${graded:0:7}; $n file(s): $shown)."
+  echo "The verdict does not cover a change made after it: re-dispatch a fresh evaluator (complete.md step 3). Do not edit graded-head to match."
+  _gate_dispatch_notice evaluator eval-report.md
+  return 1
+}
+
 _gate_eval_report() {
   local id="$1" tdir="$2"
   local plan="$tdir/plan.md"
@@ -591,6 +631,7 @@ _gate_eval_report() {
   _gate_eval_report_verdict     "$id" "$tdir" || return 1
   _gate_eval_report_consistency "$id" "$tdir" || return 1
   _gate_eval_report_model       "$id" "$tdir" || return 1
+  _gate_eval_report_fresh       "$id" "$tdir" || return 1
 }
 
 # _gate_review_notes_model <id> <tdir> — HARD RULE (t-072d): if the advisory
