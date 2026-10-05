@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-05-2026 09:10
+learnings-sweep last run: 10-05-2026 10:20
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-05 | [t-3da2](.tickets/t-3da2/learnings.md) | I flipped rows to promoted on one of several lessons, the exact thing the rule I was adding forbids; before flipping, list each row's lessons and tick each against a destination line, instead of trusting the report's headline mapping | UNPROMOTED |
 | 2026-10-05 | [t-bcce](.tickets/t-bcce/learnings.md) | Replacing "hide the view" with "overlay it" leaves the covered iframe focusable and in tab order: mark it `inert` and sweep the in-page help text, which still described the retired rule | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-10-04 | [t-f769](.tickets/t-f769/learnings.md) | A focus-timing test must start with the OTHER pane really holding focus (click into it), or a delayed-focus fake never reproduces the jump back; and when a fix replaces a grace guard, keep the old guard: dropping it made neighbouring tests flaky under group load (3 of 6 runs vs 0 on base) | dismissed |
 | 2026-10-04 | [t-9a6c](.tickets/t-9a6c/learnings.md) | Light/dark screenshots made by setting `dataset.theme` only caught tabs mid-fade (the 0.12 s transition) and left the embedded boards dark: wait out transitions and use the real theme path, or the screenshot is not evidence of the other theme | `promoted → tools/sprint-check-app/CLAUDE.md` |
