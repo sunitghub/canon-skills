@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-05-2026 10:20
+learnings-sweep last run: 10-05-2026 12:05
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-05 | [t-1b74](.tickets/t-1b74/learnings.md) | A git-aware gate must ask the caller's own worktree (`worktree_root`), not `project_root` (which maps a linked worktree to the main checkout), and its tests need a linked worktree and a project subdirectory; a green first run was a false comfort until each fix had a revert mutant | UNPROMOTED |
 | 2026-10-05 | [t-3da2](.tickets/t-3da2/learnings.md) | I flipped rows to promoted on one of several lessons, the exact thing the rule I was adding forbids; before flipping, list each row's lessons and tick each against a destination line, instead of trusting the report's headline mapping | UNPROMOTED |
 | 2026-10-05 | [t-bcce](.tickets/t-bcce/learnings.md) | Replacing "hide the view" with "overlay it" leaves the covered iframe focusable and in tab order: mark it `inert` and sweep the in-page help text, which still described the retired rule | `promoted → tools/sprint-check-app/CLAUDE.md` |
 | 2026-10-04 | [t-f769](.tickets/t-f769/learnings.md) | A focus-timing test must start with the OTHER pane really holding focus (click into it), or a delayed-focus fake never reproduces the jump back; and when a fix replaces a grace guard, keep the old guard: dropping it made neighbouring tests flaky under group load (3 of 6 runs vs 0 on base) | dismissed |
