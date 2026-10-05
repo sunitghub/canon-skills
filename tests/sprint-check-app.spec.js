@@ -3913,6 +3913,35 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('split view (t-f769): a pane focus that lands late does not bounce the active pane back', async ({ page }) => {
+      const warns = []; page.on('console', m => { if (m.type() === 'warning' && /t-f769/.test(m.text())) warns.push(m.text()); });
+      await openShell(page, []);
+      await splitTabs(page);
+      await splitVia(page, 'proj-x', 'beside');
+      expect(await shellTab(page)).toBe('proj-a');
+      await page.frameLocator('#view-proj-a iframe').locator('body').click({ position: { x: 4, y: 400 } });   // the user is typing in pane A when the chord comes
+      await expect.poll(() => page.evaluate(() => document.querySelector('#view-proj-a iframe').contentDocument.hasFocus())).toBe(true);
+      await page.evaluate(() => {
+        const orig = HTMLIFrameElement.prototype.focus;                              // a slow machine: the focus lands 800 ms after the call
+        HTMLIFrameElement.prototype.focus = function () { setTimeout(() => orig.call(this), 800); };
+        const act = activateTab; window.__log = [];
+        activateTab = function (id) { window.__log.push(id); return act.apply(this, arguments); };
+      });
+      await pressPrefix(page, 'o');
+      await page.waitForTimeout(2200);                                               // observing the absence of a jump back, so a wait is the check
+      expect(await page.evaluate(() => window.__log)).toEqual(['proj-x']);           // the old pane was never re-activated
+      expect(await shellTab(page)).toBe('proj-x');
+      expect(await page.evaluate(() => document.activeElement.closest('.view').id)).toBe('view-proj-x');
+      expect(warns).toHaveLength(1);                                                 // the retry said so once, so the cause can be learned
+      // A click into the other pane right after a move is the user's choice: the shell stops asking for the wanted pane at once.
+      await page.evaluate(() => { HTMLIFrameElement.prototype.focus = function () {}; });   // so the wanted focus never lands
+      await pressPrefix(page, 'o');                                                  // wants proj-a, which never gets focus
+      await expect.poll(() => shellTab(page)).toBe('proj-a');
+      await page.frameLocator('#view-proj-x iframe').locator('body').click({ position: { x: 4, y: 400 } });
+      await expect.poll(() => shellTab(page), { timeout: 1000 }).toBe('proj-x');       // within the 1.5 s retry window, so the click cancelled it
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('split view (t-416c): keys o s r focus, swap and rotate the split on screen without reloading a board; with no split they only say so', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);

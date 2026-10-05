@@ -1506,6 +1506,9 @@ function canonPrefixKeys(emit) {
     activateTab(id);
     const f=document.querySelector('#view-'+id+' iframe');
     lastScriptFocus=Date.now();
+    focusWant={id,until:Date.now()+1500,warned:false};   // t-f769: after the grace below, syncFocusedPane keeps asking for this focus until it lands
+    // A click into a pane is the user's own choice: stop asking for the wanted pane (the boards are same-origin).
+    if(split) [split.a,split.b].forEach(pid=>{ try{ document.querySelector('#view-'+pid+' iframe').contentDocument.addEventListener('pointerdown',()=>{ focusWant=null; },{capture:true,once:true}); }catch(e){} });
     try{ if(f) f.focus(); else window.focus(); }catch(e){}
   }
   function prefixAction(key){
@@ -2504,7 +2507,7 @@ function canonPrefixKeys(emit) {
   // split = {a,b,dir:'h'|'v',ratio}: pane1 is `a` (left/top), pane2 is `b`. `activeTab` stays the FOCUSED pane. Both views
   // are shown by CSS classes only (see .pane1/.pane2); nothing is ever moved in the DOM, because that reloads an iframe.
   const LS_SPLIT='canon-cockpit-split';
-  let split=null, prevTab=null, lastScriptFocus=0;
+  let split=null, prevTab=null, lastScriptFocus=0, focusWant=null;
   const SPLIT_MIN={h:280,v:220};
   // Each visible board is told whether it is in a split and whether it is the focused pane; `pulse` marks a pane that took
   // focus by a tab click or a key (not by a click inside it), which the board shows as a pulsing header until its first interaction.
@@ -2607,6 +2610,14 @@ function canonPrefixKeys(emit) {
     const paneHasFocus=id=>{ try{ const f=document.querySelector('#view-'+id+' iframe'); return !!(f&&f.contentDocument&&f.contentDocument.hasFocus()); }catch(e){ return false; } };
     const syncFocusedPane=()=>{
       if(!splitShown()||Date.now()-lastScriptFocus<500) return;   // a focus the shell just set takes a moment to land
+      if(focusWant){   // a focus the shell just set can land late (seen on Windows): keep asking for it instead of following the old pane back
+        if(Date.now()>focusWant.until||paneHasFocus(focusWant.id)) focusWant=null;
+        else {
+          if(!focusWant.warned){ focusWant.warned=true; console.warn('canon: pane focus did not land yet, retrying (t-f769)'); }
+          try{ const f=document.querySelector('#view-'+focusWant.id+' iframe'); if(f) f.focus(); }catch(e){}
+          return;
+        }
+      }
       const id=[split.a,split.b].find(paneHasFocus);
       if(id&&id!==activeTab){ pulseTab=null; activateTab(id); }
     };
