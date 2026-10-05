@@ -149,3 +149,6 @@ covering: ...". Never performed by this skill itself.>
   content line of that file. Read each grep hit: a ticket-ID match in a template or example row (e.g.
   the sample row in `skills/learnings-sweep/SKILL.md`) is not evidence. With no real hit, leave the
   row plain `promoted` rather than guessing.
+- A row that carries more than one lesson flips only when every part has a real destination line or the
+  report explicitly dismissed it. Until then it stays `UNPROMOTED` with a note naming the pending part
+  (`t-b0e5`: four rows were flipped on one half and the other halves dropped out of review).

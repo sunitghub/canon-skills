@@ -4,8 +4,8 @@ description: Coding standards, code review feedback, git conventions, behavioral
 category: agent-ops
 tags: [coding, security, git, efficiency, tokens]
 inject: true
-version: 1.0.9
-updated: 2026-10-04
+version: 1.0.10
+updated: 2026-10-05
 ---
 
 # Agent Standards
@@ -65,18 +65,21 @@ Act on these when you see them — don't wait to be told.
 - Under `set -euo pipefail`, `VAR=$(cmd)` exits silently if `cmd` fails — `|| fallback` on the next line never runs. Safe: `VAR=$(cmd) || VAR=fallback` on one line.
 - Under `pipefail`, `! cmd | grep -q x` can pass *without checking*: `grep -q` exits at the first match and SIGPIPEs the writer, so the pipeline reports non-zero even though it matched, and `!` flips that to success. It only fires when the writer still has output buffered, so a small input hides it and a larger one makes it deterministic. Safe: `[ "$(cmd | grep -c x)" -eq 0 ]` — keep it inline; hoisting it to `n=$(cmd | grep -c x)` hits the previous trigger, since `grep -c` exits 1 on *zero* matches.
 - A bare `[[ cond ]] && cmd` as a function's LAST statement returns the `[[ ]]` test's own exit status (1) whenever `cond` is false — under `set -e`, that silently aborts the *caller*, not just skips `cmd`. Easy to miss because the common/expected case (`cond` usually true) never triggers it — it only fires once the false branch becomes reachable, potentially long after the line was written. Safe: wrap in `if`/`fi`, or append `; return 0` / `|| true` after it.
+- Anything a function sets inside `$(func)` (an array append, a recorded PID) dies with the subshell, so a later cleanup trap kills nothing. Guard such helpers with `[[ $BASH_SUBSHELL == 0 ]]` (bash 3.2 has no `BASHPID`).
 - A test asserts against a re-implementation of the logic under test → call the production function instead. A locally rebuilt sort key or a hand-copied constant list passes while the real thing is broken.
-- A guard exercised only against inputs it already handles is unverified → feed it the cases it must *reject*.
-- Writing a parser for an existing artifact family (reports, tickets, logs) → count the shapes across all real instances and read the producer's own template first; run it on a real instance, not only fixtures shaped like the parser.
-- New security/validation/race guard → ship a test that fails when the guard is reverted, and run the revert. Two causes for one symptom → prove each fix necessary by reverting it alone, plus one end-to-end test through the real client path. A revert counts only if the mutant ran and failed on its own assertion; redundant layers mask a lone revert, so test each layer separately. Run reverts only in a scratch copy, never on tracked files.
+- A guard exercised only against inputs it already handles is unverified → feed it the cases it must *reject*. Include spellings it has not seen; a match inside a comment does not count.
+- Writing a parser or a gate for an existing artifact family (reports, tickets, logs) → count the shapes across all real instances and read the producer's own template first; run it on a real instance, not only fixtures shaped like the parser.
+- New security/validation/race guard → ship a test that fails when the guard is reverted, and run the revert. Two causes for one symptom → prove each fix necessary by reverting it alone, plus one end-to-end test through the real client path. A revert counts only if the mutant ran and failed on its own assertion; redundant layers mask a lone revert, so test each layer separately. Run reverts only in a scratch copy, never on tracked files. A fixture equal to the default the code would produce anyway (mode 0600 from `mkstemp`) cannot fail on revert.
 - A green run where something didn't run proves nothing → treat "command not found", a silent skip, an early exit hidden behind a `grep` filter, or a test file missing from the entrypoint as a failure.
 - Git config leaks into tests → pin `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM` and `XDG_CONFIG_HOME`. Worktrees share one hooks directory, so a hook finds its checkout with `git rev-parse --show-toplevel`, never from its own path. Ignore a symlink without a trailing slash (`/x/` matches directories only).
 - A hostile-input test must match the sink's context: escaped text in `title="…"` needs a quote-breakout payload (`a"onmouseover="x`), not just `<img onerror>`.
 - Widening what a security check allows → re-validate the new value at the point of use; never lean on an earlier check you haven't read, especially for files an agent can write (`.tickets/`).
+- A new check that verifies what an older gate accepts must read every line the gate reads (every `^pass:`, not `head -1`), or an extra line walks past it.
 - A guard that fails closed then falls through → check what the fall-through *writes*: a transient error (git, network) must not overwrite the state the guard protects. Pin it with a file-content assertion.
+- An error must not become a normal-looking result: a failed read is not "absent", a failed `git` call is not "not a repo", and `curl` without `-f` prints an error page as output. Match the one error you expect; let every other one fail.
 - Async lookup before a destructive action → after the `await`, re-check every precondition (identity, status, liveness), not just the one you guarded; test it by gating the request.
 - Retiring or renaming a mechanism → sweep every doc surface by concept and paraphrase (cross-references, README prose, other skills), not only the known phrase; an exact-phrase grep proves only known spots.
-- Cross-backend equality: parse JSON before comparing (`json.dumps` vs `json.Marshal` differ in whitespace); compare bytes only for files.
+- Cross-backend equality: parse JSON before comparing (`json.dumps` vs `json.Marshal` differ in whitespace); compare bytes only for files. Aim parity fixtures at text edges (trim sets, lone surrogates, invalid UTF-8).
 - On Windows the Bash tool is Git Bash — unquoted `C:\...` backslashes are escapes (and trip Claude Code's approval prompt). Use forward-slash (`/c/Users/...`) or quoted paths.
 - Never `pkill`/`kill` by matching a process name, script path, or command-line pattern shared with anything the user might independently be running (a dev server, an agent daemon, a shared script invoked from elsewhere) — a pattern match can hit the user's own live, unrelated process and kill in-progress work with no undo. Resolve the exact PID first (a lockfile/state-file's recorded PID, the port a service publishes, or `$!` from a process this session itself started) and kill only that PID.
 
