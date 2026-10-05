@@ -3705,10 +3705,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await page.evaluate(() => activateTab('proj-a'));
       await expect(page.locator('#views')).toHaveClass(/split-v/);
-      await page.evaluate(() => showView('upkeep'));                                 // ... and so does Upkeep
-      await expect(page.locator('#views')).not.toHaveClass(/split-/);
-      await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
-      await page.evaluate(() => activateTab('proj-a'));
       for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // no iframe was reloaded or replaced
       await expect(page.locator('#split-close')).toBeVisible();
       await page.locator('#split-close').click();                                    // one click back to the normal layout
@@ -3918,7 +3914,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await splitTabs(page);
       const ring = (id) => page.evaluate((id) => {
         const v = document.getElementById('view-' + id), cs = getComputedStyle(v, '::after'), f = v.querySelector('iframe');
-        return { border: cs.borderTopWidth + ' ' + cs.borderTopStyle, rightW: cs.borderRightWidth, bottomW: cs.borderBottomWidth, leftW: cs.borderLeftWidth,
+        return { color: cs.borderTopColor, border: cs.borderTopWidth + ' ' + cs.borderTopStyle, rightW: cs.borderRightWidth, bottomW: cs.borderBottomWidth, leftW: cs.borderLeftWidth,
                  pos: cs.position, ev: cs.pointerEvents, top: cs.top, right: cs.right, bottom: cs.bottom, left: cs.left, content: cs.content,
                  w: parseFloat(cs.width), h: parseFloat(cs.height), vw: v.clientWidth, vh: v.clientHeight, iframeOutline: getComputedStyle(f).outlineStyle };
       }, id);
@@ -3931,11 +3927,56 @@ test.describe('cockpit in board (t-ddc8)', () => {
         expect([r.pos, r.ev, r.top, r.right, r.bottom, r.left]).toEqual(['absolute', 'none', '0px', '0px', '0px', '0px']);
         expect(Math.abs(r.w + 4 - r.vw)).toBeLessThanOrEqual(1); expect(Math.abs(r.h + 4 - r.vh)).toBeLessThanOrEqual(1);   // content box plus the 2px borders is the view's own box
         expect(r.iframeOutline).toBe('none');                                        // the iframe no longer carries it
+        const alpha = (r.color.match(/(?:^rgba\([^)]*,\s*|\/\s*)([0-9.]+)\)$/) || [0, '1'])[1];   // t-bcce (user): the ring is a softened, translucent accent; an opaque rgb() has no alpha, so it reads 1
+        expect(Number(alpha)).toBeGreaterThan(0.3); expect(Number(alpha)).toBeLessThan(0.8);
         expect((await ring('proj-a')).content).toBe('none');                         // only the focused pane
         await page.evaluate(() => activateTab('proj-a'));
         expect((await ring('proj-a')).border).toBe('2px solid');                     // follows focus
         expect((await ring('proj-x')).content).toBe('none');                         // proj-a stays active: the next split needs another tab active
       }
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('split view (t-bcce): Upkeep opens inside its own pane and leaves the split and tabs alone', async ({ page }) => {
+      await openShell(page, []);
+      await splitTabs(page);
+      for (const dir of ['beside', 'below']) {
+        await page.evaluate(() => activateTab('proj-a'));
+        await splitVia(page, 'proj-x', dir);
+        await page.evaluate(() => activateTab('proj-x'));
+        const cls = dir === 'beside' ? /split-h/ : /split-v/;
+        await page.evaluate(() => showView('upkeep'));
+        await expect(page.locator('#views')).toHaveClass(cls);                       // the split is not suspended
+        await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);   // the tabs did not move
+        await expect(page.locator('#tabstrip .tab.project[data-tab="proj-a"]')).toHaveCount(1);
+        await expect(page.locator('#view-upkeep')).toBeVisible();
+        await expect(page.locator('#view-proj-a')).toBeVisible();                    // the other pane's board is still there
+        const up = await bbox(page, '#view-upkeep'), px = await bbox(page, '#view-proj-x'), pa = await bbox(page, '#view-proj-a');
+        for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(up[k] - px[k])).toBeLessThanOrEqual(1);   // exactly its own pane
+        expect(up.x + up.width <= pa.x + 1 || up.y + up.height <= pa.y + 1 || up.x >= pa.x + pa.width - 1 || up.y >= pa.y + pa.height - 1).toBe(true);   // not over the other pane
+        expect(await page.locator('#view-proj-x').getAttribute('inert')).not.toBeNull();   // the covered board takes no focus or keys
+        await expect(page.locator('#view-proj-a')).not.toHaveAttribute('inert', /.*/);
+        for (const key of ['s', 's', 'r', 'r']) {                                    // swap and rotate: Upkeep follows its project's pane
+          await pressPrefix(page, key);
+          const upk = await bbox(page, '#view-upkeep'), pxx = await bbox(page, '#view-proj-x');
+          for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(upk[k] - pxx[k])).toBeLessThanOrEqual(1);
+        }
+        await page.evaluate(() => activateTab('proj-a'));                            // focus moves to the other pane: Upkeep stays where it is
+        await expect(page.locator('#view-upkeep')).toBeVisible();
+        const up2 = await bbox(page, '#view-upkeep');
+        for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(up2[k] - px[k])).toBeLessThanOrEqual(1);
+        await page.locator('#up-back').click();                                      // back to the board, same layout
+        await expect(page.locator('#view-upkeep')).toBeHidden();
+        await expect(page.locator('#view-proj-x')).not.toHaveAttribute('inert', /.*/);
+        await expect(page.locator('#view-proj-x')).toBeVisible();
+        await expect(page.locator('#views')).toHaveClass(cls);
+        await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);
+      }
+      await page.evaluate(() => { activateTab('proj-a'); activateTab('proj-x'); showView('upkeep'); closeTab('proj-x'); });   // closing the hosting tab ends the split and Upkeep
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
+      await expect(page.locator('#view-upkeep')).toBeHidden();
+      await page.evaluate(() => { activateTab('proj-a'); showView('admin'); });      // Admin still suspends the split
+      await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
