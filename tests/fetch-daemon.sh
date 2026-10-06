@@ -157,6 +157,13 @@ while read -r path ver; do
   mods=$((mods + 1)); grep -qF "## $path $ver" "$ROOT/THIRD-PARTY-NOTICES.md" || fail "THIRD-PARTY-NOTICES.md has no section for $path $ver"
 done < <(sed 's|// indirect||; s|^require ||' "$ROOT/tools/cockpit-daemon/go.mod" | awk 'NF==2 && $1 ~ /^[a-z0-9.-]+\.[a-z]+\// && $2 ~ /^v[0-9]/ {print $1, $2}')
 [[ "$mods" -ge 5 ]] || fail "expected the daemon's five modules, saw $mods"
+# 10b. every third-party .js/.css file the daemon embeds under web/vendor/ is named, by path, in THIRD-PARTY-NOTICES.md (t-70e4: xterm shipped without a notice)
+vend=0
+for f in "$ROOT"/tools/cockpit-daemon/web/vendor/*.js "$ROOT"/tools/cockpit-daemon/web/vendor/*.css; do
+  [[ -e "$f" ]] || continue
+  vend=$((vend + 1)); grep -qF "web/vendor/$(basename "$f")\`" "$ROOT/THIRD-PARTY-NOTICES.md" || fail "THIRD-PARTY-NOTICES.md does not name vendored file web/vendor/$(basename "$f")"
+done
+[[ "$vend" -ge 3 ]] || fail "expected the three vendored xterm files, saw $vend"
 
 # 11. release-daemon.sh --dry-run: builds four targets, prints the manifest lines, publishes and writes nothing; refuses a dirty daemon dir
 RR="$WORK/rel"; mkdir -p "$RR/scripts" "$RR/tools"; cp -R "$R/tools/cockpit-daemon" "$RR/tools/"; cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
