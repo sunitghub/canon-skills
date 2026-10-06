@@ -2584,7 +2584,7 @@ def ensure_cockpit() -> dict:
     if ok:
         return {'running': True, 'addr': addr, 'launched': False, **_cockpit_build_status(addr)}
     if not (COCKPIT_DAEMON_BIN and os.path.exists(COCKPIT_DAEMON_BIN)):
-        return {'running': False, 'addr': None, 'error': 'cockpit daemon binary not found'}
+        return {'running': False, 'addr': None, 'error': 'cockpit daemon binary not found; run `canon update` to fetch it'}
     state_dir = _cockpit_state_dir()
     os.makedirs(state_dir, exist_ok=True)
     try:

@@ -56,6 +56,9 @@ fi
 printf 'Wiring agent hooks...\n'
 bash "$TARGET/tools/skills.sh" init
 
+# t-60f7: the cockpit daemon is gitignored, so a clone has none; fetch the verified prebuilt (or build it). Never fatal: the board still works.
+bash "$TARGET/tools/fetch-daemon.sh" || printf 'warning: agent sessions in the Cockpit need the daemon; see the message above, or run: canon update\n' >&2
+
 RC_FILE="$HOME/.bashrc"
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 

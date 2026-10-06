@@ -4025,7 +4025,7 @@ func ensureCockpit() map[string]any {
 		return out
 	}
 	if !exists(cockpitDaemonBin) {
-		return map[string]any{"running": false, "addr": nil, "error": "cockpit daemon binary not found"}
+		return map[string]any{"running": false, "addr": nil, "error": "cockpit daemon binary not found; run `canon update` to fetch it"}
 	}
 	stateDir := cockpitStateDir()
 	os.MkdirAll(stateDir, 0700)
