@@ -212,7 +212,7 @@ assert_contains "$out" "Other PATH entries that mention canon"; assert_contains 
 PROCS="4242 C:\\fake\\cockpit-daemon-win.exe" runw --dry-run; assert_contains "$out" "BLOCKED: processes are running from the install folder"; assert_contains "$out" "4242 C:\\fake\\cockpit-daemon-win.exe"
 before="$(digest "$inst"; digest "$h")"; PROCS="4242 C:\\fake\\cockpit-daemon-win.exe" runw --yes; assert_eq 1 "$rc"; assert_contains "$out" "processes are still running from $inst"; assert_eq "$before" "$(digest "$inst"; digest "$h")"
 runw --yes; [[ "$rc" == 0 ]] || fail "windows branch failed ($rc): $out"
-ps="$(cat "$WORK/psargs")"; assert_contains "$ps" "-File"; assert_contains "$ps" "-InstallDir C:$(printf '%s' "$inst" | tr '/' '\\')"; assert_contains "$ps" "-ToolsEntry $winentry"; assert_contains "$ps" "-KeepCockpit 0"; assert_contains "$ps" "-LogFile"
+ps="$(cat "$WORK/psargs")"; assert_contains "$ps" "-File"; assert_contains "$ps" "-InstallDir C:$(printf '%s' "$inst" | tr '/' '\\')"; assert_contains "$ps" "-ToolsEntry $winentry"; assert_contains "$ps" "-KeepName cockpit"; assert_contains "$ps" "-KeepCockpit 0"; assert_contains "$ps" "-LogFile"
 [[ -d "$inst/tools" ]] || fail "on Windows bash must leave the install folder for the PowerShell helper"
 assert_eq 1 "$(grep -c "cleaned $WORK/p15" "$WORK/stub.log")"; refute_contains "$(cat "$WORK/stub.log")" "cleaned C:"   # the portable steps ran first, once per project
 
