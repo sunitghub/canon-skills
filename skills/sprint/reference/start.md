@@ -116,8 +116,8 @@ Start checklist — rules that need no reference read (each owned by the step na
      it) and the evaluator forms and runs that same command, so the command travels with the spec
      it checks instead of living only in prose. The `## Test Plan` item still carries the checkable
      line (it may restate that command or reference the scenario's runner). canon ships no runner —
-     the project provides a small fixed-pattern one
-     (see `examples/dsl-discount-spec/dsl_runner.py`), deliberately not a general Gherkin engine.
+     the project provides a small fixed-pattern one,
+     deliberately not a general Gherkin engine.
      This is additive — most criteria stay prose; use it only where a machine can answer
      pass/fail. **Ordering (what makes it a real check):** scenario-backed criteria must be
      **locked at the sprint-start approval gate**, before implementation — never add or edit a
@@ -143,7 +143,7 @@ Start checklist — rules that need no reference read (each owned by the step na
      runner pass, so neither the runner nor the fresh evaluator will catch it — `t-ef19`).
      The board seeds the matching `## Test Plan` *placeholder* in Acceptance on save when a scenario
      is present (`t-321a`, never a hardcoded command); `sprint start` writes this build instruction
-     into `plan.md`. Worked block: `examples/dsl-discount-spec/README.md`. **Language default is
+     into `plan.md`. **Language default is
      JavaScript** — the runner-command examples in the scenario-backed rules above (shown as
      `python dsl_runner.py …`) and in `eval.md`/`complete.md` (shown as `node dsl_runner.js …`)
      are language-agnostic illustrations of *a runner command*, not a language

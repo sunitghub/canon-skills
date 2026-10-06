@@ -1,5 +1,0 @@
-.claude/skills
-.claude/subagent-runs.jsonl
-.agents/
-__pycache__/
-*.pyc

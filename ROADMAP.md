@@ -151,18 +151,6 @@ this file is the public-facing shortlist.
   (optional) — headless-path guard + `ci+demo` warning. Suggested order: **B first** (protocol-only,
   testable via a hand-set `demo:true` before touching the board), then A, then C.
 
-## Backlog — workshop examples
-
-- **`dsl-discount-spec` follow-ups** — two small, deferred items from the runner-output work
-  (`t-07aa`/`t-295c`/`t-527e`):
-  - Regenerate `examples/dsl-discount-spec/discount-spec-demo.{html,pptx}` from the updated `.md`
-    on a machine with marp-cli — the `.md` was updated in `t-295c` but the derived renders were
-    deferred (marp-cli not installed in the dev env), per the `t-b73e` disclose-don't-ship-stale
-    pattern.
-  - Optional: unify the JS vs Python runner FAIL-detail idiom (`applied true … "…"` vs
-    `applied True … '…'`) so FAIL lines are byte-identical across both runners (~2 lines in
-    `dsl_runner.py`). Pre-existing, break-only, cosmetic; PASS output is already identical (`t-07aa`).
-
 ## Planned — post-traction
 
 - **Windows 11 CI coverage** — add a WSL2 job to `.github/workflows/ci.yml` once the repo goes public; validates the `ss`/python3 port-detection path that `lsof` currently covers on macOS runners.

@@ -63,7 +63,3 @@ RC_FILE="$HOME/.bashrc"
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 
 printf '\nDone.\n\n'
-printf '  ──────────────────────────────────────────────────\n'
-printf '  Try a guided example — read %s/examples/restaurant-bill-split/README.md\n' "$TARGET"
-printf '  and give the starting prompt to your agent.\n'
-printf '  ──────────────────────────────────────────────────\n\n'

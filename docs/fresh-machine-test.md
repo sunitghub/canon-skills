@@ -145,7 +145,7 @@ On headless Linux, the URL is printed instead of auto-opened. `curl -s http://12
 
 This is the only step that validates the agent layer: `sprint start` producing a real brief, `sprint complete` running the wrapup pipeline, and the git-native pre-commit hook blocking before commit. The CLI suite above validates none of this.
 
-Follow [examples/restaurant-bill-split/](../examples/restaurant-bill-split/README.md) end to end in your test project — give the agent its starting prompt and let it run a real sprint. Key things to confirm:
+Run a real sprint end to end in your test project — ask the agent to run `sprint start` on a small change and let it carry on to `sprint complete`. Key things to confirm:
 
 - `sprint start "..."` explicitly reads `HANDOFF.md` as its own context step (no hook — canon
   installs zero Claude Code hooks), then triggers tier selection, acceptance criteria, and a

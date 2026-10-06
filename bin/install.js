@@ -77,11 +77,6 @@ function main() {
 
   header('Done.');
   console.log(`
-  Guided example:
-
-    Read ${TARGET}/examples/restaurant-bill-split/README.md
-    and give its starting prompt to your agent.
-
   Full setup guide: ${TARGET}/docs/setup.md
 `);
 }

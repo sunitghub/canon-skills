@@ -16,7 +16,6 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 
 - `README.md`
 - `docs/*.md`
-- `examples/**/*.md`
 - `tools/*.md`
 - Skill frontmatter: `description` and `summary` fields across `skills/*/SKILL.md` and `standards/*.md` — only if those paths exist in the current project
 
@@ -24,7 +23,7 @@ Audit user-facing documentation for accuracy. Append to `doc-findings.md` (proje
 
 1. Read `doc-findings.md` if it exists; skip logged issues.
 
-2. Read `README.md`, `docs/*.md`, `examples/**/*.md`, and `tools/*.md`. Note claims about features, behavior, and requirements.
+2. Read `README.md`, `docs/*.md` and `tools/*.md`. Note claims about features, behavior, and requirements.
 
 3. If `skills/` exists, read `description` and `summary` frontmatter in `skills/*/SKILL.md` and `standards/*.md`; compare to each skill body.
 

@@ -46,7 +46,7 @@ sprint-check                     # you/agent: open the board in your browser
 sprint complete                  # agent: review, verify, close
 ```
 
-Run these from the project root; in practice your agent runs `sprint start` and `sprint complete`. Setup wires the tools once; after that your agent does the work and canon keeps it in your repo — not your prompt history. A guided example: [`examples/restaurant-bill-split`](examples/restaurant-bill-split/README.md).
+Run these from the project root; in practice your agent runs `sprint start` and `sprint complete`. Setup wires the tools once; after that your agent does the work and canon keeps it in your repo — not your prompt history.
 
 ## What Makes canon Different
 
@@ -131,7 +131,6 @@ High-risk sprints add orient, grill and impact analysis between Plan and Build. 
 - **[Full setup guide →](docs/setup.md)** — install, Windows notes, hook wiring, skill lifecycle, reference commands.
 - **[Website →](https://getcanon.dev/docs/quick-start.html)** — Quick start, Cockpit and board, Sprint and gates, Keyboard, [CLI reference](https://getcanon.dev/docs/cli.html), Troubleshooting.
 - **[Production incident playbook →](docs/production-incident-playbook.md)** and **[Retrieval architecture playbook →](docs/retrieval-architecture-playbook.md)**
-- **Workshops:** [restaurant bill splitter](examples/restaurant-bill-split) · [DSL spec](examples/dsl-discount-spec) · [Mikado refactor](examples/mikado-refactor)
 
 ## Contributing
 
