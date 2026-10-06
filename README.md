@@ -26,7 +26,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 curl -fsSL https://getcanon.dev/install.sh | bash
 ```
 
-**Windows (PowerShell)** — installs Git for Windows with winget if it is missing (one admin dialog: choose **Yes**)
+**Windows (PowerShell)** — canon's tools run in Git Bash; the installer adds Git for Windows with winget if it is missing (one admin dialog, where the default button is No: choose **Yes**)
 
 ```powershell
 irm https://getcanon.dev/install.ps1 | iex
@@ -118,7 +118,7 @@ flowchart LR
     C --> D
 ```
 
-High-risk sprints add orient, grill and impact analysis between Plan and Build. **[Full lifecycle →](docs/how-it-works.md)**
+High-risk sprints add orient, grill and impact analysis between Plan and Build. The double-bordered node is a reference doc or skill the agent runs; you don't invoke it. **[Full lifecycle →](docs/how-it-works.md)**
 
 ## Memory You Can Search
 
@@ -127,7 +127,7 @@ High-risk sprints add orient, grill and impact analysis between Plan and Build. 
 ## More
 
 - **[Full setup guide →](docs/setup.md)** — install, Windows notes, hook wiring, skill lifecycle, reference commands.
-- **[Website →](https://getcanon.dev/docs/quick-start.html)** — Quick start, Cockpit and board, Sprint and gates, Keyboard, Troubleshooting.
+- **[Website →](https://getcanon.dev/docs/quick-start.html)** — Quick start, Cockpit and board, Sprint and gates, Keyboard, [CLI reference](https://getcanon.dev/docs/cli.html), Troubleshooting.
 - **[Production incident playbook →](docs/production-incident-playbook.md)** and **[Retrieval architecture playbook →](docs/retrieval-architecture-playbook.md)**
 - **Workshops:** [restaurant bill splitter](examples/restaurant-bill-split) · [DSL spec](examples/dsl-discount-spec) · [Mikado refactor](examples/mikado-refactor)
 

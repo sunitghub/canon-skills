@@ -156,7 +156,7 @@ skills.sh refresh /path/to/your-project
 
 ## Requirements and Windows
 
-*Moved here from the README (t-cc30); relative links adjusted for this folder.*
+*Moved here from the README; relative links adjusted for this folder.*
 
 | Tool | Required | For |
 |---|---|---|
