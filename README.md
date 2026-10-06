@@ -36,7 +36,7 @@ Then run `canon`: add a project, create a ticket, press Start. See the **[Quick 
 
 Prefer the terminal? Register the sprint skill in a project with `~/.canon/tools/skills.sh add sprint`.
 
-To remove canon, close the Cockpit and run `canon uninstall` (`--dry-run` prints the plan and changes nothing). It never deletes a git clone with uncommitted or unpushed work. See **[Uninstall →](docs/setup.md#uninstall)**.
+To remove canon, close the Cockpit and run `canon uninstall` (`--dry-run` prints the plan and changes nothing). It never deletes a git clone with uncommitted or unpushed work. See **[Uninstall →](https://getcanon.dev/docs/cli.html#uninstall-canon)**.
 
 ## The Daily Loop
 
