@@ -78,8 +78,6 @@ Run these from the project root; in practice your agent runs `sprint start` and 
 - **Save & End.** One click saves the sprint's state to `HANDOFF.md` and ends the session cleanly.
 - **Loopback-only and token-gated.** Agent control is never exposed off the machine.
 
-<img src="meta/screenshots/cockpit-workspace.png" alt="A project's full board, with kanban, search, git branch and status, open inside the Cockpit window as a tab." width="680">
-
 **[Cockpit and board →](docs/sprint-check.md)** · **[Headless CI grading →](docs/headless-ci.md)** (reviewer, evaluator and security review against an open PR, unattended)
 
 ## What the Gates Actually Caught
