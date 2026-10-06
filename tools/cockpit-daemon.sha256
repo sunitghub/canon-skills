@@ -1,6 +1,2 @@
-# SHA-256 of each published cockpit-daemon binary: <daemon commit, 12 chars> <target> <sha256>
+# SHA-256 of each published cockpit-daemon binary: <daemon source tree hash, 12 chars> <target> <sha256>
 # Written by scripts/release-daemon.sh after the release assets exist; read by tools/fetch-daemon.sh. Do not edit by hand.
-e7cb91d8b439 darwin-arm64 7ebaf481b480894509cf274e188063f266895a6756ebb5a18ed8ac727a2865ac
-e7cb91d8b439 darwin-amd64 b870ffcf469596f435636142c9354e6cf029785429cd3b91a5302bfde5f8b326
-e7cb91d8b439 linux-amd64 967f82358032e6b4416e0658caca43ad9711a2299ce03d37bfb1f16f8fadf170
-e7cb91d8b439 linux-arm64 fb2aca1912a9b7aba08752749aa51e592fbd998f40b679ec53be2e8ef99f0bf3

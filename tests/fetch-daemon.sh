@@ -16,7 +16,7 @@ R="$WORK/repo"; mkdir -p "$R/tools/cockpit-daemon"
 cp "$ROOT/tools/fetch-daemon.sh" "$R/tools/"
 printf 'package main\n' > "$R/tools/cockpit-daemon/main.go"; printf 'module x\n\ngo 1.26.5\n' > "$R/tools/cockpit-daemon/go.mod"; echo 0.3.0 > "$R/VERSION"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
-full="$(git -C "$R" log -1 --format=%H -- tools/cockpit-daemon)"; key="${full:0:12}"; stamp="${full:0:8}"
+full="$(git -C "$R" rev-parse HEAD:tools/cockpit-daemon)"; key="${full:0:12}"; stamp="${full:0:8}"
 BIN="$R/tools/cockpit-daemon/cockpit-daemon"; MARK="$WORK/executed"
 
 # The "daemon": prints a version with the commit stamp; leaves a marker when run for anything but --version.
@@ -118,6 +118,27 @@ reset; export STUB_ARCH=riscv64; fetch; [[ "$rc" == 1 ]]; assert_contains "$out"
 reset; export STUB_OS=MINGW64_NT-10.0; fetch; [[ "$rc" == 0 && -z "$out" && ! -s "$STUB_LOG" ]] || fail "Windows must be a silent no-op: $out"
 reset
 
+# 7b. the key is the daemon folder's tree hash, so it survives a shallow clone and later unrelated commits (a last-commit key would not)
+echo later > "$R/README.md"; git -C "$R" add -A; git -C "$R" "${ident[@]}" commit -qm later
+git clone -q --depth 1 "file://$R" "$WORK/shallow"; cp "$R/tools/cockpit-daemon.sha256" "$WORK/shallow/tools/" 2>/dev/null || true
+manifest "$GOODSHA"; cp "$R/tools/cockpit-daemon.sha256" "$WORK/shallow/tools/"
+reset; export STUB_ASSET="$GOOD"; rm -f "$MARK"; : > "$STUB_LOG"
+set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/shallow/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
+[[ "$rc" == 0 ]] || fail "a shallow clone could not find its manifest line ($rc): $out"; assert_contains "$out" "fetched darwin-arm64 $key, sha256 verified"
+# 7c. timeouts, the no-build switch, a rejected download is said out loud even when the fallback build works, and mv/chmod failures are not reported as success
+reset; manifest "$GOODSHA"; export STUB_ASSET="$GOOD"; fetch; assert_contains "$(cat "$STUB_LOG")" "--connect-timeout 10"
+reset; manifest "$GOODSHA"; export STUB_CURL_RC=22 STUB_ASSET="$GOOD" FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"
+set +e; out="$(CANON_FETCH_NO_BUILD=1 PATH="$FETCH_PATH" bash "$R/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
+[[ "$rc" == 1 && ! -e "$BIN" ]] || fail "CANON_FETCH_NO_BUILD must not build ($rc): $out"; assert_contains "$out" "not building from source at start"
+reset; manifest "$GOODSHA"; make_asset "$WORK/bad" deadbeef; export STUB_ASSET="$WORK/bad" FETCH_PATH="$WORK/gostub:$STUBS:$BASEPATH"; fetch
+[[ "$rc" == 0 ]] || fail "fallback build failed: $out"; assert_contains "$out" "does not match its checksum"; assert_contains "$out" "built from source"
+reset; manifest "$GOODSHA"; export STUB_ASSET="$GOOD"; mkdir -p "$BIN"; fetch   # the destination is a directory: the verified file cannot be installed
+[[ "$rc" == 1 ]] || fail "an install that failed must not exit 0: $out"; refute_contains "$out" "fetched darwin"; rmdir "$BIN" 2>/dev/null || rm -rf "$BIN"; no_leftovers
+# a leftover temp file (a fetch killed mid-way) must not make the clone look dirty: it is ignored, or canon update would refuse
+cp "$ROOT/tools/cockpit-daemon/.gitignore" "$R/tools/cockpit-daemon/.gitignore"; touch "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123"
+[[ -z "$(git -C "$R" status --porcelain -- tools/cockpit-daemon | grep -v '\.gitignore')" ]] || fail "a leftover fetch temp file shows in git status: $(git -C "$R" status --porcelain)"
+rm -f "$R/tools/cockpit-daemon/.cockpit-daemon.AbC123" "$R/tools/cockpit-daemon/.gitignore"; reset
+
 # 8. not a git checkout: say so, do not guess a name
 cp -R "$R" "$WORK/nogit"; rm -rf "$WORK/nogit/.git"
 set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e
@@ -126,6 +147,7 @@ set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 
 # 9. who calls it, and the resolvers say the same thing
 assert_eq 1 "$(grep -c 'fetch-daemon.sh' "$ROOT/install.sh")"
 assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update, and canon at start when the binary is missing
+grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$ROOT/tools/canon" || fail "canon at start must call the fetch with CANON_FETCH_NO_BUILD=1 so launching the board never compiles"
 msg='cockpit daemon binary not found; run `canon update` to fetch it'
 grep -qF "$msg" "$ROOT/tools/sprint-check-app/server.py" && grep -qF "$msg" "$ROOT/tools/sprint-check-go/main.go" || fail "the two boards must give the same missing-daemon message"
 
@@ -140,7 +162,7 @@ done < <(sed 's|// indirect||; s|^require ||' "$ROOT/tools/cockpit-daemon/go.mod
 RR="$WORK/rel"; mkdir -p "$RR/scripts" "$RR/tools"; cp -R "$R/tools/cockpit-daemon" "$RR/tools/"; cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
 printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"; rm -f "$RR/tools/cockpit-daemon/cockpit-daemon"
 git -C "$RR" init -q -b main; git -C "$RR" "${ident[@]}" add -A; git -C "$RR" "${ident[@]}" commit -qm seed
-rkey="$(git -C "$RR" log -1 --format=%H -- tools/cockpit-daemon | cut -c1-12)"
+rkey="$(git -C "$RR" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"
 cat > "$WORK/gostub/gh" <<'EOF'
 #!/bin/sh
 echo "$*" >> "$STUB_LOG"

@@ -325,7 +325,7 @@ main() {
 
   # t-60f7: a clone has no daemon binary until it is fetched; try once, never block the board on it
   if ! _is_windows && [[ ! -x "$SCRIPT_DIR/cockpit-daemon/cockpit-daemon" && -z "${COCKPIT_DAEMON_BIN:-}" ]]; then
-    bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: starting without the daemon; agent sessions will not start until it is fetched (canon update)." >&2
+    CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: starting without the daemon; agent sessions will not start until it is fetched (canon update)." >&2
   fi
 
   if [[ ! -f "$SERVER" ]]; then

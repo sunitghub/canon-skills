@@ -15,7 +15,7 @@ command -v go >/dev/null 2>&1 || { echo "release-daemon: go is required" >&2; ex
 if [ "$dry" = 0 ]; then command -v gh >/dev/null 2>&1 || { echo "release-daemon: gh is required (gh auth login)" >&2; exit 1; }; fi
 [ -z "$(git -C "$REPO_ROOT" status --porcelain -- tools/cockpit-daemon)" ] || { echo "release-daemon: tools/cockpit-daemon has uncommitted changes; commit them first so the release names real source" >&2; exit 1; }
 
-full="$(git -C "$REPO_ROOT" log -1 --format=%H -- tools/cockpit-daemon)"
+full="$(git -C "$REPO_ROOT" rev-parse HEAD:tools/cockpit-daemon)"   # the daemon folder's tree hash, the same name tools/fetch-daemon.sh computes in any clone
 key="${full:0:12}"; stamp="${full:0:8}"
 semver="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION")"
 tag="cockpit-daemon-$key"
@@ -35,7 +35,7 @@ if [ "$dry" = 1 ]; then printf '%s' "$lines"; echo "release-daemon: dry run for 
 
 if ! gh release view "$tag" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
   gh release create "$tag" --repo "$RELEASE_REPO" --target main --title "cockpit-daemon $key" \
-    --notes "Prebuilt cockpit daemon for daemon source commit $full. Fetched and checksum-verified by tools/fetch-daemon.sh; see THIRD-PARTY-NOTICES.md." \
+    --notes "Prebuilt cockpit daemon for daemon source tree $full. Fetched and checksum-verified by tools/fetch-daemon.sh; see THIRD-PARTY-NOTICES.md." \
     "$out"/cockpit-daemon-* "$out/THIRD-PARTY-NOTICES.md"
 fi
 
