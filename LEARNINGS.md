@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 18:30
+learnings-sweep last run: 10-06-2026 09:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-11f4](.tickets/t-11f4/learnings.md) | My "nothing else names this picture" grep used four file-type globs and missed two temp-dir names that a full-text grep found; they were unrelated, but state a search's scope and run it unrestricted when the claim is "nothing else". | UNPROMOTED |
 | 2026-10-06 | [t-60f7](.tickets/t-60f7/learnings.md) | A release key taken from `git log -1 -- <dir>` breaks on a shallow clone (it returns HEAD), so name a downloaded artifact by the tree hash (`git rev-parse HEAD:<dir>`); also a `||` list around a function turns `set -e` off inside it, `mv` into an existing directory succeeds by nesting, and temp files inside a work tree need a .gitignore entry or they block the clean-tree check | UNPROMOTED |
 | 2026-10-06 | [t-3897](.tickets/t-3897/learnings.md) | A delete command's "never delete unsaved work" guard checked only dirty tree and unpushed HEAD: the reviewer found a clone with a local-only branch, a stash, a linked worktree or skip-worktree edits was still deleted, and `--keep-data` deleted nested data it said it kept; probe each guard with every place git keeps work, and a second tool that talks to a live local service (my own test) must pin its port | UNPROMOTED |
 | 2026-10-05 | [t-bb2d](.tickets/t-bb2d/learnings.md) | A before/after snapshot tool must be called in a fixed order (pre, gate, post, THEN the audit-log append) or it flags the orchestrator's own bookkeeping, and refs compared by name or excluded by `**/` glob each traded a false alarm for a blind spot: compare shas, exempt only what another session owns (branches checked out in other worktrees), and exclude only the project's own paths | UNPROMOTED |
