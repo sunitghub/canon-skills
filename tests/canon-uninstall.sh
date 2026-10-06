@@ -5,10 +5,16 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
+# Hermetic: this command deletes the Cockpit runtime state dir under the temp/cache folders, so a run must never see the real ones (t-70a2:
+# an earlier version of this test removed the real <tmp>/canon-cockpit-board of the machine it ran on).
+REAL_TMP="${TMPDIR:-/tmp}"
 WORK="$(cd "$(mktemp -d)" && pwd -P)"   # physical: ps shows the path as launched, the script compares physical paths
 bgpids=()
 cleanup() { local p; for p in ${bgpids[@]+"${bgpids[@]}"}; do kill "$p" 2>/dev/null || true; done; rm -rf "$WORK"; }
 trap cleanup EXIT
+export TMPDIR="$WORK/tmp"; mkdir -p "$TMPDIR"; unset COCKPIT_STATE_DIR XDG_RUNTIME_DIR XDG_CACHE_HOME   # the code under test derives state dirs from these
+real_state_sig() { { ls -A "$REAL_TMP/canon-cockpit-board" 2>/dev/null || true; } | cksum; }   # a canary: the real state dir (if any) must come out unchanged
+REAL_STATE_BEFORE="$(real_state_sig)"
 ident=(-c user.email=t@example.com -c user.name=test)
 n=0
 
@@ -255,6 +261,47 @@ if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
   set +e; out="$(HOME="$h" TMPDIR="$t" COCKPIT_STATE_DIR="$WORK/odd-dir" CANON_COCKPIT_PORT="$(free_port)" CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
   [[ "$rc" == 0 ]] || fail "state-dir guard run failed ($rc): $out"; [[ -f "$WORK/odd-dir/daemon.json" && -f "$t/canon-cockpit-board/unrelated.txt" ]] || fail "a misnamed or state-file-less dir was removed"
   assert_contains "$out" "not named like a Cockpit state dir"; assert_contains "$out" "no Cockpit state file in it"
+  # 8. a recycled pid: the probe verified a pid, and by the time of the signal it belongs to something else (the prompt sits in between). stop_verified
+  #    re-verifies at the signal and must not touch it.
+  (
+    INSTALL="$WORK/L-rec"; PORT=1; HOME="$WORK/hrec"; mkdir -p "$INSTALL"
+    source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
+    ( exec sleep 120 ) & v=$!
+    stop_verified "$v" daemon || fail "an unrelated process must not count as a failed stop"; alive "$v" || fail "a recycled pid was signalled (daemon)"
+    stop_verified "$v" board || fail "an unrelated process must not count as a failed stop (board)"; alive "$v" || fail "a recycled pid was signalled (board)"
+    kill "$v" 2>/dev/null || true
+  )
+  # 9. a zombie daemon: the board never reaps the daemon it spawned, so a stopped daemon lingers as a defunct child of a live parent. That is gone, not stuck.
+  cat > "$WORK/zparent.py" <<'PY'
+import os, subprocess, sys, time
+d, stub, state = os.environ["DPATH"], sys.argv[1], sys.argv[2]   # the install path is passed by environment: argv would make the parent itself an install-folder process
+subprocess.Popen(["bash", "-c", 'exec -a "$0" bash "$1" "$2"', d, stub, state])
+time.sleep(300)
+PY
+  inst="$WORK/L9"; h="$WORK/hL9"; t="$WORK/tL9"; mkdir -p "$t/canon-cockpit-board"; mk_install "$inst"; mk_home "$h" "$inst"
+  ( exec env DPATH="$inst/tools/cockpit-daemon/cockpit-daemon" python3 "$WORK/zparent.py" "$WORK/dstub.sh" "$t/canon-cockpit-board" ) & zp=$!; killlist+=("$zp")
+  for _ in $(seq 1 50); do [ -f "$t/canon-cockpit-board/daemon.json" ] && break; sleep 0.1; done
+  zd="$(sed -n 's/.*"pid": "\([0-9]*\)".*/\1/p' "$t/canon-cockpit-board/daemon.json")"; killlist+=("$zd")
+  # (the zombie check on its own: a TERMed child whose parent never reaps it must read as no process at all, independent of the identity re-check)
+  kill -TERM "$zd"; sleep 0.5
+  ( INSTALL="$inst"; PORT=1; HOME="$h"; source "$ROOT/tools/platform-lib.sh"; source "$ROOT/tools/cockpit-stop-lib.sh"
+    [[ -z "$(_proc_ident "$zd")" ]] || fail "a zombie (exited, not reaped) must read as gone, saw: $(_proc_ident "$zd")" )
+  mkdir -p "$t/canon-cockpit-board"; printf '{"pid": "%s"}' "$zd" > "$t/canon-cockpit-board/daemon.json"   # (a stale record of the now-dead daemon)
+  runl "$inst" "$h" "$(free_port)" "$t" --yes; [[ "$rc" == 0 ]] || fail "a daemon that becomes a zombie must count as stopped ($rc): $out"
+  [[ ! -e "$inst" ]] || fail "the install must be removed once the zombie daemon is gone"; alive "$zp" || fail "the (non-install) parent of the daemon must be left alone"; kill "$zp" 2>/dev/null || true
+  # 10. an install path with a space, and another install whose folder merely shares this one's name as a prefix
+  inst="$WORK/sp ace/L10"; h="$WORK/hL10"; t="$WORK/tL10"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"
+  mk_live "$inst" "$t/canon-cockpit-board" ""; runl "$inst" "$h" "$(free_port)" "$t" --yes; [[ "$rc" == 0 ]] || fail "an install path with a space failed ($rc): $out"; ! alive "$DPID" || fail "the daemon under a spaced path was not stopped"
+  inst="$WORK/L11"; instx="$WORK/L11x"; h="$WORK/hL11"; t="$WORK/tL11"; mkdir -p "$t"; mk_install "$inst"; mk_install "$instx"; mk_home "$h" "$inst"
+  mk_live "$instx" "$t/canon-cockpit-board" ""; runl "$inst" "$h" "$(free_port)" "$t" --yes; [[ "$rc" == 0 ]] || fail "uninstalling L11 failed ($rc): $out"
+  alive "$DPID" || fail "the daemon of an install whose folder starts with this one's name (L11x) was signalled"; [[ -f "$t/canon-cockpit-board/daemon.json" ]] || fail "another install's state must be kept"; kill "$DPID" 2>/dev/null || true
+  # 11. two state dirs, each used by a live daemon of another install: both are kept (the guard keeps a list, not the last hit)
+  inst="$WORK/L12"; h="$WORK/hL12"; t="$WORK/tL12"; mkdir -p "$t/canon-cockpit-board" "$WORK/f12/canon-cockpit-board"; mk_install "$inst"; mk_home "$h" "$inst"
+  ( exec sleep 120 ) & o1=$!; ( exec sleep 120 ) & o2=$!; killlist+=("$o1" "$o2")
+  printf '{"pid": "%s"}' "$o1" > "$WORK/f12/canon-cockpit-board/daemon.json"; printf '{"pid": "%s"}' "$o2" > "$t/canon-cockpit-board/daemon.json"
+  set +e; out="$(HOME="$h" TMPDIR="$t" COCKPIT_STATE_DIR="$WORK/f12/canon-cockpit-board" CANON_COCKPIT_PORT="$(free_port)" CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
+  [[ "$rc" == 0 ]] || fail "two foreign state dirs run failed ($rc): $out"; [[ -f "$WORK/f12/canon-cockpit-board/daemon.json" && -f "$t/canon-cockpit-board/daemon.json" ]] || fail "both foreign-used state dirs must be kept"
+  kill "$o1" "$o2" 2>/dev/null || true
 else
   echo "canon-uninstall: lsof or python3 missing; live-process cases skipped (reported, not hidden)"
 fi
@@ -263,8 +310,10 @@ fi
 inst="$WORK/i19"; h="$WORK/h19"; mk_install "$inst"; mk_home "$h" "$inst"; mk_project "$WORK/p19" "$h"; mkdir -p "$h/.canon/cockpit"; echo d > "$h/.canon/cockpit/f"
 printf '#!/usr/bin/env bash\necho "skills.sh boom" >&2; exit 1\n' > "$inst/tools/skills.sh"
 before="$(digest "$inst"; digest "$h"; digest "$WORK/p19")"
+mkdir -p "$TMPDIR/canon-cockpit-board/hooks"   # the daemon's runtime state: it goes with the data, so a failed project cleanup must leave it too (t-70a2)
 run "$h" "$inst" --yes; assert_eq 1 "$rc"; assert_contains "$out" "skills.sh uninstall failed; the Cockpit data and the install folder were left in place"
 assert_eq "$before" "$(digest "$inst"; digest "$h"; digest "$WORK/p19")"
+[[ -d "$TMPDIR/canon-cockpit-board/hooks" ]] || fail "a failed project cleanup must not have deleted the Cockpit runtime state"; rm -rf "$TMPDIR/canon-cockpit-board"
 
 # a data root that would make the data dir <home>/cockpit is refused, never deleted
 inst="$WORK/i18"; h="$WORK/h18"; mk_install "$inst"; mk_home "$h" "$inst"; mkdir -p "$h/cockpit"; echo keepme > "$h/cockpit/f"
@@ -378,4 +427,5 @@ assert_contains "$("$ROOT/tools/canon" completion powershell)" "'uninstall'"
 for f in README.md docs/setup.md; do assert_contains "$(cat "$ROOT/$f")" "canon uninstall"; done
 [[ -z "$(grep -n 'rm -rf ~/.canon' "$ROOT/README.md" "$ROOT/docs/setup.md" || true)" ]] || fail "README.md/docs/setup.md still tell people to rm -rf ~/.canon"
 
+[[ "$(real_state_sig)" == "$REAL_STATE_BEFORE" ]] || fail "this test changed the real Cockpit state dir ($REAL_TMP/canon-cockpit-board): it must stay hermetic"
 echo "canon-uninstall: ok (dry-run and refusals change nothing, safety rule, keep-data, both registries, blockers, rc report-only, Windows branch against stubs, real skills.sh uninstall, idempotent, docs)"

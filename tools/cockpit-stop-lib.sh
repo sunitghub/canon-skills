@@ -9,11 +9,12 @@
 #
 # Needs from the caller: INSTALL (the physical install folder), PORT (the board's port), platform-lib.sh already sourced.
 # Results: BOARD_STATUS none|ours|foreign|unknown, BOARD_PID, BOARD_FOREIGN; LAUNCHER_PID; DAEMON_STATUS none|ours|foreign, DAEMON_PID,
-# DAEMON_FOREIGN_DIR; SESSIONS (live agent sessions recorded by the daemon).
+# DAEMON_FOREIGN_DIRS (newline-separated: every state dir a live daemon of another install uses); SESSIONS (live agent sessions recorded by the daemon).
 
 CANON_STOP_WAIT="${CANON_STOP_WAIT:-8}"
+case "$CANON_STOP_WAIT" in ''|*[!0-9]*) CANON_STOP_WAIT=8 ;; esac   # whole seconds only: anything else would abort a stop half-way
 BOARD_STATUS=none; BOARD_PID=""; BOARD_FOREIGN=""; LAUNCHER_PID=""
-DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIR=""; DAEMON_DIR_OF_OURS=""; SESSIONS=0
+DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIRS=""; SESSIONS=0
 
 # Every place a daemon or board may keep its runtime state: the board's dir (server.py `_cockpit_state_dir`: <tmp>/canon-cockpit-board), an
 # explicit COCKPIT_STATE_DIR, and the daemon's own default (main.go `defaultStateDir`).
@@ -40,6 +41,9 @@ _proc_ident() {
   if _is_windows && command -v powershell.exe >/dev/null 2>&1; then
     powershell.exe -NoProfile -Command "(Get-Process -Id $1 -ErrorAction SilentlyContinue).Path" 2>/dev/null | tr -d '\r' | sed '/^[[:space:]]*$/d' | head -1 || true
   else
+    # an exited child that its parent has not reaped yet (a zombie, state Z) still shows in ps and answers kill -0: it is gone
+    local st; st="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" || st=""
+    case "$st" in Z*) return 0 ;; esac
     ps -o command= -p "$1" 2>/dev/null | sed 's/^ *//' || true
   fi
 }
@@ -60,21 +64,22 @@ _is_our_board() { # <ident>
   case "$1" in *" $INSTALL/tools/sprint-check-app/server.py"|*" $INSTALL/tools/sprint-check-app/server.py "*) return 0 ;; esac
   return 1
 }
-_pid_alive() { kill -0 "$1" 2>/dev/null; }
+_foreign_uses() { case "$DAEMON_FOREIGN_DIRS" in *"$1"$'\n'*) return 0 ;; esac; return 1; }
 
 # The daemon: the pid it wrote into daemon.json, checked against this install.
 probe_daemon() {
-  DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIR=""; DAEMON_DIR_OF_OURS=""; SESSIONS=0
+  DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIRS=""; SESSIONS=0
   local d pid ident
+  DAEMON_FOREIGN_DIRS=""
   while IFS= read -r d; do
     [ -f "$d/daemon.json" ] || continue
     pid="$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\).*/\1/p' "$d/daemon.json" 2>/dev/null | head -1)" || pid=""
     [ -n "$pid" ] || continue
     ident="$(_proc_ident "$pid")"
     [ -n "$ident" ] || continue                      # no such process: a stale file, nothing to stop
-    if _is_our_daemon "$ident"; then DAEMON_STATUS=ours; DAEMON_PID="$pid"; DAEMON_DIR_OF_OURS="$d"
+    if _is_our_daemon "$ident"; then DAEMON_STATUS=ours; DAEMON_PID="$pid"
       if [ -f "$d/sessions.json" ]; then SESSIONS="$(grep -o '"sid"' "$d/sessions.json" 2>/dev/null | wc -l | tr -d ' ')" || SESSIONS=0; fi
-    else DAEMON_FOREIGN_DIR="$d"; [ "$DAEMON_STATUS" = ours ] || DAEMON_STATUS=foreign; fi
+    else DAEMON_FOREIGN_DIRS="$DAEMON_FOREIGN_DIRS$d"$'\n'; [ "$DAEMON_STATUS" = ours ] || DAEMON_STATUS=foreign; fi
   done < <(cockpit_state_dirs | awk '!seen[$0]++')
 }
 
@@ -109,14 +114,20 @@ probe_board() {
   fi
 }
 
-# Stop one verified process: SIGTERM (Windows: Stop-Process), then wait up to CANON_STOP_WAIT seconds. 0 = gone, 1 = still running.
+# Stop one process: re-verify its identity NOW (the probe ran before the confirmation prompt, so the pid may have been recycled since), then SIGTERM
+# (Windows: Stop-Process), then wait up to CANON_STOP_WAIT seconds. 0 = gone (or no longer the verified process, so nothing was signalled),
+# 1 = still running. <what> is daemon or board.
+_still_ours() { # <pid> <what>
+  local ident; ident="$(_proc_ident "$1")"; [ -n "$ident" ] || return 1
+  case "$2" in daemon) _is_our_daemon "$ident" ;; board) _is_our_board "$ident" ;; *) return 1 ;; esac
+}
 stop_verified() { # <pid> <what>
-  local pid="$1" waited=0 ident
-  ident="$(_proc_ident "$pid")"; [ -n "$ident" ] || return 0     # already gone
+  local pid="$1" what="$2" waited=0
+  _still_ours "$pid" "$what" || return 0                          # gone, or the pid now belongs to something else: never signal it
   if _is_windows; then powershell.exe -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
   else kill -TERM "$pid" 2>/dev/null || true; fi
   while [ "$waited" -lt $((CANON_STOP_WAIT * 5)) ]; do
-    [ -n "$(_proc_ident "$pid")" ] || return 0
+    _still_ours "$pid" "$what" || return 0
     sleep 0.2; waited=$((waited + 1))
   done
   return 1
@@ -125,19 +136,20 @@ stop_verified() { # <pid> <what>
 # Remove the runtime state dirs: only a dir with the exact name of a cockpit state dir that holds a cockpit state file, and never one a live
 # daemon of another install still uses. Prints one line per dir.
 remove_state_dirs() {
-  local d
+  local d rc=0
   while IFS= read -r d; do
     [ -d "$d" ] || continue
     if ! _state_dir_name_ok "$d"; then echo "  [kept]  $d (not named like a Cockpit state dir; left alone)"; continue; fi
     if ! _has_state_file "$d"; then echo "  [kept]  $d (no Cockpit state file in it; left alone)"; continue; fi
-    if [ "$DAEMON_FOREIGN_DIR" = "$d" ]; then echo "  [kept]  $d (a daemon of another install is still using it)"; continue; fi
-    rm -rf -- "$d" && echo "  [removed]  $d" || echo "  [fail]  could not remove $d" >&2
+    if _foreign_uses "$d"; then echo "  [kept]  $d (a daemon of another install is still using it)"; continue; fi
+    if rm -rf -- "$d"; then echo "  [removed]  $d"; else echo "  [fail]  could not remove $d" >&2; rc=1; fi
   done < <(cockpit_state_dirs | awk '!seen[$0]++')
+  return "$rc"
 }
 state_dirs_to_remove() { # the dirs remove_state_dirs would delete, for the plan
   local d
   while IFS= read -r d; do
-    [ -d "$d" ] && _state_dir_name_ok "$d" && _has_state_file "$d" && [ "$DAEMON_FOREIGN_DIR" != "$d" ] && printf '%s\n' "$d"
+    [ -d "$d" ] && _state_dir_name_ok "$d" && _has_state_file "$d" && ! _foreign_uses "$d" && printf '%s\n' "$d"
   done < <(cockpit_state_dirs | awk '!seen[$0]++')
   return 0
 }

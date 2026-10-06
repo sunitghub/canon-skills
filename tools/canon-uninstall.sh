@@ -2,10 +2,12 @@
 # canon-uninstall.sh — `canon uninstall` (t-3897). Plan first, confirm, then remove canon from this machine.
 #
 # Destructive, so: nothing is written until the plan is printed and confirmed; anything doubtful REFUSES and says why (a dirty or unpushed git
-# clone is never deleted: the exact manual `rm -rf` is printed instead, even with --yes); a running board or any process started from the install
-# folder blocks the run (never killed by name; Windows locks those files). `skills.sh uninstall` does the per-project work (hooks, symlinks,
-# imports, registrations); this script adds the daemon stop, the data and install-folder removal, empty .claude/.agents folders, and on Windows
-# the user PATH entry (tools/canon-uninstall.ps1, run detached after this process exits). Shell rc lines are reported, never edited (t-f01d).
+# clone is never deleted: the exact manual `rm -rf` is printed instead, even with --yes; live agent sessions need --force). This install's own Cockpit
+# board and daemon are stopped by the command itself (tools/cockpit-stop-lib.sh: found by recorded pid or port, verified against this install, SIGTERM
+# only, never by name); any OTHER process started from the install folder blocks the run. `skills.sh uninstall` does the per-project work (hooks,
+# symlinks, imports, registrations); this script adds the Cockpit stop, the data, runtime-state and install-folder removal, empty .claude/.agents
+# folders, and on Windows the user PATH entry (tools/canon-uninstall.ps1, run detached after this process exits). Shell rc lines are reported, never
+# edited (t-f01d).
 #
 # Usage: canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
 # Exit: 0 done / dry-run / nothing to do, 1 refused or failed, 2 usage or no terminal and no --yes.
@@ -299,9 +301,6 @@ if [ "$DAEMON_STATUS" = ours ] || [ "$BOARD_STATUS" = ours ]; then
 else
   echo "[1/5] Cockpit board and daemon: not running, nothing to stop."
 fi
-state_removed="$(remove_state_dirs)"
-[ -z "$state_removed" ] || printf '%s\n' "$state_removed"
-
 # ── execute ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 failed=0
 echo ""
@@ -344,6 +343,11 @@ else
   echo ""
   echo "[3/5] Cockpit data: none found, nothing to remove."
 fi
+
+# The daemon's runtime state (<tmp>/canon-cockpit-board and friends) goes with the data, after the per-project cleanup succeeded.
+echo ""
+echo "Cockpit runtime state:"
+remove_state_dirs || failed=1
 
 echo ""
 echo "[4/5] Install folder: $INSTALL"
