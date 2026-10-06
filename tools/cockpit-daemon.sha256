@@ -1,2 +1,6 @@
 # SHA-256 of each published cockpit-daemon binary: <daemon source tree hash, 12 chars> <target> <sha256>
 # Written by scripts/release-daemon.sh after the release assets exist; read by tools/fetch-daemon.sh. Do not edit by hand.
+23efca20eadc darwin-arm64 06780a18b92df54b7e43fbeb81b91187a15960df0f917c641f51183dd59c1764
+23efca20eadc darwin-amd64 fa3ee501f72a8664b622113e98bd239c942616a57bd07b433162fa5c1b845926
+23efca20eadc linux-amd64 e31fcfdbcdb09c8817291da0c5f39cddc38305244b45a487f69685ad4f05b8aa
+23efca20eadc linux-arm64 5d7226c286caeb1f383b71bc41f7598f80ba330341c46db776fbeeffe364318f
