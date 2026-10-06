@@ -1,0 +1,2 @@
+# SHA-256 of each published cockpit-daemon binary: <daemon commit, 12 chars> <target> <sha256>
+# Written by scripts/release-daemon.sh after the release assets exist; read by tools/fetch-daemon.sh. Do not edit by hand.

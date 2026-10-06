@@ -133,6 +133,7 @@ update_cmd() {
   fi
   after="$(git -C "$repo" rev-parse --short HEAD)"
   if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
+  bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: the Cockpit daemon is missing or stale (see above); agent sessions need it." >&2
   refresh_projects
 }
 
@@ -320,6 +321,11 @@ main() {
     echo "Canon Cockpit already running on port $port — opening it." >&2
     open_browser "$url"
     exit 0
+  fi
+
+  # t-60f7: a clone has no daemon binary until it is fetched; try once, never block the board on it
+  if ! _is_windows && [[ ! -x "$SCRIPT_DIR/cockpit-daemon/cockpit-daemon" && -z "${COCKPIT_DAEMON_BIN:-}" ]]; then
+    bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: starting without the daemon; agent sessions will not start until it is fetched (canon update)." >&2
   fi
 
   if [[ ! -f "$SERVER" ]]; then

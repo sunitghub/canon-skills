@@ -7479,7 +7479,7 @@ async function mountCockpitTerminal(t, cwd) {
     } else err = (d && d.error) || 'daemon unavailable';
   } catch { err = 'request failed'; }
   if (!addr) {
-    setTermMessage('Could not start the cockpit daemon (' + err + '). Build tools/cockpit-daemon and retry.');
+    setTermMessage('Could not start the cockpit daemon (' + err + '). Run canon update to fetch it, then retry.');
     iframe.style.visibility = 'hidden';
     return;
   }

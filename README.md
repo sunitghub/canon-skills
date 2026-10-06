@@ -403,6 +403,7 @@ canon enforces its own standards on itself. A git-native pre-commit hook runs th
 | Git | Yes | clone/update canon |
 | Bash | Yes | CLI tools (`sprint`, `tkt`, `skills.sh`) |
 | Python 3 | `sprint-check` on macOS/Linux | the board — Windows uses the Go binary, no Python needed |
+| curl | macOS/Linux | fetching the prebuilt cockpit daemon (agent sessions) on install and `canon update`; checked against a SHA-256 in the clone before it runs. Go 1.26.5+ is only a fallback that builds it when the download is unavailable |
 
 **Windows 11 — no WSL, no git clone needed.** In PowerShell, run the one-liner. It offers to install Git for Windows (for its bash) with winget if missing, fetches canon as a zip into `%USERPROFILE%\.canon`, and adds `tools\` to your user PATH; re-running updates in place and keeps `cockpit\`:
 
