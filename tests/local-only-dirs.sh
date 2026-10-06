@@ -28,7 +28,9 @@ SURFACE=(
 )
 while IFS= read -r f; do SURFACE+=("$f"); done < <(find "$ROOT/docs" -maxdepth 1 -name "*.md" -type f 2>/dev/null)
 
-hits="$(grep -nH 'examples/' "${SURFACE[@]}" 2>/dev/null || true)"
+rc=0
+hits="$(grep -nH 'examples/' "${SURFACE[@]}" 2>/dev/null)" || rc=$?
+[[ "$rc" -le 1 ]] || fail "could not read the doc/install surface (grep exit $rc): a listed file is missing"
 if [[ -n "$hits" ]]; then
   fail "the doc/install surface points at examples/, which is not shipped: $(printf '%s\n' "$hits" | head -3 | tr '\n' ' ')"
 fi

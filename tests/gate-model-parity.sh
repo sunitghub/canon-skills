@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tools/gate-model.sh"
 
-# Guarded skip, matching tests/dsl-runner-comments.sh and tests/why-cap.sh: this
+# Guarded skip, matching tests/why-cap.sh: this
 # script is in scripts/test.sh's mandatory list, so an unconditional python3 under
 # `set -euo pipefail` would abort the whole suite on a python3-less machine.
 if ! command -v python3 >/dev/null 2>&1; then
