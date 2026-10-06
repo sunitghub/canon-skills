@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 10:03
+learnings-sweep last run: 10-06-2026 10:50
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-fc00](.tickets/t-fc00/learnings.md) | A folder that was committed despite its ignore rule (`.tickets/`, via two force-adds) stayed tracked for months because an ignore rule never untracks; pair every new ignore rule with a test that fails when a tracked path matches it. | UNPROMOTED |
 | 2026-10-06 | [t-70e4](.tickets/t-70e4/learnings.md) | I wrote "nothing else third-party was found" after scanning only code and licence headers; the evaluator failed it twice and found images, a logo, mockups and an embedded Marp runtime; a "nothing else" claim needs a stated method over every tracked file type, with counts that recompute. | UNPROMOTED |
 | 2026-10-06 | [t-cc30](.tickets/t-cc30/learnings.md) | I wrote "already in docs" for README sections I had not read, and the reviewer found content only the old README held plus four doc links to removed README anchors; before cutting a section, grep each of its distinctive phrases in the docs, and before renaming or removing a heading, grep every repo file for links to its anchor. | UNPROMOTED |
 | 2026-10-06 | [t-11f4](.tickets/t-11f4/learnings.md) | My "nothing else names this picture" grep used four file-type globs and missed two temp-dir names that a full-text grep found; they were unrelated, but state a search's scope and run it unrestricted when the claim is "nothing else". | UNPROMOTED |
