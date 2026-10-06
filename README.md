@@ -14,7 +14,7 @@ Two commands and a local board. Your agent forgets — your repo shouldn't.
 
 </div>
 
-[![The Cockpit board — searchable local kanban with status-aware cards and repo context, running inside Canon Cockpit's own shell.](meta/screenshots/cockpit-board.png)](docs/index.html)
+[![The Cockpit in split view: an agent session on top, where the agent asks an open question before the plan is approved, and a project board below with one open ticket.](meta/screenshots/cockpit-board.png)](docs/index.html)
 
 <div align="center"><em>Your agent plans in the repo, and a second agent checks its work.</em></div>
 
