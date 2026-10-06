@@ -12,7 +12,7 @@ if [ ! -d "$HOOKS_DIR" ]; then
   exit 0
 fi
 
-# ── post-commit: regenerate dist zips and commit if changed ──────────────────
+# ── post-commit: rebuild the Windows exes and commit if changed ──────────────────
 POST_COMMIT="$HOOKS_DIR/post-commit"
 cat > "$POST_COMMIT" << 'HOOK'
 #!/usr/bin/env bash
@@ -27,7 +27,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel)"
 # Build artifacts build-zip.sh may touch. Each is a hardcoded entry, not
 # auto-discovered — adding a new build-zip.sh artifact output also needs a
 # new entry here, or this hook silently leaves it uncommitted after rebuild.
-ARTIFACT_PATHS=(dist/ tools/sprint-check-win.exe tools/sprint-headless-json-win.exe tools/cockpit-daemon-win.exe)
+ARTIFACT_PATHS=(tools/sprint-check-win.exe tools/sprint-headless-json-win.exe tools/cockpit-daemon-win.exe)
 
 # Skip rebuild if the prior commit only touched build artifacts (e.g. this hook's
 # own commit, or an artifact-only commit) -- nothing upstream could have changed.

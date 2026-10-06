@@ -6,14 +6,15 @@ prints a Summary table, and writes `claude-optimization.md` to your repo root.
 
 Lessons reference: https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models
 
-Self-contained — no build tools, no other skills, no network.
+Self-contained — no build tools, no other skills, and no network once installed.
 
 ## Install
 
-**Claude Code** — unzip into your repo's skills directory:
+**Claude Code** — copy the folder into your repo's skills directory (from a canon checkout, or a shallow clone of canon-skills):
 
 ```bash
-unzip context-doctor.zip -d .claude/skills/
+tmp="$(mktemp -d)" && git clone --depth 1 https://github.com/sunitghub/canon-skills.git "$tmp" \
+  && mkdir -p .claude/skills && cp -R "$tmp/skills/context-doctor" .claude/skills/ && rm -rf "$tmp"
 # → .claude/skills/context-doctor/SKILL.md
 ```
 
