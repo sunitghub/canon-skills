@@ -289,7 +289,7 @@ board_cmd() {
       fi
       if [[ "$cmd" == stop ]]; then
         if grep -qE '"running": ?true' <<<"$out"; then echo "The daemon is still running — try: canon stop --force" >&2; exit 1; fi
-        echo "Cockpit daemon stopped."
+        echo "Cockpit daemon stopped. The board is still running; Ctrl+C in the terminal running canon (or close its window) stops it."
       else
         if grep -qE '"restarted": ?true' <<<"$out"; then echo "Cockpit daemon restarted."
         else echo "The daemon did not restart: $out" >&2; exit 1; fi

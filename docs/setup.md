@@ -50,7 +50,7 @@ Run `canon`. It opens the Cockpit at `http://127.0.0.1:8899/cockpit`; a second r
 
 ### Uninstall
 
-Close the Cockpit window first (a running board blocks the uninstall), then:
+You don't need to close the Cockpit first: `canon uninstall` stops this install's own board and daemon itself.
 
 ```bash
 canon uninstall --dry-run    # print the plan, change nothing
@@ -59,11 +59,11 @@ canon uninstall              # print the plan, ask, then remove
 
 Tested on macOS and, on Windows 11, from PowerShell (full removal and `--keep-data`). cmd (`canon.cmd`) and Git Bash run the same bash script but were not tested on a real machine; Linux follows the macOS path and is untested. A running Cockpit board blocks the run: press Ctrl+C in the terminal that runs `canon`, or close its window, and run again. Options: `--yes` skips the prompt (with no terminal and no `--yes` it only prints the plan and exits 2), `--keep-data` keeps the Cockpit data (`~/.canon/cockpit`: project registrations and the restore snapshots of projects without git) and your skills registrations, `--force` ends live agent sessions through `canon stop --force`.
 
-What it does, in order: stops the Cockpit daemon (refusing while sessions are live unless `--force`), runs `skills.sh uninstall` for every project registered with skills.sh or the Cockpit (git pre-commit hook, legacy Claude Code hooks, skill and agent symlinks, canon imports, the Pi handoff extension, `~/.config/canon`), removes empty `.claude/` and `.agents/` folders it leaves, deletes the Cockpit data and the install folder, and on Windows removes `<install>\tools` from your user PATH (the old PATH value is printed first; a PowerShell helper deletes the folder after the command exits and writes its result to a log).
+What it does, in order: stops this install's Cockpit daemon and board (found by the pid and port they record and checked against this install, never by name; it refuses while agent sessions are live unless `--force`, and signals with SIGTERM only, so a process that will not exit is reported and nothing is deleted), runs `skills.sh uninstall` for every project registered with skills.sh or the Cockpit (git pre-commit hook, legacy Claude Code hooks, skill and agent symlinks, canon imports, the Pi handoff extension, `~/.config/canon`), removes empty `.claude/` and `.agents/` folders it leaves, deletes the Cockpit data, the daemon's runtime state in the temp folder (`canon-cockpit-board`, so a reinstall shows no stale "session was running" banner) and the install folder, and on Windows removes `<install>\tools` from your user PATH (the old PATH value is printed first; a PowerShell helper deletes the folder after the command exits and writes its result to a log).
 
 Left on purpose: your projects' `.gitignore` canon lines, the `.gitattributes` canon block, the `@` imports in `AGENTS.md` and `CLAUDE.md`, `PROMOTED.md` and `.tickets/`. Shell rc lines such as `export PATH="$PATH:<install>/tools"` are reported with file and line number, never edited.
 
-Safety: the install folder is deleted only when it is a canon install (`tools/canon` and `tools/skills.sh` exist, it matches `~/.config/canon/install_path` when that file exists, it is not `/` or your home folder or a parent of it) and, if it is a git clone, when it has no uncommitted or untracked changes, an upstream branch with nothing unpushed, no local branch with commits on no remote, no stash, no linked worktree and no skip-worktree edits. Otherwise it is kept and the exact `rm -rf` is printed, even with `--yes`. A process running from the install folder blocks the run; it is never killed.
+Safety: the install folder is deleted only when it is a canon install (`tools/canon` and `tools/skills.sh` exist, it matches `~/.config/canon/install_path` when that file exists, it is not `/` or your home folder or a parent of it) and, if it is a git clone, when it has no uncommitted or untracked changes, an upstream branch with nothing unpushed, no local branch with commits on no remote, no stash, no linked worktree and no skip-worktree edits. Otherwise it is kept and the exact `rm -rf` is printed, even with `--yes`. Any other process running from the install folder blocks the run; it is never killed.
 
 ## Session continuity
 

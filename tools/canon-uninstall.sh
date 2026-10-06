@@ -12,11 +12,13 @@
 set -euo pipefail
 
 # Bumped on every change to this command, and shown in the plan and --help, so a stale copy of the script is obvious on a machine that was updated by hand.
-UNINSTALL_REV=8
+UNINSTALL_REV=9
 SCRIPT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 INSTALL="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 # shellcheck source=platform-lib.sh
 source "$SCRIPT_DIR/platform-lib.sh"
+# shellcheck source=cockpit-stop-lib.sh
+source "$SCRIPT_DIR/cockpit-stop-lib.sh"
 
 usage() {
   echo "canon uninstall — remove canon from this machine   [uninstall rev $UNINSTALL_REV]"
@@ -28,10 +30,11 @@ Usage: canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
   --yes        Skip the confirmation prompt (never overrides a refusal)
   --keep-data  Keep the Cockpit data (~/.canon/cockpit: project registrations and the
                restore snapshots of projects without git) and the skills registrations
-  --force      Let `canon stop --force` end live agent sessions first
+  --force      Also end live agent sessions (without it, running sessions make the uninstall refuse)
 
 With no terminal and no --yes it prints the plan and exits 2 without changing anything.
-Close the Cockpit window first: a running board blocks the uninstall.
+It stops this install's Cockpit board and daemon itself (found by their recorded pid or port and
+verified against this install; never by name). Anything else running from the install folder still blocks it.
 EOF
 }
 
@@ -172,8 +175,23 @@ have_data=0; [ -d "$DATA_DIR" ] && have_data=1
 n_snapshots=0
 [ "$have_data" = 0 ] || [ ! -d "$DATA_DIR/changes" ] || n_snapshots="$(find "$DATA_DIR/changes" -mindepth 2 -maxdepth 2 -type d 2>/dev/null | wc -l | tr -d ' ')"
 data_inside=0; keep_top=cockpit; case "$DATA_DIR" in "$INSTALL"/*) data_inside=1; keep_top="${DATA_DIR#"$INSTALL"/}"; keep_top="${keep_top%%/*}" ;; esac
-procs="$(install_processes)"
-board=0; board_up && board=1 || true
+# The Cockpit board and daemon of THIS install are stopped by the command itself (cockpit-stop-lib.sh); anything else running from the install
+# folder still blocks it. A board that answers but cannot be identified as ours (another install, no lsof/ss) keeps the old refusal.
+probe_daemon; probe_board
+stop_pids=" ${BOARD_PID:-} ${DAEMON_PID:-} ${LAUNCHER_PID:-} "
+# (a function, not an inline case: bash 3.2 mis-parses `case ... )` inside $( ))
+drop_ours() { local line; while IFS= read -r line; do [ -n "$line" ] || continue; case "$stop_pids" in *" ${line%% *} "*) ;; *) printf '%s\n' "$line" ;; esac; done; }
+procs="$(install_processes | drop_ours)" || procs=""
+blockers=""
+if [ "$DAEMON_STATUS" = ours ] && [ "${SESSIONS:-0}" -gt 0 ] && [ "$force" != 1 ]; then
+  blockers="$blockers$SESSIONS live agent session(s) are running in the Cockpit; stopping the daemon ends them. Save & End them in the Cockpit first, or re-run with --force."$'\n'
+fi
+if [ "$BOARD_STATUS" = foreign ]; then
+  blockers="$blockers""port $PORT is held by a process that is not this install's board (${BOARD_FOREIGN}); it is not touched. Stop it yourself, or point CANON_COCKPIT_PORT at this install's port."$'\n'
+fi
+if [ "$BOARD_STATUS" = unknown ]; then
+  blockers="$blockers""something answers on port $PORT but it cannot be identified as this install's Cockpit board; close its window (the terminal running 'canon') and run this again."$'\n'
+fi
 
 print_plan() {
   echo "canon uninstall — plan (nothing is changed until you confirm)   [canon $(tr -d '[:space:]' < "$INSTALL/VERSION" 2>/dev/null || echo unknown), uninstall rev $UNINSTALL_REV]"
@@ -214,7 +232,14 @@ print_plan() {
     else echo "Shell rc files: no line names $INSTALL/tools."; fi
   fi
   echo ""
-  if [ "$board" = 1 ]; then echo "BLOCKED: the Cockpit board answers on port $PORT. Confirming stops the daemon for you; then close the Cockpit window (the terminal running 'canon') and run this again."; fi
+  echo "Cockpit processes:"
+  if [ "$BOARD_STATUS" = ours ]; then echo "  will stop: the Cockpit board (pid $BOARD_PID, port $PORT)$([ -n "$LAUNCHER_PID" ] && echo "; the terminal running 'canon' (pid $LAUNCHER_PID) exits with it")"; fi
+  if [ "$DAEMON_STATUS" = ours ]; then echo "  will stop: the Cockpit daemon (pid $DAEMON_PID)$([ "${SESSIONS:-0}" -gt 0 ] && echo ", ending $SESSIONS live agent session(s)")"; fi
+  if [ "$BOARD_STATUS" != ours ] && [ "$DAEMON_STATUS" != ours ]; then echo "  (none running)"; fi
+  rs="$(state_dirs_to_remove)"
+  if [ -n "$rs" ]; then echo "Cockpit runtime state (daemon address/token, live-session records):"; printf '%s\n' "$rs" | sed 's/^/  will delete: /'; fi
+  echo ""
+  if [ -n "$blockers" ]; then printf '%s' "$blockers" | while IFS= read -r b; do echo "BLOCKED: $b"; done; fi
   if [ -n "$procs" ]; then echo "BLOCKED: processes are running from the install folder (not killed by this command):"; printf '%s\n' "$procs" | sed 's/^/  /' | cut -c1-160; fi
 }
 
@@ -235,33 +260,52 @@ fi
 
 echo ""
 echo "Working... (nothing below is undone by closing this window; each step prints when it finishes)"
-# ── refusals (before any write) ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-# The board is the only way to ask the daemon to stop (it needs a token); with live sessions `canon stop` refuses unless --force.
-if [ "$board" = 1 ]; then
-  echo ""
-  echo "[1/5] Stopping the Cockpit daemon..."
-  stop_args=(stop); [ "$force" = 1 ] && stop_args+=(--force)
-  "$SCRIPT_DIR/canon" "${stop_args[@]}" || { echo "canon uninstall: the daemon did not stop; nothing was changed." >&2; exit 1; }
-  procs="$(install_processes)"
-  board=0; board_up && board=1 || true
-else
-  echo ""
-  echo "[1/5] Cockpit daemon: not running, nothing to stop."
-fi
-if [ "$board" = 1 ]; then
-  echo "canon uninstall: the Cockpit daemon was stopped, but the board is still running on port $PORT. Close its window (the terminal running 'canon'), then run this again. Nothing else was changed." >&2
+# ── refusals (before any signal or write) ───────────────────────────────────────────────────────────────────────────────────────────────────
+if [ -n "$blockers" ]; then
+  echo "" >&2
+  printf '%s' "$blockers" | while IFS= read -r b; do echo "canon uninstall: $b" >&2; done
+  echo "Nothing was changed." >&2
   exit 1
 fi
 if [ -n "$procs" ]; then
-  echo "canon uninstall: processes are still running from $INSTALL:" >&2; printf '%s\n' "$procs" | sed 's/^/  /' | cut -c1-160 >&2
+  echo "canon uninstall: processes are running from $INSTALL (not this install's Cockpit board or daemon):" >&2; printf '%s\n' "$procs" | sed 's/^/  /' | cut -c1-160 >&2
   echo "Close them, then run this again. Nothing was changed." >&2
   exit 1
 fi
 
+# ── stop the Cockpit ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+# Daemon first (its SIGTERM handler ends every agent session cleanly), then the board; a process that will not exit is reported by pid and
+# NOTHING is deleted. The `canon` launcher in the board's terminal exits by itself once the board is gone.
+echo ""
+if [ "$DAEMON_STATUS" = ours ] || [ "$BOARD_STATUS" = ours ]; then
+  echo "[1/5] Stopping the Cockpit..."
+  if [ "$DAEMON_STATUS" = ours ]; then
+    stop_verified "$DAEMON_PID" daemon || { echo "canon uninstall: the Cockpit daemon (pid $DAEMON_PID) did not exit within ${CANON_STOP_WAIT}s; nothing was deleted. Stop it yourself, then run this again." >&2; exit 1; }
+    echo "  [stopped]  the Cockpit daemon (pid $DAEMON_PID)"
+  fi
+  if [ "$BOARD_STATUS" = ours ]; then
+    stop_verified "$BOARD_PID" board || { echo "canon uninstall: the Cockpit board (pid $BOARD_PID) did not exit within ${CANON_STOP_WAIT}s; nothing was deleted. Close it yourself, then run this again." >&2; exit 1; }
+    echo "  [stopped]  the Cockpit board (pid $BOARD_PID)"
+    if [ -n "$LAUNCHER_PID" ]; then
+      w=0; while [ "$w" -lt $((CANON_STOP_WAIT * 5)) ] && [ -n "$(_proc_ident "$LAUNCHER_PID")" ]; do sleep 0.2; w=$((w + 1)); done
+    fi
+  fi
+  procs="$(install_processes)"
+  if [ -n "$procs" ]; then
+    echo "canon uninstall: processes are still running from $INSTALL after the Cockpit was stopped:" >&2; printf '%s\n' "$procs" | sed 's/^/  /' | cut -c1-160 >&2
+    echo "Close them, then run this again. Nothing was deleted." >&2
+    exit 1
+  fi
+else
+  echo "[1/5] Cockpit board and daemon: not running, nothing to stop."
+fi
+state_removed="$(remove_state_dirs)"
+[ -z "$state_removed" ] || printf '%s\n' "$state_removed"
+
 # ── execute ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 failed=0
 echo ""
-echo "[2/5] Cleaning $n_projects project(s) with skills.sh uninstall (on Windows this can take about 10 seconds per project)..."
+echo "[2/5] Cleaning $n_projects project(s) with skills.sh uninstall$(_is_windows && echo " (on Windows this can take about 10 seconds per project)")..."
 # skills.sh uninstall works from ~/.config/canon/projects: add projects only the Cockpit knows, so they are cleaned too.
 if [ -n "$projects" ]; then
   mkdir -p "$CONFIG_DIR"

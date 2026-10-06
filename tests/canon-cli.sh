@@ -175,7 +175,7 @@ for b in "${BACKENDS[@]}"; do
   done
   # --force stops it (the board ends the stub daemon by its recorded pid).
   out="$(run stop --force)"; no_token "$out"
-  assert_eq "Cockpit daemon stopped." "$out"
+  assert_eq "Cockpit daemon stopped. The board is still running; Ctrl+C in the terminal running canon (or close its window) stops it." "$out"
   assert_contains "$(run status)" "daemon:   not running"
   assert_eq "No sessions running." "$(run sessions)"
   echo "canon-cli: $b ok"
