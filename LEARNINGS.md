@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 09:34
+learnings-sweep last run: 10-06-2026 10:03
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-70e4](.tickets/t-70e4/learnings.md) | I wrote "nothing else third-party was found" after scanning only code and licence headers; the evaluator failed it twice and found images, a logo, mockups and an embedded Marp runtime; a "nothing else" claim needs a stated method over every tracked file type, with counts that recompute. | UNPROMOTED |
 | 2026-10-06 | [t-cc30](.tickets/t-cc30/learnings.md) | I wrote "already in docs" for README sections I had not read, and the reviewer found content only the old README held plus four doc links to removed README anchors; before cutting a section, grep each of its distinctive phrases in the docs, and before renaming or removing a heading, grep every repo file for links to its anchor. | UNPROMOTED |
 | 2026-10-06 | [t-11f4](.tickets/t-11f4/learnings.md) | My "nothing else names this picture" grep used four file-type globs and missed two temp-dir names that a full-text grep found; they were unrelated, but state a search's scope and run it unrestricted when the claim is "nothing else". | UNPROMOTED |
 | 2026-10-06 | [t-60f7](.tickets/t-60f7/learnings.md) | A release key taken from `git log -1 -- <dir>` breaks on a shallow clone (it returns HEAD), so name a downloaded artifact by the tree hash (`git rev-parse HEAD:<dir>`); also a `||` list around a function turns `set -e` off inside it, `mv` into an existing directory succeeds by nesting, and temp files inside a work tree need a .gitignore entry or they block the clean-tree check | UNPROMOTED |
