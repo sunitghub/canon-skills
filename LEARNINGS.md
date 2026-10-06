@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-05-2026 14:10
+learnings-sweep last run: 10-06-2026 09:15
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-3897](.tickets/t-3897/learnings.md) | A delete command's "never delete unsaved work" guard checked only dirty tree and unpushed HEAD: the reviewer found a clone with a local-only branch, a stash, a linked worktree or skip-worktree edits was still deleted, and `--keep-data` deleted nested data it said it kept; probe each guard with every place git keeps work, and a second tool that talks to a live local service (my own test) must pin its port | UNPROMOTED |
 | 2026-10-05 | [t-bb2d](.tickets/t-bb2d/learnings.md) | A before/after snapshot tool must be called in a fixed order (pre, gate, post, THEN the audit-log append) or it flags the orchestrator's own bookkeeping, and refs compared by name or excluded by `**/` glob each traded a false alarm for a blind spot: compare shas, exempt only what another session owns (branches checked out in other worktrees), and exclude only the project's own paths | UNPROMOTED |
 | 2026-10-05 | [t-320d](.tickets/t-320d/learnings.md) | An evaluator's "pre-existing failure" seen in its scratch copy (five cockpit-daemon Go tests, also on the merge-base) passed uncached in the real repo: a scratch copy without .git or with a different env can fail tests the real tree passes, so re-run the named tests in the real repo before accepting or reporting a failure | UNPROMOTED |
 | 2026-10-05 | [t-1b74](.tickets/t-1b74/learnings.md) | A git-aware gate must ask the caller's own worktree (`worktree_root`), not `project_root` (which maps a linked worktree to the main checkout), and its tests need a linked worktree and a project subdirectory; a green first run was a false comfort until each fix had a revert mutant | UNPROMOTED |
