@@ -331,6 +331,8 @@ while time.time() < deadline:
     if not sent and b"Type yes to continue" in buf:
         with open(os.path.join(state, "sessions.json"), "w") as f: f.write('[{"sid": "late", "id": "s-9"}]')
         os.write(fd, b"yes\n"); sent = True
+try: os.kill(pid, 9)   # a prompt that never appeared must not hang the suite
+except OSError: pass
 _, status = os.waitpid(pid, 0)
 sys.stdout.write(buf.decode("utf-8", "replace")); sys.stdout.write("\nEXIT=%d\n" % (os.waitstatus_to_exitcode(status) if hasattr(os, "waitstatus_to_exitcode") else (status >> 8)))
 PY
@@ -339,6 +341,32 @@ PY
   out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME= python3 "$WORK/ptydrive.py" "$inst/tools/canon" "$t/canon-cockpit-board" 2>&1)" || true
   assert_contains "$out" "EXIT=1"; assert_contains "$out" "1 live agent session(s)"; alive "$DPID" || fail "a session that appeared during the prompt was ended without --force"
   assert_eq "$before" "$(digest "$inst"; digest "$h")"; kill "$DPID" 2>/dev/null || true
+  # 14. running INSIDE the Cockpit: this command's parent chain contains the daemon (a Scratch terminal is the daemon's child). Stopping the daemon would kill
+  #     the command half-way and leave a silent half-stop, so it must refuse before the first signal and name why.
+  cat > "$WORK/dstub2.sh" <<'SH'
+#!/usr/bin/env bash
+# dstub2.sh <state dir> <output file> <command...>: a daemon that runs the command as its child (like a Cockpit terminal) and dies, with the child, on TERM
+state="$1"; outf="$2"; shift 2; mkdir -p "$state"
+printf '{"addr": "127.0.0.1:1", "token": "t", "pid": "%s"}' "$$" > "$state/daemon.json"
+trap 'rm -f "$state/daemon.json"; kill "$child" 2>/dev/null; exit 0' TERM
+"$@" > "$outf" 2>&1 & child=$!
+wait "$child"; echo "EXIT=$?" >> "$outf"
+while :; do sleep 0.2; done
+SH
+  inst="$WORK/L15"; h="$WORK/hL15"; t="$WORK/tL15"; mkdir -p "$t/canon-cockpit-board"; mk_install "$inst"; mk_home "$h" "$inst"; mkdir -p "$inst/tools/sprint-check-app"
+  printf '{"sid": "x"}' > /dev/null
+  ( export HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME=; exec -a "$inst/tools/cockpit-daemon/cockpit-daemon" bash "$WORK/dstub2.sh" "$t/canon-cockpit-board" "$WORK/inside.out" "$inst/tools/canon" uninstall --yes --force ) & dp=$!; killlist+=("$dp")
+  for _ in $(seq 1 100); do grep -q "EXIT=" "$WORK/inside.out" 2>/dev/null && break; sleep 0.1; done
+  grep -q "EXIT=1" "$WORK/inside.out" || fail "uninstall run inside the Cockpit must refuse (exit 1): $(cat "$WORK/inside.out" 2>/dev/null)"
+  grep -q "running inside the Cockpit" "$WORK/inside.out" || fail "the refusal must say it is running inside the Cockpit: $(cat "$WORK/inside.out")"
+  alive "$dp" || fail "the daemon that parents the command was signalled"; [[ -d "$inst/tools" ]] || fail "the install must be intact after the refusal"; kill "$dp" 2>/dev/null || true
+  # 15. CANON_STOP_WAIT spellings: only whole seconds of at most three digits are taken literally (a leading zero is decimal, never octal); 0 means 1
+  #     (0 would signal and then report 'stuck' without looking); everything else falls back to 8.
+  for spec in "abc:8" "1e3:8" "-1:8" " 5:8" "0:1" "08:8" "09:9" "010:10" "7:7" "99999999999999999999:8" ":8"; do
+    v="${spec%:*}"; want="${spec##*:}"
+    got="$(CANON_STOP_WAIT="$v" bash -c 'INSTALL=/x; PORT=1; source "$1/tools/platform-lib.sh"; source "$1/tools/cockpit-stop-lib.sh"; echo "$CANON_STOP_WAIT"' _ "$ROOT" 2>&1)"
+    assert_eq "$want" "$got"
+  done
 else
   echo "canon-uninstall: lsof or python3 missing; live-process cases skipped (reported, not hidden)"
 fi
@@ -348,7 +376,7 @@ inst="$WORK/i19"; h="$WORK/h19"; mk_install "$inst"; mk_home "$h" "$inst"; mk_pr
 printf '#!/usr/bin/env bash\necho "skills.sh boom" >&2; exit 1\n' > "$inst/tools/skills.sh"
 before="$(digest "$inst"; digest "$h"; digest "$WORK/p19")"
 mkdir -p "$TMPDIR/canon-cockpit-board/hooks"   # the daemon's runtime state: it goes with the data, so a failed project cleanup must leave it too (t-70a2)
-run "$h" "$inst" --yes; assert_eq 1 "$rc"; assert_contains "$out" "skills.sh uninstall failed; the Cockpit data and the install folder were left in place"
+run "$h" "$inst" --yes; assert_eq 1 "$rc"; assert_contains "$out" "skills.sh uninstall failed; the Cockpit (already stopped) is down, and the Cockpit data and the install folder were left in place"
 assert_eq "$before" "$(digest "$inst"; digest "$h"; digest "$WORK/p19")"
 [[ -d "$TMPDIR/canon-cockpit-board/hooks" ]] || fail "a failed project cleanup must not have deleted the Cockpit runtime state"; rm -rf "$TMPDIR/canon-cockpit-board"
 

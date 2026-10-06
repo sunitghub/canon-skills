@@ -14,7 +14,9 @@
 
 CANON_STOP_WAIT="${CANON_STOP_WAIT:-8}"
 case "$CANON_STOP_WAIT" in ''|*[!0-9]*) CANON_STOP_WAIT=8 ;; esac   # whole seconds only: anything else would abort a stop half-way
+case ${#CANON_STOP_WAIT} in 1|2|3) ;; *) CANON_STOP_WAIT=8 ;; esac                # at most 3 digits: a huge number would wrap in $(( ))
 CANON_STOP_WAIT=$((10#$CANON_STOP_WAIT))                              # '08' is invalid octal in $(( )) and would silently skip the whole stop block
+[ "$CANON_STOP_WAIT" -ge 1 ] || CANON_STOP_WAIT=1                      # 0 would signal and then report a stuck process without looking
 BOARD_STATUS=none; BOARD_PID=""; BOARD_FOREIGN=""; LAUNCHER_PID=""
 DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIRS=""; SESSIONS=0
 
@@ -113,6 +115,18 @@ probe_board() {
       case "$ident" in "bash $INSTALL/tools/canon"|"bash $INSTALL/tools/canon "*|"$INSTALL/tools/canon"|"$INSTALL/tools/canon "*) LAUNCHER_PID="$pp" ;; esac
     fi
   fi
+}
+
+# The pids of this shell's ancestors (Unix). Stopping the Cockpit while this command runs INSIDE it (a Scratch terminal is a child of the daemon)
+# would kill the command half-way, so the caller refuses when a process it is about to stop is one of these.
+ancestor_pids() {
+  _is_windows && return 0
+  local pid="$$"
+  while [ -n "$pid" ] && [ "$pid" != 0 ] && [ "$pid" != 1 ]; do
+    pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')" || pid=""
+    [ -z "$pid" ] || printf '%s\n' "$pid"
+  done
+  return 0
 }
 
 # Stop one process: re-verify its identity NOW (the probe ran before the confirmation prompt, so the pid may have been recycled since), then SIGTERM

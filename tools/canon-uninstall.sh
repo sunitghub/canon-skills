@@ -192,8 +192,13 @@ probe_all() {
     blockers="$blockers$SESSIONS live agent session(s) are running in the Cockpit; stopping the daemon ends them. Save & End them in the Cockpit first, or re-run with --force."$'\n'
   fi
   if [ "$BOARD_STATUS" = foreign ]; then
-    blockers="$blockers""port $PORT is held by a process that is not this install's board (${BOARD_FOREIGN}); it is not touched. Stop it yourself, or point CANON_COCKPIT_PORT at this install's port."$'\n'
+    blockers="$blockers""port $PORT is held by a process that is not this install's board (${BOARD_FOREIGN}); it is not touched. Stop it yourself, or point CANON_COCKPIT_PORT at this install's port.$(_is_windows && echo ' (On Windows only the Go board, sprint-check-win.exe, is recognised as the board of this install; a Python board must be closed by hand.)' || true)"$'\n'
   fi
+  # Running inside the Cockpit (a Scratch terminal is a child of the daemon): stopping it would kill this very command half-way.
+  local anc p; anc=" $(ancestor_pids | tr '\n' ' ') "
+  for p in ${DAEMON_PID:-} ${BOARD_PID:-} ${LAUNCHER_PID:-}; do
+    case "$anc" in *" $p "*) blockers="$blockers""this command is running inside the Cockpit (its parent chain includes pid $p, which it would stop). Run it from an ordinary terminal outside the Cockpit."$'\n' ;; esac
+  done
   if [ "$BOARD_STATUS" = unknown ]; then
     blockers="$blockers""something answers on port $PORT but it cannot be identified as this install's Cockpit board; close its window (the terminal running 'canon') and run this again."$'\n'
   fi
@@ -322,7 +327,7 @@ reg_backup=""
 if [ "$keep" = 1 ] && [ -f "$CONFIG_DIR/projects" ]; then reg_backup="$(mktemp)"; cp "$CONFIG_DIR/projects" "$reg_backup"; fi
 # A failing project cleanup stops the run here: deleting the install folder now would leave project hooks pointing at nothing.
 if ! CANON_UNINSTALL_RUNNING=1 SKILLS_SH_NO_TTY=1 bash "$SCRIPT_DIR/skills.sh" uninstall </dev/null; then
-  echo "canon uninstall: skills.sh uninstall failed; the Cockpit data and the install folder were left in place. Fix the error above and run this again." >&2
+  echo "canon uninstall: skills.sh uninstall failed; the Cockpit (already stopped) is down, and the Cockpit data and the install folder were left in place. Fix the error above and run this again." >&2
   exit 1
 fi
 # --keep-data keeps the skills registrations, which skills.sh uninstall deletes along with install_path
