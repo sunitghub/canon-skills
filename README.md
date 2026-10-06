@@ -36,7 +36,7 @@ Then run `canon`: add a project, create a ticket, press Start. See the **[Quick 
 
 Prefer the terminal? Register the sprint skill in a project with `~/.canon/tools/skills.sh add sprint`.
 
-To remove canon, run `canon uninstall` (it stops this install's Cockpit itself; running agent sessions make it refuse unless you add `--force`) (`--dry-run` prints the plan and changes nothing). It never deletes a git clone with uncommitted or unpushed work. See **[Uninstall →](https://getcanon.dev/docs/cli.html#uninstall-canon)**.
+To remove canon, run `canon uninstall` from an ordinary terminal (it stops this install's Cockpit itself, and refuses while agent sessions are running unless you add `--force`) (`--dry-run` prints the plan and changes nothing). It never deletes a git clone with uncommitted or unpushed work. See **[Uninstall →](https://getcanon.dev/docs/cli.html#uninstall-canon)**.
 
 ## The Daily Loop
 

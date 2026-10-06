@@ -50,7 +50,7 @@ Run `canon`. It opens the Cockpit at `http://127.0.0.1:8899/cockpit`; a second r
 
 ### Uninstall
 
-You don't need to close the Cockpit first: `canon uninstall` stops this install's own board and daemon itself.
+You don't need to close the Cockpit first: `canon uninstall` stops this install's own board and daemon itself. Run it from an ordinary terminal, not from a terminal inside the Cockpit (a Scratch session): it refuses there, because stopping the Cockpit would end the command itself.
 
 ```bash
 canon uninstall --dry-run    # print the plan, change nothing
