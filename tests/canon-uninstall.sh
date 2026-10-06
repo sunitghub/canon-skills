@@ -270,6 +270,10 @@ if command -v lsof >/dev/null 2>&1 && command -v python3 >/dev/null 2>&1; then
     stop_verified "$v" daemon || fail "an unrelated process must not count as a failed stop"; alive "$v" || fail "a recycled pid was signalled (daemon)"
     stop_verified "$v" board || fail "an unrelated process must not count as a failed stop (board)"; alive "$v" || fail "a recycled pid was signalled (board)"
     kill "$v" 2>/dev/null || true
+    # the foreign-dir list matches whole lines only: a dir that is merely the tail of a foreign one is not "used by another install"
+    DAEMON_FOREIGN_DIRS=$'/var/tmp/canon-cockpit-board\n'
+    _foreign_uses "/var/tmp/canon-cockpit-board" || fail "an exact foreign dir must match"
+    ! _foreign_uses "/tmp/canon-cockpit-board" || fail "a dir that is only the tail of a foreign dir must not match"
   )
   # 9. a zombie daemon: the board never reaps the daemon it spawned, so a stopped daemon lingers as a defunct child of a live parent. That is gone, not stuck.
   cat > "$WORK/zparent.py" <<'PY'
@@ -302,6 +306,39 @@ PY
   set +e; out="$(HOME="$h" TMPDIR="$t" COCKPIT_STATE_DIR="$WORK/f12/canon-cockpit-board" CANON_COCKPIT_PORT="$(free_port)" CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
   [[ "$rc" == 0 ]] || fail "two foreign state dirs run failed ($rc): $out"; [[ -f "$WORK/f12/canon-cockpit-board/daemon.json" && -f "$t/canon-cockpit-board/daemon.json" ]] || fail "both foreign-used state dirs must be kept"
   kill "$o1" "$o2" 2>/dev/null || true
+  # 12. CANON_STOP_WAIT=08: a leading zero is invalid octal in $(( )) and used to skip the whole stop block silently, deleting the install with the
+  #     Cockpit still running. It must stop the daemon (or refuse), never delete around a live process.
+  inst="$WORK/L13"; h="$WORK/hL13"; t="$WORK/tL13"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"; port="$(free_port)"; mk_live "$inst" "$t/canon-cockpit-board" "$port"
+  set +e; out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$port" CANON_STOP_WAIT=08 CANON_HOME= "$inst/tools/canon" uninstall --yes </dev/null 2>&1)"; rc=$?; set -e
+  [[ "$rc" == 0 ]] || fail "CANON_STOP_WAIT=08 broke the uninstall ($rc): $out"
+  ! alive "$DPID" && ! alive "$BPID" || fail "CANON_STOP_WAIT=08 skipped part of the stop: the board is still running while the install was removed"
+  # 13. the world changes while the confirmation prompt is open: a live session appears after the plan was printed. The prompt only exists on a
+  #     terminal, so a pty drives it; the command must decide again after 'yes' and refuse, signalling nothing.
+  cat > "$WORK/ptydrive.py" <<'PY'
+import os, pty, select, sys, time
+canon, state = sys.argv[1], sys.argv[2]
+pid, fd = pty.fork()
+if pid == 0:
+    os.execv(canon, [canon, "uninstall"])
+buf = b""; deadline = time.time() + 30; sent = False
+while time.time() < deadline:
+    r, _, _ = select.select([fd], [], [], 0.5)
+    if r:
+        try: chunk = os.read(fd, 4096)
+        except OSError: break
+        if not chunk: break
+        buf += chunk
+    if not sent and b"Type yes to continue" in buf:
+        with open(os.path.join(state, "sessions.json"), "w") as f: f.write('[{"sid": "late", "id": "s-9"}]')
+        os.write(fd, b"yes\n"); sent = True
+_, status = os.waitpid(pid, 0)
+sys.stdout.write(buf.decode("utf-8", "replace")); sys.stdout.write("\nEXIT=%d\n" % (os.waitstatus_to_exitcode(status) if hasattr(os, "waitstatus_to_exitcode") else (status >> 8)))
+PY
+  inst="$WORK/L14"; h="$WORK/hL14"; t="$WORK/tL14"; mkdir -p "$t"; mk_install "$inst"; mk_home "$h" "$inst"; mk_live "$inst" "$t/canon-cockpit-board" ""
+  before="$(digest "$inst"; digest "$h")"
+  out="$(HOME="$h" TMPDIR="$t" CANON_COCKPIT_PORT="$(free_port)" CANON_STOP_WAIT=3 CANON_HOME= python3 "$WORK/ptydrive.py" "$inst/tools/canon" "$t/canon-cockpit-board" 2>&1)" || true
+  assert_contains "$out" "EXIT=1"; assert_contains "$out" "1 live agent session(s)"; alive "$DPID" || fail "a session that appeared during the prompt was ended without --force"
+  assert_eq "$before" "$(digest "$inst"; digest "$h")"; kill "$DPID" 2>/dev/null || true
 else
   echo "canon-uninstall: lsof or python3 missing; live-process cases skipped (reported, not hidden)"
 fi

@@ -179,21 +179,26 @@ n_snapshots=0
 data_inside=0; keep_top=cockpit; case "$DATA_DIR" in "$INSTALL"/*) data_inside=1; keep_top="${DATA_DIR#"$INSTALL"/}"; keep_top="${keep_top%%/*}" ;; esac
 # The Cockpit board and daemon of THIS install are stopped by the command itself (cockpit-stop-lib.sh); anything else running from the install
 # folder still blocks it. A board that answers but cannot be identified as ours (another install, no lsof/ss) keeps the old refusal.
-probe_daemon; probe_board
-stop_pids=" ${BOARD_PID:-} ${DAEMON_PID:-} ${LAUNCHER_PID:-} "
 # (a function, not an inline case: bash 3.2 mis-parses `case ... )` inside $( ))
 drop_ours() { local line; while IFS= read -r line; do [ -n "$line" ] || continue; case "$stop_pids" in *" ${line%% *} "*) ;; *) printf '%s\n' "$line" ;; esac; done; }
-procs="$(install_processes | drop_ours)" || procs=""
-blockers=""
-if [ "$DAEMON_STATUS" = ours ] && [ "${SESSIONS:-0}" -gt 0 ] && [ "$force" != 1 ]; then
-  blockers="$blockers$SESSIONS live agent session(s) are running in the Cockpit; stopping the daemon ends them. Save & End them in the Cockpit first, or re-run with --force."$'\n'
-fi
-if [ "$BOARD_STATUS" = foreign ]; then
-  blockers="$blockers""port $PORT is held by a process that is not this install's board (${BOARD_FOREIGN}); it is not touched. Stop it yourself, or point CANON_COCKPIT_PORT at this install's port."$'\n'
-fi
-if [ "$BOARD_STATUS" = unknown ]; then
-  blockers="$blockers""something answers on port $PORT but it cannot be identified as this install's Cockpit board; close its window (the terminal running 'canon') and run this again."$'\n'
-fi
+# Everything the plan and the refusals depend on. It runs for the plan AND again after the confirmation prompt: a session started, or a process
+# that appeared or went away while the prompt was open, must change what happens.
+probe_all() {
+  probe_daemon; probe_board
+  stop_pids=" ${BOARD_PID:-} ${DAEMON_PID:-} ${LAUNCHER_PID:-} "
+  procs="$(install_processes | drop_ours)" || procs=""
+  blockers=""
+  if [ "$DAEMON_STATUS" = ours ] && [ "${SESSIONS:-0}" -gt 0 ] && [ "$force" != 1 ]; then
+    blockers="$blockers$SESSIONS live agent session(s) are running in the Cockpit; stopping the daemon ends them. Save & End them in the Cockpit first, or re-run with --force."$'\n'
+  fi
+  if [ "$BOARD_STATUS" = foreign ]; then
+    blockers="$blockers""port $PORT is held by a process that is not this install's board (${BOARD_FOREIGN}); it is not touched. Stop it yourself, or point CANON_COCKPIT_PORT at this install's port."$'\n'
+  fi
+  if [ "$BOARD_STATUS" = unknown ]; then
+    blockers="$blockers""something answers on port $PORT but it cannot be identified as this install's Cockpit board; close its window (the terminal running 'canon') and run this again."$'\n'
+  fi
+}
+probe_all
 
 print_plan() {
   echo "canon uninstall — plan (nothing is changed until you confirm)   [canon $(tr -d '[:space:]' < "$INSTALL/VERSION" 2>/dev/null || echo unknown), uninstall rev $UNINSTALL_REV]"
@@ -260,6 +265,7 @@ if [ "$yes" != 1 ]; then
   fi
 fi
 
+probe_all   # the world may have changed while the prompt was open (a new session, a process gone): decide again on what is true now
 echo ""
 echo "Working... (nothing below is undone by closing this window; each step prints when it finishes)"
 # ── refusals (before any signal or write) ───────────────────────────────────────────────────────────────────────────────────────────────────
@@ -283,11 +289,11 @@ if [ "$DAEMON_STATUS" = ours ] || [ "$BOARD_STATUS" = ours ]; then
   echo "[1/5] Stopping the Cockpit..."
   if [ "$DAEMON_STATUS" = ours ]; then
     stop_verified "$DAEMON_PID" daemon || { echo "canon uninstall: the Cockpit daemon (pid $DAEMON_PID) did not exit within ${CANON_STOP_WAIT}s; nothing was deleted. Stop it yourself, then run this again." >&2; exit 1; }
-    echo "  [stopped]  the Cockpit daemon (pid $DAEMON_PID)"
+    if [ "$STOP_SIGNALLED" = 1 ]; then echo "  [stopped]  the Cockpit daemon (pid $DAEMON_PID)"; else echo "  [gone]  the Cockpit daemon (pid $DAEMON_PID) had already exited"; fi
   fi
   if [ "$BOARD_STATUS" = ours ]; then
     stop_verified "$BOARD_PID" board || { echo "canon uninstall: the Cockpit board (pid $BOARD_PID) did not exit within ${CANON_STOP_WAIT}s; nothing was deleted. Close it yourself, then run this again." >&2; exit 1; }
-    echo "  [stopped]  the Cockpit board (pid $BOARD_PID)"
+    if [ "$STOP_SIGNALLED" = 1 ]; then echo "  [stopped]  the Cockpit board (pid $BOARD_PID)"; else echo "  [gone]  the Cockpit board (pid $BOARD_PID) had already exited"; fi
     if [ -n "$LAUNCHER_PID" ]; then
       w=0; while [ "$w" -lt $((CANON_STOP_WAIT * 5)) ] && [ -n "$(_proc_ident "$LAUNCHER_PID")" ]; do sleep 0.2; w=$((w + 1)); done
     fi

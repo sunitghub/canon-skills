@@ -7,12 +7,14 @@
 # Stopping is SIGTERM only (the daemon's handler reaps every agent session cleanly), a bounded wait, and a report if the process stays; there
 # is no SIGKILL. On Windows the processes of this install are stopped by exact exe path, as install.ps1 does.
 #
-# Needs from the caller: INSTALL (the physical install folder), PORT (the board's port), platform-lib.sh already sourced.
+# Needs from the caller: INSTALL (the physical install folder), PORT (the board's port), a `board_up` function (does something answer on PORT), and
+# platform-lib.sh already sourced.
 # Results: BOARD_STATUS none|ours|foreign|unknown, BOARD_PID, BOARD_FOREIGN; LAUNCHER_PID; DAEMON_STATUS none|ours|foreign, DAEMON_PID,
 # DAEMON_FOREIGN_DIRS (newline-separated: every state dir a live daemon of another install uses); SESSIONS (live agent sessions recorded by the daemon).
 
 CANON_STOP_WAIT="${CANON_STOP_WAIT:-8}"
 case "$CANON_STOP_WAIT" in ''|*[!0-9]*) CANON_STOP_WAIT=8 ;; esac   # whole seconds only: anything else would abort a stop half-way
+CANON_STOP_WAIT=$((10#$CANON_STOP_WAIT))                              # '08' is invalid octal in $(( )) and would silently skip the whole stop block
 BOARD_STATUS=none; BOARD_PID=""; BOARD_FOREIGN=""; LAUNCHER_PID=""
 DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIRS=""; SESSIONS=0
 
@@ -64,13 +66,12 @@ _is_our_board() { # <ident>
   case "$1" in *" $INSTALL/tools/sprint-check-app/server.py"|*" $INSTALL/tools/sprint-check-app/server.py "*) return 0 ;; esac
   return 1
 }
-_foreign_uses() { case "$DAEMON_FOREIGN_DIRS" in *"$1"$'\n'*) return 0 ;; esac; return 1; }
+_foreign_uses() { case $'\n'"$DAEMON_FOREIGN_DIRS" in *$'\n'"$1"$'\n'*) return 0 ;; esac; return 1; }
 
 # The daemon: the pid it wrote into daemon.json, checked against this install.
 probe_daemon() {
   DAEMON_STATUS=none; DAEMON_PID=""; DAEMON_FOREIGN_DIRS=""; SESSIONS=0
   local d pid ident
-  DAEMON_FOREIGN_DIRS=""
   while IFS= read -r d; do
     [ -f "$d/daemon.json" ] || continue
     pid="$(sed -n 's/.*"pid"[[:space:]]*:[[:space:]]*"\{0,1\}\([0-9][0-9]*\).*/\1/p' "$d/daemon.json" 2>/dev/null | head -1)" || pid=""
@@ -121,9 +122,12 @@ _still_ours() { # <pid> <what>
   local ident; ident="$(_proc_ident "$1")"; [ -n "$ident" ] || return 1
   case "$2" in daemon) _is_our_daemon "$ident" ;; board) _is_our_board "$ident" ;; *) return 1 ;; esac
 }
+STOP_SIGNALLED=0   # set by stop_verified: 1 when it actually sent the signal, 0 when the process was already gone or no longer the verified one
 stop_verified() { # <pid> <what>
   local pid="$1" what="$2" waited=0
+  STOP_SIGNALLED=0
   _still_ours "$pid" "$what" || return 0                          # gone, or the pid now belongs to something else: never signal it
+  STOP_SIGNALLED=1
   if _is_windows; then powershell.exe -NoProfile -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
   else kill -TERM "$pid" 2>/dev/null || true; fi
   while [ "$waited" -lt $((CANON_STOP_WAIT * 5)) ]; do
