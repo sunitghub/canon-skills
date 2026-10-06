@@ -47,7 +47,7 @@ if [[ -f "$TARGET/tools/skills.sh" ]]; then
 else
   printf 'Cloning canon → %s\n' "$TARGET"
   mkdir -p "$(dirname "$TARGET")"
-  # t-0d25: depth 1, about 20 MB instead of the full 415 MB history of main; `git fetch --unshallow` restores it
+  # t-0d25: depth 1 (sizes and how to get full history: docs/setup.md)
   if ! git clone --depth 1 -- "$CANON_REPO" "$TARGET"; then
     printf 'error: clone failed. Check your git config and try again.\n' >&2
     exit 1

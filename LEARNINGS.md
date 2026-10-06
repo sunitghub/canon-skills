@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 11:53
+learnings-sweep last run: 10-06-2026 21:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-0d25](.tickets/t-0d25/learnings.md) | A depth-1 clone is single-branch, so docs promising "full history" must say main only (unshallow alone adds no other branches; set-branches then fetch does); an env override added to a production installer for tests needs a `--` before the URL and an `unset` in the test; the number in a doc goes stale when another change shrinks the tree (28 to 20 MiB), so keep it in one place | UNPROMOTED |
 | 2026-10-06 | [t-1d53](.tickets/t-1d53/learnings.md) | `sprint complete` refused to close a picture-deletion sprint because acceptance.md named a deleted image with its extension (the visual-embed gate wants a real embed), the second time in a day (t-fc00); write picture names without the extension in plan/acceptance when the sprint deletes or only mentions them. | UNPROMOTED |
 | 2026-10-06 | [t-915a](.tickets/t-915a/learnings.md) | A hook's commit message ("update dist zips") named a 40 KB folder while the same hook committed 27 MB of Windows exes, so the wrong thing was blamed for the repo bloat; measure sizes before scoping a cleanup. Also an old installed hook keeps a stale path list: test it against the removed path | UNPROMOTED |
 | 2026-10-06 | [t-fc00](.tickets/t-fc00/learnings.md) | A folder that was committed despite its ignore rule (`.tickets/`, via two force-adds) stayed tracked for months because an ignore rule never untracks; pair every new ignore rule with a test that fails when a tracked path matches it. | UNPROMOTED |
