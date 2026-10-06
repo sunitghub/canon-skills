@@ -1,80 +1,11 @@
 #!/usr/bin/env bash
-# build-zip.sh — packages generated dist artifacts
+# build-zip.sh — rebuilds the committed Windows binaries (tools/*-win.exe) and the local native cockpit-daemon
 # Run directly or called by .git/hooks/post-commit via scripts/install-hooks.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-DIST_DIR="$REPO_ROOT/dist"
-FIXTURE_ZIP="$DIST_DIR/context-check-fixture.zip"
-FIXTURE_DIR="$REPO_ROOT/examples/context-check-fixture"
-FIXTURE_STAGE="$(mktemp -d)"
-HANDOFF_SKILL_ZIP="$DIST_DIR/handoff-skill.zip"
-HANDOFF_SKILL_DIR="$REPO_ROOT/dist/handoff-skill"
-HANDOFF_SKILL_STAGE="$(mktemp -d)"
-CONTEXT_DOCTOR_ZIP="$DIST_DIR/context-doctor.zip"
-CONTEXT_DOCTOR_DIR="$REPO_ROOT/skills/context-doctor"
-CONTEXT_DOCTOR_STAGE="$(mktemp -d)"
-
-cleanup() { rm -rf "$FIXTURE_STAGE" "$HANDOFF_SKILL_STAGE" "$CONTEXT_DOCTOR_STAGE"; }
-trap cleanup EXIT
-
-mkdir -p "$DIST_DIR"
-
-# ── Zip: context-check fixture ───────────────────────────────────────────────
-if [[ -d "$FIXTURE_DIR" ]]; then
-  rm -f "$FIXTURE_ZIP"
-  mkdir -p "$FIXTURE_STAGE"
-  cp -r "$FIXTURE_DIR" "$FIXTURE_STAGE/context-check-fixture"
-  find "$FIXTURE_STAGE" \( -name ".DS_Store" -o -name "*.pyc" \) -delete 2>/dev/null || true
-  # zip embeds file mtimes, so identical content produces different bytes
-  # every rebuild (staging always re-copies with a fresh mtime) — normalize
-  # to a fixed timestamp so unchanged source content yields a byte-identical
-  # zip, and the post-commit hook stops committing a spurious "changed" zip.
-  find "$FIXTURE_STAGE" -exec touch -t 202001010000 {} +
-  (cd "$FIXTURE_STAGE" && zip -rX "$FIXTURE_ZIP" "context-check-fixture" --quiet)
-  echo "dist: context-check-fixture.zip updated ($(du -sh "$FIXTURE_ZIP" | cut -f1))"
-else
-  # Source dir intentionally purged (see DECISIONS 2026-08-03). Keep the existing
-  # frozen dist/context-check-fixture.zip; just skip regeneration instead of aborting
-  # the whole hook (which would also skip the handoff-skill zip + Windows .exe builds).
-  echo "dist: context-check-fixture.zip skipped (source dir absent — fixture purged)"
-fi
-
-# ── Zip: handoff skill (standalone dist bundle) ──────────────────────────────
-if [[ -d "$HANDOFF_SKILL_DIR" ]]; then
-  rm -f "$HANDOFF_SKILL_ZIP"
-  mkdir -p "$HANDOFF_SKILL_STAGE"
-  # staged/zipped as "handoff" (not "handoff-skill") so the extracted
-  # directory name matches the SKILL.md frontmatter `name:` field and the
-  # installed command is /handoff, per standards/skill-setup-std.md naming
-  cp -r "$HANDOFF_SKILL_DIR" "$HANDOFF_SKILL_STAGE/handoff"
-  find "$HANDOFF_SKILL_STAGE" \( -name ".DS_Store" -o -name "*.pyc" \) -delete 2>/dev/null || true
-  find "$HANDOFF_SKILL_STAGE" -exec touch -t 202001010000 {} +
-  (cd "$HANDOFF_SKILL_STAGE" && zip -rX "$HANDOFF_SKILL_ZIP" "handoff" --quiet)
-  echo "dist: handoff-skill.zip updated ($(du -sh "$HANDOFF_SKILL_ZIP" | cut -f1))"
-else
-  echo "Error: handoff skill dir not found: $HANDOFF_SKILL_DIR" >&2
-  exit 1
-fi
-
-# ── Zip: context-doctor (standalone distributable skill) ─────────────────────
-# Self-contained: ship SKILL.md + the standalone install README only. Evals stay
-# in-repo for /skill-eval and are excluded from the distributable bundle. Extracted
-# top-level dir is "context-doctor" (matches SKILL.md name: → /context-doctor command).
-if [[ -d "$CONTEXT_DOCTOR_DIR" ]]; then
-  rm -f "$CONTEXT_DOCTOR_ZIP"
-  mkdir -p "$CONTEXT_DOCTOR_STAGE/context-doctor"
-  cp "$CONTEXT_DOCTOR_DIR/SKILL.md" "$CONTEXT_DOCTOR_STAGE/context-doctor/"
-  [[ -f "$CONTEXT_DOCTOR_DIR/README.md" ]] && cp "$CONTEXT_DOCTOR_DIR/README.md" "$CONTEXT_DOCTOR_STAGE/context-doctor/"
-  find "$CONTEXT_DOCTOR_STAGE" \( -name ".DS_Store" -o -name "*.pyc" \) -delete 2>/dev/null || true
-  find "$CONTEXT_DOCTOR_STAGE" -exec touch -t 202001010000 {} +
-  (cd "$CONTEXT_DOCTOR_STAGE" && zip -rX "$CONTEXT_DOCTOR_ZIP" "context-doctor" --quiet)
-  echo "dist: context-doctor.zip updated ($(du -sh "$CONTEXT_DOCTOR_ZIP" | cut -f1))"
-else
-  echo "dist: context-doctor.zip skipped (skills/context-doctor absent)"
-fi
 
 # ── Binary: sprint-check-win.exe (Windows board server) ─────────────────────
 if command -v go >/dev/null 2>&1; then

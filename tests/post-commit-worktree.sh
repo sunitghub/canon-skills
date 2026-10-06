@@ -56,4 +56,18 @@ git -C "$main" commit -qm "main change" >/dev/null
 assert_eq "chore: update dist zips" "$(git -C "$main" log -1 --format=%s)"
 assert_eq "src=main-src2" "$(git -C "$main" show HEAD:$ART)"
 
+# ── t-915a: dist/ is no longer a hook artifact; an OLD hook that still lists it must keep working where dist/ does not exist ──
+hook="$main/.git/hooks/post-commit"
+[[ ! -d "$main/dist" ]] || fail "fixture must have no dist/"
+grep -q '^ARTIFACT_PATHS=(' "$hook" || fail "installed hook has no ARTIFACT_PATHS"
+[[ "$(grep '^ARTIFACT_PATHS=(' "$hook")" != *"dist/"* ]] || fail "install-hooks.sh must not list dist/ as an artifact path"
+sed 's#^ARTIFACT_PATHS=(#ARTIFACT_PATHS=(dist/ #' "$hook" > "$tmp/old-hook" && cp "$tmp/old-hook" "$hook" && chmod +x "$hook"
+grep -q '^ARTIFACT_PATHS=(dist/ ' "$hook" || fail "could not build the old-style hook"
+echo main-src3 > "$main/src.txt"
+git -C "$main" add src.txt
+git -C "$main" commit -qm "main change with an old hook" >/dev/null
+assert_eq "chore: update dist zips" "$(git -C "$main" log -1 --format=%s)"
+assert_eq "src=main-src3" "$(git -C "$main" show HEAD:$ART)"
+assert_eq "" "$(git -C "$main" status --short)"
+
 echo "post-commit-worktree: ok"

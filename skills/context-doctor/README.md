@@ -10,10 +10,11 @@ Self-contained — no build tools, no other skills, no network.
 
 ## Install
 
-**Claude Code** — unzip into your repo's skills directory:
+**Claude Code** — copy the folder into your repo's skills directory (from a canon checkout, or a shallow clone of canon-skills):
 
 ```bash
-unzip context-doctor.zip -d .claude/skills/
+git clone --depth 1 https://github.com/sunitghub/canon-skills.git /tmp/canon-skills
+cp -R /tmp/canon-skills/skills/context-doctor .claude/skills/
 # → .claude/skills/context-doctor/SKILL.md
 ```
 
