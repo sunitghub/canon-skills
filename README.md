@@ -100,6 +100,8 @@ Change the code and the expected answer changes with it, so the check agrees wit
 
 > The transferable lesson: **"the tests pass" is a claim, and it needs its own evidence.**
 
+**[The full account →](docs/how-it-works.md#what-it-actually-caught)**
+
 ## How a Sprint Works
 
 ```mermaid

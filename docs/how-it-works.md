@@ -221,3 +221,62 @@ its own work. Note this applies to code changes too, not just docs-only diffs: p
 and every close uses it unless overridden. The chosen model and its source are recorded on the `eval`
 row as `(model: <id> — <source>)` for audit. (Applying the Admin default is confirmed only under Claude Code.) Full logic:
 [`skills/sprint/reference/complete.md`](../skills/sprint/reference/complete.md) → "Model tier for gates."
+
+## What It Actually Caught
+
+Claims about process are cheap. Here is what the gates found across two sprints on a real project —
+an agentic app whose code *and tests* were largely AI-written.
+
+**They never found a wrong number.** Every figure reproduced exactly when the evaluator recomputed it
+independently. What they found instead were things a test suite structurally cannot reach.
+
+**A test that could not fail.** The suite checked that a button was disabled when a flag was set:
+
+```python
+assert button.disabled == live_only     # both sides read the same list
+```
+
+Change the code and the expected answer changes with it — the check agrees with itself, always. It
+passed every run until someone broke the code on purpose. The fix is to state the expectation
+independently:
+
+```python
+offline_safe = {"question A", "question B"}          # written by hand, not derived
+assert button.disabled == (q not in offline_safe)
+```
+
+**How you find those: break the code on purpose.** If no test complains, the test was decoration.
+
+```
+$ # deliberately flip a flag the suite claims to guard
+$ run the suite
+  all checks passed              ← the bug: it cannot fail
+
+$ # after stating the expectation independently
+  FAILED — disabled=False contradicts the offline-safe list      ✓
+```
+
+**Safety code nobody had ever run.** Three defects sat in branches written specifically to be
+defensive — including a guard that fell back to a call raising the same error it existed to avoid.
+All three passed the suite. The reviewer found them by *executing the failure case*, not by reading
+the branch, which looked correct.
+
+**Evidence that had quietly gone stale.** Screenshots proving a feature still worked were timestamped
+13 minutes *before* the commit that replaced it. Nothing in a test suite checks whether your evidence
+still describes your code. The evaluator compared file times against commit times and said so.
+
+**And it doesn't take the fix on trust either.** On the next pass it re-checked every finding it had
+raised, and one row is still `partial`.
+
+**The part that makes it trustworthy is that it also declines to over-reach.** Here it found one of my
+totals was corroborated for only 11 of its 17 members, and that a label I had cited as evidence was
+*"an unfalsifiable handle"*. It considered grading the item `partial`, decided that would mean
+penalising outside the stated criteria — and recorded the gap anyway:
+
+> *"Recorded here so the total is not mistaken for verified evidence."*
+
+That sentence is the whole design in one line. A gate that only ever fails things is noise; a gate
+that only ever passes things is theatre. This one refused to certify a number **and** refused to fail
+the work over a criterion nobody had set.
+
+> The transferable lesson: **"the tests pass" is a claim, and it needs its own evidence.**

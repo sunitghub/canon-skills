@@ -6,7 +6,7 @@ is the binding gate that blocks the close. This page is a reference for **what e
 just as importantly, what it does not** — so a passing close is never mistaken for a guarantee it
 was never designed to make.
 
-See the [README](../README.md#the-two-commands) for the lifecycle overview,
+See the [README](how-it-works.md#the-two-commands) for the lifecycle overview,
 [`docs/how-it-works.md`](how-it-works.md) for the CLI/agent split, and
 [`skills/sprint/reference/complete.md`](../skills/sprint/reference/complete.md) for the authoritative
 close-path logic. Each gate's own definition lives in `skills/wrapup/gates/*.md`,
@@ -64,7 +64,7 @@ At close, each gate is logged on the ticket's **Wrapup Gates** table as `ran` or
 with a one-line reason — a skip is a reasoned, auditable verdict, not a silent shortcut. The
 `reviewer` and `eval` rows additionally record the model that ran them as `(model: <id>)`; which
 model runs those two gates is decided by the rules in the README's
-[Which model runs the close gates](../README.md#which-model-runs-the-close-gates) table and
+[Which model runs the close gates](how-it-works.md#which-model-runs-the-close-gates) table and
 [`complete.md`](../skills/sprint/reference/complete.md)'s "Model tier for gates."
 
 The distinction that matters: the CLI mechanically enforces that the gates ran and that the binding

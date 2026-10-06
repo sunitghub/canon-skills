@@ -6,7 +6,7 @@
 sprint-check
 ```
 
-See the [README](../README.md#the-board) for the overview. This page walks through each feature with a screenshot.
+See the [README](../README.md) for the overview. This page walks through each feature with a screenshot.
 
 ## Dark Mode
 
@@ -98,7 +98,7 @@ Once both Acceptance and Plan exist, `+ New doc` is hidden. Other workflow outpu
 
 ## How Sprint Works
 
-One workflow command drives the lifecycle. The CLI handles deterministic state; the agent chooses the lightest tier that protects the work — trivial changes skip sprint, a `bugfix` (single logic file plus its covering test) runs eval-only (binding evaluator kept, advisory reviewer skipped), normal changes get a brief ticket/acceptance/plan path, and high-risk changes run the full planning pipeline. The two diagrams on the [README](../README.md#how-sprint-works) show the start and complete flows.
+One workflow command drives the lifecycle. The CLI handles deterministic state; the agent chooses the lightest tier that protects the work — trivial changes skip sprint, a `bugfix` (single logic file plus its covering test) runs eval-only (binding evaluator kept, advisory reviewer skipped), normal changes get a brief ticket/acceptance/plan path, and high-risk changes run the full planning pipeline. The [flowchart on the README](../README.md#how-a-sprint-works) shows the lifecycle, and [The Two Commands](how-it-works.md#the-two-commands) describes the start and complete flows.
 
 Enforcement layers:
 
