@@ -6,7 +6,7 @@
 
 set -euo pipefail
 
-CANON_REPO='https://github.com/sunitghub/canon-skills.git'
+CANON_REPO="${CANON_REPO:-https://github.com/sunitghub/canon-skills.git}"   # the override is a test seam
 
 # Precedence: positional arg > CANON_HOME env > ~/.canon
 _resolve_target() {
@@ -47,7 +47,8 @@ if [[ -f "$TARGET/tools/skills.sh" ]]; then
 else
   printf 'Cloning canon → %s\n' "$TARGET"
   mkdir -p "$(dirname "$TARGET")"
-  if ! git clone "$CANON_REPO" "$TARGET"; then
+  # t-0d25: depth 1, about 28 MB instead of the full 415 MB history; `git fetch --unshallow` restores it
+  if ! git clone --depth 1 "$CANON_REPO" "$TARGET"; then
     printf 'error: clone failed. Check your git config and try again.\n' >&2
     exit 1
   fi

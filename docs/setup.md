@@ -14,8 +14,10 @@
 Use the one-line installer from the [README](https://github.com/sunitghub/canon-skills#canon), or clone manually:
 
 ```bash
-git clone https://github.com/sunitghub/canon-skills.git ~/.canon
+git clone --depth 1 https://github.com/sunitghub/canon-skills.git ~/.canon
 ```
+
+The one-line installer makes the same shallow clone (`--depth 1`): about 20 MB, not the roughly 415 MB of full history. `canon update` keeps working on it. For the full history, run `git -C ~/.canon fetch --unshallow`.
 
 The Cockpit's agent sessions (Scratch, Start sprint) need the **cockpit daemon**, a small Go program. A clone has only its source, so the one-line installer, `canon update` and the first `canon` run fetch the prebuilt binary for your Mac or Linux machine from a canon-skills release and run it only after its SHA-256 matches `tools/cockpit-daemon.sha256`. If the download is unavailable they build it from source when Go 1.26.5 or newer is installed (`brew install go`), otherwise they print what to do. After a manual `git clone` or `git pull`, run `canon update` to fetch or refresh it. Windows ships its own `cockpit-daemon-win.exe`. Third-party licenses for the modules compiled into the daemon are in `THIRD-PARTY-NOTICES.md`.
 
