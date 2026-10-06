@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 09:13
+learnings-sweep last run: 10-06-2026 09:34
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-cc30](.tickets/t-cc30/learnings.md) | I wrote "already in docs" for README sections I had not read, and the reviewer found content only the old README held plus four doc links to removed README anchors; before cutting a section, grep each of its distinctive phrases in the docs, and before renaming or removing a heading, grep every repo file for links to its anchor. | UNPROMOTED |
 | 2026-10-06 | [t-11f4](.tickets/t-11f4/learnings.md) | My "nothing else names this picture" grep used four file-type globs and missed two temp-dir names that a full-text grep found; they were unrelated, but state a search's scope and run it unrestricted when the claim is "nothing else". | UNPROMOTED |
 | 2026-10-06 | [t-60f7](.tickets/t-60f7/learnings.md) | A release key taken from `git log -1 -- <dir>` breaks on a shallow clone (it returns HEAD), so name a downloaded artifact by the tree hash (`git rev-parse HEAD:<dir>`); also a `||` list around a function turns `set -e` off inside it, `mv` into an existing directory succeeds by nesting, and temp files inside a work tree need a .gitignore entry or they block the clean-tree check | UNPROMOTED |
 | 2026-10-06 | [t-3897](.tickets/t-3897/learnings.md) | A delete command's "never delete unsaved work" guard checked only dirty tree and unpushed HEAD: the reviewer found a clone with a local-only branch, a stash, a linked worktree or skip-worktree edits was still deleted, and `--keep-data` deleted nested data it said it kept; probe each guard with every place git keeps work, and a second tool that talks to a live local service (my own test) must pin its port | UNPROMOTED |
