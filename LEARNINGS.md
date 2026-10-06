@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 13:49
+learnings-sweep last run: 10-06-2026 22:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-97b1](.tickets/t-97b1/learnings.md) | A user-state dir inside a git clone (a default install's CANON_HOME) must be gitignored or every clean-tree guard refuses; already-stuck installs run their OLD tool, so the way out must be a command that does not depend on the fixed tool (a plain git pull); and look for the same class again: any tracked file the app writes at runtime (model-tiers.json) | UNPROMOTED |
 | 2026-10-06 | [t-04e2](.tickets/t-04e2/learnings.md) | No lesson: a one-line link change graded clean by both gates; the evaluator only noted other sessions' untracked folders in the shared checkout. | UNPROMOTED |
 | 2026-10-06 | [t-0d25](.tickets/t-0d25/learnings.md) | A depth-1 clone is single-branch, so docs promising "full history" must say main only (unshallow alone adds no other branches; set-branches then fetch does); an env override added to a production installer for tests needs a `--` before the URL and an `unset` in the test; the number in a doc goes stale when another change shrinks the tree (28 to 20 MiB), so keep it in one place | UNPROMOTED |
 | 2026-10-06 | [t-1d53](.tickets/t-1d53/learnings.md) | `sprint complete` refused to close a picture-deletion sprint because acceptance.md named a deleted image with its extension (the visual-embed gate wants a real embed), the second time in a day (t-fc00); write picture names without the extension in plan/acceptance when the sprint deletes or only mentions them. | UNPROMOTED |
