@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 19:40
+learnings-sweep last run: 10-06-2026 11:53
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-1d53](.tickets/t-1d53/learnings.md) | `sprint complete` refused to close a picture-deletion sprint because acceptance.md named a deleted image with its extension (the visual-embed gate wants a real embed), the second time in a day (t-fc00); write picture names without the extension in plan/acceptance when the sprint deletes or only mentions them. | UNPROMOTED |
 | 2026-10-06 | [t-915a](.tickets/t-915a/learnings.md) | A hook's commit message ("update dist zips") named a 40 KB folder while the same hook committed 27 MB of Windows exes, so the wrong thing was blamed for the repo bloat; measure sizes before scoping a cleanup. Also an old installed hook keeps a stale path list: test it against the removed path | UNPROMOTED |
 | 2026-10-06 | [t-fc00](.tickets/t-fc00/learnings.md) | A folder that was committed despite its ignore rule (`.tickets/`, via two force-adds) stayed tracked for months because an ignore rule never untracks; pair every new ignore rule with a test that fails when a tracked path matches it. | UNPROMOTED |
 | 2026-10-06 | [t-70e4](.tickets/t-70e4/learnings.md) | I wrote "nothing else third-party was found" after scanning only code and licence headers; the evaluator failed it twice and found images, a logo, mockups and an embedded Marp runtime; a "nothing else" claim needs a stated method over every tracked file type, with counts that recompute. | UNPROMOTED |
