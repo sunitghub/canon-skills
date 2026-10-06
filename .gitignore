@@ -3,6 +3,8 @@
 HANDOFF.md
 DECISIONS.md
 DECISIONS-archive.md
+# The Cockpit's data dir: on a default install CANON_HOME is this clone, so cockpit/ sits inside it. Untracked, it made canon update refuse (t-97b1).
+/cockpit/
 # Opt-in headless-grader verdict cache (tools/gate-cache.sh) — always local, never shared.
 .canon-cache/
 pbcopy

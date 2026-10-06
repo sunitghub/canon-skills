@@ -190,6 +190,23 @@ assert_eq "0" "$code"; assert_contains "$out" "canon updated"
 assert_eq true "$(git -C "$WORK/shallow" rev-parse --is-shallow-repository)"
 assert_eq "$(git -C "$WORK/origin.git" rev-parse --short HEAD)" "$(git -C "$WORK/shallow" rev-parse --short HEAD)"
 assert_eq 2 "$(git -C "$WORK/shallow" rev-list --count HEAD)"
+# t-97b1: on a default install CANON_HOME is the clone, so the Cockpit data dir cockpit/ sits inside it. The repo's own .gitignore must ignore it,
+# or canon update refuses on every install that has run the Cockpit; a real stray file next to it must still be refused.
+git -C "$ROOT" check-ignore -q cockpit/projects.json || fail "the repo .gitignore must ignore /cockpit/ (the Cockpit data dir inside a default install)"
+cp "$ROOT/.gitignore" "$WORK/seed/.gitignore"; git -C "$WORK/seed" "${ident[@]}" add .gitignore && git -C "$WORK/seed" "${ident[@]}" commit -qm "real gitignore" && git -C "$WORK/seed" push -q origin main 2>/dev/null
+git clone -q "$WORK/origin.git" "$WORK/inst2" 2>/dev/null
+mkdir -p "$WORK/inst2/cockpit"; echo '{}' > "$WORK/inst2/cockpit/projects.json"
+assert_eq "" "$(git -C "$WORK/inst2" status --porcelain)"
+echo cockpit-news > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam cockpit-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
+: > "$REFRESH_LOG"
+set +e; out="$(CANON_HOME="$WORK/inst2" "$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"; assert_contains "$out" "canon updated"
+assert_eq "$(git -C "$WORK/origin.git" rev-parse --short HEAD)" "$(git -C "$WORK/inst2" rev-parse --short HEAD)"
+echo stray > "$WORK/inst2/stray.txt"
+echo more > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam more-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
+set +e; out="$(CANON_HOME="$WORK/inst2" "$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "Nothing was changed."
+rm -f "$WORK/inst2/stray.txt"
 ps="$("$CANON" completion powershell)"
 for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"
