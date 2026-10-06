@@ -12,7 +12,7 @@ if [ ! -d "$HOOKS_DIR" ]; then
   exit 0
 fi
 
-# ── post-commit: regenerate dist zips and commit if changed ──────────────────
+# ── post-commit: rebuild the Windows exes and commit if changed ──────────────────
 POST_COMMIT="$HOOKS_DIR/post-commit"
 cat > "$POST_COMMIT" << 'HOOK'
 #!/usr/bin/env bash
