@@ -57,7 +57,7 @@ function main() {
   } else {
     header(`Cloning canon → ${TARGET}`);
     fs.mkdirSync(path.dirname(TARGET), { recursive: true });
-    const r = spawnSync('git', ['clone', '--depth', '1', REPO, TARGET], { stdio: 'inherit' });
+    const r = spawnSync('git', ['clone', '--depth', '1', '--', REPO, TARGET], { stdio: 'inherit' });
     if (r.status !== 0) {
       console.error('\n  \x1b[31m✗\x1b[0m  Clone failed. Check your git config and try again.');
       process.exit(1);

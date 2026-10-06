@@ -180,6 +180,16 @@ if command -v zsh >/dev/null 2>&1; then
   zsh -n "$WORK/comp.zsh" || fail "canon-update: zsh completion has a syntax error"
   assert_eq "registered" "$(zsh -fc 'autoload -U compinit && compinit -u -d "$1/.zcompdump"; source "$2"; (( $+_comps[canon] )) && echo registered' _ "$WORK" "$WORK/comp.zsh")"
 fi
+# t-0d25: a depth-1 install (what install.sh now makes) updates with canon update, stays shallow and gains only the new commits
+git clone -q --depth 1 "file://$WORK/origin.git" "$WORK/shallow" 2>/dev/null
+assert_eq true "$(git -C "$WORK/shallow" rev-parse --is-shallow-repository)"
+echo shallow-news > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam shallow-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
+: > "$REFRESH_LOG"
+set +e; out="$("$WORK/shallow/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"; assert_contains "$out" "canon updated"
+assert_eq true "$(git -C "$WORK/shallow" rev-parse --is-shallow-repository)"
+assert_eq "$(git -C "$WORK/origin.git" rev-parse --short HEAD)" "$(git -C "$WORK/shallow" rev-parse --short HEAD)"
+assert_eq 2 "$(git -C "$WORK/shallow" rev-list --count HEAD)"
 ps="$("$CANON" completion powershell)"
 for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"

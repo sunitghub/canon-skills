@@ -33,7 +33,7 @@ assert_eq "/home/u/bar" "$(resolve /home/u '' '~/bar')"
 assert_eq "$PWD/rel" "$(resolve /home/u '' rel)"
 
 # ── t-0d25: a fresh install is a depth-1 clone, and the already-installed branch keeps updating it ───────────────────────────────────────────
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE CANON_REPO   # an ambient CANON_REPO would redirect the clones below
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 W="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$W"' EXIT
 up="$W/up"; mkdir -p "$up/tools" "$W/home"
@@ -52,8 +52,8 @@ assert_eq 4 "$(cat "$W/home/.canon/f")"
 # the command each installer runs, and the default remote: a stub git records its arguments and refuses
 mkdir -p "$W/stubs"; printf '#!/bin/sh\necho "$*" >> "%s"\nexit 1\n' "$W/git.log" > "$W/stubs/git"; chmod +x "$W/stubs/git"
 : > "$W/git.log"; PATH="$W/stubs:$PATH" HOME="$W/home" bash "$ROOT/install.sh" "$W/fresh-sh" >/dev/null 2>&1 && fail "a refused clone must fail the installer" || true
-assert_contains "$(cat "$W/git.log")" "clone --depth 1 https://github.com/sunitghub/canon-skills.git $W/fresh-sh"
+assert_contains "$(cat "$W/git.log")" "clone --depth 1 -- https://github.com/sunitghub/canon-skills.git $W/fresh-sh"
 : > "$W/git.log"; PATH="$W/stubs:$PATH" HOME="$W/home" node "$ROOT/bin/install.js" "$W/fresh-js" >/dev/null 2>&1 && fail "a refused clone must fail install.js" || true
-assert_contains "$(cat "$W/git.log")" "clone --depth 1 https://github.com/sunitghub/canon-skills.git $W/fresh-js"
+assert_contains "$(cat "$W/git.log")" "clone --depth 1 -- https://github.com/sunitghub/canon-skills.git $W/fresh-js"
 
 printf 'install-sh: ok\n'
