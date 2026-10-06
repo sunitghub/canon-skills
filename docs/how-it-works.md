@@ -92,3 +92,18 @@ canon's skills lean on **standing** delegation triggers written into `SKILL.md`/
 Check exposure: `claude --version` (only Opus 5 sessions are affected) and, if run on Opus, watch whether a task that should clearly hand off to a subagent actually dispatches one.
 
 canon installs zero Claude Code hooks by design (see Session Continuity above); the standing fix for this — a `UserPromptSubmit` hook that injects a delegation "request" every turn, satisfying the tool's own escape clause — is an opt-in per-user mitigation via the `update-config` skill, not something canon wires in automatically. Tracked in `t-643c`.
+
+## Not Just CRUD
+
+Most agent harnesses are demonstrated on todo apps and CRUD endpoints, where "correct" is obvious
+and a wrong answer is visibly wrong.
+
+canon's harder workout has been **standards-governed industrial work** — a knowledge-graph agent
+answering questions against [CFIHOS](https://www.jip36-cfihos.org/) (the IOGP capital-facilities
+handover specification) and ISO 14224 failure taxonomy, where every answer must cite a source and an
+uncited one is marked unverified.
+
+That domain punishes a harness differently. Correctness is *semantic*: a plausible, fluent, well-cited
+answer can still be wrong because a threshold came from the wrong source. Domain conventions are
+non-negotiable in ways no linter knows about. And the failure mode isn't a crash — it's an answer that
+looks authoritative and isn't. Adversarial review earns its cost fastest exactly there.

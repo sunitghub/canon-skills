@@ -44,7 +44,7 @@ If prompted to add canon tools to PATH, answer `y`, then run the printed `source
 
 Run `canon`. It opens the Cockpit at `http://127.0.0.1:8899/cockpit`; a second run focuses the same window. To use another port, run `canon <port>` or set `CANON_COCKPIT_PORT`.
 
-**Uninstall**
+### Uninstall
 
 Close the Cockpit window first (a running board blocks the uninstall), then:
 
@@ -153,3 +153,53 @@ To repair symlinks after an upgrade:
 ```bash
 skills.sh refresh /path/to/your-project
 ```
+
+## Requirements and Windows
+
+*Moved here from the README (t-cc30); relative links adjusted for this folder.*
+
+| Tool | Required | For |
+|---|---|---|
+| Claude Code / Codex / Pi | At least one | running the agent |
+| Git | Yes | clone/update canon |
+| Bash | Yes | CLI tools (`sprint`, `tkt`, `skills.sh`) |
+| Python 3 | `sprint-check` on macOS/Linux | the board — Windows uses the Go binary, no Python needed |
+| curl | macOS/Linux | fetching the prebuilt cockpit daemon (agent sessions) on install and `canon update`; checked against a SHA-256 in the clone before it runs. Go 1.26.5+ is only a fallback that builds it when the download is unavailable |
+
+**Windows 11 — no WSL, no git clone needed.** In PowerShell, run the one-liner. It offers to install Git for Windows (for its bash) with winget if missing, fetches canon as a zip into `%USERPROFILE%\.canon`, and adds `tools\` to your user PATH; re-running updates in place and keeps `cockpit\`:
+
+```powershell
+irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1 | iex
+```
+
+No PowerShell policy change is made. Prefer to read it first? Download `install.ps1`, open it, then run `powershell -ExecutionPolicy Bypass -File .\install.ps1` (process-scoped). From cmd: `curl.exe -fsSLO https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.cmd && install.cmd`. Set `$env:CANON_YES=1` to skip the Git prompt. Then open a new terminal and run `canon`.
+
+Already have a clone? Install [Git for Windows](https://git-scm.com/download/win), then:
+1. Run **`install.cmd`** once — double-click it, or run `install.cmd` from any terminal. It launches `install.ps1` for you and adds `tools/` to your user PATH. (Running `install.ps1` directly can fail with *"install.ps1 is not digitally signed … UnauthorizedAccess"* — that's Windows' PowerShell execution policy blocking unsigned scripts, not a canon bug. `install.cmd` sidesteps it with a process-scoped bypass; if you prefer the `.ps1`, run `powershell -ExecutionPolicy Bypass -File .\install.ps1`.)
+2. Use **Git Bash** to clone canon and run `git pull` to stay updated.
+3. Use **PowerShell** for everything else. Each command has a `.cmd` wrapper in `tools/`, so run it by name: `canon` or `sprint-check-win` opens the board, and `sprint`, `tkt` and `skills` (for example `skills refresh`) run canon's CLI through Git Bash for you.
+
+In a **Git Bash** window the same tools work too, but use the script names: `skills.sh refresh`, not `skills refresh` (Git Bash doesn't run `.cmd` files, and `tools/skills` is a folder). See **[fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11)** for the full setup.
+
+**Git for Windows is the only dependency on Windows.** canon never requires Python there:
+- `canon` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python.
+- `skills.sh` edits `.claude/settings.json` (the permission and deny rules) with Windows' built-in PowerShell.
+- `sprint`, `tkt` and the pre-commit hook use only bash.
+
+canon never *runs* a `python3` found under `…\AppData\Local\Microsoft\WindowsApps\`. That's an App execution alias, and on some machines running it downloads and installs Python. A test, `tests/no-python-windows-paths.sh`, fails if an end-user script starts depending on Python.
+
+### Windows: what's different
+
+- **The board runs the Go binary** (`sprint-check-win.exe`) unless a working Python is found, so a few board features behave differently from macOS/Linux.
+- **Command names depend on the shell:** PowerShell and cmd use the `.cmd` wrappers (`skills refresh`), Git Bash needs the script names (`skills.sh refresh`).
+
+Adding or removing a Windows gap? Update this list in the same change.
+
+Register canon in another project:
+
+```bash
+~/.canon/tools/skills.sh add sprint          # plan → build → ship (includes wrapup, handoff)
+~/.canon/tools/skills.sh add context-check   # optional: context-budget audits
+```
+
+**A project that isn't a git repo** (common for PM and design folders) is a first-class project: register it and start an agent as usual. canon records what the agent changed from a snapshot it keeps outside the folder (under `~/.canon/cockpit/changes/`), and the End dialog and the ticket's **Changes** panel show it in plain words. Each card on the Projects page also shows a git icon beside the project name (hidden if its status check fails), for version history you can opt into. Hover it for its state: *Git enabled — this project keeps a version history*, *Git not enabled — click to turn on version history*, or *Version history needs Git, which isn't installed on this computer* (the icon is disabled then). Click the "not enabled" icon and confirm, and canon creates a local history in that folder (`git init`, a `.gitignore`, and a first commit containing only that `.gitignore`). Nothing is uploaded and your files stay uncommitted. canon refuses if the folder already has a `.git` or sits inside another repository, and warns for iCloud Drive, Dropbox, OneDrive and Google Drive folders, where sync can damage that history.
