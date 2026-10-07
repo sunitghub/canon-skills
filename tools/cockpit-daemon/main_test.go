@@ -96,6 +96,11 @@ func seedTicketDir(t *testing.T, root, ticket string) {
 // as a t.Cleanup after ts.Close's, so it runs first (LIFO) and reaps
 // processes before the TempDirs referenced by projectRoot/stateDir/fakeSprint
 // are removed.
+//
+// t-c8be: it is also how a test ENDS a session mid-test. The daemon attaches a second start of the same ticket
+// to the first live session when the project-root strings are equal (liveSessionForTicket, main.go), so a test
+// that needs a second spawn for the same ticket must end the first one — it used to get one only by accident,
+// when a symlinked TMPDIR (macOS /var, /tmp) made the verbatim root differ from git's resolved path.
 func killAllSessions(s *server) {
 	s.mu.Lock()
 	sessions := make([]*session, 0, len(s.sessions))
@@ -3432,6 +3437,7 @@ func TestSpawnLogsSessionStartDedupsSameDay(t *testing.T) {
 	resp1.Body.Close()
 	first := waitFile(t, sessionsPath, 2*time.Second)
 
+	killAllSessions(s) // t-c8be: the second start must spawn, not attach to the first
 	resp2 := startSession(t, ts.URL, "t-ab12", bootTok)
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("want 200 on second start, got %d", resp2.StatusCode)
@@ -3451,6 +3457,7 @@ func TestSpawnLogsSessionStartDedupsSameDay(t *testing.T) {
 	}
 
 	// A different label (a worktree) on the same day must still append.
+	killAllSessions(s) // t-c8be
 	wt := gitWorktreeFixture(t, root)
 	seedTicketDir(t, wt, "t-ab12")
 	resp3 := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
@@ -3639,8 +3646,9 @@ func TestIdleReapUsesShorterTimeoutForWorktreeThanMainCheckout(t *testing.T) {
 	bin := fakeAgentThatIgnores(t)
 	root := t.TempDir()
 	seedTicketDir(t, root, "t-ab12")
+	seedTicketDir(t, root, "t-cd34") // t-c8be: one live session per ticket, so the worktree session needs its own ticket
 	wt := gitWorktreeFixture(t, root)
-	seedTicketDir(t, wt, "t-ab12") // t-e5ff: the worktree must physically hold the ticket dir to be startable
+	seedTicketDir(t, wt, "t-cd34") // t-e5ff: the worktree must physically hold the ticket dir to be startable
 	s := newServer(config{
 		token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
 		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 5 * time.Second, idleCheckInterval: 20 * time.Millisecond,
@@ -3655,7 +3663,7 @@ func TestIdleReapUsesShorterTimeoutForWorktreeThanMainCheckout(t *testing.T) {
 	json.NewDecoder(mainResp.Body).Decode(&mainOut)
 	mainResp.Body.Close()
 
-	wtResp := startSessionCwd(t, ts.URL, "t-ab12", wt, bootTok)
+	wtResp := startSessionCwd(t, ts.URL, "t-cd34", wt, bootTok)
 	var wtOut struct{ Session, Token string }
 	json.NewDecoder(wtResp.Body).Decode(&wtOut)
 	wtResp.Body.Close()
@@ -3713,6 +3721,7 @@ func TestSpawnResumeReusesPersistedCwd(t *testing.T) {
 		t.Fatalf("first start cwd = %q, want worktree %q", got, wt)
 	}
 
+	killAllSessions(s) // t-c8be: a resume happens after the first session ended, not beside it
 	writeTicketStatus(t, root, "t-ab12", "in_progress")
 	if err := os.Truncate(cwdFile, 0); err != nil {
 		t.Fatal(err)
@@ -3763,6 +3772,7 @@ func TestStartEchoesResolvedCwd(t *testing.T) {
 		t.Fatalf("worktree start echoed cwd = %q, want %q", got, wt)
 	}
 
+	killAllSessions(s) // t-c8be: end the worktree session, or this start would attach to it
 	// An empty request resolves to the main checkout — echoed as the daemon's
 	// projectRoot (resolveSpawnCwd returns it verbatim for the "" request; that
 	// is the directory the child actually spawns in).
@@ -3815,6 +3825,7 @@ func TestStartEchoesRequestedResolvedCwd(t *testing.T) {
 		t.Fatalf("requested %q != actual cwd %q — a symlink false positive would slip through", req, cwd)
 	}
 
+	killAllSessions(s) // t-c8be: end the worktree session, or this start would attach to it
 	// Empty request: requested is the main checkout (projectRoot), matching cwd.
 	cwd2, req2 := decode(startSession(t, ts.URL, "t-ab12", bootTok))
 	if req2 != root {

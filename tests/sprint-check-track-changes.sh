@@ -56,15 +56,19 @@ new_dir() {
 }
 
 # start_server <py|go> <default-root> <home> [path-override] → sets SERVER_PORT. Not via $(...) (t-8765).
+# git reads its global config ONLY from $home/.gitconfig (t-c8be): the rollback case plants a hook there, and a
+# caller's own GIT_CONFIG_GLOBAL / ~/.gitconfig must neither hide it nor leak in.
 start_server() {
   local kind="$1" dflt="$2" home="$3" path_env="${4:-$PATH}" port
   [[ "$BASH_SUBSHELL" == 0 ]] || { echo "FAIL: $FUNCNAME called in a subshell — its state would be lost (t-8765)" >&2; kill -TERM "$$"; exit 1; }
   port="$(free_port)"
   if [[ "$kind" == py ]]; then
     PATH="$path_env" HOME="$home" CANON_HOME="$home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$dflt" \
+      GIT_CONFIG_GLOBAL="$home/.gitconfig" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$home/.config" \
       "$PY3" "$SERVER_PY" "$port" >/dev/null 2>&1 &
   else
     PATH="$path_env" HOME="$home" CANON_HOME="$home/.canon" SPRINT_CHECK_NO_BROWSER=1 SPRINT_CHECK_ROOT="$dflt" \
+      GIT_CONFIG_GLOBAL="$home/.gitconfig" GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$home/.config" \
       "$GO_BIN" "$port" >/dev/null 2>&1 &
   fi
   PIDS+=("$!")
