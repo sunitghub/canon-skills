@@ -4417,7 +4417,7 @@ func loadModelTiers() map[string]any {
 			continue
 		}
 		var parsed map[string]any
-		if json.Unmarshal(data, &parsed) == nil {
+		if json.Unmarshal(data, &parsed) == nil && parsed != nil {
 			return parsed
 		}
 	}
