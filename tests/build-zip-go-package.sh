@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# build-zip-go-package (t-b9a7) — the Windows board must be built from the whole
-# tools/sprint-check-go package: building main.go alone silently leaves skilleval.go (Skill Eval)
-# out of sprint-check-win.exe. Also keeps GO111MODULE=off (a package dir without go.mod needs it)
-# and the t-5c20 version/commit stamping.
+# build-zip-go-package (t-b9a7, t-9383) — the Windows board must be built from the whole tools/sprint-check-go package:
+# building main.go alone silently leaves skilleval.go (Skill Eval) out of sprint-check-win.exe. The exe is built by
+# scripts/release-daemon.sh now (build_legacy: a staged module copy, so the bytes do not depend on the checkout path), and it
+# must keep the version/commit stamping (t-5c20) and the reproducibility flags.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
-f="$ROOT/scripts/build-zip.sh"
+f="$ROOT/scripts/release-daemon.sh"
 pkg="tools/sprint-check-go"
-line="$(grep -n 'tools/sprint-check-win.exe"' "$f" | head -1 | cut -d: -f1)" || true
-[[ -n "$line" ]] || fail "build-zip-go-package: no sprint-check-win.exe build in $f"
-seg="$(sed -n "$((line - 4)),$((line + 2))p" "$f" | grep -v '^[[:space:]]*#')"   # comments don't count
-grep -q 'go build' <<<"$seg" || fail "build-zip-go-package: no go build next to the sprint-check-win.exe output"
-grep -qF "./$pkg" <<<"$seg" || fail "build-zip-go-package: sprint-check-win.exe must build the whole Go board package"
-if grep -qF "$pkg/main.go" <<<"$seg"; then fail "build-zip-go-package: sprint-check-win.exe builds main.go alone (skilleval.go would be missing)"; fi
-grep -q 'GO111MODULE=off' <<<"$seg" || fail "build-zip-go-package: the package build needs GO111MODULE=off"
-grep -q -- '-X main.version=' <<<"$seg" && grep -q -- '-X main.commit=' <<<"$seg" || fail "build-zip-go-package: version/commit stamping (t-5c20) dropped"
+fn="$(sed -n '/^build_legacy()/,/^}/p' "$f" | grep -v '^[[:space:]]*#')"
+[[ -n "$fn" ]] || fail "build-zip-go-package: no build_legacy in $f"
+grep -qF "'*.go'" <<<"$fn" && grep -qF "! -name '*_test.go'" <<<"$fn" || fail "build-zip-go-package: build_legacy must stage every non-test .go file of the package (main.go alone would drop skilleval.go)"
+grep -q -- '-trimpath' <<<"$fn" && grep -q -- '-buildvcs=false' <<<"$fn" || fail "build-zip-go-package: -trimpath/-buildvcs=false dropped (the bytes would depend on the checkout path)"
+grep -q -- '-X main.version=' <<<"$fn" && grep -q -- '-X main.commit=' <<<"$fn" || fail "build-zip-go-package: version/commit stamping (t-5c20) dropped"
+grep -qE 'build_legacy +tools/sprint-check-go +sprint-check ' "$f" || fail "build-zip-go-package: the board exe is not built from $pkg"
+# the staging rule, run for real: both source files of the package would be in the exe
+staged="$(find "$ROOT/$pkg" -maxdepth 1 -name '*.go' ! -name '*_test.go' -exec basename {} \; | sort | tr '\n' ' ')"
+[[ "$staged" == *main.go* && "$staged" == *skilleval.go* ]] || fail "build-zip-go-package: staging would miss a source file ($staged)"
 echo "build-zip-go-package: ok"

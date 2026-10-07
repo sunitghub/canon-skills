@@ -186,7 +186,7 @@ announcing loudly that it did. Off by default (canon never *silently* reduces ga
 > **root commit** — which makes the whole tree look "changed." Tag a real baseline
 > (`git tag seed <commit>`) and pass `--base-ref seed` so the diff means "what this sprint
 > changed." Verified end-to-end on Windows-on-ARM (Git Bash `MINGW64_NT…ARM64`), where the
-> bundled x64 `sprint-headless-json-win.exe` runs under emulation and no `ANTHROPIC_API_KEY` is
+> fetched x64 `sprint-headless-json-win.exe` runs under emulation and no `ANTHROPIC_API_KEY` is
 > needed if `claude` is already logged in.
 
 **[Headless CI grading →](headless-ci.md)** — full prerequisites, the spec-file format, model/cost control, waivers, and consumer-project CI wiring.

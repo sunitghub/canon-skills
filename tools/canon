@@ -131,12 +131,27 @@ update_cmd() {
   branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
   [ "$branch" = main ] || { echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1; }
   before="$(git -C "$repo" rev-parse --short HEAD)"
+  # t-9383: the Windows exes are no longer committed, so a pull from the commit that dropped them deletes the old ones.
+  # Keep them aside until the fetch has put verified ones back, so a failed fetch never leaves the install without a board or daemon.
+  local bak=""
+  if _is_windows; then bak="$(mktemp -d)"; cp -p "$SCRIPT_DIR"/*-win.exe "$bak/" 2>/dev/null || true; fi
   if ! git -C "$repo" pull --ff-only --quiet; then
+    [ -z "$bak" ] || rm -rf "$bak"
     echo "canon update: $repo can't fast-forward (local commits, or no upstream). Nothing was changed." >&2; exit 1
   fi
   after="$(git -C "$repo" rev-parse --short HEAD)"
   if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
-  bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: the Cockpit daemon is missing or stale (see above); agent sessions need it." >&2
+  bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2
+  if [ -n "$bak" ]; then
+    local f
+    for f in "$bak"/*-win.exe; do
+      [ -e "$f" ] || continue
+      if [ ! -e "$SCRIPT_DIR/$(basename "$f")" ]; then
+        cp -p "$f" "$SCRIPT_DIR/" && echo "canon update: kept your previous $(basename "$f") (the fetch did not replace it)." >&2
+      fi
+    done
+    rm -rf "$bak"
+  fi
   refresh_projects
 }
 
@@ -327,7 +342,12 @@ main() {
   fi
 
   # t-60f7: a clone has no daemon binary until it is fetched; try once, never block the board on it
-  if ! _is_windows && [[ ! -x "$SCRIPT_DIR/cockpit-daemon/cockpit-daemon" && -z "${COCKPIT_DAEMON_BIN:-}" ]]; then
+  # The unix daemon is gitignored, and (t-9383) so are the Windows exes: fetch whatever is missing, never block the board on it.
+  if _is_windows; then
+    if [[ ! -f "$SCRIPT_DIR/cockpit-daemon-win.exe" || ! -f "$SCRIPT_DIR/sprint-check-win.exe" ]]; then
+      CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: a prebuilt binary is missing; agent sessions or the board may not start until it is fetched (canon update)." >&2
+    fi
+  elif [[ ! -x "$SCRIPT_DIR/cockpit-daemon/cockpit-daemon" && -z "${COCKPIT_DAEMON_BIN:-}" ]]; then
     CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet >&2 || echo "canon: starting without the daemon; agent sessions will not start until it is fetched (canon update)." >&2
   fi
 

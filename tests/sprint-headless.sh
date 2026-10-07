@@ -18,7 +18,7 @@ FAKE_WIN_EXE="$ROOT/tools/sprint-headless-json-win.exe"
 BACKED_UP_WIN_EXE=0
 # Trap-guaranteed, not just sequential cleanup: an assertion failure
 # (fail()/assert_contains exit on the spot under set -e) mid-mutation must
-# not leave the real, git-tracked win.exe corrupted in the working tree.
+# not leave the real win.exe corrupted in the working tree.
 # Also called directly right after the mutating test below, on the success
 # path, so the real binary isn't left swapped for the rest of the run.
 restore_win_exe_stub() {

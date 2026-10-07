@@ -266,6 +266,8 @@ Then follow the walkthrough exactly as on Linux/macOS — hooks, sprint flow, an
 1. In PowerShell: `irm https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1 | iex`. Pass when it explains Git Bash, prompts `[Y/n]`, warns about UAC, installs via winget, fetches canon, and prints `canon` as the next command.
 2. Answer `n` on a second clean VM (or with winget unavailable): it stops with the download link and the re-run command, and `~\.canon` does not exist.
 3. Re-run with `$env:CANON_YES=1`: no prompt, `~\.canon\cockpit` is kept, and the user PATH has one `tools\` entry.
+4. (t-9383) After the copy the installer prints `==> Fetching canon's prebuilt programs (checksum-verified)` and one `fetched … sha256 verified` line per exe; `tools\cockpit-daemon-win.exe`, `tools\sprint-check-win.exe` and `tools\sprint-headless-json-win.exe` exist and none is tracked by git. Pass when `canon` then starts the board with no Python and agent sessions start.
+5. (t-9383) Update over an install that still holds the old committed exes: `canon update` replaces them with the fetched ones. Unplug the network and run it again: the exes stay, the message names the failed download, and `canon` still starts.
 4. From cmd: `curl.exe -fsSLO https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.cmd && install.cmd` does the same. Also try the read-first path: download `install.ps1`, open it, then `powershell -ExecutionPolicy Bypass -File .\install.ps1`. Record date, Windows build and outcome here, then run the non-git steps below.
 
 **Result, 2026-09-30, Windows ARM64 VM, Git for Windows uninstalled and VM restarted** (run from branch `feat/t-8716`, `irm .../feat/t-8716/install.ps1 | iex`):

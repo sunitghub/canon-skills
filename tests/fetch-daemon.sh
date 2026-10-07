@@ -146,7 +146,7 @@ set +e; out="$(PATH="$STUBS:$BASEPATH" bash "$WORK/nogit/tools/fetch-daemon.sh" 
 
 # 9. who calls it, and the resolvers say the same thing
 assert_eq 1 "$(grep -c 'fetch-daemon.sh' "$ROOT/install.sh")"
-assert_eq 2 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update, and canon at start when the binary is missing
+assert_eq 3 "$(grep -c 'fetch-daemon.sh' "$ROOT/tools/canon")"   # canon update; canon at start for a missing unix daemon and for a missing Windows exe (t-9383)
 grep -qF 'CANON_FETCH_NO_BUILD=1 bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet' "$ROOT/tools/canon" || fail "canon at start must call the fetch with CANON_FETCH_NO_BUILD=1 so launching the board never compiles"
 msg='cockpit daemon binary not found; run `canon update` to fetch it'
 grep -qF "$msg" "$ROOT/tools/sprint-check-app/server.py" && grep -qF "$msg" "$ROOT/tools/sprint-check-go/main.go" || fail "the two boards must give the same missing-daemon message"
@@ -168,6 +168,7 @@ done
 # 11. release-daemon.sh --dry-run: builds four targets, prints the manifest lines, publishes and writes nothing; refuses a dirty daemon dir
 RR="$WORK/rel"; mkdir -p "$RR/scripts" "$RR/tools"; cp -R "$R/tools/cockpit-daemon" "$RR/tools/"; cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
 printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"; rm -f "$RR/tools/cockpit-daemon/cockpit-daemon"
+for d in sprint-check-go sprint-headless-json-go; do mkdir -p "$RR/tools/$d"; printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$RR/tools/$d/main.go"; done   # t-9383: the two Windows exes' sources
 git -C "$RR" init -q -b main; git -C "$RR" "${ident[@]}" add -A; git -C "$RR" "${ident[@]}" commit -qm seed
 rkey="$(git -C "$RR" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"
 cat > "$WORK/gostub/gh" <<'EOF'
@@ -177,6 +178,7 @@ EOF
 chmod +x "$WORK/gostub/gh"; : > "$STUB_LOG"
 out="$(PATH="$WORK/gostub:$STUBS:$BASEPATH" bash "$RR/scripts/release-daemon.sh" --dry-run 2>&1)" || fail "release dry run failed: $out"
 for t in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do assert_contains "$out" "$rkey $t "; done
+for t in windows-amd64 sprint-check-windows-amd64 sprint-headless-json-windows-amd64; do assert_contains "$out" " $t "; done   # t-9383
 assert_contains "$out" "dry run"; [[ ! -s "$STUB_LOG" ]] || fail "dry run called gh"; assert_eq "# header" "$(cat "$RR/tools/cockpit-daemon.sha256")"
 echo dirty >> "$RR/tools/cockpit-daemon/main.go"
 set +e; out="$(PATH="$WORK/gostub:$STUBS:$BASEPATH" bash "$RR/scripts/release-daemon.sh" --dry-run 2>&1)"; rc=$?; set -e

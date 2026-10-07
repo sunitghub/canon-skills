@@ -43,3 +43,5 @@ Vulnerability-Policy.md
 examples/
 .kiro/
 /.claude/agents
+# The Windows exes are release assets fetched by tools/fetch-daemon.sh, never committed (t-9383).
+/tools/*-win.exe

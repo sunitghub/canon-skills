@@ -74,6 +74,33 @@ function Install-CanonFiles($Dest) {
   }
 }
 
+# t-9383: the board, daemon and headless-helper exes are release assets, not part of the zip. tools\fetch-daemon.sh (run by Git Bash,
+# which canon needs anyway) downloads each one and moves it into place only after its SHA-256 matches tools\cockpit-daemon.sha256;
+# a failure leaves any exe that is already there untouched. Returns $false only when the board or the daemon exe is still missing.
+function Install-CanonBinaries($Dest) {
+  $ErrorActionPreference = "Continue"  # bash writes its messages to stderr; PowerShell 5.1 would turn each line into a terminating error under "Stop"
+  $bash = Find-GitBash
+  $fetch = Join-Path $Dest "tools\fetch-daemon.sh"
+  Write-Host "==> Fetching canon's prebuilt programs (checksum-verified)"
+  if ($bash -and (Test-Path $fetch)) {
+    & $bash $fetch 2>&1 | ForEach-Object { Write-Host "    $_" }
+  } else {
+    Write-Host "    Could not run the fetch (Git Bash or tools\fetch-daemon.sh not found)."
+  }
+  $board = Test-Path (Join-Path $Dest "tools\sprint-check-win.exe")
+  $daemon = Test-Path (Join-Path $Dest "tools\cockpit-daemon-win.exe")
+  if (-not (Test-Path (Join-Path $Dest "tools\sprint-headless-json-win.exe"))) {
+    Write-Warning "sprint-headless-json-win.exe was not fetched; headless runs (sprint-headless) need it. Run canon update to retry."
+  }
+  if (-not ($board -and $daemon)) {
+    Write-Host ""
+    Write-Host "canon needs its board and daemon programs and could not get them (see above). Check your internet connection, then run this again:"
+    Write-Host "  $RerunCmd"
+    return $false
+  }
+  return $true
+}
+
 $ScriptPath = $MyInvocation.MyCommand.Path
 $CanonRoot = if ($ScriptPath) { Split-Path -Parent $ScriptPath } else { $null }
 $Bootstrap = -not ($CanonRoot -and (Test-Path (Join-Path $CanonRoot "tools\canon.cmd")))
@@ -96,6 +123,7 @@ if ($Bootstrap) {
   } else {
     try { Install-CanonFiles $CanonRoot } catch { Write-Host "Install failed: $_"; $global:CanonInstallFailed = $true; return }
   }
+  if (-not (Install-CanonBinaries $CanonRoot)) { $global:CanonInstallFailed = $true; return }
 }
 
 $ToolsPath = Join-Path $CanonRoot "tools"

@@ -75,6 +75,20 @@ assert_eq "python $fake/sprint-check-app/server.py 4321" "$(started 0 0)"       
 assert_eq "python $fake/sprint-check-app/server.py 4321" "$(started 1 1)"       # macOS/Linux
 rm "$fake/sprint-check-win.exe"
 out="$(bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321' _ "$fake" 2>&1 || true)"
-assert_contains "$out" "run canon-win instead"
+assert_contains "$out" "run canon update"
+# t-9383: the exe is fetched, not committed: a missing exe triggers ONE quiet, no-build fetch; a fetch that provides it lets the board start
+printf '#!/usr/bin/env bash\necho "fetch args=$* nobuild=${CANON_FETCH_NO_BUILD:-}" >> "%s/fetchlog"\nprintf "#!/usr/bin/env bash\\necho started > \\"%s/started2\\"\\n" > "$(dirname "$0")/sprint-check-win.exe"; chmod +x "$(dirname "$0")/sprint-check-win.exe"\n' "$tmp" "$tmp" > "$fake/fetch-daemon.sh"
+rm -f "$tmp/fetchlog" "$tmp/started2"
+bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321; wait "$SERVER_PID"' _ "$fake" >/dev/null 2>&1 || true
+assert_eq "fetch args=--quiet nobuild=1" "$(cat "$tmp/fetchlog")"
+assert_eq "started" "$(cat "$tmp/started2")"
+# a fetch that fails leaves the old message, and the fetch is tried only once per start
+rm -f "$fake/sprint-check-win.exe" "$tmp/fetchlog"; printf '#!/usr/bin/env bash\necho x >> "%s/fetchlog"\nexit 1\n' "$tmp" > "$fake/fetch-daemon.sh"
+out="$(bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321' _ "$fake" 2>&1 || true)"
+assert_contains "$out" "run canon update"; assert_eq 1 "$(wc -l < "$tmp/fetchlog" | tr -d ' ')"
+# an exe that is already there is never re-fetched
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fake/sprint-check-win.exe"; chmod +x "$fake/sprint-check-win.exe"; rm -f "$tmp/fetchlog"
+bash -c 'source "$1/cockpit-launch-lib.sh"; _is_windows() { return 0; }; have_python() { return 1; }; start_cockpit_server 4321; wait "$SERVER_PID"' _ "$fake" >/dev/null 2>&1 || true
+[[ ! -e "$tmp/fetchlog" ]] || fail "an existing exe triggered a fetch"
 
 printf 'cockpit-launch-lib: ok\n'

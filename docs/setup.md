@@ -19,7 +19,7 @@ git clone --depth 1 https://github.com/sunitghub/canon-skills.git ~/.canon
 
 The one-line installer makes the same shallow clone (`--depth 1`): about 20 MB, not the roughly 415 MB of full history. `canon update` keeps working on it. For the full history of `main`, run `git -C ~/.canon fetch --unshallow`; other branches are not fetched by a shallow clone (`git -C ~/.canon remote set-branches origin '*'` then `git -C ~/.canon fetch` adds them).
 
-The Cockpit's agent sessions (Scratch, Start sprint) need the **cockpit daemon**, a small Go program. A clone has only its source, so the one-line installer, `canon update` and the first `canon` run fetch the prebuilt binary for your Mac or Linux machine from a canon-skills release and run it only after its SHA-256 matches `tools/cockpit-daemon.sha256`. If the download is unavailable they build it from source when Go 1.26.5 or newer is installed (`brew install go`), otherwise they print what to do. After a manual `git clone` or `git pull`, run `canon update` to fetch or refresh it. Windows ships its own `cockpit-daemon-win.exe`. Third-party licenses for the modules compiled into the daemon are in `THIRD-PARTY-NOTICES.md`.
+The Cockpit's agent sessions (Scratch, Start sprint) need the **cockpit daemon**, a small Go program. A clone has only its source, so the one-line installer, `canon update` and the first `canon` run fetch the prebuilt binary for your Mac or Linux machine from a canon-skills release and run it only after its SHA-256 matches `tools/cockpit-daemon.sha256`. If the download is unavailable they build it from source when Go 1.26.5 or newer is installed (`brew install go`), otherwise they print what to do. After a manual `git clone` or `git pull`, run `canon update` to fetch or refresh it. On Windows the same fetch provides `cockpit-daemon-win.exe`, `sprint-check-win.exe` (the board when there is no Python) and `sprint-headless-json-win.exe`: the installer and `canon update` download them, check each against `tools/cockpit-daemon.sha256`, and keep the ones you already have if a download fails (they are no longer committed). Third-party licenses for the modules compiled into the daemon are in `THIRD-PARTY-NOTICES.md`.
 
 **Custom location.** `CANON_HOME=/path/to/dir bash <(curl -fsSL https://getcanon.dev/install.sh)` installs to that folder instead of `~/.canon`.
 
@@ -186,7 +186,7 @@ Already have a clone? Install [Git for Windows](https://git-scm.com/download/win
 In a **Git Bash** window the same tools work too, but use the script names: `skills.sh refresh`, not `skills refresh` (Git Bash doesn't run `.cmd` files, and `tools/skills` is a folder). See **[fresh-machine-test.md → Windows 11](fresh-machine-test.md#windows-11)** for the full setup.
 
 **Git for Windows is the only dependency on Windows.** canon never requires Python there:
-- `canon` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python.
+- `canon` and `sprint-check` start the Go `sprint-check-win.exe` when there's no working Python. It is fetched and checksum-verified (not part of the repo); if it is missing, `canon` tries one quiet fetch before telling you to run `canon update`.
 - `skills.sh` edits `.claude/settings.json` (the permission and deny rules) with Windows' built-in PowerShell.
 - `sprint`, `tkt` and the pre-commit hook use only bash.
 

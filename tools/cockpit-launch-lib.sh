@@ -47,8 +47,12 @@ start_cockpit_server() {
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   if _is_windows && ! have_python; then
     local exe="$dir/sprint-check-win.exe"
+    # t-9383: the exe is fetched, not committed: try once, quietly and without building, before giving up.
     if [[ ! -f "$exe" ]]; then
-      echo "Error: no working Python and no $exe — run canon-win instead." >&2
+      CANON_FETCH_NO_BUILD=1 bash "$dir/fetch-daemon.sh" --quiet >&2 || true
+    fi
+    if [[ ! -f "$exe" ]]; then
+      echo "Error: no working Python and no $exe — run canon update (or the installer again) to fetch it." >&2
       return 1
     fi
     echo "No Python here — starting the Go board server (sprint-check-win.exe)." >&2

@@ -3,7 +3,7 @@ setlocal
 
 set "EXE=%~dp0sprint-check-win.exe"
 if not exist "%EXE%" (
-  echo Error: sprint-check-win.exe was not found.
+  echo Error: sprint-check-win.exe was not found. Run canon update (or the installer again) to fetch it.
   exit /b 1
 )
 

@@ -9,6 +9,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
+refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain '$2'; got: $1"; }
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -208,10 +209,52 @@ echo more > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam mor
 set +e; out="$(CANON_HOME="$WORK/inst2" "$WORK/inst2/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_contains "$out" "Nothing was changed."
 rm -f "$WORK/inst2/stray.txt"
+# ── t-9383: the Windows exes are not committed any more. A git install on Windows keeps its old exes until the fetch has put
+# verified ones back, so a failed fetch never leaves it without a board or daemon. (Windows is faked with a stub `uname`; the
+# fetcher is a stub the test controls: STUB_FETCH=ok writes new exes, fail writes nothing and exits 1.)
+WSTUB="$WORK/winstub"; mkdir -p "$WSTUB"; printf '#!/bin/sh\ncase "$1" in -s) echo MINGW64_NT-10.0 ;; *) echo MINGW64_NT-10.0 ;; esac\n' > "$WSTUB/uname"; chmod +x "$WSTUB/uname"
+cat > "$WORK/seed/tools/fetch-daemon.sh" <<'SH'
+#!/usr/bin/env bash
+echo "fetch $*" >> "$REFRESH_LOG.fetch"
+[ "${STUB_FETCH:-ok}" = ok ] || { echo "fetch-daemon: download failed (stub)" >&2; exit 1; }
+d="$(cd "$(dirname "$0")" && pwd)"
+for n in cockpit-daemon sprint-check sprint-headless-json; do echo "new-$n" > "$d/$n-win.exe"; done
+SH
+chmod +x "$WORK/seed/tools/fetch-daemon.sh"
+for n in cockpit-daemon sprint-check sprint-headless-json; do echo "old-$n" > "$WORK/seed/tools/$n-win.exe"; done
+git -C "$WORK/seed" "${ident[@]}" add -A -f && git -C "$WORK/seed" "${ident[@]}" commit -qm "tracked exes (the old way; -f: the real .gitignore now ignores them)" && git -C "$WORK/seed" push -q origin main 2>/dev/null
+out="$(STUB_FETCH=fail "$CANON" update 2>&1)" || fail "update to the tracked-exes commit failed: $out"   # the install now tracks the three exes
+[[ "$(cat "$INSTALL/tools/sprint-check-win.exe" 2>&1)" == old-sprint-check ]] || fail "the fixture install lacks the tracked exe: $out"
+# upstream drops them from git (the seed already carries the real .gitignore, which ignores them)
+git -C "$WORK/seed" "${ident[@]}" rm -q --cached tools/cockpit-daemon-win.exe tools/sprint-check-win.exe tools/sprint-headless-json-win.exe
+git -C "$WORK/seed" "${ident[@]}" commit -qm "exes are release assets now" && git -C "$WORK/seed" push -q origin main 2>/dev/null
+rm -f "$REFRESH_LOG.fetch"
+# the pull deletes the tracked exes; the fetch fails: the previous ones come back, and the user is told
+set +e; out="$(STUB_FETCH=fail PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
+for n in cockpit-daemon sprint-check sprint-headless-json; do assert_eq "old-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
+assert_contains "$out" "kept your previous sprint-check-win.exe"; assert_contains "$out" "download failed (stub)"
+assert_eq "fetch --quiet" "$(cat "$REFRESH_LOG.fetch")"; assert_eq "" "$(git -C "$INSTALL" status --porcelain)"
+# the next update with a working fetch replaces them (the fetcher writes new bytes over the kept ones)
+echo again > "$WORK/seed/NEWS2"; git -C "$WORK/seed" "${ident[@]}" add NEWS2; git -C "$WORK/seed" "${ident[@]}" commit -qm news3 && git -C "$WORK/seed" push -q origin main 2>/dev/null
+out="$(STUB_FETCH=ok PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"
+for n in cockpit-daemon sprint-check sprint-headless-json; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
+refute_contains "$out" "kept your previous"
+# a pull that cannot fast-forward leaves no backup folder behind and changes nothing
+echo local > "$INSTALL/LOCAL2"; git -C "$INSTALL" "${ident[@]}" add LOCAL2; git -C "$INSTALL" "${ident[@]}" commit -qm local2
+echo more3 > "$WORK/seed/NEWS3"; git -C "$WORK/seed" "${ident[@]}" add NEWS3; git -C "$WORK/seed" "${ident[@]}" commit -qm news4 && git -C "$WORK/seed" push -q origin main 2>/dev/null
+before_tmp="$(ls -d "${TMPDIR:-/tmp}"/tmp.* 2>/dev/null | wc -l | tr -d ' ')"
+set +e; out="$(PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "can't fast-forward"
+assert_eq "$before_tmp" "$(ls -d "${TMPDIR:-/tmp}"/tmp.* 2>/dev/null | wc -l | tr -d ' ')"
+for n in cockpit-daemon sprint-check sprint-headless-json; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
+g "$INSTALL" reset -q --hard origin/main~0 2>/dev/null || true; git -C "$INSTALL" reset -q --hard origin/main
+# macOS/Linux never touch exes: no backup, no restore message
+out="$("$CANON" update 2>&1)"; refute_contains "$out" "kept your previous"
+
 ps="$("$CANON" completion powershell)"
 for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"
 done
 set +e; "$CANON" completion fish >/dev/null 2>&1; code=$?; set -e
 assert_eq "2" "$code"
-echo "canon-update: ok (update guards + fast-forward + project refresh; bash/zsh completion work, PowerShell script complete, unknown shell refused)"
+echo "canon-update: ok (Windows exes kept across a failed fetch (t-9383); update guards + fast-forward + project refresh; bash/zsh completion work, PowerShell script complete, unknown shell refused)"
