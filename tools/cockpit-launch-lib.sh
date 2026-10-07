@@ -63,10 +63,14 @@ start_cockpit_server() {
 # board_up and canon status use). Returns 0 when it answers, 1 if the server process exited first,
 # 2 if nothing answered within CANON_BOARD_WAIT_SECS (default 10). A fixed sleep guessed the start time
 # and left Safari on "can't connect" after a cold start (t-302d).
+_board_wait_secs() {   # CANON_BOARD_WAIT_SECS if a positive integer, else 10; never feed the raw env value to bash arithmetic
+  local s="${CANON_BOARD_WAIT_SECS:-10}"
+  if [[ "$s" =~ ^[0-9]+$ && "$s" -gt 0 ]]; then echo "$s"; else echo 10; fi
+}
+
 wait_for_board() {
-  local port="$1" pid="$2" secs="${CANON_BOARD_WAIT_SECS:-10}" tries i
-  [[ "$secs" =~ ^[0-9]+$ ]] || secs=10   # never feed an env value to bash arithmetic unchecked
-  tries=$(( secs * 10 ))
+  local port="$1" pid="$2" tries i
+  tries=$(( $(_board_wait_secs) * 10 ))
   for ((i = 0; i < tries; i++)); do
     kill -0 "$pid" 2>/dev/null || return 1
     if command -v curl >/dev/null 2>&1; then

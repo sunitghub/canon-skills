@@ -405,6 +405,10 @@ run_launcher() {
   ! lsof -iTCP:"$lp" -sTCP:LISTEN -t >/dev/null 2>&1 || fail "canon: a stub board is still listening on $lp after the launcher ended"
 }
 
+for pair in "abc:10" "0:10" "-3:10" "2:2" "12:12" ':10'; do   # the window is a positive integer, else 10 (never raw env into arithmetic)
+  [[ "$(CANON_BOARD_WAIT_SECS="${pair%%:*}" bash -c 'source "$1"; _board_wait_secs' _ "$LT/cockpit-launch-lib.sh")" == "${pair##*:}" ]] \
+    || fail "canon: _board_wait_secs for '${pair%%:*}' should be ${pair##*:}"
+done
 for d in 0.2 1.5 3.0; do
   run_launcher serve "$d" 10
   [[ "$(printf '%s\n' "$L_OPENS" | grep -c '^OPEN ')" == 1 ]] || fail "canon: board answering after ${d}s: want exactly 1 browser open, got: $L_OPENS ($L_OUT)"

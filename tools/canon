@@ -344,7 +344,7 @@ main() {
     0) ;;
     1) trap - INT TERM EXIT; echo "canon: the board exited before it was ready (its output is above)." >&2; exit 1 ;;
     *) trap - INT TERM EXIT; kill "$SERVER_PID" 2>/dev/null || true
-       echo "canon: the board did not answer on port $port within ${CANON_BOARD_WAIT_SECS:-10}s." >&2; exit 1 ;;
+       echo "canon: the board did not answer on port $port within $(_board_wait_secs)s." >&2; exit 1 ;;
   esac
   open_browser "$url"
   wait "$SERVER_PID"
