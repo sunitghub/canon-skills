@@ -3959,6 +3959,7 @@ func cockpitRunningBuild(addr string) map[string]any {
 	defer resp.Body.Close()
 	var v struct {
 		Version         string `json:"version"`
+		Commit          any    `json:"commit"`
 		ExeMtime        int64  `json:"exe_mtime"`
 		UptimeSecs      int64  `json:"uptime_secs"`
 		DebugEnabled    bool   `json:"debug_enabled"`
@@ -3968,7 +3969,12 @@ func cockpitRunningBuild(addr string) map[string]any {
 	if json.NewDecoder(resp.Body).Decode(&v) != nil {
 		return nil
 	}
-	return map[string]any{"version": v.Version, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled,
+	// t-4487: the build stamp `cockpit-daemon --version` prints; "" for an older daemon or a non-string (parity with server.py, capped at 64 characters)
+	commit, _ := v.Commit.(string)
+	if r := []rune(commit); len(r) > 64 {
+		commit = string(r[:64])
+	}
+	return map[string]any{"version": v.Version, "commit": commit, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled,
 		"idle_timeout_secs": v.IdleTimeout, "idle_timeout_main_secs": v.IdleTimeoutMain}
 }
 

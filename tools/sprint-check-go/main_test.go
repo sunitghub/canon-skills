@@ -1474,6 +1474,28 @@ func TestCockpitRunningBuildPassesReaperTimeouts(t *testing.T) {
 	}
 }
 
+// t-4487: running_build carries the daemon's build stamp (`commit`) so Help > Versions can show `0.3.0 (0e2fd866)`;
+// "" for a daemon that sends none, a non-string, or null; capped at 64 characters. Mirrors tests/canon.sh for server.py.
+func TestCockpitRunningBuildPassesCommit(t *testing.T) {
+	long := strings.Repeat("é", 100)
+	for _, c := range []struct{ body, want string }{
+		{`{"version":"0.3.0","commit":"0e2fd866"}`, "0e2fd866"},
+		{`{"version":"0.3.0"}`, ""},
+		{`{"version":"0.3.0","commit":null}`, ""},
+		{`{"version":"0.3.0","commit":12345}`, ""},
+		{`{"version":"0.3.0","commit":["a"]}`, ""},
+		{`{"version":"0.3.0","commit":{"x":1}}`, ""},
+		{`{"version":"0.3.0","commit":"` + long + `"}`, strings.Repeat("é", 64)},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, c.body) }))
+		got := cockpitRunningBuild(strings.TrimPrefix(srv.URL, "http://"))
+		srv.Close()
+		if got == nil || got["commit"] != c.want || got["version"] != "0.3.0" {
+			t.Errorf("running_build for %.60s = %v, want commit %.20q", c.body, got, c.want)
+		}
+	}
+}
+
 // t-5df2: Admin > Model Tiers edits go to the Cockpit data dir; the tracked seed is read-only.
 func TestModelTiersSavesToDataDirNotSeed(t *testing.T) {
 	dir := t.TempDir()

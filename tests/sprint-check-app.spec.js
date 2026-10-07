@@ -11949,4 +11949,53 @@ test.describe('Canon Cockpit help', () => {
     await page.locator('#help-btn').click();
     await expect(page.locator('#hv-canon')).toHaveText('v9.9.9');
   });
+
+  // t-4487: the daemon row names the exact build (`version (commit)`, what `cockpit-daemon --version` prints) whether or not a daemon
+  // is running. It used to be overwritten with the bare semver from /api/cockpit's running_build once a daemon was up.
+  test.describe('Versions: the cockpit-daemon row (t-4487)', () => {
+    async function daemonRow(page, { version, cockpit }) {
+      await page.route('**/api/version', route => version === 'abort' ? route.abort()
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ version: '9.9.9', commit: 'abc1234', daemon: version }) }));
+      await page.route('**/api/cockpit', route => cockpit === 'abort' ? route.abort()
+        : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, stale: false, running_build: cockpit }) }));
+      await page.goto(BASE + '/cockpit');
+      await expect(page.locator('#help-btn')).toBeVisible();
+      await page.locator('#help-btn').click();
+      await expect(page.locator('.help-panel')).toBeVisible();
+    }
+    const cases = [
+      ['both stamped: the running build wins', { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: '0e2fd866' } }, '0.3.0 (0e2fd866)'],
+      ['an older daemon (no commit) keeps the stamped /api/version string', { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: '' } }, '0.3.0 (23efca20)'],
+      ['/api/version failed: the running build still names the stamp', { version: 'abort', cockpit: { version: '0.3.0', commit: '0e2fd866' } }, '0.3.0 (0e2fd866)'],
+      ['/api/cockpit unreachable: the stamped string stays', { version: '0.3.0 (23efca20)', cockpit: 'abort' }, '0.3.0 (23efca20)'],
+      ['no commit anywhere: the bare version fills an empty row', { version: '', cockpit: { version: '0.3.0', commit: '' } }, '0.3.0'],
+      ['a dev build prints like --version does', { version: 'dev (dev)', cockpit: { version: 'dev', commit: 'dev' } }, 'dev (dev)'],
+    ];
+    for (const [name, args, want] of cases) {
+      test(name, async ({ page }) => {
+        await daemonRow(page, args);
+        await expect(page.locator('#hv-daemon')).toHaveText(want);
+      });
+    }
+    // rendered, not just present: the stamped row stays on one line inside the panel in both themes at a desktop and a phone width
+    for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
+      for (const theme of ['dark', 'light']) {
+        test(`the stamped row fits on one line (${vp.width}px, ${theme})`, async ({ page }) => {
+          await page.setViewportSize(vp);
+          await daemonRow(page, { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: '0e2fd866' } });
+          await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+          await expect(page.locator('#hv-daemon')).toHaveText('0.3.0 (0e2fd866)');
+          // one evaluate, so the row and the panel are measured at the same instant (the panel slides in: separate boundingBox calls can straddle the animation)
+          const m = await page.evaluate(() => {
+            const e = document.getElementById('hv-daemon'), p = document.querySelector('.help-panel');
+            const r = e.getBoundingClientRect(), pr = p.getBoundingClientRect(), cs = getComputedStyle(e);
+            return { h: r.height, lh: parseFloat(cs.lineHeight) || 20, right: r.right, panelRight: pr.right, color: cs.color, bg: getComputedStyle(p).backgroundColor };
+          });
+          expect(m.h).toBeLessThan(m.lh * 1.6);             // one line
+          expect(m.right).toBeLessThanOrEqual(m.panelRight + 0.5);  // inside the panel
+          expect(m.color).not.toBe(m.bg);                   // readable against its background
+        });
+      }
+    }
+  });
 });

@@ -2557,7 +2557,9 @@ def _cockpit_running_build(addr: str) -> dict | None:
     try:
         with urllib.request.urlopen(f'http://{addr}/version', timeout=0.4) as r:
             data = json.loads(r.read().decode('utf-8'))
+        commit = data.get('commit', '')   # t-4487: the build stamp `cockpit-daemon --version` prints; "" for an older daemon or a non-string
         return {'version': str(data.get('version', '')),
+                'commit': commit[:64] if isinstance(commit, str) else '',
                 'exe_mtime': int(data.get('exe_mtime', 0)),
                 'uptime_secs': int(data.get('uptime_secs', 0)),
                 'debug_enabled': bool(data.get('debug_enabled', False)),

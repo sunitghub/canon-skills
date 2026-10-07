@@ -847,7 +847,7 @@ class H(BaseHTTPRequestHandler):
             self.send_response(200); self.end_headers(); self.wfile.write(b'ok')
         elif self.path == '/version':
             self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers()
-            self.wfile.write(json.dumps({'version': 'stub', 'exe_mtime': M}).encode())
+            self.wfile.write(json.dumps({'version': 'stub', 'commit': 'abc12345', 'exe_mtime': M}).encode())
         else:
             self.send_response(404); self.end_headers()
     def log_message(self, *a): pass
@@ -887,6 +887,37 @@ ck_cmp true  || fail "sprint-check-api-parity: FAIL — /api/cockpit stale-true 
 python3 -c "import os,sys; os.utime(sys.argv[1], (1000000000, 1000000000))" "$CK_BIN"
 ck_cmp false || fail "sprint-check-api-parity: FAIL — /api/cockpit stale-false parity"
 
+# t-4487: both backends carry the daemon's build stamp in running_build (the Help > Versions row shows `version (commit)`)
+for port in "$PY_PORT" "$GO_PORT"; do
+  got="$(curl -s "http://127.0.0.1:$port/api/cockpit" | python3 -c 'import json,sys; print(json.load(sys.stdin)["running_build"]["commit"])')"
+  [[ "$got" == "abc12345" ]] || fail "sprint-check-api-parity: FAIL — port $port /api/cockpit running_build.commit is '$got', want abc12345"
+done
+kill "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
+# an older daemon whose /version has no commit: "" in both
+CK_STUB_PORT="$(free_port)"
+python3 - "$CK_STUB_PORT" <<'PY' >/dev/null 2>&1 &
+import sys, json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/healthz':
+            self.send_response(200); self.end_headers(); self.wfile.write(b'ok')
+        elif self.path == '/version':
+            self.send_response(200); self.send_header('Content-Type', 'application/json'); self.end_headers()
+            self.wfile.write(json.dumps({'version': 'old', 'exe_mtime': 1000000000}).encode())
+        else:
+            self.send_response(404); self.end_headers()
+    def log_message(self, *a): pass
+HTTPServer(('127.0.0.1', int(sys.argv[1])), H).serve_forever()
+PY
+CK_STUB_PID=$!
+for _ in $(seq 1 50); do curl -s -o /dev/null "http://127.0.0.1:$CK_STUB_PORT/healthz" && break; sleep 0.1; done
+printf '{"addr":"127.0.0.1:%s","token":"x"}' "$CK_STUB_PORT" > "$CK_STATE/daemon.json"
+ck_cmp false || fail "sprint-check-api-parity: FAIL — /api/cockpit parity with a daemon that sends no commit"
+for port in "$PY_PORT" "$GO_PORT"; do
+  got="$(curl -s "http://127.0.0.1:$port/api/cockpit" | python3 -c 'import json,sys; print(repr(json.load(sys.stdin)["running_build"]["commit"]))')"
+  [[ "$got" == "''" ]] || fail "sprint-check-api-parity: FAIL — port $port running_build.commit for an old daemon is $got, want empty"
+done
 kill "$CK_STUB_PID" 2>/dev/null || true; CK_STUB_PID=""
 rm -f "$CK_STATE/daemon.json"
 

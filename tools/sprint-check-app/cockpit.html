@@ -954,7 +954,13 @@
     // daemon build (best-effort) from /api/cockpit running_build
     try{ const ck=await (await fetch('/api/cockpit')).json();
       const rb=ck&&ck.running_build;
-      if(rb&&rb.version) document.getElementById('hv-daemon').textContent=rb.version;
+      if(rb&&rb.version){
+        // t-4487: show the same string `cockpit-daemon --version` prints. A running build without a commit (an older daemon) must not
+        // wipe a stamped string /api/version already filled in; it only fills an empty row.
+        const el=document.getElementById('hv-daemon');
+        if(rb.commit) el.textContent=rb.version+' ('+rb.commit+')';
+        else if(el.textContent.trim()==='\u2014') el.textContent=rb.version;
+      }
     }catch(e){}
   }
   document.addEventListener('DOMContentLoaded',()=>{

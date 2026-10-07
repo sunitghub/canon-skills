@@ -360,6 +360,28 @@ for body, want in [
     assert got and (got['idle_timeout_secs'], got['idle_timeout_main_secs']) == want and got['version'] == 'v', got
 PY
 
+# t-4487: running_build carries the daemon's build stamp (`commit`) so Help > Versions can show `0.3.0 (0e2fd866)`; "" for an older
+# daemon, a non-string or null, capped at 64 characters, and never an exception. Mirrors TestCockpitRunningBuildPassesCommit.
+python3 - "$ROOT/tools/sprint-check-app" <<'PY' || fail "canon: running_build must pass the daemon's commit through (\"\" when absent or not a string)"
+import http.server, json, sys, threading
+sys.path.insert(0, sys.argv[1])
+import server
+cases = [({'version': '0.3.0', 'commit': '0e2fd866'}, '0e2fd866'), ({'version': '0.3.0'}, ''), ({'version': '0.3.0', 'commit': None}, ''),
+         ({'version': '0.3.0', 'commit': 12345}, ''), ({'version': '0.3.0', 'commit': ['a']}, ''), ({'version': '0.3.0', 'commit': {'x': 1}}, ''),
+         ({'version': '0.3.0', 'commit': 'é' * 100}, 'é' * 64)]
+for body, want in cases:
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            data = json.dumps(body).encode()
+            self.send_response(200); self.send_header('Content-Length', str(len(data))); self.end_headers(); self.wfile.write(data)
+        def log_message(self, *a): pass
+    srv = http.server.HTTPServer(('127.0.0.1', 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    got = server._cockpit_running_build('127.0.0.1:%d' % srv.server_address[1])
+    srv.shutdown()
+    assert got is not None and got['commit'] == want and got['version'] == '0.3.0', (body, got)
+PY
+
 # ── t-302d: the browser opens only once the board answers /api/version ────────
 # A copy of the launcher with a stub server.py (starts answering after STUB_DELAY, or exits at once, or never
 # listens) and a stub opener that records whether the port answered AT THE MOMENT it was called.
