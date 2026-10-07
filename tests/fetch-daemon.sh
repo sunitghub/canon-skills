@@ -109,13 +109,13 @@ reset; printf '%s darwin-arm64 %s\n' "ffffffffffff" "$GOODSHA" > "$R/tools/cockp
 reset; printf '%s darwin-arm64 %s\n' "$key" "${GOODSHA:0:63}" > "$R/tools/cockpit-daemon.sha256"; export STUB_ASSET="$GOOD"; fetch   # all hex but too short
 [[ "$rc" == 1 && ! -s "$STUB_LOG" && ! -e "$BIN" ]] || fail "a short checksum was accepted: $out"
 
-# 7. platform mapping, including every spelling of the CPU, and an unsupported CPU; Windows (Git Bash) does nothing
+# 7. platform mapping, including every spelling of the CPU, and an unsupported CPU; Windows (Git Bash) is covered by tests/fetch-win-binaries.sh
 for spec in "Darwin arm64 darwin-arm64" "Darwin x86_64 darwin-amd64" "Linux aarch64 linux-arm64" "Linux x86_64 linux-amd64" "Linux amd64 linux-amd64"; do
   set -- $spec; reset; manifest "$GOODSHA" "$3"; export STUB_ASSET="$GOOD" STUB_OS="$1" STUB_ARCH="$2"; fetch
   [[ "$rc" == 0 ]] || fail "$spec failed ($rc): $out"; assert_contains "$(cat "$STUB_LOG")" "cockpit-daemon-$3"
 done
 reset; export STUB_ARCH=riscv64; fetch; [[ "$rc" == 1 ]]; assert_contains "$out" "no prebuilt daemon for CPU 'riscv64'"
-reset; export STUB_OS=MINGW64_NT-10.0; fetch; [[ "$rc" == 0 && -z "$out" && ! -s "$STUB_LOG" ]] || fail "Windows must be a silent no-op: $out"
+reset; export STUB_OS=MINGW64_NT-10.0; fetch; [[ "$rc" == 1 && ! -s "$STUB_LOG" ]] || fail "Windows with no released binaries must fail without downloading (t-9383; the real cases are in tests/fetch-win-binaries.sh): $out"
 reset
 
 # 7b. the key is the daemon folder's tree hash, so it survives a shallow clone and later unrelated commits (a last-commit key would not)
