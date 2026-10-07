@@ -1444,8 +1444,15 @@ fr_project="$(make_project)"
   "$TKT" close "$fid" --no-sprint >/dev/null
   fr_ticket late; fr_report "$head1"
   echo '| row |' >> LEARNINGS.md; git add LEARNINGS.md; git commit -qm "learnings"
-  echo 'zz' > dist/a.zip; echo 'xx' > tools/cockpit-daemon-win.exe; git add dist tools; git commit -qm "hook artifacts"
+  echo 'zz' > dist/a.zip; git add dist; git commit -qm "hook artifacts"
   echo 'scratch' > untracked-scratch.txt
+  assert_contains "$(fr_complete)" "Sprint completed: $fid"
+
+  # a tracked exe changed after grading is stale now: no hook commits those any more (t-9383)
+  fr_ticket exe; fr_report "$(git rev-parse HEAD)"
+  echo 'changed' > tools/cockpit-daemon-win.exe; git add tools; git commit -qm "exe changed"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "tools/cockpit-daemon-win.exe"
+  git reset -q --hard HEAD~1
   assert_contains "$(fr_complete)" "Sprint completed: $fid"
 
   # an uncommitted edit to a tracked code file is stale too
@@ -1481,12 +1488,9 @@ fr_project="$(make_project)"
 )
 rm -rf "$fr_project"
 
-# t-1b74: the allow-list names the same hook-built artifacts as scripts/install-hooks.sh (they are a second copy of ARTIFACT_PATHS)
-art_line="$(grep '^ARTIFACT_PATHS=' "$ROOT/scripts/install-hooks.sh")"
-art_line="${art_line#ARTIFACT_PATHS=(}"; art_line="${art_line%)*}"
-for art in $art_line; do
-  sed 's/\\//g' "$ROOT/tools/sprint" | grep -qF "$art" || fail "tools/sprint's late-path list is missing the hook artifact $art (scripts/install-hooks.sh ARTIFACT_PATHS)"
-done
+# t-1b74, t-9383: the post-commit hook commits no artifacts any more, so the allow-list must not exempt any (a change to a tracked exe after grading is stale)
+grep -q 'ARTIFACT_PATHS' "$ROOT/scripts/install-hooks.sh" && fail "scripts/install-hooks.sh must not list hook artifacts any more (t-9383)"
+sed 's/\\//g' "$ROOT/tools/sprint" | grep -qE 'win\.exe' && fail "tools/sprint's late-path list still exempts a Windows exe, which no hook commits any more"
 
 # t-1b74: shared fixture for the repository-shape cases below
 fr_gate_docs() { # <ticket dir> <jsonl file> <run-id> <graded-head>

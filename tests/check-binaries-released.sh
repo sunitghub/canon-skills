@@ -2,6 +2,7 @@
 # check-binaries-released (t-9383): scripts/check-binaries-released.sh is the push guard — red whenever a binary's source changed
 # without its release, green when every component's newest manifest line names the current source tree.
 set -euo pipefail
+export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches the tools/sprint-check-go source path
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 WORK="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$WORK"' EXIT
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 XDG_CONFIG_HOME="$WORK/xdg"

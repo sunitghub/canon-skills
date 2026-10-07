@@ -134,7 +134,7 @@ update_cmd() {
   # t-9383: the Windows exes are no longer committed, so a pull from the commit that dropped them deletes the old ones.
   # Keep them aside until the fetch has put verified ones back, so a failed fetch never leaves the install without a board or daemon.
   local bak=""
-  if _is_windows; then bak="$(mktemp -d)"; cp -p "$SCRIPT_DIR"/*-win.exe "$bak/" 2>/dev/null || true; fi
+  if _is_windows; then bak="$(mktemp -d "${TMPDIR:-/tmp}/canon-update-bak.XXXXXX")"; cp -p "$SCRIPT_DIR"/*-win.exe "$bak/" 2>/dev/null || true; fi
   if ! git -C "$repo" pull --ff-only --quiet; then
     [ -z "$bak" ] || rm -rf "$bak"
     echo "canon update: $repo can't fast-forward (local commits, or no upstream). Nothing was changed." >&2; exit 1

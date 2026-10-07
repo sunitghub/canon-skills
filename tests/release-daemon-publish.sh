@@ -4,6 +4,7 @@
 # assets a release lacks, never overwrite one, verify every asset by downloading it back, and write the manifest last, newest
 # line last. Real Go cross-builds of tiny stub packages, so the build flags and paths are exercised for real.
 set -euo pipefail
+export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches the tools/sprint-check-go source path
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 command -v go >/dev/null 2>&1 || { echo "release-daemon-publish: go absent: skipped"; exit 0; }
 WORK="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$WORK"' EXIT

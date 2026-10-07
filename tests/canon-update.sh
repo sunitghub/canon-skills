@@ -242,10 +242,10 @@ refute_contains "$out" "kept your previous"
 # a pull that cannot fast-forward leaves no backup folder behind and changes nothing
 echo local > "$INSTALL/LOCAL2"; git -C "$INSTALL" "${ident[@]}" add LOCAL2; git -C "$INSTALL" "${ident[@]}" commit -qm local2
 echo more3 > "$WORK/seed/NEWS3"; git -C "$WORK/seed" "${ident[@]}" add NEWS3; git -C "$WORK/seed" "${ident[@]}" commit -qm news4 && git -C "$WORK/seed" push -q origin main 2>/dev/null
-before_tmp="$(ls -d "${TMPDIR:-/tmp}"/tmp.* 2>/dev/null | wc -l | tr -d ' ')"
+export TMPDIR="$WORK/updtmp"; mkdir -p "$TMPDIR"   # the backup folder is made under TMPDIR: count it there
 set +e; out="$(PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "can't fast-forward"
-assert_eq "$before_tmp" "$(ls -d "${TMPDIR:-/tmp}"/tmp.* 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'canon-update-bak.*' | wc -l | tr -d ' ')"; unset TMPDIR
 for n in cockpit-daemon sprint-check sprint-headless-json; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
 g "$INSTALL" reset -q --hard origin/main~0 2>/dev/null || true; git -C "$INSTALL" reset -q --hard origin/main
 # macOS/Linux never touch exes: no backup, no restore message

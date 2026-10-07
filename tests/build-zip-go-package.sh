@@ -4,6 +4,7 @@
 # scripts/release-daemon.sh now (build_legacy: a staged module copy, so the bytes do not depend on the checkout path), and it
 # must keep the version/commit stamping (t-5c20) and the reproducibility flags.
 set -euo pipefail
+export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches the tools/sprint-check-go source path
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 f="$ROOT/scripts/release-daemon.sh"

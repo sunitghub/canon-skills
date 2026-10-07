@@ -3,6 +3,7 @@
 # its SHA-256 equals the committed manifest line, and never touches an exe that is already there when something fails.
 # Everything runs in a throwaway repo with stub curl/uname; each "exe" is a script that leaves a marker if it is ever executed.
 set -euo pipefail
+export SPRINT_CHECK_NO_BROWSER=1   # no board starts here; tests/no-browser-in-tests.sh matches the tools/sprint-check-go source path
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
 WORK="$(cd "$(mktemp -d)" && pwd -P)"

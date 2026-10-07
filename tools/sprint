@@ -582,11 +582,11 @@ _gate_eval_report_consistency() {
 # a forgotten re-grade, not a lying evaluator (same stance as _gate_eval_report_consistency). Fails closed on a missing, ambiguous or
 # non-commit value; skipped where git cannot be asked (no repository or no commit yet). eval_override does not bypass it: the override
 # covers a failing verdict, not stale evidence. Untracked files are ignored: a tree always has some, and sprint files are committed
-# before grading (complete.md step 1). The paths below are written after grading by design (complete.md steps 6-8) or are rebuilt by the
-# post-commit hook; anything else an agent touches after grading is stale.
+# before grading (complete.md step 1). The paths below are written after grading by design (complete.md steps 6-8), or are dist/ from
+# older checkouts (the post-commit hook commits nothing now, t-9383); anything else an agent touches after grading is stale.
 _gate_eval_report_fresh() {
   local id="$1" tdir="$2" report="$tdir/eval-report.md" heads graded changed n shown
-  local late_re='^(\.tickets/|LEARNINGS\.md$|LEARNINGS-archive\.md$|DECISIONS\.md$|DECISIONS-archive\.md$|HANDOFF\.md$|PROMOTED\.md$|AGENTS\.md$|(.+/)?CLAUDE\.md$|\.claude/subagent-runs\.jsonl$|dist/|tools/sprint-check-win\.exe$|tools/sprint-headless-json-win\.exe$|tools/cockpit-daemon-win\.exe$)'
+  local late_re='^(\.tickets/|LEARNINGS\.md$|LEARNINGS-archive\.md$|DECISIONS\.md$|DECISIONS-archive\.md$|HANDOFF\.md$|PROMOTED\.md$|AGENTS\.md$|(.+/)?CLAUDE\.md$|\.claude/subagent-runs\.jsonl$|dist/)'
   local wroot proot ptop rel
   # The caller's OWN worktree, not project_root (which maps a linked worktree back to the main checkout): the graded commit and the
   # sprint's changes live in the worktree the sprint ran in. project_root only locates the project subtree inside its repository.
