@@ -41,12 +41,20 @@ done
 ( cd "$REPO_ROOT/tools/cockpit-daemon" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
     -ldflags "-s -w -X main.version=$semver -X main.commit=${full_d:0:8}" -o "$out/cockpit-daemon-windows-amd64.exe" . )
 lines="$lines$key_d windows-amd64 $(sha256_of "$out/cockpit-daemon-windows-amd64.exe")"$'\n'
-# The board and the headless helper are legacy packages (no go.mod), built from the repo root.
-( cd "$REPO_ROOT" && GO111MODULE=off CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
-    -ldflags "-s -w -X main.version=$semver -X main.commit=${full_b:0:8}" -o "$out/sprint-check-windows-amd64.exe" ./tools/sprint-check-go )
+# The board and the headless helper are legacy packages (no go.mod, stdlib only). GOPATH-mode builds leak the checkout path
+# into the binary even with -trimpath (live-checked: three checkouts gave three hashes), so build them as a module from a
+# staged copy of their sources: same code, a fixed module path, and the same bytes anywhere.
+build_legacy() { # <source dir under the repo> <module name> <commit stamp> <output file>
+  local stage; stage="$(mktemp -d)"
+  find "$REPO_ROOT/$1" -maxdepth 1 -name '*.go' ! -name '*_test.go' -exec cp {} "$stage/" \;
+  printf 'module canon/%s\n\ngo %s\n' "$2" "$(go env GOVERSION | sed 's/^go//')" > "$stage/go.mod"
+  ( cd "$stage" && GOTOOLCHAIN=local GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
+      -ldflags "-s -w -X main.version=$semver -X main.commit=$3" -o "$4" . )
+  rm -rf "$stage"
+}
+build_legacy tools/sprint-check-go sprint-check "${full_b:0:8}" "$out/sprint-check-windows-amd64.exe"
 lines="$lines$key_b sprint-check-windows-amd64 $(sha256_of "$out/sprint-check-windows-amd64.exe")"$'\n'
-( cd "$REPO_ROOT" && GO111MODULE=off CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
-    -ldflags "-s -w -X main.version=$semver -X main.commit=${full_h:0:8}" -o "$out/sprint-headless-json-windows-amd64.exe" ./tools/sprint-headless-json-go )
+build_legacy tools/sprint-headless-json-go sprint-headless-json "${full_h:0:8}" "$out/sprint-headless-json-windows-amd64.exe"
 lines="$lines$key_h sprint-headless-json-windows-amd64 $(sha256_of "$out/sprint-headless-json-windows-amd64.exe")"$'\n'
 cp "$REPO_ROOT/THIRD-PARTY-NOTICES.md" "$out/THIRD-PARTY-NOTICES.md"
 
