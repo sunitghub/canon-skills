@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-07-2026 14:52
+learnings-sweep last run: 10-07-2026 18:13
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-07 | [t-9383](.tickets/t-9383/learnings.md) | `-trimpath` alone does not make a GOPATH-mode `go build` reproducible (three checkouts gave three hashes); build as a staged module and prove it by hashing from two checkout paths, and give a fetcher's temp file a cleanup that runs after every failure branch, not only before the one that was tested. | UNPROMOTED |
 | 2026-10-07 | [t-c8be](.tickets/t-c8be/learnings.md) | A test that passes only on the maintainer's machine usually leans on ambient state (a global git config, the real log file, a symlinked TMPDIR that hid a same-key collision): reproduce it under `env -i` with empty HOME/TMPDIR and prove each fix with its own revert mutant. | UNPROMOTED |
 | 2026-10-07 | [t-302d](.tickets/t-302d/learnings.md) | A test's "no leftover process" check must observe the thing that can leak (the stub that never listens passed an lsof check while a killed-kill mutant survived): record the pid and `kill -0` it, and prove each cleanup assertion with its own revert mutant. | UNPROMOTED |
 | 2026-10-07 | [t-5df2](.tickets/t-5df2/learnings.md) | Two backends loading the same user file diverge on edge shapes (valid-JSON non-object, literal `null`: Python fell back to the seed, Go returned null); a parity test must feed the corrupt-copy shapes, not only valid saves. | UNPROMOTED |
