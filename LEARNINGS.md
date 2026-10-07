@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 23:30
+learnings-sweep last run: 10-06-2026 21:47
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-07 | [t-5df2](.tickets/t-5df2/learnings.md) | Two backends loading the same user file diverge on edge shapes (valid-JSON non-object, literal `null`: Python fell back to the seed, Go returned null); a parity test must feed the corrupt-copy shapes, not only valid saves. | UNPROMOTED |
 | 2026-10-06 | [t-70a2](.tickets/t-70a2/learnings.md) | A kill path needs identity re-verified AT the signal (a prompt sits between probe and kill), a zombie reads as gone, a wait value must survive `$(( ))` ('08' is octal), the command must refuse when it runs inside the process it stops, and any test of delete-code must pin TMPDIR/XDG/state env plus a canary or it deletes the real state of the machine it runs on; each review round found a new class, so test every rejected spelling, not only the one that bit | UNPROMOTED |
 | 2026-10-06 | [t-97b1](.tickets/t-97b1/learnings.md) | A user-state dir inside a git clone (a default install's CANON_HOME) must be gitignored or every clean-tree guard refuses; already-stuck installs run their OLD tool, so the way out must be a command that does not depend on the fixed tool (a plain git pull); and look for the same class again: any tracked file the app writes at runtime (model-tiers.json) | UNPROMOTED |
 | 2026-10-06 | [t-04e2](.tickets/t-04e2/learnings.md) | No lesson: a one-line link change graded clean by both gates; the evaluator only noted other sessions' untracked folders in the shared checkout. | UNPROMOTED |
