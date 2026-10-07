@@ -17,6 +17,7 @@ cp "$ROOT/tools/fetch-daemon.sh" "$R/tools/"
 for d in cockpit-daemon sprint-check-go sprint-headless-json-go; do printf 'package main\n// %s\n' "$d" > "$R/tools/$d/main.go"; done
 printf 'module x\n\ngo 1.26.5\n' > "$R/tools/cockpit-daemon/go.mod"; echo 0.3.0 > "$R/VERSION"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
+printf '/tools/*-win.exe\n' >> "$R/.git/info/exclude"   # as the repo's own .gitignore does: a fetched exe is not a dirty tree
 k_d="$(git -C "$R" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"
 k_b="$(git -C "$R" rev-parse HEAD:tools/sprint-check-go | cut -c1-12)"
 k_h="$(git -C "$R" rev-parse HEAD:tools/sprint-headless-json-go | cut -c1-12)"
@@ -130,6 +131,28 @@ git -C "$R" reset -q --hard HEAD~1
 
 # 7. the destination is a directory: refuse, exit 1, no leftovers
 clean; manifest; mkdir -p "$B"; run_fetch; [[ "$rc" == 1 ]] || fail "directory destination must fail: $out"; refute_contains "$out" "fetched sprint-check-windows-amd64"; no_leftovers; rm -rf "$B"
+
+# 7b. the source-build fallback (Go present, download unavailable): a failing build leaves no temp file in tools/ (git would call the clone
+# dirty and canon update would refuse) and keeps an existing exe; a working build installs all three. Stub go: -o <file> gets a marker script.
+mkdir -p "$WORK/gostub"
+cat > "$WORK/gostub/go" <<'EOF2'
+#!/bin/sh
+[ "$1" = env ] && { echo go1.99.0; exit 0; }
+while [ $# -gt 0 ]; do [ "$1" = -o ] && out="$2"; shift; done
+[ "${STUB_GO_FAIL:-0}" = 0 ] || exit 1
+printf '#!/bin/sh\n# built\n' > "$out"
+EOF2
+chmod +x "$WORK/gostub/go"
+run_fetch_go() { rm -f "$MARK"; : > "$STUB_LOG"; set +e; out="$(PATH="$WORK/gostub:$STUBS:/usr/bin:/bin" bash "$R/tools/fetch-daemon.sh" 2>&1)"; rc=$?; set -e; }
+clean; manifest; printf 'OLD' > "$B"; export STUB_CURL_RC=22 STUB_GO_FAIL=1; run_fetch_go
+[[ "$rc" == 1 ]] || fail "failing source builds must exit 1 (got $rc): $out"; assert_eq OLD "$(cat "$B")"; no_leftovers
+assert_contains "$out" "building from source failed"
+dirty="$(git -C "$R" status --porcelain tools | grep -v 'tools/cockpit-daemon.sha256$' || true)"
+[[ -z "$dirty" ]] || fail "a failed build left files that git sees: $dirty"
+unset STUB_GO_FAIL; clean; manifest; export STUB_CURL_RC=22; run_fetch_go
+[[ "$rc" == 0 ]] || fail "working source builds must provide the exes (got $rc): $out"
+[[ -f "$D" && -f "$B" && -f "$H" ]] || fail "a working build did not install all three exes"; assert_contains "$out" "built from source"; no_leftovers
+unset STUB_CURL_RC STUB_GO_FAIL; clean
 
 # 8. malformed manifests, a few hundred random lines: never an install, never a crash
 for i in $(seq 1 200); do

@@ -91,7 +91,7 @@ try_download() {
   url="$RELEASE_BASE/$TAG-$key/$ASSET"
   curl -fsSL --connect-timeout 10 --max-time 120 -o "$tmp" "$url" 2>/dev/null || { fail_reason="download failed ($url)"; return 1; }
   got="$(sha256_of "$tmp")" || { fail_reason="no sha256sum or shasum to verify the download"; return 1; }
-  [ "$got" = "$want" ] || { fail_reason="the download does not match its checksum (got ${got:0:12}…, want ${want:0:12}…); it was discarded"; return 1; }
+  [ "$got" = "$want" ] || { fail_reason="the download does not match its checksum (got ${got:0:12}..., want ${want:0:12}...); it was discarded"; return 1; }
   install_tmp || return 1
   say "fetched $TARGET $key, sha256 verified"
 }
@@ -168,6 +168,7 @@ while IFS='|' read -r LABEL SRC TARGET ASSET TAG rel required VERSION_CHECK; do
   if ! fetch_one; then
     if [ "$required" = 1 ]; then rc=1; fi
   fi
+  cleanup; tmp=""   # a failed source build or move must not leave its temp file for the next component (or in the clone, where git would call it dirty)
 done <<EOF
 $COMPONENTS
 EOF

@@ -100,4 +100,4 @@ done <<EOF
 $lines
 EOF
 printf '%s' "$lines" >> "$tmpm"; mv "$tmpm" "$MANIFEST"
-echo "release-daemon: published cockpit-daemon-$key_d, sprint-check-$key_b, sprint-headless-json-$key_h and updated tools/cockpit-daemon.sha256; commit it, then push to public"
+echo "release-daemon: published cockpit-daemon-$key_d, sprint-check-$key_b, sprint-headless-json-$key_h and updated tools/cockpit-daemon.sha256; commit it, run scripts/check-binaries-released.sh --download, then push to public"

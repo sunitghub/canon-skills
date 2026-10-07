@@ -2219,9 +2219,9 @@ import urllib.request
 
 def _resolve_cockpit_daemon(os_name: str = os.name) -> str:
     """COCKPIT_DAEMON_BIN overrides (tests point at a stub); otherwise the first
-    existing of the platform candidates. On Windows the shipped, git-tracked
-    tools/cockpit-daemon-win.exe (built by scripts/build-zip.sh, mirroring the
-    sprint-check-win.exe convention) comes first, then the dev build
+    existing of the platform candidates. On Windows the fetched, checksum-verified
+    tools/cockpit-daemon-win.exe (a release asset put there by tools/fetch-daemon.sh,
+    t-9383; not committed) comes first, then the dev build
     tools/cockpit-daemon/cockpit-daemon.exe. On Unix it is the built
     tools/cockpit-daemon/cockpit-daemon. Parity with sprint-check-go's
     resolveCockpitDaemon/cockpitDaemonCandidates. os_name is a parameter (not read

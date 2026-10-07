@@ -226,8 +226,8 @@ else
     exit 1
   fi
 
-  # On Windows, python3 isn't bundled with Git for Windows — use the committed
-  # Go binary instead when running there and present; every other platform
+  # On Windows, python3 isn't bundled with Git for Windows — use the fetched
+  # Go binary (canon update, t-9383) instead when running there and present; every other platform
   # (and Windows with the binary absent, e.g. an older checkout) keeps using
   # python3 unchanged. Never try to exec the Windows PE binary on macOS/Linux —
   # it would just fail with "cannot execute binary file".
@@ -253,7 +253,7 @@ result = d.get("result", "").replace(chr(10), chr(2))
 print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
 ')"
   else
-    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present — it wasn't found). Hard-failing." >&2
+    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present — it wasn't found; run canon update to fetch it). Hard-failing." >&2
     exit 1
   fi
   IS_ERROR="$(echo "$PARSED" | cut -f1)"
