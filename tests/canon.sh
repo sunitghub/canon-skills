@@ -369,6 +369,7 @@ echo 0.0.0 > "$WORK/VERSION"
 cat > "$LT/sprint-check-app/server.py" <<'PY'
 import http.server, os, sys, time
 port = int(sys.argv[1]); mode = os.environ.get('STUB_MODE', 'serve')
+open(os.environ['STUB_PIDFILE'], 'w').write(str(os.getpid()))
 if mode == 'exit': sys.exit(3)
 if mode == 'never': time.sleep(600)
 time.sleep(float(os.environ.get('STUB_DELAY', '0')))
@@ -391,8 +392,8 @@ free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",
 # run_launcher <mode> <delay> <wait_secs> -> sets L_OUT, L_CODE, L_OPENS (the opener log); never leaves a server behind
 run_launcher() {
   local mode="$1" delay="$2" wait="$3" lp lpid
-  lp="$(free_port)"; : > "$WORK/open2.log"
-  CC_PORT="$lp" CC_OPEN_LOG="$WORK/open2.log" STUB_MODE="$mode" STUB_DELAY="$delay" CANON_BOARD_WAIT_SECS="$wait" \
+  lp="$(free_port)"; : > "$WORK/open2.log"; rm -f "$WORK/stub.pid"
+  STUB_PIDFILE="$WORK/stub.pid" CC_PORT="$lp" CC_OPEN_LOG="$WORK/open2.log" STUB_MODE="$mode" STUB_DELAY="$delay" CANON_BOARD_WAIT_SECS="$wait" \
     COCKPIT_DAEMON_BIN=/bin/true PATH="$WORK/ostub:$PATH" "$LT/canon" "$lp" >"$WORK/launch.out" 2>&1 &
   lpid=$!
   if [[ "$mode" == serve ]]; then   # the launcher blocks after opening: wait for the opener, then stop it
@@ -402,7 +403,9 @@ run_launcher() {
   L_CODE=0; wait "$lpid" 2>/dev/null || L_CODE=$?
   L_OUT="$(cat "$WORK/launch.out")"; L_OPENS="$(cat "$WORK/open2.log")"
   sleep 0.2
-  ! lsof -iTCP:"$lp" -sTCP:LISTEN -t >/dev/null 2>&1 || fail "canon: a stub board is still listening on $lp after the launcher ended"
+  # the stub records its pid even when it never listens, so a leftover process is caught in every mode
+  [[ -s "$WORK/stub.pid" ]] || fail "canon: the stub board never started (mode $mode)"
+  ! kill -0 "$(cat "$WORK/stub.pid")" 2>/dev/null || fail "canon: the stub board (pid $(cat "$WORK/stub.pid"), mode $mode) is still running after the launcher ended"
 }
 
 for pair in "abc:10" "0:10" "-3:10" "2:2" "12:12" ':10'; do   # the window is a positive integer, else 10 (never raw env into arithmetic)
