@@ -58,6 +58,7 @@ tests=(
   "$ROOT/tests/fetch-daemon.sh"
   "$ROOT/tests/fetch-win-binaries.sh"
   "$ROOT/tests/check-binaries-released.sh"
+  "$ROOT/tests/release-daemon-publish.sh"
   "$ROOT/tests/sprint-check-upkeep.sh"
   "$ROOT/tests/upkeep-skill-hash-parity.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"
