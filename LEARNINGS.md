@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-07-2026 11:23
+learnings-sweep last run: 10-07-2026 14:52
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-07 | [t-c8be](.tickets/t-c8be/learnings.md) | A test that passes only on the maintainer's machine usually leans on ambient state (a global git config, the real log file, a symlinked TMPDIR that hid a same-key collision): reproduce it under `env -i` with empty HOME/TMPDIR and prove each fix with its own revert mutant. | UNPROMOTED |
 | 2026-10-07 | [t-302d](.tickets/t-302d/learnings.md) | A test's "no leftover process" check must observe the thing that can leak (the stub that never listens passed an lsof check while a killed-kill mutant survived): record the pid and `kill -0` it, and prove each cleanup assertion with its own revert mutant. | UNPROMOTED |
 | 2026-10-07 | [t-5df2](.tickets/t-5df2/learnings.md) | Two backends loading the same user file diverge on edge shapes (valid-JSON non-object, literal `null`: Python fell back to the seed, Go returned null); a parity test must feed the corrupt-copy shapes, not only valid saves. | UNPROMOTED |
 | 2026-10-06 | [t-70a2](.tickets/t-70a2/learnings.md) | A kill path needs identity re-verified AT the signal (a prompt sits between probe and kill), a zombie reads as gone, a wait value must survive `$(( ))` ('08' is octal), the command must refuse when it runs inside the process it stops, and any test of delete-code must pin TMPDIR/XDG/state env plus a canary or it deletes the real state of the machine it runs on; each review round found a new class, so test every rejected spelling, not only the one that bit | UNPROMOTED |
