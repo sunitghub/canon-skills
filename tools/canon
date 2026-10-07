@@ -338,7 +338,14 @@ main() {
 
   start_cockpit_server "$port" || exit 1
   trap 'kill "$SERVER_PID" 2>/dev/null; exit 0' INT TERM EXIT
-  sleep 0.4
+  local up=0
+  wait_for_board "$port" "$SERVER_PID" || up=$?
+  case "$up" in
+    0) ;;
+    1) trap - INT TERM EXIT; echo "canon: the board exited before it was ready (its output is above)." >&2; exit 1 ;;
+    *) trap - INT TERM EXIT; kill "$SERVER_PID" 2>/dev/null || true
+       echo "canon: the board did not answer on port $port within ${CANON_BOARD_WAIT_SECS:-10}s." >&2; exit 1 ;;
+  esac
   open_browser "$url"
   wait "$SERVER_PID"
 }

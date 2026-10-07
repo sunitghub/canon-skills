@@ -59,6 +59,26 @@ start_cockpit_server() {
   SERVER_PID=$!
 }
 
+# wait_for_board <port> <server_pid> — block until the board answers /api/version (the probe
+# board_up and canon status use). Returns 0 when it answers, 1 if the server process exited first,
+# 2 if nothing answered within CANON_BOARD_WAIT_SECS (default 10). A fixed sleep guessed the start time
+# and left Safari on "can't connect" after a cold start (t-302d).
+wait_for_board() {
+  local port="$1" pid="$2" secs="${CANON_BOARD_WAIT_SECS:-10}" tries i
+  [[ "$secs" =~ ^[0-9]+$ ]] || secs=10   # never feed an env value to bash arithmetic unchecked
+  tries=$(( secs * 10 ))
+  for ((i = 0; i < tries; i++)); do
+    kill -0 "$pid" 2>/dev/null || return 1
+    if command -v curl >/dev/null 2>&1; then
+      curl -s -f -o /dev/null --max-time 1 "http://127.0.0.1:$port/api/version" && return 0
+    else
+      _port_in_use "$port" && return 0
+    fi
+    sleep 0.1
+  done
+  return 2
+}
+
 # JSON string escaping for a filesystem path (backslash and double quote; paths carry no control chars).
 _json_escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 

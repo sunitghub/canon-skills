@@ -360,4 +360,63 @@ for body, want in [
     assert got and (got['idle_timeout_secs'], got['idle_timeout_main_secs']) == want and got['version'] == 'v', got
 PY
 
-echo "canon: ok (single-instance no-2nd-server; /cockpit serves Projects page with section bar + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iv Upkeep view — nav/view/project-picker/report-grid/single-detail-panel present, all 4 skills, Agent picker shows Pi/Copilot disabled not omitted, Model defaults Haiku 4.5, client never writes directly to standards/ or critique/canon-learnings.md; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs; t-340d hide dotfolders by default + Show-hidden toggle; t-07c8 git relaxed to a warning + no-store HTML; t-5849 canon-styled cockpitConfirm replaces native confirm/prompt; t-5c3c soft nudge to register sprint skill on explicit project open, session-scoped dismiss, no restore-time banner storm)"
+# ── t-302d: the browser opens only once the board answers /api/version ────────
+# A copy of the launcher with a stub server.py (starts answering after STUB_DELAY, or exits at once, or never
+# listens) and a stub opener that records whether the port answered AT THE MOMENT it was called.
+LT="$WORK/launch-tools"; mkdir -p "$LT/sprint-check-app" "$WORK/ostub"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$LT/"
+echo 0.0.0 > "$WORK/VERSION"
+cat > "$LT/sprint-check-app/server.py" <<'PY'
+import http.server, os, sys, time
+port = int(sys.argv[1]); mode = os.environ.get('STUB_MODE', 'serve')
+if mode == 'exit': sys.exit(3)
+if mode == 'never': time.sleep(600)
+time.sleep(float(os.environ.get('STUB_DELAY', '0')))
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+    def log_message(self, *a): pass
+http.server.HTTPServer(('127.0.0.1', port), H).serve_forever()
+PY
+for o in open xdg-open; do
+  cat > "$WORK/ostub/$o" <<'SH'
+#!/usr/bin/env bash
+if curl -s -f -o /dev/null --max-time 1 "http://127.0.0.1:$CC_PORT/api/version"; then s=UP; else s=DOWN; fi
+echo "OPEN $1 $s" >> "$CC_OPEN_LOG"
+SH
+  chmod +x "$WORK/ostub/$o"
+done
+free_port() { python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()'; }
+
+# run_launcher <mode> <delay> <wait_secs> -> sets L_OUT, L_CODE, L_OPENS (the opener log); never leaves a server behind
+run_launcher() {
+  local mode="$1" delay="$2" wait="$3" lp lpid
+  lp="$(free_port)"; : > "$WORK/open2.log"
+  CC_PORT="$lp" CC_OPEN_LOG="$WORK/open2.log" STUB_MODE="$mode" STUB_DELAY="$delay" CANON_BOARD_WAIT_SECS="$wait" \
+    COCKPIT_DAEMON_BIN=/bin/true PATH="$WORK/ostub:$PATH" "$LT/canon" "$lp" >"$WORK/launch.out" 2>&1 &
+  lpid=$!
+  if [[ "$mode" == serve ]]; then   # the launcher blocks after opening: wait for the opener, then stop it
+    for _ in $(seq 1 120); do [[ -s "$WORK/open2.log" ]] && break; sleep 0.1; done
+    sleep 0.3; kill "$lpid" 2>/dev/null || true
+  fi
+  L_CODE=0; wait "$lpid" 2>/dev/null || L_CODE=$?
+  L_OUT="$(cat "$WORK/launch.out")"; L_OPENS="$(cat "$WORK/open2.log")"
+  sleep 0.2
+  ! lsof -iTCP:"$lp" -sTCP:LISTEN -t >/dev/null 2>&1 || fail "canon: a stub board is still listening on $lp after the launcher ended"
+}
+
+for d in 0.2 1.5 3.0; do
+  run_launcher serve "$d" 10
+  [[ "$(printf '%s\n' "$L_OPENS" | grep -c '^OPEN ')" == 1 ]] || fail "canon: board answering after ${d}s: want exactly 1 browser open, got: $L_OPENS ($L_OUT)"
+  [[ "$L_OPENS" == *" UP" ]] || fail "canon: browser opened before the board answered (delay ${d}s): $L_OPENS"
+done
+
+run_launcher exit 0 10
+[[ -z "$L_OPENS" && "$L_CODE" == 1 ]] || fail "canon: board that exits at once: want no open and exit 1, got code $L_CODE opens '$L_OPENS'"
+[[ "$L_OUT" == *"exited before it was ready"* ]] || fail "canon: exited-board message missing: $L_OUT"
+
+run_launcher never 0 2
+[[ -z "$L_OPENS" && "$L_CODE" == 1 ]] || fail "canon: board that never answers: want no open and exit 1, got code $L_CODE opens '$L_OPENS'"
+[[ "$L_OUT" == *"did not answer on port"* ]] || fail "canon: timeout message missing: $L_OUT"
+
+echo "canon: ok (t-302d browser opens only after /api/version answers (0.2/1.5/3.0 s starts, dead board, silent board); single-instance no-2nd-server; /cockpit serves Projects page with section bar + Add + quote-safe escaping; Phase 2a tab bar + iframe /?project= + localStorage persistence + project-scoped card stats; app.html carries the project fetch wrapper + theme sync; Phase 3 embed marker strips version/daemon/theme/help, keeps CI, folder-path breadcrumb, scoped to canon-proj-embed not body.embed; Phase 2b-i Admin view — daemon status/version/uptime/restart + 3 tiles incl Active projects + sessions list, reusing existing endpoints, uptime_secs plumbed; shell Help/tour overlay wired to the footer button + Versions from existing endpoints; Phase 2b-iv Upkeep view — nav/view/project-picker/report-grid/single-detail-panel present, all 4 skills, Agent picker shows Pi/Copilot disabled not omitted, Model defaults Haiku 4.5, client never writes directly to standards/ or critique/canon-learnings.md; Phase 2b-iii in-tab agent session reuse + live-session poller + guarded closeTab/close-warn modal + scoped beforeunload + origin-checked shell→board Save&End bridge; t-7485/t-96c3 per-project Skills row + register efficiency/sprint from IMPORTANT_SKILLS, reordered meta, divider, larger actions, red ✕; t-65b0 board blue-grey dark theme (light untouched) + embed rail hide + card bottom-row/tooltips; t-1b88 Add-Project Browse folder picker via /api/browse-dirs; t-340d hide dotfolders by default + Show-hidden toggle; t-07c8 git relaxed to a warning + no-store HTML; t-5849 canon-styled cockpitConfirm replaces native confirm/prompt; t-5c3c soft nudge to register sprint skill on explicit project open, session-scoped dismiss, no restore-time banner storm)"
