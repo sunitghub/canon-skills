@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-06-2026 22:00
+learnings-sweep last run: 10-06-2026 23:30
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-06 | [t-70a2](.tickets/t-70a2/learnings.md) | A kill path needs identity re-verified AT the signal (a prompt sits between probe and kill), a zombie reads as gone, a wait value must survive `$(( ))` ('08' is octal), the command must refuse when it runs inside the process it stops, and any test of delete-code must pin TMPDIR/XDG/state env plus a canary or it deletes the real state of the machine it runs on; each review round found a new class, so test every rejected spelling, not only the one that bit | UNPROMOTED |
 | 2026-10-06 | [t-97b1](.tickets/t-97b1/learnings.md) | A user-state dir inside a git clone (a default install's CANON_HOME) must be gitignored or every clean-tree guard refuses; already-stuck installs run their OLD tool, so the way out must be a command that does not depend on the fixed tool (a plain git pull); and look for the same class again: any tracked file the app writes at runtime (model-tiers.json) | UNPROMOTED |
 | 2026-10-06 | [t-04e2](.tickets/t-04e2/learnings.md) | No lesson: a one-line link change graded clean by both gates; the evaluator only noted other sessions' untracked folders in the shared checkout. | UNPROMOTED |
 | 2026-10-06 | [t-0d25](.tickets/t-0d25/learnings.md) | A depth-1 clone is single-branch, so docs promising "full history" must say main only (unshallow alone adds no other branches; set-branches then fetch does); an env override added to a production installer for tests needs a `--` before the URL and an `unset` in the test; the number in a doc goes stale when another change shrinks the tree (28 to 20 MiB), so keep it in one place | UNPROMOTED |
