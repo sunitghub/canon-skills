@@ -41,7 +41,7 @@ TICKETS_DIR  = PROJECT_ROOT / '.tickets'
 HANDOFF_FILE = PROJECT_ROOT / 'HANDOFF.md'
 APP_HTML     = Path(__file__).parent / 'app.html'
 COCKPIT_HTML = Path(__file__).parent / 'cockpit.html'
-MODEL_TIERS_PATH = Path(__file__).parent / 'model-tiers.json'
+MODEL_TIERS_PATH = Path(__file__).parent / 'model-tiers.json'  # tracked seed; read-only (t-5df2)
 
 # ── Admin: Model Tiers registry (t-7e36) ──────────────────────────────────
 # Board-wide (not per-project, not daemon-owned) model registry backing the
@@ -51,11 +51,18 @@ MODEL_TIERS_PATH = Path(__file__).parent / 'model-tiers.json'
 # not be assumed later. Mirrored in sprint-check-go/main.go.
 MODEL_ID_RE = re.compile(r'^[A-Za-z0-9._-]+$')
 
+def _model_tiers_user_file() -> Path:
+    # t-5df2: edits live in the Cockpit data dir (gitignored). Writing the tracked seed
+    # dirtied the clone and made `canon update` refuse.
+    return _registry_dir() / 'model-tiers.json'
+
 def load_model_tiers() -> dict:
-    try:
-        return json.loads(MODEL_TIERS_PATH.read_text(encoding='utf-8'))
-    except Exception:
-        return {'defaults': {'eval': {}, 'light': {}}, 'models': {'anthropic': [], 'openai': []}}
+    for p in (_model_tiers_user_file(), MODEL_TIERS_PATH):
+        try:
+            return json.loads(p.read_text(encoding='utf-8'))
+        except Exception:
+            continue
+    return {'defaults': {'eval': {}, 'light': {}}, 'models': {'anthropic': [], 'openai': []}}
 
 def _model_tiers_valid(data) -> bool:
     if not isinstance(data, dict):
@@ -81,9 +88,14 @@ def _model_tiers_valid(data) -> bool:
     return True
 
 def save_model_tiers(data) -> dict:
+    if isinstance(data, dict) and data.get('reset') is True and len(data) == 1:
+        _model_tiers_user_file().unlink(missing_ok=True)
+        return {'ok': True}
     if not _model_tiers_valid(data):
         return {'ok': False, 'error': 'invalid model-tiers payload (bad id or shape)'}
-    MODEL_TIERS_PATH.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+    dest = _model_tiers_user_file()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
     return {'ok': True}
 
 # ── Canon Cockpit project registry (t-9917) ───────────────────────────────

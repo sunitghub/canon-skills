@@ -1232,4 +1232,31 @@ py_after="$(curl -s "http://127.0.0.1:$PY_PORT/api/projects")"
 go_after="$(curl -s "http://127.0.0.1:$GO_PORT/api/projects")"
 [[ "$py_after" == "[]" && "$go_after" == "[]" ]] || fail "sprint-check-api-parity: FAIL — /api/projects not empty after delete: py=$py_after go=$go_after"
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); /api/version shares shape {version,commit,daemon} + identical semver from VERSION; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists; /api/projects add/list/delete + on-disk projects.json byte-identical + non-git error parity, for $WORK fixture)"
+# t-5df2: Admin > Model Tiers edits land in the Cockpit data dir ($CANON_HOME/cockpit), never the tracked
+# seed, identically on both backends: load order, save, reset, and rejection with nothing written.
+SEED_TIERS="$ROOT/tools/sprint-check-app/model-tiers.json"
+seed_sha="$(shasum "$SEED_TIERS" | cut -d' ' -f1)"
+tiers_post() { curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Origin: http://localhost' -H 'Content-Type: application/json' -d "$2" "http://127.0.0.1:$1/api/admin/model-tiers"; }
+tiers_json() { curl -s "http://127.0.0.1:$1/api/admin/model-tiers" | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin), sort_keys=True))'; }
+seed_json="$(python3 -c 'import sys,json; print(json.dumps(json.load(open(sys.argv[1])), sort_keys=True))' "$SEED_TIERS")"
+for pair in "$PY_PORT:$PY_CANON" "$GO_PORT:$GO_CANON"; do
+  port="${pair%%:*}"; user_file="${pair#*:}/cockpit/model-tiers.json"
+  [[ "$(tiers_json "$port")" == "$seed_json" ]] || fail "sprint-check-api-parity: FAIL — port $port GET without a data-dir copy is not the seed"
+  edited="$(python3 -c 'import sys,json; d=json.load(open(sys.argv[1])); d["models"]["anthropic"].append({"id":"probe-zz","alias":"probe-zz"}); print(json.dumps(d))' "$SEED_TIERS")"
+  [[ "$(tiers_post "$port" "$edited")" == 200 ]] || fail "sprint-check-api-parity: FAIL — port $port rejected a valid model-tiers save"
+  [[ -f "$user_file" ]] || fail "sprint-check-api-parity: FAIL — port $port did not write $user_file"
+  [[ "$(shasum "$SEED_TIERS" | cut -d' ' -f1)" == "$seed_sha" ]] || fail "sprint-check-api-parity: FAIL — port $port save changed the tracked seed"
+  tiers_json "$port" | grep -q probe-zz || fail "sprint-check-api-parity: FAIL — port $port GET did not return the data-dir copy"
+  saved_sha="$(shasum "$user_file" | cut -d' ' -f1)"
+  for bad in '{"models":"x","defaults":{}}' '[]' 'null' '{"reset":"yes"}' '{"reset":true,"x":1}' '{"reset":false}' \
+             '{"models":{"anthropic":[{"id":"../x"}]},"defaults":{}}'; do
+    [[ "$(tiers_post "$port" "$bad")" == 400 ]] || fail "sprint-check-api-parity: FAIL — port $port should 400 on model-tiers payload $bad"
+    [[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$saved_sha" ]] || fail "sprint-check-api-parity: FAIL — port $port rejected payload $bad but changed the data-dir copy"
+  done
+  [[ "$(tiers_post "$port" '{"reset":true}')" == 200 ]] || fail "sprint-check-api-parity: FAIL — port $port reset failed"
+  [[ ! -e "$user_file" ]] || fail "sprint-check-api-parity: FAIL — port $port reset left $user_file"
+  [[ "$(tiers_post "$port" '{"reset":true}')" == 200 ]] || fail "sprint-check-api-parity: FAIL — port $port reset is not idempotent when no copy exists"
+  [[ "$(tiers_json "$port")" == "$seed_json" ]] || fail "sprint-check-api-parity: FAIL — port $port GET after reset is not the seed"
+done
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); /api/version shares shape {version,commit,daemon} + identical semver from VERSION; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists; /api/admin/model-tiers saves to the data dir, never the seed, and resets identically; /api/projects add/list/delete + on-disk projects.json byte-identical + non-git error parity, for $WORK fixture)"

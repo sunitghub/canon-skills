@@ -121,8 +121,11 @@ update_cmd() {
   if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
     update_without_git "$repo"
   fi
-  if [ -n "$(git -C "$repo" status --porcelain)" ]; then
-    echo "canon update: $repo has uncommitted changes — commit or stash them first. Nothing was changed." >&2; exit 1
+  local dirty; dirty="$(git -C "$repo" status --porcelain)"
+  if [ -n "$dirty" ]; then
+    echo "canon update: $repo has uncommitted changes — commit or stash them first. Nothing was changed." >&2
+    printf '%s\n' "$dirty" | head -10 | sed 's/^/  /' >&2
+    exit 1
   fi
   local branch before after
   branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"

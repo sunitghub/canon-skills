@@ -79,6 +79,7 @@ assert_eq "$(git -C "$WORK/seed" rev-parse HEAD)" "$(git -C "$INSTALL" rev-parse
 # Refusals: each leaves HEAD and every project untouched.
 echo wip > "$INSTALL/scratch.txt"
 refused "the install has uncommitted changes" "has uncommitted changes"
+assert_contains "$out" "?? scratch.txt"
 rm "$INSTALL/scratch.txt"
 g "$INSTALL" checkout -q -b feature
 refused "the install is on another branch" "is on 'feature', not main"

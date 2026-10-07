@@ -178,8 +178,10 @@ Opus` default, scoped only to the two close-gate dispatches below.
   distinct from the Admin default below. No CLI change — this is an agent-protocol read of the
   `demo` flag.
 - **Admin "Review & Eval" default (`t-4b5a`) — applies unconditionally, no risk exception.**
-  Read `tools/sprint-check-app/model-tiers.json` **directly from disk** (not an HTTP fetch — the
-  board/server isn't guaranteed running during an interactive close). It's a plain relative path
+  Read the registry **directly from disk** (not an HTTP fetch — the board/server isn't guaranteed
+  running during an interactive close): the user's edits at `$CANON_HOME/cockpit/model-tiers.json`
+  (`CANON_HOME` defaults to `~/.canon`) if that file exists, else the read-only seed
+  `tools/sprint-check-app/model-tiers.json` (`t-5df2`). The seed is a plain relative path
   inside canon's own repo; in a consumer project (`tools/` not symlinked in) find it via
   `command -v sprint`'s containing directory instead (`where sprint` on Windows) —
   `sprint-check-app/` sits beside `sprint` there. The registry belongs to the canon install, so

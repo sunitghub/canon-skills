@@ -1473,3 +1473,64 @@ func TestCockpitRunningBuildPassesReaperTimeouts(t *testing.T) {
 		}
 	}
 }
+
+// t-5df2: Admin > Model Tiers edits go to the Cockpit data dir; the tracked seed is read-only.
+func TestModelTiersSavesToDataDirNotSeed(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("CANON_HOME", filepath.Join(dir, "home"))
+	seed := filepath.Join(dir, "model-tiers.json")
+	seedBody := `{"defaults":{"eval":{"anthropic":"seed-model"}},"models":{"anthropic":[{"id":"seed-model"}]}}`
+	if err := os.WriteFile(seed, []byte(seedBody), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	old := modelTiersPath
+	modelTiersPath = seed
+	defer func() { modelTiersPath = old }()
+	defaultOf := func() any {
+		return loadModelTiers()["defaults"].(map[string]any)["eval"].(map[string]any)["anthropic"]
+	}
+
+	if got := defaultOf(); got != "seed-model" {
+		t.Fatalf("with no data-dir copy want the seed, got %v", got)
+	}
+	edited := map[string]any{
+		"defaults": map[string]any{"eval": map[string]any{"anthropic": "edited-model"}},
+		"models":   map[string]any{"anthropic": []any{map[string]any{"id": "edited-model"}}},
+	}
+	if res := saveModelTiers(edited); res["ok"] != true {
+		t.Fatalf("valid save refused: %v", res)
+	}
+	if got := defaultOf(); got != "edited-model" {
+		t.Fatalf("want the data-dir copy, got %v", got)
+	}
+	if b, _ := os.ReadFile(seed); string(b) != seedBody {
+		t.Fatalf("seed was modified: %s", b)
+	}
+	userFile := modelTiersUserFile()
+	before, _ := os.ReadFile(userFile)
+	for _, bad := range []map[string]any{
+		{"models": "x", "defaults": map[string]any{}},
+		{"reset": "yes"},
+		{"reset": false},
+		{"reset": true, "x": 1},
+		{"models": map[string]any{"anthropic": []any{map[string]any{"id": "../x"}}}, "defaults": map[string]any{}},
+	} {
+		if res := saveModelTiers(bad); res["ok"] == true {
+			t.Fatalf("payload %v should be refused", bad)
+		}
+		if after, _ := os.ReadFile(userFile); string(after) != string(before) {
+			t.Fatalf("refused payload %v changed the data-dir copy", bad)
+		}
+	}
+	for i := 0; i < 2; i++ { // second reset: nothing to remove, still ok
+		if res := saveModelTiers(map[string]any{"reset": true}); res["ok"] != true {
+			t.Fatalf("reset %d failed: %v", i, res)
+		}
+	}
+	if _, err := os.Stat(userFile); !os.IsNotExist(err) {
+		t.Fatalf("reset left the data-dir copy (err %v)", err)
+	}
+	if got := defaultOf(); got != "seed-model" {
+		t.Fatalf("after reset want the seed, got %v", got)
+	}
+}

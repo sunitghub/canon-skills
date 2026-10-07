@@ -64,7 +64,7 @@ rsync -a --exclude node_modules --exclude test-results --exclude playwright-repo
 ln -s "$ROOT/node_modules" "$COPY/node_modules"
 
 PORT="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1",0)); print(s.getsockname()[1]); s.close()')"
-(cd "$COPY" && SPRINT_CHECK_ROOT="$COPY" SPRINT_CHECK_NO_BROWSER=1 GO111MODULE=off exec go run ./tools/sprint-check-go "$PORT" >/dev/null 2>&1) &
+(cd "$COPY" && CANON_HOME="$COPY/.spec-canon-home" SPRINT_CHECK_ROOT="$COPY" SPRINT_CHECK_NO_BROWSER=1 GO111MODULE=off exec go run ./tools/sprint-check-go "$PORT" >/dev/null 2>&1) &
 BOARD_PID=$!
 ready=0
 for _ in $(seq 1 240); do

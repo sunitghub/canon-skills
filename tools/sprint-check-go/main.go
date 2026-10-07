@@ -4411,16 +4411,22 @@ func loadModelTiers() map[string]any {
 		"defaults": map[string]any{"eval": map[string]any{}, "light": map[string]any{}},
 		"models":   map[string]any{"anthropic": []any{}, "openai": []any{}},
 	}
-	data, err := os.ReadFile(modelTiersPath)
-	if err != nil {
-		return empty
+	for _, p := range []string{modelTiersUserFile(), modelTiersPath} {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		var parsed map[string]any
+		if json.Unmarshal(data, &parsed) == nil {
+			return parsed
+		}
 	}
-	var parsed map[string]any
-	if err := json.Unmarshal(data, &parsed); err != nil {
-		return empty
-	}
-	return parsed
+	return empty
 }
+
+// t-5df2: edits live in the Cockpit data dir (gitignored); modelTiersPath is the
+// tracked, read-only seed. Writing it dirtied the clone and blocked `canon update`.
+func modelTiersUserFile() string { return filepath.Join(registryDir(), "model-tiers.json") }
 
 func modelTiersValid(data map[string]any) bool {
 	models, ok := data["models"].(map[string]any)
@@ -4461,6 +4467,12 @@ func modelTiersValid(data map[string]any) bool {
 }
 
 func saveModelTiers(data map[string]any) map[string]any {
+	if reset, ok := data["reset"].(bool); ok && reset && len(data) == 1 {
+		if err := os.Remove(modelTiersUserFile()); err != nil && !os.IsNotExist(err) {
+			return map[string]any{"ok": false, "error": err.Error()}
+		}
+		return map[string]any{"ok": true}
+	}
 	if !modelTiersValid(data) {
 		return map[string]any{"ok": false, "error": "invalid model-tiers payload (bad id or shape)"}
 	}
@@ -4468,7 +4480,10 @@ func saveModelTiers(data map[string]any) map[string]any {
 	if err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
-	if err := os.WriteFile(modelTiersPath, append(body, '\n'), 0o644); err != nil {
+	if err := os.MkdirAll(registryDir(), 0o755); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	if err := os.WriteFile(modelTiersUserFile(), append(body, '\n'), 0o644); err != nil {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
 	return map[string]any{"ok": true}

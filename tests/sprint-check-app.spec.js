@@ -11486,8 +11486,10 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
   function readCanonicalModelTiers() {
     return fs.readFileSync(MODEL_TIERS_PATH, 'utf8');
   }
+  // t-5df2: edits land in the Cockpit data dir, never the tracked seed — reset removes them.
   async function restoreModelTiers(page, canonical) {
-    await page.request.post(BASE + '/api/admin/model-tiers', { data: JSON.parse(canonical) });
+    await page.request.post(BASE + '/api/admin/model-tiers', { data: { reset: true } });
+    expect(readCanonicalModelTiers()).toBe(canonical);
   }
 
   test('Admin "+ Add" creates a real registry entry with a usable alias reachable from the per-ticket dropdown, and Remove deletes it', async ({ page }) => {
