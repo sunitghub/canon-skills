@@ -34,7 +34,7 @@ assert_count 1 '"agent_id":"def456"' "$log"
 legacy="$(make_project)"
 trap 'rm -rf "$project" "$legacy"' EXIT
 mkdir -p "$legacy/tools"; cp "$SUBAGENT_LOG" "$legacy/tools/"
-for dep in project-root-lib.sh ticket-root.sh; do [[ -f "$ROOT/tools/$dep" ]] && cp "$ROOT/tools/$dep" "$legacy/tools/"; done
+cp "$ROOT/tools/ticket-root.sh" "$legacy/tools/"   # the only file subagent-log.sh sources; a plain cp fails loudly if that changes
 log_sum() { if [[ -f "$canon_log" ]]; then shasum < "$canon_log" | cut -d' ' -f1; else echo none; fi; }
 canon_before="$(log_sum)"
 (cd "$project" && echo '{"agent_id":"ghi789","agent_type":"legacy"}' | "$legacy/tools/subagent-log.sh")

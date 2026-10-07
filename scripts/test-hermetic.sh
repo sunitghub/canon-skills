@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # test-hermetic — run every suite scripts/test.sh runs, one by one, from a fresh copy of canon under an empty,
 # pinned environment (t-c8be): `env -i`, empty HOME/TMPDIR/XDG, no global or system git config, offline Go.
+# Not covered: scripts/test.sh's machine-wide orphaned-board-server check (pgrep over every process, so it cannot tell a
+# concurrent run's servers from leaks); suites that start servers assert their own cleanup (e.g. track-changes).
 # This is the run CI would do (t-18a7); scripts/test.sh in a developer's own checkout can pass on ambient state
 # (a global git config, a registered project, a leftover log) that a clean machine lacks.
 #
@@ -24,7 +26,12 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for tool in git rsync; do command -v "$tool" >/dev/null 2>&1 || { echo "test-hermetic: $tool is required" >&2; exit 2; }; done
+command -v git >/dev/null 2>&1 || { echo "test-hermetic: git is required" >&2; exit 2; }
+[[ "$MODE" == head ]] || command -v rsync >/dev/null 2>&1 || { echo "test-hermetic: rsync is required for --working-tree" >&2; exit 2; }
+# A hung suite must not hang the run. Stock macOS has no timeout (Homebrew coreutils: timeout or gtimeout): without
+# one the suites run unbounded and the run says so.
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+[[ -n "$TIMEOUT_BIN" ]] || echo "test-hermetic: no timeout/gtimeout found — suites run without a time limit" >&2
 
 # Physical path: macOS's /var -> /private/var symlink otherwise makes some suites compare unequal paths.
 W="$(mktemp -d "${TMPDIR:-/tmp}/canon-hermetic.XXXXXX")"; W="$(cd "$W" && pwd -P)"
@@ -47,6 +54,9 @@ pinned() {
     GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 PATH="$PATH" \
     GOMODCACHE="$GM" GOCACHE="$GC" GOPROXY=off SPRINT_CHECK_NO_BROWSER=1 SKILLS_SH_NO_TTY=1 "$@"
 }
+
+# pinned_b <secs> <cmd...>: the pinned environment, bounded by timeout when one exists
+pinned_b() { local secs="$1"; shift; if [[ -n "$TIMEOUT_BIN" ]]; then pinned "$TIMEOUT_BIN" "$secs" "$@"; else pinned "$@"; fi; }
 
 FAILED=0; RAN=0
 record() {   # record <name> <rc> <logfile>
@@ -73,29 +83,28 @@ run_all() {
   cd "$CL"
   for t in "${BASH_SUITES[@]}"; do
     log="$W/logs/$(echo "$t" | tr '/' '_').log"; rc=0
-    if [[ ! -f "$t" ]]; then echo "no such suite" > "$log"; rc=1; else pinned timeout 600 bash "$t" > "$log" 2>&1 || rc=$?; fi
+    if [[ ! -f "$t" ]]; then echo "no such suite" > "$log"; rc=1; else pinned_b 600 bash "$t" > "$log" 2>&1 || rc=$?; fi
     record "$t" "$rc" "$log"
   done
   for t in "${NODE_SUITES[@]}"; do
     log="$W/logs/$(echo "$t" | tr '/' '_').log"; rc=0
     if ! command -v node >/dev/null 2>&1; then echo "node absent: skipped" > "$log"; rc=0
     elif [[ ! -f "$t" ]]; then echo "no such suite" > "$log"; rc=1
-    else pinned timeout 600 node "$t" > "$log" 2>&1 || rc=$?; fi
+    else pinned_b 600 node "$t" > "$log" 2>&1 || rc=$?; fi
     record "$t" "$rc" "$log"
   done
   if command -v go >/dev/null 2>&1; then
     for g in tools/sprint-check-go tools/sprint-headless-json-go; do
       log="$W/logs/go_$(basename "$g").log"; rc=0
-      pinned env GO111MODULE=off timeout 600 go test -count=1 "./$g" > "$log" 2>&1 || rc=$?
+      pinned_b 600 env GO111MODULE=off go test -count=1 "./$g" > "$log" 2>&1 || rc=$?
       record "go $g" "$rc" "$log"
     done
     log="$W/logs/go_cockpit-daemon.log"; rc=0
-    (cd tools/cockpit-daemon && pinned timeout 900 go test -count=1 ./... > "$log" 2>&1) || rc=$?
+    (cd tools/cockpit-daemon && pinned_b 900 go test -count=1 ./... > "$log" 2>&1) || rc=$?
     record "go tools/cockpit-daemon" "$rc" "$log"
   else
     echo "go absent: skipped" > "$W/logs/go.log"; record "go suites" 0 "$W/logs/go.log"
   fi
-
 }
 
 for pass in $(seq 1 "$REPEAT"); do
