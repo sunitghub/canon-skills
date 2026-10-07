@@ -8,7 +8,7 @@ Quick orientation for arriving agents. One line per directory.
 | `docs/` | User-facing documentation — how-it-works, sprint-check, setup, learnings (capture and promote flow), agent-playbook (agentic-app build practices), headless-ci, and the `docs/index.html` landing page |
 | `extensions/` | Runtime-specific integrations — Pi agent handoff extension |
 | `meta/` | Repo meta-assets — screenshots, demo GIF recorder (`meta/package.json`); gitignored output |
-| `posts/` | Long-form writing and blog drafts |
+| `posts` | Symlink to the private `canon-content` repo (`~/Developer/canon-content`): `linkedin/`, `product-notes/`, `slides/`. Not tracked here |
 | `PRs/` | Tracking notes for external PR review |
 | `scripts/` | Lifecycle shell scripts — `pre-commit-hook-template.sh` (git-native pre-commit hook body), `test.sh` |
 | `skills/` | On-demand agent skills — each in `skills/<name>/SKILL.md`; loaded via `skills.sh add` |

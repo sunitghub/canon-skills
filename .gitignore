@@ -16,7 +16,7 @@ meta/
 *~
 toPdfViaTempFile*
 tools/tailscale-check.sh
-posts/
+posts
 octave/
 # Future/ is a local-only design scratchpad (pen.dev mockups, exploration
 # notes) — never tracked, so mockup work verifies via direct tool inspection,
