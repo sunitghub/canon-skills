@@ -152,6 +152,15 @@ update_cmd() {
     done
     rm -rf "$bak"
   fi
+  # t-9383: on Windows the board and the daemon exe are required (install.ps1 fails the same way): an update that leaves one missing is not a success.
+  if _is_windows; then
+    local missing="" n
+    for n in cockpit-daemon-win.exe sprint-check-win.exe; do [ -f "$SCRIPT_DIR/$n" ] || missing="$missing $n"; done
+    if [ -n "$missing" ]; then
+      echo "canon update: these programs are missing and could not be fetched:$missing. Check your internet connection and run canon update again; canon cannot start without them." >&2
+      exit 1
+    fi
+  fi
   refresh_projects
 }
 

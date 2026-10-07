@@ -380,7 +380,7 @@ result = d.get("result", "").replace(chr(10), chr(2))
 print(str(is_error) + chr(9) + str(session_id) + chr(9) + result)
 ')"
   else
-    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present). Hard-failing." >&2
+    echo "Error: python3 is required to parse claude -p's output (on Windows, $JSON_HELPER is used instead if present; run canon update to fetch it). Hard-failing." >&2
     exit 1
   fi
 

@@ -248,6 +248,15 @@ assert_eq "1" "$code"; assert_contains "$out" "can't fast-forward"
 assert_eq 0 "$(find "$TMPDIR" -maxdepth 1 -name 'canon-update-bak.*' | wc -l | tr -d ' ')"; unset TMPDIR
 for n in cockpit-daemon sprint-check sprint-headless-json; do assert_eq "new-$n" "$(cat "$INSTALL/tools/$n-win.exe")"; done
 g "$INSTALL" reset -q --hard origin/main~0 2>/dev/null || true; git -C "$INSTALL" reset -q --hard origin/main
+# a fetch that fails with nothing to restore (the exes were never there) is a failed update: exit 1 and say which programs are missing
+rm -f "$INSTALL"/tools/*-win.exe; echo more4 > "$WORK/seed/NEWS4"; git -C "$WORK/seed" "${ident[@]}" add NEWS4; git -C "$WORK/seed" "${ident[@]}" commit -qm news5 && git -C "$WORK/seed" push -q origin main 2>/dev/null
+set +e; out="$(STUB_FETCH=fail PATH="$WSTUB:$PATH" "$CANON" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "cockpit-daemon-win.exe sprint-check-win.exe"; assert_contains "$out" "could not be fetched"
+assert_contains "$out" "download failed (stub)"; assert_eq "" "$(git -C "$INSTALL" status --porcelain)"
+# the same state on macOS/Linux is NOT an error (no Windows exes exist there)
+echo more5 > "$WORK/seed/NEWS5"; git -C "$WORK/seed" "${ident[@]}" add NEWS5; git -C "$WORK/seed" "${ident[@]}" commit -qm news6 && git -C "$WORK/seed" push -q origin main 2>/dev/null
+set +e; out="$(STUB_FETCH=fail "$CANON" update 2>&1)"; code=$?; set -e
+assert_eq "0" "$code"; refute_contains "$out" "could not be fetched"
 # macOS/Linux never touch exes: no backup, no restore message
 out="$("$CANON" update 2>&1)"; refute_contains "$out" "kept your previous"
 

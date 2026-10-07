@@ -73,4 +73,7 @@ assert_eq "$kb2 sprint-check-windows-amd64" "$(grep ' sprint-check-windows-amd64
 assert_eq 2 "$(grep -c ' sprint-check-windows-amd64 ' "$m")"   # the old key's line stays (older installs still resolve it), the new one is last
 # 7. dirty source is refused, as before
 echo "// dirty" >> "$R/tools/sprint-headless-json-go/main.go"; run; [[ "$rc" == 1 ]]; assert_contains "$out" "uncommitted changes"
+# 8. every go build in the release script carries -trimpath (without it the bytes depend on the checkout path; tests/build-zip-go-package.sh guards the stamping, this guards the flag)
+builds="$(grep -c 'go build' "$ROOT/scripts/release-daemon.sh")"; trim="$(grep 'go build' "$ROOT/scripts/release-daemon.sh" | grep -c -- '-trimpath')"
+[[ "$builds" -ge 3 && "$builds" == "$trim" ]] || fail "release-daemon.sh: $builds go build lines, $trim with -trimpath"
 echo "release-daemon-publish: ok (creates, adds only missing assets, never overwrites, verifies by download, manifest last and newest-last)"
