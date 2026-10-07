@@ -59,9 +59,11 @@ def _model_tiers_user_file() -> Path:
 def load_model_tiers() -> dict:
     for p in (_model_tiers_user_file(), MODEL_TIERS_PATH):
         try:
-            return json.loads(p.read_text(encoding='utf-8'))
+            data = json.loads(p.read_text(encoding='utf-8'))
         except Exception:
             continue
+        if isinstance(data, dict):
+            return data
     return {'defaults': {'eval': {}, 'light': {}}, 'models': {'anthropic': [], 'openai': []}}
 
 def _model_tiers_valid(data) -> bool:
@@ -89,13 +91,19 @@ def _model_tiers_valid(data) -> bool:
 
 def save_model_tiers(data) -> dict:
     if isinstance(data, dict) and data.get('reset') is True and len(data) == 1:
-        _model_tiers_user_file().unlink(missing_ok=True)
+        try:
+            _model_tiers_user_file().unlink(missing_ok=True)
+        except OSError as e:
+            return {'ok': False, 'error': str(e)}
         return {'ok': True}
     if not _model_tiers_valid(data):
         return {'ok': False, 'error': 'invalid model-tiers payload (bad id or shape)'}
     dest = _model_tiers_user_file()
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+    try:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+    except OSError as e:
+        return {'ok': False, 'error': str(e)}
     return {'ok': True}
 
 # ── Canon Cockpit project registry (t-9917) ───────────────────────────────

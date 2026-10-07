@@ -1253,6 +1253,10 @@ for pair in "$PY_PORT:$PY_CANON" "$GO_PORT:$GO_CANON"; do
     [[ "$(tiers_post "$port" "$bad")" == 400 ]] || fail "sprint-check-api-parity: FAIL — port $port should 400 on model-tiers payload $bad"
     [[ "$(shasum "$user_file" | cut -d' ' -f1)" == "$saved_sha" ]] || fail "sprint-check-api-parity: FAIL — port $port rejected payload $bad but changed the data-dir copy"
   done
+  for corrupt in '[]' 'not json'; do   # a data-dir copy that is not a registry object falls back to the seed
+    printf '%s' "$corrupt" > "$user_file"
+    [[ "$(tiers_json "$port")" == "$seed_json" ]] || fail "sprint-check-api-parity: FAIL — port $port GET with a corrupt data-dir copy ($corrupt) is not the seed"
+  done
   [[ "$(tiers_post "$port" '{"reset":true}')" == 200 ]] || fail "sprint-check-api-parity: FAIL — port $port reset failed"
   [[ ! -e "$user_file" ]] || fail "sprint-check-api-parity: FAIL — port $port reset left $user_file"
   [[ "$(tiers_post "$port" '{"reset":true}')" == 200 ]] || fail "sprint-check-api-parity: FAIL — port $port reset is not idempotent when no copy exists"
