@@ -18,21 +18,38 @@ fi
 # t-e40a: _resolve_cockpit_daemon must prefer the shipped tools/cockpit-daemon-win.exe
 # on Windows (nt), keep the Unix path on posix, and honor COCKPIT_DAEMON_BIN first.
 # Parity with sprint-check-go's cockpitDaemonCandidates (covered by TestCockpitDaemonCandidates).
+# t-9383: the exe is fetched, not committed, so the resolver is exercised against a fixture tools/ tree built here (a leftover dev build
+# or a fetched exe in the real checkout must not decide the result): neither file, the dev build only, and both.
 python3 - "$ROOT" <<'PY'
-import sys, os
-sys.path.insert(0, os.path.join(sys.argv[1], "tools", "sprint-check-app"))
-import server
-nt = server._resolve_cockpit_daemon(os_name="nt")
-assert nt.endswith(os.path.join("tools", "cockpit-daemon-win.exe")), f"nt resolver: {nt}"
-posix = server._resolve_cockpit_daemon(os_name="posix")
-assert posix.endswith(os.path.join("cockpit-daemon", "cockpit-daemon")), f"posix resolver: {posix}"
-assert not posix.endswith("cockpit-daemon-win.exe"), f"posix must not pick -win.exe: {posix}"
-os.environ["COCKPIT_DAEMON_BIN"] = "/tmp/stub-daemon"
+import sys, os, shutil, tempfile
+tmp = tempfile.mkdtemp()
 try:
-    assert server._resolve_cockpit_daemon(os_name="nt") == "/tmp/stub-daemon", "override must win"
+    tools = os.path.join(tmp, "tools"); app = os.path.join(tools, "sprint-check-app")
+    os.makedirs(app); os.makedirs(os.path.join(tools, "cockpit-daemon"))
+    shutil.copy(os.path.join(sys.argv[1], "tools", "sprint-check-app", "server.py"), app)
+    sys.path.insert(0, app)
+    import server
+    win = os.path.join(tools, "cockpit-daemon-win.exe"); dev = os.path.join(tools, "cockpit-daemon", "cockpit-daemon.exe")
+    unix = os.path.join(tools, "cockpit-daemon", "cockpit-daemon")
+    real = lambda p: os.path.realpath(p)
+    # neither exists: nt names the fetched exe's path (what `canon update` will create), posix the built binary
+    assert real(server._resolve_cockpit_daemon(os_name="nt")) == real(win), server._resolve_cockpit_daemon(os_name="nt")
+    assert real(server._resolve_cockpit_daemon(os_name="posix")) == real(unix)
+    # a dev build only: nt falls back to it
+    open(dev, "w").close()
+    assert real(server._resolve_cockpit_daemon(os_name="nt")) == real(dev), "dev build fallback"
+    # both: the fetched exe wins; posix never picks an .exe
+    open(win, "w").close()
+    assert real(server._resolve_cockpit_daemon(os_name="nt")) == real(win), "the fetched exe must be preferred over a dev build"
+    assert not server._resolve_cockpit_daemon(os_name="posix").endswith("-win.exe")
+    os.environ["COCKPIT_DAEMON_BIN"] = "/tmp/stub-daemon"
+    try:
+        assert server._resolve_cockpit_daemon(os_name="nt") == "/tmp/stub-daemon", "override must win"
+    finally:
+        del os.environ["COCKPIT_DAEMON_BIN"]
 finally:
-    del os.environ["COCKPIT_DAEMON_BIN"]
-print("sprint-check-cockpit: daemon-resolver (t-e40a) ok")
+    shutil.rmtree(tmp, ignore_errors=True)
+print("sprint-check-cockpit: daemon-resolver (t-e40a, fixture tree) ok")
 PY
 
 # t-2a71: reap any stub daemon leaked by a prior run this script's own
