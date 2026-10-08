@@ -11981,9 +11981,10 @@ test.describe('Canon Cockpit help', () => {
       await page.setViewportSize({ width: 390, height: 844 });
       await daemonRow(page, { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: 'a'.repeat(64) } });
       await expect(page.locator('#hv-daemon')).toContainText('a'.repeat(64));
-      const m = await page.evaluate(() => { const e = document.getElementById('hv-daemon'), p = document.querySelector('.help-panel'); return { right: e.getBoundingClientRect().right, panelRight: p.getBoundingClientRect().right, sw: p.scrollWidth, cw: p.clientWidth }; });
+      const m = await page.evaluate(() => { const e = document.getElementById('hv-daemon'), p = document.querySelector('.help-panel'); return { right: e.getBoundingClientRect().right, panelRight: p.getBoundingClientRect().right, sw: p.scrollWidth, cw: p.clientWidth, esw: e.scrollWidth, ecw: e.clientWidth }; });
       expect(m.right).toBeLessThanOrEqual(m.panelRight + 0.5);
-      expect(m.sw).toBeLessThanOrEqual(m.cw + 1);   // no horizontal scroll inside the panel
+      expect(m.sw).toBeLessThanOrEqual(m.cw + 1);     // no horizontal scroll inside the panel
+      expect(m.esw).toBeLessThanOrEqual(m.ecw + 1);   // the text itself wrapped: it does not spill out of its own box (the box alone can look fine while the text overflows)
     });
     // rendered, not just present: the stamped row stays on one line inside the panel in both themes at a desktop and a phone width
     for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
