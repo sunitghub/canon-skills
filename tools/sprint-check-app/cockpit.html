@@ -938,9 +938,10 @@
 
   // ── Help/tour overlay (t-c5e7) ────────────────────────────────────────────
   let _helpVersionsLoaded=false;
+  let _helpVersionsDone=Promise.resolve();   // settles when the Versions fetches have been applied (the specs await it before asserting an "unchanged" row)
   function openHelp(){
     document.getElementById('help-overlay').classList.add('open');
-    if(!_helpVersionsLoaded){ _helpVersionsLoaded=true; loadHelpVersions(); }
+    if(!_helpVersionsLoaded){ _helpVersionsLoaded=true; _helpVersionsDone=loadHelpVersions(); }
   }
   function closeHelp(){ document.getElementById('help-overlay').classList.remove('open'); }
   async function loadHelpVersions(){

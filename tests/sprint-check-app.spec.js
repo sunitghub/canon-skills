@@ -11962,6 +11962,8 @@ test.describe('Canon Cockpit help', () => {
       await expect(page.locator('#help-btn')).toBeVisible();
       await page.locator('#help-btn').click();
       await expect(page.locator('.help-panel')).toBeVisible();
+      // both fetches have been applied: without this an "unchanged" row passes on the first poll, before /api/cockpit could have overwritten it
+      await page.evaluate(() => _helpVersionsDone);
     }
     const cases = [
       ['both stamped: the running build wins', { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: '0e2fd866' } }, '0.3.0 (0e2fd866)'],
