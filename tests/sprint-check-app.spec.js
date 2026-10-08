@@ -289,6 +289,22 @@ test.describe('board modal', () => {
       await expect(indicator.locator('.ready-dot')).toBeVisible();
       await expect(indicator).toContainText('ready');
       await expect(indicator.locator('.ready-flag')).toHaveCount(0);
+      // t-1478: a plain dot and word, no filled badge, in both themes
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(th => document.documentElement.setAttribute('data-theme', th), theme);
+        const st = await page.evaluate(i => {
+          const ind = document.querySelector(`.card[data-id="${i}"] .ready-indicator`), lab = ind.querySelector('.ready-label'), dot = ind.querySelector('.ready-dot');
+          const ci = getComputedStyle(ind), cl = getComputedStyle(lab), cd = getComputedStyle(dot);
+          const probe = (v) => { const p = document.createElement('i'); p.style.color = v; document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; };
+          return { bg: ci.backgroundColor, pad: ci.paddingLeft + ' ' + ci.paddingTop, gap: ci.columnGap, size: cl.fontSize, weight: cl.fontWeight, tt: cl.textTransform, text: lab.textContent,
+                   dotSize: cd.width + ' ' + cd.height, dotBg: cd.backgroundColor, labelColor: cl.color, done: probe('var(--col-done)'), darker: probe('#15803d') };
+        }, id);
+        expect(st.bg, theme).toBe('rgba(0, 0, 0, 0)');
+        expect(st.pad, theme).toBe('0px 0px');
+        expect([st.text, st.size, st.weight, st.tt, st.gap, st.dotSize], theme).toEqual(['ready', '11px', '600', 'none', '5px', '7px 7px']);
+        expect(st.dotBg, theme).toBe(st.done);
+        expect(st.labelColor, theme).toBe(theme === 'light' ? st.darker : st.done);
+      }
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
