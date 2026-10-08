@@ -600,14 +600,16 @@ _gate_eval_report_consistency() {
 _gate_eval_report_fresh() {
   local id="$1" tdir="$2" report="$tdir/eval-report.md" heads graded changed n shown
   local late_re='^(\.tickets/|LEARNINGS\.md$|LEARNINGS-archive\.md$|DECISIONS\.md$|DECISIONS-archive\.md$|HANDOFF\.md$|PROMOTED\.md$|AGENTS\.md$|(.+/)?CLAUDE\.md$|\.claude/subagent-runs\.jsonl$|dist/)'
-  local wroot proot ptop rel
+  local wroot proot rel
   # The caller's OWN worktree, not project_root (which maps a linked worktree back to the main checkout): the graded commit and the
   # sprint's changes live in the worktree the sprint ran in. project_root only locates the project subtree inside its repository.
   wroot="$(worktree_root)"
   git -C "$wroot" rev-parse --verify -q HEAD >/dev/null 2>&1 || return 0
   proot="$(cd "$(project_root)" && pwd -P)"
-  ptop="$(git -C "$proot" rev-parse --show-toplevel 2>/dev/null)" || ptop=""
-  rel=""; if [[ -n "$ptop" && "$proot" != "$ptop" ]]; then rel="${proot#"$ptop"/}"; fi
+  # The project's path inside its repository, asked of git itself: comparing `pwd -P` with --show-toplevel never matches on Windows
+  # (/tmp/x vs C:/.../x), which built a bogus pathspec and passed every stale edit (t-7301).
+  rel="$(git -C "$proot" rev-parse --show-prefix 2>/dev/null)" || rel=""
+  rel="${rel%/}"
   heads="$(sed -n 's/^graded-head:[[:space:]]*//p' "$report" | tr -d '\r' | sort -u)"
   if [[ -z "$heads" ]]; then
     echo "Sprint $id cannot close: eval-report.md is missing graded-head: (the commit the evaluator graded, eval.md step 8)."

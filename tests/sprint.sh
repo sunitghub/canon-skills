@@ -1462,6 +1462,25 @@ fr_project="$(make_project)"
   git checkout -q src/app.js
   assert_contains "$(fr_complete)" "Sprint completed: $fid"
 
+  # t-7301: on Windows `git rev-parse --show-toplevel` spells the repo "C:/..." while the shell's `pwd -P` says "/tmp/...". The
+  # gate compared the two, never matched, built a bogus pathspec and passed every stale edit (failed open). A git stub that
+  # rewrites only the `git -C <project> rev-parse --show-toplevel` answer (the compared one; a C:/ root would not exist off Windows) reproduces the mismatch on any OS; the refusal must hold under it.
+  wgit="$(mktemp -d)"; export REAL_GIT="$(command -v git)"
+  cat > "$wgit/git" <<'STUB'
+#!/bin/sh
+for a in "$@"; do
+  if [ "$1" = -C ] && [ "$a" = --show-toplevel ]; then printf 'C:%s\n' "$("$REAL_GIT" "$@")"; exit 0; fi
+done
+exec "$REAL_GIT" "$@"
+STUB
+  chmod +x "$wgit/git"
+  fr_ticket winpath; fr_report "$(git rev-parse HEAD)"
+  echo 'c' >> src/app.js
+  out="$(run_fail env -u CLAUDECODE PATH="$wgit:$PATH" "$SPRINT" complete)"; assert_contains "$out" "src/app.js"
+  git checkout -q src/app.js
+  assert_contains "$(PATH="$wgit:$PATH" fr_complete)" "Sprint completed: $fid"
+  rm -rf "$wgit"
+
   # graded-head must be a full hex commit sha: an abbreviation or a ref name is refused (HEAD would hide committed changes)
   fr_ticket refs; fr_report "$(git rev-parse --short HEAD)"
   out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"; assert_contains "$out" "is not a commit"
