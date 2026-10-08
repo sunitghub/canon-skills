@@ -398,6 +398,17 @@
       "failed_runs": {
         "chromium": "1 of 1 evaluator full run, 0 of 4 isolated"
       }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > no marker within the timeout shows the fallback message",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "a fixed 100 ms wait before clicking the preview label races the fake cockpit page's message; intermittent at every commit tried on 2026-10-08, including f35fec72 (before the t-a205 work): f35fec72 F P, a1af664d F F, 4fba100f P P, 5f795d16 F F; failed 3 of 3 alone on the t-1478 branch while another session's tests loaded the machine",
+      "failed_runs": {
+        "chromium": "1 of 1 full run (t-1478), intermittent when run alone"
+      }
     }
   ],
   "skipped": []
