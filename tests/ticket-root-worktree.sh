@@ -16,7 +16,7 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 WORK="$(mktemp -d)"
-cleanup() { rm -rf "$WORK" "$WORK-worktrees"; }
+cleanup() { rm -rf "$WORK" "$WORK-worktrees" "${STUBS:-}"; }
 trap cleanup EXIT
 
 git -C "$WORK" init -q
@@ -54,7 +54,7 @@ assert_eq "$want_tickets_dir" "$(cd "$(dirname "$main_tickets_dir")" && pwd -P)/
 # t-7301: on Windows Git writes a drive-letter pointer ("gitdir: C:/Users/.../.git/worktrees/x"). It is absolute, but the
 # old `!= /*` test joined it onto the worktree dir, so a worktree's tickets landed in a nested bogus path. Synthetic
 # .git files reproduce that on any OS; a stub cygpath first in PATH keeps the VM's real one out of the result.
-STUBS="$(mktemp -d)"; trap 'rm -rf "$WORK" "$WORK-worktrees" "$STUBS"' EXIT
+STUBS="$(mktemp -d)"
 mkdir -p "$STUBS/none" "$STUBS/map"
 printf '#!/bin/sh\nexit 1\n' > "$STUBS/none/cygpath"
 # maps C:/x -> /c/x like `cygpath -u` does for a drive path

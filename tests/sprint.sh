@@ -1479,7 +1479,7 @@ STUB
   out="$(run_fail env -u CLAUDECODE PATH="$wgit:$PATH" "$SPRINT" complete)"; assert_contains "$out" "src/app.js"
   git checkout -q src/app.js
   assert_contains "$(PATH="$wgit:$PATH" fr_complete)" "Sprint completed: $fid"
-  rm -rf "$wgit"
+  rm -rf "$wgit"; unset REAL_GIT
 
   # graded-head must be a full hex commit sha: an abbreviation or a ref name is refused (HEAD would hide committed changes)
   fr_ticket refs; fr_report "$(git rev-parse --short HEAD)"
