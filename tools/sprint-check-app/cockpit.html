@@ -568,7 +568,7 @@
   .help-body code{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:1px 5px;font-size:12px}
   .help-divider{border:none;border-top:1px solid var(--border-muted);margin:18px 0 4px}
   .help-versions .hvrow{display:flex;justify-content:space-between;padding:6px 0;font-size:12px}
-  .help-versions .hvk{color:var(--text-muted)} .help-versions .hvv{color:var(--card-stat);font-weight:700;font-family:ui-monospace,monospace}
+  .help-versions .hvk{color:var(--text-muted)} .help-versions .hvv{color:var(--card-stat);font-weight:700;font-family:ui-monospace,monospace;overflow-wrap:anywhere}
   .help-credits{margin-top:12px;font-size:12px;color:var(--text-muted)}
   .help-credits a{color:var(--accent);text-decoration:none}
   .help-credits a:hover{text-decoration:underline}
@@ -958,7 +958,7 @@
         // t-4487: show the same string `cockpit-daemon --version` prints. A running build without a commit (an older daemon) must not
         // wipe a stamped string /api/version already filled in; it only fills an empty row.
         const el=document.getElementById('hv-daemon');
-        if(rb.commit) el.textContent=rb.version+' ('+rb.commit+')';
+        if(rb.commit&&rb.commit!=='dev') el.textContent=rb.version+' ('+rb.commit+')';   // a dev build prints bare, as --version does
         else if(el.textContent.trim()==='\u2014') el.textContent=rb.version;
       }
     }catch(e){}

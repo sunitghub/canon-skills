@@ -11969,7 +11969,7 @@ test.describe('Canon Cockpit help', () => {
       ['/api/version failed: the running build still names the stamp', { version: 'abort', cockpit: { version: '0.3.0', commit: '0e2fd866' } }, '0.3.0 (0e2fd866)'],
       ['/api/cockpit unreachable: the stamped string stays', { version: '0.3.0 (23efca20)', cockpit: 'abort' }, '0.3.0 (23efca20)'],
       ['no commit anywhere: the bare version fills an empty row', { version: '', cockpit: { version: '0.3.0', commit: '' } }, '0.3.0'],
-      ['a dev build prints like --version does', { version: 'dev (dev)', cockpit: { version: 'dev', commit: 'dev' } }, 'dev (dev)'],
+      ['a dev build prints bare, like --version does', { version: 'dev', cockpit: { version: 'dev', commit: 'dev' } }, 'dev'],
     ];
     for (const [name, args, want] of cases) {
       test(name, async ({ page }) => {
@@ -11977,6 +11977,14 @@ test.describe('Canon Cockpit help', () => {
         await expect(page.locator('#hv-daemon')).toHaveText(want);
       });
     }
+    test('a 64-character stamp wraps inside the panel on a phone instead of overflowing', async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await daemonRow(page, { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: 'a'.repeat(64) } });
+      await expect(page.locator('#hv-daemon')).toContainText('a'.repeat(64));
+      const m = await page.evaluate(() => { const e = document.getElementById('hv-daemon'), p = document.querySelector('.help-panel'); return { right: e.getBoundingClientRect().right, panelRight: p.getBoundingClientRect().right, sw: p.scrollWidth, cw: p.clientWidth }; });
+      expect(m.right).toBeLessThanOrEqual(m.panelRight + 0.5);
+      expect(m.sw).toBeLessThanOrEqual(m.cw + 1);   // no horizontal scroll inside the panel
+    });
     // rendered, not just present: the stamped row stays on one line inside the panel in both themes at a desktop and a phone width
     for (const vp of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
       for (const theme of ['dark', 'light']) {

@@ -3947,6 +3947,8 @@ func cockpitBinaryMtime() int64 {
 // cockpitRunningBuild fetches the RUNNING daemon's unauthenticated /version JSON
 // ({version, exe_mtime}). nil if unreachable or not JSON (a daemon predating
 // this build). The board never reads the daemon token; /version needs none.
+var buildStampRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
 func cockpitRunningBuild(addr string) map[string]any {
 	if addr == "" {
 		return nil
@@ -3969,10 +3971,11 @@ func cockpitRunningBuild(addr string) map[string]any {
 	if json.NewDecoder(resp.Body).Decode(&v) != nil {
 		return nil
 	}
-	// t-4487: the build stamp `cockpit-daemon --version` prints; "" for an older daemon or a non-string (parity with server.py, capped at 64 characters)
+	// t-4487: the build stamp `cockpit-daemon --version` prints: a plain stamp (hex, or "dev") or "" for an older daemon, a non-string, odd text
+	// or an oversized value (parity with server.py)
 	commit, _ := v.Commit.(string)
-	if r := []rune(commit); len(r) > 64 {
-		commit = string(r[:64])
+	if !buildStampRe.MatchString(commit) {
+		commit = ""
 	}
 	return map[string]any{"version": v.Version, "commit": commit, "exe_mtime": v.ExeMtime, "uptime_secs": v.UptimeSecs, "debug_enabled": v.DebugEnabled,
 		"idle_timeout_secs": v.IdleTimeout, "idle_timeout_main_secs": v.IdleTimeoutMain}

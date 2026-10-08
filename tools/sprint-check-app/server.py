@@ -2557,9 +2557,11 @@ def _cockpit_running_build(addr: str) -> dict | None:
     try:
         with urllib.request.urlopen(f'http://{addr}/version', timeout=0.4) as r:
             data = json.loads(r.read().decode('utf-8'))
-        commit = data.get('commit', '')   # t-4487: the build stamp `cockpit-daemon --version` prints; "" for an older daemon or a non-string
+        commit = data.get('commit', '')   # t-4487: the build stamp `cockpit-daemon --version` prints
         return {'version': str(data.get('version', '')),
-                'commit': commit[:64] if isinstance(commit, str) else '',
+                # a plain stamp (hex, or "dev") or "": an older daemon, a non-string, odd text or an oversized value never reaches the page
+                # (a lone surrogate would also make send_json raise and take the whole response down, which Go would not)
+                'commit': commit if isinstance(commit, str) and re.fullmatch(r'[A-Za-z0-9._-]{1,64}', commit) else '',
                 'exe_mtime': int(data.get('exe_mtime', 0)),
                 'uptime_secs': int(data.get('uptime_secs', 0)),
                 'debug_enabled': bool(data.get('debug_enabled', False)),

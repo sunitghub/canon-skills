@@ -1475,9 +1475,10 @@ func TestCockpitRunningBuildPassesReaperTimeouts(t *testing.T) {
 }
 
 // t-4487: running_build carries the daemon's build stamp (`commit`) so Help > Versions can show `0.3.0 (0e2fd866)`;
-// "" for a daemon that sends none, a non-string, or null; capped at 64 characters. Mirrors tests/canon.sh for server.py.
+// "" for a daemon that sends none, a non-string, null, odd text or an oversized value. Mirrors tests/canon.sh for server.py.
 func TestCockpitRunningBuildPassesCommit(t *testing.T) {
 	long := strings.Repeat("é", 100)
+	longAlnum := strings.Repeat("a", 100)
 	for _, c := range []struct{ body, want string }{
 		{`{"version":"0.3.0","commit":"0e2fd866"}`, "0e2fd866"},
 		{`{"version":"0.3.0"}`, ""},
@@ -1485,12 +1486,18 @@ func TestCockpitRunningBuildPassesCommit(t *testing.T) {
 		{`{"version":"0.3.0","commit":12345}`, ""},
 		{`{"version":"0.3.0","commit":["a"]}`, ""},
 		{`{"version":"0.3.0","commit":{"x":1}}`, ""},
-		{`{"version":"0.3.0","commit":"` + long + `"}`, strings.Repeat("é", 64)},
+		{`{"version":"0.3.0","commit":"` + long + `"}`, ""},
+		{`{"version":"0.3.0","commit":"` + longAlnum + `"}`, ""},
+		{`{"version":"0.3.0","commit":"` + strings.Repeat("a", 64) + `"}`, strings.Repeat("a", 64)},
+		{`{"version":"0.3.0","commit":"\ud800ab"}`, ""},
+		{`{"version":"0.3.0","commit":"a b"}`, ""},
+		{`{"version":"0.3.0","commit":"<b>x</b>"}`, ""},
+		{`{"version":"dev","commit":"dev"}`, "dev"},
 	} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, c.body) }))
 		got := cockpitRunningBuild(strings.TrimPrefix(srv.URL, "http://"))
 		srv.Close()
-		if got == nil || got["commit"] != c.want || got["version"] != "0.3.0" {
+		if got == nil || got["commit"] != c.want || (got["version"] != "0.3.0" && got["version"] != "dev") {
 			t.Errorf("running_build for %.60s = %v, want commit %.20q", c.body, got, c.want)
 		}
 	}

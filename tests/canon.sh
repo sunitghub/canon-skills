@@ -361,14 +361,16 @@ for body, want in [
 PY
 
 # t-4487: running_build carries the daemon's build stamp (`commit`) so Help > Versions can show `0.3.0 (0e2fd866)`; "" for an older
-# daemon, a non-string or null, capped at 64 characters, and never an exception. Mirrors TestCockpitRunningBuildPassesCommit.
+# daemon, a non-string, null, odd text (spaces, markup, a lone surrogate) or an oversized value, and never an exception. Mirrors TestCockpitRunningBuildPassesCommit.
 python3 - "$ROOT/tools/sprint-check-app" <<'PY' || fail "canon: running_build must pass the daemon's commit through (\"\" when absent or not a string)"
 import http.server, json, sys, threading
 sys.path.insert(0, sys.argv[1])
 import server
 cases = [({'version': '0.3.0', 'commit': '0e2fd866'}, '0e2fd866'), ({'version': '0.3.0'}, ''), ({'version': '0.3.0', 'commit': None}, ''),
          ({'version': '0.3.0', 'commit': 12345}, ''), ({'version': '0.3.0', 'commit': ['a']}, ''), ({'version': '0.3.0', 'commit': {'x': 1}}, ''),
-         ({'version': '0.3.0', 'commit': 'é' * 100}, 'é' * 64)]
+         ({'version': '0.3.0', 'commit': 'é' * 100}, ''), ({'version': '0.3.0', 'commit': 'a' * 100}, ''), ({'version': '0.3.0', 'commit': 'a' * 64}, 'a' * 64),
+         ({'version': '0.3.0', 'commit': '\ud800ab'}, ''), ({'version': '0.3.0', 'commit': 'a b'}, ''), ({'version': '0.3.0', 'commit': '<b>x</b>'}, ''),
+         ({'version': 'dev', 'commit': 'dev'}, 'dev')]
 for body, want in cases:
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
@@ -379,7 +381,7 @@ for body, want in cases:
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     got = server._cockpit_running_build('127.0.0.1:%d' % srv.server_address[1])
     srv.shutdown()
-    assert got is not None and got['commit'] == want and got['version'] == '0.3.0', (body, got)
+    assert got is not None and got['commit'] == want and got['version'] == body['version'], (body, got)
 PY
 
 # ── t-302d: the browser opens only once the board answers /api/version ────────
