@@ -18,6 +18,7 @@ Legacy flat `.tickets/<id>.md` tickets remain readable.
 tkt create "title" [-t bug|feature|task|epic|chore] [-p 0-4] [-d "desc"]
 tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
+tkt ls --json                 # machine-readable (see "Machine-readable output")
 tkt start <id>                # mark in_progress
 tkt current                   # show active ticket
 tkt close <id> [--no-sprint]  # mark closed (refuses without --no-sprint — directs to sprint complete if sprint docs exist, or to sprint start/--no-sprint otherwise)
@@ -26,7 +27,7 @@ tkt reopen <id>               # reopen
 tkt ci <id> [on|off]          # mark CI-eligible for headless grading
 tkt gate <id> [eval|full]     # headless gate mode: eval-only vs full (needs ci on)
 tkt demo <id> [on|off]        # demo close-path: security-review + evaluator only (Haiku)
-tkt show <id>                 # show full ticket
+tkt show <id> [--json]        # show full ticket
 tkt learn <id> [--force]      # distill a closed sprint's deviations/findings into an UNPROMOTED .tickets/<id>/learnings.md candidate (proposes, never promotes)
 ```
 
@@ -35,6 +36,18 @@ see `skills/learnings-sweep/SKILL.md`) upserts one row into root `LEARNINGS.md`,
 index across tickets. The sprint close protocol has the agent run it in single-ticket mode (the
 `sprint complete` CLI does not call it); run the skill in its `--full` mode by hand to backfill or
 reconcile the whole repo.
+
+## Machine-readable output
+
+`--json` is on `tkt ls`, `tkt show` and `sprint status`. Pure bash and awk, no `jq` or Python. Text output is unchanged without the flag. On an error (unknown or ambiguous id) stdout stays empty and the message goes to stderr, exit 1.
+
+| Command | Output |
+|---|---|
+| `tkt ls [--status=X] --json` | array of `{"id","status","type","priority","title"}`; `priority` is a number; `[]` when none match |
+| `tkt show <id> --json` | `{"id","status","type","priority","created","title","body","eval_override","eval_fail_count","demo"}`; `body` is the text below the title without its leading blank line; `eval_override` and `demo` are booleans, `eval_fail_count` a number, defaulting to `false`/`0` when the frontmatter line is absent |
+| `sprint status --json` | `{"active":true,"ticket":<tkt show --json>,"files":{"ticket.md":bool,"acceptance.md":bool,"plan.md":bool}}`; with no active sprint `{"active":false}` and exit 1 |
+
+Strings are JSON-escaped (`"`, `\`, and control characters as `\n`, `\t`, `\r`, `\b`, `\f` or `\u00XX`); UTF-8 passes through. `canon sessions --json` covers live sessions.
 
 ## Sprint Artifacts
 

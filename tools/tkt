@@ -425,22 +425,56 @@ cmd_close() {
   cmd_set_status "$id" closed
 }
 
+# json_str <value> — print <value> as a quoted JSON string (no newline). Pure awk so it runs on Git Bash with no
+# jq/Python. The value goes in on stdin, one awk record per line, because `awk -v` would interpret backslash
+# escapes and an environment variable is capped near 32 KB on Windows. The trailing "\n" printf adds keeps a value that
+# itself ends in a newline intact. LC_ALL=C makes awk walk bytes: UTF-8 passes through untouched and only
+# U+0000-U+001F, `"` and `\` are rewritten.
+json_str() {
+  printf '%s\n' "$1" | LC_ALL=C awk 'BEGIN {
+    for (i = 1; i < 32; i++) esc[sprintf("%c", i)] = sprintf("\\u%04x", i)
+    esc["\b"] = "\\b"; esc["\t"] = "\\t"; esc["\f"] = "\\f"; esc["\r"] = "\\r"
+    out = "\""
+  }
+  {
+    if (NR > 1) out = out "\\n"
+    n = length($0); buf = ""
+    for (k = 1; k <= n; k++) {
+      c = substr($0, k, 1)
+      if (c == "\\") buf = buf "\\\\"
+      else if (c == "\"") buf = buf "\\\""
+      else if (c in esc) buf = buf esc[c]
+      else buf = buf c
+    }
+    out = out buf
+  }
+  END { printf "%s\"", out }'
+}
+
+# json_num <value> [fallback] — a bare JSON number when <value> is digits, else <fallback> (default: a JSON string).
+json_num() {
+  if [[ "$1" =~ ^[0-9]+$ ]]; then printf '%s' "$1"
+  elif [[ $# -ge 2 ]]; then printf '%s' "$2"
+  else json_str "$1"; fi
+}
+
 cmd_ls() {
-  local status_filter=""
+  local status_filter="" json=0
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --status=*) status_filter="${1#--status=}"; shift ;;
       --status)   status_filter="$2"; shift 2 ;;
+      --json)     json=1; shift ;;
       *)          shift ;;
     esac
   done
 
   local dir
   dir="$(tickets_dir)"
-  [[ ! -d "$dir" ]] && { echo "No tickets found."; return; }
+  [[ ! -d "$dir" ]] && { if [[ $json -eq 1 ]]; then echo "[]"; else echo "No tickets found."; fi; return; }
 
-  local found=0
+  local found=0 items=""
   while IFS= read -r file; do
     local id status type priority title
     id="$(get_field "$file" id)"
@@ -450,19 +484,42 @@ cmd_ls() {
     type="$(get_field "$file" type)"
     priority="$(get_field "$file" priority)"
     title="$(get_title "$file")"
-    printf "%-10s  %-12s  %-8s  p%s  %s\n" "$id" "$status" "$type" "$priority" "$title"
+    if [[ $json -eq 1 ]]; then
+      items+="${items:+,}{\"id\":$(json_str "$id"),\"status\":$(json_str "$status"),\"type\":$(json_str "$type"),\"priority\":$(json_num "$priority"),\"title\":$(json_str "$title")}"
+    else
+      printf "%-10s  %-12s  %-8s  p%s  %s\n" "$id" "$status" "$type" "$priority" "$title"
+    fi
     (( found++ )) || true
   done < <(ticket_files "$dir")
 
-  if [[ $found -eq 0 ]]; then
+  if [[ $json -eq 1 ]]; then
+    printf '[%s]\n' "$items"
+  elif [[ $found -eq 0 ]]; then
     echo "No tickets${status_filter:+ with status '$status_filter'}."
   fi
 }
 
 cmd_show() {
-  [[ $# -eq 0 ]] && { echo "Usage: tkt show <id>" >&2; exit 1; }
+  local query="" json=0 a
+  for a in "$@"; do
+    if [[ "$a" == "--json" ]]; then json=1; elif [[ -z "$query" ]]; then query="$a"; fi
+  done
+  [[ -z "$query" ]] && { echo "Usage: tkt show <id> [--json]" >&2; exit 1; }
   local file
-  file="$(find_ticket "$1")"
+  file="$(find_ticket "$query")"
+
+  if [[ $json -eq 1 ]]; then
+    local body ov dm
+    body="$(awk '/^---$/{fm++; next} fm>=2 && !/^# /{print}' "$file")"
+    body="${body#"${body%%[!$'\n']*}"}" # the blank line after the title is layout, not content
+    ov="$(get_field "$file" eval_override)"; dm="$(get_field "$file" demo)"
+    printf '{"id":%s,"status":%s,"type":%s,"priority":%s,"created":%s,"title":%s,"body":%s,"eval_override":%s,"eval_fail_count":%s,"demo":%s}\n' \
+      "$(json_str "$(get_field "$file" id)")" "$(json_str "$(get_field "$file" status)")" "$(json_str "$(get_field "$file" type)")" \
+      "$(json_num "$(get_field "$file" priority)")" "$(json_str "$(get_field "$file" created)")" "$(json_str "$(get_title "$file")")" \
+      "$(json_str "$body")" "$([[ "$ov" == true ]] && echo true || echo false)" "$(json_num "$(get_field "$file" eval_fail_count)" 0)" \
+      "$([[ "$dm" == true ]] && echo true || echo false)"
+    return
+  fi
 
   printf "ID:       %s\n" "$(get_field "$file" id)"
   printf "Status:   %s\n" "$(get_field "$file" status)"
@@ -834,8 +891,10 @@ Commands:
                             removes the line. Never drops below the evaluator.
   current                   Show active ticket
   reopen <id>               Set status to open
-  ls [--status=X]           List tickets (unfiltered by default)
-  show <id>                 Display ticket details
+  ls [--status=X] [--json]  List tickets (unfiltered by default); --json: array of
+                            {id,status,type,priority,title}
+  show <id> [--json]        Display ticket details; --json: one object {id,status,type,
+                            priority,created,title,body,eval_override,eval_fail_count,demo}
   why <file>                Show tickets whose commits touched a file
   learn <id> [--force]      Distill a closed sprint's summary.md deviations +
                             eval-report.md and review-notes.md findings into an UNPROMOTED candidate at

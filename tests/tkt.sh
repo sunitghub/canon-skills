@@ -431,3 +431,86 @@ bare_project="$(make_project)"
   git worktree remove -f "$bare_wt" >/dev/null 2>&1 || true
 )
 rm -rf "$bare_project" "$bare_project-worktrees"
+
+# t-262a: --json on ls/show. Parsed with node (never the escaper under test) and compared with what went in.
+jq_node() { node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));const r=(function(j){return eval(process.argv[1])})(j);process.stdout.write(typeof r==="string"?r:JSON.stringify(r))' "$1"; }
+assert_json_eq() { # <expected> <js expr over j> <json>
+  local actual; actual="$(printf '%s' "$3" | jq_node "$2")" || fail "output is not valid JSON: $3"
+  assert_eq "$1" "$actual"
+}
+
+json_project="$(make_project)"
+(
+  cd "$json_project"
+  none_ls="$("$TKT" ls --json)"; assert_eq "[]" "$none_ls"
+  none_status="$("$TKT" ls --status=open --json)"; assert_eq "[]" "$none_status"
+
+  open_id="$("$TKT" create "Plain one" -t bug -p 1 -d "Body line")"
+  done_id="$("$TKT" create "Done one" -t task -p 3)"
+  "$TKT" close "$done_id" --no-sprint >/dev/null
+  arch_id="$("$TKT" create "Archived one" -t chore)"
+  "$TKT" archive "$arch_id" >/dev/null
+
+  all="$("$TKT" ls --json)"
+  assert_json_eq "2" "j.length" "$all"
+  assert_json_eq "$open_id,bug,open,1,Plain one" 'j.filter(t=>t.id==="'"$open_id"'").map(t=>[t.id,t.type,t.status,t.priority,t.title].join(","))[0]' "$all"
+  assert_json_eq "number" 'typeof j[0].priority' "$all"
+  assert_eq "Archived one" "$("$TKT" ls --status=archived --json | jq_node 'j[0].title')"
+  assert_json_eq "1" "j.length" "$("$TKT" ls --status=closed --json)"
+  assert_json_eq "hidden" 'j.map(t=>t.title).includes("Archived one")?"shown":"hidden"' "$all"
+  assert_json_eq "[]" "j" "$("$TKT" ls --status=in_progress --json)"
+  # --json before the filter works too.
+  assert_json_eq "1" "j.length" "$("$TKT" ls --json --status open)"
+
+  shown="$("$TKT" show "$open_id" --json)"
+  assert_json_eq "$open_id|open|bug|1|Plain one|Body line" '[j.id,j.status,j.type,j.priority,j.title,j.body].join("|")' "$shown"
+  assert_json_eq "false|0|false" '[j.eval_override,j.eval_fail_count,j.demo].join("|")' "$shown"
+  assert_json_eq "string" 'typeof j.created' "$shown"
+  assert_eq "$(awk '/^created: /{print $2; exit}' ".tickets/$open_id/ticket.md")" "$(printf '%s' "$shown" | jq_node 'j.created')"
+  # Gate fields are real types, read from the frontmatter when present.
+  sed -i.bak 's/^eval_override: .*/eval_override: true/; s/^eval_fail_count: .*/eval_fail_count: 2/' ".tickets/$open_id/ticket.md"; rm -f ".tickets/$open_id/ticket.md.bak"
+  "$TKT" demo "$open_id" on >/dev/null
+  assert_json_eq "true|2|true" '[j.eval_override,j.eval_fail_count,j.demo].join("|")' "$("$TKT" show "$open_id" --json)"
+
+  # Text mode is unchanged.
+  text="$("$TKT" show "$open_id")"
+  assert_contains "$text" "Title:    Plain one"
+  [[ "$text" != *'{'* ]] || fail "text mode printed JSON"
+  assert_eq "$(printf '%-10s  %-12s  %-8s  p%s  %s' "$open_id" open bug 1 "Plain one")" "$("$TKT" ls --status=open)"
+  assert_contains "$("$TKT" ls)" "$(printf '%-10s  %-12s  %-8s  p%s  %s' "$done_id" closed task 3 "Done one")"
+
+  # Hostile free text round-trips and cannot inject a key.
+  h_title=$'quo"te back\\slash tab\there a","id":"x'
+  h_body=$'line1\nline2 \x01 caf\xc3\xa9 \xe2\x9c\x93\n\nlast'
+  hid="$("$TKT" create "$h_title" -d "$h_body")"
+  hshown="$("$TKT" show "$hid" --json)"
+  assert_json_eq "$hid" "j.id" "$hshown"
+  assert_eq "$h_title" "$(printf '%s' "$hshown" | jq_node 'j.title')"
+  assert_eq "$h_body" "$(printf '%s' "$hshown" | jq_node 'j.body')"
+  assert_json_eq "1" 'j.filter(t=>t.id==="'"$hid"'").length' "$("$TKT" ls --json)"
+  assert_eq "$h_title" "$("$TKT" ls --json | jq_node 'j.filter(t=>t.id==="'"$hid"'")[0].title')"
+  # Every control character U+0001-U+001F (except newline, which the Description keeps as a line break) survives.
+  ctl_title=""; for n in 1 2 3 4 5 6 7 8 11 12 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31; do ctl_title+="$(printf "\\x$(printf '%02x' "$n")")"; done
+  cid="$("$TKT" create "c${ctl_title}d")"
+  assert_eq "c${ctl_title}d" "$("$TKT" show "$cid" --json | jq_node 'j.title')"
+  # A body past Windows' ~32 KB environment-variable cap round-trips: many lines, and one 100 KB line.
+  big_lines="$(head -c 60000 /dev/urandom | base64 | fold -w 76)"$'\n'"$(printf 'q"\\%.0s' $(seq 1 3000))"
+  bid="$("$TKT" create "big lines" -d "$big_lines")"
+  assert_eq "$big_lines" "$("$TKT" show "$bid" --json | jq_node 'j.body')"
+  big_one="$(head -c 75000 /dev/urandom | base64 | tr -d '\n')"
+  oid="$("$TKT" create "one long line" -d "$big_one")"
+  assert_eq "$big_one" "$("$TKT" show "$oid" --json | jq_node 'j.body')"
+  # CRLF in a hand-edited ticket: no stray \r in id/status.
+  printf -- '---\r\nid: t-cr01\r\nstatus: open\r\ntype: task\r\npriority: 2\r\ncreated: 2026-01-01T00:00:00Z\r\n---\r\n# Crlf\r\n' > .tickets/t-cr01.md
+  assert_json_eq "t-cr01|open|2" '[j.id,j.status,j.priority].join("|")' "$("$TKT" show t-cr01 --json)"
+
+  # Errors: usage message on stderr, nothing on stdout, exit 1.
+  for bad in nosuch "t-"; do
+    rc=0; out="$("$TKT" show "$bad" --json 2>/dev/null)" || rc=$?
+    [[ "$rc" -eq 1 ]] || fail "show $bad --json: expected exit 1, got $rc"
+    assert_eq "" "$out"
+  done
+  rc=0; out="$("$TKT" show --json 2>/dev/null)" || rc=$?
+  [[ "$rc" -eq 1 && -z "$out" ]] || fail "show --json with no id must exit 1 with empty stdout"
+)
+rm -rf "$json_project"
