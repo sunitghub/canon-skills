@@ -504,6 +504,20 @@ json_project="$(make_project)"
   printf -- '---\r\nid: t-cr01\r\nstatus: open\r\ntype: task\r\npriority: 2\r\ncreated: 2026-01-01T00:00:00Z\r\n---\r\n# Crlf\r\n' > .tickets/t-cr01.md
   assert_json_eq "t-cr01|open|2" '[j.id,j.status,j.priority].join("|")' "$("$TKT" show t-cr01 --json)"
 
+  # A malformed ticket never turns a number field into a string: priority missing or non-numeric is null.
+  printf -- '---\nid: t-np01\nstatus: open\ntype: task\ncreated: 2026-01-01T00:00:00Z\n---\n# No priority\n' > .tickets/t-np01.md
+  printf -- '---\nid: t-np02\nstatus: open\ntype: task\npriority: high\ncreated: 2026-01-01T00:00:00Z\n---\n# Odd priority\n' > .tickets/t-np02.md
+  for np in t-np01 t-np02; do
+    assert_json_eq "null" 'j.priority' "$("$TKT" show "$np" --json)"
+    assert_json_eq "null" 'j.filter(t=>t.id==="'"$np"'")[0].priority' "$("$TKT" ls --json)"
+  done
+  # A "# " line in the body is dropped, exactly as text mode does.
+  printf -- '---\nid: t-hd01\nstatus: open\ntype: task\npriority: 2\ncreated: 2026-01-01T00:00:00Z\n---\n# Title\n\nkept\n# dropped heading\nalso kept\n' > .tickets/t-hd01.md
+  assert_eq $'kept\nalso kept' "$("$TKT" show t-hd01 --json | jq_node 'j.body')"
+  hd_text="$("$TKT" show t-hd01)"
+  assert_contains "$hd_text" $'kept\nalso kept'
+  [[ "$hd_text" != *"dropped heading"* ]] || fail "text mode printed a # line from the body"
+
   # Errors: usage message on stderr, nothing on stdout, exit 1.
   for bad in nosuch "t-"; do
     rc=0; out="$("$TKT" show "$bad" --json 2>/dev/null)" || rc=$?

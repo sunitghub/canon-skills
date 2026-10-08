@@ -452,11 +452,15 @@ json_str() {
 }
 
 # json_num <value> [fallback] — a bare JSON number when <value> is digits, else <fallback> (default: a JSON string).
+# Number fields pass a fallback (`null`, `0`) so a malformed ticket never turns a number into a string.
 json_num() {
   if [[ "$1" =~ ^[0-9]+$ ]]; then printf '%s' "$1"
   elif [[ $# -ge 2 ]]; then printf '%s' "$2"
   else json_str "$1"; fi
 }
+
+# ticket_body <file> — the text below the frontmatter, without `# ` heading lines (the title).
+ticket_body() { awk '/^---$/{fm++; next} fm>=2 && !/^# /{print}' "$1"; }
 
 cmd_ls() {
   local status_filter="" json=0
@@ -485,7 +489,7 @@ cmd_ls() {
     priority="$(get_field "$file" priority)"
     title="$(get_title "$file")"
     if [[ $json -eq 1 ]]; then
-      items+="${items:+,}{\"id\":$(json_str "$id"),\"status\":$(json_str "$status"),\"type\":$(json_str "$type"),\"priority\":$(json_num "$priority"),\"title\":$(json_str "$title")}"
+      items+="${items:+,}{\"id\":$(json_str "$id"),\"status\":$(json_str "$status"),\"type\":$(json_str "$type"),\"priority\":$(json_num "$priority" null),\"title\":$(json_str "$title")}"
     else
       printf "%-10s  %-12s  %-8s  p%s  %s\n" "$id" "$status" "$type" "$priority" "$title"
     fi
@@ -510,12 +514,12 @@ cmd_show() {
 
   if [[ $json -eq 1 ]]; then
     local body ov dm
-    body="$(awk '/^---$/{fm++; next} fm>=2 && !/^# /{print}' "$file")"
+    body="$(ticket_body "$file")"
     body="${body#"${body%%[!$'\n']*}"}" # the blank line after the title is layout, not content
     ov="$(get_field "$file" eval_override)"; dm="$(get_field "$file" demo)"
     printf '{"id":%s,"status":%s,"type":%s,"priority":%s,"created":%s,"title":%s,"body":%s,"eval_override":%s,"eval_fail_count":%s,"demo":%s}\n' \
       "$(json_str "$(get_field "$file" id)")" "$(json_str "$(get_field "$file" status)")" "$(json_str "$(get_field "$file" type)")" \
-      "$(json_num "$(get_field "$file" priority)")" "$(json_str "$(get_field "$file" created)")" "$(json_str "$(get_title "$file")")" \
+      "$(json_num "$(get_field "$file" priority)" null)" "$(json_str "$(get_field "$file" created)")" "$(json_str "$(get_title "$file")")" \
       "$(json_str "$body")" "$([[ "$ov" == true ]] && echo true || echo false)" "$(json_num "$(get_field "$file" eval_fail_count)" 0)" \
       "$([[ "$dm" == true ]] && echo true || echo false)"
     return
@@ -529,7 +533,7 @@ cmd_show() {
   printf "Title:    %s\n" "$(get_title "$file")"
 
   local body
-  body="$(awk '/^---$/{fm++; next} fm>=2 && !/^# /{print}' "$file")"
+  body="$(ticket_body "$file")"
   if [[ -n "$body" ]]; then
     printf "\n%s\n" "$body"
   fi

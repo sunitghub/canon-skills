@@ -43,8 +43,8 @@ reconcile the whole repo.
 
 | Command | Output |
 |---|---|
-| `tkt ls [--status=X] --json` | array of `{"id","status","type","priority","title"}`; `priority` is a number; `[]` when none match |
-| `tkt show <id> --json` | `{"id","status","type","priority","created","title","body","eval_override","eval_fail_count","demo"}`; `body` is the text below the title without its leading blank line; `eval_override` and `demo` are booleans, `eval_fail_count` a number, defaulting to `false`/`0` when the frontmatter line is absent |
+| `tkt ls [--status=X] --json` | array of `{"id","status","type","priority","title"}`; `priority` is a number (`null` if the ticket has none); `[]` when none match |
+| `tkt show <id> --json` | `{"id","status","type","priority","created","title","body","eval_override","eval_fail_count","demo"}`; `body` is the text below the title without its leading blank line, and, as in text mode, without any line that starts with `# `; `eval_override` and `demo` are booleans, `eval_fail_count` a number, defaulting to `false`/`0` when the frontmatter line is absent |
 | `sprint status --json` | `{"active":true,"ticket":<tkt show --json>,"files":{"ticket.md":bool,"acceptance.md":bool,"plan.md":bool}}`; with no active sprint `{"active":false}` and exit 1 |
 
 Strings are JSON-escaped (`"`, `\`, and control characters as `\n`, `\t`, `\r`, `\b`, `\f` or `\u00XX`); UTF-8 passes through. `canon sessions --json` covers live sessions.
