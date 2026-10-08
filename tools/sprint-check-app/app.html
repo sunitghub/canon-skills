@@ -554,7 +554,7 @@
 
     /* Card header zone — subtle raised strip for ID + badge */
     .card-head {
-      display: flex; align-items: center; justify-content: space-between;
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 6px;
       padding: 7px 11px 6px;
       background: var(--surface-hover);
       border-bottom: 1px solid var(--border);
@@ -970,7 +970,7 @@
       color: var(--text-muted); cursor: pointer;
     }
     .doc-child:hover { background: var(--surface-hover); color: var(--text); }
-    .doc-child-count { font-family: 'JetBrains Mono','Fira Code',ui-monospace,monospace; font-size: 10px; color: var(--text-muted); }
+    .doc-child-count { font-family: 'JetBrains Mono','Fira Code',ui-monospace,monospace; font-size: 11px; color: var(--text-muted); }
     .doc-tab-new {
       padding: 5px 12px; border-radius: 999px; font-size: 12px;
       border: 1px dashed var(--border-hover); background: transparent;
@@ -1054,21 +1054,22 @@
       background: var(--surface-raised);
       border-bottom: 1px solid var(--panel-border);
     }
+    .section-jumps:has(.signoff-controls) { container-type: inline-size; }
     .signoff-controls {
-      display: flex; align-items: center; gap: 4px; margin-left: auto;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; flex: 1 1 100%; min-width: 0;
     }
-    .model-tier-select, .signoff-tier-select {
-      font-size: 11px; color: var(--accent); background: transparent;
-      border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 2px;
+    .model-tier-select, .signoff-tier-select, .signoff-risk-input {
+      box-sizing: border-box; height: 26px; font-size: 12px; border-radius: 6px;
+      border: 1px solid var(--panel-border); background: var(--surface);
     }
+    .model-tier-select, .signoff-tier-select { color: var(--accent); padding: 0 6px; }
+    .model-tier-select { width: 168px; }
     .model-tier-select:disabled, .signoff-tier-select:disabled, .signoff-risk-input:disabled {
       opacity: 0.5; cursor: not-allowed;
     }
-    .signoff-risk-input {
-      font-size: 11px; color: var(--text-body); background: transparent;
-      border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 4px;
-      width: 160px;
-    }
+    .signoff-risk-input { color: var(--text-body); padding: 0 8px; flex: 1 1 280px; min-width: 0; }
+    .signoff-risk-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    @container (max-width: 640px) { .signoff-risk-input { order: -1; flex-basis: 100%; } }
     .signoff-risk-input--needs-value {
       border-color: var(--col-discarded);
     }
@@ -3081,7 +3082,7 @@ function ciBadge(t) {
 
 function demoBadge(t) {
   if (String(t.demo) !== 'true') return '';
-  return `<span class="demo-badge" title="Demo/Docs/UX light-close — for live demos or docs/research/UX-mockup work: sprint complete runs the reduced close-path (security-review + the binding evaluator only, forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO/DOCS</span>`;
+  return `<span class="demo-badge" title="Demo/Docs/UX light-close — for live demos or docs/research/UX-mockup work: sprint complete runs the reduced close-path (security-review + the binding evaluator only, forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO/UX</span>`;
 }
 
 // t-6328: `branch_divergence` ({branch,status,where,merged}) is sent only when this ticket's
@@ -4752,7 +4753,8 @@ function injectSignoffControls(container, content, t) {
     riskInput.placeholder = 'Risk: blast radius / key risks, one line';
     riskInput.value = base.risk;
     riskInput.disabled = locked;
-    riskInput.title = locked ? lockedTip : '';
+    riskInput.title = locked ? lockedTip : base.risk;
+    riskInput.addEventListener('input', () => { riskInput.title = riskInput.value; });
 
     const riskWarning = document.createElement('span');
     riskWarning.className = 'signoff-risk-warning';
