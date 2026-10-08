@@ -2003,7 +2003,7 @@ test.describe('board modal', () => {
 
       // Demo is on (frontmatter): an explicit model replaces the forced-Haiku evaluator, and the Plan tab says so.
       const hint = page.locator('.model-tier-demo-hint');
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✓');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');
       await expect(hint).toHaveText('Replaces Demo’s Haiku');
       await expect(hint).toHaveAttribute('title', /Copilot CLI/);
       await select.selectOption('haiku');
@@ -2017,7 +2017,7 @@ test.describe('board modal', () => {
       await select.selectOption('haiku');
       await expect(hint).toHaveText('Replaces Demo’s Haiku');
       await page.locator('.signoff-demo-toggle').click();
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✗');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
       await expect(hint).toHaveCount(0);
     } finally {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -2304,7 +2304,7 @@ test.describe('board modal', () => {
       await page.locator('.doc-tab', { hasText: 'Plan' }).click();
 
       const toggle = page.locator('.signoff-demo-toggle');
-      await expect(toggle).toHaveText('Demo/UX ✗');
+      await expect(toggle).toHaveAttribute('aria-checked', 'false');
       await expect(toggle).not.toHaveClass(/active/);
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
 
@@ -2313,7 +2313,7 @@ test.describe('board modal', () => {
       await expect.poll(() =>
         fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8')
       ).toMatch(/^demo: true$/m);
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✓');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toBeVisible();
 
       // Toggle OFF → demo line removed, badge gone
@@ -2321,7 +2321,7 @@ test.describe('board modal', () => {
       await expect.poll(() =>
         /^demo:/m.test(fs.readFileSync(path.join(ticketDir, 'ticket.md'), 'utf8'))
       ).toBe(false);
-      await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✗');
+      await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
       await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveCount(0);
     } finally {
       if (id) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
@@ -8044,10 +8044,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // Demo toggle: a refused change leaves it showing the saved (off) state.
     await page.locator('.doc-tab', { hasText: 'Plan' }).click();
     const demo = page.locator('.signoff-demo-toggle');
-    await expect(demo).toHaveText('Demo/UX ✗');
+    await expect(demo).toHaveAttribute('aria-checked', 'false');
     await demo.click();
     await expect(toast).toContainText("Couldn't change Demo/UX: HTTP 403");
-    await expect(page.locator('.signoff-demo-toggle')).toHaveText('Demo/UX ✗');
+    await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
     // Sign-off tier: a refused change re-renders to the saved value.
     const tier = page.locator('.signoff-controls select').first();
     await expect(tier).toHaveValue('normal');
@@ -12228,13 +12228,15 @@ test.describe('ticket modal document tree (t-e946)', () => {
     await expect(page.locator('#m-docs .doc-child')).toHaveText([/Criteria/, /Test Plan/, /QA/]);
     await page.locator('#m-docs .doc-child', { hasText: 'QA' }).click();
     await expect.poll(() => page.evaluate(() => {
-      const h = document.getElementById('section-qa').getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      const e = document.getElementById('section-qa'); if (!e) return false;
+      const h = e.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
       return h.top >= b.top - 1 && h.bottom <= b.bottom + 1;
     })).toBe(true);
     await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
     await tab(page, 'Research').click();
     await expect(page.locator('#m-body')).toContainText('Only one heading');
-    await expect(page.locator('#m-docs .doc-child')).toHaveCount(0);
+    await expect(page.locator('#m-docs .doc-node[data-key$="research.md"] .doc-expander')).toHaveCount(0);   // one heading: no expander (t-612f)
+    await expect(page.locator('#m-docs .doc-node[data-key$="research.md"] + .doc-children')).toHaveCount(0);
   });
 
   test('checklist sections show done/total; a prose section shows no count', async ({ page }) => {
@@ -12496,5 +12498,191 @@ test.describe('ticket modal editor (t-a205)', () => {
     expect(x.firstH).toBeGreaterThan(x.lineH * 1.5);   // the first logical line wraps onto more rows, its number stays on the first
     await page.setViewportSize({ width: 700, height: 900 });
     await expect.poll(async () => { const y = await m(); return Math.abs(y.gH - y.tH) <= 2 && y.over <= 1; }).toBe(true);
+  });
+});
+
+// t-612f: expandable doc nodes (+ / −), the Demo/UX switch, the top-left resize grip, the keyboard-only card outline
+test.describe('ticket modal polish (t-612f)', () => {
+  const made = [];
+  function writeTicket(id, { status = 'open' } = {}) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2', 'created: 2026-06-28T00:00:00Z', '---', '', `# Polish fixture ${id}`, '', '## Context', 'Why this ticket exists.', '', '## Notes', 'More words.', ''].join('\n'));
+    const filler = Array.from({ length: 40 }, (_, i) => `Filler line ${i + 1} so the sections below start off screen.`).join('\n\n');
+    fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', `Ticket: \`${id}\``, '', '## Criteria', '- [x] One', '- [ ] Two', '', filler, '', '## Test Plan', '- [ ] Run it', '', '## QA', 'Notes only.', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'research.md'), ['# Research', '', '## Only one heading', 'Text.', ''].join('\n'));
+    made.push(dir);
+  }
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  async function openModalFor(page, id) {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.waitForSelector('#m-docs .doc-tab');
+  }
+  const node = (page, name) => page.locator(`#m-docs .doc-node[data-key${name ? `$="${name}.md"` : '=""'}]`);
+  const kids = (page, name) => page.locator(`#m-docs .doc-node[data-key${name ? `$="${name}.md"` : '=""'}] + .doc-children .doc-child`);
+
+  test('nodes with two or more sections show + or −, the others an equal spacer, all in one column', async ({ page }) => {
+    const id = `t-pol-exp-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await expect(node(page, '').locator('.doc-expander')).toHaveText('−');                 // the open doc starts expanded
+    await expect(node(page, '').locator('.doc-expander')).toHaveAttribute('aria-expanded', 'true');
+    for (const n of ['acceptance', 'plan']) {                                                  // never opened, sections known from the background read
+      await expect(node(page, n).locator('.doc-expander')).toHaveText('+');
+      await expect(node(page, n).locator('.doc-expander')).toHaveAttribute('aria-expanded', 'false');
+      await expect(node(page, n).locator('.doc-expander')).toHaveAttribute('aria-label', /Expand/);
+    }
+    await expect(node(page, 'research').locator('.doc-expander')).toHaveCount(0);
+    await expect(node(page, 'research').locator('.doc-expander-spacer')).toHaveCount(1);
+    const xs = await page.locator('#m-docs .doc-tab').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().left)));
+    expect(Math.max(...xs) - Math.min(...xs)).toBeLessThanOrEqual(1);
+  });
+
+  test('a + expands another doc without opening it, − collapses, and the choice holds across switching', async ({ page }) => {
+    const id = `t-pol-tog-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await node(page, 'acceptance').locator('.doc-expander').click();
+    await expect(kids(page, 'acceptance')).toHaveCount(3);
+    await expect(kids(page, 'acceptance').first().locator('.doc-child-count')).toHaveText('1/2');
+    await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Description');           // still on Description
+    await expect(page.locator('#m-body')).toContainText('Why this ticket exists');
+    await node(page, 'acceptance').locator('.doc-expander').click();
+    await expect(kids(page, 'acceptance')).toHaveCount(0);
+    await expect(node(page, 'acceptance').locator('.doc-expander')).toHaveText('+');
+    await node(page, '').locator('.doc-expander').click();                                     // collapse the active doc too
+    await expect(kids(page, '')).toHaveCount(0);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    await expect(kids(page, 'plan')).toHaveCount(2);                                           // first time open: expanded
+    await page.locator('#m-docs .doc-tab', { hasText: 'Description' }).click();
+    await expect(node(page, '').locator('.doc-expander')).toHaveText('+');                     // and the collapse held
+    await expect(kids(page, '')).toHaveCount(0);
+  });
+
+  test('a section row of a doc that is not open opens that doc and scrolls to the section', async ({ page }) => {
+    const id = `t-pol-jump-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await node(page, 'acceptance').locator('.doc-expander').click();
+    await page.route('**/api/doc/**', async route => { await new Promise(r => setTimeout(r, 400)); await route.continue(); });   // the doc arrives after the click
+    await kids(page, 'acceptance').filter({ hasText: 'QA' }).click();
+    await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
+    await expect.poll(() => page.evaluate(() => {
+      const h = document.getElementById('section-qa'); if (!h) return false;
+      const r = h.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      return r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
+    })).toBe(true);
+  });
+
+  test('a section row clicked while its doc is still loading scrolls once the doc has rendered', async ({ page }) => {
+    const id = `t-pol-gap-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await node(page, 'acceptance').locator('.doc-expander').click();
+    await page.route('**/api/doc/**acceptance.md', async route => { await new Promise(r => setTimeout(r, 900)); await route.continue(); });
+    await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();             // sections known, the text is on its way
+    await kids(page, 'acceptance').filter({ hasText: 'QA' }).click();                      // clicked before any heading exists
+    await expect.poll(() => page.evaluate(() => {
+      const e = document.getElementById('section-qa'); if (!e) return false;
+      const r = e.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      return r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
+    })).toBe(true);
+  });
+
+  test('sections come from a background read of every doc; an unreadable doc shows no +; a Save refreshes them', async ({ page }) => {
+    const id = `t-pol-bg-${Date.now()}`;
+    writeTicket(id);
+    await page.route('**/api/doc/**plan.md', route => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
+    await openModalFor(page, id);
+    await expect(node(page, 'acceptance').locator('.doc-expander')).toHaveText('+');           // read without ever opening it
+    await expect(node(page, 'plan').locator('.doc-expander')).toHaveCount(0);                   // its read failed: nothing shown
+    await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();
+    await expect(kids(page, 'acceptance')).toHaveCount(3);
+    await editDoc(page);
+    await page.locator('#m-edit-area').fill('# Acceptance\n\n## Criteria\n- [x] a\n\n## Test Plan\n- [ ] b\n\n## QA\n- [ ] c\n\n## Extra\nnotes\n');
+    await page.locator('#btn-save-top').click();
+    await expect(kids(page, 'acceptance')).toHaveCount(4);
+  });
+
+  test('Demo/UX is a green switch and the Codex note is gone', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-d${sfx}`, cid = `t-c${sfx}`;   // the demo endpoint wants exactly t- plus four characters
+    writeTicket(id); writeTicket(cid, { status: 'closed' });
+    await openModalFor(page, id);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    const sw = page.locator('.signoff-demo-toggle');
+    await expect(sw).toHaveAttribute('role', 'switch');
+    await expect(sw).toHaveAttribute('aria-checked', 'false');
+    await expect(sw).toHaveText('Demo/UX');
+    await expect(page.locator('.section-jumps')).not.toContainText('No effect under Codex');
+    const look = () => page.evaluate(() => {
+      const t = document.querySelector('.signoff-demo-toggle .sw-track'), k = document.querySelector('.signoff-demo-toggle .sw-knob');
+      const p = document.createElement('i'); p.style.backgroundColor = 'var(--col-done)'; document.body.appendChild(p); const green = getComputedStyle(p).backgroundColor; p.remove();
+      return { bg: getComputedStyle(t).backgroundColor, green, knob: k.getBoundingClientRect().left - t.getBoundingClientRect().left };
+    });
+    let l = await look();
+    expect(l.bg).not.toBe(l.green);
+    expect(l.knob).toBeLessThan(6);
+    await sw.click();
+    await expect(sw).toHaveAttribute('aria-checked', 'true');
+    await expect.poll(async () => { const x = await look(); return x.bg === x.green && x.knob > 10; }).toBe(true);
+    await openModalFor(page, cid);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    await expect(page.locator('.signoff-demo-toggle')).toBeDisabled();
+  });
+
+  test('the top-left grip resizes with the bottom-right corner fixed; the bottom-right grip still resizes', async ({ page }) => {
+    const id = `t-pol-grip-${Date.now()}`;
+    writeTicket(id);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openModalFor(page, id);
+    await page.waitForTimeout(800);                                                         // the dialog scales in with an overshoot; measure once it has settled
+    const box = () => page.locator('#modal').boundingBox();
+    const drag = async (sel, dx, dy) => {
+      const h = await page.locator(sel).boundingBox();
+      const cx = h.x + h.width / 2, cy = h.y + h.height / 2;
+      await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(cx + dx, cy + dy, { steps: 6 }); await page.mouse.up();
+      await page.waitForTimeout(150);
+    };
+    const a = await box();
+    await drag('.modal-resize-handle-tl', -80, -60);
+    const b = await box();
+    expect(Math.abs((b.width - a.width) - 80)).toBeLessThanOrEqual(2);
+    expect(Math.abs((b.height - a.height) - 60)).toBeLessThanOrEqual(2);
+    expect(Math.abs((b.x + b.width) - (a.x + a.width))).toBeLessThanOrEqual(2);            // bottom-right corner stayed
+    expect(Math.abs((b.y + b.height) - (a.y + a.height))).toBeLessThanOrEqual(2);
+    await drag('.modal-resize-handle-tl', 600, 600);                                        // shrinks to the minimum
+    const c = await box();
+    expect(c.width).toBeLessThan(b.width - 100);
+    expect(c.width).toBeGreaterThanOrEqual(419); expect(c.height).toBeGreaterThanOrEqual(319);
+    expect(Math.abs((c.x + c.width) - (a.x + a.width))).toBeLessThanOrEqual(2);
+    expect(Math.abs((c.y + c.height) - (a.y + a.height))).toBeLessThanOrEqual(2);
+    await drag('#modal .modal-resize-handle:not(.modal-resize-handle-tl)', 60, 50);               // the old grip
+    const d = await box();
+    expect(Math.abs((d.width - c.width) - 60)).toBeLessThanOrEqual(2);
+    expect(Math.abs((d.height - c.height) - 50)).toBeLessThanOrEqual(2);
+  });
+
+  test('a selected card has no outline of its own; a card with keyboard focus does', async ({ page }) => {
+    const ts = Date.now(), a = `t-pol-card-a-${ts}`, b = `t-pol-card-b-${ts}`;
+    writeTicket(a); writeTicket(b);
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(`t-pol-card-`);
+    await expect(page.locator(`.card[data-id="${a}"]`)).toBeVisible();
+    await page.evaluate(i => { state.selectedId = i; renderBoard(); }, a);
+    await expect(page.locator(`.card[data-id="${a}"]`)).toHaveClass(/focused/);
+    const look = id => page.locator(`.card[data-id="${id}"]`).evaluate(e => { const c = getComputedStyle(e); return { b: c.borderTopColor, s: c.boxShadow }; });
+    expect(await look(a)).toEqual(await look(b));                                           // same as an unselected neighbour
+    await page.keyboard.press('Tab');                                                       // keyboard modality, then focus the card
+    await page.locator(`.card[data-id="${a}"]`).focus();
+    const accent = await page.evaluate(() => { const p = document.createElement('i'); p.style.color = 'var(--accent)'; document.body.appendChild(p); const c = getComputedStyle(p).color; p.remove(); return c; });
+    await expect.poll(async () => (await look(a)).b).toBe(accent);                         // the border fades in, so poll
+    const f = await look(a);
+    expect(f.s).not.toBe('none');
+    expect(f.s).not.toBe((await look(b)).s);
   });
 });
