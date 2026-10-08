@@ -12363,6 +12363,19 @@ test.describe('ticket modal editor (t-a205)', () => {
     await expect(page.locator('#m-edit-area')).toHaveValue('e');
   });
 
+  test('while the new-doc picker is open, double-click and e do not start editing', async ({ page }) => {
+    const id = `t-ed-pick-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await page.locator('#btn-new-doc').click();
+    await expect(page.locator('#m-body')).not.toContainText('Plain description');   // the picker replaced the document
+    await editDoc(page);
+    expect(await editing(page)).toBe(false);
+    await page.keyboard.press('e');
+    expect(await editing(page)).toBe(false);
+    await expect(page.locator('#btn-new-doc')).toBeDisabled();                      // the picker is still the state of the modal
+  });
+
   test('Cancel leaves the doc unchanged', async ({ page }) => {
     const id = `t-ed-cancel2-${Date.now()}`;
     writeTicket(id);

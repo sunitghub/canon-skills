@@ -1176,7 +1176,6 @@
       flex: none; min-width: 44px; padding: 16px 10px 16px 12px; overflow: hidden; user-select: none;
       text-align: right; color: var(--text-dim); background: var(--surface-raised); border-right: 1px solid var(--border-muted);
     }
-    .editor-gutter[hidden] { display: none; }
     .editor-card .modal-edit-area {
       flex: 1; min-width: 0; min-height: 0; height: auto; border: 0; border-radius: 0; box-shadow: none; resize: none;
       background: transparent; white-space: pre-wrap; overflow-wrap: break-word; overflow-x: hidden;
@@ -4874,7 +4873,7 @@ function renderModalBody(t) {
 
 // t-a205: one answer to "may the board edit the active doc?" for the hint, double-click, the E key and enterEditMode.
 function docEditable(t) {
-  if (!t || t.status === 'closed' || t.status === 'cancelled') return false;
+  if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.pickingDoc) return false;   // the new-doc picker owns the pane while it is open
   const liveBranch = t.docs_from && t.docs_from.branch;
   if (liveBranch && modalState.activeDoc && !LIVE_EDITABLE_SLUGS.includes(docSlug(t, modalState.activeDoc))) return false;
   return true;
