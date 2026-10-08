@@ -5077,7 +5077,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('upkeep (t-67ab): the board path bar — branch under the path, no counts, Upkeep · + New · Scratch · CI on the right', async ({ page }) => {
+    test('upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Upkeep · Scratch · CI on the right (order since t-7723)', async ({ page }) => {
       await upkeepStatus(page);
       const board = await openShell(page, []);
       await expect(board.locator('#btn-upkeep')).toBeVisible();
@@ -5087,7 +5087,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const proj = await box('#h-project'), branch = await box('#h-branch');
       expect(branch.y).toBeGreaterThan(proj.y + proj.height / 2);   // on the line below the path
       expect(await board.locator('.header-right button:visible').evaluateAll(bs => bs.slice(0, 4).map(b => b.id)))
-        .toEqual(['btn-upkeep', 'btn-create', 'btn-scratch', 'btn-ci-setup']);
+        .toEqual(['btn-create', 'btn-upkeep', 'btn-scratch', 'btn-ci-setup']);
       const right = await box('.header-right'), up = await box('#btn-upkeep');
       expect(up.x).toBeGreaterThan(proj.x + proj.width);   // the buttons sit to the right of the path
       await board.locator('#header').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'path-bar.png') });
@@ -12008,5 +12008,133 @@ test.describe('Canon Cockpit help', () => {
         });
       }
     }
+  });
+});
+
+// t-7723: header button order and the one-row card footer (clock + age, priority bars, worded status, right-aligned Start)
+test.describe('board header and card footer (t-7723)', () => {
+  const made = [];
+  function writeTicket(id, { status = 'open', priority = 2, ready = false } = {}) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', `priority: ${priority}`, 'created: 2026-06-28T00:00:00Z', '---', '', `# Footer fixture ${id}`, ''].join('\n'));
+    if (ready) {
+      fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', '## Criteria', '- [x] Done', '', '## Test Plan', '- [x] Tested', ''].join('\n'));
+      fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Approach', 'Fixture.', '', '## Sign-off', '- [x] Plan approved', ''].join('\n'));
+    }
+    made.push(dir);
+  }
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  async function openBoard(page, id) {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await expect(page.locator(`.card[data-id="${id}"]`)).toBeVisible();
+  }
+
+  for (const theme of ['dark', 'light']) {
+    test(`header order is New, Upkeep, Scratch, CI and New is filled (${theme})`, async ({ page }) => {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
+      const order = await page.evaluate(() => [...document.querySelectorAll('#btn-create,#btn-upkeep,#btn-scratch,#btn-ci-setup')].map(b => b.id));
+      expect(order).toEqual(['btn-create', 'btn-upkeep', 'btn-scratch', 'btn-ci-setup']);
+      // the button animates its background for .1s after a theme switch, so poll until it settles on the accent
+      await expect.poll(() => page.evaluate(() => {
+        const p = document.createElement('i'); p.style.backgroundColor = 'var(--accent)'; document.body.appendChild(p);
+        const want = getComputedStyle(p).backgroundColor; p.remove();
+        return getComputedStyle(document.getElementById('btn-create')).backgroundColor === want;
+      })).toBe(true);
+    });
+  }
+
+  test('footer is one row: clock + age, priority bars, status; no label grid', async ({ page }) => {
+    const id = `t-fp-struct-${Date.now()}`;
+    writeTicket(id, { priority: 2 });
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.card-footer .card-age svg')).toHaveCount(1);
+    await expect(card.locator('.card-footer .card-age')).toContainText(/ago|today|just now/);
+    await expect(card.locator('.card-footer .card-pri')).toContainText('P2');
+    await expect(card.locator('.card-footer .card-pri .pri-bars i')).toHaveCount(3);
+    await expect(card.locator('.card-footer .ready-indicator')).toHaveCount(1);
+    await expect(card.locator('.card-meta-label')).toHaveCount(0);
+    await expect(card.locator('.card-pri')).toHaveAttribute('title', 'P2 normal');
+  });
+
+  test('priority bars: P0 fills 3 red, P2 fills 2 amber, P3 fills 1 muted', async ({ page }) => {
+    const ts = Date.now();
+    const cases = [[0, 'p-hi', ['--col-discarded', '--col-discarded', '--col-discarded']], [2, 'p-mid', ['--st-work', '--st-work', '--border-hover']], [3, 'p-lo', ['--text-muted', '--border-hover', '--border-hover']]];
+    for (const [pri, cls, vars] of cases) {
+      const id = `t-fp-pri${pri}-${ts}`;
+      writeTicket(id, { priority: pri });
+      await openBoard(page, id);
+      const bars = page.locator(`.card[data-id="${id}"] .pri-bars`);
+      await expect(bars).toHaveClass(new RegExp(cls));
+      const got = await bars.locator('i').evaluateAll(els => els.map(e => getComputedStyle(e).backgroundColor));
+      const want = [];
+      for (const v of vars) want.push(await page.evaluate(n => { const p = document.createElement('i'); p.style.backgroundColor = `var(${n})`; document.body.appendChild(p); const c = getComputedStyle(p).backgroundColor; p.remove(); return c; }, v));
+      expect(got).toEqual(want);
+    }
+  });
+
+  test('a hand-edited priority with a quote cannot add an attribute to the footer', async ({ page }) => {
+    // both servers keep a non-integer priority as a string, so it reaches the card's title attribute
+    const id = `t-fp-hostile-${Date.now()}`;
+    writeTicket(id, { priority: 'x" data-pwn="1' });
+    await openBoard(page, id);
+    const pri = page.locator(`.card[data-id="${id}"] .card-pri`);
+    await expect(pri).toHaveCount(1);
+    await expect(pri).not.toHaveAttribute('data-pwn', /.*/);
+    await expect(pri).toHaveAttribute('title', 'Px" data-pwn="1');   // shown as text, not parsed as markup
+  });
+
+  test('status is worded: ready shows "ready", a not-ready card shows its readiness label', async ({ page }) => {
+    const ts = Date.now(), rid = `t-fp-ready-${ts}`, nid = `t-fp-notready-${ts}`;
+    writeTicket(rid, { status: 'in_progress', ready: true });
+    writeTicket(nid);
+    await openBoard(page, rid);
+    await expect(page.locator(`.card[data-id="${rid}"] .ready-indicator`)).toContainText('ready');
+    await openBoard(page, nid);
+    const flag = page.locator(`.card[data-id="${nid}"] .ready-flag`);
+    await expect(flag).toHaveText('needs acc');
+    await expect(flag).toHaveAttribute('aria-label', /needs acc/);
+  });
+
+  for (const vp of [{ width: 1400, height: 900 }, { width: 520, height: 900 }]) {
+    test(`Start sits in the footer, right-aligned, inside the card (${vp.width}px)`, async ({ page }) => {
+      const id = `t-fp-start-${vp.width}-${Date.now()}`;
+      writeTicket(id);
+      await openBoard(page, id);   // the search box is hidden at narrow widths, so find the card first, then resize
+      await page.setViewportSize(vp);
+      await expect(page.locator(`.card[data-id="${id}"] .card-start`)).toBeVisible();
+      const m = await page.evaluate(i => {
+        const card = document.querySelector(`.card[data-id="${i}"]`), foot = card.querySelector('.card-footer'), btn = card.querySelector('.card-start');
+        const f = foot.getBoundingClientRect(), b = btn.getBoundingClientRect(), c = card.getBoundingClientRect(), t = card.querySelector('.card-title').getBoundingClientRect();
+        const inner = f.right - parseFloat(getComputedStyle(foot).paddingRight);
+        return { inFooter: foot.contains(btn), gap: inner - b.right, insideCard: b.left >= c.left && b.right <= c.right && b.bottom <= c.bottom, belowTitle: b.top >= t.bottom - 1 };
+      }, id);
+      expect(m.inFooter).toBe(true);
+      expect(Math.abs(m.gap)).toBeLessThanOrEqual(2);
+      expect(m.insideCard).toBe(true);
+      expect(m.belowTitle).toBe(true);   // the title keeps the full width: Start no longer floats beside it
+    });
+  }
+
+  test('Copy is hidden at rest, shown on hover and on keyboard focus, and still copies', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
+    const id = `t-fp-copy-${Date.now()}`;
+    writeTicket(id);
+    await openBoard(page, id);
+    const card = page.locator(`.card[data-id="${id}"]`), copy = card.locator('.card-id-copy');
+    await page.mouse.move(0, 0);
+    await expect.poll(() => copy.evaluate(e => getComputedStyle(e).opacity)).toBe('0');
+    await card.hover();
+    await expect.poll(() => copy.evaluate(e => getComputedStyle(e).opacity)).toBe('1');
+    await page.mouse.move(0, 0);
+    await copy.focus();
+    await expect.poll(() => copy.evaluate(e => getComputedStyle(e).opacity)).toBe('1');
+    await copy.click();
+    await expect(copy).toHaveClass(/copied/);
   });
 });
