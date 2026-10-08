@@ -577,6 +577,9 @@
       font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
     }
     .card-id-copy:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-hover); transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.18); }
+    .card-id-copy { opacity: 0; }
+    .card:hover .card-id-copy, .card:focus-within .card-id-copy, .card-id-copy:focus-visible, .card-id-copy.copied { opacity: 1; }
+    @media (hover: none) { .card-id-copy { opacity: 1; } }
     .card-id-copy:active { transform: translateY(0); box-shadow: none; }
     .card-id-copy.copied { border-color: var(--col-done); color: var(--col-done); }
 
@@ -621,15 +624,19 @@
 
     /* Card footer — 3-column label-above-value grid */
     .card-footer {
-      display: grid; grid-template-columns: auto auto 1fr;
+      display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
       padding: 8px 11px 10px; border-top: 1px solid var(--border-muted);
-      gap: 2px 14px;
     }
-    .card-meta-col { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-    .card-meta-col:last-child { align-items: flex-end; }
-    .card-meta-label { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted); }
-    html[data-theme="light"] .card-meta-label { color: var(--text-dim); }
-    .card-meta-val   { font-size: 11px; color: var(--text-muted); }
+    .card-age, .card-pri { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+    .card-age svg { width: 12px; height: 12px; flex-shrink: 0; stroke: currentColor; fill: none; stroke-width: 1.2; stroke-linecap: round; stroke-linejoin: round; opacity: .85; }
+    .pri-bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 11px; }
+    .pri-bars i { width: 3px; border-radius: 1px; background: var(--border-hover); }
+    .pri-bars i:nth-child(1) { height: 4px; }
+    .pri-bars i:nth-child(2) { height: 7px; }
+    .pri-bars i:nth-child(3) { height: 11px; }
+    .pri-bars.p-hi i { background: var(--col-discarded); }
+    .pri-bars.p-mid i:nth-child(-n+2) { background: var(--st-work); }
+    .pri-bars.p-lo i:nth-child(1) { background: var(--text-muted); }
 
     .ready-indicator     { display: flex; align-items: center; gap: 3px; min-width: 0; }
     .ready-dot           { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
@@ -640,11 +647,10 @@
     .ready-indicator.ready .ready-dot   { background: rgba(255,255,255,.65); width: 5px; height: 5px; }
     .ready-indicator.ready .ready-label { color: #fff; }
     .ready-flag {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
-      font-size: 9px; font-weight: 800; line-height: 1;
-      color: #fff; background: var(--col-discarded);
+      display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+      font-size: 11px; font-weight: 600; line-height: 1.2; color: var(--st-work);
     }
+    .ready-flag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; background: currentColor; }
 
     .hover-tooltip {
       position: fixed; z-index: 9999; pointer-events: none;
@@ -1296,6 +1302,8 @@
       transition: background .1s, color .1s;
     }
     .create-btn:hover { background: var(--accent); color: #fff; }
+    .create-btn.primary-btn { background: var(--accent); color: #fff; font-weight: 600; }
+    .create-btn.primary-btn:hover { filter: brightness(1.08); }
     .create-btn.scratch-btn { border-style: dashed; border-color: var(--text-muted); background: transparent; color: var(--text); }   /* t-e162 */
     .create-btn.scratch-btn { display: inline-flex; align-items: center; gap: 5px; }
     .scr-ico { width: 15px; height: 15px; flex-shrink: 0; vertical-align: -3px; }   /* t-f553: scribble + pencil */
@@ -1911,11 +1919,11 @@
       font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted);
     }
     .ck-loopbar .ck-loop-note { margin-left: auto; }
-    /* Floated into .card-body (before .card-title), not a .card-head flex child —
+    /* Lives in .card-footer, right-aligned (margin-left:auto), not a .card-head flex child —
        card-head has no slack for a 6th element on a ci:true + demo:true card (same
        overflow this file already documents for .card-archive above). */
     .card-start {
-      float: right; margin: 0 0 4px 8px; background: var(--accent); color: #fff; border: 0;
+      margin: 0 0 0 auto; background: var(--accent); color: #fff; border: 0;
       border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer;
     }
     .card-start:hover { filter: brightness(1.08); }
@@ -1998,8 +2006,8 @@
       </div>
     </div>
     <div class="header-right">
+      <button class="create-btn primary-btn" id="btn-create" title="Create new ticket">+ New</button>
       <button class="create-btn upkeep-btn" id="btn-upkeep" title="This project's Upkeep checks (context-check, context-doctor, dead-code-cleanup, promote-learnings)" hidden><svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Upkeep</button>
-      <button class="create-btn" id="btn-create" title="Create new ticket">+ New</button>
       <button class="create-btn scratch-btn" id="btn-scratch" title="Start an agent in this project with no ticket — no sprint, no gates"><svg class="scr-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 19c1.2-1.5 2.3-1.5 3.3 0s2.2 1.5 3.3 0 2-1 2.9.2"/><path d="M19.3 3.9a1.9 1.9 0 0 1 2.7 2.7L12.3 16.3l-3.6 1 1-3.6z"/><path d="M17.6 5.6l2.7 2.7"/></svg>Scratch</button>
       <button class="theme-toggle has-label" id="btn-ci-setup" title="Set up CI gate — write .github/workflows/canon-gate.yml so PRs are graded by canon" style="font-size:12px;font-weight:700;letter-spacing:-.3px">⚙ CI</button>
       <button class="theme-toggle tour-toggle" id="tour-btn" title="Feature tour" aria-label="Feature tour" style="font-size:13px;font-weight:700;letter-spacing:-.5px">?</button>
@@ -3917,6 +3925,12 @@ document.getElementById('drop-toast')?.addEventListener('click', e => {
   }
 });
 
+// Small inline icons shared by board surfaces (t-7723); strokes take the surrounding text color.
+const ICO = {
+  clock: '<svg viewBox="0 0 12 12" aria-hidden="true"><circle cx="6" cy="6" r="5"/><path d="M6 3v3l2 1.2"/></svg>',
+};
+function ico(name) { return ICO[name] || ''; }
+
 function readiness(t) {
   const slugs = (t.docs || []).map(d => docSlug(t, d.file));
   const hasAcceptance = slugs.includes('acceptance');
@@ -3978,29 +3992,20 @@ function cardHTML(t, idx) {
       </div>
       <div class="card-body">
         ${t.status === 'closed' ? `<button class="card-archive" data-id="${esc(t.id)}" title="Archive this ticket">archive</button>` : ''}
-        ${startBtn}
         <p class="card-title">${esc(t.title)}</p>
         ${t.status === 'in_progress' ? `<span class="card-wt-chip" data-id="${esc(t.id)}"></span>` : ''}
         ${run ? `<div class="card-wt-pref card-wt-run" title="In progress in worktree ${escAttr(run.branch)} (this checkout's copy still says open until the branch merges).">Worktree: ${esc(run.branch)}</div>` : `${worktreePrefLine(t)}
         ${divergenceLine(t)}`}
       </div>
       <div class="card-footer">
-        <div class="card-meta-col">
-          <span class="card-meta-label">Age</span>
-          <span class="card-meta-val">${esc(age(t.created))}</span>
-        </div>
-        <div class="card-meta-col">
-          <span class="card-meta-label">Priority</span>
-          <span class="card-meta-val">${esc(priLabel)}</span>
-        </div>
-        <div class="card-meta-col">
-          <span class="card-meta-label">Status</span>
-          <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || acceptanceUnchecked || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}">
-            ${ready
-              ? `<span class="ready-dot"></span><span class="ready-label">ready</span>`
-              : `<span class="ready-flag" aria-label="${esc(label)} — open the ticket for details">!</span>`}
-          </span>
-        </div>
+        <span class="card-age" title="Created ${escAttr(age(t.created))}">${ico('clock')}${esc(age(t.created))}</span>
+        <span class="card-pri" title="${escAttr(priLabel)}"><span class="pri-bars ${pri <= 1 ? 'p-hi' : pri === 2 ? 'p-mid' : 'p-lo'}" aria-hidden="true"><i></i><i></i><i></i></span>P${esc(pri)}</span>
+        <span class="ready-indicator ${ready ? 'ready' : (acceptanceIncomplete || acceptanceUnchecked || planIncomplete) ? 'incomplete' : 'not-ready'}" data-id="${esc(t.id)}">
+          ${ready
+            ? `<span class="ready-dot"></span><span class="ready-label">ready</span>`
+            : `<span class="ready-flag" aria-label="${esc(label)} — open the ticket for details">${esc(label)}</span>`}
+        </span>
+        ${startBtn}
       </div>
     </div>`;
 }
