@@ -740,7 +740,8 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-docs .doc-tab')).toHaveCount(0);
       await expect(page.locator('#m-body')).toContainText('Ticket body should render without sprint docs.');
       await expect(page.locator('#m-body')).toContainText('Uses existing markdown renderer');
-      await expect(page.locator('.section-jump-link', { hasText: 'Context' })).toBeVisible();
+      await expect(page.locator('#m-body .doc-heading-2', { hasText: 'Context' })).toBeVisible();   // t-e946: no docs, no tree, so no child rows; the section itself still renders
+      await expect(page.locator('#m-docs .doc-child')).toHaveCount(0);
     } finally {
       if (createdId) {
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
@@ -7872,6 +7873,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   test('a Demo toggle on a bound ticket keeps the page current, so the next Description save is not stale (t-8be2)', async ({ page }) => {
     const { live, posts } = await ownBoard(page);
     await page.locator(`.card[data-id="${live}"]`).click();
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();   // t-e946: the modal opens on Description; the toggle lives on Plan
     await page.locator('.signoff-demo-toggle').click();
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/demo$/);
@@ -12136,5 +12138,153 @@ test.describe('board header and card footer (t-7723)', () => {
     await expect.poll(() => copy.evaluate(e => getComputedStyle(e).opacity)).toBe('1');
     await copy.click();
     await expect(copy).toHaveClass(/copied/);
+  });
+});
+
+// t-e946 slice A: the ticket modal's document tree (left) and pane bar replace the horizontal tab strip
+test.describe('ticket modal document tree (t-e946)', () => {
+  const made = [];
+  function writeTicket(id, { status = 'open' } = {}) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2', 'created: 2026-06-28T00:00:00Z', '---', '', `# Tree fixture ${id}`, '', 'Plain description text.', ''].join('\n'));
+    const filler = Array.from({ length: 40 }, (_, i) => `Filler line ${i + 1} so the sections below start off screen.`).join('\n\n');
+    fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', `Ticket: \`${id}\``, '', '## Criteria', '- [x] One', '- [x] Two', '- [ ] Three', '', filler, '', '## Test Plan', '- [ ] Run it', '', '## QA', 'Notes only, no checkboxes.', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'research.md'), ['# Research', '', '## Only one heading', 'Text.', ''].join('\n'));
+    made.push(dir);
+  }
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  async function openModalFor(page, id) {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.waitForSelector('#m-docs .doc-tab');
+  }
+  const tab = (page, name) => page.locator('#m-docs .doc-tab', { hasText: name });
+
+  for (const vp of [{ width: 1280, height: 900 }, { width: 700, height: 900 }]) {
+    test(`tree and pane geometry (${vp.width}px)`, async ({ page }) => {
+      const id = `t-tree-geo-${vp.width}-${Date.now()}`;
+      writeTicket(id);
+      await openModalFor(page, id);
+      await page.setViewportSize(vp);
+      await expect(page.locator('.modal-split > #m-docs')).toHaveCount(1);
+      await expect(page.locator('.modal-split > .modal-pane > #m-pane-bar + .modal-body')).toHaveCount(1);
+      const g = await page.evaluate(() => {
+        const r = s => document.querySelector(s).getBoundingClientRect(), m = r('#modal');
+        const tree = r('#m-docs'), pane = r('.modal-pane');
+        return { tree: { l: tree.left, r: tree.right, b: tree.bottom, w: tree.width }, pane: { l: pane.left, t: pane.top }, modal: { l: m.left, r: m.right }, over: document.getElementById('modal').scrollWidth - document.getElementById('modal').clientWidth };
+      });
+      if (vp.width >= 1000) {
+        expect(g.tree.r).toBeLessThanOrEqual(g.pane.l + 1);
+        expect(g.tree.w).toBeGreaterThanOrEqual(180);
+        expect(g.tree.w).toBeLessThanOrEqual(260);
+      } else {
+        expect(g.tree.b).toBeLessThanOrEqual(g.pane.t + 1);
+      }
+      expect(g.over).toBeLessThanOrEqual(1);
+      expect(g.tree.l).toBeGreaterThanOrEqual(g.modal.l - 1);
+      expect(g.tree.r).toBeLessThanOrEqual(g.modal.r + 1);
+    });
+  }
+
+  test('top-level nodes are a vertical list; Description is active on open; a click switches the doc', async ({ page }) => {
+    const id = `t-tree-nodes-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Description');
+    await expect(page.locator('#m-body')).toContainText('Plain description text.');
+    const pos = await page.locator('#m-docs .doc-tab').evaluateAll(els => els.map(e => { const b = e.getBoundingClientRect(); return { x: Math.round(b.left), y: b.top, t: e.textContent.trim() }; }));
+    expect(pos[0].t).toBe('Description');
+    expect(pos.length).toBeGreaterThanOrEqual(4);
+    for (let i = 1; i < pos.length; i++) {
+      expect(Math.abs(pos[i].x - pos[0].x)).toBeLessThanOrEqual(1);
+      expect(pos[i].y).toBeGreaterThan(pos[i - 1].y);
+    }
+    await tab(page, 'Acceptance').click();
+    await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
+    await expect(page.locator('#m-body')).toContainText('Notes only');
+  });
+
+  test('child rows list a doc\'s ## headings, scroll to one, and keep the active doc; one heading shows none', async ({ page }) => {
+    const id = `t-tree-kids-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await tab(page, 'Acceptance').click();
+    await expect(page.locator('#m-docs .doc-child')).toHaveText([/Criteria/, /Test Plan/, /QA/]);
+    await page.locator('#m-docs .doc-child', { hasText: 'QA' }).click();
+    await expect.poll(() => page.evaluate(() => {
+      const h = document.getElementById('section-qa').getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      return h.top >= b.top - 1 && h.bottom <= b.bottom + 1;
+    })).toBe(true);
+    await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
+    await tab(page, 'Research').click();
+    await expect(page.locator('#m-body')).toContainText('Only one heading');
+    await expect(page.locator('#m-docs .doc-child')).toHaveCount(0);
+  });
+
+  test('checklist sections show done/total; a prose section shows no count', async ({ page }) => {
+    const id = `t-tree-counts-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await tab(page, 'Acceptance').click();
+    const row = name => page.locator('#m-docs .doc-child', { hasText: name });
+    await expect(row('Criteria').locator('.doc-child-count')).toHaveText('2/3');
+    await expect(row('Test Plan').locator('.doc-child-count')).toHaveText('0/1');
+    await expect(row('QA').locator('.doc-child-count')).toHaveCount(0);
+  });
+
+  test('no link row; the Plan sign-off controls render once inside one .section-jumps after overlapping renders', async ({ page }) => {
+    const id = `t-tree-signoff-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await tab(page, 'Plan').click();
+    await tab(page, 'Acceptance').click();
+    await tab(page, 'Plan').click();
+    await expect(page.locator('.section-jumps .signoff-controls')).toHaveCount(1);
+    await expect(page.locator('.section-jumps')).toHaveCount(1);
+    await expect(page.locator('.section-jump-link')).toHaveCount(0);
+    await expect(page.locator('.section-jumps .signoff-controls select').first()).toBeVisible();
+    await tab(page, 'Acceptance').click();
+    await expect(page.locator('.section-jumps')).toHaveCount(0);   // only the Plan doc hosts the bar
+  });
+
+  test('ticket prev/next, Edit and + New doc live in the pane bar, none in the tree', async ({ page }) => {
+    const id = `t-tree-bar-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    for (const sel of ['#btn-ticket-prev', '#btn-ticket-next', '#btn-edit-doc']) {
+      await expect(page.locator(`#m-pane-bar ${sel}`)).toHaveCount(1);
+      await expect(page.locator(`#m-docs ${sel}`)).toHaveCount(0);
+    }
+    await expect(page.locator('#m-pane-bar #btn-ticket-next')).toHaveAttribute('title', 'Next ticket');
+    await page.locator('#btn-edit-doc').click();
+    await expect(page.locator('#m-pane-bar #btn-save-top')).toBeVisible();
+    await expect(page.locator('#m-pane-bar #btn-cancel-top')).toBeVisible();
+    await expect(page.locator('#m-docs #btn-save-top')).toHaveCount(0);
+  });
+
+  test('during edit a tree click does nothing and the tree is dimmed', async ({ page }) => {
+    const id = `t-tree-edit-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await tab(page, 'Acceptance').click();
+    await page.locator('#btn-edit-doc').click();
+    await expect(page.locator('#m-edit-area')).toBeVisible();
+    await tab(page, 'Plan').click({ force: true });
+    await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
+    await expect(page.locator('#m-edit-area')).toBeVisible();
+    const op = await page.locator('#m-docs').evaluate(e => parseFloat(getComputedStyle(e).opacity));
+    expect(op).toBeLessThan(1);
+  });
+
+  test('a closed ticket shows read-only in the pane bar and no Edit button', async ({ page }) => {
+    const cid = `t-tree-closed-${Date.now()}`;
+    writeTicket(cid, { status: 'closed' });
+    await openModalFor(page, cid);
+    await expect(page.locator('#m-pane-bar .doc-locked-badge')).toHaveText('read-only');
+    await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
   });
 });
