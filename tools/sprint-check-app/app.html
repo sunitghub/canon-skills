@@ -1113,9 +1113,10 @@
       display: none; align-items: center; gap: 4px; flex-wrap: wrap;
       margin-bottom: 10px; padding: 8px 9px;
       background: var(--surface); border: 1px solid var(--modal-border);
-      border-radius: 12px;
+      border-radius: 8px;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
     }
+    #m-editor-toolbar { border-radius: 12px; }   /* t-a205: matches the rounded editor card; the create dialog's toolbar keeps its textarea's 8px */
     .editor-toolbar.open { display: flex; }
     .toolbar-sep { width: 1px; height: 22px; background: var(--modal-border); margin: 0 5px; flex-shrink: 0; opacity: .85; }
     .editor-tool {
@@ -4807,7 +4808,6 @@ function injectSignoffControls(container, content, t) {
 
 function renderModalBody(t) {
   const bodyEl  = document.getElementById('m-body');
-  const editEl  = document.getElementById('m-edit-area');
   document.getElementById('m-editor-toolbar').classList.remove('open');
   setEditAreaVisible(false);
   bodyEl.style.display = '';
@@ -5184,7 +5184,6 @@ function promptNewDoc(t) {
   renderModalDocs(t);
 
   const bodyEl = document.getElementById('m-body');
-  const editEl = document.getElementById('m-edit-area');
   setEditAreaVisible(false);
   bodyEl.style.display = '';
 
@@ -8040,6 +8039,21 @@ function blobToBase64(blob) {
   });
 }
 
+// Pasted images and the toolbar's image button share one flow: a marker at the caret while the upload runs, then the
+// markdown (or failText). The marker is re-located afterwards because the person may keep typing during the upload.
+async function uploadImageIntoEditor(editEl, ticketId, blob, filename, label, failText) {
+  const marker = `![Uploading ${label}…]()`;
+  const markerStart = editEl.selectionStart;
+  insertPlainText(editEl, marker);
+  const result = await uploadVisual(ticketId, filename, await blobToBase64(blob));
+  const replacement = result && result.ok ? `![${label}](visuals/${result.filename})` : failText;
+  const at = editEl.value.indexOf(marker, markerStart);
+  if (at !== -1) {
+    editEl.value = editEl.value.slice(0, at) + replacement + editEl.value.slice(at + marker.length);
+    refreshEditorGutter();
+  }
+}
+
 function insertPlainText(textarea, text) {
   textarea.focus();
   textarea.setSelectionRange(textarea.selectionStart, textarea.selectionEnd);
@@ -8355,16 +8369,7 @@ document.getElementById('m-body').addEventListener('dblclick', e => {
     pasteVisualCounter += 1;
     const index = pasteVisualCounter;
     const name = file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._ -]+/g, '').trim() || `image-${index}`;
-    const marker = `![Uploading ${name}…]()`;
-    const markerStart = ta.selectionStart;
-    insertPlainText(ta, marker);
-    const result = await uploadVisual(t.id, `image-${index}.${ext}`, await blobToBase64(file));
-    const replacement = result && result.ok ? `![${name}](visuals/${result.filename})` : '![upload failed]()';
-    const at = ta.value.indexOf(marker, markerStart);
-    if (at !== -1) {
-      ta.value = ta.value.slice(0, at) + replacement + ta.value.slice(at + marker.length);
-      refreshEditorGutter();
-    }
+    await uploadImageIntoEditor(ta, t.id, file, `image-${index}.${ext}`, name, '![upload failed]()');
   });
 })();
 
@@ -8404,19 +8409,7 @@ document.getElementById('m-edit-area').addEventListener('paste', async e => {
   for (const img of images) {
     pasteVisualCounter += 1;
     const index = pasteVisualCounter;
-    const marker = `![Uploading pasted-${index}…]()`;
-    const markerStart = editEl.selectionStart;
-    insertPlainText(editEl, marker);
-    const data = await blobToBase64(img.blob);
-    const result = await uploadVisual(t.id, `pasted-${index}.${img.ext}`, data);
-    const replacement = result && result.ok ? `![pasted-${index}](visuals/${result.filename})` : '![paste failed]()';
-    // Re-locate the marker rather than assume it's still at markerStart — the
-    // user may keep typing elsewhere while the upload is in flight.
-    const at = editEl.value.indexOf(marker, markerStart);
-    if (at !== -1) {
-      editEl.value = editEl.value.slice(0, at) + replacement + editEl.value.slice(at + marker.length);
-      refreshEditorGutter();
-    }
+    await uploadImageIntoEditor(editEl, t.id, img.blob, `pasted-${index}.${img.ext}`, `pasted-${index}`, '![paste failed]()');
   }
 });
 document.getElementById('c-body').addEventListener('keydown', e => {
