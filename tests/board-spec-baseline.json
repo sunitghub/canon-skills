@@ -352,6 +352,28 @@
       "failed_runs": {
         "webkit": "2/3 full runs, 0/5 isolated"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > upkeep (t-67ab): the board path bar — branch under the path, no counts, + New · Upkeep · Scratch · CI on the right (order since t-7723)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "page.goto('/cockpit') hits the 30s load timeout in webkit during a full run (same pattern as the t-4487 entry); passed 3 of 3 isolated reruns",
+      "failed_runs": {
+        "webkit": "2 of 3 full runs, 0 of 3 isolated"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > with the Main checkout row selected the \"isn't committed yet\" box is hidden, and + New still offers the commit (t-165f)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "page.goto('/') hits the 30s load timeout in webkit during a full run (same pattern as the t-4487 entry); passed 3 of 3 isolated reruns",
+      "failed_runs": {
+        "webkit": "2 of 3 full runs, 0 of 3 isolated"
+      }
     }
   ],
   "skipped": []
