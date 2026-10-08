@@ -974,16 +974,7 @@
     }
     .doc-nav-btn:hover:not(:disabled) { background: var(--surface-hover); color: var(--text); border-color: var(--border-hover); }
     .doc-nav-btn:disabled { opacity: .3; cursor: default; }
-    .doc-edit-btn {
-      padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
-      border: 1px solid var(--border); background: transparent;
-      color: var(--text-muted); cursor: pointer; transition: background .1s, color .1s;
-    }
-    .doc-edit-btn:hover { background: var(--surface-hover); color: var(--text); }
-    .doc-edit-btn:disabled {
-      background: var(--accent-dim); border-color: var(--accent);
-      color: var(--accent); opacity: 1; cursor: default;
-    }
+    .doc-edit-hint { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; margin-right: 4px; }
     .doc-save-btn {
       padding: 5px 13px; border-radius: 999px; font-size: 12px; font-weight: 600;
       border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer;
@@ -1125,6 +1116,7 @@
       border-radius: 8px;
       box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
     }
+    #m-editor-toolbar { border-radius: 12px; }   /* t-a205: matches the rounded editor card; the create dialog's toolbar keeps its textarea's 8px */
     .editor-toolbar.open { display: flex; }
     .toolbar-sep { width: 1px; height: 22px; background: var(--modal-border); margin: 0 5px; flex-shrink: 0; opacity: .85; }
     .editor-tool {
@@ -1168,6 +1160,27 @@
       transition: border-color .1s, box-shadow .1s;
     }
     .modal-edit-area:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    /* t-a205: the editor is a card holding a line-number gutter and the textarea; the card carries the border and focus ring */
+    .toolbar-spacer { flex: 1; }
+    .editor-tool[aria-pressed="true"] { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+    .editor-card {
+      position: relative; display: flex; height: 100%; min-height: 330px;
+      background: var(--surface); border: 1px solid var(--panel-border); border-radius: 12px; overflow: hidden;
+      transition: border-color .1s, box-shadow .1s;
+    }
+    .editor-card:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    .editor-gutter, .editor-mirror, .editor-card .modal-edit-area {
+      font-family: "JetBrains Mono", "Fira Code", ui-monospace, monospace; font-size: 13px; line-height: 1.65;
+    }
+    .editor-gutter {
+      flex: none; min-width: 44px; padding: 16px 10px 16px 12px; overflow: hidden; user-select: none;
+      text-align: right; color: var(--text-dim); background: var(--surface-raised); border-right: 1px solid var(--border-muted);
+    }
+    .editor-card .modal-edit-area {
+      flex: 1; min-width: 0; min-height: 0; height: auto; border: 0; border-radius: 0; box-shadow: none; resize: none;
+      background: transparent; white-space: pre-wrap; overflow-wrap: break-word; overflow-x: hidden;
+    }
+    .editor-mirror { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: pre-wrap; overflow-wrap: break-word; padding: 0; }
     .editor-kb-hint { font-size: 11px; color: var(--text-dim); padding: 3px 2px 0; opacity: .7; }
     .btn-primary {
       background: var(--accent); border-color: var(--accent); color: #fff;
@@ -2345,14 +2358,25 @@
         <button class="editor-tool" type="button" data-insert="code" title="Inline code" aria-label="Add inline code">
           <svg viewBox="0 0 24 24"><path d="m16 18 6-6-6-6"></path><path d="m8 6-6 6 6 6"></path></svg>
         </button>
+        <button class="editor-tool" type="button" data-insert="image" title="Insert image" aria-label="Insert image">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="m4 18 5-5 4 4 3-3 4 4"/></svg>
+        </button>
         <button class="editor-tool" type="button" data-insert="scenario" title="Scenario (Gherkin)" aria-label="Add Gherkin scenario">
           <svg viewBox="0 0 24 24"><path d="M4 5h16"/><path d="M4 12h9"/><path d="M4 19h13"/><path d="m17 10 3 2-3 2"/></svg>
         </button>
         <button class="editor-tool" type="button" data-insert="scenario-file" title="Scenario from .feature file" aria-label="Reference a Gherkin .feature file">
           <svg viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h4"/><path d="M9 17h2"/></svg>
         </button>
+        <span class="toolbar-spacer"></span>
+        <button class="editor-tool" type="button" id="btn-editor-lines" aria-pressed="true" title="Line numbers" aria-label="Toggle line numbers">
+          <svg viewBox="0 0 24 24"><path d="M3 6h2M3 12h2M3 18h2"/><path d="M9 6h12M9 12h12M9 18h12"/></svg>
+        </button>
+        <input type="file" id="m-image-input" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
       </div>
-      <textarea id="m-edit-area" class="modal-edit-area" style="display:none" spellcheck="false"></textarea>
+      <div class="editor-card" id="m-editor-card" style="display:none">
+        <div class="editor-gutter" id="m-gutter" aria-hidden="true"></div>
+        <textarea id="m-edit-area" class="modal-edit-area" spellcheck="false"></textarea>
+      </div>
       <div class="editor-kb-hint" id="m-kb-hint" style="display:none">Shift+↵ plain newline &nbsp;·&nbsp; ↵↵ exit list</div>
     </div>
     </div>
@@ -4195,7 +4219,8 @@ function showStaleEditNotice(t) {
     n = document.createElement('div');
     n.id = 'stale-edit-notice';
     n.className = 'acceptance-warning';
-    editEl.parentNode.insertBefore(n, editEl);
+    const card = document.getElementById('m-editor-card');   // t-a205: the textarea sits inside the card now
+    card.parentNode.insertBefore(n, card);
   }
   n.innerHTML = `⚠ This ${isDoc ? 'doc' : 'description'} changed since you opened it (the agent may have edited it). Your text is kept. `
     + '<button type="button" class="doc-cancel-btn" id="stale-reload">Reload theirs</button> '
@@ -4451,7 +4476,7 @@ function renderModalDocs(t) {
       ? `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}<span class="doc-locked-badge" title="The board edits only acceptance, plan and research in a worktree; the sprint session owns this file">read-only here</span></div>`
     : locked
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
-      : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<button class="doc-edit-btn" id="btn-edit-doc">Edit</button></div>`;
+      : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<span class="doc-edit-hint">Double-click to edit</span></div>`;
 
   bar.innerHTML = descTab + docs.map(d => {
     const active = d.file === modalState.activeDoc;
@@ -4475,7 +4500,6 @@ function renderModalDocs(t) {
   document.getElementById('btn-ticket-next')?.addEventListener('click', () => navigateTicket(1));
 
   document.getElementById('btn-new-doc')?.addEventListener('click', () => promptNewDoc(t));
-  document.getElementById('btn-edit-doc')?.addEventListener('click', () => enterEditMode(t));
   document.getElementById('btn-save-top')?.addEventListener('click', () => saveEdit(t));
   document.getElementById('btn-cancel-top')?.addEventListener('click', () => exitEditMode(t));
 
@@ -4783,9 +4807,8 @@ function injectSignoffControls(container, content, t) {
 
 function renderModalBody(t) {
   const bodyEl  = document.getElementById('m-body');
-  const editEl  = document.getElementById('m-edit-area');
   document.getElementById('m-editor-toolbar').classList.remove('open');
-  editEl.style.display = 'none';
+  setEditAreaVisible(false);
   bodyEl.style.display = '';
   bodyEl.parentNode.querySelectorAll('.section-jumps').forEach(el => el.remove());
   modalState.headings = [];
@@ -4848,10 +4871,51 @@ function renderModalBody(t) {
   }
 }
 
+// t-a205: one answer to "may the board edit the active doc?" for the hint, double-click, the E key and enterEditMode.
+function docEditable(t) {
+  if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.pickingDoc) return false;   // the new-doc picker owns the pane while it is open
+  const liveBranch = t.docs_from && t.docs_from.branch;
+  if (liveBranch && modalState.activeDoc && !LIVE_EDITABLE_SLUGS.includes(docSlug(t, modalState.activeDoc))) return false;
+  return true;
+}
+
+function setEditAreaVisible(on) {
+  document.getElementById('m-editor-card').style.display = on ? 'flex' : 'none';
+}
+
+// Line-number gutter: one number per logical line, each as tall as that line renders once wrapped. A hidden mirror
+// div measures the lines at the textarea's text width. Programmatic `.value =` writes fire no `input` event, so
+// load, paste replacement and snippet insert call this directly.
+const EDITOR_LINES_KEY = 'sprint-check-editor-lines';
+function editorLinesOn() {
+  try { return localStorage.getItem(EDITOR_LINES_KEY) !== '0'; } catch { return true; }
+}
+function refreshEditorGutter() {
+  const card = document.getElementById('m-editor-card');
+  const gut = document.getElementById('m-gutter');
+  const ta = document.getElementById('m-edit-area');
+  const on = editorLinesOn();
+  gut.hidden = !on;
+  document.getElementById('btn-editor-lines').setAttribute('aria-pressed', String(on));
+  if (!on || card.style.display === 'none') return;
+  let m = document.getElementById('m-gutter-mirror');
+  if (!m) {
+    m = document.createElement('div');
+    m.id = 'm-gutter-mirror';
+    m.className = 'editor-mirror';
+    card.appendChild(m);
+  }
+  const cs = getComputedStyle(ta);
+  m.style.width = Math.max(0, ta.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) + 'px';
+  m.innerHTML = ta.value.split('\n').map(l => `<div>${esc(l) || '&#8203;'}</div>`).join('');
+  gut.innerHTML = Array.from(m.children, (c, i) => `<div style="height:${c.getBoundingClientRect().height}px">${i + 1}</div>`).join('');
+  gut.scrollTop = ta.scrollTop;
+}
+
 function enterEditMode(t) {
   if (modalState.editMode) return;
   document.getElementById('stale-edit-notice')?.remove();
-  if (t.status === 'closed' || t.status === 'cancelled') return;
+  if (!docEditable(t)) return;
   modalState.editMode = true;
   renderModalDocs(t);
   document.getElementById('m-docs').classList.add('editing');
@@ -4864,6 +4928,7 @@ function enterEditMode(t) {
       .then(d => {
         modalState.docEtag = (d && d.etag) || '';   // t-26f9: what Save must echo as base_hash
         editEl.value = ensureDocGuideComments(t, d.content || '');
+        refreshEditorGutter();
         // On opening the Acceptance doc, drop the caret at the end of the last ## Criteria line so
         // authoring (and the Scenario button) starts under Criteria, not Test Plan. Runs after the
         // value is set, so it wins over the synchronous focus() below.
@@ -4879,7 +4944,8 @@ function enterEditMode(t) {
   bodyEl.style.display = 'none';
   bodyEl.parentNode.querySelectorAll('.section-jumps').forEach(el => el.remove());
   document.getElementById('m-editor-toolbar').classList.add('open');
-  editEl.style.display = 'block';
+  setEditAreaVisible(true);
+  refreshEditorGutter();
   document.getElementById('m-kb-hint').style.display = '';
   editEl.focus();
 
@@ -5117,8 +5183,7 @@ function promptNewDoc(t) {
   renderModalDocs(t);
 
   const bodyEl = document.getElementById('m-body');
-  const editEl = document.getElementById('m-edit-area');
-  editEl.style.display = 'none';
+  setEditAreaVisible(false);
   bodyEl.style.display = '';
 
   const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
@@ -5198,7 +5263,8 @@ function selectDocType(t, slug, name) {
     bodyEl.style.display = 'none';
     document.getElementById('m-editor-toolbar').classList.add('open');
     editEl.value = template;
-    editEl.style.display = 'block';
+    setEditAreaVisible(true);
+    refreshEditorGutter();
     editEl.focus();
     document.getElementById('m-actions').innerHTML = '';
     document.getElementById('m-kbd').style.display = 'none';
@@ -5263,6 +5329,7 @@ function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-ar
       textarea.setSelectionRange(s, e);
     }
   }
+  if (textarea.id === 'm-edit-area') refreshEditorGutter();
 }
 
 function continuationPrefix(line) {
@@ -7971,6 +8038,21 @@ function blobToBase64(blob) {
   });
 }
 
+// Pasted images and the toolbar's image button share one flow: a marker at the caret while the upload runs, then the
+// markdown (or failText). The marker is re-located afterwards because the person may keep typing during the upload.
+async function uploadImageIntoEditor(editEl, ticketId, blob, filename, label, failText) {
+  const marker = `![Uploading ${label}…]()`;
+  const markerStart = editEl.selectionStart;
+  insertPlainText(editEl, marker);
+  const result = await uploadVisual(ticketId, filename, await blobToBase64(blob));
+  const replacement = result && result.ok ? `![${label}](visuals/${result.filename})` : failText;
+  const at = editEl.value.indexOf(marker, markerStart);
+  if (at !== -1) {
+    editEl.value = editEl.value.slice(0, at) + replacement + editEl.value.slice(at + marker.length);
+    refreshEditorGutter();
+  }
+}
+
 function insertPlainText(textarea, text) {
   textarea.focus();
   textarea.setSelectionRange(textarea.selectionStart, textarea.selectionEnd);
@@ -8248,7 +8330,47 @@ document.addEventListener('keydown', e => {
     return;
   }
 
+  // t-a205: `e` starts editing, where the Edit button used to; never while typing in a field or with a modifier held.
+  if (e.key === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !modalState.editMode && !modalState.pickingDoc) {
+    const tg = e.target;
+    if (tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))) return;
+    const t = state.tickets.find(x => x.id === state.selectedId);
+    if (t && docEditable(t)) { e.preventDefault(); enterEditMode(t); }
+  }
 });
+
+// t-a205: double-click the document to edit it (checkbox rows and controls keep their own meaning).
+document.getElementById('m-body').addEventListener('dblclick', e => {
+  if (modalState.editMode || e.target.closest('.doc-bullet[data-check-idx], button, input, select, textarea')) return;
+  const t = state.tickets.find(x => x.id === state.selectedId);
+  if (t && docEditable(t)) enterEditMode(t);
+});
+
+(function initEditorCard() {
+  const ta = document.getElementById('m-edit-area');
+  const gut = document.getElementById('m-gutter');
+  ta.addEventListener('input', refreshEditorGutter);
+  ta.addEventListener('scroll', () => { gut.scrollTop = ta.scrollTop; });
+  if (window.ResizeObserver) new ResizeObserver(refreshEditorGutter).observe(ta);
+  document.getElementById('btn-editor-lines').addEventListener('click', () => {
+    try { localStorage.setItem(EDITOR_LINES_KEY, editorLinesOn() ? '0' : '1'); } catch {}
+    refreshEditorGutter();
+    ta.focus();
+  });
+  // Image button: same upload path as paste (uploadVisual), with a marker while the upload is in flight.
+  document.getElementById('m-image-input').addEventListener('change', async e => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    const t = state.tickets.find(x => x.id === state.selectedId);
+    if (!file || !t) return;
+    const ext = PASTE_IMAGE_EXT[file.type];
+    if (!ext) { insertPlainText(ta, '![unsupported image type]()'); return; }
+    pasteVisualCounter += 1;
+    const index = pasteVisualCounter;
+    const name = file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._ -]+/g, '').trim() || `image-${index}`;
+    await uploadImageIntoEditor(ta, t.id, file, `image-${index}.${ext}`, name, '![upload failed]()');
+  });
+})();
 
 document.getElementById('modal-overlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeModal();
@@ -8264,6 +8386,7 @@ document.getElementById('btn-close').addEventListener('click', () => {
 document.getElementById('m-editor-toolbar').addEventListener('click', e => {
   const button = e.target.closest('[data-insert]');
   if (!button) return;
+  if (button.dataset.insert === 'image') { document.getElementById('m-image-input').click(); return; }
   insertEditorSnippet(button.dataset.insert);
 });
 document.getElementById('c-editor-toolbar').addEventListener('click', e => {
@@ -8285,18 +8408,7 @@ document.getElementById('m-edit-area').addEventListener('paste', async e => {
   for (const img of images) {
     pasteVisualCounter += 1;
     const index = pasteVisualCounter;
-    const marker = `![Uploading pasted-${index}…]()`;
-    const markerStart = editEl.selectionStart;
-    insertPlainText(editEl, marker);
-    const data = await blobToBase64(img.blob);
-    const result = await uploadVisual(t.id, `pasted-${index}.${img.ext}`, data);
-    const replacement = result && result.ok ? `![pasted-${index}](visuals/${result.filename})` : '![paste failed]()';
-    // Re-locate the marker rather than assume it's still at markerStart — the
-    // user may keep typing elsewhere while the upload is in flight.
-    const at = editEl.value.indexOf(marker, markerStart);
-    if (at !== -1) {
-      editEl.value = editEl.value.slice(0, at) + replacement + editEl.value.slice(at + marker.length);
-    }
+    await uploadImageIntoEditor(editEl, t.id, img.blob, `pasted-${index}.${img.ext}`, `pasted-${index}`, '![paste failed]()');
   }
 });
 document.getElementById('c-body').addEventListener('keydown', e => {

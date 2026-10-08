@@ -34,6 +34,12 @@ test.beforeEach(async ({ context }) => {
 });
 test.afterEach(() => { realLanding = false; });
 
+// t-a205: editing starts with a double-click on the document; the Edit button is gone. The click lands in #m-body's own
+// padding, so it never hits a checkbox row, a link or a control inside the document.
+async function editDoc(page) {
+  await page.locator('#m-body').dblclick({ position: { x: 6, y: 6 } });
+}
+
 // t-67ab: Upkeep lives inside a project tab (opened by its board's Upkeep button); open the
 // first registered project's Upkeep the way that button does.
 async function openUpkeepView(page) {
@@ -440,8 +446,8 @@ test.describe('board modal', () => {
       await expect(page.locator('#m-title')).toHaveText('Quoted numeric ID');
       await page.locator('.doc-tab', { hasText: 'Acceptance' }).click();
       await expect(page.locator('.doc-tab.active')).toHaveText('Acceptance');
-      await expect(page.locator('#btn-edit-doc')).toBeVisible();
-      await page.locator('#btn-edit-doc').click();
+      await expect(page.locator('.doc-edit-hint')).toBeVisible();
+      await editDoc(page);
       await expect(page.locator('#m-edit-area')).toBeVisible();
       await expect(page.locator('#m-edit-area')).toHaveValue(/Existing criterion/);
       await page.locator('#m-edit-area').fill([
@@ -1078,7 +1084,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#btn-save-top')).toBeVisible();
       await expect(page.locator('#btn-cancel-top')).toBeVisible();
       await expect(page.locator('#btn-new-doc')).toHaveCount(0);
-      await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
+      await expect(page.locator('.doc-edit-hint')).toHaveCount(0);
 
       page.on('dialog', dialog => { throw new Error(`unexpected dialog: ${dialog.message()}`); });
       const template = await page.locator('#m-edit-area').inputValue();
@@ -1473,7 +1479,7 @@ test.describe('board modal', () => {
 
       await card.click();
       await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
-      await page.locator('#btn-edit-doc').click();
+      await editDoc(page);
       await expect(page.locator('#m-edit-area')).toBeVisible();
 
       await pasteImageIntoElement(page, '#m-edit-area');
@@ -1515,7 +1521,7 @@ test.describe('board modal', () => {
       await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
       await page.locator('.doc-tab', { hasText: 'Plan' }).click();
       await expect(page.locator('.doc-tab.active')).toHaveText('Plan');
-      await page.locator('#btn-edit-doc').click();
+      await editDoc(page);
       // enterEditMode fetches the companion doc's content asynchronously and
       // overwrites #m-edit-area's value once it resolves — wait for the real
       // content, not just visibility, or a paste lands before the fetch wipes it.
@@ -3050,7 +3056,7 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
     try {
       makeTicket(id, DISCOUNT_ACCEPTANCE);
       await openAcceptance(page, id);
-      await page.locator('#btn-edit-doc').click();
+      await editDoc(page);
       await expect(page.locator('#m-edit-area')).toBeVisible();
       await expect(page.locator('#m-edit-area')).toHaveValue(/Valid code above minimum/);
 
@@ -3082,7 +3088,7 @@ test.describe('gherkin scenarios in acceptance (t-6e32)', () => {
     try {
       makeTicket(id, DISCOUNT_ACCEPTANCE);
       await openAcceptance(page, id);
-      await page.locator('#btn-edit-doc').click();
+      await editDoc(page);
       await expect(page.locator('#m-edit-area')).toBeVisible();
       // enterEditMode fetches the doc content asynchronously and overwrites the
       // textarea once it resolves — wait for the real content before editing, or
@@ -3269,7 +3275,7 @@ test.describe('ticket-scoped feature reference (t-f89a)', () => {
     try {
       makeRefTicket(tid, 'features/discount.feature');
       await openAcceptance(page, tid);
-      await page.locator('#btn-edit-doc').click();
+      await editDoc(page);
       await expect(page.locator('#m-edit-area')).toBeVisible();
       await expect(page.locator('#m-edit-area')).toHaveValue(/gherkin-file/);
       const btn = page.locator('#m-editor-toolbar .editor-tool[data-insert="scenario-file"]');
@@ -3910,30 +3916,22 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-c0c8): the focused pane\'s ring is drawn by its view on all four edges and follows focus', async ({ page }) => {
+    test('split view (t-c0c8, ring removed by t-a205): the focused pane has no frame; the active tab is the only indicator and follows focus', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);
-      const ring = (id) => page.evaluate((id) => {
+      const frame = (id) => page.evaluate((id) => {
         const v = document.getElementById('view-' + id), cs = getComputedStyle(v, '::after'), f = v.querySelector('iframe');
-        return { color: cs.borderTopColor, border: cs.borderTopWidth + ' ' + cs.borderTopStyle, rightW: cs.borderRightWidth, bottomW: cs.borderBottomWidth, leftW: cs.borderLeftWidth,
-                 pos: cs.position, ev: cs.pointerEvents, top: cs.top, right: cs.right, bottom: cs.bottom, left: cs.left, content: cs.content,
-                 w: parseFloat(cs.width), h: parseFloat(cs.height), vw: v.clientWidth, vh: v.clientHeight, iframeOutline: getComputedStyle(f).outlineStyle };
+        return { content: cs.content, iframeOutline: getComputedStyle(f).outlineStyle };
       }, id);
-      expect((await ring('proj-a')).content).toBe('none');                           // no split: no ring
       for (const dir of ['beside', 'below']) {
         await splitVia(page, 'proj-x', dir);
-        await page.evaluate(() => activateTab('proj-x'));
-        const r = await ring('proj-x');
-        expect([r.border, r.rightW, r.bottomW, r.leftW]).toEqual(['2px solid', '2px', '2px', '2px']);   // all four edges
-        expect([r.pos, r.ev, r.top, r.right, r.bottom, r.left]).toEqual(['absolute', 'none', '0px', '0px', '0px', '0px']);
-        expect(Math.abs(r.w + 4 - r.vw)).toBeLessThanOrEqual(1); expect(Math.abs(r.h + 4 - r.vh)).toBeLessThanOrEqual(1);   // content box plus the 2px borders is the view's own box
-        expect(r.iframeOutline).toBe('none');                                        // the iframe no longer carries it
-        const alpha = (r.color.match(/(?:^rgba\([^)]*,\s*|\/\s*)([0-9.]+)\)$/) || [0, '1'])[1];   // t-bcce (user): the ring is a softened, translucent accent; an opaque rgb() has no alpha, so it reads 1
-        expect(Number(alpha)).toBeGreaterThan(0.3); expect(Number(alpha)).toBeLessThan(0.8);
-        expect((await ring('proj-a')).content).toBe('none');                         // only the focused pane
-        await page.evaluate(() => activateTab('proj-a'));
-        expect((await ring('proj-a')).border).toBe('2px solid');                     // follows focus
-        expect((await ring('proj-x')).content).toBe('none');                         // proj-a stays active: the next split needs another tab active
+        for (const [on, off] of [['proj-x', 'proj-a'], ['proj-a', 'proj-x']]) {
+          await page.evaluate((id) => activateTab(id), on);
+          await expect(page.locator(`.tab.project[data-tab="${on}"]`)).toHaveClass(/active/);      // the tab names the focused pane
+          await expect(page.locator(`.tab.project[data-tab="${off}"]`)).not.toHaveClass(/active/);
+          for (const id of [on, off]) expect(await frame(id)).toEqual({ content: 'none', iframeOutline: 'none' });   // no ring on either pane
+        }
+        await page.evaluate(() => activateTab('proj-a'));                              // proj-a stays active: the next split needs another tab active
       }
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -3981,7 +3979,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
-    test('split view (t-320d): the active tab and the focused board share one dimmer edge colour, in the strip and in the bar, in both themes', async ({ page }) => {
+    test('split view (t-320d, ring removed by t-a205): the active tab wears one dimmer edge colour, in the strip and in the bar, in both themes', async ({ page }) => {
       await openShell(page, []);
       await splitTabs(page);
       await splitVia(page, 'proj-x', 'below');
@@ -3995,14 +3993,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await page.waitForTimeout(400);
           seen[id] = await page.evaluate((i) => {
             const t = getComputedStyle(document.querySelector('.tab.project[data-tab="' + i + '"]'));
-            const r = getComputedStyle(document.querySelector('.view.active'), '::after');
-            return { bg: t.backgroundColor, tabBorder: t.borderLeftColor, shadow: t.boxShadow, ring: r.borderTopColor, parent: document.querySelector('.tab.project[data-tab="' + i + '"]').parentElement.id };
+            return { bg: t.backgroundColor, tabBorder: t.borderLeftColor, shadow: t.boxShadow, parent: document.querySelector('.tab.project[data-tab="' + i + '"]').parentElement.id };
           }, id);
         }
         expect([seen['proj-a'].parent, seen['proj-x'].parent]).toEqual(['tabstrip', 'panebar']);
         for (const id of ['proj-a', 'proj-x']) {
-          expect(seen[id].tabBorder, theme + ' ' + id + ': the tab border matches the board ring').toBe(seen[id].ring);
-          const a = alphaOf(seen[id].ring);
+          const a = alphaOf(seen[id].tabBorder);
           expect(a, theme + ': dimmer than the old 0.55').toBeLessThan(0.5); expect(a).toBeGreaterThan(0.25);
         }
         expect(seen['proj-a'].bg, theme + ': the strip tab and the bar tab fill the same').toBe(seen['proj-x'].bg);
@@ -7673,7 +7669,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(badge).toContainText('Live from sprint/e7lv');
     await expect(badge).toContainText('edits save to its copy');
     expect(await badge.getAttribute('title')).toContain("Edits save to sprint/e7lv's copy");
-    await expect(page.locator('#btn-edit-doc')).toBeVisible();
+    await expect(page.locator('.doc-edit-hint')).toBeVisible();
     await expect(page.locator('#btn-new-doc')).toBeVisible();            // research.md is still available to create
     await expect(page.locator('#m-body .doc-bullet[data-check-idx]')).toHaveCount(2);   // the checkboxes toggle now
     await expect(page.locator('.signoff-demo-toggle')).toBeEnabled();
@@ -7682,7 +7678,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // A file the server will not write in a worktree (here design.md) is offered read-only, never an Edit that cannot save.
     await page.locator('.doc-tab', { hasText: 'Design' }).click();
     await expect(page.locator('.doc-locked-badge')).toContainText('read-only here');
-    await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
+    await expect(page.locator('.doc-edit-hint')).toHaveCount(0);
     await page.locator('.doc-tab', { hasText: 'Plan' }).click();
     for (const theme of ['dark', 'light']) {
       await page.evaluate(t => document.documentElement.setAttribute('data-theme', t), theme);
@@ -7694,7 +7690,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await page.locator('#board-search').fill(plain);
     await page.locator(`.card[data-id="${plain}"]`).click();
     await page.locator('.doc-tab', { hasText: 'Plan' }).click();
-    await expect(page.locator('#btn-edit-doc')).toBeVisible();
+    await expect(page.locator('.doc-edit-hint')).toBeVisible();
     await expect(page.locator('#doc-live-badge')).toHaveCount(0);
     expect(posts).toHaveLength(0);
   });
@@ -7731,7 +7727,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, etag: 'etag-saved' }) }) });
     // A plan the editor accepts (it checks the Ticket line and the required headings before it saves).
     const mine = words => `# Plan\n\nTicket: \`t-e7lv\`\n\n## Sign-off\nTier: normal | Risk: low\n\n- [x] Plan approved\n\n## Approach\n\n${words}\n\n## Decisions\n\nnone\n`;
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     const box = page.locator('#m-edit-area');
     await expect(box).toHaveValue(/live approach from the worktree/);   // the editor fills itself asynchronously: wait, or it overwrites my text
     await box.fill(mine('my unsaved words'));
@@ -7788,7 +7784,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
   const editDescription = async (page, id, text) => {
     await page.locator(`.card[data-id="${id}"]`).click();
     await page.locator('.doc-tab', { hasText: 'Description' }).click();
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     await page.locator('#m-edit-area').fill(text);
     await page.locator('#btn-save-top').click();
   };
@@ -7806,7 +7802,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/body$/);
     expect(posts[0].body.base_hash).toBe('tk-1');
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nsecond edit');
     await page.locator('#btn-save-top').click();
     await expect.poll(() => posts.length).toBe(2);
@@ -7862,7 +7858,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/status$/);
     await page.locator(`.card[data-id="${live}"]`).click();
     await page.locator('.doc-tab', { hasText: 'Description' }).click();
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     await expect(page.locator('#m-edit-area')).toHaveValue(/agent edited body/);   // the text and the etag arrive as a pair
     await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nafter the move');
     await page.locator('#btn-save-top').click();
@@ -7878,7 +7874,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect.poll(() => posts.length).toBe(1);
     expect(posts[0].url).toMatch(/\/api\/ticket\/t-8b01\/demo$/);
     await page.locator('.doc-tab', { hasText: 'Description' }).click();
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     await expect(page.locator('#m-edit-area')).toHaveValue(/agent edited body/);   // the text and the etag arrive as a pair
     await page.locator('#m-edit-area').fill('# Ticket t-8b01\n\nafter the toggle');
     await page.locator('#btn-save-top').click();
@@ -7892,23 +7888,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(page.locator('#doc-working-note')).toBeVisible();
     const bad = await page.evaluate(() => {
       const m = document.querySelector('#modal').getBoundingClientRect();
-      return ['#btn-edit-doc', '#btn-new-doc', '#doc-working-note', '#doc-live-badge']
+      return ['.doc-edit-hint', '#btn-new-doc', '#doc-working-note', '#doc-live-badge']
         .map(sel => { const r = document.querySelector(sel)?.getBoundingClientRect(); return { sel, r }; })
         .filter(x => !x.r || x.r.left < m.left - 1 || x.r.right > m.right + 1).map(x => x.sel);
     });
     expect(bad).toEqual([]);
-    await page.locator('#btn-edit-doc').click();                       // and Edit is really clickable
+    await editDoc(page);                                              // and double-clicking really edits
     await expect(page.locator('#m-edit-area')).toBeVisible();
   });
 
   test('a working agent shows one warning line and never blocks the edit (t-26f9)', async ({ page }) => {
     await liveBoard(page, { working: true });
     await expect(page.locator('#doc-working-note')).toContainText('the agent is working in sprint/e7lv');
-    await expect(page.locator('#btn-edit-doc')).toBeEnabled();
+    await expect(page.locator('.doc-edit-hint')).toBeVisible();
     // The evaluator found Edit pushed outside the modal while the note was showing: every control must lie inside it.
     const inside = async () => page.evaluate(() => {
       const m = document.querySelector('#modal').getBoundingClientRect();
-      return ['#btn-edit-doc', '#btn-new-doc', '#doc-working-note', '#doc-live-badge'].map(sel => {
+      return ['.doc-edit-hint', '#btn-new-doc', '#doc-working-note', '#doc-live-badge'].map(sel => {
         const r = document.querySelector(sel)?.getBoundingClientRect();
         return { sel, ok: !!r && r.left >= m.left - 1 && r.right <= m.right + 1 && r.width > 0 };
       });
@@ -8016,7 +8012,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect.poll(() => page.locator('#m-body .doc-bullet[data-check-idx]').first().getAttribute('class')).toBe(before);
 
     // Doc save: a refused save stays in edit mode with the typed text.
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     const area = page.locator('#m-edit-area');
     await expect(area).toBeVisible();
     // Edit fetches the doc and fills the textarea when it lands; typing earlier gets overwritten.
@@ -12255,12 +12251,12 @@ test.describe('ticket modal document tree (t-e946)', () => {
     const id = `t-tree-bar-${Date.now()}`;
     writeTicket(id);
     await openModalFor(page, id);
-    for (const sel of ['#btn-ticket-prev', '#btn-ticket-next', '#btn-edit-doc']) {
+    for (const sel of ['#btn-ticket-prev', '#btn-ticket-next', '.doc-edit-hint']) {
       await expect(page.locator(`#m-pane-bar ${sel}`)).toHaveCount(1);
       await expect(page.locator(`#m-docs ${sel}`)).toHaveCount(0);
     }
     await expect(page.locator('#m-pane-bar #btn-ticket-next')).toHaveAttribute('title', 'Next ticket');
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     await expect(page.locator('#m-pane-bar #btn-save-top')).toBeVisible();
     await expect(page.locator('#m-pane-bar #btn-cancel-top')).toBeVisible();
     await expect(page.locator('#m-docs #btn-save-top')).toHaveCount(0);
@@ -12271,7 +12267,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     writeTicket(id);
     await openModalFor(page, id);
     await tab(page, 'Acceptance').click();
-    await page.locator('#btn-edit-doc').click();
+    await editDoc(page);
     await expect(page.locator('#m-edit-area')).toBeVisible();
     await tab(page, 'Plan').click({ force: true });
     await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
@@ -12285,6 +12281,204 @@ test.describe('ticket modal document tree (t-e946)', () => {
     writeTicket(cid, { status: 'closed' });
     await openModalFor(page, cid);
     await expect(page.locator('#m-pane-bar .doc-locked-badge')).toHaveText('read-only');
-    await expect(page.locator('#btn-edit-doc')).toHaveCount(0);
+    await expect(page.locator('.doc-edit-hint')).toHaveCount(0);
+  });
+});
+
+// t-a205 slice B: the editor. Double-click or E starts editing (no Edit button), a rounded toolbar with image and
+// line-number buttons, and a gutter whose numbers stay aligned with wrapped lines.
+test.describe('ticket modal editor (t-a205)', () => {
+  const made = [];
+  function writeTicket(id, { status = 'open' } = {}) {
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2', 'created: 2026-06-28T00:00:00Z', '---', '', `# Editor fixture ${id}`, '', 'Plain description text for the editor.', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', `Ticket: \`${id}\``, '', '## Criteria', '- [ ] One', '- [ ] Two', '', '## Test Plan', '- [ ] Run it', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
+    made.push(dir);
+  }
+  test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
+  async function openModalFor(page, id) {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.waitForSelector('#m-docs .doc-tab');
+  }
+  const tab = (page, name) => page.locator('#m-docs .doc-tab', { hasText: name });
+  const editing = page => page.locator('#m-edit-area').isVisible();
+
+  test('there is no Edit button; the hint shows for an editable doc and not for a closed or cancelled ticket', async ({ page }) => {
+    const id = `t-ed-hint-${Date.now()}`, cid = `t-ed-closed-${Date.now()}`, xid = `t-ed-cancel-${Date.now()}`;
+    writeTicket(id); writeTicket(cid, { status: 'closed' }); writeTicket(xid, { status: 'cancelled' });
+    await openModalFor(page, id);
+    await expect(page.locator('#m-pane-bar .doc-edit-hint')).toHaveText('Double-click to edit');
+    await expect(page.locator('#btn-edit-doc, .doc-edit-btn')).toHaveCount(0);
+    for (const other of [cid, xid]) {
+      await openModalFor(page, other);
+      await expect(page.locator('.doc-edit-hint')).toHaveCount(0);
+      await expect(page.locator('#btn-edit-doc, .doc-edit-btn')).toHaveCount(0);
+    }
+  });
+
+  test('double-click on the document starts editing; a checkbox row, a button in the document and a closed ticket do not', async ({ page }) => {
+    const id = `t-ed-dbl-${Date.now()}`, cid = `t-ed-dblc-${Date.now()}`;
+    writeTicket(id); writeTicket(cid, { status: 'closed' });
+    await openModalFor(page, id);
+    await page.locator('#m-body').evaluate(el => { const b = document.createElement('button'); b.id = 'probe-btn'; b.textContent = 'x'; el.appendChild(b); });
+    await page.locator('#probe-btn').evaluate(b => b.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+    expect(await editing(page)).toBe(false);
+    await tab(page, 'Acceptance').click();
+    await page.locator('#m-body .doc-bullet[data-check-idx]').first().evaluate(b => b.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
+    expect(await editing(page)).toBe(false);
+    await editDoc(page);
+    await expect(page.locator('#m-edit-area')).toBeVisible();
+    await expect(page.locator('#m-pane-bar #btn-save-top')).toBeVisible();
+    await expect(page.locator('#m-pane-bar #btn-cancel-top')).toBeVisible();
+    await openModalFor(page, cid);
+    await editDoc(page);
+    expect(await editing(page)).toBe(false);
+  });
+
+  test('the e key starts editing, but not in a field, with a modifier, on a closed ticket, or while editing', async ({ page }) => {
+    const id = `t-ed-key-${Date.now()}`, cid = `t-ed-keyc-${Date.now()}`;
+    writeTicket(id); writeTicket(cid, { status: 'closed' });
+    await openModalFor(page, cid);
+    await page.keyboard.press('e');
+    expect(await editing(page)).toBe(false);
+    await openModalFor(page, id);
+    await tab(page, 'Plan').click();
+    await page.locator('.signoff-risk-input, .section-jumps input[type=text]').first().focus();
+    await page.keyboard.press('e');
+    expect(await editing(page)).toBe(false);
+    await tab(page, 'Description').click();
+    await page.locator('#m-body').evaluate(el => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press('Control+e');
+    expect(await editing(page)).toBe(false);
+    await page.keyboard.press('e');
+    await expect(page.locator('#m-edit-area')).toBeVisible();
+    await page.locator('#m-edit-area').evaluate(el => { el.value = ''; });
+    await page.locator('#m-edit-area').focus();
+    await page.keyboard.press('e');
+    await expect(page.locator('#m-edit-area')).toHaveValue('e');
+  });
+
+  test('while the new-doc picker is open, double-click and e do not start editing', async ({ page }) => {
+    const id = `t-ed-pick-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await page.locator('#btn-new-doc').click();
+    await expect(page.locator('#m-body')).not.toContainText('Plain description');   // the picker replaced the document
+    await editDoc(page);
+    expect(await editing(page)).toBe(false);
+    await page.keyboard.press('e');
+    expect(await editing(page)).toBe(false);
+    await expect(page.locator('#btn-new-doc')).toBeDisabled();                      // the picker is still the state of the modal
+  });
+
+  test('Cancel leaves the doc unchanged', async ({ page }) => {
+    const id = `t-ed-cancel2-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await editDoc(page);
+    await page.locator('#m-edit-area').fill('# replaced\n\ntext that must not be saved');
+    await page.locator('#btn-cancel-top').click();
+    await expect(page.locator('#m-edit-area')).toBeHidden();
+    await expect(page.locator('#m-body')).toContainText('Plain description text');
+    await expect(page.locator('#m-body')).not.toContainText('must not be saved');
+  });
+
+  test('the toolbar is a rounded card with image and line-number buttons, shown only while editing', async ({ page }) => {
+    const id = `t-ed-tb-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await expect(page.locator('#m-editor-toolbar')).toBeHidden();
+    await editDoc(page);
+    await expect(page.locator('#m-editor-toolbar')).toBeVisible();
+    const r = await page.locator('#m-editor-toolbar').evaluate(e => parseFloat(getComputedStyle(e).borderTopLeftRadius));
+    expect(r).toBeGreaterThanOrEqual(10);
+    await expect(page.locator('#m-editor-toolbar [data-insert="image"]')).toBeVisible();
+    await expect(page.locator('#btn-editor-lines')).toBeVisible();
+    await expect(page.locator('#m-editor-toolbar [data-insert="checkbox"]')).toBeVisible();
+  });
+
+  test('the image button uploads the chosen file and inserts its markdown at the caret; a failed upload says so', async ({ page }) => {
+    const id = `t-ed-img-${Date.now()}`;
+    writeTicket(id);
+    let mode = 'ok';
+    await page.route('**/api/ticket/*/visual', route => mode === 'ok'
+      ? route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, filename: 'image-1.png' }) })
+      : route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
+    await openModalFor(page, id);
+    await editDoc(page);
+    const ta = page.locator('#m-edit-area');
+    await ta.fill('first\nsecond');
+    await ta.evaluate(e => e.setSelectionRange(5, 5));   // end of "first"
+    const input = page.locator('#m-image-input');
+    await expect(input).toHaveAttribute('accept', /^image\//);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#m-editor-toolbar [data-insert="image"]').click()]);   // the button opens the picker
+    expect(chooser.isMultiple()).toBe(false);
+    await input.setInputFiles({ name: 'My Shot.png', mimeType: 'image/png', buffer: Buffer.from(PASTE_PNG_B64, 'base64') });
+    await expect(ta).toHaveValue('first![My Shot](visuals/image-1.png)\nsecond');
+    mode = 'fail';
+    await ta.evaluate(e => e.setSelectionRange(e.value.length, e.value.length));
+    await input.setInputFiles({ name: 'bad.png', mimeType: 'image/png', buffer: Buffer.from(PASTE_PNG_B64, 'base64') });
+    await expect(ta).toHaveValue(/!\[upload failed\]\(\)$/);
+  });
+
+  test('the gutter numbers every line, follows typing, a snippet and the load, and the toggle is remembered', async ({ page }) => {
+    const id = `t-ed-gut-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await tab(page, 'Acceptance').click();
+    // delay the doc's text so it arrives after the editor is shown: the resize observer alone would then leave the gutter stale
+    await page.route('**/api/doc/**', async route => { await new Promise(r => setTimeout(r, 500)); await route.continue(); });
+    await editDoc(page);
+    const nums = () => page.locator('#m-gutter > div').allTextContents();
+    const lines = () => page.locator('#m-edit-area').evaluate(e => e.value.split('\n').length);
+    await expect(page.locator('#m-edit-area')).not.toHaveValue('');              // the doc's text has arrived
+    await expect.poll(async () => (await nums()).length === (await lines())).toBe(true);   // the initial load
+    await expect(page.locator('#m-gutter')).toHaveAttribute('aria-hidden', 'true');
+    const first = await nums();
+    expect(first[0]).toBe('1');
+    expect(first[first.length - 1]).toBe(String(first.length));
+    await page.locator('#m-edit-area').fill('a\nb\nc\nd\ne');
+    await expect.poll(async () => (await nums()).join(',')).toBe('1,2,3,4,5');
+    await page.locator('#m-edit-area').evaluate(e => { e.focus(); e.setSelectionRange(e.value.length, e.value.length); });
+    await page.locator('#m-editor-toolbar [data-insert="checkbox"]').click();
+    await expect.poll(async () => (await nums()).length === (await lines())).toBe(true);
+    await page.locator('#btn-editor-lines').click();
+    await expect(page.locator('#m-gutter')).toBeHidden();
+    await expect(page.locator('#btn-editor-lines')).toHaveAttribute('aria-pressed', 'false');
+    expect(await page.evaluate(() => localStorage.getItem('sprint-check-editor-lines'))).toBe('0');
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await page.waitForSelector('#m-docs .doc-tab');
+    await editDoc(page);
+    await expect(page.locator('#m-gutter')).toBeHidden();
+  });
+
+  test('a long line wraps without a horizontal scrollbar and the gutter stays the same height as the text, also after narrowing', async ({ page }) => {
+    const id = `t-ed-wrap-${Date.now()}`;
+    writeTicket(id);
+    await page.addInitScript(() => { try { localStorage.removeItem('sprint-check-editor-lines'); } catch {} });
+    await openModalFor(page, id);
+    await editDoc(page);
+    const ta = page.locator('#m-edit-area');
+    await ta.fill(Array.from({ length: 70 }, (_, i) => `word${i}`).join(' ') + '\nshort\n' + Array.from({ length: 70 }, (_, i) => `more${i}`).join(' '));
+    const m = () => page.evaluate(() => {
+      const t = document.getElementById('m-edit-area'), g = document.getElementById('m-gutter');
+      return { ws: getComputedStyle(t).whiteSpace, over: t.scrollWidth - t.clientWidth, tH: t.scrollHeight, gH: g.scrollHeight, nums: g.children.length, firstH: g.children[0].getBoundingClientRect().height, lineH: parseFloat(getComputedStyle(t).lineHeight) };
+    });
+    await expect.poll(async () => { const x = await m(); return Math.abs(x.gH - x.tH) <= 2; }).toBe(true);
+    let x = await m();
+    expect(x.ws).toBe('pre-wrap');
+    expect(x.over).toBeLessThanOrEqual(1);
+    expect(x.nums).toBe(3);
+    expect(x.firstH).toBeGreaterThan(x.lineH * 1.5);   // the first logical line wraps onto more rows, its number stays on the first
+    await page.setViewportSize({ width: 700, height: 900 });
+    await expect.poll(async () => { const y = await m(); return Math.abs(y.gH - y.tH) <= 2 && y.over <= 1; }).toBe(true);
   });
 });

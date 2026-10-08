@@ -25,7 +25,7 @@
   .app{display:flex;flex-direction:column;min-height:100vh}
 
   /* t-d34e: one row height shared by the sidebar brand and the tab strip, so their tops and dividers align */
-  :root{--strip-h:48px;--strip-pad:8px;--edge:color-mix(in srgb,var(--accent) 38%,transparent)}   /* --edge: the one dimmer blue shared by the focused board's ring and the active tab's border (t-320d) */   /* --strip-pad: breathing room above the tabs and the brand, same for both */
+  :root{--strip-h:48px;--strip-pad:8px;--edge:color-mix(in srgb,var(--accent) 38%,transparent)}   /* --edge: the dimmer blue of the active tab's border (t-320d); the focused pane has no ring since t-a205, the tab is the indicator */   /* --strip-pad: breathing room above the tabs and the brand, same for both */
 
   .below{display:grid;grid-template-columns:var(--side-w,230px) 1fr;flex:1;min-height:0}
   .side{background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:0 0 16px;position:relative}
@@ -79,9 +79,7 @@
   .views.split-h .view.pane2{inset:0 0 0 auto;width:calc((1 - var(--r))*100% - 3px)}
   .views.split-v .view.pane1{inset:0 0 auto 0;height:calc(var(--r)*100% - 3px)}
   .views.split-v .view.pane2{inset:auto 0 0 0;height:calc((1 - var(--r))*100% - 3px)}
-  /* t-c0c8: the focused pane's ring belongs to its view, not its iframe: an iframe outline lost its right and bottom edges on Windows */
-  .view#view-upkeep.pane1,.view#view-upkeep.pane2{z-index:1;background:var(--bg)}   /* t-bcce: Upkeep covers its own pane's board, under the focus ring */
-  .views.split-h .view.active::after,.views.split-v .view.active::after{content:"";position:absolute;inset:0;border:2px solid var(--edge);pointer-events:none;z-index:2}
+  .view#view-upkeep.pane1,.view#view-upkeep.pane2{z-index:1;background:var(--bg)}   /* t-bcce: Upkeep covers its own pane's board */
   #split-handle{position:absolute;z-index:6;display:none;background:var(--border);touch-action:none;transition:background .12s}
   #split-handle:hover,#split-handle:focus-visible,#split-handle.drag{background:var(--accent);outline:none}
   .views.split-h #split-handle{display:block;top:0;bottom:0;left:calc(var(--r)*100% - 3px);width:6px;cursor:col-resize}
