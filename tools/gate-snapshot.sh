@@ -43,12 +43,12 @@ digest() {  # stdin -> sha256 hex (sha256sum, shasum, else cksum)
 }
 
 snapshot() {
-  local audit_file proot ptop prel others EXCLUDES
+  local audit_file proot prel others EXCLUDES
   audit_file="$(project_root)/.claude/subagent-runs.jsonl"
   # this project's path relative to the repository root (empty when the project is the repository)
   proot="$(cd "$(project_root)" && pwd -P)"
-  ptop="$(git -C "$proot" rev-parse --show-toplevel 2>/dev/null)" || ptop=""
-  prel=""; if [[ -n "$ptop" && "$proot" != "$ptop" ]]; then prel="${proot#"$ptop"/}/"; fi
+  # asked of git itself (it ends in "/"): comparing `pwd -P` with --show-toplevel never matches on Windows (/tmp/x vs C:/.../x, t-7301)
+  prel="$(git -C "$proot" rev-parse --show-prefix 2>/dev/null)" || prel=""
   EXCLUDES=(":(exclude)${prel}.tickets" ":(exclude)${prel}.claude/subagent-runs.jsonl")
   # branches checked out in a worktree other than this one: their sha is not compared
   others="$(git -C "$root" worktree list --porcelain | awk -v me="$root" '/^worktree /{wt=substr($0,10)} /^branch /{ if (wt != me) print substr($0,8) }')"
