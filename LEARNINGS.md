@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-08-2026 00:00
+learnings-sweep last run: 10-08-2026 06:24
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-08 | [t-e946](.tickets/t-e946/learnings.md) | Sequential isolated samples of a flaky test can blame the diff (branch failed 3/5 right after the base passed 0/8, yet the unmodified base app.html with the same spec failed 2/4 minutes later): alternate base and branch in one scratch copy (6 each, both passed) before calling it a regression or a flake. | UNPROMOTED |
 | 2026-10-08 | [t-7723](.tickets/t-7723/learnings.md) | A value from a ticket file placed in a NEW attribute needs `escAttr`, not `esc`: a hand-edited non-integer `priority` stays a string in both servers, so check how the field is parsed before choosing the sink; and a theme token that reads fine as a dot (`--st-work` #df8e1d) can be too pale as 11px light-theme text. | UNPROMOTED |
 | 2026-10-08 | [t-4487](.tickets/t-4487/learnings.md) | A "never gets less informative" assertion passes on its first poll when the starting value already equals the expected one: have the page expose when its fetches are applied and await that, then prove the case with a revert mutant; and validate a value both backends pass through (a lone surrogate raised in Python but not in Go) at the proxy, not in the page. | UNPROMOTED |
 | 2026-10-07 | [t-9383](.tickets/t-9383/learnings.md) | `-trimpath` alone does not make a GOPATH-mode `go build` reproducible (three checkouts gave three hashes); build as a staged module and prove it by hashing from two checkout paths, and give a fetcher's temp file a cleanup that runs after every failure branch, not only before the one that was tested. | UNPROMOTED |
