@@ -146,6 +146,7 @@ echo "canon-update: refresh does not wait on background processes"
 # a forking loop deadlocked Git Bash on Windows); off a terminal (every run above) it prints nothing extra.
 mkdir -p "$WORK/slow"
 sed -i.bak "s|\"$WORK/spawner\"|\"$WORK/slow\"|" "$CANON_HOME/cockpit/projects.json"
+if command -v python3 >/dev/null 2>&1 && python3 -c "import pty" 2>/dev/null; then   # pty is Unix-only: Windows (Git Bash) has none, so the check cannot run there
 tty_out="$(python3 - "$CANON" <<'PYEOF'
 import os, pty, sys
 pid, master = pty.fork()
@@ -165,8 +166,11 @@ PYEOF
 )"
 assert_contains "$tty_out" "refreshing $WORK/slow (please wait)..."
 assert_contains "$tty_out" "refreshed: $WORK/slow"
+  echo "canon-update: a please-wait line is shown on a terminal"
+else
+  echo "canon-update: SKIPPED the please-wait-on-a-terminal check (no python3 with pty on this machine)"
+fi
 if grep -q '( while' "$ROOT/tools/canon"; then fail "canon-update: a background loop crept back into the refresh (deadlocked Git Bash)"; fi
-echo "canon-update: a please-wait line is shown on a terminal"
 
 # The cockpit's ? help tells people how to update (a section of its own, naming the command).
 help_update="$(awk '/<div class="help-sect">Update<\/div>/{f=1} f&&/<div class="help-sect">Theme/{exit} f' "$ROOT/tools/sprint-check-app/cockpit.html")"
