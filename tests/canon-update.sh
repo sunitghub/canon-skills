@@ -13,6 +13,11 @@ refute_contains() { [[ "$1" != *"$2"* ]] || fail "expected output NOT to contain
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
+# The sections before t-9383's assume a non-Windows host: there `canon update` does not insist on the Windows exes. On a real Windows
+# run (Git Bash) that assumption fails at the first update, so the platform is pinned here; t-9383's section fakes Windows per call
+# with its own stub, which comes first in PATH and still wins.
+REAL_UNAME="$(command -v uname)"; LSTUB="$WORK/linuxstub"; mkdir -p "$LSTUB"
+printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; *) exec "%s" "$@" ;; esac\n' "$REAL_UNAME" > "$LSTUB/uname"; chmod +x "$LSTUB/uname"; export PATH="$LSTUB:$PATH"
 g() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
 ident=(-c user.email=t@example.com -c user.name=test)
 
