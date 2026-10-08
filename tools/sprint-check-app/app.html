@@ -840,6 +840,7 @@
     }
     #modal-overlay.open { opacity: 1; pointer-events: auto; }
     #modal {
+      container: modal / inline-size;
       background: var(--surface); border: 1px solid var(--modal-border);
       border-radius: 10px; width: min(940px,92vw); max-height: calc(100vh - 24px);
       min-width: min(420px, calc(100vw - 24px)); min-height: 320px;
@@ -927,7 +928,7 @@
       padding: 8px 16px; border-bottom: 1px solid var(--border-muted); background: var(--surface); flex-shrink: 0;
     }
     .modal-pane-bar:empty { display: none; }
-    @media (max-width: 820px) {
+    @container modal (max-width: 700px) {   /* the dialog is resizable: key on its own width, not the viewport's */
       .modal-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
       .modal-docs { grid-column: 1; width: auto; max-height: 150px; border-right: 0; border-bottom: 1px solid var(--border-muted); }
       .modal-pane { grid-column: 1; }
@@ -954,7 +955,7 @@
       color: var(--text-muted); cursor: pointer;
     }
     .doc-child:hover { background: var(--surface-hover); color: var(--text); }
-    .doc-child-count { font-family: var(--mono, monospace); font-size: 10px; color: var(--text-muted); }
+    .doc-child-count { font-family: 'JetBrains Mono','Fira Code',ui-monospace,monospace; font-size: 10px; color: var(--text-muted); }
     .doc-tab-new {
       padding: 5px 12px; border-radius: 999px; font-size: 12px;
       border: 1px dashed var(--border-hover); background: transparent;
@@ -4218,7 +4219,6 @@ function openModal(id) {
   if (DEBUG) window.__sprintCheckOpenModalCount = (window.__sprintCheckOpenModalCount || 0) + 1;
   state.selectedId = id;
   modalState.editMode = false;
-  const docs = (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file)));
   modalState.activeDoc = null;   // t-e946: a ticket opens on Description (the tree's first node)
   modalState.pickingDoc = false;
   resetPanelDrag(document.getElementById('modal'));
