@@ -45,8 +45,12 @@ function Install-CanonFiles($Dest) {
   New-Item -ItemType Directory -Path $tmp | Out-Null
   try {
     $zip = Join-Path $tmp "canon.zip"
-    Write-Host "==> Downloading canon"
-    Invoke-WebRequest -UseBasicParsing -Uri $ZipUrl -OutFile $zip
+    # t-30fc: `canon update --to <ref>` sets CANON_REF; only main or a release tag like v0.3.0 reaches the URL.
+    $ref = if ($env:CANON_REF) { $env:CANON_REF } else { "main" }
+    if ($ref -cne "main" -and $ref -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "CANON_REF must be main or a release tag like v0.3.0 (got '$ref')." }
+    $url = if ($ref -ceq "main") { $ZipUrl } else { "https://github.com/sunitghub/canon-skills/archive/refs/tags/$ref.zip" }
+    Write-Host "==> Downloading canon ($ref)"
+    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
     # Expand-Archive is very slow in Windows PowerShell 5.1 and its progress bar ignores $ProgressPreference.
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)

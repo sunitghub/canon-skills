@@ -260,6 +260,81 @@ assert_eq "0" "$code"; refute_contains "$out" "could not be fetched"
 # macOS/Linux never touch exes: no backup, no restore message
 out="$("$CANON" update 2>&1)"; refute_contains "$out" "kept your previous"
 
+# ── t-30fc: `canon update --to <ref>` pins an install to a release tag (or returns it to main). The install is a depth-1 clone, so
+# the tag is not there until it is fetched. Fixture: tags v0.3.0 and v0.3.1, then an untagged commit on main.
+O3="$WORK/o3.git"; git init -q --bare -b main "$O3"
+git clone -q "$O3" "$WORK/seed3" 2>/dev/null
+mkdir -p "$WORK/seed3/tools"
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$WORK/seed3/tools/"
+cp "$WORK/seed/tools/skills.sh" "$WORK/seed/tools/fetch-daemon.sh" "$WORK/seed3/tools/"
+printf "tools/*-win.exe\n" > "$WORK/seed3/.gitignore"   # as the real .gitignore: the fetch stub writes these
+echo 0.3.0 > "$WORK/seed3/VERSION"; git -C "$WORK/seed3" "${ident[@]}" add -A -f; git -C "$WORK/seed3" "${ident[@]}" commit -qm "release 0.3.0"
+git -C "$WORK/seed3" "${ident[@]}" tag -a v0.3.0 -m "v0.3.0"
+echo 0.3.1 > "$WORK/seed3/VERSION"; git -C "$WORK/seed3" "${ident[@]}" commit -qam "release 0.3.1"
+git -C "$WORK/seed3" "${ident[@]}" tag -a v0.3.1 -m "v0.3.1"
+echo next > "$WORK/seed3/UNRELEASED"; git -C "$WORK/seed3" "${ident[@]}" add UNRELEASED; git -C "$WORK/seed3" "${ident[@]}" commit -qm "after the release"
+git -C "$WORK/seed3" push -q origin main --tags 2>/dev/null
+git clone -q --depth 1 "file://$O3" "$WORK/inst3" 2>/dev/null
+I3="$WORK/inst3"; C3="$I3/tools/canon"
+tip3="$(git -C "$WORK/seed3" rev-parse HEAD)"
+sha3() { git -C "$WORK/seed3" rev-list -n1 "$1"; }
+assert_eq "" "$(git -C "$I3" tag)"   # the shallow clone has no tags until one is asked for
+h3() { git -C "$I3" rev-parse HEAD; }
+
+# Invalid refs exit 2 before any git call: a git stub that records every call proves none was made.
+GSTUB="$WORK/gitstub"; mkdir -p "$GSTUB"; printf '#!/bin/sh\necho "$*" >> "%s/git.calls"\nexit 99\n' "$WORK" > "$GSTUB/git"; chmod +x "$GSTUB/git"
+rm -f "$WORK/git.calls"
+for bad in -x ../x v1 v1.2 release main2 v1.2.3.4 'v1.2.3;x' 'v1.2.3 ' V1.2.3 ''; do
+  set +e; out="$(PATH="$GSTUB:$PATH" "$C3" update --to "$bad" 2>&1)"; code=$?; set -e
+  assert_eq "2" "$code"; assert_contains "$out" "--to takes main or a release tag like v0.3.0"
+done
+set +e; out="$(PATH="$GSTUB:$PATH" "$C3" update --to 2>&1)"; code=$?; set -e; assert_eq "2" "$code"; assert_contains "$out" "--to takes main or a release tag like v0.3.0"
+set +e; out="$(PATH="$GSTUB:$PATH" "$C3" update --to v0.3.0 extra 2>&1)"; code=$?; set -e; assert_eq "2" "$code"
+[[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad --to value reached git: $(cat "$WORK/git.calls")"
+assert_eq "$tip3" "$(h3)"
+
+# A tag that does not exist, a dirty install and another branch each refuse and change nothing.
+set +e; out="$("$C3" update --to v9.9.9 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "v9.9.9"; assert_contains "$out" "Nothing was changed."; assert_eq "$tip3" "$(h3)"
+echo wip > "$I3/scratch.txt"
+set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_eq "$tip3" "$(h3)"; rm "$I3/scratch.txt"
+g "$I3" checkout -q -b feature
+set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "is on 'feature', not main"; assert_eq "$tip3" "$(h3)"
+g "$I3" checkout -q main
+
+# Pin to v0.3.0: HEAD is the tag's commit, detached; the daemon fetch and the project refresh still run.
+: > "$REFRESH_LOG"; rm -f "$REFRESH_LOG.fetch"
+out="$("$C3" update --to v0.3.0 2>&1)"
+assert_eq "$(sha3 v0.3.0)" "$(h3)"; assert_eq "0.3.0" "$(cat "$I3/VERSION")"
+assert_contains "$out" "pinned to v0.3.0"; assert_contains "$out" "canon update --to main"
+assert_contains "$out" "refreshed: $WORK/p1"
+assert_eq "fetch --quiet" "$(cat "$REFRESH_LOG.fetch")"
+[[ -z "$(git -C "$I3" symbolic-ref -q HEAD || true)" ]] || fail "canon-update: --to a tag left a branch checked out"
+# A plain update on a pinned install refuses, changing nothing, and names the way back.
+: > "$REFRESH_LOG"; before="$(h3)"
+set +e; out="$("$C3" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "pinned to v0.3.0"; assert_contains "$out" "canon update --to main"
+assert_contains "$out" "Nothing was changed."; assert_eq "$before" "$(h3)"; assert_eq "" "$(cat "$REFRESH_LOG")"
+# Pinned to another tag, then back to main: a normal fast-forward from there.
+out="$("$C3" update --to v0.3.1 2>&1)"; assert_eq "$(sha3 v0.3.1)" "$(h3)"; assert_eq "0.3.1" "$(cat "$I3/VERSION")"
+out="$("$C3" update --to main 2>&1)"
+assert_eq "$tip3" "$(h3)"; assert_eq "main" "$(git -C "$I3" symbolic-ref --short HEAD)"; assert_eq "" "$(git -C "$I3" status --porcelain)"
+refute_contains "$out" "pinned"
+# Plain update works again, and `--to main` on main is the ordinary update.
+out="$("$C3" update 2>&1)"; assert_contains "$out" "canon is up to date"
+out="$("$C3" update --to main 2>&1)"; assert_contains "$out" "canon is up to date"
+# --to is meaningless without a git clone off Windows: refused like a plain update there.
+cp -R "$I3" "$WORK/zip3" && rm -rf "$WORK/zip3/.git"
+set +e; out="$("$WORK/zip3/tools/canon" update --to v0.3.0 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "isn't a git clone"
+# Windows zip install: the installer is re-run with the ref in CANON_REF (PowerShell cannot run here), and install.ps1 reads it.
+grep -q 'CANON_REF' "$ROOT/tools/canon" || fail "canon-update: the Windows non-git path does not pass CANON_REF to the installer"
+grep -q 'CANON_REF' "$ROOT/install.ps1" || fail "canon-update: install.ps1 ignores CANON_REF"
+grep -q 'refs/tags/' "$ROOT/install.ps1" || fail "canon-update: install.ps1 cannot fetch a tag's zip"
+echo "canon-update: --to pins to a release tag, refuses plain update while pinned, returns to main; bad refs never reach git (t-30fc)"
+
 ps="$("$CANON" completion powershell)"
 for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do
   assert_contains "$ps" "$w"

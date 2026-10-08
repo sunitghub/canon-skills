@@ -673,3 +673,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
     - On yes: commit, then push to the current branch's remote. Report the pushed ref.
     - If criticals from the review pipeline are unresolved: warn before asking — do not block,
       but make the risk explicit.
+    - **Releases (t-30fc).** A push is not a release. When this sprint bumped `VERSION` (and added its dated `CHANGELOG.md`
+      section), run `scripts/release.sh --dry-run` after the push to `public`, show the user its output, and run
+      `scripts/release.sh` only on their explicit yes: it pushes a tag to the public repo. Nothing mechanical refuses a push
+      while the ticket is open (that would need a hook, `t-f01d`); step 9 already precedes this step. `docs/releasing.md`.

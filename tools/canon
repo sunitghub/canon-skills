@@ -42,6 +42,9 @@ Usage:
                            `skills.sh refresh` on every project registered in the Cockpit
                            A Windows install without git (the one-line installer) is updated by
                            re-running that installer.
+  canon update --to <vX.Y.Z|main>
+                           Pin this install to a release tag (the way back from a bad update),
+                           or return it to main. Plain `canon update` refuses while pinned.
   canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
                            Remove canon from this machine: shows a plan, asks, stops the daemon,
                            cleans every registered project, deletes the Cockpit data (unless
@@ -92,12 +95,14 @@ refresh_projects() {
 # A folder with no .git is a zip install. On Windows the one-line installer updates it in place (it keeps
 # cockpit\); exec hands over to PowerShell first so the running script is never overwritten under bash.
 update_without_git() {
-  local repo="$1" url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1"
+  local repo="$1" to="${2:-}" url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1" setref=""
+  # t-30fc: `to` was validated (main or vN.N.N) by update_cmd; the installer reads it from CANON_REF and fetches that tag's zip.
+  [ -z "$to" ] || setref="\$env:CANON_REF='$to'; "
   if _is_windows && [ "$repo" = "$(cygpath -u "$USERPROFILE\\.canon" 2>/dev/null)" ]; then
     echo "Updating canon by re-running the installer..."
     # </dev/null: with the console's stdin inherited, the nested canon.cmd -> bash refresh hung (live-reproduced).
     exec powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
-      "irm $url | iex; if (\$? -and -not \$global:CanonInstallFailed) { Write-Host '==> Refreshing your projects (this can take a moment)'; & '$(cygpath -w "$SCRIPT_DIR/canon.cmd")' update --refresh-only }" </dev/null
+      "${setref}irm $url | iex; if (\$? -and -not \$global:CanonInstallFailed) { Write-Host '==> Refreshing your projects (this can take a moment)'; & '$(cygpath -w "$SCRIPT_DIR/canon.cmd")' update --refresh-only }" </dev/null
   fi
   if _is_windows; then
     echo "canon update: $repo isn't the installer's folder (%USERPROFILE%\\.canon) — re-run the installer to update the copy there." >&2
@@ -113,13 +118,19 @@ update_without_git() {
 # --refresh-only is internal: the Windows zip update hands over to PowerShell (the installer cannot overwrite this
 # running script), which then calls it to do just the project refresh. It is deliberately left out of --help.
 update_cmd() {
-  local refresh_only=0
+  local refresh_only=0 to="" re='^v[0-9]+\.[0-9]+\.[0-9]+$'
   [[ "${1:-}" == --refresh-only ]] && { refresh_only=1; shift; }
-  [[ $# -eq 0 ]] || { echo "canon update takes no arguments (except --refresh-only)" >&2; exit 2; }
+  # t-30fc: --to pins the install to a release tag, or (main) returns it. The value reaches git arguments and an installer URL.
+  if [[ "${1:-}" == --to ]]; then
+    [[ $# -eq 2 && "$refresh_only" = 0 ]] || { echo "canon update: --to takes main or a release tag like v0.3.0" >&2; exit 2; }
+    to="$2"; shift 2
+    [[ "$to" == main || "$to" =~ $re ]] || { echo "canon update: --to takes main or a release tag like v0.3.0 (got '$to')" >&2; exit 2; }
+  fi
+  [[ $# -eq 0 ]] || { echo "canon update takes no arguments (except --refresh-only, --to <ref>)" >&2; exit 2; }
   local repo; repo="$(cd "$SCRIPT_DIR/.." && pwd)"
   if [ "$refresh_only" = 1 ]; then refresh_projects; fi
   if ! git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
-    update_without_git "$repo"
+    update_without_git "$repo" "$to"
   fi
   local dirty; dirty="$(git -C "$repo" status --porcelain)"
   if [ -n "$dirty" ]; then
@@ -127,20 +138,44 @@ update_cmd() {
     printf '%s\n' "$dirty" | head -10 | sed 's/^/  /' >&2
     exit 1
   fi
-  local branch before after
+  local branch before after pinned=""
   branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
-  [ "$branch" = main ] || { echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1; }
+  if [ "$branch" = HEAD ]; then   # detached: an install pinned to a release tag (t-30fc)
+    pinned="$(git -C "$repo" describe --tags --exact-match HEAD 2>/dev/null)" || pinned="$(git -C "$repo" rev-parse --short HEAD)"
+    if [ -z "$to" ]; then
+      echo "canon update: $repo is pinned to $pinned — run 'canon update --to main' to follow main again. Nothing was changed." >&2; exit 1
+    fi
+  elif [ "$branch" != main ]; then
+    echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1
+  fi
+  if [ -n "$to" ] && [ "$to" != main ] && ! git -C "$repo" rev-parse -q --verify "refs/tags/$to^{commit}" >/dev/null 2>&1; then
+    # a depth-1 clone has no tags: ask for just this one
+    git -C "$repo" fetch -q --depth 1 origin "refs/tags/$to:refs/tags/$to" 2>/dev/null \
+      || { echo "canon update: release $to was not found on origin (or the fetch failed). Nothing was changed." >&2; exit 1; }
+  fi
   before="$(git -C "$repo" rev-parse --short HEAD)"
   # t-9383: the Windows exes are no longer committed, so a pull from the commit that dropped them deletes the old ones.
   # Keep them aside until the fetch has put verified ones back, so a failed fetch never leaves the install without a board or daemon.
   local bak=""
   if _is_windows; then bak="$(mktemp -d "${TMPDIR:-/tmp}/canon-update-bak.XXXXXX")"; cp -p "$SCRIPT_DIR"/*-win.exe "$bak/" 2>/dev/null || true; fi
-  if ! git -C "$repo" pull --ff-only --quiet; then
-    [ -z "$bak" ] || rm -rf "$bak"
-    echo "canon update: $repo can't fast-forward (local commits, or no upstream). Nothing was changed." >&2; exit 1
+  if [ -n "$to" ] && [ "$to" != main ]; then
+    if ! git -C "$repo" -c advice.detachedHead=false checkout -q --detach "refs/tags/$to"; then
+      [ -z "$bak" ] || rm -rf "$bak"
+      echo "canon update: could not check out $to. Nothing was changed." >&2; exit 1
+    fi
+  else
+    if [ -n "$pinned" ] && ! git -C "$repo" checkout -q main; then
+      [ -z "$bak" ] || rm -rf "$bak"
+      echo "canon update: could not switch back to main. Nothing was changed." >&2; exit 1
+    fi
+    if ! git -C "$repo" pull --ff-only --quiet; then
+      [ -z "$bak" ] || rm -rf "$bak"
+      echo "canon update: $repo can't fast-forward (local commits, or no upstream). Nothing was changed." >&2; exit 1
+    fi
   fi
   after="$(git -C "$repo" rev-parse --short HEAD)"
-  if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
+  if [ -n "$to" ] && [ "$to" != main ]; then echo "canon pinned to $to ($after). Run 'canon update --to main' to follow main again."
+  elif [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
   bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2
   if [ -n "$bak" ]; then
     local f

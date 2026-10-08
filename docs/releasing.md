@@ -1,0 +1,30 @@
+# Releasing canon
+
+For the maintainer. Consumers install from `public` (`sunitghub/canon-skills`) and `canon update` takes its `main` at once, so a release is the point a consumer can pin to or return to. This page is the one place the build and release steps are written down in order.
+
+## Versioning
+
+`VERSION` holds `X.Y.Z` ([SemVer](https://semver.org)): a patch for fixes, a minor for features that keep working as before, a major for a change that breaks a tool's command line or the install layout. `CHANGELOG.md` records each release in Keep a Changelog form; commits since the last release sit under `## [Unreleased]`.
+
+A release is **not** every push. Several pushes a day share one `VERSION`, and a tag name is unique. Between releases `public` main is unreleased work; consumers who want stability pin to the last release.
+
+## The pipeline, in order
+
+1. **Merge and push.** Merge to `main`, then push both remotes: `git push origin main` and `git push public main` (canon-skills is the install target).
+2. **If Go source changed, release the binaries first.** `scripts/release-daemon.sh` builds the cockpit daemon (macOS, Linux, Windows), the Windows board and the headless helper, publishes them as GitHub releases named by the tree hash of their source, and records each SHA-256 in `tools/cockpit-daemon.sha256`. Commit that manifest. Run it *before* the manifest reaches `public`: installs verify what they download against it. `scripts/check-binaries-released.sh` is the guard to run before pushing to `public`; it is red between a Go commit and its release, by design (`--download` also re-checks every asset's hash).
+3. **To release:** bump `VERSION`, add a dated `## [X.Y.Z] - YYYY-MM-DD` section to `CHANGELOG.md` that says what matters to a user, commit, and push to both remotes.
+4. **Cut it:** `scripts/release.sh --dry-run`, read what it would do, then `scripts/release.sh`. It refuses, changing nothing, unless `VERSION` is `X.Y.Z`, the CHANGELOG has the dated section with content, `VERSION` and `CHANGELOG.md` match `HEAD`, `HEAD` is `main` and equals `public/main`, and the tag exists neither locally nor on `public`. Then it creates the annotated tag `vX.Y.Z`, pushes only that tag to `public`, and creates the GitHub release with the CHANGELOG section as its notes (`gh` must be logged in). If the GitHub step fails after the tag is pushed, it says so and prints the `gh release create` command to finish; it never deletes a pushed tag.
+5. **Check it:** on a machine, `canon update --to vX.Y.Z`, then `canon version`, then `canon update --to main`.
+
+Nothing in the sprint close pushes a tag or refuses a push while the ticket is open: a refusal would need a Claude Code hook, and canon installs none (`t-f01d`). Close (step 9) already comes before push (step 10).
+
+## Rolling back (what a consumer does)
+
+```bash
+canon update --to v0.3.0     # pin to that release; the daemon and projects are refreshed as in a normal update
+canon update --to main       # follow main again
+```
+
+A plain `canon update` on a pinned install refuses and says how to return, so an update never moves a pin by accident. On a git install the tag is fetched into the shallow clone; on a Windows install made by the one-line installer (a zip, no git) the installer is re-run with `CANON_REF=vX.Y.Z` and fetches that release's zip. `--to` accepts only `main` or `vN.N.N`. Binaries need nothing extra: an older tree names its own release assets, which are never overwritten.
+
+`v0.3.0` is the first tag and already contains `--to`, so a pinned install can always return with `canon update --to main`.
