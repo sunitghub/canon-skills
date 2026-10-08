@@ -188,13 +188,26 @@ cmd_current() {
 }
 
 cmd_status() {
-  local id tdir
+  local id tdir json=0
+  [[ "${1:-}" == "--json" ]] && json=1
   local current_out current_rc
   set +e; current_out="$("$TKT_BIN" current 2>&1)"; current_rc=$?; set -e
   if [[ "$current_rc" -gt 1 ]]; then echo "$current_out" >&2; exit "$current_rc"; fi
-  if [[ "$current_rc" -ne 0 ]]; then echo "No active sprint."; exit 1; fi
+  if [[ "$current_rc" -ne 0 ]]; then
+    if [[ "$json" -eq 1 ]]; then echo '{"active":false}'; else echo "No active sprint."; fi
+    exit 1
+  fi
   id="$(awk '{print $1}' <<< "$current_out")"
   tdir="$(ticket_dir_for "$id")"
+  if [[ "$json" -eq 1 ]]; then
+    local f flags="" ticket_json
+    ticket_json="$("$TKT_BIN" show "$id" --json)" # assigned first so a failure aborts with empty stdout, never half a document
+    for f in ticket.md acceptance.md plan.md; do
+      flags+="${flags:+,}\"$f\":$([[ -f "$tdir/$f" ]] && echo true || echo false)"
+    done
+    printf '{"active":true,"ticket":%s,"files":{%s}}\n' "$ticket_json" "$flags"
+    return
+  fi
   "$TKT_BIN" show "$id"
   echo ""
   echo "Sprint files:"
@@ -924,7 +937,8 @@ Usage:
   sprint start <ticket-id>  Start the sprint on an existing ticket (no new ticket created)
   sprint continue <ticket-id>  Resume an in_progress ticket (read-only; prints state)
   sprint current            Show the active sprint ticket
-  sprint status             Show active ticket and required sprint files
+  sprint status [--json]    Show active ticket and required sprint files; --json:
+                            {"active":bool,"ticket":<tkt show --json>,"files":{name:bool}}
   sprint complete           Validate acceptance checklist and close ticket
   sprint suggest-tier [<id>]  Propose (never apply) a bugfix|normal tier from the
                             diff — structural, propose-only; the human still writes
@@ -946,7 +960,7 @@ main() {
     start) cmd_start "$@" ;;
     continue) cmd_continue "$@" ;;
     current) cmd_current ;;
-    status) cmd_status ;;
+    status) cmd_status "$@" ;;
     complete) cmd_complete ;;
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;

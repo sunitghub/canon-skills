@@ -1542,3 +1542,29 @@ ng_dir="$(mktemp -d)"
   assert_contains "$(env -u CLAUDECODE "$SPRINT" complete 2>&1)" "Sprint completed: $nid"
 )
 rm -rf "$ng_dir"
+
+# t-262a: sprint status --json (same ticket object as `tkt show --json`).
+jp_node() { node -e 'const j=JSON.parse(require("fs").readFileSync(0,"utf8"));const r=(function(j){return eval(process.argv[1])})(j);process.stdout.write(typeof r==="string"?r:JSON.stringify(r))' "$1"; }
+js_project="$(make_project)"
+(
+  cd "$js_project"
+  rc=0; out="$("$SPRINT" status --json 2>/dev/null)" || rc=$?
+  [[ "$rc" -eq 1 ]] || fail "status --json with no active sprint: expected exit 1, got $rc"
+  assert_eq '{"active":false}' "$out"
+  rc=0; out="$("$SPRINT" status 2>/dev/null)" || rc=$?
+  [[ "$rc" -eq 1 ]] || fail "status (text) with no active sprint: expected exit 1, got $rc"
+  assert_eq "No active sprint." "$out"
+
+  sid="$("$SPRINT" start 'Status "json" \ test' | awk '/Sprint started:/ { print $3 }')"
+  out="$("$SPRINT" status --json)"
+  assert_eq "true|$sid|in_progress|Status \"json\" \\ test|true,true,true" "$(printf '%s' "$out" | jp_node '[j.active,j.ticket.id,j.ticket.status,j.ticket.title,Object.values(j.files).join()].join("|")')"
+  assert_eq "ticket.md,acceptance.md,plan.md" "$(printf '%s' "$out" | jp_node 'Object.keys(j.files).join()')"
+  assert_eq "$("$TKT" show "$sid" --json)" "$(printf '%s' "$out" | jp_node 'j.ticket')" # same object (key order and all)
+  rm -f ".tickets/$sid/plan.md"
+  assert_eq "true,true,false" "$("$SPRINT" status --json | jp_node 'Object.values(j.files).join()')"
+  text="$("$SPRINT" status)"
+  assert_contains "$text" "Sprint files:"
+  assert_contains "$text" "  [missing] "
+  [[ "$text" != *'{'* ]] || fail "sprint status text mode printed JSON"
+)
+rm -rf "$js_project"
