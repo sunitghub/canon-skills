@@ -334,12 +334,14 @@
     {
       "title": "cockpit in board (t-ddc8) > the editor keeps the text on a collision and offers Reload theirs or Overwrite (t-26f9)",
       "browsers": [
+        "chromium",
         "webkit"
       ],
       "ticket": "t-8aa6",
       "reason": "WebKit timeout under full-suite load, seen once on the t-416c tree; passed 5/5 in isolation on the branch and on clean main; cause not yet diagnosed",
       "failed_runs": {
-        "webkit": "1/3"
+        "webkit": "1/3",
+        "chromium": "1 of 1 evaluator full run (2026-10-08, t-a205), 0 of 4 isolated, group passed twice on branch and base"
       }
     },
     {
@@ -384,6 +386,17 @@
       "reason": "page.goto('/') hits the 30s load timeout in webkit during a full run (same pattern as the other webkit load-timeout entries); passed 3 of 3 isolated reruns",
       "failed_runs": {
         "webkit": "1 of 2 full runs (2026-10-08), 0 of 3 isolated"
+      }
+    },
+    {
+      "title": "cockpit stale-daemon banner (t-74d6) > a tab opening a live session offers Attach with the agent locked, and both windows get the shared notice",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "30s timeout in the evaluator's full chromium run (2026-10-08, t-a205); passed 4 of 4 isolated and its 163-test group passed twice on the branch and twice on base f35fec72; outside the diff; load-sensitive",
+      "failed_runs": {
+        "chromium": "1 of 1 evaluator full run, 0 of 4 isolated"
       }
     }
   ],
