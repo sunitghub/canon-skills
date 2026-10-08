@@ -51,4 +51,37 @@ assert_eq "$want_project_root" "$resolved_project_root"
 main_tickets_dir="$(cd "$WORK" && source "$ROOT/tools/ticket-root.sh" && tickets_dir)"
 assert_eq "$want_tickets_dir" "$(cd "$(dirname "$main_tickets_dir")" && pwd -P)/.tickets"
 
+# t-7301: on Windows Git writes a drive-letter pointer ("gitdir: C:/Users/.../.git/worktrees/x"). It is absolute, but the
+# old `!= /*` test joined it onto the worktree dir, so a worktree's tickets landed in a nested bogus path. Synthetic
+# .git files reproduce that on any OS; a stub cygpath first in PATH keeps the VM's real one out of the result.
+STUBS="$(mktemp -d)"; trap 'rm -rf "$WORK" "$WORK-worktrees" "$STUBS"' EXIT
+mkdir -p "$STUBS/none" "$STUBS/map"
+printf '#!/bin/sh\nexit 1\n' > "$STUBS/none/cygpath"
+# maps C:/x -> /c/x like `cygpath -u` does for a drive path
+printf '#!/bin/sh\n[ "$1" = -u ] || exit 1\np="$2"; l="$(printf %%s "${p%%%%"${p#?}"}" | tr A-Z a-z)"\nprintf "/%%s%%s\\n" "$l" "${p#?:}"\n' > "$STUBS/map/cygpath"
+chmod +x "$STUBS/none/cygpath" "$STUBS/map/cygpath"
+[[ "$("$STUBS/map/cygpath" -u C:/x/repo)" == /c/x/repo ]] || fail "test stub cygpath is broken"
+
+synth_tickets_dir() { # <stub: none|map> <gitdir pointer>; prints tickets_dir for a dir whose .git file holds the pointer
+  local d; d="$(mktemp -d)"
+  printf 'gitdir: %s\n' "$2" > "$d/.git"
+  (cd "$d" && PATH="$STUBS/$1:$PATH" && source "$ROOT/tools/ticket-root.sh" && tickets_dir)
+  rm -rf "$d"
+}
+synth_root() { local d; d="$(mktemp -d)"; printf 'gitdir: %s\n' "$2" > "$d/.git"; (cd "$d" && PATH="$STUBS/$1:$PATH" && source "$ROOT/tools/ticket-root.sh" && project_root); rm -rf "$d"; }
+
+assert_eq "C:/x/repo/.tickets"  "$(synth_tickets_dir none 'C:/x/repo/.git/worktrees/w')"
+assert_eq "/c/x/repo/.tickets"  "$(synth_tickets_dir map  'C:/x/repo/.git/worktrees/w')"
+assert_eq "C:/x/repo"           "$(synth_root none 'C:/x/repo/.git/worktrees/w')"
+assert_eq "C:/x/repo/.tickets"  "$(synth_tickets_dir none 'C:\x\repo\.git\worktrees\w')"
+assert_eq "/c/x/repo/.tickets"  "$(synth_tickets_dir map  'C:\x\repo\.git\worktrees\w')"
+assert_eq "D:/a b/r/.tickets"   "$(synth_tickets_dir none 'D:/a b/r/.git/worktrees/w')"
+# unchanged: a POSIX absolute pointer, whatever cygpath is around
+assert_eq "/x/repo/.tickets"    "$(synth_tickets_dir none '/x/repo/.git/worktrees/w')"
+assert_eq "/x/repo/.tickets"    "$(synth_tickets_dir map  '/x/repo/.git/worktrees/w')"
+# unchanged: a relative pointer is still joined onto the directory holding the .git file
+rel_dir="$(mktemp -d)"; printf 'gitdir: ../main/.git/worktrees/w\n' > "$rel_dir/.git"
+assert_eq "$rel_dir/../main/.tickets" "$(cd "$rel_dir" && PATH="$STUBS/map:$PATH" && source "$ROOT/tools/ticket-root.sh" && tickets_dir)"
+rm -rf "$rel_dir"
+
 printf 'ticket-root-worktree: ok\n'

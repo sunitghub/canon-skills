@@ -15,7 +15,19 @@ tickets_dir() {
     if [[ -f "$dir/.git" ]]; then
       local gitdir
       gitdir="$(sed -n 's/^gitdir: //p' "$dir/.git")"
-      [[ "$gitdir" != /* ]] && gitdir="$dir/$gitdir"
+      case "$gitdir" in
+        # t-7301: Git for Windows writes a drive-letter pointer ("C:/Users/.../.git/worktrees/x"). It is absolute, so
+        # it must not be joined onto $dir; map it to the shell's own form when cygpath can (matches `pwd -P`).
+        [A-Za-z]:[\\/]*)
+          gitdir="${gitdir//\\//}"
+          if command -v cygpath >/dev/null 2>&1; then
+            local mapped
+            if mapped="$(cygpath -u "$gitdir" 2>/dev/null)" && [[ -n "$mapped" ]]; then gitdir="$mapped"; fi
+          fi
+          ;;
+        /*) ;;
+        *) gitdir="$dir/$gitdir" ;;
+      esac
       case "$gitdir" in
         */worktrees/*)
           echo "$(dirname "${gitdir%/worktrees/*}")/.tickets"
