@@ -4042,7 +4042,7 @@ function cardHTML(t, idx) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
   }
   return `
-    <div class="card${t.id === state.selectedId ? ' focused' : ''}${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
+    <div class="card${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       ${live ? cardStateHTML(t, live) : ''}
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
@@ -4464,8 +4464,10 @@ function navigateTicket(dir) {
   openModal(nextId);
 }
 
+function visibleDocs(t) { return (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file))); }
+
 function renderModalDocs(t) {
-  const docs = (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file)));
+  const docs = visibleDocs(t);
   const bar = document.getElementById('m-docs');
   const paneBar = document.getElementById('m-pane-bar');
   const locked = t.status === 'closed' || t.status === 'cancelled';
@@ -4544,7 +4546,8 @@ function parseDocSections(content) {
     if (/^\s*```/.test(l)) { fenced = !fenced; return; }
     if (fenced) return;
     const h = /^##\s+(.+?)\s*#*\s*$/.exec(l);
-    if (h) { const text = h[1].replace(/[`*_]/g, '').trim(); cur = { text, slug: slugOf(text), done: 0, total: 0 }; out.push(cur); return; }
+    // the text the rendered heading shows: image and link markup removed
+    if (h) { const text = h[1].replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[`*_]/g, '').trim(); cur = { text, slug: slugOf(text), done: 0, total: 0 }; out.push(cur); return; }
     const m = cur && /^\s*[-*]\s+\[( |x|X)\]/.exec(l);
     if (m) { cur.total++; if (m[1] !== ' ') cur.done++; }
   });
@@ -4605,7 +4608,7 @@ function activateDoc(t, file, scrollSlug = '') {
 
 function prefetchDocSections(t) {
   const seq = ++modalState.prefetchSeq;
-  (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file))).forEach(d => {
+  visibleDocs(t).forEach(d => {
     fetch(`/api/doc/${encodeURIComponent(d.file)}`)
       .then(r => r.ok ? r.json() : null)
       .then(j => {

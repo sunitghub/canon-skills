@@ -12504,7 +12504,7 @@ test.describe('ticket modal editor (t-a205)', () => {
 // t-612f: expandable doc nodes (+ / −), the Demo/UX switch, the top-left resize grip, the keyboard-only card outline
 test.describe('ticket modal polish (t-612f)', () => {
   const made = [];
-  function writeTicket(id, { status = 'open' } = {}) {
+  function writeTicket(id, { status = 'open', withDesign = false } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2', 'created: 2026-06-28T00:00:00Z', '---', '', `# Polish fixture ${id}`, '', '## Context', 'Why this ticket exists.', '', '## Notes', 'More words.', ''].join('\n'));
@@ -12512,6 +12512,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', `Ticket: \`${id}\``, '', '## Criteria', '- [x] One', '- [ ] Two', '', filler, '', '## Test Plan', '- [ ] Run it', '', '## QA', 'Notes only.', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'research.md'), ['# Research', '', '## Only one heading', 'Text.', ''].join('\n'));
+    if (withDesign) fs.writeFileSync(path.join(dir, 'design.md'), ['# Design', '', '## Intro', 'Text.', '', filler, '', '## Shots ![shot](visuals/a.png)', 'More text.', '', filler, ''].join('\n'));
     made.push(dir);
   }
   test.afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -12589,6 +12590,21 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect.poll(() => page.evaluate(() => {
       const e = document.getElementById('section-qa'); if (!e) return false;
       const r = e.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      return r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
+    })).toBe(true);
+  });
+
+  test('a section whose heading carries markup still scrolls: the row and the rendered heading agree on the id', async ({ page }) => {
+    const id = `t-pol-slug-${Date.now()}`;
+    writeTicket(id, { withDesign: true });
+    await openModalFor(page, id);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Design' }).click();
+    await expect(page.locator('#m-body')).toContainText('More text.');
+    await kids(page, 'design').filter({ hasText: 'Shots' }).click();
+    await expect.poll(() => page.evaluate(() => {
+      const h = [...document.querySelectorAll('.doc-heading-2')].find(e => /Shots|shot/i.test(e.textContent + (e.querySelector('img')?.alt || '')));
+      if (!h || !h.id) return false;
+      const r = h.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
       return r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
     })).toBe(true);
   });
@@ -12674,7 +12690,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await page.locator('#board-search').fill(`t-pol-card-`);
     await expect(page.locator(`.card[data-id="${a}"]`)).toBeVisible();
     await page.evaluate(i => { state.selectedId = i; renderBoard(); }, a);
-    await expect(page.locator(`.card[data-id="${a}"]`)).toHaveClass(/focused/);
+    await expect(page.locator(`.card[data-id="${a}"]`)).toBeVisible();
     const look = id => page.locator(`.card[data-id="${id}"]`).evaluate(e => { const c = getComputedStyle(e); return { b: c.borderTopColor, s: c.boxShadow }; });
     expect(await look(a)).toEqual(await look(b));                                           // same as an unselected neighbour
     await page.keyboard.press('Tab');                                                       // keyboard modality, then focus the card
