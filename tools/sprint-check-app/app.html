@@ -549,7 +549,8 @@
     }
     .card:hover::before { transform: scaleX(1); }
     .card:hover .card-head { border-bottom-color: var(--status-color, var(--border-hover)); }
-    .card.focused { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+    /* t-612f: the accent outline marks keyboard focus only; the last-opened card no longer carries a persistent blue frame */
+    .card:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
 
     /* Card header zone — subtle raised strip for ID + badge */
     .card-head {
@@ -874,6 +875,12 @@
     }
     .modal-resize-handle:hover::before,
     .modal-resize-handle.resizing::before { border-color: var(--accent); opacity: 1; }
+    .modal-resize-handle-tl { left: 0; top: 0; right: auto; bottom: auto; }
+    .modal-resize-handle-tl::before {
+      left: 6px; top: 6px; right: auto; bottom: auto;
+      border-right: 0; border-bottom: 0;
+      border-left: 2px solid var(--text-muted); border-top: 2px solid var(--text-muted);
+    }
 
     .modal-header {
       display: flex; align-items: center; gap: 12px;
@@ -948,7 +955,15 @@
     }
     .doc-tab:hover { background: var(--surface-hover); color: var(--text); }
     .doc-tab.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
-    .doc-children { display: flex; flex-direction: column; margin: 1px 0 4px 14px; }
+    .doc-node { display: flex; align-items: center; }
+    .doc-node .doc-tab { flex: 1; min-width: 0; }
+    .doc-expander, .doc-expander-spacer { flex: none; width: 20px; height: 24px; }
+    .doc-expander {
+      display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 5px; background: transparent;
+      color: var(--text-muted); cursor: pointer; font: 600 14px/1 'JetBrains Mono','Fira Code',ui-monospace,monospace;
+    }
+    .doc-expander:hover { background: var(--surface-hover); color: var(--text); }
+    .doc-children { display: flex; flex-direction: column; margin: 1px 0 4px 10px; padding-left: 10px; border-left: 1px solid var(--border-muted); }
     .doc-child {
       display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left;
       padding: 4px 8px; font-size: 12px; font-weight: 500; border: 0; border-radius: 6px; background: transparent;
@@ -1058,13 +1073,15 @@
       border-color: var(--col-discarded);
     }
     .signoff-demo-toggle {
-      font-size: 11px; font-weight: 700; letter-spacing: .03em;
-      color: var(--text-body); background: transparent;
-      border: 1px solid var(--panel-border); border-radius: 4px; padding: 1px 8px; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 7px; padding: 0 2px; cursor: pointer;
+      font-size: 11px; font-weight: 700; letter-spacing: .03em; color: var(--text-body);
+      background: transparent; border: 0;
     }
-    .signoff-demo-toggle.active {
-      color: #fff; background: #f59e0b; border-color: #f59e0b;
-    }
+    .sw-track { position: relative; width: 28px; height: 16px; border-radius: 999px; background: var(--border-hover); flex: none; transition: background .12s; }
+    .sw-knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: left .12s; }
+    .signoff-demo-toggle[aria-checked="true"] .sw-track { background: var(--col-done); }
+    .signoff-demo-toggle[aria-checked="true"] .sw-knob { left: 14px; }
+    .signoff-demo-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
     .signoff-demo-toggle:disabled {
       opacity: 0.5; cursor: not-allowed;
     }
@@ -2386,6 +2403,7 @@
       <div class="modal-diverge" id="m-diverge" hidden></div>
       <div class="kbd-hint" id="m-kbd">Esc</div>
     </div>
+    <div class="modal-resize-handle modal-resize-handle-tl" title="Resize dialog" aria-label="Resize dialog from the top-left"></div>
     <div class="modal-resize-handle" title="Resize dialog" aria-label="Resize dialog"></div>
   </div>
 </div>
@@ -4024,7 +4042,7 @@ function cardHTML(t, idx) {
     startBtn = `<button class="card-start resume" data-id="${esc(t.id)}" title="Resume this sprint in the cockpit">▶ Resume</button>`;
   }
   return `
-    <div class="card${t.id === state.selectedId ? ' focused' : ''}${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
+    <div class="card${live && ckRowState(live) === 'needs-you' ? ' s-need' : ''}${animClass}" data-id="${esc(t.id)}" data-priority="${pri}" draggable="true" tabindex="0"${animStyle}>
       ${live ? cardStateHTML(t, live) : ''}
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
@@ -4180,7 +4198,7 @@ function openScratch(id) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', headings: [] };
+const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', sections: {}, expanded: new Set(), seen: new Set(), pendingScroll: '', prefetchSeq: 0 };
 
 // t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
 // box; they choose to load theirs or to overwrite knowingly.
@@ -4246,6 +4264,11 @@ function openModal(id) {
   modalState.editMode = false;
   modalState.activeDoc = null;   // t-e946: a ticket opens on Description (the tree's first node)
   modalState.pickingDoc = false;
+  // t-612f: every doc's ## sections, so the tree can show a + before a doc is opened (the rest arrive from prefetchDocSections)
+  modalState.sections = { '': parseDocSections(t.body) };
+  modalState.expanded = new Set(['']);
+  modalState.seen = new Set(['']);
+  modalState.pendingScroll = '';
   resetPanelDrag(document.getElementById('modal'));
   resetPanelResize(document.getElementById('modal'));
 
@@ -4273,6 +4296,7 @@ function openModal(id) {
   renderModalBody(t);
   refreshModalActions(t);
   renderModalHeadless(t);
+  prefetchDocSections(t);
   document.getElementById('modal-overlay').classList.add('open');
   renderBoard();
 }
@@ -4440,8 +4464,10 @@ function navigateTicket(dir) {
   openModal(nextId);
 }
 
+function visibleDocs(t) { return (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file))); }
+
 function renderModalDocs(t) {
-  const docs = (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file)));
+  const docs = visibleDocs(t);
   const bar = document.getElementById('m-docs');
   const paneBar = document.getElementById('m-pane-bar');
   const locked = t.status === 'closed' || t.status === 'cancelled';
@@ -4449,9 +4475,9 @@ function renderModalDocs(t) {
   const canAddDoc = availableDocTypes(t).length > 0;
 
   const descActive = modalState.activeDoc === null;
-  const descTab = docs.length > 0
-    ? `<button class="doc-tab${descActive ? ' active' : ''}" data-file="">Description</button>`
-    : '';
+  const node = (key, active, name) =>
+    `<div class="doc-node" data-key="${escAttr(key)}">${expanderHTML(key)}<button class="doc-tab${active ? ' active' : ''}" data-file="${escAttr(key)}">${esc(name)}</button></div>`;
+  const descTab = docs.length > 0 ? node('', descActive, 'Description') : '';
 
   const ticketIds = laneTicketIds(t);
   const ticketIdx = ticketIds.indexOf(t.id);
@@ -4479,20 +4505,14 @@ function renderModalDocs(t) {
       : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<span class="doc-edit-hint">Double-click to edit</span></div>`;
 
   bar.innerHTML = descTab + docs.map(d => {
-    const active = d.file === modalState.activeDoc;
-    return `<button class="doc-tab${active ? ' active' : ''}" data-file="${d.file ?? ''}">${esc(d.name)}</button>`;
+    return node(d.file ?? '', d.file === modalState.activeDoc, d.name);
   }).join('');
   paneBar.innerHTML = rightControls;
 
   bar.querySelectorAll('.doc-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       if (modalState.editMode) return;
-      modalState.pickingDoc = false;
-      modalState.activeDoc = btn.dataset.file || null;
-      renderModalDocs(t);
-      renderModalBody(t);
-      refreshModalActions(t);
-      document.getElementById('m-kbd').style.display = '';
+      activateDoc(t, btn.dataset.file || null);
     });
   });
 
@@ -4515,43 +4535,89 @@ function renderModalDocs(t) {
   renderDocChildren();
 }
 
-// t-e946: records the active doc's `##` headings for the tree's child rows (ids to scroll to, checkbox counts read
-// from the markdown, not the DOM). The old link bar is gone; `.section-jumps` now only hosts the Plan sign-off controls.
-function collectDocSections(container, content) {
-  const hs = Array.from(container.querySelectorAll('.doc-heading-2'));
-  modalState.headings = [];
-  if (hs.length >= 2) {
-    const secs = [];
-    let cur = null;
-    String(content || '').split('\n').forEach(l => {
-      if (/^##\s+/.test(l)) { cur = { done: 0, total: 0 }; secs.push(cur); return; }
-      const m = cur && /^\s*[-*]\s+\[( |x|X)\]/.exec(l);
-      if (m) { cur.total++; if (m[1] !== ' ') cur.done++; }
-    });
-    const aligned = secs.length === hs.length;
-    hs.forEach((h, i) => {
-      const slug = h.textContent.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      h.id = 'section-' + slug;
-      modalState.headings.push({ id: h.id, text: h.textContent.trim(), done: aligned ? secs[i].done : 0, total: aligned ? secs[i].total : 0 });
-    });
+// t-612f: the tree's sections. Every doc's `##` headings and checkbox counts are parsed from its markdown (the
+// Description from the ticket body, the others read once when the modal opens), so a doc shows a + before it is opened.
+function slugOf(text) { return String(text).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+
+function parseDocSections(content) {
+  const out = [];
+  let cur = null, fenced = false;
+  String(content || '').split('\n').forEach(l => {
+    if (/^\s*```/.test(l)) { fenced = !fenced; return; }
+    if (fenced) return;
+    const h = /^##\s+(.+?)\s*#*\s*$/.exec(l);
+    // the text the rendered heading shows: image and link markup removed
+    if (h) { const text = h[1].replace(/!\[[^\]]*\]\([^)]*\)/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[`*_]/g, '').trim(); cur = { text, slug: slugOf(text), done: 0, total: 0 }; out.push(cur); return; }
+    const m = cur && /^\s*[-*]\s+\[( |x|X)\]/.exec(l);
+    if (m) { cur.total++; if (m[1] !== ' ') cur.done++; }
+  });
+  return out;
+}
+
+function expanderHTML(key) {
+  if ((modalState.sections[key] || []).length < 2) return '<span class="doc-expander-spacer"></span>';
+  const open = modalState.expanded.has(key);
+  return `<button type="button" class="doc-expander" data-key="${escAttr(key)}" aria-expanded="${open}" aria-label="${open ? 'Collapse' : 'Expand'} sections">${open ? '\u2212' : '+'}</button>`;
+}
+
+// the rendered doc: give its section headings ids to scroll to, refresh this doc's sections from the text just shown,
+// and honour a pending jump (a child row of a doc that was not open)
+function markDocHeadings(container, content) {
+  container.querySelectorAll('.doc-heading-2').forEach(h => { h.id = 'section-' + slugOf(h.textContent); });
+  modalState.sections[modalState.activeDoc || ''] = parseDocSections(content);
+  refreshDocTree();
+  if (modalState.pendingScroll) {
+    document.getElementById('section-' + modalState.pendingScroll)?.scrollIntoView({ block: 'start' });
+    modalState.pendingScroll = '';
   }
+}
+
+function refreshDocTree() {
+  document.querySelectorAll('#m-docs .doc-node').forEach(node => {
+    const old = node.querySelector('.doc-expander, .doc-expander-spacer');
+    if (old) old.outerHTML = expanderHTML(node.dataset.key);
+  });
   renderDocChildren();
 }
 
 function renderDocChildren() {
   const tree = document.getElementById('m-docs');
   tree.querySelectorAll('.doc-children').forEach(el => el.remove());
-  const active = tree.querySelector('.doc-tab.active');
-  if (!active || !modalState.headings.length) return;
-  const wrap = document.createElement('div');
-  wrap.className = 'doc-children';
-  wrap.innerHTML = modalState.headings.map(h =>
-    `<button class="doc-child" data-target="${escAttr(h.id)}">${esc(h.text)}${h.total ? `<span class="doc-child-count">${h.done}/${h.total}</span>` : ''}</button>`).join('');
-  wrap.querySelectorAll('.doc-child').forEach(b => b.addEventListener('click', () => {
-    if (modalState.editMode) return;
-    document.getElementById(b.dataset.target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }));
-  active.after(wrap);
+  tree.querySelectorAll('.doc-node').forEach(node => {
+    const key = node.dataset.key, secs = modalState.sections[key] || [];
+    if (secs.length < 2 || !modalState.expanded.has(key)) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'doc-children';
+    wrap.innerHTML = secs.map(sec =>
+      `<button class="doc-child" data-key="${escAttr(key)}" data-slug="${escAttr(sec.slug)}">${esc(sec.text)}${sec.total ? `<span class="doc-child-count">${sec.done}/${sec.total}</span>` : ''}</button>`).join('');
+    node.after(wrap);
+  });
+}
+
+function activateDoc(t, file, scrollSlug = '') {
+  const key = file || '';
+  modalState.pickingDoc = false;
+  modalState.activeDoc = file;
+  if (!modalState.seen.has(key)) { modalState.seen.add(key); modalState.expanded.add(key); }   // opened for the first time: shown expanded; after that the choice is the user's
+  modalState.pendingScroll = scrollSlug;
+  renderModalDocs(t);
+  renderModalBody(t);
+  refreshModalActions(t);
+  document.getElementById('m-kbd').style.display = '';
+}
+
+function prefetchDocSections(t) {
+  const seq = ++modalState.prefetchSeq;
+  visibleDocs(t).forEach(d => {
+    fetch(`/api/doc/${encodeURIComponent(d.file)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(j => {
+        if (!j || seq !== modalState.prefetchSeq || state.selectedId !== t.id) return;
+        if (!(d.file === modalState.activeDoc && modalState.sections[d.file])) modalState.sections[d.file] = parseDocSections(j.content);
+        refreshDocTree();
+      })
+      .catch(() => {});   // an unreadable doc just shows no +
+  });
 }
 
 // t-7e36: seeded fallback in case /api/admin/model-tiers hasn't loaded yet (or is
@@ -4754,12 +4820,6 @@ function injectSignoffControls(container, content, t) {
   });
   wrap.appendChild(select);
 
-  const note = document.createElement('span');
-  note.className = 'model-tier-note';
-  note.textContent = 'No effect under Codex';
-  note.title = 'Codex’s sub-agent spawn tools have no per-agent model field, so a Claude model override is Claude-Code-only (an openai:<id> pick runs the close gates under Copilot CLI).';
-  wrap.appendChild(note);
-
   // t-ef27: an explicit Gate model beats demo mode's forced-Haiku evaluator (complete.md
   // precedence), so say so — a demo ticket with a costlier pick is deliberate, not a surprise.
   if (String(t.demo) === 'true' && recognized && currentLower !== 'default') {
@@ -4779,8 +4839,10 @@ function injectSignoffControls(container, content, t) {
   const demoOn = String(t.demo) === 'true';
   const demoBtn = document.createElement('button');
   demoBtn.type = 'button';
-  demoBtn.className = 'signoff-demo-toggle' + (demoOn ? ' active' : '');
-  demoBtn.textContent = demoOn ? 'Demo/UX ✓' : 'Demo/UX ✗';
+  demoBtn.className = 'signoff-demo-toggle';
+  demoBtn.setAttribute('role', 'switch');
+  demoBtn.setAttribute('aria-checked', String(demoOn));
+  demoBtn.innerHTML = '<span class="sw-track"><span class="sw-knob"></span></span><span>Demo/UX</span>';
   // t-e78b follow-up: the demo flag lives in MAIN's ticket.md frontmatter, not the live
   // worktree plan.md, so only a closed ticket locks it (reviewer finding).
   const demoLocked = t.status === 'closed' || t.status === 'cancelled';
@@ -4811,8 +4873,6 @@ function renderModalBody(t) {
   setEditAreaVisible(false);
   bodyEl.style.display = '';
   bodyEl.parentNode.querySelectorAll('.section-jumps').forEach(el => el.remove());
-  modalState.headings = [];
-  renderDocChildren();
   // t-8c73: a newer render supersedes this one. Without this a slow doc fetch from an older
   // render lands after a newer one and injects a second bar (two .model-tier-select) or
   // overwrites the doc the user has since switched to.
@@ -4825,7 +4885,7 @@ function renderModalBody(t) {
       return;
     }
     bodyEl.innerHTML = md(content, t.id);
-    collectDocSections(bodyEl, content);
+    markDocHeadings(bodyEl, content);
     hydrateFeatureRefs(bodyEl, t.id);
     return;
   }
@@ -4863,7 +4923,7 @@ function renderModalBody(t) {
         }
         bodyEl.innerHTML = warning + md(d.content, t.id);
         tagCheckboxes(bodyEl);   // t-26f9: a live worktree doc's checkboxes toggle too (guarded by the etag)
-        collectDocSections(bodyEl, d.content);
+        markDocHeadings(bodyEl, d.content);
         hydrateFeatureRefs(bodyEl, t.id);
         if (slug === 'plan') injectSignoffControls(bodyEl, d.content, t);
       })
@@ -7882,53 +7942,63 @@ function makePanelDraggable(panelId) {
 
 function makePanelResizable(panelId) {
   const panel = document.getElementById(panelId);
-  const handle = panel?.querySelector('.modal-resize-handle');
-  if (!panel || !handle) return;
+  if (!panel) return;
+  panel.querySelectorAll('.modal-resize-handle').forEach(handle => {
+    const topLeft = handle.classList.contains('modal-resize-handle-tl');
+    let resizing = false;
+    let startX = 0, startY = 0, startWidth = 0, startHeight = 0, startDragX = 0, startDragY = 0;
 
-  let resizing = false;
-  let startX = 0;
-  let startY = 0;
-  let startWidth = 0;
-  let startHeight = 0;
+    handle.addEventListener('pointerdown', e => {
+      resizing = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = panel.getBoundingClientRect();
+      startWidth = rect.width;
+      startHeight = rect.height;
+      startDragX = Number(panel.dataset.dragX || 0);
+      startDragY = Number(panel.dataset.dragY || 0);
+      handle.classList.add('resizing');
+      panel.classList.add('resizing-panel');
+      document.body.style.userSelect = 'none';
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    });
 
-  handle.addEventListener('pointerdown', e => {
-    resizing = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    const rect = panel.getBoundingClientRect();
-    startWidth = rect.width;
-    startHeight = rect.height;
-    handle.classList.add('resizing');
-    panel.classList.add('resizing-panel');
-    document.body.style.userSelect = 'none';
-    handle.setPointerCapture(e.pointerId);
-    e.preventDefault();
-    e.stopPropagation();
+    handle.addEventListener('pointermove', e => {
+      if (!resizing) return;
+      const maxWidth = Math.max(320, window.innerWidth - 24);
+      const maxHeight = Math.max(320, window.innerHeight - 24);
+      const minWidth = Math.min(420, maxWidth);
+      const minHeight = Math.min(320, maxHeight);
+      const dx = e.clientX - startX, dy = e.clientY - startY;
+      const nextWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + (topLeft ? -dx : dx)));
+      const nextHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + (topLeft ? -dy : dy)));
+      panel.style.width = `${nextWidth}px`;
+      panel.style.height = `${nextHeight}px`;
+      if (topLeft) {
+        // t-612f: the dialog is centred, so growing it from the top-left keeps the bottom-right corner still only if the centre
+        // moves back by half of each size change (the same --drag offset the side drags use)
+        const nx = startDragX - (nextWidth - startWidth) / 2, ny = startDragY - (nextHeight - startHeight) / 2;
+        panel.dataset.dragX = String(nx);
+        panel.dataset.dragY = String(ny);
+        panel.style.setProperty('--drag-x', `${nx}px`);
+        panel.style.setProperty('--drag-y', `${ny}px`);
+      }
+    });
+
+    const stopResize = e => {
+      if (!resizing) return;
+      resizing = false;
+      handle.classList.remove('resizing');
+      panel.classList.remove('resizing-panel');
+      document.body.style.userSelect = '';
+      try { handle.releasePointerCapture(e.pointerId); } catch {}
+    };
+
+    handle.addEventListener('pointerup', stopResize);
+    handle.addEventListener('pointercancel', stopResize);
   });
-
-  handle.addEventListener('pointermove', e => {
-    if (!resizing) return;
-    const maxWidth = Math.max(320, window.innerWidth - 24);
-    const maxHeight = Math.max(320, window.innerHeight - 24);
-    const minWidth = Math.min(420, maxWidth);
-    const minHeight = Math.min(320, maxHeight);
-    const nextWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + e.clientX - startX));
-    const nextHeight = Math.min(maxHeight, Math.max(minHeight, startHeight + e.clientY - startY));
-    panel.style.width = `${nextWidth}px`;
-    panel.style.height = `${nextHeight}px`;
-  });
-
-  const stopResize = e => {
-    if (!resizing) return;
-    resizing = false;
-    handle.classList.remove('resizing');
-    panel.classList.remove('resizing-panel');
-    document.body.style.userSelect = '';
-    try { handle.releasePointerCapture(e.pointerId); } catch {}
-  };
-
-  handle.addEventListener('pointerup', stopResize);
-  handle.addEventListener('pointercancel', stopResize);
 }
 
 makePanelDraggable('modal');
@@ -8344,6 +8414,29 @@ document.getElementById('m-body').addEventListener('dblclick', e => {
   if (modalState.editMode || e.target.closest('.doc-bullet[data-check-idx], button, input, select, textarea')) return;
   const t = state.tickets.find(x => x.id === state.selectedId);
   if (t && docEditable(t)) enterEditMode(t);
+});
+
+// t-612f: + / - on a doc node, and a section row (of the open doc or of one that is not open yet)
+document.getElementById('m-docs').addEventListener('click', e => {
+  const ex = e.target.closest('.doc-expander');
+  const ch = e.target.closest('.doc-child');
+  if ((!ex && !ch) || modalState.editMode) return;
+  if (ex) {
+    const key = ex.dataset.key;
+    if (modalState.expanded.has(key)) modalState.expanded.delete(key); else modalState.expanded.add(key);
+    modalState.seen.add(key);
+    refreshDocTree();
+    return;
+  }
+  const key = ch.dataset.key, slug = ch.dataset.slug;
+  if (key === (modalState.activeDoc || '')) {
+    const h = document.getElementById('section-' + slug);
+    if (h) h.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else modalState.pendingScroll = slug;   // the rows come from the background read, so the doc may still be rendering: jump when it has
+    return;
+  }
+  const t = state.tickets.find(x => x.id === state.selectedId);
+  if (t) activateDoc(t, key || null, slug);
 });
 
 (function initEditorCard() {
