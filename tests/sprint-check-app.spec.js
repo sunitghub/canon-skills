@@ -12766,6 +12766,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.tier.top).toBeGreaterThan(r.risk.bottom - 1);                                  // the other controls wrap below it
     for (const c of [r.risk, r.tier, r.model, r.sw]) { expect(c.left).toBeGreaterThanOrEqual(r.pane.left - 1); expect(c.right).toBeLessThanOrEqual(r.pane.right + 1); }
     const input = page.locator('.signoff-risk-input');
+    await expect(input).toHaveAttribute('title', 'fixture');                                 // a saved Risk is the tooltip on first render, before any typing
     await input.fill('a long risk sentence that should be readable in full from the tooltip');
     await expect(input).toHaveAttribute('title', 'a long risk sentence that should be readable in full from the tooltip');
   });
