@@ -374,6 +374,17 @@
       "failed_runs": {
         "webkit": "2 of 3 full runs, 0 of 3 isolated"
       }
+    },
+    {
+      "title": "ticket modal editor (t-a205) > Cancel leaves the doc unchanged",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "page.goto('/') hits the 30s load timeout in webkit during a full run (same pattern as the other webkit load-timeout entries); passed 3 of 3 isolated reruns",
+      "failed_runs": {
+        "webkit": "1 of 1 full run (2026-10-08), 0 of 3 isolated"
+      }
     }
   ],
   "skipped": []
