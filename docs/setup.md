@@ -150,7 +150,7 @@ cd ~/.canon && git pull
 
 If `canon update` refuses with "has uncommitted changes" and `git -C ~/.canon status --short` shows only `?? cockpit/` (installs made before this fix, 2026-10-06), run `git -C ~/.canon pull --ff-only` once. A plain pull is not blocked by that folder, and after it `canon update` works.
 
-To stay on a release, or go back to one after a bad update: `canon update --to v0.3.0` pins the install to that tag (the daemon and your projects are refreshed as in a normal update), and `canon update --to main` follows main again. On a git install, a plain `canon update` refuses while pinned and says so. Releases and what each contains: `CHANGELOG.md`; how a release is cut: `docs/releasing.md`.
+To stay on a release, or go back to one after a bad update: `canon update --to v0.3.0` pins the install to that tag (the daemon and your projects are refreshed as in a normal update), and `canon update --to main` follows main again. An install made before 2026-10-08 does not know `--to` yet (`canon update takes no arguments`): run a plain `canon update` once, then `--to` works. On a git install, a plain `canon update` refuses while pinned and says so. Releases and what each contains: `CHANGELOG.md`; how a release is cut: `docs/releasing.md`.
 
 Hook scripts update immediately — called by path. Skill content updates automatically via symlinks (`.claude/skills → ~/.canon/skills` and `.agents/skills → ~/.canon/skills`, for Codex/Pi) — every project picks up changes on the next session.
 
