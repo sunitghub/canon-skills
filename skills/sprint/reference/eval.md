@@ -76,7 +76,13 @@ right-sizing, snippet, and evidence principles apply.
    - **required / load-bearing** — the sprint cannot honestly pass without it. If unavailable or weak, fail closed: `fail`, `partial`, or `not-run`; do not infer.
    - **preferred** — useful corroboration, but not required to prove the item. If unavailable, disclose the gap in Evidence/Notes and continue only if required evidence is still strong.
    - **decorative** — optional context or polish. If unavailable, drop it; do not let it influence the verdict.
-   - **cached** — valid only when source, timestamp/version, freshness window, and why that window is acceptable are stated. Otherwise it is weak evidence.
+   - **cached** — valid only when source, timestamp/version, freshness window, and why that window is acceptable are stated. Otherwise it is weak evidence. A builder log that step 5b reports `fresh` states all four (the log, its line 1, "no tracked change since", and why).
+
+5b. **Reuse fresh builder evidence (floor and budget).** Once, after step 2, run `evidence.sh check <id>` (bare, on PATH like `gate-snapshot.sh`; `tools/evidence.sh` in canon; skip this step where it does not exist). It classifies each log under `.tickets/<id>/evidence/` as `fresh` (stamped at the commit you grade, or at an ancestor with no tracked change outside `.tickets/` since), `stale` or `unstamped`, with the log's `exit=`. The point is to stop re-running what the builder already ran (the full suite appears in 48% of past reports; evaluators took 19 to 53 minutes), without letting the gate stop being independent.
+   - **Reuse.** A `fresh` log with `exit=0` may stand in for *your own repeat of that same command*: repeat groups, the full suite, a base control. Quote the log's command line and the result line you rely on, and write `builder log, fresh at <sha7>` in that item's Evidence or Notes. A `stale` or `unstamped` log, an `exit=` other than 0, or no log gets no reuse: run the command yourself, as before.
+   - **Floor you always run yourself, whatever the logs say.** (a) Every test file or suite this sprint added or changed, once, from a scratch copy. (b) At least `min(3, number of new guards)` mutants: revert one guard in a scratch copy and see the suite fail on its own assertion; choose them yourself rather than taking the builder's list. (c) A spot-check: pick 2 suites yourself from a reused full-suite log (not the first two) and re-run them; if either disagrees with the log, drop reuse of that log and re-run what it covered. A stamp proves freshness, not truth; the floor is what keeps this gate independent of the builder.
+   - **Budget.** 25 minutes from the epoch you stamped in step 1 (`date +%s`), every long command under `timeout`. Check the elapsed time before starting anything that can run over a minute. Once the budget is spent, stop starting runs: every item without evidence is `not-run` and the verdict is `fail:`, never a pass.
+   - **Report.** Add one line to Findings: `Evidence reuse: <n> of <m> items from fresh builder logs (<file names>); own runs: <list>; elapsed: <minutes>` (`Evidence reuse: none` when nothing was reused).
 
 6. **Grade criteria.** For each item under `## Criteria` in `acceptance.md`:
    - **pass** — evidence confirms the criterion is met; cite `file:line — \`quoted text\`` (the exact line content that satisfies the criterion). A line number without the quoted text is not evidence — it is unfalsifiable. If the quoted text itself contains a backtick (e.g. it's citing a line that has its own inline code), escape it as `` \` `` inside your citation — the board's renderer treats a backslash-escaped backtick as literal, so the whole citation still renders as one code span instead of breaking mid-quote. (This backtick-escape rule is intentionally self-contained in each gate doc — `shared-gate-protocol.md`, `eval.md`, and `review.md` are dispatched to fresh subagents independently; the invariant phrase is locked across all three by `tests/doc-mirror-parity.sh` Check F. Keep the escape rule in sync.)
@@ -137,7 +143,7 @@ Model: <the model designation received in Inputs>
 
 ## Findings
 
-<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong.>
+<If all pass: "No findings." Otherwise: numbered list of fail/partial items — specific, actionable, what is missing or wrong. Then the `Evidence reuse:` line from step 5b.>
 
 ## Verdict
 

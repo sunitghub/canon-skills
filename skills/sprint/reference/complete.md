@@ -130,7 +130,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | security-review | skipped | no security-sensitive patterns |
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
-   | eval | ran | verdict: pass — eval-report.md written (model: sonnet — Admin Review & Eval default) |
+   | eval | ran | verdict: pass — eval-report.md written (model: sonnet — Admin Review & Eval default; 12m) |
    | skill-eval | skipped | advisory — no skill or gate agent changed |
    | mutation-test | skipped | advisory — no logic files changed |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
@@ -149,7 +149,8 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    the value and source applied by the model-tier check below: an explicit `Gate model:` value,
    the Admin Review & Eval default's alias, `claude-sonnet-5` (the `canon-*` definition floor) when both
    fall through, or the exact session model id (e.g. `claude-sonnet-5`) on the `Plan` fallback;
-   never a paraphrase. Records which tier ran and why.
+   never a paraphrase. Records which tier ran and why. On the `eval` row, also put the evaluator's elapsed minutes after the source (`; 12m`, from the dispatch
+   result's duration or the gap between dispatch and report), so evaluator runtime is no longer unrecorded (`t-e3cd`); the report's `Evidence reuse:` line says what was reused.
 
    Use `ran`/`skipped`, always with a reason — even for gates that ran, note the evidence
    checked. Avoid bare "ran"; use e.g. `reviewed tools/sprint:179-191 and tests/sprint.sh:56-69`

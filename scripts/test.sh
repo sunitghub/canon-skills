@@ -49,6 +49,7 @@ tests=(
   "$ROOT/tests/sprint-check-skill-eval-go.sh"
   "$ROOT/tests/skill-eval-parity.sh"
   "$ROOT/tests/skill-eval-scope.sh"
+  "$ROOT/tests/evidence.sh"
   "$ROOT/tests/build-zip-go-package.sh"
   "$ROOT/tests/sprint-check-server.sh"
   "$ROOT/tests/sprint-check-cockpit.sh"
