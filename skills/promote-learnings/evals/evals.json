@@ -36,6 +36,18 @@
         "No proposal is fabricated for a non-existent row",
         "The skill completes without erroring"
       ]
+    },
+    {
+      "id": 4,
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "LEARNINGS.md has one UNPROMOTED row whose source learnings.md holds two lessons: (a) a testing anti-pattern that clearly belongs in standards/efficiency.md, and (b) a note about a gate step that you cannot place in any file and are unsure is durable. You propose a destination for (a) and the user applies it. Show how you update the row's Status and what you tell the user.",
+      "expected_output": "The row is not flipped to promoted: only lesson (a) has a destination, so the row stays UNPROMOTED with a note naming lesson (b) as still pending.",
+      "expectations": [
+        "The row's Status stays UNPROMOTED rather than being flipped to promoted on the strength of lesson (a) alone",
+        "A note on the row names lesson (b) as the part still pending a destination or an explicit dismissal",
+        "Lesson (b) is either given its own destination or explicitly dismissed in the report, not silently dropped"
+      ]
     }
   ]
 }
