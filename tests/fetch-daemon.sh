@@ -168,7 +168,7 @@ done
 # 11. release-daemon.sh --dry-run: builds four targets, prints the manifest lines, publishes and writes nothing; refuses a dirty daemon dir
 RR="$WORK/rel"; mkdir -p "$RR/scripts" "$RR/tools"; cp -R "$R/tools/cockpit-daemon" "$RR/tools/"; cp "$R/VERSION" "$RR/"; cp "$ROOT/scripts/release-daemon.sh" "$RR/scripts/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$RR/"
 printf '# header\n' > "$RR/tools/cockpit-daemon.sha256"; rm -f "$RR/tools/cockpit-daemon/cockpit-daemon"
-for d in sprint-check-go sprint-headless-json-go; do mkdir -p "$RR/tools/$d"; printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$RR/tools/$d/main.go"; done   # t-9383: the two Windows exes' sources
+for d in sprint-check-go sprint-headless-json-go; do mkdir -p "$RR/tools/$d"; printf 'package main\n\nvar version, commit string\n\nfunc main() {}\n' > "$RR/tools/$d/main.go"; go env GOVERSION > "$RR/tools/$d/GO_TOOLCHAIN"; done   # t-9383: the two Windows exes' sources; t-7efe: each pins the Go it builds with (the local one here, so no download)
 git -C "$RR" init -q -b main; git -C "$RR" "${ident[@]}" add -A; git -C "$RR" "${ident[@]}" commit -qm seed
 rkey="$(git -C "$RR" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"
 cat > "$WORK/gostub/gh" <<'EOF'
