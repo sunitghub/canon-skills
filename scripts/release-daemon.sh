@@ -7,6 +7,9 @@
 #   headless helper Windows amd64   (tools/sprint-headless-json-win.exe)   release sprint-headless-json-<key of its source>
 # Every build uses -trimpath -buildvcs=false, so the same source gives the same bytes at any checkout path. A release that exists
 # keeps its assets (a published asset is never overwritten); missing ones are added.
+# The Go toolchain is pinned, not whatever is installed: tools/cockpit-daemon/go.mod has a `toolchain` line, and each legacy package has a
+# GO_TOOLCHAIN file in its folder. A pin lives in the source folder on purpose: raising it changes the folder's tree hash, so the fixed
+# build is a NEW release and the old release (which an older tag's manifest still points at) keeps its assets (t-7efe).
 # Usage: scripts/release-daemon.sh [--dry-run]   (--dry-run builds and prints the manifest lines, publishes and writes nothing)
 set -euo pipefail
 
@@ -45,10 +48,13 @@ lines="$lines$key_d windows-amd64 $(sha256_of "$out/cockpit-daemon-windows-amd64
 # into the binary even with -trimpath (live-checked: three checkouts gave three hashes), so build them as a module from a
 # staged copy of their sources: same code, a fixed module path, and the same bytes anywhere.
 build_legacy() { # <source dir under the repo> <module name> <commit stamp> <output file>
-  local stage; stage="$(mktemp -d)"
+  local stage pin
+  pin="$(tr -d ' \t\n\r' < "$REPO_ROOT/$1/GO_TOOLCHAIN" 2>/dev/null)" || pin=""
+  [[ "$pin" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "release-daemon: $1/GO_TOOLCHAIN must name the Go toolchain to build with, e.g. go1.27.2" >&2; exit 1; }
+  stage="$(mktemp -d)"
   find "$REPO_ROOT/$1" -maxdepth 1 -name '*.go' ! -name '*_test.go' -exec cp {} "$stage/" \;
-  printf 'module canon/%s\n\ngo %s\n' "$2" "$(go env GOVERSION | sed 's/^go//')" > "$stage/go.mod"
-  ( cd "$stage" && GOTOOLCHAIN=local GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
+  printf 'module canon/%s\n\ngo %s\n' "$2" "${pin#go}" > "$stage/go.mod"
+  ( cd "$stage" && GOTOOLCHAIN="$pin" GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
       -ldflags "-s -w -X main.version=$semver -X main.commit=$3" -o "$4" . )
   rm -rf "$stage"
 }

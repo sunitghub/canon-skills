@@ -15,6 +15,7 @@ R="$WORK/repo"; mkdir -p "$R/scripts" "$R/tools/cockpit-daemon" "$R/tools/sprint
 cp "$ROOT/scripts/release-daemon.sh" "$R/scripts/"; cp "$ROOT/THIRD-PARTY-NOTICES.md" "$R/"; echo 0.3.0 > "$R/VERSION"
 printf 'module x/d\n\ngo 1.21\n' > "$R/tools/cockpit-daemon/go.mod"
 for d in cockpit-daemon sprint-check-go sprint-headless-json-go; do printf 'package main\n\nvar version, commit string\n\nfunc main() { println(version, commit) }\n' > "$R/tools/$d/main.go"; done
+for d in sprint-check-go sprint-headless-json-go; do go env GOVERSION > "$R/tools/$d/GO_TOOLCHAIN"; done   # the local toolchain, so no download happens here
 printf '# header\n' > "$R/tools/cockpit-daemon.sha256"
 git -C "$R" init -q -b main; git -C "$R" "${ident[@]}" add -A; git -C "$R" "${ident[@]}" commit -qm seed
 kd="$(git -C "$R" rev-parse HEAD:tools/cockpit-daemon | cut -c1-12)"; kb="$(git -C "$R" rev-parse HEAD:tools/sprint-check-go | cut -c1-12)"; kh="$(git -C "$R" rev-parse HEAD:tools/sprint-headless-json-go | cut -c1-12)"
@@ -76,4 +77,16 @@ echo "// dirty" >> "$R/tools/sprint-headless-json-go/main.go"; run; [[ "$rc" == 
 # 8. every go build in the release script carries -trimpath (without it the bytes depend on the checkout path; tests/build-zip-go-package.sh guards the stamping, this guards the flag)
 builds="$(grep -c 'go build' "$ROOT/scripts/release-daemon.sh")"; trim="$(grep 'go build' "$ROOT/scripts/release-daemon.sh" | grep -c -- '-trimpath')"
 [[ "$builds" -ge 3 && "$builds" == "$trim" ]] || fail "release-daemon.sh: $builds go build lines, $trim with -trimpath"
+# 9. the Go toolchain is pinned (t-7efe): a missing, malformed or unobtainable GO_TOOLCHAIN stops the run before anything is published or written
+git -C "$R" "${ident[@]}" checkout -q -- tools/sprint-headless-json-go; rm -rf "$FAKE_GH"/*; printf '# header\n' > "$m"
+for bad in "" "1.27.2" "go1.27" "go1.99.9"; do
+  printf '%s\n' "$bad" > "$R/tools/sprint-check-go/GO_TOOLCHAIN"; git -C "$R" "${ident[@]}" commit -qam "pin: '$bad'"
+  run; [[ "$rc" == 1 ]] || fail "GO_TOOLCHAIN '$bad' must stop the run (rc=$rc): $out"
+  assert_eq "# header" "$(cat "$m")"; ! grep -qE ' (create|upload) ' "$STUB_LOG" || fail "GO_TOOLCHAIN '$bad': something was published"
+  if [[ "$bad" == go1.99.9 ]]; then ! grep -q "must name the Go toolchain" <<<"$out" || fail "a well-formed pin must reach go build, not the format check"   # so the pin is really passed to go: GOTOOLCHAIN=local would build it
+  else assert_contains "$out" "must name the Go toolchain"; fi
+done
+# 10. the pins agree: the daemon's go.mod toolchain line and both GO_TOOLCHAIN files in the real tree name one version (one owner would be better, but go.mod cannot read a file)
+dv="$(awk '/^toolchain /{print $2}' "$ROOT/tools/cockpit-daemon/go.mod")"; [[ "$dv" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tools/cockpit-daemon/go.mod has no toolchain line ('$dv')"
+for d in sprint-check-go sprint-headless-json-go; do assert_eq "$dv" "$(tr -d ' \t\n\r' < "$ROOT/tools/$d/GO_TOOLCHAIN")"; done
 echo "release-daemon-publish: ok (creates, adds only missing assets, never overwrites, verifies by download, manifest last and newest-last)"
