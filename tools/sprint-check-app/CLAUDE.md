@@ -22,7 +22,6 @@ Any change to `app.html` requires Playwright verification — not just grep-base
 - Mock every new endpoint in the shared page helper so a real daemon or real data never leaks in; assert the stable part of UI strings, not the whole sentence.
 - A menu that closes on `focusout` must exempt pointer clicks: WebKit does not focus a clicked button, so a click inside the menu reports a `focusout` with no `relatedTarget` and the menu closes before the click lands. Run the Tab-away test on webkit (`t-9d93`).
 - `expect.poll(fn).toBe(await other())` evaluates the expected value once, up front, so two empty sides pass vacuously. Compute both sides inside the poll, start from a state that differs from the expected one (or await a page-exposed "fetch applied" flag), and prove it with a revert mutant (`t-a205`, `t-4487`).
-- Heading slugs for a child row and for the rendered heading must derive from the same text the reader sees (`textContent`): a heading containing a link or image gives two slugs and the row scrolls nowhere. Test a heading with markup (`t-612f`).
 - Use `pwd -P` for temp roots on macOS (`mktemp -d` returns a `/var` symlink), and record which board and which data a count came from.
 - A helper that a vm-loaded unit test (the `tests/sprint-check-*.js` pattern) exercises must be self-contained: reusing a top-level `const` makes every case throw.
 - When a fixed-width container gains or hides items, assert where things are: each control's bounding box lies inside the container, and items that belong on one row share a `top`. `toBeVisible`/`toBeEnabled` still pass for a control that is clipped or wrapped. When you hide a duplicate, prove the surviving copy cannot be clipped away (`t-614c`, `t-824e`).
@@ -71,3 +70,5 @@ Per-ticket doc tabs (Description/Decisions/Acceptance/Plan/...) are **generated 
 `cockpit.html`'s reusable `cockpitConfirm()` dialog (`#cconfirm`) has exactly one markup instance, always wrapped in `.cmodal` — a `.cmodal`-scoped CSS rule applies to it too, not just the close-tab warning modal it looks like it's scoped for. Check DOM nesting before assuming a `.cmodal`-scoped rule doesn't reach `#cc-ok`/`#cc-cancel` (t-a30c).
 
 In the shell, ask a pane's `contentDocument.hasFocus()`, not `document.activeElement`: after the shell focuses an iframe by script, a later click into a sibling iframe leaves `activeElement` pointing at the old one (t-416c).
+
+Heading slugs for a child row and for the rendered heading must derive from the same text the reader sees (`textContent`): a heading containing a link or image gives two slugs and the row scrolls nowhere. Test a heading with markup (`t-612f`).
