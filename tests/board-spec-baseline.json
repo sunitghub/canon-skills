@@ -431,6 +431,39 @@
       "failed_runs": {
         "webkit": "1 of 1 full run (t-4077); 0 of 4 alone"
       }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > end guard (t-86fe): a clean scratch session gets the plain End dialog; Just end goes through end-scratch, keeping",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed once in a full webkit run (8 load failures, the machine also ran ./scripts/test.sh); passed 2 of 2 when run alone on the same commit (2026-10-09, t-9d93 branch)",
+      "failed_runs": {
+        "webkit": "1 of 1 full run (t-9d93); 0 of 2 alone"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > New Ticket modal offers only Main, free worktrees and + New; held ones are counted with a tooltip (t-2241)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed once in a full webkit run (8 load failures, the machine also ran ./scripts/test.sh); passed 2 of 2 when run alone on the same commit (2026-10-09, t-9d93 branch)",
+      "failed_runs": {
+        "webkit": "1 of 1 full run (t-9d93); 0 of 2 alone"
+      }
+    },
+    {
+      "title": "ticket modal editor (t-a205) > there is no Edit button; the hint shows for an editable doc and not for a closed or cancelled ticket",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed once in a full webkit run (8 load failures, the machine also ran ./scripts/test.sh); passed 2 of 2 when run alone on the same commit (2026-10-09, t-9d93 branch)",
+      "failed_runs": {
+        "webkit": "1 of 1 full run (t-9d93); 0 of 2 alone"
+      }
     }
   ],
   "skipped": []
