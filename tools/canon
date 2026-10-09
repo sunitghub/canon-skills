@@ -37,14 +37,18 @@ Usage:
                            Block until a session (ticket or scratch id) is in a state:
                            needs-you, working, done, idle, or exited. Exit 0 when
                            reached, 1 on timeout, 2 on bad input or no board.
-  canon update             Fast-forward this canon install (refuses if it has uncommitted
-                           changes, isn't on main, or can't fast-forward), then run
-                           `skills.sh refresh` on every project registered in the Cockpit
-                           A Windows install without git (the one-line installer) is updated by
-                           re-running that installer.
-  canon update --to <vX.Y.Z|main>
-                           Pin this install to a release tag (the way back from a bad update),
-                           or return it to main. Plain `canon update` refuses while pinned.
+  canon update             Move this canon install to the latest verified release (checked
+                           against the published manifest; it refuses, changing nothing, if
+                           that cannot be done, or if the install has uncommitted changes or
+                           local commits), then run `skills.sh refresh` on every project
+                           registered in the Cockpit. An install that follows main (see --to
+                           main) fast-forwards main instead. A Windows install without git
+                           (the one-line installer) is updated by re-running that installer.
+  canon update --to <vX.Y.Z|latest|main>
+                           Install that release now (the way back from a bad update; the next
+                           plain update moves to the latest again), the latest release, or
+                           main: the development track, not checksum-verified, which a plain
+                           update then keeps following until `--to latest`.
   canon uninstall [--dry-run] [--yes] [--keep-data] [--force]
                            Remove canon from this machine: shows a plan, asks, stops the daemon,
                            cleans every registered project, deletes the Cockpit data (unless
@@ -120,11 +124,12 @@ update_without_git() {
 update_cmd() {
   local refresh_only=0 to="" re='^v[0-9]+\.[0-9]+\.[0-9]+$'
   [[ "${1:-}" == --refresh-only ]] && { refresh_only=1; shift; }
-  # t-30fc: --to pins the install to a release tag, or (main) returns it. The value reaches git arguments and an installer URL.
+  # t-30fc: --to installs a release tag (or main). The value reaches git arguments and an installer URL.
+  # t-65c9: a plain update follows the latest verified release; `--to main` is the opt-in development track, remembered in .canon-track.
   if [[ "${1:-}" == --to ]]; then
-    [[ $# -eq 2 && "$refresh_only" = 0 ]] || { echo "canon update: --to takes main or a release tag like v0.3.0" >&2; exit 2; }
+    [[ $# -eq 2 && "$refresh_only" = 0 ]] || { echo "canon update: --to takes latest, main or a release tag like v0.3.0" >&2; exit 2; }
     to="$2"; shift 2
-    [[ "$to" == main || "$to" =~ $re ]] || { echo "canon update: --to takes main or a release tag like v0.3.0 (got '$to')" >&2; exit 2; }
+    [[ "$to" == main || "$to" == latest || "$to" =~ $re ]] || { echo "canon update: --to takes latest, main or a release tag like v0.3.0 (got '$to')" >&2; exit 2; }
   fi
   [[ $# -eq 0 ]] || { echo "canon update takes no arguments (except --refresh-only, --to <ref>)" >&2; exit 2; }
   local repo; repo="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -138,32 +143,51 @@ update_cmd() {
     printf '%s\n' "$dirty" | head -10 | sed 's/^/  /' >&2
     exit 1
   fi
-  local branch before after pinned=""
+  local branch before after pinned="" marker="$repo/.canon-track" track=release legacy=0 was_on="" hint=""
+  if [ "$({ tr -d '[:space:]' < "$marker"; } 2>/dev/null)" = main ]; then track=main; fi
   branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
-  if [ "$branch" = HEAD ]; then   # detached: an install pinned to a release tag (t-30fc)
+  if [ "$branch" = HEAD ]; then   # detached: an install on a release tag (t-30fc)
     pinned="$(git -C "$repo" describe --tags --exact-match HEAD 2>/dev/null)" || pinned="$(git -C "$repo" rev-parse --short HEAD)"
-    if [ -z "$to" ]; then
-      echo "canon update: $repo is pinned to $pinned — run 'canon update --to main' to follow main again. Nothing was changed." >&2; exit 1
-    fi
+    was_on="$pinned"
   elif [ "$branch" != main ]; then
     echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1
+  fi
+  # What to install: an explicit --to wins; otherwise the remembered track (release unless the user chose main).
+  if [ -z "$to" ]; then
+    if [ "$track" = main ]; then to=main; else to=latest; fi
+    # an install that is on branch main with no marker was made before releases were the default: it moves to the latest release (t-65c9)
+    if [ "$to" = latest ] && [ "$branch" = main ]; then legacy=1; fi
+  fi
+  if [ "$to" != main ] && [ "$branch" = main ]; then
+    # moving a main checkout to a release must not strand local commits
+    local ahead; ahead="$(git -C "$repo" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead=0
+    if [ "${ahead:-0}" != 0 ]; then
+      echo "canon update: $repo has $ahead local commit(s) on main that a release would leave behind. Run 'canon update --to main' to keep following main. Nothing was changed." >&2; exit 1
+    fi
+  fi
+  if [ "$to" = latest ]; then
+    # t-65c9: the newest release in the published manifest, verified below like any --to <tag>; unreachable or unreadable refuses, changing nothing.
+    local lf; lf="$(bash "$SCRIPT_DIR/release-manifest.sh" --latest)" \
+      || { echo "canon update: Nothing was changed. 'canon update --to main' follows main and needs no manifest." >&2; exit 1; }
+    read -r to _ <<<"$lf"
+    hint=" 'canon update --to main' follows main and needs no manifest."
   fi
   if [ -n "$to" ] && [ "$to" != main ]; then
     # t-34f1: a release is installed only if the published manifest (getcanon.dev, a different write path from this repo) lists it, and the
     # tag's commit is the one the manifest names. The manifest is read first so a refusal fetches nothing; release-manifest.sh says why.
     local mf mf_commit fetched=0 have
-    mf="$(bash "$SCRIPT_DIR/release-manifest.sh" "$to")" || { echo "canon update: Nothing was changed." >&2; exit 1; }
+    mf="$(bash "$SCRIPT_DIR/release-manifest.sh" "$to")" || { echo "canon update: Nothing was changed.$hint" >&2; exit 1; }
     read -r _ mf_commit <<<"$mf"
     if ! git -C "$repo" rev-parse -q --verify "refs/tags/$to^{commit}" >/dev/null 2>&1; then
       # a depth-1 clone has no tags: ask for just this one
       git -C "$repo" fetch -q --depth 1 origin "refs/tags/$to:refs/tags/$to" \
-        || { echo "canon update: release $to was not found on origin (or the fetch failed, see above). Nothing was changed." >&2; exit 1; }
+        || { echo "canon update: release $to was not found on origin (or the fetch failed, see above). Nothing was changed.$hint" >&2; exit 1; }
       fetched=1
     fi
     have="$(git -C "$repo" rev-parse "refs/tags/$to^{commit}")"
     if [ "$have" != "$mf_commit" ]; then
       [ "$fetched" = 0 ] || git -C "$repo" tag -d "$to" >/dev/null 2>&1
-      echo "canon update: release $to is at $have but the published manifest says $mf_commit; refusing to install it. Nothing was changed." >&2; exit 1
+      echo "canon update: release $to is at $have but the published manifest says $mf_commit; refusing to install it. Nothing was changed.$hint" >&2; exit 1
     fi
   fi
   before="$(git -C "$repo" rev-parse --short HEAD)"
@@ -187,10 +211,15 @@ update_cmd() {
     fi
   fi
   after="$(git -C "$repo" rev-parse --short HEAD)"
-  if [ -n "$to" ] && [ "$to" != main ]; then echo "canon pinned to $to ($after), verified against the published manifest. Run 'canon update --to main' to follow main again."
+  if [ -n "$to" ] && [ "$to" != main ]; then
+    rm -f "$marker"
+    if [ "$was_on" = "$to" ]; then echo "canon is up to date ($to, verified against the published manifest)."
+    else echo "canon is now on $to ($after), verified against the published manifest."; fi
+    if [ "$legacy" = 1 ]; then echo "This install was following main. canon now follows verified releases by default; to follow main again: canon update --to main"; fi
   else
+    printf 'main\n' > "$marker" 2>/dev/null || true
     if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
-    echo "Note: main moves with every change and is not checksum-verified; 'canon update --to vX.Y.Z' installs a verified release."
+    echo "canon is following main: development changes, not checksum-verified. 'canon update --to latest' returns to verified releases."
   fi
   bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2
   if [ -n "$bak" ]; then
@@ -379,7 +408,11 @@ board_cmd() {
 main() {
   case "${1:-}" in
     help|--help|-h) usage; exit 0 ;;
-    version|--version|-V) echo "canon $({ tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION"; } 2>/dev/null || echo unknown)"; exit 0 ;;
+    version|--version|-V)
+      echo "canon $({ tr -d '[:space:]' < "$SCRIPT_DIR/../VERSION"; } 2>/dev/null || echo unknown)"
+      # t-65c9: say so when this install follows main (development, not verified); the release track is the default and needs no note
+      if [ "$({ tr -d '[:space:]' < "$SCRIPT_DIR/../.canon-track"; } 2>/dev/null)" = main ]; then echo "Following main (development, not checksum-verified). 'canon update --to latest' returns to verified releases."; fi
+      exit 0 ;;
     status|sessions|stop|restart) board_cmd "$@"; exit 0 ;;
     wait) shift; wait_cmd "$@" ;;
     update) shift; update_cmd "$@" ;;

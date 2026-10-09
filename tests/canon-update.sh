@@ -20,6 +20,9 @@ REAL_UNAME="$(command -v uname)"; LSTUB="$WORK/linuxstub"; mkdir -p "$LSTUB"
 printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; *) exec "%s" "$@" ;; esac\n' "$REAL_UNAME" > "$LSTUB/uname"; chmod +x "$LSTUB/uname"; export PATH="$LSTUB:$PATH"
 g() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
 ident=(-c user.email=t@example.com -c user.name=test)
+# t-65c9: a plain update follows the latest verified release unless the install chose main. The sections before t-65c9's test the main track (what every
+# install did before), so those installs say so; t-65c9's own section starts from installs with no marker.
+maintrack() { printf 'main\n' > "$1/.canon-track"; echo '/.canon-track' >> "$1/.git/info/exclude"; }
 
 # A bare "origin", an install cloned from it (on main), and a second clone that publishes updates.
 git init -q --bare -b main "$WORK/origin.git"
@@ -40,7 +43,7 @@ SH
 chmod +x "$WORK/seed/tools/skills.sh"
 git -C "$WORK/seed" "${ident[@]}" add -A && git -C "$WORK/seed" "${ident[@]}" commit -qm seed && git -C "$WORK/seed" push -q origin main 2>/dev/null
 git clone -q "$WORK/origin.git" "$WORK/install" 2>/dev/null
-INSTALL="$WORK/install"; CANON="$INSTALL/tools/canon"
+INSTALL="$WORK/install"; CANON="$INSTALL/tools/canon"; maintrack "$INSTALL"
 export REFRESH_LOG="$WORK/refresh.log"; : > "$REFRESH_LOG"
 
 # A Cockpit registry: two real projects, one Windows-escaped path, one missing folder.
@@ -192,7 +195,7 @@ if command -v zsh >/dev/null 2>&1; then
   assert_eq "registered" "$(zsh -fc 'autoload -U compinit && compinit -u -d "$1/.zcompdump"; source "$2"; (( $+_comps[canon] )) && echo registered' _ "$WORK" "$WORK/comp.zsh")"
 fi
 # t-0d25: a depth-1 install (what install.sh now makes) updates with canon update, stays shallow and gains only the new commits
-git clone -q --depth 1 "file://$WORK/origin.git" "$WORK/shallow" 2>/dev/null
+git clone -q --depth 1 "file://$WORK/origin.git" "$WORK/shallow" 2>/dev/null; maintrack "$WORK/shallow"
 assert_eq true "$(git -C "$WORK/shallow" rev-parse --is-shallow-repository)"
 echo shallow-news > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam shallow-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
 : > "$REFRESH_LOG"
@@ -205,7 +208,7 @@ assert_eq 2 "$(git -C "$WORK/shallow" rev-list --count HEAD)"
 # or canon update refuses on every install that has run the Cockpit; a real stray file next to it must still be refused.
 git -C "$ROOT" check-ignore -q cockpit/projects.json || fail "the repo .gitignore must ignore /cockpit/ (the Cockpit data dir inside a default install)"
 cp "$ROOT/.gitignore" "$WORK/seed/.gitignore"; git -C "$WORK/seed" "${ident[@]}" add .gitignore && git -C "$WORK/seed" "${ident[@]}" commit -qm "real gitignore" && git -C "$WORK/seed" push -q origin main 2>/dev/null
-git clone -q "$WORK/origin.git" "$WORK/inst2" 2>/dev/null
+git clone -q "$WORK/origin.git" "$WORK/inst2" 2>/dev/null; maintrack "$WORK/inst2"
 mkdir -p "$WORK/inst2/cockpit"; echo '{}' > "$WORK/inst2/cockpit/projects.json"
 assert_eq "" "$(git -C "$WORK/inst2" status --porcelain)"
 echo cockpit-news > "$WORK/seed/NEWS"; git -C "$WORK/seed" "${ident[@]}" commit -qam cockpit-news && git -C "$WORK/seed" push -q origin main 2>/dev/null
@@ -276,7 +279,7 @@ git clone -q "$O3" "$WORK/seed3" 2>/dev/null
 mkdir -p "$WORK/seed3/tools"
 cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$WORK/seed3/tools/"
 cp "$WORK/seed/tools/skills.sh" "$WORK/seed/tools/fetch-daemon.sh" "$ROOT/tools/release-manifest.sh" "$WORK/seed3/tools/"
-printf "tools/*-win.exe\n" > "$WORK/seed3/.gitignore"   # as the real .gitignore: the fetch stub writes these
+printf "tools/*-win.exe\n/.canon-track\n" > "$WORK/seed3/.gitignore"   # as the real .gitignore: the fetch stub writes these
 echo 0.3.0 > "$WORK/seed3/VERSION"; git -C "$WORK/seed3" "${ident[@]}" add -A -f; git -C "$WORK/seed3" "${ident[@]}" commit -qm "release 0.3.0"
 git -C "$WORK/seed3" "${ident[@]}" tag -a v0.3.0 -m "v0.3.0"
 echo 0.3.1 > "$WORK/seed3/VERSION"; git -C "$WORK/seed3" "${ident[@]}" commit -qam "release 0.3.1"
@@ -301,9 +304,9 @@ GSTUB="$WORK/gitstub"; mkdir -p "$GSTUB"; printf '#!/bin/sh\necho "$*" >> "%s/gi
 rm -f "$WORK/git.calls"
 for bad in -x ../x v1 v1.2 release main2 v1.2.3.4 'v1.2.3;x' 'v1.2.3 ' V1.2.3 ''; do
   set +e; out="$(PATH="$GSTUB:$PATH" "$C3" update --to "$bad" 2>&1)"; code=$?; set -e
-  assert_eq "2" "$code"; assert_contains "$out" "--to takes main or a release tag like v0.3.0"
+  assert_eq "2" "$code"; assert_contains "$out" "--to takes latest, main or a release tag like v0.3.0"
 done
-set +e; out="$(PATH="$GSTUB:$PATH" "$C3" update --to 2>&1)"; code=$?; set -e; assert_eq "2" "$code"; assert_contains "$out" "--to takes main or a release tag like v0.3.0"
+set +e; out="$(PATH="$GSTUB:$PATH" "$C3" update --to 2>&1)"; code=$?; set -e; assert_eq "2" "$code"; assert_contains "$out" "--to takes latest, main or a release tag like v0.3.0"
 set +e; out="$(PATH="$GSTUB:$PATH" "$C3" update --to v0.3.0 extra 2>&1)"; code=$?; set -e; assert_eq "2" "$code"
 [[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad --to value reached git: $(cat "$WORK/git.calls")"
 assert_eq "$tip3" "$(h3)"
@@ -350,15 +353,18 @@ g "$I3" checkout -q main
 : > "$REFRESH_LOG"; rm -f "$REFRESH_LOG.fetch"
 out="$("$C3" update --to v0.3.0 2>&1)"
 assert_eq "$(sha3 v0.3.0)" "$(h3)"; assert_eq "0.3.0" "$(cat "$I3/VERSION")"
-assert_contains "$out" "pinned to v0.3.0"; assert_contains "$out" "verified against the published manifest"; assert_contains "$out" "canon update --to main"
+assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "verified against the published manifest"; refute_contains "$out" "not checksum-verified"
 assert_contains "$out" "refreshed: $WORK/p1"
 assert_eq "fetch --quiet" "$(cat "$REFRESH_LOG.fetch")"
 [[ -z "$(git -C "$I3" symbolic-ref -q HEAD || true)" ]] || fail "canon-update: --to a tag left a branch checked out"
-# A plain update on a pinned install refuses, changing nothing, and names the way back.
-: > "$REFRESH_LOG"; before="$(h3)"
-set +e; out="$("$C3" update 2>&1)"; code=$?; set -e
-assert_eq "1" "$code"; assert_contains "$out" "pinned to v0.3.0"; assert_contains "$out" "canon update --to main"
-assert_contains "$out" "Nothing was changed."; assert_eq "$before" "$(h3)"; assert_eq "" "$(cat "$REFRESH_LOG")"
+# t-65c9: a plain update on a release install moves to the latest release in the manifest (not sticky: nothing remembers the older pin).
+printf '# canon releases\nv0.3.1 %s %s\nv0.3.0 %s %s\n' "$Z3" "$(sha3 v0.3.1)" "$Z3" "$(sha3 v0.3.0)" > "$M3"
+: > "$REFRESH_LOG"
+out="$("$C3" update 2>&1)"
+assert_eq "$(sha3 v0.3.1)" "$(h3)"; assert_contains "$out" "canon is now on v0.3.1"; assert_contains "$out" "verified against the published manifest"; refute_contains "$out" "not checksum-verified"
+assert_contains "$out" "refreshed: $WORK/p1"
+out="$("$C3" update 2>&1)"; assert_contains "$out" "canon is up to date (v0.3.1, verified"; assert_eq "$(sha3 v0.3.1)" "$(h3)"
+good3
 # Pinned to another tag, then back to main: a normal fast-forward from there.
 out="$("$C3" update --to v0.3.1 2>&1)"; assert_eq "$(sha3 v0.3.1)" "$(h3)"; assert_eq "0.3.1" "$(cat "$I3/VERSION")"
 out="$("$C3" update --to main 2>&1)"
@@ -376,7 +382,68 @@ grep -q 'CANON_REF' "$ROOT/tools/canon" || fail "canon-update: the Windows non-g
 grep -q 'CANON_REF' "$ROOT/install.ps1" || fail "canon-update: install.ps1 ignores CANON_REF"
 grep -q 'releases/download/' "$ROOT/install.ps1" || fail "canon-update: install.ps1 cannot fetch a release's zip"
 grep -q 'Get-FileHash' "$ROOT/install.ps1" && grep -q 'Get-CanonReleaseSha256' "$ROOT/install.ps1" || fail "canon-update: install.ps1 does not verify a release zip against the manifest (t-34f1; its behavior is checked on the Windows VM)"
-echo "canon-update: --to pins to a release tag, refuses plain update while pinned, returns to main; bad refs never reach git (t-30fc)"
+echo "canon-update: --to installs a release tag or main, bad refs never reach git (t-30fc)"
+
+# ── t-65c9: a plain `canon update` follows the latest verified release. An install with no marker (made before this, or by install.sh) is on branch
+# main; it moves to the latest release once, with a message; `--to main` is the remembered opt-in; `--to vX.Y.Z` is not sticky. The manifest here
+# lists v0.3.1 as the latest (v0.3.2 above was never pushed). Every refusal leaves HEAD and the tree untouched.
+m31() { printf '# canon releases\nv0.3.1 %s %s\nv0.3.0 %s %s\n' "$Z3" "$(sha3 v0.3.1)" "$Z3" "$(sha3 v0.3.0)" > "$M3"; }
+leg() { git clone -q --depth 1 "file://$O3" "$WORK/$1" 2>/dev/null; printf '%s' "$WORK/$1"; }   # an install with no marker
+m31
+A="$(leg legA)"; CA="$A/tools/canon"; ha() { git -C "$A" rev-parse HEAD; }
+assert_eq "main" "$(git -C "$A" symbolic-ref --short HEAD)"; [[ ! -e "$A/.canon-track" ]] || fail "canon-update: a fresh install has a track marker"
+out="$("$CA" update 2>&1)"
+assert_eq "$(sha3 v0.3.1)" "$(ha)"; [[ -z "$(git -C "$A" symbolic-ref -q HEAD || true)" ]] || fail "canon-update: the migration left a branch checked out"
+assert_contains "$out" "canon is now on v0.3.1"; assert_contains "$out" "verified against the published manifest"
+assert_contains "$out" "This install was following main"; assert_contains "$out" "canon update --to main"; refute_contains "$out" "not checksum-verified"
+assert_eq "" "$(git -C "$A" status --porcelain)"; [[ ! -e "$A/.canon-track" ]] || fail "canon-update: the release track wrote a marker"
+out="$("$CA" update 2>&1)"; assert_contains "$out" "canon is up to date (v0.3.1, verified"; refute_contains "$out" "was following main"; refute_contains "$out" "not checksum-verified"
+assert_eq "canon 0.3.1" "$("$CA" version)"
+# --to main is the opt-in: remembered (an ignored file), followed by a plain update, and the only place the unverified note appears
+out="$("$CA" update --to main 2>&1)"
+assert_eq "$tip3" "$(ha)"; assert_eq "main" "$(git -C "$A" symbolic-ref --short HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$A/.canon-track")"; assert_eq "" "$(git -C "$A" status --porcelain)"
+assert_contains "$out" "following main"; assert_contains "$out" "not checksum-verified"; assert_contains "$out" "canon update --to latest"
+assert_contains "$("$CA" version)" "Following main"
+echo extra-main > "$WORK/seed3/NEWS3"; git -C "$WORK/seed3" "${ident[@]}" add NEWS3; git -C "$WORK/seed3" "${ident[@]}" commit -qm "more main"; git -C "$WORK/seed3" push -q origin main 2>/dev/null
+out="$("$CA" update 2>&1)"; assert_eq "$(git -C "$WORK/seed3" rev-parse HEAD)" "$(ha)"; assert_contains "$out" "canon updated"; assert_contains "$out" "not checksum-verified"
+# --to latest returns to the verified releases and forgets the marker; the version command says nothing about main again
+out="$("$CA" update --to latest 2>&1)"
+assert_eq "$(sha3 v0.3.1)" "$(ha)"; [[ ! -e "$A/.canon-track" ]] || fail "canon-update: --to latest kept the marker"; refute_contains "$out" "not checksum-verified"; refute_contains "$("$CA" version)" "Following main"
+# a rollback is not sticky: --to v0.3.0 installs it, the next plain update goes forward again
+out="$("$CA" update --to v0.3.0 2>&1)"; assert_eq "$(sha3 v0.3.0)" "$(ha)"; assert_contains "$out" "canon is now on v0.3.0"
+out="$("$CA" update 2>&1)"; assert_eq "$(sha3 v0.3.1)" "$(ha)"; assert_contains "$out" "canon is now on v0.3.1"; refute_contains "$out" "was following main"
+# the manifest cannot say what the latest release is: a plain update refuses, changing nothing, and names the way that needs no manifest
+B="$(leg legB)"; CB="$B/tools/canon"; hb() { git -C "$B" rev-parse HEAD; }; beforeb="$(hb)"
+nolatest() {   # nolatest <label> (a manifest file is already in $M3)
+  set +e; out="$("$CB" update 2>&1)"; code=$?; set -e
+  [[ "$code" == 1 ]] || fail "canon-update: $1: a plain update was not refused (exit $code): $out"
+  assert_contains "$out" "Nothing was changed."; assert_contains "$out" "canon update --to main"
+  assert_eq "$beforeb" "$(hb)"; assert_eq "main" "$(git -C "$B" symbolic-ref --short HEAD)"; assert_eq "" "$(git -C "$B" status --porcelain)"; [[ ! -e "$B/.canon-track" ]] || fail "canon-update: $1: a refusal wrote a marker"
+}
+rm -f "$M3"; nolatest "manifest unreachable"
+printf '# canon releases\n' > "$M3"; nolatest "manifest lists no release"
+printf 'v0.3.1 %s %s\nv0.3.1 %s %s\n' "$Z3" "$(sha3 v0.3.1)" "$Z3" "$tip3" > "$M3"; nolatest "latest release listed twice with different values"
+printf 'v0.3.1 short %s\n' "$tip3" > "$M3"; nolatest "only a malformed line"
+printf 'v0.3.9 %s %s\n' "$Z3" "$(printf 'f%.0s' $(seq 1 40))" > "$M3"; nolatest "latest release the manifest names but the origin does not have"
+m31
+# local commits, uncommitted changes and another branch each refuse a plain update, changing nothing (a release would leave the commits behind)
+C2="$(leg legC)"; hc() { git -C "$C2" rev-parse HEAD; }
+echo mine > "$C2/mine.txt"; git -C "$C2" add mine.txt; git -C "$C2" "${ident[@]}" commit -qm "local work"; beforec="$(hc)"
+set +e; out="$("$C2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "local commit(s) on main"; assert_contains "$out" "canon update --to main"; assert_contains "$out" "Nothing was changed."; assert_eq "$beforec" "$(hc)"
+echo wip > "$C2/scratch.txt"
+set +e; out="$("$C2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_eq "$beforec" "$(hc)"; rm "$C2/scratch.txt"
+g "$C2" checkout -q -b feature
+set +e; out="$("$C2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "is on 'feature', not main"
+# a bad value after --to latest never reaches git
+rm -f "$WORK/git.calls"; set +e; out="$(PATH="$GSTUB:$PATH" "$CA" update --to latest extra 2>&1)"; code=$?; set -e
+assert_eq "2" "$code"; [[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad --to latest reached git: $(cat "$WORK/git.calls")"
+# the installers read the same rules (PowerShell cannot run here; the Windows VM checks it)
+grep -q '\.canon-track' "$ROOT/install.ps1" || fail "canon-update: install.ps1 does not read the track marker"
+grep -q 'Get-CanonLatestRelease' "$ROOT/install.ps1" || fail "canon-update: install.ps1 cannot resolve the latest release"
+echo "canon-update: plain update follows the latest verified release; --to main is the remembered opt-in; a rollback is not sticky; every refusal changes nothing (t-65c9)"
 
 ps="$("$CANON" completion powershell)"
 for w in Register-ArgumentCompleter status sessions stop restart wait update uninstall --dry-run --keep-data --yes completion version help needs-you working done idle exited --json --force --until --timeout --project; do

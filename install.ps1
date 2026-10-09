@@ -41,7 +41,7 @@ function Install-GitForWindows {
 # the canon-skills repo that holds the zip) lists it, and the downloaded file hashes to the manifest's SHA-256. Line format and rules are the same
 # as tools/release-manifest.sh (the git installs' version of this check): exactly one distinct, well-formed line for the tag, else refuse.
 # Lines for other tags that do not parse are ignored. There is no override; CANON_MANIFEST_URL only says where to read it (file:// for tests).
-function Get-CanonReleaseSha256($Ref) {
+function Read-CanonManifest($What) {
   $manifestUrl = if ($env:CANON_MANIFEST_URL) { $env:CANON_MANIFEST_URL } else { "https://getcanon.dev/releases.txt" }
   try {
     if ($manifestUrl -like "file://*") { $text = [IO.File]::ReadAllText(([Uri]$manifestUrl).LocalPath) }
@@ -50,10 +50,35 @@ function Get-CanonReleaseSha256($Ref) {
     if ($text -is [byte[]]) { $text = [Text.Encoding]::UTF8.GetString($text) }
     if ($null -eq $text) { $text = "" }
   } catch {
-    throw "Cannot read the release manifest at $manifestUrl ($_); refusing to install $Ref unverified. 'canon update --to main' needs no manifest."
+    throw "Cannot read the release manifest at $manifestUrl ($_); refusing to install $What unverified. 'canon update --to main' needs no manifest."
   }
   if ($text.Length -gt 1048576) { throw "The release manifest at $manifestUrl is over 1 MB; refusing." }
   if ($text.IndexOf([char]0) -ge 0) { throw "The release manifest at $manifestUrl contains a NUL byte; refusing." }
+  return $text
+}
+
+# t-65c9: the newest release in the manifest, by the same rules as `tools/release-manifest.sh --latest`: numeric order (v0.10.0 is above v0.9.9), only canonical
+# lines count (no leading zeros, at most six digits a part, 64 and 40 hex digits), and two different values for the chosen tag refuse (no fallback to an older one).
+function Get-CanonLatestRelease {
+  $text = Read-CanonManifest "the latest release"
+  $bestKey = $null; $best = $null; $values = @()
+  foreach ($raw in ($text -split "`n")) {
+    $line = $raw.TrimEnd("`r")
+    if ($line.Trim(" ", "`t").Length -eq 0 -or $line.StartsWith("#")) { continue }
+    if (-not ($line -cmatch '^v(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5}) ([0-9a-f]{64}) ([0-9a-f]{40})\z')) { continue }
+    $key = "{0:D6}.{1:D6}.{2:D6}" -f [int]$Matches[1], [int]$Matches[2], [int]$Matches[3]
+    $val = "$($Matches[4]) $($Matches[5])"
+    $tag = ($line -split " ")[0]
+    if ($null -eq $bestKey -or [string]::CompareOrdinal($key, $bestKey) -gt 0) { $bestKey = $key; $best = $tag; $values = @($val) }
+    elseif ($key -ceq $bestKey -and $values -notcontains $val) { $values += $val }
+  }
+  if ($null -eq $best) { throw "The release manifest lists no release I can read; refusing to install unverified. 'canon update --to main' needs no manifest." }
+  if ($values.Count -gt 1) { throw "The manifest lists $best twice with different values; refusing to install it." }
+  return $best
+}
+
+function Get-CanonReleaseSha256($Ref) {
+  $text = Read-CanonManifest $Ref
   $values = @(); $malformed = $false
   foreach ($raw in ($text -split "`n")) {
     $line = $raw.TrimEnd("`r")
@@ -79,8 +104,13 @@ function Install-CanonFiles($Dest) {
   try {
     $zip = Join-Path $tmp "canon.zip"
     # t-30fc: `canon update --to <ref>` sets CANON_REF; only main or a release tag like v0.3.0 reaches the URL.
-    $ref = if ($env:CANON_REF) { $env:CANON_REF } else { "main" }
-    if ($ref -cne "main" -and $ref -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "CANON_REF must be main or a release tag like v0.3.0 (got '$ref')." }
+    # t-65c9: with no CANON_REF the install follows the track it remembers (.canon-track = main), else the latest verified release.
+    $trackFile = Join-Path $Dest ".canon-track"
+    $hadTrack = Test-Path $trackFile
+    $ref = $env:CANON_REF
+    if (-not $ref) { $ref = if ($hadTrack -and ([IO.File]::ReadAllText($trackFile).Trim() -ceq "main")) { "main" } else { "latest" } }
+    if ($ref -ceq "latest") { $ref = Get-CanonLatestRelease }   # throws before anything is downloaded or touched
+    if ($ref -cne "main" -and $ref -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "CANON_REF must be latest, main or a release tag like v0.3.0 (got '$ref')." }
     $expected = $null
     if ($ref -ceq "main") {
       $url = $ZipUrl
@@ -89,7 +119,8 @@ function Install-CanonFiles($Dest) {
       $url = "https://github.com/sunitghub/canon-skills/releases/download/$ref/canon-$($ref.Substring(1)).zip"
     }
     Write-Host "==> Downloading canon ($ref)"
-    if ($ref -ceq "main") { Write-Host "    main moves with every change and is not checksum-verified; 'canon update --to vX.Y.Z' installs a verified release." }
+    if ($ref -ceq "main") { Write-Host "    Following main: development changes, not checksum-verified. 'canon update --to latest' returns to verified releases." }
+    elseif (-not $hadTrack -and -not $env:CANON_REF -and (Test-Path (Join-Path $Dest "VERSION"))) { Write-Host "    canon now follows verified releases by default; to follow main again: canon update --to main" }
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
     if ($expected) {
       $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
@@ -118,6 +149,10 @@ function Install-CanonFiles($Dest) {
     # No /MIR: cockpit\ (registry, change store) must survive an update. Stale removed files linger; acceptable.
     robocopy $src.FullName $Dest /E /XD cockpit .git /R:1 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Copying canon into $Dest failed (robocopy code $LASTEXITCODE)." }
+    # t-65c9: remember the track. .NET writes it (a positional Set-Content silently wrote nothing on the VM once); read it back so a failure is loud.
+    $trackWord = if ($ref -ceq "main") { "main" } else { "release" }
+    [IO.File]::WriteAllText($trackFile, "$trackWord`n")
+    if ([IO.File]::ReadAllText($trackFile).Trim() -cne $trackWord) { throw "Could not record the update track in $trackFile." }
   } finally {
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue
   }

@@ -32,7 +32,7 @@ curl -fsSL https://getcanon.dev/install.sh | bash
 irm https://getcanon.dev/install.ps1 | iex
 ```
 
-Then run `canon`: add a project, create a ticket, press Start. See the **[Quick start →](https://getcanon.dev/docs/quick-start.html)**, or **[docs/setup.md](docs/setup.md)** for requirements, the Windows notes and every option.
+The installers put the latest verified release on your machine (`canon update` keeps it current; `canon update --to main` follows the development version). Then run `canon`: add a project, create a ticket, press Start. See the **[Quick start →](https://getcanon.dev/docs/quick-start.html)**, or **[docs/setup.md](docs/setup.md)** for requirements, the Windows notes and every option.
 
 Prefer the terminal? Register the sprint skill in a project with `~/.canon/tools/skills.sh add sprint`.
 
