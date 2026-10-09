@@ -961,6 +961,12 @@
     }
     .doc-tab:hover { background: var(--surface-hover); color: var(--text); }
     .doc-tab.active { background: var(--accent-dim); color: var(--accent); border-left-color: var(--accent); }
+    .doc-tab.doc-ghost { color: var(--text-muted); border-left: 2px dashed var(--border-hover); font-weight: 500; }
+    .doc-tab.doc-ghost.active { color: var(--accent); border-left-style: solid; border-left-color: var(--accent); }
+    .doc-ghost-plus { margin-left: auto; font-weight: 700; }
+    .doc-ghost-pane { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 18px 4px; max-width: 520px; }
+    .doc-ghost-pane h3 { margin: 0; font-size: 15px; }
+    .doc-ghost-pane p { margin: 0; color: var(--text-muted); font-size: 13px; line-height: 1.5; }
     .doc-node { display: flex; align-items: center; }
     .doc-node .doc-tab { flex: 1; min-width: 0; }
     .doc-expander, .doc-expander-spacer { flex: none; width: 20px; height: 24px; }
@@ -977,12 +983,6 @@
     }
     .doc-child:hover { background: var(--surface-hover); color: var(--text); }
     .doc-child-count { font-family: 'JetBrains Mono','Fira Code',ui-monospace,monospace; font-size: 11px; color: var(--text-muted); }
-    .doc-tab-new {
-      padding: 5px 12px; border-radius: 999px; font-size: 12px;
-      border: 1px dashed var(--border-hover); background: transparent;
-      color: var(--text-muted); cursor: pointer; transition: color .1s, border-color .1s;
-    }
-    .doc-tab-new:hover { color: var(--text); border-color: var(--accent); }
     .doc-tab-right {
       /* t-26f9: wraps inside the modal; the live badge, the working note, + New doc and Edit never clip off the right edge */
       margin-left: auto; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px;
@@ -1008,7 +1008,6 @@
       color: var(--text-muted); cursor: pointer; transition: background .1s, color .1s;
     }
     .doc-cancel-btn:hover { background: var(--surface-hover); color: var(--text); }
-    .doc-tab-new:disabled { opacity: .45; cursor: not-allowed; }
     .doc-locked-badge {
       font-size: 11px; color: var(--text-body);
       display: flex; align-items: center; gap: 5px;
@@ -1071,13 +1070,16 @@
       border: 1px solid var(--panel-border); background: var(--surface);
     }
     .model-tier-select, .signoff-tier-select { color: var(--accent); padding: 0 6px; }
-    .model-tier-select { width: 168px; }
+    .model-tier-select { width: 156px; }
     .model-tier-select:disabled, .signoff-tier-select:disabled, .signoff-risk-input:disabled {
       opacity: 0.5; cursor: not-allowed;
     }
-    .signoff-risk-input { color: var(--text-body); padding: 0 8px; flex: 1 1 160px; min-width: 0; }
+    .signoff-risk-input { color: var(--text-body); padding: 0 8px; flex: 1 1 auto; min-width: 0; }
+    .signoff-field { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+    .signoff-field-label { font-size: 11px; font-weight: 600; letter-spacing: .03em; color: var(--text-muted); white-space: nowrap; }
+    .signoff-field-risk { flex: 1 1 140px; }
     .signoff-risk-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
-    @container (max-width: 640px) { .signoff-risk-input { order: -1; flex-basis: 100%; } }
+    @container (max-width: 640px) { .signoff-field-risk { order: -1; flex-basis: 100%; } }
     .signoff-risk-input--needs-value {
       border-color: var(--col-discarded);
     }
@@ -1283,30 +1285,6 @@
     .toast-confirm { background: none; border: none; cursor: pointer; font-size: 12px; font-weight: 600; text-decoration: underline; color: inherit; margin-left: 8px; padding: 0; }
 
     /* ── Doc type picker ─────────────────────────── */
-    .doc-picker-label { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
-    .doc-type-card {
-      display: block; width: 100%;
-      padding: 8px 12px; border-radius: var(--radius-sm); margin-bottom: 6px;
-      border: 1px solid var(--border); background: var(--surface-raised);
-      cursor: pointer; text-align: left;
-      transition: border-color .12s, background .12s;
-    }
-    .doc-type-card:hover    { border-color: var(--border-hover); background: var(--surface-hover); }
-    .doc-type-card.suggested { border-color: var(--border-hover); }
-    .doc-type-card.selected {
-      border-color: var(--accent);
-      background: var(--accent-dim);
-      box-shadow: inset 0 0 0 1px var(--accent);
-    }
-    .doc-type-name {
-      font-size: 13px; font-weight: 600; color: var(--text);
-      display: flex; align-items: center; gap: 7px; margin-bottom: 1px;
-    }
-    .doc-type-hint  { font-size: 12px; color: var(--text-muted); }
-    .doc-type-badge {
-      font-size: 10px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
-      padding: 1px 7px; border-radius: 10px; background: var(--accent); color: #fff;
-    }
 
     .modal-footer {
       display: flex; align-items: center; justify-content: space-between;
@@ -2879,12 +2857,6 @@ One sentence: what system behavior was researched.
   },
 ];
 
-function recommendedSlug(status, existingSlugs) {
-  if (!existingSlugs.includes('acceptance')) return 'acceptance';
-  if (!existingSlugs.includes('plan')) return 'plan';
-  return null;
-}
-
 function docSlug(t, file) {
   if (file.includes('/')) return file.split('/').pop().replace('.md', '');
   return file.replace(`${displayTicketId(t)}-`, '').replace('.md', '');
@@ -4308,26 +4280,8 @@ function showStaleEditNotice(t) {
   };
 }
 
-function openModal(id) {
-  const t = findTicketById(id);
-  if (!t) return;
-  if (DEBUG) window.__sprintCheckOpenModalCount = (window.__sprintCheckOpenModalCount || 0) + 1;
-  state.selectedId = id;
-  modalState.editMode = false;
-  modalState.activeDoc = null;   // t-e946: a ticket opens on Description (the tree's first node)
-  modalState.pickingDoc = false;
-  // t-612f: every doc's ## sections, so the tree can show a + before a doc is opened (the rest arrive from prefetchDocSections)
-  modalState.sections = { '': parseDocSections(t.body) };
-  modalState.expanded = new Set(['']);
-  modalState.seen = new Set(['']);
-  modalState.pendingScroll = '';
-  resetPanelDrag(document.getElementById('modal'));
-  resetPanelResize(document.getElementById('modal'));
-
-  setText('m-id',    t.id);
-  setText('m-title', t.title);
-  document.getElementById('m-type').innerHTML = typeBadge(t.type);
-
+// t-bb97: the status chips row, now also holding the Demo/UX switch (it moved here from the Plan sign-off bar).
+function renderModalMeta(t) {
   const statusColor = {
     open: 'var(--col-open)', in_progress: 'var(--col-progress)',
     closed: 'var(--col-done)', cancelled: 'var(--col-discarded)',
@@ -4343,6 +4297,59 @@ function openModal(id) {
       : openWorktreePreference(t) ? [{ label:'Worktree', html:`<span title="Chosen at New Ticket — created when you start the sprint">${esc(openWorktreePreference(t))} <span style="color:var(--text-muted)">· created when you start</span></span>` }] : []),
     { label:'Ready',    html:`<span style="color:${mReadyColor};font-weight:600;display:flex;align-items:center;gap:4px"><span style="width:7px;height:7px;border-radius:50%;background:${mReadyColor};display:inline-block;flex-shrink:0"></span>${esc(mReadyLabel)}</span>` },
   ].map(m => `<div class="meta-item"><span class="meta-label">${esc(m.label)}</span><span class="meta-val">${m.html ?? esc(m.val)}</span></div>`).join('');
+
+  const demoOn = String(t.demo) === 'true';
+  const demoBtn = document.createElement('button');
+  demoBtn.type = 'button';
+  demoBtn.className = 'signoff-demo-toggle';
+  demoBtn.setAttribute('role', 'switch');
+  demoBtn.setAttribute('aria-checked', String(demoOn));
+  demoBtn.innerHTML = '<span class="sw-track"><span class="sw-knob"></span></span><span>Demo/UX</span>';
+  // The demo flag lives in MAIN's ticket.md frontmatter, not the live worktree plan.md, so only a closed ticket locks it.
+  const demoLocked = t.status === 'closed' || t.status === 'cancelled';
+  demoBtn.disabled = demoLocked;
+  demoBtn.title = demoLocked
+    ? 'Ticket is closed — no further edits.'
+    : 'Demo/Docs/UX light-close (live demos or docs/research/UX-mockup work): sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
+  demoBtn.addEventListener('click', async () => {
+    const next = String(t.demo) !== 'true';
+    demoBtn.disabled = true;
+    try {
+      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/UX');
+      if (res.ok) { t.demo = next ? 'true' : 'false'; const cur0 = findTicketById(t.id); if (cur0) cur0.demo = t.demo; adoptTicketWrite(t.id, res.data); }
+    } finally {
+      renderBoard();
+      const cur = state.tickets.find(tk => tk.id === state.selectedId);
+      if (cur) { renderModalMeta(cur); renderModalBody(cur); }
+    }
+  });
+  const item = document.createElement('div');
+  item.className = 'meta-item meta-demo';
+  item.appendChild(demoBtn);
+  document.getElementById('m-meta').appendChild(item);
+}
+
+function openModal(id) {
+  const t = findTicketById(id);
+  if (!t) return;
+  if (DEBUG) window.__sprintCheckOpenModalCount = (window.__sprintCheckOpenModalCount || 0) + 1;
+  state.selectedId = id;
+  modalState.editMode = false;
+  modalState.activeDoc = null;   // t-e946: a ticket opens on Description (the tree's first node)
+  modalState.ghost = '';
+  // t-612f: every doc's ## sections, so the tree can show a + before a doc is opened (the rest arrive from prefetchDocSections)
+  modalState.sections = { '': parseDocSections(t.body) };
+  modalState.expanded = new Set(['']);
+  modalState.seen = new Set(['']);
+  modalState.pendingScroll = '';
+  resetPanelDrag(document.getElementById('modal'));
+  resetPanelResize(document.getElementById('modal'));
+
+  setText('m-id',    t.id);
+  setText('m-title', t.title);
+  document.getElementById('m-type').innerHTML = typeBadge(t.type);
+
+  renderModalMeta(t);
 
   renderModalDocs(t);
   renderModalBody(t);
@@ -4523,13 +4530,14 @@ function renderModalDocs(t) {
   const bar = document.getElementById('m-docs');
   const paneBar = document.getElementById('m-pane-bar');
   const locked = t.status === 'closed' || t.status === 'cancelled';
-  const pickingDoc = modalState.pickingDoc;
-  const canAddDoc = availableDocTypes(t).length > 0;
+  const ghosts = locked ? [] : availableDocTypes(t);   // t-bb97: a doc that does not exist yet shows as a dashed ghost node
 
-  const descActive = modalState.activeDoc === null;
+  const descActive = modalState.activeDoc === null && !modalState.ghost;
   const node = (key, active, name) =>
     `<div class="doc-node" data-key="${escAttr(key)}">${expanderHTML(key)}<button class="doc-tab${active ? ' active' : ''}" data-file="${escAttr(key)}">${esc(name)}</button></div>`;
-  const descTab = docs.length > 0 ? node('', descActive, 'Description') : '';
+  const descTab = docs.length > 0 || ghosts.length > 0 ? node('', descActive, 'Description') : '';
+  const ghostNode = dt =>
+    `<div class="doc-node"><button class="doc-tab doc-ghost${modalState.ghost === dt.slug ? ' active' : ''}" data-ghost="${escAttr(dt.slug)}" title="${escAttr('Not created yet — ' + dt.hint)}">${esc(dt.name)}<span class="doc-ghost-plus" aria-hidden="true">+</span></button></div>`;
 
   const ticketIds = laneTicketIds(t);
   const ticketIdx = ticketIds.indexOf(t.id);
@@ -4554,24 +4562,29 @@ function renderModalDocs(t) {
       ? `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}<span class="doc-locked-badge" title="The board edits only acceptance, plan and research in a worktree; the sprint session owns this file">read-only here</span></div>`
     : locked
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
-      : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${canAddDoc ? `<button class="doc-tab-new" id="btn-new-doc" title="Add companion doc"${pickingDoc ? ' disabled' : ''}>+ New doc</button>` : ''}<span class="doc-edit-hint">Double-click to edit</span></div>`;
+      : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${modalState.ghost ? '' : '<span class="doc-edit-hint">Double-click to edit</span>'}</div>`;
 
   bar.innerHTML = descTab + docs.map(d => {
     return node(d.file ?? '', d.file === modalState.activeDoc, d.name);
-  }).join('');
+  }).join('') + ghosts.map(ghostNode).join('');
   paneBar.innerHTML = rightControls;
 
-  bar.querySelectorAll('.doc-tab').forEach(btn => {
+  bar.querySelectorAll('.doc-tab:not(.doc-ghost)').forEach(btn => {
     btn.addEventListener('click', () => {
       if (modalState.editMode) return;
       activateDoc(t, btn.dataset.file || null);
+    });
+  });
+  bar.querySelectorAll('.doc-ghost').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (modalState.editMode) return;
+      activateGhost(t, btn.dataset.ghost);
     });
   });
 
   document.getElementById('btn-ticket-prev')?.addEventListener('click', () => navigateTicket(-1));
   document.getElementById('btn-ticket-next')?.addEventListener('click', () => navigateTicket(1));
 
-  document.getElementById('btn-new-doc')?.addEventListener('click', () => promptNewDoc(t));
   document.getElementById('btn-save-top')?.addEventListener('click', () => saveEdit(t));
   document.getElementById('btn-cancel-top')?.addEventListener('click', () => exitEditMode(t));
 
@@ -4648,7 +4661,7 @@ function renderDocChildren() {
 
 function activateDoc(t, file, scrollSlug = '') {
   const key = file || '';
-  modalState.pickingDoc = false;
+  modalState.ghost = '';
   modalState.activeDoc = file;
   if (!modalState.seen.has(key)) { modalState.seen.add(key); modalState.expanded.add(key); }   // opened for the first time: shown expanded; after that the choice is the user's
   modalState.pendingScroll = scrollSlug;
@@ -4836,8 +4849,8 @@ function injectSignoffControls(container, content, t) {
     riskInput.addEventListener('blur', commitBase);
     riskInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); riskInput.blur(); } });
 
-    wrap.appendChild(tierSelect);
-    wrap.appendChild(riskInput);
+    wrap.appendChild(signoffField('Tier', tierSelect));
+    wrap.appendChild(signoffField('Risk', riskInput, 'signoff-field-risk'));
     wrap.appendChild(riskWarning);
   }
 
@@ -4871,7 +4884,7 @@ function injectSignoffControls(container, content, t) {
       if (cur) renderModalBody(cur);
     }
   });
-  wrap.appendChild(select);
+  wrap.appendChild(signoffField('Gate model', select));
 
   // t-ef27: an explicit Gate model beats demo mode's forced-Haiku evaluator (complete.md
   // precedence), so say so — a demo ticket with a costlier pick is deliberate, not a surprise.
@@ -4885,39 +4898,18 @@ function injectSignoffControls(container, content, t) {
     wrap.appendChild(hint);
   }
 
-  // ── Demo toggle (t-64a0) ─────────────────────────────────────────────
-  // Unlike Tier/Risk/Model (which edit plan.md prose), this edits the `demo`
-  // FRONTMATTER boolean via POST /api/ticket/<id>/demo, then updates t.demo +
-  // re-renders so the DEMO card badge appears/disappears live (mirrors moveCard).
-  const demoOn = String(t.demo) === 'true';
-  const demoBtn = document.createElement('button');
-  demoBtn.type = 'button';
-  demoBtn.className = 'signoff-demo-toggle';
-  demoBtn.setAttribute('role', 'switch');
-  demoBtn.setAttribute('aria-checked', String(demoOn));
-  demoBtn.innerHTML = '<span class="sw-track"><span class="sw-knob"></span></span><span>Demo/UX</span>';
-  // t-e78b follow-up: the demo flag lives in MAIN's ticket.md frontmatter, not the live
-  // worktree plan.md, so only a closed ticket locks it (reviewer finding).
-  const demoLocked = t.status === 'closed' || t.status === 'cancelled';
-  demoBtn.disabled = demoLocked;
-  demoBtn.title = demoLocked
-    ? 'Ticket is closed — no further edits.'
-    : 'Demo/Docs/UX light-close (live demos or docs/research/UX-mockup work): sprint complete runs security-review + the binding evaluator only (forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator.';
-  demoBtn.addEventListener('click', async () => {
-    const next = String(t.demo) !== 'true';
-    demoBtn.disabled = true;
-    try {
-      const res = await postWrite(`/api/ticket/${t.id}/demo`, { demo: next }, 'change Demo/UX');
-      if (res.ok) { t.demo = next ? 'true' : 'false'; const cur0 = findTicketById(t.id); if (cur0) cur0.demo = t.demo; adoptTicketWrite(t.id, res.data); }
-    } finally {
-      renderBoard();
-      const cur = state.tickets.find(tk => tk.id === state.selectedId);
-      if (cur) renderModalBody(cur);
-    }
-  });
-  wrap.appendChild(demoBtn);
-
   bar.appendChild(wrap);
+}
+
+// t-bb97: a small inline label in front of a sign-off control.
+function signoffField(text, control, cls = '') {
+  const f = document.createElement('label');
+  f.className = 'signoff-field' + (cls ? ' ' + cls : '');
+  const l = document.createElement('span');
+  l.className = 'signoff-field-label';
+  l.textContent = text;
+  f.append(l, control);
+  return f;
 }
 
 function renderModalBody(t) {
@@ -4930,6 +4922,8 @@ function renderModalBody(t) {
   // render lands after a newer one and injects a second bar (two .model-tier-select) or
   // overwrites the doc the user has since switched to.
   const seq = ++modalState.renderSeq;
+
+  if (modalState.ghost) { renderGhostPane(t); return; }
 
   if (!modalState.activeDoc) {
     const content = (t.body || '').trim();
@@ -4986,7 +4980,7 @@ function renderModalBody(t) {
 
 // t-a205: one answer to "may the board edit the active doc?" for the hint, double-click, the E key and enterEditMode.
 function docEditable(t) {
-  if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.pickingDoc) return false;   // the new-doc picker owns the pane while it is open
+  if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.ghost) return false;   // a ghost's pane (nothing to edit yet) owns the pane while it is open
   const liveBranch = t.docs_from && t.docs_from.branch;
   if (liveBranch && modalState.activeDoc && !LIVE_EDITABLE_SLUGS.includes(docSlug(t, modalState.activeDoc))) return false;
   return true;
@@ -5096,6 +5090,14 @@ async function saveEdit(t) {
     const res = await postWrite(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`, { content, base_hash: modalState.docEtag || '' }, 'save this doc', { quietStale: true });
     if (res.stale) { showStaleEditNotice(t); return; }   // t-26f9: keep the text, let the person choose
     if (!res.ok) return; // stay in edit mode with the text intact
+    if (modalState.ghost) {   // t-bb97: the ghost's first Save created the file
+      const dt = DOC_TYPES.find(d => d.slug === modalState.ghost);
+      t.docs = t.docs || [];
+      if (!t.docs.some(d => d.file === modalState.activeDoc)) t.docs.push({ name: dt.name, file: modalState.activeDoc });
+      modalState.docEtag = (res.data && res.data.etag) || '';
+      modalState.ghost = '';
+      modalState.seen.add(modalState.activeDoc);
+    }
   } else {
     const res = await postWrite(`/api/ticket/${t.id}/body`, { body: content, base_hash: t.ticket_etag || '' }, 'save the description', { quietStale: true });
     if (res.stale) { showStaleEditNotice(t); return; }   // t-8be2: keep the text, let the person choose
@@ -5291,97 +5293,49 @@ function validateDocContent(slug, content) {
   return '';
 }
 
-function promptNewDoc(t) {
-  modalState.pickingDoc = true;
+// t-bb97: a doc that does not exist yet is a ghost node. Selecting it explains the doc and offers "+ <Doc>", which opens the
+// template in the editor as an uncreated draft: Save writes the file (base_hash 'absent'), Cancel writes nothing.
+function activateGhost(t, slug) {
+  const dt = DOC_TYPES.find(d => d.slug === slug);
+  if (!dt) return;
+  modalState.ghost = slug;
+  modalState.activeDoc = docFileFor(t, slug);
   renderModalDocs(t);
-
-  const bodyEl = document.getElementById('m-body');
-  setEditAreaVisible(false);
-  bodyEl.style.display = '';
-
-  const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
-  const suggested     = recommendedSlug(t.status, existingSlugs);
-  const available = availableDocTypes(t);
-  let selectedSlug = available.some(dt => dt.slug === suggested) ? suggested : (available[0]?.slug || '');
-  const statusLabel   = titleCase(t.status.replace('_', ' '));
-
-  const selectedType = () => available.find(dt => dt.slug === selectedSlug);
-  const updateSelection = () => {
-    bodyEl.querySelectorAll('.doc-type-card').forEach(card => {
-      const selected = card.dataset.slug === selectedSlug;
-      card.classList.toggle('selected', selected);
-      card.setAttribute('aria-pressed', selected ? 'true' : 'false');
-    });
-    const editBtn = document.getElementById('act-picker-edit');
-    const dt = selectedType();
-    if (editBtn) {
-      editBtn.disabled = !dt;
-      editBtn.textContent = dt ? `Edit ${dt.name}` : 'Edit doc';
-    }
-  };
-
-  bodyEl.innerHTML = [
-    `<div class="doc-picker-label">This ticket is <strong>${esc(statusLabel)}</strong> — choose a doc type to add:</div>`,
-    ...available.map(dt =>
-      `<button type="button" class="doc-type-card${dt.slug === suggested ? ' suggested' : ''}${dt.slug === selectedSlug ? ' selected' : ''}" data-slug="${esc(dt.slug)}" data-name="${esc(dt.name)}" aria-pressed="${dt.slug === selectedSlug ? 'true' : 'false'}">` +
-        `<div class="doc-type-name">${esc(dt.name)}${dt.slug === suggested ? ' <span class="doc-type-badge">Suggested</span>' : ''}</div>` +
-        `<div class="doc-type-hint">${esc(dt.hint)}</div>` +
-      `</button>`
-    ),
-    available.length === 0 ? '<div class="modal-empty">All doc types already created.</div>' : '',
-  ].join('');
-
-  document.getElementById('m-actions').innerHTML =
-    `<button class="btn btn-primary" id="act-picker-edit"${available.length === 0 ? ' disabled' : ''}>Edit doc</button>` +
-    `<button class="btn" id="act-picker-cancel">Cancel</button>`;
-  document.getElementById('m-kbd').style.display = 'none';
-
-  document.getElementById('act-picker-edit').addEventListener('click', () => {
-    const dt = selectedType();
-    if (dt) selectDocType(t, dt.slug, dt.name);
-  });
-
-  document.getElementById('act-picker-cancel').addEventListener('click', () => {
-    modalState.pickingDoc = false;
-    renderModalBody(t); renderModalDocs(t); refreshModalActions(t);
-    document.getElementById('m-kbd').style.display = '';
-  });
-
-  bodyEl.querySelectorAll('.doc-type-card').forEach(card => {
-    card.addEventListener('click', () => {
-      selectedSlug = card.dataset.slug;
-      updateSelection();
-    });
-  });
-  updateSelection();
+  renderModalBody(t);
+  refreshModalActions(t);
+  document.getElementById('m-kbd').style.display = '';
 }
 
-function selectDocType(t, slug, name) {
-  modalState.pickingDoc = false;
-  const file     = docFileFor(t, slug);
-  const rawTemplate = DOC_TYPES.find(d => d.slug === slug)?.template || `# ${name}\n\n`;
-  const template = rawTemplate.replaceAll('<id>', t.id);
+function renderGhostPane(t) {
+  const dt = DOC_TYPES.find(d => d.slug === modalState.ghost);
+  const bodyEl = document.getElementById('m-body');
+  if (!dt) { bodyEl.innerHTML = ''; return; }
+  bodyEl.innerHTML = `<div class="doc-ghost-pane"><h3>No ${esc(dt.name)} yet</h3><p>${esc(dt.hint)}</p><button type="button" class="btn btn-primary" id="btn-ghost-add">+ ${esc(dt.name)}</button></div>`;
+  document.getElementById('btn-ghost-add').addEventListener('click', () => startGhostEdit(t, dt.slug));
+}
 
-  postWrite(`/api/doc/${encodeURIComponent(file)}`, { content: template, base_hash: 'absent' }, `create ${name}`).then(res => {
-    if (!res.ok) { renderModalDocs(t); return; } // no tab for a doc that wasn't created
-    modalState.docEtag = (res.data && res.data.etag) || '';
-    t.docs = t.docs || [];
-    if (!t.docs.some(d => d.file === file)) t.docs.push({ name, file });
-    modalState.activeDoc = file;
-    modalState.editMode = true;
-    renderModalDocs(t);
-    // pre-fill textarea with template and enter edit mode
-    const bodyEl = document.getElementById('m-body');
-    const editEl = document.getElementById('m-edit-area');
-    bodyEl.style.display = 'none';
-    document.getElementById('m-editor-toolbar').classList.add('open');
-    editEl.value = template;
-    setEditAreaVisible(true);
-    refreshEditorGutter();
-    editEl.focus();
-    document.getElementById('m-actions').innerHTML = '';
-    document.getElementById('m-kbd').style.display = 'none';
-  });
+function startGhostEdit(t, slug) {
+  const dt = DOC_TYPES.find(d => d.slug === slug);
+  if (!dt || modalState.editMode) return;
+  const template = dt.template.replaceAll('<id>', t.id);
+  modalState.editMode = true;
+  modalState.docEtag = 'absent';
+  renderModalDocs(t);
+  document.getElementById('m-docs').classList.add('editing');
+  const editEl = document.getElementById('m-edit-area');
+  document.getElementById('m-body').style.display = 'none';
+  document.getElementById('m-editor-toolbar').classList.add('open');
+  editEl.value = template;
+  setEditAreaVisible(true);
+  refreshEditorGutter();
+  document.getElementById('m-kb-hint').style.display = '';
+  editEl.focus();
+  if (slug === 'acceptance') {
+    const pos = criteriaCursorOffset(editEl.value);
+    if (pos != null) editEl.setSelectionRange(pos, pos);
+  }
+  document.getElementById('m-actions').innerHTML = '';
+  document.getElementById('m-kbd').style.display = 'none';
 }
 
 function linePrefixForTextarea(textarea, prefix) {
@@ -5623,7 +5577,7 @@ function ensureDocGuideComments(t, content) {
 function closeModal() {
   if (modalState.editMode) return; // don't close while editing
   document.getElementById('modal-overlay').classList.remove('open');
-  modalState.pickingDoc = false;
+  modalState.ghost = '';
   state.selectedId = null;
   stopHeadlessPoll();
   renderBoard();
@@ -8454,7 +8408,7 @@ document.addEventListener('keydown', e => {
   }
 
   // t-a205: `e` starts editing, where the Edit button used to; never while typing in a field or with a modifier held.
-  if (e.key === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !modalState.editMode && !modalState.pickingDoc) {
+  if (e.key === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && !modalState.editMode && !modalState.ghost) {
     const tg = e.target;
     if (tg && (tg.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(tg.tagName))) return;
     const t = state.tickets.find(x => x.id === state.selectedId);
