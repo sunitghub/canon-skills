@@ -12241,6 +12241,10 @@ test.describe('board header and card footer (t-7723)', () => {
     await page.keyboard.press('Escape');
     await expect(menu).not.toHaveClass(/open/);
     await expect(btn).toBeFocused();                                                        // Esc returns focus to the button
+    await btn.press('Enter');
+    for (let i = 0; i < 4; i++) await page.keyboard.press('Tab');                           // past Open: leaving the menu closes it
+    await expect(menu).not.toHaveClass(/open/);
+    await expect(btn).toHaveAttribute('aria-expanded', 'false');
     await btn.click();
     await menu.locator('[data-act="open"]').click();
     await expect(page.locator('#m-id')).toHaveText(id);

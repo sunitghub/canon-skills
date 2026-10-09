@@ -3804,6 +3804,14 @@ function renderBoard() {
     document.addEventListener('pointerdown', e => { if (!e.target.closest('#card-menu, .card-menu-btn')) closeMenu(false); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && cardMenu.classList.contains('open')) { e.stopPropagation(); closeMenu(true); } }, true);
     window.addEventListener('scroll', () => closeMenu(false), true);
+    // Tab-ing past the last item closes the menu. WebKit does not focus a clicked button, so a click inside the menu
+    // reports a focusout with no relatedTarget: ignore it while the pointer is down in the menu.
+    let menuPointer = false;
+    cardMenu.addEventListener('pointerdown', () => { menuPointer = true; setTimeout(() => { menuPointer = false; }, 300); });
+    cardMenu.addEventListener('focusout', e => {
+      if (menuPointer) return;
+      if (!e.relatedTarget || !e.relatedTarget.closest('#card-menu, .card-menu-btn')) closeMenu(false);
+    });
     cardMenu.addEventListener('keydown', e => {
       if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
       const items = [...cardMenu.querySelectorAll('button')], i = items.indexOf(document.activeElement);
