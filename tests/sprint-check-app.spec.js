@@ -12229,7 +12229,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     await page.locator('#m-docs .doc-child', { hasText: 'QA' }).click();
     await expect.poll(() => page.evaluate(() => {
       const e = document.getElementById('section-qa'); if (!e) return false;
-      const h = e.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      const h = e.getBoundingClientRect(), b = document.getElementById('m-body').getBoundingClientRect();
       return h.top >= b.top - 1 && h.bottom <= b.bottom + 1;
     })).toBe(true);
     await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
@@ -12574,7 +12574,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('#m-docs .doc-tab.active')).toHaveText('Acceptance');
     await expect.poll(() => page.evaluate(() => {
       const h = document.getElementById('section-qa'); if (!h) return false;
-      const r = h.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      const r = h.getBoundingClientRect(), b = document.getElementById('m-body').getBoundingClientRect();
       return r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
     })).toBe(true);
   });
@@ -12589,7 +12589,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await kids(page, 'acceptance').filter({ hasText: 'QA' }).click();                      // clicked before any heading exists
     await expect.poll(() => page.evaluate(() => {
       const e = document.getElementById('section-qa'); if (!e) return false;
-      const r = e.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      const r = e.getBoundingClientRect(), b = document.getElementById('m-body').getBoundingClientRect();
       return r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
     })).toBe(true);
   });
@@ -12604,7 +12604,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect.poll(() => page.evaluate(() => {
       const h = [...document.querySelectorAll('.doc-heading-2')].find(e => /Shots|shot/i.test(e.textContent + (e.querySelector('img')?.alt || '')));
       if (!h || !h.id) return false;
-      const r = h.getBoundingClientRect(), b = document.querySelector('.modal-body').getBoundingClientRect();
+      const r = h.getBoundingClientRect(), b = document.getElementById('m-body').getBoundingClientRect();
       return r.top >= b.top - 1 && r.bottom <= b.bottom + 1;
     })).toBe(true);
   });
@@ -12700,6 +12700,69 @@ test.describe('ticket modal polish (t-612f)', () => {
     const f = await look(a);
     expect(f.s).not.toBe('none');
     expect(f.s).not.toBe((await look(b)).s);
+  });
+
+  test('a section click scrolls the text inside the rounded card; the card keeps its edges under the pane bar (t-5648)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-s${sfx}`;
+    writeTicket(id);
+    await page.setViewportSize({ width: 1300, height: 800 });
+    await openModalFor(page, id);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();
+    await expect(page.locator('#m-docs .doc-child', { hasText: 'QA' })).toBeVisible();
+    await expect(page.locator('#section-qa')).toHaveCount(1);                               // the text has rendered, so the dialog has its final size
+    await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);   // the open transition has finished
+    const geo = () => page.evaluate(() => {
+      const c = document.getElementById('m-body'), body = document.querySelector('.modal-body'), bar = document.getElementById('m-pane-bar').getBoundingClientRect(), cr = c.getBoundingClientRect();
+      return { cardTop: Math.round(cr.top), cardBottom: Math.round(cr.bottom), barBottom: Math.round(bar.bottom), cardScroll: c.scrollTop, bodyScroll: body.scrollTop };
+    });
+    const before = await geo();
+    await page.locator('#m-docs .doc-child', { hasText: 'QA' }).click();
+    await expect.poll(async () => (await geo()).cardScroll).toBeGreaterThan(0);              // the text moved inside the card
+    const after = await geo();
+    expect(after.bodyScroll).toBe(0);                                                       // the area around the card did not scroll
+    expect(after.cardTop).toBe(before.cardTop);                                             // the card's rounded top is where it was
+    expect(after.cardBottom).toBe(before.cardBottom);
+    expect(after.cardTop).toBeGreaterThan(after.barBottom);                                 // and still below the pane bar
+    await expect.poll(() => page.evaluate(() => {                                           // the scroll is smooth: poll until it lands
+      const h = document.getElementById('section-qa').getBoundingClientRect(), c = document.getElementById('m-body').getBoundingClientRect();
+      return h.top >= c.top - 1 && h.bottom <= c.bottom + 1;
+    })).toBe(true);                                                                         // the heading is inside the card's own visible area
+    expect((await geo()).cardTop).toBe(before.cardTop);                                     // and the card still has not moved
+  });
+
+  test('on the Plan tab the sign-off bar stays above the card and the card, not the body, scrolls (t-5648)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-q${sfx}`;
+    writeTicket(id);
+    await page.setViewportSize({ width: 1300, height: 800 });
+    await openModalFor(page, id);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    await expect(page.locator('.signoff-controls')).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);   // the open transition has finished
+    const r = await page.evaluate(() => {
+      const bar = document.querySelector('.section-jumps').getBoundingClientRect(), card = document.getElementById('m-body').getBoundingClientRect(), body = document.querySelector('.modal-body');
+      return { barBottom: bar.bottom, cardTop: card.top, bodyOverflow: body.scrollHeight - body.clientHeight };
+    });
+    expect(r.barBottom).toBeLessThanOrEqual(r.cardTop + 1);                                 // the bar sits above the card, not over it
+    expect(r.bodyOverflow).toBeLessThanOrEqual(1);                                          // the body has nothing of its own to scroll
+  });
+
+  test('a short doc keeps a card as tall as its text: no stretch to the pane bottom, no scrollbar (t-5648)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-h${sfx}`;
+    writeTicket(id);
+    await page.setViewportSize({ width: 1300, height: 950 });
+    await openModalFor(page, id);
+    await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);   // the open transition has finished
+    await page.locator('#m-docs .doc-tab', { hasText: 'Research' }).click();
+    await expect(page.locator('#m-body')).toContainText('Only one heading');
+    const grip = page.locator('#modal .modal-resize-handle:not(.modal-resize-handle-tl)'), gb = await grip.boundingBox();
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.down(); await page.mouse.move(gb.x + gb.width / 2, gb.y + 260, { steps: 8 }); await page.mouse.up();   // a dialog taller than a short doc
+    const r = await page.evaluate(() => {
+      const c = document.getElementById('m-body'), b = document.querySelector('.modal-body');
+      return { card: c.getBoundingClientRect().height, body: b.clientHeight, scrolls: c.scrollHeight - c.clientHeight };
+    });
+    expect(r.card).toBeLessThan(r.body - 100);                                              // a short doc leaves room below its card
+    expect(r.scrolls).toBeLessThanOrEqual(1);                                               // and shows no scrollbar
   });
 
   test('a Feature card with the Demo/UX badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {

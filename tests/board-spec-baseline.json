@@ -409,6 +409,17 @@
       "failed_runs": {
         "chromium": "1 of 1 full run (t-1478), intermittent when run alone"
       }
+    },
+    {
+      "title": "ticket modal editor (t-a205) > while the new-doc picker is open, double-click and e do not start editing",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed once in a full webkit run while the machine was loaded by a second session's tests; passed 4 of 4 when run alone on the same commit (2026-10-08, t-5648 branch)",
+      "failed_runs": {
+        "webkit": "1 of 1 full run (t-5648); 0 of 4 alone"
+      }
     }
   ],
   "skipped": []
