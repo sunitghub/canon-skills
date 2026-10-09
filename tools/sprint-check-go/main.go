@@ -815,6 +815,7 @@ func parseTicket(path string) (ticket, error) {
 		t["layout"] = "folder"
 		files, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "*.md"))
 		sort.Strings(files)
+		sort.SliceStable(files, func(i, j int) bool { return docRank(files[i]) < docRank(files[j]) })
 		for _, f := range files {
 			if filepath.Base(f) == "ticket.md" {
 				continue
@@ -4933,8 +4934,29 @@ func setDefault(t ticket, key string, value any) {
 	}
 }
 
+// t-1f22: the two gate reports are named for who writes them; server.py's _doc_name must match.
+var docNameOverrides = map[string]string{"eval-report": "Eval Agent", "review-notes": "Review Agent"}
+
+// t-1f22: the working docs first, then the two gate reports one after another (review, then eval), then the rest by name.
+// server.py's _doc_order must match.
+var docOrder = []string{"acceptance", "plan", "research", "review-notes", "eval-report"}
+
+func docRank(path string) int {
+	stem := strings.TrimSuffix(filepath.Base(path), ".md")
+	for i, s := range docOrder {
+		if s == stem {
+			return i
+		}
+	}
+	return len(docOrder)
+}
+
 func docName(path string) string {
-	return titleCase(strings.ReplaceAll(strings.TrimSuffix(filepath.Base(path), ".md"), "-", " "))
+	stem := strings.TrimSuffix(filepath.Base(path), ".md")
+	if name, ok := docNameOverrides[stem]; ok {
+		return name
+	}
+	return titleCase(strings.ReplaceAll(stem, "-", " "))
 }
 
 func titleCase(s string) string {
