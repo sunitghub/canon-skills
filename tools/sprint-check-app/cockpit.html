@@ -39,10 +39,11 @@
   .side-collapse svg{transition:transform .18s ease}
   html.side-collapsed .side-collapse svg{transform:rotate(180deg)}
   html.side-collapsed .below{grid-template-columns:56px 1fr}
-  html.side-collapsed .side-resize,html.side-collapsed .side .navlabel,html.side-collapsed .side .agents,html.side-collapsed .side .foot,html.side-collapsed .brand small,html.side-collapsed .nav a .badge{display:none}
+  html.side-collapsed .side-resize,html.side-collapsed .side .navlabel,html.side-collapsed .side .agents,html.side-collapsed .side .foot,html.side-collapsed .brand small,html.side-collapsed .nav a .badge:not(.nav-bubble){display:none}
   html.side-collapsed .brand{font-size:0;justify-content:center;padding-left:0;padding-right:0}
   html.side-collapsed .nav a{font-size:0;justify-content:center;padding:11px 0}
-  html.side-collapsed .nav a .ic{font-size:15px}
+  html.side-collapsed .nav a{position:relative}
+  html.side-collapsed .nav a .nav-bubble{position:absolute;top:3px;right:6px;margin:0;font-size:9px;padding:0 5px}   /* the stopped-sessions alert must not vanish with the labels */
   body.resizing{cursor:col-resize;user-select:none}
   body.resizing iframe{pointer-events:none}
   .brand{display:flex;align-items:center;gap:9px;white-space:nowrap;height:var(--strip-h);padding:var(--strip-pad) 18px 0;margin-bottom:6px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px}
@@ -1373,19 +1374,16 @@
   function setSideCollapsed(on, save){
     document.documentElement.classList.toggle('side-collapsed', on);
     const b=document.getElementById('side-collapse');
-    if(b){
-      b.setAttribute('aria-expanded', String(!on));
-      b.setAttribute('aria-label', on ? 'Expand sidebar' : 'Collapse sidebar');
-      b.title=(on ? 'Expand sidebar' : 'Collapse sidebar')+' (ctrl+. then w)';
-    }
+    b.setAttribute('aria-expanded', String(!on));
+    b.setAttribute('aria-label', on ? 'Expand sidebar' : 'Collapse sidebar');
+    b.title=(on ? 'Expand sidebar' : 'Collapse sidebar')+' (ctrl+. then w)';
     if(save){ try{ localStorage.setItem(LS_SIDE_OFF, on ? '1' : '0'); }catch(e){} }
   }
   function toggleSide(){ setSideCollapsed(!document.documentElement.classList.contains('side-collapsed'), true); }
   (function initSideCollapse(){
     let off=false; try{ off=localStorage.getItem(LS_SIDE_OFF)==='1'; }catch(e){}
     setSideCollapsed(off, false);
-    const b=document.getElementById('side-collapse');
-    if(b) b.addEventListener('click', toggleSide);
+    document.getElementById('side-collapse').addEventListener('click', toggleSide);
   })();
 
   function renderAdminSessions(views){

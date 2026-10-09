@@ -4784,6 +4784,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ag-label')).toBeHidden();
       await expect(page.locator('.side .foot')).toBeHidden();
       await expect(page.locator('#nav-projects .badge')).toBeHidden();
+      await page.evaluate(() => { const b = document.getElementById('admin-bubble'); b.hidden = false; b.textContent = '2'; });
+      await expect(page.locator('#admin-bubble')).toBeVisible();                              // the stopped-sessions alert stays on the Admin icon
+      const bb = await page.locator('#admin-bubble').boundingBox(), ab = await page.locator('#nav-admin').boundingBox();
+      expect(bb.x).toBeGreaterThanOrEqual(ab.x - 1); expect(bb.x + bb.width).toBeLessThanOrEqual(ab.x + ab.width + 1);   // and inside the strip
       await expect(page.locator('#nav-projects .ic')).toBeVisible();
       const ink = await page.locator('#nav-projects').evaluate(e => getComputedStyle(e).fontSize);
       expect(ink).toBe('0px');                                                                // the word "Projects" takes no room
