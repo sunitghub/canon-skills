@@ -240,13 +240,13 @@
     .wip-copy:hover { background: var(--accent); color: #fff; border-color: var(--accent); }
     .wip-copy.copied { border-color: var(--col-done); color: var(--col-done); background: transparent; }
 
-    .branch-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+    .branch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-size: 12px; color: var(--text-muted); }
     .modified-badge {
       font-size: 11px; padding: 1px 6px;
       background: rgba(251,146,60,.15); color: #fb923c;
       border-radius: 10px; margin-left: auto;
     }
-    .focus-text { font-size: 13px; color: var(--text); line-height: 1.6; }
+    .focus-text { font-size: 13px; color: var(--text); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
     .commit-list { display: flex; flex-direction: column; gap: 7px; }
     .commit-item {
       display: flex; align-items: flex-start; gap: 7px; font-size: 12px;
@@ -467,23 +467,25 @@
       display: flex; flex-direction: column;
       /* t-28ec: equal lanes that share the whole board width (basis 0: content can't skew them) */
       min-width: 210px; flex: 1 1 0;
-      background: var(--surface); border-radius: var(--radius);
-      border: 1px solid var(--border); overflow: hidden;
       max-height: 100%;
     }
     .column-header {
       display: flex; align-items: center; justify-content: space-between;
-      padding: 9px 13px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      gap: 8px; padding: 6px 8px 8px; flex-shrink: 0;
     }
     .column-title {
       display: flex; align-items: center; gap: 7px;
-      font-size: 11px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase;
+      font-size: 11px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; color: var(--text-muted);
     }
+    .column-header-end { display: flex; align-items: center; gap: 6px; margin-left: auto; }
+    .column-add {
+      width: 20px; height: 20px; padding: 0; border-radius: 6px; line-height: 1; font-size: 14px;
+      border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer;
+    }
+    .column-add:hover { background: var(--surface-hover); color: var(--text); border-color: var(--border-hover); }
     .col-indicator { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
     .column-count {
-      font-size: 11px; font-weight: 600; color: var(--text);
-      background: var(--surface-hover); border: 1px solid var(--border-hover);
-      padding: 1px 8px; border-radius: 10px;
+      font-size: 11px; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums;
     }
     .column-body {
       flex: 1; min-height: 0; overflow-y: auto; padding: 8px;
@@ -497,16 +499,13 @@
 
     /* Column status theming */
     .col-open       .col-indicator { background: var(--col-open); }
-    .col-open       .column-title  { color: var(--col-open); }
     .col-progress   .col-indicator { background: var(--col-progress); }
-    .col-progress   .column-title  { color: var(--col-progress); }
     .col-done       .col-indicator { background: var(--col-done); }
-    .col-done       .column-title  { color: var(--col-done); }
     .col-discarded  .col-indicator { background: var(--col-discarded); }
-    .col-discarded  .column-title  { color: var(--col-discarded); }
 
     /* Discarded column is visually de-emphasized */
     .col-discarded  .column-body   { opacity: .55; }
+    .col-discarded  .column-header { opacity: .6; }
 
     /* ── Show more / less ────────────────────────── */
     .col-show-more {
@@ -570,19 +569,26 @@
       font-size: 10px; font-weight: 700; letter-spacing: .06em;
       color: var(--text-muted); position: relative; z-index: 1;
     }
-    .card-id-copy {
-      margin-left: 4px; flex-shrink: 0; font-size: 9px; padding: 1px 5px;
-      border-radius: 3px; border: 1px solid transparent; background: transparent;
+    .card-menu-btn {
+      margin-left: 4px; flex-shrink: 0; font-size: 13px; padding: 0 5px; height: 16px;
+      border-radius: 4px; border: 1px solid transparent; background: transparent;
       color: var(--text-muted); cursor: pointer; transition: all .15s;
-      position: relative; z-index: 1; line-height: 1.4;
-      font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+      position: relative; z-index: 1; line-height: 1; letter-spacing: .1em;
       opacity: 0;
     }
-    .card-id-copy:hover { border-color: var(--border-hover); color: var(--text); background: var(--surface-hover); transform: translateY(-1px); box-shadow: 0 2px 6px rgba(0,0,0,.18); }
-    .card:hover .card-id-copy, .card:focus-within .card-id-copy, .card-id-copy:focus-visible, .card-id-copy.copied { opacity: 1; }
-    @media (hover: none) { .card-id-copy { opacity: 1; } }
-    .card-id-copy:active { transform: translateY(0); box-shadow: none; }
-    .card-id-copy.copied { border-color: var(--col-done); color: var(--col-done); }
+    .card-menu-btn:hover, .card-menu-btn[aria-expanded="true"] { border-color: var(--border-hover); color: var(--text); background: var(--surface-hover); }
+    .card:hover .card-menu-btn, .card:focus-within .card-menu-btn, .card-menu-btn:focus-visible, .card-menu-btn[aria-expanded="true"] { opacity: 1; }
+    @media (hover: none) { .card-menu-btn { opacity: 1; } }
+    .card-menu {
+      position: fixed; z-index: 60; min-width: 150px; padding: 4px; display: none; flex-direction: column;
+      background: var(--surface-raised); border: 1px solid var(--border-hover); border-radius: var(--radius-sm);
+      box-shadow: 0 8px 24px rgba(0,0,0,.28);
+    }
+    .card-menu.open { display: flex; }
+    .card-menu button {
+      text-align: left; font-size: 12px; padding: 6px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--text); cursor: pointer;
+    }
+    .card-menu button:hover, .card-menu button:focus-visible { background: var(--surface-hover); outline: none; }
 
     /* Card body — title zone */
     .card-body { padding: 10px 11px 8px; }
@@ -684,18 +690,18 @@
     .card:hover .card-archive { display: block; }
     .card-archive:hover { color: var(--text); border-color: var(--border-hover); background: var(--surface-hover); }
 
-    /* Type badges — solid saturated fill + small dot (Harmony-style), same in both themes */
+    /* Type badges — a coloured dot and the word, no fill (t-9d93), same in both themes */
     .type-badge {
-      font-size: 10px; padding: 1px 7px 1px 5px; border-radius: 4px; font-weight: 700;
+      font-size: 10px; padding: 1px 2px; font-weight: 700;
       letter-spacing: .04em; text-transform: uppercase; position: relative; z-index: 1;
-      display: inline-flex; align-items: center; gap: 4px; color: #fff;
+      display: inline-flex; align-items: center; gap: 5px; color: var(--text-muted);
     }
-    .type-badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: rgba(255,255,255,.65); flex-shrink: 0; }
-    .type-bug     { background: #ef4444; }
-    .type-feature { background: #8b5cf6; }
-    .type-task    { background: #3b82f6; }
-    .type-chore   { background: #6b7280; }
-    .type-epic    { background: #f97316; }
+    .type-badge::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--type-dot, #6b7280); flex-shrink: 0; }
+    .type-bug     { --type-dot: #ef4444; }
+    .type-feature { --type-dot: #8b5cf6; }
+    .type-task    { --type-dot: #3b82f6; }
+    .type-chore   { --type-dot: #6b7280; }
+    .type-epic    { --type-dot: #f97316; }
 
     /* CI-eligibility badge — shown only when ci: true; absent/false render nothing */
     .ci-badge {
@@ -3530,6 +3536,7 @@ function renderSidebar() {
   }
 
   setText('s-focus', handoff?.focus || 'No HANDOFF.md Current Focus found.');
+  document.getElementById('s-focus').title = handoff?.focus || '';
 
   const commitsTotalEl = document.getElementById('s-commits-total');
   if (typeof git?.total_commits === 'number') { commitsTotalEl.textContent = git.total_commits; commitsTotalEl.style.display = ''; }
@@ -3683,7 +3690,10 @@ function renderBoard() {
         <div class="column-header">
           <div class="column-title"><div class="col-indicator"></div>${esc(col.label)}</div>
           ${needsHere ? `<span class="column-needs">${needsHere} needs you</span>` : ''}
-          ${cards.length > 0 ? `<span class="column-count">${cards.length}</span>` : ''}
+          <span class="column-header-end">
+            ${cards.length > 0 ? `<span class="column-count">${cards.length}</span>` : ''}
+            ${col.status === 'open' ? `<button class="column-add" type="button" aria-label="New ticket" title="New ticket">+</button>` : ''}
+          </span>
         </div>
         <div class="column-body" data-status="${esc(col.status)}">
           ${visible.length
@@ -3700,6 +3710,8 @@ function renderBoard() {
   }).join('');
 
   state.boardFirstRender = false;
+
+  board.querySelectorAll('.column-add').forEach(btn => btn.addEventListener('click', () => document.getElementById('btn-create').click()));
 
   board.querySelectorAll('.col-show-more').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -3773,29 +3785,66 @@ function renderBoard() {
     });
   });
 
-  board.querySelectorAll('.card-id-copy').forEach(btn => {
-    const flash = (label) => {
-      const prev = btn.textContent;
-      btn.textContent = label;
-      btn.classList.add('copied');
-      setTimeout(() => {
-        btn.textContent = 'Copy';
-        btn.classList.remove('copied');
-      }, 1200);
-      return prev;
+  // t-9d93: the hover menu (Copy ID, Copy folder path, Open) replaces the hover COPY button.
+  let cardMenu = document.getElementById('card-menu');
+  if (!cardMenu) {
+    cardMenu = document.createElement('div');
+    cardMenu.id = 'card-menu';
+    cardMenu.className = 'card-menu';
+    cardMenu.setAttribute('role', 'menu');
+    cardMenu.innerHTML = '<button type="button" role="menuitem" data-act="id">Copy ID</button><button type="button" role="menuitem" data-act="path">Copy folder path</button><button type="button" role="menuitem" data-act="open">Open</button>';
+    document.body.appendChild(cardMenu);
+    const closeMenu = (refocus) => {
+      if (!cardMenu.classList.contains('open')) return;
+      cardMenu.classList.remove('open');
+      const owner = document.querySelector('.card-menu-btn[aria-expanded="true"]');
+      if (owner) { owner.setAttribute('aria-expanded', 'false'); if (refocus) owner.focus(); }
     };
-    const ticketDir = (id) => {
+    cardMenu._close = closeMenu;
+    document.addEventListener('pointerdown', e => { if (!e.target.closest('#card-menu, .card-menu-btn')) closeMenu(false); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && cardMenu.classList.contains('open')) { e.stopPropagation(); closeMenu(true); } }, true);
+    window.addEventListener('scroll', () => closeMenu(false), true);
+    // Tab-ing past the last item closes the menu. WebKit does not focus a clicked button, so a click inside the menu
+    // reports a focusout with no relatedTarget: ignore it while the pointer is down in the menu.
+    let menuPointer = false;
+    cardMenu.addEventListener('pointerdown', () => { menuPointer = true; setTimeout(() => { menuPointer = false; }, 300); });
+    cardMenu.addEventListener('focusout', e => {
+      if (menuPointer) return;
+      if (!e.relatedTarget || !e.relatedTarget.closest('#card-menu, .card-menu-btn')) closeMenu(false);
+    });
+    cardMenu.addEventListener('keydown', e => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      const items = [...cardMenu.querySelectorAll('button')], i = items.indexOf(document.activeElement);
+      items[(i + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+      e.preventDefault();
+    });
+    cardMenu.addEventListener('click', e => {
+      const item = e.target.closest('button[data-act]');
+      if (!item) return;
+      const id = cardMenu.dataset.id, act = item.dataset.act;
       const root = (state.gitRoot || '').replace(/\/+$/, '');
-      return (root ? root + '/' : '') + '.tickets/' + id;
-    };
+      if (act === 'open') { closeMenu(false); openModal(id); return; }
+      const text = act === 'id' ? id : (root ? root + '/' : '') + '.tickets/' + id;
+      navigator.clipboard.writeText(text).then(() => {
+        item.textContent = 'Copied';
+        setTimeout(() => closeMenu(true), 600);
+      }).catch(() => closeMenu(true));
+    });
+  }
+  board.querySelectorAll('.card-menu-btn').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation();
-      if (e.detail > 1) return; // second click of a double-click; dblclick copies the folder path
-      navigator.clipboard.writeText(btn.dataset.copy).then(() => flash('Done')).catch(() => {});
-    });
-    btn.addEventListener('dblclick', e => {
-      e.stopPropagation();
-      navigator.clipboard.writeText(ticketDir(btn.dataset.copy)).then(() => flash('Path')).catch(() => {});
+      if (btn.getAttribute('aria-expanded') === 'true') { cardMenu._close(true); return; }
+      cardMenu._close(false);
+      cardMenu.querySelector('[data-act="id"]').textContent = 'Copy ID';
+      cardMenu.querySelector('[data-act="path"]').textContent = 'Copy folder path';
+      cardMenu.dataset.id = btn.dataset.id;
+      const r = btn.getBoundingClientRect();
+      cardMenu.classList.add('open');
+      cardMenu.style.left = Math.max(8, Math.min(r.left, innerWidth - cardMenu.offsetWidth - 8)) + 'px';
+      cardMenu.style.top = Math.min(r.bottom + 4, innerHeight - cardMenu.offsetHeight - 8) + 'px';
+      btn.setAttribute('aria-expanded', 'true');
+      cardMenu.querySelector('button').focus();
     });
   });
 
@@ -4049,7 +4098,7 @@ function cardHTML(t, idx) {
       ${live ? cardStateHTML(t, live) : ''}
       <div class="card-head">
         <span class="card-id">${esc(t.id)}</span>
-        <button class="card-id-copy" data-copy="${esc(t.id)}" title="Copy ticket ID — double-click to copy the .tickets/ folder path">Copy</button>
+        <button class="card-menu-btn" type="button" data-id="${esc(t.id)}" aria-haspopup="menu" aria-expanded="false" aria-label="Card menu for ${esc(t.id)}" title="Copy ID, copy folder path, open">⋯</button>
         ${typeBadge(t.type)}
         ${ciBadge(t)}
         ${demoBadge(t)}
@@ -8527,11 +8576,12 @@ function setText(id, val) {
   const toggle       = document.getElementById('sidebar-toggle');
   const handle       = document.getElementById('sidebar-resize');
   const W_KEY        = 'sprint-check-sidebar-w';
-  const C_KEY        = 'sprint-check-sidebar-collapsed';
+  // t-9d93: remembered per project; a project with no saved choice starts collapsed.
+  const C_KEY        = 'sprint-check-sidebar-collapsed:' + (new URLSearchParams(location.search).get('project') || '');
   const MIN_W = 160, MAX_W = 480, DEFAULT_W = 240;
 
   let width     = parseInt(localStorage.getItem(W_KEY) || DEFAULT_W);
-  let collapsed = localStorage.getItem(C_KEY) === 'true';
+  let collapsed = localStorage.getItem(C_KEY) !== 'false';
 
   function applyState(animate) {
     if (!animate) sidebar.style.transition = 'none';

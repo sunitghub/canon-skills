@@ -24,6 +24,13 @@ const FAKE_DAEMON_ADDR = '127.0.0.1:59999';
 // other paths are untouched. A test sets realLanding to exercise the redirect itself.
 let realLanding = false;
 test.beforeEach(async ({ context }) => {
+  // t-9d93: the board's sidebar starts collapsed; most tests read it, so open it unless the URL has ?sbdefault=1.
+  await context.addInitScript(() => {
+    try {
+      const k = 'sprint-check-sidebar-collapsed:' + (new URLSearchParams(location.search).get('project') || '');
+      if (!location.search.includes('sbdefault') && localStorage.getItem(k) === null) localStorage.setItem(k, 'false');
+    } catch {}
+  });
   await context.route(u => u.pathname === '/', route => {
     const req = route.request();
     const u = new URL(req.url());
@@ -195,7 +202,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('double-clicking a card Copy button copies the .tickets/<id> folder path (single-click still copies the id)', async ({ page }) => {
+  test('the card menu copies the id and the .tickets/<id> folder path (t-9d93)', async ({ page }) => {
     const id = `t-copy-${Date.now()}`;
     const title = `Copy folder ${Date.now()}`;
 
@@ -224,15 +231,21 @@ test.describe('board modal', () => {
       await page.goto(`${BASE}?debug=1`);
       await page.waitForLoadState('networkidle');
 
-      const copyBtn = page.locator(`.col-progress .card[data-id="${id}"] .card-id-copy`);
-      await expect(copyBtn).toBeVisible();
+      const card = page.locator(`.col-progress .card[data-id="${id}"]`);
+      await card.hover();
+      const menuBtn = card.locator('.card-menu-btn');
+      await expect(menuBtn).toBeVisible();
 
-      await copyBtn.click();
+      await menuBtn.click();
+      await page.locator('#card-menu [data-act="id"]').click();
       await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toBe(id);
+      await expect(page.locator('#card-menu')).not.toHaveClass(/open/);   // the menu closes itself after a copy
 
-      await copyBtn.dblclick();
+      await card.hover();
+      await menuBtn.click();
+      await page.locator('#card-menu [data-act="path"]').click();
       await expect.poll(() => page.evaluate(() => window.__copied.at(-1))).toMatch(new RegExp(`/\\.tickets/${id}$`));
-      // The double-click must not have left the modal open.
+      // Using the menu must not have opened the ticket modal.
       await expect(page.locator('#m-id')).not.toHaveText(id);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
@@ -12209,22 +12222,90 @@ test.describe('board header and card footer (t-7723)', () => {
     });
   }
 
-  test('Copy is hidden at rest, shown on hover and on keyboard focus, and still copies', async ({ page, context }) => {
-    await context.grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {});
-    const id = `t-fp-copy-${Date.now()}`;
+  test('the card menu button is hidden at rest, shown on hover and keyboard focus; the menu opens, opens the ticket and closes on Esc (t-9d93)', async ({ page }) => {
+    const id = `t-fp-menu-${Date.now()}`;
     writeTicket(id);
     await openBoard(page, id);
-    const card = page.locator(`.card[data-id="${id}"]`), copy = card.locator('.card-id-copy');
+    const card = page.locator(`.card[data-id="${id}"]`), btn = card.locator('.card-menu-btn'), menu = page.locator('#card-menu');
     await page.mouse.move(0, 0);
-    await expect.poll(() => copy.evaluate(e => getComputedStyle(e).opacity)).toBe('0');
+    await expect.poll(() => btn.evaluate(e => getComputedStyle(e).opacity)).toBe('0');
     await card.hover();
-    await expect.poll(() => copy.evaluate(e => getComputedStyle(e).opacity)).toBe('1');
+    await expect.poll(() => btn.evaluate(e => getComputedStyle(e).opacity)).toBe('1');
     await page.mouse.move(0, 0);
-    await copy.focus();
-    await expect.poll(() => copy.evaluate(e => getComputedStyle(e).opacity)).toBe('1');
-    await copy.click();
-    await expect(copy).toHaveClass(/copied/);
+    await btn.focus();
+    await expect.poll(() => btn.evaluate(e => getComputedStyle(e).opacity)).toBe('1');
+    await page.keyboard.press('Enter');
+    await expect(menu).toHaveClass(/open/);
+    await expect(btn).toHaveAttribute('aria-expanded', 'true');
+    await expect(menu.locator('button')).toHaveText(['Copy ID', 'Copy folder path', 'Open']);
+    await page.keyboard.press('Escape');
+    await expect(menu).not.toHaveClass(/open/);
+    await expect(btn).toBeFocused();                                                        // Esc returns focus to the button
+    await btn.press('Enter');
+    for (let i = 0; i < 4; i++) await page.keyboard.press('Tab');                           // past Open: leaving the menu closes it
+    await expect(menu).not.toHaveClass(/open/);
+    await expect(btn).toHaveAttribute('aria-expanded', 'false');
+    await btn.click();
+    await menu.locator('[data-act="open"]').click();
+    await expect(page.locator('#m-id')).toHaveText(id);
   });
+
+  test('columns have no box: the status colour is the header dot only, + is on Open alone, Discarded is muted (t-9d93)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    const r = await page.evaluate(() => {
+      const col = c => document.querySelector(`.column.${c}`);
+      const cs = (el, p) => getComputedStyle(el)[p];
+      const open = col('col-open');
+      return {
+        border: cs(open, 'borderTopWidth'), bg: cs(open, 'backgroundColor'),
+        title: cs(open.querySelector('.column-title'), 'color'), titleDone: cs(col('col-done').querySelector('.column-title'), 'color'),
+        dot: cs(open.querySelector('.col-indicator'), 'backgroundColor'), dotDone: cs(col('col-done').querySelector('.col-indicator'), 'backgroundColor'),
+        countBg: document.querySelector('.column-count') ? cs(document.querySelector('.column-count'), 'backgroundColor') : null,
+        adds: [...document.querySelectorAll('.column')].map(c => c.querySelectorAll('.column-add').length),
+        discardedOpacity: cs(col('col-discarded').querySelector('.column-header'), 'opacity'),
+      };
+    });
+    expect(r.border).toBe('0px');
+    expect(r.bg).toBe('rgba(0, 0, 0, 0)');
+    expect(r.title).toBe(r.titleDone);                                                      // titles share one colour; only the dot differs
+    expect(r.dot).not.toBe(r.dotDone);
+    if (r.countBg) expect(r.countBg).toBe('rgba(0, 0, 0, 0)');                             // the count is plain text, not a pill
+    expect(r.adds).toEqual([1, 0, 0, 0]);                                                   // + on Open only
+    expect(Number(r.discardedOpacity)).toBeLessThan(1);
+    await page.locator('.column-add').click();
+    await expect(page.locator('#create-modal')).toBeVisible();
+  });
+
+  test('the type badge is a dot and the word, with no fill (t-9d93)', async ({ page }) => {
+    const id = `t-fp-type-${Date.now()}`;
+    writeTicket(id);
+    await openBoard(page, id);
+    const r = await page.locator(`.card[data-id="${id}"] .type-badge`).evaluate(el => ({
+      bg: getComputedStyle(el).backgroundColor, dot: getComputedStyle(el, '::before').backgroundColor, text: el.textContent.trim().toLowerCase(),
+    }));
+    expect(r.bg).toBe('rgba(0, 0, 0, 0)');
+    expect(r.dot).not.toBe('rgba(0, 0, 0, 0)');
+    expect(r.text).toBe('task');
+  });
+
+  test('the sidebar starts collapsed, remembers the choice per project and keeps the donut; Current focus is clamped (t-9d93)', async ({ page }) => {
+    await page.goto(`${BASE}?sbdefault=1`);
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);                        // no saved choice: starts collapsed
+    await page.locator('#sidebar-toggle').click();
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);
+    await expect(page.locator('.sidebar-donut')).toBeVisible();
+    await page.goto(`${BASE}?sbdefault=1`);
+    await expect(page.locator('#sidebar')).not.toHaveClass(/collapsed/);                    // reload keeps it open
+    await page.goto(`${BASE}?sbdefault=1&project=other-project`);
+    await expect(page.locator('#sidebar')).toHaveClass(/collapsed/);                        // another project has its own choice
+    await page.goto(`${BASE}?sbdefault=1`);
+    await page.evaluate(() => { const f = document.getElementById('s-focus'); f.textContent = 'word '.repeat(300); });
+    const r = await page.locator('#s-focus').evaluate(el => ({ h: el.getBoundingClientRect().height, lh: parseFloat(getComputedStyle(el).lineHeight) }));
+    expect(r.h).toBeLessThanOrEqual(r.lh * 3 + 1);
+  });
+
 });
 
 // t-e946 slice A: the ticket modal's document tree (left) and pane bar replace the horizontal tab strip
