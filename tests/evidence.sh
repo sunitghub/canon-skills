@@ -30,7 +30,9 @@ ev stamp "$ID" suite -- bash -c 'echo one; echo two'; assert_eq 0 "$code"
 f="$ED/suite.log"; assert_file_exists "$f"
 [[ "$(sed -n 1p "$f")" =~ $stamp_re ]] || fail "evidence: line 1 is not the documented stamp: $(sed -n 1p "$f")"
 assert_eq "HEAD $C1" "$(sed -n 1p "$f" | cut -d' ' -f1-2)"
-assert_eq '$ bash -c echo one; echo two' "$(sed -n 2p "$f")"
+assert_eq '$ bash -c echo\ one\;\ echo\ two' "$(sed -n 2p "$f")"                     # %q keeps the quoting
+ev stamp "$ID" q1 -- bash -c 'echo a b'; ev stamp "$ID" q2 -- bash -c echo a b
+[[ "$(sed -n 2p "$ED/q1.log")" != "$(sed -n 2p "$ED/q2.log")" ]] || fail "evidence: two commands that differ only in quoting gave the same command line"
 assert_eq "one two exit 0" "$(sed -n '3,$p' "$f" | tr '\n' ' ' | sed 's/ $//')"
 ev stamp "$ID" suite -- bash -c 'echo failing; exit 7'; assert_eq 7 "$code"                      # the command's own code comes back and is written
 assert_eq "exit 7" "$(tail -n1 "$f")"; assert_count 0 "exit 0" "$f"                                 # a re-stamp replaces the log
@@ -116,9 +118,12 @@ ev check "$ID"; assert_eq 0 "$code"; assert_eq fresh "$(first_word)"
 assert_contains "$out" "exit=0"; assert_contains "$out" "cmd: bash tests/x.sh"; assert_contains "$out" "HEAD ${C1:0:7} = graded"
 [[ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" == 1 ]] || fail "evidence: one file must give one line: $out"
 rm -rf "$ED"
-# abbreviated sha, trailing text after the time, CRLF
+# abbreviated sha and CRLF are fine; text after the time is not (the tool never writes any)
 put abbr.log "HEAD ${C1:0:7} $T\n"; ev check "$ID"; assert_eq fresh "$(first_word)"
-put tail.log "HEAD $C1 2026-10-09 07:22:47  release-manifest -> ok\n"; ev check "$ID"; assert_contains "$out" "fresh tail.log"
+put tail.log "HEAD $C1 2026-10-09 07:22:47  release-manifest -> ok\n"; ev check "$ID"; assert_contains "$out" "unstamped tail.log"
+put tail2.log "HEAD $C1 $T +wt dirty tree\nexit 0\n"; ev check "$ID"; assert_contains "$out" "unstamped tail2.log"
+put tail3.log "HEAD $C1 $T uncommitted\nexit 0\n"; ev check "$ID"; assert_contains "$out" "unstamped tail3.log"
+rm -f "$ED/tail.log" "$ED/tail2.log" "$ED/tail3.log"
 put crlf.log "HEAD $C1 $T\r\nbody\r\nexit 0\r\n"; ev check "$ID"; assert_contains "$out" "fresh crlf.log exit=0"
 # a later commit that only touches .tickets/ keeps it fresh; one that touches tracked code makes it stale and names the file
 reset_repo; put old.log "HEAD $C1 $T\nexit 0\n"
@@ -136,6 +141,22 @@ git checkout -q -b side "$C1"; echo side > src/side.txt; git add src; git commit
 put side.log "HEAD $CS $T\nexit 0\n"; ev check "$ID"; assert_contains "$out" "stale side.log exit=0 (HEAD ${CS:0:7} is not an ancestor"
 put ghost.log "HEAD $(printf 'f%.0s' $(seq 1 40)) $T\nexit 0\n"; ev check "$ID"; assert_contains "$out" "stale ghost.log exit=0 (unknown commit"
 reset_repo
+# an uncommitted edit to a tracked file after the stamp: it cannot vouch for that tree (reviewer finding 4); untracked files and .tickets/ do not count
+reset_repo; put dirty.log "HEAD $C1 $T\nexit 0\n"
+ev check "$ID"; assert_contains "$out" "fresh dirty.log"
+echo more >> src/a.txt; ev check "$ID"; assert_contains "$out" "stale dirty.log exit=0 (HEAD ${C1:0:7}; tracked files are modified in the working tree since)"
+git checkout -q -- src/a.txt; echo scratch > untracked.txt; echo more >> ".tickets/$ID/ticket.md"; ev check "$ID"; assert_contains "$out" "fresh dirty.log"
+git checkout -q -- ".tickets/$ID/ticket.md"; rm -f untracked.txt
+# ...but not when grading another commit: the working tree is not what is being graded
+git commit -q --allow-empty -m next; echo more >> src/a.txt; ev check "$ID" "$C1"; assert_contains "$out" "fresh dirty.log"
+git checkout -q -- src/a.txt; git reset -q --hard "$C1"
+# git failing inside `check` (reviewer finding 3) is stale, never a silently empty list: a git shim that only fails the name-only diff
+mkdir -p "$WORK/shim"; REAL_GIT="$(command -v git)"
+printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = "--name-only" ] && exit 128; done\nexec "%s" "$@"\n' "$REAL_GIT" > "$WORK/shim/git"; chmod +x "$WORK/shim/git"
+echo more >> src/a.txt; git commit -qam "code"
+set +e; out="$(cd "$REPO" && PATH="$WORK/shim:$PATH" bash "$EV" check "$ID" 2>&1)"; code=$?; set -e
+assert_eq 0 "$code"; assert_contains "$out" "stale dirty.log exit=0 (HEAD ${C1:0:7}; git could not compare it with"
+reset_repo
 # exit= comes from the LAST line only
 put e1.log "HEAD $C1 $T\nexit 0\nmore output\nexit 5\n"; put e2.log "HEAD $C1 $T\nexit 5\nmore output\n"; put e3.log "HEAD $C1 $T\nexit 99999\n"
 put e4.log "HEAD $C1 $T\nexit 0 and then some\n"; put e5.log "HEAD $C1 $T\nexit -1\n"; put e6.log "HEAD $C1 $T\n"
@@ -146,7 +167,7 @@ fresh e4.log exit=? (HEAD ${C1:0:7} = graded, $T)
 fresh e5.log exit=? (HEAD ${C1:0:7} = graded, $T)
 fresh e6.log exit=? (HEAD ${C1:0:7} = graded, $T)"
 rm -rf "$ED"
-# the shapes real evidence files have today (292 of them, about 24 in the documented one): everything else is unstamped
+# the shapes real evidence files have today (154 .log files, only a few in the documented one): everything else is unstamped
 put u01.log "# HEAD $C1 — $T\n";                  put u02.log "HEAD $C1 (changes uncommitted) $T\n"
 put u03.log "HEAD ${C1:0:8}+ (uncommitted) $T\n";  put u04.log "HEAD ${C1:0:8}+wt $T\n"
 put u05.log "HEAD main $C1 $T\n";                  put u06.log "==> tests/tkt.sh\nok\n"
@@ -156,10 +177,11 @@ put u11.log "HEAD $(printf '%s' "$C1" | tr a-f A-F) $T\n"; put u12.log "HEAD $C1
 put u13.log "HEAD $C1 $T (uncommitted)\n";         put u14.log "HEAD $C1\n"
 put u15.log "HEAD $C1 yesterday\n";                put u16.log "head $C1 $T\n"
 put u17.log "HEAD after review fixes $T\n";        put u18.log "HEAD $C1 $T\0HEAD\n"
+put u20.log "HEAD $C1 $T +wt dirty tree\n";       put u21.log "HEAD $C1 $T uncommitted\n"; put u22.log "HEAD $C1 $T release-manifest -> ok\n"
 printf 'HEAD %s \000\001\002 binary\n' "$C1" > "$ED/u19.log"
 ev check "$ID"; assert_eq 0 "$code"
 while IFS= read -r l; do [[ "$l" == unstamped* ]] || fail "evidence: not classified unstamped: $l"; done <<< "$out"
-assert_eq 19 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
+assert_eq 22 "$(printf '%s\n' "$out" | wc -l | tr -d ' ')"
 rm -rf "$ED"
 # file names: one line per file, nothing from the name can add a line or an escape
 put "a b;c.log" "HEAD $C1 $T\n"; put $'new\nline.log' "HEAD $C1 $T\n"; put $'esc\033[31m.log' "HEAD $C1 $T\n"; put "x..log" "HEAD $C1 $T\n"; put "notes.txt" "HEAD $C1 $T\n"
@@ -196,7 +218,7 @@ for ((i = 0; i < N; i++)); do
   for ((j = 0; j < n; j++)); do line+="${line:+ }${segs[RANDOM % ${#segs[@]}]}"; done
   [[ $((RANDOM % 3)) == 0 ]] && line="HEAD $C1 $T${line:+ $line}"
   name="r$(printf '%03d' "$i").log"; printf '%s\nexit 0\n' "$line" > "$ED/$name"
-  if printf '%s\n' "$line" | grep -Eq "^HEAD [0-9a-f]{7,40} [0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?Z?( [^()]*)?\$"; then
+  if printf '%s\n' "$line" | grep -Eq "^HEAD [0-9a-f]{7,40} [0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?Z?\$"; then
     sha="$(printf '%s' "$line" | awk '{print $2}')"
     if [[ "$C1" == "$sha"* ]]; then echo "fresh $name" >> "$WORK/expect.txt"; else echo "stale $name" >> "$WORK/expect.txt"; fi   # an unknown sha is stale, not fresh
   else echo "unstamped $name" >> "$WORK/expect.txt"; fi
@@ -218,6 +240,10 @@ need skills/sprint/reference/eval.md 'Every test file or suite this sprint added
 need skills/sprint/reference/eval.md 'min(3, number of new guards)' "floor (b): mutants the evaluator runs itself"
 need skills/sprint/reference/eval.md 'pick 2 suites yourself' "floor (c): the spot-check against the log"
 need skills/sprint/reference/eval.md 'drop reuse of that log' "a spot-check disagreement voids reuse"
+need skills/sprint/reference/eval.md 'count the new guards yourself from the diff' "the evaluator counts the new guards, not the builder"
+need skills/sprint/reference/eval.md 'A log with no list to sample from gets no reuse' "a log the spot-check cannot sample gets no reuse"
+need skills/sprint/reference/eval.md 'every long command under `timeout 600`' "a per-command timeout value"
+need skills/sprint/reference/eval.md 'a base-control run names the base commit, so it is never `fresh`' "a base control is never reused"
 need skills/sprint/reference/eval.md '25 minutes from the epoch you stamped in step 1' "the 25-minute budget"
 need skills/sprint/reference/eval.md 'every item without evidence is `not-run`' "a spent budget fails closed"
 need skills/sprint/reference/eval.md 'Evidence reuse: <n> of <m>' "the report line"

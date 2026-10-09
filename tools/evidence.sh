@@ -8,8 +8,8 @@
 # tracked files are modified (a stamp names the commit that was tested, so the tree must BE that commit; untracked files and .tickets/ are
 # ignored), and again, writing nothing, if tracked files changed while the command ran.
 # check classifies every evidence/*.log against a graded head (default HEAD), one line each:
-#   fresh <file> exit=<N>      line 1 is exactly `HEAD <sha> <time>` and the sha is the graded head or an ancestor with no tracked file
-#                              outside .tickets/ changed since (stricter than the stale-eval guard's allow-list, which it need not copy)
+#   fresh <file> exit=<N>      line 1 is exactly `HEAD <sha> <time>` (nothing after the time) and the sha is the graded head or an ancestor with no
+#                              tracked file outside .tickets/ changed since, committed or not (stricter than the stale-eval guard's allow-list)
 #   stale <file> exit=<N>      stamped, but older with such changes, an unknown sha, or not an ancestor
 #   unstamped <file> exit=?    anything else: `# HEAD …`, `(uncommitted)`, `+wt`, no line 1, empty, binary, a symlink (never followed)
 # `exit=` is read from the LAST line only. Log content is never echoed beyond the sha, the time and a short sanitized `$` line. A stamp proves
@@ -54,7 +54,7 @@ if [[ "$mode" == stamp ]]; then
   head_sha="$(git -C "$root" rev-parse HEAD)"
   mkdir -p "$edir"
   tmp="$(mktemp "$edir/.stamp.XXXXXX")"; trap 'rm -f "$tmp"' EXIT
-  cmd_text="$*"; cmd_text="${cmd_text//[$'\n\r']/ }"
+  cmd_text="$(printf '%q ' "$@")"; cmd_text="${cmd_text% }"   # %q keeps the quoting, so two commands that differ only in quoting give different lines
   printf 'HEAD %s %s\n$ %s\n' "$head_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$cmd_text" > "$tmp"
   set +e; "$@" < /dev/null >> "$tmp" 2>&1; rc=$?; set -e
   if tracked_dirty || [[ "$(git -C "$root" rev-parse HEAD)" != "$head_sha" ]]; then
@@ -75,10 +75,13 @@ else
 fi
 graded="$(git -C "$root" rev-parse --verify -q "$graded^{commit}" 2>/dev/null)" || die "graded head '${1-HEAD}' is not a commit"
 [[ -d "$edir" && ! -L "$edir" ]] || exit 0
+wt_dirty=0   # grading HEAD while tracked files are modified: a stamp cannot vouch for a tree it did not see
+if [[ "$graded" == "$(git -C "$root" rev-parse HEAD)" ]] && tracked_dirty; then wt_dirty=1; fi
+nfile="$(mktemp)"; trap 'rm -f "$nfile"' EXIT
 
-stamp_re='^HEAD ([0-9a-f]{7,40}) ([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?Z?)( [^()]*)?$'
+stamp_re='^HEAD ([0-9a-f]{7,40}) ([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9]{2}:[0-9]{2}(:[0-9]{2})?Z?)$'
 exit_re='^exit (0|[1-9][0-9]{0,2})$'
-safe() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,-' '?'; }
+safe() { printf '%s' "$1" | LC_ALL=C tr -c 'A-Za-z0-9._ /=:+,\\-' '?'; }
 
 shopt -s nullglob
 for f in "$edir"/*.log; do
@@ -92,12 +95,23 @@ for f in "$edir"/*.log; do
   cmdline="$(head -c 512 -- "$f" | LC_ALL=C tr -d '\000' | sed -n '2p' | tr -d '\r')" || cmdline=""
   shown=""; if [[ "$cmdline" == '$ '* ]]; then shown=" cmd: $(safe "${cmdline:2:120}")"; fi
   full="$(git -C "$root" rev-parse --verify -q "$sha^{commit}" 2>/dev/null)" || { echo "stale $base exit=$code (unknown commit $sha)$shown"; continue; }
-  if [[ "$full" == "$graded" ]]; then echo "fresh $base exit=$code (HEAD ${sha:0:7} = graded, $when)$shown"; continue; fi
+  if [[ "$full" == "$graded" ]]; then
+    if (( wt_dirty )); then echo "stale $base exit=$code (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
+    else echo "fresh $base exit=$code (HEAD ${sha:0:7} = graded, $when)$shown"; fi
+    continue
+  fi
   if ! git -C "$root" merge-base --is-ancestor "$full" "$graded" 2>/dev/null; then
     echo "stale $base exit=$code (HEAD ${sha:0:7} is not an ancestor of ${graded:0:7})$shown"; continue
   fi
-  names=(); while IFS= read -r -d '' p; do names+=("$p"); done < <(git -C "$root" diff --name-only -z --no-renames "$full" "$graded" -- . ':(exclude).tickets')
-  if [[ ${#names[@]} -eq 0 ]]; then echo "fresh $base exit=$code (HEAD ${sha:0:7}, only .tickets/ changed since, $when)$shown"; continue; fi
+  if ! git -C "$root" diff --name-only -z --no-renames "$full" "$graded" -- . ':(exclude).tickets' > "$nfile" 2>/dev/null; then
+    echo "stale $base exit=$code (HEAD ${sha:0:7}; git could not compare it with ${graded:0:7})$shown"; continue
+  fi
+  names=(); while IFS= read -r -d '' p; do names+=("$p"); done < "$nfile"
+  if [[ ${#names[@]} -eq 0 ]]; then
+    if (( wt_dirty )); then echo "stale $base exit=$code (HEAD ${sha:0:7}; tracked files are modified in the working tree since)$shown"
+    else echo "fresh $base exit=$code (HEAD ${sha:0:7}, only .tickets/ changed since, $when)$shown"; fi
+    continue
+  fi
   list=""; n=0
   for p in "${names[@]}"; do n=$((n + 1)); if [[ $n -le 5 ]]; then list+="${list:+, }$(safe "$p")"; fi; done
   more=""; if [[ $n -gt 5 ]]; then more=" (+$((n - 5)) more)"; fi
