@@ -133,6 +133,9 @@ created: 2026-06-08T00:00:00Z
 ---
 # Model mention fixture
 EOF
+# t-1f22: the gate reports list under their writer's name on both servers (display-only; the file field is unchanged).
+printf '# Eval Report\n' > "$WORK/.tickets/t-model/eval-report.md"
+printf '# Review Notes\n' > "$WORK/.tickets/t-model/review-notes.md"
 cat > "$WORK/.tickets/t-model/acceptance.md" <<'EOF'
 # Acceptance
 
@@ -317,6 +320,19 @@ models = py_n["t-model"]["models_used"]
 if models != ["claude-sonnet-5", "haiku"]:
     print(f"sprint-check-api-parity: FAIL — t-1720 regression, t-model.models_used should be exactly ['claude-sonnet-5', 'haiku'], got {models!r}")
     sys.exit(1)
+
+# t-1f22: both servers name the gate reports for their writer, keep every other doc's title-cased name, and leave the file alone.
+for label, n in (("server.py", py_n), ("main.go", go_n)):
+    docs = {d["file"]: d["name"] for d in n["t-model"]["docs"]}
+    want = {"t-model/eval-report.md": "Eval Agent", "t-model/review-notes.md": "Review Agent", "t-model/acceptance.md": "Acceptance"}
+    got = {f: docs.get(f) for f in want}
+    order = [d["file"] for d in n["t-model"]["docs"]]
+    if order != ["t-model/acceptance.md", "t-model/review-notes.md", "t-model/eval-report.md"]:
+        print(f"sprint-check-api-parity: FAIL — t-1f22 doc order on {label}: {order!r}")
+        sys.exit(1)
+    if got != want:
+        print(f"sprint-check-api-parity: FAIL — t-1f22 doc names on {label}: want {want!r}, got {got!r}")
+        sys.exit(1)
 PY
 
 # ── /api/git total_commits parity (t-9cde) ──────────────────────────────────

@@ -12948,6 +12948,27 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect(page.locator('#m-docs .doc-ghost')).toHaveCount(0);
   });
 
+  test('the gate reports list as Eval Agent and Review Agent and still open their own files (t-1f22)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-y${sfx}`;
+    writeTicket(id);
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    fs.writeFileSync(path.join(dir, 'eval-report.md'), '# Eval Report\n\nEVAL-BODY-MARK\n');
+    fs.writeFileSync(path.join(dir, 'review-notes.md'), '# Review Notes\n\nREVIEW-BODY-MARK\n');
+    await openModalFor(page, id);
+    const names = await page.locator('#m-docs > .doc-node > .doc-tab').evaluateAll(els => els.map(e => e.textContent.trim()));
+    expect(names).toContain('Eval Agent');
+    expect(names).toContain('Review Agent');
+    expect(names).not.toContain('Eval Report');
+    expect(names).not.toContain('Review Notes');
+    // The two reports sit one after another, Review Agent then Eval Agent, after the working docs.
+    expect(names.indexOf('Eval Agent')).toBe(names.indexOf('Review Agent') + 1);
+    expect(names.indexOf('Acceptance')).toBeLessThan(names.indexOf('Review Agent'));
+    await page.locator('#m-docs .doc-tab', { hasText: 'Review Agent' }).click();
+    await expect(page.locator('#m-body')).toContainText('REVIEW-BODY-MARK');
+    await page.locator('#m-docs .doc-tab', { hasText: 'Eval Agent' }).click();
+    await expect(page.locator('#m-body')).toContainText('EVAL-BODY-MARK');
+  });
+
   test('the Demo/UX switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)', async ({ page }) => {
     const sfx = Date.now().toString(36).slice(-3), id = `t-w${sfx}`;
     writeTicket(id);

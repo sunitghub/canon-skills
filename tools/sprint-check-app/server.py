@@ -327,8 +327,18 @@ IMAGE_MIME   = {'.png': 'image/png', '.gif': 'image/gif', '.jpg': 'image/jpeg',
                  '.jpeg': 'image/jpeg', '.webp': 'image/webp'}
 IMAGE_EXTS   = tuple(IMAGE_MIME)
 
+# t-1f22: the two gate reports are named for who writes them; main.go's docName must match.
+_DOC_NAME_OVERRIDES = {'eval-report': 'Eval Agent', 'review-notes': 'Review Agent'}
+
+# t-1f22: the working docs first, then the two gate reports one after another (review, then eval), then the rest by name.
+# main.go's docOrder must match.
+_DOC_ORDER = ('acceptance', 'plan', 'research', 'review-notes', 'eval-report')
+
+def _doc_order(path: Path) -> tuple:
+    return (_DOC_ORDER.index(path.stem) if path.stem in _DOC_ORDER else len(_DOC_ORDER), path.name)
+
 def _doc_name(path: Path) -> str:
-    return path.stem.replace('-', ' ').title()
+    return _DOC_NAME_OVERRIDES.get(path.stem) or path.stem.replace('-', ' ').title()
 
 # Must stay behaviorally identical to main.go's safeTicketDoc/containedAfterSymlinks
 # (tools/sprint-check-go/main.go) — enforced by tests/sprint-check-api-parity.sh, not
@@ -398,7 +408,7 @@ def parse_ticket(path: Path) -> dict:
         fields['id'] = ticket_id
         fields.setdefault('status', 'open')
         fields['layout'] = 'folder'
-        for f in sorted(path.parent.glob('*.md')):
+        for f in sorted(path.parent.glob('*.md'), key=_doc_order):
             if f.name == 'ticket.md':
                 continue
             docs.append({'name': _doc_name(f), 'file': f'{path.parent.name}/{f.name}'})
