@@ -12702,14 +12702,15 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(f.s).not.toBe((await look(b)).s);
   });
 
-test('a section click scrolls the text inside the rounded card; the card keeps its edges under the pane bar (t-5648)', async ({ page }) => {
+  test('a section click scrolls the text inside the rounded card; the card keeps its edges under the pane bar (t-5648)', async ({ page }) => {
     const sfx = Date.now().toString(36).slice(-3), id = `t-s${sfx}`;
     writeTicket(id);
     await page.setViewportSize({ width: 1300, height: 800 });
     await openModalFor(page, id);
     await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();
     await expect(page.locator('#m-docs .doc-child', { hasText: 'QA' })).toBeVisible();
-    await page.waitForTimeout(700);                                                         // the dialog settles from its open animation
+    await expect(page.locator('#section-qa')).toHaveCount(1);                               // the text has rendered, so the dialog has its final size
+    await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);   // the open transition has finished
     const geo = () => page.evaluate(() => {
       const c = document.getElementById('m-body'), body = document.querySelector('.modal-body'), bar = document.getElementById('m-pane-bar').getBoundingClientRect(), cr = c.getBoundingClientRect();
       return { cardTop: Math.round(cr.top), cardBottom: Math.round(cr.bottom), barBottom: Math.round(bar.bottom), cardScroll: c.scrollTop, bodyScroll: body.scrollTop };
@@ -12736,7 +12737,7 @@ test('a section click scrolls the text inside the rounded card; the card keeps i
     await openModalFor(page, id);
     await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
     await expect(page.locator('.signoff-controls')).toHaveCount(1);
-    await page.waitForTimeout(700);
+    await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);   // the open transition has finished
     const r = await page.evaluate(() => {
       const bar = document.querySelector('.section-jumps').getBoundingClientRect(), card = document.getElementById('m-body').getBoundingClientRect(), body = document.querySelector('.modal-body');
       return { barBottom: bar.bottom, cardTop: card.top, bodyOverflow: body.scrollHeight - body.clientHeight };
@@ -12745,7 +12746,26 @@ test('a section click scrolls the text inside the rounded card; the card keeps i
     expect(r.bodyOverflow).toBeLessThanOrEqual(1);                                          // the body has nothing of its own to scroll
   });
 
-    test('a Feature card with the Demo/UX badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {
+  test('a short doc keeps a card as tall as its text: no stretch to the pane bottom, no scrollbar (t-5648)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-h${sfx}`;
+    writeTicket(id);
+    await page.setViewportSize({ width: 1300, height: 950 });
+    await openModalFor(page, id);
+    await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);   // the open transition has finished
+    await page.locator('#m-docs .doc-tab', { hasText: 'Research' }).click();
+    await expect(page.locator('#m-body')).toContainText('Only one heading');
+    const grip = page.locator('#modal .modal-resize-handle:not(.modal-resize-handle-tl)'), gb = await grip.boundingBox();
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.down(); await page.mouse.move(gb.x + gb.width / 2, gb.y + 260, { steps: 8 }); await page.mouse.up();   // a dialog taller than a short doc
+    const r = await page.evaluate(() => {
+      const c = document.getElementById('m-body'), b = document.querySelector('.modal-body');
+      return { card: c.getBoundingClientRect().height, body: b.clientHeight, scrolls: c.scrollHeight - c.clientHeight };
+    });
+    expect(r.card).toBeLessThan(r.body - 100);                                              // a short doc leaves room below its card
+    expect(r.scrolls).toBeLessThanOrEqual(1);                                               // and shows no scrollbar
+  });
+
+  test('a Feature card with the Demo/UX badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {
     const sfx = Date.now().toString(36).slice(-3), id = `t-m${sfx}`;
     writeTicket(id, { type: 'feature', demo: true, status: 'in_progress' });
     await page.setViewportSize({ width: 760, height: 900 });

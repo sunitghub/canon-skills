@@ -1018,9 +1018,9 @@
       min-height: 0; display: flex; flex-direction: column;
       background: var(--surface-raised);
     }
-    .modal-body > * { flex: none; }
+    .modal-body > :not(.modal-body-text) { flex: none; }
     .modal-body-text {
-      flex: 1 1 auto; overflow-y: auto;
+      flex: 0 1 auto; overflow-y: auto;
       font-size: 13px; color: var(--text-body); line-height: 1.65; white-space: pre-wrap;
       background: var(--surface); border: 1px solid var(--panel-border);
       border-radius: 8px; padding: 16px 20px; min-height: 140px;
@@ -1051,7 +1051,6 @@
     .doc-table td.status-partial { color: #d97706; font-weight: 600; }
     .doc-table td.status-not-run { color: var(--text-muted); }
     .section-jumps {
-      position: sticky; top: 0; z-index: 1;
       display: flex; flex-wrap: wrap; gap: 4px 10px;
       padding: 10px 0; margin-bottom: 12px;
       background: var(--surface-raised);
