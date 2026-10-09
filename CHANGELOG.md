@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Added
+- Releases are verified: `canon update --to vX.Y.Z` (git installs) and the Windows installer check the release against the published manifest at getcanon.dev/releases.txt, and refuse, changing nothing, if it is unreachable, missing, malformed or disagrees. The Windows zip is checked against its SHA-256 before extraction. `main` stays unverified and says so (`t-34f1`).
+- `scripts/release-zip.sh` builds the release zip; `scripts/release.sh` attaches it to the GitHub release and prints the manifest line.
+
 ## [0.3.0] - 2026-10-08
 
 The first tagged release. The highlights since canon became installable on Windows; earlier history is not itemised.

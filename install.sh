@@ -63,4 +63,6 @@ bash "$TARGET/tools/fetch-daemon.sh" || printf 'warning: agent sessions in the C
 RC_FILE="$HOME/.bashrc"
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 
+printf '\nNote: this installed main, which moves with every change and is not checksum-verified.\n'
+printf "      For a verified release, run: canon update --to vX.Y.Z  (releases: https://github.com/sunitghub/canon-skills/releases)\n"
 printf '\nDone.\n\n'

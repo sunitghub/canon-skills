@@ -275,7 +275,7 @@ O3="$WORK/o3.git"; git init -q --bare -b main "$O3"
 git clone -q "$O3" "$WORK/seed3" 2>/dev/null
 mkdir -p "$WORK/seed3/tools"
 cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$WORK/seed3/tools/"
-cp "$WORK/seed/tools/skills.sh" "$WORK/seed/tools/fetch-daemon.sh" "$WORK/seed3/tools/"
+cp "$WORK/seed/tools/skills.sh" "$WORK/seed/tools/fetch-daemon.sh" "$ROOT/tools/release-manifest.sh" "$WORK/seed3/tools/"
 printf "tools/*-win.exe\n" > "$WORK/seed3/.gitignore"   # as the real .gitignore: the fetch stub writes these
 echo 0.3.0 > "$WORK/seed3/VERSION"; git -C "$WORK/seed3" "${ident[@]}" add -A -f; git -C "$WORK/seed3" "${ident[@]}" commit -qm "release 0.3.0"
 git -C "$WORK/seed3" "${ident[@]}" tag -a v0.3.0 -m "v0.3.0"
@@ -289,6 +289,12 @@ tip3="$(git -C "$WORK/seed3" rev-parse HEAD)"
 sha3() { git -C "$WORK/seed3" rev-list -n1 "$1"; }
 assert_eq "" "$(git -C "$I3" tag)"   # the shallow clone has no tags until one is asked for
 h3() { git -C "$I3" rev-parse HEAD; }
+# t-34f1: a release installs only if the published manifest lists it with the tag's own commit. The manifest here is a file (the zip sha
+# is a stand-in: the git path checks the commit); v0.3.2 is listed but was never pushed to origin.
+Z3="$(printf 'e%.0s' $(seq 1 64))"; M3="$WORK/manifest3.txt"
+good3() { printf '# canon releases\nv0.3.2 %s %s\nv0.3.1 %s %s\nv0.3.0 %s %s\n' "$Z3" "$tip3" "$Z3" "$(sha3 v0.3.1)" "$Z3" "$(sha3 v0.3.0)" > "$M3"; }
+if command -v cygpath >/dev/null 2>&1; then M3URL="file:///$(cygpath -m "$M3")"; else M3URL="file://$M3"; fi   # Git for Windows' curl is native: it needs C:/..., not /tmp/...
+good3; export CANON_MANIFEST_URL="$M3URL"
 
 # Invalid refs exit 2 before any git call: a git stub that records every call proves none was made.
 GSTUB="$WORK/gitstub"; mkdir -p "$GSTUB"; printf '#!/bin/sh\necho "$*" >> "%s/git.calls"\nexit 99\n' "$WORK" > "$GSTUB/git"; chmod +x "$GSTUB/git"
@@ -305,6 +311,33 @@ assert_eq "$tip3" "$(h3)"
 # A tag that does not exist, a dirty install and another branch each refuse and change nothing.
 set +e; out="$("$C3" update --to v9.9.9 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "v9.9.9"; assert_contains "$out" "Nothing was changed."; assert_eq "$tip3" "$(h3)"
+# Listed in the manifest but not on origin: the fetch fails, nothing changes.
+set +e; out="$("$C3" update --to v0.3.2 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "was not found on origin"; assert_eq "$tip3" "$(h3)"
+# t-34f1: each way the manifest can fail refuses with the reason, leaving HEAD, the tree and the tags exactly as they were.
+nochange3() { assert_eq "$tip3" "$(h3)"; assert_eq "" "$(git -C "$I3" status --porcelain)"; assert_eq "" "$(git -C "$I3" tag)"; assert_eq "main" "$(git -C "$I3" symbolic-ref --short HEAD)"; }
+refuse3() {   # refuse3 <label> <expected message part>
+  set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
+  [[ "$code" == 1 ]] || fail "canon-update: $1 did not refuse (exit $code): $out"
+  assert_contains "$out" "$2"; assert_contains "$out" "Nothing was changed."; nochange3
+}
+printf 'v0.3.1 %s %s\n' "$Z3" "$(sha3 v0.3.1)" > "$M3";                                       refuse3 "a manifest without the tag" "not in the release manifest"
+printf 'v0.3.0 %s %s\n' "$Z3" "$(sha3 v0.3.1)" > "$M3";                                       refuse3 "a manifest naming another commit" "published manifest says"
+printf 'v0.3.0 %s %s\n' "${Z3%?}" "$(sha3 v0.3.0)" > "$M3";                                   refuse3 "a short sha256" "malformed"
+printf 'v0.3.0 %s %s\nv0.3.0 %s %s\n' "$Z3" "$(sha3 v0.3.0)" "$Z3" "$(sha3 v0.3.1)" > "$M3";  refuse3 "two different lines for the tag" "twice with different values"
+: > "$M3";                                                                                     refuse3 "an empty manifest" "not in the release manifest"
+rm -f "$M3";                                                                                   refuse3 "no manifest at all" "cannot read the release manifest"
+# A tag that is already here is not trusted either: it must match the manifest too. (It is the user's tag, so it is left alone.)
+good3; git -C "$I3" tag -f v0.3.0 HEAD >/dev/null 2>&1
+set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
+[[ "$code" == 1 ]] || fail "canon-update: a local tag at the wrong commit was trusted (exit $code): $out"
+assert_contains "$out" "published manifest says"; assert_eq "$tip3" "$(h3)"; assert_eq "v0.3.0" "$(git -C "$I3" tag)"
+git -C "$I3" tag -d v0.3.0 >/dev/null
+# main and a plain update need no manifest (--to main from main is an ordinary update).
+out="$("$C3" update --to main 2>&1)"; assert_contains "$out" "canon is up to date"; assert_contains "$out" "not checksum-verified"
+out="$("$C3" update 2>&1)"; assert_contains "$out" "canon is up to date"; assert_eq "$tip3" "$(h3)"; assert_eq "" "$(git -C "$I3" status --porcelain)"
+# (an ordinary pull may bring tags along; a local tag is still checked against the manifest below before it is used)
+good3
 echo wip > "$I3/scratch.txt"
 set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_eq "$tip3" "$(h3)"; rm "$I3/scratch.txt"
@@ -317,7 +350,7 @@ g "$I3" checkout -q main
 : > "$REFRESH_LOG"; rm -f "$REFRESH_LOG.fetch"
 out="$("$C3" update --to v0.3.0 2>&1)"
 assert_eq "$(sha3 v0.3.0)" "$(h3)"; assert_eq "0.3.0" "$(cat "$I3/VERSION")"
-assert_contains "$out" "pinned to v0.3.0"; assert_contains "$out" "canon update --to main"
+assert_contains "$out" "pinned to v0.3.0"; assert_contains "$out" "verified against the published manifest"; assert_contains "$out" "canon update --to main"
 assert_contains "$out" "refreshed: $WORK/p1"
 assert_eq "fetch --quiet" "$(cat "$REFRESH_LOG.fetch")"
 [[ -z "$(git -C "$I3" symbolic-ref -q HEAD || true)" ]] || fail "canon-update: --to a tag left a branch checked out"
@@ -341,7 +374,8 @@ assert_eq "1" "$code"; assert_contains "$out" "isn't a git clone"
 # Windows zip install: the installer is re-run with the ref in CANON_REF (PowerShell cannot run here), and install.ps1 reads it.
 grep -q 'CANON_REF' "$ROOT/tools/canon" || fail "canon-update: the Windows non-git path does not pass CANON_REF to the installer"
 grep -q 'CANON_REF' "$ROOT/install.ps1" || fail "canon-update: install.ps1 ignores CANON_REF"
-grep -q 'refs/tags/' "$ROOT/install.ps1" || fail "canon-update: install.ps1 cannot fetch a tag's zip"
+grep -q 'releases/download/' "$ROOT/install.ps1" || fail "canon-update: install.ps1 cannot fetch a release's zip"
+grep -q 'Get-FileHash' "$ROOT/install.ps1" && grep -q 'Get-CanonReleaseSha256' "$ROOT/install.ps1" || fail "canon-update: install.ps1 does not verify a release zip against the manifest (t-34f1; its behavior is checked on the Windows VM)"
 echo "canon-update: --to pins to a release tag, refuses plain update while pinned, returns to main; bad refs never reach git (t-30fc)"
 
 ps="$("$CANON" completion powershell)"
