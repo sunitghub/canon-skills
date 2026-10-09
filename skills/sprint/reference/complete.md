@@ -564,6 +564,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
      (e.g. `node dsl_runner.js specs/x.feature`) — should show ✓/✗ from an actual run, not `?`:
      the evaluator runs it rather than reading it (`eval.md` steps 6–7).
    - If any ✗ or ?: report which tests did not pass. Do not close the ticket. Stop here.
+   - An evaluator's "pre-existing failure" is a claim about its scratch copy (no `.git`, a different environment). Before accepting it or telling the user, re-run the named tests in the real tree, uncached (`go test -count=1`).
    - Include impact and regression tests.
    - Classify required evidence for each item. Load-bearing test/tool evidence must fail closed
      when unavailable; preferred evidence may degrade with disclosure; decorative evidence can
