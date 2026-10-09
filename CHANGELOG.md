@@ -13,7 +13,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - Skill evals on change: `sprint complete` runs the evals of any skill whose instructions (or a gate agent) the sprint edited, advisory only, and records the pass rate in `skills/<name>/evals/history.jsonl` (`tools/skill-eval-scope.sh`, `tools/skill-eval-history.sh`); a defect traced to a skill's own instructions can become an `evals.json` case (`t-8d28`).
 
 ### Security
-- The cockpit daemon is built with Go 1.27.2 (pinned in `tools/cockpit-daemon/go.mod`) and `golang.org/x/crypto` v0.58.0. This clears 6 net/http and HTTP/2 vulnerabilities in Go 1.27.1 that the daemon's loopback server could reach, and the 13 Dependabot alerts on `x/crypto`, which the daemon never called (`govulncheck` reports 0 in the code; `t-7efe`).
+- The prebuilt binaries are built with a pinned Go 1.27.2, not whatever Go is installed: `toolchain go1.27.2` in `tools/cockpit-daemon/go.mod`, and a `GO_TOOLCHAIN` file in `tools/sprint-check-go` and `tools/sprint-headless-json-go` that `scripts/release-daemon.sh` builds with. Go 1.27.1 had 6 net/http and HTTP/2 vulnerabilities the daemon's loopback server could reach and 9 in the Windows board exe; `govulncheck` now reports none for all three. `golang.org/x/crypto` is v0.58.0, which clears the 13 Dependabot alerts (the daemon never called that code). Because a pin lives in the source folder, the fix ships as new releases; v0.3.0's manifest keeps pointing at its own assets (`t-7efe`).
 
 ## [0.3.0] - 2026-10-08
 
