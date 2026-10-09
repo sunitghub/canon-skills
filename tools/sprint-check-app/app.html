@@ -1069,7 +1069,7 @@
     .model-tier-select:disabled, .signoff-tier-select:disabled, .signoff-risk-input:disabled {
       opacity: 0.5; cursor: not-allowed;
     }
-    .signoff-risk-input { color: var(--text-body); padding: 0 8px; flex: 1 1 280px; min-width: 0; }
+    .signoff-risk-input { color: var(--text-body); padding: 0 8px; flex: 1 1 160px; min-width: 0; }
     .signoff-risk-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
     @container (max-width: 640px) { .signoff-risk-input { order: -1; flex-basis: 100%; } }
     .signoff-risk-input--needs-value {
@@ -4826,10 +4826,10 @@ function injectSignoffControls(container, content, t) {
 
   // t-ef27: an explicit Gate model beats demo mode's forced-Haiku evaluator (complete.md
   // precedence), so say so — a demo ticket with a costlier pick is deliberate, not a surprise.
-  if (String(t.demo) === 'true' && recognized && currentLower !== 'default') {
+  if (String(t.demo) === 'true' && recognized && currentLower !== 'default' && currentLower !== 'haiku') {
     const hint = document.createElement('span');
     hint.className = 'model-tier-note model-tier-demo-hint';
-    hint.textContent = 'Replaces Demo’s Haiku';   // short: this row is already tight (full text in the title)
+    hint.textContent = 'Overrides Demo/UX’s Haiku';   // short: this row is already tight (full text in the title)
     hint.style.whiteSpace = 'nowrap';
     hint.title = 'Demo/UX is on, which normally forces a Haiku evaluator. An explicit Gate model overrides that, so this ticket’s gate runs on the model you picked.'
       + (currentLower.startsWith('openai:') ? ' An OpenAI pick only applies under Copilot CLI; elsewhere the gate falls back to Haiku.' : '');

@@ -2004,18 +2004,21 @@ test.describe('board modal', () => {
       // Demo is on (frontmatter): an explicit model replaces the forced-Haiku evaluator, and the Plan tab says so.
       const hint = page.locator('.model-tier-demo-hint');
       await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');
-      await expect(hint).toHaveText('Replaces Demo’s Haiku');
+      await expect(hint).toHaveText('Overrides Demo/UX’s Haiku');
       await expect(hint).toHaveAttribute('title', /Copilot CLI/);
-      await select.selectOption('haiku');
-      await expect.poll(() => fs.readFileSync(planPath, 'utf8')).toContain('Gate model: haiku');
+      await select.selectOption('sonnet');
+      await expect.poll(() => fs.readFileSync(planPath, 'utf8')).toContain('Gate model: sonnet');
       await expect(hint).toHaveAttribute('title', /overrides that/);
       await expect(hint).not.toHaveAttribute('title', /Copilot CLI/);
+      await select.selectOption('haiku');
+      await expect.poll(() => fs.readFileSync(planPath, 'utf8')).toContain('Gate model: haiku');
+      await expect(hint).toHaveCount(0);   // Demo's evaluator is already Haiku, nothing is overridden
       await select.selectOption('default');
       await expect.poll(() => fs.readFileSync(planPath, 'utf8')).not.toContain('Gate model');
       await expect(hint).toHaveCount(0);   // Default = no override, nothing to warn about
       // With demo off there is nothing to override either.
-      await select.selectOption('haiku');
-      await expect(hint).toHaveText('Replaces Demo’s Haiku');
+      await select.selectOption('sonnet');
+      await expect(hint).toHaveText('Overrides Demo/UX’s Haiku');
       await page.locator('.signoff-demo-toggle').click();
       await expect(page.locator('.signoff-demo-toggle')).toHaveAttribute('aria-checked', 'false');
       await expect(hint).toHaveCount(0);
@@ -12877,6 +12880,25 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.tier.height).toBe(r.risk.height);
     expect(r.model.height).toBe(r.risk.height);
     expect(r.model.width).toBeCloseTo(168, 0);
+  });
+
+  test('with Demo/UX on and a model picked, tier, Risk, model, hint and the switch stay on one row in the default dialog (t-887e)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-m${sfx}`;
+    writeTicket(id, { demo: true });
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await openModalFor(page, id);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    await page.locator('.model-tier-select').selectOption('opus');
+    await expect(page.locator('.model-tier-demo-hint')).toHaveText('Overrides Demo/UX’s Haiku');
+    await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);
+    const r = await page.evaluate(() => {
+      const q = s => document.querySelector(s).getBoundingClientRect();
+      return { pane: q('.section-jumps'), tier: q('.signoff-tier-select'), risk: q('.signoff-risk-input'), model: q('.model-tier-select'), hint: q('.model-tier-demo-hint'), sw: q('.signoff-demo-toggle') };
+    });
+    expect(r.pane.width).toBeGreaterThan(640);                                              // above the wrap point, so the single row is expected
+    for (const c of [r.risk, r.model, r.hint, r.sw]) expect(Math.abs((c.top + c.bottom) / 2 - (r.tier.top + r.tier.bottom) / 2)).toBeLessThanOrEqual(2);   // one row
+    expect(r.risk.width).toBeGreaterThanOrEqual(160);                                       // Risk is the part that gives
+    expect(r.sw.right).toBeLessThanOrEqual(r.pane.right + 1);                               // the switch is not clipped
   });
 
   test('a narrow dialog puts the Risk field alone on a full-width line; the Risk tooltip carries its text (t-d0c4)', async ({ page }) => {
