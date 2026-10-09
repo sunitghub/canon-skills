@@ -151,9 +151,9 @@ update_cmd() {
   if [ -n "$to" ] && [ "$to" != main ]; then
     # t-34f1: a release is installed only if the published manifest (getcanon.dev, a different write path from this repo) lists it, and the
     # tag's commit is the one the manifest names. The manifest is read first so a refusal fetches nothing; release-manifest.sh says why.
-    local mf mf_sha mf_commit fetched=0 have
+    local mf mf_commit fetched=0 have
     mf="$(bash "$SCRIPT_DIR/release-manifest.sh" "$to")" || { echo "canon update: Nothing was changed." >&2; exit 1; }
-    read -r mf_sha mf_commit <<<"$mf"
+    read -r _ mf_commit <<<"$mf"
     if ! git -C "$repo" rev-parse -q --verify "refs/tags/$to^{commit}" >/dev/null 2>&1; then
       # a depth-1 clone has no tags: ask for just this one
       git -C "$repo" fetch -q --depth 1 origin "refs/tags/$to:refs/tags/$to" \

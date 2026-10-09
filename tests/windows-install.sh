@@ -25,10 +25,10 @@ if code "$PS1" | grep -qE 'git +clone'; then fail "install.ps1 uses git clone"; 
 
 # t-34f1: a release zip is verified against the published manifest BEFORE it is extracted, and the manifest is read before anything is downloaded.
 # PowerShell cannot run here (the Windows VM checks the behavior); this pins the order and the absence of any bypass.
-ln() { grep -n "^[^#]*$1" "$PS1" | head -1 | cut -d: -f1; }   # first line where it appears before any `#`, i.e. as code
-[[ -n "$(ln 'Get-CanonReleaseSha256 \$ref')" && -n "$(ln 'Get-FileHash')" && -n "$(ln 'ExtractToDirectory')" ]] || fail "install.ps1 lost its manifest check or the extraction"
-[[ "$(ln 'Get-CanonReleaseSha256 \$ref')" -lt "$(ln 'Invoke-WebRequest -UseBasicParsing -Uri \$url')" ]] || fail "install.ps1 reads the manifest after it downloads the zip"
-[[ "$(ln 'Get-FileHash')" -lt "$(ln 'ExtractToDirectory')" ]] || fail "install.ps1 extracts the zip before it checks its SHA-256"
+lnum() { grep -n "^[^#]*$1" "$PS1" | head -1 | cut -d: -f1; }   # first line where it appears before any `#`, i.e. as code
+[[ -n "$(lnum 'Get-CanonReleaseSha256 \$ref')" && -n "$(lnum 'Get-FileHash')" && -n "$(lnum 'ExtractToDirectory')" ]] || fail "install.ps1 lost its manifest check or the extraction"
+[[ "$(lnum 'Get-CanonReleaseSha256 \$ref')" -lt "$(lnum 'Invoke-WebRequest -UseBasicParsing -Uri \$url')" ]] || fail "install.ps1 reads the manifest after it downloads the zip"
+[[ "$(lnum 'Get-FileHash')" -lt "$(lnum 'ExtractToDirectory')" ]] || fail "install.ps1 extracts the zip before it checks its SHA-256"
 code "$PS1" | grep -qE 'cne \$expected' && code "$PS1" | grep -q 'does not match the published checksum' || fail "install.ps1 does not refuse a zip whose SHA-256 differs from the manifest"
 if code "$PS1" | grep -qiE 'CANON_(INSECURE|SKIP|NO_?VERIFY|UNVERIFIED)'; then fail "install.ps1 has a way to skip verification"; fi
 

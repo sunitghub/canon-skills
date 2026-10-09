@@ -23,7 +23,8 @@ curl -fsSL --max-time 30 --max-filesize 1048576 --proto '=https,file' --proto-re
 [ "$(tr -d '\0' < "$tmp" | wc -c)" = "$(wc -c < "$tmp")" ] || die "the release manifest at $url contains a NUL byte; refusing"
 
 # One awk pass: every line whose first field is the tag must be exactly `<tag> <64 hex> <40 hex>`; collect the distinct values.
-result="$(LC_ALL=C tr -d '\r' < "$tmp" | LC_ALL=C awk -v tag="$tag" '
+result="$(LC_ALL=C awk -v tag="$tag" '
+  { sub(/\r+$/, "") }   # trailing CRs only, as install.ps1 does: a CR inside a line makes it malformed in both
   /^#/ || NF == 0 { next }
   $1 != tag { next }
   {
@@ -32,7 +33,7 @@ result="$(LC_ALL=C tr -d '\r' < "$tmp" | LC_ALL=C awk -v tag="$tag" '
     if (!(v in seen)) { seen[v] = 1; n++; val = v }
   }
   END { if (bad) print "MALFORMED"; else if (n == 0) print "MISSING"; else if (n > 1) print "CONFLICT"; else print "OK " val }
-')" || die "could not read the release manifest"
+' "$tmp")" || die "could not read the release manifest"
 
 case "$result" in
   "OK "*) printf '%s\n' "${result#OK }" ;;
