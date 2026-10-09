@@ -420,6 +420,17 @@
       "failed_runs": {
         "webkit": "1 of 1 full run (t-5648); 0 of 4 alone"
       }
+    },
+    {
+      "title": "cockpit preview pane (t-b19b) > a fresh cockpit open never inherits a prior session's stale preview content",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed once in a full webkit run while the machine was loaded by a second session's tests; passed 4 of 4 when run alone on the same commit (2026-10-09, t-4077 branch)",
+      "failed_runs": {
+        "webkit": "1 of 1 full run (t-4077); 0 of 4 alone"
+      }
     }
   ],
   "skipped": []
