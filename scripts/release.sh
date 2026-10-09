@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # release.sh — cut a canon release (t-30fc): an annotated tag v<VERSION> on `public` (canon-skills, what consumers install) and a
 # GitHub release whose notes are that version's CHANGELOG section. Maintainer step: run it after the release commit (VERSION bump +
-# dated CHANGELOG section) is on public main. docs/releasing.md has the whole pipeline.
+# dated CHANGELOG section) is on public main. It also attaches canon-X.Y.Z.zip (scripts/release-zip.sh) and prints the manifest line for
+# getcanon.dev/releases.txt (t-34f1). docs/releasing.md has the whole pipeline.
 #   scripts/release.sh              tag, push that one tag, create the GitHub release
 #   scripts/release.sh --dry-run    check everything and print what it would do; creates and pushes nothing
 # It refuses, changing nothing, unless: VERSION is X.Y.Z; CHANGELOG.md has a `## [X.Y.Z] - YYYY-MM-DD` section with content; VERSION
@@ -50,17 +51,21 @@ remote_tag="$(git_ ls-remote --tags "$REMOTE" "refs/tags/$tag")" || die "cannot 
 if [ "$dry" = 0 ]; then command -v gh >/dev/null 2>&1 || die "gh is required (gh auth login)"; fi
 
 if [ "$dry" = 1 ]; then
-  echo "release: dry run — would tag $tag at $(git_ rev-parse --short HEAD), push only refs/tags/$tag to $REMOTE, and create the GitHub release on $RELEASE_REPO with these notes:"
+  echo "release: dry run — would tag $tag at $(git_ rev-parse --short HEAD), push only refs/tags/$tag to $REMOTE, and create the GitHub release on $RELEASE_REPO with canon-$version.zip attached and these notes:"
   printf '%s\n' "$notes"
   exit 0
 fi
 
-notes_file="$(mktemp)"; trap 'rm -f "$notes_file"' EXIT
+notes_file="$(mktemp)"; zip_dir="$(mktemp -d)"; trap 'rm -rf "$notes_file" "$zip_dir"' EXIT
 printf '%s\n' "$notes" > "$notes_file"
 git_ tag -a "$tag" -m "canon $version"
+# t-34f1: the verified install zip, built from the tag before anything leaves the machine; a failure here undoes the local tag.
+manifest_line="$(bash "$REPO_ROOT/scripts/release-zip.sh" "$tag" "$zip_dir")" || { git_ tag -d "$tag" >/dev/null; die "could not build canon-$version.zip; nothing was pushed"; }
 git_ push -q "$REMOTE" "refs/tags/$tag"
 echo "release: pushed tag $tag to $REMOTE"
-if ! gh release create "$tag" --repo "$RELEASE_REPO" --title "canon $version" --notes-file "$notes_file"; then
-  die "tag $tag is already pushed but the GitHub release was not created; finish with: gh release create $tag --repo $RELEASE_REPO --title 'canon $version' --notes-file <notes>"
+if ! gh release create "$tag" "$zip_dir/canon-$version.zip" --repo "$RELEASE_REPO" --title "canon $version" --notes-file "$notes_file"; then
+  die "tag $tag is already pushed but the GitHub release was not created; finish with: gh release create $tag canon-$version.zip --repo $RELEASE_REPO --title 'canon $version' --notes-file <notes> (rebuild the zip with scripts/release-zip.sh $tag <folder>)"
 fi
 echo "release: $tag released"
+echo "release: next, publish this line as the first entry of site/releases.txt in the canon-site repo (installers verify against it, so verified installs of $tag fail until it is live):"
+echo "$manifest_line"

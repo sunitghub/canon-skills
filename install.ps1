@@ -37,6 +37,38 @@ function Install-GitForWindows {
   return ($LASTEXITCODE -eq 0 -and $null -ne (Find-GitBash))
 }
 
+# t-34f1: a release zip is installed only if the published manifest (getcanon.dev/releases.txt, the canon-site repo: a different write path from
+# the canon-skills repo that holds the zip) lists it, and the downloaded file hashes to the manifest's SHA-256. Line format and rules are the same
+# as tools/release-manifest.sh (the git installs' version of this check): exactly one distinct, well-formed line for the tag, else refuse.
+# Lines for other tags that do not parse are ignored. There is no override; CANON_MANIFEST_URL only says where to read it (file:// for tests).
+function Get-CanonReleaseSha256($Ref) {
+  $manifestUrl = if ($env:CANON_MANIFEST_URL) { $env:CANON_MANIFEST_URL } else { "https://getcanon.dev/releases.txt" }
+  try {
+    if ($manifestUrl -like "file://*") { $text = [IO.File]::ReadAllText(([Uri]$manifestUrl).LocalPath) }
+    elseif ($manifestUrl -like "https://*") { $text = (Invoke-WebRequest -UseBasicParsing -Uri $manifestUrl).Content }
+    else { throw "only https:// or file:// manifests are read" }
+    if ($text -is [byte[]]) { $text = [Text.Encoding]::UTF8.GetString($text) }
+  } catch {
+    throw "Cannot read the release manifest at $manifestUrl ($_); refusing to install $Ref unverified. 'canon update --to main' needs no manifest."
+  }
+  if ($text.Length -gt 1048576) { throw "The release manifest at $manifestUrl is over 1 MB; refusing." }
+  if ($text.IndexOf([char]0) -ge 0) { throw "The release manifest at $manifestUrl contains a NUL byte; refusing." }
+  $values = @(); $malformed = $false
+  foreach ($raw in ($text -split "`n")) {
+    $line = $raw.TrimEnd("`r")
+    $trim = $line.Trim(" ", "`t")
+    if ($trim.Length -eq 0 -or $line.StartsWith("#")) { continue }
+    if ((($trim -split "[ `t]+")[0]) -cne $Ref) { continue }
+    if ($line -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+ [0-9a-f]{64} [0-9a-f]{40}\z') { $malformed = $true; continue }
+    $f = $line -split " "
+    if ($values -notcontains "$($f[1]) $($f[2])") { $values += "$($f[1]) $($f[2])" }
+  }
+  if ($malformed) { throw "The manifest line for $Ref is malformed; refusing to install it." }
+  if ($values.Count -gt 1) { throw "The manifest lists $Ref twice with different values; refusing to install it." }
+  if ($values.Count -eq 0) { throw "$Ref is not in the release manifest at $manifestUrl; refusing to install it unverified." }
+  return ($values[0] -split " ")[0]
+}
+
 function Install-CanonFiles($Dest) {
   $ErrorActionPreference = "Stop"  # function-scoped; must not leak into the user's session under | iex
   $ProgressPreference = "SilentlyContinue"  # Windows PowerShell 5.1 redraws the progress bar per chunk, making downloads ~10x slower
@@ -48,9 +80,21 @@ function Install-CanonFiles($Dest) {
     # t-30fc: `canon update --to <ref>` sets CANON_REF; only main or a release tag like v0.3.0 reaches the URL.
     $ref = if ($env:CANON_REF) { $env:CANON_REF } else { "main" }
     if ($ref -cne "main" -and $ref -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw "CANON_REF must be main or a release tag like v0.3.0 (got '$ref')." }
-    $url = if ($ref -ceq "main") { $ZipUrl } else { "https://github.com/sunitghub/canon-skills/archive/refs/tags/$ref.zip" }
+    $expected = $null
+    if ($ref -ceq "main") {
+      $url = $ZipUrl
+    } else {
+      $expected = Get-CanonReleaseSha256 $ref   # throws before anything is downloaded or touched
+      $url = "https://github.com/sunitghub/canon-skills/releases/download/$ref/canon-$($ref.Substring(1)).zip"
+    }
     Write-Host "==> Downloading canon ($ref)"
+    if ($ref -ceq "main") { Write-Host "    main moves with every change and is not checksum-verified; 'canon update --to vX.Y.Z' installs a verified release." }
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
+    if ($expected) {
+      $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
+      if ($actual -cne $expected) { throw "The downloaded $ref zip does not match the published checksum (got $actual, the manifest says $expected); nothing was installed." }
+      Write-Host "==> Verified $ref (SHA-256 matches the published manifest)"
+    }
     # Expand-Archive is very slow in Windows PowerShell 5.1 and its progress bar ignores $ProgressPreference.
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     [IO.Compression.ZipFile]::ExtractToDirectory($zip, $tmp)

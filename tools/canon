@@ -148,10 +148,23 @@ update_cmd() {
   elif [ "$branch" != main ]; then
     echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1
   fi
-  if [ -n "$to" ] && [ "$to" != main ] && ! git -C "$repo" rev-parse -q --verify "refs/tags/$to^{commit}" >/dev/null 2>&1; then
-    # a depth-1 clone has no tags: ask for just this one
-    git -C "$repo" fetch -q --depth 1 origin "refs/tags/$to:refs/tags/$to" \
-      || { echo "canon update: release $to was not found on origin (or the fetch failed, see above). Nothing was changed." >&2; exit 1; }
+  if [ -n "$to" ] && [ "$to" != main ]; then
+    # t-34f1: a release is installed only if the published manifest (getcanon.dev, a different write path from this repo) lists it, and the
+    # tag's commit is the one the manifest names. The manifest is read first so a refusal fetches nothing; release-manifest.sh says why.
+    local mf mf_sha mf_commit fetched=0 have
+    mf="$(bash "$SCRIPT_DIR/release-manifest.sh" "$to")" || { echo "canon update: Nothing was changed." >&2; exit 1; }
+    read -r mf_sha mf_commit <<<"$mf"
+    if ! git -C "$repo" rev-parse -q --verify "refs/tags/$to^{commit}" >/dev/null 2>&1; then
+      # a depth-1 clone has no tags: ask for just this one
+      git -C "$repo" fetch -q --depth 1 origin "refs/tags/$to:refs/tags/$to" \
+        || { echo "canon update: release $to was not found on origin (or the fetch failed, see above). Nothing was changed." >&2; exit 1; }
+      fetched=1
+    fi
+    have="$(git -C "$repo" rev-parse "refs/tags/$to^{commit}")"
+    if [ "$have" != "$mf_commit" ]; then
+      [ "$fetched" = 0 ] || git -C "$repo" tag -d "$to" >/dev/null 2>&1
+      echo "canon update: release $to is at $have but the published manifest says $mf_commit; refusing to install it. Nothing was changed." >&2; exit 1
+    fi
   fi
   before="$(git -C "$repo" rev-parse --short HEAD)"
   # t-9383: the Windows exes are no longer committed, so a pull from the commit that dropped them deletes the old ones.
@@ -174,8 +187,11 @@ update_cmd() {
     fi
   fi
   after="$(git -C "$repo" rev-parse --short HEAD)"
-  if [ -n "$to" ] && [ "$to" != main ]; then echo "canon pinned to $to ($after). Run 'canon update --to main' to follow main again."
-  elif [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
+  if [ -n "$to" ] && [ "$to" != main ]; then echo "canon pinned to $to ($after), verified against the published manifest. Run 'canon update --to main' to follow main again."
+  else
+    if [ "$before" = "$after" ]; then echo "canon is up to date ($after)."; else echo "canon updated $before..$after."; fi
+    echo "Note: main moves with every change and is not checksum-verified; 'canon update --to vX.Y.Z' installs a verified release."
+  fi
   bash "$SCRIPT_DIR/fetch-daemon.sh" --quiet || echo "canon update: a prebuilt binary is missing or stale (see above); the Cockpit needs it." >&2
   if [ -n "$bak" ]; then
     local f

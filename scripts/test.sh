@@ -60,6 +60,8 @@ tests=(
   "$ROOT/tests/check-binaries-released.sh"
   "$ROOT/tests/release-daemon-publish.sh"
   "$ROOT/tests/release.sh"
+  "$ROOT/tests/release-zip.sh"
+  "$ROOT/tests/release-manifest.sh"
   "$ROOT/tests/sprint-check-upkeep.sh"
   "$ROOT/tests/upkeep-skill-hash-parity.sh"
   "$ROOT/tests/sprint-check-worktrees.sh"
