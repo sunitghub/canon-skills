@@ -33,6 +33,16 @@
   .side-resize{position:absolute;top:0;right:-4px;width:8px;height:100%;cursor:col-resize;z-index:5;outline:none}
   .side-resize::after{content:"";position:absolute;top:0;bottom:0;left:3px;width:2px;background:transparent;transition:background .12s ease}
   .side-resize:hover::after,.side-resize.drag::after,.side-resize:focus-visible::after{background:var(--accent)}
+  /* t-4077: a collapse button on the divider, drawn like the Sessions rail's (20px, 6px radius, raised surface); the dragged width is kept in --side-w, so expanding restores it */
+  .side-collapse{position:absolute;top:14px;right:-10px;width:20px;height:20px;padding:0;border:1px solid var(--border);border-radius:6px;background:var(--panel);color:var(--text-muted);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:6}
+  .side-collapse:hover{color:var(--text);background:var(--border-muted)}
+  .side-collapse svg{transition:transform .18s ease}
+  html.side-collapsed .side-collapse svg{transform:rotate(180deg)}
+  html.side-collapsed .below{grid-template-columns:56px 1fr}
+  html.side-collapsed .side-resize,html.side-collapsed .side .navlabel,html.side-collapsed .side .agents,html.side-collapsed .side .foot,html.side-collapsed .brand small,html.side-collapsed .nav a .badge{display:none}
+  html.side-collapsed .brand{font-size:0;justify-content:center;padding-left:0;padding-right:0}
+  html.side-collapsed .nav a{font-size:0;justify-content:center;padding:11px 0}
+  html.side-collapsed .nav a .ic{font-size:15px}
   body.resizing{cursor:col-resize;user-select:none}
   body.resizing iframe{pointer-events:none}
   .brand{display:flex;align-items:center;gap:9px;white-space:nowrap;height:var(--strip-h);padding:var(--strip-pad) 18px 0;margin-bottom:6px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px}
@@ -596,6 +606,9 @@
         <button id="help-btn" onclick="openHelp()">? Help</button>
         <button id="keys-btn" class="icon" type="button" onclick="toggleKeysSheet(true)" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9.5 14h5"/></svg></button>
       </div>
+      <button class="side-collapse" id="side-collapse" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar (ctrl+. then w)">
+        <svg viewBox="0 0 20 20" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 5l-5 5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
       <div class="side-resize" id="side-resize" role="separator" aria-orientation="vertical" aria-label="Resize sidebar" aria-valuemin="200" aria-valuemax="420" aria-valuenow="230" tabindex="0" title="Drag to resize · double-click to reset"></div>
     </aside>
     <main class="main">
@@ -775,6 +788,7 @@
           <tr><td><kbd>f</kbd> / <kbd>l</kbd></td><td>First / last project tab</td></tr>
           <tr><td><kbd>n</kbd> / <kbd>b</kbd></td><td>Next / previous tab</td></tr>
           <tr><td><kbd>p</kbd></td><td>Projects</td></tr>
+          <tr><td><kbd>w</kbd></td><td>Collapse / expand the sidebar</td></tr>
           <tr><td><kbd>a</kbd></td><td>Admin</td></tr>
           <tr><td><kbd>x</kbd></td><td>Close this tab (a live session still asks first)</td></tr>
         </table>
@@ -1354,6 +1368,26 @@
   }
   initSideResize();
 
+  // ── Collapsible sidebar (t-4077) ───────────────────────────────────────────
+  const LS_SIDE_OFF='canon-cockpit-side-collapsed';
+  function setSideCollapsed(on, save){
+    document.documentElement.classList.toggle('side-collapsed', on);
+    const b=document.getElementById('side-collapse');
+    if(b){
+      b.setAttribute('aria-expanded', String(!on));
+      b.setAttribute('aria-label', on ? 'Expand sidebar' : 'Collapse sidebar');
+      b.title=(on ? 'Expand sidebar' : 'Collapse sidebar')+' (ctrl+. then w)';
+    }
+    if(save){ try{ localStorage.setItem(LS_SIDE_OFF, on ? '1' : '0'); }catch(e){} }
+  }
+  function toggleSide(){ setSideCollapsed(!document.documentElement.classList.contains('side-collapsed'), true); }
+  (function initSideCollapse(){
+    let off=false; try{ off=localStorage.getItem(LS_SIDE_OFF)==='1'; }catch(e){}
+    setSideCollapsed(off, false);
+    const b=document.getElementById('side-collapse');
+    if(b) b.addEventListener('click', toggleSide);
+  })();
+
   function renderAdminSessions(views){
     const box=document.getElementById('ad-sessions');
     if(!box) return;
@@ -1524,6 +1558,7 @@ function canonPrefixKeys(emit) {
     if(/^[1-9]$/.test(key)){ const t=openTabs[+key-1]; if(t) goTab(t.id); return; }
     if(key==='n'||key==='b'){ const i=Math.max(0,all.indexOf(activeTab)); goTab(all[(i+(key==='n'?1:-1)+all.length)%all.length]); return; }
     if(key==='p'){ goTab('projects'); return; }
+    if(key==='w'){ toggleSide(); return; }   // the Workspace sidebar, t-4077
     if(key==='a'){ showView('admin'); try{ window.focus(); }catch(e){} return; }   // Admin, like clicking it in the sidebar
     if(key==='f'||key==='l'){ if(openTabs.length) goTab(openTabs[key==='f'?0:openTabs.length-1].id); return; }   // first / last project tab
     if(key==='e'){

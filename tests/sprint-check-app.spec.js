@@ -4746,6 +4746,73 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('shell (t-4077): the divider button collapses the sidebar to an icon strip and restores the dragged width; the choice is remembered', async ({ page }) => {
+      await openShell(page, []);
+      const side = page.locator('aside.side'), btn = page.locator('#side-collapse'), handle = page.locator('#side-resize');
+      const width = async () => Math.round((await side.boundingBox()).width);
+      const mainW = async () => Math.round((await page.locator('.main').boundingBox()).width);
+      await handle.focus(); await page.keyboard.press('ArrowRight'); await page.keyboard.press('ArrowRight');   // a dragged width: 250
+      expect(await width()).toBe(250);
+      const openMain = await mainW();
+      await expect(btn).toHaveAttribute('aria-expanded', 'true');
+      const bb = await btn.boundingBox(), sb = await side.boundingBox();
+      expect(Math.round(bb.width)).toBe(20);
+      expect(Math.abs(bb.x + bb.width / 2 - (sb.x + sb.width))).toBeLessThanOrEqual(2);       // centred on the divider
+      await btn.click();
+      await expect(btn).toHaveAttribute('aria-expanded', 'false');
+      await expect.poll(width).toBe(56);
+      expect(await mainW()).toBe(openMain + 250 - 56);                                        // the board area took the difference
+      await btn.click();
+      await expect.poll(width).toBe(250);                                                     // the dragged width came back
+      await btn.click(); await expect.poll(width).toBe(56);
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await expect.poll(width).toBe(56);                                                      // remembered
+      await expect(page.locator('#side-collapse')).toHaveAttribute('aria-expanded', 'false');
+      await page.evaluate(() => localStorage.clear());
+      await page.reload(); await page.waitForLoadState('networkidle');
+      await expect.poll(width).toBe(230);                                 // storage cleared: default open width
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-4077): collapsed, labels and the Agents list are hidden, the Projects/Admin icons still switch views', async ({ page }) => {
+      await openShell(page, stateRows());
+      await page.evaluate(() => pollSessions());
+      await expect(page.locator('#ag-list .ag-row').first()).toBeVisible();
+      await page.locator('#side-collapse').click();
+      await expect(page.locator('#ag-list .ag-row').first()).toBeHidden();                    // the Agents list goes with the labels
+      await expect(page.locator('#side-resize')).toBeHidden();                               // nothing to drag while collapsed
+      await expect(page.locator('#ag-label')).toBeHidden();
+      await expect(page.locator('.side .foot')).toBeHidden();
+      await expect(page.locator('#nav-projects .badge')).toBeHidden();
+      await expect(page.locator('#nav-projects .ic')).toBeVisible();
+      const ink = await page.locator('#nav-projects').evaluate(e => getComputedStyle(e).fontSize);
+      expect(ink).toBe('0px');                                                                // the word "Projects" takes no room
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('#nav-admin')).toHaveClass(/active/);
+      await page.locator('#nav-projects').click();
+      await expect(page.locator('#nav-projects')).toHaveClass(/active/);
+      const b = await page.locator('#side-collapse').boundingBox(), s = await page.locator('aside.side').boundingBox();
+      expect(Math.abs(b.x + b.width / 2 - (s.x + s.width))).toBeLessThanOrEqual(2);          // the button stays on the divider
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-4077): ctrl+. then w toggles the sidebar; p and a still work; the shortcuts sheet lists w', async ({ page }) => {
+      await openShell(page, []);
+      const side = page.locator('aside.side');
+      const width = async () => Math.round((await side.boundingBox()).width);
+      await page.keyboard.press('Control+.'); await page.keyboard.press('w');
+      await expect.poll(width).toBe(56);
+      await page.keyboard.press('Control+.'); await page.keyboard.press('w');
+      await expect.poll(width).toBe(230);
+      await page.keyboard.press('Control+.'); await page.keyboard.press('a');
+      await expect(page.locator('#nav-admin')).toHaveClass(/active/);
+      await page.keyboard.press('Control+.'); await page.keyboard.press('p');
+      await expect(page.locator('#nav-projects')).toHaveClass(/active/);
+      await page.keyboard.press('Control+.'); await page.keyboard.press('Control+.');
+      await expect(page.locator('#keys-sheet')).toContainText('Collapse / expand the sidebar');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // A fake Notification + controllable document.hidden, installed before any page script runs.
     const fakeNotifications = (page, { perm = 'default', nextPerm = 'granted', supported = true, hidden = false, on = false } = {}) => page.addInitScript(o => {
       window.__notes = []; window.__permAsks = 0; window.__perm = o.perm; window.__hidden = o.hidden; window.__focused = !o.hidden;
