@@ -58,7 +58,7 @@ assert_grep 'function openCockpit' "$APP"
 assert_grep 'function closeCockpit' "$APP"
 assert_grep "fetch\\('/api/cockpit'" "$APP"
 assert_grep 'class="card-start' "$APP"
-assert_grep 'renderCockpitAcceptance' "$APP"
+assert_grep 'function openCockpitDetails' "$APP"
 assert_grep 'rail-collapsed' "$APP"
 assert_grep 'embed=1' "$APP"
 

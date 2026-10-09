@@ -5289,8 +5289,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(board.locator('#ck-scratch-note')).toBeVisible();
       await expect(board.locator('#ck-scratch-note')).toContainText('SCRATCH · no ticket · no gates');
       await expect(board.locator('#ck-worktree-section')).toBeHidden();
-      await expect(board.locator('#ck-plan-section')).toBeHidden();
-      await expect(board.locator('#ck-accept-section')).toBeHidden();
+      await expect(board.locator('#ck-details')).toBeHidden();
       await expect(board.locator('#ck-status')).toHaveText('scratch');
       await expect.poll(async () => board.locator('#ck-term iframe').first().getAttribute('src')).toContain(`ticket=${id}`);
       // End: nothing to save — only End is offered.
@@ -5703,11 +5702,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await resumeBtn.click();
 
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      // Acceptance starts collapsed — expand it to see the checklist.
-      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
-      // Inline acceptance rail renders the Criteria checklist.
-      await expect(page.locator('#ck-accept .doc-bullet').first()).toBeVisible();
-      await expect(page.locator('#ck-accept')).toContainText('First cockpit criterion');
+      // The Ticket details row opens the Acceptance checklist (t-6254).
+      await page.locator('#ck-details').click();
+      await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();
+      await expect(page.locator('#m-body')).toContainText('First cockpit criterion');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
       // Read-only model chip inherits from plan.md's Gate model.
       await expect(page.locator('#ck-model')).toContainText('haiku');
       // The embedded terminal iframe points at the (stubbed) daemon /cockpit with embed=1.
@@ -6358,12 +6358,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
-      await page.locator('.ck-accordion-header[data-accordion="ck-plan-section"]').click();
-      await expect(page.locator('#ck-plan')).toContainText('WORKTREE-ONLY approach body');
-      await expect(page.locator('#ck-plan')).not.toContainText('MAIN approach body');
-
-      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
-      await expect(page.locator('#ck-accept')).toContainText('worktree-only criterion');
+      await page.locator('#ck-details').click();
+      await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+      await expect(page.locator('#m-body')).toContainText('WORKTREE-ONLY approach body');
+      await expect(page.locator('#m-body')).not.toContainText('MAIN approach body');
+      await expect(page.locator('.doc-locked-badge')).toContainText('worktree copy');   // read-only: it is the session's copy
+      await page.locator('#m-body').dblclick();
+      await page.keyboard.press('e');
+      await expect(page.locator('#btn-save-top')).toHaveCount(0);   // never an editor on the worktree's copy
+      await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();
+      await expect(page.locator('#m-body')).toContainText('worktree-only criterion');
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
     }
@@ -8352,32 +8356,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('Acceptance renders view-only in the cockpit — clicking a bullet never writes to acceptance.md (t-96a8)', async ({ page }) => {
-    const id = `t-cktog-${Date.now()}`;
-    const acc = path.join(PROJECT_ROOT, '.tickets', id, 'acceptance.md');
-    try {
-      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Do not toggle me'] });
-      const before = fs.readFileSync(acc, 'utf8');
-      await stubCockpit(page);
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
-
-      const bullet = page.locator('#ck-accept .doc-bullet', { hasText: 'Do not toggle me' });
-      await expect(bullet).toBeVisible();
-      await expect(bullet).not.toHaveAttribute('data-check-idx');
-      await bullet.click();
-      await page.waitForTimeout(300); // no write path exists — nothing to poll for
-
-      expect(fs.readFileSync(acc, 'utf8')).toBe(before);
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
-
   test('focus toggle collapses the ticket rail to maximize the terminal', async ({ page }) => {
     const id = `t-ckfocus-${Date.now()}`;
     try {
@@ -8464,7 +8442,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(none).toBeNull();
   });
 
-  test('Status section renders this ticket\'s HANDOFF.md bullet, above Acceptance', async ({ page }) => {
+  test('Status section renders this ticket\'s HANDOFF.md bullet, below Ticket details', async ({ page }) => {
     const id = `t-ckstate-${Date.now()}`;
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
@@ -8480,11 +8458,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
       await expect(page.locator('#ck-state')).toContainText('plan approved, doing the thing');
-      // Status sits above Acceptance in DOM order, and starts expanded
-      // (not collapsed like Acceptance/Test Plan) — it's the freshest,
-      // most immediately relevant context.
-      const sectionOrder = await page.locator('.ck-accordion-section').evaluateAll(els => els.map(e => e.id));
-      expect(sectionOrder.indexOf('ck-state-section')).toBeLessThan(sectionOrder.indexOf('ck-accept-section'));
+      // The Ticket details row sits above the (tall) Status in DOM order so its badge is never scrolled out of sight (t-6254); Status starts expanded.
+      const detailsFirst = await page.evaluate(() => !!(document.getElementById('ck-details').compareDocumentPosition(document.getElementById('ck-state-section')) & Node.DOCUMENT_POSITION_FOLLOWING));
+      expect(detailsFirst).toBe(true);
       await expect(page.locator('#ck-state-section')).not.toHaveClass(/collapsed/);
     } finally {
       fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
@@ -8512,19 +8488,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('Test Plan panel renders view-only, distinct from Criteria — clicking it never writes to acceptance.md (t-96a8)', async ({ page }) => {
-    const id = `t-cktp-${Date.now()}`;
-    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+  test('the rail has one Ticket details row that opens the viewer over the cockpit; Esc and an outside click close it (t-6254)', async ({ page }) => {
+    const id = `t-ckdet-${Date.now()}`;
     try {
-      writeTicket(id, 'in_progress');
-      const accPath = path.join(dir, 'acceptance.md');
-      const before = [
-        '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
-        '- [x] Crit one', '- [ ] Crit two', '',
-        '## Test Plan', '- [ ] Plan one', '- [x] Plan two', '',
-        '## QA', '- [ ] Tested locally', '',
-      ].join('\n');
-      fs.writeFileSync(accPath, before);
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] First cockpit criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'Real approach text.', ''],
+      });
       await stubCockpit(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
@@ -8532,48 +8502,112 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
-      // Both sections start collapsed — expand Test Plan to see it.
-      await page.locator('.ck-accordion-header[data-accordion="ck-testplan-section"]').click();
-      await expect(page.locator('#ck-testplan')).toBeVisible();
-      await expect(page.locator('#ck-testplan')).toContainText('Plan one');
-      await expect(page.locator('#ck-testplan')).toContainText('Plan two');
-      await expect(page.locator('#ck-testplan')).not.toContainText('Crit one');
+      await expect(page.locator('#ck-details')).toBeVisible();
+      await expect(page.locator('#ck-details')).toContainText('Ticket details');
+      await expect(page.locator('#ck-plan-section, #ck-accept-section, #ck-testplan-section')).toHaveCount(0);
+      await expect(page.locator('#ck-details-badge')).toBeHidden();
 
-      const bullet = page.locator('#ck-testplan .doc-bullet', { hasText: 'Plan one' });
-      await expect(bullet).not.toHaveAttribute('data-check-idx');
-      await bullet.click();
-      await page.waitForTimeout(300); // no write path exists — nothing to poll for
+      await page.locator('#ck-details').click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#m-id')).toHaveText(id);
+      // The popup is above the cockpit: its tree is what a click on the screen centre reaches.
+      await page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' }).click();
+      await expect(page.locator('#m-body')).toContainText('First cockpit criterion');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);   // the session stays mounted underneath
 
-      expect(fs.readFileSync(accPath, 'utf8')).toBe(before);
+      await page.locator('#ck-details').click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      await page.locator('#modal-overlay').click({ position: { x: 4, y: 4 } });
+      await expect(page.locator('#modal-overlay')).not.toHaveClass(/open/);
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+    } finally {
+      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+    }
+  });
+
+  test('the sprint writing the plan badges the Ticket details row; opening it clears the badge (t-6254)', async ({ page }) => {
+    const id = `t-ckbadge-${Date.now()}`;
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    try {
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] a criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', '<!-- Describe how you will implement this. -->', ''],
+      });
+      await stubCockpit(page);
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      await page.locator(`.card[data-id="${id}"] .card-start`).click();
+      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+      // Both docs were read once: that read is the baseline, not a change.
+      await expect.poll(() => page.evaluate(() => Object.keys(cockpitState.docSeen).sort().join())).toBe('acceptance,plan');
+      await expect(page.locator('#ck-details-badge')).toBeHidden();
+
+      fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'The sprint wrote this.', ''].join('\n'));
+      await expect(page.locator('#ck-details-badge')).toBeVisible({ timeout: 20000 });
+      await expect(page.locator('#ck-details-badge')).toHaveText('Plan written');
+      // Rail-width layout: the title stays on one line and the badge sits inside the row.
+      const box = async sel => page.locator(sel).evaluate(el => { const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height }; });
+      const row = await box('#ck-details'), badge = await box('#ck-details-badge'), title = await box('.ck-details-title');
+      expect(title.height).toBeLessThan(22);
+      expect(badge.left).toBeGreaterThanOrEqual(row.left);
+      expect(badge.right).toBeLessThanOrEqual(row.right);
+      expect(badge.bottom).toBeLessThanOrEqual(row.bottom);
+
+      await page.locator('#ck-details').click();
+      await expect(page.locator('#m-docs .doc-tab.active')).toContainText('Plan');   // lands on the new doc
+      await expect(page.locator('#m-body')).toContainText('The sprint wrote this.');
+      await expect(page.locator('#ck-details-badge')).toBeHidden();
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test('cockpit polls acceptance.md while open, picking up an external edit without user interaction (t-96a8)', async ({ page }) => {
-    const id = `t-ckpoll-${Date.now()}`;
+  test('a changed doc is marked New in the tree until it is viewed; unchanged docs raise nothing (t-6254)', async ({ page }) => {
+    const id = `t-cknew-${Date.now()}`;
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     try {
-      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] Not yet edited'] });
-      const accPath = path.join(dir, 'acceptance.md');
+      writeTicket(id, 'in_progress', {
+        acceptanceCriteria: ['- [ ] a criterion'],
+        plan: ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'First approach.', ''],
+      });
       await stubCockpit(page);
       await page.goto(BASE);
       await page.waitForLoadState('networkidle');
       await page.locator('#board-search').fill(id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
-      await expect(page.locator('#ck-accept')).toContainText('Not yet edited');
+      await expect.poll(() => page.evaluate(() => Object.keys(cockpitState.docSeen).sort().join())).toBe('acceptance,plan');
+      const reread = () => page.evaluate(async id => { await loadData(); await renderCockpitDocs(findTicketById(id)); }, id);
 
-      // Simulate the agent (or anyone) editing acceptance.md while the cockpit
-      // is open — no cockpit interaction at all, just an external file write.
-      fs.writeFileSync(accPath, [
-        '# Acceptance', `Ticket: \`${id}\``, '', '## Criteria',
-        '- [x] Edited externally while cockpit was open', '',
-        '## Test Plan', '- [ ] a check', '', '## QA', '- [ ] Tested locally', '',
-      ].join('\n'));
+      await reread();
+      await expect(page.locator('#ck-details-badge')).toBeHidden();   // nothing changed
 
-      await expect(page.locator('#ck-accept')).toContainText('Edited externally while cockpit was open', { timeout: 10000 });
+      // Switching to the worktree's copy of the docs is a different source, not a change to either doc.
+      await page.evaluate(async id => { cockpitState.worktreeDocs = { plan: '# Plan\n\n## Approach\nWT plan', acceptance: '# Acceptance\n\n## Criteria\n- [ ] wt' }; await renderCockpitDocs(findTicketById(id)); }, id);
+      await expect(page.locator('#ck-details-badge')).toBeHidden();
+      await page.evaluate(async id => { cockpitState.worktreeDocs = null; await renderCockpitDocs(findTicketById(id)); }, id);
+      await expect(page.locator('#ck-details-badge')).toBeHidden();
+
+      fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'Second approach.', ''].join('\n'));
+      await reread();
+      fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', `Ticket: \`${id}\``, '', '## Criteria', '- [x] a criterion', '', '## Test Plan', '- [ ] a check', '', '## QA', '- [ ] Tested locally', ''].join('\n'));
+      await reread();
+      await expect(page.locator('#ck-details-badge')).toHaveText('Acceptance updated');
+
+      await page.locator('#ck-details').click();
+      const plan = page.locator('#m-docs .doc-tab', { hasText: 'Plan' });
+      const acc = page.locator('#m-docs .doc-tab', { hasText: 'Acceptance' });
+      await expect(acc).toHaveClass(/active/);
+      await expect(acc.locator('.doc-new')).toHaveCount(0);   // opened on it, so it is viewed
+      await expect(plan.locator('.doc-new')).toHaveText('New');
+      await expect(page.locator('#ck-details-badge')).toHaveText('Plan updated');
+
+      await plan.click();
+      await expect(plan.locator('.doc-new')).toHaveCount(0);
+      await expect(page.locator('#ck-details-badge')).toBeHidden();
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -8631,7 +8665,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('opening the cockpit fetches acceptance.md once, not twice, for Acceptance + Test Plan (t-96a8)', async ({ page }) => {
+  test('opening the cockpit fetches acceptance.md once, not twice (t-96a8)', async ({ page }) => {
     const id = `t-ckfetch-${Date.now()}`;
     try {
       writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
@@ -8655,101 +8689,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
     }
   });
 
-  test('Acceptance and Test Plan accordion sections start collapsed and toggle independently (t-96a8)', async ({ page }) => {
-    const id = `t-ckacc-${Date.now()}`;
-    try {
-      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] a criterion'] });
-      await stubCockpit(page);
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-
-      const acceptSection = page.locator('#ck-accept-section');
-      const testPlanSection = page.locator('#ck-testplan-section');
-      // Both start collapsed.
-      await expect(acceptSection).toHaveClass(/collapsed/);
-      await expect(testPlanSection).toHaveClass(/collapsed/);
-      await expect(page.locator('#ck-accept')).toBeHidden();
-
-      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
-      await expect(acceptSection).not.toHaveClass(/collapsed/);
-      await expect(page.locator('#ck-accept')).toBeVisible();
-      // Test Plan untouched by expanding Acceptance.
-      await expect(testPlanSection).toHaveClass(/collapsed/);
-      await expect(page.locator('#ck-testplan')).toBeHidden();
-
-      await page.locator('.ck-accordion-header[data-accordion="ck-accept-section"]').click();
-      await expect(acceptSection).toHaveClass(/collapsed/);
-      await expect(page.locator('#ck-accept')).toBeHidden();
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
-
-  test('Plan section renders plan.md content, including the Gate model line, and starts collapsed', async ({ page }) => {
-    const id = `t-ckplan-${Date.now()}`;
-    try {
-      writeTicket(id, 'in_progress', {
-        plan: ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: low | Gate model: haiku', '', '- [x] Plan approved', '', '## Approach', 'Filled in with real detail.', ''],
-      });
-      await stubCockpit(page);
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-
-      const planSection = page.locator('#ck-plan-section');
-      await expect(planSection).toHaveClass(/collapsed/);
-      await expect(page.locator('#ck-plan')).toBeHidden();
-
-      await page.locator('.ck-accordion-header[data-accordion="ck-plan-section"]').click();
-      await expect(planSection).not.toHaveClass(/collapsed/);
-      await expect(page.locator('#ck-plan')).toContainText('Gate model: haiku');
-      await expect(page.locator('#ck-plan')).toContainText('Filled in with real detail');
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
-
-  test('Plan section shows a hint when this ticket has no plan.md yet', async ({ page }) => {
-    const id = `t-cknoplan-${Date.now()}`;
-    try {
-      writeTicket(id, 'in_progress');
-      await stubCockpit(page);
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-
-      await page.locator('.ck-accordion-header[data-accordion="ck-plan-section"]').click();
-      await expect(page.locator('#ck-plan')).toContainText('No plan.md yet');
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
-
-  test('Acceptance/Test Plan section headers show a checklist item count', async ({ page }) => {
-    const id = `t-ckcount-${Date.now()}`;
-    try {
-      writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] one', '- [x] two', '- [ ] three'] });
-      await stubCockpit(page);
-      await page.goto(BASE);
-      await page.waitForLoadState('networkidle');
-      await page.locator('#board-search').fill(id);
-      await page.locator(`.card[data-id="${id}"] .card-start`).click();
-      await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-
-      await expect(page.locator('#ck-accept-count')).toHaveText('(3)');
-      // writeTicket's fixed Test Plan body is a single "- [ ] a check" item.
-      await expect(page.locator('#ck-testplan-count')).toHaveText('(1)');
-    } finally {
-      fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
-    }
-  });
 });
 
 test.describe('cockpit leave-session confirm (t-f6b6)', () => {

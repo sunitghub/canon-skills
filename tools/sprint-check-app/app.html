@@ -1563,7 +1563,7 @@
     .ck-state-chip.st-needs-you { background: var(--st-need); border-color: var(--st-need); color: var(--st-ink); animation: pulse 1.4s ease-in-out infinite; }
     .ck-reaper { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* t-b91f */
     /* t-47f1: a scratch session has no ticket docs — the rail shows only a label */
-    #cockpit.scratch-mode .ck-accordion-section { display: none; }
+    #cockpit.scratch-mode .ck-accordion-section, #cockpit.scratch-mode .ck-details { display: none; }
     .ck-scratch-note { display: none; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-hover); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
     .ck-scratch-note b { color: var(--text); letter-spacing: .06em; }
     #cockpit.scratch-mode .ck-scratch-note { display: block; }
@@ -1662,8 +1662,6 @@
     }
     .ck-ticket-card .ck-tc-id { font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted); }
     .ck-ticket-card .ck-tc-title { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 4px; }
-    /* View-only (t-96a8) — no cursor:pointer; these bullets don't toggle. */
-    .ck-plan, .ck-accept, .ck-testplan { font-size: 12px; }
     .ck-state {
       font-size: 12px; color: var(--text-body); line-height: 1.55;
       background: var(--surface-raised); border: 1px solid var(--border);
@@ -1673,17 +1671,24 @@
     .ck-state p:last-child { margin-bottom: 0; }
     /* t-8ff0: label marking a Current Focus fallback (not per-ticket state). */
     .ck-state-source { font-size: 11px; color: var(--text-muted); margin: 0 0 6px 0; }
-    /* Each checklist entry as its own card, scoped to the cockpit rail only
-       — the shared .doc-bullet class is used elsewhere (ticket modal) where
-       this treatment doesn't apply. */
-    .ck-plan .doc-bullet, .ck-accept .doc-bullet, .ck-testplan .doc-bullet {
-      background: var(--surface-raised); border: 1px solid var(--border);
-      border-radius: 8px; padding: 8px 10px; margin: 0 0 6px 0;
+    /* t-6254: one row replaces the Plan/Acceptance/Test Plan accordions; it opens the ticket viewer as a popup. */
+    .ck-details {
+      display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 14px; box-shadow: var(--card-shadow); color: var(--text); font: inherit;
+      transition: background .15s, border-color .15s, box-shadow .15s;
     }
-    .ck-plan .doc-bullet:last-child, .ck-accept .doc-bullet:last-child, .ck-testplan .doc-bullet:last-child { margin-bottom: 0; }
-    .ck-plan .doc-bullet[data-check-idx]:hover, .ck-accept .doc-bullet[data-check-idx]:hover, .ck-testplan .doc-bullet[data-check-idx]:hover {
-      border-color: var(--border-hover); background: var(--surface-hover);
+    .ck-details:hover, .ck-details:focus-visible { background: var(--surface-hover); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); outline: none; }
+    .ck-details-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+    .ck-details-title { font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .ck-details-badge { align-self: flex-start; }
+    .ck-details-note { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ck-details-badge, .doc-new {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--accent);
+      border-radius: 999px; padding: 2px 8px; white-space: nowrap; flex-shrink: 0;
     }
+    .doc-new { margin-left: 6px; padding: 0 6px; font-size: 9px; text-transform: uppercase; }
+    .ck-details-open { font-size: 11px; color: var(--accent); flex-shrink: 0; }
     .ck-add-hint { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
 
     /* WORKTREE accordion (t-cd06): single-select rows, radio-style — Main
@@ -2187,6 +2192,10 @@
             </div>
             <div class="ck-scratch-promoted" id="ck-scratch-promoted" hidden></div>
           </div>
+          <button type="button" class="ck-details" id="ck-details" aria-describedby="ck-details-note">
+            <span class="ck-details-text"><span class="ck-details-title">Ticket details</span><span class="ck-details-note" id="ck-details-note">Description · Plan · Acceptance</span><span class="ck-details-badge" id="ck-details-badge" style="display:none"></span></span>
+            <span class="ck-details-open">Open ↗</span>
+          </button>
           <div class="ck-accordion-section" id="ck-worktree-section">
             <div class="ck-accordion-header" data-accordion="ck-worktree-section">
               <div class="ck-section-label">Worktree</div>
@@ -2203,35 +2212,6 @@
             </div>
             <div class="ck-accordion-body">
               <div class="ck-state" id="ck-state"></div>
-            </div>
-          </div>
-          <div class="ck-accordion-section collapsed" id="ck-plan-section">
-            <div class="ck-accordion-header" data-accordion="ck-plan-section">
-              <div class="ck-section-label">Plan</div>
-              <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-            <div class="ck-accordion-body">
-              <div class="ck-plan" id="ck-plan"></div>
-            </div>
-          </div>
-          <div class="ck-accordion-section collapsed" id="ck-accept-section">
-            <div class="ck-accordion-header" data-accordion="ck-accept-section">
-              <div class="ck-section-label">Acceptance</div>
-              <span class="ck-section-count" id="ck-accept-count"></span>
-              <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-            <div class="ck-accordion-body">
-              <div class="ck-accept" id="ck-accept"></div>
-            </div>
-          </div>
-          <div class="ck-accordion-section collapsed" id="ck-testplan-section">
-            <div class="ck-accordion-header" data-accordion="ck-testplan-section">
-              <div class="ck-section-label">Test Plan</div>
-              <span class="ck-section-count" id="ck-testplan-count"></span>
-              <svg class="ck-accordion-chevron" viewBox="0 0 20 20" width="14" height="14" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 8l5 5 5-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            </div>
-            <div class="ck-accordion-body">
-              <div class="ck-testplan" id="ck-testplan"></div>
             </div>
           </div>
           <div class="ck-accordion-section no-git-only" id="ck-changes-section">
@@ -4221,7 +4201,7 @@ function openScratch(id) {
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-const modalState = { editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', sections: {}, expanded: new Set(), seen: new Set(), pendingScroll: '', prefetchSeq: 0 };
+const modalState = { docOverride: {}, editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', sections: {}, expanded: new Set(), seen: new Set(), pendingScroll: '', prefetchSeq: 0 };
 
 // t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
 // box; they choose to load theirs or to overwrite knowingly.
@@ -4532,8 +4512,9 @@ function renderModalDocs(t) {
   const ghosts = locked ? [] : availableDocTypes(t);   // t-bb97: a doc that does not exist yet shows as a dashed ghost node
 
   const descActive = modalState.activeDoc === null && !modalState.ghost;
-  const node = (key, active, name) =>
-    `<div class="doc-node" data-key="${escAttr(key)}">${expanderHTML(key)}<button class="doc-tab${active ? ' active' : ''}" data-file="${escAttr(key)}">${esc(name)}</button></div>`;
+  const cs = cockpitFor(t);   // t-6254: a doc the sprint changed since the rail was last opened
+  const node = (key, active, name, isNew) =>
+    `<div class="doc-node" data-key="${escAttr(key)}">${expanderHTML(key)}<button class="doc-tab${active ? ' active' : ''}" data-file="${escAttr(key)}">${esc(name)}${isNew ? '<span class="doc-new">New</span>' : ''}</button></div>`;
   const descTab = docs.length > 0 || ghosts.length > 0 ? node('', descActive, 'Description') : '';
   const ghostNode = dt =>
     `<div class="doc-node"><button class="doc-tab doc-ghost${modalState.ghost === dt.slug ? ' active' : ''}" data-ghost="${escAttr(dt.slug)}" title="${escAttr('Not created yet — ' + dt.hint)}">${esc(dt.name)}<span class="doc-ghost-plus" aria-hidden="true">+</span></button></div>`;
@@ -4559,12 +4540,14 @@ function renderModalDocs(t) {
     ? `<div class="doc-tab-right">${navPrev}${navNext}<button class="doc-save-btn" id="btn-save-top">Save</button><button class="doc-cancel-btn" id="btn-cancel-top">Cancel</button></div>`
     : liveReadOnly
       ? `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}<span class="doc-locked-badge" title="The board edits only acceptance, plan and research in a worktree; the sprint session owns this file">read-only here</span></div>`
+    : modalState.docOverride[modalState.activeDoc] != null
+      ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="The worktree session's copy; edit it there">worktree copy · read-only</span></div>`
     : locked
       ? `<div class="doc-tab-right">${navPrev}${navNext}<span class="doc-locked-badge" title="Reopen ticket to edit">read-only</span></div>`
       : `<div class="doc-tab-right">${navPrev}${navNext}${liveBadge}${modalState.ghost ? '' : '<span class="doc-edit-hint">Double-click to edit</span>'}</div>`;
 
   bar.innerHTML = descTab + docs.map(d => {
-    return node(d.file ?? '', d.file === modalState.activeDoc, d.name);
+    return node(d.file ?? '', d.file === modalState.activeDoc, d.name, !!(cs && cs.fresh[docSlug(t, d.file)]));
   }).join('') + ghosts.map(ghostNode).join('');
   paneBar.innerHTML = rightControls;
 
@@ -4663,6 +4646,9 @@ function activateDoc(t, file, scrollSlug = '') {
   modalState.ghost = '';
   modalState.activeDoc = file;
   if (!modalState.seen.has(key)) { modalState.seen.add(key); modalState.expanded.add(key); }   // opened for the first time: shown expanded; after that the choice is the user's
+  const cs = cockpitFor(t);
+  const slug = file ? docSlug(t, file) : '';
+  if (cs && cs.fresh[slug]) { delete cs.fresh[slug]; renderCockpitDetails(cs); }   // t-6254: viewed, no longer New
   modalState.pendingScroll = scrollSlug;
   renderModalDocs(t);
   renderModalBody(t);
@@ -4670,10 +4656,21 @@ function activateDoc(t, file, scrollSlug = '') {
   document.getElementById('m-kbd').style.display = '';
 }
 
+// t-6254: the open cockpit tab for this ticket, else null (a board-opened modal has no New marks).
+function cockpitFor(t) {
+  return cockpitState && cockpitState.id === t.id && document.getElementById('cockpit-overlay').classList.contains('open') ? cockpitState : null;
+}
+
+// t-6254: opened from the cockpit, a worktree session's plan/acceptance come from the worktree, not main's copy.
+function fetchModalDoc(file) {
+  const o = modalState.docOverride[file];
+  return o != null ? Promise.resolve({ ok: true, json: () => Promise.resolve({ content: o, etag: '' }) }) : fetch(`/api/doc/${encodeURIComponent(file)}`);
+}
+
 function prefetchDocSections(t) {
   const seq = ++modalState.prefetchSeq;
   visibleDocs(t).forEach(d => {
-    fetch(`/api/doc/${encodeURIComponent(d.file)}`)
+    fetchModalDoc(d.file)
       .then(r => r.ok ? r.json() : null)
       .then(j => {
         if (!j || seq !== modalState.prefetchSeq || state.selectedId !== t.id) return;
@@ -4938,7 +4935,7 @@ function renderModalBody(t) {
 
   if (modalState.activeDoc) {
     bodyEl.innerHTML = '<span class="modal-empty">Loading…</span>';
-    fetch(`/api/doc/${encodeURIComponent(modalState.activeDoc)}`)
+    fetchModalDoc(modalState.activeDoc)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => {
         if (seq !== modalState.renderSeq) return;   // t-8c73: superseded by a newer render
@@ -4980,6 +4977,7 @@ function renderModalBody(t) {
 // t-a205: one answer to "may the board edit the active doc?" for the hint, double-click, the E key and enterEditMode.
 function docEditable(t) {
   if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.ghost) return false;   // a ghost's pane (nothing to edit yet) owns the pane while it is open
+  if (modalState.docOverride[modalState.activeDoc] != null) return false;   // t-6254: the worktree's copy, shown read-only
   const liveBranch = t.docs_from && t.docs_from.branch;
   if (liveBranch && modalState.activeDoc && !LIVE_EDITABLE_SLUGS.includes(docSlug(t, modalState.activeDoc))) return false;
   return true;
@@ -5191,14 +5189,6 @@ function withoutGuidance(text) {
 
 function hasFilledCheckbox(text) {
   return /^- \[[ xX]\]\s+\S/m.test(withoutGuidance(text));
-}
-
-// Counts real checklist items — same line shape hasFilledCheckbox tests for,
-// as a global count instead of a boolean. Used for the cockpit rail's
-// "ACCEPTANCE (n)" / "TEST PLAN (n)" section-count badges.
-function countChecklistItems(text) {
-  const matches = withoutGuidance(text).match(/^- \[[ xX]\]\s+\S/gm);
-  return matches ? matches.length : 0;
 }
 
 function hasUncheckedBox(text) {
@@ -5577,6 +5567,7 @@ function closeModal() {
   if (modalState.editMode) return; // don't close while editing
   document.getElementById('modal-overlay').classList.remove('open');
   modalState.ghost = '';
+  modalState.docOverride = {};
   state.selectedId = null;
   stopHeadlessPoll();
   renderBoard();
@@ -5637,7 +5628,7 @@ let cockpitPollTimer = null;
 function newCockpitTabState(id, iframeEl) {
   // t-82f4: previewEl/previewCollapsed mirror iframeEl's per-tab persistence —
   // the preview pane used to be one global singleton, reset on every reopen.
-  return { id, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, _ending: false, iframeEl, pendingMessage: '', previewEl: null, previewCollapsed: true };
+  return { id, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, docSeen: {}, docSeenSrc: '', fresh: {}, _ending: false, iframeEl, pendingMessage: '', previewEl: null, previewCollapsed: true };
 }
 
 // Sets the terminal status message AND remembers it on the active tab, so
@@ -6529,14 +6520,12 @@ async function renderCockpitRail(t) {
     return;
   }
   renderCockpitModel(t);
-  renderCockpitPlan(t);
   await renderCockpitWorktree(t);
   // t-1357: once the worktree lock/main path are known, pull the active
   // ticket's docs from the worktree the session runs in (if any) so the rail
   // reflects that tree, not the main checkout. Then (re)render the doc panels.
   await fetchCockpitWorktreeDocs(t);
   renderCockpitModel(t);
-  renderCockpitPlan(t);
   await renderCockpitDocs(t);
   await renderCockpitState(t);
 }
@@ -6574,7 +6563,6 @@ function ensureCockpitPollTimer() {
     const ct = findTicketById(activeTabId);
     if (!ct || ct.scratch) return;
     await fetchCockpitWorktreeDocs(ct);
-    renderCockpitPlan(ct);
     renderCockpitDocs(ct);
     renderCockpitState(ct);
     renderCockpitStatusBadge(ct);
@@ -6735,54 +6723,80 @@ async function renderCockpitModel(t) {
   if (gm.filled && gm.value) el.textContent = `model: ${gm.value} · plan.md`;
 }
 
-// Renders the full plan.md content read-only — same doc the model chip
-// (renderCockpitModel above) already fetches just to pull out Gate model:,
-// but here the whole file is visible so that line's actual context is too.
-async function renderCockpitPlan(t) {
-  const box = document.getElementById('ck-plan');
-  const wdPlan = (cockpitState.worktreeDocs || {}).plan; // t-1357: worktree plan wins
-  if (wdPlan != null) {
-    box.innerHTML = wdPlan ? md(wdPlan, t.id) : '<div class="ck-add-hint">No plan.md yet for this ticket.</div>';
-    return;
-  }
-  const planDoc = (t.docs || []).find(d => docSlug(t, d.file) === 'plan');
-  if (!planDoc) { box.innerHTML = '<div class="ck-add-hint">No plan.md yet for this ticket.</div>'; return; }
-  try {
-    const r = await fetch(`/api/doc/${encodeURIComponent(planDoc.file)}`);
-    const content = r.ok ? (await r.json()).content || '' : '';
-    box.innerHTML = content ? md(content, t.id) : '<div class="ck-add-hint">No plan.md yet for this ticket.</div>';
-  } catch {
-    box.innerHTML = '<div class="ck-add-hint">No plan.md yet for this ticket.</div>';
-  }
-}
+// t-6254: the rail's Ticket details row. The poll already reads plan.md and acceptance.md (the worktree's copy wins,
+// t-1357); the first read is the baseline, a later change marks that doc New until the popup shows it. View-only.
+const CK_WATCHED_DOCS = [['plan', 'Plan'], ['acceptance', 'Acceptance']];
 
-function ckAcceptanceDoc(t) {
-  const acc = (t.docs || []).find(d => docSlug(t, d.file) === 'acceptance');
-  return acc ? acc.file : null;
-}
-
-// Fetches acceptance.md's raw content once — shared by both render calls
-// below so a poll tick (or cockpit open) issues one fetch, not two, against
-// the same doc. Returns null if the ticket has no acceptance.md at all.
-async function fetchAcceptanceContent(t) {
-  const wdAcc = (cockpitState.worktreeDocs || {}).acceptance; // t-1357: worktree acceptance wins
-  if (wdAcc != null) return wdAcc;
-  const docFile = ckAcceptanceDoc(t);
-  if (!docFile) return null;
+// null = the ticket has no such doc; undefined = the read failed (skip this tick, never read it as "absent").
+async function fetchCockpitDoc(t, slug) {
+  const wd = (cockpitState.worktreeDocs || {})[slug];
+  if (wd != null) return wd;
+  const doc = (t.docs || []).find(d => docSlug(t, d.file) === slug);
+  if (!doc) return null;
   try {
-    const r = await fetch(`/api/doc/${encodeURIComponent(docFile)}`);
+    const r = await fetch(`/api/doc/${encodeURIComponent(doc.file)}`);
     if (r.ok) return (await r.json()).content || '';
   } catch {}
-  return '';
+  return undefined;
 }
 
-// Renders both Acceptance and Test Plan from one shared fetch (t-96a8 —
-// view-only, no toggle, no write-back; see the cockpitState comment above).
+// A doc still at its seeded skeleton has nothing to read yet; the first real content is "written", later edits "updated".
+function ckDocHasSubstance(slug, text) {
+  if (text == null) return false;
+  if (slug === 'plan') return hasUsefulSectionText(sectionContent(text, 'Approach'), ['How will we implement it?']);
+  return hasFilledCheckbox(sectionContent(text, 'Criteria'));
+}
+
+function ckNewestFresh(cs) {   // fresh keeps insertion order, so the last key is the newest change
+  const keys = Object.keys(cs.fresh);
+  return keys.length ? keys[keys.length - 1] : '';
+}
+
+function renderCockpitDetails(cs) {
+  if (!cs || cs !== cockpitState) return;
+  const slug = ckNewestFresh(cs);
+  const badge = document.getElementById('ck-details-badge');
+  badge.style.display = slug ? '' : 'none';
+  badge.textContent = slug ? cs.fresh[slug] : '';
+  document.getElementById('ck-details-note').style.display = slug ? 'none' : '';   // the badge takes the note's line
+}
+
 async function renderCockpitDocs(t) {
-  const content = await fetchAcceptanceContent(t);
-  renderCockpitAcceptance(content, t);
-  renderCockpitTestPlan(content, t);
+  const cs = cockpitState;
+  const src = cs.worktreeDocs ? 'worktree' : 'main';
+  if (cs.docSeenSrc !== src) { cs.docSeenSrc = src; cs.docSeen = {}; cs.fresh = {}; }   // another copy of the docs is not a change
+  for (const [slug, name] of CK_WATCHED_DOCS) {
+    const content = await fetchCockpitDoc(t, slug);
+    if (cs !== cockpitState) return;   // the tab switched while reading
+    if (content === undefined) continue;
+    if (!(slug in cs.docSeen)) { cs.docSeen[slug] = content; continue; }
+    const prev = cs.docSeen[slug];
+    if (prev === content) continue;
+    cs.docSeen[slug] = content;
+    if (content === null) continue;
+    delete cs.fresh[slug];
+    cs.fresh[slug] = `${name} ${ckDocHasSubstance(slug, prev) ? 'updated' : 'written'}`;
+  }
+  renderCockpitDetails(cs);
   renderCockpitChanges(t);
+}
+
+// Opens the ticket viewer over the cockpit on the newest New doc (or Description). A worktree session's plan and
+// acceptance are the worktree's copies, shown read-only.
+function openCockpitDetails() {
+  const t = findTicketById(activeTabId);
+  const cs = cockpitState;
+  if (!t || !cs) return;
+  modalState.docOverride = {};
+  for (const [slug] of CK_WATCHED_DOCS) {
+    const wd = (cs.worktreeDocs || {})[slug];
+    const doc = (t.docs || []).find(d => docSlug(t, d.file) === slug);
+    if (wd != null && doc) modalState.docOverride[doc.file] = wd;
+  }
+  openModal(t.id);
+  const slug = ckNewestFresh(cs);
+  const doc = slug && (t.docs || []).find(d => docSlug(t, d.file) === slug);
+  if (doc) activateDoc(t, doc.file);
 }
 
 // t-5a4b: "Changes since you started" for a project without git — the daemon's snapshot comparison
@@ -7572,30 +7586,6 @@ function formatStateAsParagraphs(bullet, t) {
   return sentences.map(s => `<p>${md(s, t.id)}</p>`).join('');
 }
 
-// Renders the acceptance.md ## Criteria section as a view-only checklist.
-function renderCockpitAcceptance(content, t) {
-  const box = document.getElementById('ck-accept');
-  const countEl = document.getElementById('ck-accept-count');
-  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; countEl.textContent = ''; return; }
-  const criteria = sectionContent(content, 'Criteria') || content;
-  box.innerHTML = md(criteria, t.id);
-  const n = countChecklistItems(criteria);
-  countEl.textContent = n ? `(${n})` : '';
-}
-
-// Renders the acceptance.md ## Test Plan section as a view-only checklist,
-// same as renderCockpitAcceptance above.
-function renderCockpitTestPlan(content, t) {
-  const box = document.getElementById('ck-testplan');
-  const countEl = document.getElementById('ck-testplan-count');
-  if (content === null) { box.innerHTML = '<div class="ck-add-hint">No acceptance.md yet for this ticket.</div>'; countEl.textContent = ''; return; }
-  const testPlan = sectionContent(content, 'Test Plan');
-  if (!testPlan) { box.innerHTML = '<div class="ck-add-hint">No Test Plan section yet for this ticket.</div>'; countEl.textContent = ''; return; }
-  box.innerHTML = md(testPlan, t.id);
-  const n = countChecklistItems(testPlan);
-  countEl.textContent = n ? `(${n})` : '';
-}
-
 // t-cd06: a fresh OPEN start gates the terminal behind an explicit WORKTREE
 // row pick (cockpitState.worktreeCwd === null means nothing picked yet) — the
 // terminal is where the daemon's own Start control lives, so not mounting it
@@ -7718,6 +7708,7 @@ document.querySelectorAll('.ck-accordion-header[data-accordion]').forEach(header
   });
 });
 
+document.getElementById('ck-details').addEventListener('click', openCockpitDetails);
 document.getElementById('ck-back').addEventListener('click', closeCockpit);
 document.getElementById('ck-rail-toggle').addEventListener('click', () => {
   const cockpit = document.getElementById('cockpit');
@@ -7779,7 +7770,8 @@ document.getElementById('ck-preview-collapse').addEventListener('click', () => {
   if (cockpitState) cockpitState.previewCollapsed = true;
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open')) closeCockpit();
+  // t-6254: Esc closes the ticket viewer popup first; the cockpit stays
+  if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open') && !document.getElementById('modal-overlay').classList.contains('open')) closeCockpit();
 });
 
 // ── Semantic ticket matching ──────────────────────────────────────────────
