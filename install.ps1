@@ -45,9 +45,10 @@ function Get-CanonReleaseSha256($Ref) {
   $manifestUrl = if ($env:CANON_MANIFEST_URL) { $env:CANON_MANIFEST_URL } else { "https://getcanon.dev/releases.txt" }
   try {
     if ($manifestUrl -like "file://*") { $text = [IO.File]::ReadAllText(([Uri]$manifestUrl).LocalPath) }
-    elseif ($manifestUrl -like "https://*") { $text = (Invoke-WebRequest -UseBasicParsing -Uri $manifestUrl).Content }
-    else { throw "only https:// or file:// manifests are read" }
+    elseif ($manifestUrl.StartsWith("https:", [StringComparison]::OrdinalIgnoreCase)) { $text = (Invoke-WebRequest -UseBasicParsing -TimeoutSec 30 -Uri $manifestUrl).Content }
+    else { throw "only an https or file manifest is read" }
     if ($text -is [byte[]]) { $text = [Text.Encoding]::UTF8.GetString($text) }
+    if ($null -eq $text) { $text = "" }
   } catch {
     throw "Cannot read the release manifest at $manifestUrl ($_); refusing to install $Ref unverified. 'canon update --to main' needs no manifest."
   }
