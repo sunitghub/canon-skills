@@ -155,5 +155,6 @@ set +e; out="$(GH_FAIL=1 rel "$d")"; code=$?; set -e
 [[ "$code" != 0 ]] || fail "release: a failed gh release exited 0"
 assert_contains "$out" "already pushed"; assert_contains "$out" "gh release create v0.3.0"
 assert_eq "v0.3.0" "$(git -C "$d.pub.git" tag)"
+[[ "$out" =~ v0\.3\.0\ [0-9a-f]{64}\ [0-9a-f]{40} ]] || fail "release: a failed gh call lost the manifest line (the zip is deleted on exit): $out"
 echo "release: every precondition refuses; a failed gh call keeps the pushed tag and says how to finish"
 echo "release: ok"

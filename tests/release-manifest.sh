@@ -69,7 +69,6 @@ refuses "a good line then a bad one for the same tag" "$(mf "$GOOD\nv0.3.0 oops\
 refuses "a NUL byte" "$(mf "$GOOD\n\0\n")" "NUL"
 big="$WORK/big"; head -c 2000000 /dev/zero | tr '\0' 'x' > "$big"; printf '\n%s\n' "$GOOD" >> "$big"
 refuses "a file over 1 MB" "$big" "cannot read"
-printf '%s\n' "$GOOD" > "$WORK/dir.txt"
 refuses "a missing file" "$WORK/no-such-file" "cannot read"
 refuses "a folder" "$WORK" "refusing"
 head -c 4096 /dev/urandom > "$WORK/bin"; refuses "random binary" "$WORK/bin" "refusing"

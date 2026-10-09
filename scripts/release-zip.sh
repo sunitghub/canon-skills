@@ -3,7 +3,7 @@
 #   scripts/release-zip.sh <vX.Y.Z> <output-folder>
 # Writes <output-folder>/canon-X.Y.Z.zip from the tag's COMMITTED tree (top folder canon-X.Y.Z/; working-tree changes never enter it),
 # and prints one line, `<tag> <zip sha256> <tag commit sha>`, which is what getcanon.dev/releases.txt carries. The zip is a release asset
-# because GitHub's own archive zips are not byte-stable. `git archive` output is reproducible, so a lost asset can be rebuilt to the same hash.
+# because GitHub's own archive zips are not byte-stable. `git archive` output is normally reproducible, but the hash that counts is the uploaded file's: a rebuild with a different git may differ, so publish the line the rebuild prints.
 # scripts/release.sh calls this and attaches the zip; docs/releasing.md has the whole pipeline.
 set -euo pipefail
 

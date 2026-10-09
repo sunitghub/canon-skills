@@ -63,8 +63,9 @@ git_ tag -a "$tag" -m "canon $version"
 manifest_line="$(bash "$REPO_ROOT/scripts/release-zip.sh" "$tag" "$zip_dir")" || { git_ tag -d "$tag" >/dev/null; die "could not build canon-$version.zip; nothing was pushed"; }
 git_ push -q "$REMOTE" "refs/tags/$tag"
 echo "release: pushed tag $tag to $REMOTE"
+echo "release: manifest line for canon-$version.zip: $manifest_line"   # printed now: the zip folder is deleted on exit, even when the gh call below fails
 if ! gh release create "$tag" "$zip_dir/canon-$version.zip" --repo "$RELEASE_REPO" --title "canon $version" --notes-file "$notes_file"; then
-  die "tag $tag is already pushed but the GitHub release was not created; finish with: gh release create $tag canon-$version.zip --repo $RELEASE_REPO --title 'canon $version' --notes-file <notes> (rebuild the zip with scripts/release-zip.sh $tag <folder>)"
+  die "tag $tag is already pushed but the GitHub release was not created; finish with: gh release create $tag canon-$version.zip --repo $RELEASE_REPO --title 'canon $version' --notes-file <notes> (rebuild the zip with scripts/release-zip.sh $tag <folder>, upload that file, and publish the manifest line the rebuild prints)"
 fi
 echo "release: $tag released"
 echo "release: next, publish this line as the first entry of site/releases.txt in the canon-site repo (installers verify against it, so verified installs of $tag fail until it is live):"
