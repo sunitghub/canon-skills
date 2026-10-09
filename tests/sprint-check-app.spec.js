@@ -900,7 +900,7 @@ test.describe('board modal', () => {
 
       // The card renders the DEMO badge
       await expect(card.locator('.demo-badge')).toBeVisible();
-      await expect(card.locator('.demo-badge')).toHaveText('DEMO/DOCS');   // widened to Demo/Docs/UX (6d7d646)
+      await expect(card.locator('.demo-badge')).toHaveText('DEMO/UX');   // t-d0c4: the board says Demo/UX, like the Plan switch
     } finally {
       if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
     }
@@ -12504,10 +12504,10 @@ test.describe('ticket modal editor (t-a205)', () => {
 // t-612f: expandable doc nodes (+ / −), the Demo/UX switch, the top-left resize grip, the keyboard-only card outline
 test.describe('ticket modal polish (t-612f)', () => {
   const made = [];
-  function writeTicket(id, { status = 'open', withDesign = false } = {}) {
+  function writeTicket(id, { status = 'open', withDesign = false, type = 'task', demo = false } = {}) {
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
     fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, 'type: task', 'priority: 2', 'created: 2026-06-28T00:00:00Z', '---', '', `# Polish fixture ${id}`, '', '## Context', 'Why this ticket exists.', '', '## Notes', 'More words.', ''].join('\n'));
+    fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, `status: ${status}`, `type: ${type}`, ...(demo ? ['demo: true'] : []), 'priority: 2', 'created: 2026-06-28T00:00:00Z', '---', '', `# Polish fixture ${id}`, '', '## Context', 'Why this ticket exists.', '', '## Notes', 'More words.', ''].join('\n'));
     const filler = Array.from({ length: 40 }, (_, i) => `Filler line ${i + 1} so the sections below start off screen.`).join('\n\n');
     fs.writeFileSync(path.join(dir, 'acceptance.md'), ['# Acceptance', '', `Ticket: \`${id}\``, '', '## Criteria', '- [x] One', '- [ ] Two', '', filler, '', '## Test Plan', '- [ ] Run it', '', '## QA', 'Notes only.', ''].join('\n'));
     fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal | Risk: fixture', '', '- [ ] Plan approved', '', '## Approach', 'Fixture approach text.', ''].join('\n'));
@@ -12700,5 +12700,74 @@ test.describe('ticket modal polish (t-612f)', () => {
     const f = await look(a);
     expect(f.s).not.toBe('none');
     expect(f.s).not.toBe((await look(b)).s);
+  });
+
+  test('a Feature card with the Demo/UX badge fits its header in a narrow column: id on one line, no badge clipped (t-d0c4)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-m${sfx}`;
+    writeTicket(id, { type: 'feature', demo: true, status: 'in_progress' });
+    await page.setViewportSize({ width: 760, height: 900 });
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill(id);
+    const card = page.locator(`.card[data-id="${id}"]`);
+    await expect(card.locator('.demo-badge')).toHaveText('DEMO/UX');
+    const r = await page.evaluate(i => {
+      const c = document.querySelector(`.card[data-id="${i}"]`), q = s => c.querySelector(s).getBoundingClientRect(), cb = c.getBoundingClientRect();
+      const idr = document.createRange(); idr.selectNodeContents(c.querySelector('.card-id'));
+      return { card: cb, badge: q('.demo-badge'), idLines: new Set([...idr.getClientRects()].map(x => Math.round(x.top))).size };
+    }, id);
+    expect(r.badge.right).toBeLessThanOrEqual(r.card.right - 4);                            // the badge is not clipped at the card edge
+    expect(r.idLines).toBe(1);                                                              // t-xxxx does not wrap
+  });
+
+  test('the sign-off bar is one full-width row: tier, a wide Risk field, model, hint, switch; controls share a height (t-d0c4)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-b${sfx}`;
+    writeTicket(id);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await openModalFor(page, id);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    const bar = page.locator('.signoff-controls');
+    await expect(bar.locator('.signoff-risk-input')).toBeVisible();
+    await page.waitForTimeout(700);                                                          // the dialog settles from its open animation
+    const r = await page.evaluate(() => {
+      const q = s => document.querySelector(s).getBoundingClientRect();
+      const bar = q('.signoff-controls'), pane = q('.section-jumps');
+      return { tier: q('.signoff-tier-select'), risk: q('.signoff-risk-input'), model: q('.model-tier-select'), sw: q('.signoff-demo-toggle'), bar, pane };
+    });
+    expect(r.risk.width).toBeGreaterThanOrEqual(300);
+    expect(Math.abs(r.bar.width - r.pane.width)).toBeLessThanOrEqual(2);                    // the bar spans the pane, it is not right-aligned
+    expect(r.tier.right).toBeLessThanOrEqual(r.risk.left + 1);                              // order: tier, risk, model, switch
+    expect(r.risk.right).toBeLessThanOrEqual(r.model.left + 1);
+    expect(r.model.right).toBeLessThanOrEqual(r.sw.left + 1);
+    for (const c of [r.risk, r.model, r.sw]) expect(Math.abs((c.top + c.bottom) / 2 - (r.tier.top + r.tier.bottom) / 2)).toBeLessThanOrEqual(2);   // one row, centred together
+    expect(r.tier.height).toBe(r.risk.height);
+    expect(r.model.height).toBe(r.risk.height);
+    expect(r.model.width).toBeCloseTo(168, 0);
+  });
+
+  test('a narrow dialog puts the Risk field alone on a full-width line; the Risk tooltip carries its text (t-d0c4)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-n${sfx}`;
+    writeTicket(id);
+    await page.setViewportSize({ width: 1400, height: 900 });
+    await openModalFor(page, id);
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    await expect(page.locator('.signoff-risk-input')).toBeVisible();
+    await page.waitForTimeout(700);
+    const grip = page.locator('#modal .modal-resize-handle:not(.modal-resize-handle-tl)');
+    const gb = await grip.boundingBox();
+    await page.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+    await page.mouse.down(); await page.mouse.move(gb.x - 520, gb.y, { steps: 8 }); await page.mouse.up();
+    await expect.poll(() => page.evaluate(() => document.querySelector('.section-jumps').getBoundingClientRect().width)).toBeLessThan(640);
+    const r = await page.evaluate(() => {
+      const q = s => document.querySelector(s).getBoundingClientRect();
+      return { risk: q('.signoff-risk-input'), tier: q('.signoff-tier-select'), pane: q('.section-jumps'), sw: q('.signoff-demo-toggle'), model: q('.model-tier-select') };
+    });
+    expect(r.risk.width).toBeGreaterThan(r.pane.width - 40);                                // alone on a full-width line
+    expect(r.tier.top).toBeGreaterThan(r.risk.bottom - 1);                                  // the other controls wrap below it
+    for (const c of [r.risk, r.tier, r.model, r.sw]) { expect(c.left).toBeGreaterThanOrEqual(r.pane.left - 1); expect(c.right).toBeLessThanOrEqual(r.pane.right + 1); }
+    const input = page.locator('.signoff-risk-input');
+    await expect(input).toHaveAttribute('title', 'fixture');                                 // a saved Risk is the tooltip on first render, before any typing
+    await input.fill('a long risk sentence that should be readable in full from the tooltip');
+    await expect(input).toHaveAttribute('title', 'a long risk sentence that should be readable in full from the tooltip');
   });
 });
