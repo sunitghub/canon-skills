@@ -1462,6 +1462,17 @@ fr_project="$(make_project)"
   git checkout -q src/app.js
   assert_contains "$(fr_complete)" "Sprint completed: $fid"
 
+  # t-8d28: the advisory skill-eval gate appends a TRACKED skills/<name>/evals/history.jsonl line, so it must run and be committed before
+  # the evaluator grades (complete.md step 1): a line committed after grading is stale; one committed before it is not.
+  mkdir -p skills/alpha/evals; echo '{"evals":[]}' > skills/alpha/evals/evals.json; : > skills/alpha/evals/history.jsonl
+  git add skills >/dev/null; git commit -qm "skill with evals"
+  fr_ticket hist; fr_report "$(git rev-parse HEAD)"
+  echo '{"date":"2026-10-09","model":"m","pass":1,"total":2}' >> skills/alpha/evals/history.jsonl; git add skills; git commit -qm "history after grading"
+  out="$(run_fail env -u CLAUDECODE "$SPRINT" complete)"
+  assert_contains "$out" "tracked files changed after the evaluator graded"; assert_contains "$out" "skills/alpha/evals/history.jsonl"
+  fr_report "$(git rev-parse HEAD)"   # graded after the line was committed
+  assert_contains "$(fr_complete)" "Sprint completed: $fid"
+
   # t-7301: on Windows `git rev-parse --show-toplevel` spells the repo "C:/..." while the shell's `pwd -P` says "/tmp/...". The
   # gate compared the two, never matched, built a bogus pathspec and passed every stale edit (failed open). A git stub that
   # rewrites only the `git -C <project> rev-parse --show-toplevel` answer (the compared one; a C:/ root would not exist off Windows) reproduces the mismatch on any OS; the refusal must hold under it.

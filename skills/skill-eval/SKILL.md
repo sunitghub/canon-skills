@@ -46,7 +46,7 @@ For a plugin-vs-no-plugin baseline (Δ score), generate a throwaway plugin with 
    - **If present:** proceed to Step 2 (executor+grader path).
    - **If missing:** run the fallback evaluator (Step 1b) instead of normal eval cases.
 
-1b. **Fallback evaluator (no evals.json).** Spawn a fresh Agent subagent with a clean context. The prompt must:
+1b. **Fallback evaluator (no evals.json).** Not when dispatched by the sprint gate (`complete.md` step 1): a skill with no `evals/evals.json` is skipped there, so report `skipped — no evals.json` and stop; never ask the user to write one mid-close. Otherwise spawn a fresh Agent subagent with a clean context. The prompt must:
    - Include the skill's `SKILL.md` content verbatim under "Active skill:"
    - Instruct it to: (a) read the skill and identify 2–3 realistic user scenarios the skill is designed to handle, (b) execute each scenario as if in a fresh session with the skill active — reporting steps taken and output produced, (c) grade whether the skill's instructions were clear and complete enough to guide correct behaviour: `pass`, `partial`, or `fail` with a one-line reason per scenario
    - Ask it to recommend which scenarios should be formalised as `evals.json` cases
@@ -67,7 +67,7 @@ For a plugin-vs-no-plugin baseline (Δ score), generate a throwaway plugin with 
      Confirm the file was written, then read the new file and proceed to Step 2.
    - **No:** stop. Do not write anything. Do not proceed to Step 3.
 
-2. **For each eval case**, run two subagents in sequence:
+2. **For each eval case**, run two subagents in sequence (from the session that runs this skill, never from inside another subagent, which cannot spawn them; the cases are independent, so dispatch every case's executor together, then every grader):
 
    **Executor** — spawn an Agent with a clean context. The prompt must:
    - Include the skill's `SKILL.md` content verbatim under a heading "Active skill:"
@@ -83,7 +83,8 @@ For a plugin-vs-no-plugin baseline (Δ score), generate a throwaway plugin with 
 
 3. **Aggregate and report.** After all cases complete:
    - Output the eval report inline (see Output format below).
-   - Write the same report to `skills/$ARGUMENTS/skill-eval-result.md`, replacing any prior contents. The file is always written — even if execution evals were skipped due to a missing `evals.json`.
+   - **Record the pass rate.** In canon (where `tools/skill-eval-history.sh` exists), run `tools/skill-eval-history.sh $ARGUMENTS <model> <pass> <total>` with the model that ran the executors and graders and the expectation counts from the Summary, and add the one line it prints (`N/M pass (was K/M)`) under `### Summary`. It appends to `skills/$ARGUMENTS/evals/history.jsonl`; skip it when execution evals did not run (missing `evals.json`, fallback path), because a count of zero is not a result.
+   - Write the same report to `skills/$ARGUMENTS/skill-eval-result.md`, replacing any prior contents. The file is always written — even if execution evals were skipped due to a missing `evals.json`. **When dispatched by the sprint gate** (`complete.md` step 1), write it to `.tickets/<id>/skill-eval-$ARGUMENTS.md` instead, so the tracked tree gains only the history line.
 
 ## Output format
 

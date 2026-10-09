@@ -95,6 +95,23 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
 
 
    **Folder without git:** there is nothing to commit — skip this step. The gates take the changed-file list from `.tickets/<id>/changes.json` (`shared-gate-protocol.md`, tier 0), which the cockpit wrote when the session ended; if it is missing, the gates fall back to the working-tree listing.
+   **Skill eval (advisory, normal+ tier).** When the sprint edited a skill's instructions or a gate agent, run
+   that skill's own evals, so a prompt edit is graded by behaviour and not only by "the line is present". Run
+   `tools/skill-eval-scope.sh` (it diffs against the same base the gates use and prints `run <skill>` or
+   `skip <skill> (no evals/evals.json)` per changed skill; nothing printed means no skill changed). For each `run`
+   line, follow `skills/skill-eval/SKILL.md` for that skill yourself, with the sprint-gate instructions there. Do not
+   hand the whole skill to one subagent: a subagent cannot spawn the fresh executor and grader subagents each case
+   needs (they are dispatched from this session, one pair per case). The run appends the pass rate to
+   `skills/<skill>/evals/history.jsonl` through `tools/skill-eval-history.sh`, writes its report to
+   `.tickets/<id>/skill-eval-<skill>.md`, and never starts the fallback evaluator. **Advisory only:** it never blocks close, and a failing case is triaged like any finding (fix
+   the instruction, ticket it, or note it as noise) — never edit `evals.json` to make a case pass. Evals are noisy
+   on small models, so read `was K/M` only against the same model (the history line records it). **It runs here,
+   before the reviewer and evaluator, not beside `mutation-test` after them:** `history.jsonl` is a tracked file and
+   `_gate_eval_report_fresh` (`tools/sprint`) fails any tracked change made after the evaluator graded, so the new
+   line goes into the interim commit below and the gates grade the final tree. Record it in the Wrapup Gates table
+   (`ran | sprint 9/10 (was 10/10), wrapup 7/7 (advisory)`, or `skipped | no skill or gate agent changed`, or
+   `skipped | <skill> has no evals.json`).
+
    **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (where the project gitignores `.tickets/`, those files don't need committing for this purpose; a project that tracks `.tickets/` in git may include them) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
 
    **Soft freeze on `origin/main` once gates are dispatched.** Both gates derive their base ref *live* via `git merge-base HEAD origin/main` (see `shared-gate-protocol.md ## Base-ref derivation`), so do not push further commits to `origin/main` between dispatching a reviewer/evaluator (steps 2-3) and reading back its report — a mid-run push shifts that ref, and if the pushed commit is the sprint's own HEAD the diff goes empty and the gate grades nothing. Hold all pushes until both gates have reported (step 10).
@@ -112,6 +129,7 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    | repo-check | skipped | no repo surface changed |
    | doc-audit | ran | README updated |
    | eval | ran | verdict: pass — eval-report.md written (model: sonnet — Admin Review & Eval default) |
+   | skill-eval | skipped | advisory — no skill or gate agent changed |
    | mutation-test | skipped | advisory — no logic files changed |
    | break-it | skipped | advisory — not high-risk, no untrusted-input surface |
    ```
@@ -623,6 +641,7 @@ Opus` default, scoped only to the two close-gate dispatches below.
    later into the durable store (canon: `critique/canon-learnings.md`, `standards/`, or — rarely,
    since it's always-loaded context on every session, so reserve it for something that must apply
    universally — `CLAUDE.md`/`AGENTS.md`; a consumer project: its own `PROMOTED.md`). It proposes, never promotes.
+   A defect traced to a skill's own instructions can go to that skill's `evals/evals.json` as a regression case (one of `promote-learnings`' destinations); the next sprint that edits the skill then runs it (step 1, skill eval).
 
    **Never silent.** State in the chat reply and in `summary.md`'s own paragraph that `tkt learn`
    ran and name the file it wrote (or, on a clean sprint, that it found nothing to distill —

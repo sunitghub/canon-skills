@@ -69,6 +69,11 @@ The destinations depend on which project the session is in:
      `skills/sprint/reference/shared-gate-protocol.md` for gate mechanics, the skill's own
      `SKILL.md` gotchas for a single-skill quirk) — when the lesson only matters at one step.
      Propose the file and the section.
+   - **A regression case in `skills/<name>/evals/evals.json`** — when the defect was traced to a skill's
+     own instructions (the instruction let an agent do the wrong thing, e.g. `t-b0e5`'s partial flip), not
+     to one ticket's code. Propose the skill, the case's `prompt` (the situation that produced the wrong
+     behaviour) and the `expectations` that would have failed. The next sprint that edits that skill then
+     runs it (`complete.md`'s advisory skill-eval step).
 
    **Choosing between them:** ask "at what moment would a future session make this mistake?" and
    pick the narrowest home that is read at that moment.
@@ -78,6 +83,7 @@ The destinations depend on which project the session is in:
      file is read only on request, so a rule there needs a pointer from where it applies).
    - Only bites at one workflow step or in one skill → that step's reference doc or `SKILL.md`.
    - Needs its incident to be understood (why the obvious fix failed) → `critique/`.
+   - A skill's own instruction caused it, and a prompt can reproduce it → that skill's `evals/evals.json`.
    Before proposing, grep the destination for the same rule and extend it instead of adding a
    second copy. A row that spans two moments may be split into two proposals (as `t-6328` was).
    Keep any always-loaded rule to one or two lines; its cost is paid every session.
