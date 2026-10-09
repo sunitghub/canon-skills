@@ -84,6 +84,13 @@ d="$(fresh)"; git -C "$d" "${ident[@]}" tag local-only; : > "$GH_LOG"
 rel "$d" >/dev/null
 assert_eq "v0.3.0" "$(git -C "$d.pub.git" tag)"
 
+# The rest of the tree may be dirty: a tag names a commit, so only VERSION and CHANGELOG.md must match HEAD.
+d="$(fresh)"; echo scratch > "$d/untracked.txt"; echo '# local edit' >> "$d/scripts/release.sh"; : > "$GH_LOG"
+set +e; out="$(rel "$d")"; code=$?; set -e
+[[ "$code" == 0 ]] || fail "release: a dirty tree outside VERSION/CHANGELOG.md blocked the release: $out"
+assert_eq "v0.3.0" "$(git -C "$d.pub.git" tag)"
+echo "release: a dirty tree outside VERSION and CHANGELOG.md does not block"
+
 # --dry-run reports and creates nothing.
 d="$(fresh)"; : > "$GH_LOG"
 set +e; out="$(rel "$d" --dry-run)"; code=$?; set -e; [[ "$code" == 0 ]] || fail "release: --dry-run exited $code: $out"

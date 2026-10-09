@@ -25,6 +25,6 @@ canon update --to v0.3.0     # pin to that release; the daemon and projects are 
 canon update --to main       # follow main again
 ```
 
-A plain `canon update` on a pinned install refuses and says how to return, so an update never moves a pin by accident. On a git install the tag is fetched into the shallow clone; on a Windows install made by the one-line installer (a zip, no git) the installer is re-run with `CANON_REF=vX.Y.Z` and fetches that release's zip. `--to` accepts only `main` or `vN.N.N`. Binaries need nothing extra: an older tree names its own release assets, which are never overwritten.
+On a git install a plain `canon update` refuses while pinned and says how to return, so an update never moves a pin by accident. A Windows zip install records no pin: a plain `canon update` there takes main. On a git install the tag is fetched into the shallow clone; on a Windows install made by the one-line installer (a zip, no git) the installer is re-run with `CANON_REF=vX.Y.Z` and fetches that release's zip and copies it over the install (files only the newer tree had are left behind, as in any Windows update). `--to` accepts only `main` or `vN.N.N`. Binaries need nothing extra: an older tree names its own release assets, which are never overwritten.
 
 `v0.3.0` is the first tag and already contains `--to`, so a pinned install can always return with `canon update --to main`.

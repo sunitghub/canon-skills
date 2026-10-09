@@ -150,8 +150,8 @@ update_cmd() {
   fi
   if [ -n "$to" ] && [ "$to" != main ] && ! git -C "$repo" rev-parse -q --verify "refs/tags/$to^{commit}" >/dev/null 2>&1; then
     # a depth-1 clone has no tags: ask for just this one
-    git -C "$repo" fetch -q --depth 1 origin "refs/tags/$to:refs/tags/$to" 2>/dev/null \
-      || { echo "canon update: release $to was not found on origin (or the fetch failed). Nothing was changed." >&2; exit 1; }
+    git -C "$repo" fetch -q --depth 1 origin "refs/tags/$to:refs/tags/$to" \
+      || { echo "canon update: release $to was not found on origin (or the fetch failed, see above). Nothing was changed." >&2; exit 1; }
   fi
   before="$(git -C "$repo" rev-parse --short HEAD)"
   # t-9383: the Windows exes are no longer committed, so a pull from the commit that dropped them deletes the old ones.
