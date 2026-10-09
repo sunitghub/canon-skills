@@ -772,11 +772,12 @@ test.describe('board modal', () => {
       createdId = await card.getAttribute('data-id') || '';
       await card.click();
 
-      await expect(page.locator('#m-docs .doc-tab')).toHaveCount(0);
+      await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveCount(1);   // only Description; Acceptance, Plan and Research are ghosts (t-bb97)
+      await expect(page.locator('#m-docs .doc-ghost')).toHaveCount(3);
       await expect(page.locator('#m-body')).toContainText('Ticket body should render without sprint docs.');
       await expect(page.locator('#m-body')).toContainText('Uses existing markdown renderer');
       await expect(page.locator('#m-body .doc-heading-2', { hasText: 'Context' })).toBeVisible();   // t-e946: no docs, no tree, so no child rows; the section itself still renders
-      await expect(page.locator('#m-docs .doc-child')).toHaveCount(0);
+      await expect(page.locator('#m-docs .doc-child')).toHaveText(['Context', 'Notes']);   // the Description's own sections, as for any doc
     } finally {
       if (createdId) {
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
@@ -1056,7 +1057,7 @@ test.describe('board modal', () => {
     }
   });
 
-  test('+ button offers Research doc type', async ({ page }) => {
+  test('a new ticket offers Research as a ghost node (t-bb97)', async ({ page }) => {
     const title = `Research plus button test ${Date.now()}`;
     let createdId = '';
 
@@ -1074,9 +1075,9 @@ test.describe('board modal', () => {
       createdId = await card.getAttribute('data-id') || '';
       await card.click();
 
-      // Open the + doc menu and confirm Research is listed
-      await page.locator('#btn-new-doc').click();
-      await expect(page.locator('#m-body .doc-type-card[data-slug="research"]')).toBeVisible();
+      // Research is creatable through its ghost node (t-bb97)
+      await page.locator('#m-docs .doc-ghost[data-ghost="research"]').click();
+      await expect(page.locator('#btn-ghost-add')).toHaveText('+ Research');
     } finally {
       if (createdId) {
         fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
@@ -1103,16 +1104,15 @@ test.describe('board modal', () => {
       await card.click();
       await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
 
-      await page.locator('#btn-new-doc').click();
-      await page.locator('.doc-type-card[data-slug="plan"]').click();
-      await page.locator('#act-picker-edit').click();
+      await page.locator('#m-docs .doc-ghost[data-ghost="plan"]').click();
+      await page.locator('#btn-ghost-add').click();
       await expect(page.locator('#m-edit-area')).toBeVisible();
 
       // The bug: Save/Cancel were missing, and the stale +New-doc/Edit buttons stuck around
       // because renderModalDocs ran before modalState.editMode was set to true.
       await expect(page.locator('#btn-save-top')).toBeVisible();
       await expect(page.locator('#btn-cancel-top')).toBeVisible();
-      await expect(page.locator('#btn-new-doc')).toHaveCount(0);
+      await expect(page.locator('#btn-ghost-add')).toBeHidden();
       await expect(page.locator('.doc-edit-hint')).toHaveCount(0);
 
       page.on('dialog', dialog => { throw new Error(`unexpected dialog: ${dialog.message()}`); });
@@ -7773,7 +7773,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(badge).toContainText('edits save to its copy');
     expect(await badge.getAttribute('title')).toContain("Edits save to sprint/e7lv's copy");
     await expect(page.locator('.doc-edit-hint')).toBeVisible();
-    await expect(page.locator('#btn-new-doc')).toBeVisible();            // research.md is still available to create
+    await expect(page.locator('#m-docs .doc-ghost[data-ghost="research"]')).toBeVisible();   // research.md is still available to create
     await expect(page.locator('#m-body .doc-bullet[data-check-idx]')).toHaveCount(2);   // the checkboxes toggle now
     await expect(page.locator('.signoff-demo-toggle')).toBeEnabled();
     await expect(page.locator('.signoff-controls select').first()).toBeEnabled();
@@ -7985,13 +7985,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(posts[1].body.base_hash).toBe('tk-2');                          // the Demo write's etag, not the stale tk-1
   });
 
-  test('with a long branch name and a narrow window the working note still leaves Edit and + New doc inside the modal (t-26f9)', async ({ page }) => {
+  test('with a long branch name and a narrow window the working note still leaves the Edit hint inside the modal (t-26f9)', async ({ page }) => {
     await page.setViewportSize({ width: 900, height: 700 });
     await liveBoard(page, { working: true, branch: 'sprint/a-very-long-branch-name-for-an-end-user-demo' });
     await expect(page.locator('#doc-working-note')).toBeVisible();
     const bad = await page.evaluate(() => {
       const m = document.querySelector('#modal').getBoundingClientRect();
-      return ['.doc-edit-hint', '#btn-new-doc', '#doc-working-note', '#doc-live-badge']
+      return ['.doc-edit-hint', '#doc-working-note', '#doc-live-badge']
         .map(sel => { const r = document.querySelector(sel)?.getBoundingClientRect(); return { sel, r }; })
         .filter(x => !x.r || x.r.left < m.left - 1 || x.r.right > m.right + 1).map(x => x.sel);
     });
@@ -8007,7 +8007,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // The evaluator found Edit pushed outside the modal while the note was showing: every control must lie inside it.
     const inside = async () => page.evaluate(() => {
       const m = document.querySelector('#modal').getBoundingClientRect();
-      return ['.doc-edit-hint', '#btn-new-doc', '#doc-working-note', '#doc-live-badge'].map(sel => {
+      return ['.doc-edit-hint', '#doc-working-note', '#doc-live-badge'].map(sel => {
         const r = document.querySelector(sel)?.getBoundingClientRect();
         return { sel, ok: !!r && r.left >= m.left - 1 && r.right <= m.right + 1 && r.width > 0 };
       });
@@ -8143,12 +8143,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await expect(page.locator('.signoff-controls select').first()).toHaveValue('normal');
 
     // New doc: no tab appears for a doc that wasn't created.
-    const tabsBefore = await page.locator('.doc-tab').count();
-    await page.locator('#btn-new-doc').click();
-    await page.locator('.doc-type-card').first().click();
-    await page.locator('#act-picker-edit').click();
-    await expect(toast).toContainText("Couldn't create");
-    await expect(page.locator('.doc-tab')).toHaveCount(tabsBefore);
+    const tabsBefore = await page.locator('.doc-tab:not(.doc-ghost)').count();
+    await page.locator('.doc-ghost[data-ghost="research"]').click();
+    await page.locator('#btn-ghost-add').click();
+    await page.locator('#btn-save-top').click();
+    await expect(toast).toContainText("Couldn't save this doc");
+    await expect(page.locator('#m-edit-area')).toBeVisible();   // the draft stays so nothing typed is lost
+    await page.locator('#btn-cancel-top').click();
+    await expect(page.locator('.doc-tab:not(.doc-ghost)')).toHaveCount(tabsBefore);   // no tab appears for a doc that wasn't created
+    await expect(page.locator('.doc-ghost[data-ghost="research"]')).toBeVisible();
     await page.keyboard.press('Escape');
 
     // Create ticket: a refused create keeps the modal open and the button usable.
@@ -12420,7 +12423,7 @@ test.describe('ticket modal document tree (t-e946)', () => {
     await expect(page.locator('.section-jumps')).toHaveCount(0);   // only the Plan doc hosts the bar
   });
 
-  test('ticket prev/next, Edit and + New doc live in the pane bar, none in the tree', async ({ page }) => {
+  test('ticket prev/next and the Edit hint live in the pane bar, none in the tree', async ({ page }) => {
     const id = `t-tree-bar-${Date.now()}`;
     writeTicket(id);
     await openModalFor(page, id);
@@ -12536,17 +12539,17 @@ test.describe('ticket modal editor (t-a205)', () => {
     await expect(page.locator('#m-edit-area')).toHaveValue('e');
   });
 
-  test('while the new-doc picker is open, double-click and e do not start editing', async ({ page }) => {
+  test('while a ghost pane is open, double-click and e do not start editing (t-bb97)', async ({ page }) => {
     const id = `t-ed-pick-${Date.now()}`;
     writeTicket(id);
     await openModalFor(page, id);
-    await page.locator('#btn-new-doc').click();
-    await expect(page.locator('#m-body')).not.toContainText('Plain description');   // the picker replaced the document
+    await page.locator('#m-docs .doc-ghost').first().click();
+    await expect(page.locator('#m-body')).not.toContainText('Plain description');   // the ghost pane replaced the document
     await editDoc(page);
     expect(await editing(page)).toBe(false);
     await page.keyboard.press('e');
     expect(await editing(page)).toBe(false);
-    await expect(page.locator('#btn-new-doc')).toBeDisabled();                      // the picker is still the state of the modal
+    await expect(page.locator('.doc-edit-hint')).toHaveCount(0);                      // nothing to edit yet, so no hint
   });
 
   test('Cancel leaves the doc unchanged', async ({ page }) => {
@@ -12938,7 +12941,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     expect(r.idLines).toBe(1);                                                              // t-xxxx does not wrap
   });
 
-  test('the sign-off bar is one full-width row: tier, a wide Risk field, model, hint, switch; controls share a height (t-d0c4)', async ({ page }) => {
+  test('the sign-off bar is one full-width row: tier, a wide Risk field, model; the controls share a height (t-d0c4, t-bb97)', async ({ page }) => {
     const sfx = Date.now().toString(36).slice(-3), id = `t-b${sfx}`;
     writeTicket(id);
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -12950,20 +12953,80 @@ test.describe('ticket modal polish (t-612f)', () => {
     const r = await page.evaluate(() => {
       const q = s => document.querySelector(s).getBoundingClientRect();
       const bar = q('.signoff-controls'), pane = q('.section-jumps');
-      return { tier: q('.signoff-tier-select'), risk: q('.signoff-risk-input'), model: q('.model-tier-select'), sw: q('.signoff-demo-toggle'), bar, pane };
+      return { tier: q('.signoff-tier-select'), risk: q('.signoff-risk-input'), model: q('.model-tier-select'), bar, pane };
     });
-    expect(r.risk.width).toBeGreaterThanOrEqual(300);
+    expect(r.risk.width).toBeGreaterThanOrEqual(240);
     expect(Math.abs(r.bar.width - r.pane.width)).toBeLessThanOrEqual(2);                    // the bar spans the pane, it is not right-aligned
-    expect(r.tier.right).toBeLessThanOrEqual(r.risk.left + 1);                              // order: tier, risk, model, switch
+    expect(r.tier.right).toBeLessThanOrEqual(r.risk.left + 1);                              // order: tier, risk, model
     expect(r.risk.right).toBeLessThanOrEqual(r.model.left + 1);
-    expect(r.model.right).toBeLessThanOrEqual(r.sw.left + 1);
-    for (const c of [r.risk, r.model, r.sw]) expect(Math.abs((c.top + c.bottom) / 2 - (r.tier.top + r.tier.bottom) / 2)).toBeLessThanOrEqual(2);   // one row, centred together
+    expect(r.model.right).toBeLessThanOrEqual(r.pane.right + 1);
+    for (const c of [r.risk, r.model]) expect(Math.abs((c.top + c.bottom) / 2 - (r.tier.top + r.tier.bottom) / 2)).toBeLessThanOrEqual(2);   // one row, centred together
     expect(r.tier.height).toBe(r.risk.height);
     expect(r.model.height).toBe(r.risk.height);
-    expect(r.model.width).toBeCloseTo(168, 0);
+    expect(r.model.width).toBeCloseTo(156, 0);
   });
 
-  test('with Demo/UX on and a model picked, tier, Risk, model, hint and the switch stay on one row in the default dialog (t-887e)', async ({ page }) => {
+  test('a new ticket shows Acceptance, Plan and Research as ghost nodes; the pane explains and offers + Acceptance; Cancel writes nothing, Save creates the file (t-bb97)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-g${sfx}`;
+    writeTicket(id);
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    for (const f of ['acceptance.md', 'plan.md', 'research.md']) fs.rmSync(path.join(dir, f), { force: true });   // a description-only ticket
+    await openModalFor(page, id);
+    await expect(page.locator('#m-docs .doc-ghost')).toHaveText(['Acceptance+', 'Plan+', 'Research+']);
+    await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveText(['Description']);
+    const dashed = await page.locator('#m-docs .doc-ghost').first().evaluate(el => getComputedStyle(el).borderLeftStyle);
+    expect(dashed).toBe('dashed');
+    await page.locator('#m-docs .doc-ghost[data-ghost="acceptance"]').click();
+    await expect(page.locator('.doc-ghost-pane h3')).toHaveText('No Acceptance yet');
+    await expect(page.locator('.doc-ghost-pane p')).toContainText('Criteria and Test Plan');
+    await page.locator('#btn-ghost-add').click();
+    await expect(page.locator('#m-edit-area')).toHaveValue(/## Criteria/);                 // the template, ready to edit
+    expect(fs.existsSync(path.join(dir, 'acceptance.md'))).toBe(false);                    // nothing is written until Save
+    await page.locator('#btn-cancel-top').click();
+    await expect(page.locator('.doc-ghost-pane h3')).toHaveText('No Acceptance yet');      // back to the ghost
+    expect(fs.existsSync(path.join(dir, 'acceptance.md'))).toBe(false);
+    await expect(page.locator('#m-docs .doc-ghost[data-ghost="acceptance"]')).toBeVisible();
+    await page.locator('#btn-ghost-add').click();
+    const body = (await page.locator('#m-edit-area').inputValue()).replace(/## Criteria[\s\S]*?## Test Plan/, '## Criteria\n- [ ] first criterion\n\n## Test Plan').replace(/## Test Plan[\s\S]*?## QA/, '## Test Plan\n- [ ] a check\n\n## QA');
+    await page.locator('#m-edit-area').fill(body);
+    page.on('dialog', d => { throw new Error(`unexpected dialog: ${d.message()}`); });
+    await page.locator('#btn-save-top').click();
+    await expect(page.locator('#m-edit-area')).toBeHidden();
+    expect(fs.readFileSync(path.join(dir, 'acceptance.md'), 'utf8')).toContain('first criterion');
+    await expect(page.locator('#m-docs .doc-ghost[data-ghost="acceptance"]')).toHaveCount(0);   // the ghost became a real node
+    await expect(page.locator('#m-docs .doc-tab:not(.doc-ghost)')).toHaveText(['Description', 'Acceptance']);
+  });
+
+  test('a closed ticket shows no ghost nodes (t-bb97)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-k${sfx}`;
+    writeTicket(id, { status: 'closed' });
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    for (const f of ['acceptance.md', 'plan.md', 'research.md']) fs.rmSync(path.join(dir, f), { force: true });
+    await page.goto(BASE);
+    await page.locator('#board-search').fill(id);
+    await page.locator(`.card[data-id="${id}"]`).click();
+    await expect(page.locator('#m-id')).toHaveText(id);
+    await expect(page.locator('#m-docs .doc-ghost')).toHaveCount(0);
+  });
+
+  test('the Demo/UX switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)', async ({ page }) => {
+    const sfx = Date.now().toString(36).slice(-3), id = `t-w${sfx}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    const sw = page.locator('#m-meta .signoff-demo-toggle');
+    await expect(sw).toHaveAttribute('aria-checked', 'false');
+    await sw.click();
+    await expect(page.locator('#m-meta .signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');
+    await expect.poll(() => fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', id, 'ticket.md'), 'utf8')).toMatch(/demo: true/);
+    await expect(page.locator(`.card[data-id="${id}"] .demo-badge`)).toHaveText('DEMO/UX');
+    await page.locator('#m-docs .doc-tab', { hasText: 'Plan' }).click();
+    await expect(page.locator('.signoff-controls')).toHaveCount(1);
+    await expect(page.locator('.signoff-controls .signoff-demo-toggle')).toHaveCount(0);   // gone from the sign-off bar
+    await expect(page.locator('.signoff-controls .signoff-field-label')).toHaveText(['Tier', 'Risk', 'Gate model']);
+    await expect(page.locator('#m-meta .signoff-demo-toggle')).toHaveAttribute('aria-checked', 'true');   // still there on the Plan tab
+  });
+
+  test('with Demo/UX on and a model picked, tier, Risk, model and the hint stay on one row in the default dialog (t-887e, t-bb97)', async ({ page }) => {
     const sfx = Date.now().toString(36).slice(-3), id = `t-m${sfx}`;
     writeTicket(id, { demo: true });
     await page.setViewportSize({ width: 1400, height: 900 });
@@ -12974,12 +13037,12 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect.poll(() => page.evaluate(() => document.getElementById('modal').getAnimations().length)).toBe(0);
     const r = await page.evaluate(() => {
       const q = s => document.querySelector(s).getBoundingClientRect();
-      return { pane: q('.section-jumps'), tier: q('.signoff-tier-select'), risk: q('.signoff-risk-input'), model: q('.model-tier-select'), hint: q('.model-tier-demo-hint'), sw: q('.signoff-demo-toggle') };
+      return { pane: q('.section-jumps'), tier: q('.signoff-tier-select'), risk: q('.signoff-risk-input'), model: q('.model-tier-select'), hint: q('.model-tier-demo-hint') };
     });
     expect(r.pane.width).toBeGreaterThan(640);                                              // above the wrap point, so the single row is expected
-    for (const c of [r.risk, r.model, r.hint, r.sw]) expect(Math.abs((c.top + c.bottom) / 2 - (r.tier.top + r.tier.bottom) / 2)).toBeLessThanOrEqual(2);   // one row
-    expect(r.risk.width).toBeGreaterThanOrEqual(160);                                       // Risk is the part that gives
-    expect(r.sw.right).toBeLessThanOrEqual(r.pane.right + 1);                               // the switch is not clipped
+    for (const c of [r.risk, r.model, r.hint]) expect(Math.abs((c.top + c.bottom) / 2 - (r.tier.top + r.tier.bottom) / 2)).toBeLessThanOrEqual(2);   // one row
+    expect(r.risk.width).toBeGreaterThanOrEqual(140);                                       // Risk is the part that gives
+    expect(r.hint.right).toBeLessThanOrEqual(r.pane.right + 1);                             // the hint is not clipped
   });
 
   test('a narrow dialog puts the Risk field alone on a full-width line; the Risk tooltip carries its text (t-d0c4)', async ({ page }) => {
@@ -12997,11 +13060,11 @@ test.describe('ticket modal polish (t-612f)', () => {
     await expect.poll(() => page.evaluate(() => document.querySelector('.section-jumps').getBoundingClientRect().width)).toBeLessThan(640);
     const r = await page.evaluate(() => {
       const q = s => document.querySelector(s).getBoundingClientRect();
-      return { risk: q('.signoff-risk-input'), tier: q('.signoff-tier-select'), pane: q('.section-jumps'), sw: q('.signoff-demo-toggle'), model: q('.model-tier-select') };
+      return { risk: q('.signoff-risk-input'), tier: q('.signoff-tier-select'), pane: q('.section-jumps'), model: q('.model-tier-select') };
     });
     expect(r.risk.width).toBeGreaterThan(r.pane.width - 40);                                // alone on a full-width line
     expect(r.tier.top).toBeGreaterThan(r.risk.bottom - 1);                                  // the other controls wrap below it
-    for (const c of [r.risk, r.tier, r.model, r.sw]) { expect(c.left).toBeGreaterThanOrEqual(r.pane.left - 1); expect(c.right).toBeLessThanOrEqual(r.pane.right + 1); }
+    for (const c of [r.risk, r.tier, r.model]) { expect(c.left).toBeGreaterThanOrEqual(r.pane.left - 1); expect(c.right).toBeLessThanOrEqual(r.pane.right + 1); }
     const input = page.locator('.signoff-risk-input');
     await expect(input).toHaveAttribute('title', 'fixture');                                 // a saved Risk is the tooltip on first render, before any typing
     await input.fill('a long risk sentence that should be readable in full from the tooltip');

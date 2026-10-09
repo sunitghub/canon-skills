@@ -411,7 +411,7 @@
       }
     },
     {
-      "title": "ticket modal editor (t-a205) > while the new-doc picker is open, double-click and e do not start editing",
+      "title": "ticket modal editor (t-a205) > while a ghost pane is open, double-click and e do not start editing (t-bb97)",
       "browsers": [
         "webkit"
       ],
@@ -463,6 +463,17 @@
       "reason": "failed once in a full webkit run (8 load failures, the machine also ran ./scripts/test.sh); passed 2 of 2 when run alone on the same commit (2026-10-09, t-9d93 branch)",
       "failed_runs": {
         "webkit": "1 of 1 full run (t-9d93); 0 of 2 alone"
+      }
+    },
+    {
+      "title": "cockpit leave-session confirm (t-f6b6) > Save & End waits for the ended reply before tearing down",
+      "browsers": [
+        "chromium"
+      ],
+      "ticket": "t-8aa6",
+      "reason": "failed in a full chromium run on the t-bb97 branch (unrelated surface: leave-session confirm); 1 of 2 solo runs also failed then passed on retry, so it is timing-flaky (2026-10-09)",
+      "failed_runs": {
+        "chromium": "1 of 1 full run (t-bb97); 1 flaky of 2 alone"
       }
     }
   ],
