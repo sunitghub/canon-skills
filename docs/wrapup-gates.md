@@ -13,7 +13,7 @@ close-path logic. Each gate's own definition lives in `skills/wrapup/gates/*.md`
 `skills/doc-audit/SKILL.md`, `skills/sprint/reference/review.md` (the advisory `reviewer` gate), and `skills/sprint/reference/eval.md`.
 
 The wrapup pipeline itself is `code-simplifier → code-reviewer → security-review → repo-check →
-doc-audit → refresh docs`. The `reviewer`, `evaluator`, and advisory `mutation-test` gates are driven
+doc-audit → refresh docs`. The `reviewer`, `evaluator`, and the advisory `skill-eval` and `mutation-test` gates are driven
 from `complete.md`, not the wrapup pipeline, but they surface together on the board's **Wrapup Gates**
 table, so they're included here.
 
@@ -36,6 +36,7 @@ row reads `skipped | demo mode`, so a demo close never looks like a full close.
 | **repo-check** | Repo surface vs README intent: stale paths/removed commands, skill graph (`skills.sh list` + `canon-dev lint`), script/tool surface wired, **sprint-check board visual render**, `CATALOG.md` drift, syntax checks (`bash -n`, `py_compile`) | Product-code logic/correctness, security, runtime behavior beyond board render | No repo workflow/setup/docs/skills/standards/scripts/tools changed |
 | **doc-audit** | User-facing doc accuracy: overstated automation, missing prerequisites, absolute claims, scope inflation, internal consistency, affected-doc coverage, command accuracy, workflow-gate accuracy, heading case, **private content/PII** | Code correctness; doc *completeness* beyond accuracy; won't auto-write findings or redact without confirmation | No user-facing docs changed and no skill/standards frontmatter changed |
 | **eval / evaluator** (fresh subagent, **binding**) | Each acceptance criterion + test-plan item graded pass/fail/partial/not-run from clean context against *actual changed files*, with `file:line` + quoted-text evidence; runs executable specs, renders visual criteria, rejects weak evidence. Any `partial` or `not-run` → `fail`; only `^pass:` closes | Anything outside `acceptance.md` scope (must not over-reach); the "Tested locally" QA checkbox; files outside the changed list; **semantic truth if the criteria themselves are wrong** | Trivial tier only (runs on bugfix/normal+) |
+| **skill-eval** (advisory) | Behaviour of an edited skill: runs that skill's own `evals/evals.json` (a fresh executor and grader per case) when the diff touches `skills/<name>/**/*.md` or `agents/*.md`, and records the pass rate per model in `skills/<name>/evals/history.jsonl` | Whether the skill is good: evals are simulations and noisy on small models, a rate is only compared with the same model's last run; **never close-gated** | No skill or gate agent changed, or the skill has no `evals.json` |
 | **mutation-test** (advisory) | Test *sensitivity*: mutates logic and checks whether the suite fails; logs surviving mutants with `file:line` + the assertion needed | Semantic correctness (sensitivity ≠ truth); **never close-gated** | No logic files changed |
 
 ## What none of them check
