@@ -16,8 +16,11 @@ H1="$(printf 'a%.0s' $(seq 1 64))"; C1="$(printf 'b%.0s' $(seq 1 40))"
 H2="$(printf 'c%.0s' $(seq 1 64))"; C2="$(printf 'd%.0s' $(seq 1 40))"
 GOOD="v0.3.0 $H1 $C1"
 
+furl() {   # file URL for curl: Git for Windows' curl is a native build that does not understand /tmp, so give it C:/Users/... there
+  if command -v cygpath >/dev/null 2>&1; then printf 'file:///%s' "$(cygpath -m "$1")"; else printf 'file://%s' "$1"; fi
+}
 look() {   # look <manifest file> [tag]: prints the script's output and sets $code
-  set +e; out="$(CANON_MANIFEST_URL="file://$1" bash "$SCRIPT" "${2-v0.3.0}" 2>&1)"; code=$?; set -e
+  set +e; out="$(CANON_MANIFEST_URL="$(furl "$1")" bash "$SCRIPT" "${2-v0.3.0}" 2>&1)"; code=$?; set -e
 }
 ok() {   # ok <label> <manifest file> <expected "sha commit">
   look "$2"; [[ "$code" == 0 ]] || fail "release-manifest: $1 was refused: $out"
@@ -82,7 +85,7 @@ echo "release-manifest: refuses empty, comment-only, hex of the wrong case or le
 
 # The tag argument is validated before anything is read.
 for t in '' v1 v1.2 1.2.3 main ../v0.3.0 'v0.3.0 x' 'v0.3.0;ls' '-x' 'v0.3.0/' 'V0.3.0'; do
-  set +e; out="$(CANON_MANIFEST_URL="file://$(mf "$GOOD\n")" bash "$SCRIPT" "$t" 2>&1)"; code=$?; set -e
+  set +e; out="$(CANON_MANIFEST_URL="$(furl "$(mf "$GOOD\n")")" bash "$SCRIPT" "$t" 2>&1)"; code=$?; set -e
   [[ "$code" != 0 ]] || fail "release-manifest: accepted the tag '$t': $out"
   assert_contains "$out" "tag must look like"
 done

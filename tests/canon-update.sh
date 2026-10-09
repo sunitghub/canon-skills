@@ -293,7 +293,8 @@ h3() { git -C "$I3" rev-parse HEAD; }
 # is a stand-in: the git path checks the commit); v0.3.2 is listed but was never pushed to origin.
 Z3="$(printf 'e%.0s' $(seq 1 64))"; M3="$WORK/manifest3.txt"
 good3() { printf '# canon releases\nv0.3.2 %s %s\nv0.3.1 %s %s\nv0.3.0 %s %s\n' "$Z3" "$tip3" "$Z3" "$(sha3 v0.3.1)" "$Z3" "$(sha3 v0.3.0)" > "$M3"; }
-good3; export CANON_MANIFEST_URL="file://$M3"
+if command -v cygpath >/dev/null 2>&1; then M3URL="file:///$(cygpath -m "$M3")"; else M3URL="file://$M3"; fi   # Git for Windows' curl is native: it needs C:/..., not /tmp/...
+good3; export CANON_MANIFEST_URL="$M3URL"
 
 # Invalid refs exit 2 before any git call: a git stub that records every call proves none was made.
 GSTUB="$WORK/gitstub"; mkdir -p "$GSTUB"; printf '#!/bin/sh\necho "$*" >> "%s/git.calls"\nexit 99\n' "$WORK" > "$GSTUB/git"; chmod +x "$GSTUB/git"
