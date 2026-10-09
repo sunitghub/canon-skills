@@ -12,6 +12,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - Gate runtime: `tools/evidence.sh stamp` writes builder evidence that names the commit it tested, `check` says whether a log is still fresh, and the evaluator reuses a fresh log for repeats of the same command while still running its own floor (changed suites, mutants, a spot-check) under a 25-minute budget; the evaluator's minutes are now recorded in the Wrapup Gates `eval` row (`t-e3cd`).
 - Skill evals on change: `sprint complete` runs the evals of any skill whose instructions (or a gate agent) the sprint edited, advisory only, and records the pass rate in `skills/<name>/evals/history.jsonl` (`tools/skill-eval-scope.sh`, `tools/skill-eval-history.sh`); a defect traced to a skill's own instructions can become an `evals.json` case (`t-8d28`).
 
+### Security
+- The cockpit daemon is built with Go 1.27.2 (pinned in `tools/cockpit-daemon/go.mod`) and `golang.org/x/crypto` v0.58.0. This clears 6 net/http and HTTP/2 vulnerabilities in Go 1.27.1 that the daemon's loopback server could reach, and the 13 Dependabot alerts on `x/crypto`, which the daemon never called (`govulncheck` reports 0 in the code; `t-7efe`).
+
 ## [0.3.0] - 2026-10-08
 
 The first tagged release. The highlights since canon became installable on Windows; earlier history is not itemised.

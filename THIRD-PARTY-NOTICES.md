@@ -90,7 +90,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## golang.org/x/crypto v0.51.0
+## golang.org/x/crypto v0.58.0
 
 ```text
 Copyright 2009 The Go Authors.
@@ -122,7 +122,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## golang.org/x/sys v0.44.0
+## golang.org/x/sys v0.49.0
 
 ```text
 Copyright 2009 The Go Authors.
