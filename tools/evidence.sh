@@ -62,7 +62,7 @@ if [[ "$mode" == stamp ]]; then
   fi
   if [[ -s "$tmp" && -n "$(tail -c1 "$tmp")" ]]; then printf '\n' >> "$tmp"; fi
   printf 'exit %s\n' "$rc" >> "$tmp"
-  mv -f "$tmp" "$log"; trap - EXIT
+  chmod 644 "$tmp"; mv -f "$tmp" "$log"; trap - EXIT   # mktemp makes it 0600; the other logs are 0644
   echo "evidence: wrote $log (HEAD ${head_sha:0:7}, exit $rc)" >&2
   exit "$rc"
 fi
