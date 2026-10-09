@@ -7,6 +7,10 @@
 #   headless helper Windows amd64   (tools/sprint-headless-json-win.exe)   release sprint-headless-json-<key of its source>
 # Every build uses -trimpath -buildvcs=false, so the same source gives the same bytes at any checkout path. A release that exists
 # keeps its assets (a published asset is never overwritten); missing ones are added.
+# The Go toolchain is pinned, not whatever is installed: tools/cockpit-daemon/go.mod has a `toolchain` line, and each legacy package has a
+# GO_TOOLCHAIN file in its folder. Every build sets GOTOOLCHAIN to its pin explicitly (go.mod's `toolchain` line is only a minimum, and an
+# exported GOTOOLCHAIN=local would ignore it), and every built binary is checked with `go version -m` against the pin before anything is published. A pin lives in the source folder on purpose: raising it changes the folder's tree hash, so the fixed
+# build is a NEW release and the old release (which an older tag's manifest still points at) keeps its assets (t-7efe).
 # Usage: scripts/release-daemon.sh [--dry-run]   (--dry-run builds and prints the manifest lines, publishes and writes nothing)
 set -euo pipefail
 
@@ -31,26 +35,40 @@ out="$(mktemp -d)"; chk=""; trap 'rm -rf "$out" "$chk"' EXIT
 
 sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'; else shasum -a 256 "$1" | awk '{print $1}'; fi; }
 
+pin_re='^go[0-9]+\.[0-9]+\.[0-9]+$'
+daemon_pin="$(awk '/^toolchain /{print $2}' "$REPO_ROOT/tools/cockpit-daemon/go.mod" 2>/dev/null)" || daemon_pin=""
+[[ "$daemon_pin" =~ $pin_re ]] || { echo "release-daemon: tools/cockpit-daemon/go.mod needs a line 'toolchain goX.Y.Z' naming the Go to build with, e.g. toolchain go1.27.2" >&2; exit 1; }
+check_built() { # <binary> <pin>: the file must say it was built with exactly the pinned Go
+  local got; got="$(go version -m "$1" 2>/dev/null | head -n1)" || got=""
+  [[ "$got" == "$1: $2" ]] || { echo "release-daemon: $(basename "$1") was built with '${got##*: }', not the pinned $2; nothing was published" >&2; exit 1; }
+}
+
 # Build everything first; nothing is published until every build has worked.
 lines=""   # <key> <target> <sha256>
 for t in $UNIX_TARGETS; do
-  ( cd "$REPO_ROOT/tools/cockpit-daemon" && CGO_ENABLED=0 GOOS="${t%-*}" GOARCH="${t#*-}" go build -trimpath -buildvcs=false \
+  ( cd "$REPO_ROOT/tools/cockpit-daemon" && GOTOOLCHAIN="$daemon_pin" CGO_ENABLED=0 GOOS="${t%-*}" GOARCH="${t#*-}" go build -trimpath -buildvcs=false \
       -ldflags "-s -w -X main.version=$semver -X main.commit=${full_d:0:8}" -o "$out/cockpit-daemon-$t" . )
+  check_built "$out/cockpit-daemon-$t" "$daemon_pin"
   lines="$lines$key_d $t $(sha256_of "$out/cockpit-daemon-$t")"$'\n'
 done
-( cd "$REPO_ROOT/tools/cockpit-daemon" && CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
+( cd "$REPO_ROOT/tools/cockpit-daemon" && GOTOOLCHAIN="$daemon_pin" CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
     -ldflags "-s -w -X main.version=$semver -X main.commit=${full_d:0:8}" -o "$out/cockpit-daemon-windows-amd64.exe" . )
+check_built "$out/cockpit-daemon-windows-amd64.exe" "$daemon_pin"
 lines="$lines$key_d windows-amd64 $(sha256_of "$out/cockpit-daemon-windows-amd64.exe")"$'\n'
 # The board and the headless helper are legacy packages (no go.mod, stdlib only). GOPATH-mode builds leak the checkout path
 # into the binary even with -trimpath (live-checked: three checkouts gave three hashes), so build them as a module from a
 # staged copy of their sources: same code, a fixed module path, and the same bytes anywhere.
 build_legacy() { # <source dir under the repo> <module name> <commit stamp> <output file>
-  local stage; stage="$(mktemp -d)"
+  local stage pin
+  pin="$(tr -d ' \t\n\r' < "$REPO_ROOT/$1/GO_TOOLCHAIN" 2>/dev/null)" || pin=""
+  [[ "$pin" =~ $pin_re ]] || { echo "release-daemon: $1/GO_TOOLCHAIN must name the Go toolchain to build with, e.g. go1.27.2" >&2; exit 1; }
+  stage="$(mktemp -d)"
   find "$REPO_ROOT/$1" -maxdepth 1 -name '*.go' ! -name '*_test.go' -exec cp {} "$stage/" \;
-  printf 'module canon/%s\n\ngo %s\n' "$2" "$(go env GOVERSION | sed 's/^go//')" > "$stage/go.mod"
-  ( cd "$stage" && GOTOOLCHAIN=local GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
+  printf 'module canon/%s\n\ngo %s\n' "$2" "${pin#go}" > "$stage/go.mod"
+  ( cd "$stage" && GOTOOLCHAIN="$pin" GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
       -ldflags "-s -w -X main.version=$semver -X main.commit=$3" -o "$4" . )
   rm -rf "$stage"
+  check_built "$4" "$pin"
 }
 build_legacy tools/sprint-check-go sprint-check "${full_b:0:8}" "$out/sprint-check-windows-amd64.exe"
 lines="$lines$key_b sprint-check-windows-amd64 $(sha256_of "$out/sprint-check-windows-amd64.exe")"$'\n'
