@@ -94,7 +94,6 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    (ticket-id mode; explicit `--model` wins.) See `docs/headless-ci.md` and `DECISIONS.md` 2026-08-06.
 
 
-   **Folder without git:** there is nothing to commit — skip this step. The gates take the changed-file list from `.tickets/<id>/changes.json` (`shared-gate-protocol.md`, tier 0), which the cockpit wrote when the session ended; if it is missing, the gates fall back to the working-tree listing.
    **Skill eval (advisory, normal+ tier).** When the sprint edited a skill's instructions or a gate agent, run
    that skill's own evals, so a prompt edit is graded by behaviour and not only by "the line is present". Run
    `tools/skill-eval-scope.sh` (it diffs against the same base the gates use and prints `run <skill>` or
@@ -110,8 +109,11 @@ Steps run in order (2-3 are the fresh-context gates; the rest run in the main se
    `_gate_eval_report_fresh` (`tools/sprint`) fails any tracked change made after the evaluator graded, so the new
    line goes into the interim commit below and the gates grade the final tree. Record it in the Wrapup Gates table
    (`ran | sprint 9/10 (was 10/10), wrapup 7/7 (advisory)`, or `skipped | no skill or gate agent changed`, or
-   `skipped | <skill> has no evals.json`).
+   `skipped | <skill> has no evals.json`). **Canon only, and only in a git checkout:** where `tools/skill-eval-scope.sh`
+   does not exist (a consumer project) or there is no git (the scope tool needs it), record `skipped | not a canon checkout` /
+   `skipped | no git` and go on.
 
+   **Folder without git:** there is nothing to commit — skip this step. The gates take the changed-file list from `.tickets/<id>/changes.json` (`shared-gate-protocol.md`, tier 0), which the cockpit wrote when the session ended; if it is missing, the gates fall back to the working-tree listing.
    **Interim commit required before reviewer/evaluator dispatch.** Both gates derive their changed-files list via `git diff --name-only $(git merge-base HEAD origin/main) HEAD` — a *committed-history* diff, not a working-tree one. If the sprint's implementation work is still entirely uncommitted, that diff is empty and the fresh-context subagent has nothing real to review or grade, regardless of how much has been built. Before steps 2-3, confirm at least one commit containing the sprint's substantive changes exists on the current branch (where the project gitignores `.tickets/`, those files don't need committing for this purpose; a project that tracks `.tickets/` in git may include them) — commit now if not, staging only the sprint's substantive files (never `git add -A`). The close confirmation at the top of this protocol authorizes this interim commit; it is not a separate prompt. This is separate from step 10's final Commit & Push, which happens after close and covers the closing docs (`summary.md`, ticket status).
 
    **Soft freeze on `origin/main` once gates are dispatched.** Both gates derive their base ref *live* via `git merge-base HEAD origin/main` (see `shared-gate-protocol.md ## Base-ref derivation`), so do not push further commits to `origin/main` between dispatching a reviewer/evaluator (steps 2-3) and reading back its report — a mid-run push shifts that ref, and if the pushed commit is the sprint's own HEAD the diff goes empty and the gate grades nothing. Hold all pushes until both gates have reported (step 10).

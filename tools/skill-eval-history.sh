@@ -5,8 +5,9 @@
 # `N/M pass (was K/M)`, K/M being the most recent earlier line for the SAME model (small models are noisy, so a rate is never compared
 # across models), or `N/M pass (first run on <model>)`. Earlier lines that do not parse are skipped. Every argument is validated before
 # anything is written, so a refusal leaves the file as it was (and creates none). Run from the project root; skills/<skill>, its evals/
-# and the history file must not be symlinks, so a write never lands in another tree. The append is one short write, so concurrent runs
-# keep every line whole. Pure bash: neither jq nor python.
+# and the history file must not be symlinks, so a write never lands in another tree. Reading the last byte and appending is a check-then-act, so
+# concurrent runs take a lock directory (mkdir is atomic everywhere) around it: every line stays whole and no blank line sneaks in. A lock left
+# by a killed run is named in the error and removed by hand. Pure bash: neither jq nor python.
 set -euo pipefail
 
 die() { echo "skill-eval-history: $*" >&2; exit 1; }
@@ -30,6 +31,14 @@ sdir="$root/skills/$skill"
 hist="$sdir/evals/history.jsonl"
 [[ ! -L "$hist" ]] || die "skills/$skill/evals/history.jsonl is a symlink"
 [[ ! -e "$hist" || -f "$hist" ]] || die "skills/$skill/evals/history.jsonl is not a plain file"
+
+lock="$hist.lock"; tries=0
+until mkdir "$lock" 2>/dev/null; do
+  tries=$((tries + 1)); (( tries <= 300 )) || die "another run holds $lock (remove that directory if no run is active)"
+  sleep 0.1
+done
+trap 'rmdir "$lock" 2>/dev/null || true' EXIT
+trap 'exit 1' INT TERM
 
 line_re='^\{"date":"[0-9]{4}-[0-9]{2}-[0-9]{2}","model":"([A-Za-z0-9._:-]{1,64})","pass":(0|[1-9][0-9]{0,5}),"total":([1-9][0-9]{0,5})\}$'
 was=""

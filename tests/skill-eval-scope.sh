@@ -186,12 +186,25 @@ fi
 set +e; out="$(cd "$WORK" && bash "$HIST" alpha opus 1 2 2>&1)"; code=$?; set -e
 [[ "$code" != 0 ]] || fail "skill-eval-history: ran outside a git repository"
 
-# 20 concurrent runs keep every line whole
+# a held lock is respected (this is what keeps the concurrent runs below safe): the run waits, writes nothing, and appends once it is released
 put skills/epsilon/evals/evals.json '{"evals":[]}'
-for i in $(seq 1 20); do ( cd "$REPO" && bash "$HIST" epsilon "m$((i % 3))" "$((i % 5))" 9 >/dev/null 2>&1 ) & done
-wait
 E="$REPO/skills/epsilon/evals/history.jsonl"
-assert_eq "20" "$(wc -l < "$E" | tr -d ' ')"
+mkdir "$E.lock"
+( cd "$REPO" && bash "$HIST" epsilon held 1 2 > "$WORK/held.out" 2>&1 ) & held_pid=$!
+sleep 1
+[[ ! -e "$E" ]] || fail "skill-eval-history: wrote while another run held the lock"
+kill -0 "$held_pid" 2>/dev/null || fail "skill-eval-history: gave up on a lock that was held for one second: $(cat "$WORK/held.out")"
+rmdir "$E.lock"; wait "$held_pid" || fail "skill-eval-history: failed after the lock was released: $(cat "$WORK/held.out")"
+assert_eq "1/2 pass (first run on held)" "$(cat "$WORK/held.out")"
+assert_eq "1" "$(wc -l < "$E" | tr -d ' ')"
+[[ ! -e "$E.lock" ]] || fail "skill-eval-history: left its lock directory behind"
+
+# 40 concurrent runs keep every line whole, with no blank line between them (the unlocked version added one in about 1 trial in 9)
+for i in $(seq 1 40); do ( cd "$REPO" && bash "$HIST" epsilon "m$((i % 3))" "$((i % 5))" 9 >/dev/null 2>&1 ) & done
+wait
+assert_eq "41" "$(wc -l < "$E" | tr -d ' ')"
+[[ "$(grep -c '^$' "$E" || true)" == 0 ]] || fail "skill-eval-history: a concurrent run left a blank line"
 while IFS= read -r l; do [[ "$l" =~ $line_re ]] || fail "skill-eval-history: a concurrent run tore a line: '$l'"; done < "$E"
+[[ ! -e "$E.lock" ]] || fail "skill-eval-history: left its lock directory behind after concurrent runs"
 
 echo "skill-eval-scope: ok"

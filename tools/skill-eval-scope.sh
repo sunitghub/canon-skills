@@ -24,14 +24,12 @@ else
 fi
 
 name_re='[a-z0-9][a-z0-9-]*'
-skill_md_re="^skills/($name_re)/SKILL\\.md\$"
 skill_doc_re="^skills/($name_re)/(.+)\\.md\$"
 
 changed=""   # newline-separated skill names; names match name_re, so no path can add a line of its own
 note() {
   local p="$1" name="" rest=""
-  if [[ "$p" =~ $skill_md_re ]]; then name="${BASH_REMATCH[1]}"
-  elif [[ "$p" =~ $skill_doc_re ]]; then
+  if [[ "$p" =~ $skill_doc_re ]]; then
     name="${BASH_REMATCH[1]}"; rest="${BASH_REMATCH[2]}"
     [[ "$rest" != evals/* && "$p" != */skill-eval-result.md ]] || name=""
   elif [[ "$p" =~ ^agents/[^/]+\.md$ ]]; then name="sprint"

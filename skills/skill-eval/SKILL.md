@@ -67,7 +67,7 @@ For a plugin-vs-no-plugin baseline (Δ score), generate a throwaway plugin with 
      Confirm the file was written, then read the new file and proceed to Step 2.
    - **No:** stop. Do not write anything. Do not proceed to Step 3.
 
-2. **For each eval case**, run two subagents in sequence (from the session that runs this skill, never from inside another subagent, which cannot spawn them; the cases are independent, so dispatch every case's executor together, then every grader):
+2. **For each eval case**, run two subagents in sequence (from the session that runs this skill, never from inside another subagent, which cannot spawn them):
 
    **Executor** — spawn an Agent with a clean context. The prompt must:
    - Include the skill's `SKILL.md` content verbatim under a heading "Active skill:"
