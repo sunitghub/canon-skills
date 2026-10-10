@@ -62,4 +62,12 @@ code "$PS1" | grep -q "notcontains \$ToolsPath" || fail "finish mode no longer g
 # install.cmd fetches install.ps1 when it is not beside it.
 code "$CMD" | grep -q 'curl.exe' || fail "install.cmd does not download install.ps1 when missing"
 
+# t-65c9: with no CANON_REF the installer follows the remembered track, else the latest VERIFIED release; main is only ever the opt-in. The latest release is
+# resolved (and the manifest read) before anything is downloaded; the track is written with .NET and read back (the VM once showed a positional Set-Content writing nothing).
+code "$PS1" | grep -q 'Get-CanonLatestRelease' || fail "install.ps1 cannot resolve the latest release"
+[[ "$(lnum 'Get-CanonLatestRelease }')" -lt "$(lnum 'Get-CanonReleaseSha256 \$ref')" ]] || fail "install.ps1 does not resolve the latest release before it verifies and downloads it"
+code "$PS1" | grep -qE '\$ref = if \(\$env:CANON_REF\) \{ \$env:CANON_REF \} else \{ "main" \}' && fail "install.ps1 still defaults to main"
+code "$PS1" | grep -q '\.canon-track' && code "$PS1" | grep -q 'WriteAllText(\$trackFile' && code "$PS1" | grep -q 'Could not record the update track' || fail "install.ps1 does not record the track with .NET and read it back"
+code "$PS1" | grep -qE 'cmatch .\^v\(0\|\[1-9\]\[0-9\]\{0,5\}\)' || fail "install.ps1's latest-release line rule drifted from tools/release-manifest.sh (the oracle in tests/release-manifest.sh reads it)"
+
 printf 'windows-install: ok\n'

@@ -39,8 +39,10 @@ W="$(cd "$(mktemp -d)" && pwd -P)"; trap 'rm -rf "$W"' EXIT
 up="$W/up"; mkdir -p "$up/tools" "$W/home"
 git init -q -b main "$up"
 printf '#!/bin/sh\nexit 0\n' > "$up/tools/skills.sh"; cp "$up/tools/skills.sh" "$up/tools/fetch-daemon.sh"
+# t-65c9: install.sh now runs the install's own `canon update`, so the upstream carries the real script and what it sources
+cp "$ROOT/tools/canon" "$ROOT/tools/cockpit-launch-lib.sh" "$ROOT/tools/platform-lib.sh" "$ROOT/tools/release-manifest.sh" "$up/tools/"; printf '/.canon-track\n' > "$up/.gitignore"
 for i in 1 2 3; do echo "$i" > "$up/f"; git -C "$up" add -A; git -C "$up" -c user.email=t@e -c user.name=t commit -qm "c$i"; done
-HOME="$W/home" CANON_REPO="file://$up" bash "$ROOT/install.sh" "$W/home/.canon" >/dev/null 2>&1 || fail "install.sh against a local remote failed"
+HOME="$W/home" CANON_REPO="file://$up" CANON_REF=main bash "$ROOT/install.sh" "$W/home/.canon" >/dev/null 2>&1 || fail "install.sh against a local remote failed"
 assert_eq true "$(git -C "$W/home/.canon" rev-parse --is-shallow-repository)"
 assert_eq 1 "$(git -C "$W/home/.canon" rev-list --count HEAD)"
 echo 4 > "$up/f"; git -C "$up" add -A; git -C "$up" -c user.email=t@e -c user.name=t commit -qm c4
@@ -57,3 +59,33 @@ assert_contains "$(cat "$W/git.log")" "clone --depth 1 -- https://github.com/sun
 assert_contains "$(cat "$W/git.log")" "clone --depth 1 -- https://github.com/sunitghub/canon-skills.git $W/fresh-js"
 
 printf 'install-sh: ok\n'
+
+# ── t-65c9: a new install is the latest VERIFIED release, not main. The upstream gets tags and a manifest (a file: CANON_MANIFEST_URL only moves the read).
+Z="$(printf 'e%.0s' $(seq 1 64))"; ig=(-c user.email=t@e -c user.name=t)
+git -C "$up" "${ig[@]}" tag -a v0.3.0 -m v0.3.0; echo 5 > "$up/f"; git -C "$up" add -A; git -C "$up" "${ig[@]}" commit -qm "after the release"
+tip="$(git -C "$up" rev-parse HEAD)"; rel="$(git -C "$up" rev-list -n1 v0.3.0)"
+mf="$W/releases.txt"; printf '# canon releases\nv0.3.0 %s %s\n' "$Z" "$rel" > "$mf"
+env_i() { env HOME="$W/home" CANON_REPO="file://$up" CANON_MANIFEST_URL="file://$mf" "$@"; }
+out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh could not install the verified release: $out"
+assert_eq "$rel" "$(git -C "$W/rel" rev-parse HEAD)"; [[ -z "$(git -C "$W/rel" symbolic-ref -q HEAD || true)" ]] || fail "install-sh: the release install is on a branch"
+assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "Installed the verified release v0.3.0"; [[ "$out" != *"not checksum-verified"* ]] || fail "install-sh: the release install printed the unverified note: $out"
+[[ ! -e "$W/rel/.canon-track" ]] || fail "install-sh: the release install wrote a track marker"
+# an existing release install updates through `canon update` (no marker: the latest release again), and says so when it is already there
+out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh over a release install failed: $out"; assert_contains "$out" "canon is up to date (v0.3.0, verified"
+# a manifest that cannot verify installs nothing: no folder is left behind, and the way to the development version is named
+rm -f "$mf"
+set +e; out="$(env_i bash "$ROOT/install.sh" "$W/norel" 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; [[ ! -e "$W/norel" ]] || fail "install-sh: a failed verification left $W/norel behind"; assert_contains "$out" "nothing was installed"; assert_contains "$out" "CANON_REF=main"
+# an existing install honours an explicit CANON_REF (here: from the release install to main), and the marker follows
+out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh with CANON_REF=main over a release install failed: $out"
+assert_eq "$tip" "$(git -C "$W/rel" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/rel/.canon-track")"
+# a failed verification into a folder that already existed (empty, or the current folder) empties it and keeps the folder, and says so; nothing unverified is left
+mkdir "$W/emptyA" "$W/emptyB"
+set +e; out="$(env_i bash "$ROOT/install.sh" "$W/emptyA" 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; [[ -d "$W/emptyA" && -z "$(ls -A "$W/emptyA")" ]] || fail "install-sh: a failed install into an existing empty folder left something in it: $(ls -A "$W/emptyA")"; assert_contains "$out" "nothing was installed"
+set +e; out="$(cd "$W/emptyB" && env_i bash "$ROOT/install.sh" . 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; [[ -z "$(ls -A "$W/emptyB")" ]] || fail "install-sh: a failed install into '.' left something behind: $(ls -A "$W/emptyB")"; assert_contains "$out" "nothing was installed"
+# the opt-in: CANON_REF=main installs main, remembers it, and says it is not verified
+out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/devmain" 2>&1)" || fail "install.sh CANON_REF=main failed: $out"
+assert_eq "$tip" "$(git -C "$W/devmain" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/devmain/.canon-track")"; assert_contains "$out" "not checksum-verified"
+echo "install-sh: ok (target resolution; depth-1 clone and update; a new install is the latest verified release, installs nothing when it cannot verify, CANON_REF=main opts in)"
