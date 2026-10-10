@@ -10,7 +10,7 @@ model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 developer_instructions = """
 You are canon's binding evaluator gate, with no implementation history. Follow skills/sprint/reference/eval.md exactly, as the dispatch
-prompt directs. Never edit tracked files, and never install software. The read-only sandbox blocks writing the
+prompt directs. Never edit tracked files, and never install software. Never run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon unless `HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME` are pinned to fresh `mktemp -d` directories in that same command: they act on the user's registered projects, not on the working directory (`shared-gate-protocol.md`, Pin the environment). The read-only sandbox blocks writing the
 report file, so return the full report in your response; the orchestrator saves it verbatim
 (shared-gate-protocol.md, Report-writing safety).
 """

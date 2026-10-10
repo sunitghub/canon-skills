@@ -249,4 +249,21 @@ for file in "$SHARED" "$EVAL" "$REVIEW"; do
   done
 done
 
-echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md)"
+# ── Check M: the "pin the environment" rule (t-ce0b) lives in shared-gate-protocol.md and is mirrored in the two agent files and the two Codex
+# files — a gate may read only its agent file first. Live trigger: a reviewer ran `canon update` in a scratch clone and re-linked the user's
+# registered projects. The four mirrors carry the same sentence; the owner carries the paragraph.
+PIN_RULE_FRAGMENTS=(
+  '`canon update`, `skills.sh`, `install.sh`'
+  '`HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME`'
+  'fresh `mktemp -d` directories in that same command'
+  "registered projects, not on the working directory"
+)
+for file in "$SHARED" "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+  label="${file#"$ROOT"/}"
+  for frag in "${PIN_RULE_FRAGMENTS[@]}"; do
+    grep -qF -- "$frag" "$file" || fail "doc-mirror-parity: $label is missing the pin-the-environment rule fragment verbatim: $frag (t-ce0b, Check M)"
+  done
+done
+grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
+
+echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md; pin-the-environment rule present in shared-gate-protocol.md + both agent files + both Codex files)"
