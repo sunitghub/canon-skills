@@ -16,6 +16,7 @@ need() {   # need <label> <fixed text the section must contain>
   grep -qF -- "$2" <<<"$section" || fail "doc-update-behavior: the section does not mention $1 ('$2')"
 }
 need "the manifest URL" "https://getcanon.dev/releases.txt"
+need "a manifest that does not verify the release" "does not verify the release"
 need "the marker file" ".canon-track"
 need "the main opt-in" "canon update --to main"
 need "the way back" "canon update --to latest"

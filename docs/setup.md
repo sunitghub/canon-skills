@@ -193,7 +193,7 @@ What a plain `canon update` does, by kind of install:
 - a *plain* update finds a detached commit that is not a release tag (its commits would be left behind; run `git switch main`, or use `--to` to leave on purpose);
 - off Windows, the folder is not a git clone (reinstall); on Windows, `canon stop` first if canon's daemon is running.
 
-A first install that cannot verify a release installs nothing; `CANON_REF=main` (with `install.sh` or `install.ps1`) installs the development branch instead. Releases and what each contains: `CHANGELOG.md`; how a release is cut: `docs/releasing.md`.
+A first install that cannot verify a release installs nothing; `CANON_REF=main` (with `install.sh` or `install.ps1`) installs the development branch instead.
 
 ## Requirements and Windows
 
