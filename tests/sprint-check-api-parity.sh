@@ -1070,8 +1070,10 @@ for port in "$PY_PORT" "$GO_PORT"; do
 done
 # t-07c8: served HTML carries Cache-Control: no-store on both backends
 for port in "$PY_PORT" "$GO_PORT"; do
-  cc="$(curl -s -D - -o /dev/null "http://127.0.0.1:$port/cockpit" | grep -io 'cache-control: no-store' | head -1)"
-  [ -n "$cc" ] || fail "sprint-check-api-parity: FAIL — /cockpit missing Cache-Control: no-store on port $port"
+  for page in /cockpit /; do   # t-9b2d: the board page itself too, now that its CSS and JS are separate files
+    cc="$(curl -s -D - -o /dev/null "http://127.0.0.1:$port$page" | grep -io 'cache-control: no-store' | head -1)"
+    [ -n "$cc" ] || fail "sprint-check-api-parity: FAIL — $page missing Cache-Control: no-store on port $port"
+  done
 done
 
 reg_id="$(printf '%s' "$py_list" | python3 -c "import sys,json;print(json.load(sys.stdin)[0]['id'])")"
