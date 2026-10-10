@@ -70,7 +70,10 @@ fi
 TEST_RUNNER="$GIT_ROOT/scripts/test.sh"
 if [[ -x "$TEST_RUNNER" ]]; then
   echo "[pre-commit] Running test suite..."
-  if ! test_output="$(bash "$TEST_RUNNER" 2>&1)"; then
+  # git exports its own repo into a hook (GIT_INDEX_FILE and GIT_PREFIX always, GIT_DIR from a linked worktree, GIT_WORK_TREE when the caller set it). A suite that runs
+  # `git init`/`config`/`worktree` in a temp dir would act on THIS repo instead (t-ce0b). Only the suite is cleaned: the checks
+  # above and below need the commit's own index.
+  if ! test_output="$(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE -u GIT_PREFIX bash "$TEST_RUNNER" 2>&1)"; then
     echo "[pre-commit] BLOCKED — test suite failed:"
     echo "$test_output"
     exit 1

@@ -9,6 +9,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Changed
 - docs/setup.md explains how `canon update` works: the two tracks, what it does for each kind of install, and every refusal (`t-153f`).
 
+### Fixed
+- The pre-commit hook no longer hands git's own repository (`GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE`, `GIT_PREFIX`) to your test suite; a suite that ran `git init` or `git config` in a temp directory could change the real repository (`t-ce0b`). Run `canon update` to refresh the installed hook.
+- The review and evaluation gates are told never to run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon without a pinned `HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME` (`t-ce0b`).
+
 ## [0.4.0] - 2026-10-09
 
 Updates are verified by default: `canon update` and the installers take the latest verified release (`main` is now the opt-in). The shipped binaries are built with a pinned Go 1.27.2, which clears the vulnerabilities found in Go 1.27.1. If you are on v0.3.0, run `canon update --to main` once (its older updater does not know `--to latest`); after that a plain `canon update` is enough.
