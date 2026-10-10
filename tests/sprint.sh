@@ -875,7 +875,8 @@ assert_contains "$wrongword_output" "no dated waiver on record"
 # tools/tkt may only ever seed eval_override as the fixed "false" scaffolding
 # string — it must never contain a code path that writes "true" (t-7cd5).
 grep -qE 'eval_override' "$TKT" || fail "tools/tkt should seed eval_override: false on ticket creation, but the string is missing entirely"
-grep -E 'eval_override' "$TKT" | grep -qi 'true' && fail "tools/tkt must never write eval_override: true — that stays hand-edit-only by design"
+# inline count, not `| grep -q … && fail`: under pipefail grep -q exits at the first match, SIGPIPEs the writer, and the guard can never fire
+[ "$(grep -E 'eval_override' "$TKT" | grep -ci 'true')" -eq 0 ] || fail "tools/tkt must never write eval_override: true — that stays hand-edit-only by design"
 mkdir -p nested/deeper
 (
   cd nested/deeper
@@ -1520,7 +1521,7 @@ rm -rf "$fr_project"
 
 # t-1b74, t-9383: the post-commit hook commits no artifacts any more, so the allow-list must not exempt any (a change to a tracked exe after grading is stale)
 grep -q 'ARTIFACT_PATHS' "$ROOT/scripts/install-hooks.sh" && fail "scripts/install-hooks.sh must not list hook artifacts any more (t-9383)"
-sed 's/\\//g' "$ROOT/tools/sprint" | grep -qE 'win\.exe' && fail "tools/sprint's late-path list still exempts a Windows exe, which no hook commits any more"
+[ "$(sed 's/\\//g' "$ROOT/tools/sprint" | grep -cE 'win\.exe')" -eq 0 ] || fail "tools/sprint's late-path list still exempts a Windows exe, which no hook commits any more"
 
 # t-1b74: shared fixture for the repository-shape cases below
 fr_gate_docs() { # <ticket dir> <jsonl file> <run-id> <graded-head>

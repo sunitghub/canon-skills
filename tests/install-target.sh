@@ -33,6 +33,7 @@ assert_eq "/tmp/c" "$(resolve /home/u /opt/canon /tmp/c)"
 assert_eq "/home/u/foo" "$(resolve /home/u '~/foo' '')"
 
 # relative arg resolves to absolute (against cwd)
-assert_eq "$PWD/rel" "$(resolve /home/u '' rel)"
+# node resolves against the physical cwd, so compare with `pwd -P`: a checkout under macOS /var (a symlink to /private/var) differs from $PWD
+assert_eq "$(pwd -P)/rel" "$(resolve /home/u '' rel)"
 
 printf 'install-target: ok\n'

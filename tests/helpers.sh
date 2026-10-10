@@ -59,6 +59,17 @@ make_project() {
   printf '%s\n' "$dir"
 }
 
+# copy_canon_tree <dest> — copy canon's working tree (tracked + untracked-not-ignored files, as they are on disk) into <dest>,
+# without .git. A test that writes under its root uses a copy instead of the checkout it runs in (t-1cfc), and still sees
+# uncommitted edits.
+copy_canon_tree() {
+  local dest="$1"
+  mkdir -p "$dest"
+  (cd "$ROOT" && git ls-files -z --cached --others --exclude-standard \
+    | while IFS= read -r -d '' f; do if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\0' "$f"; fi; done \
+    | tar -c --null -T - -f -) | tar -x -f - -C "$dest"
+}
+
 run_ok() {
   "$@"
 }
