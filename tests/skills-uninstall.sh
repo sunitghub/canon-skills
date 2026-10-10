@@ -5,10 +5,20 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
+# Run against a scratch copy of canon, never the checkout the test started in (t-1cfc, t-80fc): the test overwrites
+# .claude/settings.json and plants and deletes .git/hooks/pre-commit under its root, which deleted a developer's real hook
+# and fails in a linked worktree, where .git is a file. The copy is the working tree (tracked + untracked, not ignored), so
+# an edit to skills.sh is tested before it is committed.
+scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
+scratch="$(cd "$scratch" && pwd -P)"
+copy_canon_tree "$scratch/canon"
+git -C "$scratch/canon" init -q
+ROOT="$scratch/canon"
+SKILLS="$ROOT/tools/skills.sh"
+
 home="$(mktemp -d)"
-# Restore the committed settings.json after the test overwrites it with a fixture;
-# .git/hooks/pre-commit is untracked runtime state, just remove it.
-trap 'rm -rf "$home"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true; rm -f "$ROOT/.git/hooks/pre-commit"' EXIT
+trap 'rm -rf "$home" "$scratch"' EXIT
 
 mkdir -p "$home/.claude" "$home/.pi/agent/extensions" "$home/.config/canon"
 
@@ -104,7 +114,7 @@ printf '%s\n' "$ROOT" > "$home/.config/canon/install_path"
 # One valid project with canon @-imports and AI-SKILLS block
 canon_project="$(mktemp -d)"
 stale_import_project="$(mktemp -d)"
-trap 'rm -rf "$home" "$canon_project" "$stale_import_project"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true' EXIT
+trap 'rm -rf "$home" "$scratch" "$canon_project" "$stale_import_project"' EXIT
 
 cat > "$canon_project/CLAUDE.md" <<EOF
 @$ROOT/standards/efficiency.md
@@ -233,7 +243,7 @@ assert_contains "$again" "[skip]  ~/.config/canon/install_path not found"
 # skeletons remain. `removed` should be 0 this run (nothing left to match),
 # but pruning must still run and report [cleaned], not [ok].
 skeleton_project="$(make_project)"
-trap 'rm -rf "$home" "$canon_project" "$stale_import_project" "$skeleton_project"; git -C "$ROOT" restore .claude/settings.json 2>/dev/null || true; rm -f "$ROOT/.git/hooks/pre-commit"' EXIT
+trap 'rm -rf "$home" "$scratch" "$canon_project" "$stale_import_project" "$skeleton_project"' EXIT
 mkdir -p "$skeleton_project/.claude"
 cat > "$skeleton_project/.claude/settings.json" <<'EOF'
 {
@@ -247,7 +257,7 @@ cat > "$skeleton_project/.claude/settings.json" <<'EOF'
   }
 }
 EOF
-skeleton_output="$("$SKILLS" add sprint "$skeleton_project")"
+skeleton_output="$(HOME="$home" "$SKILLS" add sprint "$skeleton_project")"
 assert_contains "$skeleton_output" "[cleaned]  removed leftover empty hook skeleton"
 assert_eq "{}" "$(python3 -c "import json; print(json.dumps(json.load(open('$skeleton_project/.claude/settings.json'))))")"
 

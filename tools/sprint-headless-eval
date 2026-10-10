@@ -203,13 +203,13 @@ SPEC_DIR="$(cd "$(dirname "$SPEC_FILE")" && pwd)"
 SPEC_BASENAME="$(basename "$SPEC_FILE")"
 
 # --- Resolve project root (for running git and claude -p) ---
-# Walk up from spec file to find a .git directory.
+# Walk up from spec file to find .git: a directory, or a file in a linked worktree.
 ROOT="$SPEC_DIR"
 while [[ "$ROOT" != "/" ]]; do
-  [[ -d "$ROOT/.git" ]] && break
+  [[ -e "$ROOT/.git" ]] && break
   ROOT="$(dirname "$ROOT")"
 done
-[[ -d "$ROOT/.git" ]] || {
+[[ -e "$ROOT/.git" ]] || {
   echo "Error: could not find a git repository above $SPEC_FILE." >&2
   exit 1
 }

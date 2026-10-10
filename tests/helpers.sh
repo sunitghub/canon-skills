@@ -11,6 +11,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # environment: no CLAUDECODE, and a config root that does not exist (the check then fails open). A test that exercises the
 # check sets both itself.
 unset CLAUDECODE
+# t-1cfc, t-ce0b: a suite run from a pre-commit hook (an install that predates the t-ce0b fix) inherits git's GIT_DIR / GIT_INDEX_FILE, and every
+# `git init` / `git commit` in a temp dir then acts on the real repository. No suite wants them.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX
 export CLAUDE_CONFIG_DIR="/nonexistent-canon-test-claude-config"
 TOOLS_DIR="$ROOT/tools"
 TKT="$TOOLS_DIR/tkt"
@@ -57,6 +60,17 @@ make_project() {
   dir="$(mktemp -d)"
   git -C "$dir" init -q
   printf '%s\n' "$dir"
+}
+
+# copy_canon_tree <dest> — copy canon's working tree (tracked + untracked-not-ignored files, as they are on disk) into <dest>,
+# without .git. A test that writes under its root uses a copy instead of the checkout it runs in (t-1cfc), and still sees
+# uncommitted edits.
+copy_canon_tree() {
+  local dest="$1"
+  mkdir -p "$dest"
+  (cd "$ROOT" && git ls-files -z --cached --others --exclude-standard \
+    | while IFS= read -r -d '' f; do if [ -e "$f" ] || [ -L "$f" ]; then printf '%s\0' "$f"; fi; done \
+    | tar -c --null -T - -f -) | tar -x -f - -C "$dest"
 }
 
 run_ok() {

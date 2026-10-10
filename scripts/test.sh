@@ -25,6 +25,7 @@ tests=(
   "$ROOT/tests/skills-assume-yes.sh"
   "$ROOT/tests/skills-refresh.sh"
   "$ROOT/tests/skills-uninstall.sh"
+  "$ROOT/tests/worktree-suites.sh"
   "$ROOT/tests/skills-mirror-gitignore.sh"
   "$ROOT/tests/skills-agents.sh"
   "$ROOT/tests/windows-no-python.sh"

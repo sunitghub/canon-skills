@@ -61,6 +61,14 @@ set +e; mout="$(bash "$EVAL" "$spec" --base-ref HEAD --allowed-tools-file "$tmp/
 assert '[ "$mrc" -ne 0 ]'                                        "missing config file exits non-zero"
 assert 'printf "%s" "$mout" | grep -q "not found"'               "missing-file error is clear"
 
+echo "--- a spec with no git repository above it is still refused (a worktree's .git FILE is accepted, nothing is not) ---"
+nogit="$(mktemp -d)"
+printf '# spec\n- [ ] a criterion\n' > "$nogit/spec.md"
+set +e; gout="$(bash "$EVAL" "$nogit/spec.md" --base-ref HEAD --print-allowed-tools 2>&1)"; grc=$?; set -e
+rm -rf "$nogit"
+assert '[ "$grc" -ne 0 ]'                                         "no .git anywhere above the spec exits non-zero"
+assert 'printf "%s" "$gout" | grep -q "could not find a git repository"' "no-.git error is clear"
+
 echo "--- shipped template parses and equals the default (minus runtime log entry) ---"
 assert 'python3 -c "import json;json.load(open(\"tools/headless-eval-tools.json\"))"' "template is valid JSON"
 
