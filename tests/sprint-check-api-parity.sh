@@ -65,6 +65,7 @@ CK_BIN="$(mktemp)"
 CK_STUB_PID=""
 PY_PID=""
 GO_PID=""
+SPY_PID=""; SGO_PID=""; SAPP=""   # t-9b2d: the /static/ pair, on a temp copy of the app folder
 # SPRINT_HEADLESS_BIN/SPRINT_HEADLESS_EVAL_BIN point both servers at throwaway
 # temp stubs from the moment they start (t-1781) — the headless-run parity
 # section below only ever rewrites these temp files' *content*, never the
@@ -107,8 +108,11 @@ cleanup() {
   [[ -n "$PY_PID" ]] && kill "$PY_PID" 2>/dev/null || true
   [[ -n "$GO_PID" ]] && kill "$GO_PID" 2>/dev/null || true
   [[ -n "$CK_STUB_PID" ]] && kill "$CK_STUB_PID" 2>/dev/null || true
+  [[ -n "$SPY_PID" ]] && kill "$SPY_PID" 2>/dev/null || true
+  [[ -n "$SGO_PID" ]] && kill "$SGO_PID" 2>/dev/null || true
   rm -f "$SPRINT_HEADLESS_BIN" "$SPRINT_HEADLESS_EVAL_BIN" "$CK_BIN"
   rm -rf "$WORK" "$(dirname "$GO_BIN")" "$CK_STATE"
+  [[ -n "$SAPP" ]] && rm -rf "$SAPP"
 }
 trap cleanup EXIT
 
@@ -1310,4 +1314,82 @@ for pair in "$PY_PORT:$PY_CANON" "$GO_PORT:$GO_CANON"; do
   [[ "$(tiers_json "$port")" == "$seed_json" ]] || fail "sprint-check-api-parity: FAIL — port $port GET after reset is not the seed"
 done
 
-echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); /api/version shares shape {version,commit,daemon} + identical semver from VERSION; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists; /api/admin/model-tiers saves to the data dir, never the seed, and resets identically; /api/projects add/list/delete + on-disk projects.json byte-identical + non-git error parity, for $WORK fixture)"
+# ── t-9b2d: GET /static/<name> — the board's own CSS/JS, identical on both servers ──
+# A second pair runs from a temp copy of the app folder, so fixture files and links never touch the
+# tracked tree. The Go binary is built into that copy's tools/ so its toolsDir finds the copied app.html.
+SAPP="$(mktemp -d)"
+mkdir -p "$SAPP/tools/sprint-check-app/static/sub"
+cp "$SERVER_PY" "$ROOT/tools/sprint-check-app/app.html" "$SAPP/tools/sprint-check-app/"
+(cd "$ROOT" && GO111MODULE=off go build -o "$SAPP/tools/sprint-check-go-bin" ./tools/sprint-check-go)
+S="$SAPP/tools/sprint-check-app/static"
+printf 'body{color:red}' > "$S/board-a.css"
+printf 'export const x = 1;' > "$S/editor.js"
+printf 'secret-html' > "$S/page.html"
+printf 'secret-sub' > "$S/sub/x.css"
+printf 'secret-txt' > "$S/notes.txt"
+ln -s "$SAPP/tools/sprint-check-app/app.html" "$S/out.css"   # leads out of static/
+ln -s "$S/notes.txt" "$S/in.css"                             # stays inside, but is not static/in.css
+SPY_PORT="$(free_port)"; SGO_PORT="$(free_port)"
+SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$PY_CANON" COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" python3 "$SAPP/tools/sprint-check-app/server.py" "$SPY_PORT" >/dev/null 2>&1 &
+SPY_PID=$!
+disown "$SPY_PID" 2>/dev/null || true
+SPRINT_CHECK_ROOT="$WORK" CANON_HOME="$GO_CANON" SPRINT_CHECK_NO_BROWSER=1 COCKPIT_STATE_DIR="$CK_STATE" COCKPIT_DAEMON_BIN="$CK_BIN" "$SAPP/tools/sprint-check-go-bin" "$SGO_PORT" >/dev/null 2>&1 &
+SGO_PID=$!
+disown "$SGO_PID" 2>/dev/null || true
+wait_for_port "$SPY_PORT" || fail "sprint-check-api-parity: static server.py did not start"
+wait_for_port "$SGO_PORT" || fail "sprint-check-api-parity: static main.go did not start"
+SBODY="$SAPP/body"
+# static_get <port> <path> [curl args...] -> prints "<code> <content-type> | <cache-control>"; body in $SBODY
+static_get() {
+  local port="$1" p="$2"; shift 2
+  curl -s --path-as-is -o "$SBODY" -D "$SAPP/hdr" -w '%{http_code}' "$@" "http://127.0.0.1:$port$p" || true
+  printf ' %s | %s' "$(grep -i '^content-type:' "$SAPP/hdr" | cut -d' ' -f2- | tr -d '\r')" \
+    "$(grep -i '^cache-control:' "$SAPP/hdr" | cut -d' ' -f2- | tr -d '\r')"
+}
+for c in "board-a.css|text/css; charset=utf-8|body{color:red}" "editor.js|text/javascript; charset=utf-8|export const x = 1;"; do
+  IFS='|' read -r name ctype body <<<"$c"
+  for port in "$SPY_PORT" "$SGO_PORT"; do
+    got="$(static_get "$port" "/static/$name")"
+    [[ "$got" == "200 $ctype | no-store" ]] || fail "sprint-check-api-parity: FAIL — port $port /static/$name gave '$got'"
+    [[ "$(cat "$SBODY")" == "$body" ]] || fail "sprint-check-api-parity: FAIL — port $port /static/$name body differs"
+  done
+done
+# Every spelling below must be refused by both: no 200, and no fixture secret or app.html bytes (__canonProject).
+for p in '/static/../app.html' '/static/%2e%2e/app.html' '/static/..%2fapp.html' '/static/%2e%2e%2fserver.py' \
+         '/static/sub/x.css' '/static/BOARD-A.CSS' '/static/board-a.CSS' '/static/page.html' '/static/.css' \
+         '/static/board-a.css%00' '/static/..%5capp.html' '/static/..\app.html' '/static/out.css' '/static/in.css' \
+         '/static/notes.txt' '/static/missing.css' '/static/' '/static/%2fetc%2fpasswd.css' '/static//etc/hosts'; do
+  for port in "$SPY_PORT" "$SGO_PORT"; do
+    code="$(static_get "$port" "$p" | cut -d' ' -f1)"
+    [[ "$code" != 200 && "$code" != 000 && "$code" != 500 ]] || fail "sprint-check-api-parity: FAIL — port $port $p gave $code, want a clean refusal"
+    if grep -q 'secret\|__canonProject' "$SBODY"; then fail "sprint-check-api-parity: FAIL — port $port $p leaked file bytes"; fi
+  done
+done
+for port in "$SPY_PORT" "$SGO_PORT"; do
+  code="$(static_get "$port" /static/board-a.css -H 'Host: evil.example' | cut -d' ' -f1)"
+  [[ "$code" == 403 ]] || fail "sprint-check-api-parity: FAIL — port $port served /static/ to a bad Host ($code)"
+done
+# Hostile loop: 300 seeded random names from a nasty alphabet. A 200 must be one of the two fixtures;
+# a 000 (dropped connection) or 500 is a crash.
+static_names="$(python3 -c '
+import random
+r = random.Random(0x9b2d)
+A = "abz09-._/%\\~AZ:;@"
+for _ in range(300):
+    print("".join(r.choice(A) for _ in range(r.randint(0, 14))))
+')"
+static_count=0
+while IFS= read -r name; do
+  for port in "$SPY_PORT" "$SGO_PORT"; do
+    code="$(static_get "$port" "/static/$name" | cut -d' ' -f1)"
+    case "$code" in
+      000|500) fail "sprint-check-api-parity: FAIL — port $port crashed on /static/$name ($code)" ;;
+      200) [[ "$(cat "$SBODY")" == 'body{color:red}' || "$(cat "$SBODY")" == 'export const x = 1;' ]] \
+             || fail "sprint-check-api-parity: FAIL — port $port served unexpected bytes for /static/$name" ;;
+    esac
+  done
+  static_count=$((static_count + 1))
+done <<<"$static_names"
+[[ "$static_count" -eq 300 ]] || fail "sprint-check-api-parity: FAIL — hostile loop ran $static_count names, want 300"
+
+echo "sprint-check-api-parity: ok ($route_count routes match; /api/tickets payload matches including models_used + gate; /api/ticket-image serves identical bytes and rejects traversal/non-image paths identically; /api/ticket-feature serves identical text and rejects traversal/non-feature/missing identically; /api/worktrees ticket_present matches (main exempt=true, blind worktree=false, absent without ?ticket); /api/cockpit stale-detection matches (stale true/false + running/latest build); /api/version shares shape {version,commit,daemon} + identical semver from VERSION; headless-run idle/running/done states match; gate:eval dispatches sprint-headless-eval and full dispatches sprint-headless, identically in both backends; create-with-gate writes gate: eval; /api/ci-workflow writes an identical canon-gate.yml from both backends and refuses-on-exists; /api/admin/model-tiers saves to the data dir, never the seed, and resets identically; /api/projects add/list/delete + on-disk projects.json byte-identical + non-git error parity, /static/ serves flat css/js names identically and refuses traversal, links, bad Host and 300 random names, for $WORK fixture)"

@@ -1563,3 +1563,56 @@ func TestModelTiersSavesToDataDirNotSeed(t *testing.T) {
 		t.Fatalf("after reset want the seed, got %v", got)
 	}
 }
+
+// t-9b2d: GET /static/<name> serves only a flat css/js name whose real file is static/<name>.
+func TestServeStatic(t *testing.T) {
+	root := setupTestProject(t)
+	app := filepath.Join(root, "tools", "sprint-check-app")
+	writeFile(t, filepath.Join(app, "app.html"), "<html>secret-app</html>")
+	writeFile(t, filepath.Join(app, "static", "board-a.css"), "body{color:red}")
+	writeFile(t, filepath.Join(app, "static", "editor.js"), "export const x = 1;")
+	writeFile(t, filepath.Join(app, "static", "page.html"), "secret-html")
+	writeFile(t, filepath.Join(app, "static", "sub", "x.css"), "secret-sub")
+	writeFile(t, filepath.Join(app, "static", "notes.txt"), "secret-txt")
+	if err := os.Symlink(filepath.Join(app, "app.html"), filepath.Join(app, "static", "out.css")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(app, "static", "notes.txt"), filepath.Join(app, "static", "in.css")); err != nil {
+		t.Fatal(err)
+	}
+	get := func(target, host string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "http://127.0.0.1"+target, nil)
+		if host != "" {
+			req.Host = host
+		}
+		rec := httptest.NewRecorder()
+		handle(rec, req)
+		return rec
+	}
+	for _, c := range []struct{ target, ctype, body string }{
+		{"/static/board-a.css", "text/css; charset=utf-8", "body{color:red}"},
+		{"/static/editor.js", "text/javascript; charset=utf-8", "export const x = 1;"},
+	} {
+		rec := get(c.target, "")
+		if rec.Code != 200 || rec.Header().Get("Content-Type") != c.ctype || rec.Body.String() != c.body {
+			t.Fatalf("%s: code=%d type=%q body=%q", c.target, rec.Code, rec.Header().Get("Content-Type"), rec.Body.String())
+		}
+		if rec.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("%s: Cache-Control = %q, want no-store", c.target, rec.Header().Get("Cache-Control"))
+		}
+	}
+	for _, target := range []string{
+		"/static/../app.html", "/static/%2e%2e/app.html", "/static/..%2fapp.html", "/static/%2e%2e%2fserver.py",
+		"/static/sub/x.css", "/static/BOARD-A.CSS", "/static/board-a.CSS", "/static/page.html", "/static/.css",
+		"/static/board-a.css%00", "/static/..%5capp.html", "/static/out.css", "/static/in.css", "/static/notes.txt",
+		"/static/missing.css", "/static/",
+	} {
+		rec := get(target, "")
+		if rec.Code == 200 || strings.Contains(rec.Body.String(), "secret") {
+			t.Fatalf("%s: code=%d body=%q, want a refusal", target, rec.Code, rec.Body.String())
+		}
+	}
+	if rec := get("/static/board-a.css", "evil.example"); rec.Code != http.StatusForbidden {
+		t.Fatalf("bad Host: code=%d, want 403", rec.Code)
+	}
+}

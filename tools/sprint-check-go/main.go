@@ -234,6 +234,10 @@ func handleDelete(w http.ResponseWriter, r *http.Request) {
 
 func handleGet(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimRight(r.URL.Path, "/")
+	if name, ok := strings.CutPrefix(path, "/static/"); ok {
+		serveStatic(w, r, name)
+		return
+	}
 	switch path {
 	case "", "/":
 		// t-5716: a top-level visit lands on the Cockpit; its tab iframes, ?standalone=1 and
@@ -4306,6 +4310,40 @@ func getUpkeepReport(root, skill string) map[string]any {
 		return map[string]any{"ok": false, "error": err.Error()}
 	}
 	return map[string]any{"ok": true, "path": reportPath, "content": string(data)}
+}
+
+var staticNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*\.(css|js)$`)
+
+// serveStatic serves the board's own CSS and JS modules (t-9b2d) from the static/ folder beside
+// app.html. A flat name only (no '/', '..' or '%'; Go has already decoded the path), and the real
+// file must be static/<name> itself, so a link planted there cannot lead out. no-store like the
+// HTML: a sheet cached from before `canon update` would mix old and new.
+func serveStatic(w http.ResponseWriter, r *http.Request, name string) {
+	m := staticNameRe.FindStringSubmatch(name)
+	if m == nil {
+		http.NotFound(w, r)
+		return
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Join(filepath.Dir(appHTML), "static"))
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	real, err := filepath.EvalSymlinks(filepath.Join(dir, name))
+	if err != nil || real != filepath.Join(dir, name) {
+		http.NotFound(w, r)
+		return
+	}
+	if fi, err := os.Stat(real); err != nil || !fi.Mode().IsRegular() {
+		http.NotFound(w, r)
+		return
+	}
+	ctype := "text/css; charset=utf-8"
+	if m[1] == "js" {
+		ctype = "text/javascript; charset=utf-8"
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	serveFile(w, real, ctype)
 }
 
 func serveFile(w http.ResponseWriter, path, contentType string) {
