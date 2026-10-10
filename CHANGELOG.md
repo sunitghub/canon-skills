@@ -7,6 +7,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ## [Unreleased]
 
 ### Changed
+- The board's CSS and the doc editor's key handling load from `tools/sprint-check-app/static/` (`GET /static/<name>`, both servers, no build step); `app.html` is 2,000 lines shorter (`t-9b2d`).
 - docs/setup.md explains how `canon update` works: the two tracks, what it does for each kind of install, and every refusal (`t-153f`).
 
 ### Fixed
