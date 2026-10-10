@@ -78,6 +78,7 @@ function Get-CanonLatestRelease {
 }
 
 function Get-CanonReleaseSha256($Ref) {
+  $manifestUrl = if ($env:CANON_MANIFEST_URL) { $env:CANON_MANIFEST_URL } else { "https://getcanon.dev/releases.txt" }
   $text = Read-CanonManifest $Ref
   $values = @(); $malformed = $false
   foreach ($raw in ($text -split "`n")) {
@@ -120,12 +121,12 @@ function Install-CanonFiles($Dest) {
     }
     Write-Host "==> Downloading canon ($ref)"
     if ($ref -ceq "main") { Write-Host "    Following main: development changes, not checksum-verified. 'canon update --to latest' returns to verified releases." }
-    elseif (-not $hadTrack -and -not $env:CANON_REF -and (Test-Path (Join-Path $Dest "VERSION"))) { Write-Host "    canon now follows verified releases by default; to follow main again: canon update --to main" }
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
     if ($expected) {
       $actual = (Get-FileHash -Algorithm SHA256 -Path $zip).Hash.ToLower()
       if ($actual -cne $expected) { throw "The downloaded $ref zip does not match the published checksum (got $actual, the manifest says $expected); nothing was installed." }
       Write-Host "==> Verified $ref (SHA-256 matches the published manifest)"
+      if (-not $hadTrack -and -not $env:CANON_REF -and (Test-Path (Join-Path $Dest "VERSION"))) { Write-Host "    canon follows verified releases by default; to follow main instead: canon update --to main" }
     }
     # Expand-Archive is very slow in Windows PowerShell 5.1 and its progress bar ignores $ProgressPreference.
     Add-Type -AssemblyName System.IO.Compression.FileSystem

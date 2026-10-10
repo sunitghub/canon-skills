@@ -437,6 +437,23 @@ assert_eq "1" "$code"; assert_contains "$out" "has uncommitted changes"; assert_
 g "$C2" checkout -q -b feature
 set +e; out="$("$C2/tools/canon" update 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; assert_contains "$out" "is on 'feature', not main"
+# a detached HEAD that is not a release tag may carry commits only the reflog would keep: a plain update refuses; an explicit --to is the user's choice
+D2="$(leg legD)"; hd() { git -C "$D2" rev-parse HEAD; }
+g "$D2" checkout -q --detach; echo keepme > "$D2/keep.txt"; git -C "$D2" add keep.txt; git -C "$D2" "${ident[@]}" commit -qm "detached work"; befored="$(hd)"
+set +e; out="$("$D2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "detached commit"; assert_contains "$out" "not a release tag"; assert_contains "$out" "Nothing was changed."; assert_eq "$befored" "$(hd)"
+out="$("$D2/tools/canon" update --to v0.3.1 2>&1)"; assert_eq "$(sha3 v0.3.1)" "$(hd)"; assert_contains "$out" "canon is now on v0.3.1"
+# the local-commits guard holds when the branch has no upstream (it then compares with origin/main)
+E2="$(leg legE)"; he() { git -C "$E2" rev-parse HEAD; }
+git -C "$E2" branch --unset-upstream; echo mine > "$E2/mine2.txt"; git -C "$E2" add mine2.txt; git -C "$E2" "${ident[@]}" commit -qm "local work, no upstream"; beforee="$(he)"
+set +e; out="$("$E2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "local commit(s) on main"; assert_eq "$beforee" "$(he)"
+# a stale local tag at the wrong commit: the refusal names the way out
+F2="$(leg legF)"; git -C "$F2" fetch -q --depth 1 origin "refs/tags/v0.3.1:refs/tags/v0.3.1"; git -C "$F2" tag -f v0.3.1 "$(git -C "$F2" rev-parse HEAD)" >/dev/null 2>&1
+set +e; out="$("$F2/tools/canon" update 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; assert_contains "$out" "git tag -d v0.3.1"
+# the real .gitignore must ignore the marker, or a main-track install would show an untracked file and `canon update` would refuse it
+grep -qx '/.canon-track' "$ROOT/.gitignore" || fail "canon-update: the repo .gitignore does not ignore /.canon-track"
 # a bad value after --to latest never reaches git
 rm -f "$WORK/git.calls"; set +e; out="$(PATH="$GSTUB:$PATH" "$CA" update --to latest extra 2>&1)"; code=$?; set -e
 assert_eq "2" "$code"; [[ ! -e "$WORK/git.calls" ]] || fail "canon-update: a bad --to latest reached git: $(cat "$WORK/git.calls")"

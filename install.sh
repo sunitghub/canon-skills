@@ -52,6 +52,7 @@ if [[ -f "$TARGET/tools/skills.sh" ]]; then
 else
   printf 'Cloning canon → %s\n' "$TARGET"
   mkdir -p "$(dirname "$TARGET")"
+  target_existed=0; [[ -e "$TARGET" ]] && target_existed=1   # an existing (empty) folder is the user's: clean its contents, never the folder itself
   # t-0d25: depth 1 (sizes and how to get full history: docs/setup.md)
   if ! git clone --depth 1 -- "$CANON_REPO" "$TARGET"; then
     printf 'error: clone failed. Check your git config and try again.\n' >&2
@@ -59,7 +60,7 @@ else
   fi
   # t-65c9: move the clone to the verified release (or the requested ref). If that cannot be verified nothing is left installed.
   if ! bash "$TARGET/tools/canon" update --to "$CANON_REF"; then
-    rm -rf -- "$TARGET"
+    if [[ "$target_existed" == 1 ]]; then find "$TARGET" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +; else rm -rf -- "$TARGET"; fi
     printf 'error: could not install a verified canon release, so nothing was installed.\n       To install the development version instead: CANON_REF=main  (then run this again)\n' >&2
     exit 1
   fi

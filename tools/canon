@@ -100,7 +100,7 @@ refresh_projects() {
 # cockpit\); exec hands over to PowerShell first so the running script is never overwritten under bash.
 update_without_git() {
   local repo="$1" to="${2:-}" url="https://raw.githubusercontent.com/sunitghub/canon-skills/main/install.ps1" setref=""
-  # t-30fc: `to` was validated (main or vN.N.N) by update_cmd; the installer reads it from CANON_REF and fetches that tag's zip.
+  # t-30fc: `to` was validated (latest, main or vN.N.N) by update_cmd; the installer reads it from CANON_REF and fetches that tag's zip.
   [ -z "$to" ] || setref="\$env:CANON_REF='$to'; "
   if _is_windows && [ "$repo" = "$(cygpath -u "$USERPROFILE\\.canon" 2>/dev/null)" ]; then
     echo "Updating canon by re-running the installer..."
@@ -147,8 +147,14 @@ update_cmd() {
   if [ "$({ tr -d '[:space:]' < "$marker"; } 2>/dev/null)" = main ]; then track=main; fi
   branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
   if [ "$branch" = HEAD ]; then   # detached: an install on a release tag (t-30fc)
-    pinned="$(git -C "$repo" describe --tags --exact-match HEAD 2>/dev/null)" || pinned="$(git -C "$repo" rev-parse --short HEAD)"
-    was_on="$pinned"
+    if pinned="$(git -C "$repo" describe --tags --exact-match HEAD 2>/dev/null)"; then was_on="$pinned"
+    else
+      # not on a tag: checking anything out would leave any commit made here reachable only from the reflog (review of t-65c9)
+      pinned="$(git -C "$repo" rev-parse --short HEAD)"
+      if [ -z "$to" ]; then   # an explicit --to is the user's choice to leave it; a plain update must not decide that
+        echo "canon update: $repo is on a detached commit ($pinned) that is not a release tag; its commits would be left behind. Check out main or a release first (git switch main), or run 'canon update --to <vX.Y.Z|latest|main>' to leave it on purpose. Nothing was changed." >&2; exit 1
+      fi
+    fi
   elif [ "$branch" != main ]; then
     echo "canon update: $repo is on '$branch', not main — switch to main first. Nothing was changed." >&2; exit 1
   fi
@@ -160,7 +166,7 @@ update_cmd() {
   fi
   if [ "$to" != main ] && [ "$branch" = main ]; then
     # moving a main checkout to a release must not strand local commits
-    local ahead; ahead="$(git -C "$repo" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead=0
+    local ahead; ahead="$(git -C "$repo" rev-list --count '@{u}..HEAD' 2>/dev/null)" || ahead="$(git -C "$repo" rev-list --count origin/main..HEAD 2>/dev/null)" || ahead=0
     if [ "${ahead:-0}" != 0 ]; then
       echo "canon update: $repo has $ahead local commit(s) on main that a release would leave behind. Run 'canon update --to main' to keep following main. Nothing was changed." >&2; exit 1
     fi
@@ -187,7 +193,7 @@ update_cmd() {
     have="$(git -C "$repo" rev-parse "refs/tags/$to^{commit}")"
     if [ "$have" != "$mf_commit" ]; then
       [ "$fetched" = 0 ] || git -C "$repo" tag -d "$to" >/dev/null 2>&1
-      echo "canon update: release $to is at $have but the published manifest says $mf_commit; refusing to install it. Nothing was changed.$hint" >&2; exit 1
+      echo "canon update: release $to is at $have but the published manifest says $mf_commit; refusing to install it. Nothing was changed. If $to is a stale tag of yours, remove it (git tag -d $to) and run this again.$hint" >&2; exit 1
     fi
   fi
   before="$(git -C "$repo" rev-parse --short HEAD)"

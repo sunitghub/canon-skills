@@ -145,12 +145,12 @@ tkt reopen <id>                   # reopen a closed ticket
 ## Staying updated
 
 ```bash
-cd ~/.canon && git pull
+canon update
 ```
 
 If `canon update` refuses with "has uncommitted changes" and `git -C ~/.canon status --short` shows only `?? cockpit/` (installs made before this fix, 2026-10-06), run `git -C ~/.canon pull --ff-only` once. A plain pull is not blocked by that folder, and after it `canon update` works.
 
-`canon update` moves the install to the latest verified release. To go back after a bad update: `canon update --to v0.3.0` installs that tag now (the daemon and your projects are refreshed as in a normal update); the next plain update goes to the latest again. `canon update --to main` follows the development version (not verified) until `canon update --to latest`. An install made before 2026-10-08 does not know `--to` yet (`canon update takes no arguments`): run a plain `canon update` once, then `--to` works. Releases and what each contains: `CHANGELOG.md`; how a release is cut: `docs/releasing.md`.
+`canon update` moves the install to the latest verified release. To go back after a bad update: `canon update --to v0.3.0` installs that tag now (the daemon and your projects are refreshed as in a normal update); the next plain update goes to the latest again. This is how `canon` behaves from v0.3.1 on; v0.3.0 has the older updater, where a plain `canon update` refuses as "pinned" and `--to latest` is unknown: run `canon update --to main` (or `--to vX.Y.Z`) once, and the new updater is in place. `canon update --to main` follows the development version (not verified) until `canon update --to latest`. An install made before 2026-10-08 does not know `--to` yet (`canon update takes no arguments`): run a plain `canon update` once, then `--to` works. Releases and what each contains: `CHANGELOG.md`; how a release is cut: `docs/releasing.md`.
 
 **Verified installs.** A release (`--to vX.Y.Z`) is checked against the manifest at `https://getcanon.dev/releases.txt` before it is installed: on a git install the tag's commit must equal the manifest's, on a Windows zip install the downloaded zip's SHA-256 must equal it (checked before extraction). If the manifest cannot be read, does not list the release, or disagrees, the install refuses, says why, and changes nothing; there is no override, and `canon update --to main` is the way out. `main` is not verified (it changes with every push); it is the opt-in development track (`CANON_REF=main` on the installers, `canon update --to main`), and says so whenever you are on it. The one-line installers install the latest verified release and, if that cannot be verified, install nothing. This protects against a corrupt or changed download and a compromise of the zip alone; it does not protect against someone who controls the installer script, which is served from the same GitHub repo. Details: `docs/releasing.md`.
 

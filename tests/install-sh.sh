@@ -76,6 +76,15 @@ out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh over a 
 rm -f "$mf"
 set +e; out="$(env_i bash "$ROOT/install.sh" "$W/norel" 2>&1)"; code=$?; set -e
 assert_eq "1" "$code"; [[ ! -e "$W/norel" ]] || fail "install-sh: a failed verification left $W/norel behind"; assert_contains "$out" "nothing was installed"; assert_contains "$out" "CANON_REF=main"
+# an existing install honours an explicit CANON_REF (here: from the release install to main), and the marker follows
+out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh with CANON_REF=main over a release install failed: $out"
+assert_eq "$tip" "$(git -C "$W/rel" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/rel/.canon-track")"
+# a failed verification into a folder that already existed (empty, or the current folder) empties it and keeps the folder, and says so; nothing unverified is left
+mkdir "$W/emptyA" "$W/emptyB"
+set +e; out="$(env_i bash "$ROOT/install.sh" "$W/emptyA" 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; [[ -d "$W/emptyA" && -z "$(ls -A "$W/emptyA")" ]] || fail "install-sh: a failed install into an existing empty folder left something in it: $(ls -A "$W/emptyA")"; assert_contains "$out" "nothing was installed"
+set +e; out="$(cd "$W/emptyB" && env_i bash "$ROOT/install.sh" . 2>&1)"; code=$?; set -e
+assert_eq "1" "$code"; [[ -z "$(ls -A "$W/emptyB")" ]] || fail "install-sh: a failed install into '.' left something behind: $(ls -A "$W/emptyB")"; assert_contains "$out" "nothing was installed"
 # the opt-in: CANON_REF=main installs main, remembers it, and says it is not verified
 out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/devmain" 2>&1)" || fail "install.sh CANON_REF=main failed: $out"
 assert_eq "$tip" "$(git -C "$W/devmain" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/devmain/.canon-track")"; assert_contains "$out" "not checksum-verified"
