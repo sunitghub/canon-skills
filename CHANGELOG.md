@@ -6,6 +6,10 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-09
+
+Updates are verified by default: `canon update` and the installers take the latest verified release (`main` is now the opt-in). The shipped binaries are built with a pinned Go 1.27.2, which clears the vulnerabilities found in Go 1.27.1. If you are on v0.3.0, run `canon update --to main` once (its older updater does not know `--to latest`); after that a plain `canon update` is enough.
+
 ### Added
 - Releases are verified: `canon update --to vX.Y.Z` (git installs) and the Windows installer check the release against the published manifest at getcanon.dev/releases.txt, and refuse, changing nothing, if it is unreachable, missing, malformed or disagrees. The Windows zip is checked against its SHA-256 before extraction. `main` stays unverified and says so (`t-34f1`).
 - `scripts/release-zip.sh` builds the release zip; `scripts/release.sh` attaches it to the GitHub release and prints the manifest line.
