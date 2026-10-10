@@ -41,6 +41,9 @@ TICKETS_DIR  = PROJECT_ROOT / '.tickets'
 HANDOFF_FILE = PROJECT_ROOT / 'HANDOFF.md'
 APP_HTML     = Path(__file__).parent / 'app.html'
 COCKPIT_HTML = Path(__file__).parent / 'cockpit.html'
+STATIC_DIR   = Path(__file__).parent / 'static'  # t-9b2d: the board's own CSS and JS modules
+STATIC_MIME  = {'.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8'}
+_STATIC_NAME_RE = re.compile(r'[a-z0-9][a-z0-9-]*\.(css|js)')
 MODEL_TIERS_PATH = Path(__file__).parent / 'model-tiers.json'  # tracked seed; read-only (t-5df2)
 
 # ── Admin: Model Tiers registry (t-7e36) ──────────────────────────────────
@@ -3146,6 +3149,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_static(self, name: str):
+        # t-9b2d: a flat name only (no '/', '..' or '%'), and the real file must be static/<name>
+        # itself, so a link planted there cannot lead out. no-store like the HTML: a sheet cached
+        # from before `canon update` would mix old and new.
+        if not _STATIC_NAME_RE.fullmatch(name):
+            self.send_error(404); return
+        try:
+            real = (STATIC_DIR / name).resolve(strict=True)
+            if real != STATIC_DIR.resolve(strict=True) / name or not real.is_file():
+                self.send_error(404); return
+            body = real.read_bytes()
+        except OSError:
+            self.send_error(404); return
+        self.send_response(200)
+        self.send_header('Content-Type', STATIC_MIME[real.suffix])
+        self.send_header('Content-Length', len(body))
+        self.send_header('Cache-Control', 'no-store')
+        self.send_header('Connection', 'close')
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_image(self, path: Path):
         mime = IMAGE_MIME.get(path.suffix.lower(), 'application/octet-stream')
         try:
@@ -3180,6 +3204,8 @@ class Handler(BaseHTTPRequestHandler):
             # Canon Cockpit shell landing (t-9917). Falls back to the board if
             # the landing file is absent, so an older checkout still serves.
             self.send_html(COCKPIT_HTML if COCKPIT_HTML.exists() else APP_HTML)
+        elif path.startswith('/static/'):
+            self.send_static(path[len('/static/'):])
         elif path == '/api/projects':
             self.send_json(registry_list())
         elif path == '/api/admin/model-tiers':

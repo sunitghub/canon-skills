@@ -1,0 +1,548 @@
+    /* ── Cockpit (t-ddc8) — one-window mode: board collapses, embedded agent
+       terminal + inline acceptance rail + collapsed preview slot ───────────── */
+    /* ── Canon Cockpit project-tab embed (t-6a74, Phase 3) ─────────────────
+       When the board is embedded as a Cockpit ?project= tab (html.canon-proj-embed,
+       set from window.__canonProject), hide the shell-provided chrome (version,
+       theme toggle, ? Help) and the brand text — keep the icon + show the folder
+       path. Keep ⚙ CI (per-project). Scoped to this marker ONLY, so the standalone
+       board and the t-ddc8 body.embed agent terminal are untouched. */
+    html.canon-proj-embed #h-version,
+    html.canon-proj-embed #theme-toggle,
+    html.canon-proj-embed #tour-btn,
+    html.canon-proj-embed .brand-text,
+    html.canon-proj-embed .header-sep { display: none !important; }
+    /* t-65b0: the collapsed-sidebar quick-jump icon rail is redundant in a Cockpit
+       tab (the shell owns nav) — hide it here; the standalone board keeps it. */
+    html.canon-proj-embed .sidebar-icon-rail { display: none !important; }
+
+    #cockpit-overlay {
+      position: fixed; inset: 0; z-index: 60; background: var(--bg);
+      display: none; flex-direction: column;
+    }
+    #cockpit-overlay.open { display: flex; }
+    #cockpit { display: flex; flex-direction: column; height: 100%; }
+    .ck-leave-confirm-overlay {
+      position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,.55);
+      display: none; align-items: center; justify-content: center;
+    }
+    .ck-leave-confirm-overlay.open { display: flex; }
+    .ck-leave-confirm {
+      width: 380px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 12px; padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,.4);
+    }
+    .ck-leave-confirm-title { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+    .ck-leave-confirm-body { font-size: 13px; color: var(--text-body); line-height: 1.5; }
+    .ck-leave-confirm-status { font-size: 12px; color: var(--text-muted); margin-top: 10px; min-height: 16px; }
+    .ck-leave-confirm-actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+    .ck-leave-btn { border-radius: 8px; padding: 9px 12px; font-size: 13px; font-weight: 600; cursor: pointer; border: 0; }
+    .ck-leave-btn-save { background: var(--accent); color: #fff; }
+    .ck-leave-btn-save:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
+    .ck-leave-btn-cancel { background: transparent; color: var(--text-muted); }
+    .ck-leave-btn-cancel:hover { color: var(--text); }
+    .ck-leave-btn-cancel:disabled { opacity: .4; cursor: not-allowed; }
+    .ck-leave-btn-cancel:disabled:hover { color: var(--text-muted); }
+    .ck-leave-btn-skip { background: transparent; color: var(--text-muted); border: 1px solid var(--border); }
+    .ck-leave-btn-skip:hover { color: var(--col-discarded); border-color: var(--col-discarded); }
+    .ck-leave-btn-skip:disabled { opacity: .4; cursor: not-allowed; }
+    .ck-leave-btn-discard { background: transparent; color: var(--col-discarded); border: 1px solid var(--col-discarded); }   /* t-86fe */
+    .ck-leave-btn-discard.armed { background: var(--col-discarded); color: #fff; }
+    .ck-leave-files { margin: 8px 0 0; padding-left: 18px; max-height: 220px; overflow: auto; font-family: var(--mono, ui-monospace, monospace); font-size: 11.5px; }
+    .ck-leave-files li { overflow-wrap: anywhere; }
+    .ck-leave-btn-skip:disabled:hover { color: var(--text-muted); border-color: var(--border); }
+    /* t-d254: commit-the-ticket-first dialog (reuses the leave-confirm overlay). */
+    #ck-tcommit .ck-leave-confirm { max-width: 520px; }
+    /* t-ccd6: the board's own confirm/notice dialog (replaces browser alert/confirm in the worktree flow). */
+    #app-dialog .ck-leave-confirm { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column; box-sizing: border-box; }
+    #app-dialog .ck-leave-confirm-title { overflow-wrap: anywhere; }
+    #app-dialog .ck-leave-confirm-body { white-space: pre-line; overflow-wrap: anywhere; overflow-y: auto; min-height: 0; flex: 1 1 auto; }
+    #app-dialog .ck-leave-confirm-actions { flex: none; }
+    .ck-tcm-files { max-height: 280px; overflow-y: auto; margin-top: 10px; }
+    .ck-tcm-group { margin-top: 10px; }
+    .ck-tcm-group-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; color: var(--text-muted); margin-bottom: 4px; }
+    .ck-tcm-file { display: flex; gap: 6px; align-items: flex-start; font-family: ui-monospace, monospace; font-size: 12px; color: var(--text-body); word-break: break-all; padding: 1px 0; }
+    .ck-tcm-file input { accent-color: var(--accent); margin-top: 2px; flex: none; }
+    .ck-tcm-file.muted { color: var(--text-muted); }
+    .ck-tcm-msg { margin-top: 10px; font-size: 12px; color: var(--text-muted); }
+    .ck-tcm-msg code { font-family: ui-monospace, monospace; color: var(--text); }
+    .ck-topbar {
+      display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      flex-shrink: 0; min-width: 0;
+    }
+    .ck-topbar .spacer { flex: 1; min-width: 0; }
+    .ck-back {
+      display: flex; align-items: center; gap: 7px;
+      background: var(--surface-raised); color: var(--text); border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: background .15s, border-color .15s, box-shadow .15s, transform .15s;
+      white-space: nowrap; flex: none;   /* t-b91f: never wrap or shrink */
+    }
+    .ck-back-icon { display: flex; flex-shrink: 0; border-radius: 4px; overflow: hidden; }
+    .ck-back:hover {
+      background: var(--surface-hover); border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim); transform: translateY(-1px);
+    }
+    .ck-id { font-family: var(--mono, monospace); font-size: 12px; color: var(--text-muted); white-space: nowrap; flex: none; }   /* t-b91f */
+    .ck-title { font-size: 14px; font-weight: 600; color: var(--text);
+      max-width: 46vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ck-model {
+      font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted);
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 6px; padding: 3px 8px;
+      /* t-b91f: the long text gives way (ellipsis) so End Session is never pushed off screen */
+      white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    }
+    /* Always in the topbar (not the collapsible rail) so it's visible even
+       rail-collapsed — t-2e7e's grill required this be unmissable. */
+    /* t-824e: the session's state from the daemon (needs you / working / idle /
+       done); replaces the needs-you "!" badge. Hover names the signal source. */
+    .ck-state-chip {
+      --st: var(--text-muted);
+      display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+      border: 1px solid color-mix(in srgb, var(--st) 45%, transparent);
+      background: color-mix(in srgb, var(--st) 12%, transparent); color: var(--st);
+      border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 700;
+    }
+    .ck-state-chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .ck-state-chip.st-working, .ck-state-chip.st-running { --st: var(--st-work); }
+    .ck-state-chip.st-done { --st: var(--st-done); }
+    .ck-state-chip.st-idle::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--st-idle); }
+    .ck-state-chip.st-needs-you { background: var(--st-need); border-color: var(--st-need); color: var(--st-ink); animation: pulse 1.4s ease-in-out infinite; }
+    .ck-reaper { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* t-b91f */
+    /* t-47f1: a scratch session has no ticket docs — the rail shows only a label */
+    #cockpit.scratch-mode .ck-accordion-section, #cockpit.scratch-mode .ck-details { display: none; }
+    .ck-scratch-note { display: none; margin-top: 10px; padding: 10px 12px; border: 1px dashed var(--border-hover); border-radius: 8px; font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+    .ck-scratch-note b { color: var(--text); letter-spacing: .06em; }
+    #cockpit.scratch-mode .ck-scratch-note { display: block; }
+    /* t-f553: editable scratch title, promote */
+    #cockpit.scratch-mode #ck-tc-title { cursor: text; border-radius: 4px; }
+    #cockpit.scratch-mode #ck-tc-title:hover { text-decoration: underline dotted; text-underline-offset: 3px; }
+    #cockpit.scratch-mode #ck-tc-title::after { content: " \270E"; opacity: 0; font-weight: 400; color: var(--text-muted); }
+    #cockpit.scratch-mode #ck-tc-title:hover::after { opacity: 1; }
+    .ck-title-input { width: 100%; font: inherit; font-size: 13px; font-weight: 600; color: var(--text); background: var(--surface); border: 1px solid var(--accent); border-radius: 6px; padding: 3px 6px; }
+    .ck-scratch-actions { margin-top: 8px; display: flex; gap: 8px; }
+    .ck-scratch-btn { border: 1px solid var(--accent); background: var(--accent-dim); color: var(--text); border-radius: 6px; padding: 4px 10px; font-size: 12px; font-weight: 600; cursor: pointer; }
+    .ck-scratch-btn:hover { background: var(--accent); color: #fff; }
+    .ck-scratch-btn.ghost { border-color: var(--border-hover); background: transparent; color: var(--text-muted); }
+    .ck-scratch-promoted { margin-top: 8px; padding-top: 8px; border-top: 1px dashed var(--border-hover); color: var(--text); }
+    /* t-8a2a: session sub-tabs — one pill per open ticket, on the board (visible
+       when the overlay is closed) and mirrored in the topbar (visible while a
+       session is open), same renderTabStrip() call filling both containers. */
+    .ck-tab-strip { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    .ck-tab-strip:empty { display: none; }
+    .ck-tab-strip-topbar { flex: 0 1 auto; flex-wrap: nowrap; min-width: 0; margin: 0; overflow: hidden; }   /* t-b91f: one row, shrinks before the controls */
+    .ck-tab-pill {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: 999px;
+      padding: 4px 6px 4px 10px; font-size: 12px; color: var(--text-muted); cursor: pointer;
+      max-width: 220px;
+    }
+    .ck-tab-pill:hover { border-color: var(--accent); color: var(--text); }
+    .ck-tab-pill.active { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
+    .ck-tab-pill-id { font-family: var(--mono, monospace); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ck-tab-pill-needsyou {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--st-need); flex-shrink: 0;
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    .ck-tab-pill-close {
+      display: flex; align-items: center; justify-content: center;
+      width: 16px; height: 16px; border-radius: 50%; border: 0; background: transparent;
+      color: var(--text-dim); font-size: 13px; line-height: 1; cursor: pointer; flex-shrink: 0;
+    }
+    .ck-tab-pill-close:hover { background: var(--surface-hover); color: var(--col-discarded); }
+    .ck-end-session {
+      background: var(--surface-raised); color: var(--text-muted); border: 1px solid var(--border);
+      border-radius: 8px; padding: 5px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+      white-space: nowrap; flex: none;   /* t-b91f: always visible */
+    }
+    .ck-end-session:hover { color: var(--text); border-color: var(--accent); }
+    .ck-body { flex: 1; min-height: 0; display: flex; }
+    .ck-rail {
+      position: relative;
+      width: 320px; flex-shrink: 0; border-right: 1px solid var(--border);
+      background: var(--surface); overflow-y: auto; padding: 14px; transition: width .18s ease;
+    }
+    /* Docked to the rail's own right edge (an IDE-sidebar-style collapse
+       handle) rather than a generic topbar button far from what it
+       controls — moves with the rail as its width transitions. */
+    /* t-6ecc: top-right corner collapse toggle, mirroring the Preview's top-right
+       control (was a mid-right-edge handle at top:50%). Compact button; sits above
+       the ticket card (which gets id-row right padding to clear it); stays visible
+       when the rail collapses to 44px (it's outside .ck-rail-full). */
+    .ck-rail-handle {
+      position: absolute; top: 8px; right: 6px;
+      width: 20px; height: 20px; padding: 0; border: 1px solid var(--border);
+      border-radius: 6px; background: var(--surface-raised); color: var(--text-muted);
+      display: flex; align-items: center; justify-content: center; cursor: pointer; z-index: 4;
+    }
+    .ck-rail-handle:hover { color: var(--text); background: var(--surface-hover); }
+    .ck-rail-handle svg { transition: transform .18s ease; }
+    #cockpit.rail-collapsed .ck-rail-handle svg { transform: rotate(180deg); }
+    /* Drag strip along the full border — separate from the small collapse
+       button above it (higher z-index there so a direct click still hits
+       the button, not the drag strip underneath it). */
+    .ck-rail-resize {
+      position: absolute; top: 0; right: -3px; width: 7px; height: 100%;
+      cursor: col-resize; z-index: 2; background: transparent;
+    }
+    .ck-rail-resize:hover, .ck-rail-resize.resizing { background: var(--accent-dim); }
+    #cockpit.rail-collapsed .ck-rail-resize { display: none; }
+    #cockpit.rail-collapsed .ck-rail { width: 44px; padding: 12px 0; overflow: hidden; }
+    #cockpit.rail-collapsed .ck-rail .ck-rail-full { display: none; }
+    .ck-rail-icons { display: none; flex-direction: column; align-items: center; gap: 16px; }
+    #cockpit.rail-collapsed .ck-rail-icons { display: flex; }
+    .ck-rail-icons .ck-rail-icon { color: var(--text-muted); font-size: 15px; }
+    .ck-rail-icons .ck-rail-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--col-progress, #60a5fa); }
+    .ck-section-label {
+      flex: 1 1 auto;
+      font-size: 10px; font-weight: 700; letter-spacing: .8px; color: var(--text-body);
+      text-transform: uppercase; margin: 0;
+    }
+    .ck-section-count {
+      font-size: 13px; font-weight: 700; letter-spacing: 0; text-transform: none;
+      color: var(--accent); flex-shrink: 0;
+    }
+    .ck-ticket-card {
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 10px; padding: 10px 12px; margin-bottom: 16px;
+      box-shadow: var(--card-shadow);
+    }
+    .ck-ticket-card .ck-tc-id { font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted); }
+    .ck-ticket-card .ck-tc-title { font-size: 13px; font-weight: 600; color: var(--text); margin-top: 4px; }
+    .ck-state {
+      font-size: 12px; color: var(--text-body); line-height: 1.55;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+    }
+    .ck-state p { margin: 0 0 8px 0; }
+    .ck-state p:last-child { margin-bottom: 0; }
+    /* t-8ff0: label marking a Current Focus fallback (not per-ticket state). */
+    .ck-state-source { font-size: 11px; color: var(--text-muted); margin: 0 0 6px 0; }
+    /* t-6254: one row replaces the Plan/Acceptance/Test Plan accordions; it opens the ticket viewer as a popup. */
+    .ck-details {
+      display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; cursor: pointer;
+      background: var(--surface-raised); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; margin-bottom: 14px; box-shadow: var(--card-shadow); color: var(--text); font: inherit;
+      transition: background .15s, border-color .15s, box-shadow .15s;
+    }
+    .ck-details:hover, .ck-details:focus-visible { background: var(--surface-hover); border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); outline: none; }
+    .ck-details-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+    .ck-details-title { font-size: 13px; font-weight: 600; white-space: nowrap; }
+    .ck-details-badge { align-self: flex-start; }
+    .ck-details-note { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ck-details-badge, .doc-new {
+      font-size: 10px; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--accent);
+      border-radius: 999px; padding: 2px 8px; white-space: nowrap; flex-shrink: 0;
+    }
+    .doc-new { margin-left: 6px; padding: 0 6px; font-size: 9px; text-transform: uppercase; }
+    .ck-details-open { font-size: 11px; color: var(--accent); flex-shrink: 0; }
+    .ck-add-hint { font-size: 10px; color: var(--text-muted); margin-top: 6px; }
+
+    /* WORKTREE accordion (t-cd06): single-select rows, radio-style — Main
+       checkout first, then live `git worktree list` entries, then + New. */
+    .ck-worktree-row {
+      display: flex; align-items: center; gap: 8px; cursor: pointer;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 8px; padding: 8px 10px; margin: 0 0 6px 0;
+    }
+    .ck-worktree-row:hover { border-color: var(--accent); background: var(--accent-dim); }
+    .ck-worktree-row:hover .ck-worktree-radio { border-color: var(--accent); }
+    .ck-worktree-row:last-child { margin-bottom: 0; }
+    .ck-worktree-row.selected { border-color: var(--accent); }
+    .ck-worktree-radio {
+      width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+      border: 1px solid var(--border);
+    }
+    .ck-worktree-row.selected .ck-worktree-radio {
+      border-color: var(--accent); background: var(--accent);
+      box-shadow: inset 0 0 0 3px var(--surface-raised);
+    }
+    .ck-worktree-labels { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .ck-worktree-label { font-size: 12px; color: var(--text-body); }
+    .ck-worktree-row.selected .ck-worktree-label { color: var(--text); font-weight: 600; }
+    .ck-worktree-sub {
+      font-family: var(--mono, monospace); font-size: 10px; color: var(--text-muted);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .ck-worktree-new { display: flex; align-items: center; gap: 8px; }
+    .ck-worktree-new-plus {
+      color: var(--text-body); font-size: 12px; font-weight: 600;
+      flex-shrink: 0; cursor: pointer; white-space: nowrap;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 10px;
+    }
+    .ck-worktree-new-plus:hover {
+      color: var(--accent); border-color: var(--accent); background: var(--accent-dim);
+    }
+    .ck-worktree-new-plus:disabled { opacity: 0.5; cursor: default; }
+    /* t-2241: worktrees another ticket still needs — collapsed, never selectable. */
+    .ck-worktree-held { margin: 4px 0 6px; font-size: 11.5px; color: var(--text-muted); }
+    .ck-worktree-held summary { cursor: pointer; padding: 4px 2px; }
+    .ck-worktree-held-row { display: flex; flex-direction: column; gap: 1px; padding: 5px 10px; margin: 3px 0;
+      border: 1px dashed var(--border); border-radius: 8px; cursor: not-allowed; }
+    .ck-worktree-held-branch { color: var(--text-body); font-weight: 600; }
+    .ck-worktree-held-why { font-size: 11px; color: var(--text-muted); }
+    .ck-worktree-change { background: none; border: 0; padding: 4px 2px; color: var(--accent); font-size: 12px; cursor: pointer; }
+    .ck-worktree-change:hover { text-decoration: underline; }
+    /* t-e78b, t-26f9: a worktree-bound ticket's live sprint docs; the badge says where board edits are saved. */
+    .doc-live-badge { font-size: 11.5px; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
+      padding: 3px 10px; white-space: nowrap; cursor: help; }
+    .doc-working-note { font-size: 11.5px; color: var(--st-work); border: 1px solid var(--st-work); border-radius: 999px; padding: 2px 10px; margin-left: 6px; white-space: nowrap; }
+    .create-wt-held { align-self: center; font-size: 11.5px; color: var(--text-muted); cursor: help; margin-left: 4px; }
+    /* t-d254: busy spinner for the commit + worktree-create steps (slow on a big repo).
+       aria-busy keeps a busy button at full strength so it reads as working, not disabled. */
+    .ck-spin { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px;
+      border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ck-spin .8s linear infinite; }
+    @keyframes ck-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .ck-spin { animation: none; } }
+    .ck-worktree-new-plus[aria-busy="true"] { opacity: 1; cursor: progress; }
+    .ck-leave-btn-save[aria-busy="true"]:disabled { background: var(--accent); color: #fff; cursor: progress; }
+    .ck-worktree-active-note {
+      font-size: 12px; font-weight: 600; color: var(--accent); margin: 0 0 8px 0; min-height: 15px;
+    }
+    .ck-worktree-new input {
+      flex: 1 1 auto; min-width: 0; font-family: var(--mono, monospace); font-size: 11px;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 5px;
+      padding: 4px 8px; color: var(--text);
+    }
+    .ck-worktree-new input:focus { outline: none; border-color: var(--accent); }
+
+    /* t-e5ff: persistent danger bubble shown below the worktree rows when a
+       listed worktree can't see .tickets/ (gitignored). Mirrors the
+       #drop-toast.block palette so dark/light both stay legible. */
+    .ck-worktree-warn {
+      margin: 8px 0 0 0; padding: 8px 10px; border-radius: 8px;
+      font-size: 11px; line-height: 1.45;
+      border: 1px solid rgba(248,113,113,.35); color: var(--col-discarded);
+      background: rgba(248,113,113,.07);
+    }
+    .ck-worktree-warn strong { font-weight: 700; }
+    .ck-worktree-warn code { font-family: var(--mono, monospace); font-size: 10px; }
+    html[data-theme="light"] .ck-worktree-warn {
+      border-color: #dc2626; color: #7f1d1d; background: #fee2e2;
+    }
+
+    /* t-fe3c: Unlock button in the worktree rail — reuses theme tokens so it
+       stays legible in both dark and light, matching the rail's other buttons. */
+    .ck-worktree-unlock {
+      margin: 8px 0 0 0; width: 100%;
+      color: var(--text-body); font-size: 12px; font-weight: 600; cursor: pointer;
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 6px; padding: 6px 10px;
+    }
+    .ck-worktree-unlock:hover {
+      color: var(--accent); border-color: var(--accent); background: var(--accent-dim);
+    }
+
+    /* Accordion sections (t-96a8): Acceptance + Test Plan, each its own
+       polished card (subtle inset highlight + drop shadow, --card-shadow),
+       independently collapsible — both start collapsed; toggling one never
+       touches the other. Header hover reuses .ck-back:hover's already-shipped
+       pattern — --surface-hover/--accent/--accent-dim are theme-scoped, so
+       both dark and light get a correct glow for free. */
+    .ck-accordion-section {
+      background: var(--surface-raised); border: 1px solid var(--border);
+      border-radius: 10px; padding: 8px 10px; margin-bottom: 14px;
+      box-shadow: var(--card-shadow);
+    }
+    .ck-accordion-section:last-child { margin-bottom: 0; }
+    .ck-accordion-header {
+      display: flex; align-items: center; gap: 6px;
+      cursor: pointer; border-radius: 6px; border: 1px solid transparent;
+      padding: 4px 6px; margin: -4px -6px 4px;
+      transition: background .15s, border-color .15s, box-shadow .15s;
+    }
+    .ck-accordion-section.collapsed .ck-accordion-header { margin-bottom: -4px; }
+    .ck-accordion-header:hover {
+      background: var(--surface-hover); border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-dim);
+    }
+    .ck-accordion-chevron {
+      color: var(--text-muted); flex-shrink: 0; transition: transform .15s, color .15s;
+    }
+    .ck-accordion-header:hover .ck-accordion-chevron { color: var(--accent); }
+    .ck-accordion-section.collapsed .ck-accordion-chevron { transform: rotate(-90deg); }
+    .ck-accordion-section.collapsed .ck-accordion-body { display: none; }
+    .ck-term { flex: 1; min-width: 0; position: relative; background: var(--panel2, #0d131c); }
+    .ck-term iframe { width: 100%; height: 100%; border: 0; display: block; }
+    /* The message and (t-d538) the Track changes buttons stack in one centered column, so a
+       message that wraps in a narrow pane pushes the buttons down instead of covering them. */
+    .ck-term-msg-wrap {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 14px; padding: 24px; pointer-events: none;
+    }
+    .ck-term-msg {
+      color: var(--text-muted); font-family: var(--mono, monospace); font-size: 13px; text-align: center;
+    }
+    /* t-5a4b: a project with no git shows none of the git-derived surfaces (branch, commits, commit-prefix copy) */
+    html.no-git .git-only { display: none !important; }
+    .no-git-only { display: none; }
+    html.no-git .no-git-only { display: block; }
+    .change-row { display: flex; gap: 8px; align-items: baseline; font-size: 12px; padding: 1px 0; }
+    .change-sym { width: 12px; flex-shrink: 0; text-align: center; font-family: ui-monospace, monospace; color: var(--accent); }
+    .change-path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+    .change-lines { flex-shrink: 0; color: var(--text-muted); font-size: 11px; }
+    .change-more, .change-empty { font-size: 12px; color: var(--text-muted); padding: 2px 0; }
+    .change-ticket { font-family: ui-monospace, monospace; font-size: 11px; color: var(--text-muted); margin: 6px 0 2px; }
+    .ck-preview {
+      width: var(--ck-preview-w, 360px); flex-shrink: 0; border-left: 1px solid var(--border);
+      background: var(--surface); display: flex; flex-direction: column; position: relative;
+    }
+    /* t-bc04/t-82f4: left-edge drag handle to resize the preview pane.
+       Absolutely positioned on the left border; hidden while collapsed.
+       t-82f4: widened from a 7px hit target to 12px (7px was easy to miss
+       with the mouse, reported as the splitter "jumping" — really a mousedown
+       landing just off the strip) and given an always-faintly-visible grip
+       mark so it's discoverable without hunting along the border first. */
+    .ck-preview-resize {
+      position: absolute; left: -6px; top: 0; bottom: 0; width: 12px; cursor: col-resize; z-index: 3;
+      display: flex; align-items: center; justify-content: center;
+    }
+    /* color-mix, not `opacity`, on this rule -- opacity on the handle itself
+       would also dim the ::before grip mark below (opacity compounds down
+       the tree), fighting its own :hover brightening rule. */
+    .ck-preview-resize:hover { background: color-mix(in srgb, var(--accent) 15%, transparent); }
+    .ck-preview-resize::before {
+      content: ''; width: 3px; height: 28px; border-radius: 2px; pointer-events: none;
+      background: repeating-linear-gradient(to bottom, var(--text-muted) 0 3px, transparent 3px 6px);
+      opacity: .5; transition: opacity .1s;
+    }
+    .ck-preview-resize:hover::before {
+      opacity: 1;
+      background: repeating-linear-gradient(to bottom, var(--accent) 0 3px, transparent 3px 6px);
+    }
+    .ck-preview.collapsed .ck-preview-resize { display: none; }
+    /* t-bc04: ticket status badge next to the id (topbar + rail), colored to
+       match the board columns. */
+    .ck-status-badge {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+      padding: 2px 7px; border-radius: 999px; white-space: nowrap; display: inline-block;
+    }
+    .ck-status-badge:empty { display: none; }
+    .ck-status-badge.st-open { background: var(--col-open); color: #0b0f14; }
+    .ck-status-badge.st-progress { background: var(--col-progress); color: var(--badge-fg); }
+    .ck-status-badge.st-done { background: var(--col-done); color: var(--col-done-contrast, #04210f); }
+    .ck-status-badge.st-discarded { background: var(--col-discarded); color: var(--badge-fg); }
+    .ck-tc-idrow { display: flex; align-items: center; gap: 6px; padding-right: 18px; } /* t-6ecc: clear the top-right rail collapse toggle */
+    /* t-4272: the rail card (#ck-tc-id/#ck-tc-status/#ck-tc-title) is the single
+       canonical ticket-context. Hide the duplicate topbar copy while the rail is
+       expanded; reveal it only when the rail is collapsed, so context is never
+       lost. The "← Board" back button always shows. */
+    #cockpit:not(.rail-collapsed) .ck-topbar .ck-id,
+    #cockpit:not(.rail-collapsed) .ck-topbar #ck-status,
+    #cockpit:not(.rail-collapsed) .ck-topbar .ck-title { display: none; }
+    /* t-614c: the tab strip's active pill already names the ticket, so the id text beside the status chip would
+       repeat it (#ck-id precedes the strip in the markup, so a sibling selector cannot reach it: :has() does). The
+       title is cut to a few letters at half-screen widths and adds nothing there; the rail card keeps it. */
+    .ck-topbar:has(#ck-tab-strip-topbar:not([hidden])) .ck-id { display: none; }
+    @media (max-width: 1000px) { .ck-topbar .ck-title { display: none; } }
+    /* t-4272: the open badge used the muted --col-open slate (also used by the
+       board columns), which read as dull. Give the badge its own brighter,
+       legible slate per theme WITHOUT touching --col-open (board unchanged). */
+    .ck-status-badge.st-open { background: #cbd5e1; color: #0b1220; }
+    html[data-theme="light"] .ck-status-badge.st-open { background: #475569; color: #f8fafc; }
+    .ck-preview.collapsed { width: 40px; }
+    /* t-2lv7: .ck-preview-full wraps the header + body and must itself fill the
+       pane as a flex column — without this it stays auto-height, so the body's
+       flex:1 has no definite height and a mounted preview iframe (height:100%)
+       collapses to the ~150px HTML default ("tiny upper section"). */
+    .ck-preview-full { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .ck-preview.collapsed .ck-preview-full { display: none; }
+    .ck-preview-collapsed-label {
+      display: none; writing-mode: vertical-rl; transform: rotate(180deg);
+      color: var(--text-muted); font-size: 10px; letter-spacing: 1px; text-transform: uppercase;
+      margin: 12px auto; cursor: pointer;
+    }
+    .ck-preview.collapsed .ck-preview-collapsed-label { display: block; }
+    .ck-preview-header {
+      display: flex; align-items: center; justify-content: space-between; padding: 8px 12px;
+      border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600;
+      color: var(--text-muted); flex-shrink: 0;
+    }
+    .ck-preview-collapse {
+      background: none; border: 0; color: var(--text-muted); cursor: pointer; font-size: 14px;
+      padding: 2px 6px; line-height: 1;
+    }
+    .ck-preview-collapse:hover { color: var(--accent); }
+    .ck-preview-body { flex: 1; min-height: 0; position: relative; }
+    /* t-82f4: one detached container per open tab lives inside #ck-preview-body
+       simultaneously (mirrors #ck-term's per-tab iframes) — only the active
+       tab's is display:'', so it needs its own definite height for a nested
+       iframe's height:100% to resolve. */
+    .ck-preview-tab-body { width: 100%; height: 100%; display: flex; flex-direction: column; }
+    .ck-preview-body iframe { width: 100%; flex: 1; min-height: 0; border: 0; display: block; }
+    /* t-533f: the sandbox silently blocks forms/storage — say so, and offer the real file. */
+    .ck-preview-note {
+      flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+      padding: 8px 10px; font-size: 12px; line-height: 1.4; color: var(--text-muted);
+      background: var(--surface-raised); border-bottom: 1px solid var(--border);
+    }
+    .ck-preview-note-text { flex: 1 1 180px; }
+    .ck-preview-copy {
+      flex: none; height: 26px; padding: 0 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+      border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 14%, transparent);
+      color: var(--accent); cursor: pointer;
+    }
+    .ck-preview-copy:hover { background: var(--accent); color: #fff; }
+    .ck-preview-copy-status { flex-basis: 100%; color: var(--text); }
+    .ck-preview-copy-url {
+      flex-basis: 100%; font: 12px var(--mono, monospace); color: var(--text); background: var(--bg);
+      border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px;
+    }
+    .ck-preview-msg {
+      padding: 16px; font-size: 13px; color: var(--text-muted); font-family: var(--mono, monospace);
+      line-height: 1.5;
+    }
+    .ck-preview-msg code {
+      background: var(--surface-raised); padding: 2px 5px; border-radius: 4px; word-break: break-all;
+    }
+    .ck-loopbar {
+      display: flex; align-items: center; gap: 10px; padding: 6px 14px; flex-shrink: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      font-family: var(--mono, monospace); font-size: 11px; color: var(--text-muted);
+    }
+    .ck-loopbar .ck-loop-note { margin-left: auto; }
+    /* Lives in .card-footer, right-aligned (margin-left:auto), not a .card-head flex child —
+       card-head has no slack for a 6th element on a ci:true + demo:true card (same
+       overflow this file already documents for .card-archive above). */
+    .card-start {
+      margin: 0 0 0 auto; background: var(--accent); color: #fff; border: 0;
+      border-radius: 6px; padding: 3px 9px; font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+    .card-start:hover { filter: brightness(1.08); }
+    /* Resume gets its own color instead of Start's accent, so a quick glance
+       distinguishes "begin fresh" from "continue an active sprint". Uses
+       --col-done (green), not --col-progress (blue) — an IN_PROGRESS card
+       already shows a blue status dot/badge, so blue here would just repeat
+       a color already on the card instead of adding a distinct signal. */
+    .card-start.resume { background: var(--col-done); color: var(--col-done-contrast); }
+    /* t-391a: cross-project cockpit sessions panel */
+    .cockpit-sessions { margin: 8px 0 4px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+    .cockpit-sessions-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text); margin-bottom: 6px; }
+    .cockpit-sessions-list { display: flex; flex-direction: column; gap: 4px; }
+    .cockpit-session-row { display: flex; align-items: center; gap: 10px; padding: 5px 8px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+    .cockpit-session-row:hover { background: var(--accent-dim); border-color: var(--accent); }
+    .cockpit-session-row .cs-ticket { font-family: var(--mono, monospace); font-weight: 600; }
+    .cockpit-session-row .cs-project { color: var(--text-muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .cockpit-session-row .cs-where { flex: none; font-size: 11px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--border); color: var(--text); background: var(--surface-raised); white-space: nowrap; }
+    .cockpit-session-row .cs-agent { color: var(--text-muted); }
+    .cockpit-session-row .cs-status { font-size: 10px; font-weight: 700; text-transform: uppercase; padding: 1px 6px; border-radius: 999px; }
+    .cockpit-session-row .cs-status { --st: var(--text-muted); background: var(--st); color: var(--badge-fg); }   /* t-2d8e ink on a solid fill */
+    .cockpit-session-row .cs-status.needs-you { --st: var(--st-need); }
+    .cockpit-session-row .cs-status.working, .cockpit-session-row .cs-status.running { --st: var(--st-work); }
+    .cockpit-session-row .cs-status.done { --st: var(--st-done); }
+    .cockpit-session-row .cs-status.idle { background: transparent; color: var(--text-muted); box-shadow: inset 0 0 0 1.5px var(--st-idle); }
+    /* t-28ec: a card with a live session carries its state, Herdr colours */
+    .card-state { --st: var(--text-muted); display: flex; align-items: center; gap: 7px; padding: 5px 10px; font-size: 11.5px; font-weight: 600; color: var(--st); background: color-mix(in srgb, var(--st) 14%, transparent); }
+    .card-state.st-needs-you { --st: var(--st-need); }
+    .card-state.st-working, .card-state.st-running { --st: var(--st-work); }
+    .card-state.st-done { --st: var(--st-done); }
+    .card-state .sdot { width: 8px; height: 8px; border-radius: 50%; background: var(--st); flex-shrink: 0; }
+    .card-state.st-needs-you .sdot { outline: 1.5px solid var(--st-need); outline-offset: 2px; }
+    .card-state.st-idle .sdot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--st-idle); }
+    .card.s-need { border-color: color-mix(in srgb, var(--st-need) 65%, transparent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--st-need) 30%, transparent); }
+    .card-start.answer { background: var(--st-need); color: var(--st-ink); }
+    .card-start.open { background: var(--surface-hover); color: var(--text); border: 1px solid var(--border-hover); }
+    .column-needs { font-size: 11px; font-weight: 600; color: var(--st-need); margin-left: auto; margin-right: 6px; }
+    .card-start.disabled, .card-start:disabled { background: var(--surface-raised); color: var(--text-muted); cursor: not-allowed; }
+

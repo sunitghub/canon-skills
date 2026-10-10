@@ -6,7 +6,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/tests/helpers.sh"
 
-APP="$ROOT/tools/sprint-check-app/app.html"
+APP="$(mktemp)"
+trap 'rm -f "$APP"' EXIT
+board_sources "$ROOT" > "$APP"
 
 assert_grep 'class="modal-resize-handle"' "$APP"
 assert_grep 'function makePanelResizable\(panelId\)' "$APP"
