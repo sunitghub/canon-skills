@@ -82,6 +82,7 @@ tests=(
   "$ROOT/tests/no-browser-in-tests.sh"
   "$ROOT/tests/sprint-check-delegate.sh"
   "$ROOT/tests/doc-mirror-parity.sh"
+  "$ROOT/tests/doc-update-behavior.sh"
   "$ROOT/tests/gate-model-parity.sh"
   "$ROOT/tests/gate-snapshot.sh"
   "$ROOT/tests/jtbd-routing.sh"

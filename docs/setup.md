@@ -150,9 +150,9 @@ canon update
 
 If `canon update` refuses with "has uncommitted changes" and `git -C ~/.canon status --short` shows only `?? cockpit/` (installs made before this fix, 2026-10-06), run `git -C ~/.canon pull --ff-only` once. A plain pull is not blocked by that folder, and after it `canon update` works.
 
-`canon update` moves the install to the latest verified release. To go back after a bad update: `canon update --to v0.3.0` installs that tag now (the daemon and your projects are refreshed as in a normal update); the next plain update goes to the latest again. This is how `canon` behaves from v0.4.0 on; v0.3.0 has the older updater, where a plain `canon update` refuses as "pinned" and `--to latest` is unknown: run `canon update --to main` (or `--to vX.Y.Z`) once, and the new updater is in place. `canon update --to main` follows the development version (not verified) until `canon update --to latest`. An install made before 2026-10-08 does not know `--to` yet (`canon update takes no arguments`): run a plain `canon update` once, then `--to` works. Releases and what each contains: `CHANGELOG.md`; how a release is cut: `docs/releasing.md`.
+`canon update` moves the install to the latest verified release. **How canon update works** (below) covers the tracks, going back after a bad update, and every refusal. An install made before 2026-10-08 does not know `--to` yet (`canon update takes no arguments`): run a plain `canon update` once, then `--to` works. Releases and what each contains: `CHANGELOG.md`; how a release is cut: `docs/releasing.md`.
 
-**Verified installs.** A release (`--to vX.Y.Z`) is checked against the manifest at `https://getcanon.dev/releases.txt` before it is installed: on a git install the tag's commit must equal the manifest's, on a Windows zip install the downloaded zip's SHA-256 must equal it (checked before extraction). If the manifest cannot be read, does not list the release, or disagrees, the install refuses, says why, and changes nothing; there is no override, and `canon update --to main` is the way out. `main` is not verified (it changes with every push); it is the opt-in development track (`CANON_REF=main` on the installers, `canon update --to main`), and says so whenever you are on it. The one-line installers install the latest verified release and, if that cannot be verified, install nothing. This protects against a corrupt or changed download and a compromise of the zip alone; it does not protect against someone who controls the installer script, which is served from the same GitHub repo. Details: `docs/releasing.md`.
+**Verified installs.** A release is checked against the manifest as described under *How canon update works*; there is no override, and `canon update --to main` is the way out. `main` is not verified (it changes with every push); it is the opt-in development track (`CANON_REF=main` on the installers, `canon update --to main`), and says so whenever you are on it. This protects against a corrupt or changed download and a compromise of the zip alone; it does not protect against someone who controls the installer script, which is served from the same GitHub repo. Details: `docs/releasing.md`.
 
 Hook scripts update immediately — called by path. Skill content updates automatically via symlinks (`.claude/skills → ~/.canon/skills` and `.agents/skills → ~/.canon/skills`, for Codex/Pi) — every project picks up changes on the next session.
 
@@ -163,6 +163,37 @@ To repair symlinks after an upgrade:
 ```bash
 skills.sh refresh /path/to/your-project
 ```
+
+### How canon update works
+
+canon follows one of two **tracks**:
+
+- **Release (the default).** A plain `canon update` installs the newest release listed in the published manifest (`https://getcanon.dev/releases.txt`) after checking it: on a git install the tag's commit must equal the manifest's, on a Windows zip install the zip's SHA-256 must equal it. If the manifest cannot be read, does not list a release, or disagrees, nothing is changed and `canon update` says why. `canon update --to latest` installs the latest verified release too, and is how you leave the main track.
+- **Main (opt-in).** `canon update --to main` follows the development branch, which is not checksum-verified. canon remembers the choice in an untracked file, `.canon-track` (on the main track it contains `main`; git ignores it; a Windows zip install writes `release` there on the release track, a git install has no file), so a plain `canon update` keeps following main, and `canon version` says so ("Following main (development, not checksum-verified)"). `canon update --to latest` or `--to vX.Y.Z` leaves the main track.
+
+`canon update --to vX.Y.Z` installs that release now. It is not sticky: the next plain `canon update` goes to the latest release again.
+
+What a plain `canon update` does, by kind of install:
+
+| Install | What happens |
+|---|---|
+| Made by the installers at v0.4.0 or later | Follows its track: the latest verified release, or main if you chose `--to main`. |
+| A Windows zip install (any version) | Re-runs `install.ps1` from the canon-skills `main` branch, which follows the remembered track (main) or otherwise installs the latest verified release, and keeps your Cockpit data. |
+| A git install on branch `main` made before v0.4.0 (no marker) | The first update with the new updater moves it once to the latest verified release and says so ("This install was following main"). An older updater first pulls `main`, which brings the new one in; the next update does the move. |
+| A git install pinned at v0.3.0 | v0.3.0's older updater refuses a plain update as "pinned". Run `canon update --to main` (or `--to v0.4.0`) once; that brings in the new updater. The older one writes no marker, so a plain `canon update` after `--to main` moves you to the latest release; to stay on main, run `canon update --to main` again with the new updater. |
+
+**Refusals.** Each of these leaves everything exactly as it was, and says why:
+
+- the manifest cannot be read, has no release, or does not verify the release (`canon update --to main` follows main without a manifest);
+- the release the manifest names is missing on origin, or its tag points at a different commit than the manifest says (a stale tag of your own: `git tag -d <tag>`);
+- the install has uncommitted changes;
+- the install has local commits on `main` that a release would leave behind (`canon update --to main` follows main, which works only if your history can fast-forward);
+- a main-track update cannot fast-forward (local commits that diverge, or no upstream);
+- the install is on another branch than `main`;
+- a *plain* update finds a detached commit that is not a release tag (its commits would be left behind; run `git switch main`, or use `--to` to leave on purpose);
+- off Windows, the folder is not a git clone (reinstall); on Windows, `canon stop` first if canon's daemon is running.
+
+A first install that cannot verify a release installs nothing; `CANON_REF=main` (with `install.sh` or `install.ps1`) installs the development branch instead.
 
 ## Requirements and Windows
 

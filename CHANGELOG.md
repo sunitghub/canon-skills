@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- docs/setup.md explains how `canon update` works: the two tracks, what it does for each kind of install, and every refusal (`t-153f`).
+
 ## [0.4.0] - 2026-10-09
 
 Updates are verified by default: `canon update` and the installers take the latest verified release (`main` is now the opt-in). The shipped binaries are built with a pinned Go 1.27.2, which clears the vulnerabilities found in Go 1.27.1. If you are on v0.3.0, run `canon update --to main` once (its older updater does not know `--to latest`); after that a plain `canon update` is enough.
