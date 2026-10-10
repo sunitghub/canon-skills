@@ -264,6 +264,11 @@ for file in "$SHARED" "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evalu
     grep -qF -- "$frag" "$file" || fail "doc-mirror-parity: $label is missing the pin-the-environment rule fragment verbatim: $frag (t-ce0b, Check M)"
   done
 done
+# The verb and the condition carry the rule: a flipped "Never run ... unless" must not pass on its nouns alone.
+grep -qF -- 'Never run them, or a script that calls them, unless' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md lost 'Never run them, or a script that calls them, unless' (t-ce0b, Check M)"
+for file in "$ROOT/agents/canon-reviewer.md" "$ROOT/agents/canon-evaluator.md" "$ROOT/agents/codex/canon-reviewer.toml" "$ROOT/agents/codex/canon-evaluator.toml"; do
+  grep -qF -- 'Never run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon unless' "$file" || fail "doc-mirror-parity: ${file#"$ROOT"/} lost the 'Never run ... unless' sentence (t-ce0b, Check M)"
+done
 grep -qF -- '**Pin the environment**' "$SHARED" || fail "doc-mirror-parity: shared-gate-protocol.md is missing the '**Pin the environment**' paragraph (t-ce0b, Check M)"
 
 echo "doc-mirror-parity: ok (fallback commands match shared↔security; review.md/eval.md reference shared file; Windows fallback clause present; base-ref commands match shared↔security; required-visual convention present in shared-gate-protocol.md + start.md; citation backtick-escape rule present in shared-gate-protocol.md + eval.md + review.md; scenario-backed grading language present in eval.md + start.md; design-fit tag set matches reviewer.md↔wrapup-gates.md; gate-floor invariant present in SKILL.md + complete.md + how-it-works.md + AGENTS.md; destructive-git-command guardrail present in shared-gate-protocol.md + eval.md + review.md; demo-mode policy phrases match SKILL.md↔complete.md; scratch-copy rule present in shared-gate-protocol.md + eval.md + review.md; pin-the-environment rule present in shared-gate-protocol.md + both agent files + both Codex files)"
