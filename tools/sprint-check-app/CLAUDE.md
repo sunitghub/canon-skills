@@ -2,7 +2,7 @@
 
 ## Testing
 
-Any change to `app.html` requires Playwright verification — not just grep-based tests.
+Any change to `app.html` or `static/` requires Playwright verification — not just grep-based tests.
 
 - **Full spec, the one way (t-4469): `tests/run-board-spec.sh`** (both browsers, 3 runs; `--runs 1 --browsers chromium --grep "<title>"` for a quick look). It copies the working tree (the gitignored `.tickets` included) to a temp dir, starts the Go board **from the copy**, runs `tests/sprint-check-app.spec.js`, proves canon's own tree did not change, then runs `tests/board-spec-guard.js` against `tests/board-spec-baseline.json`: exit 0 means every failure seen is listed there; a listed flaky test that failed every run only warns ("ok with N warning(s)"), and `--strict` makes warnings fail. Nothing may be skipped or go missing: an unlisted skip, a test missing from a run, or fewer tests than `min_tests` in the baseline is a violation (that is how a serial group's cascade skip, the old "9 did not run", would show). About 8 minutes per browser per run.
 - **Never run the spec against canon's own tree.** It writes and deletes tickets in its project root (ids from `Math.random` — `t-eb92`), and the board's `model-tiers.json` is shared state (since `t-5df2` it lives in `$CANON_HOME/cockpit/`; `run-board-spec.sh` pins `CANON_HOME` to a temp dir).
@@ -58,7 +58,10 @@ Grep for an id prefix before using it — the cockpit rail already owns `ck-tc-*
 
 ## Architecture
 
-Single-file app (`app.html`) served by a Python stdlib HTTP server (`server.py`). No build step. All JS, CSS, and HTML are inline. Edit `app.html` directly.
+`app.html` (markup and the main script) plus `static/` (CSS and ES modules), served by a Python stdlib HTTP server (`server.py`) and the Go board, both at `GET /static/<name>` (flat lowercase `.css`/`.js` names only). No build step. The split out of `app.html` is in progress (`t-9b2d`):
+- CSS lives in `static/board-*.css`, linked in cascade order; edit the file for the section, never add a `<style>` back.
+- The main script is not a module yet. A moved module's exports reach it through the `<script type="module">` bridge at the end of `app.html`, which loads after the main script has run, so only code called on user events may move behind it.
+- Grep tests read `board_sources` (`tests/helpers.sh`), not `app.html` alone; a unit test imports a module directly (`tests/sprint-check-editor.js`).
 
 `server.py` exposes:
 - `GET /api/tickets` — all tickets except `archived`; add `?all=1` to include archived
