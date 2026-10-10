@@ -12596,6 +12596,25 @@ test.describe('ticket modal editor (t-a205)', () => {
     await page.setViewportSize({ width: 700, height: 900 });
     await expect.poll(async () => { const y = await m(); return Math.abs(y.gH - y.tH) <= 2 && y.over <= 1; }).toBe(true);
   });
+  // t-9b2d: the editor helpers are an ES module (static/editor.js) reached through a bridge; drive them in the real page.
+  test('Tab and Shift+Tab indent the selected lines, and Enter continues a list item', async ({ page }) => {
+    const id = `t-ed-keys-${Date.now()}`;
+    writeTicket(id);
+    await openModalFor(page, id);
+    await tab(page, 'Description').click();
+    await page.locator('#m-body').evaluate(el => document.activeElement && document.activeElement.blur());
+    await page.keyboard.press('e');
+    const area = page.locator('#m-edit-area');
+    await expect(area).toBeVisible();
+    await area.evaluate(el => { el.value = 'one\ntwo'; el.focus(); el.setSelectionRange(0, el.value.length); });
+    await page.keyboard.press('Tab');
+    await expect(area).toHaveValue('  one\n  two');
+    await page.keyboard.press('Shift+Tab');
+    await expect(area).toHaveValue('one\ntwo');
+    await area.evaluate(el => { el.value = '- item'; el.setSelectionRange(6, 6); });
+    await page.keyboard.press('Enter');
+    await expect(area).toHaveValue('- item\n- ');
+  });
 });
 
 // t-612f: expandable doc nodes (+ / −), the Demo/UX switch, the top-left resize grip, the keyboard-only card outline
