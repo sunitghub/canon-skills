@@ -10,6 +10,7 @@ source "$ROOT/tests/helpers.sh"
 # and fails in a linked worktree, where .git is a file. The copy is the working tree (tracked + untracked, not ignored), so
 # an edit to skills.sh is tested before it is committed.
 scratch="$(mktemp -d)"
+trap 'rm -rf "$scratch"' EXIT
 scratch="$(cd "$scratch" && pwd -P)"
 copy_canon_tree "$scratch/canon"
 git -C "$scratch/canon" init -q
@@ -256,7 +257,7 @@ cat > "$skeleton_project/.claude/settings.json" <<'EOF'
   }
 }
 EOF
-skeleton_output="$("$SKILLS" add sprint "$skeleton_project")"
+skeleton_output="$(HOME="$home" "$SKILLS" add sprint "$skeleton_project")"
 assert_contains "$skeleton_output" "[cleaned]  removed leftover empty hook skeleton"
 assert_eq "{}" "$(python3 -c "import json; print(json.dumps(json.load(open('$skeleton_project/.claude/settings.json'))))")"
 
