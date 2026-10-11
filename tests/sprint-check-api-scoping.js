@@ -10,7 +10,7 @@ const fs = require('fs');
 const { APP_HTML, boardScripts } = require('./board-script');
 
 const APP = process.env.SPRINT_CHECK_APP_HTML || APP_HTML;
-// t-c58e: the markup plus every board script (inline or under static/), so a path moved out of app.html still counts.
+// t-c58e, t-1543: the markup plus every board module (the entry and all it imports), so a path moved out of app.html still counts.
 const html = [fs.readFileSync(APP, 'utf8'), ...boardScripts(APP).map((s) => s.source)].join('\n');
 
 // Unscoped by design: path (after ${...} -> X) -> why it must NOT carry ?project.
