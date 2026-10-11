@@ -239,7 +239,7 @@ func (s *server) handler() http.Handler {
 	// same string, so a string compare could never flag a rebuilt-in-place binary.
 	mux.HandleFunc("/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"version": version, "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds()), "debug_enabled": debugEnabled.Load(),
+		_ = json.NewEncoder(w).Encode(map[string]any{"version": canonVersion(), "commit": commit, "exe_mtime": execMtime, "uptime_secs": int64(time.Since(startTime).Seconds()), "debug_enabled": debugEnabled.Load(),
 			"idle_timeout_secs": int64(s.cfg.idleTimeout.Seconds()), "idle_timeout_main_secs": int64(s.cfg.idleTimeoutMain.Seconds())}) // t-824e: Admin's reaper line
 	})
 	// t-ffb9: toggles verbose session-lifecycle logging (see debugf). Deliberately
@@ -4337,9 +4337,9 @@ func writeJSON(w http.ResponseWriter, v any) {
 
 // ── main ───────────────────────────────────────────────────────────────────
 
-// version is the build id, stamped via -ldflags "-X main.version=<sha>" by
-// scripts/build-zip.sh (short SHA of the last commit touching
-// tools/cockpit-daemon). A plain `go build` leaves it "dev". t-99fa.
+// version is the fallback semantic version: release builds no longer stamp it
+// (t-0859: the bytes must not depend on VERSION), so it stays "dev" unless a
+// build passes -X main.version. canonVersion() reads the install's VERSION.
 var version = "dev"
 
 // commit is the build provenance (short SHA of the last commit touching this
@@ -4348,12 +4348,50 @@ var version = "dev"
 var commit = "dev"
 
 // versionString renders the human build id: "<semver> (<sha>)" when a real
-// commit is stamped, else just the semver/`dev`.
+// commit is stamped, else just the semver/`dev`. tools/fetch-daemon.sh reads the
+// "(<sha>)" part, so keep that shape.
 func versionString() string {
+	v := canonVersion()
 	if commit != "" && commit != "dev" {
-		return version + " (" + commit + ")"
+		return v + " (" + commit + ")"
+	}
+	return v
+}
+
+// canonVersion is the semantic version of the canon install this binary runs
+// from (t-0859), else the stamped `version`, else "dev". Like the board's.
+func canonVersion() string {
+	if exe, err := os.Executable(); err == nil {
+		if real, err := filepath.EvalSymlinks(exe); err == nil {
+			exe = real
+		}
+		if v := installVersion(filepath.Dir(exe)); v != "" {
+			return v
+		}
 	}
 	return version
+}
+
+var semverRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+
+// installVersion reads VERSION from the canon root that holds dir: the binary
+// sits at <root>/tools/<bin> (Windows) or <root>/tools/cockpit-daemon/<bin>.
+// A folder counts as a canon root only with tools/skills.sh in it, so a stray
+// VERSION elsewhere (a home folder) is never read; a malformed one is ignored.
+func installVersion(dir string) string {
+	for _, root := range []string{filepath.Dir(dir), filepath.Dir(filepath.Dir(dir))} {
+		if _, err := os.Stat(filepath.Join(root, "tools", "skills.sh")); err != nil {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(root, "VERSION"))
+		if err != nil {
+			continue
+		}
+		if v := strings.TrimSpace(string(b)); semverRe.MatchString(v) {
+			return v
+		}
+	}
+	return ""
 }
 
 // execMtime is the Unix mtime of this daemon's own executable, captured once at
@@ -4418,7 +4456,7 @@ func main() {
 	if err := writeStateFile(s.cfg.stateDir, ln.Addr().String(), cfg.token); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: state file:", err)
 	}
-	fmt.Fprintf(os.Stderr, "cockpit-daemon %s listening on %s\n", version, ln.Addr().String())
+	fmt.Fprintf(os.Stderr, "cockpit-daemon %s listening on %s\n", canonVersion(), ln.Addr().String())
 	// t-44d9: graceful teardown on SIGTERM/SIGINT so a board force-restart (a
 	// pid SIGTERM) reaps every session's child process group via killSession
 	// instead of orphaning the agent, then clears daemon.json before exit. (On

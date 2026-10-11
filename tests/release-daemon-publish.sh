@@ -64,6 +64,11 @@ want="$(shasum -a 256 "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe"
 # the legacy builds ask for the pinned toolchain and write the pin into the staged go.mod (not the installed Go: t-7efe)
 for mod in sprint-check sprint-headless-json; do grep -q "^GOTOOLCHAIN=$LV module canon/$mod  go ${LV#go} \$" "$GO_LOG" || fail "the $mod build did not use the pinned toolchain: $(cat "$GO_LOG")"; done
 [[ "$(grep -c "^GOTOOLCHAIN=$LV module x/d " "$GO_LOG")" == 5 ]] || fail "the five daemon builds must each set GOTOOLCHAIN to go.mod's toolchain line: $(cat "$GO_LOG")"
+# 1b. t-0859: the bytes do not depend on VERSION (the stub prints `version`, so a build that still stamped it would differ):
+# two dry runs of the same source with different VERSION files print the same hash for every target
+dry() { (cd "$R" && PATH="$STUBS:$PATH" bash scripts/release-daemon.sh --dry-run 2>&1 | grep -v '^release-daemon:'); }
+d1="$(dry)"; echo 9.9.9 > "$R/VERSION"; d2="$(dry)"; echo 0.3.0 > "$R/VERSION"
+assert_eq 7 "$(printf '%s\n' "$d1" | grep -c .)"; assert_eq "$d1" "$d2"
 # 2. the same source again: nothing is uploaded or created, the manifest is the same set of lines
 before="$(sort "$m")"; run; [[ "$rc" == 0 ]] || fail "second publish failed: $out"
 ! grep -qE ' (create|upload) ' "$STUB_LOG" || fail "a second run created or uploaded something: $(cat "$STUB_LOG")"
@@ -72,11 +77,20 @@ assert_eq "$before" "$(sort "$m")"
 rm "$FAKE_GH/cockpit-daemon-$kd/cockpit-daemon-windows-amd64.exe"; : > "$m"; printf '# header\n' > "$m"
 run; [[ "$rc" == 0 ]] || fail "adding a missing asset failed: $out"
 assert_eq 1 "$(grep -c 'release upload' "$STUB_LOG")"; grep -q "release upload cockpit-daemon-$kd .*cockpit-daemon-windows-amd64.exe" "$STUB_LOG" || fail "the wrong asset was uploaded: $(cat "$STUB_LOG")"
-# 4. a published asset is never overwritten: the build must equal it (a different Go version would not), or the run stops and writes nothing
+# 4. a published asset is never overwritten, and an EXISTING release no longer blocks the manifest when today's build differs
+# (t-7f09: an asset built by an earlier run, or before t-0859): the manifest records the published asset, with a warning
 printf 'someone else built this' > "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe"; printf '# header\n' > "$m"
-run; [[ "$rc" == 1 ]] || fail "a differing published asset must stop the run (rc=$rc): $out"
-assert_contains "$out" "differs from this build"; assert_eq "# header" "$(cat "$m")"
+run; [[ "$rc" == 0 ]] || fail "a differing asset in an existing release must not stop the run (rc=$rc): $out"
+assert_contains "$out" "warning: sprint-check-windows-amd64.exe on sprint-check-$kb (an existing release) differs from this build"
+pub="$(shasum -a 256 "$FAKE_GH/sprint-check-$kb/sprint-check-windows-amd64.exe" | awk '{print $1}')"
+grep -q "^$kb sprint-check-windows-amd64 $pub\$" "$m" || fail "the manifest must record the published asset's hash: $(cat "$m")"
+assert_eq 7 "$(grep -vc '^#' "$m")"
 ! grep -q 'release upload .*sprint-check-windows-amd64.exe' "$STUB_LOG" || fail "an existing asset was overwritten"
+# 4b. ...but a manifest line that names another hash for that key and target is the authority: the run stops, the manifest is unchanged
+printf '# header\n%s sprint-check-windows-amd64 %064d\n' "$kb" 0 > "$m"; before="$(cat "$m")"
+run; [[ "$rc" == 1 ]] || fail "a published asset that contradicts the manifest must stop the run (rc=$rc): $out"
+assert_contains "$out" "but tools/cockpit-daemon.sha256 records"; assert_eq "$before" "$(cat "$m")"
+printf '# header\n' > "$m"
 # 5. a download that does not match what was built stops the run before the manifest is touched
 rm -rf "$FAKE_GH"/*; export FAKE_GH_SERVE_BAD=1; run; unset FAKE_GH_SERVE_BAD
 [[ "$rc" == 1 ]] || fail "a tampered download must stop the run: $out"; assert_eq "# header" "$(cat "$m")"
@@ -117,4 +131,4 @@ cp "$WORK/d.go.mod" "$R/tools/cockpit-daemon/go.mod"; git -C "$R" "${ident[@]}" 
 # 10. the pins agree: the daemon's go.mod toolchain line and both GO_TOOLCHAIN files in the real tree name one version (one owner would be better, but go.mod cannot read a file)
 dv="$(awk '/^toolchain /{print $2}' "$ROOT/tools/cockpit-daemon/go.mod")"; [[ "$dv" =~ ^go[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tools/cockpit-daemon/go.mod has no toolchain line ('$dv')"
 for d in sprint-check-go sprint-headless-json-go; do assert_eq "$dv" "$(tr -d ' \t\n\r' < "$ROOT/tools/$d/GO_TOOLCHAIN")"; done
-echo "release-daemon-publish: ok (creates, adds only missing assets, never overwrites, verifies by download, manifest last and newest-last)"
+echo "release-daemon-publish: ok (creates, adds only missing assets, never overwrites, verifies by download, manifest last and newest-last; bytes free of VERSION; existing releases recorded as published)"

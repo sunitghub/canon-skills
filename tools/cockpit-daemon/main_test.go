@@ -7660,3 +7660,44 @@ func TestCopilotResumesAWorktreeBoundTicketWithASession(t *testing.T) {
 		t.Fatalf("copilot on a worktree-bound in_progress ticket with a session on disk must resume it: argv %q", argv)
 	}
 }
+
+// t-0859: release builds no longer stamp VERSION, so the daemon reads the install's own. It must find it from both
+// install layouts, and must never read a VERSION outside a canon root or one with bad content.
+func TestInstallVersion(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("canon/tools/skills.sh", "")
+	mk("canon/tools/cockpit-daemon/cockpit-daemon", "")
+	mk("canon/VERSION", "0.9.9\n")
+	if got := installVersion(filepath.Join(root, "canon", "tools", "cockpit-daemon")); got != "0.9.9" {
+		t.Errorf("macOS/Linux layout (<root>/tools/cockpit-daemon/<bin>): got %q, want 0.9.9", got)
+	}
+	if got := installVersion(filepath.Join(root, "canon", "tools")); got != "0.9.9" {
+		t.Errorf("Windows layout (<root>/tools/<bin>.exe): got %q, want 0.9.9", got)
+	}
+	// A decoy: a VERSION in a folder that is not a canon root (no tools/skills.sh), as in a home folder.
+	mk("home/VERSION", "7.7.7\n")
+	mk("home/tools/cockpit-daemon/cockpit-daemon", "")
+	if got := installVersion(filepath.Join(root, "home", "tools", "cockpit-daemon")); got != "" {
+		t.Errorf("a VERSION outside a canon root must be ignored: got %q", got)
+	}
+	// A canon root whose VERSION is malformed, and one with no VERSION at all.
+	mk("bad/tools/skills.sh", "")
+	mk("bad/VERSION", "0.9.9-dirty; rm -rf /\n")
+	if got := installVersion(filepath.Join(root, "bad", "tools")); got != "" {
+		t.Errorf("a malformed VERSION must be ignored: got %q", got)
+	}
+	mk("none/tools/skills.sh", "")
+	if got := installVersion(filepath.Join(root, "none", "tools")); got != "" {
+		t.Errorf("no VERSION file: got %q, want empty", got)
+	}
+}

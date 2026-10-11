@@ -13,17 +13,18 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # t-af51 follow-up: server.py's _resolve_cockpit_daemon() runs THIS binary
 # directly on macOS/Linux (the Windows exes are fetched release assets, not built
 # here) — without a stamped rebuild here, a plain `go build` leaves
-# main.version/main.commit at their zero-value "dev" default, so the Admin
-# Versions panel never shows a real build id for a non-Windows dev machine.
+# main.commit at its zero-value "dev" default, so the Admin Versions panel
+# never shows a real build id for a non-Windows dev machine. The semantic
+# version is not stamped: the daemon reads the repo's VERSION (t-0859).
 # Gitignored (tools/cockpit-daemon/.gitignore) — native binaries aren't
 # portable across platforms/architectures, so this stays local-only.
 if command -v go >/dev/null 2>&1; then
   CDV="$(git -C "$REPO_ROOT" log -1 --format=%h -- tools/cockpit-daemon 2>/dev/null || echo dev)"
-  SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"
+  SEMVER="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION" 2>/dev/null || echo dev)"   # for the message only
   GOEXE="$(go env GOEXE)"
   ( cd "$REPO_ROOT/tools/cockpit-daemon" && go build \
       -buildvcs=false \
-      -ldflags "-X main.version=$SEMVER -X main.commit=$CDV" \
+      -ldflags "-X main.commit=$CDV" \
       -o "$REPO_ROOT/tools/cockpit-daemon/cockpit-daemon$GOEXE" . )
   echo "dist: cockpit-daemon$GOEXE (native) rebuilt [v$SEMVER ($CDV)]"
 else

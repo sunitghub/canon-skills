@@ -6,7 +6,9 @@
 #   board           Windows amd64   (tools/sprint-check-win.exe)           release sprint-check-<key of tools/sprint-check-go>
 #   headless helper Windows amd64   (tools/sprint-headless-json-win.exe)   release sprint-headless-json-<key of its source>
 # Every build uses -trimpath -buildvcs=false, so the same source gives the same bytes at any checkout path. A release that exists
-# keeps its assets (a published asset is never overwritten); missing ones are added.
+# keeps its assets (a published asset is never overwritten); missing ones are added. No build carries VERSION (t-0859): the
+# binaries read it from the install at run time, so a version bump leaves every key's bytes unchanged. A release that already
+# existed before this run is recorded from its published asset, not rebuild-compared (t-7f09); a new one must equal its build.
 # The Go toolchain is pinned, not whatever is installed: tools/cockpit-daemon/go.mod has a `toolchain` line, and each legacy package has a
 # GO_TOOLCHAIN file in its folder. Every build sets GOTOOLCHAIN to its pin explicitly (go.mod's `toolchain` line is only a minimum, and an
 # exported GOTOOLCHAIN=local would ignore it), and every built binary is checked with `go version -m` against the pin before anything is published. A pin lives in the source folder on purpose: raising it changes the folder's tree hash, so the fixed
@@ -30,7 +32,6 @@ tree_of() { git -C "$REPO_ROOT" rev-parse "HEAD:$1"; }   # the source folder's t
 full_d="$(tree_of tools/cockpit-daemon)"; key_d="${full_d:0:12}"
 full_b="$(tree_of tools/sprint-check-go)"; key_b="${full_b:0:12}"
 full_h="$(tree_of tools/sprint-headless-json-go)"; key_h="${full_h:0:12}"
-semver="$(tr -d ' \t\n\r' < "$REPO_ROOT/VERSION")"
 out="$(mktemp -d)"; chk=""; trap 'rm -rf "$out" "$chk"' EXIT
 
 sha256_of() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'; else shasum -a 256 "$1" | awk '{print $1}'; fi; }
@@ -47,12 +48,12 @@ check_built() { # <binary> <pin>: the file must say it was built with exactly th
 lines=""   # <key> <target> <sha256>
 for t in $UNIX_TARGETS; do
   ( cd "$REPO_ROOT/tools/cockpit-daemon" && GOTOOLCHAIN="$daemon_pin" CGO_ENABLED=0 GOOS="${t%-*}" GOARCH="${t#*-}" go build -trimpath -buildvcs=false \
-      -ldflags "-s -w -X main.version=$semver -X main.commit=${full_d:0:8}" -o "$out/cockpit-daemon-$t" . )
+      -ldflags "-s -w -X main.commit=${full_d:0:8}" -o "$out/cockpit-daemon-$t" . )
   check_built "$out/cockpit-daemon-$t" "$daemon_pin"
   lines="$lines$key_d $t $(sha256_of "$out/cockpit-daemon-$t")"$'\n'
 done
 ( cd "$REPO_ROOT/tools/cockpit-daemon" && GOTOOLCHAIN="$daemon_pin" CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
-    -ldflags "-s -w -X main.version=$semver -X main.commit=${full_d:0:8}" -o "$out/cockpit-daemon-windows-amd64.exe" . )
+    -ldflags "-s -w -X main.commit=${full_d:0:8}" -o "$out/cockpit-daemon-windows-amd64.exe" . )
 check_built "$out/cockpit-daemon-windows-amd64.exe" "$daemon_pin"
 lines="$lines$key_d windows-amd64 $(sha256_of "$out/cockpit-daemon-windows-amd64.exe")"$'\n'
 # The board and the headless helper are legacy packages (no go.mod, stdlib only). GOPATH-mode builds leak the checkout path
@@ -66,7 +67,7 @@ build_legacy() { # <source dir under the repo> <module name> <commit stamp> <out
   find "$REPO_ROOT/$1" -maxdepth 1 -name '*.go' ! -name '*_test.go' -exec cp {} "$stage/" \;
   printf 'module canon/%s\n\ngo %s\n' "$2" "${pin#go}" > "$stage/go.mod"
   ( cd "$stage" && GOTOOLCHAIN="$pin" GOFLAGS=-mod=mod CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -buildvcs=false \
-      -ldflags "-s -w -X main.version=$semver -X main.commit=$3" -o "$4" . )
+      -ldflags "-s -w -X main.commit=$3" -o "$4" . )
   rm -rf "$stage"
   check_built "$4" "$pin"
 }
@@ -77,6 +78,12 @@ lines="$lines$key_h sprint-headless-json-windows-amd64 $(sha256_of "$out/sprint-
 cp "$REPO_ROOT/THIRD-PARTY-NOTICES.md" "$out/THIRD-PARTY-NOTICES.md"
 
 if [ "$dry" = 1 ]; then printf '%s' "$lines"; echo "release-daemon: dry run for cockpit-daemon-$key_d, sprint-check-$key_b, sprint-headless-json-$key_h; nothing published or written"; exit 0; fi
+
+# Which releases existed before this run: their assets were published from an earlier build and are never replaced.
+existed() { gh release view "$1" --repo "$RELEASE_REPO" >/dev/null 2>&1; }
+ex_d=0; if existed "cockpit-daemon-$key_d"; then ex_d=1; fi
+ex_b=0; if existed "sprint-check-$key_b"; then ex_b=1; fi
+ex_h=0; if existed "sprint-headless-json-$key_h"; then ex_h=1; fi
 
 # publish <tag> <full source hash> <asset file name>... : create the release if absent, else add only the assets it lacks.
 publish() {
@@ -96,18 +103,30 @@ publish "cockpit-daemon-$key_d" "$full_d" "$out"/cockpit-daemon-darwin-* "$out"/
 publish "sprint-check-$key_b" "$full_b" "$out/sprint-check-windows-amd64.exe"
 publish "sprint-headless-json-$key_h" "$full_h" "$out/sprint-headless-json-windows-amd64.exe"
 
-# Prove what users will download: fetch every asset back from its release and compare with what was built.
-chk="$(mktemp -d)"
-verify() { # <tag> <asset>
-  gh release download "$1" --repo "$RELEASE_REPO" --dir "$chk" --pattern "$2" --clobber
-  [ -f "$chk/$2" ] || { echo "release-daemon: asset $2 is missing from $1; manifest not written" >&2; exit 1; }
-  [ "$(sha256_of "$chk/$2")" = "$(sha256_of "$out/$2")" ] \
-    || { echo "release-daemon: asset $2 on $1 differs from this build (a published asset is never overwritten; delete the release and rerun). Manifest not written" >&2; exit 1; }
+# Prove what users will download: fetch every asset back and record its hash. An asset of a release created in this run
+# must equal this build. An existing release's asset is recorded as published (t-7f09: an earlier build, or one made before
+# t-0859 took VERSION out of the bytes, need not match today's); only a manifest line that names another hash for it fails.
+chk="$(mktemp -d)"; final=""   # <key> <target> <sha256> of what users will download
+record() { # <key> <target> <tag> <asset> <existed 0|1>
+  local got built want
+  gh release download "$3" --repo "$RELEASE_REPO" --dir "$chk" --pattern "$4" --clobber
+  [ -f "$chk/$4" ] || { echo "release-daemon: asset $4 is missing from $3; manifest not written" >&2; exit 1; }
+  got="$(sha256_of "$chk/$4")"; built="$(sha256_of "$out/$4")"
+  if [ "$5" = 1 ]; then
+    want="$(awk -v k="$1" -v t="$2" '$1 == k && $2 == t { h = $3 } END { print h }' "$MANIFEST")"
+    [ -z "$want" ] || [ "$want" = "$got" ] \
+      || { echo "release-daemon: asset $4 on $3 hashes $got, but tools/cockpit-daemon.sha256 records $want for $1 $2; manifest not written" >&2; exit 1; }
+    [ "$got" = "$built" ] || echo "release-daemon: warning: $4 on $3 (an existing release) differs from this build; the manifest records the published asset" >&2
+  else
+    [ "$got" = "$built" ] \
+      || { echo "release-daemon: asset $4 on $3 differs from this build (a published asset is never overwritten; delete the release and rerun). Manifest not written" >&2; exit 1; }
+  fi
+  final="$final$1 $2 $got"$'\n'
 }
-for t in $UNIX_TARGETS; do verify "cockpit-daemon-$key_d" "cockpit-daemon-$t"; done
-verify "cockpit-daemon-$key_d" "cockpit-daemon-windows-amd64.exe"
-verify "sprint-check-$key_b" "sprint-check-windows-amd64.exe"
-verify "sprint-headless-json-$key_h" "sprint-headless-json-windows-amd64.exe"
+for t in $UNIX_TARGETS; do record "$key_d" "$t" "cockpit-daemon-$key_d" "cockpit-daemon-$t" "$ex_d"; done
+record "$key_d" windows-amd64 "cockpit-daemon-$key_d" cockpit-daemon-windows-amd64.exe "$ex_d"
+record "$key_b" sprint-check-windows-amd64 "sprint-check-$key_b" sprint-check-windows-amd64.exe "$ex_b"
+record "$key_h" sprint-headless-json-windows-amd64 "sprint-headless-json-$key_h" sprint-headless-json-windows-amd64.exe "$ex_h"
 
 # Replace any earlier line for the same key and target, then append: the newest line for a target is the last one.
 tmpm="$MANIFEST.new"; cp "$MANIFEST" "$tmpm"
@@ -115,7 +134,7 @@ while read -r k t _; do
   [ -n "$k" ] || continue
   grep -v "^$k $t " "$tmpm" > "$tmpm.2" || true; mv "$tmpm.2" "$tmpm"
 done <<EOF
-$lines
+$final
 EOF
-printf '%s' "$lines" >> "$tmpm"; mv "$tmpm" "$MANIFEST"
+printf '%s' "$final" >> "$tmpm"; mv "$tmpm" "$MANIFEST"
 echo "release-daemon: published cockpit-daemon-$key_d, sprint-check-$key_b, sprint-headless-json-$key_h and updated tools/cockpit-daemon.sha256; commit it, run scripts/check-binaries-released.sh --download, then push to public"
