@@ -13,6 +13,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - docs/setup.md explains how `canon update` works: the two tracks, what it does for each kind of install, and every refusal (`t-153f`).
 
 ### Fixed
+- A version bump no longer changes the release binaries: they read `VERSION` from the install, so the cockpit daemon now reports the installed version (a 0.4.0 install showed 0.3.0), and `scripts/release-daemon.sh` writes its own manifest when an older release's asset differs from today's build instead of stopping (`t-0859`, `t-7f09`).
 - `tools/sprint-headless-eval` finds its repository when canon is a linked worktree (`.git` is a file there), and the test suite runs from a worktree and from a checkout under a symlinked path such as macOS `/var`; `tests/skills-uninstall.sh` now works on a scratch copy and no longer overwrites a checkout's `.claude/settings.json` or deletes its pre-commit hook (`t-1cfc`, `t-80fc`).
 - The pre-commit hook no longer hands git's own repository (`GIT_DIR`, `GIT_INDEX_FILE`, `GIT_WORK_TREE`, `GIT_PREFIX`) to your test suite; a suite that ran `git init` or `git config` in a temp directory could change the real repository (`t-ce0b`). Run `canon update` to refresh the installed hook.
 - The review and evaluation gates are told never to run `canon update`, `skills.sh`, `install.sh`, an uninstall or the daemon without a pinned `HOME`, `CANON_HOME`, `TMPDIR` and `XDG_CONFIG_HOME` (`t-ce0b`).

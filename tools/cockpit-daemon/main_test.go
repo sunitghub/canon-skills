@@ -7660,3 +7660,74 @@ func TestCopilotResumesAWorktreeBoundTicketWithASession(t *testing.T) {
 		t.Fatalf("copilot on a worktree-bound in_progress ticket with a session on disk must resume it: argv %q", argv)
 	}
 }
+
+// t-0859: release builds no longer stamp VERSION, so the daemon reads the install's own. It must find it from both
+// install layouts, and must never read a VERSION outside a canon root or one with bad content.
+func TestInstallVersion(t *testing.T) {
+	root := t.TempDir()
+	mk := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("canon/tools/skills.sh", "")
+	mk("canon/tools/cockpit-daemon/cockpit-daemon", "")
+	mk("canon/VERSION", "0.9.9\n")
+	if got := installVersion(filepath.Join(root, "canon", "tools", "cockpit-daemon")); got != "0.9.9" {
+		t.Errorf("macOS/Linux layout (<root>/tools/cockpit-daemon/<bin>): got %q, want 0.9.9", got)
+	}
+	if got := installVersion(filepath.Join(root, "canon", "tools")); got != "0.9.9" {
+		t.Errorf("Windows layout (<root>/tools/<bin>.exe): got %q, want 0.9.9", got)
+	}
+	// A decoy: a VERSION in a folder that is not a canon root (no tools/skills.sh), as in a home folder.
+	mk("home/VERSION", "7.7.7\n")
+	mk("home/tools/cockpit-daemon/cockpit-daemon", "")
+	if got := installVersion(filepath.Join(root, "home", "tools", "cockpit-daemon")); got != "" {
+		t.Errorf("a VERSION outside a canon root must be ignored: got %q", got)
+	}
+	// A canon root whose VERSION is malformed, and one with no VERSION at all.
+	mk("bad/tools/skills.sh", "")
+	mk("bad/VERSION", "0.9.9-dirty; rm -rf /\n")
+	if got := installVersion(filepath.Join(root, "bad", "tools")); got != "" {
+		t.Errorf("a malformed VERSION must be ignored: got %q", got)
+	}
+	mk("none/tools/skills.sh", "")
+	if got := installVersion(filepath.Join(root, "none", "tools")); got != "" {
+		t.Errorf("no VERSION file: got %q, want empty", got)
+	}
+}
+
+// t-0859: a daemon reads its install's VERSION once, at startup. After `canon update` rewrites VERSION, a daemon still
+// running must keep reporting the version it started with (only a restart picks up the new one).
+func TestStartupVersionIsReadOnce(t *testing.T) {
+	root := t.TempDir()
+	for rel, body := range map[string]string{"tools/skills.sh": "", "VERSION": "1.2.3\n"} {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	get := startupVersion(filepath.Join(root, "tools"))
+	if got := get(); got != "1.2.3" {
+		t.Fatalf("first read: got %q, want 1.2.3", got)
+	}
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("2.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(); got != "1.2.3" {
+		t.Errorf("after VERSION changed on disk: got %q, want the startup value 1.2.3", got)
+	}
+	// An unknown binary folder must not fall back to the working directory, even one that is a canon root.
+	t.Chdir(root)
+	if got := startupVersion("")(); got != version {
+		t.Errorf("unknown binary folder: got %q, want the stamped fallback %q", got, version)
+	}
+}
