@@ -112,6 +112,30 @@ mono="$(make_project)"
   out="$(run_fail "$TOOL" post "$scratch/mono")"; assert_contains "$out" "other/.tickets/x" )
 rm -rf "$mono"
 
+# t-8120 (Windows): `git rev-parse --show-toplevel` answers "C:/..." while `pwd -P` says "/c/...". Before t-7301 the tool built the
+# project prefix by stripping one from the other, never matched, and passed the whole "/c/..." path as `:(exclude)/c/.../.tickets`,
+# which git.exe rejects: "Invalid path '/c'" at every Windows sprint close. The stub models both halves on any OS: it answers
+# `-C ... --show-toplevel` in Windows spelling (t-7301's stub) and, like git.exe, refuses a pathspec that is an absolute POSIX path.
+win="$(make_project)"; wgit="$(mktemp -d)"; export REAL_GIT="$(command -v git)"
+cat > "$wgit/git" <<'STUB'
+#!/bin/sh
+for a in "$@"; do
+  case "$a" in ":(exclude)/"*) p="${a#:(exclude)}"; echo "fatal: Invalid path '/${p#/}': No such file or directory" >&2; exit 128 ;; esac
+  if [ "$1" = -C ] && [ "$a" = --show-toplevel ]; then printf 'C:%s\n' "$("$REAL_GIT" "$@")"; exit 0; fi
+done
+exec "$REAL_GIT" "$@"
+STUB
+chmod +x "$wgit/git"
+( cd "$win"; git config user.email t@example.com; git config user.name test
+  mkdir -p proj/.tickets/t-w proj/.claude; echo t > proj/.tickets/t-w/ticket.md; echo s > proj/a.txt; git add -A >/dev/null && git commit -qm base
+  cd proj; export PATH="$wgit:$PATH"
+  out="$("$TOOL" pre "$scratch/win" 2>&1)" || fail "pre must succeed with Windows path spellings: $out"
+  assert_contains "$out" "pre recorded"
+  echo r > .tickets/t-w/eval-report.md; echo e >> .tickets/t-w/ticket.md
+  "$TOOL" post "$scratch/win" >/dev/null || fail "with Windows path spellings, the project's .tickets/ must be ignored"
+  echo j > a.txt; out="$(run_fail "$TOOL" post "$scratch/win")"; assert_contains "$out" "proj/a.txt" )
+rm -rf "$win" "$wgit"
+
 # unmerged paths: `git stash create` prints "f: needs merge" and exits 0; that text is not a recovery hash
 um="$(make_project)"
 ( cd "$um"; git config user.email t@example.com; git config user.name test
@@ -137,4 +161,4 @@ nogit="$(mktemp -d)"
 nocommit="$(make_project)"
 ( cd "$nocommit"; out="$("$TOOL" pre "$scratch/nc" 2>&1)"; assert_contains "$out" "skipped" ); rm -rf "$nocommit"
 
-echo "gate-snapshot: ok (clean pass, .tickets/ ignored, commit/branch/ref/tag/untracked/deleted/edited/staged/audit-log each named, incident reproduced, sibling and linked worktrees, tracked .tickets/.claude, subdirectory project, unmerged stash, no-git warns)"
+echo "gate-snapshot: ok (clean pass, .tickets/ ignored, Windows path spellings (t-8120), commit/branch/ref/tag/untracked/deleted/edited/staged/audit-log each named, incident reproduced, sibling and linked worktrees, tracked .tickets/.claude, subdirectory project, unmerged stash, no-git warns)"
