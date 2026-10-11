@@ -14,7 +14,7 @@ Any change to `app.html` or `static/` requires Playwright verification — not j
 - Test file: `tests/sprint-check-app.spec.js`
 - Ticket card selector: `.card`; create button: `#btn-create`
 - `npm test` (bash suite) covers non-UI regressions; both must pass before `sprint complete`
-- Cockpit UI changes (`app.html`, `cockpit.html`, the daemon page): also run the spec with `--browser=webkit` before `sprint complete` — Safari differs (e.g. it reports the shell as `event.source` for a board's message, t-67ab). Stub a daemon on a normal port (`FAKE_DAEMON_ADDR`): WebKit refuses restricted ports like 1 before a route can fulfil them (t-df8e).
+- Cockpit UI changes (`app.html` and `static/`, `cockpit.html`, the daemon page): also run the spec with `--browser=webkit` before `sprint complete` — Safari differs (e.g. it reports the shell as `event.source` for a board's message, t-67ab). Stub a daemon on a normal port (`FAKE_DAEMON_ADDR`): WebKit refuses restricted ports like 1 before a route can fulfil them (t-df8e).
 
 ## Writing board tests that hold under load
 
@@ -43,7 +43,7 @@ Put a badge's initial hidden state in an inline `style="display:none"` HTML attr
 
 ## Drop Gates
 
-Client-side drop gates in `app.html` depend on server-computed fields from `server.py`. When writing acceptance criteria for a gate, name the exact server field — not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is testable; "blocked when acceptance has unchecked items" is ambiguous and can mask a wrong field being used (see t-0b5c).
+Client-side drop gates in the board's scripts (`static/board-*.js`) depend on server-computed fields from `server.py`. When writing acceptance criteria for a gate, name the exact server field — not just the user-visible behavior. "Blocked when `acceptance_unchecked` is true" is testable; "blocked when acceptance has unchecked items" is ambiguous and can mask a wrong field being used (see t-0b5c).
 
 ## Stubbing external binaries in tests
 
@@ -59,10 +59,11 @@ Grep for an id prefix before using it — the cockpit rail already owns `ck-tc-*
 
 ## Architecture
 
-`app.html` (markup and the main script) plus `static/` (CSS and ES modules), served by a Python stdlib HTTP server (`server.py`) and the Go board, both at `GET /static/<name>` (flat lowercase `.css`/`.js` names only). No build step. The split out of `app.html` is in progress (`t-9b2d`):
+`app.html` (markup only) plus `static/` (CSS and scripts), served by a Python stdlib HTTP server (`server.py`) and the Go board, both at `GET /static/<name>` (flat lowercase `.css`/`.js` names only). No build step. The split out of `app.html` is in progress (`t-9b2d`, `t-c58e`):
 - CSS lives in `static/board-*.css`, linked in cascade order; edit the file for the section, never add a `<style>` back.
-- The main script is not a module yet. A moved module's exports reach it through the `<script type="module">` bridge at the end of `app.html`, which loads after the main script has run, so only code called on user events may move behind it.
-- Grep tests read `board_sources` (`tests/helpers.sh`), not `app.html` alone; a unit test imports a module directly (`tests/sprint-check-editor.js`).
+- The main script is eleven classic scripts, `static/board-{core,helpers,render,modal,docs,cockpit,cockpit-rail,worktree,panels,create,ui}.js`, loaded in that order (`t-c58e`). They share one global scope, like the old single script, so a function or top-level `let` in one is visible in the others at call time. Hoisting does not cross files: code that runs while a file loads (top-level listeners, IIFEs, `const x = f()`) may only call functions from its own or an earlier file. Each file starts with its own `'use strict';`. Put new code in the file for its section; never add an inline `<script>` back.
+- The scripts are not modules yet. `static/editor.js` is one, and its exports reach them through the `<script type="module">` bridge at the end of `app.html`, which loads after the classic scripts have run, so only code called on user events may move behind it.
+- Grep tests read `board_sources` (`tests/helpers.sh`), not `app.html` alone. Node unit tests load the board's real functions through `tests/board-script.js` (page order, one vm sandbox) or import a module directly (`tests/sprint-check-editor.js`).
 
 `server.py` exposes:
 - `GET /api/tickets` — all tickets except `archived`; add `?all=1` to include archived

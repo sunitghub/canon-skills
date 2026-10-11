@@ -1,29 +1,13 @@
 #!/usr/bin/env node
 // sprint-check-status-badge — unit coverage for the cockpit ticket-status badge
 // mapping (t-bc04). Loads the REAL statusBadgeInfo out of
-// tools/sprint-check-app/app.html into a vm sandbox and asserts each ticket
+// the board's scripts (tests/board-script.js) into a vm sandbox and asserts each ticket
 // status maps to the right label + board-column color class. Robust across the
 // open/in_progress/closed/cancelled statuses without driving the board UI (the
 // rendered integration is covered by the Playwright cockpit test).
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const { loadBoard } = require('./board-script');
 
-const APP = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'app.html');
-const html = fs.readFileSync(APP, 'utf8');
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-
-const noop = new Proxy({}, { get: () => () => noop, set: () => true });
-const sandbox = {
-  document: { getElementById: () => noop, querySelector: () => noop, querySelectorAll: () => [], addEventListener: () => {}, body: noop, documentElement: noop, createElement: () => noop },
-  navigator: { platform: '' }, location: { href: '', search: '' },
-  localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-  fetch: () => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
-  setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {}, console,
-};
-sandbox.window = sandbox; sandbox.globalThis = sandbox;
-const ctx = vm.createContext(sandbox);
-for (const s of scripts) { try { vm.runInContext(s, ctx, { timeout: 5000 }); } catch (_) { /* hoisted fns still bound */ } }
+const ctx = loadBoard();
 
 const { statusBadgeInfo } = ctx;
 let fails = 0;
@@ -32,7 +16,7 @@ function ok(name, cond, detail) {
   else { fails++; console.log('  FAIL ' + name + (detail != null ? '  => ' + JSON.stringify(detail) : '')); }
 }
 
-ok('statusBadgeInfo loaded from app.html', typeof statusBadgeInfo === 'function');
+ok('statusBadgeInfo loaded from the board scripts', typeof statusBadgeInfo === 'function');
 
 const cases = [
   ['open', 'open', 'st-open'],

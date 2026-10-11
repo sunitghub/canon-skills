@@ -1,32 +1,14 @@
 #!/usr/bin/env node
 // sprint-check-gherkin — unit coverage for the Gherkin acceptance validator (t-6e32).
 //
-// Loads the REAL functions out of tools/sprint-check-app/app.html into a vm
+// Loads the REAL functions out of the board's scripts (tests/board-script.js) into a vm
 // sandbox (not a copy) and asserts validateGherkinBlocks flags every malformed
 // branch and passes well-formed / non-gherkin input. This is the committed
 // regression guard behind acceptance.md's C5/T4 — each of the four error
 // branches has its own case, so breaking any one branch fails the suite.
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const { loadBoard } = require('./board-script');
 
-const APP = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'app.html');
-const html = fs.readFileSync(APP, 'utf8');
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-
-// Lenient DOM stubs — function declarations are hoisted, so validateGherkinBlocks
-// is defined even if some later top-level init statement touches the DOM and throws.
-const noop = new Proxy({}, { get: () => () => noop, set: () => true });
-const sandbox = {
-  document: { getElementById: () => noop, querySelector: () => noop, querySelectorAll: () => [], addEventListener: () => {}, body: noop, documentElement: noop, createElement: () => noop },
-  navigator: { platform: '' }, location: { href: '', search: '' },
-  localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-  fetch: () => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
-  setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {}, console,
-};
-sandbox.window = sandbox; sandbox.globalThis = sandbox;
-const ctx = vm.createContext(sandbox);
-for (const s of scripts) { try { vm.runInContext(s, ctx, { timeout: 5000 }); } catch (_) { /* hoisted fns still bound */ } }
+const ctx = loadBoard();
 
 const { validateGherkinBlocks } = ctx;
 let fails = 0;
@@ -35,7 +17,7 @@ function ok(name, cond, detail) {
   else { fails++; console.log('  FAIL ' + name + (detail != null ? '  => ' + JSON.stringify(detail) : '')); }
 }
 
-ok('validateGherkinBlocks is loaded from app.html', typeof validateGherkinBlocks === 'function');
+ok('validateGherkinBlocks is loaded from the board scripts', typeof validateGherkinBlocks === 'function');
 
 const valid = [
   '```gherkin',
@@ -73,7 +55,7 @@ ok('block with no Scenario is blocked',
 
 // ── Structured runner field on ```gherkin-file references (t-6f8e) ──────────
 const { parseFeatureRefBody, renderFeatureRefPlaceholder, renderRunnerLabel } = ctx;
-ok('parseFeatureRefBody is loaded from app.html', typeof parseFeatureRefBody === 'function');
+ok('parseFeatureRefBody is loaded from the board scripts', typeof parseFeatureRefBody === 'function');
 
 // parseFeatureRefBody — path + runner, path-only, runner-only, order-independent.
 const pr = parseFeatureRefBody('features/discount.feature\nrunner: python dsl_runner.py');

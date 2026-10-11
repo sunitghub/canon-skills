@@ -1,16 +1,17 @@
 #!/usr/bin/env node
-// sprint-check-api-scoping (t-3c65) — every /api/ path app.html fetches must be
+// sprint-check-api-scoping (t-3c65) — every /api/ path the board fetches must be
 // Cockpit-scoped (matches the fetch wrapper's READ_RE or WRITE_RE) or sit on the
 // explicit UNSCOPED list below. A route missing from both silently hits the board's
 // DEFAULT project inside a Cockpit tab (t-d254: ticket-commit/ did, live-caught).
-// READ_RE/WRITE_RE are read out of app.html itself, never copied here. A path counts
+// READ_RE/WRITE_RE are read out of the board's own code, never copied here. A path counts
 // as scoped if it matches either regex; the HTTP method is not checked.
 // SPRINT_CHECK_APP_HTML overrides the file under test (revert checks on a scratch copy).
 const fs = require('fs');
-const path = require('path');
+const { APP_HTML, boardScripts } = require('./board-script');
 
-const APP = process.env.SPRINT_CHECK_APP_HTML || path.join(__dirname, '..', 'tools', 'sprint-check-app', 'app.html');
-const html = fs.readFileSync(APP, 'utf8');
+const APP = process.env.SPRINT_CHECK_APP_HTML || APP_HTML;
+// t-c58e: the markup plus every board script (inline or under static/), so a path moved out of app.html still counts.
+const html = [fs.readFileSync(APP, 'utf8'), ...boardScripts(APP).map((s) => s.source)].join('\n');
 
 // Unscoped by design: path (after ${...} -> X) -> why it must NOT carry ?project.
 // A key matches the path exactly or as a `<key>/...` prefix.
@@ -30,7 +31,7 @@ const fail = (msg) => { console.error('FAIL: ' + msg); fails++; };
 
 const regexFor = (name) => {
   const m = html.match(new RegExp('const ' + name + ' = (/.*/);'));
-  if (!m) { fail(name + ' not found in app.html'); return null; }
+  if (!m) { fail(name + ' not found in the board code'); return null; }
   return new Function('return ' + m[1])();
 };
 const READ_RE = regexFor('READ_RE');
@@ -53,7 +54,7 @@ if (READ_RE && WRITE_RE) {
     if (!Object.keys(UNSCOPED).some((k) => covers(k, p)) && !scoped(p)) fail(p + ' is neither in READ_RE/WRITE_RE nor UNSCOPED — a Cockpit tab would hit the default project');
   }
   for (const p of Object.keys(UNSCOPED)) {
-    if (![...paths].some((q) => covers(p, q))) fail('UNSCOPED entry ' + p + ' is no longer referenced by app.html — remove it');
+    if (![...paths].some((q) => covers(p, q))) fail('UNSCOPED entry ' + p + ' is no longer referenced by the board code — remove it');
     if ([...paths].some((q) => covers(p, q) && scoped(q))) fail('UNSCOPED entry ' + p + ' also matches READ_RE/WRITE_RE — it is scoped, not unscoped');
   }
 }

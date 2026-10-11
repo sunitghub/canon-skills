@@ -303,9 +303,9 @@ PY
 }
 
 # Trigger paths: both body write sites in the client must send base_hash for a bound ticket.
-writes="$(grep -n 'postWrite(`/api/ticket/${[a-zA-Z.]*}/body`' "$ROOT/tools/sprint-check-app/app.html" || true)"
-[[ "$(grep -c . <<<"$writes")" -eq 2 ]] || fail "expected exactly 2 body write sites in app.html, got: $writes"
-[[ -z "$(grep -v base_hash <<<"$writes")" ]] || fail "a body write site in app.html sends no base_hash: $(grep -v base_hash <<<"$writes")"
+writes="$(board_sources "$ROOT" | grep -n 'postWrite(`/api/ticket/${[a-zA-Z.]*}/body`' || true)"
+[[ "$(grep -c . <<<"$writes")" -eq 2 ]] || fail "expected exactly 2 body write sites in the board, got: $writes"
+[[ -z "$(grep -v base_hash <<<"$writes")" ]] || fail "a body write site in the board sends no base_hash: $(grep -v base_hash <<<"$writes")"
 
 run_checks py server.py
 if [[ -n "$GO_BIN" ]]; then

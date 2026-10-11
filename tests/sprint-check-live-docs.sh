@@ -329,9 +329,9 @@ PY
 # are exactly two direct `postWrite(`/api/doc…` sites (the guarded read-modify-write helper and the editor save, which a
 # ghost's first Save also uses with base_hash 'absent', t-bb97); the checkbox toggle, the Sign-off controls and the Gate
 # model all write through the helper.
-writes="$(grep -n 'postWrite(`/api/doc' "$ROOT/tools/sprint-check-app/app.html" || true)"
-[[ "$(grep -c . <<<"$writes")" -eq 2 ]] || fail "expected exactly 2 direct doc write sites in app.html, got: $writes"
-[[ -z "$(grep -v base_hash <<<"$writes")" ]] || fail "a doc write site in app.html sends no base_hash: $(grep -v base_hash <<<"$writes")"
+writes="$(board_sources "$ROOT" | grep -n 'postWrite(`/api/doc' || true)"
+[[ "$(grep -c . <<<"$writes")" -eq 2 ]] || fail "expected exactly 2 direct doc write sites in the board, got: $writes"
+[[ -z "$(grep -v base_hash <<<"$writes")" ]] || fail "a doc write site in the board sends no base_hash: $(grep -v base_hash <<<"$writes")"
 
 run_checks py server.py
 if [[ -n "$GO_BIN" ]]; then

@@ -1,29 +1,13 @@
 #!/usr/bin/env node
 // sprint-check-handoff-state — unit coverage for the cockpit STATUS panel's
 // HANDOFF state resolution (t-8ff0). Loads the REAL handoffDisplayState /
-// findHandoffStateForTicket / sectionContent out of tools/sprint-check-app/app.html
+// findHandoffStateForTicket / sectionContent out of the board's scripts (tests/board-script.js)
 // into a vm sandbox (not a copy) and asserts the id-matched In-Progress bullet is
 // preferred, that Current Focus is the honest fallback (active sprint OR id named),
 // that an unrelated ticket's focus is never shown, and that neither → the hint state.
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const { loadBoard } = require('./board-script');
 
-const APP = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'app.html');
-const html = fs.readFileSync(APP, 'utf8');
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-
-const noop = new Proxy({}, { get: () => () => noop, set: () => true });
-const sandbox = {
-  document: { getElementById: () => noop, querySelector: () => noop, querySelectorAll: () => [], addEventListener: () => {}, body: noop, documentElement: noop, createElement: () => noop },
-  navigator: { platform: '' }, location: { href: '', search: '' },
-  localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-  fetch: () => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
-  setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {}, console,
-};
-sandbox.window = sandbox; sandbox.globalThis = sandbox;
-const ctx = vm.createContext(sandbox);
-for (const s of scripts) { try { vm.runInContext(s, ctx, { timeout: 5000 }); } catch (_) { /* hoisted fns still bound */ } }
+const ctx = loadBoard();
 
 const { handoffDisplayState, findHandoffStateForTicket, sectionContent, handoffNextSteps } = ctx;
 let fails = 0;
@@ -32,7 +16,7 @@ function ok(name, cond, detail) {
   else { fails++; console.log('  FAIL ' + name + (detail != null ? '  => ' + JSON.stringify(detail) : '')); }
 }
 
-ok('helpers loaded from app.html',
+ok('helpers loaded from the board scripts',
   typeof handoffDisplayState === 'function' && typeof findHandoffStateForTicket === 'function' && typeof sectionContent === 'function');
 
 // The exact live case (t-8ff0): id in Current Focus, generic In-Progress bullets.
@@ -98,7 +82,7 @@ const { formatStateAsParagraphs } = ctx;
 }
 
 // t-6ecc: handoffNextSteps — the actionable "## Next Steps" surfaced in STATUS.
-ok('handoffNextSteps loaded from app.html', typeof handoffNextSteps === 'function');
+ok('handoffNextSteps loaded from the board scripts', typeof handoffNextSteps === 'function');
 const WITH_STEPS = [
   '## Current Focus', 'Building the ToDo app', '',
   '## In Progress', '- generic', '',

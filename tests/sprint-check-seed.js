@@ -2,28 +2,12 @@
 // sprint-check-seed — unit coverage for the Test Plan runner-placeholder seeding (t-321a).
 //
 // Loads the REAL hasGherkinScenario / seedTestPlanRunnerPlaceholder out of
-// tools/sprint-check-app/app.html into a vm sandbox (not a copy) and asserts the board seeds a Test
+// the board's scripts (tests/board-script.js) into a vm sandbox (not a copy) and asserts the board seeds a Test
 // Plan placeholder when an Acceptance doc has a Gherkin scenario, never clobbers a real command, is
 // idempotent, and does nothing without a scenario.
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const { loadBoard } = require('./board-script');
 
-const APP = path.join(__dirname, '..', 'tools', 'sprint-check-app', 'app.html');
-const html = fs.readFileSync(APP, 'utf8');
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
-
-const noop = new Proxy({}, { get: () => () => noop, set: () => true });
-const sandbox = {
-  document: { getElementById: () => noop, querySelector: () => noop, querySelectorAll: () => [], addEventListener: () => {}, body: noop, documentElement: noop, createElement: () => noop },
-  navigator: { platform: '' }, location: { href: '', search: '' },
-  localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
-  fetch: () => Promise.resolve({ ok: false, json: () => Promise.resolve({}) }),
-  setTimeout: () => 0, clearTimeout: () => {}, setInterval: () => 0, clearInterval: () => {}, console,
-};
-sandbox.window = sandbox; sandbox.globalThis = sandbox;
-const ctx = vm.createContext(sandbox);
-for (const s of scripts) { try { vm.runInContext(s, ctx, { timeout: 5000 }); } catch (_) { /* hoisted fns still bound */ } }
+const ctx = loadBoard();
 
 const { hasGherkinScenario, seedTestPlanRunnerPlaceholder, criteriaCursorOffset } = ctx;
 const TEST_PLAN_RUNNER_PLACEHOLDER = '- [ ] <the agent writes the runner command here after building the runner>';
@@ -34,7 +18,7 @@ function ok(name, cond, detail) {
 }
 const countPlaceholder = (s) => s.split(TEST_PLAN_RUNNER_PLACEHOLDER).length - 1;
 
-ok('helpers loaded from app.html',
+ok('helpers loaded from the board scripts',
   typeof hasGherkinScenario === 'function' && typeof seedTestPlanRunnerPlaceholder === 'function');
 
 ok('detects a fenced gherkin scenario', hasGherkinScenario('x\n```gherkin\nScenario: s\n  Given a\n```'));
