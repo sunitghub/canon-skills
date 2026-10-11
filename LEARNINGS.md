@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-10-2026 18:23
+learnings-sweep last run: 10-11-2026 04:34
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-11 | [t-c58e](.tickets/t-c58e/learnings.md) | Research for moving code out of a file swept only `tests/` for readers of it and missed a Go contract test in `tools/cockpit-daemon/` that grepped the moved handler; the stamped `scripts/test.sh` after the move caught it, so sweep every reader repo-wide (`git grep` the file name, all languages) before a move. | UNPROMOTED |
 | 2026-10-10 | [t-9b2d](.tickets/t-9b2d/learnings.md) | A full board spec run on a loaded machine produced 33 unlisted timeouts that tracked run duration (790 s normal vs up to 2,645 s), not the change: compare per-run durations first, then attribute by alternating base and branch on just the suspects in a quiet window, and run a baseline-listed test whose branch count rose in isolation on both sides (t-6a05: 9/10 each) before calling it unrelated. | UNPROMOTED |
 | 2026-10-10 | [t-1cfc](.tickets/t-1cfc/learnings.md) | A test that writes under its own root (settings.json, `.git/hooks`) mutates the checkout it runs in and fails in a linked worktree, where `.git` is a file: run it on a scratch copy of the working tree and plant a canary (a real-looking hook, a non-trivial settings.json) to prove the checkout survives; and a new test that runs git in a temp dir must itself drop `GIT_DIR`/`GIT_INDEX_FILE` and pin git config, because an old pre-commit hook still hands them to every suite (the reviewer reproduced it). A `| grep -q … && fail` guard under pipefail was silent half the time (stress: 19 of 100 caught): measure a guard with a stress loop, not one run. | UNPROMOTED |
 | 2026-10-10 | [t-ce0b](.tickets/t-ce0b/learnings.md) | A hook-wide cleanup of git's environment would have broken the hook's own checks (`commit -a` stages into a temporary index only the hook's `GIT_INDEX_FILE` points at): clean only the child you start, and test it through a real linked-worktree commit with each variable kept alone, because `GIT_DIR` is exported only from a linked worktree and `GIT_WORK_TREE` only if the caller set it; a doc-lock test that matches only nouns passes a flipped rule, so also lock the verb and condition. | UNPROMOTED |
