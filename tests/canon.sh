@@ -70,11 +70,22 @@ grep -q "/api/project-stats?project=" <<<"$page" || fail "canon: /cockpit card s
 
 # app.html (the embedded board) must carry the project-scoping fetch wrapper
 board="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/?project=x")"
-# t-9b2d: the board's CSS and JS live under /static/; read them through the same server.
-for asset in $(grep -oE '/static/[a-z0-9-]+\.(css|js)' <<<"$board" | sort -u); do
+# t-9b2d: the board's CSS and JS live under /static/; read them through the same server. t-1543: the page names only
+# its entry module, so follow each module's `from './x.js'` imports too, as the browser does.
+queue="$(grep -oE '/static/[a-z0-9-]+\.(css|js)' <<<"$board" | sort -u)"
+seen=" "
+while [[ -n "$queue" ]]; do
+  asset="${queue%%$'\n'*}"
+  if [[ "$queue" == *$'\n'* ]]; then queue="${queue#*$'\n'}"; else queue=""; fi
+  if [[ "$seen" == *" $asset "* ]]; then continue; fi
+  seen+="$asset "
   asset_body="$(curl -sf -H 'Host: localhost' "http://127.0.0.1:$PORT$asset")" || fail "canon: board asset $asset is not served"
   board+=$'\n'"$asset_body"
+  for dep in $(grep -oE "from '\./[a-z0-9-]+\.js'" <<<"$asset_body" | sed -E "s|from '\./(.*)'|/static/\1|" || true); do
+    queue+=$'\n'"$dep"; queue="${queue#$'\n'}"
+  done
 done
+[[ "$seen" == *" /static/board-core.js "* ]] || fail "canon: the board's module imports were not followed (no board-core.js)"
 grep -q "__canonProject" <<<"$board" || fail "canon: app.html missing the ?project fetch wrapper"
 grep -q "urlTheme" <<<"$board" || fail "canon: app.html does not honor shell-passed ?theme"
 grep -q "&theme=" <<<"$page" || fail "canon: project iframe src does not carry the shell theme"
