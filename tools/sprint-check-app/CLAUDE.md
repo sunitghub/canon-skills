@@ -61,11 +61,13 @@ Grep for an id prefix before using it — the cockpit rail already owns `ck-tc-*
 
 ## Architecture
 
-`app.html` (markup only) plus `static/` (CSS and scripts), served by a Python stdlib HTTP server (`server.py`) and the Go board, both at `GET /static/<name>` (flat lowercase `.css`/`.js` names only). No build step. The split out of `app.html` is in progress (`t-9b2d`, `t-c58e`):
+`app.html` (markup only) plus `static/` (CSS and scripts), served by a Python stdlib HTTP server (`server.py`) and the Go board, both at `GET /static/<name>` (flat lowercase `.css`/`.js` names only). No build step (`t-9b2d`, `t-c58e`, `t-1543`):
 - CSS lives in `static/board-*.css`, linked in cascade order; edit the file for the section, never add a `<style>` back.
-- The main script is eleven classic scripts, `static/board-{core,helpers,render,modal,docs,cockpit,cockpit-rail,worktree,panels,create,ui}.js`, loaded in that order (`t-c58e`). They share one global scope, like the old single script, so a function or top-level `let` in one is visible in the others at call time. Hoisting does not cross files: code that runs while a file loads (top-level listeners, IIFEs, `const x = f()`) may only call functions from its own or an earlier file. Each file starts with its own `'use strict';`. Put new code in the file for its section; never add an inline `<script>` back.
-- The scripts are not modules yet. `static/editor.js` is one, and its exports reach them through the `<script type="module">` bridge at the end of `app.html`, which loads after the classic scripts have run, so only code called on user events may move behind it.
-- Grep tests read `board_sources` (`tests/helpers.sh`), not `app.html` alone. Node unit tests load the board's real functions through `tests/board-script.js` (page order, one vm sandbox) or import a module directly (`tests/sprint-check-editor.js`).
+- The script is native ES modules. `app.html` loads only `static/board-main.js`; never add another `<script>` or a `window` bridge. The board's code is `static/board-{core,helpers,render,modal,docs,cockpit,cockpit-rail,worktree,panels,create,ui}.js` plus `static/editor.js`. Put new code in the module for its section and `import` what it uses from the others (`./board-x.js`).
+- A module only declares: no top-level statement runs at load, because an import cycle evaluates files out of order and would read another file's `let`/`const` before it exists. Load-time code (listeners, boot calls) goes in that file's exported `init<File>()`, which `board-main.js` calls in the order above.
+- An importer cannot assign an imported binding. A `let` other files change gets a function in its own module (`stopCockpitPoll()`, `nextPasteVisualIndex()`).
+- Nothing is a global any more. Playwright reaches board code with `await import('/static/board-<x>.js')` inside `page.evaluate` (the page's own module instance), never `window.<name>`; read a reassigned `let` through the namespace (`(await import(...)).cockpitState`) so it stays live.
+- Grep tests read `board_sources` (`tests/helpers.sh`), not `app.html` alone. Node unit tests load the board's exports through `tests/board-script.js` (Node `require()` of the modules, stub globals, Node 22.12+) or import a module directly (`tests/sprint-check-editor.js`). `static/package.json` marks the folder as ES modules for Node; the boards never serve it.
 
 `server.py` exposes:
 - `GET /api/tickets` — all tickets except `archived`; add `?all=1` to include archived

@@ -9,6 +9,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Changed
 - The board's CSS and the doc editor's key handling load from `tools/sprint-check-app/static/` (`GET /static/<name>`, both servers, no build step); `app.html` is 2,000 lines shorter (`t-9b2d`).
 - The board's main script loads from eleven `static/board-*.js` files instead of one inline script in `app.html`, which is now markup only (615 lines, from 6,808). Nothing changes on screen; a page load makes 11 more same-origin requests (`t-c58e`).
+- Those eleven files are now ES modules loaded by one entry, `static/board-main.js`, and the board no longer puts its functions on `window`. Nothing changes on screen. The board's Node tests need Node 22.12 or later (they `require()` the modules) (`t-1543`).
 - docs/setup.md explains how `canon update` works: the two tracks, what it does for each kind of install, and every refusal (`t-153f`).
 
 ### Fixed
