@@ -32,7 +32,7 @@ Limit scope to the relevant subsystem.
 
 For each file marked for modification in `plan.md`:
 - What does it import?
-- What imports it? (grep for the filename or exported symbols)
+- What reads it? Run an unrestricted `git grep -n` of the file name and of every moved or changed symbol over the whole repo, with no path or type filter. Readers are not only importers: tests in other languages and scripts that grep its text or fetch it over HTTP read it too. List every hit and classify it; do not stop at the readers you expected.
 - Any shared types, constants, or schemas it exposes?
 
 ## Step 3 — Flag non-obvious relationships
@@ -91,7 +91,7 @@ subsystem traced.
 Spawn one Explore subagent per subsystem in a single message (parallel). Each subagent receives:
 - The subsystem name
 - Its known entry point(s) from `plan.md`
-- Instruction: survey entry points, trace imports and callers, flag non-obvious relationships, list every relevant file with a `file:line — \`quoted text\`` citation. Read only — return findings as text; do not write files (the `Explore` agent type has no `Write` tool).
+- Instruction: survey entry points, trace imports, callers and every other reader (a repo-wide `git grep` of the file name), flag non-obvious relationships, list every relevant file with a `file:line — \`quoted text\`` citation. Read only — return findings as text; do not write files (the `Explore` agent type has no `Write` tool).
 
 After each subagent returns, write its findings verbatim to `.tickets/<id>/research-<subsystem>.md`.
 

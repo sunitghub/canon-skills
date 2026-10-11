@@ -37,6 +37,19 @@
         "Runs the high-risk pipeline (orient / grill / impact analysis) rather than the light normal-tier path",
         "Requires mitigation tests for high risks and waits for approval before writing code"
       ]
+    },
+    {
+      "id": "research-lists-every-reader",
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "A user says: \"sprint start: move the board's inline <script> out of tools/sprint-check-app/app.html into a new tools/sprint-check-app/static/board.js.\" It touches every board user, so it is high-risk and runs the orient (research) step. No source file imports app.html. A repo-wide `git grep -n app.html` (no path filter) prints:\n  tools/sprint-check-app/server.py:41: APP_HTML = HERE / 'app.html'\n  tools/sprint-check-go/main.go:130: appHTML = resolveAppHTML(toolsDir, projectRoot, cwd)\n  tools/cockpit-daemon/main_test.go:5301: src, _ := os.ReadFile(filepath.Join(app, \"app.html\")) // asserts the save-refused handler is in the board's script\n  tests/canon.sh:72: board=\"$(curl -s \"http://127.0.0.1:$PORT/?project=x\")\"  # then greps the page for __canonProject and urlTheme\n  tests/board-spec.js:12: const html = fs.readFileSync(APP_HTML, 'utf8')\n  docs/sprint-check.md:20: The board is a single page, app.html, served by server.py.\nWalk through the research for this move: which of these readers must change with it, and how does the research find them?",
+      "expected_output": "Treats every hit of the unrestricted grep as a reader to classify, not only importers or files under tests/. Names the Go test (tools/cockpit-daemon/main_test.go reads app.html's text and would stop finding the handler) and tests/canon.sh (fetches the page over HTTP and greps only what the page names) as readers that must change with the move, alongside tests/board-spec.js; classifies the servers' app.html paths as still valid (the page stays) and the docs line as a wording check.",
+      "expectations": [
+        "Runs or relies on an unrestricted repo-wide grep of the file name (no path or type filter), not an import search or a tests/-only search",
+        "Names tools/cockpit-daemon/main_test.go as a reader that must change, because it reads app.html's text",
+        "Names tests/canon.sh as a reader that must change, because it reads the page over HTTP and greps its content",
+        "Classifies each listed hit (must change / still fine / doc wording) instead of dismissing the non-import ones"
+      ]
     }
   ]
 }
