@@ -6,8 +6,6 @@ import { activateDoc, modalState, refreshDocTree } from './board-modal.js';
 import { EDITOR_LINES_KEY, closeModal, docEditable, editorLinesOn, enterEditMode, exitEditMode, insertEditorSnippet, refreshEditorGutter } from './board-docs.js';
 import { PASTE_IMAGE_EXT, insertPlainText, nextPasteVisualIndex, readClipboardImages, uploadImageIntoEditor } from './board-panels.js';
 
-// ── Keyboard ──────────────────────────────────────────────────────────────
-
 // ── Util ──────────────────────────────────────────────────────────────────
 
 export function setText(id, val) {
@@ -15,18 +13,10 @@ export function setText(id, val) {
   if (el) el.textContent = String(val ?? '');
 }
 
-// ── Sidebar collapse + resize ─────────────────────────────────────────────
-
-// ── Board search ─────────────────────────────────────────────────────────
-
-// ── Tour panel ────────────────────────────────────────────────────────────
-
-// ── Theme toggle ──────────────────────────────────────────────────────────
-
-// ── Boot ──────────────────────────────────────────────────────────────────
-
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
 export function initUi() {
+  // ── Keyboard ──────────────────────────────────────────────────────────────
+
   document.addEventListener('keydown', e => {
     const open = document.getElementById('modal-overlay').classList.contains('open');
     if (!open) return;
@@ -148,6 +138,8 @@ export function initUi() {
     handleMarkdownEnter(e, e.currentTarget);
   });
 
+  // ── Sidebar collapse + resize ─────────────────────────────────────────────
+
   (function initSidebar() {
     const sidebar      = document.getElementById('sidebar');
     const toggle       = document.getElementById('sidebar-toggle');
@@ -225,6 +217,8 @@ export function initUi() {
 
     applyState(false);
   })();
+
+  // ── Board search ─────────────────────────────────────────────────────────
 
   (function initBoardSearch() {
     const input = document.getElementById('board-search');
@@ -437,6 +431,8 @@ export function initUi() {
     startTips();
   })();
 
+  // ── Tour panel ────────────────────────────────────────────────────────────
+
   (function initTour() {
     const overlay = document.getElementById('tour-overlay');
     const open  = () => overlay.classList.add('open');
@@ -446,6 +442,8 @@ export function initUi() {
     overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && overlay.classList.contains('open')) close(); });
   })();
+
+  // ── Theme toggle ──────────────────────────────────────────────────────────
 
   (function initTheme() {
     const btn  = document.getElementById('theme-toggle');
@@ -495,6 +493,8 @@ export function initUi() {
       showToast('⚠ Could not reach the server to set up CI', 'block');
     }
   });
+
+  // ── Boot ──────────────────────────────────────────────────────────────────
 
   loadData();
   fetchVersion();

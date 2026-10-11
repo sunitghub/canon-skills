@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // sprint-check-handoff-state — unit coverage for the cockpit STATUS panel's
 // HANDOFF state resolution (t-8ff0). Loads the REAL handoffDisplayState /
-// findHandoffStateForTicket / sectionContent out of the board's scripts (tests/board-script.js)
-// (not a copy) and asserts the id-matched In-Progress bullet is
+// findHandoffStateForTicket / sectionContent out of the board's scripts (tests/board-script.js,
+// not a copy) and asserts the id-matched In-Progress bullet is
 // preferred, that Current Focus is the honest fallback (active sprint OR id named),
 // that an unrelated ticket's focus is never shown, and that neither → the hint state.
 const { loadBoard } = require('./board-script');
