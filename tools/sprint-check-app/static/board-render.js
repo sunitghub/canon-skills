@@ -678,15 +678,6 @@ function showConfirmToast(msg, onConfirm) {
   el.className = 'confirm show';
   _toastTimer = setTimeout(() => { el.classList.remove('show'); _pendingConfirm = null; }, 4000);
 }
-document.getElementById('drop-toast')?.addEventListener('click', e => {
-  if (e.target.matches('.toast-confirm') && _pendingConfirm) {
-    const fn = _pendingConfirm;
-    _pendingConfirm = null;
-    clearTimeout(_toastTimer);
-    document.getElementById('drop-toast').classList.remove('show');
-    fn();
-  }
-});
 
 // Small inline icons shared by board surfaces (t-7723); strokes take the surrounding text color.
 const ICO = {
@@ -895,4 +886,17 @@ function openScratch(id) {
   if (!SCRATCH_ID.test(id)) return;
   if (!state.scratch.has(id)) state.scratch.set(id, { id, title: 'Scratch session', status: 'scratch', scratch: true, docs: [] });
   openCockpit(id);
+}
+
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+function initRender() {
+  document.getElementById('drop-toast')?.addEventListener('click', e => {
+    if (e.target.matches('.toast-confirm') && _pendingConfirm) {
+      const fn = _pendingConfirm;
+      _pendingConfirm = null;
+      clearTimeout(_toastTimer);
+      document.getElementById('drop-toast').classList.remove('show');
+      fn();
+    }
+  });
 }

@@ -90,11 +90,6 @@ function closeCommitPanel() {
   document.getElementById('commit-overlay').classList.remove('open');
 }
 
-document.getElementById('commit-close').addEventListener('click', closeCommitPanel);
-document.getElementById('commit-overlay').addEventListener('click', e => {
-  if (e.target === e.currentTarget) closeCommitPanel();
-});
-
 function resetPanelDrag(panel) {
   if (!panel) return;
   panel.dataset.dragX = '0';
@@ -225,12 +220,6 @@ function makePanelResizable(panelId) {
   });
 }
 
-makePanelDraggable('modal');
-makePanelDraggable('commit-panel');
-makePanelDraggable('create-modal');
-makePanelResizable('modal');
-makePanelResizable('create-modal');
-
 // ── Inline checkbox toggle ────────────────────────────────────────────────
 
 function tagCheckboxes(el) {
@@ -266,41 +255,6 @@ async function toggleCheckbox(docFile, checkIdx) {
   }, 'update that checkbox');
   return !!res.ok;
 }
-
-// Delegated handler — fires once, lives on #m-body permanently
-document.getElementById('m-body').addEventListener('click', async e => {
-  if (modalState.editMode) return;
-  const bullet = e.target.closest('.doc-bullet[data-check-idx]');
-  if (!bullet || !modalState.activeDoc) return;
-  const currentTicket = state.tickets.find(tk => tk.id === state.selectedId);
-  if (!currentTicket || currentTicket.status === 'closed' || currentTicket.status === 'cancelled') return;
-  e.stopPropagation();
-
-  const idx = Number(bullet.dataset.checkIdx);
-  const marker = bullet.querySelector('.doc-check-marker');
-  const wasOpen = bullet.classList.contains('doc-check-open');
-
-  // Optimistic UI update
-  bullet.classList.add('toggling');
-  bullet.classList.toggle('doc-check-open', !wasOpen);
-  if (marker) { marker.classList.toggle('open', !wasOpen); marker.textContent = wasOpen ? '✓' : ''; }
-
-  const saved = await toggleCheckbox(modalState.activeDoc, idx);
-  bullet.classList.remove('toggling');
-  if (!saved) { // t-1940: revert the optimistic flip
-    bullet.classList.toggle('doc-check-open', wasOpen);
-    if (marker) { marker.classList.toggle('open', wasOpen); marker.textContent = wasOpen ? '' : '✓'; }
-  }
-
-  // Re-sync tickets so readiness indicators update on the board
-  try {
-    const tr = await fetch('/api/tickets');
-    if (tr.ok) { state.tickets = await tr.json(); renderBoard(); }
-  } catch {}
-  // Re-render the modal body to reflect the saved state
-  const t = state.tickets.find(tk => tk.id === state.selectedId);
-  if (t) renderModalBody(t);
-});
 
 // ── Clipboard image paste (t-626d) ─────────────────────────────────────────
 // Lands pasted images in .tickets/<id>/visuals/, the same convention `sprint
@@ -368,4 +322,53 @@ async function uploadVisual(ticketId, filename, base64) {
   } catch {
     return { ok: false };
   }
+}
+
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+function initPanels() {
+  document.getElementById('commit-close').addEventListener('click', closeCommitPanel);
+  document.getElementById('commit-overlay').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeCommitPanel();
+  });
+
+  makePanelDraggable('modal');
+  makePanelDraggable('commit-panel');
+  makePanelDraggable('create-modal');
+  makePanelResizable('modal');
+  makePanelResizable('create-modal');
+
+  // Delegated handler — fires once, lives on #m-body permanently
+  document.getElementById('m-body').addEventListener('click', async e => {
+    if (modalState.editMode) return;
+    const bullet = e.target.closest('.doc-bullet[data-check-idx]');
+    if (!bullet || !modalState.activeDoc) return;
+    const currentTicket = state.tickets.find(tk => tk.id === state.selectedId);
+    if (!currentTicket || currentTicket.status === 'closed' || currentTicket.status === 'cancelled') return;
+    e.stopPropagation();
+
+    const idx = Number(bullet.dataset.checkIdx);
+    const marker = bullet.querySelector('.doc-check-marker');
+    const wasOpen = bullet.classList.contains('doc-check-open');
+
+    // Optimistic UI update
+    bullet.classList.add('toggling');
+    bullet.classList.toggle('doc-check-open', !wasOpen);
+    if (marker) { marker.classList.toggle('open', !wasOpen); marker.textContent = wasOpen ? '✓' : ''; }
+
+    const saved = await toggleCheckbox(modalState.activeDoc, idx);
+    bullet.classList.remove('toggling');
+    if (!saved) { // t-1940: revert the optimistic flip
+      bullet.classList.toggle('doc-check-open', wasOpen);
+      if (marker) { marker.classList.toggle('open', wasOpen); marker.textContent = wasOpen ? '' : '✓'; }
+    }
+
+    // Re-sync tickets so readiness indicators update on the board
+    try {
+      const tr = await fetch('/api/tickets');
+      if (tr.ok) { state.tickets = await tr.json(); renderBoard(); }
+    } catch {}
+    // Re-render the modal body to reflect the saved state
+    const t = state.tickets.find(tk => tk.id === state.selectedId);
+    if (t) renderModalBody(t);
+  });
 }

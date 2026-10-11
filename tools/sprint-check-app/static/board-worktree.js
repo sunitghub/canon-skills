@@ -749,75 +749,78 @@ async function mountCockpitTerminal(t, cwd) {
   setTermMessage('');
 }
 
-// Accordion: each Acceptance/Test Plan section collapses independently.
-document.querySelectorAll('.ck-accordion-header[data-accordion]').forEach(header => {
-  header.addEventListener('click', () => {
-    document.getElementById(header.dataset.accordion).classList.toggle('collapsed');
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+function initWorktree() {
+  // Accordion: each Acceptance/Test Plan section collapses independently.
+  document.querySelectorAll('.ck-accordion-header[data-accordion]').forEach(header => {
+    header.addEventListener('click', () => {
+      document.getElementById(header.dataset.accordion).classList.toggle('collapsed');
+    });
   });
-});
 
-document.getElementById('ck-details').addEventListener('click', openCockpitDetails);
-document.getElementById('ck-back').addEventListener('click', closeCockpit);
-document.getElementById('ck-rail-toggle').addEventListener('click', () => {
-  const cockpit = document.getElementById('cockpit');
-  const rail = document.querySelector('#cockpit .ck-rail');
-  const collapsing = !cockpit.classList.contains('rail-collapsed');
-  // An inline width from a manual resize always beats the collapsed-state
-  // CSS rule (inline wins over any class selector) — stash it and restore
-  // on expand, or the rail would silently ignore the 44px collapse width.
-  if (collapsing) {
-    if (rail.style.width) rail.dataset.customWidth = rail.style.width;
-    rail.style.width = '';
-  } else if (rail.dataset.customWidth) {
-    rail.style.width = rail.dataset.customWidth;
-  }
-  cockpit.classList.toggle('rail-collapsed');
-});
+  document.getElementById('ck-details').addEventListener('click', openCockpitDetails);
+  document.getElementById('ck-back').addEventListener('click', closeCockpit);
+  document.getElementById('ck-rail-toggle').addEventListener('click', () => {
+    const cockpit = document.getElementById('cockpit');
+    const rail = document.querySelector('#cockpit .ck-rail');
+    const collapsing = !cockpit.classList.contains('rail-collapsed');
+    // An inline width from a manual resize always beats the collapsed-state
+    // CSS rule (inline wins over any class selector) — stash it and restore
+    // on expand, or the rail would silently ignore the 44px collapse width.
+    if (collapsing) {
+      if (rail.style.width) rail.dataset.customWidth = rail.style.width;
+      rail.style.width = '';
+    } else if (rail.dataset.customWidth) {
+      rail.style.width = rail.dataset.customWidth;
+    }
+    cockpit.classList.toggle('rail-collapsed');
+  });
 
-(function makeRailResizable() {
-  const rail = document.querySelector('#cockpit .ck-rail');
-  const resizeEl = document.getElementById('ck-rail-resize');
-  if (!rail || !resizeEl) return;
-  const MIN_W = 220, MAX_W = 520;
-  let resizing = false, startX = 0, startWidth = 0;
-  resizeEl.addEventListener('pointerdown', e => {
-    if (document.getElementById('cockpit').classList.contains('rail-collapsed')) return;
-    resizing = true;
-    startX = e.clientX;
-    startWidth = rail.getBoundingClientRect().width;
-    rail.style.transition = 'none'; // no lag trailing the pointer mid-drag
-    resizeEl.classList.add('resizing');
-    document.body.style.userSelect = 'none';
-    resizeEl.setPointerCapture(e.pointerId);
+  (function makeRailResizable() {
+    const rail = document.querySelector('#cockpit .ck-rail');
+    const resizeEl = document.getElementById('ck-rail-resize');
+    if (!rail || !resizeEl) return;
+    const MIN_W = 220, MAX_W = 520;
+    let resizing = false, startX = 0, startWidth = 0;
+    resizeEl.addEventListener('pointerdown', e => {
+      if (document.getElementById('cockpit').classList.contains('rail-collapsed')) return;
+      resizing = true;
+      startX = e.clientX;
+      startWidth = rail.getBoundingClientRect().width;
+      rail.style.transition = 'none'; // no lag trailing the pointer mid-drag
+      resizeEl.classList.add('resizing');
+      document.body.style.userSelect = 'none';
+      resizeEl.setPointerCapture(e.pointerId);
+    });
+    resizeEl.addEventListener('pointermove', e => {
+      if (!resizing) return;
+      const next = Math.min(MAX_W, Math.max(MIN_W, startWidth + (e.clientX - startX)));
+      rail.style.width = next + 'px';
+    });
+    const stopResize = e => {
+      if (!resizing) return;
+      resizing = false;
+      rail.style.transition = '';
+      resizeEl.classList.remove('resizing');
+      document.body.style.userSelect = '';
+      try { resizeEl.releasePointerCapture(e.pointerId); } catch {}
+    };
+    resizeEl.addEventListener('pointerup', stopResize);
+    resizeEl.addEventListener('pointercancel', stopResize);
+  })();
+  document.getElementById('ck-preview-label').addEventListener('click', () => {
+    document.getElementById('ck-preview').classList.remove('collapsed');
+    // t-82f4: persist onto the active tab so switching away and back restores
+    // this expanded state instead of always reopening collapsed.
+    if (cockpitState) cockpitState.previewCollapsed = false;
+    requestPreview();
   });
-  resizeEl.addEventListener('pointermove', e => {
-    if (!resizing) return;
-    const next = Math.min(MAX_W, Math.max(MIN_W, startWidth + (e.clientX - startX)));
-    rail.style.width = next + 'px';
+  document.getElementById('ck-preview-collapse').addEventListener('click', () => {
+    document.getElementById('ck-preview').classList.add('collapsed');
+    if (cockpitState) cockpitState.previewCollapsed = true;
   });
-  const stopResize = e => {
-    if (!resizing) return;
-    resizing = false;
-    rail.style.transition = '';
-    resizeEl.classList.remove('resizing');
-    document.body.style.userSelect = '';
-    try { resizeEl.releasePointerCapture(e.pointerId); } catch {}
-  };
-  resizeEl.addEventListener('pointerup', stopResize);
-  resizeEl.addEventListener('pointercancel', stopResize);
-})();
-document.getElementById('ck-preview-label').addEventListener('click', () => {
-  document.getElementById('ck-preview').classList.remove('collapsed');
-  // t-82f4: persist onto the active tab so switching away and back restores
-  // this expanded state instead of always reopening collapsed.
-  if (cockpitState) cockpitState.previewCollapsed = false;
-  requestPreview();
-});
-document.getElementById('ck-preview-collapse').addEventListener('click', () => {
-  document.getElementById('ck-preview').classList.add('collapsed');
-  if (cockpitState) cockpitState.previewCollapsed = true;
-});
-document.addEventListener('keydown', e => {
-  // t-6254: Esc closes the ticket viewer popup first; the cockpit stays
-  if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open') && !document.getElementById('modal-overlay').classList.contains('open')) closeCockpit();
-});
+  document.addEventListener('keydown', e => {
+    // t-6254: Esc closes the ticket viewer popup first; the cockpit stays
+    if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open') && !document.getElementById('modal-overlay').classList.contains('open')) closeCockpit();
+  });
+}

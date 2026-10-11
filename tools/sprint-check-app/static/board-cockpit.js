@@ -107,108 +107,6 @@ function setActiveTab(id) {
   else document.getElementById('ck-scratch-promoted').hidden = true;
 }
 
-// t-f6b6: the board and the daemon page are different origins (different
-// port), so the only channel for "is a session live" and "please save state
-// then end" is postMessage — and the only real trust boundary is validating
-// every INCOMING message's origin/source before acting on it (outbound is
-// fine with "*": no secret ever rides in these payloads, just status labels
-// and a fixed command name).
-// t-8a2a: multiple iframes exist now (one per open tab), so this must resolve
-// WHICH tab a message came from — not just check against a single global
-// iframe — or a background tab's status/needs-you/ended updates go missing.
-window.addEventListener('message', (e) => {
-  let sourceId = null, tab = null;
-  for (const [tid, tb] of Object.entries(cockpitTabs)) {
-    if (tb.iframeEl && e.source === tb.iframeEl.contentWindow) { sourceId = tid; tab = tb; break; }
-  }
-  if (!tab || !tab.addr) return;
-  if (e.origin !== 'http://' + tab.addr) return;
-  const d = e.data;
-  if (!d || d.source !== 'canon-cockpit') return;
-  const isActive = sourceId === activeTabId;
-  if (d.type === 'prefix-armed' || d.type === 'prefix-cancel' || d.type === 'prefix-key') {   // t-a198: relay the terminal's prefix to the shell
-    if (isActive && window.parent !== window && (d.type !== 'prefix-key' || (typeof d.key === 'string' && d.key.length <= 2))) {
-      window.parent.postMessage({ source: 'canon-board', type: d.type, key: typeof d.key === 'string' ? d.key : '', tab: SHELL_TAB }, location.origin);
-    }
-    return;
-  }
-  if (d.type === 'status') {
-    tab.status = d.status;
-    if (isActive) { renderSessionStateChip(); refreshSessionStateChip(); }
-    renderTabStrip();
-  } else if (d.type === 'started') {
-    // applyActualWorkingCwd renders rail DOM that belongs to the active tab
-    // only (grill #1) — a background tab just remembers its own cwd for when
-    // it becomes active later.
-    if (SCRATCH_ID.test(tab.id || '')) {   // t-e162: scratch rail shows where it runs, no worktree picker
-      if (!tab.started) { tab.started = true; announceScratchTabs(); }   // t-f553: the daemon reports it now
-      tab.actualCwd = d.cwd || '';
-      if (isActive) renderScratchWhere(tab);
-    } else if (isActive) applyActualWorkingCwd(d.cwd, d.requested);
-    else tab.actualCwd = d.cwd || '';
-  } else if (d.type === 'ended' && tab._onEnded) {
-    tab._onEnded();
-  } else if (d.type === 'changes') {   // t-86fe
-    if (isActive) showScratchChanges({ total: Number(d.total) || 0, commits: Number(d.commits) || 0, can_discard: d.can_discard === true,
-      no_git: d.no_git === true,
-      files: Array.isArray(d.files) ? d.files.filter(f => f && typeof f.path === 'string').map(f => ({ status: String(f.status || '').slice(0, 2), path: f.path })) : [] });
-  } else if (d.type === 'changes-failed') {
-    if (isActive) document.getElementById('ck-leave-confirm-status').textContent = 'Couldn\u2019t check for changes \u2014 Just end keeps any changes in place.';
-  } else if (d.type === 'scratch-ended') {
-    if (d.error) showToast('\u26a0 Discard failed \u2014 changes kept and noted in HANDOFF.md: ' + String(d.error).slice(0, 160), 'warn');
-    else if (d.note_error) showToast('\u26a0 Ended, but HANDOFF.md couldn\u2019t be updated: ' + String(d.note_error).slice(0, 160), 'warn');
-    else if (d.files || d.commits) showToast('Ended \u2014 changes kept and noted in HANDOFF.md.');
-  } else if (d.type === 'end-scratch-failed') {
-    // Nothing ended: stop the pending end (and its fallback kill), show the terminal again.
-    if (tab._onSaveRefused) tab._onSaveRefused();
-    if (tab.iframeEl) tab.iframeEl.style.visibility = '';
-    if (isActive) document.getElementById('ck-term-msg').textContent = '';
-    showToast('\u26a0 ' + String(d.reason || 'Ending failed').slice(0, 200), 'warn');
-  } else if (d.type === 'promote-refused') {   // t-f553
-    showToast('⚠ ' + String(d.reason || 'Promote refused').slice(0, 200), 'warn');
-  } else if (d.type === 'ticket-promoted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
-    if (tab.promoteThenEnd) { postToTab(tab, { type: 'adopt', ticket: d.ticket }); }
-    else {
-      tab.promotedTicket = d.ticket;   // per tab: shown when this tab is (or becomes) active
-      if (isActive) showPromotedChoice(d.ticket);
-    }
-  } else if (d.type === 'adopted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
-    finishAdopt(sourceId, d.ticket, String(d.cwd || ''), !!tab.promoteThenEnd);
-  } else if (d.type === 'adopt-failed') {
-    showToast('⚠ ' + String(d.reason || 'Could not continue as the ticket').slice(0, 200), 'warn');
-  } else if (d.type === 'save-refused' && tab._onSaveRefused) {
-    tab._onSaveRefused();   // t-f91a: copilot is on a menu waiting for the user — nothing was typed
-  } else if (d.type === 'preview-file') {
-    if (isActive) renderPreviewFile(d.session, d.previewToken, d.relpath, d.path);
-  } else if (d.type === 'preview-server-cmd') {
-    if (isActive) renderPreviewServerCmd(d.cmd);
-  } else if (d.type === 'preview-timeout') {
-    if (isActive) renderPreviewMessage("Couldn't determine how to preview this ticket's deliverable — the agent didn't respond with a recognized marker within 60s.");
-  } else if (d.type === 'preview-rejected') {
-    if (isActive) renderPreviewMessage('The reported preview path was rejected (must resolve to a location inside the project).');
-  } else if (d.type === 'preview-no-session') {
-    if (isActive) renderPreviewMessage('No active sprint session — start or resume the sprint, then try Preview again.');
-  } else if (d.type === 'daemon-restarting') {
-    // t-74d6: the stale daemon is exiting (its /shutdown returned 200). Give it
-    // a moment to fully exit, then re-ensure — ensure_cockpit finds the old
-    // daemon.json addr unhealthy, clears it, and launches a fresh build — and
-    // remount the terminal at the new addr. A background tab just remembers it
-    // needs a remount, applied next time it becomes active (see openCockpit).
-    if (tab.iframeEl) tab.iframeEl.style.visibility = 'hidden';
-    tab.addr = null;
-    if (isActive) {
-      setTermMessage('Restarting cockpit daemon…');
-      setTimeout(() => {
-        const ct = findTicketById(sourceId) || { id: sourceId, status: 'open' };
-        maybeMountCockpitTerminal(ct);
-      }, 500);
-    } else {
-      tab.pendingMessage = 'Restarting cockpit daemon…';
-      tab.needsRemount = true;
-    }
-  }
-});
-
 // t-824e: the active tab's state chip + reaper line. The live status stream says
 // needs-you the instant the hook fires; the daemon's /sessions row (refreshed
 // by the shared cockpit poll) adds working / idle / done and the reaper clock.
@@ -539,7 +437,6 @@ function teardownCockpit(id) {
   loadData().then(render).catch(() => renderBoard());
 }
 
-document.getElementById('ck-leave-cancel').addEventListener('click', closeLeaveConfirm);
 // t-98d8: fresh ticket-status read for the Save & End short-circuit. The cockpit
 // poll never reloads /api/tickets and `sprint complete` runs in the terminal, so
 // the in-memory `state` can be stale exactly when this matters. Fail safe: any
@@ -554,20 +451,6 @@ async function isTicketClosed(id) {
   } catch { return false; }
 }
 
-document.getElementById('ck-leave-save').addEventListener('click', () => ckLeaveSaveAndEnd(false));
-document.getElementById('ck-leave-skip').addEventListener('click', () => ckLeaveSaveAndEnd(true));
-// t-86fe: Discard takes a second click — the first one says what it will do.
-document.getElementById('ck-leave-discard').addEventListener('click', (e) => {
-  const btn = e.currentTarget;
-  if (!btn.classList.contains('armed')) {
-    const n = (cockpitState.leaveChanges && cockpitState.leaveChanges.total) || 0;
-    btn.classList.add('armed');
-    btn.textContent = btn.dataset.mode === 'restore' ? 'Replace my current files with the originals'
-      : 'Discard ' + n + ' file' + (n === 1 ? '' : 's') + ' \u2014 can\u2019t be undone';
-    return;
-  }
-  ckLeaveSaveAndEnd(true, btn.dataset.mode === 'restore' ? { restore: true } : { discard: true });
-});
 // t-0db3: extracted so the Canon Cockpit shell's close-tab guard can drive the
 // SAME vetted flow via postMessage. skipSave=true = "End without saving" (routes
 // through the daemon's force-end, same as the already-closed short-circuit) — a
@@ -688,49 +571,171 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
   }
 }
 
-// t-0db3: Canon Cockpit shell → board control bridge. When this board is embedded
-// as a shell project tab, the shell's close-tab guard asks it to Save & End / End
-// the tab's live agent session. SAME-ORIGIN ONLY (the shell and this board are
-// served by the same board server; the daemon terminal is a DIFFERENT origin and
-// is handled by the daemon-iframe listener above). We only ever invoke the board's
-// own existing, vetted controls — this exposes NO new daemon capability.
-// t-416c: the first interaction inside a pane (a click, a key, or focus moving into its terminal frame) ends its pulse
-['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, function () { delete document.documentElement.dataset.panePulse; }, true); });
-window.addEventListener('blur', function () { delete document.documentElement.dataset.panePulse; });
-window.addEventListener('message', (e) => {
-  if (window.parent === window) return;                 // standalone board — no shell
-  if (e.origin !== location.origin) return;             // reject cross-origin senders
-  if (e.source !== window.parent) return;               // only our embedding shell
-  const d = e.data;
-  if (!d || d.source !== 'canon-cockpit-shell') return;
-  if (d.type === 'open-ticket') {                        // t-2d2e: shell routed a cross-project Sessions row here
-    if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
-    return;
-  }
-  if (d.type === 'end-session-request') {                // t-a198: prefix then e. Opens the existing confirmation for a LIVE session; never ends anything itself
-    if (cockpitState && !cockpitState._ending && sessionIsLive()) openLeaveConfirm();
-    return;
-  }
-  if (d.type === 'pane-state') {                         // t-416c: the shell says whether this board is a split pane, the focused one, and pulsing
-    const root = document.documentElement;
-    if (d.split === true) root.dataset.pane = d.focused === true ? 'focused' : 'idle'; else delete root.dataset.pane;
-    if (d.split === true && d.pulse === true) root.dataset.panePulse = '1'; else delete root.dataset.panePulse;
-    return;
-  }
-  if (d.type === 'focus-search') {                       // t-a198: prefix then /
-    const s = document.getElementById('board-search');
-    if (s) { s.focus(); s.select(); }
-    return;
-  }
-  if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened
-    if (typeof d.id === 'string' && SCRATCH_ID.test(d.id)) openScratch(d.id);
-    return;
-  }
-  if (d.type !== 'save-and-end' && d.type !== 'end') return;
-  if (!cockpitState) return;                            // t-8a2a: no active tab — nothing to end
-  if (cockpitState._ending) return;                     // t-9eda: already ending — ckLeaveSaveAndEnd would no-op anyway
-  if (!sessionIsLive()) return;                         // nothing live to end (shell poller reconciles)
-  openLeaveConfirm();                                   // reuse the vetted flow's state setup
-  // end === skip the save turn; a scratch session (t-47f1) has no save turn at all
-  ckLeaveSaveAndEnd(d.type === 'end' || SCRATCH_ID.test(cockpitState.id || ''));
-});
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+function initCockpit() {
+  // t-f6b6: the board and the daemon page are different origins (different
+  // port), so the only channel for "is a session live" and "please save state
+  // then end" is postMessage — and the only real trust boundary is validating
+  // every INCOMING message's origin/source before acting on it (outbound is
+  // fine with "*": no secret ever rides in these payloads, just status labels
+  // and a fixed command name).
+  // t-8a2a: multiple iframes exist now (one per open tab), so this must resolve
+  // WHICH tab a message came from — not just check against a single global
+  // iframe — or a background tab's status/needs-you/ended updates go missing.
+  window.addEventListener('message', (e) => {
+    let sourceId = null, tab = null;
+    for (const [tid, tb] of Object.entries(cockpitTabs)) {
+      if (tb.iframeEl && e.source === tb.iframeEl.contentWindow) { sourceId = tid; tab = tb; break; }
+    }
+    if (!tab || !tab.addr) return;
+    if (e.origin !== 'http://' + tab.addr) return;
+    const d = e.data;
+    if (!d || d.source !== 'canon-cockpit') return;
+    const isActive = sourceId === activeTabId;
+    if (d.type === 'prefix-armed' || d.type === 'prefix-cancel' || d.type === 'prefix-key') {   // t-a198: relay the terminal's prefix to the shell
+      if (isActive && window.parent !== window && (d.type !== 'prefix-key' || (typeof d.key === 'string' && d.key.length <= 2))) {
+        window.parent.postMessage({ source: 'canon-board', type: d.type, key: typeof d.key === 'string' ? d.key : '', tab: SHELL_TAB }, location.origin);
+      }
+      return;
+    }
+    if (d.type === 'status') {
+      tab.status = d.status;
+      if (isActive) { renderSessionStateChip(); refreshSessionStateChip(); }
+      renderTabStrip();
+    } else if (d.type === 'started') {
+      // applyActualWorkingCwd renders rail DOM that belongs to the active tab
+      // only (grill #1) — a background tab just remembers its own cwd for when
+      // it becomes active later.
+      if (SCRATCH_ID.test(tab.id || '')) {   // t-e162: scratch rail shows where it runs, no worktree picker
+        if (!tab.started) { tab.started = true; announceScratchTabs(); }   // t-f553: the daemon reports it now
+        tab.actualCwd = d.cwd || '';
+        if (isActive) renderScratchWhere(tab);
+      } else if (isActive) applyActualWorkingCwd(d.cwd, d.requested);
+      else tab.actualCwd = d.cwd || '';
+    } else if (d.type === 'ended' && tab._onEnded) {
+      tab._onEnded();
+    } else if (d.type === 'changes') {   // t-86fe
+      if (isActive) showScratchChanges({ total: Number(d.total) || 0, commits: Number(d.commits) || 0, can_discard: d.can_discard === true,
+        no_git: d.no_git === true,
+        files: Array.isArray(d.files) ? d.files.filter(f => f && typeof f.path === 'string').map(f => ({ status: String(f.status || '').slice(0, 2), path: f.path })) : [] });
+    } else if (d.type === 'changes-failed') {
+      if (isActive) document.getElementById('ck-leave-confirm-status').textContent = 'Couldn\u2019t check for changes \u2014 Just end keeps any changes in place.';
+    } else if (d.type === 'scratch-ended') {
+      if (d.error) showToast('\u26a0 Discard failed \u2014 changes kept and noted in HANDOFF.md: ' + String(d.error).slice(0, 160), 'warn');
+      else if (d.note_error) showToast('\u26a0 Ended, but HANDOFF.md couldn\u2019t be updated: ' + String(d.note_error).slice(0, 160), 'warn');
+      else if (d.files || d.commits) showToast('Ended \u2014 changes kept and noted in HANDOFF.md.');
+    } else if (d.type === 'end-scratch-failed') {
+      // Nothing ended: stop the pending end (and its fallback kill), show the terminal again.
+      if (tab._onSaveRefused) tab._onSaveRefused();
+      if (tab.iframeEl) tab.iframeEl.style.visibility = '';
+      if (isActive) document.getElementById('ck-term-msg').textContent = '';
+      showToast('\u26a0 ' + String(d.reason || 'Ending failed').slice(0, 200), 'warn');
+    } else if (d.type === 'promote-refused') {   // t-f553
+      showToast('⚠ ' + String(d.reason || 'Promote refused').slice(0, 200), 'warn');
+    } else if (d.type === 'ticket-promoted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
+      if (tab.promoteThenEnd) { postToTab(tab, { type: 'adopt', ticket: d.ticket }); }
+      else {
+        tab.promotedTicket = d.ticket;   // per tab: shown when this tab is (or becomes) active
+        if (isActive) showPromotedChoice(d.ticket);
+      }
+    } else if (d.type === 'adopted' && typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) {
+      finishAdopt(sourceId, d.ticket, String(d.cwd || ''), !!tab.promoteThenEnd);
+    } else if (d.type === 'adopt-failed') {
+      showToast('⚠ ' + String(d.reason || 'Could not continue as the ticket').slice(0, 200), 'warn');
+    } else if (d.type === 'save-refused' && tab._onSaveRefused) {
+      tab._onSaveRefused();   // t-f91a: copilot is on a menu waiting for the user — nothing was typed
+    } else if (d.type === 'preview-file') {
+      if (isActive) renderPreviewFile(d.session, d.previewToken, d.relpath, d.path);
+    } else if (d.type === 'preview-server-cmd') {
+      if (isActive) renderPreviewServerCmd(d.cmd);
+    } else if (d.type === 'preview-timeout') {
+      if (isActive) renderPreviewMessage("Couldn't determine how to preview this ticket's deliverable — the agent didn't respond with a recognized marker within 60s.");
+    } else if (d.type === 'preview-rejected') {
+      if (isActive) renderPreviewMessage('The reported preview path was rejected (must resolve to a location inside the project).');
+    } else if (d.type === 'preview-no-session') {
+      if (isActive) renderPreviewMessage('No active sprint session — start or resume the sprint, then try Preview again.');
+    } else if (d.type === 'daemon-restarting') {
+      // t-74d6: the stale daemon is exiting (its /shutdown returned 200). Give it
+      // a moment to fully exit, then re-ensure — ensure_cockpit finds the old
+      // daemon.json addr unhealthy, clears it, and launches a fresh build — and
+      // remount the terminal at the new addr. A background tab just remembers it
+      // needs a remount, applied next time it becomes active (see openCockpit).
+      if (tab.iframeEl) tab.iframeEl.style.visibility = 'hidden';
+      tab.addr = null;
+      if (isActive) {
+        setTermMessage('Restarting cockpit daemon…');
+        setTimeout(() => {
+          const ct = findTicketById(sourceId) || { id: sourceId, status: 'open' };
+          maybeMountCockpitTerminal(ct);
+        }, 500);
+      } else {
+        tab.pendingMessage = 'Restarting cockpit daemon…';
+        tab.needsRemount = true;
+      }
+    }
+  });
+
+  document.getElementById('ck-leave-cancel').addEventListener('click', closeLeaveConfirm);
+
+  document.getElementById('ck-leave-save').addEventListener('click', () => ckLeaveSaveAndEnd(false));
+  document.getElementById('ck-leave-skip').addEventListener('click', () => ckLeaveSaveAndEnd(true));
+  // t-86fe: Discard takes a second click — the first one says what it will do.
+  document.getElementById('ck-leave-discard').addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    if (!btn.classList.contains('armed')) {
+      const n = (cockpitState.leaveChanges && cockpitState.leaveChanges.total) || 0;
+      btn.classList.add('armed');
+      btn.textContent = btn.dataset.mode === 'restore' ? 'Replace my current files with the originals'
+        : 'Discard ' + n + ' file' + (n === 1 ? '' : 's') + ' \u2014 can\u2019t be undone';
+      return;
+    }
+    ckLeaveSaveAndEnd(true, btn.dataset.mode === 'restore' ? { restore: true } : { discard: true });
+  });
+
+  // t-0db3: Canon Cockpit shell → board control bridge. When this board is embedded
+  // as a shell project tab, the shell's close-tab guard asks it to Save & End / End
+  // the tab's live agent session. SAME-ORIGIN ONLY (the shell and this board are
+  // served by the same board server; the daemon terminal is a DIFFERENT origin and
+  // is handled by the daemon-iframe listener above). We only ever invoke the board's
+  // own existing, vetted controls — this exposes NO new daemon capability.
+  // t-416c: the first interaction inside a pane (a click, a key, or focus moving into its terminal frame) ends its pulse
+  ['pointerdown', 'keydown'].forEach(function (t) { document.addEventListener(t, function () { delete document.documentElement.dataset.panePulse; }, true); });
+  window.addEventListener('blur', function () { delete document.documentElement.dataset.panePulse; });
+  window.addEventListener('message', (e) => {
+    if (window.parent === window) return;                 // standalone board — no shell
+    if (e.origin !== location.origin) return;             // reject cross-origin senders
+    if (e.source !== window.parent) return;               // only our embedding shell
+    const d = e.data;
+    if (!d || d.source !== 'canon-cockpit-shell') return;
+    if (d.type === 'open-ticket') {                        // t-2d2e: shell routed a cross-project Sessions row here
+      if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
+      return;
+    }
+    if (d.type === 'end-session-request') {                // t-a198: prefix then e. Opens the existing confirmation for a LIVE session; never ends anything itself
+      if (cockpitState && !cockpitState._ending && sessionIsLive()) openLeaveConfirm();
+      return;
+    }
+    if (d.type === 'pane-state') {                         // t-416c: the shell says whether this board is a split pane, the focused one, and pulsing
+      const root = document.documentElement;
+      if (d.split === true) root.dataset.pane = d.focused === true ? 'focused' : 'idle'; else delete root.dataset.pane;
+      if (d.split === true && d.pulse === true) root.dataset.panePulse = '1'; else delete root.dataset.panePulse;
+      return;
+    }
+    if (d.type === 'focus-search') {                       // t-a198: prefix then /
+      const s = document.getElementById('board-search');
+      if (s) { s.focus(); s.select(); }
+      return;
+    }
+    if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened
+      if (typeof d.id === 'string' && SCRATCH_ID.test(d.id)) openScratch(d.id);
+      return;
+    }
+    if (d.type !== 'save-and-end' && d.type !== 'end') return;
+    if (!cockpitState) return;                            // t-8a2a: no active tab — nothing to end
+    if (cockpitState._ending) return;                     // t-9eda: already ending — ckLeaveSaveAndEnd would no-op anyway
+    if (!sessionIsLive()) return;                         // nothing live to end (shell poller reconciles)
+    openLeaveConfirm();                                   // reuse the vetted flow's state setup
+    // end === skip the save turn; a scratch session (t-47f1) has no save turn at all
+    ckLeaveSaveAndEnd(d.type === 'end' || SCRATCH_ID.test(cockpitState.id || ''));
+  });
+}

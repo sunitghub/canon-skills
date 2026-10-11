@@ -11,29 +11,6 @@
 // registry lookup.
 let MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
 let MODEL_TIER_LABELS = {};
-(async () => {
-  try {
-    const r = await fetch('/api/admin/model-tiers');
-    const reg = await r.json();
-    // Gate model: persists the short alias (fable/opus/sonnet/haiku), not the
-    // full API id — matches the value `claude -p --model` has always been
-    // passed (DECISIONS.md t-4003) and every ticket's already-saved plan.md.
-    const models = (reg.models && reg.models.anthropic) || [];
-    const aliased = models.filter(m => m.alias);
-    if (aliased.length) {
-      MODEL_TIER_OPTIONS = ['default', ...aliased.map(m => m.alias)];
-      MODEL_TIER_LABELS = Object.fromEntries(aliased.map(m => [m.alias, m.name]));
-    }
-    // Same charset rule as the resolvers (tools/gate-model.sh): a registry id that
-    // wouldn't survive them is never offered, so the dropdown can't write an invalid value.
-    const openai = ((reg.models && reg.models.openai) || []).filter(m => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m.id || ''));
-    for (const m of openai) {
-      const v = 'openai:' + m.id.toLowerCase();
-      MODEL_TIER_OPTIONS = [...MODEL_TIER_OPTIONS, v];
-      MODEL_TIER_LABELS[v] = `${m.name || m.id} (OpenAI · Copilot gates only)`;
-    }
-  } catch { /* keep fallback */ }
-})();
 const SIGNOFF_TIER_OPTIONS = ['normal', 'bugfix', 'high-risk'];
 const SIGNOFF_TIER_LABELS = { normal: 'Normal', bugfix: 'Bugfix', 'high-risk': 'High-risk' };
 
@@ -833,4 +810,31 @@ async function moveCard(t, newStatus) {
   renderSidebar();
   const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
   if (modalOpen) closeModal(); else renderBoard();
+}
+
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+function initDocs() {
+  (async () => {
+    try {
+      const r = await fetch('/api/admin/model-tiers');
+      const reg = await r.json();
+      // Gate model: persists the short alias (fable/opus/sonnet/haiku), not the
+      // full API id — matches the value `claude -p --model` has always been
+      // passed (DECISIONS.md t-4003) and every ticket's already-saved plan.md.
+      const models = (reg.models && reg.models.anthropic) || [];
+      const aliased = models.filter(m => m.alias);
+      if (aliased.length) {
+        MODEL_TIER_OPTIONS = ['default', ...aliased.map(m => m.alias)];
+        MODEL_TIER_LABELS = Object.fromEntries(aliased.map(m => [m.alias, m.name]));
+      }
+      // Same charset rule as the resolvers (tools/gate-model.sh): a registry id that
+      // wouldn't survive them is never offered, so the dropdown can't write an invalid value.
+      const openai = ((reg.models && reg.models.openai) || []).filter(m => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m.id || ''));
+      for (const m of openai) {
+        const v = 'openai:' + m.id.toLowerCase();
+        MODEL_TIER_OPTIONS = [...MODEL_TIER_OPTIONS, v];
+        MODEL_TIER_LABELS[v] = `${m.name || m.id} (OpenAI · Copilot gates only)`;
+      }
+    } catch { /* keep fallback */ }
+  })();
 }

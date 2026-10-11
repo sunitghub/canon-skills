@@ -50,11 +50,6 @@ function boardKeyBlocked(e) {
   if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return true;
   return !!document.querySelector('#commit-overlay.open, #create-overlay.open, #modal-overlay.open, #tour-overlay.open');
 }
-['keydown', 'keypress', 'keyup'].forEach(type => document.addEventListener(type, e => {
-  if (window.parent === window) return;
-  if (type === 'keydown' && boardKeyBlocked(e)) { boardKeys.cancel(); return; }
-  boardKeys.handle(e);
-}, true));
 
 // t-2d2e: a freshly opened project tab's ticket list loads after its iframe does.
 function openTicketWhenLoaded(ticket, tries) {
@@ -335,19 +330,6 @@ function openDetachedSessionNotice(s) {
   document.getElementById('ck-leave-confirm').classList.add('open');
 }
 
-document.getElementById('ck-end-session').addEventListener('click', async () => {
-  if (!cockpitState || cockpitState._ending) return;
-  if (sessionIsLive()) { openLeaveConfirm(); return; }
-  const tab = cockpitState;
-  const detached = await findLiveDaemonSession(tab.id);
-  if (cockpitState !== tab || tab._ending) return; // switched tabs (or an end began) during the lookup
-  // Start sprint may have attached while we were looking: then this is a live tab, and tearing it down
-  // (or calling it unattached) would be the original orphan bug again.
-  if (sessionIsLive()) { openLeaveConfirm(); return; }
-  if (detached) { openDetachedSessionNotice(detached); return; }
-  teardownCockpit();
-});
-
 // t-1357: when the cockpit session runs in a WORKTREE, its plan/acceptance/
 // HANDOFF live on the worktree's branch — the board's main .tickets/<id>/ shows
 // only the committed ticket.md. Pull those docs from the effective worktree so
@@ -619,4 +601,26 @@ async function renderCockpitState(t) {
     ? '<div class="ck-state-source" style="margin-top:10px;">Next steps:</div>' + formatStateAsParagraphs(nextSteps, t)
     : '';
   box.innerHTML = worktreeLine + stateHtml + nextHtml;
+}
+
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+function initCockpitRail() {
+  ['keydown', 'keypress', 'keyup'].forEach(type => document.addEventListener(type, e => {
+    if (window.parent === window) return;
+    if (type === 'keydown' && boardKeyBlocked(e)) { boardKeys.cancel(); return; }
+    boardKeys.handle(e);
+  }, true));
+
+  document.getElementById('ck-end-session').addEventListener('click', async () => {
+    if (!cockpitState || cockpitState._ending) return;
+    if (sessionIsLive()) { openLeaveConfirm(); return; }
+    const tab = cockpitState;
+    const detached = await findLiveDaemonSession(tab.id);
+    if (cockpitState !== tab || tab._ending) return; // switched tabs (or an end began) during the lookup
+    // Start sprint may have attached while we were looking: then this is a live tab, and tearing it down
+    // (or calling it unattached) would be the original orphan bug again.
+    if (sessionIsLive()) { openLeaveConfirm(); return; }
+    if (detached) { openDetachedSessionNotice(detached); return; }
+    teardownCockpit();
+  });
 }
