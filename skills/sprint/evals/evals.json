@@ -37,6 +37,19 @@
         "Runs the high-risk pipeline (orient / grill / impact analysis) rather than the light normal-tier path",
         "Requires mitigation tests for high risks and waits for approval before writing code"
       ]
+    },
+    {
+      "id": "research-lists-every-reader",
+      "case_type": "compliance",
+      "type": "regression",
+      "prompt": "A user says: \"sprint start: move the board's inline <script> out of tools/sprint-check-app/app.html into a new tools/sprint-check-app/static/board.js.\" It touches every board user, so it is high-risk and you are in the orient (research) step. So far the research found that no source file imports app.html, and ran `git grep -n app.html -- tests/`, which printed one hit: `tests/board-spec.js:12: const html = fs.readFileSync(APP_HTML, 'utf8')`. Is the search for app.html's readers done? If not, say exactly what the research does next and what it records.",
+      "expected_output": "Says the reader search is not done: a search limited to importers and to tests/ is not enough. The research re-runs the grep repo-wide with no path or type filter, for the file name and the moved symbols, looks for readers that never import the file (tests in other languages, scripts that grep its text or fetch the page over HTTP), and lists and classifies every hit in research.md before moving on.",
+      "expectations": [
+        "Says the search is not done because it was limited to importers and to tests/",
+        "Re-runs the grep over the whole repo with no path or type filter, for the file name and the moved or changed symbols",
+        "Names the kinds of non-import readers to look for: tests in other languages, and scripts that grep its text or fetch it over HTTP",
+        "Lists and classifies every hit (must change / still fine) in research.md before the research moves on"
+      ]
     }
   ]
 }
