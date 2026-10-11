@@ -4,11 +4,17 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$ROOT/tests/helpers.sh"
 fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# t-c58e: the board's copy lives in whichever of its scripts holds it, so check the board's sources as one text.
+board="$(mktemp)"
+trap 'rm -f "$board"' EXIT
+board_sources "$ROOT" > "$board"
 
 files=(
   "$ROOT/tools/sprint-check-app/cockpit.html"
-  "$ROOT/tools/sprint-check-app/app.html"
+  "$board"
   "$ROOT/tools/cockpit-daemon/web/cockpit.html"
 )
 ref=""
