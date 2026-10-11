@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-11-2026 17:02
+learnings-sweep last run: 10-11-2026 17:39
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-11 | [t-8120](.tickets/t-8120/learnings.md) | A fix shipped with a regression test for one caller (tools/sprint) but none for the second tool with the same bug (gate-snapshot.sh), so the bug report stayed open after the fix; when a fix covers several call sites, lock each one | UNPROMOTED |
 | 2026-10-11 | [t-e17d](.tickets/t-e17d/learnings.md) | A skill-eval case that hands the executor the facts it should discover (here the full repo-wide grep output) passes under the old instructions too; run the case once against the pre-change skill as a baseline, and rewrite it until it separates the two | UNPROMOTED |
 | 2026-10-11 | [t-0859](.tickets/t-0859/learnings.md) | A release keyed by its source tree also baked VERSION into the bytes, so a version bump broke reproducibility; and the research for removing the stamp missed the one test that guarded it (`tests/build-zip-go-package.sh`) — the third missed-reader in a row, see `t-e17d` | UNPROMOTED |
 | 2026-10-11 | [t-1543](.tickets/t-1543/learnings.md) | Two sweeps for a moved file's readers and stale mentions both missed real hits by trusting patterns: research missed `tests/canon.sh` (an HTTP reader of the page's assets), and the t-c772 comment sweep's regex missed 3 `cockpit.html` comments, failing an eval; list every hit of an unrestricted `git grep` and classify each, never grep for expected phrasings only | `promoted → skills/sprint/reference/orient.md` |
@@ -80,5 +81,4 @@ learnings-sweep last run: 10-11-2026 17:02
 | 2026-09-27 | [t-269d](.tickets/t-269d/learnings.md) | A guard test built from the spellings in use today is weak twice over: file-level string checks pass on a comment or one of several starts, and fixed spellings miss the next variant. Check each occurrence, skip comments/build lines/assignments, and prove the guard with synthetic misses. Also: measure a suspected side effect with a fake on PATH BEFORE quoting a figure (I said ~3 tabs; measured 2), and fake only what the code under test prefers on this OS (a fake `xdg-open` shadowed a test's own `open` stub). | `promoted → standards/efficiency.md` |
 | 2026-09-27 | [t-8765](.tickets/t-8765/learnings.md) | Bash state set inside `$(func)` (an array append, a PID) is lost with the subshell — a cleanup trap then kills nothing and leaks. Guard helpers with `[[ $BASH_SUBSHELL == 0 ]]` (bash 3.2 has no `BASHPID`), and make a suite-level "no new processes" check count only orphans (ppid 1), since `pgrep -f` is machine-wide and flags a concurrent run's live server. | `promoted → standards/efficiency.md` |
 | 2026-09-27 | [t-a381](.tickets/t-a381/learnings.md) | When editing a skill, don't carry forward an unverified factual claim about model behavior from the old text: the draft kept "Fable 5 declines fall back to Opus 4.8", which the live Fable 5 page contradicts. Quote each behavioral claim in research.md and re-fetch the primary page; hedge what the source doesn't say ("earlier models" was an inference). | UNPROMOTED |
-| 2026-09-26 | [t-de16](.tickets/t-de16/learnings.md) | A prefix regex in a validation gate (`^none`, `^(n/a|na|empty)`) silently rejects legitimate input (`native/foo.c`, `nonexistent…`); anchor to a whole word. And a compound rule (`checked` AND `file:line`) needs a fixture for EACH half — the lone bare-`none` fixture tripped both, so removing either half left the suite green. | dismissed |
 <!-- canon:learnings:END -->
