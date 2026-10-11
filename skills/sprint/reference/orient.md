@@ -26,7 +26,7 @@ Read the target area. Focus on:
 - Interfaces: what do these files export or expose?
 - Adjacent modules: what sits alongside the target files?
 
-Limit scope to the relevant subsystem.
+Limit this survey to the relevant subsystem. The reader search in Step 2 is not limited: it always covers the whole repo.
 
 ## Step 2 — Trace dependencies
 
