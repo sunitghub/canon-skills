@@ -22,7 +22,6 @@
 const cockpitTabs = {};
 let activeTabId = null;
 let cockpitState = null;
-let cockpitPollTimer = null;
 
 function newCockpitTabState(id, iframeEl) {
   // t-82f4: previewEl/previewCollapsed mirror iframeEl's per-tab persistence —
@@ -510,7 +509,7 @@ function unmountTab(id) {
       activeTabId = null;
       cockpitState = null;
       document.getElementById('cockpit-overlay').classList.remove('open');
-      if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
+      stopCockpitPoll();
       renderSessionStateChip(); // null cockpitState -> hides it; no other path re-renders this once the last tab closes
     }
   }

@@ -198,11 +198,17 @@ async function renderCockpitRail(t) {
 // tick, but the rail-refresh render calls only run for the active tab (that
 // DOM belongs to whichever tab is shown). Started once, by the first tab to
 // open; stops itself once the last tab closes (also enforced by unmountTab).
+let cockpitPollTimer = null;
+
+function stopCockpitPoll() {
+  if (cockpitPollTimer) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; }
+}
+
 function ensureCockpitPollTimer() {
   if (cockpitPollTimer) return;
   cockpitPollTimer = setInterval(async () => {
     const ids = Object.keys(cockpitTabs);
-    if (!ids.length) { clearInterval(cockpitPollTimer); cockpitPollTimer = null; return; }
+    if (!ids.length) { stopCockpitPoll(); return; }
     // t-74d6: re-check daemon staleness on the poll (GET /api/cockpit =
     // discover, never relaunch) and re-relay to every open tab's iframe, so a
     // daemon that drifts while sessions are open surfaces the banner without

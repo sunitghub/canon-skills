@@ -26,8 +26,7 @@
     if (!images.length) return;
     e.preventDefault();
     images.forEach(img => {
-      pasteVisualCounter += 1;
-      const index = pasteVisualCounter;
+      const index = nextPasteVisualIndex();
       insertPlainText(bodyEl, `![pasted-${index}](pending:${index})`);
       stagedVisuals.push({ index, filename: `pasted-${index}.${img.ext}`, promise: blobToBase64(img.blob) });
     });

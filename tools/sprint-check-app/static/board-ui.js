@@ -74,8 +74,7 @@ document.getElementById('m-docs').addEventListener('click', e => {
     if (!file || !t) return;
     const ext = PASTE_IMAGE_EXT[file.type];
     if (!ext) { insertPlainText(ta, '![unsupported image type]()'); return; }
-    pasteVisualCounter += 1;
-    const index = pasteVisualCounter;
+    const index = nextPasteVisualIndex();
     const name = file.name.replace(/\.[^.]+$/, '').replace(/[^A-Za-z0-9._ -]+/g, '').trim() || `image-${index}`;
     await uploadImageIntoEditor(ta, t.id, file, `image-${index}.${ext}`, name, '![upload failed]()');
   });
@@ -115,8 +114,7 @@ document.getElementById('m-edit-area').addEventListener('paste', async e => {
   if (!t) return;
   const editEl = e.currentTarget;
   for (const img of images) {
-    pasteVisualCounter += 1;
-    const index = pasteVisualCounter;
+    const index = nextPasteVisualIndex();
     await uploadImageIntoEditor(editEl, t.id, img.blob, `pasted-${index}.${img.ext}`, `pasted-${index}`, '![paste failed]()');
   }
 });

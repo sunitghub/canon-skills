@@ -309,6 +309,11 @@ document.getElementById('m-body').addEventListener('click', async e => {
 const PASTE_IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 let pasteVisualCounter = 0;
 
+function nextPasteVisualIndex() {
+  pasteVisualCounter += 1;
+  return pasteVisualCounter;
+}
+
 function readClipboardImages(e) {
   const items = e.clipboardData && e.clipboardData.items;
   if (!items) return [];
