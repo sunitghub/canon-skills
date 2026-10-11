@@ -778,14 +778,6 @@ cmd_complete() {
   echo "Sprint completed: $id"
 }
 
-# cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
-# eval_fail_count field: increments on a fail (or missing/malformed verdict),
-# resets to 0 on pass. Called explicitly by the agent right after reading
-# eval-report.md (complete.md step 3), the same pattern as subagent-log.sh's
-# explicit post-dispatch call — not a hook, so it works whether or not the
-# orchestrating agent goes on to invoke `sprint complete` itself. Prints the
-# resulting count and a retry-budget-exhausted notice at 3, but never blocks
-# on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
 # cmd_check_review_notes <id> — t-c38e: the close gate's review-notes.md shape check, run on demand (read-only). The
 # reviewer runs it before returning and the orchestrator right after the dispatch, so a malformed report is rewritten at
 # once instead of being refused at `sprint complete`.
@@ -805,6 +797,14 @@ cmd_check_review_notes() {
   echo "review-notes.md: shape ok"
 }
 
+# cmd_eval_verdict <id> — records the evaluator's outcome into ticket.md's
+# eval_fail_count field: increments on a fail (or missing/malformed verdict),
+# resets to 0 on pass. Called explicitly by the agent right after reading
+# eval-report.md (complete.md step 3), the same pattern as subagent-log.sh's
+# explicit post-dispatch call — not a hook, so it works whether or not the
+# orchestrating agent goes on to invoke `sprint complete` itself. Prints the
+# resulting count and a retry-budget-exhausted notice at 3, but never blocks
+# on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
 cmd_eval_verdict() {
   local id="${1:-}"
   [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
