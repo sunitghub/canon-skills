@@ -7701,3 +7701,33 @@ func TestInstallVersion(t *testing.T) {
 		t.Errorf("no VERSION file: got %q, want empty", got)
 	}
 }
+
+// t-0859: a daemon reads its install's VERSION once, at startup. After `canon update` rewrites VERSION, a daemon still
+// running must keep reporting the version it started with (only a restart picks up the new one).
+func TestStartupVersionIsReadOnce(t *testing.T) {
+	root := t.TempDir()
+	for rel, body := range map[string]string{"tools/skills.sh": "", "VERSION": "1.2.3\n"} {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	get := startupVersion(filepath.Join(root, "tools"))
+	if got := get(); got != "1.2.3" {
+		t.Fatalf("first read: got %q, want 1.2.3", got)
+	}
+	if err := os.WriteFile(filepath.Join(root, "VERSION"), []byte("2.0.0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := get(); got != "1.2.3" {
+		t.Errorf("after VERSION changed on disk: got %q, want the startup value 1.2.3", got)
+	}
+	// An unknown binary folder must not fall back to the working directory, even one that is a canon root.
+	t.Chdir(root)
+	if got := startupVersion("")(); got != version {
+		t.Errorf("unknown binary folder: got %q, want the stamped fallback %q", got, version)
+	}
+}

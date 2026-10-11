@@ -4342,9 +4342,9 @@ func writeJSON(w http.ResponseWriter, v any) {
 // build passes -X main.version. canonVersion() reads the install's VERSION.
 var version = "dev"
 
-// commit is the build provenance (short SHA of the last commit touching this
-// binary's source dir), stamped via -ldflags "-X main.commit=<sha>" by
-// scripts/build-zip.sh. `version` carries the semantic version (t-5c20).
+// commit is the build provenance, stamped via -ldflags "-X main.commit=<sha>":
+// the source tree key in a release (scripts/release-daemon.sh), the last commit
+// touching this source dir in a dev build (scripts/build-zip.sh).
 var commit = "dev"
 
 // versionString renders the human build id: "<semver> (<sha>)" when a real
@@ -4359,17 +4359,35 @@ func versionString() string {
 }
 
 // canonVersion is the semantic version of the canon install this binary runs
-// from (t-0859), else the stamped `version`, else "dev". Like the board's.
-func canonVersion() string {
-	if exe, err := os.Executable(); err == nil {
-		if real, err := filepath.EvalSymlinks(exe); err == nil {
-			exe = real
+// from (t-0859), else the stamped `version`, else "dev". It is read once, at
+// startup: a daemon still running after `canon update` must keep reporting the
+// version it started with, not the newer one now on disk.
+var canonVersion = startupVersion(exeDir())
+
+// startupVersion returns a func that reads dir's install version on its first
+// call and returns that same value ever after.
+func startupVersion(dir string) func() string {
+	return sync.OnceValue(func() string {
+		if dir == "" {
+			return version
 		}
-		if v := installVersion(filepath.Dir(exe)); v != "" {
+		if v := installVersion(dir); v != "" {
 			return v
 		}
+		return version
+	})
+}
+
+// exeDir is the folder of this binary, symlinks resolved; "" if unknown.
+func exeDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
 	}
-	return version
+	if real, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = real
+	}
+	return filepath.Dir(exe)
 }
 
 var semverRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
