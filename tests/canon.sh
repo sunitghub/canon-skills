@@ -68,7 +68,7 @@ grep -q "canon-cockpit-tabs" <<<"$page" || fail "canon: /cockpit missing localSt
 grep -q "byId.get(id)" <<<"$page" || fail "canon: /cockpit restore does not drop deregistered projects"
 grep -q "/api/project-stats?project=" <<<"$page" || fail "canon: /cockpit card stats not project-scoped"
 
-# app.html (the embedded board) must carry the project-scoping fetch wrapper
+# The embedded board (app.html and its modules) must carry the project-scoping fetch wrapper
 board="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/?project=x")"
 # t-9b2d: the board's CSS and JS live under /static/; read them through the same server. t-1543: the page names only
 # its entry module, so follow each module's `from './x.js'` imports too, as the browser does.
@@ -86,8 +86,8 @@ while [[ -n "$queue" ]]; do
   done
 done
 [[ "$seen" == *" /static/board-core.js "* ]] || fail "canon: the board's module imports were not followed (no board-core.js)"
-grep -q "__canonProject" <<<"$board" || fail "canon: app.html missing the ?project fetch wrapper"
-grep -q "urlTheme" <<<"$board" || fail "canon: app.html does not honor shell-passed ?theme"
+grep -q "__canonProject" <<<"$board" || fail "canon: the board missing the ?project fetch wrapper"
+grep -q "urlTheme" <<<"$board" || fail "canon: the board does not honor shell-passed ?theme"
 grep -q "&theme=" <<<"$page" || fail "canon: project iframe src does not carry the shell theme"
 
 # ── Phase 2b-ii: the wrapper scopes WRITE POSTs, not just reads (t-8485) ──────
@@ -95,7 +95,7 @@ grep -q "&theme=" <<<"$page" || fail "canon: project iframe src does not carry t
 # must be present, and the wrapper must scope POST/PUT (not only GET). The OUT
 # set (cockpit/version/ci/headless) must NOT appear in WRITE_RE. t-1780:
 # worktree create/unlock moved OUT of the OUT-set — they're project-scoped now.
-grep -q "WRITE_RE" <<<"$board" || fail "canon: app.html missing WRITE_RE (write POSTs not scoped)"
+grep -q "WRITE_RE" <<<"$board" || fail "canon: the board missing WRITE_RE (write POSTs not scoped)"
 write_re_line="$(grep -m1 "const WRITE_RE" <<<"$board")"
 for tok in status body demo visual doc tickets 'worktrees\$' worktree-unlock ticket-commit; do
   grep -q "$tok" <<<"$write_re_line" || fail "canon: WRITE_RE missing the '$tok' write path"
@@ -116,7 +116,7 @@ grep -qE "method *=== *'POST'|method *=== *\"POST\"" <<<"$board" || fail "canon:
 # ── Phase 3: embedded-board chrome stripped + folder-path breadcrumb (t-6a74) ─
 # The marker is applied client-side from __canonProject; assert the mechanism +
 # the marker-scoped hide CSS + folder-path logic are present in the served board.
-grep -q "canon-proj-embed" <<<"$board" || fail "canon: app.html missing canon-proj-embed marker mechanism"
+grep -q "canon-proj-embed" <<<"$board" || fail "canon: the board missing canon-proj-embed marker mechanism"
 grep -q "classList.add('canon-proj-embed')" <<<"$board" || fail "canon: canon-proj-embed not applied from __canonProject context"
 grep -qF 'class="brand-text"' <<<"$board" || fail "canon: brand text not wrapped in .brand-text (can't hide separately from icon)"
 # hide rules present for version/theme/help, scoped to the marker (t-8d98: #s-daemon
@@ -258,9 +258,9 @@ grep -qE "postMessage\(\{source:'canon-cockpit-shell'" <<<"$page" || fail "canon
 grep -qF "beforeunload" <<<"$page" || fail "canon: missing beforeunload refresh guard"
 grep -qE "addEventListener\('beforeunload', *function\(e\)\{ *if\(liveTabIds\.size" <<<"$page_flat" || fail "canon: beforeunload must be gated by liveTabIds.size (not a blanket trap)"
 
-# app.html: the shell→board bridge listener must be ORIGIN-CHECKED (same-origin only)
+# The board: the shell→board bridge listener must be ORIGIN-CHECKED (same-origin only)
 # and only drive the existing Save & End / end flow — no new daemon capability.
-grep -qF "canon-cockpit-shell" <<<"$board" || fail "canon: app.html missing the shell→board control listener"
+grep -qF "canon-cockpit-shell" <<<"$board" || fail "canon: the board missing the shell→board control listener"
 grep -qF "e.origin !== location.origin" <<<"$board" || fail "canon: shell→board listener not origin-checked (same-origin)"
 grep -qF "ckLeaveSaveAndEnd" <<<"$board" || fail "canon: shell→board listener must reuse the vetted ckLeaveSaveAndEnd flow"
 
@@ -286,14 +286,14 @@ grep -qF 'class="card-divider"' <<<"$page" || fail "canon: card missing the divi
 grep -qE "\.go\{[^}]*width:40px" <<<"$page" || fail "canon: action buttons should be enlarged (40px)"
 grep -qE "\.dereg\{[^}]*col-discarded" <<<"$page" || fail "canon: the ✕ (dereg) should carry a red border at rest"
 
-# ── t-65b0: board (app.html) blue-grey dark theme + embed rail hide + card fold-in ─
+# ── t-65b0: board blue-grey dark theme + embed rail hide + card fold-in ─
 board_flat="$(printf '%s' "$board" | tr '\n' ' ')"
 # dark :root repaletted to blue-grey (not the old near-black), accent kept purple
-grep -qE '\-\-bg: *#1b2330' <<<"$board_flat" || fail "canon: app.html dark --bg should be the blue-grey #1b2330"
-grep -qF "#0d0d10" <<<"$board" && fail "canon: app.html still carries the old near-black #0d0d10 dark --bg"
-grep -qE '\-\-accent: *#7c6af7' <<<"$board_flat" || fail "canon: app.html --accent must stay purple #7c6af7"
+grep -qE '\-\-bg: *#1b2330' <<<"$board_flat" || fail "canon: the board dark --bg should be the blue-grey #1b2330"
+grep -qF "#0d0d10" <<<"$board" && fail "canon: the board still carries the old near-black #0d0d10 dark --bg"
+grep -qE '\-\-accent: *#7c6af7' <<<"$board_flat" || fail "canon: the board --accent must stay purple #7c6af7"
 # light theme untouched (its --bg is still #f2f2f7)
-grep -qF "#f2f2f7" <<<"$board" || fail "canon: app.html light --bg (#f2f2f7) must be unchanged"
+grep -qF "#f2f2f7" <<<"$board" || fail "canon: the board light --bg (#f2f2f7) must be unchanged"
 # embed-only: the collapsed-sidebar quick-jump rail is hidden in a project tab, but the markup still exists for standalone
 grep -qE "html\.canon-proj-embed \.sidebar-icon-rail *\{ *display: *none" <<<"$board" || fail "canon: the icon rail must be hidden in the embedded tab (canon-proj-embed)"
 grep -qF 'class="sidebar-icon-rail"' <<<"$board" || fail "canon: the standalone icon rail markup must still be present"

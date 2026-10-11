@@ -2145,8 +2145,8 @@ function canonPrefixKeys(emit) {
   // Minimal markdown-ish renderer scoped to Upkeep's own report shape (# / ##
   // headers, `code` spans, - bullet lists) — not a general parser. List items
   // under a "Findings" heading get the amber callout treatment; everything
-  // else is heading/paragraph/code only. Deliberately narrower than app.html's
-  // md() (which also handles checkboxes/gherkin/feature-refs for ticket docs —
+  // else is heading/paragraph/code only. Deliberately narrower than the board's
+  // md() (static/board-helpers.js) (which also handles checkboxes/gherkin/feature-refs for ticket docs —
   // a different, larger job this view doesn't need).
   function upRenderReport(raw){
     if(!raw) return '<div class="up-empty">Empty report.</div>';
@@ -2288,7 +2288,7 @@ function canonPrefixKeys(emit) {
 
   // ── Admin > Model Tiers (t-7e36) ────────────────────────────────────────
   // Board-wide registry (not per-project, not daemon state) backing this
-  // panel and the per-ticket Gate-model dropdown in app.html. Anthropic
+  // panel and the board's per-ticket Gate-model dropdown. Anthropic
   // picks are dispatched by Claude Code; an OpenAI model runs close gates under
   // Copilot CLI only via a per-ticket `Gate model: openai:<id>` (t-ef27) — the
   // OpenAI defaults here stay recorded only. See #mt-openai-note.
@@ -2317,7 +2317,7 @@ function canonPrefixKeys(emit) {
     return val;
   }
   // Only Anthropic's alias field feeds the per-ticket Gate-model dropdown
-  // (app.html's `models.filter(m => m.alias)`) — OpenAI has no equivalent
+  // (`models.filter(m => m.alias)` in static/board-docs.js) — OpenAI has no equivalent
   // consumer yet (t-ef27), so its cards carry no alias field at all.
   const MT_ALIAS_PROVIDERS=new Set(['anthropic']);
 
