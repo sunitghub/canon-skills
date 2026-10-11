@@ -89,6 +89,8 @@ YES
 
    If there are findings, change `YES` to `NO`.
 
+   **Check the shape before you return (t-c38e).** Run `sprint check-review-notes <id>`: it applies exactly the rule `sprint complete` enforces (a `Changed files:` line with a path; every concern label on its own line; every `none` line containing the word `checked` and a `path:line`). If it says `shape refused`, rewrite the lines it names and run it again; return only after it prints `shape ok`.
+
    Return the verdict line (`YES` or `NO`) in your response to the caller. When the caller records this in the Wrapup Gates table, the Reason must be prefixed `verdict:` (e.g. `verdict: YES` or `verdict: NO — <one-line summary>`).
 
 ## Disposition
