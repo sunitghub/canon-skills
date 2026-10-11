@@ -6496,9 +6496,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       if (collapse) await page.locator('#ck-rail-toggle').click();
-      // The page's own renderers (and its 5s poll) would overwrite the injected state a moment later (the stubbed
-      // session is never live), so silence them first: the test then measures what it set, not a race.
-      await page.evaluate(() => { window.renderSessionStateChip = () => {}; window.refreshSessionStateChip = async () => {}; window.renderCockpitModel = async () => {}; });
       // Worst case for the right-hand side: a state chip, the auto-save text, four tab pills, a long model.
       await page.evaluate(() => {
         const chip = document.getElementById('ck-state-chip'); chip.className = 'ck-state-chip st-working'; chip.textContent = 'working'; chip.hidden = false;
@@ -6506,6 +6503,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const ts = document.getElementById('ck-tab-strip-topbar'); ts.hidden = false;
         ts.innerHTML = ['t-a319', 't-b91f', 't-ccd6', 't-07a8'].map(n => `<span class="ck-tab-pill"><span class="ck-tab-pill-id">${n}</span><button class="ck-tab-pill-close" type="button">\u00d7</button></span>`).join('');   // the real pill markup (renderTabStrip)
         document.getElementById('ck-model').textContent = 'model: claude-sonnet-5 (Admin Review & Eval default)';
+        // The page's own renderers (its 5s poll, the sessions and plan.md fetches) would overwrite this a moment later
+        // (the stubbed session is never live), so freeze what was set: the test then measures it, not a race. The
+        // board's functions are module-private (t-1543), so the freeze is on the elements, not the renderers.
+        const desc = (el, p) => { for (let o = el; o; o = Object.getPrototypeOf(o)) { const d = Object.getOwnPropertyDescriptor(o, p); if (d) return d; } };
+        for (const el of [chip, r, document.getElementById('ck-model')]) {
+          for (const p of ['textContent', 'className', 'hidden', 'title']) {
+            const d = desc(el, p);
+            Object.defineProperty(el, p, { configurable: true, get() { return d.get.call(this); }, set() {} });
+          }
+          el.removeAttribute = () => {};
+        }
       });
     }
     const CONTROLS = ['#ck-back', '#ck-id', '#ck-status', '#ck-title', '#ck-tab-strip-topbar', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-model'];
