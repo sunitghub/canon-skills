@@ -1,4 +1,9 @@
-'use strict';
+import { DOC_TYPES, LIVE_EDITABLE_SLUGS, docFileFor, docSlug, state } from './board-core.js';
+import { displayTicketId, divergenceInfo, esc, hydrateFeatureRefs, md, normalizeTicketLineId } from './board-helpers.js';
+import { findTicketById, postWrite, renderBoard, renderHeader, renderSidebar, updateDoc } from './board-render.js';
+import { adoptTicketWrite, fetchModalDoc, markDocHeadings, modalState, renderModalDocs, showStaleEditNotice, stopHeadlessPoll } from './board-modal.js';
+import { tagCheckboxes } from './board-panels.js';
+import { setText } from './board-ui.js';
 
 // t-7e36: seeded fallback in case /api/admin/model-tiers hasn't loaded yet (or is
 // unreachable) — refreshModelTierOptions() below replaces this with the live
@@ -11,33 +16,10 @@
 // registry lookup.
 let MODEL_TIER_OPTIONS = ['default', 'fable', 'opus', 'sonnet', 'haiku'];
 let MODEL_TIER_LABELS = {};
-(async () => {
-  try {
-    const r = await fetch('/api/admin/model-tiers');
-    const reg = await r.json();
-    // Gate model: persists the short alias (fable/opus/sonnet/haiku), not the
-    // full API id — matches the value `claude -p --model` has always been
-    // passed (DECISIONS.md t-4003) and every ticket's already-saved plan.md.
-    const models = (reg.models && reg.models.anthropic) || [];
-    const aliased = models.filter(m => m.alias);
-    if (aliased.length) {
-      MODEL_TIER_OPTIONS = ['default', ...aliased.map(m => m.alias)];
-      MODEL_TIER_LABELS = Object.fromEntries(aliased.map(m => [m.alias, m.name]));
-    }
-    // Same charset rule as the resolvers (tools/gate-model.sh): a registry id that
-    // wouldn't survive them is never offered, so the dropdown can't write an invalid value.
-    const openai = ((reg.models && reg.models.openai) || []).filter(m => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m.id || ''));
-    for (const m of openai) {
-      const v = 'openai:' + m.id.toLowerCase();
-      MODEL_TIER_OPTIONS = [...MODEL_TIER_OPTIONS, v];
-      MODEL_TIER_LABELS[v] = `${m.name || m.id} (OpenAI · Copilot gates only)`;
-    }
-  } catch { /* keep fallback */ }
-})();
 const SIGNOFF_TIER_OPTIONS = ['normal', 'bugfix', 'high-risk'];
 const SIGNOFF_TIER_LABELS = { normal: 'Normal', bugfix: 'Bugfix', 'high-risk': 'High-risk' };
 
-function parseGateModel(content) {
+export function parseGateModel(content) {
   const signoff = sectionContent(content, 'Sign-off');
   const tierLine = signoff.match(/^Tier:.*$/m);
   if (!tierLine) return { filled: false, value: null };
@@ -227,7 +209,7 @@ function signoffField(text, control, cls = '') {
   return f;
 }
 
-function renderModalBody(t) {
+export function renderModalBody(t) {
   const bodyEl  = document.getElementById('m-body');
   document.getElementById('m-editor-toolbar').classList.remove('open');
   setEditAreaVisible(false);
@@ -294,7 +276,7 @@ function renderModalBody(t) {
 }
 
 // t-a205: one answer to "may the board edit the active doc?" for the hint, double-click, the E key and enterEditMode.
-function docEditable(t) {
+export function docEditable(t) {
   if (!t || t.status === 'closed' || t.status === 'cancelled' || modalState.ghost) return false;   // a ghost's pane (nothing to edit yet) owns the pane while it is open
   if (modalState.docOverride[modalState.activeDoc] != null) return false;   // t-6254: the worktree's copy, shown read-only
   const liveBranch = t.docs_from && t.docs_from.branch;
@@ -309,11 +291,11 @@ function setEditAreaVisible(on) {
 // Line-number gutter: one number per logical line, each as tall as that line renders once wrapped. A hidden mirror
 // div measures the lines at the textarea's text width. Programmatic `.value =` writes fire no `input` event, so
 // load, paste replacement and snippet insert call this directly.
-const EDITOR_LINES_KEY = 'sprint-check-editor-lines';
-function editorLinesOn() {
+export const EDITOR_LINES_KEY = 'sprint-check-editor-lines';
+export function editorLinesOn() {
   try { return localStorage.getItem(EDITOR_LINES_KEY) !== '0'; } catch { return true; }
 }
-function refreshEditorGutter() {
+export function refreshEditorGutter() {
   const card = document.getElementById('m-editor-card');
   const gut = document.getElementById('m-gutter');
   const ta = document.getElementById('m-edit-area');
@@ -335,7 +317,7 @@ function refreshEditorGutter() {
   gut.scrollTop = ta.scrollTop;
 }
 
-function enterEditMode(t) {
+export function enterEditMode(t) {
   if (modalState.editMode) return;
   document.getElementById('stale-edit-notice')?.remove();
   if (!docEditable(t)) return;
@@ -376,7 +358,7 @@ function enterEditMode(t) {
   document.getElementById('m-kbd').style.display = 'none';
 }
 
-function exitEditMode(t) {
+export function exitEditMode(t) {
   modalState.editMode = false;
   document.getElementById('m-docs').classList.remove('editing');
   document.getElementById('m-editor-toolbar').classList.remove('open');
@@ -389,7 +371,7 @@ function exitEditMode(t) {
   renderBoard();
 }
 
-async function saveEdit(t) {
+export async function saveEdit(t) {
   let content = normalizeDocTitle(t, document.getElementById('m-edit-area').value);
   // For the Acceptance doc, seed the Test Plan runner placeholder before validating/saving, so a
   // first Save of a scenario-bearing doc both passes the Test Plan check and persists the
@@ -483,7 +465,7 @@ function validateDocStructure(t, content) {
   return '';
 }
 
-function sectionContent(content, heading) {
+export function sectionContent(content, heading) {
   const re = new RegExp(`^##\\s+${heading}\\s*$`, 'm');
   const match = re.exec(content);
   if (!match) return '';
@@ -506,7 +488,7 @@ function withoutGuidance(text) {
     .trim();
 }
 
-function hasFilledCheckbox(text) {
+export function hasFilledCheckbox(text) {
   return /^- \[[ xX]\]\s+\S/m.test(withoutGuidance(text));
 }
 
@@ -514,7 +496,7 @@ function hasUncheckedBox(text) {
   return /^\s*[-*]\s+\[ \]\s+\S/m.test(withoutGuidance(text));
 }
 
-function hasUsefulSectionText(text, placeholders = []) {
+export function hasUsefulSectionText(text, placeholders = []) {
   const cleaned = withoutGuidance(text);
   if (!cleaned) return false;
   return !placeholders.some(p => cleaned === p);
@@ -525,7 +507,7 @@ function hasUsefulSectionText(text, placeholders = []) {
 // keyword among steps, an unclosed fence, and a block with no Scenario. This is a
 // structural check, not a full Gherkin parser — free-text description lines (under
 // Feature, or before a scenario's first step) are allowed to avoid false positives.
-function validateGherkinBlocks(content) {
+export function validateGherkinBlocks(content) {
   const lines = String(content ?? '').split('\n');
   const OPEN  = /^[ \t]*```[ \t]*(?:gherkin|feature)[ \t]*$/i;
   const CLOSE = /^[ \t]*```[ \t]*$/;
@@ -603,7 +585,7 @@ function validateDocContent(slug, content) {
 
 // t-bb97: a doc that does not exist yet is a ghost node. Selecting it explains the doc and offers "+ <Doc>", which opens the
 // template in the editor as an uncreated draft: Save writes the file (base_hash 'absent'), Cancel writes nothing.
-function activateGhost(t, slug) {
+export function activateGhost(t, slug) {
   const dt = DOC_TYPES.find(d => d.slug === slug);
   if (!dt) return;
   modalState.ghost = slug;
@@ -652,7 +634,7 @@ function linePrefixForTextarea(textarea, prefix) {
   return (needsNewline ? '\n' : '') + prefix;
 }
 
-function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-area')) {
+export function insertEditorSnippet(kind, textarea = document.getElementById('m-edit-area')) {
   textarea.focus();
 
   const start = textarea.selectionStart;
@@ -720,7 +702,7 @@ function ensureHeadingComment(content, heading, comment) {
 }
 
 // Does this doc contain a Gherkin scenario? (a fenced gherkin/gherkin-file block or a Scenario: line)
-function hasGherkinScenario(content) {
+export function hasGherkinScenario(content) {
   const s = String(content ?? '');
   return /```[ \t]*gherkin(?:-file)?\b/i.test(s) || /^[ \t]*Scenario:/m.test(s);
 }
@@ -733,7 +715,7 @@ function hasGherkinScenario(content) {
 // When an Acceptance doc has a Gherkin scenario, seed the Test Plan placeholder — but only when
 // `## Test Plan` has no real command yet, and never twice (idempotent). Pure: content -> content.
 // Unit-tested in tests/sprint-check-seed.js.
-function seedTestPlanRunnerPlaceholder(content) {
+export function seedTestPlanRunnerPlaceholder(content) {
   const PLACEHOLDER = '- [ ] <the agent writes the runner command here after building the runner>';
   const s = String(content ?? '');
   if (!hasGherkinScenario(s)) return s;
@@ -763,7 +745,7 @@ function seedTestPlanRunnerPlaceholder(content) {
 // Offset of the end of the last content line in the `## Criteria` section, so the editor can drop
 // the caret there on open (authoring + the Scenario button then land under Criteria, not Test Plan).
 // Returns null when there is no `## Criteria` heading. Pure; unit-tested in tests/sprint-check-seed.js.
-function criteriaCursorOffset(content) {
+export function criteriaCursorOffset(content) {
   const s = String(content ?? '');
   const lines = s.split('\n');
   const hIdx = lines.findIndex((l) => /^##[ \t]+Criteria[ \t]*$/.test(l));
@@ -797,7 +779,7 @@ function ensureDocGuideComments(t, content) {
   return next;
 }
 
-function closeModal() {
+export function closeModal() {
   if (modalState.editMode) return; // don't close while editing
   document.getElementById('modal-overlay').classList.remove('open');
   modalState.ghost = '';
@@ -807,7 +789,7 @@ function closeModal() {
   renderBoard();
 }
 
-function refreshModalActions(t) {
+export function refreshModalActions(t) {
   const dv = document.getElementById('m-diverge');
   const info = divergenceInfo(t);
   dv.textContent = info ? info.long : '';
@@ -823,7 +805,7 @@ function refreshModalActions(t) {
   });
 }
 
-async function moveCard(t, newStatus) {
+export async function moveCard(t, newStatus) {
   // t-1940: only a confirmed save moves the card — a refused one used to look moved until refresh.
   const res = await postWrite(`/api/ticket/${t.id}/status`, { status: newStatus }, `move ${t.id}`);
   if (!res.ok) { renderBoard(); return; }
@@ -833,4 +815,31 @@ async function moveCard(t, newStatus) {
   renderSidebar();
   const modalOpen = document.getElementById('modal-overlay').classList.contains('open');
   if (modalOpen) closeModal(); else renderBoard();
+}
+
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+export function initDocs() {
+  (async () => {
+    try {
+      const r = await fetch('/api/admin/model-tiers');
+      const reg = await r.json();
+      // Gate model: persists the short alias (fable/opus/sonnet/haiku), not the
+      // full API id — matches the value `claude -p --model` has always been
+      // passed (DECISIONS.md t-4003) and every ticket's already-saved plan.md.
+      const models = (reg.models && reg.models.anthropic) || [];
+      const aliased = models.filter(m => m.alias);
+      if (aliased.length) {
+        MODEL_TIER_OPTIONS = ['default', ...aliased.map(m => m.alias)];
+        MODEL_TIER_LABELS = Object.fromEntries(aliased.map(m => [m.alias, m.name]));
+      }
+      // Same charset rule as the resolvers (tools/gate-model.sh): a registry id that
+      // wouldn't survive them is never offered, so the dropdown can't write an invalid value.
+      const openai = ((reg.models && reg.models.openai) || []).filter(m => /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(m.id || ''));
+      for (const m of openai) {
+        const v = 'openai:' + m.id.toLowerCase();
+        MODEL_TIER_OPTIONS = [...MODEL_TIER_OPTIONS, v];
+        MODEL_TIER_LABELS[v] = `${m.name || m.id} (OpenAI · Copilot gates only)`;
+      }
+    } catch { /* keep fallback */ }
+  })();
 }

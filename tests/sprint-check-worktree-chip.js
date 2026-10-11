@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // sprint-check-worktree-chip — unit coverage for the board card's worktree chip label (t-44b0).
-// Loads the REAL worktreeChipLabel out of the board's scripts (tests/board-script.js) into a vm sandbox. The Windows
+// Loads the REAL worktreeChipLabel out of the board's scripts (tests/board-script.js). The Windows
 // separator/drive-letter cases run on any OS because the function only folds strings (rendered chip: Playwright).
 const { loadBoard } = require('./board-script');
 

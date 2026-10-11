@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // sprint-check-status-badge — unit coverage for the cockpit ticket-status badge
 // mapping (t-bc04). Loads the REAL statusBadgeInfo out of
-// the board's scripts (tests/board-script.js) into a vm sandbox and asserts each ticket
+// the board's scripts (tests/board-script.js) and asserts each ticket
 // status maps to the right label + board-column color class. Robust across the
 // open/in_progress/closed/cancelled statuses without driving the board UI (the
 // rendered integration is covered by the Playwright cockpit test).

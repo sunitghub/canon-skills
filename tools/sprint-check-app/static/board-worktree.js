@@ -1,4 +1,8 @@
-'use strict';
+import { state } from './board-core.js';
+import { WT_PREF_MAIN, esc, escAttr, md, worktreeRun } from './board-helpers.js';
+import { showToast } from './board-render.js';
+import { activeIframe, cockpitState, missingTicketMessage, requestPreview, setButtonBusy, setTermMessage } from './board-cockpit.js';
+import { closeCockpit, openCockpitDetails } from './board-cockpit-rail.js';
 
 // t-ccd6: promise-returning confirm/notice in the board's own style. okOnly = a
 // notice (resolves true on OK, false on Escape). Escape cancels, Enter confirms
@@ -59,7 +63,7 @@ async function unlockTicketWorktree(ticketId) {
 // the switch-worktree confirm, and the Status line) — one fetch shape, one
 // fail-safe default, so a request failure never silently degrades to
 // "treat as unlocked" in one caller and "skip the check" in another.
-async function fetchWorktreeLock(ticketId) {
+export async function fetchWorktreeLock(ticketId) {
   try {
     const r = await fetch(`/api/worktree-lock/${encodeURIComponent(ticketId)}`);
     if (r.ok) return await r.json();
@@ -72,7 +76,7 @@ async function fetchWorktreeLock(ticketId) {
 // ticket's resolved design), plus a "+ New" row that creates one. Only
 // re-rendered on cockpit open, not on the 5s poll — the list rarely changes
 // mid-session and re-rendering would clobber an in-progress "+ New" typing.
-async function renderCockpitWorktree(t) {
+export async function renderCockpitWorktree(t) {
   const tab = cockpitState; // the tab being rendered — cockpitState may move to another tab across the awaits below
   // t-644a: hide the whole accordion section for a non-git project — same
   // live state.isGitProject check the New Ticket modal's Worktree row uses,
@@ -561,7 +565,7 @@ function updateWorktreeNote() {
 // (EvalSymlinks output, native separators) and the board's own `git worktree
 // list` — Windows mixes `\` and `/` and is case-insensitive, so compare on a
 // lowercased, forward-slashed, trailing-slash-stripped key.
-function cockpitPathKey(p) {
+export function cockpitPathKey(p) {
   if (!p) return '';
   return String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
 }
@@ -574,7 +578,7 @@ function cockpitPathKey(p) {
 // — it comes from Python's str(Path), native OS separators on Windows. The
 // daemon's cwdPrefillRe (main.go, t-7590) deliberately assumes every cwd it
 // receives is already forward-slashed; this is what keeps that true.
-function cockpitForwardSlash(p) {
+export function cockpitForwardSlash(p) {
   return p ? String(p).replace(/\\/g, '/') : p;
 }
 
@@ -584,7 +588,7 @@ function cockpitForwardSlash(p) {
 // loud mismatch warning instead of silently claiming the wrong tree — the whole
 // point of the ticket (a locked/stale .cockpit-cwd or an empty request can send
 // the session somewhere other than the selection).
-function applyActualWorkingCwd(cwd, requested) {
+export function applyActualWorkingCwd(cwd, requested) {
   const note = document.getElementById('ck-worktree-note');
   if (!note) return;
   cockpitState.actualCwd = cwd || '';
@@ -627,7 +631,7 @@ function applyActualWorkingCwd(cwd, requested) {
 // drop it here. HANDOFF.md's own line breaks are just ~80-col source
 // wrapping for editing, not semantic paragraphs — collapse them, then split
 // into real sentences so this doesn't render as one dense wrapped blob.
-function formatStateAsParagraphs(bullet, t) {
+export function formatStateAsParagraphs(bullet, t) {
   const withoutPrefix = bullet.replace(/^-\s+(\*\*[^*]*\*\*\s*)?(\([^)]*\)\s*)?[—-]\s*/, '');
   const flat = withoutPrefix.replace(/\s+/g, ' ').trim();
   const sentences = flat.split(/(?<=[.:])\s+(?=[A-Z0-9`$<])/g).filter(Boolean);
@@ -640,7 +644,7 @@ function formatStateAsParagraphs(bullet, t) {
 // yet is what "Start sprint stays disabled" means in practice. A Resume
 // mounts immediately: the daemon reuses its persisted cwd for an in_progress
 // ticket regardless of what the board sends.
-async function maybeMountCockpitTerminal(t) {
+export async function maybeMountCockpitTerminal(t) {
   const iframe = activeIframe();
   if (t.scratch) { await mountCockpitTerminal(t, ''); return; }   // t-47f1: always the main checkout
   if (cockpitState.worktreeCwd === null) {
@@ -683,7 +687,7 @@ async function maybeMountCockpitTerminal(t) {
   await mountCockpitTerminal(t, cockpitState.worktreeCwd);
 }
 
-async function mountCockpitTerminal(t, cwd) {
+export async function mountCockpitTerminal(t, cwd) {
   const iframe = activeIframe();
   setTermMessage('Starting the cockpit daemon…');
   iframe.style.visibility = 'hidden';
@@ -749,75 +753,78 @@ async function mountCockpitTerminal(t, cwd) {
   setTermMessage('');
 }
 
-// Accordion: each Acceptance/Test Plan section collapses independently.
-document.querySelectorAll('.ck-accordion-header[data-accordion]').forEach(header => {
-  header.addEventListener('click', () => {
-    document.getElementById(header.dataset.accordion).classList.toggle('collapsed');
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+export function initWorktree() {
+  // Accordion: each Acceptance/Test Plan section collapses independently.
+  document.querySelectorAll('.ck-accordion-header[data-accordion]').forEach(header => {
+    header.addEventListener('click', () => {
+      document.getElementById(header.dataset.accordion).classList.toggle('collapsed');
+    });
   });
-});
 
-document.getElementById('ck-details').addEventListener('click', openCockpitDetails);
-document.getElementById('ck-back').addEventListener('click', closeCockpit);
-document.getElementById('ck-rail-toggle').addEventListener('click', () => {
-  const cockpit = document.getElementById('cockpit');
-  const rail = document.querySelector('#cockpit .ck-rail');
-  const collapsing = !cockpit.classList.contains('rail-collapsed');
-  // An inline width from a manual resize always beats the collapsed-state
-  // CSS rule (inline wins over any class selector) — stash it and restore
-  // on expand, or the rail would silently ignore the 44px collapse width.
-  if (collapsing) {
-    if (rail.style.width) rail.dataset.customWidth = rail.style.width;
-    rail.style.width = '';
-  } else if (rail.dataset.customWidth) {
-    rail.style.width = rail.dataset.customWidth;
-  }
-  cockpit.classList.toggle('rail-collapsed');
-});
+  document.getElementById('ck-details').addEventListener('click', openCockpitDetails);
+  document.getElementById('ck-back').addEventListener('click', closeCockpit);
+  document.getElementById('ck-rail-toggle').addEventListener('click', () => {
+    const cockpit = document.getElementById('cockpit');
+    const rail = document.querySelector('#cockpit .ck-rail');
+    const collapsing = !cockpit.classList.contains('rail-collapsed');
+    // An inline width from a manual resize always beats the collapsed-state
+    // CSS rule (inline wins over any class selector) — stash it and restore
+    // on expand, or the rail would silently ignore the 44px collapse width.
+    if (collapsing) {
+      if (rail.style.width) rail.dataset.customWidth = rail.style.width;
+      rail.style.width = '';
+    } else if (rail.dataset.customWidth) {
+      rail.style.width = rail.dataset.customWidth;
+    }
+    cockpit.classList.toggle('rail-collapsed');
+  });
 
-(function makeRailResizable() {
-  const rail = document.querySelector('#cockpit .ck-rail');
-  const resizeEl = document.getElementById('ck-rail-resize');
-  if (!rail || !resizeEl) return;
-  const MIN_W = 220, MAX_W = 520;
-  let resizing = false, startX = 0, startWidth = 0;
-  resizeEl.addEventListener('pointerdown', e => {
-    if (document.getElementById('cockpit').classList.contains('rail-collapsed')) return;
-    resizing = true;
-    startX = e.clientX;
-    startWidth = rail.getBoundingClientRect().width;
-    rail.style.transition = 'none'; // no lag trailing the pointer mid-drag
-    resizeEl.classList.add('resizing');
-    document.body.style.userSelect = 'none';
-    resizeEl.setPointerCapture(e.pointerId);
+  (function makeRailResizable() {
+    const rail = document.querySelector('#cockpit .ck-rail');
+    const resizeEl = document.getElementById('ck-rail-resize');
+    if (!rail || !resizeEl) return;
+    const MIN_W = 220, MAX_W = 520;
+    let resizing = false, startX = 0, startWidth = 0;
+    resizeEl.addEventListener('pointerdown', e => {
+      if (document.getElementById('cockpit').classList.contains('rail-collapsed')) return;
+      resizing = true;
+      startX = e.clientX;
+      startWidth = rail.getBoundingClientRect().width;
+      rail.style.transition = 'none'; // no lag trailing the pointer mid-drag
+      resizeEl.classList.add('resizing');
+      document.body.style.userSelect = 'none';
+      resizeEl.setPointerCapture(e.pointerId);
+    });
+    resizeEl.addEventListener('pointermove', e => {
+      if (!resizing) return;
+      const next = Math.min(MAX_W, Math.max(MIN_W, startWidth + (e.clientX - startX)));
+      rail.style.width = next + 'px';
+    });
+    const stopResize = e => {
+      if (!resizing) return;
+      resizing = false;
+      rail.style.transition = '';
+      resizeEl.classList.remove('resizing');
+      document.body.style.userSelect = '';
+      try { resizeEl.releasePointerCapture(e.pointerId); } catch {}
+    };
+    resizeEl.addEventListener('pointerup', stopResize);
+    resizeEl.addEventListener('pointercancel', stopResize);
+  })();
+  document.getElementById('ck-preview-label').addEventListener('click', () => {
+    document.getElementById('ck-preview').classList.remove('collapsed');
+    // t-82f4: persist onto the active tab so switching away and back restores
+    // this expanded state instead of always reopening collapsed.
+    if (cockpitState) cockpitState.previewCollapsed = false;
+    requestPreview();
   });
-  resizeEl.addEventListener('pointermove', e => {
-    if (!resizing) return;
-    const next = Math.min(MAX_W, Math.max(MIN_W, startWidth + (e.clientX - startX)));
-    rail.style.width = next + 'px';
+  document.getElementById('ck-preview-collapse').addEventListener('click', () => {
+    document.getElementById('ck-preview').classList.add('collapsed');
+    if (cockpitState) cockpitState.previewCollapsed = true;
   });
-  const stopResize = e => {
-    if (!resizing) return;
-    resizing = false;
-    rail.style.transition = '';
-    resizeEl.classList.remove('resizing');
-    document.body.style.userSelect = '';
-    try { resizeEl.releasePointerCapture(e.pointerId); } catch {}
-  };
-  resizeEl.addEventListener('pointerup', stopResize);
-  resizeEl.addEventListener('pointercancel', stopResize);
-})();
-document.getElementById('ck-preview-label').addEventListener('click', () => {
-  document.getElementById('ck-preview').classList.remove('collapsed');
-  // t-82f4: persist onto the active tab so switching away and back restores
-  // this expanded state instead of always reopening collapsed.
-  if (cockpitState) cockpitState.previewCollapsed = false;
-  requestPreview();
-});
-document.getElementById('ck-preview-collapse').addEventListener('click', () => {
-  document.getElementById('ck-preview').classList.add('collapsed');
-  if (cockpitState) cockpitState.previewCollapsed = true;
-});
-document.addEventListener('keydown', e => {
-  // t-6254: Esc closes the ticket viewer popup first; the cockpit stays
-  if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open') && !document.getElementById('modal-overlay').classList.contains('open')) closeCockpit();
-});
+  document.addEventListener('keydown', e => {
+    // t-6254: Esc closes the ticket viewer popup first; the cockpit stays
+    if (e.key === 'Escape' && document.getElementById('cockpit-overlay').classList.contains('open') && !document.getElementById('modal-overlay').classList.contains('open')) closeCockpit();
+  });
+}

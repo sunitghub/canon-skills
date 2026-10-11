@@ -1,31 +1,32 @@
-'use strict';
+import { docSlug, state } from './board-core.js';
+import { readiness } from './board-render.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
-function esc(s) {
+export function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 // esc() leaves `"` alone, so text going inside an attribute needs this one (t-6328 lesson).
-function escAttr(s) {
+export function escAttr(s) {
   return esc(s).replace(/"/g, '&quot;');
 }
 
-function displayTicketId(t) {
+export function displayTicketId(t) {
   return String(t?.id ?? '').replace(/^(['"])(.*)\1$/, '$2');
 }
 
-function normalizeTicketLineId(value) {
+export function normalizeTicketLineId(value) {
   return String(value ?? '')
     .trim()
     .replace(/^`(.*)`$/, '$1')
     .replace(/^(['"])(.*)\1$/, '$2');
 }
 
-function titleCase(s) {
+export function titleCase(s) {
   return String(s ?? '').replace(/\b\w/g, c => c.toUpperCase());
 }
 
-function normalizeSearch(s) {
+export function normalizeSearch(s) {
   return String(s ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
@@ -65,7 +66,7 @@ function primarySearchText(t) {
   ].join(' '));
 }
 
-function ticketMatchesQuery(t) {
+export function ticketMatchesQuery(t) {
   const q = normalizeSearch(state.query);
   if (state.queryMode !== 'search') return true;
   if (!q) return true;
@@ -81,13 +82,13 @@ function ticketMatchesQuery(t) {
   return searchableText(t).includes(q);
 }
 
-function whyQueryFromInput(value) {
+export function whyQueryFromInput(value) {
   const raw = String(value ?? '').trim();
   const prefixed = raw.match(/^why(?::|\s+)(.+)$/i);
   return (prefixed ? prefixed[1] : raw).trim();
 }
 
-function age(iso) {
+export function age(iso) {
   if (!iso) return '';
   // t-19d1: a legacy date-only `created` has no time of day — report whole days, never a made-up
   // hour count ("10h ago" for a ticket created minutes ago).
@@ -109,12 +110,12 @@ function age(iso) {
   return `${Math.floor(d/30)}mo ago`;
 }
 
-function typeBadge(type) {
+export function typeBadge(type) {
   const t = type || 'task';
   return `<span class="type-badge type-${esc(t)}">${esc(t)}</span>`;
 }
 
-function outcomeRatio(type, tickets) {
+export function outcomeRatio(type, tickets) {
   const withOutcome = tickets.find(x => x.type === type && x.type_outcome);
   const o = withOutcome && withOutcome.type_outcome;
   if (!o || !o.closed) return '';
@@ -123,19 +124,19 @@ function outcomeRatio(type, tickets) {
   return `<span class="outcome-dot ${good ? 'outcome-good' : 'outcome-mixed'}" tabindex="0" role="img" aria-label="${detail}" data-tooltip="${detail}"></span>`;
 }
 
-function ciBadge(t) {
+export function ciBadge(t) {
   if (String(t.ci) !== 'true') return '';
   return `<span class="ci-badge" title="CI-eligible — headless grading (tools/sprint-headless) can run against this ticket. Set with: tkt ci ${esc(t.id)} off">CI</span>`;
 }
 
-function demoBadge(t) {
+export function demoBadge(t) {
   if (String(t.demo) !== 'true') return '';
   return `<span class="demo-badge" title="Demo/Docs/UX light-close — for live demos or docs/research/UX-mockup work: sprint complete runs the reduced close-path (security-review + the binding evaluator only, forced Haiku), skipping the advisory reviewer + rest of wrapup. Never drops below the evaluator. Set with: tkt demo ${esc(t.id)} off">DEMO/UX</span>`;
 }
 
 // t-6328: `branch_divergence` ({branch,status,where,merged}) is sent only when this ticket's
 // status differs on a live worktree / unmerged branch. Returns null when absent.
-function divergenceInfo(t) {
+export function divergenceInfo(t) {
   const d = t && t.branch_divergence;
   if (!d || !d.branch || !d.status) return null;
   // t-8be2: a bound ticket shows its worktree's own status, so a divergence that says the same thing warns of nothing
@@ -156,30 +157,30 @@ function divergenceInfo(t) {
 // t-19d1: where a ticket really is. An `open` ticket that's `in_progress` in a live worktree (the
 // sprint started there; .tickets/ is tracked, so only the worktree's copy changed) counts as in
 // progress for lanes, counts and Start/Resume. Display only — main's ticket.md is never written.
-function worktreeRun(t) {
+export function worktreeRun(t) {
   const d = t && t.branch_divergence;
   return (t && t.status === 'open' && d && d.where === 'worktree' && d.status === 'in_progress' && d.branch) ? d : null;
 }
-function effectiveStatus(t) {
+export function effectiveStatus(t) {
   return worktreeRun(t) ? 'in_progress' : (t ? t.status : '');
 }
 
-function divergenceLine(t) {
+export function divergenceLine(t) {
   const info = divergenceInfo(t);
   return info ? `<div class="card-diverge" title="${escAttr(info.long)}">${esc(info.short)}</div>` : '';
 }
 
 // t-19d1: New Ticket's "Main checkout" choice is saved as this sentinel, not a branch name (the main
 // checkout's branch varies: main, master, …), so the rail can preselect Main and the card can say so.
-const WT_PREF_MAIN = 'main-checkout';
+export const WT_PREF_MAIN = 'main-checkout';
 
 // t-15ee: the branch chosen in New Ticket (`worktree_preference`), while the ticket is still open —
 // nothing is created until the sprint starts, so without this the choice looks dropped.
-function openWorktreePreference(t) {
+export function openWorktreePreference(t) {
   return t && t.status === 'open' && t.worktree_preference ? String(t.worktree_preference) : '';
 }
 
-function worktreePrefLine(t) {
+export function worktreePrefLine(t) {
   const pref = openWorktreePreference(t);
   if (!pref) return '';
   if (pref === WT_PREF_MAIN) return `<div class="card-wt-pref" title="Chosen at New Ticket — the sprint runs in the main checkout.">Worktree: Main checkout</div>`;
@@ -208,7 +209,7 @@ function sortChecklistRuns(text) {
 
 // Resolve a markdown image src against the open ticket's own folder via the
 // /api/ticket-image route — absolute/protocol-relative URLs pass through untouched.
-function resolveMockupSrc(src, ticketId) {
+export function resolveMockupSrc(src, ticketId) {
   if (/^(https?:)?\/\//.test(src) || src.startsWith('/')) return src;
   const relpath = src.split('/').map(encodeURIComponent).join('/');
   // An <img> is loaded by the browser directly, so the fetch wrapper (t-a55a) never sees it —
@@ -243,7 +244,7 @@ function renderGherkinFence(fence) {
 // Split a ```gherkin-file body into { src, runner }: exactly one .feature path line
 // plus an optional `runner:` line, order-independent, blank lines ignored. The first
 // non-runner line is the path candidate (validated by the caller).
-function parseFeatureRefBody(body) {
+export function parseFeatureRefBody(body) {
   const runnerLine = /^runner:\s*(.*)$/i;
   let src = '', runner = '';
   String(body == null ? '' : body).split('\n').forEach(raw => {
@@ -260,14 +261,14 @@ function parseFeatureRefBody(body) {
 // The board never runs this — the fresh evaluator executes `<runner> <feature>` at
 // sprint complete (see skills/sprint/reference/eval.md). Every fragment is esc()'d and
 // the value never reaches a shell, subprocess, or eval on any board code path.
-function renderRunnerLabel(runner, src) {
+export function renderRunnerLabel(runner, src) {
   const cmd = String(runner == null ? '' : runner).trim();
   if (!cmd) return '';
   const full = src ? `${cmd} ${src}` : cmd;
   return `<div class="doc-scenario-runner"><span class="doc-scenario-runner-label">Runner</span><code>${esc(full)}</code></div>`;
 }
 
-function renderFeatureRefPlaceholder(body) {
+export function renderFeatureRefPlaceholder(body) {
   const featureRefRe = /^features\/[A-Za-z0-9._\-\/]+\.feature$/;
   const { src, runner } = parseFeatureRefBody(body);
   const raw = String(src == null ? '' : src).trim();
@@ -282,7 +283,7 @@ function renderFeatureRefPlaceholder(body) {
 // Fetch each referenced ticket-local .feature and replace its placeholder with a
 // rendered scenario panel (or a legible error state). Server-side _safe_ticket_doc /
 // safeTicketDoc is the real trust boundary; this only reads .feature under the ticket.
-function hydrateFeatureRefs(container, ticketId) {
+export function hydrateFeatureRefs(container, ticketId) {
   if (!container || !ticketId) return;
   container.querySelectorAll('.doc-scenario-ref[data-feature-src]').forEach(el => {
     const src = el.getAttribute('data-feature-src') || '';
@@ -308,7 +309,7 @@ function hydrateFeatureRefs(container, ticketId) {
 }
 
 // Minimal markdown: headers, bold, inline code, checklist items, bullet lists, images
-function md(raw, ticketId) {
+export function md(raw, ticketId) {
   if (!raw) return '';
   // Pre-stamp each checkbox line with its source position using a null-byte
   // marker that survives esc() and sortChecklistRuns(), so the rendered index

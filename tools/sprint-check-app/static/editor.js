@@ -1,5 +1,4 @@
-// Doc-editor key helpers (t-9b2d: moved verbatim out of app.html). The main board script is not a
-// module yet, so app.html's bridge puts these exports on window for its keydown handler.
+// Doc-editor key helpers (t-9b2d: moved verbatim out of app.html). The board modules import them (t-1543).
 
 export function continuationPrefix(line) {
   let match = line.match(/^(\s*)-\s+\[([ xX])\]\s+(.*)$/);

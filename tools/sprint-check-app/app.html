@@ -593,23 +593,7 @@
   </div>
 </div>
 
-<script src="/static/board-core.js"></script>
-<script src="/static/board-helpers.js"></script>
-<script src="/static/board-render.js"></script>
-<script src="/static/board-modal.js"></script>
-<script src="/static/board-docs.js"></script>
-<script src="/static/board-cockpit.js"></script>
-<script src="/static/board-cockpit-rail.js"></script>
-<script src="/static/board-worktree.js"></script>
-<script src="/static/board-panels.js"></script>
-<script src="/static/board-create.js"></script>
-<script src="/static/board-ui.js"></script>
-<script type="module">
-  // t-9b2d bridge: the scripts above are not modules yet, so the editor helpers they call go on window.
-  // Remove this when they become modules and import the helpers themselves.
-  import * as editor from '/static/editor.js';
-  Object.assign(window, editor);
-</script>
+<script type="module" src="/static/board-main.js"></script>
 
 </body>
 </html>

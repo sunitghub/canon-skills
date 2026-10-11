@@ -4216,7 +4216,7 @@ func (se *session) setStatus(status string) {
 // the same job that script does for headless CI: turn a plan.md's `Gate model:`
 // into a `--model` argv for `claude`. It is deliberately aligned to that awk
 // program rather than to the board's own display-only reader
-// (app.html's parseGateModel), which diverges more widely than label case: it
+// (parseGateModel in tools/sprint-check-app/static/board-docs.js), which diverges more widely than label case: it
 // also requires a literal `|` before the label, matches only an unindented
 // capital-T `Tier:`, does not stop at the next `|`, and applies no charset guard
 // — so the board's chip can display a value the daemon never passes. Two ports of one

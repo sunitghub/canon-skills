@@ -1,15 +1,22 @@
-'use strict';
+import { DEBUG, LIVE_EDITABLE_SLUGS, availableDocTypes, docSlug, loadData, state } from './board-core.js';
+import { WT_PREF_MAIN, age, effectiveStatus, esc, escAttr, openWorktreePreference, titleCase, typeBadge } from './board-helpers.js';
+import { ckRowState, fetchDoc, findTicketById, postWrite, readiness, renderBoard } from './board-render.js';
+import { activateGhost, exitEditMode, refreshModalActions, renderModalBody, saveEdit } from './board-docs.js';
+import { cockpitState } from './board-cockpit.js';
+import { renderCockpitDetails } from './board-cockpit-rail.js';
+import { resetPanelDrag, resetPanelResize } from './board-panels.js';
+import { setText } from './board-ui.js';
 
 // ── Modal ─────────────────────────────────────────────────────────────────
 
-const modalState = { docOverride: {}, editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', sections: {}, expanded: new Set(), seen: new Set(), pendingScroll: '', prefetchSeq: 0 };
+export const modalState = { docOverride: {}, editMode: false, activeDoc: null, renderSeq: 0, docEtag: '', sections: {}, expanded: new Set(), seen: new Set(), pendingScroll: '', prefetchSeq: 0 };
 
 // t-26f9: the doc changed since the editor opened it (the agent may have edited it). The person's text stays in the
 // box; they choose to load theirs or to overwrite knowingly.
 // t-8be2: a status/Demo write of a bound ticket returns the file's new etag AND the Description that etag describes.
 // Adopt both on the ticket the board holds NOW (a poll may have replaced the object the handler started with), so the
 // page's text and etag stay a pair: an edit never starts from older text under a newer etag.
-function adoptTicketWrite(id, data) {
+export function adoptTicketWrite(id, data) {
   const cur = findTicketById(id);
   if (!cur || !data) return;
   if (data.etag) cur.ticket_etag = data.etag;
@@ -30,7 +37,7 @@ async function fetchTicketFresh(id) {
   } catch { return null; }
 }
 
-function showStaleEditNotice(t) {
+export function showStaleEditNotice(t) {
   const editEl = document.getElementById('m-edit-area');
   if (!editEl || (!modalState.activeDoc && !t)) return;
   const isDoc = !!modalState.activeDoc;
@@ -109,7 +116,7 @@ function renderModalMeta(t) {
   document.getElementById('m-meta').appendChild(item);
 }
 
-function openModal(id) {
+export function openModal(id) {
   const t = findTicketById(id);
   if (!t) return;
   if (DEBUG) window.__sprintCheckOpenModalCount = (window.__sprintCheckOpenModalCount || 0) + 1;
@@ -146,7 +153,7 @@ const HIDDEN_DOC_SLUGS = new Set(['blueprint']);
 
 let _headlessPollTimer = null;
 
-function stopHeadlessPoll() {
+export function stopHeadlessPoll() {
   if (_headlessPollTimer) { clearInterval(_headlessPollTimer); _headlessPollTimer = null; }
 }
 
@@ -305,7 +312,7 @@ function navigateTicket(dir) {
 
 function visibleDocs(t) { return (t.docs || []).filter(d => !HIDDEN_DOC_SLUGS.has(docSlug(t, d.file))); }
 
-function renderModalDocs(t) {
+export function renderModalDocs(t) {
   const docs = visibleDocs(t);
   const bar = document.getElementById('m-docs');
   const paneBar = document.getElementById('m-pane-bar');
@@ -410,7 +417,7 @@ function expanderHTML(key) {
 
 // the rendered doc: give its section headings ids to scroll to, refresh this doc's sections from the text just shown,
 // and honour a pending jump (a child row of a doc that was not open)
-function markDocHeadings(container, content) {
+export function markDocHeadings(container, content) {
   container.querySelectorAll('.doc-heading-2').forEach(h => { h.id = 'section-' + slugOf(h.textContent); });
   modalState.sections[modalState.activeDoc || ''] = parseDocSections(content);
   refreshDocTree();
@@ -420,7 +427,7 @@ function markDocHeadings(container, content) {
   }
 }
 
-function refreshDocTree() {
+export function refreshDocTree() {
   document.querySelectorAll('#m-docs .doc-node').forEach(node => {
     const old = node.querySelector('.doc-expander, .doc-expander-spacer');
     if (old) old.outerHTML = expanderHTML(node.dataset.key);
@@ -442,7 +449,7 @@ function renderDocChildren() {
   });
 }
 
-function activateDoc(t, file, scrollSlug = '') {
+export function activateDoc(t, file, scrollSlug = '') {
   const key = file || '';
   modalState.ghost = '';
   modalState.activeDoc = file;
@@ -463,7 +470,7 @@ function cockpitFor(t) {
 }
 
 // t-6254: opened from the cockpit, a worktree session's plan/acceptance come from the worktree, not main's copy.
-function fetchModalDoc(file) {
+export function fetchModalDoc(file) {
   const o = modalState.docOverride[file];
   return o != null ? Promise.resolve({ ok: true, json: () => Promise.resolve({ content: o, etag: '' }) }) : fetch(`/api/doc/${encodeURIComponent(file)}`);
 }

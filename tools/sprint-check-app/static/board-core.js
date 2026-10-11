@@ -1,64 +1,9 @@
-'use strict';
-
-// ── Canon Cockpit project scoping (t-a55a) ────────────────────────────────
-// When the board is embedded in a Cockpit tab it is loaded as /?project=<id>.
-// Thread that id onto the board's READ /api/ calls so every panel shows the
-// tab's project. One fetch wrapper covers all ~44 call sites (pre-mortem #1:
-// missing one would leak another project's data). Only READ endpoints are
-// scoped — writes stay on the server's default project this phase (read-only
-// tab), matching the backend (Phase 2b scopes writes). Absent param → no-op,
-// so the standalone single-project board is byte-unchanged.
-(function(){
-  const _project = new URLSearchParams(location.search).get('project') || '';
-  if (!_project) return; // standalone board — leave fetch untouched
-  // t-6a74 (Phase 3): mark the embedded project-tab context so shell-provided
-  // chrome (version/daemon/theme/help) can be hidden and the breadcrumb swapped
-  // to the folder path. Distinct from the t-ddc8 `body.embed` agent-terminal mode.
-  document.documentElement.classList.add('canon-proj-embed');
-  // Read endpoints that resolve via effective_root on the server. t-1780:
-  // worktrees/worktree-lock now scope too — a shared multi-project instance
-  // otherwise showed the shell's launch-time project's worktrees under any tab.
-  // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
-  // resolveMockupSrc scopes it itself — t-7d83.)
-  const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|cockpit-changes$)/;
-  // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
-  // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
-  // create/unlock done inside a project tab target THAT project. Deliberately
-  // EXCLUDES the OUT set (cockpit / cockpit-restart / version / ci-workflow /
-  // headless-run) and /api/projects (registry add) — those stay unscoped.
-  // t-d254: ticket-commit/ (GET plan + POST commit) — unscoped, a tab would classify
-  // and COMMIT in the board's default project instead of the tab's (live-caught, VM).
-  const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/)/;
-  const _fetch = window.fetch.bind(window);
-  window.fetch = function(input, init){
-    try {
-      const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
-      let url = typeof input === 'string' ? input : (input && input.url);
-      if (typeof url === 'string') {
-        // Match on the pathname (WRITE_RE anchors like `tickets$`, so compare path only).
-        const path = url.split('?')[0];
-        const isRead  = method === 'GET' && READ_RE.test(path);
-        const isWrite = (method === 'POST' || method === 'PUT') && WRITE_RE.test(path);
-        if (isRead || isWrite) {
-          const u = new URL(url, location.origin);
-          if (!u.searchParams.has('project')) {
-            u.searchParams.set('project', _project);
-            url = u.pathname + u.search;
-            if (typeof input === 'string') input = url;
-            else input = new Request(url, input);
-          }
-        }
-      }
-    } catch (e) { /* fall through to unmodified fetch */ }
-    return _fetch(input, init);
-  };
-  // expose for the shell/debug
-  window.__canonProject = _project;
-})();
+import { displayTicketId } from './board-helpers.js';
+import { render } from './board-render.js';
 
 // ── Config ───────────────────────────────────────────────────────────────
 
-const COLUMNS = [
+export const COLUMNS = [
   { status: 'open',        label: 'Open',        cls: 'col-open',      dotVar: '--col-open'       },
   { status: 'in_progress', label: 'In Progress',  cls: 'col-progress',  dotVar: '--col-progress'   },
   { status: 'closed',      label: 'Done',         cls: 'col-done',      dotVar: '--col-done'       },
@@ -115,21 +60,21 @@ function ago(days) {
 
 // ── State ────────────────────────────────────────────────────────────────
 
-const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
-const COL_LIMIT = 5;
-const DEBUG = new URLSearchParams(location.search).has('debug');
+export const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
+export const COL_LIMIT = 5;
+export const DEBUG = new URLSearchParams(location.search).has('debug');
 // t-67ab: the token the Canon Cockpit gave this tab's iframe; echoed on every message to the
 // shell so it knows which tab sent it (Safari reports the shell itself as event.source).
-const SHELL_TAB = new URLSearchParams(location.search).get('tab') || '';
+export const SHELL_TAB = new URLSearchParams(location.search).get('tab') || '';
 function debugLog(...args) {
   if (DEBUG) console.log('[sprint-check]', ...args);
 }
 
 // ── Ticket creation ───────────────────────────────────────────────────────
 
-const TICKET_TYPES = ['feature', 'task', 'bug', 'chore', 'epic'];
+export const TICKET_TYPES = ['feature', 'task', 'bug', 'chore', 'epic'];
 
-const TYPE_TEMPLATES = {
+export const TYPE_TEMPLATES = {
   feature: `## Description\nWhat should be built?\n`,
   task:    `## Description\nWhat should be done?\n`,
   bug:     `## Description\nWhat is broken?\n\n## Expected\n\n## Actual\n`,
@@ -137,7 +82,7 @@ const TYPE_TEMPLATES = {
   epic:    `## Description\nWhat larger outcome should this track?\n`,
 };
 
-function detectTicketType(title) {
+export function detectTicketType(title) {
   const t = title.toLowerCase();
   if (/\b(fix|bug|error|crash|broken|regression|failing|cannot|can'?t)\b/.test(t))
     return { type: 'bug',     reason: 'looks like a bug fix' };
@@ -150,7 +95,7 @@ function detectTicketType(title) {
   return   { type: 'task',    reason: 'general task' };
 }
 
-const DOC_TYPES = [
+export const DOC_TYPES = [
   {
     name: 'Acceptance',  slug: 'acceptance',
     hint: 'Criteria and Test Plan sections both need checklist items — sprint complete blocks without them.',
@@ -246,26 +191,26 @@ One sentence: what system behavior was researched.
   },
 ];
 
-function docSlug(t, file) {
+export function docSlug(t, file) {
   if (file.includes('/')) return file.split('/').pop().replace('.md', '');
   return file.replace(`${displayTicketId(t)}-`, '').replace('.md', '');
 }
 
-function docFileFor(t, slug) {
+export function docFileFor(t, slug) {
   const id = displayTicketId(t);
   return t.layout === 'folder' ? `${id}/${slug}.md` : `${id}-${slug}.md`;
 }
 
 // t-26f9: the docs the server will write in a worktree (acceptance.md, plan.md, research.md)
-const LIVE_EDITABLE_SLUGS = ['acceptance', 'plan', 'research'];
-function availableDocTypes(t) {
+export const LIVE_EDITABLE_SLUGS = ['acceptance', 'plan', 'research'];
+export function availableDocTypes(t) {
   const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
   // t-26f9: in a worktree the board writes only acceptance.md, plan.md and research.md
   const writable = dt => !t.docs_from || LIVE_EDITABLE_SLUGS.includes(dt.slug);
   return DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug) && writable(dt));
 }
 
-const state = {
+export const state = {
   tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(),
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
   cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
@@ -274,7 +219,7 @@ const state = {
 
 // ── Data layer ───────────────────────────────────────────────────────────
 
-async function loadData() {
+export async function loadData() {
   setDot('loading');
   try {
     const [tr, hr, gr] = await Promise.all([
@@ -304,7 +249,7 @@ function setDot(s) {
 // t-99fa/t-5c20: header shows the human semantic version (canon vX.Y.Z); the
 // per-component build details (board commit, cockpit-daemon build) live in the
 // "?" tour panel's Versions section, not a cramped tooltip.
-async function fetchVersion() {
+export async function fetchVersion() {
   try {
     const r = await fetch('/api/version');
     if (!r.ok) return;
@@ -319,4 +264,63 @@ async function fetchVersion() {
     const dmnEl = document.getElementById('tv-daemon');
     if (dmnEl) dmnEl.textContent = (d && d.daemon) ? d.daemon : 'not built';
   } catch {}
+}
+
+// t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
+export function initCore() {
+  // ── Canon Cockpit project scoping (t-a55a) ────────────────────────────────
+  // When the board is embedded in a Cockpit tab it is loaded as /?project=<id>.
+  // Thread that id onto the board's READ /api/ calls so every panel shows the
+  // tab's project. One fetch wrapper covers all ~44 call sites (pre-mortem #1:
+  // missing one would leak another project's data). Only READ endpoints are
+  // scoped — writes stay on the server's default project this phase (read-only
+  // tab), matching the backend (Phase 2b scopes writes). Absent param → no-op,
+  // so the standalone single-project board is byte-unchanged.
+  (function(){
+    const _project = new URLSearchParams(location.search).get('project') || '';
+    if (!_project) return; // standalone board — leave fetch untouched
+    // t-6a74 (Phase 3): mark the embedded project-tab context so shell-provided
+    // chrome (version/daemon/theme/help) can be hidden and the breadcrumb swapped
+    // to the folder path. Distinct from the t-ddc8 `body.embed` agent-terminal mode.
+    document.documentElement.classList.add('canon-proj-embed');
+    // Read endpoints that resolve via effective_root on the server. t-1780:
+    // worktrees/worktree-lock now scope too — a shared multi-project instance
+    // otherwise showed the shell's launch-time project's worktrees under any tab.
+    // (`ticket-image` is deliberately absent: it's only ever an <img> src the browser loads directly, so
+    // resolveMockupSrc scopes it itself — t-7d83.)
+    const READ_RE = /^\/api\/(tickets|handoff|git|why|doc\/|commit\/|project-stats|worktrees|worktree-lock\/|ticket-feature\/|ticket-commit\/|cockpit-changes$)/;
+    // t-8485: editable-tab WRITE endpoints that also take ?project (POST). Scope
+    // these so drag-status / create / edit-body / edit-doc / demo / visual / worktree
+    // create/unlock done inside a project tab target THAT project. Deliberately
+    // EXCLUDES the OUT set (cockpit / cockpit-restart / version / ci-workflow /
+    // headless-run) and /api/projects (registry add) — those stay unscoped.
+    // t-d254: ticket-commit/ (GET plan + POST commit) — unscoped, a tab would classify
+    // and COMMIT in the board's default project instead of the tab's (live-caught, VM).
+    const WRITE_RE = /^\/api\/(tickets$|ticket\/[^/]+\/(status|body|demo|visual)|doc\/|worktrees$|worktree-unlock\/|ticket-commit\/)/;
+    const _fetch = window.fetch.bind(window);
+    window.fetch = function(input, init){
+      try {
+        const method = ((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+        let url = typeof input === 'string' ? input : (input && input.url);
+        if (typeof url === 'string') {
+          // Match on the pathname (WRITE_RE anchors like `tickets$`, so compare path only).
+          const path = url.split('?')[0];
+          const isRead  = method === 'GET' && READ_RE.test(path);
+          const isWrite = (method === 'POST' || method === 'PUT') && WRITE_RE.test(path);
+          if (isRead || isWrite) {
+            const u = new URL(url, location.origin);
+            if (!u.searchParams.has('project')) {
+              u.searchParams.set('project', _project);
+              url = u.pathname + u.search;
+              if (typeof input === 'string') input = url;
+              else input = new Request(url, input);
+            }
+          }
+        }
+      } catch (e) { /* fall through to unmodified fetch */ }
+      return _fetch(input, init);
+    };
+    // expose for the shell/debug
+    window.__canonProject = _project;
+  })();
 }

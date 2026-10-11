@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // sprint-check-gherkin — unit coverage for the Gherkin acceptance validator (t-6e32).
 //
-// Loads the REAL functions out of the board's scripts (tests/board-script.js) into a vm
-// sandbox (not a copy) and asserts validateGherkinBlocks flags every malformed
+// Loads the REAL functions out of the board's scripts (tests/board-script.js,
+// not a copy) and asserts validateGherkinBlocks flags every malformed
 // branch and passes well-formed / non-gherkin input. This is the committed
 // regression guard behind acceptance.md's C5/T4 — each of the four error
 // branches has its own case, so breaking any one branch fails the suite.

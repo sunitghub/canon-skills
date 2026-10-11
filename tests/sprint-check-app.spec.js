@@ -578,6 +578,9 @@ test.describe('board modal', () => {
     // stand one up directly (same as openCockpit's "new tab" branch would)
     // before calling it, since this test drives the function in isolation.
     const mainSrc = await page.evaluate(async () => {
+      const { state } = await import('/static/board-core.js');
+      const { cockpitTabs, newCockpitTabState, setActiveTab } = await import('/static/board-cockpit.js');
+      const { mountCockpitTerminal } = await import('/static/board-worktree.js');
       state.gitRoot = '/Users/me/canon';
       const iframe = document.createElement('iframe');
       document.getElementById('ck-term').appendChild(iframe);
@@ -591,6 +594,8 @@ test.describe('board modal', () => {
 
     // A selected worktree still sends its own path unchanged.
     const wtSrc = await page.evaluate(async () => {
+      const { state } = await import('/static/board-core.js');
+      const { mountCockpitTerminal } = await import('/static/board-worktree.js');
       state.gitRoot = '/Users/me/canon';
       await mountCockpitTerminal({ id: 't-ab12' }, '/Users/me/wt/sprint-x');
       return document.getElementById('ck-iframe').src;
@@ -615,6 +620,9 @@ test.describe('board modal', () => {
     // — the exact live-reproduced cause. Must NOT send an empty cwd; must
     // fetch a fresh, real root and use it instead.
     const src = await page.evaluate(async () => {
+      const { state } = await import('/static/board-core.js');
+      const { cockpitTabs, newCockpitTabState, setActiveTab } = await import('/static/board-cockpit.js');
+      const { mountCockpitTerminal } = await import('/static/board-worktree.js');
       state.gitRoot = '';
       const iframe = document.createElement('iframe');
       document.getElementById('ck-term').appendChild(iframe);
@@ -639,6 +647,9 @@ test.describe('board modal', () => {
     await page.waitForLoadState('networkidle');
 
     const result = await page.evaluate(async () => {
+      const { state } = await import('/static/board-core.js');
+      const { cockpitTabs, newCockpitTabState, setActiveTab } = await import('/static/board-cockpit.js');
+      const { mountCockpitTerminal } = await import('/static/board-worktree.js');
       state.gitRoot = '';
       const iframe = document.createElement('iframe');
       document.getElementById('ck-term').appendChild(iframe);
@@ -676,6 +687,9 @@ test.describe('board modal', () => {
     await page.waitForLoadState('networkidle');
 
     const result = await page.evaluate(async () => {
+      const { state } = await import('/static/board-core.js');
+      const { cockpitTabs, newCockpitTabState, setActiveTab } = await import('/static/board-cockpit.js');
+      const { mountCockpitTerminal } = await import('/static/board-worktree.js');
       const gitRootAfterLoad = state.gitRoot;
       const iframe = document.createElement('iframe');
       document.getElementById('ck-term').appendChild(iframe);
@@ -702,6 +716,9 @@ test.describe('board modal', () => {
     await page.waitForLoadState('networkidle');
 
     const result = await page.evaluate(async () => {
+      const { state } = await import('/static/board-core.js');
+      const { cockpitTabs, newCockpitTabState, setActiveTab } = await import('/static/board-cockpit.js');
+      const { mountCockpitTerminal } = await import('/static/board-worktree.js');
       const gitRootAfterLoad = state.gitRoot;
       const iframe = document.createElement('iframe');
       document.getElementById('ck-term').appendChild(iframe);
@@ -730,6 +747,8 @@ test.describe('board modal', () => {
     // The daemon's cwdPrefillRe drops a backslash path to "" and it then runs from its launch folder ("ticket not
     // found in project"), so Resume must send the same forward-slashed form a fresh Start does.
     const result = await page.evaluate(async () => {
+      const { cockpitTabs, newCockpitTabState, setActiveTab } = await import('/static/board-cockpit.js');
+      const { mountCockpitTerminal } = await import('/static/board-worktree.js');
       const iframe = document.createElement('iframe');
       document.getElementById('ck-term').appendChild(iframe);
       cockpitTabs['t-ab12'] = newCockpitTabState('t-ab12', iframe);
@@ -2088,7 +2107,7 @@ test.describe('board modal', () => {
       await page.locator('.doc-tab', { hasText: 'Plan' }).click();
       await expect(page.locator('.model-tier-select')).toHaveCount(1);
       // Three renders in one tick: all pass the synchronous bar-clear before any fetch resolves.
-      await page.evaluate(() => { const t = state.tickets.find(x => x.id === state.selectedId); renderModalBody(t); renderModalBody(t); renderModalBody(t); });
+      await page.evaluate(async () => { const { state } = await import('/static/board-core.js'); const { renderModalBody } = await import('/static/board-docs.js'); const t = state.tickets.find(x => x.id === state.selectedId); renderModalBody(t); renderModalBody(t); renderModalBody(t); });
       await expect(page.locator('#m-body')).toContainText('plan-only-marker');
       await page.waitForTimeout(500);   // let every in-flight fetch settle before counting
       await expect(page.locator('.section-jumps')).toHaveCount(1);
@@ -3462,14 +3481,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // t-28ec / t-d34e: an embedded board shows no sessions panel (the shell's Agents rail has them all);
     // the shell still honours an open-session message from a tab's board.
     const postOpenSession = (page, project_root, ticket) => page.frameLocator('#view-proj-a iframe').locator('body')
-      .evaluate((_, m) => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...m }, location.origin), { project_root, ticket });
+      .evaluate(async (_, m) => { const { SHELL_TAB } = await import('/static/board-core.js'); return ( window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...m }, location.origin)); }, { project_root, ticket });
 
     // ── t-a198: the keyboard prefix (ctrl+. then a key). Real key events in Chromium and WebKit. ──
     const shellTab = page => page.evaluate(() => activeTab);
     const pressPrefix = async (page, key) => { await page.keyboard.press('Control+.'); if (key) await page.keyboard.press(key); };
     // A board has no key handler until its script has run; under load a key pressed earlier goes nowhere (the handler is the last thing it sets up).
     const boardsKeyReady = (page, ids) => Promise.all(ids.map(id => expect.poll(() => page.frameLocator('#view-' + id + ' iframe').locator('body')
-      .evaluate(() => { try { return !!boardKeys; } catch (e) { return false; } }).catch(() => false)).toBe(true)));
+      .evaluate(async () => { const { boardKeys } = await import('/static/board-cockpit-rail.js'); try { return !!boardKeys; } catch (e) { return false; } }).catch(() => false)).toBe(true)));
 
     test('keyboard prefix (t-a198): ctrl+. then a key drives the tabs; Escape, unbound and missing tabs do nothing', async ({ page }) => {
       await openShell(page, []);
@@ -3662,7 +3681,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, []);
       await stubCockpit(page);
       await page.route(/\/api\/cockpit(\?|$)/, r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ running: true, addr: FAKE_DAEMON_ADDR, launched: true }) }));
-      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => { state.isGitProject = true; });
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(async () => { const { state } = await import('/static/board-core.js'); state.isGitProject = true; });
       await page.locator('.tab.pinned').click();
       await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
       const board = page.frameLocator('#view-proj-a iframe');
@@ -4265,7 +4284,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/'), row('t-own1', PROJECT_ROOT), row('t-nowh', '/tmp/nowhere')]);
       await page.evaluate(() => pollSessions());
       // An absence check can pass before the board has loaded anything: force its refresh, then look.
-      await board.locator('html').evaluate(() => refreshCockpitSessions());
+      await board.locator('html').evaluate(async () => { const { refreshCockpitSessions } = await import('/static/board-render.js'); return ( refreshCockpitSessions()); });
       await expect(board.locator('.cockpit-session-row')).toHaveCount(0);
       await expect(board.locator('#cockpit-sessions')).toBeHidden();
       await expect(page.locator('#ag-list .ag-row')).toHaveCount(3);   // still every project's rows after the board refreshed
@@ -4339,7 +4358,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         { project_root: '"><img src=x onerror=window.__pwned=1>', ticket: XID },
         { project_root: ['C:\\Users\\me\\Proj-X'], ticket: XID },
       ];
-      for (const h of hostile) await frame.evaluate(h => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...h }, location.origin), h);
+      for (const h of hostile) await frame.evaluate(async h => { const { SHELL_TAB } = await import('/static/board-core.js'); return ( window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...h }, location.origin)); }, h);
       // t-67ab: a valid payload with a wrong tab token is rejected too.
       await frame.evaluate(() => window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: 'not-a-real-token', project_root: 'C:\\Users\\me\\Proj-X', ticket: 't-2d2e' }, location.origin));
       await page.waitForTimeout(400);
@@ -4682,21 +4701,21 @@ test.describe('cockpit in board (t-ddc8)', () => {
         // Same states, newer ages: strips update in place, no re-render.
         await page.evaluate(id => { document.querySelector(`.card[data-id="${id}"]`).dataset.mark = '1'; }, Q.need);
         rows = cardRows().map(r => (r.ticket === Q.need ? { ...r, state_secs: 50, idle_secs: 50 } : r));
-        await page.evaluate(() => refreshCockpitSessions());
+        await page.evaluate(async () => { const { refreshCockpitSessions } = await import('/static/board-render.js'); return ( refreshCockpitSessions()); });
         await expect(card(Q.need).locator('.card-state')).toHaveText('Needs you · 50s');
         await expect(card(Q.need)).toHaveAttribute('data-mark', '1');
         // A state change re-renders: Q.work now needs you too and moves up.
         rows = cardRows().map(r => (r.ticket === Q.work ? { ...r, status: 'needs-you', state: 'needs-you', state_secs: 1 } : r));
-        await page.evaluate(() => refreshCockpitSessions());
+        await page.evaluate(async () => { const { refreshCockpitSessions } = await import('/static/board-render.js'); return ( refreshCockpitSessions()); });
         await expect(card(Q.need)).not.toHaveAttribute('data-mark', '1');
         await expect(card(Q.work).locator('.card-start')).toHaveText('Answer ▸');
         // No sessions: cards back to Resume.
         rows = [];
-        await page.evaluate(() => refreshCockpitSessions());
+        await page.evaluate(async () => { const { refreshCockpitSessions } = await import('/static/board-render.js'); return ( refreshCockpitSessions()); });
         await expect(card(Q.need).locator('.card-start')).toHaveText('▶ Resume');
         // Answer opens the ticket's cockpit.
         rows = cardRows();
-        await page.evaluate(() => refreshCockpitSessions());
+        await page.evaluate(async () => { const { refreshCockpitSessions } = await import('/static/board-render.js'); return ( refreshCockpitSessions()); });
         await card(Q.need).locator('.card-start').click();
         await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       } finally {
@@ -5232,7 +5251,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
-      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => { state.isGitProject = true; });
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(async () => { const { state } = await import('/static/board-core.js'); state.isGitProject = true; });
       await page.locator('.tab.pinned').click();
       const btn = page.locator('.scratchbtn[data-scratch="proj-a"]');
       await expect(btn).toHaveText('Scratch');
@@ -5260,13 +5279,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => pollSessions());
       await expect(row).toHaveClass(/st-not-started/);
       // Closing the tab drops the row.
-      await board.locator('body').evaluate((_, i) => unmountTab(i), id);
+      await board.locator('body').evaluate(async (_, i) => { const { unmountTab } = await import('/static/board-cockpit.js'); return ( unmountTab(i)); }, id);
       await expect(page.locator('#ag-list .ag-empty')).toHaveText('No agents running');
       // Only a tab's own board is heard, and hostile ids are dropped.
       await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'scratch-tabs', tabs: [{ id: 's-zz11', title: '' }] }, location.origin));
       await page.waitForTimeout(300);
       await expect(page.locator('#ag-list .ag-row')).toHaveCount(0);
-      await board.locator('body').evaluate(() => window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tab: SHELL_TAB, tabs: [{ id: 's-"><img src=x onerror=window.__pwned=1>', title: '' }] }, location.origin));
+      await board.locator('body').evaluate(async () => { const { SHELL_TAB } = await import('/static/board-core.js'); return ( window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tab: SHELL_TAB, tabs: [{ id: 's-"><img src=x onerror=window.__pwned=1>', title: '' }] }, location.origin)); });
       await page.waitForTimeout(300);
       await expect(page.locator('#ag-list .ag-row')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -5277,7 +5296,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
       // The harness's proj-a isn't a real git checkout; scratch obeys the same Track-changes gate as tickets.
-      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => { state.isGitProject = true; });
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(async () => { const { state } = await import('/static/board-core.js'); state.isGitProject = true; });
       await page.locator('.tab.pinned').click();
       await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
@@ -5359,7 +5378,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(btn).toHaveCSS('border-top-style', 'dashed');
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e162', 'visuals'), { recursive: true });
       await page.locator('#btn-create').locator('xpath=..').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-e162', 'visuals', 'path-bar.png') });
-      const root = await page.evaluate(() => state.gitRoot);
+      const root = await page.evaluate(async () => { const { state } = await import('/static/board-core.js'); return ( state.gitRoot); });
       where.push(root.replace(/\/+$/, '') + '-worktrees/scratch-2');
       await btn.click();
       await expect(page.locator('#cockpit')).toHaveClass(/scratch-mode/);
@@ -5562,7 +5581,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#ck-leave-skip').click();
       await expect(page.locator('#drop-toast')).toContainText('this checkout already had uncommitted changes');
       await expect(page.locator('#ck-term iframe').first()).toHaveCSS('visibility', 'visible');
-      expect(await page.evaluate(() => cockpitState._ending)).toBe(false);
+      expect(await page.evaluate(async () => { const b_cockpit = await import('/static/board-cockpit.js'); return ( b_cockpit.cockpitState._ending); })).toBe(false);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -5799,14 +5818,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
       // User selected the verify2 worktree AND the daemon reports it actually
       // spawned there → label shows verify2, no mismatch warning.
-      await page.evaluate((wt) => { cockpitState.worktreeCwd = wt; applyActualWorkingCwd(wt); }, wtPath);
+      await page.evaluate(async (wt) => { const { applyActualWorkingCwd } = await import('/static/board-worktree.js'); const b_cockpit = await import('/static/board-cockpit.js'); b_cockpit.cockpitState.worktreeCwd = wt; applyActualWorkingCwd(wt); }, wtPath);
       await expect(page.locator('#ck-worktree-note')).toContainText('Working in:');
       await expect(page.locator('#ck-worktree-note')).toContainText('verify2');
       await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toHaveCount(0);
 
       // verify2 still selected, but the daemon reports it actually spawned in
       // MAIN (the wrong-tree bug) → loud warning naming the real cwd.
-      await page.evaluate((root) => { applyActualWorkingCwd(root); }, PROJECT_ROOT);
+      await page.evaluate(async (root) => { const { applyActualWorkingCwd } = await import('/static/board-worktree.js'); applyActualWorkingCwd(root); }, PROJECT_ROOT);
       const warn = page.locator('#ck-worktree-note .ck-worktree-warn');
       await expect(warn).toBeVisible();
       await expect(warn).toContainText(PROJECT_ROOT);
@@ -6265,8 +6284,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // Symlink case: the board selected /tmp/x; the daemon reports it spawned in
       // /private/tmp/x AND echoes the resolved requested /private/tmp/x. Same real
       // dir → actual matches `requested` → NO mismatch warning (t-eed3).
-      await page.evaluate(({ sel, resolved }) => {
-        cockpitState.worktreeCwd = sel;
+      await page.evaluate(async ({ sel, resolved }) => {
+        const { applyActualWorkingCwd } = await import('/static/board-worktree.js');
+        const b_cockpit = await import('/static/board-cockpit.js');
+        b_cockpit.cockpitState.worktreeCwd = sel;
         applyActualWorkingCwd(resolved, resolved);
       }, { sel: selWt, resolved: resolvedWt });
       await expect(page.locator('#ck-worktree-note')).toContainText('Working in:');
@@ -6275,8 +6296,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // Genuine wrong-tree: the board selected /tmp/x (requested /tmp/x) but the
       // daemon spawned in MAIN → actual differs from both selected and requested
       // → the t-7590 warning still fires.
-      await page.evaluate(({ root, sel }) => {
-        cockpitState.worktreeCwd = sel;
+      await page.evaluate(async ({ root, sel }) => {
+        const { applyActualWorkingCwd } = await import('/static/board-worktree.js');
+        const b_cockpit = await import('/static/board-cockpit.js');
+        b_cockpit.cockpitState.worktreeCwd = sel;
         applyActualWorkingCwd(root, sel);
       }, { root: PROJECT_ROOT, sel: selWt });
       await expect(page.locator('#ck-worktree-note .ck-worktree-warn')).toBeVisible();
@@ -6496,9 +6519,6 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       if (collapse) await page.locator('#ck-rail-toggle').click();
-      // The page's own renderers (and its 5s poll) would overwrite the injected state a moment later (the stubbed
-      // session is never live), so silence them first: the test then measures what it set, not a race.
-      await page.evaluate(() => { window.renderSessionStateChip = () => {}; window.refreshSessionStateChip = async () => {}; window.renderCockpitModel = async () => {}; });
       // Worst case for the right-hand side: a state chip, the auto-save text, four tab pills, a long model.
       await page.evaluate(() => {
         const chip = document.getElementById('ck-state-chip'); chip.className = 'ck-state-chip st-working'; chip.textContent = 'working'; chip.hidden = false;
@@ -6506,6 +6526,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
         const ts = document.getElementById('ck-tab-strip-topbar'); ts.hidden = false;
         ts.innerHTML = ['t-a319', 't-b91f', 't-ccd6', 't-07a8'].map(n => `<span class="ck-tab-pill"><span class="ck-tab-pill-id">${n}</span><button class="ck-tab-pill-close" type="button">\u00d7</button></span>`).join('');   // the real pill markup (renderTabStrip)
         document.getElementById('ck-model').textContent = 'model: claude-sonnet-5 (Admin Review & Eval default)';
+        // The page's own renderers (its 5s poll, the sessions and plan.md fetches) would overwrite this a moment later
+        // (the stubbed session is never live), so freeze what was set: the test then measures it, not a race. The
+        // board's functions are module-private (t-1543), so the freeze is on the elements, not the renderers.
+        const desc = (el, p) => { for (let o = el; o; o = Object.getPrototypeOf(o)) { const d = Object.getOwnPropertyDescriptor(o, p); if (d) return d; } };
+        for (const el of [chip, r, document.getElementById('ck-model')]) {
+          for (const p of ['textContent', 'className', 'hidden', 'title']) {
+            const d = desc(el, p);
+            Object.defineProperty(el, p, { configurable: true, get() { return d.get.call(this); }, set() {} });
+          }
+          el.removeAttribute = () => {};
+        }
       });
     }
     const CONTROLS = ['#ck-back', '#ck-id', '#ck-status', '#ck-title', '#ck-tab-strip-topbar', '#ck-state-chip', '#ck-reaper', '#ck-end-session', '#ck-model'];
@@ -7718,7 +7749,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
   test('divergence footer: uncommitted worktree work is never called "merged" (t-2241)', async ({ page }) => {
     await page.goto(BASE);
-    const info = (d) => page.evaluate(d => divergenceInfo({ id: 't-x', status: 'open', branch_divergence: d }).long, d);
+    const info = (d) => page.evaluate(async d => { const { divergenceInfo } = await import('/static/board-helpers.js'); return ( divergenceInfo({ id: 't-x', status: 'open', branch_divergence: d }).long); }, d);
     const base = { where: 'worktree', branch: 'sprint/x', status: 'in_progress' };
     expect(await info({ ...base, merged: true, dirty: true })).toContain('uncommitted changes in worktree');
     expect(await info({ ...base, merged: true, dirty: true })).not.toContain('branch merged');
@@ -7726,7 +7757,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     expect(await info({ ...base, merged: false, dirty: false })).toContain('not merged');
     expect(await info({ ...base, where: 'branch', merged: false, dirty: false })).toContain('not merged');
     // t-e78b: with live worktree docs above it, the footer claims only the status.
-    const live = await page.evaluate(d => divergenceInfo({ id: 't-x', status: 'open', docs_from: { branch: 'sprint/x' }, branch_divergence: d }).long, { ...base, merged: true, dirty: true });
+    const live = await page.evaluate(async d => { const { divergenceInfo } = await import('/static/board-helpers.js'); return ( divergenceInfo({ id: 't-x', status: 'open', docs_from: { branch: 'sprint/x' }, branch_divergence: d }).long); }, { ...base, merged: true, dirty: true });
     expect(live).toMatch(/^Status from this checkout \(open\) — in_progress in worktree sprint\/x, uncommitted changes in worktree\.$/);
     expect(await info({ ...base, merged: true, dirty: true })).toMatch(/^Showing this checkout's copy \(open\)/);
   });
@@ -8059,7 +8090,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     await page.waitForLoadState('networkidle');
     const inCol = st => page.locator(`.column-body[data-status="${st}"] .card[data-id="${id}"]`);
     await expect(inCol('open')).toBeVisible();
-    const move = () => page.evaluate(i => moveCard(state.tickets.find(t => t.id === i), 'in_progress'), id);
+    const move = () => page.evaluate(async i => { const { state } = await import('/static/board-core.js'); const { moveCard } = await import('/static/board-docs.js'); return ( moveCard(state.tickets.find(t => t.id === i), 'in_progress')); }, id);
     const toast = page.locator('#drop-toast');
 
     await move();
@@ -8254,7 +8285,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // Live re-check, not cached at registration: flip the mocked /api/git
     // response and re-run the same poll loadData() already runs on a timer.
     gitBody = { branch: 'main', project: 'nogit', root: PROJECT_ROOT, modified: 0, log: [], total_commits: 5 };
-    await page.evaluate(() => loadData());
+    await page.evaluate(async () => { const { loadData } = await import('/static/board-core.js'); return ( loadData()); });
     await page.waitForTimeout(100);
     await page.locator('#btn-create').click();
     await page.waitForSelector('#create-modal', { timeout: 3000 });
@@ -8431,14 +8462,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       '## Discoveries',
       '- something that must never leak into the In Progress extraction',
     ].join('\n');
-    const result = await page.evaluate((raw) => findHandoffStateForTicket(raw, 't-bbbb'), raw);
+    const result = await page.evaluate(async (raw) => { const { findHandoffStateForTicket } = await import('/static/board-cockpit-rail.js'); return ( findHandoffStateForTicket(raw, 't-bbbb')); }, raw);
     expect(result).toContain('Our ticket');
     expect(result).toContain('Next: user confirms');
     expect(result).not.toContain('t-aaaa');
     expect(result).not.toContain('t-cccc');
     expect(result).not.toContain('Discoveries');
 
-    const none = await page.evaluate((raw) => findHandoffStateForTicket(raw, 't-zzzz'), raw);
+    const none = await page.evaluate(async (raw) => { const { findHandoffStateForTicket } = await import('/static/board-cockpit-rail.js'); return ( findHandoffStateForTicket(raw, 't-zzzz')); }, raw);
     expect(none).toBeNull();
   });
 
@@ -8542,7 +8573,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       // Both docs were read once: that read is the baseline, not a change.
-      await expect.poll(() => page.evaluate(() => Object.keys(cockpitState.docSeen).sort().join())).toBe('acceptance,plan');
+      await expect.poll(() => page.evaluate(async () => { const b_cockpit = await import('/static/board-cockpit.js'); return ( Object.keys(b_cockpit.cockpitState.docSeen).sort().join()); })).toBe('acceptance,plan');
       await expect(page.locator('#ck-details-badge')).toBeHidden();
 
       fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'The sprint wrote this.', ''].join('\n'));
@@ -8579,16 +8610,16 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#board-search').fill(id);
       await page.locator(`.card[data-id="${id}"] .card-start`).click();
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
-      await expect.poll(() => page.evaluate(() => Object.keys(cockpitState.docSeen).sort().join())).toBe('acceptance,plan');
-      const reread = () => page.evaluate(async id => { await loadData(); await renderCockpitDocs(findTicketById(id)); }, id);
+      await expect.poll(() => page.evaluate(async () => { const b_cockpit = await import('/static/board-cockpit.js'); return ( Object.keys(b_cockpit.cockpitState.docSeen).sort().join()); })).toBe('acceptance,plan');
+      const reread = () => page.evaluate(async id => { const { loadData } = await import('/static/board-core.js'); const { findTicketById } = await import('/static/board-render.js'); const { renderCockpitDocs } = await import('/static/board-cockpit-rail.js'); await loadData(); await renderCockpitDocs(findTicketById(id)); }, id);
 
       await reread();
       await expect(page.locator('#ck-details-badge')).toBeHidden();   // nothing changed
 
       // Switching to the worktree's copy of the docs is a different source, not a change to either doc.
-      await page.evaluate(async id => { cockpitState.worktreeDocs = { plan: '# Plan\n\n## Approach\nWT plan', acceptance: '# Acceptance\n\n## Criteria\n- [ ] wt' }; await renderCockpitDocs(findTicketById(id)); }, id);
+      await page.evaluate(async id => { const { findTicketById } = await import('/static/board-render.js'); const { renderCockpitDocs } = await import('/static/board-cockpit-rail.js'); const b_cockpit = await import('/static/board-cockpit.js'); b_cockpit.cockpitState.worktreeDocs = { plan: '# Plan\n\n## Approach\nWT plan', acceptance: '# Acceptance\n\n## Criteria\n- [ ] wt' }; await renderCockpitDocs(findTicketById(id)); }, id);
       await expect(page.locator('#ck-details-badge')).toBeHidden();
-      await page.evaluate(async id => { cockpitState.worktreeDocs = null; await renderCockpitDocs(findTicketById(id)); }, id);
+      await page.evaluate(async id => { const { findTicketById } = await import('/static/board-render.js'); const { renderCockpitDocs } = await import('/static/board-cockpit-rail.js'); const b_cockpit = await import('/static/board-cockpit.js'); b_cockpit.cockpitState.worktreeDocs = null; await renderCockpitDocs(findTicketById(id)); }, id);
       await expect(page.locator('#ck-details-badge')).toBeHidden();
 
       fs.writeFileSync(path.join(dir, 'plan.md'), ['# Plan', '', '## Sign-off', 'Tier: normal', '', '- [ ] Plan approved', '', '## Approach', 'Second approach.', ''].join('\n'));
@@ -8622,9 +8653,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.waitForLoadState('networkidle');
       // Drive openCockpit/closeCockpit/closeTab directly (not via click+
       // re-render) so this test isolates the timer-lifecycle invariant from
-      // board re-render timing. window.openCockpit etc. exist because
-      // app.html's script is a plain (non-module) <script> — top-level
-      // function declarations attach to window.
+      // board re-render timing. The board's functions are module exports
+      // (t-1543), so each call imports its module: the page's own instance.
       await page.evaluate(id => {
         window.__setIntervalCalls = 0;
         window.__clearIntervalCalls = 0;
@@ -8633,17 +8663,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
         window.clearInterval = (...a) => { window.__clearIntervalCalls++; return origClear(...a); };
       }, id);
 
-      await page.evaluate(id => window.openCockpit(id), id);
+      await page.evaluate(async id => { const { openCockpit } = await import('/static/board-cockpit-rail.js'); return ( openCockpit(id)); }, id);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
       // t-8a2a: "← Board" never touches the shared timer — the tab (and its
       // poll) keeps running hidden in the background.
-      await page.evaluate(() => window.closeCockpit());
+      await page.evaluate(async () => { const { closeCockpit } = await import('/static/board-cockpit-rail.js'); return ( closeCockpit()); });
       await expect(page.locator('#cockpit-overlay')).not.toHaveClass(/open/);
       await page.waitForLoadState('networkidle');
 
       // Reopening the SAME already-open tab is a switch, not a fresh mount —
       // must not stack a second setInterval.
-      await page.evaluate(id => window.openCockpit(id), id);
+      await page.evaluate(async id => { const { openCockpit } = await import('/static/board-cockpit-rail.js'); return ( openCockpit(id)); }, id);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
       let calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
@@ -8651,13 +8681,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(calls.clear).toBe(0);
 
       // Closing the tab itself (the only one open) is what actually stops it.
-      await page.evaluate(id => window.closeTab(id), id);
+      await page.evaluate(async id => { const { closeTab } = await import('/static/board-cockpit.js'); return ( closeTab(id)); }, id);
       calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
       expect(calls.clear).toBeGreaterThanOrEqual(1);
 
       // A fresh open after the last tab closed starts a new timer again —
       // proving the clear above was real, not a no-op.
-      await page.evaluate(id => window.openCockpit(id), id);
+      await page.evaluate(async id => { const { openCockpit } = await import('/static/board-cockpit-rail.js'); return ( openCockpit(id)); }, id);
       calls = await page.evaluate(() => ({ set: window.__setIntervalCalls, clear: window.__clearIntervalCalls }));
       expect(calls.set).toBe(2);
     } finally {
@@ -8680,7 +8710,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         return route.continue();
       });
 
-      await page.evaluate(id => window.openCockpit(id), id);
+      await page.evaluate(async id => { const { openCockpit } = await import('/static/board-cockpit-rail.js'); return ( openCockpit(id)); }, id);
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
       expect(fetchCount).toBe(1);
@@ -8859,7 +8889,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
       await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
 
       // Once the tab really is live, the normal dialog gets its buttons and label back.
-      await page.evaluate(() => { cockpitState.status = 'running'; });
+      await page.evaluate(async () => { const b_cockpit = await import('/static/board-cockpit.js'); b_cockpit.cockpitState.status = 'running'; });
       await page.locator('#ck-end-session').click();
       await expect(modal).toHaveClass(/open/);
       await expect(page.locator('#ck-leave-save')).toBeVisible();
@@ -8877,7 +8907,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
     await page.route('**/cockpit?**', route => route.fulfill({ status: 200, contentType: 'text/html', body: fakeCockpitPage({ initialStatus: 'idle' }) }));
     await page.goto(BASE);
     await page.waitForLoadState('networkidle');
-    await page.evaluate(() => { state.isGitProject = true; openScratch('s-dt01'); });
+    await page.evaluate(async () => { const { state } = await import('/static/board-core.js'); const { openScratch } = await import('/static/board-render.js'); state.isGitProject = true; openScratch('s-dt01'); });
     await expect(page.locator('#ck-id')).toHaveText('s-dt01');
     await page.locator('#ck-end-session').click();
     await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
@@ -8958,7 +8988,7 @@ test.describe('cockpit leave-session confirm (t-f6b6)', () => {
             list === 'DETACHED' ? [{ session: 's1', ticket: id, project_root: PROJECT_ROOT, agent: 'claude', status: 'running' }] : list) });
         });
         await page.locator('#ck-end-session').click();               // lookup pending; tab still un-attached
-        await page.evaluate(() => { cockpitState.status = 'running'; }); // ...Start sprint attaches meanwhile
+        await page.evaluate(async () => { const b_cockpit = await import('/static/board-cockpit.js'); b_cockpit.cockpitState.status = 'running'; }); // ...Start sprint attaches meanwhile
         release();
         await expect(page.locator('#ck-leave-confirm')).toHaveClass(/open/);
         await expect(page.locator('#ck-leave-save')).toBeVisible();
@@ -9815,7 +9845,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
       '': '',
     };
     for (const [input, want] of Object.entries(cases)) {
-      expect(await page.evaluate(p => fileUrlFor(p), input), input).toBe(want);
+      expect(await page.evaluate(async p => { const { fileUrlFor } = await import('/static/board-cockpit.js'); return ( fileUrlFor(p)); }, input), input).toBe(want);
     }
   });
 
@@ -10115,7 +10145,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
 // automates that headlessly: spawn the daemon with a harmless stub command
 // (never a real claude/agent), serve a real fixture through the actual
 // GET /session/<id>/preview/<token>/<relpath> endpoint, load it into a sandboxed
-// iframe that mirrors app.html's renderPreviewFile exactly, and assert the
+// iframe that mirrors the board's renderPreviewFile (static/board-cockpit.js) exactly, and assert the
 // rendered DOM + computed style inside the opaque-origin frame. The fixture
 // styles via a RELATIVE ./style.css, so the green computed color also proves
 // the t-8fbc fix (path-segment token) lets relative sibling assets load.
@@ -10222,7 +10252,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     });
     expect(prRes.status()).toBe(204);
 
-    // 3. Render it exactly as app.html's renderPreviewFile does: a sandboxed
+    // 3. Render it exactly as the board's renderPreviewFile does: a sandboxed
     //    iframe (allow-scripts, NO allow-same-origin → opaque origin) whose src
     //    is the real daemon preview endpoint on its own port (cross-origin).
     //    t-8fbc: the previewToken is a PATH segment (…/preview/<token>/<relpath>),
@@ -11760,18 +11790,18 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
     await page.evaluate(() => fetch('/api/ticket-feature/t-abcd/features/x.feature').catch(() => {}));
     await expect.poll(() => seen.length).toBeGreaterThan(0);
     expect(seen[0]).toContain('project=zz9');
-    const scoped = await page.evaluate(() => ({
+    const scoped = await page.evaluate(async () => { const { resolveMockupSrc } = await import('/static/board-helpers.js'); return ( ({
       rel: resolveMockupSrc('visuals/a b.png', 't-abcd'),
       abs: resolveMockupSrc('https://example.com/x.png', 't-abcd'),
       root: resolveMockupSrc('/meta/x.png', 't-abcd'),
-    }));
+    })); });
     expect(scoped.rel).toBe('/api/ticket-image/t-abcd/visuals/a%20b.png?project=zz9');
     expect(scoped.abs).toBe('https://example.com/x.png');
     expect(scoped.root).toBe('/meta/x.png');
 
     // Project ids are URL-encoded, not trusted.
     await page.goto(BASE + '/?project=' + encodeURIComponent('a&b=c d'));
-    expect(await page.evaluate(() => resolveMockupSrc('v/x.png', 't-abcd')))
+    expect(await page.evaluate(async () => { const { resolveMockupSrc } = await import('/static/board-helpers.js'); return ( resolveMockupSrc('v/x.png', 't-abcd')); }))
       .toBe('/api/ticket-image/t-abcd/v/x.png?project=a%26b%3Dc%20d');
 
     // Standalone board: no param anywhere.
@@ -11780,7 +11810,7 @@ test.describe('project-scoped ticket assets (t-7d83)', () => {
     await page.evaluate(() => fetch('/api/ticket-feature/t-abcd/features/x.feature').catch(() => {}));
     await expect.poll(() => seen.length).toBeGreaterThan(0);
     expect(seen[0]).not.toContain('project=');
-    expect(await page.evaluate(() => resolveMockupSrc('visuals/a.png', 't-abcd')))
+    expect(await page.evaluate(async () => { const { resolveMockupSrc } = await import('/static/board-helpers.js'); return ( resolveMockupSrc('visuals/a.png', 't-abcd')); }))
       .toBe('/api/ticket-image/t-abcd/visuals/a.png');
   });
 });
@@ -12805,7 +12835,7 @@ test.describe('ticket modal polish (t-612f)', () => {
     await page.waitForLoadState('networkidle');
     await page.locator('#board-search').fill(`t-pol-card-`);
     await expect(page.locator(`.card[data-id="${a}"]`)).toBeVisible();
-    await page.evaluate(i => { state.selectedId = i; renderBoard(); }, a);
+    await page.evaluate(async i => { const { state } = await import('/static/board-core.js'); const { renderBoard } = await import('/static/board-render.js'); state.selectedId = i; renderBoard(); }, a);
     await expect(page.locator(`.card[data-id="${a}"]`)).toBeVisible();
     const look = id => page.locator(`.card[data-id="${id}"]`).evaluate(e => { const c = getComputedStyle(e); return { b: c.borderTopColor, s: c.boxShadow }; });
     expect(await look(a)).toEqual(await look(b));                                           // same as an unselected neighbour

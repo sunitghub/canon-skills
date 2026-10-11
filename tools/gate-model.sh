@@ -34,7 +34,7 @@ gate_model_parse() {
 # gate_model_resolve <plan-file> — prints the model to pass as `--model`, or
 # nothing when no override applies. An absent field, `session`, and `default` all
 # mean "no override" → the CLI's own default. `default` is included because it is
-# the literal label of the board's own dropdown (app.html's MODEL_TIER_OPTIONS),
+# the literal label of the board's own dropdown (MODEL_TIER_OPTIONS in static/board-docs.js),
 # so a hand-written `Gate model: default` is a plausible typo that would
 # otherwise be forwarded as an invalid model id. Exits 2 on a value that is
 # present but invalid, so a real typo fails loudly rather than running silently
