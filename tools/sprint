@@ -679,40 +679,48 @@ _gate_review_notes_model() {
 # template lists the same five, and tests/doc-mirror-parity.sh fails if they drift.
 REVIEW_CONCERNS=("Scope creep" "Visual regression" "Dead code" "Unnecessary complexity" "Standards violations")
 
-# _gate_review_notes_shape <id> <tdir> — t-de16: a review-notes.md that exists must SHOW its
-# passes: a `Changed files:` line with at least one path, and one line per concern that is a
-# finding or `none — checked <what>, <file:line>`. Rejects the bare "No findings. / YES" report
-# (live defect t-294b: two runs wrote the same 111 bytes, one over an EMPTY diff). This checks
-# shape, not truthfulness — a false `none — checked x.js:3` still passes. Fires only when the
-# file exists, like _gate_review_notes_model, so reviewer-skipped tiers are unaffected.
-_gate_review_notes_shape() {
-  local id="$1" tdir="$2" report
-  report="$tdir/review-notes.md"
-  [[ -f "$report" ]] || return 0
-  local problems="" cf label vals val lower
+# _review_notes_shape_problems <report> — t-de16, t-c38e: print one "  - <problem>" line per shape problem of a
+# review-notes.md, nothing when it is well formed: a `Changed files:` line with at least one path, and one line per concern
+# that is a finding or `none — checked <what>, <file:line>`. Rejects the bare "No findings. / YES" report (live defect t-294b:
+# two runs wrote the same 111 bytes, one over an EMPTY diff). This checks shape, not truthfulness — a false
+# `none — checked x.js:3` still passes. The one owner of the rule: `sprint complete` and `sprint check-review-notes` both call it.
+_review_notes_shape_problems() {
+  local report="$1" cf label vals val lower
   cf="$(grep -m1 -E '^Changed files:' "$report" | sed -E 's/^Changed files:[[:space:]]*//; s/\r$//')" || true
   lower="$(printf '%s' "$cf" | tr '[:upper:]' '[:lower:]')"
   if [[ -z "$cf" ]]; then
-    problems+=$'\n  - no `Changed files:` line'
+    echo '  - no `Changed files:` line'
   elif [[ "$lower" =~ ^(none|n/a|na|empty|-)([^[:alnum:]_./-]|$) ]] || ! [[ "$cf" =~ [[:alnum:]_-]+[./][[:alnum:]_.-]+ ]]; then
-    problems+=$'\n  - `Changed files:` lists no path (an empty diff usually means a wrong base ref)'
+    echo '  - `Changed files:` lists no path (an empty diff usually means a wrong base ref)'
   fi
   for label in "${REVIEW_CONCERNS[@]}"; do
     vals="$(grep -E "^[[:space:]]*[-*]?[[:space:]]*${label}:" "$report" | sed -E "s/^[[:space:]]*[-*]?[[:space:]]*${label}:[[:space:]]*//; s/\r$//")" || true
     if ! printf '%s' "$vals" | grep -q '[^[:space:]]'; then
-      problems+=$'\n  - no line for the "'"$label"'" concern'
+      echo "  - no line for the \"$label\" concern"
       continue
     fi
     while IFS= read -r val; do
       [[ -n "${val//[[:space:]]/}" ]] || continue
       lower="$(printf '%s' "$val" | tr '[:upper:]' '[:lower:]')"
       if [[ "$lower" =~ ^none([^[:alnum:]_]|$) ]] && { ! [[ "$lower" =~ checked ]] || ! [[ "$val" =~ [^[:space:]]+:[0-9]+ ]]; }; then
-        problems+=$'\n  - the "'"$label"'" `none` line must say what was checked and cite a file:line'
+        echo "  - the \"$label\" \`none\` line must say what was checked and cite a file:line"
       fi
     done <<< "$vals"
   done
+  return 0
+}
+
+# _gate_review_notes_shape <id> <tdir> — t-de16: a review-notes.md that exists must SHOW its passes
+# (_review_notes_shape_problems). Fires only when the file exists, like _gate_review_notes_model, so reviewer-skipped
+# tiers are unaffected.
+_gate_review_notes_shape() {
+  local id="$1" tdir="$2" report problems
+  report="$tdir/review-notes.md"
+  [[ -f "$report" ]] || return 0
+  problems="$(_review_notes_shape_problems "$report")"
   if [[ -n "$problems" ]]; then
-    echo "Sprint $id cannot close: review-notes.md does not show the reviewer's passes (t-de16):$problems"
+    echo "Sprint $id cannot close: review-notes.md does not show the reviewer's passes (t-de16):"
+    printf '%s\n' "$problems"
     echo "Re-dispatch the reviewer per review.md's report template: 'Changed files:' with paths, then one line per concern — a finding, or 'none — checked <what>, <file:line>'."
     _gate_dispatch_notice reviewer review-notes.md
     return 1
@@ -778,6 +786,25 @@ cmd_complete() {
 # orchestrating agent goes on to invoke `sprint complete` itself. Prints the
 # resulting count and a retry-budget-exhausted notice at 3, but never blocks
 # on its own — _gate_eval_report_verdict (cmd_complete) is the actual close gate.
+# cmd_check_review_notes <id> — t-c38e: the close gate's review-notes.md shape check, run on demand (read-only). The
+# reviewer runs it before returning and the orchestrator right after the dispatch, so a malformed report is rewritten at
+# once instead of being refused at `sprint complete`.
+cmd_check_review_notes() {
+  local id="${1:-}"
+  [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
+  local report problems
+  report="$(ticket_dir_for "$id")/review-notes.md"
+  [[ -f "$report" ]] || { echo "review-notes.md: not found for $id ($report)" >&2; exit 1; }
+  problems="$(_review_notes_shape_problems "$report")"
+  if [[ -n "$problems" ]]; then
+    echo "review-notes.md: shape refused — the same check sprint complete runs (t-de16):"
+    printf '%s\n' "$problems"
+    echo "Fix the report per review.md's template: 'Changed files:' with paths, then one line per concern — a finding, or 'none — checked <what>, <path>:<line>' (the word 'checked' and a path:line on that same line)."
+    exit 1
+  fi
+  echo "review-notes.md: shape ok"
+}
+
 cmd_eval_verdict() {
   local id="${1:-}"
   [[ -z "$id" ]] && { echo "Error: ticket ID required" >&2; exit 1; }
@@ -948,6 +975,9 @@ Usage:
   sprint eval-verdict <id>  Record the evaluator's pass/fail into ticket.md's
                             eval_fail_count (internal — called by complete.md
                             step 3, not run directly)
+  sprint check-review-notes <id>  Check review-notes.md's shape with the same rule
+                            sprint complete applies (read-only; exit 1 names each
+                            problem) — the reviewer runs it before returning
 
 The CLI owns deterministic workflow state. The agent still owns orientation,
 gray-area resolution, impact analysis, implementation, review, and test judgment.
@@ -966,6 +996,7 @@ main() {
     complete) cmd_complete ;;
     suggest-tier) cmd_suggest_tier "$@" ;;
     eval-verdict) cmd_eval_verdict "$@" ;;
+    check-review-notes) cmd_check_review_notes "$@" ;;
     help|--help|-h) cmd_help ;;
     *) echo "Unknown command: $cmd" >&2; cmd_help; exit 1 ;;
   esac

@@ -713,6 +713,35 @@ grep -v '^Dead code:' ".tickets/$model_id/review-notes.md" > ".tickets/$model_id
 missing_output="$(run_fail "$SPRINT" complete)"
 assert_contains "$missing_output" 'no line for the "Dead code" concern'
 
+# t-c38e: `sprint check-review-notes <id>` runs the same rule on demand — the reviewer before returning, the orchestrator
+# right after the dispatch — so a malformed report is rewritten at once, not refused at close. The two shapes refused live
+# on 2026-10-11 (t-1543, t-9f20): a `none` line with path:line citations but no word `checked`, and a bare label with bullets.
+good_review "tools/sprint, tests/sprint.sh" "none — re-ran the measurement, tools/sprint:12 and tools/sprint:20"
+rn=".tickets/$model_id/review-notes.md"; before_sum="$(cksum < "$rn")"
+check_out="$(run_fail "$SPRINT" check-review-notes "$model_id")"
+assert_contains "$check_out" 'shape refused'
+assert_contains "$check_out" 'the "Scope creep" `none` line must say what was checked'
+assert_eq "$before_sum" "$(cksum < "$rn")"   # read-only
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+awk '/^Standards violations:/ { print "Standards violations:"; print "- tools/sprint:470 uses an old helper"; next } { print }' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+check_out="$(run_fail "$SPRINT" check-review-notes "$model_id")"
+assert_contains "$check_out" 'no line for the "Standards violations" concern'
+good_review "none (empty diff)" "none — checked plan.md Files vs diff, plan.md:20"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'lists no path'
+# one owner: the command names exactly the problems `sprint complete` names for the same report
+good_review "tools/sprint, tests/sprint.sh" "none"
+grep -v '^Dead code:' "$rn" > "$rn.tmp" && mv "$rn.tmp" "$rn"
+gate_lines="$(run_fail "$SPRINT" complete | grep -E '^  - ' || true)"
+check_lines="$(run_fail "$SPRINT" check-review-notes "$model_id" | grep -E '^  - ' || true)"
+[ "$(printf '%s\n' "$gate_lines" | grep -c .)" -eq 2 ] || fail "expected 2 problem lines from sprint complete, got: $gate_lines"
+assert_eq "$gate_lines" "$check_lines"
+# a well-formed report passes; a missing one is refused
+good_review "tools/sprint, tests/sprint.sh" "none — checked plan.md Files vs diff, plan.md:20"
+assert_contains "$("$SPRINT" check-review-notes "$model_id")" 'shape ok'
+mv "$rn" "$rn.aside"
+assert_contains "$(run_fail "$SPRINT" check-review-notes "$model_id")" 'not found'
+mv "$rn.aside" "$rn"
+
 # a fully-formed report — one real finding, the rest checked-none — satisfies both gates → closes.
 # The paths merely START with n/na/empty (native/, empty-state.js) and the finding starts with
 # "none" as a prefix (nonexistent…): neither may be read as an empty diff or an uncited none.
