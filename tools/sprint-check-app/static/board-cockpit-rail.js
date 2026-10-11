@@ -8,7 +8,7 @@ import { cockpitPathKey, fetchWorktreeLock, formatStateAsParagraphs, maybeMountC
 
 // t-a198: the keyboard prefix (see the shell). Keys typed with focus in the board come here; the terminal frame's
 // come through the message relay above. Ignored in fields and under a modal; a standalone board has no shell.
-// canon:prefix-keys:begin (t-a198) — identical in cockpit.html, app.html and cockpit-daemon/web/cockpit.html; tests/prefix-keys-parity.sh pins the copies
+// canon:prefix-keys:begin (t-a198) — identical in cockpit.html, static/board-cockpit-rail.js and cockpit-daemon/web/cockpit.html; tests/prefix-keys-parity.sh pins the copies
 function canonPrefixLabel() {
   var v = 'ctrl+.';
   try { var s = localStorage.getItem('canon-prefix'); if (s && /^ctrl\+[^A-Za-z0-9\s\\+]$/.test(s)) v = s; } catch (e) {}

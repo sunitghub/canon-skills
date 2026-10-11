@@ -10145,7 +10145,7 @@ test.describe('cockpit preview pane (t-b19b)', () => {
 // automates that headlessly: spawn the daemon with a harmless stub command
 // (never a real claude/agent), serve a real fixture through the actual
 // GET /session/<id>/preview/<token>/<relpath> endpoint, load it into a sandboxed
-// iframe that mirrors app.html's renderPreviewFile exactly, and assert the
+// iframe that mirrors the board's renderPreviewFile (static/board-cockpit.js) exactly, and assert the
 // rendered DOM + computed style inside the opaque-origin frame. The fixture
 // styles via a RELATIVE ./style.css, so the green computed color also proves
 // the t-8fbc fix (path-segment token) lets relative sibling assets load.
@@ -10252,7 +10252,7 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     });
     expect(prRes.status()).toBe(204);
 
-    // 3. Render it exactly as app.html's renderPreviewFile does: a sandboxed
+    // 3. Render it exactly as the board's renderPreviewFile does: a sandboxed
     //    iframe (allow-scripts, NO allow-same-origin → opaque origin) whose src
     //    is the real daemon preview endpoint on its own port (cross-origin).
     //    t-8fbc: the previewToken is a PATH segment (…/preview/<token>/<relpath>),

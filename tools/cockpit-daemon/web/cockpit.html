@@ -158,7 +158,7 @@
   fit.fit();
   // t-a198: the prefix key. Only the prefix and the one key after it are withheld from the terminal, so ctrl+c and every
   // other key still reach term.onData; the board relays what we post to the shell.
-// canon:prefix-keys:begin (t-a198) — identical in cockpit.html, app.html and cockpit-daemon/web/cockpit.html; tests/prefix-keys-parity.sh pins the copies
+// canon:prefix-keys:begin (t-a198) — identical in cockpit.html, static/board-cockpit-rail.js and cockpit-daemon/web/cockpit.html; tests/prefix-keys-parity.sh pins the copies
 function canonPrefixLabel() {
   var v = 'ctrl+.';
   try { var s = localStorage.getItem('canon-prefix'); if (s && /^ctrl\+[^A-Za-z0-9\s\\+]$/.test(s)) v = s; } catch (e) {}
