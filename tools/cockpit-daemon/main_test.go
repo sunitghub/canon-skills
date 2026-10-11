@@ -5290,7 +5290,7 @@ func saveAndEndRefusesMenu(t *testing.T, fixture string) {
 }
 
 // t-f91a: the 409 → 'save-refused' → board contract spans two files that share no code
-// (the daemon-served page and the board's app.html). If either side renames the message
+// (the daemon-served page and the board's scripts). If either side renames the message
 // type, a refused Save & End silently becomes an "ended" teardown (or a dead click), so
 // pin the string on both sides and the daemon page's 409 branch.
 func TestSaveRefusedContractAcrossPages(t *testing.T) {
@@ -5298,15 +5298,25 @@ func TestSaveRefusedContractAcrossPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	board, err := os.ReadFile(filepath.Join("..", "sprint-check-app", "app.html"))
-	if err != nil {
-		t.Fatal(err)
+	// The board's code is app.html plus its static/board-*.js scripts (t-c58e).
+	app := filepath.Join("..", "sprint-check-app")
+	files, err := filepath.Glob(filepath.Join(app, "static", "board-*.js"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no board scripts under %s (err %v)", filepath.Join(app, "static"), err)
+	}
+	var board []byte
+	for _, f := range append([]string{filepath.Join(app, "app.html")}, files...) {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		board = append(board, b...)
 	}
 	if !regexp.MustCompile(`r\.status === 409[\s\S]{0,200}type: "save-refused"`).Match(page) {
 		t.Error("web/cockpit.html must relay a 409 from save-and-end as a 'save-refused' message (not 'ended')")
 	}
 	if !strings.Contains(string(board), "d.type === 'save-refused'") || !strings.Contains(string(board), "_onSaveRefused") {
-		t.Error("app.html must handle the 'save-refused' message from the daemon page")
+		t.Error("the board's scripts must handle the 'save-refused' message from the daemon page")
 	}
 }
 
