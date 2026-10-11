@@ -1,4 +1,7 @@
-'use strict';
+import { SHELL_TAB, loadData, state } from './board-core.js';
+import { CK_SIGNAL_LABEL, CK_STATE_LABEL, COCKPIT_TICKET_ID, SCRATCH_ID, announceScratchTabs, ckRowState, findTicketById, finishAdopt, openScratch, postToTab, render, renderBoard, renderScratchWhere, showPromotedChoice, showToast, startPromote } from './board-render.js';
+import { findLiveDaemonSession, openTicketWhenLoaded, renderCockpitRail, renderTabStrip, stopCockpitPoll } from './board-cockpit-rail.js';
+import { applyActualWorkingCwd, maybeMountCockpitTerminal } from './board-worktree.js';
 
 // ── Cockpit (t-ddc8): one-window mode ───────────────────────────────────────
 // Board↔cockpit switch. The board owns no PTY — it ensures the shipped
@@ -19,11 +22,11 @@
 // against whichever tab is currently active, with zero call-site rewrites.
 // Only functions that must reach a BACKGROUND tab's own state (the message
 // listener, the shared poll loop) address cockpitTabs[id] directly.
-const cockpitTabs = {};
-let activeTabId = null;
-let cockpitState = null;
+export const cockpitTabs = {};
+export let activeTabId = null;
+export let cockpitState = null;
 
-function newCockpitTabState(id, iframeEl) {
+export function newCockpitTabState(id, iframeEl) {
   // t-82f4: previewEl/previewCollapsed mirror iframeEl's per-tab persistence —
   // the preview pane used to be one global singleton, reset on every reopen.
   return { id, addr: null, status: null, worktreeCwd: null, actualCwd: null, worktreeDocs: null, docSeen: {}, docSeenSrc: '', fresh: {}, _ending: false, iframeEl, pendingMessage: '', previewEl: null, previewCollapsed: true };
@@ -35,7 +38,7 @@ function newCockpitTabState(id, iframeEl) {
 // t-d254: a worktree created before its ticket was committed can't see it.
 // Name the exact fix-up (commit on the main checkout, then merge that branch in)
 // instead of a vague "commit .tickets/" — shown as text via setTermMessage.
-function missingTicketMessage(ticketId, worktreePath, mainBranch) {
+export function missingTicketMessage(ticketId, worktreePath, mainBranch) {
   const main = mainBranch || 'main';
   return `This worktree doesn't contain ${ticketId}, so a Start here would fail — Start sprint is disabled. `
     + `Use the Main checkout, or bring the ticket in: on the Main checkout run `
@@ -45,7 +48,7 @@ function missingTicketMessage(ticketId, worktreePath, mainBranch) {
 
 // t-d254: swap a button into a busy "spinner + label" state and back. The label is
 // text (textContent), the spinner a fixed element, so nothing here parses HTML.
-function setButtonBusy(btn, busyLabel, idleLabel) {
+export function setButtonBusy(btn, busyLabel, idleLabel) {
   btn.textContent = '';
   if (busyLabel) {
     const sp = document.createElement('span');
@@ -59,7 +62,7 @@ function setButtonBusy(btn, busyLabel, idleLabel) {
   }
 }
 
-function setTermMessage(text) {
+export function setTermMessage(text) {
   const el = document.getElementById('ck-term-msg');
   if (el) el.textContent = text;
   if (cockpitState) cockpitState.pendingMessage = text;
@@ -69,7 +72,7 @@ function setTermMessage(text) {
 // old single #ck-iframe lookup at every call site that only ever acts on the
 // active tab (mount/terminal-status functions; the message listener is the
 // one exception, since it must resolve the SOURCE tab, not just the active one).
-function activeIframe() {
+export function activeIframe() {
   return cockpitState ? cockpitState.iframeEl : null;
 }
 
@@ -84,7 +87,7 @@ function activeIframe() {
 // pre-t-8a2a call site (and Playwright test) that looked up #ck-iframe still
 // resolves correctly with zero changes: there's still exactly one #ck-iframe
 // in the DOM, it just now migrates between tabs on switch.
-function setActiveTab(id) {
+export function setActiveTab(id) {
   activeTabId = id;
   cockpitState = cockpitTabs[id] || null;
   // t-82f4: preview containers get the same show/hide-only swap as terminal
@@ -115,7 +118,7 @@ function fmtWait(secs) {
   const m = Math.floor(secs / 60);
   return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m > 0 ? m + 'm' : 'under a minute';
 }
-function renderSessionStateChip() {
+export function renderSessionStateChip() {
   const chip = document.getElementById('ck-state-chip'), reaper = document.getElementById('ck-reaper');
   if (!sessionIsLive()) { chip.hidden = true; reaper.hidden = true; return; }
   const row = cockpitState.daemonRow || null;
@@ -137,7 +140,7 @@ function renderSessionStateChip() {
   if (reaperTip) reaper.title = reaperTip; else reaper.removeAttribute('title');
   reaper.hidden = !reaperText;
 }
-async function refreshSessionStateChip() {
+export async function refreshSessionStateChip() {
   const tab = cockpitState, id = activeTabId;
   if (!tab || !document.getElementById('cockpit-overlay').classList.contains('open') || !sessionIsLive()) { renderSessionStateChip(); return; }
   const row = await findLiveDaemonSession(id);
@@ -175,7 +178,7 @@ function renderPreviewMessage(text) {
 
 // t-533f: a local absolute path → the file:/// URL a real browser opens (POSIX, Windows drive,
 // UNC). Each segment is percent-encoded so spaces and '#' survive; '' for anything else.
-function fileUrlFor(p) {
+export function fileUrlFor(p) {
   if (typeof p !== 'string' || !p) return '';
   const enc = parts => parts.filter(Boolean).map(encodeURIComponent).join('/');
   let m = p.match(/^\\\\([^\\/]+)[\\/](.+)$/);
@@ -267,18 +270,18 @@ function renderPreviewServerCmd(cmd) {
   body.querySelector('code').textContent = cmd;
 }
 
-function requestPreview() {
+export function requestPreview() {
   const iframe = activeIframe();
   if (!iframe || !iframe.contentWindow || !cockpitState || !cockpitState.addr) return;
   renderPreviewMessage('Asking the agent how to preview this ticket’s deliverable…');
   iframe.contentWindow.postMessage({ source: 'canon-cockpit', type: 'preview-request' }, 'http://' + cockpitState.addr);
 }
 
-function sessionIsLive() {
+export function sessionIsLive() {
   return !!cockpitState && (cockpitState.status === 'running' || cockpitState.status === 'needs-you');
 }
 
-function openLeaveConfirm() {
+export function openLeaveConfirm() {
   const needsYou = cockpitState.status === 'needs-you';
   // Reset every control fresh — a prior session's in-flight save could have
   // left "Cancel" disabled and stale status text behind.
@@ -379,7 +382,7 @@ function closeLeaveConfirm() {
 // simpler guarantee than the old single-tab `iframe.src = 'about:blank'`)
 // and drops its entry from cockpitTabs. If it was the active tab, switches to
 // another open tab, or hides the overlay + stops the shared poll if none remain.
-function unmountTab(id) {
+export function unmountTab(id) {
   const tab = cockpitTabs[id];
   if (!tab) return;
   if (tab.iframeEl && tab.iframeEl.parentNode) tab.iframeEl.parentNode.removeChild(tab.iframeEl);
@@ -419,7 +422,7 @@ function unmountTab(id) {
 // it instead of double-spawning). This is the HIGH blast-radius boundary the
 // ticket exists to enforce: closeTab() must never call teardownCockpit(), and
 // must never send any daemon request.
-function closeTab(id) {
+export function closeTab(id) {
   unmountTab(id);
 }
 
@@ -427,7 +430,7 @@ function closeTab(id) {
 // event) — unmount its tab and refresh the board, since the ticket's status
 // may have changed server-side. `id` defaults to the active tab, since every
 // call site that ends a session acts on whichever tab is currently shown.
-function teardownCockpit(id) {
+export function teardownCockpit(id) {
   id = id || activeTabId;
   if (!id || !cockpitTabs[id]) return;
   // t-82f4: unmountTab() already frees this tab's own preview container and,
@@ -572,7 +575,7 @@ async function ckLeaveSaveAndEnd(skipSave, opts) {
 }
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
-function initCockpit() {
+export function initCockpit() {
   // t-f6b6: the board and the daemon page are different origins (different
   // port), so the only channel for "is a session live" and "please save state
   // then end" is postMessage — and the only real trust boundary is validating

@@ -1,8 +1,16 @@
-'use strict';
+import { COLLAPSE_STATUSES, COLUMNS, COL_LIMIT, SHELL_TAB, docSlug, loadData, state } from './board-core.js';
+import { age, ciBadge, demoBadge, divergenceLine, effectiveStatus, esc, escAttr, normalizeSearch, outcomeRatio, ticketMatchesQuery, typeBadge, whyQueryFromInput, worktreePrefLine, worktreeRun } from './board-helpers.js';
+import { openModal } from './board-modal.js';
+import { moveCard } from './board-docs.js';
+import { activeTabId, cockpitState, cockpitTabs, unmountTab } from './board-cockpit.js';
+import { openCockpit, renderSidebarChanges } from './board-cockpit-rail.js';
+import { cockpitForwardSlash, fetchWorktreeLock } from './board-worktree.js';
+import { openCommitPanel } from './board-panels.js';
+import { setText } from './board-ui.js';
 
 // ── Render ────────────────────────────────────────────────────────────────
 
-function render() {
+export function render() {
   renderHeader();
   renderSidebar();
   renderBoard();
@@ -11,8 +19,8 @@ function render() {
 
 // t-2d2e: same normalization for the row's "Main checkout" test and the
 // same-project test, so both agree on what "this project" means.
-const normProjectPath = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
-const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
+export const normProjectPath = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
+export const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
 // t-391a: the "Cockpit sessions" panel lists active sessions across ALL projects
 // the one daemon serves (nebula's model — one daemon, many projects). Read-only
 // fetch of /api/cockpit-sessions (token-free, like /api/cockpit); clicking a row
@@ -21,13 +29,13 @@ const COCKPIT_TICKET_ID = /^t-[a-z0-9]{4}$/;
 // token (t-ddc8). Basename split uses [\\/] so a Windows project path renders too.
 // t-824e: a /sessions row's displayed state — the daemon's "state", or for a daemon older
 // than t-824e its "status" (needs-you / running). Never the raw wire status ("awaiting-input").
-const CK_STATE_LABEL = { 'needs-you': 'needs you', done: 'done \u00b7 waiting for your next prompt', working: 'working', idle: 'idle', running: 'running' };
-const CK_SIGNAL_LABEL = { hook: 'Claude Code notification hook', 'copilot-menu': 'Copilot approval menu', activity: 'terminal activity only (no question signal)' };
-function ckRowState(row) {
+export const CK_STATE_LABEL = { 'needs-you': 'needs you', done: 'done \u00b7 waiting for your next prompt', working: 'working', idle: 'idle', running: 'running' };
+export const CK_SIGNAL_LABEL = { hook: 'Claude Code notification hook', 'copilot-menu': 'Copilot approval menu', activity: 'terminal activity only (no question signal)' };
+export function ckRowState(row) {
   if (row && typeof row.state === 'string' && CK_STATE_LABEL[row.state]) return row.state;
   return row && row.status === 'needs-you' ? 'needs-you' : 'running';
 }
-async function refreshCockpitSessions() {
+export async function refreshCockpitSessions() {
   const panel = document.getElementById('cockpit-sessions');
   if (!panel) return;
   let sessions = [];
@@ -122,7 +130,7 @@ function openSessionRow(ticket, project) {
   showToast(`⚠ ${ticket} belongs to ${project} — open that project's board`, 'warn');
 }
 
-function renderHeader() {
+export function renderHeader() {
   const { git, tickets } = state;
   // t-6a74: in a Cockpit project tab, show the full folder path instead of the
   // project name (brand text + version are hidden via html.canon-proj-embed).
@@ -146,7 +154,7 @@ function renderHeader() {
   else mod.style.display = 'none';
 }
 
-function renderSidebar() {
+export function renderSidebar() {
   const { handoff, git, tickets } = state;
 
   // Now Working On
@@ -311,7 +319,7 @@ function renderWhyResults() {
   });
 }
 
-function renderBoard() {
+export function renderBoard() {
   const board = document.getElementById('board');
   const query = state.queryMode === 'search' ? normalizeSearch(state.query) : '';
   const tickets = state.tickets.filter(ticketMatchesQuery);
@@ -578,7 +586,7 @@ function renderBoard() {
 // (`pathKey`/`_path_key`: \ -> /, trailing / dropped, lowercased) because on Windows `git worktree list`
 // prints C:/... while the daemon writes the native C:\... into .cockpit-cwd. A lock that matches no entry
 // shows its folder name, never 'main' (that would read as a main-checkout ticket).
-function worktreeChipLabel(entries, cwd) {
+export function worktreeChipLabel(entries, cwd) {
   const key = p => String(p || '').replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase();
   const folder = p => String(p || '').replace(/[\\/]+$/, '').split(/[\\/]/).pop();
   const match = Array.isArray(entries) ? entries.find(e => e && key(e.path) && key(e.path) === key(cwd)) : null;
@@ -618,7 +626,7 @@ let _pendingConfirm = null;
 // network error is a failure: the reason is toasted, and the caller keeps or
 // reverts its own UI. (403 from the origin guard answers HTML, hence the
 // tolerant JSON parse.)
-async function postWrite(url, body, what, opts = {}) {
+export async function postWrite(url, body, what, opts = {}) {
   let r, d = {};
   try {
     r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -638,7 +646,7 @@ async function postWrite(url, body, what, opts = {}) {
 
 // t-26f9: a doc write echoes the etag its page read (sha256 of the file's bytes, or "absent") as base_hash, so it can
 // never silently replace a change made since; a bound ticket's docs are written in its worktree.
-async function fetchDoc(file) {
+export async function fetchDoc(file) {
   try {
     const r = await fetch(`/api/doc/${encodeURIComponent(file)}`);
     if (!r.ok) return null;
@@ -647,7 +655,7 @@ async function fetchDoc(file) {
   } catch { return null; }
 }
 // Read-modify-write: when the file changed under us, re-read and re-apply once; a second collision is reported.
-async function updateDoc(file, transform, what) {
+export async function updateDoc(file, transform, what) {
   for (let attempt = 0; attempt < 2; attempt++) {
     const cur = await fetchDoc(file);
     if (!cur) { showToast(`⚠ Couldn't ${what}: the doc couldn't be read`, 'block'); return { ok: false }; }
@@ -660,7 +668,7 @@ async function updateDoc(file, transform, what) {
   return { ok: false, stale: true };
 }
 
-function showToast(msg, type = 'warn') {
+export function showToast(msg, type = 'warn') {
   const el = document.getElementById('drop-toast');
   if (!el) return;
   clearTimeout(_toastTimer);
@@ -685,7 +693,7 @@ const ICO = {
 };
 function ico(name) { return ICO[name] || ''; }
 
-function readiness(t) {
+export function readiness(t) {
   const slugs = (t.docs || []).map(d => docSlug(t, d.file));
   const hasAcceptance = slugs.includes('acceptance');
   const hasPlan = slugs.includes('plan');
@@ -775,7 +783,7 @@ function normalizeTicketId(id) {
   return String(id ?? '').trim().replace(/^"+|"+$/g, '');
 }
 
-function findTicketById(id) {
+export function findTicketById(id) {
   const want = normalizeTicketId(id);
   return state.tickets.find(t => normalizeTicketId(t.id) === want) || state.scratch.get(want);
 }
@@ -783,16 +791,16 @@ function findTicketById(id) {
 // t-47f1: a scratch session is the plain agent in the project's main checkout, with no
 // ticket behind it. The cockpit treats it as a pseudo-ticket (id s-xxxx, minted by the
 // shell) so tabs, the terminal and End reuse the ticket paths; the rail shows only a label.
-const SCRATCH_ID = /^s-[a-z0-9]{4}$/;
+export const SCRATCH_ID = /^s-[a-z0-9]{4}$/;
 // t-f553: messages to the active tab's daemon page (which holds the session token).
-function startPromote(thenEnd) {
+export function startPromote(thenEnd) {
   cockpitState.promoteThenEnd = !!thenEnd;
   if (!postToTab(cockpitState, { type: 'promote-request', thenEnd: !!thenEnd })) { showToast('⚠ Start the agent first', 'warn'); return; }
   showToast('Asked the agent to create the ticket — approve its tkt create command in the terminal.');
 }
 // Click the scratch title to rename it (Enter saves, Esc cancels); the daemon keeps it so the
 // Agents rail, Admin and notifications show it too.
-function editScratchTitle() {
+export function editScratchTitle() {
   const t = findTicketById(activeTabId);
   if (!t || !t.scratch) return;
   const el = document.getElementById('ck-tc-title');
@@ -825,13 +833,13 @@ function editScratchTitle() {
   });
   input.addEventListener('blur', () => finish(true));
 }
-function postToTab(tab, msg) {
+export function postToTab(tab, msg) {
   if (!tab || !tab.iframeEl || !tab.iframeEl.contentWindow || !tab.addr) return false;
   tab.iframeEl.contentWindow.postMessage(Object.assign({ source: 'canon-cockpit' }, msg), 'http://' + tab.addr);
   return true;
 }
 // The agent reported the ticket it created: offer to continue this conversation as it.
-function showPromotedChoice(ticket) {
+export function showPromotedChoice(ticket) {
   const box = document.getElementById('ck-scratch-promoted');
   box.hidden = false;
   box.textContent = '';
@@ -849,7 +857,7 @@ function showPromotedChoice(ticket) {
   box.append(p, row);
 }
 // Adopted: the scratch session has ended; open the ticket there (or just report it).
-async function finishAdopt(scratchId, ticket, cwd, thenEnd) {
+export async function finishAdopt(scratchId, ticket, cwd, thenEnd) {
   state.adoptCwd = state.adoptCwd || {};
   state.adoptCwd[ticket] = cwd;
   unmountTab(scratchId);
@@ -860,7 +868,7 @@ async function finishAdopt(scratchId, ticket, cwd, thenEnd) {
 }
 // t-f553: tell the shell which scratch tabs here haven't started their agent, so its Agents
 // list shows them (the daemon only reports running sessions).
-function announceScratchTabs() {
+export function announceScratchTabs() {
   if (window.parent === window) return;
   const tabs = Object.keys(cockpitTabs).filter(id => SCRATCH_ID.test(id) && !cockpitTabs[id].started).map(id => {
     const t = state.scratch.get(id);
@@ -868,13 +876,13 @@ function announceScratchTabs() {
   });
   try { window.parent.postMessage({ source: 'canon-board', type: 'scratch-tabs', tab: SHELL_TAB, tabs }, location.origin); } catch {}
 }
-function newScratchId() {   // t-e162: the path bar's "+ Scratch" mints its own id
+export function newScratchId() {   // t-e162: the path bar's "+ Scratch" mints its own id
   const a = 'abcdefghijklmnopqrstuvwxyz0123456789', b = new Uint8Array(4);
   crypto.getRandomValues(b);
   return 's-' + [...b].map(x => a[x % 36]).join('');
 }
 // Where a scratch session runs: the main checkout, or the daemon-made worktree (t-e162).
-function renderScratchWhere(tab) {
+export function renderScratchWhere(tab) {
   const el = document.getElementById('ck-scratch-where');
   if (!el) return;
   const cwd = tab && tab.actualCwd;
@@ -882,14 +890,14 @@ function renderScratchWhere(tab) {
     : normProjectPath(cwd) === normProjectPath(state.gitRoot) ? 'Running in the main checkout.'
     : 'Running in worktree ' + cwd.split(/[\\/]/).filter(Boolean).pop() + ' — removed on End if nothing was done in it.';
 }
-function openScratch(id) {
+export function openScratch(id) {
   if (!SCRATCH_ID.test(id)) return;
   if (!state.scratch.has(id)) state.scratch.set(id, { id, title: 'Scratch session', status: 'scratch', scratch: true, docs: [] });
   openCockpit(id);
 }
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
-function initRender() {
+export function initRender() {
   document.getElementById('drop-toast')?.addEventListener('click', e => {
     if (e.target.matches('.toast-confirm') && _pendingConfirm) {
       const fn = _pendingConfirm;

@@ -1,10 +1,16 @@
-'use strict';
+import { handleMarkdownEnter, handleTabIndent } from './editor.js';
+import { fetchVersion, loadData, state } from './board-core.js';
+import { normalizeSearch, whyQueryFromInput } from './board-helpers.js';
+import { renderBoard, showToast } from './board-render.js';
+import { activateDoc, modalState, refreshDocTree } from './board-modal.js';
+import { EDITOR_LINES_KEY, closeModal, docEditable, editorLinesOn, enterEditMode, exitEditMode, insertEditorSnippet, refreshEditorGutter } from './board-docs.js';
+import { PASTE_IMAGE_EXT, insertPlainText, nextPasteVisualIndex, readClipboardImages, uploadImageIntoEditor } from './board-panels.js';
 
 // ── Keyboard ──────────────────────────────────────────────────────────────
 
 // ── Util ──────────────────────────────────────────────────────────────────
 
-function setText(id, val) {
+export function setText(id, val) {
   const el = document.getElementById(id);
   if (el) el.textContent = String(val ?? '');
 }
@@ -20,7 +26,7 @@ function setText(id, val) {
 // ── Boot ──────────────────────────────────────────────────────────────────
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
-function initUi() {
+export function initUi() {
   document.addEventListener('keydown', e => {
     const open = document.getElementById('modal-overlay').classList.contains('open');
     if (!open) return;
@@ -495,13 +501,3 @@ function initUi() {
   setInterval(loadData, 8000);
 }
 
-// t-1543 cut A2: run each file's load-time code in tag order (moves to board-main.js with the module cut).
-initCore();
-initRender();
-initDocs();
-initCockpit();
-initCockpitRail();
-initWorktree();
-initPanels();
-initCreate();
-initUi();

@@ -1,4 +1,8 @@
-'use strict';
+import { state } from './board-core.js';
+import { esc } from './board-helpers.js';
+import { renderBoard, updateDoc } from './board-render.js';
+import { modalState, openModal } from './board-modal.js';
+import { refreshEditorGutter, renderModalBody } from './board-docs.js';
 
 // ── Semantic ticket matching ──────────────────────────────────────────────
 
@@ -20,7 +24,7 @@ function semanticScore(commitText, ticketTitle) {
 
 // ── Commit detail panel ───────────────────────────────────────────────────
 
-async function openCommitPanel(hash) {
+export async function openCommitPanel(hash) {
   const overlay = document.getElementById('commit-overlay');
   resetPanelDrag(document.getElementById('commit-panel'));
   document.getElementById('co-hash').textContent    = hash.slice(0, 7);
@@ -90,7 +94,7 @@ function closeCommitPanel() {
   document.getElementById('commit-overlay').classList.remove('open');
 }
 
-function resetPanelDrag(panel) {
+export function resetPanelDrag(panel) {
   if (!panel) return;
   panel.dataset.dragX = '0';
   panel.dataset.dragY = '0';
@@ -98,7 +102,7 @@ function resetPanelDrag(panel) {
   panel.style.setProperty('--drag-y', '0px');
 }
 
-function resetPanelResize(panel) {
+export function resetPanelResize(panel) {
   if (!panel) return;
   panel.style.width = '';
   panel.style.height = '';
@@ -222,7 +226,7 @@ function makePanelResizable(panelId) {
 
 // ── Inline checkbox toggle ────────────────────────────────────────────────
 
-function tagCheckboxes(el) {
+export function tagCheckboxes(el) {
   const t = state.tickets.find(tk => tk.id === state.selectedId);
   const locked = !t || t.status === 'closed' || t.status === 'cancelled';
   let count = 0;
@@ -260,15 +264,15 @@ async function toggleCheckbox(docFile, checkIdx) {
 // Lands pasted images in .tickets/<id>/visuals/, the same convention `sprint
 // start` uses for mockups/visual references (standards/ticket-layout.md).
 
-const PASTE_IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+export const PASTE_IMAGE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
 let pasteVisualCounter = 0;
 
-function nextPasteVisualIndex() {
+export function nextPasteVisualIndex() {
   pasteVisualCounter += 1;
   return pasteVisualCounter;
 }
 
-function readClipboardImages(e) {
+export function readClipboardImages(e) {
   const items = e.clipboardData && e.clipboardData.items;
   if (!items) return [];
   const out = [];
@@ -282,7 +286,7 @@ function readClipboardImages(e) {
   return out;
 }
 
-function blobToBase64(blob) {
+export function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
@@ -293,7 +297,7 @@ function blobToBase64(blob) {
 
 // Pasted images and the toolbar's image button share one flow: a marker at the caret while the upload runs, then the
 // markdown (or failText). The marker is re-located afterwards because the person may keep typing during the upload.
-async function uploadImageIntoEditor(editEl, ticketId, blob, filename, label, failText) {
+export async function uploadImageIntoEditor(editEl, ticketId, blob, filename, label, failText) {
   const marker = `![Uploading ${label}…]()`;
   const markerStart = editEl.selectionStart;
   insertPlainText(editEl, marker);
@@ -306,13 +310,13 @@ async function uploadImageIntoEditor(editEl, ticketId, blob, filename, label, fa
   }
 }
 
-function insertPlainText(textarea, text) {
+export function insertPlainText(textarea, text) {
   textarea.focus();
   textarea.setSelectionRange(textarea.selectionStart, textarea.selectionEnd);
   document.execCommand('insertText', false, text);
 }
 
-async function uploadVisual(ticketId, filename, base64) {
+export async function uploadVisual(ticketId, filename, base64) {
   try {
     const res = await fetch(`/api/ticket/${ticketId}/visual`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -325,7 +329,7 @@ async function uploadVisual(ticketId, filename, base64) {
 }
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
-function initPanels() {
+export function initPanels() {
   document.getElementById('commit-close').addEventListener('click', closeCommitPanel);
   document.getElementById('commit-overlay').addEventListener('click', e => {
     if (e.target === e.currentTarget) closeCommitPanel();

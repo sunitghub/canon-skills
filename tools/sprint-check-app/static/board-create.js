@@ -1,9 +1,12 @@
-'use strict';
+import { SHELL_TAB, TICKET_TYPES, TYPE_TEMPLATES, detectTicketType, state } from './board-core.js';
+import { WT_PREF_MAIN, esc, escAttr, titleCase } from './board-helpers.js';
+import { editScratchTitle, newScratchId, openScratch, postWrite, renderBoard, startPromote } from './board-render.js';
+import { blobToBase64, insertPlainText, nextPasteVisualIndex, readClipboardImages, resetPanelDrag, resetPanelResize, uploadVisual } from './board-panels.js';
 
 // ── Create ticket ─────────────────────────────────────────────────────────
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
-function initCreate() {
+export function initCreate() {
   (function initCreate() {
     const overlay  = document.getElementById('create-overlay');
     const titleEl  = document.getElementById('c-title');

@@ -2,7 +2,7 @@
 // sprint-check-seed — unit coverage for the Test Plan runner-placeholder seeding (t-321a).
 //
 // Loads the REAL hasGherkinScenario / seedTestPlanRunnerPlaceholder out of
-// the board's scripts (tests/board-script.js) into a vm sandbox (not a copy) and asserts the board seeds a Test
+// the board's scripts (tests/board-script.js) (not a copy) and asserts the board seeds a Test
 // Plan placeholder when an Acceptance doc has a Gherkin scenario, never clobbers a real command, is
 // idempotent, and does nothing without a scenario.
 const { loadBoard } = require('./board-script');

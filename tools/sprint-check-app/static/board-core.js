@@ -1,8 +1,9 @@
-'use strict';
+import { displayTicketId } from './board-helpers.js';
+import { render } from './board-render.js';
 
 // ── Config ───────────────────────────────────────────────────────────────
 
-const COLUMNS = [
+export const COLUMNS = [
   { status: 'open',        label: 'Open',        cls: 'col-open',      dotVar: '--col-open'       },
   { status: 'in_progress', label: 'In Progress',  cls: 'col-progress',  dotVar: '--col-progress'   },
   { status: 'closed',      label: 'Done',         cls: 'col-done',      dotVar: '--col-done'       },
@@ -59,21 +60,21 @@ function ago(days) {
 
 // ── State ────────────────────────────────────────────────────────────────
 
-const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
-const COL_LIMIT = 5;
-const DEBUG = new URLSearchParams(location.search).has('debug');
+export const COLLAPSE_STATUSES = new Set(['closed', 'cancelled']);
+export const COL_LIMIT = 5;
+export const DEBUG = new URLSearchParams(location.search).has('debug');
 // t-67ab: the token the Canon Cockpit gave this tab's iframe; echoed on every message to the
 // shell so it knows which tab sent it (Safari reports the shell itself as event.source).
-const SHELL_TAB = new URLSearchParams(location.search).get('tab') || '';
+export const SHELL_TAB = new URLSearchParams(location.search).get('tab') || '';
 function debugLog(...args) {
   if (DEBUG) console.log('[sprint-check]', ...args);
 }
 
 // ── Ticket creation ───────────────────────────────────────────────────────
 
-const TICKET_TYPES = ['feature', 'task', 'bug', 'chore', 'epic'];
+export const TICKET_TYPES = ['feature', 'task', 'bug', 'chore', 'epic'];
 
-const TYPE_TEMPLATES = {
+export const TYPE_TEMPLATES = {
   feature: `## Description\nWhat should be built?\n`,
   task:    `## Description\nWhat should be done?\n`,
   bug:     `## Description\nWhat is broken?\n\n## Expected\n\n## Actual\n`,
@@ -81,7 +82,7 @@ const TYPE_TEMPLATES = {
   epic:    `## Description\nWhat larger outcome should this track?\n`,
 };
 
-function detectTicketType(title) {
+export function detectTicketType(title) {
   const t = title.toLowerCase();
   if (/\b(fix|bug|error|crash|broken|regression|failing|cannot|can'?t)\b/.test(t))
     return { type: 'bug',     reason: 'looks like a bug fix' };
@@ -94,7 +95,7 @@ function detectTicketType(title) {
   return   { type: 'task',    reason: 'general task' };
 }
 
-const DOC_TYPES = [
+export const DOC_TYPES = [
   {
     name: 'Acceptance',  slug: 'acceptance',
     hint: 'Criteria and Test Plan sections both need checklist items — sprint complete blocks without them.',
@@ -190,26 +191,26 @@ One sentence: what system behavior was researched.
   },
 ];
 
-function docSlug(t, file) {
+export function docSlug(t, file) {
   if (file.includes('/')) return file.split('/').pop().replace('.md', '');
   return file.replace(`${displayTicketId(t)}-`, '').replace('.md', '');
 }
 
-function docFileFor(t, slug) {
+export function docFileFor(t, slug) {
   const id = displayTicketId(t);
   return t.layout === 'folder' ? `${id}/${slug}.md` : `${id}-${slug}.md`;
 }
 
 // t-26f9: the docs the server will write in a worktree (acceptance.md, plan.md, research.md)
-const LIVE_EDITABLE_SLUGS = ['acceptance', 'plan', 'research'];
-function availableDocTypes(t) {
+export const LIVE_EDITABLE_SLUGS = ['acceptance', 'plan', 'research'];
+export function availableDocTypes(t) {
   const existingSlugs = (t.docs || []).map(d => docSlug(t, d.file));
   // t-26f9: in a worktree the board writes only acceptance.md, plan.md and research.md
   const writable = dt => !t.docs_from || LIVE_EDITABLE_SLUGS.includes(dt.slug);
   return DOC_TYPES.filter(dt => !existingSlugs.includes(dt.slug) && writable(dt));
 }
 
-const state = {
+export const state = {
   tickets:[], handoff:null, git:null, selectedId:null, expandedCols: new Set(),
   boardFirstRender: true, query: '', queryMode: 'search', why: null,
   cockpitRows: new Map(), cockpitRowsKey: '',   // t-28ec: this project's live sessions by ticket id
@@ -218,7 +219,7 @@ const state = {
 
 // ── Data layer ───────────────────────────────────────────────────────────
 
-async function loadData() {
+export async function loadData() {
   setDot('loading');
   try {
     const [tr, hr, gr] = await Promise.all([
@@ -248,7 +249,7 @@ function setDot(s) {
 // t-99fa/t-5c20: header shows the human semantic version (canon vX.Y.Z); the
 // per-component build details (board commit, cockpit-daemon build) live in the
 // "?" tour panel's Versions section, not a cramped tooltip.
-async function fetchVersion() {
+export async function fetchVersion() {
   try {
     const r = await fetch('/api/version');
     if (!r.ok) return;
@@ -266,7 +267,7 @@ async function fetchVersion() {
 }
 
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
-function initCore() {
+export function initCore() {
   // ── Canon Cockpit project scoping (t-a55a) ────────────────────────────────
   // When the board is embedded in a Cockpit tab it is loaded as /?project=<id>.
   // Thread that id onto the board's READ /api/ calls so every panel shows the
