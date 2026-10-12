@@ -270,16 +270,17 @@ export function renderSessionSurfaces(){
   const list=document.getElementById('ag-list');
   list.innerHTML=rail.length===0 ? '<div class="ag-empty">No agents running</div>' : [...groups.values()].map(g=>
     `<div class="ag-proj" title="${escAttr(g[0].proot)}"><b>${esc(g[0].projName||g[0].name)}</b><span>${g.length}</span>${g[0].pid?`<button class="ag-plus" data-scratch="${escAttr(g[0].pid)}" title="New scratch session in ${escAttr(g[0].projName||g[0].name)}" aria-label="New scratch session">+</button>`:''}</div>`+g.map(v=>{
-      const title=ticketTitle(v.pid,v.ticket);
+      const title=ticketTitle(v.pid,v.ticket), time=sessionTime(v);
       return `<button class="ag-row st st-${v.state}" data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
       `<span class="sdot"></span>`+
       `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
       `<span class="ag-s">${esc(agentLine(v))}</span>`+
-      `<span class="ag-p" title="${escAttr(sessionTime(v).tip)}" data-short="${escAttr(sessionTime(v).short)}">${esc(sessionTime(v).full)}</span></button>`;
+      `<span class="ag-p" title="${escAttr(time.tip)}" data-short="${escAttr(time.short)}">${esc(time.full)}</span></button>`;
     }).join('')
   ).join('');
   // t-aca6 (user): when "<project> · <dur> in session" would be cut off, show "<project> · <dur>"; the title has it all.
-  list.querySelectorAll('.ag-p').forEach(el=>{ if(el.scrollWidth>el.clientWidth) el.textContent=el.dataset.short; });
+  // Measure every line before changing any, so the browser lays out once, not once per row.
+  [...list.querySelectorAll('.ag-p')].filter(el=>el.scrollWidth>el.clientWidth).forEach(el=>{ el.textContent=el.dataset.short; });
   syncSharedWarnings(views);
   list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(rail[+b.dataset.i])));
   list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));

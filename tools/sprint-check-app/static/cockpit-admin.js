@@ -18,12 +18,13 @@ export function renderAdminSessions(views){
     '<th>State</th><th>Session</th><th>Reaper</th><th></th></tr></thead><tbody>'+
     views.map((v,i)=>{
       const title=ticketTitle(v.pid,v.ticket);
+      const dur=sessionTime(v).dur, inSession=dur ? ' \u00b7 '+dur+' in session' : '';
       const dir=!v.cwd || _projKey(v.cwd)===_projKey(v.proot) ? 'main checkout' : (v.cwd.split(/[\\/]/).filter(Boolean).pop()||v.cwd);
       const since=v.since!==null ? ' \u00b7 '+fmtDur(v.since) : '';
       return `<tr class="st st-${v.state}">`+
       `<td title="${escAttr(v.label+(v.signal?' \u00b7 state from: '+v.signal:''))}"><span class="stcell"><span class="sdot"></span>${esc(v.short+since)}</span></td>`+
       `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
-      `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd+(sessionTime(v).dur?' \u00b7 '+sessionTime(v).dur+' in session':''))}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir+(sessionTime(v).dur?' \u00b7 '+sessionTime(v).dur+' in session':''))}</div></td>`+
+      `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd+inSession)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir+inSession)}</div></td>`+
       `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
       `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;
     }).join('')+
