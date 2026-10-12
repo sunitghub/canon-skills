@@ -1,12 +1,12 @@
 # Releasing canon
 
-For the maintainer. Consumers install from `public` (`sunitghub/canon-skills`) and `canon update` takes its `main` at once, so a release is the point a consumer can pin to or return to. This page is the one place the build and release steps are written down in order.
+For the maintainer. Consumers install from `public` (`sunitghub/canon-skills`). A plain `canon update` installs the latest verified release, and `canon update --to main` opts into the development track, so a release is what most consumers run and the point anyone can return to. This page is the one place the build and release steps are written down in order.
 
 ## Versioning
 
 `VERSION` holds `X.Y.Z` ([SemVer](https://semver.org)): a patch for fixes, a minor for features that keep working as before, a major for a change that breaks a tool's command line or the install layout. `CHANGELOG.md` records each release in Keep a Changelog form; commits since the last release sit under `## [Unreleased]`.
 
-A release is **not** every push. Several pushes a day share one `VERSION`, and a tag name is unique. Between releases `public` main is unreleased work; consumers who want stability pin to the last release.
+A release is **not** every push. Several pushes a day share one `VERSION`, and a tag name is unique. Between releases `public` main is unreleased work that only `--to main` installs pick up; everyone else stays on the last release until the next one is published.
 
 ## The pipeline, in order
 
