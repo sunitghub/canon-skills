@@ -72,6 +72,8 @@ read_static() {
 page="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/cockpit")"
 read_static cockpit "$page"
 page+="$STATIC_BODY"
+# t-565f: the shell's page names only cockpit-main.js; its sections arrive through imports.
+[[ "$STATIC_SEEN" == *" /static/cockpit-core.js "* && "$STATIC_SEEN" == *" /static/cockpit-projects.js "* ]] || fail "canon: the shell's module imports were not followed (no cockpit-core.js/cockpit-projects.js)"
 grep -q "<title>Canon Cockpit</title>" <<<"$page" || fail "canon: /cockpit missing Canon Cockpit title"
 grep -q "Add Project" <<<"$page" || fail "canon: /cockpit missing Add Project"
 grep -q "class=\"projbar\"" <<<"$page" || fail "canon: /cockpit missing the Projects section bar"

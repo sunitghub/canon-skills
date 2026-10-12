@@ -50,8 +50,8 @@ async function editDoc(page) {
 // t-67ab: Upkeep lives inside a project tab (opened by its board's Upkeep button); open the
 // first registered project's Upkeep the way that button does.
 async function openUpkeepView(page) {
-  await expect.poll(() => page.evaluate(() => getProjects().length)).toBeGreaterThan(0);   // t-565f: no window._projects
-  await page.evaluate(() => openUpkeepFor(getProjects()[0].id));
+  await expect.poll(() => page.evaluate(async () => { const { getProjects } = await import('/static/cockpit-projects.js'); return ( getProjects().length); })).toBeGreaterThan(0);   // t-565f: no window._projects
+  await page.evaluate(async () => { const { openUpkeepFor } = await import('/static/cockpit-upkeep.js'); const { getProjects } = await import('/static/cockpit-projects.js'); return ( openUpkeepFor(getProjects()[0].id)); });
   await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
 }
 
@@ -3500,7 +3500,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubCockpit(page);
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
-      await page.evaluate(() => openProject('proj-a', 'proj-a'));
+      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); return ( openProject('proj-a', 'proj-a')); });
       return page.frameLocator('#view-proj-a iframe');
     }
 
@@ -3510,7 +3510,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       .evaluate(async (_, m) => { const { SHELL_TAB } = await import('/static/board-core.js'); return ( window.parent.postMessage({ source: 'canon-board', type: 'open-session', tab: SHELL_TAB, ...m }, location.origin)); }, { project_root, ticket });
 
     // ── t-a198: the keyboard prefix (ctrl+. then a key). Real key events in Chromium and WebKit. ──
-    const shellTab = page => page.evaluate(() => activeTab);
+    const shellTab = page => page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.activeTab); });
     const pressPrefix = async (page, key) => { await page.keyboard.press('Control+.'); if (key) await page.keyboard.press(key); };
     // A board has no key handler until its script has run; under load a key pressed earlier goes nowhere (the handler is the last thing it sets up).
     const boardsKeyReady = (page, ids) => Promise.all(ids.map(id => expect.poll(() => page.frameLocator('#view-' + id + ' iframe').locator('body')
@@ -3518,7 +3518,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('keyboard prefix (t-a198): ctrl+. then a key drives the tabs; Escape, unbound and missing tabs do nothing', async ({ page }) => {
       await openShell(page, []);
-      await page.evaluate(() => { openProject('proj-x', 'proj-x'); activateTab('projects'); });
+      await page.evaluate(async () => { const { activateTab, openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); activateTab('projects'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
       await page.keyboard.press('Control+.');
       await expect(page.locator('#keyhint')).toHaveClass(/show/);
@@ -3544,11 +3544,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#view-admin')).not.toHaveClass(/active/);
       await expect.poll(() => shellTab(page)).toBe('projects');
       await pressPrefix(page, 'z');                       // unbound
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       await pressPrefix(page, 'k');                       // k is not bound: the tab stays
       await page.waitForTimeout(150);
       expect(await shellTab(page)).toBe('proj-a');
-      await page.evaluate(() => activateTab('projects'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('projects')); });
       await pressPrefix(page, '9');                       // no ninth tab
       await page.keyboard.press('Control+.'); await page.keyboard.press('Escape');
       await page.keyboard.press('1');                     // the prefix was cancelled, so this is a plain key
@@ -3563,7 +3563,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#keys-prefix')).toHaveText('ctrl+.');
       await page.keyboard.press('Escape');
       await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       await pressPrefix(page, 'x');                       // closes the active tab (no live session here)
       await expect(page.locator('#view-proj-a')).toHaveCount(0);
       expect(await shellTab(page)).toBe('projects');
@@ -3572,7 +3572,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('keyboard prefix (t-a198): never hijacks typing in a field or a dialog, and ignores a forged or background relay', async ({ page }) => {
       const frame = await openShell(page, []);
-      await page.evaluate(() => { openProject('proj-x', 'proj-x'); activateTab('proj-a'); });
+      await page.evaluate(async () => { const { activateTab, openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); activateTab('proj-a'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
       const search = frame.locator('#board-search');
       await search.focus();
@@ -3582,14 +3582,15 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#keyhint')).not.toHaveClass(/show/);
       expect(await shellTab(page)).toBe('proj-a');
       // a dialog open in the shell: the prefix is ignored
-      await page.evaluate(() => { document.activeElement && document.activeElement.blur(); toggleKeysSheet(true); });
+      await page.evaluate(async () => { const { toggleKeysSheet } = await import('/static/cockpit-keys.js'); document.activeElement && document.activeElement.blur(); toggleKeysSheet(true); });
       await pressPrefix(page, '2');
       await page.waitForTimeout(150);
       expect(await shellTab(page)).toBe('proj-a');
-      await page.evaluate(() => toggleKeysSheet(false));
+      await page.evaluate(async () => { const { toggleKeysSheet } = await import('/static/cockpit-keys.js'); return ( toggleKeysSheet(false)); });
       // a message with an unknown tab token, and one from a tab that is not the visible one, are dropped
       await page.evaluate(() => window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'p', tab: 'bogus' }, location.origin));
-      await page.evaluate(() => {
+      await page.evaluate(async () => {
+        const { activateTab, tabTokens } = await import('/static/cockpit-tabs.js');
         activateTab('proj-x');
         const tok = [...tabTokens.entries()].find(([, id]) => id === 'proj-a')[0];
         window.postMessage({ source: 'canon-board', type: 'prefix-key', key: 'p', tab: tok }, location.origin);
@@ -3601,17 +3602,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('keyboard prefix (t-a198): works with focus inside a board; prefix then / focuses that board\'s search', async ({ page }) => {
       const frame = await openShell(page, []);
-      await page.evaluate(() => { openProject('proj-x', 'proj-x'); });
+      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-x', 'proj-x'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
-      await page.evaluate(() => goTab('proj-a'));
+      await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); return ( goTab('proj-a')); });
       await expect.poll(() => shellTab(page)).toBe('proj-a');
       await pressPrefix(page, '2');
       await expect.poll(() => shellTab(page)).toBe('proj-x');
-      await page.evaluate(() => goTab('proj-a'));
-      await page.evaluate(() => goTab('proj-a'));
+      await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); return ( goTab('proj-a')); });
+      await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); return ( goTab('proj-a')); });
       await pressPrefix(page, 'a');                       // from a board's focus too
       await expect(page.locator('#view-admin')).toHaveClass(/active/);
-      await page.evaluate(() => goTab('proj-a'));
+      await page.evaluate(async () => { const { goTab } = await import('/static/cockpit-tabs.js'); return ( goTab('proj-a')); });
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
       await pressPrefix(page, 'e');                       // no live session in this board: nothing opens
       await page.waitForTimeout(200);
@@ -3682,7 +3683,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(r, 'the danger row reads red: ' + danger.text).toBeGreaterThan(Math.max(g, b) + 40);
       await page.keyboard.press('Escape');
       await expect(page.locator('#keys-sheet')).not.toHaveClass(/show/);
-      await page.evaluate(() => setSideWidth(200, false));   // the narrowest the divider allows
+      await page.evaluate(async () => { const { setSideWidth } = await import('/static/cockpit-sidebar.js'); return ( setSideWidth(200, false)); });   // the narrowest the divider allows
       const fit = await page.evaluate(() => [...document.querySelectorAll('.foot button')].map(b => ({ id: b.id, over: b.scrollWidth - b.clientWidth, w: Math.round(b.getBoundingClientRect().width) })));
       for (const b of fit) expect(b.over, b.id + ' overflows at 200px').toBeLessThanOrEqual(1);
       const row = await page.evaluate(() => { const f = document.querySelector('.foot'); return f.scrollWidth - f.clientWidth; });
@@ -3746,7 +3747,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     // ── t-416c: split view — two project panes by CSS placement, never moved in the DOM ──
     const splitTabs = async (page) => {
-      await page.evaluate(() => { openProject('proj-a', 'proj-a'); openProject('proj-x', 'proj-x'); activateTab('proj-a'); });
+      await page.evaluate(async () => { const { activateTab, openProject } = await import('/static/cockpit-tabs.js'); openProject('proj-a', 'proj-a'); openProject('proj-x', 'proj-x'); activateTab('proj-a'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
     };
     const bbox = (page, sel) => page.locator(sel).boundingBox();
@@ -3780,19 +3781,19 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       await expect(page.locator('.tab.project[data-tab="proj-a"]')).toHaveClass(/insplit/);
       await expect(page.locator('#split-close')).toBeVisible();                      // the way out is on screen while a split is
-      await page.evaluate(() => activateTab('projects'));                            // Projects suspends the split ...
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('projects')); });                            // Projects suspends the split ...
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await expect(page.locator('#view-projects')).toHaveClass(/active/);
-      await page.evaluate(() => activateTab('proj-a'));                              // ... and a paired tab brings it back
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });                              // ... and a paired tab brings it back
       await expect(page.locator('#views')).toHaveClass(/split-v/);
-      await page.evaluate(() => showView('admin'));                                  // Admin suspends it too
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });                                  // Admin suspends it too
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // no iframe was reloaded or replaced
       await expect(page.locator('#split-close')).toBeVisible();
       await page.locator('#split-close').click();                                    // one click back to the normal layout
-      expect(await page.evaluate(() => split)).toBeNull();
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split); })).toBeNull();
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await expect(page.locator('#split-close')).toBeHidden();
       await expect(page.locator('#view-proj-x')).toBeHidden();
@@ -3821,7 +3822,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#tabstrip .tab.project[data-tab="proj-x"]')).toHaveCount(1);   // back in the strip
       await expect(page.locator('#tabstrip .tab.project')).toHaveCount(2);
       // The moved tab keeps its menu and its close button.
-      await page.evaluate(() => activateTab('proj-a'));                              // the menu's "beside" needs another tab to be active
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });                              // the menu's "beside" needs another tab to be active
       await splitVia(page, 'proj-x', 'beside');
       await page.locator('#panebar .tab.project[data-tab="proj-x"]').click({ button: 'right' });
       await expect(page.locator('.tabmenu')).toBeVisible();
@@ -3829,7 +3830,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#panebar .tab.project[data-tab="proj-x"] .tx').click();
       await expect(page.locator('#panebar .tab.project')).toHaveCount(0);
       await expect(page.locator('#tabstrip .tab.project')).toHaveCount(1);
-      expect(await page.evaluate(() => split)).toBeNull();
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split); })).toBeNull();
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -3874,7 +3875,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const top = (await bbox(page, '#view-proj-a iframe')).height;
       expect(top).toBeGreaterThanOrEqual(219); expect(top).toBeLessThanOrEqual(223);
       for (const id of ['proj-a', 'proj-x']) expect(await boardMarker(page, id)).toBe(id);   // dragging, keys and switching beside/below reloaded nothing
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       await splitVia(page, 'proj-x', 'beside');                                      // the minimum also holds when the WINDOW shrinks
       const v3 = await bbox(page, '#views'), h3 = await bbox(page, '#split-handle');
       await page.mouse.move(h3.x + 3, h3.y + 40); await page.mouse.down(); await page.mouse.move(v3.x + v3.width * 0.3, h3.y + 40, { steps: 8 }); await page.mouse.up();
@@ -3892,29 +3893,29 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#tabmenu button:disabled')).toHaveCount(2);
       await page.keyboard.press('Escape');
       await expect(page.locator('#tabmenu')).toBeHidden();
-      expect(await page.evaluate(() => openSplit('proj-a', 'proj-a', 'h'))).toBe(false);
-      expect(await page.evaluate(() => split)).toBeNull();
+      expect(await page.evaluate(async () => { const { openSplit } = await import('/static/cockpit-tabs.js'); return ( openSplit('proj-a', 'proj-a', 'h')); })).toBe(false);
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split); })).toBeNull();
       await splitVia(page, 'proj-x', 'beside');
       expect(await page.evaluate(() => document.querySelectorAll('#views iframe').length)).toBe(2);
       await splitVia(page, 'proj-x', 'below');                                       // already in the split: nothing added, direction flips, that pane takes focus
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       expect(await page.evaluate(() => document.querySelectorAll('#views iframe').length)).toBe(2);
-      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-a', 'proj-x']);
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( [ck_tabs.split.a, ck_tabs.split.b]); })).toEqual(['proj-a', 'proj-x']);
       await expect.poll(() => shellTab(page)).toBe('proj-x');
       expect(await page.evaluate(() => document.activeElement.closest('.view').id)).toBe('view-proj-x');
-      await page.evaluate(() => activateTab('proj-a'));
-      await page.evaluate(() => { openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-y'); });
-      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-y', 'proj-x']);   // proj-y took the focused pane
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
+      await page.evaluate(async () => { const { activateTab, ensureView, renderTabs } = await import('/static/cockpit-tabs.js'); const ck_tabs = await import('/static/cockpit-tabs.js'); ck_tabs.openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-y'); });
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( [ck_tabs.split.a, ck_tabs.split.b]); })).toEqual(['proj-y', 'proj-x']);   // proj-y took the focused pane
       await expect(page.locator('#view-proj-a')).toBeHidden();
       await expect(page.locator('#view-proj-y')).toBeVisible();
       await expect(page.locator('#view-proj-x')).toBeVisible();
-      await page.evaluate(() => liveTabIds.add('proj-x'));                           // a live session still gets the warning first
-      await page.evaluate(() => closeTab('proj-x'));
+      await page.evaluate(async () => { const ck_sessions = await import('/static/cockpit-sessions.js'); return ( ck_sessions.liveTabIds.add('proj-x')); });                           // a live session still gets the warning first
+      await page.evaluate(async () => { const { closeTab } = await import('/static/cockpit-tabs.js'); return ( closeTab('proj-x')); });
       await expect(page.locator('#closeWarn')).toHaveClass(/show/);
-      expect(await page.evaluate(() => split && split.b)).toBe('proj-x');
-      await page.evaluate(() => { hideCloseWarn(); liveTabIds.delete('proj-x'); });
-      await page.evaluate(() => closeTab('proj-x'));                                 // idle: closes, the split ends, proj-y stays full size
-      expect(await page.evaluate(() => split)).toBeNull();
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split && ck_tabs.split.b); })).toBe('proj-x');
+      await page.evaluate(async () => { const { hideCloseWarn } = await import('/static/cockpit-sessions.js'); const ck_sessions = await import('/static/cockpit-sessions.js'); hideCloseWarn(); ck_sessions.liveTabIds.delete('proj-x'); });
+      await page.evaluate(async () => { const { closeTab } = await import('/static/cockpit-tabs.js'); return ( closeTab('proj-x')); });                                 // idle: closes, the split ends, proj-y stays full size
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split); })).toBeNull();
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       expect(await shellTab(page)).toBe('proj-y');
       await expect(page.locator('#view-proj-y')).toBeVisible();
@@ -3932,7 +3933,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(saved.ratio).toBeCloseTo(0.52, 2);
       await page.reload(); await page.waitForLoadState('networkidle');
       await expect(page.locator('#views')).toHaveClass(/split-v/);
-      expect(await page.evaluate(() => [split.a, split.b, split.dir])).toEqual(['proj-a', 'proj-x', 'v']);
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( [ck_tabs.split.a, ck_tabs.split.b, ck_tabs.split.dir]); })).toEqual(['proj-a', 'proj-x', 'v']);
       expect(Number(await page.locator('#split-handle').getAttribute('aria-valuenow'))).toBe(52);
       await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);   // t-9a6c: the restored split puts pane 2's tab in its bar
       for (const bad of [JSON.stringify({ a: 'proj-a', b: 'gone', dir: 'h', ratio: 0.5 }), 'not json', JSON.stringify({ a: 'proj-a', b: 'proj-a', dir: 'h', ratio: 0.5 }), JSON.stringify([1, 2])]) {
@@ -3946,11 +3947,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // keys: the tab you came from goes beside / below; u closes. With no previous tab, a message and nothing else.
       await page.evaluate(() => localStorage.removeItem('canon-cockpit-split'));
       await page.reload(); await page.waitForLoadState('networkidle');
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       await pressPrefix(page, 'v');
       await expect(page.locator('#toast')).toContainText('No previous project tab');
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
-      await page.evaluate(() => { activateTab('proj-x'); activateTab('proj-a'); });
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); activateTab('proj-x'); activateTab('proj-a'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
       await pressPrefix(page, 'v');
       await expect(page.locator('#views')).toHaveClass(/split-h/);
@@ -3958,24 +3959,24 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       await pressPrefix(page, 'u');
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
-      await page.evaluate(() => { openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-a'); resetPrevTab(); });
+      await page.evaluate(async () => { const { activateTab, ensureView, renderTabs, resetPrevTab } = await import('/static/cockpit-tabs.js'); const ck_tabs = await import('/static/cockpit-tabs.js'); ck_tabs.openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-a'); resetPrevTab(); });
       await pressPrefix(page, 'V');                                                  // the NEXT tab in the strip (proj-x), whatever was visited before
       await expect(page.locator('#views')).toHaveClass(/split-h/);
-      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-a', 'proj-x']);
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( [ck_tabs.split.a, ck_tabs.split.b]); })).toEqual(['proj-a', 'proj-x']);
       await pressPrefix(page, 'u');
       await pressPrefix(page, 'u');                                                  // nothing left to close: it says so
       await expect(page.locator('#toast')).toContainText('No split to close');
-      await page.evaluate(() => activateTab('proj-y'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-y')); });
       await pressPrefix(page, '_');                                                  // from the last tab it wraps to the first
       await expect(page.locator('#views')).toHaveClass(/split-v/);
-      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-y', 'proj-a']);
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( [ck_tabs.split.a, ck_tabs.split.b]); })).toEqual(['proj-y', 'proj-a']);
       await pressPrefix(page, 'u');
-      await page.evaluate(() => { closeTab('proj-y'); closeTab('proj-x'); activateTab('proj-a'); });   // one project tab left: no next tab to take
+      await page.evaluate(async () => { const { activateTab, closeTab } = await import('/static/cockpit-tabs.js'); closeTab('proj-y'); closeTab('proj-x'); activateTab('proj-a'); });   // one project tab left: no next tab to take
       await pressPrefix(page, 'V');
       await expect(page.locator('#toast')).toContainText('No next project tab to open beside');
       await pressPrefix(page, '_');
       await expect(page.locator('#toast')).toContainText('No next project tab to open below');
-      expect(await page.evaluate(() => split)).toBeNull();
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split); })).toBeNull();
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -4003,12 +4004,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       for (const dir of ['beside', 'below']) {
         await splitVia(page, 'proj-x', dir);
         for (const [on, off] of [['proj-x', 'proj-a'], ['proj-a', 'proj-x']]) {
-          await page.evaluate((id) => activateTab(id), on);
+          await page.evaluate(async (id) => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab(id)); }, on);
           await expect(page.locator(`.tab.project[data-tab="${on}"]`)).toHaveClass(/active/);      // the tab names the focused pane
           await expect(page.locator(`.tab.project[data-tab="${off}"]`)).not.toHaveClass(/active/);
           for (const id of [on, off]) expect(await frame(id)).toEqual({ content: 'none', iframeOutline: 'none' });   // no ring on either pane
         }
-        await page.evaluate(() => activateTab('proj-a'));                              // proj-a stays active: the next split needs another tab active
+        await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });                              // proj-a stays active: the next split needs another tab active
       }
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -4017,11 +4018,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, []);
       await splitTabs(page);
       for (const dir of ['beside', 'below']) {
-        await page.evaluate(() => activateTab('proj-a'));
+        await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
         await splitVia(page, 'proj-x', dir);
-        await page.evaluate(() => activateTab('proj-x'));
+        await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-x')); });
         const cls = dir === 'beside' ? /split-h/ : /split-v/;
-        await page.evaluate(() => showView('upkeep'));
+        await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('upkeep')); });
         await expect(page.locator('#views')).toHaveClass(cls);                       // the split is not suspended
         await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);   // the tabs did not move
         await expect(page.locator('#tabstrip .tab.project[data-tab="proj-a"]')).toHaveCount(1);
@@ -4037,7 +4038,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
           const upk = await bbox(page, '#view-upkeep'), pxx = await bbox(page, '#view-proj-x');
           for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(upk[k] - pxx[k])).toBeLessThanOrEqual(1);
         }
-        await page.evaluate(() => activateTab('proj-a'));                            // focus moves to the other pane: Upkeep stays where it is
+        await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });                            // focus moves to the other pane: Upkeep stays where it is
         await expect(page.locator('#view-upkeep')).toBeVisible();
         const up2 = await bbox(page, '#view-upkeep');
         for (const k of ['x', 'y', 'width', 'height']) expect(Math.abs(up2[k] - px[k])).toBeLessThanOrEqual(1);
@@ -4048,10 +4049,10 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect(page.locator('#views')).toHaveClass(cls);
         await expect(page.locator('#panebar .tab.project[data-tab="proj-x"]')).toHaveCount(1);
       }
-      await page.evaluate(() => { activateTab('proj-a'); activateTab('proj-x'); showView('upkeep'); closeTab('proj-x'); });   // closing the hosting tab ends the split and Upkeep
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); const { activateTab, closeTab } = await import('/static/cockpit-tabs.js'); activateTab('proj-a'); activateTab('proj-x'); showView('upkeep'); closeTab('proj-x'); });   // closing the hosting tab ends the split and Upkeep
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await expect(page.locator('#view-upkeep')).toBeHidden();
-      await page.evaluate(() => { activateTab('proj-a'); showView('admin'); });      // Admin still suspends the split
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); const { activateTab } = await import('/static/cockpit-tabs.js'); activateTab('proj-a'); showView('admin'); });      // Admin still suspends the split
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -4066,7 +4067,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await page.waitForTimeout(500);                                              // the tab fades its colours over 0.12 s
         const seen = {};
         for (const id of ['proj-a', 'proj-x']) {
-          await page.evaluate(i => activateTab(i), id);
+          await page.evaluate(async i => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab(i)); }, id);
           await page.waitForTimeout(400);
           seen[id] = await page.evaluate((i) => {
             const t = getComputedStyle(document.querySelector('.tab.project[data-tab="' + i + '"]'));
@@ -4134,7 +4135,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#toast')).toContainText('No split on screen');
       for (const id of ['proj-a', 'proj-x']) await page.frameLocator(`#view-${id} iframe`).locator('body').evaluate((_, id) => { window.__marker = id; }, id);
       await splitVia(page, 'proj-x', 'beside');
-      await page.evaluate(() => { split.ratio = 0.3; applySplit(); });
+      await page.evaluate(async () => { const { applySplit } = await import('/static/cockpit-tabs.js'); const ck_tabs = await import('/static/cockpit-tabs.js'); ck_tabs.split.ratio = 0.3; applySplit(); });
       expect(await shellTab(page)).toBe('proj-a');
       await pressPrefix(page, 'o');                                                  // the other pane takes focus
       await expect.poll(() => shellTab(page)).toBe('proj-x');
@@ -4147,8 +4148,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect.poll(async () => (await bbox(page, '#view-proj-a iframe')).x).toBeGreaterThan(x0.x - 1);
       const a1 = await bbox(page, '#view-proj-a iframe'), x1 = await bbox(page, '#view-proj-x iframe');
       expect(x1.x).toBeLessThan(a1.x);
-      expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-x', 'proj-a']);
-      expect(await page.evaluate(() => split.ratio)).toBeCloseTo(0.7, 2);
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( [ck_tabs.split.a, ck_tabs.split.b]); })).toEqual(['proj-x', 'proj-a']);
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split.ratio); })).toBeCloseTo(0.7, 2);
       expect(Math.abs(x1.width - x0.width)).toBeLessThanOrEqual(2);                  // proj-x kept its own size, now on the left
       expect(await shellTab(page)).toBe('proj-a');                                   // focus does not move on a swap
       await pressPrefix(page, 'r');                                                  // rotate: beside becomes below and back
@@ -4193,11 +4194,11 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
       await page.keyboard.press('Escape');
       await splitTabs(page);                                                         // a rebound prefix of ctrl+- : twice must open the sheet, not split below
-      await page.evaluate(() => { activateTab('proj-x'); activateTab('proj-a'); localStorage.setItem('canon-prefix', 'ctrl+-'); });
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); activateTab('proj-x'); activateTab('proj-a'); localStorage.setItem('canon-prefix', 'ctrl+-'); });
       await boardsKeyReady(page, ['proj-a', 'proj-x']);
       await page.keyboard.press('Control+-'); await page.keyboard.press('Control+-');
       await expect(page.locator('#keys-sheet')).toHaveClass(/show/);
-      expect(await page.evaluate(() => split)).toBeNull();
+      expect(await page.evaluate(async () => { const ck_tabs = await import('/static/cockpit-tabs.js'); return ( ck_tabs.split); })).toBeNull();
       await page.keyboard.press('Escape');
       await page.evaluate(() => localStorage.removeItem('canon-prefix'));
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -4253,7 +4254,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const bar = page.locator('#view-projects .projbar');
       await expect(bar.locator('h2')).toHaveText('Projects');
       await expect(page.locator('#ncount')).toHaveText('2 registered \u00b7 1 active');      // proj-a is open (openShell)
-      await page.evaluate(() => _removeTab('proj-a'));
+      await page.evaluate(async () => { const { _removeTab } = await import('/static/cockpit-tabs.js'); return ( _removeTab('proj-a')); });
       await expect(page.locator('#ncount')).toHaveText('2 registered \u00b7 none open');
       await expect(bar.locator('button', { hasText: '+ Add Project' })).toBeVisible();
       const barBox = await bar.boundingBox(), first = await page.locator('#grid .card').first().boundingBox();
@@ -4323,7 +4324,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('shell (t-783a): closing a live tab — Keep working, End without saving and Save & End', async ({ page }) => {
       const board = await openShell(page, stateRows());
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(page.locator('.tab[data-tab="proj-a"] .live.on')).toBeVisible();     // proj-a has a live session
       await board.locator('#board').waitFor();
       await board.locator('html').evaluate(() => { window.__shellMsgs = []; addEventListener('message', e => { if (e.data && e.data.source === 'canon-cockpit-shell') window.__shellMsgs.push(e.data.type); }); });
@@ -4350,7 +4351,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.route('**/api/browse-dirs*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: '/home/me', parent: '/home', entries: [] }) }));
       await page.route('**/api/upkeep/status*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000 }) }));
       await openShell(page, stateRows());
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       const seen = {};
       seen.projects = await inline();
       await page.locator('#nav-admin').click();
@@ -4393,7 +4394,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, [mk('s-aaaa', false)]);
       await page.waitForTimeout(400);
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);
-      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
       const warn = page.locator('#view-proj-a .shared-warn');
       await expect(warn).toBeVisible();
       await expect(warn).toContainText('overwrite');
@@ -4401,12 +4402,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#view-proj-x .shared-warn')).toHaveCount(0);
       await warn.locator('.sn-x').click();
       await expect(warn).toHaveCount(0);
-      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);            // dismissed stays dismissed
-      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
-      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
+      await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
       await expect(page.locator('#view-proj-a .shared-warn')).toBeVisible();              // sharing stopped, then began again
-      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
+      await page.evaluate(async rows => { const { renderSessionSurfaces, setLastSessions } = await import('/static/cockpit-sessions.js'); setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -4421,18 +4422,18 @@ test.describe('cockpit in board (t-ddc8)', () => {
         return r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ skills: skills[pid] || [] }) });
       });
       await openShell(page, []);
-      await page.evaluate(() => { _removeTab('proj-a'); });               // start from a closed tab
-      await page.evaluate(() => startScratch('proj-a'));                  // the Scratch button's path
+      await page.evaluate(async () => { const { _removeTab } = await import('/static/cockpit-tabs.js'); _removeTab('proj-a'); });               // start from a closed tab
+      await page.evaluate(async () => { const { startScratch } = await import('/static/cockpit-sessions.js'); return ( startScratch('proj-a')); });                  // the Scratch button's path
       const nudge = page.locator('#view-proj-a .skill-nudge');
       await expect(nudge).toBeVisible();
       await expect(nudge).toContainText('sprint');
       await nudge.locator('.sn-x').click();
       await expect(nudge).toHaveCount(0);
-      await page.evaluate(() => startScratch('proj-a'));                  // a second, session-driven open after dismissing
+      await page.evaluate(async () => { const { startScratch } = await import('/static/cockpit-sessions.js'); return ( startScratch('proj-a')); });                  // a second, session-driven open after dismissing
       await page.waitForTimeout(600);
       await expect(page.locator('#view-proj-a .skill-nudge')).toHaveCount(0);
       // A project that already has the skill is never nudged.
-      await page.evaluate(() => startScratch('proj-x'));
+      await page.evaluate(async () => { const { startScratch } = await import('/static/cockpit-sessions.js'); return ( startScratch('proj-x')); });
       await page.waitForTimeout(600);
       await expect(page.locator('#view-proj-x .skill-nudge')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -4442,7 +4443,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // the shell's Agents rail, the card strips and Admin show them.
     test('shell (t-d34e): an embedded board shows no Cockpit sessions panel; the rail still lists every project', async ({ page }) => {
       const board = await openShell(page, [row(XID, 'c:/users/me/proj-x/'), row('t-own1', PROJECT_ROOT), row('t-nowh', '/tmp/nowhere')]);
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       // An absence check can pass before the board has loaded anything: force its refresh, then look.
       await board.locator('html').evaluate(async () => { const { refreshCockpitSessions } = await import('/static/board-render.js'); return ( refreshCockpitSessions()); });
       await expect(board.locator('.cockpit-session-row')).toHaveCount(0);
@@ -4455,14 +4456,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
     // white in dark (Herdr-like); light keeps its own colours. Computed styles — logic tests are render-blind.
     test('shell (t-25f9): rail and Admin session names are bright white in dark, unchanged in light', async ({ page }) => {
       await openShell(page, [row('t-own1', PROJECT_ROOT)]);
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       // The rail re-renders on every poll, so read every element in one synchronous pass: a locator
       // handle can detach between two calls and its computed style then reads back empty.
       const SEL = { proj: '#ag-list .ag-proj b', name: '#ag-list .ag-row .ag-t1', id: '#ag-list .ag-row .ag-id', adName: '#ad-sessions .ad-table .s1', sub: '#ad-sessions .ad-table .s2' };
       const read = () => page.evaluate(sel => Object.fromEntries(Object.entries(sel).map(([k, q]) => {
         const cs = getComputedStyle(document.querySelector(q)); return [k, { color: cs.color, size: cs.fontSize }];
       })), SEL);
-      await page.evaluate(() => showView('admin'));
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
       for (const q of Object.values(SEL)) await expect(page.locator(q).first()).toBeVisible();
       const WHITE = 'rgb(245, 248, 252)';
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
@@ -4556,7 +4557,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       writeTicket(XID, 'in_progress');
       try {
         await openShell(page, stateRows());
-        await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
+        await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); window.__pwned = 0; return pollSessions(); });
         // Sidebar: grouped by project — Proj-X's rows arrive under two path spellings and still form one group, named as registered.
         const list = page.locator('#ag-list');
         await expect(page.locator('#ag-label')).toBeVisible();
@@ -4586,7 +4587,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
         // With nothing waiting no row is pink and the Sessions row hides for an idle project.
         await page.unroute('**/api/cockpit-sessions');
         await page.route('**/api/cockpit-sessions', sessionsBody(stateRows().filter(r => r.state !== 'needs-you' && r.project_root !== '/tmp/proj-a')));
-        await page.evaluate(() => pollSessions());
+        await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
         await expect(list.locator('.ag-row.st-needs-you')).toHaveCount(0);
         await expect(page.locator('.tab[data-tab="proj-a"] .live')).not.toHaveClass(/needs/);
         expect(await page.evaluate(() => window.__pwned)).toBe(0);
@@ -4652,7 +4653,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, [{ session: 's1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'needs-you' }]);
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(page.locator('#ag-list .ag-row')).toContainText('needs you');
       await expect(page.locator('#ag-list')).not.toContainText('undefined');
       await page.locator('#nav-admin').click();
@@ -4660,7 +4661,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#ad-reaper')).toBeHidden(); // no timeouts from an old daemon
       await page.unroute('**/api/cockpit-sessions');
       await page.route('**/api/cockpit-sessions', sessionsBody([]));
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(page.locator('#ag-list .ag-row.st-needs-you')).toHaveCount(0);
       await expect(page.locator('#ag-label')).toBeVisible();   // t-e69b: the section is always there
       await expect(page.locator('#ag-list')).toHaveText('No agents running');
@@ -4695,7 +4696,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('shell sidebar (t-e69b): mockup rows, agent codes, group counts, titles fetched once and inert', async ({ page }) => {
       const hits = await stubTicketDocs(page);
       await openShell(page, stateRows());
-      await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); window.__pwned = 0; return pollSessions(); });
       const list = page.locator('#ag-list');
       await expect(page.locator('#ag-label')).toHaveText(/Agents\s*by project/);
       // The heading reads like the nav links above it (14px, not the small caps label).
@@ -4740,7 +4741,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(list.locator('img')).toHaveCount(0);
       await row(XID).hover();
       // More polls don't refetch: one lookup per (project, ticket), including the 404.
-      for (let i = 0; i < 3; i++) await page.evaluate(() => pollSessions());
+      for (let i = 0; i < 3; i++) await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       expect(hits).toEqual({ 'proj-a/t-aaa1': 1, [`proj-x/${XID}`]: 1, 'proj-x/t-bbb2': 1, 'proj-x/t-ccc3': 1, 'proj-a/t-ddd4': 1 });
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
       fs.mkdirSync(path.join(PROJECT_ROOT, '.tickets', 't-e69b', 'visuals'), { recursive: true });
@@ -4886,7 +4887,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('shell palette (t-28ec): Herdr state colours on the rail, pill, tab dot and Admin', async ({ page }) => {
       await openShell(page, stateRows());
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       const read = () => page.evaluate(() => {
         const c = sel => getComputedStyle(document.querySelector(sel)).color;
         return {
@@ -4971,7 +4972,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('shell (t-4077): collapsed, labels and the Agents list are hidden, the Projects/Admin icons still switch views', async ({ page }) => {
       await openShell(page, stateRows());
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(page.locator('#ag-list .ag-row').first()).toBeVisible();
       await page.locator('#side-collapse').click();
       await expect(page.locator('#ag-list .ag-row').first()).toBeHidden();                    // the Agents list goes with the labels
@@ -5030,7 +5031,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await fakeNotifications(page);
       await stubTicketDocs(page);
       await openShell(page, [one('working')]);
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       expect(await page.evaluate(() => window.__permAsks)).toBe(0);      // never asked on load
       await page.locator('#nav-admin').click();
       const toggle = page.locator('#ad-notify-toggle');
@@ -5041,8 +5042,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // Hidden + a move into needs-you → exactly one notification.
       await page.evaluate(() => { window.__hidden = true; window.__focused = false; });
       await setRows(page, [one('needs-you')]);
-      await page.evaluate(() => pollSessions());
-      await page.evaluate(() => pollSessions());                          // still waiting: no repeat
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });                          // still waiting: no repeat
       expect(await page.evaluate(() => window.__notes)).toEqual([{ title: 't-aaa1 needs you', body: 'Test scripts leak board servers · proj-a', tag: 'canon-cockpit-s1' }]);
       // Clicking it opens that session's project tab.
       await page.locator('.tab.pinned').click();
@@ -5050,21 +5051,21 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
       // Visible and focused: no notification.
       await page.evaluate(() => { window.__hidden = false; window.__focused = true; });
-      await setRows(page, [one('working')]); await page.evaluate(() => pollSessions());
-      await setRows(page, [one('needs-you')]); await page.evaluate(() => pollSessions());
+      await setRows(page, [one('working')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
+      await setRows(page, [one('needs-you')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       expect(await page.evaluate(() => window.__notes.length)).toBe(1);
       // Tab still showing but the window isn't focused (another app in front): notifies.
       await page.evaluate(() => { window.__focused = false; });
-      await setRows(page, [one('working')]); await page.evaluate(() => pollSessions());
-      await setRows(page, [one('needs-you')]); await page.evaluate(() => pollSessions());
+      await setRows(page, [one('working')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
+      await setRows(page, [one('needs-you')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       expect(await page.evaluate(() => window.__notes.length)).toBe(2);
       await page.evaluate(() => { window.__focused = true; });
       // Switch off: no notification even when hidden.
       await page.locator('#nav-admin').click();
       await toggle.click({ force: true });
       await page.evaluate(() => { window.__hidden = true; });
-      await setRows(page, [one('working')]); await page.evaluate(() => pollSessions());
-      await setRows(page, [one('needs-you')]); await page.evaluate(() => pollSessions());
+      await setRows(page, [one('working')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
+      await setRows(page, [one('needs-you')]); await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       expect(await page.evaluate(() => window.__notes.length)).toBe(2);
       await page.locator('#view-admin .admin-settings').screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-28ec', 'visuals', 'admin-notify.png') });
       await page.unrouteAll({ behavior: 'ignoreErrors' });
@@ -5073,7 +5074,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
     test('desktop notification (t-28ec): no burst for sessions already waiting at load; denied and unsupported are explained', async ({ page, browser }) => {
       await fakeNotifications(page, { perm: 'granted', hidden: true, on: true });
       await openShell(page, [one('needs-you')]);
-      for (let i = 0; i < 3; i++) await page.evaluate(() => pollSessions());
+      for (let i = 0; i < 3; i++) await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       expect(await page.evaluate(() => window.__notes.length)).toBe(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
 
@@ -5128,7 +5129,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubInterrupted(page, list, dismissed);
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
-      await page.evaluate(() => { window.__pwned = 0; return pollInterrupted(); });
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); window.__pwned = 0; return pollInterrupted(); });
       const banner = page.locator('#view-proj-a > .intr-banner');
       await expect(banner).toBeVisible();
       await expect(page.locator('.intr-banner')).toHaveCount(1);   // only proj-a's tab: not Projects, Admin, or a tab that isn't open
@@ -5140,19 +5141,19 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(banner.locator('.intr-row[data-id="t-zz99"] .intr-reason')).toHaveText('Can\u2019t resume: <img src=x onerror=window.__pwned=1>');
       await expect(banner.locator('img')).toHaveCount(0);
       // Admin: the card is renamed and lists every stopped session, including the other project's and the unregistered one.
-      await page.evaluate(() => showView('admin'));
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
       await expect(page.locator('#view-admin .slabel', { hasText: 'Active & stopped agents (all projects)' })).toBeVisible();
       await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(6);
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] .s3')).toHaveText('Can\u2019t resume: project is gone');
       await expect(page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="resume"]')).toHaveCount(0);
       await expect(page.locator('#ad-tile-agents')).toHaveText('0');   // Running agents counts live sessions only
       await expect(page.locator('#ad-sessions img')).toHaveCount(0);
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       // Dismiss in the project banner only hides it there: no request, still in Admin, on the bubble and the card.
       await banner.locator('.intr-row[data-id="t-cc33"] [data-act="dismiss"]').click();
       await expect(banner.locator('.intr-row')).toHaveCount(3);
       expect(dismissed).toEqual([]);
-      await page.evaluate(() => showView('admin'));
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
       await expect(page.locator('#ad-sessions tr[data-id="t-cc33"]')).toHaveCount(1);
       await expect(page.locator('#ad-sessions tr.st-stopped')).toHaveCount(6);
       // Admin's Dismiss is the real one: one request, gone from every surface.
@@ -5162,7 +5163,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#ad-sessions tr[data-id="t-cc33"] [data-act="dismiss"]').click();
       await expect(page.locator('#ad-sessions tr[data-id="t-cc33"]')).toHaveCount(0);
       expect(dismissed).toEqual(['t-ux01', 't-cc33']);
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       // Resume dismisses it and opens that project's tab on the ticket — nothing starts by itself.
       await banner.locator('.intr-row[data-id="t-d9e6"] [data-act="resume"]').click();
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
@@ -5172,7 +5173,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(await page.evaluate(() => window.__pwned)).toBe(0);
       // Nothing left for this project → no banner element.
       dismissed.push('t-2d74', 't-zz99');
-      await page.evaluate(() => pollInterrupted());
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); return ( pollInterrupted()); });
       await expect(page.locator('#view-proj-a > .intr-banner')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -5182,7 +5183,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       interruptedStubbed.add(page);
       await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([stoppedEntry('t-aaa1', '/tmp/proj-a', {}), stoppedEntry(XID, '/tmp/proj-a', {})]) }));
       await openShell(page, []);
-      await page.evaluate(() => { window.__pwned = 0; return pollInterrupted(); });
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); window.__pwned = 0; return pollInterrupted(); });
       await expect(page.locator('#view-proj-a .intr-row[data-id="t-aaa1"] .intr-what')).toContainText('t-aaa1Test scripts leak board servers');
       await expect(page.locator(`#view-proj-a .intr-row[data-id="${XID}"] .intr-what`)).toContainText(HOSTILE_TITLE);
       await expect(page.locator('.intr-banner img')).toHaveCount(0);
@@ -5200,7 +5201,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubInterrupted(page, list, dismissed);
       await openShell(page, []);
       await stubEmbeddedCockpit(page);
-      await page.evaluate(() => pollInterrupted());
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); return ( pollInterrupted()); });
       await page.locator('#view-proj-a [data-act="resume-all"]').click();
       await expect.poll(() => dismissed.slice().sort()).toEqual(['t-2d74', 't-d9e6']);   // the closed one stays
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
@@ -5216,7 +5217,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const list = [stoppedEntry('t-d9e6', '/tmp/proj-a', {}), stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' })];
       await stubInterrupted(page, list, []);
       await openShell(page, []);
-      await page.evaluate(() => pollInterrupted());
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); return ( pollInterrupted()); });
       const banner = page.locator('#view-proj-a > .intr-banner');
       await expect(banner).toBeVisible();
       await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
@@ -5245,14 +5246,14 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const list = [stoppedEntry('t-cc33', '/tmp/proj-a', { resumable: false, reason: 'ticket is closed' })];
       await stubInterrupted(page, list, []);
       await openShell(page, []);
-      await page.evaluate(() => pollInterrupted());
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); return ( pollInterrupted()); });
       const row = page.locator('#view-proj-a .intr-row');
       await expect(row).toBeVisible();
       const y = async loc => (await loc.boundingBox()).y;
       const idBox = await row.locator('b').boundingBox(), metaBox = await row.locator('.intr-meta').boundingBox(), reasonBox = await row.locator('.intr-reason').boundingBox();
       expect(Math.abs(metaBox.y - idBox.y)).toBeLessThan(idBox.height);          // id and meta share a line
       expect(reasonBox.y).toBeGreaterThan(idBox.y + idBox.height - 1);            // the reason is below
-      await page.evaluate(() => showView('admin'));
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
       const s1 = page.locator('#ad-sessions tr[data-id="t-cc33"] .s1');
       await expect(s1).toBeVisible();
       const nameBox = await s1.boundingBox(), metaA = await s1.locator('.s1meta').boundingBox();
@@ -5267,27 +5268,27 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await stubInterrupted(page, list, dismissed);
       await openShell(page, []);
       const bubble = page.locator('#nav-admin .nav-bubble');
-      await page.evaluate(() => pollInterrupted());
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); return ( pollInterrupted()); });
       await expect(bubble).toHaveText('3');                                        // includes the unregistered project's
       const card = page.locator('.meta[data-stats="proj-a"] [data-f="stopped-row"]');
-      await page.evaluate(() => showView('projects'));
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('projects')); });
       await expect(card).toBeVisible();
       await expect(card.locator('[data-f="stopped"]')).toHaveText('2');
       await expect(page.locator('.meta[data-stats="proj-x"] [data-f="stopped-row"]')).toBeHidden();
       // Hiding in the project changes neither count.
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       await page.locator('#view-proj-a .intr-row[data-id="t-cc33"] [data-act="dismiss"]').click();
       expect(dismissed).toEqual([]);
       await expect(bubble).toHaveText('3');
-      await page.evaluate(() => showView('projects'));
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('projects')); });
       await expect(card.locator('[data-f="stopped"]')).toHaveText('2');
       // It stays hidden in the project across a reload, and is still in Admin.
       await page.reload();
       await page.waitForLoadState('networkidle');
-      await page.evaluate(() => pollInterrupted());
+      await page.evaluate(async () => { const { pollInterrupted } = await import('/static/cockpit-sessions.js'); return ( pollInterrupted()); });
       await expect(page.locator('#view-proj-a .intr-row[data-id="t-d9e6"]')).toHaveCount(1);
       await expect(page.locator('#view-proj-a .intr-row[data-id="t-cc33"]')).toHaveCount(0);
-      await page.evaluate(() => showView('admin'));
+      await page.evaluate(async () => { const { showView } = await import('/static/cockpit-views.js'); return ( showView('admin')); });
       await expect(page.locator('#ad-sessions tr[data-id="t-cc33"]')).toHaveCount(1);
       // Real dismissal in Admin drops the bubble count.
       await page.locator('#ad-sessions tr[data-id="t-ux01"] [data-act="dismiss"]').click();
@@ -5324,7 +5325,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#up-back').click();
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
       // proj-x's board opens proj-x's Upkeep, and only proj-x is asked about.
-      await page.evaluate(() => openProject('proj-x', 'proj-x'));
+      await page.evaluate(async () => { const { openProject } = await import('/static/cockpit-tabs.js'); return ( openProject('proj-x', 'proj-x')); });
       const boardX = page.frameLocator('#view-proj-x iframe');
       await expect(boardX.locator('#btn-upkeep')).toBeVisible({ timeout: 8000 });
       asked.length = 0;
@@ -5336,11 +5337,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.screenshot({ path: path.join(PROJECT_ROOT, '.tickets', 't-67ab', 'visuals', 'upkeep-in-tab.png') });
       // Switching tabs shows that tab's board, never a stale Upkeep.
       await page.locator('#up-back').click();
-      await page.evaluate(() => activateTab('proj-a'));
+      await page.evaluate(async () => { const { activateTab } = await import('/static/cockpit-tabs.js'); return ( activateTab('proj-a')); });
       await expect(page.locator('#view-upkeep')).not.toHaveClass(/active/);
       await expect(page.locator('#view-proj-a')).toHaveClass(/active/);
       // A closed tab's token is dropped: a message carrying it opens nothing.
-      const oldTok = await page.evaluate(() => {
+      const oldTok = await page.evaluate(async () => {
+        const { closeTab } = await import('/static/cockpit-tabs.js');
         const t = new URL(document.querySelector('#view-proj-x iframe').src).searchParams.get('tab');
         closeTab('proj-x');
         return t;
@@ -5399,7 +5401,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
 
     test('scratch title (t-f553): the rail and Admin show a scratch session\u2019s title as text', async ({ page }) => {
       await openShell(page, [scratchRow('s-q7s1', '/tmp/proj-a', 'Why <b>x</b> fails')]);
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(page.locator('#ag-list .ag-row .ag-t1')).toHaveText('Why <b>x</b> fails');
       await expect(page.locator('#ag-list .ag-row b')).toHaveCount(0);
       await page.locator('#nav-admin').click();
@@ -5431,12 +5433,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // Once the daemon reports it, the one row is the live one.
       await page.unroute('**/api/cockpit-sessions');
       await page.route('**/api/cockpit-sessions', sessionsBody([scratchRow(id, '/tmp/proj-a')]));
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(row).toHaveCount(1);
       await expect(row).toHaveClass(/st-working/);
       await page.unroute('**/api/cockpit-sessions');
       await page.route('**/api/cockpit-sessions', sessionsBody([]));
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await expect(row).toHaveClass(/st-not-started/);
       // Closing the tab drops the row.
       await board.locator('body').evaluate(async (_, i) => { const { unmountTab } = await import('/static/board-cockpit.js'); return ( unmountTab(i)); }, id);
@@ -5485,7 +5487,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       // t-e162: even with a live scratch in proj-a, + Scratch starts a new one (several per project).
       await page.unroute('**/api/cockpit-sessions');
       await page.route('**/api/cockpit-sessions', sessionsBody([scratchRow('s-q7s1', '/tmp/proj-a')]));
-      await page.evaluate(() => pollSessions());
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); return ( pollSessions()); });
       await page.locator('.tab.pinned').click();
       await page.locator('.scratchbtn[data-scratch="proj-a"]').click();
       await expect(board.locator('#ck-id')).not.toHaveText(id, { timeout: 8000 });
@@ -5498,7 +5500,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.route('**/cockpit?**', r => r.fulfill({ status: 200, contentType: 'text/html', body: fakeLivePage }));
       await openShell(page, [scratchRow('s-q7s1', 'c:/users/me/proj-x/')]);
       await stubEmbeddedCockpit(page);
-      await page.evaluate(() => { window.__pwned = 0; return pollSessions(); });
+      await page.evaluate(async () => { const { pollSessions } = await import('/static/cockpit-sessions.js'); window.__pwned = 0; return pollSessions(); });
       const row = page.locator('#ag-list .ag-row');
       await expect(row.locator('.ag-t1')).toHaveText('Scratch session');
       await expect(row.locator('.ag-t1 svg.scr-ico')).toHaveCount(1);   // t-f553: the scribble mark, not a SCRATCH tag
@@ -10819,7 +10821,7 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await regBtn(page, 'sprint').click();
     await page.locator('#cc-ok').click();
     await expect(regBtn(page, 'sprint')).toBeDisabled();
-    await page.evaluate(() => load());      // re-render: fresh, enabled buttons (e.g. another project's run finished)
+    await page.evaluate(async () => { const { load } = await import('/static/cockpit-projects.js'); return ( load()); });      // re-render: fresh, enabled buttons (e.g. another project's run finished)
     await expect(regBtn(page, 'efficiency')).toBeEnabled();
     await regBtn(page, 'efficiency').click();
     await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);   // no second confirm, no second run
@@ -11424,14 +11426,14 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     await open(page);
     await btn(page, 'dead-code-cleanup').click();
     await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
-    await page.evaluate(() => upRenderGrid());                       // what the 3s poll does when a run finishes
+    await page.evaluate(async () => { const { upRenderGrid } = await import('/static/cockpit-upkeep.js'); return ( upRenderGrid()); });                       // what the 3s poll does when a run finishes
     await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
     await expect(btn(page, 'dead-code-cleanup')).toHaveAttribute('aria-expanded', 'true');
-    await page.evaluate(() => loadUpkeep());                         // project switch / view re-entry path
+    await page.evaluate(async () => { const { loadUpkeep } = await import('/static/cockpit-upkeep.js'); return ( loadUpkeep()); });                         // project switch / view re-entry path
     await expect(pop(page, 'dead-code-cleanup')).toBeVisible();
     await btn(page, 'skill-eval').click({ force: true });           // and the Skill Eval card's own render path
     await expect(pop(page, 'skill-eval')).toBeVisible();
-    await page.evaluate(() => seRender());
+    await page.evaluate(async () => { const { seRender } = await import('/static/cockpit-skill-eval.js'); return ( seRender()); });
     await expect(pop(page, 'skill-eval')).toBeVisible();
     await expect(pop(page, 'dead-code-cleanup')).toHaveCount(0);
   });
@@ -11457,8 +11459,8 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     const body = pop(page, 'skill-eval').locator('.rc-pop-body');
     await body.evaluate(el => { el.scrollTop = 120; });
     await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(50);
-    await expect.poll(() => page.evaluate(() => upHelpScroll)).toBeGreaterThan(50);   // the scroll event (async) records the position; a real reader's scroll is long done before a re-render (t-565f: evaluate, so it can import the module)
-    await page.evaluate(() => seRender());
+    await expect.poll(() => page.evaluate(async () => { const ck_upkeep = await import('/static/cockpit-upkeep.js'); return ( ck_upkeep.upHelpScroll); })).toBeGreaterThan(50);   // the scroll event (async) records the position; a real reader's scroll is long done before a re-render (t-565f: evaluate, so it can import the module)
+    await page.evaluate(async () => { const { seRender } = await import('/static/cockpit-skill-eval.js'); return ( seRender()); });
     await expect.poll(() => pop(page, 'skill-eval').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBeGreaterThan(50);
     // The Skill Eval popover opens upward over the right-hand cards, so switch via the left column's "?" (not covered).
     await btn(page, 'context-check').click();
@@ -12296,7 +12298,7 @@ test.describe('Canon Cockpit help', () => {
       await page.locator('#help-btn').click();
       await expect(page.locator('.help-panel')).toBeVisible();
       // both fetches have been applied: without this an "unchanged" row passes on the first poll, before /api/cockpit could have overwritten it
-      await page.evaluate(() => _helpVersionsDone);
+      await page.evaluate(async () => { const ck_core = await import('/static/cockpit-core.js'); return ( ck_core._helpVersionsDone); });
     }
     const cases = [
       ['both stamped: the running build wins', { version: '0.3.0 (23efca20)', cockpit: { version: '0.3.0', commit: '0e2fd866' } }, '0.3.0 (0e2fd866)'],
