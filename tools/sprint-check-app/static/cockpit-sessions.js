@@ -191,7 +191,9 @@ export function sessionView(s){
   else if(reapIn!==null) reaper='auto-save & end in '+(reapIn>0 ? fmtDur(reapIn) : 'under a minute');
   const proot=String(s.project_root||''), ticket=String(s.ticket||'');
   const proj=getProjects().find(p=>_projKey(p.path)===_projKey(proot));
+  const startMs=Date.parse(s.started);   // t-aca6: the daemon's session start (RFC 3339); missing on old daemons
   return {
+    elapsed:isNaN(startMs)?null:Math.max(0,Math.round((Date.now()-startMs)/1000)), startMs:isNaN(startMs)?null:startMs,
     state, label:STATE_LABEL[state], short:STATE_SHORT[state], since, reaper, reapIn, pid:proj?proj.id:'', projName:proj?proj.name:'',
     signal:SIGNAL_LABEL[s.signal]||'',
     ticket:TICKET_ID_RE.test(ticket)?ticket:'',
@@ -209,12 +211,21 @@ function notStartedScratch(live){
     const proj=getProjects().find(p=>p.id===pid);
     if(!proj) continue;
     for(const t of tabs) if(!live.has(t.id)) out.push({
-      state:'not-started', label:'not started \u00b7 pick an agent to start it', short:'not started', since:null, reaper:'', reapIn:null,
+      state:'not-started', label:'not started \u00b7 pick an agent to start it', short:'not started', since:null, reaper:'', reapIn:null, elapsed:null, startMs:null,
       pid, projName:proj.name, signal:'', ticket:'', scratch:t.id, scrTitle:t.title, proot:proj.path,
       name:String(proj.path).split(/[\\/]/).filter(Boolean).pop()||proj.path, agent:'', cwd:'', sid:'',
     });
   }
   return out;
+}
+// t-aca6: the sidebar's third line and Admin's sub-line: the project and the time spent in the session so far.
+// full fits most rows; short drops "in session" when full would be cut off; tip spells everything out.
+export function sessionTime(v){
+  const proj=v.projName||v.name;
+  if(v.elapsed===null) return { full:proj, short:proj, tip:proj, dur:'' };
+  const dur=fmtDur(v.elapsed);
+  const at=new Date(v.startMs).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+  return { full:proj+' \u00b7 '+dur+' in session', short:proj+' \u00b7 '+dur, tip:proj+' \u2014 '+dur+' in session (started '+at+')', dur };
 }
 // Sidebar state line: short, with the countdown where the reaper applies.
 // Sidebar state line, Herdr-style: state (+ age), the agent, then the reap countdown where it applies.
@@ -263,9 +274,12 @@ export function renderSessionSurfaces(){
       return `<button class="ag-row st st-${v.state}" data-i="${rail.indexOf(v)}" title="${escAttr((title?title+' \u2014 ':'')+v.label+(v.signal?(' \u00b7 state from: '+v.signal):''))}">`+
       `<span class="sdot"></span>`+
       `<span class="ag-t1">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'<span class="ag-none">no ticket</span>')}</span>`+
-      `<span class="ag-s">${esc(agentLine(v))}</span></button>`;
+      `<span class="ag-s">${esc(agentLine(v))}</span>`+
+      `<span class="ag-p" title="${escAttr(sessionTime(v).tip)}" data-short="${escAttr(sessionTime(v).short)}">${esc(sessionTime(v).full)}</span></button>`;
     }).join('')
   ).join('');
+  // t-aca6 (user): when "<project> · <dur> in session" would be cut off, show "<project> · <dur>"; the title has it all.
+  list.querySelectorAll('.ag-p').forEach(el=>{ if(el.scrollWidth>el.clientWidth) el.textContent=el.dataset.short; });
   syncSharedWarnings(views);
   list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(rail[+b.dataset.i])));
   list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
