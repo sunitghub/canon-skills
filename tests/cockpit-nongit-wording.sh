@@ -6,9 +6,11 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/helpers.sh"
 
-dialog="$(grep -n -i 'project folder' "$ROOT/tools/sprint-check-app/cockpit.html" | head -5)"
+# t-565f: the shell's text lives in cockpit.html and its static/cockpit-* modules; read them as one.
+src="$(shell_sources "$ROOT")"
+dialog="$(grep -n -i 'project folder' <<<"$src" | head -5)"
 assert_contains "$dialog" "Project folder (absolute path)"
-if grep -i 'project folder' "$ROOT/tools/sprint-check-app/cockpit.html" | grep -qi 'git repo'; then
+if grep -i 'project folder' <<<"$src" | grep -qi 'git repo'; then
   fail "Add Project dialog says the folder must be a git repo"
 fi
 

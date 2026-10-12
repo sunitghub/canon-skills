@@ -6,10 +6,13 @@ const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'tools', 'sprint-check-app', 'cockpit.html'), 'utf8');
+// t-565f: the shell's copy lives in cockpit.html or in the static/cockpit-*.js module that holds it.
+const app = path.join(__dirname, '..', 'tools', 'sprint-check-app');
+const html = [path.join(app, 'cockpit.html'), ...fs.readdirSync(path.join(app, 'static')).filter(f => /^cockpit-.*\.js$/.test(f)).sort().map(f => path.join(app, 'static', f))]
+  .map(f => fs.readFileSync(f, 'utf8')).join('\n');
 const a = html.indexOf('// canon:prefix-keys:begin');
 const b = html.indexOf('// canon:prefix-keys:end');
-if (a < 0 || b < 0) { console.log('FAIL: snippet markers not found in cockpit.html'); process.exit(1); }
+if (a < 0 || b < 0) { console.log('FAIL: snippet markers not found in the shell sources'); process.exit(1); }
 const snippet = html.slice(a, b);
 
 let fails = 0;

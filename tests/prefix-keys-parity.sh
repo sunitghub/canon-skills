@@ -8,12 +8,14 @@ source "$ROOT/tests/helpers.sh"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # t-c58e: the board's copy lives in whichever of its scripts holds it, so check the board's sources as one text.
-board="$(mktemp)"
-trap 'rm -f "$board"' EXIT
+# t-565f: so does the shell's (cockpit.html or the static/cockpit-*.js module that holds it).
+board="$(mktemp)"; shell="$(mktemp)"
+trap 'rm -f "$board" "$shell"' EXIT
 board_sources "$ROOT" > "$board"
+shell_sources "$ROOT" > "$shell"
 
 files=(
-  "$ROOT/tools/sprint-check-app/cockpit.html"
+  "$shell"
   "$board"
   "$ROOT/tools/cockpit-daemon/web/cockpit.html"
 )

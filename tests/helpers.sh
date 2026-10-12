@@ -57,10 +57,22 @@ assert_count() {
 
 # t-9b2d: the board's sources as one text (app.html, then every static/*.css and *.js), so a grep
 # test still finds a rule after the rule moves out of app.html. Usage: board_sources "$ROOT" > file
+# t-565f: static/ also holds the Cockpit shell's cockpit-* files; they belong to shell_sources, not here.
 board_sources() {
   local f
   cat "$1/tools/sprint-check-app/app.html"
   for f in "$1"/tools/sprint-check-app/static/*.css "$1"/tools/sprint-check-app/static/*.js; do
+    case "${f##*/}" in cockpit-*) continue ;; esac
+    if [[ -f "$f" ]]; then cat "$f"; fi
+  done
+}
+
+# t-565f: the Cockpit shell's sources as one text (cockpit.html, then its static/cockpit-*.css and *.js).
+# Usage: shell_sources "$ROOT" > file
+shell_sources() {
+  local f
+  cat "$1/tools/sprint-check-app/cockpit.html"
+  for f in "$1"/tools/sprint-check-app/static/cockpit-*.css "$1"/tools/sprint-check-app/static/cockpit-*.js; do
     if [[ -f "$f" ]]; then cat "$f"; fi
   done
 }
