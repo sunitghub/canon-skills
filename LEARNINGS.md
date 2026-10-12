@@ -1,10 +1,11 @@
 # Learnings
 
-learnings-sweep last run: 10-11-2026 18:47
+learnings-sweep last run: 10-11-2026 20:00
 
 <!-- canon:learnings:BEGIN -->
 | Date | Ticket | Finding | Status |
 |---|---|---|---|
+| 2026-10-11 | [t-83c9](.tickets/t-83c9/learnings.md) | Changing one theme token can make it equal another (light `--bg` #e8e8f0 vs `--border-muted` #e8e8f2), silently erasing whatever paints the second over the first — a grep of the changed value can't see it; scan the rendered page's computed colours (incl. `:hover` rules) for pairs that collapse | UNPROMOTED |
 | 2026-10-11 | [t-c38e](.tickets/t-c38e/learnings.md) | A prompt that paraphrases a gate's rule drifts from it ("cite a file:line" omitted the required word `checked`; two reports refused) — give the producer the gate's own check to run (`sprint check-review-notes`) instead of restating the rule | UNPROMOTED |
 | 2026-10-11 | [t-8120](.tickets/t-8120/learnings.md) | A fix shipped with a regression test for one caller (tools/sprint) but none for the second tool with the same bug (gate-snapshot.sh), so the bug report stayed open after the fix; when a fix covers several call sites, lock each one | UNPROMOTED |
 | 2026-10-11 | [t-e17d](.tickets/t-e17d/learnings.md) | A skill-eval case that hands the executor the facts it should discover (here the full repo-wide grep output) passes under the old instructions too; run the case once against the pre-change skill as a baseline, and rewrite it until it separates the two | UNPROMOTED |
