@@ -4044,7 +4044,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
           await page.waitForTimeout(400);
           seen[id] = await page.evaluate((i) => {
             const t = getComputedStyle(document.querySelector('.tab.project[data-tab="' + i + '"]'));
-            return { bg: t.backgroundColor, tabBorder: t.borderLeftColor, shadow: t.boxShadow, parent: document.querySelector('.tab.project[data-tab="' + i + '"]').parentElement.id };
+            return { bg: t.backgroundColor, tabBorder: t.borderLeftColor, shadow: t.boxShadow, parent: document.querySelector('.tab.project[data-tab="' + i + '"]').parentElement.id,
+                     parentBg: getComputedStyle(document.querySelector('.tab.project[data-tab="' + i + '"]').parentElement).backgroundColor };
           }, id);
         }
         expect([seen['proj-a'].parent, seen['proj-x'].parent]).toEqual(['tabstrip', 'panebar']);
@@ -4053,6 +4054,9 @@ test.describe('cockpit in board (t-ddc8)', () => {
           expect(a, theme + ': dimmer than the old 0.55').toBeLessThan(0.5); expect(a).toBeGreaterThan(0.25);
         }
         expect(seen['proj-a'].bg, theme + ': the strip tab and the bar tab fill the same').toBe(seen['proj-x'].bg);
+        for (const id of ['proj-a', 'proj-x']) {                                   // t-83c9: the active tab reads as filled in both themes (dark 1.137)
+          expect(contrastOf(seen[id].bg, seen[id].parentBg), theme + ': ' + id + ' fill vs its ' + seen[id].parent).toBeGreaterThanOrEqual(1.13);
+        }
         expect(seen['proj-a'].tabBorder).toBe(seen['proj-x'].tabBorder);
         expect(seen['proj-a'].shadow).toBe(seen['proj-x'].shadow);
       }
@@ -11498,7 +11502,29 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
   });
 });
 
+// t-83c9: WCAG contrast ratio of two computed rgb()/rgba() colours (alpha ignored: both are opaque here).
+function contrastOf(a, b) {
+  const lum = c => { const v = c.match(/[\d.]+/g).slice(0, 3).map(n => Number(n) / 255).map(x => x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+  const [x, y] = [lum(a), lum(b)];
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+
 test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
+  test('Model Tiers: the provider tabs\' underline stays visible on the light background (t-83c9)', async ({ page }) => {
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(() => { document.documentElement.dataset.theme = 'light'; });
+    await page.locator('#nav-admin').click();
+    await expect(page.locator('#mt-tabs')).toBeVisible();
+    const got = await page.evaluate(() => {
+      const el = document.getElementById('mt-tabs');
+      let e = el.parentElement, bg = 'rgba(0, 0, 0, 0)';
+      while (e && /rgba\(0, 0, 0, 0\)|transparent/.test(bg = getComputedStyle(e).backgroundColor)) e = e.parentElement;
+      return { line: getComputedStyle(el).borderBottomColor, behind: e ? bg : getComputedStyle(document.body).backgroundColor };
+    });
+    expect(contrastOf(got.line, got.behind), JSON.stringify(got)).toBeGreaterThanOrEqual(1.05);   // without the light .mt-tabs rule: 1.001
+  });
+
   test('Model Tiers shows provider tabs, default pickers, seeded Anthropic cards, and the one-line OpenAI note (t-9e5c)', async ({ page }) => {
     await page.goto(BASE + '/cockpit');
     await page.waitForLoadState('networkidle');

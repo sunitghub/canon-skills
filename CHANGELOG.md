@@ -9,6 +9,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 ### Added
 - `sprint check-review-notes <id>` checks a reviewer's `review-notes.md` with the same rule `sprint complete` enforces; the reviewer runs it before returning and the orchestrator right after the dispatch, so a malformed report is rewritten at once instead of refused at close (`t-c38e`).
 
+### Fixed
+- Cockpit, light theme: the active tab reads as filled, like the dark theme — the light background deepens to `#e8e8f0`, so the tab still merges into the board below it; the Model Tiers tab underline keeps its contrast (`t-83c9`).
+
 ## [0.5.0] - 2026-10-11
 
 The board's code is split out of `app.html` into `static/` (CSS files and ES modules behind one entry), with nothing changing on screen. A version bump no longer changes the release binaries, so the cockpit daemon reports the installed version. The test suite runs from a worktree and keeps git's hook environment out.
