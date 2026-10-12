@@ -329,9 +329,6 @@
     // push the new theme into every open project board iframe (t-a55a)
     document.querySelectorAll('.view iframe').forEach(f=>{try{f.contentWindow.postMessage({type:'canon-theme',theme:h.dataset.theme},location.origin);}catch(e){}});
   }
-  (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
-  document.addEventListener('DOMContentLoaded',syncThemeBtn);
-  document.addEventListener('DOMContentLoaded',()=>document.getElementById('theme-btn').addEventListener('click',()=>toggleTheme()));
   function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
 
   // ── Reusable canon-styled confirm (t-5849) ─────────────────────────────────
@@ -370,17 +367,6 @@
     document.addEventListener('keydown',_ccKey,true);
     return new Promise(res=>{ _ccResolve=res; });
   }
-  document.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('cc-ok').addEventListener('click',()=>_ccClose(true));
-    document.getElementById('cc-cancel').addEventListener('click',()=>_ccClose(false));
-    document.getElementById('cconfirm').addEventListener('click',e=>{ if(e.target.id==='cconfirm') _ccClose(false); });
-    const copyBtn=document.getElementById('cc-copy');
-    if(copyBtn) copyBtn.addEventListener('click',()=>{
-      const v=document.getElementById('cc-code').value;
-      try{ navigator.clipboard.writeText(v); toast('Copied'); }
-      catch(e){ const i=document.getElementById('cc-code'); i.focus(); i.select(); }
-    });
-  });
 
   // ── Help/tour overlay (t-c5e7) ────────────────────────────────────────────
   let _helpVersionsLoaded=false;
@@ -410,21 +396,6 @@
       }
     }catch(e){}
   }
-  document.addEventListener('DOMContentLoaded',()=>{
-    const hc=document.getElementById('help-close'); if(hc) hc.addEventListener('click',closeHelp);
-    document.getElementById('help-btn').addEventListener('click',()=>openHelp());
-    const ov=document.getElementById('help-overlay');
-    if(ov) ov.addEventListener('click',e=>{ if(e.target===ov) closeHelp(); });
-  });
-  document.addEventListener('keydown',e=>{
-    if(e.key==='Escape'){
-      const cw=document.getElementById('closeWarn');
-      if(cw&&cw.classList.contains('show')){ hideCloseWarn(); return; }
-      const ov=document.getElementById('help-overlay'); if(ov&&ov.classList.contains('open')){ closeHelp(); }
-      const ks=document.getElementById('keys-sheet'); if(ks&&ks.classList.contains('show')){ toggleKeysSheet(false); }
-      closeTabMenu();
-    }
-  });
 
   // ── Tabs (t-a55a) ────────────────────────────────────────────────────────
   // Pinned Projects tab + closable, folder-named project tabs. Each project tab
@@ -493,7 +464,6 @@
   // until it is dismissed there, which is the one real dismissal (plus Resume). Keyed id|started.
   const HIDE_KEY='ck-intr-hidden';
   let hiddenHere=new Set();
-  try{ hiddenHere=new Set(JSON.parse(localStorage.getItem(HIDE_KEY)||'[]')); }catch(e){}
   const intrKey=e=>e.id+'|'+e.started;
   function saveHidden(){ try{ localStorage.setItem(HIDE_KEY,JSON.stringify([...hiddenHere])); }catch(e){} }
   function pruneHidden(){ const live=new Set(interrupted.map(intrKey)), kept=[...hiddenHere].filter(k=>live.has(k)); if(kept.length===hiddenHere.size) return; hiddenHere=new Set(kept); saveHidden(); }
@@ -803,7 +773,6 @@
       else if(e.key==='Home'){ e.preventDefault(); setSideWidth(SIDE_DEFAULT, true); }
     });
   }
-  initSideResize();
 
   // ── Collapsible sidebar (t-4077) ───────────────────────────────────────────
   const LS_SIDE_OFF='canon-cockpit-side-collapsed';
@@ -816,11 +785,6 @@
     if(save){ try{ localStorage.setItem(LS_SIDE_OFF, on ? '1' : '0'); }catch(e){} }
   }
   function toggleSide(){ setSideCollapsed(!document.documentElement.classList.contains('side-collapsed'), true); }
-  (function initSideCollapse(){
-    let off=false; try{ off=localStorage.getItem(LS_SIDE_OFF)==='1'; }catch(e){}
-    setSideCollapsed(off, false);
-    document.getElementById('side-collapse').addEventListener('click', toggleSide);
-  })();
 
   function renderAdminSessions(views){
     const box=document.getElementById('ad-sessions');
@@ -871,11 +835,6 @@
     document.getElementById('closeWarn').classList.add('show');
   }
   function hideCloseWarn(){ pendingCloseId=null; document.getElementById('closeWarn').classList.remove('show'); }
-  document.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('cw-keep').addEventListener('click',()=>hideCloseWarn());
-    document.getElementById('cw-end').addEventListener('click',()=>confirmCloseTab(false));
-    document.getElementById('cw-save').addEventListener('click',()=>confirmCloseTab(true));
-  });
   // Save & End (save=true) or End without saving (save=false): drive the board's
   // EXISTING daemon save-and-end / end flow via a same-origin postMessage into the
   // tab's board iframe (the board owns the terminal + session token). The daemon
@@ -981,7 +940,6 @@ function canonPrefixKeys(emit) {
     if(want) document.getElementById('keys-prefix').textContent=canonPrefixLabel();
     s.classList.toggle('show',want);
   }
-  document.addEventListener('DOMContentLoaded',()=>document.getElementById('keys-btn').addEventListener('click',()=>toggleKeysSheet(true)));
   function goTab(id){
     if(split&&splitShown()&&id!==activeTab) startPulse(id);
     activateTab(id);
@@ -1041,40 +999,11 @@ function canonPrefixKeys(emit) {
     if(t&&(t.isContentEditable||/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return true;
     return shellDialogOpen();
   }
-  ['keydown','keypress','keyup'].forEach(type=>document.addEventListener(type,e=>{
-    if(type==='keydown'&&shellKeyBlocked(e)){ shellKeys.cancel(); return; }
-    shellKeys.handle(e);
-  },true));
-  document.addEventListener('DOMContentLoaded',()=>{
-    const c=document.getElementById('keys-close'); if(c) c.addEventListener('click',()=>toggleKeysSheet(false));
-    const kb=document.getElementById('keys-btn'); if(kb) kb.title='Keyboard shortcuts — '+canonPrefixLabel()+' then ?';
-    const s=document.getElementById('keys-sheet'); if(s) s.addEventListener('click',e=>{ if(e.target===s) toggleKeysSheet(false); });
-  });
   // t-67ab: which tab's board sent a message. Each tab's iframe gets a random token in its URL
   // (ensureView) and its board echoes it; a page without the token can't pose as a tab. Not
   // event.source: Safari/WebKit reports this page itself as the source of a board's message.
   const tabTokens=new Map();
   function senderTab(d){ return d && typeof d.tab==='string' ? tabTokens.get(d.tab) || null : null; }
-  window.addEventListener('message',function(e){
-    if(e.origin!==location.origin) return;
-    const d=e.data;
-    if(!d||d.source!=='canon-board') return;
-    const pid=senderTab(d);
-    if(!pid) return;   // only a project tab's own board
-    if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
-    if(d.type==='open-upkeep'){ openUpkeepFor(pid); return; }   // for that tab's project only
-    if(d.type==='prefix-armed'||d.type==='prefix-cancel'||d.type==='prefix-key'){   // t-a198: only the visible tab's board speaks
-      if(pid!==activeTab||shellDialogOpen()) return;   // a dialog in the shell swallows it, whichever frame had focus
-      if(d.type==='prefix-armed'){ showKeyHint(true); return; }
-      showKeyHint(false);
-      if(d.type==='prefix-key'&&typeof d.key==='string'&&d.key.length<=2) prefixAction(d.key);
-      return;
-    }
-    if(d.type!=='open-session') return;
-    if(typeof d.ticket!=='string'||!TICKET_ID_RE.test(d.ticket)) return;
-    if(typeof d.project_root!=='string') return;
-    openSessionInTab({proot:d.project_root, ticket:d.ticket});
-  });
   // The project is the sender's own tab, never the message's word for it.
   function onScratchTabs(d,pid){
     if(!Array.isArray(d.tabs)) return;
@@ -1102,13 +1031,6 @@ function canonPrefixKeys(emit) {
     else ifr.addEventListener('load',send,{once:true});
   }
 
-  // Scoped refresh/close guard: prompt the browser's leave confirmation ONLY when
-  // at least one open tab has a live agent session. With no live tab, refresh and
-  // close stay seamless (never a blanket trap); tabs restore from localStorage.
-  window.addEventListener('beforeunload', function(e){
-    if(liveTabIds.size>0){ e.preventDefault(); e.returnValue=''; return ''; }
-  });
-
   function saveTabs(){
     try{localStorage.setItem(LS_TABS,JSON.stringify({openIds:openTabs.map(t=>t.id),active:activeTab}));}catch(e){}
   }
@@ -1135,11 +1057,6 @@ function canonPrefixKeys(emit) {
       up.textContent= never===0 ? 'all checks run' : never+' check'+(never===1?'':'s')+' never run';
     }catch(e){ up.textContent='—'; }
   }
-
-  document.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('nav-projects').addEventListener('click',()=>showView('projects'));
-    document.getElementById('nav-admin').addEventListener('click',()=>showView('admin'));
-  });
   function showView(v){
     if(v==='projects'){
       // Explicit click on the sidebar's Projects nav must always land on the
@@ -1288,10 +1205,6 @@ function canonPrefixKeys(emit) {
     const id=upHelpOpen; upHelpOpen=null; upHelpScroll=0; upHelpSync();
     if(focusBtn&&id){ const b=document.querySelector(`[data-help="${id}"] .rc-help`); if(b) b.focus(); }
   }
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&upHelpOpen) upHelpClose(true); });
-  document.addEventListener('click',e=>{ if(upHelpOpen&&!e.target.closest('.rc-pop,.rc-help')) upHelpClose(false); });
-  document.addEventListener('scroll',e=>{ if(e.target.classList&&e.target.classList.contains('rc-pop-body')) upHelpScroll=e.target.scrollTop; },true);
-  window.addEventListener('resize',()=>{ if(upHelpOpen) upHelpClose(false); });   // placement is computed once, so a resize closes it
 
   let upProjectId=null;
   const upPollTimers={};
@@ -1322,7 +1235,6 @@ function canonPrefixKeys(emit) {
     if(activeTab!==pid){ const p=getProjects().find(x=>x.id===pid); openProject(pid,p.name); }
     showView('upkeep');
   }
-  document.getElementById('up-back').addEventListener('click',()=>{ setUpkeepPane(null); if(upProjectId) activateTab(upProjectId); else applySplit(); });
 
   async function upFetchState(skill){
     try{
@@ -1603,7 +1515,6 @@ function canonPrefixKeys(emit) {
   }
 
   function upToggleCollapse(){ document.getElementById('up-detail').classList.toggle('open'); }
-  document.addEventListener('DOMContentLoaded',()=>document.querySelector('#up-detail .up-detail-head').addEventListener('click',()=>upToggleCollapse()));
 
   // Minimal markdown-ish renderer scoped to Upkeep's own report shape (# / ##
   // headers, `code` spans, - bullet lists) — not a general parser. List items
@@ -1915,20 +1826,6 @@ function canonPrefixKeys(emit) {
     mtData.models[mtProvider]=(mtData.models[mtProvider]||[]).filter(m=>m.id!==id);
     if(await mtSave()) mtRender(); else await mtLoad();
   }
-
-  // Restart/Stop both reuse the daemon's token-free /api/cockpit-restart|-stop
-  // (busy-confirm + re-poll) — OS pid-kill only, never the daemon's own
-  // token-gated shutdown route (t-ddc8).
-  document.addEventListener('DOMContentLoaded',()=>{
-    const rb=document.getElementById('ad-restart');
-    if(rb) rb.addEventListener('click',restartDaemon);
-    const sb=document.getElementById('ad-stop');
-    if(sb) sb.addEventListener('click',stopDaemon);
-    const db=document.getElementById('ad-debug-toggle');
-    if(db) db.addEventListener('change',onDebugToggleChange);
-    const nt=document.getElementById('ad-notify-toggle');
-    if(nt){ nt.addEventListener('change',onNotifyToggleChange); renderNotifySetting(); }
-  });
   // t-ffb9: never assume the request succeeded — disable during the round
   // trip, then set checked/disabled from the actual response (or the next
   // loadAdmin poll on failure), matching this panel's existing
@@ -2107,52 +2004,6 @@ function canonPrefixKeys(emit) {
     saveSplit(); activateTab(a); return true;
   }
   function closeSplit(){ split=null; pulseTab=null; saveSplit(); applySplit(); renderTabs(); }
-  (function wireSplitHandle(){
-    const handle=document.getElementById('split-handle'), views=document.getElementById('views');
-    if(!handle) return;
-    let dragging=false;
-    const move=e=>{
-      if(!dragging||!split) return;
-      const r=views.getBoundingClientRect();
-      split.ratio=clampRatio(split.dir==='v'?(e.clientY-r.top)/r.height:(e.clientX-r.left)/r.width);
-      applySplit();
-    };
-    handle.addEventListener('pointerdown',e=>{ dragging=true; handle.classList.add('drag'); try{ handle.setPointerCapture(e.pointerId); }catch(err){} e.preventDefault(); });
-    handle.addEventListener('pointermove',move);
-    const stop=()=>{ if(!dragging) return; dragging=false; handle.classList.remove('drag'); saveSplit(); };
-    handle.addEventListener('pointerup',stop); handle.addEventListener('pointercancel',stop);
-    handle.addEventListener('dblclick',()=>{ if(!split) return; split.ratio=.5; applySplit(); saveSplit(); });
-    handle.addEventListener('keydown',e=>{
-      if(!split) return;
-      const step=e.shiftKey?.1:.02, back=split.dir==='v'?'ArrowUp':'ArrowLeft', fwd=split.dir==='v'?'ArrowDown':'ArrowRight';
-      if(e.key===back||e.key===fwd){ e.preventDefault(); split.ratio+=(e.key===fwd?step:-step); }
-      else if(e.key==='Home'){ e.preventDefault(); split.ratio=.5; }
-      else return;
-      applySplit(); saveSplit();
-    });
-    window.addEventListener('resize',applySplit);
-    // Which pane has focus: ask each pane's own document (the boards are same-origin; a nested terminal frame counts as inside it).
-    // document.activeElement here is NOT reliable: after the shell focuses a pane by script, a later click into the other pane
-    // leaves it pointing at the old iframe. The first entry into a frame blurs this window; moving between two panes fires
-    // nothing at all, so a light poll runs while a split is on screen.
-    const paneHasFocus=id=>{ try{ const f=document.querySelector('#view-'+id+' iframe'); return !!(f&&f.contentDocument&&f.contentDocument.hasFocus()); }catch(e){ return false; } };
-    const syncFocusedPane=()=>{
-      if(!splitShown()||Date.now()-lastScriptFocus<500) return;   // a focus the shell just set takes a moment to land
-      if(focusWant){   // a focus the shell just set can land late (seen on Windows): keep asking for it instead of following the old pane back
-        if(Date.now()>focusWant.until||paneHasFocus(focusWant.id)) focusWant=null;
-        else {
-          if(!focusWant.warned){ focusWant.warned=true; console.warn('canon: pane focus did not land yet, retrying (t-f769)'); }
-          try{ const f=document.querySelector('#view-'+focusWant.id+' iframe'); if(f) f.focus(); }catch(e){}
-          return;
-        }
-      }
-      const id=[split.a,split.b].find(paneHasFocus);
-      if(id&&id!==activeTab){ pulseTab=null; activateTab(id); }
-    };
-    window.addEventListener('blur',()=>setTimeout(syncFocusedPane,0));
-    setInterval(syncFocusedPane,200);
-  })();
-  document.getElementById('split-close').addEventListener('click',closeSplit);
   const tabMenu=document.getElementById('tabmenu');
   function closeTabMenu(){ if(tabMenu) tabMenu.hidden=true; }
   function openTabMenu(tid,x,y){
@@ -2173,8 +2024,6 @@ function canonPrefixKeys(emit) {
     tabMenu.style.top=Math.max(4,Math.min(y,window.innerHeight-tabMenu.offsetHeight-4))+'px';
     const first=tabMenu.querySelector('button:not(:disabled)'); if(first) first.focus();
   }
-  document.addEventListener('pointerdown',e=>{ if(tabMenu&&!tabMenu.hidden&&!tabMenu.contains(e.target)) closeTabMenu(); },true);
-  document.addEventListener('DOMContentLoaded',()=>document.querySelector('#tabstrip .tab.pinned').addEventListener('click',()=>activateTab('projects')));
   function activateTab(id){
     const from=activeTab;
     if(from!==id&&isProjectTab(from)) prevTab=from;   // where "v" and "-" take the second pane from
@@ -2437,14 +2286,6 @@ function canonPrefixKeys(emit) {
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';hideBrowse();document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
   function closeAdd(){document.getElementById('addModal').classList.remove('show');hideBrowse();}
-  document.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('add-open').addEventListener('click',()=>openAdd());
-    document.getElementById('add-browse').addEventListener('click',()=>toggleBrowse());
-    document.getElementById('dirnav-hidden').addEventListener('change',()=>loadBrowse(_browseCwd));
-    document.getElementById('add-use-dir').addEventListener('click',()=>useBrowseDir());
-    document.getElementById('add-cancel').addEventListener('click',()=>closeAdd());
-    document.getElementById('add-submit').addEventListener('click',()=>submitAdd());
-  });
 
   // ── Add-Project folder browser (t-1b88) ────────────────────────────────────
   // A web page can't read an absolute path, so navigate via the loopback
@@ -2504,8 +2345,6 @@ function canonPrefixKeys(emit) {
       toast('Deregistered '+name);load();
     }catch(e){toast('Could not deregister.');}
   }
-
-  fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
   // t-4700: `#open=<id>` deep-links straight into a project's tab — used by
   // `sprint-check` so it opens the project instead of the bare landing page.
   function openFromHash(){
@@ -2517,8 +2356,201 @@ function canonPrefixKeys(emit) {
     openProject(id,p.name,{nudge:true});
     return true;
   }
+  // t-565f: core's load-time code, run once at the end (the module version keeps it in initCore()).
+  function initCore(){
+  (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
+  document.addEventListener('DOMContentLoaded',syncThemeBtn);
+  document.addEventListener('DOMContentLoaded',()=>document.getElementById('theme-btn').addEventListener('click',()=>toggleTheme()));
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('cc-ok').addEventListener('click',()=>_ccClose(true));
+    document.getElementById('cc-cancel').addEventListener('click',()=>_ccClose(false));
+    document.getElementById('cconfirm').addEventListener('click',e=>{ if(e.target.id==='cconfirm') _ccClose(false); });
+    const copyBtn=document.getElementById('cc-copy');
+    if(copyBtn) copyBtn.addEventListener('click',()=>{
+      const v=document.getElementById('cc-code').value;
+      try{ navigator.clipboard.writeText(v); toast('Copied'); }
+      catch(e){ const i=document.getElementById('cc-code'); i.focus(); i.select(); }
+    });
+  });
+  document.addEventListener('DOMContentLoaded',()=>{
+    const hc=document.getElementById('help-close'); if(hc) hc.addEventListener('click',closeHelp);
+    document.getElementById('help-btn').addEventListener('click',()=>openHelp());
+    const ov=document.getElementById('help-overlay');
+    if(ov) ov.addEventListener('click',e=>{ if(e.target===ov) closeHelp(); });
+  });
+  document.addEventListener('keydown',e=>{
+    if(e.key==='Escape'){
+      const cw=document.getElementById('closeWarn');
+      if(cw&&cw.classList.contains('show')){ hideCloseWarn(); return; }
+      const ov=document.getElementById('help-overlay'); if(ov&&ov.classList.contains('open')){ closeHelp(); }
+      const ks=document.getElementById('keys-sheet'); if(ks&&ks.classList.contains('show')){ toggleKeysSheet(false); }
+      closeTabMenu();
+    }
+  });
+  }
+  // t-565f: sessions's load-time code, run once at the end (the module version keeps it in initSessions()).
+  function initSessions(){
+  try{ hiddenHere=new Set(JSON.parse(localStorage.getItem(HIDE_KEY)||'[]')); }catch(e){}
+  }
+  // t-565f: sidebar's load-time code, run once at the end (the module version keeps it in initSidebar()).
+  function initSidebar(){
+  initSideResize();
+  (function initSideCollapse(){
+    let off=false; try{ off=localStorage.getItem(LS_SIDE_OFF)==='1'; }catch(e){}
+    setSideCollapsed(off, false);
+    document.getElementById('side-collapse').addEventListener('click', toggleSide);
+  })();
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('cw-keep').addEventListener('click',()=>hideCloseWarn());
+    document.getElementById('cw-end').addEventListener('click',()=>confirmCloseTab(false));
+    document.getElementById('cw-save').addEventListener('click',()=>confirmCloseTab(true));
+  });
+  }
+  // t-565f: keys's load-time code, run once at the end (the module version keeps it in initKeys()).
+  function initKeys(){
+  document.addEventListener('DOMContentLoaded',()=>document.getElementById('keys-btn').addEventListener('click',()=>toggleKeysSheet(true)));
+  ['keydown','keypress','keyup'].forEach(type=>document.addEventListener(type,e=>{
+    if(type==='keydown'&&shellKeyBlocked(e)){ shellKeys.cancel(); return; }
+    shellKeys.handle(e);
+  },true));
+  document.addEventListener('DOMContentLoaded',()=>{
+    const c=document.getElementById('keys-close'); if(c) c.addEventListener('click',()=>toggleKeysSheet(false));
+    const kb=document.getElementById('keys-btn'); if(kb) kb.title='Keyboard shortcuts — '+canonPrefixLabel()+' then ?';
+    const s=document.getElementById('keys-sheet'); if(s) s.addEventListener('click',e=>{ if(e.target===s) toggleKeysSheet(false); });
+  });
+  window.addEventListener('message',function(e){
+    if(e.origin!==location.origin) return;
+    const d=e.data;
+    if(!d||d.source!=='canon-board') return;
+    const pid=senderTab(d);
+    if(!pid) return;   // only a project tab's own board
+    if(d.type==='scratch-tabs'){ onScratchTabs(d,pid); return; }
+    if(d.type==='open-upkeep'){ openUpkeepFor(pid); return; }   // for that tab's project only
+    if(d.type==='prefix-armed'||d.type==='prefix-cancel'||d.type==='prefix-key'){   // t-a198: only the visible tab's board speaks
+      if(pid!==activeTab||shellDialogOpen()) return;   // a dialog in the shell swallows it, whichever frame had focus
+      if(d.type==='prefix-armed'){ showKeyHint(true); return; }
+      showKeyHint(false);
+      if(d.type==='prefix-key'&&typeof d.key==='string'&&d.key.length<=2) prefixAction(d.key);
+      return;
+    }
+    if(d.type!=='open-session') return;
+    if(typeof d.ticket!=='string'||!TICKET_ID_RE.test(d.ticket)) return;
+    if(typeof d.project_root!=='string') return;
+    openSessionInTab({proot:d.project_root, ticket:d.ticket});
+  });
+
+  // Scoped refresh/close guard: prompt the browser's leave confirmation ONLY when
+  // at least one open tab has a live agent session. With no live tab, refresh and
+  // close stay seamless (never a blanket trap); tabs restore from localStorage.
+  window.addEventListener('beforeunload', function(e){
+    if(liveTabIds.size>0){ e.preventDefault(); e.returnValue=''; return ''; }
+  });
+  }
+  // t-565f: views's load-time code, run once at the end (the module version keeps it in initViews()).
+  function initViews(){
+
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('nav-projects').addEventListener('click',()=>showView('projects'));
+    document.getElementById('nav-admin').addEventListener('click',()=>showView('admin'));
+  });
+  }
+  // t-565f: upkeep's load-time code, run once at the end (the module version keeps it in initUpkeep()).
+  function initUpkeep(){
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'&&upHelpOpen) upHelpClose(true); });
+  document.addEventListener('click',e=>{ if(upHelpOpen&&!e.target.closest('.rc-pop,.rc-help')) upHelpClose(false); });
+  document.addEventListener('scroll',e=>{ if(e.target.classList&&e.target.classList.contains('rc-pop-body')) upHelpScroll=e.target.scrollTop; },true);
+  window.addEventListener('resize',()=>{ if(upHelpOpen) upHelpClose(false); });   // placement is computed once, so a resize closes it
+  document.getElementById('up-back').addEventListener('click',()=>{ setUpkeepPane(null); if(upProjectId) activateTab(upProjectId); else applySplit(); });
+  }
+  // t-565f: skill-eval's load-time code, run once at the end (the module version keeps it in initSkillEval()).
+  function initSkillEval(){
+  document.addEventListener('DOMContentLoaded',()=>document.querySelector('#up-detail .up-detail-head').addEventListener('click',()=>upToggleCollapse()));
+  }
+  // t-565f: admin's load-time code, run once at the end (the module version keeps it in initAdmin()).
+  function initAdmin(){
+
+  // Restart/Stop both reuse the daemon's token-free /api/cockpit-restart|-stop
+  // (busy-confirm + re-poll) — OS pid-kill only, never the daemon's own
+  // token-gated shutdown route (t-ddc8).
+  document.addEventListener('DOMContentLoaded',()=>{
+    const rb=document.getElementById('ad-restart');
+    if(rb) rb.addEventListener('click',restartDaemon);
+    const sb=document.getElementById('ad-stop');
+    if(sb) sb.addEventListener('click',stopDaemon);
+    const db=document.getElementById('ad-debug-toggle');
+    if(db) db.addEventListener('change',onDebugToggleChange);
+    const nt=document.getElementById('ad-notify-toggle');
+    if(nt){ nt.addEventListener('change',onNotifyToggleChange); renderNotifySetting(); }
+  });
+  }
+  // t-565f: tabs's load-time code, run once at the end (the module version keeps it in initTabs()).
+  function initTabs(){
+  (function wireSplitHandle(){
+    const handle=document.getElementById('split-handle'), views=document.getElementById('views');
+    if(!handle) return;
+    let dragging=false;
+    const move=e=>{
+      if(!dragging||!split) return;
+      const r=views.getBoundingClientRect();
+      split.ratio=clampRatio(split.dir==='v'?(e.clientY-r.top)/r.height:(e.clientX-r.left)/r.width);
+      applySplit();
+    };
+    handle.addEventListener('pointerdown',e=>{ dragging=true; handle.classList.add('drag'); try{ handle.setPointerCapture(e.pointerId); }catch(err){} e.preventDefault(); });
+    handle.addEventListener('pointermove',move);
+    const stop=()=>{ if(!dragging) return; dragging=false; handle.classList.remove('drag'); saveSplit(); };
+    handle.addEventListener('pointerup',stop); handle.addEventListener('pointercancel',stop);
+    handle.addEventListener('dblclick',()=>{ if(!split) return; split.ratio=.5; applySplit(); saveSplit(); });
+    handle.addEventListener('keydown',e=>{
+      if(!split) return;
+      const step=e.shiftKey?.1:.02, back=split.dir==='v'?'ArrowUp':'ArrowLeft', fwd=split.dir==='v'?'ArrowDown':'ArrowRight';
+      if(e.key===back||e.key===fwd){ e.preventDefault(); split.ratio+=(e.key===fwd?step:-step); }
+      else if(e.key==='Home'){ e.preventDefault(); split.ratio=.5; }
+      else return;
+      applySplit(); saveSplit();
+    });
+    window.addEventListener('resize',applySplit);
+    // Which pane has focus: ask each pane's own document (the boards are same-origin; a nested terminal frame counts as inside it).
+    // document.activeElement here is NOT reliable: after the shell focuses a pane by script, a later click into the other pane
+    // leaves it pointing at the old iframe. The first entry into a frame blurs this window; moving between two panes fires
+    // nothing at all, so a light poll runs while a split is on screen.
+    const paneHasFocus=id=>{ try{ const f=document.querySelector('#view-'+id+' iframe'); return !!(f&&f.contentDocument&&f.contentDocument.hasFocus()); }catch(e){ return false; } };
+    const syncFocusedPane=()=>{
+      if(!splitShown()||Date.now()-lastScriptFocus<500) return;   // a focus the shell just set takes a moment to land
+      if(focusWant){   // a focus the shell just set can land late (seen on Windows): keep asking for it instead of following the old pane back
+        if(Date.now()>focusWant.until||paneHasFocus(focusWant.id)) focusWant=null;
+        else {
+          if(!focusWant.warned){ focusWant.warned=true; console.warn('canon: pane focus did not land yet, retrying (t-f769)'); }
+          try{ const f=document.querySelector('#view-'+focusWant.id+' iframe'); if(f) f.focus(); }catch(e){}
+          return;
+        }
+      }
+      const id=[split.a,split.b].find(paneHasFocus);
+      if(id&&id!==activeTab){ pulseTab=null; activateTab(id); }
+    };
+    window.addEventListener('blur',()=>setTimeout(syncFocusedPane,0));
+    setInterval(syncFocusedPane,200);
+  })();
+  document.getElementById('split-close').addEventListener('click',closeSplit);
+  document.addEventListener('pointerdown',e=>{ if(tabMenu&&!tabMenu.hidden&&!tabMenu.contains(e.target)) closeTabMenu(); },true);
+  document.addEventListener('DOMContentLoaded',()=>document.querySelector('#tabstrip .tab.pinned').addEventListener('click',()=>activateTab('projects')));
+  }
+  // t-565f: projects's load-time code, run once at the end (the module version keeps it in initProjects()).
+  function initProjects(){
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('add-open').addEventListener('click',()=>openAdd());
+    document.getElementById('add-browse').addEventListener('click',()=>toggleBrowse());
+    document.getElementById('dirnav-hidden').addEventListener('change',()=>loadBrowse(_browseCwd));
+    document.getElementById('add-use-dir').addEventListener('click',()=>useBrowseDir());
+    document.getElementById('add-cancel').addEventListener('click',()=>closeAdd());
+    document.getElementById('add-submit').addEventListener('click',()=>submitAdd());
+  });
+
+  fetch('/api/version').then(r=>r.json()).then(v=>{if(v&&v.version)document.getElementById('ver').textContent='v'+v.version;}).catch(()=>{});
   // Initial load, then restore any previously-open project tabs (once).
   load().then(()=>{ restoreTabs(); startSessionPoll(); if(!openFromHash()){ if(location.hash==='#admin') showView('admin'); if(location.hash==='#help') openHelp(); } });
+  }
+  // t-565f: run each section's load-time code in order once every declaration exists.
+  initCore(); initSessions(); initSidebar(); initKeys(); initViews(); initUpkeep(); initSkillEval(); initAdmin(); initTabs(); initProjects();
 </script>
 </body>
 </html>
