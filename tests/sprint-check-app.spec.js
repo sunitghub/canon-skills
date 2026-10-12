@@ -4449,6 +4449,127 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-3c9a: Reap now / Kill from the Agents row menu and Admin. The shell frames the daemon's /relay page; here a fake
+    // relay at the stub daemon's address records every message it is sent and answers as the test says.
+    const endRows = () => [
+      { session: 'e1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'awaiting-input', state: 'idle', state_secs: 400, idle_secs: 400, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'e2', ticket: 't-bbb2', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'e3', ticket: 's-k2m9', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'awaiting-input', state: 'idle', state_secs: 900, idle_secs: 900, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'e4', ticket: 't-ccc3', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'needs-you', state: 'needs-you', state_secs: 60, idle_secs: 60, idle_limit_secs: 1800, signal: 'hook' },
+    ];
+    const stubRelay = async (page, reply = () => ({ status: 200, text: '{"ok":true,"mode":"kill"}' })) => {
+      const calls = [];
+      await page.exposeBinding('__relayCall', (_src, d) => { calls.push(d); return reply(d); });
+      await page.route(`http://${FAKE_DAEMON_ADDR}/relay`, r => r.fulfill({ status: 200, contentType: 'text/html', body:
+        '<!doctype html><script>addEventListener("message",async e=>{if(e.source!==parent)return;const d=e.data;' +
+        'const r=await window.__relayCall(d);e.source.postMessage({source:"canon-relay",type:"end-session-result",id:d.id,status:r.status,text:r.text},e.origin);});</script>' }));
+      return calls;
+    };
+    const agentRow = (page, id) => page.locator('#ag-list .ag-row', { hasText: id });
+    const menuItems = page => page.locator('#tabmenu button');
+
+    test('t-3c9a: an Agents row opens Open / Reap now / Kill by right-click or Shift+F10; Reap now is off unless idle', async ({ page }) => {
+      await stubRelay(page);
+      await openShell(page, endRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await agentRow(page, 't-bbb2').click({ button: 'right' });
+      await expect(page.locator('#tabmenu')).toBeVisible();
+      await expect(menuItems(page)).toHaveText(['Open', 'Reap nowsave & end', 'Kill…no save']);
+      await expect(menuItems(page).nth(1)).toBeDisabled();
+      await expect(menuItems(page).nth(1)).toHaveAttribute('title', 'Working — the agent isn’t at its prompt');
+      await expect(menuItems(page).nth(2)).toBeEnabled();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      await agentRow(page, 't-ccc3').click({ button: 'right' });
+      await expect(menuItems(page).nth(1)).toHaveAttribute('title', 'Waiting on you — answer it first');
+      await page.mouse.click(700, 500);                                                   // an outside click closes it
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      await agentRow(page, 't-aaa1').focus();
+      await page.keyboard.press('Shift+F10');
+      await expect(menuItems(page).nth(0)).toBeFocused();
+      await expect(menuItems(page).nth(1)).toBeEnabled();                                 // idle: Reap now is on
+      await page.keyboard.press('ArrowDown');
+      await expect(menuItems(page).nth(1)).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      await expect(agentRow(page, 't-aaa1')).toBeFocused();                               // focus goes back to the row
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: Kill asks first, opens on Cancel, and sends the session to the relay only on Kill', async ({ page }) => {
+      const calls = await stubRelay(page);
+      await openShell(page, endRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await agentRow(page, 'Scratch session').click({ button: 'right' });
+      await menuItems(page).nth(2).click();
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await expect(page.locator('#cc-title')).toHaveText('Kill “Scratch session”?');
+      await expect(page.locator('#cc-body')).toHaveText('Ends proj-a · claude now, without saving. Uncommitted changes stay in the folder and are noted in HANDOFF.md ## Scratch.');
+      await expect(page.locator('#cc-cancel')).toBeFocused();
+      await page.keyboard.press('Enter');                                                 // Enter presses Cancel
+      await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
+      await page.waitForTimeout(300);
+      expect(calls).toHaveLength(0);
+      await agentRow(page, 'Scratch session').click({ button: 'right' });
+      await menuItems(page).nth(2).click();
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Killed “Scratch session”.');
+      expect(calls).toHaveLength(1);
+      const { id, ...msg } = calls[0];
+      expect(id).toBeTruthy();
+      expect(msg).toEqual({ source: 'canon-cockpit-shell', type: 'end-session', session: 'e3', ticket: 's-k2m9', project_root: '/tmp/proj-a', mode: 'kill' });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: Admin rows offer Reap now (idle only) and Kill; stopped rows keep Resume/Dismiss; a refusal is shown', async ({ page }) => {
+      interruptedStubbed.add(page);
+      await page.route('**/api/cockpit-interrupted', r => r.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ id: 't-zzz9', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', started: '2026-10-12T10:00:00Z', resumable: true, reason: '' }]) }));
+      const calls = await stubRelay(page, d => d.ticket === 't-aaa1' && calls.length > 1
+        ? { status: 409, text: "can't reap now: it is waiting on you\n" } : { status: 202, text: '{"ok":true,"mode":"reap"}' });
+      await openShell(page, endRows());
+      await page.locator('#nav-admin').click();
+      const row = id => page.locator('#ad-sessions tbody tr', { hasText: id });
+      await expect(row('t-aaa1').locator('.ad-end')).toHaveText(['Reap now', 'Kill']);
+      await expect(row('t-bbb2').locator('.ad-end')).toHaveText(['Kill']);
+      await expect(row('t-ccc3').locator('.ad-end')).toHaveText(['Kill']);
+      await expect(row('t-zzz9').locator('.ad-end')).toHaveCount(0);
+      await expect(row('t-zzz9').locator('.intr-btn')).toHaveText(['Resume', 'Dismiss']);
+      await row('t-aaa1').locator('.ad-end', { hasText: 'Reap now' }).click();
+      await expect(page.locator('#cc-title')).toHaveText('Reap “t-aaa1” now?');
+      await expect(page.locator('#cc-body')).toHaveText('Asks proj-a · claude to save its state, then ends it — what the idle reaper would do in 23m.');
+      await expect(page.locator('#cc-ok')).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('#toast')).toHaveText('Reaping “t-aaa1”: saving, then ending.');
+      expect(calls.map(c => c.mode)).toEqual(['reap']);
+      await row('t-aaa1').locator('.ad-end', { hasText: 'Reap now' }).click();
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Didn’t reap “t-aaa1”: can\'t reap now: it is waiting on you');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: after the confirm the shell re-checks the session and sends nothing if it ended or stopped being idle', async ({ page }) => {
+      const calls = await stubRelay(page);
+      await openShell(page, endRows());
+      await page.locator('#nav-admin').click();
+      const row = id => page.locator('#ad-sessions tbody tr', { hasText: id });
+      await row('t-bbb2').locator('.ad-end', { hasText: 'Kill' }).click();
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().filter(r => r.session !== 'e2')));   // it ends while the dialog is open
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('“t-bbb2” has already ended.');
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows()));
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      await row('t-aaa1').locator('.ad-end', { hasText: 'Reap now' }).click();
+      await expect(page.locator('#cconfirm')).toHaveClass(/show/);
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().map(r => r.session === 'e1' ? { ...r, state: 'working', state_secs: 1, idle_secs: 1 } : r)));
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Can’t reap “t-aaa1” now: working — the agent isn’t at its prompt.');
+      await page.waitForTimeout(300);
+      expect(calls).toHaveLength(0);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('t-d2e1: a quote in a worktree path stays inside the worktree row data-cwd', async ({ page }) => {
       const id = `t-x${Date.now().toString(36).slice(-3)}`;
       const wtPath = `/tmp/wt/${XSS_ATTR}`;
@@ -10659,6 +10780,70 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     const msg = await page.evaluate(() => window.__msgs.find(m => m.type === 'preview-file'));
     expect(msg.relpath).toBe('index.html');
     expect(msg.path).toBe(want);
+  });
+
+  // t-3c9a: Kill from the Cockpit shell reaches the REAL daemon through its /relay page and ends the session.
+  async function startReal(request, base) {
+    const r = await request.post(`${base}/session/start`, { headers: { Authorization: `Bearer ${bootToken}` }, data: { ticket: TICKET } });
+    expect(r.status()).toBe(200);
+    return (await r.json()).session;
+  }
+  const liveSids = async (request, base) => (await (await request.get(`${base}/sessions`)).json()).map(x => x.session);
+
+  test('t-3c9a: Kill from the shell ends a real daemon session through /relay', async ({ page, context, request, browserName }) => {
+    if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);
+    const addr = await daemonAddr(), base = `http://${addr}`;
+    const sid = await startReal(request, base);
+    const json = (r, b) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(b) });
+    await page.route('**/api/cockpit', r => json(r, { running: true, addr, launched: false }));
+    await page.route('**/api/cockpit-sessions', async r => json(r, await (await page.request.get(`${base}/sessions`)).json()));
+    await page.route('**/api/cockpit-interrupted', r => json(r, []));
+    await page.route('**/api/projects', r => json(r, [{ id: 'pv', path: work, name: 'pv', description: '', added: '2026-10-12' }]));
+    await page.goto(BASE + '/cockpit');
+    await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+    await page.locator('#ag-list .ag-row', { hasText: TICKET }).click({ button: 'right' });
+    await page.locator('#tabmenu button', { hasText: 'Kill' }).click();
+    await page.locator('#cc-ok').click();
+    await expect(page.locator('#toast')).toHaveText(`Killed “${TICKET}”.`, { timeout: 15_000 });
+    expect(await liveSids(request, base)).not.toContain(sid);
+  });
+
+  // The relay acts only on an exact message from its own loopback parent: a foreign parent, a sibling frame and
+  // every wrong shape send nothing; a valid message from the parent does reach /end-session (the observer works).
+  test('t-3c9a: the /relay page ignores a foreign parent, a sibling frame and wrong shapes', async ({ page, context, request, browserName }) => {
+    if (browserName === 'chromium') await context.grantPermissions(['local-network-access']);
+    const addr = await daemonAddr(), base = `http://${addr}`;
+    const sid = await startReal(request, base);
+    const ends = [];
+    page.on('request', rq => { if (rq.url().endsWith('/end-session')) ends.push(rq.frame().parentFrame() ? 'framed' : 'top'); });
+    const good = { source: 'canon-cockpit-shell', type: 'end-session', id: 'x1', session: sid, ticket: TICKET, project_root: work, mode: 'kill' };
+    const host = (extra) => `<!doctype html><iframe id="r" src="${base}/relay"></iframe><iframe id="sib" srcdoc="<p>sibling</p>"></iframe><script>
+      document.getElementById('r').addEventListener('load', function () { window.__ready = true; });${extra || ''}</script>`;
+
+    await page.route('http://evil.example/host', r => r.fulfill({ status: 200, contentType: 'text/html', body: host() }));
+    await page.goto('http://evil.example/host');
+    await expect.poll(() => page.evaluate(() => window.__ready === true)).toBe(true);
+    await page.evaluate(m => document.getElementById('r').contentWindow.postMessage(m, '*'), good);   // a valid message, from a foreign origin
+    await page.waitForTimeout(800);
+    expect(ends, 'a non-loopback parent').toEqual([]);
+
+    await page.route('**/__relay3c9a', r => r.fulfill({ status: 200, contentType: 'text/html', body: host() }));
+    await page.goto(BASE + '/__relay3c9a');
+    await expect.poll(() => page.evaluate(() => window.__ready === true)).toBe(true);
+    await page.evaluate(m => {   // the sibling frame (same loopback origin) posts a valid message to the relay
+      const sib = document.getElementById('sib').contentWindow;
+      sib.eval('parent.document.getElementById("r").contentWindow.postMessage(' + JSON.stringify(m) + ', "*")');
+    }, good);
+    const bad = [{ ...good, source: 'canon-cockpit' }, { ...good, type: 'kill' }, { ...good, mode: 'discard' }, { ...good, id: '' },
+      { ...good, session: 7 }, { ...good, ticket: undefined }, { ...good, project_root: 'x'.repeat(5000) }, 'end-session', null];
+    for (const m of bad) await page.evaluate(m => document.getElementById('r').contentWindow.postMessage(m, '*'), m);
+    await page.waitForTimeout(800);
+    expect(ends, 'a sibling frame or a wrong shape').toEqual([]);
+    expect(await liveSids(request, base)).toContain(sid);
+
+    await page.evaluate(m => document.getElementById('r').contentWindow.postMessage(m, '*'), good);   // the positive control
+    await expect.poll(() => ends.length).toBe(1);
+    await expect.poll(async () => (await liveSids(request, base)).includes(sid)).toBe(false);
   });
 });
 

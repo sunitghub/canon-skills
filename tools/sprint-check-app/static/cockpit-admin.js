@@ -4,6 +4,7 @@ import { cockpitConfirm, esc, escAttr, toast } from './cockpit-core.js';
 import { SCRATCH_ICON, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, onNotifyToggleChange, renderNotifySetting, renderSessionSurfaces, resumeInterrupted, sessionTime, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
 import { openSessionInTab, openTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
+import { canKill, canReap, confirmEnd } from './cockpit-end.js';
 
 export function renderAdminSessions(views){
   const box=document.getElementById('ad-sessions');
@@ -12,8 +13,8 @@ export function renderAdminSessions(views){
   document.getElementById('ad-tile-agents').textContent=views.length;
   document.getElementById('ad-tile-needs').textContent=needs;
   if(!views.length && !interrupted.length){ box.innerHTML='<div class="srow snone">No active agent sessions.</div>'; return; }
-  // Metadata only: the board holds no session token, so there is deliberately
-  // no Save & End / Stop here (t-391a) — Answer/Open jumps to the session's tab.
+  // The board holds no session token (t-391a): Answer/Open jumps to the session's tab, and Reap now / Kill go
+  // through the daemon's /relay page (t-3c9a), never a token here.
   box.innerHTML='<div class="ad-table-wrap"><table class="ad-table"><thead><tr>'+
     '<th>State</th><th>Session</th><th>Reaper</th><th></th></tr></thead><tbody>'+
     views.map((v,i)=>{
@@ -26,7 +27,9 @@ export function renderAdminSessions(views){
       `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
       `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd+inSession)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir+inSession)}</div></td>`+
       `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
-      `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;
+      `<td><div class="acts"><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button>`+
+      (canReap(v)?`<button class="ad-end" data-end="reap" data-i="${i}" title="Do now what the idle reaper would do">Reap now</button>`:'')+
+      (canKill(v)?`<button class="ad-end kill" data-end="kill" data-i="${i}" title="End now, without saving">Kill</button>`:'')+`</div></td></tr>`;
     }).join('')+
     interrupted.map(e=>{
       const proj=intrProj(e), pid=(proj||{}).id||'';
@@ -41,6 +44,7 @@ export function renderAdminSessions(views){
     }).join('')+
     '</tbody></table></div>';
   box.querySelectorAll('.ad-open').forEach(b=>b.addEventListener('click',()=>openSessionInTab(views[+b.dataset.i])));
+  box.querySelectorAll('.ad-end').forEach(b=>b.addEventListener('click',()=>confirmEnd(views[+b.dataset.i],b.dataset.end)));
   box.querySelectorAll('.intr-btn[data-id]').forEach(b=>b.addEventListener('click',()=>{
     const e=interrupted.find(x=>x.id===b.dataset.id); if(!e) return;
     if(b.dataset.act==='resume') resumeInterrupted(e); else dismissInterrupted(e.id);

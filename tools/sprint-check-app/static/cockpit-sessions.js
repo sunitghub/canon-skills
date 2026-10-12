@@ -4,6 +4,7 @@ import { esc, escAttr, toast } from './cockpit-core.js';
 import { fmtUptime, renderAdminSessions } from './cockpit-admin.js';
 import { _removeTab, openSessionInTab, openTabs, renderTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
+import { openSessionMenu } from './cockpit-end.js';
 
 export let liveTabIds=new Set();   // t-0db3: open tab ids whose project has a live agent session
 export let needsTabIds=new Set();  // t-824e: open tab ids whose project has a session waiting on you
@@ -282,7 +283,16 @@ export function renderSessionSurfaces(){
   // Measure every line before changing any, so the browser lays out once, not once per row.
   [...list.querySelectorAll('.ag-p')].filter(el=>el.scrollWidth>el.clientWidth).forEach(el=>{ el.textContent=el.dataset.short; });
   syncSharedWarnings(views);
-  list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(rail[+b.dataset.i])));
+  list.querySelectorAll('.ag-row').forEach(b=>{
+    const v=rail[+b.dataset.i];
+    b.addEventListener('click',()=>openSessionInTab(v));
+    // t-3c9a: Open / Reap now / Kill — right-click, or Shift+F10 / the ContextMenu key on the focused row.
+    b.addEventListener('contextmenu',e=>{ e.preventDefault(); openSessionMenu(v,e.clientX,e.clientY); });
+    b.addEventListener('keydown',e=>{
+      if(!(e.key==='ContextMenu'||(e.key==='F10'&&e.shiftKey))) return;
+      e.preventDefault(); const r=b.getBoundingClientRect(); openSessionMenu(v,r.left+24,r.bottom-4);
+    });
+  });
   list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
   // Projects cards: counts by state.
   for(const p of getProjects()){
