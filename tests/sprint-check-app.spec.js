@@ -55,6 +55,11 @@ async function openUpkeepView(page) {
   await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
 }
 
+// t-d2e1: the quote-breakout payload, and a scan for any on* attribute an escape bug would let it add.
+const XSS_ATTR = 'a"onmouseover="x';
+const onAttrs = page => page.evaluate(() => [...document.querySelectorAll('*')].flatMap(el =>
+  [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''} ${a.name}`)));
+
 
 // 1x1 transparent PNG, real decodable bytes (t-626d paste tests).
 const PASTE_PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
@@ -1932,6 +1937,61 @@ test.describe('board modal', () => {
     } finally {
       if (serverProcess) serverProcess.kill();
       fs.rmSync(fixtureDir, { recursive: true, force: true });
+    }
+  });
+
+  test('t-d2e1: a quote in a why-mode alternative path stays inside data-path, and shows as a quote', async ({ page }) => {
+    await page.route('**/api/why?*', route => {
+      const file = new URL(route.request().url()).searchParams.get('file');
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify({ file, results: [], message: 'none', alternatives: [XSS_ATTR] }) });
+    });
+    await page.goto(BASE);
+    await page.locator('#board-search').fill('why:a.js');
+    const link = page.locator('.why-alt-link');
+    await expect(link).toHaveCount(1);
+    expect(await link.getAttribute('data-path')).toBe(XSS_ATTR);                          // data-path round-trips
+    await expect(link).toHaveText(XSS_ATTR);                                              // text shows the quotes, not entities
+    expect(await onAttrs(page)).toEqual([]);
+  });
+
+  test('t-d2e1: a hostile in-progress ticket id stays text in the commit panel tip', async ({ page }) => {
+    const HOSTILE = 't-1</code><img src=x onerror="window.__pwn=1">';
+    await page.route('**/api/commit/**', route => route.fulfill({ contentType: 'application/json',
+      body: JSON.stringify({ hash: 'abcdef1234', subject: 's', author: 'a', date: '2026-10-12', body: '', related_ticket_ids: [], files: [] }) }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async id => {
+      const core = await import('/static/board-core.js');
+      core.state.tickets = [{ id, title: 'unrelated', status: 'in_progress', type: 'task' }];
+      const { openCommitPanel } = await import('/static/board-panels.js');
+      await openCommitPanel('abcdef1234');
+    }, HOSTILE);
+    const tip = page.locator('#co-tickets .commit-section-note');
+    await expect(tip).toContainText(`prefix commits with ${HOSTILE}`);
+    expect(await page.locator('#co-tickets img').count()).toBe(0);
+    expect(await onAttrs(page)).toEqual([]);
+    expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  });
+
+  test('t-d2e1: text with quotes still displays the quotes (card title and doc paragraph)', async ({ page }) => {
+    const id = `t-q${Date.now().toString(36).slice(-3)}`;
+    const dir = path.join(PROJECT_ROOT, '.tickets', id);
+    const title = `It's a "quoted" title`;
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'ticket.md'), ['---', `id: ${id}`, 'status: open', 'type: task', 'priority: 2', 'created: 2026-10-12T00:00:00Z', '---', `# ${title}`, '', `She said "don't" here.`, ''].join('\n'));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#board-search').fill(id);
+      const card = page.locator(`.card[data-id="${id}"]`);
+      await expect(card).toContainText(title);
+      expect(await card.innerText()).not.toMatch(/&quot;|&#39;/);
+      await card.click();
+      await expect(page.locator('#modal-overlay')).toHaveClass(/open/);
+      await expect(page.locator('#modal-overlay')).toContainText(`She said "don't" here.`);
+      expect(await page.locator('#modal-overlay').innerText()).not.toMatch(/&quot;|&#39;/);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 
@@ -4342,6 +4402,91 @@ test.describe('cockpit in board (t-ddc8)', () => {
         await expect.poll(() => board.locator('html').evaluate(() => window.__shellMsgs.slice(-1)[0])).toBe(type);
         await expect(page.locator('.tab[data-tab="proj-a"]')).toBeVisible();            // stays until the session ends
       }
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-d2e1: a quote in a worktree path stays inside the worktree row data-cwd', async ({ page }) => {
+      const id = `t-x${Date.now().toString(36).slice(-3)}`;
+      const wtPath = `/tmp/wt/${XSS_ATTR}`;
+      try {
+        writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'], worktreePreference: XSS_ATTR });
+        await stubCockpit(page);
+        await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true },
+            { path: wtPath, branch: XSS_ATTR, is_main: false, tickets_visible: true, ticket_present: true }]) }));
+        await page.route(`**/api/worktree-lock/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }) }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        const row = page.locator('.ck-worktree-row').filter({ hasText: XSS_ATTR });
+        await expect(row).toHaveCount(1);
+        expect(await row.getAttribute('data-cwd')).toBe(wtPath);                         // data-cwd round-trips
+        expect(await onAttrs(page)).toEqual([]);
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+      }
+    });
+
+    test('t-d2e1: a quote in the locked worktree path stays inside the rail\'s "Running in" tooltip', async ({ page }) => {
+      const id = `t-x${Date.now().toString(36).slice(-3)}`;
+      const wtPath = `/tmp/wt/${XSS_ATTR}`;
+      try {
+        writeTicket(id, 'in_progress', { acceptanceCriteria: ['- [ ] c'] });
+        await stubCockpit(page);
+        await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]) }));
+        await page.route(`**/api/worktree-lock/${id}`, route => route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify({ locked: true, cwd: wtPath, main_dirty: false }) }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        const lockLine = page.locator('.ck-worktree-sub', { hasText: 'Running in' });
+        await expect(lockLine).toHaveAttribute('title', wtPath);                           // the rail's lock tooltip round-trips
+        expect(await onAttrs(page)).toEqual([]);
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+      }
+    });
+
+    test('t-d2e1: a quote in the saved worktree preference stays inside the new-worktree input', async ({ page }) => {
+      const id = `t-x${Date.now().toString(36).slice(-3)}`;
+      try {
+        writeTicket(id, 'open', { acceptanceCriteria: ['- [ ] c'], worktreePreference: XSS_ATTR });
+        await stubCockpit(page);
+        await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
+          body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true, tickets_visible: true, ticket_present: true }]) }));
+        await page.goto(BASE);
+        await page.waitForLoadState('networkidle');
+        await page.locator('#board-search').fill(id);
+        await page.locator(`.card[data-id="${id}"] .card-start`).click();
+        await expect(page.locator('#cockpit-overlay')).toHaveClass(/open/);
+        await expect(page.locator('#ck-worktree-new-input')).toHaveValue(XSS_ATTR);       // value= round-trips
+        expect(await onAttrs(page)).toEqual([]);
+      } finally {
+        fs.rmSync(path.join(PROJECT_ROOT, '.tickets', id), { recursive: true, force: true });
+        await page.unrouteAll({ behavior: 'ignoreErrors' });
+      }
+    });
+
+    test('t-d2e1: a quote in a branch name stays inside the New Ticket worktree pill', async ({ page }) => {
+      await page.route('**/api/worktrees**', route => route.fulfill({ status: 200, contentType: 'application/json',
+        body: JSON.stringify([{ path: PROJECT_ROOT, branch: 'main', is_main: true },
+          { path: '/tmp/wt/q', branch: XSS_ATTR, is_main: false }]) }));
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      const pill = page.locator('#c-worktree-pills .create-pill', { hasText: XSS_ATTR });
+      await expect(pill).toHaveCount(1);
+      expect(await pill.getAttribute('data-wt')).toBe(XSS_ATTR);                          // data-wt round-trips
+      expect(await onAttrs(page)).toEqual([]);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
@@ -11135,6 +11280,42 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#up-detail')).toHaveClass(/open/);
   });
 
+  test('t-d2e1: a quote in a failed run\'s output stays inside the Error pill\'s tooltip', async ({ page }) => {
+    const output = `boom ${XSS_ATTR} and it's <b>done</b>`;
+    await stubUpkeep(page, { status: { status: 'error', report_path: '', output, finished_at: Date.now() / 1000 } });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await openUpkeepView(page);
+    const pill = page.locator('#up-card-context-check .up-status.err');
+    await expect(pill).toHaveText('Error');
+    await expect(pill).toHaveAttribute('title', output);                                 // title round-trips
+    expect(await onAttrs(page)).toEqual([]);
+  });
+
+  test('t-d2e1: the shell\'s esc() escapes & < > " \' and survives a 500-string fuzz', async ({ page }) => {
+    await stubUpkeep(page);
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    const r = await page.evaluate(async () => {
+      const { esc, escAttr } = await import('/static/cockpit-core.js');
+      const ENT = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };   // written independently of esc()
+      const decode = s => s.replace(/&amp;|&lt;|&gt;|&quot;|&#39;/g, m => ENT[m]);
+      let seed = 0x2d1e; const rnd = n => { seed = (seed * 1103515245 + 12345) >>> 0; return seed % n; };
+      const POOL = ['&', '<', '>', '"', "'", '&amp;', '&quot;', 'a', 'Z', ' ', '\n', '\t', '\u00e9', '\u2028', '\ud83d\ude00', '=', '/', '`'];
+      const bad = [];
+      for (let i = 0; i < 500; i++) {
+        let s = ''; const len = i === 0 ? 0 : i === 1 ? 5000 : rnd(40);
+        for (let j = 0; j < len; j++) s += POOL[rnd(POOL.length)];
+        const out = esc(s);
+        if (/["'<>]/.test(out) || decode(out) !== s) bad.push(s.slice(0, 40));
+      }
+      return { five: esc(`&<>"'`), same: escAttr(`a"b'c`) === esc(`a"b'c`), bad };
+    });
+    expect(r.five).toBe('&amp;&lt;&gt;&quot;&#39;');
+    expect(r.same).toBe(true);
+    expect(r.bad).toEqual([]);
+  });
+
   test('Run again on a skill with a report asks first, then runs it for the project (t-783a)', async ({ page }) => {
     await stubUpkeep(page, { status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 } });
     let capturedUrl = '', capturedBody = null;
@@ -11224,6 +11405,30 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     await page.locator('#se-card .dirnav-hidden-lbl input').check();
     await expect.poll(() => urls.filter(u => /[?&]hidden=1\b/.test(u)).map(u => new URL(u).searchParams.get('path'))).toEqual(['/tmp/proj-a']);
     await expect(page.locator('#se-card .dirnav-hidden-lbl input')).toBeChecked();
+  });
+
+  test('t-d2e1: a hostile check status stays text in the Skill Eval rows (no tag, no handler)', async ({ page }) => {
+    const HOSTILE = 'x"><img src=x onerror="window.__pwn=1">';
+    await setup(page, { check: { ...GOOD, checks: [...GOOD.checks, chk('x-hostile', 2, HOSTILE, 'evidence', 'fix')] } });
+    await pick(page);
+    await expect(page.locator('#se-card')).toContainText('x-hostile');
+    expect(await page.locator('#se-card img').count()).toBe(0);
+    expect(await onAttrs(page)).toEqual([]);
+    expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  });
+
+  test('t-d2e1: hostile case counts in a run summary stay text in the Skill Eval tiles', async ({ page }) => {
+    const done = { ok: true, status: 'done', finished_at: Date.now() / 1000, report_path: '/x/report.html',
+      summary: { casesTotal: '<svg onload="window.__pwn=3">', casesPassed: '<img src=x onerror="window.__pwn=2">', overallScore: 1, meanDelta: 0.5, costUsd: 0.42, cases: [] } };
+    await setup(page, { check: GOOD, statuses: [{ ok: true, status: 'never' }, done] });
+    await pick(page);
+    await page.locator('#se-card button:has-text("Run plugin eval")').click();
+    await page.locator('#cc-ok').click();
+    const tiles = page.locator('#se-card .se-tiles');
+    await expect(tiles).toContainText('<img src=x onerror="window.__pwn=2"> / <svg onload="window.__pwn=3">', { timeout: 10000 });
+    expect(await page.locator('#se-card .se-tiles img, #se-card .se-tiles svg').count()).toBe(0);
+    expect(await onAttrs(page)).toEqual([]);
+    expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
   });
 
   test('browse starts at the project root, cannot go above it, and checks the picked folder with ?project=', async ({ page }) => {

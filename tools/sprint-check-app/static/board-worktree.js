@@ -284,10 +284,7 @@ export async function renderCockpitWorktree(t) {
   if (lock.locked) {
     // t-816e: name the locked worktree on the button itself, not just in a hover title.
     const lockedLabel = worktreeLabelForCwd(lock.cwd);
-    // esc() escapes &<> but not quotes; the title is a double-quoted attribute,
-    // so quote-escape the label there (a branch/path label may contain a "). The
-    // button text content only needs esc(). (reviewer finding, t-816e)
-    const lockedLabelAttr = esc(lockedLabel).replace(/"/g, '&quot;');
+    const lockedLabelAttr = esc(lockedLabel);   // esc() is attribute-safe since t-d2e1 (t-816e had quote-escaped it here)
     html += `<button type="button" class="ck-worktree-unlock" id="ck-worktree-unlock" title="This ticket is locked to ${lockedLabelAttr} — clear the saved worktree so the next Start/Resume uses the one you pick">Unlock worktree (${esc(lockedLabel)})</button>`;
   }
   box.innerHTML = html;

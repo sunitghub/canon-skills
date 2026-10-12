@@ -62,7 +62,7 @@ export async function openCommitPanel(hash) {
       label = chips.length ? 'Likely related tickets' : 'Active sprint context';
       note  = chips.length
         ? `<div class="commit-section-note">No ticket IDs in commit — matched by keyword.</div>`
-        : `<div class="commit-section-note">No ticket IDs in commit. Tip: prefix commits with <code class="doc-code">${state.tickets.find(t=>t.status==='in_progress')?.id ?? 't-xxxx'}: </code></div>`;
+        : `<div class="commit-section-note">No ticket IDs in commit. Tip: prefix commits with <code class="doc-code">${esc(state.tickets.find(t=>t.status==='in_progress')?.id ?? 't-xxxx')}: </code></div>`;
       if (!chips.length) chips = state.tickets.filter(t => t.status === 'open' || t.status === 'in_progress');
     }
 

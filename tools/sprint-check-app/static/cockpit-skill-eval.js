@@ -12,7 +12,8 @@ const se={dir:'',check:null,err:'',open:false,cwd:'',hidden:false,trust:false,ru
 let sePoll=null;
 const SE_ICON={pass:'&#10003;',warn:'&#9650;',fail:'&#10005;',lock:'&#128274;'};
 const SE_LABEL={pass:'Pass',warn:'Warning',fail:'Fail',lock:'Locked'};
-const sePill=(k,t)=>`<span class="se-pill ${k}">${SE_ICON[k]} ${esc(t||SE_LABEL[k])}</span>`;
+// t-d2e1: k comes from the server's check results, so it is escaped, and only an own key picks an icon or label.
+const sePill=(k,t)=>`<span class="se-pill ${esc(k)}">${Object.hasOwn(SE_ICON,k)?SE_ICON[k]:''} ${esc(t||(Object.hasOwn(SE_LABEL,k)?SE_LABEL[k]:k))}</span>`;
 const seQuery=()=>'project='+encodeURIComponent(upProjectId)+'&skill_dir='+encodeURIComponent(se.dir);
 const seWorst=rows=>rows.some(r=>r.status==='fail')?'fail':rows.some(r=>r.status==='warn')?'warn':'pass';
 function seStageWord(rows){
@@ -45,7 +46,7 @@ function seResult(st){
   return `<div class="se-tiles">`
     +`<div class="se-tile"><div class="k">With the skill</div><div class="v">${pct(m.overallScore)}</div></div>`
     +`<div class="se-tile"><div class="k">Skill effect (mean Δ)</div><div class="v">${m.meanDelta==null?'—':(m.meanDelta>=0?'+':'')+m.meanDelta.toFixed(2)}</div></div>`
-    +`<div class="se-tile"><div class="k">Cases passed</div><div class="v">${m.casesPassed??'—'} / ${m.casesTotal??'—'}</div></div>`
+    +`<div class="se-tile"><div class="k">Cases passed</div><div class="v">${esc(m.casesPassed??'—')} / ${esc(m.casesTotal??'—')}</div></div>`
     +`<div class="se-tile"><div class="k">Est. cost (list price)</div><div class="v">${m.costUsd==null?'—':'$'+m.costUsd.toFixed(2)}</div></div></div>`
     +(cases?`<div class="se-note" style="margin-top:10px">Score per case: <b style="color:var(--accent)">with</b> vs <b>without</b> the skill</div>${cases}`:'')
     +`<div class="rc-actions" style="margin-top:12px">${link}${when?`<span class="se-note" style="align-self:center">Last run — ${esc(when)}</span>`:''}</div>`;

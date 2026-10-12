@@ -3,12 +3,17 @@ import { readiness } from './board-render.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+// t-d2e1: esc() escapes quotes too, so its output is safe in text AND in a quoted attribute (it used to leave
+// `"` alone, and attribute sinks that used it instead of escAttr could be broken out of). escAttr is the same now.
 export function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
-// esc() leaves `"` alone, so text going inside an attribute needs this one (t-6328 lesson).
 export function escAttr(s) {
-  return esc(s).replace(/"/g, '&quot;');
+  return esc(s);
+}
+// The inverse of esc(), for text md() has already escaped (only the five entities esc() produces).
+function unescapeHtml(s) {
+  return s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e]);
 }
 
 export function displayTicketId(t) {
@@ -120,7 +125,7 @@ export function outcomeRatio(type, tickets) {
   const o = withOutcome && withOutcome.type_outcome;
   if (!o || !o.closed) return '';
   const good = o.clean / o.closed > 0.5;
-  const detail = `${o.clean} of ${o.closed} past ${esc(type || 'task')} tickets closed without eval rework`;
+  const detail = `${esc(o.clean)} of ${esc(o.closed)} past ${esc(type || 'task')} tickets closed without eval rework`;
   return `<span class="outcome-dot ${good ? 'outcome-good' : 'outcome-mixed'}" tabindex="0" role="img" aria-label="${detail}" data-tooltip="${detail}"></span>`;
 }
 
@@ -275,8 +280,8 @@ export function renderFeatureRefPlaceholder(body) {
   if (!featureRefRe.test(raw) || raw.includes('..')) {
     return `<div class="doc-scenario doc-scenario-ref doc-scenario-error">Invalid feature reference: ${esc(raw)} (expected features/&lt;name&gt;.feature)</div>`;
   }
-  const attr = esc(raw).replace(/"/g, '&quot;');
-  const runnerAttr = esc(runner).replace(/"/g, '&quot;');
+  const attr = esc(raw);
+  const runnerAttr = esc(runner);
   return `<div class="doc-scenario doc-scenario-ref" data-feature-src="${attr}" data-runner="${runnerAttr}">Loading ${esc(raw)}…</div>`;
 }
 
@@ -353,8 +358,11 @@ export function md(raw, ticketId) {
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
-      const url = (ticketId ? resolveMockupSrc(src, ticketId) : src).replace(/"/g, '&quot;');
-      return `<img class="doc-visual-img" src="${url}" alt="${alt.replace(/"/g, '&quot;')}" loading="lazy">`;
+      // t-d2e1: md() escaped the whole doc above, so the path is decoded back to its real characters before it is
+      // URL-encoded, then escaped once for the attribute (it's.png, a&b.png). alt is already escaped text.
+      const raw = unescapeHtml(src);
+      const url = esc(ticketId ? resolveMockupSrc(raw, ticketId) : raw);
+      return `<img class="doc-visual-img" src="${url}" alt="${alt}" loading="lazy">`;
     })
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
     .replace(/^\*\*([^*\n][^\n]*)$/gm,'<strong style="color:var(--text)">$1</strong>')
