@@ -5,7 +5,7 @@
       "openai": "gpt-6-luna"
     },
     "light": {
-      "anthropic": "claude-haiku-4-5-20251001",
+      "anthropic": "claude-haiku-5-5",
       "openai": "gpt-6-luna"
     }
   },
@@ -40,12 +40,38 @@
         ]
       },
       {
+        "desc": "Speed and capability for everyday coding, agent, and enterprise work.",
+        "id": "claude-sonnet-5-5",
+        "input_price": 2,
+        "name": "Claude Sonnet 5.5",
+        "output_price": 10,
+        "reasoning": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
         "alias": "sonnet",
         "desc": "The best combination of speed and intelligence.",
         "id": "claude-sonnet-5",
         "input_price": 2,
         "name": "Claude Sonnet 5",
         "output_price": 10,
+        "reasoning": [
+          "minimal",
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      {
+        "desc": "The fastest, lowest-cost Claude model.",
+        "id": "claude-haiku-5-5",
+        "input_price": 0.1,
+        "name": "Claude Haiku 5.5",
+        "output_price": 0.5,
         "reasoning": [
           "minimal",
           "low",
@@ -76,6 +102,21 @@
         "name": "GPT-6 Astra",
         "output_price": 50,
         "reasoning": [
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max"
+        ]
+      },
+      {
+        "desc": "Astra-level performance for coding and agentic work at Sol pricing.",
+        "id": "gpt-6.1-sol",
+        "input_price": 2,
+        "name": "GPT-6.1 Sol",
+        "output_price": 10,
+        "reasoning": [
+          "none",
           "low",
           "medium",
           "high",
