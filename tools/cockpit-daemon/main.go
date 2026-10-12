@@ -112,12 +112,13 @@ type server struct {
 }
 
 type session struct {
-	scratchWT  *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
-	title      string           // t-f553: a scratch session's user-given title (sanitized)
-	startClean bool             // t-86fe: its checkout had no uncommitted changes when it started — Discard is offered only then
-	sid        string
-	ticket     string
-	token      string
+	scratchWT    *scratchWorktree // t-e162: daemon-created worktree to remove on exit if unused
+	title        string           // t-f553: a scratch session's user-given title (sanitized)
+	startClean   bool             // t-86fe: its checkout had no uncommitted changes when it started — Discard is offered only then
+	scratchNoted bool             // t-3c9a: its leftovers are already in HANDOFF ## Scratch (guarded by mu); one end, one note
+	sid          string
+	ticket       string
+	token        string
 	// statusToken authorizes ONLY POST /session/<id>/status. Separate from token
 	// because the needs-you hook's credential is reachable by the spawned agent.
 	statusToken string
@@ -2478,6 +2479,26 @@ func (s *server) reapIdleSessions() {
 	}
 }
 
+// noteScratchOnce writes a scratch session's HANDOFF note unless another end already has (t-3c9a break-it:
+// concurrent Kills, or a Kill during Reap now / an idle reap, each noted the session again). The claim is taken
+// under se.mu and given back if the write fails, so a failed note never stops a later one.
+func (s *server) noteScratchOnce(se *session, wt *scratchWorktree, total, commits int, why string) error {
+	se.mu.Lock()
+	if se.scratchNoted {
+		se.mu.Unlock()
+		return nil
+	}
+	se.scratchNoted = true
+	se.mu.Unlock()
+	err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, s.noGit(se.projectRoot), why))
+	if err != nil {
+		se.mu.Lock()
+		se.scratchNoted = false
+		se.mu.Unlock()
+	}
+	return err
+}
+
 // reapBlockedLocked says why a session can't be reaped, or "" when it can (caller holds se.mu). Shared by
 // the idle reaper and Reap now (t-3c9a), so the two can't drift apart.
 const reapBlockedMenu = "a Copilot menu is waiting"
@@ -2517,7 +2538,8 @@ func (s *server) handleEndSession(w http.ResponseWriter, r *http.Request) {
 		ProjectRoot string `json:"project_root"`
 		Mode        string `json:"mode"`
 	}
-	if err := json.NewDecoder(io.LimitReader(r.Body, 4096)).Decode(&body); err != nil || body.Session == "" || (body.Mode != "reap" && body.Mode != "kill") {
+	// 16 KiB: the /relay page lets project_root be up to 4096 characters, plus the rest of the body.
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&body); err != nil || body.Session == "" || (body.Mode != "reap" && body.Mode != "kill") {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -2572,7 +2594,7 @@ func (s *server) handleEndSession(w http.ResponseWriter, r *http.Request) {
 		// Kill skips the save, not the note: a scratch session's leftovers are kept and noted like the reaper's (user, t-3c9a).
 		_, total, commits, _, err := s.leftovers(se.projectRoot, se.ticket, cwd, wt)
 		if err == nil && (total > 0 || commits > 0) {
-			err = noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, s.noGit(se.projectRoot), "left by Kill"))
+			err = s.noteScratchOnce(se, wt, total, commits, "left by Kill")
 		}
 		if err != nil {
 			reply["note_error"] = "could not note its changes in HANDOFF.md: " + err.Error()
@@ -2617,7 +2639,7 @@ func (s *server) endIdleScratch(se *session, why string) {
 		return
 	}
 	if total > 0 || commits > 0 {
-		if err := noteScratchLeftover(se.projectRoot, scratchNoteLine(se, wt, total, commits, s.noGit(se.projectRoot), why)); err != nil {
+		if err := s.noteScratchOnce(se, wt, total, commits, why); err != nil {
 			keep("could not note its changes in HANDOFF.md", err)
 			return
 		}

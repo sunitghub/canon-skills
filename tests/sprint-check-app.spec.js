@@ -4548,6 +4548,25 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('t-3c9a: after a daemon restart (the framed relay holds the old token) the shell re-frames it and retries once', async ({ page }) => {
+      let loads = 0;
+      const calls = [];
+      await page.exposeBinding('__relayCall', (_src, d) => { calls.push(d); return d.__boot === 1 ? { status: 401, text: 'unauthorized\n' } : { status: 200, text: '{"ok":true,"mode":"kill"}' }; });
+      await page.route(`http://${FAKE_DAEMON_ADDR}/relay`, r => { loads++; return r.fulfill({ status: 200, contentType: 'text/html', body:
+        `<!doctype html><script>addEventListener("message",async e=>{if(e.source!==parent)return;const d=e.data;` +
+        `const r=await window.__relayCall({...d,__boot:${loads}});e.source.postMessage({source:"canon-relay",type:"end-session-result",id:d.id,status:r.status,text:r.text},e.origin);});</script>` }); });
+      await openShell(page, endRows());
+      await page.locator('#nav-admin').click();
+      const kill = () => page.locator('#ad-sessions tbody tr', { hasText: 't-bbb2' }).locator('.ad-end', { hasText: 'Kill' }).click();
+      await kill();
+      await page.locator('#cc-ok').click();
+      await expect(page.locator('#toast')).toHaveText('Killed “t-bbb2”.');
+      expect(loads, 'the relay was framed again after the 401').toBe(2);
+      expect(calls.map(c => c.__boot)).toEqual([1, 2]);
+      await expect(page.locator('#end-relay')).toHaveCount(1);                              // the stale frame is gone
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('t-3c9a: after the confirm the shell re-checks the session and sends nothing if it ended or stopped being idle', async ({ page }) => {
       const calls = await stubRelay(page);
       await openShell(page, endRows());

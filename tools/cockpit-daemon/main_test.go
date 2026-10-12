@@ -8038,3 +8038,47 @@ func TestIdleReaperNeverStartsOnANeedsYouSession(t *testing.T) {
 		t.Fatal("the idle reaper started a save on a session that is waiting on you")
 	}
 }
+
+// t-3c9a break-it: one end, one note. Concurrent Kills, or a Kill while Reap now (or the idle reaper) is already
+// ending a scratch session, must not write the HANDOFF note again.
+func TestKillNotesAScratchSessionOnce(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	count := func(id string) int {
+		b, _ := os.ReadFile(filepath.Join(root, "HANDOFF.md"))
+		return strings.Count(string(b), id+": ")
+	}
+	st := startScratchSession(t, base, "s-dd04", root)
+	os.WriteFile(filepath.Join(root, "a.txt"), []byte("edited\n"), 0o644)
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); endSessionReq(t, base, bootTok, endBody(s, st.Session, "kill")) }()
+	}
+	wg.Wait()
+	if n := count("s-dd04"); n != 1 {
+		t.Errorf("8 concurrent Kills wrote %d notes, want 1", n)
+	}
+
+	st2 := startScratchSession(t, base, "s-ee05", root)
+	makeIdle(s, st2.Session)
+	body := endBody(s, st2.Session, "kill")
+	if code, _ := endSessionReq(t, base, bootTok, endBody(s, st2.Session, "reap")); code != http.StatusAccepted {
+		t.Fatalf("reap: want 202, got %d", code)
+	}
+	endSessionReq(t, base, bootTok, body)
+	deadline := time.Now().Add(5 * time.Second)
+	for !sessionGone(s, st2.Session) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	waitSnapshotGone(t, s, "s-ee05")
+	snapMu.Lock()
+	snapMu.Unlock()
+	// The reap's own goroutine may still be writing its note after the Kill ended the session: wait for one, then
+	// make sure no second one follows.
+	for deadline := time.Now().Add(3 * time.Second); count("s-ee05") == 0 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+	}
+	time.Sleep(300 * time.Millisecond)
+	if n := count("s-ee05"); n != 1 {
+		t.Errorf("Reap now then Kill wrote %d notes, want 1", n)
+	}
+}

@@ -22,7 +22,7 @@ function mountRelay(){
     await new Promise((res,rej)=>{ frame.addEventListener('load',res,{once:true}); frame.addEventListener('error',rej,{once:true}); document.body.appendChild(frame); });
   })();
   relay={frame:null, origin:'', ready};
-  ready.catch(()=>{ if(relay&&relay.frame) relay.frame.remove(); relay=null; });   // try again next time
+  ready.catch(dropRelay);   // try again next time
   return ready;
 }
 window.addEventListener('message',e=>{
@@ -31,14 +31,24 @@ window.addEventListener('message',e=>{
   if(!d||d.source!=='canon-relay'||d.type!=='end-session-result'||!pending.has(d.id)) return;
   pending.get(d.id)({status:d.status, text:String(d.text||'')}); pending.delete(d.id);
 });
-async function sendEnd(v,mode){
-  try{ await mountRelay(); }catch(err){ return {status:0, text:err.message||'The Cockpit daemon isn\u2019t reachable.'}; }
+function dropRelay(){ if(relay&&relay.frame) relay.frame.remove(); relay=null; }
+function sendOnce(v,mode){
   const id='e'+(++seq)+'-'+Date.now();
   return new Promise(res=>{
     const t=setTimeout(()=>{ if(pending.delete(id)) res({status:0, text:'The Cockpit daemon didn\u2019t answer. If it is older than this page, restart it from Admin.'}); },RELAY_TIMEOUT);
     pending.set(id,r=>{ clearTimeout(t); res(r); });
     relay.frame.contentWindow.postMessage({source:'canon-cockpit-shell', type:'end-session', id, session:v.sid, ticket:v.ticket||v.scratch, project_root:v.proot, mode}, relay.origin);
   });
+}
+async function sendEnd(v,mode){
+  for(let attempt=0;;attempt++){
+    try{ await mountRelay(); }catch(err){ return {status:0, text:err.message||'The Cockpit daemon isn\u2019t reachable.'}; }
+    const r=await sendOnce(v,mode);
+    // A relay framed before a daemon restart holds the old boot token (401), or belongs to a daemon that is gone (no
+    // answer): drop it and try once more with a fresh one (break-it).
+    if((r.status===401||r.status===0)&&attempt===0){ dropRelay(); continue; }
+    return r;
+  }
 }
 
 // What the idle reaper would act on: a live session at its prompt. Never needs-you or working (the daemon says why).
