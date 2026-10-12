@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- t-3c9a: the Cockpit shell frames this page hidden and asks it to Reap now / Kill one session. The boot
+     token stays in the daemon's origin (t-ddc8): this page is the only thing that sends it. It answers only its
+     own parent on a loopback origin, and only an exact message; the daemon re-checks everything. -->
+<meta charset="utf-8"><title>canon relay</title>
+<script>
+(function(){
+  var TOKEN = "__COCKPIT_TOKEN__";
+  var LOOPBACK_ORIGIN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/;
+  var str = function(v, max){ return typeof v === "string" && v.length > 0 && v.length <= max; };
+  window.addEventListener("message", function(e){
+    if(e.source !== window.parent || window.parent === window) return;
+    if(!LOOPBACK_ORIGIN.test(e.origin)) return;
+    var d = e.data;
+    if(!d || d.source !== "canon-cockpit-shell" || d.type !== "end-session") return;
+    if(!str(d.id, 64) || !str(d.session, 64) || !str(d.ticket, 16) || !str(d.project_root, 4096)) return;
+    if(d.mode !== "reap" && d.mode !== "kill") return;
+    var reply = function(status, text){
+      e.source.postMessage({ source: "canon-relay", type: "end-session-result", id: d.id, status: status, text: text }, e.origin);
+    };
+    fetch("/end-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + TOKEN },
+      body: JSON.stringify({ session: d.session, ticket: d.ticket, project_root: d.project_root, mode: d.mode })
+    }).then(function(r){ return r.text().then(function(t){ reply(r.status, t.slice(0, 500)); }); })
+      .catch(function(){ reply(0, "the Cockpit daemon did not answer"); });
+  });
+})();
+</script>
