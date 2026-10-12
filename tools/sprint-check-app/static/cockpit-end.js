@@ -3,7 +3,8 @@
 // re-checks everything; the shell re-checks the session after the confirm so an answer about one state can't act on another.
 import { cockpitConfirm, toast } from './cockpit-core.js';
 import { openMenu, openSessionInTab } from './cockpit-tabs.js';
-import { fmtDur, pollSessions, sessionView, ticketTitle } from './cockpit-sessions.js';
+import { _projKey, fmtDur, pollSessions, sessionView, ticketTitle } from './cockpit-sessions.js';
+import { getProjects } from './cockpit-projects.js';
 
 let relay=null;          // {frame, origin, ready: Promise}
 const pending=new Map(); // request id \u2192 resolve
@@ -102,4 +103,19 @@ export function openSessionMenu(v,x,y){
     {sep:true},
     {label:'Kill\u2026', hint:'no save', danger:true, disabled:!canKill(v), title:canKill(v)?'End now, without saving':'Not started yet', fn:()=>confirmEnd(v,'kill')},
   ],x,y);
+}
+
+// Prefix then t (t-3c9a): the menu for a project tab's agent session, under that tab. id is the session the tab's
+// board has open (a ticket or scratch id, or '' for none); with none open, a project with one live session uses it.
+export async function openTabSessionMenu(pid,id){
+  const proj=getProjects().find(p=>p.id===pid); if(!proj) return;
+  let rows=null;
+  try{ const r=await fetch('/api/cockpit-sessions'); if(r.ok) rows=await r.json(); }catch(e){}
+  if(!Array.isArray(rows)){ toast('Couldn\u2019t reach the Cockpit daemon.'); return; }
+  const here=rows.map(sessionView).filter(v=>v.sid&&_projKey(v.proot)===_projKey(proj.path));
+  const v=(id&&here.find(x=>x.ticket===id||x.scratch===id))||(here.length===1?here[0]:null);
+  if(!v){ toast(here.length ? 'Several agent sessions in '+proj.name+': open one in this tab, or right-click its row under Agents.' : 'No agent session in '+proj.name+'.'); return; }
+  const tab=document.querySelector('.tab.project[data-tab="'+(window.CSS&&CSS.escape?CSS.escape(pid):pid)+'"]');
+  const r=tab?tab.getBoundingClientRect():{left:240,bottom:40};
+  openSessionMenu(v,r.left,r.bottom+4);
 }

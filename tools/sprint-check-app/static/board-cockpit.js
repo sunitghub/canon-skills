@@ -714,6 +714,11 @@ export function initCockpit() {
       if (typeof d.ticket === 'string' && COCKPIT_TICKET_ID.test(d.ticket)) openTicketWhenLoaded(d.ticket, 20);
       return;
     }
+    if (d.type === 'session-menu-request') {               // t-3c9a: prefix then t. Says which live session this board has open (or none); the shell does the rest
+      const id = cockpitState && !cockpitState._ending && sessionIsLive() ? String(cockpitState.id || '') : '';
+      try { window.parent.postMessage({ source: 'canon-board', type: 'session-menu', tab: SHELL_TAB, id }, location.origin); } catch {}
+      return;
+    }
     if (d.type === 'end-session-request') {                // t-a198: prefix then e. Opens the existing confirmation for a LIVE session; never ends anything itself
       if (cockpitState && !cockpitState._ending && sessionIsLive()) openLeaveConfirm();
       return;

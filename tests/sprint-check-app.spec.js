@@ -4240,7 +4240,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const rowHeights = await page.locator('#keys-sheet .keys-table td:last-child').evaluateAll(els => els.map(e => Math.round(e.getBoundingClientRect().height)));
       expect(Math.max(...rowHeights), 'no description wraps onto a second line').toBeLessThanOrEqual(30);
       const keys = await page.locator('#keys-sheet .keys-table kbd').allTextContents();
-      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', '/', '?', 'Esc']) expect(keys, `the sheet lists ${k}`).toContain(k);
+      for (const k of ['1', '9', 'f', 'l', 'n', 'b', 'p', 'a', 'x', 'v', '-', 'V', '_', 'o', 's', 'r', 'u', 'e', 't', '/', '?', 'Esc']) expect(keys, `the sheet lists ${k}`).toContain(k);
       const lastRow = await bbox(page, '#keys-sheet .keys-grid > section:first-child .keys-table:last-child tr:last-child'), closeBtn = await bbox(page, '#keys-close');
       expect(closeBtn.y - (lastRow.y + lastRow.height), 'the Close button has room below the last row').toBeGreaterThanOrEqual(16);
       const box = await bbox(page, '#keys-sheet .keys-modal');
@@ -4564,6 +4564,42 @@ test.describe('cockpit in board (t-ddc8)', () => {
       expect(loads, 'the relay was framed again after the 401').toBe(2);
       expect(calls.map(c => c.__boot)).toEqual([1, 2]);
       await expect(page.locator('#end-relay')).toHaveCount(1);                              // the stale frame is gone
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: ctrl+. then t opens the session menu for this tab\'s agent, asking its board which session is open', async ({ page }) => {
+      await stubRelay(page);
+      await openShell(page, endRows());
+      await boardsKeyReady(page, ['proj-a']);
+      await pressPrefix(page, 't');   // the real board answers: no cockpit open, and proj-a has several sessions
+      await expect(page.locator('#toast')).toHaveText('Several agent sessions in proj-a: open one in this tab, or right-click its row under Agents.');
+      await expect(page.locator('#tabmenu')).toBeHidden();
+      // the board's answer naming its open session (as it does with a live cockpit open)
+      const reply = id => page.frameLocator('#view-proj-a iframe').locator('body').evaluate(async (_, id) => {
+        const { SHELL_TAB } = await import('/static/board-core.js');
+        window.parent.postMessage({ source: 'canon-board', type: 'session-menu', tab: SHELL_TAB, id }, location.origin);
+      }, id);
+      await reply('t-aaa1');
+      await expect(page.locator('#tabmenu')).toBeVisible();
+      await expect(page.locator('#tabmenu button').nth(1)).toBeEnabled();                  // t-aaa1 is idle: Reap now is on
+      const tab = await page.locator('.tab.project[data-tab="proj-a"]').boundingBox(), menu = await page.locator('#tabmenu').boundingBox();
+      expect(menu.y).toBeGreaterThanOrEqual(tab.y + tab.height);                           // under the tab
+      await page.locator('#tabmenu button').nth(2).click();
+      await expect(page.locator('#cc-title')).toHaveText('Kill “t-aaa1”?');
+      await page.keyboard.press('Escape');
+      await reply('t-bbb2');
+      await expect(page.locator('#tabmenu button').nth(1)).toBeDisabled();                 // working
+      await page.keyboard.press('Escape');
+      await page.route('**/api/cockpit-sessions', sessionsBody(endRows().filter(r => r.session === 'e2')));   // one session left in proj-a
+      await reply('');
+      await expect(page.locator('#tabmenu')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await page.route('**/api/cockpit-sessions', sessionsBody([]));
+      await reply('');
+      await expect(page.locator('#toast')).toHaveText('No agent session in proj-a.');
+      await page.evaluate(async () => (await import('/static/cockpit-tabs.js')).activateTab('projects'));
+      await pressPrefix(page, 't');
+      await expect(page.locator('#toast')).toHaveText('Open a project tab first — or right-click a row under Agents');
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

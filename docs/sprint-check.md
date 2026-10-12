@@ -313,8 +313,9 @@ sprint agent without leaving the browser — no second terminal.
   reaped; a done one is. Admin shows both timeouts, and the ticket cockpit shows the
   countdown next to End Session.
 - **Reap now / Kill (`t-3c9a`):** end a session you aren't attached to. Right-click an
-  Agents row (or Shift+F10 on it) for **Open / Reap now / Kill…**; Admin's session rows
-  have the same two buttons next to Open. **Reap now** does what the idle reaper would:
+  Agents row (or Shift+F10 on it) for **Open / Reap now / Kill…**, or press the prefix
+  then **t** for the menu of the active tab's agent; Admin's session rows have the same
+  two buttons next to Open. **Reap now** does what the idle reaper would:
   a ticket session is asked to save, then ends; a scratch session's leftovers are noted
   in `HANDOFF.md` `## Scratch`, then it ends. It is offered only for an idle or done
   session, never one that needs you, is working, or shows a Copilot menu. **Kill** ends
