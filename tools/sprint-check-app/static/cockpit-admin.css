@@ -1,0 +1,126 @@
+  /* ---- Admin > Model Tiers (t-7e36) ---- */
+  .mt-wrap{margin-bottom:16px}
+  .mt-openai-note{margin:2px 2px 14px;max-width:440px;color:var(--text-muted);font-size:12px;line-height:1.5}
+  .mt-defaults{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  @media (max-width:680px){.mt-defaults{grid-template-columns:1fr}}
+  .mt-default-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .mt-default-card .setting-k{margin-bottom:1px}
+  .mt-default-card .setting-d{margin-bottom:10px}
+  .mt-default-card .mt-effort-note{margin:10px 0 0}
+  .mt-picker-row{display:flex;gap:8px;flex-wrap:wrap}
+  .mt-picker{flex:1;min-width:140px;display:flex;align-items:center;gap:7px;border:1px solid var(--border-muted);border-radius:8px;padding:7px 9px;background:var(--bg)}
+  /* Solid, not transparent: Edge on Windows draws the native popup from the select's own colours (t-294b). */
+  .mt-picker select{appearance:none;border:none;background:var(--bg);color:var(--text);font-size:12.5px;font-weight:600;width:100%;cursor:pointer}
+  .mt-picker .mt-prov{font-size:10px;color:var(--text-dim);font-family:ui-monospace,monospace;white-space:nowrap}
+  .mt-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border-muted);margin-bottom:12px}
+  html[data-theme="light"] .mt-tabs{border-bottom-color:var(--border)}   /* t-83c9: the light --bg (#e8e8f0) is too close to --border-muted for this underline */
+  .mt-tab{padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer}
+  .mt-tab.active{color:var(--text);border-bottom-color:var(--accent)}
+  .mt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px}
+  .mt-card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:8px}
+  .mt-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+  .mt-card-name{font-size:13px;font-weight:650}
+  .mt-badge{font-size:9px;font-weight:700;letter-spacing:.03em;padding:2px 6px;border-radius:5px;text-transform:uppercase;white-space:nowrap;background:var(--accent-dim);color:var(--accent)}
+  .mt-card-desc{font-size:11px;color:var(--text-dim);line-height:1.4;min-height:2.6em}
+  .mt-card-id{display:flex;align-items:center;gap:6px;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--text-body);background:var(--bg);border:1px solid var(--border-muted);border-radius:6px;padding:4px 7px}
+  .mt-alias-label{color:var(--text-dim);flex-shrink:0}
+  .mt-card-price{display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-body);padding-top:6px;border-top:1px solid var(--border-muted)}
+  .mt-card-actions{display:flex;justify-content:flex-end;gap:10px;font-size:10.5px}
+  .mt-card-actions a{color:var(--text-muted);cursor:pointer;text-decoration:none}
+  .mt-card-actions a:hover{color:var(--text)}
+  .mt-card-actions a.danger:hover{color:var(--col-discarded)}
+  /* t-294b: cards are read-only until Edit; inputs only in edit mode. */
+  .mt-card-actions button{font:inherit;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer}
+  .mt-card-actions button:hover:not(:disabled){color:var(--text);border-color:var(--border-hover)}
+  .mt-card-actions button:disabled{opacity:.45;cursor:default}
+  .mt-card-actions button.mt-save{background:var(--accent);border-color:var(--accent);color:#fff}
+  .mt-card.editing{border-color:var(--accent)}
+  .mt-field{display:flex;flex-direction:column;gap:3px;font-size:10px;color:var(--text-dim)}
+  .mt-field input{font:inherit;font-size:12px;color:var(--text);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:5px 7px;width:100%}
+  .mt-field input:focus{outline:none;border-color:var(--accent)}
+  .mt-field-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .mt-card-err{font-size:10.5px;color:var(--col-discarded)}
+  .mt-add-card{border:1px dashed var(--border-hover);border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:110px;color:var(--text-muted);font-size:12.5px;cursor:pointer}
+  .mt-add-card:hover{border-color:var(--accent);color:var(--accent)}
+  .sessions{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:6px 4px}
+  .slabel{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-body);padding:10px 14px 6px}
+  .srow{display:flex;align-items:center;gap:10px;padding:9px 14px;font-size:12.5px;border-top:1px solid var(--border-muted)}
+  .srow .snone{color:var(--text-muted);padding:6px 4px}
+  /* t-824e: session state, owned by the daemon (/sessions "state") */
+  .st{--st:var(--text-muted)}
+  .stc,.st .ag-s,.st .stcell{color:var(--st)}
+  .st-needs-you{--st:var(--st-need)} .st-working,.st-running{--st:var(--st-work)} .st-done{--st:var(--st-done)} .st-idle{--st:var(--text-muted)}
+  .sdot{width:7px;height:7px;border-radius:50%;background:var(--st);flex-shrink:0}
+  .st-needs-you .sdot{outline:1.5px solid var(--st-need);outline-offset:2px}   /* ringed dot, like Herdr's blocked */
+  .st-idle .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--st-idle)}   /* hollow ring */
+  .tab .live.needs{background:var(--st-need);box-shadow:0 0 6px var(--st-need)}
+  /* t-d9e6: sessions that were running when the daemon stopped */
+  .intr-banner{flex-shrink:0;margin:10px 14px 0;border:1px solid color-mix(in srgb, var(--st-need) 45%, var(--border, #444));background:color-mix(in srgb, var(--st-need) 8%, transparent);border-radius:10px;padding:12px 14px;font-size:12.5px}
+  .intr-head{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;margin-bottom:8px}
+  .intr-head span{flex:1}
+  .intr-row{display:flex;align-items:flex-start;gap:10px;padding:8px 0 2px;border-top:1px solid color-mix(in srgb, var(--text-muted) 20%, transparent)}
+  .intr-what{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.5}
+  .intr-what b{font-family:ui-monospace,monospace;font-weight:600;margin-right:6px}
+  .intr-meta{color:var(--text-muted);margin-left:8px}
+  .intr-reason{display:block;color:var(--text-muted);font-style:italic}
+  .intr-btn{border:1px solid var(--text-muted);background:transparent;color:var(--text);border-radius:7px;padding:3px 10px;font-size:12px;cursor:pointer;white-space:nowrap;transition:background .12s ease,border-color .12s ease,color .12s ease}
+  .intr-btn:hover{border-color:var(--text);background:var(--border-muted)}
+  .intr-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  .intr-btn.primary{border-color:var(--accent);color:var(--accent)}
+  .intr-btn.primary:hover{background:var(--accent-dim);border-color:var(--accent);color:var(--accent)}
+  .st-stopped{--st:var(--st-need)} .st-stopped .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--st)}
+  .ad-table .s1 .s1meta{font-size:11.5px;font-weight:400;color:var(--text-muted);margin-left:8px}
+  .nav a .nav-bubble{background:color-mix(in srgb,var(--st-need) 22%,transparent);color:var(--st-need);font-weight:700}
+  .nav a .nav-bubble[hidden]{display:none}
+  .ad-table .st-stopped .s1{white-space:normal;overflow:visible}
+  .ad-table .s3{font-size:11.5px;color:var(--text-muted);font-style:italic;white-space:normal}
+  .ad-table .acts{display:flex;gap:6px;justify-content:flex-end}
+  .side{min-height:0} .side .foot,.side .nav{flex-shrink:0} /* a long Agents list scrolls; the footer stays put */
+  .agents{padding:0 10px 6px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0}
+  /* t-e69b: rows follow the t-f139 mockup — dot | id + title | agent code, state line below */
+  .ag-label{display:flex;justify-content:space-between;align-items:baseline;padding-right:18px;border-top:1px solid var(--border-muted);margin-top:8px;padding-top:14px;font-size:14px;letter-spacing:0;text-transform:none;color:var(--text-body)}
+  .ag-label span+span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted)}
+  .ag-empty{font-size:12px;color:var(--text-muted);padding:4px 8px}
+  /* t-47f1: scratch sessions */
+  .scr-ico{width:16px;height:16px;flex-shrink:0;vertical-align:-3px;margin-right:5px;color:var(--text-body)}
+  .scratchbtn .scr-ico{margin-right:5px;color:inherit}
+  .st-not-started{--st:var(--text-muted)}
+  .st-not-started .sdot{background:transparent;box-shadow:inset 0 0 0 1.5px var(--text-muted);opacity:.6}
+  .ag-row.st-not-started .ag-s{color:var(--text-muted);font-style:italic}
+  .ag-plus{margin-left:auto;border:0;background:transparent;color:var(--text-muted);font-size:15px;line-height:1;cursor:pointer;padding:0 6px;border-radius:5px}
+  .ag-plus:hover,.ag-plus:focus-visible{color:var(--text);background:var(--border-muted)}
+  .scratchbtn{display:inline-flex;align-items:center;height:40px;padding:0 12px;border-radius:9px;border:1px dashed var(--text-muted);background:transparent;color:var(--text-body);font-size:12.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .scratchbtn:hover{border-color:var(--accent);color:var(--text)}
+  .ag-proj{display:flex;gap:6px;align-items:baseline;font-size:11.5px;color:var(--text-muted);padding:8px 8px 4px;white-space:nowrap;overflow:hidden}
+  .ag-proj b{color:var(--text-body);font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis}
+  .ag-row{display:grid;grid-template-columns:12px minmax(0,1fr);column-gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;border:0;background:transparent;text-align:left;font:inherit;color:var(--text-body);width:100%}
+  .ag-row:hover{background:var(--border-muted)}
+  .ag-row .sdot{width:8px;height:8px;margin-top:6px}
+  .ag-row .ag-t1{font-size:14px;color:var(--text-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  /* the ticket id reads like Herdr's agent name: bright and bold, the title softer after it */
+  .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;font-weight:700;color:var(--text);margin-right:6px}
+  .ag-row .ag-none{color:var(--text-muted)}
+  .ag-row .ag-s{grid-column:2/-1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ag-row.st-idle .ag-s,.ag-row.st-running .ag-s{color:var(--text-muted)}
+  .ag-row.st-needs-you .sdot{animation:ag-pulse 1.6s ease-in-out infinite}
+  @keyframes ag-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--st-need) 55%, transparent)}50%{box-shadow:0 0 0 5px transparent}}
+  @media (prefers-reduced-motion:reduce){.ag-row.st-needs-you .sdot{animation:none}}
+  .ad-reaper{font-size:12px;color:var(--text-muted);padding:0 14px 8px}
+  /* the session table needs more room than the 620px Admin column; it grows right, and scrolls when the window can't fit it */
+  #view-admin .sessions{margin-bottom:16px}
+  .ad-table-wrap{overflow-x:auto}
+  .ad-table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .ad-table th{font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);text-align:left;font-weight:600;padding:6px 8px}
+  .ad-table td{padding:7px 8px;border-top:1px solid var(--border-muted);vertical-align:middle;white-space:nowrap;color:var(--text-body)}
+  /* t-e69b: fits the 620px Admin column — ticket, project, agent and directory share one Session cell */
+  .ad-table td.sess{width:100%;max-width:0;white-space:nowrap}
+  .ad-table .s1,.ad-table .s2{overflow:hidden;text-overflow:ellipsis}
+  .ad-table .s1{color:var(--text)}
+  .ad-table .s2{font-size:11.5px;color:var(--text-muted)}
+  /* t-25f9: names read as bright white in dark, like Herdr's; light keeps its own colours */
+  html[data-theme="dark"] .ag-proj b,html[data-theme="dark"] .ag-row .ag-t1,html[data-theme="dark"] .ag-id,html[data-theme="dark"] .ad-table .s1,html[data-theme="dark"] .intr-what b{color:#f5f8fc}
+  .ad-table td.reap{font-size:12px}
+  .ad-table .stcell{display:flex;align-items:center;gap:6px;font-weight:600}
+  .ad-open{border:1px solid var(--border);background:var(--panel);color:var(--text-body);border-radius:7px;padding:4px 10px;font-size:11.5px;font-weight:600;cursor:pointer}
+  .ad-open:hover{border-color:var(--accent);color:var(--text)}
+  .ad-open.answer{border-color:var(--st-need);color:var(--st-need)}

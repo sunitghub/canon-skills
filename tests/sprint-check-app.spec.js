@@ -4255,6 +4255,127 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-783a: the shell's controls are wired with addEventListener, not inline on*= attributes. Each test below
+    // drives a control that no other test clicked through the UI (evidence: .tickets/t-783a/evidence/handler-map.md).
+    test('shell (t-783a): the sidebar theme button flips the shell and its boards, and remembers the choice', async ({ page }) => {
+      const board = await openShell(page, []);
+      await expect(board.locator('#board')).toBeVisible();
+      const before = await page.evaluate(() => document.documentElement.dataset.theme);
+      const after = before === 'dark' ? 'light' : 'dark';
+      await page.locator('#theme-btn').click();
+      await expect(page.locator('html')).toHaveAttribute('data-theme', after);
+      await expect(page.locator('#theme-btn')).toContainText(after === 'light' ? 'Light' : 'Dark');
+      expect(await page.evaluate(() => localStorage.getItem('canon-theme'))).toBe(after);
+      // The open board follows (the board's dark is "no attribute", t-1543).
+      await expect.poll(() => board.locator('html').evaluate(h => h.getAttribute('data-theme') || 'dark')).toBe(after);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-783a): Add Project dialog — Browse, Show hidden, Use this folder, Cancel and Add each work', async ({ page }) => {
+      await openShell(page, []);
+      const browse = [], added = [];
+      await page.route('**/api/browse-dirs*', r => {
+        browse.push(r.request().url());
+        const p = new URL(r.request().url()).searchParams.get('path') || '/home/me';
+        r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: p, parent: '/home', entries: [{ name: 'code', path: p + '/code' }] }) });
+      });
+      await page.route('**/api/projects', r => {
+        if (r.request().method() !== 'POST') return r.fallback();
+        added.push(r.request().postDataJSON());
+        r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, project: { name: 'code' } }) });
+      });
+      await page.locator('.tab.pinned').click();
+      await page.locator('#add-open').click();
+      await expect(page.locator('#addModal')).toHaveClass(/show/);
+      await page.locator('#addModal .browse-btn').click();
+      await expect(page.locator('#dirnav')).toBeVisible();
+      await expect(page.locator('#dirnav-path')).toHaveText('/home/me');
+      // Through its label: WebKit draws this checkbox 0px wide (t-b5c7), and a label click is what a user does anyway.
+      await page.locator('#addModal .dirnav-hidden-lbl').click();                     // re-lists with hidden folders
+      await expect(page.locator('#dirnav-hidden')).toBeChecked();
+      await expect.poll(() => browse.some(u => /[?&]hidden=1\b/.test(u))).toBe(true);
+      await page.locator('#dirnav-list .dirnav-row', { hasText: 'code' }).click();
+      await expect(page.locator('#dirnav-path')).toHaveText('/home/me/code');
+      await page.locator('#addModal .dirnav-use').click();
+      await expect(page.locator('#addPath')).toHaveValue('/home/me/code');
+      await expect(page.locator('#dirnav')).toBeHidden();
+      await page.locator('#addModal .mfoot .btn', { hasText: 'Cancel' }).click();      // Cancel closes without posting
+      await expect(page.locator('#addModal')).not.toHaveClass(/show/);
+      expect(added).toHaveLength(0);
+      await page.locator('#add-open').click();
+      await page.locator('#addPath').fill('/home/me/code');
+      await page.locator('#addDesc').fill('demo');
+      await page.locator('#addModal .mfoot .btn.primary').click();
+      await expect.poll(() => added.length).toBe(1);
+      expect(added[0]).toEqual({ path: '/home/me/code', description: 'demo' });
+      await expect(page.locator('#addModal')).not.toHaveClass(/show/);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-783a): closing a live tab — Keep working, End without saving and Save & End', async ({ page }) => {
+      const board = await openShell(page, stateRows());
+      await page.evaluate(() => pollSessions());
+      await expect(page.locator('.tab[data-tab="proj-a"] .live.on')).toBeVisible();     // proj-a has a live session
+      await board.locator('#board').waitFor();
+      await board.locator('html').evaluate(() => { window.__shellMsgs = []; addEventListener('message', e => { if (e.data && e.data.source === 'canon-cockpit-shell') window.__shellMsgs.push(e.data.type); }); });
+      const closeX = page.locator('.tab[data-tab="proj-a"] .tx');
+      await closeX.click();
+      await expect(page.locator('#closeWarn')).toHaveClass(/show/);
+      await page.locator('#closeWarn .btn', { hasText: 'Keep working' }).click();
+      await expect(page.locator('#closeWarn')).not.toHaveClass(/show/);
+      await expect(page.locator('.tab[data-tab="proj-a"]')).toBeVisible();              // kept
+      for (const [label, type] of [['End without saving', 'end'], ['Save & End', 'save-and-end']]) {
+        await closeX.click();
+        await expect(page.locator('#closeWarn')).toHaveClass(/show/);
+        await page.locator('#closeWarn .btn', { hasText: label }).click();
+        await expect(page.locator('#closeWarn')).not.toHaveClass(/show/);
+        await expect.poll(() => board.locator('html').evaluate(() => window.__shellMsgs.slice(-1)[0])).toBe(type);
+        await expect(page.locator('.tab[data-tab="proj-a"]')).toBeVisible();            // stays until the session ends
+      }
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('shell (t-783a): no element carries an inline on*= handler, in any view or dialog', async ({ page }) => {
+      const inline = () => page.evaluate(() => [...document.querySelectorAll('*')].flatMap(el =>
+        [...el.attributes].filter(a => /^on/i.test(a.name)).map(a => `${el.tagName.toLowerCase()}${el.id ? '#' + el.id : ''} ${a.name}`)));
+      await page.route('**/api/browse-dirs*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ path: '/home/me', parent: '/home', entries: [] }) }));
+      await page.route('**/api/upkeep/status*', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ status: 'done', report_path: '/tmp/r.md', finished_at: Date.now() / 1000 }) }));
+      await openShell(page, stateRows());
+      await page.evaluate(() => pollSessions());
+      const seen = {};
+      seen.projects = await inline();
+      await page.locator('#nav-admin').click();
+      await expect(page.locator('.mt-card').first()).toBeVisible();
+      await page.locator('.mt-card .mt-edit').first().click();                          // Model Tiers edit card
+      await expect(page.locator('.mt-card.editing')).toHaveCount(1);
+      seen.admin = await inline();
+      await page.locator('.mt-card.editing .mt-cancel').click();
+      await openUpkeepView(page);
+      await expect(page.locator('#up-grid .rcard').first()).toBeVisible();
+      await page.locator('#up-grid .rc-help').first().click();                          // "?" popover open
+      await expect(page.locator('#up-grid .rc-pop')).toHaveCount(1);
+      await page.locator('#se-card button', { hasText: 'Browse' }).click();                                // Skill Eval browse open
+      await expect(page.locator('#se-card .dirnav')).toBeVisible();
+      seen.upkeep = await inline();
+      await page.locator('#nav-projects').click();
+      await page.locator('#help-btn').click();
+      seen.help = await inline();
+      await page.keyboard.press('Escape');
+      await page.locator('#keys-btn').click();
+      seen.keys = await inline();
+      await page.keyboard.press('Escape');
+      await page.locator('#view-projects .projbar button', { hasText: '+ Add Project' }).click();   // selectors exist on base too
+      await page.locator('#addModal .browse-btn').click();
+      await expect(page.locator('#dirnav')).toBeVisible();
+      seen.add = await inline();
+      await page.locator('#addModal .mfoot .btn', { hasText: 'Cancel' }).click();
+      await page.locator('.tab[data-tab="proj-a"] .tx').click();
+      await expect(page.locator('#closeWarn')).toHaveClass(/show/);
+      seen.closeWarn = await inline();
+      expect(seen).toEqual({ projects: [], admin: [], upkeep: [], help: [], keys: [], add: [], closeWarn: [] });
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // t-5a4b: two sessions in one folder without git can overwrite each other. The daemon flags them `shared`; the
     // shell warns once under that project, a dismissal sticks while the sharing lasts, and the warning goes away
     // when the sharing stops. A lone session, or one the daemon doesn't flag, shows nothing.
@@ -10986,6 +11107,40 @@ test.describe('Canon Cockpit Upkeep (t-7ae6)', () => {
     await expect(page.locator('#up-rp-body ul.up-findings li')).toContainText('AGENTS.md:1');
     await expect(page.locator('#up-rp-body')).toContainText('Next Steps');
   });
+
+  test('the report header folds and unfolds the report (t-783a)', async ({ page }) => {
+    await stubUpkeep(page, {
+      status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 },
+      report: { ok: true, path: '/tmp/proj-a/.reports/context-check_x.md', content: '# Report\n\nBody.\n' },
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await openUpkeepView(page);
+    await page.locator('#up-card-context-check button:has-text("View report")').click();
+    await expect(page.locator('#up-detail')).toHaveClass(/open/);
+    await page.locator('#up-detail .up-detail-head').click();
+    await expect(page.locator('#up-detail')).not.toHaveClass(/open/);
+    await page.locator('#up-detail .up-detail-head').click();
+    await expect(page.locator('#up-detail')).toHaveClass(/open/);
+  });
+
+  test('Run again on a skill with a report asks first, then runs it for the project (t-783a)', async ({ page }) => {
+    await stubUpkeep(page, { status: { status: 'done', report_path: '/tmp/proj-a/.reports/context-check_x.md', finished_at: Date.now() / 1000 } });
+    let capturedUrl = '', capturedBody = null;
+    await page.route('**/api/upkeep/run*', route => {
+      capturedUrl = route.request().url(); capturedBody = route.request().postDataJSON();
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, status: 'running' }) });
+    });
+    await page.goto(BASE + '/cockpit');
+    await page.waitForLoadState('networkidle');
+    await openUpkeepView(page);
+    await page.locator('#up-card-context-check button:has-text("Run again")').click();
+    await expect(page.locator('#cc-ok')).toBeVisible();
+    expect(capturedUrl).toBe('');                                                     // nothing runs before the confirm
+    await page.locator('#cc-ok').click();
+    await expect.poll(() => capturedUrl).toContain('project=proj-a');
+    expect(capturedBody.skill).toBe('context-check');
+  });
 });
 
 test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
@@ -11047,6 +11202,18 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     await page.locator('#se-card .dirnav-row:has-text("api")').click();
     await page.locator('#se-card button:has-text("Use this folder")').click();
   }
+
+  test('Show hidden re-lists the current folder with hidden folders and stays ticked (t-783a)', async ({ page }) => {
+    await setup(page, { check: GOOD });
+    const urls = [];
+    await page.route('**/api/browse-dirs*', route => { urls.push(route.request().url()); return route.fallback(); });
+    await page.locator('#se-card button:has-text("Browse")').click();
+    await expect(page.locator('#se-card .dirnav-path')).toHaveText('/tmp/proj-a');
+    expect(urls.some(u => /[?&]hidden=1\b/.test(u))).toBe(false);
+    await page.locator('#se-card .dirnav-hidden-lbl input').check();
+    await expect.poll(() => urls.filter(u => /[?&]hidden=1\b/.test(u)).map(u => new URL(u).searchParams.get('path'))).toEqual(['/tmp/proj-a']);
+    await expect(page.locator('#se-card .dirnav-hidden-lbl input')).toBeChecked();
+  });
 
   test('browse starts at the project root, cannot go above it, and checks the picked folder with ?project=', async ({ page }) => {
     const capture = {};
@@ -11374,6 +11541,14 @@ test.describe('Canon Cockpit Admin > Model Tiers editing (t-294b)', () => {
     return posts;
   }
   const card = (page, id) => page.locator(`.mt-card[data-id="${id}"]`);
+
+  test('picking a default model saves it at once (t-783a)', async ({ page }) => {
+    const posts = await openModelTiers(page);
+    await page.locator('#mt-default-light select[data-prov="anthropic"]').selectOption('m-sonnet');
+    await expect.poll(() => posts.length).toBe(1);
+    expect(posts[0].defaults).toEqual({ eval: { anthropic: 'm-sonnet', openai: 'o-luna' }, light: { anthropic: 'm-sonnet', openai: 'o-luna' } });
+    await expect(page.locator('#mt-default-light select[data-prov="anthropic"]')).toHaveValue('m-sonnet');
+  });
 
   test('cards are read-only: nothing is editable and clicking/typing saves nothing (t-294b)', async ({ page }) => {
     const posts = await openModelTiers(page);
