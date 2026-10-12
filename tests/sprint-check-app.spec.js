@@ -4405,6 +4405,50 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    // t-aca6: each Agents row's third line names the project and the time spent in the session so far (from the
+    // daemon's `started`); Admin's sub-line ends with the same total.
+    const agoIso = mins => new Date(Date.now() - mins * 60000).toISOString();
+    const timeRows = () => [
+      { session: 'a1', ticket: 't-aaa1', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'awaiting-input', state: 'idle', state_secs: 60, idle_secs: 60, idle_limit_secs: 1800, signal: 'hook', started: agoIso(32) },
+      { session: 'a2', ticket: 't-bbb2', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(65) },
+      { session: 'a3', ticket: 't-ccc3', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook' },
+      { session: 'a4', ticket: 't-ddd4', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: new Date(Date.now() + 3600000).toISOString() },
+    ];
+    test('t-aca6: each Agents row shows the project and time in session; Admin\'s sub-line ends with the same total', async ({ page }) => {
+      await openShell(page, timeRows());
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      const third = id => page.locator('#ag-list .ag-row', { hasText: id }).locator('.ag-p');
+      await expect(third('t-aaa1')).toHaveText('proj-a \u00b7 32m in session');
+      await expect(third('t-bbb2')).toHaveText('proj-a \u00b7 1h 5m in session');
+      await expect(third('t-ccc3')).toHaveText('proj-a');                                    // no `started`: the project alone
+      await expect(third('t-ddd4')).toHaveText('proj-a \u00b7 0s in session');               // a start in the future is clamped
+      await expect(third('t-aaa1')).toHaveAttribute('title', /^proj-a \u2014 32m in session \(started .+\)$/);
+      await expect(third('t-ccc3')).toHaveAttribute('title', 'proj-a');
+      await page.locator('#nav-admin').click();
+      const sub = id => page.locator('#ad-sessions tbody tr', { hasText: id }).locator('.s2');
+      await expect(sub('t-aaa1')).toHaveText(/ \u00b7 32m in session$/);
+      await expect(sub('t-aaa1')).toHaveAttribute('title', /^\/tmp\/proj-a \u00b7 claude \u00b7 \/tmp\/proj-a \u00b7 32m in session$/);   // a cut-off sub-line keeps the total in its title
+      await expect(sub('t-ccc3')).not.toContainText('in session');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-aca6: a third line that would be cut off drops "in session"; the title keeps everything', async ({ page }) => {
+      await openShell(page, []);
+      // a long registered name, then the same rows under it
+      await page.evaluate(async () => {
+        const { getProjects } = await import('/static/cockpit-projects.js');
+        getProjects()[0].name = 'a-rather-long-project-name-for-t-aca6';
+      });
+      await page.route('**/api/cockpit-sessions', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([{ session: 'a2', ticket: 't-bbb2', project_root: '/tmp/proj-a', cwd: '/tmp/proj-a', agent: 'claude', status: 'running', state: 'working', state_secs: 3, idle_secs: 3, idle_limit_secs: 1800, signal: 'hook', started: agoIso(65) }]) }));
+      await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
+      const line = page.locator('#ag-list .ag-row', { hasText: 't-bbb2' }).locator('.ag-p');
+      await expect(line).toHaveText('a-rather-long-project-name-for-t-aca6 \u00b7 1h 5m');      // short form at the default width
+      await expect(line).toHaveAttribute('title', /^a-rather-long-project-name-for-t-aca6 \u2014 1h 5m in session \(started .+\)$/);
+      await page.evaluate(async () => { (await import('/static/cockpit-sidebar.js')).setSideWidth(420); (await import('/static/cockpit-sessions.js')).renderSessionSurfaces(); });
+      await expect(line).toHaveText('a-rather-long-project-name-for-t-aca6 \u00b7 1h 5m in session');   // wide enough again: full form
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     test('t-d2e1: a quote in a worktree path stays inside the worktree row data-cwd', async ({ page }) => {
       const id = `t-x${Date.now().toString(36).slice(-3)}`;
       const wtPath = `/tmp/wt/${XSS_ATTR}`;

@@ -1,7 +1,7 @@
 // t-565f: the Cockpit shell's admin code (was part of cockpit.html's one script). Declarations only: the
 // load-time code is initAdmin(), which cockpit-main.js runs in order once every module has loaded.
 import { cockpitConfirm, esc, escAttr, toast } from './cockpit-core.js';
-import { SCRATCH_ICON, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, onNotifyToggleChange, renderNotifySetting, renderSessionSurfaces, resumeInterrupted, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
+import { SCRATCH_ICON, TICKET_ID_RE, _projKey, dismissInterrupted, fmtDur, interrupted, intrProj, intrSince, onNotifyToggleChange, renderNotifySetting, renderSessionSurfaces, resumeInterrupted, sessionTime, sessionView, setLastSessions, ticketTitle } from './cockpit-sessions.js';
 import { openSessionInTab, openTabs } from './cockpit-tabs.js';
 import { getProjects } from './cockpit-projects.js';
 
@@ -18,12 +18,13 @@ export function renderAdminSessions(views){
     '<th>State</th><th>Session</th><th>Reaper</th><th></th></tr></thead><tbody>'+
     views.map((v,i)=>{
       const title=ticketTitle(v.pid,v.ticket);
+      const dur=sessionTime(v).dur, inSession=dur ? ' \u00b7 '+dur+' in session' : '';
       const dir=!v.cwd || _projKey(v.cwd)===_projKey(v.proot) ? 'main checkout' : (v.cwd.split(/[\\/]/).filter(Boolean).pop()||v.cwd);
       const since=v.since!==null ? ' \u00b7 '+fmtDur(v.since) : '';
       return `<tr class="st st-${v.state}">`+
       `<td title="${escAttr(v.label+(v.signal?' \u00b7 state from: '+v.signal:''))}"><span class="stcell"><span class="sdot"></span>${esc(v.short+since)}</span></td>`+
       `<td class="sess"><div class="s1" title="${escAttr(title)}">${v.ticket?`<span class="ag-id">${esc(v.ticket)}</span>${esc(title)}`:(v.scratch?`${SCRATCH_ICON}${esc(v.scrTitle||'Scratch session')}`:'no ticket')}</div>`+
-      `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir)}</div></td>`+
+      `<div class="s2" title="${escAttr(v.proot+' \u00b7 '+v.agent+' \u00b7 '+v.cwd+inSession)}">${esc((v.projName||v.name)+' \u00b7 '+v.agent+' \u00b7 '+dir+inSession)}</div></td>`+
       `<td class="reap">${esc(v.reaper||'\u2014')}</td>`+
       `<td><button class="ad-open${v.state==='needs-you'?' answer':''}" data-i="${i}">${v.state==='needs-you'?'Answer':'Open'}</button></td></tr>`;
     }).join('')+

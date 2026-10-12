@@ -100,7 +100,8 @@
   /* the ticket id reads like Herdr's agent name: bright and bold, the title softer after it */
   .ag-id{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:.92em;font-weight:700;color:var(--text);margin-right:6px}
   .ag-row .ag-none{color:var(--text-muted)}
-  .ag-row .ag-s{grid-column:2/-1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ag-row .ag-s,.ag-row .ag-p{grid-column:2/-1;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ag-row .ag-p{color:var(--text-muted)}   /* t-aca6: project + time in session, its own class so .ag-s stays the state line */
   .ag-row.st-idle .ag-s,.ag-row.st-running .ag-s{color:var(--text-muted)}
   .ag-row.st-needs-you .sdot{animation:ag-pulse 1.6s ease-in-out infinite}
   @keyframes ag-pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb, var(--st-need) 55%, transparent)}50%{box-shadow:0 0 0 5px transparent}}
