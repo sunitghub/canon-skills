@@ -28,16 +28,16 @@
 <circle cx="45.1" cy="41.2" r="3.6"/></g></svg> Canon Cockpit <small id="ver"></small></div>
       <div class="navlabel">Workspace</div>
       <nav class="nav">
-        <a id="nav-projects" class="active" onclick="showView('projects')"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
-        <a id="nav-admin" onclick="showView('admin')"><span class="ic">&#9881;</span> Admin <span class="badge nav-bubble" id="admin-bubble" hidden></span></a>
+        <a id="nav-projects" class="active"><span class="ic">&#9638;</span> Projects <span class="badge" id="pcount">0</span></a>
+        <a id="nav-admin"><span class="ic">&#9881;</span> Admin <span class="badge nav-bubble" id="admin-bubble" hidden></span></a>
       </nav>
       <div class="navlabel ag-label" id="ag-label"><span>Agents</span><span>by project</span></div>
       <div class="agents" id="ag-list"></div>
       <div class="spacer"></div>
       <div class="foot">
-        <button id="theme-btn" onclick="toggleTheme()">&#127769; Dark</button>
-        <button id="help-btn" onclick="openHelp()">? Help</button>
-        <button id="keys-btn" class="icon" type="button" onclick="toggleKeysSheet(true)" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9.5 14h5"/></svg></button>
+        <button id="theme-btn">&#127769; Dark</button>
+        <button id="help-btn">? Help</button>
+        <button id="keys-btn" class="icon" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9.5 14h5"/></svg></button>
       </div>
       <button class="side-collapse" id="side-collapse" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar (ctrl+. then w)">
         <svg viewBox="0 0 20 20" width="12" height="12" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13 5l-5 5 5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -46,14 +46,14 @@
     </aside>
     <main class="main">
       <div id="tabstrip" class="tabstrip">
-        <div class="tab pinned active" data-tab="projects" onclick="activateTab('projects')">&#9638; Projects</div>
+        <div class="tab pinned active" data-tab="projects">&#9638; Projects</div>
         <button type="button" id="split-close" class="splitclose" hidden title="Back to one project (ctrl+. then u)" aria-label="Close split view">&#10005; Close split</button>
       </div>
       <div id="views" class="views">
         <div id="panebar" class="panebar"></div>
         <div id="split-handle" role="separator" tabindex="0" aria-label="Resize the split panes" aria-orientation="vertical" aria-valuemin="50" aria-valuemax="50" aria-valuenow="50"></div>
         <section id="view-projects" class="view active">
-          <div class="projbar"><h2>Projects</h2><span class="n" id="ncount"></span><span class="sp"></span><button class="btn primary" onclick="openAdd()">+ Add Project</button></div>
+          <div class="projbar"><h2>Projects</h2><span class="n" id="ncount"></span><span class="sp"></span><button class="btn primary" id="add-open">+ Add Project</button></div>
           <div id="grid" class="grid"></div>
         </section>
         <section id="view-admin" class="view">
@@ -145,7 +145,7 @@
           <div class="up-grid" id="up-grid"></div>
           <div class="rcard se-card" id="se-card" data-help="skill-eval"></div>
           <div class="up-detail" id="up-detail">
-            <div class="up-detail-head" onclick="upToggleCollapse()">
+            <div class="up-detail-head">
               <div>
                 <div class="up-detail-eyebrow" id="up-rp-eyebrow">Report</div>
                 <div class="up-detail-title" id="up-rp-title">Select a project, then click "View report" on a check.</div>
@@ -172,15 +172,15 @@
     <label>Project folder (absolute path)</label>
     <div class="pathrow">
       <input id="addPath" placeholder="/Users/you/Developer/my-project" autocomplete="off">
-      <button type="button" class="btn browse-btn" onclick="toggleBrowse()">Browse…</button>
+      <button type="button" class="btn browse-btn" id="add-browse">Browse…</button>
     </div>
     <div class="dirnav" id="dirnav" style="display:none">
       <div class="dirnav-head">
         <span class="dirnav-path" id="dirnav-path" title="">…</span>
       </div>
       <div class="dirnav-controls">
-        <label class="dirnav-hidden-lbl"><input type="checkbox" id="dirnav-hidden" onchange="loadBrowse(_browseCwd)"> Show hidden</label>
-        <button type="button" class="btn dirnav-use" onclick="useBrowseDir()">Use this folder</button>
+        <label class="dirnav-hidden-lbl"><input type="checkbox" id="dirnav-hidden"> Show hidden</label>
+        <button type="button" class="btn dirnav-use" id="add-use-dir">Use this folder</button>
       </div>
       <div class="dirnav-list" id="dirnav-list"></div>
     </div>
@@ -188,8 +188,8 @@
     <textarea id="addDesc" placeholder="What is this project?"></textarea>
     <div class="err" id="addErr"></div>
     <div class="mfoot">
-      <button class="btn" onclick="closeAdd()">Cancel</button>
-      <button class="btn primary" onclick="submitAdd()">Add Project</button>
+      <button class="btn" id="add-cancel">Cancel</button>
+      <button class="btn primary" id="add-submit">Add Project</button>
     </div>
   </div>
 </div>
@@ -203,9 +203,9 @@
     <h2>Agent still running in this tab</h2>
     <p id="closeWarnMsg">This tab has a live agent session. Closing it will end the session. Save the sprint state first, or keep working.</p>
     <div class="cfoot">
-      <button class="btn" onclick="hideCloseWarn()">Keep working</button>
-      <button class="btn ghost" onclick="confirmCloseTab(false)">End without saving</button>
-      <button class="btn primary" onclick="confirmCloseTab(true)">Save &amp; End</button>
+      <button class="btn" id="cw-keep">Keep working</button>
+      <button class="btn ghost" id="cw-end">End without saving</button>
+      <button class="btn primary" id="cw-save">Save &amp; End</button>
     </div>
   </div>
 </div>
@@ -331,6 +331,7 @@
   }
   (function(){try{const t=localStorage.getItem('canon-theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}})();
   document.addEventListener('DOMContentLoaded',syncThemeBtn);
+  document.addEventListener('DOMContentLoaded',()=>document.getElementById('theme-btn').addEventListener('click',()=>toggleTheme()));
   function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2600);}
 
   // ── Reusable canon-styled confirm (t-5849) ─────────────────────────────────
@@ -411,6 +412,7 @@
   }
   document.addEventListener('DOMContentLoaded',()=>{
     const hc=document.getElementById('help-close'); if(hc) hc.addEventListener('click',closeHelp);
+    document.getElementById('help-btn').addEventListener('click',()=>openHelp());
     const ov=document.getElementById('help-overlay');
     if(ov) ov.addEventListener('click',e=>{ if(e.target===ov) closeHelp(); });
   });
@@ -867,6 +869,11 @@
     document.getElementById('closeWarn').classList.add('show');
   }
   function hideCloseWarn(){ pendingCloseId=null; document.getElementById('closeWarn').classList.remove('show'); }
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('cw-keep').addEventListener('click',()=>hideCloseWarn());
+    document.getElementById('cw-end').addEventListener('click',()=>confirmCloseTab(false));
+    document.getElementById('cw-save').addEventListener('click',()=>confirmCloseTab(true));
+  });
   // Save & End (save=true) or End without saving (save=false): drive the board's
   // EXISTING daemon save-and-end / end flow via a same-origin postMessage into the
   // tab's board iframe (the board owns the terminal + session token). The daemon
@@ -972,6 +979,7 @@ function canonPrefixKeys(emit) {
     if(want) document.getElementById('keys-prefix').textContent=canonPrefixLabel();
     s.classList.toggle('show',want);
   }
+  document.addEventListener('DOMContentLoaded',()=>document.getElementById('keys-btn').addEventListener('click',()=>toggleKeysSheet(true)));
   function goTab(id){
     if(split&&splitShown()&&id!==activeTab) startPulse(id);
     activateTab(id);
@@ -1126,6 +1134,10 @@ function canonPrefixKeys(emit) {
     }catch(e){ up.textContent='—'; }
   }
 
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('nav-projects').addEventListener('click',()=>showView('projects'));
+    document.getElementById('nav-admin').addEventListener('click',()=>showView('admin'));
+  });
   function showView(v){
     if(v==='projects'){
       // Explicit click on the sidebar's Projects nav must always land on the
@@ -1220,27 +1232,32 @@ function canonPrefixKeys(emit) {
   let upHelpOpen=null, upHelpScroll=0;
   function upHelpBtn(id){
     const h=UP_HELP[id]; if(!h) return '';
-    return `<span class="rc-help-wrap"><button type="button" class="rc-help" aria-label="About ${escAttr(h.title)}" aria-expanded="${upHelpOpen===id}" aria-controls="up-help-${id}" onclick="upHelpToggle('${id}')">?</button></span>`;
+    return `<span class="rc-help-wrap"><button type="button" class="rc-help" aria-label="About ${escAttr(h.title)}" aria-expanded="${upHelpOpen===id}" aria-controls="up-help-${id}">?</button></span>`;
   }
   function upHelpPanelHTML(id){
     const h=UP_HELP[id];
     return `<div class="rc-pop" id="up-help-${id}" role="region" aria-label="About ${escAttr(h.title)}"><div class="rc-pop-body">`
-      +`<div class="rc-pop-head"><span class="rc-pop-title">${esc(h.title)}</span><button type="button" class="rc-pop-x" aria-label="Close" onclick="upHelpClose(true)">&times;</button></div>`
+      +`<div class="rc-pop-head"><span class="rc-pop-title">${esc(h.title)}</span><button type="button" class="rc-pop-x" aria-label="Close">&times;</button></div>`
       +`<p class="rc-pop-lead">${esc(h.lead)}</p>`
-      +(h.sections.some(s=>s[0]===UP_NEXT)?`<button type="button" class="rc-pop-jump" onclick="upHelpJump('${id}')">&rarr; ${UP_NEXT}</button>`:'')
+      +(h.sections.some(s=>s[0]===UP_NEXT)?`<button type="button" class="rc-pop-jump">&rarr; ${UP_NEXT}</button>`:'')
       +h.sections.map(s=>`<div class="rc-pop-sec${s[0]===UP_NEXT?' next" id="up-help-'+id+'-next':''}"><div class="rc-pop-eyebrow">${esc(s[0])}</div><p>${s[1]}</p></div>`).join('')
       +`<div class="rc-pop-facts">${h.facts.map(f=>`<span class="rc-pop-fact"><b>${esc(f[0])}</b>${esc(f[1])}</span>`).join('')}</div>`
       +'</div></div>';
   }
   // Keeps the DOM in step with upHelpOpen; called after every card (re)render so a poll refresh does not close it.
+  // t-783a: it also wires the "?" buttons (once each: a button can outlive a sync) and each freshly built panel.
+  const upHelpWired=new WeakSet();
   function upHelpSync(){
     document.querySelectorAll('[data-help]').forEach(card=>{
       const id=card.dataset.help, open=upHelpOpen===id;
       const btn=card.querySelector('.rc-help'); if(btn) btn.setAttribute('aria-expanded',String(open));
+      if(btn&&!upHelpWired.has(btn)){ upHelpWired.add(btn); btn.addEventListener('click',()=>upHelpToggle(id)); }
       const wrap=card.querySelector('.rc-help-wrap'); if(!wrap) return;
       const pop=wrap.querySelector('.rc-pop');
       if(open&&!pop){
         wrap.insertAdjacentHTML('beforeend',upHelpPanelHTML(id)); upHelpPlace(wrap.querySelector('.rc-pop'));
+        wrap.querySelector('.rc-pop-x').addEventListener('click',()=>upHelpClose(true));
+        const jump=wrap.querySelector('.rc-pop-jump'); if(jump) jump.addEventListener('click',()=>upHelpJump(id));
         wrap.querySelector('.rc-pop-body').scrollTop=upHelpScroll;   // a card re-render rebuilds the panel; keep the reader's place
       }
       else if(!open&&pop) pop.remove();
@@ -1324,7 +1341,13 @@ function canonPrefixKeys(emit) {
       const bv=b.st.status==='running' ? Date.now()/1000 : (b.st.finished_at||0);
       return av-bv;
     });
-    document.getElementById('up-grid').innerHTML=rows.map(({s,st})=>upCardHTML(s,st)).join('');
+    const grid=document.getElementById('up-grid');
+    grid.innerHTML=rows.map(({s,st})=>upCardHTML(s,st)).join('');
+    rows.forEach(({s})=>{
+      const card=grid.querySelector(`#up-card-${s.id}`);
+      card.querySelector('.up-run').addEventListener('click',()=>upRun(s.id));
+      const view=card.querySelector('.up-view'); if(view) view.addEventListener('click',()=>upViewReport(s.id));
+    });
     upHelpSync();
     rows.forEach(({s,st})=>{ if(st.status==='running') upStartPoll(s.id); });
   }
@@ -1351,9 +1374,9 @@ function canonPrefixKeys(emit) {
     const modelSel = `<select class="rc-select" id="up-model-${s.id}" title="Model"${running?' disabled':''}>`
       + '<option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option><option value="claude-sonnet-5">Sonnet 5</option></select>';
     const runBtn = st.status==='idle' || !st.report_path
-      ? `<button class="btn primary" onclick="upRun('${s.id}')"${running?' disabled':''}>&#9654; Run</button>`
-      : `<button class="btn" onclick="upRun('${s.id}')"${running?' disabled':''}>&#8635; Run again</button>
-         <button class="btn primary" onclick="upViewReport('${s.id}')">View report</button>`;
+      ? `<button class="btn primary up-run"${running?' disabled':''}>&#9654; Run</button>`
+      : `<button class="btn up-run"${running?' disabled':''}>&#8635; Run again</button>
+         <button class="btn primary up-view">View report</button>`;
     return `<div class="rcard" id="up-card-${s.id}" data-help="${s.id}">
       <div class="rc-when mono">${esc(whenLine)}</div>
       <div class="rc-top">
@@ -1472,12 +1495,12 @@ function canonPrefixKeys(emit) {
       upHelpSync();
       return;
     }
-    h+=`<div class="se-pick"><button class="btn" onclick="seToggleBrowse()">Browse…</button>`
+    h+=`<div class="se-pick"><button class="btn se-browse">Browse…</button>`
       +`<span class="se-path">${se.dir?esc(se.dir):'Pick a skill folder inside '+esc(proj?proj.name:'the project')+' (the folder that contains SKILL.md)'}</span></div>`;
     if(se.open){
       h+=`<div class="dirnav"><div class="dirnav-head"><span class="dirnav-path" title="${escAttr(se.cwd)}">${esc(se.cwd||'…')}</span></div>`
-        +`<div class="dirnav-controls"><label class="dirnav-hidden-lbl"><input type="checkbox" ${se.hidden?'checked':''} onchange="se.hidden=this.checked;seLoad(se.cwd)"> Show hidden</label>`
-        +`<button class="btn dirnav-use" onclick="seUse()">Use this folder</button></div><div class="dirnav-list" id="se-list"></div></div>`;
+        +`<div class="dirnav-controls"><label class="dirnav-hidden-lbl"><input type="checkbox" class="se-hidden" ${se.hidden?'checked':''}> Show hidden</label>`
+        +`<button class="btn dirnav-use se-use">Use this folder</button></div><div class="dirnav-list" id="se-list"></div></div>`;
     }
     if(se.err) h+=`<div class="se-err">${esc(se.err)}</div>`;
     if(c){
@@ -1493,15 +1516,20 @@ function canonPrefixKeys(emit) {
         h+=`<div class="se-note">Fix the failing check${(w1==='fail'&&w2==='fail')?'s':''} above to unlock this stage. Nothing has been run or spent.</div>`;
       }else{
         h+=`<div class="rc-config"><select class="rc-select" id="se-model" title="Model"${running?' disabled':''}><option value="claude-haiku-4-5-20251001" selected>Haiku 4.5</option><option value="claude-sonnet-5">Sonnet 5</option></select>`
-          +`<button class="btn primary" onclick="seRun()"${(running||(trust.length&&!se.trust))?' disabled':''}>${running?'Running…':(se.run&&se.run.status==='done'?'&#8635; Run again':'&#9654; Run plugin eval')}</button>`
+          +`<button class="btn primary se-run"${(running||(trust.length&&!se.trust))?' disabled':''}>${running?'Running…':(se.run&&se.run.status==='done'?'&#8635; Run again':'&#9654; Run plugin eval')}</button>`
           +((trust.length&&!se.trust&&!running)?'<span class="se-note">Tick the box below to enable Run.</span>':'')+'</div>';
-        if(trust.length) h+=`<label class="se-note se-ack"><input type="checkbox" ${se.trust?'checked':''} onchange="se.trust=this.checked;seRender()"> This skill runs hooks or shell commands (${esc(trust.map(t=>t.id).join(', '))}). I have reviewed them and want to run it anyway.</label>`;
+        if(trust.length) h+=`<label class="se-note se-ack"><input type="checkbox" class="se-trust" ${se.trust?'checked':''}> This skill runs hooks or shell commands (${esc(trust.map(t=>t.id).join(', '))}). I have reviewed them and want to run it anyway.</label>`;
         if(se.run&&se.run.status==='done') h+='<div style="margin-top:12px">'+seResult(se.run)+'</div>';
         else if(se.run&&se.run.status==='error') h+='<div class="se-err" style="margin-top:8px">The run failed. Check the board server log for the eval output.</div>';
       }
       h+='</div>';
     }
     el.innerHTML=h;
+    el.querySelector('.se-browse').addEventListener('click',()=>seToggleBrowse());
+    el.querySelector('.se-hidden')?.addEventListener('change',e=>{ se.hidden=e.target.checked; seLoad(se.cwd); });
+    el.querySelector('.se-use')?.addEventListener('click',()=>seUse());
+    el.querySelector('.se-run')?.addEventListener('click',()=>seRun());
+    el.querySelector('.se-trust')?.addEventListener('change',e=>{ se.trust=e.target.checked; seRender(); });
     upHelpSync();
     if(se.open) seLoad(se.cwd);
   }
@@ -1573,6 +1601,7 @@ function canonPrefixKeys(emit) {
   }
 
   function upToggleCollapse(){ document.getElementById('up-detail').classList.toggle('open'); }
+  document.addEventListener('DOMContentLoaded',()=>document.querySelector('#up-detail .up-detail-head').addEventListener('click',()=>upToggleCollapse()));
 
   // Minimal markdown-ish renderer scoped to Upkeep's own report shape (# / ##
   // headers, `code` spans, - bullet lists) — not a general parser. List items
@@ -1763,14 +1792,16 @@ function canonPrefixKeys(emit) {
         const models=mtData.models[prov]||[];
         const cur=(mtData.defaults[tier]||{})[prov]||'';
         const opts=models.map(m=>`<option value="${escAttr(m.id)}"${m.id===cur?' selected':''}>${esc(m.name)}</option>`).join('');
-        return `<div class="mt-picker"><select data-tier="${tier}" data-prov="${prov}" onchange="mtSetDefault(this)">${opts}</select><span class="mt-prov">${prov}${prov==='openai'?' · per-ticket':''}</span></div>`;
+        return `<div class="mt-picker"><select data-tier="${tier}" data-prov="${prov}">${opts}</select><span class="mt-prov">${prov}${prov==='openai'?' · per-ticket':''}</span></div>`;
       }).join('');
+      row.querySelectorAll('select').forEach(sel=>sel.addEventListener('change',()=>mtSetDefault(sel)));
     });
     // Provider tabs
     const tabs=document.getElementById('mt-tabs');
     tabs.innerHTML=Object.entries(MT_PROVIDER_LABEL).map(([prov,label])=>
-      `<div class="mt-tab${prov===mtProvider?' active':''}" onclick="mtSwitchProvider('${prov}')">${label} <span style="color:var(--text-dim);font-weight:400">· ${(mtData.models[prov]||[]).length}</span></div>`
+      `<div class="mt-tab${prov===mtProvider?' active':''}" data-prov="${prov}">${label} <span style="color:var(--text-dim);font-weight:400">· ${(mtData.models[prov]||[]).length}</span></div>`
     ).join('');
+    tabs.querySelectorAll('.mt-tab').forEach(t=>t.addEventListener('click',()=>mtSwitchProvider(t.dataset.prov)));
     // Card grid
     const grid=document.getElementById('mt-grid');
     const models=mtData.models[mtProvider]||[];
@@ -1789,9 +1820,21 @@ function canonPrefixKeys(emit) {
         ${aliasRow}
         <div class="mt-card-price"><span>Input/MTok</span><span>$${esc(m.input_price)}</span></div>
         <div class="mt-card-price"><span>Output/MTok</span><span>$${esc(m.output_price)}</span></div>
-        <div class="mt-card-actions"><button type="button" class="mt-edit" onclick="mtStartEdit('${escAttr(m.id)}')"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="danger" onclick="mtRemoveModel('${escAttr(m.id)}')">Remove</a></div>
+        <div class="mt-card-actions"><button type="button" class="mt-edit"${mtEditing?' disabled':''} aria-label="Edit ${escAttr(m.name)}">Edit</button><a class="danger">Remove</a></div>
       </div>`;
-    }).join('') + `<div class="mt-add-card" onclick="mtAddModel()">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
+    }).join('') + `<div class="mt-add-card">+ Add ${esc(MT_PROVIDER_LABEL[mtProvider])} model</div>`;
+    // t-783a: wired after each render; the ids come back from data-id, so no JS sits inside an attribute.
+    grid.querySelectorAll('.mt-card:not(.editing)').forEach(card=>{
+      card.querySelector('.mt-edit').addEventListener('click',()=>mtStartEdit(card.dataset.id));
+      card.querySelector('.danger').addEventListener('click',()=>mtRemoveModel(card.dataset.id));
+    });
+    const editing=grid.querySelector('.mt-card.editing');
+    if(editing){
+      editing.addEventListener('keydown',e=>mtEditKey(e));
+      editing.querySelector('.mt-cancel').addEventListener('click',()=>mtCancelEdit());
+      editing.querySelector('.mt-save').addEventListener('click',()=>mtSaveEdit());
+    }
+    grid.querySelector('.mt-add-card').addEventListener('click',()=>mtAddModel());
   }
 
   function mtSwitchProvider(prov){ mtProvider=prov; mtEditing=null; mtRender(); }
@@ -1800,7 +1843,7 @@ function canonPrefixKeys(emit) {
   let mtEditing=null;
   function mtEditCard(m,badge,hasAlias){
     const f=(key,label,val,type='text')=>`<label class="mt-field">${label}<input type="${type}" data-field="${key}"${type==='number'?' min="0" step="any"':''} value="${escAttr(val==null?'':String(val))}"></label>`;
-    return `<div class="mt-card editing" data-id="${escAttr(m.id)}" onkeydown="mtEditKey(event)">
+    return `<div class="mt-card editing" data-id="${escAttr(m.id)}">
       <div class="mt-card-top"><span class="mt-card-name">Editing</span>${badge}</div>
       ${f('name','Name',m.name)}
       ${f('desc','Description',m.desc||'')}
@@ -1808,7 +1851,7 @@ function canonPrefixKeys(emit) {
       ${hasAlias?f('alias','Gate-model alias',m.alias||''):''}
       <div class="mt-field-row">${f('input_price','Input $/MTok',m.input_price,'number')}${f('output_price','Output $/MTok',m.output_price,'number')}</div>
       <div class="mt-card-err" role="alert"></div>
-      <div class="mt-card-actions"><button type="button" class="mt-cancel" onclick="mtCancelEdit()">Cancel</button><button type="button" class="mt-save" onclick="mtSaveEdit()">Save</button></div>
+      <div class="mt-card-actions"><button type="button" class="mt-cancel">Cancel</button><button type="button" class="mt-save">Save</button></div>
     </div>`;
   }
   function mtStartEdit(id){
@@ -2126,6 +2169,7 @@ function canonPrefixKeys(emit) {
     const first=tabMenu.querySelector('button:not(:disabled)'); if(first) first.focus();
   }
   document.addEventListener('pointerdown',e=>{ if(tabMenu&&!tabMenu.hidden&&!tabMenu.contains(e.target)) closeTabMenu(); },true);
+  document.addEventListener('DOMContentLoaded',()=>document.querySelector('#tabstrip .tab.pinned').addEventListener('click',()=>activateTab('projects')));
   function activateTab(id){
     const from=activeTab;
     if(from!==id&&isProjectTab(from)) prevTab=from;   // where "v" and "-" take the second pane from
@@ -2385,6 +2429,14 @@ function canonPrefixKeys(emit) {
 
   function openAdd(){document.getElementById('addErr').textContent='';document.getElementById('addPath').value='';document.getElementById('addDesc').value='';hideBrowse();document.getElementById('addModal').classList.add('show');document.getElementById('addPath').focus();}
   function closeAdd(){document.getElementById('addModal').classList.remove('show');hideBrowse();}
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('add-open').addEventListener('click',()=>openAdd());
+    document.getElementById('add-browse').addEventListener('click',()=>toggleBrowse());
+    document.getElementById('dirnav-hidden').addEventListener('change',()=>loadBrowse(_browseCwd));
+    document.getElementById('add-use-dir').addEventListener('click',()=>useBrowseDir());
+    document.getElementById('add-cancel').addEventListener('click',()=>closeAdd());
+    document.getElementById('add-submit').addEventListener('click',()=>submitAdd());
+  });
 
   // ── Add-Project folder browser (t-1b88) ────────────────────────────────────
   // A web page can't read an absolute path, so navigate via the loopback
