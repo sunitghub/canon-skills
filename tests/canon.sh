@@ -50,12 +50,30 @@ n="$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u | wc -l | tr -d ' 
 [[ "$n" == "1" ]] || fail "canon: expected exactly 1 listener after 2nd launch, found $n"
 
 # ── T5: /cockpit landing serves the Projects page with key elements ───────────
+# t-9b2d/t-783a/t-565f: a page's CSS and JS live under /static/. read_static fetches every asset the page names
+# through the same server and follows each module's `from './x.js'` imports, as the browser does. It sets
+# STATIC_BODY (all the assets' text) and STATIC_SEEN (" /static/a.js /static/b.css "). Not called in $(…), so fail exits.
+read_static() {
+  local label="$1" queue asset asset_body dep
+  queue="$(grep -oE '/static/[a-z0-9-]+\.(css|js)' <<<"$2" | sort -u || true)"
+  STATIC_BODY=""; STATIC_SEEN=" "
+  while [[ -n "$queue" ]]; do
+    asset="${queue%%$'\n'*}"
+    if [[ "$queue" == *$'\n'* ]]; then queue="${queue#*$'\n'}"; else queue=""; fi
+    if [[ "$STATIC_SEEN" == *" $asset "* ]]; then continue; fi
+    STATIC_SEEN+="$asset "
+    asset_body="$(curl -sf -H 'Host: localhost' "http://127.0.0.1:$PORT$asset")" || fail "canon: $label asset $asset is not served"
+    STATIC_BODY+=$'\n'"$asset_body"
+    for dep in $(grep -oE "from '\./[a-z0-9-]+\.js'" <<<"$asset_body" | sed -E "s|from '\./(.*)'|/static/\1|" || true); do
+      queue+=$'\n'"$dep"; queue="${queue#$'\n'}"
+    done
+  done
+}
 page="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/cockpit")"
-# t-783a: the shell's CSS lives under /static/; read every asset the page links through the same server.
-for asset in $(grep -oE '/static/[a-z0-9-]+\.(css|js)' <<<"$page" | sort -u); do
-  asset_body="$(curl -sf -H 'Host: localhost' "http://127.0.0.1:$PORT$asset")" || fail "canon: cockpit asset $asset is not served"
-  page+=$'\n'"$asset_body"
-done
+read_static cockpit "$page"
+page+="$STATIC_BODY"
+# t-565f: the shell's page names only cockpit-main.js; its sections arrive through imports.
+[[ "$STATIC_SEEN" == *" /static/cockpit-core.js "* && "$STATIC_SEEN" == *" /static/cockpit-projects.js "* ]] || fail "canon: the shell's module imports were not followed (no cockpit-core.js/cockpit-projects.js)"
 grep -q "<title>Canon Cockpit</title>" <<<"$page" || fail "canon: /cockpit missing Canon Cockpit title"
 grep -q "Add Project" <<<"$page" || fail "canon: /cockpit missing Add Project"
 grep -q "class=\"projbar\"" <<<"$page" || fail "canon: /cockpit missing the Projects section bar"
@@ -75,22 +93,10 @@ grep -q "/api/project-stats?project=" <<<"$page" || fail "canon: /cockpit card s
 
 # The embedded board (app.html and its modules) must carry the project-scoping fetch wrapper
 board="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/?project=x")"
-# t-9b2d: the board's CSS and JS live under /static/; read them through the same server. t-1543: the page names only
-# its entry module, so follow each module's `from './x.js'` imports too, as the browser does.
-queue="$(grep -oE '/static/[a-z0-9-]+\.(css|js)' <<<"$board" | sort -u)"
-seen=" "
-while [[ -n "$queue" ]]; do
-  asset="${queue%%$'\n'*}"
-  if [[ "$queue" == *$'\n'* ]]; then queue="${queue#*$'\n'}"; else queue=""; fi
-  if [[ "$seen" == *" $asset "* ]]; then continue; fi
-  seen+="$asset "
-  asset_body="$(curl -sf -H 'Host: localhost' "http://127.0.0.1:$PORT$asset")" || fail "canon: board asset $asset is not served"
-  board+=$'\n'"$asset_body"
-  for dep in $(grep -oE "from '\./[a-z0-9-]+\.js'" <<<"$asset_body" | sed -E "s|from '\./(.*)'|/static/\1|" || true); do
-    queue+=$'\n'"$dep"; queue="${queue#$'\n'}"
-  done
-done
-[[ "$seen" == *" /static/board-core.js "* ]] || fail "canon: the board's module imports were not followed (no board-core.js)"
+# t-1543: the board names only its entry module; read_static follows the imports.
+read_static board "$board"
+board+="$STATIC_BODY"
+[[ "$STATIC_SEEN" == *" /static/board-core.js "* ]] || fail "canon: the board's module imports were not followed (no board-core.js)"
 grep -q "__canonProject" <<<"$board" || fail "canon: the board missing the ?project fetch wrapper"
 grep -q "urlTheme" <<<"$board" || fail "canon: the board does not honor shell-passed ?theme"
 grep -q "&theme=" <<<"$page" || fail "canon: project iframe src does not carry the shell theme"
