@@ -36,5 +36,11 @@ for (let i = 0; i < 500; i++) {
 }
 ok('fuzz: 500 strings escape with no raw " \' < > and decode back exactly', bad.length === 0, bad.slice(0, 3));
 
+// t-d2e1 break-it: outcomeRatio puts server counts into two attributes; a hostile value must not leave them.
+const { outcomeRatio } = loadBoard();
+const ratio = outcomeRatio('bug', [{ type: 'bug', type_outcome: { clean: '"><img src=x onerror=alert(1)>', closed: 1 } }]);
+ok('outcomeRatio keeps a hostile count inside aria-label and data-tooltip', !/<img/.test(ratio) && (ratio.match(/"/g) || []).length % 2 === 0 && /aria-label="&quot;&gt;&lt;img/.test(ratio), ratio);
+ok('outcomeRatio still renders numbers as before', /aria-label="3 of 4 past bug tickets/.test(outcomeRatio('bug', [{ type: 'bug', type_outcome: { clean: 3, closed: 4 } }])));
+
 if (fails) { console.log(`sprint-check-esc: ${fails} failing`); process.exit(1); }
 console.log('sprint-check-esc: ok (esc/escAttr attribute-safe; 500-string fuzz)');

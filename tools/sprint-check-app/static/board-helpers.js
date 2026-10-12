@@ -121,7 +121,7 @@ export function outcomeRatio(type, tickets) {
   const o = withOutcome && withOutcome.type_outcome;
   if (!o || !o.closed) return '';
   const good = o.clean / o.closed > 0.5;
-  const detail = `${o.clean} of ${o.closed} past ${esc(type || 'task')} tickets closed without eval rework`;
+  const detail = `${esc(o.clean)} of ${esc(o.closed)} past ${esc(type || 'task')} tickets closed without eval rework`;
   return `<span class="outcome-dot ${good ? 'outcome-good' : 'outcome-mixed'}" tabindex="0" role="img" aria-label="${detail}" data-tooltip="${detail}"></span>`;
 }
 

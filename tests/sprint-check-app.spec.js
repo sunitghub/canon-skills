@@ -1954,6 +1954,25 @@ test.describe('board modal', () => {
     expect(await onAttrs(page)).toEqual([]);
   });
 
+  test('t-d2e1: a hostile in-progress ticket id stays text in the commit panel tip', async ({ page }) => {
+    const HOSTILE = 't-1</code><img src=x onerror="window.__pwn=1">';
+    await page.route('**/api/commit/**', route => route.fulfill({ contentType: 'application/json',
+      body: JSON.stringify({ hash: 'abcdef1234', subject: 's', author: 'a', date: '2026-10-12', body: '', related_ticket_ids: [], files: [] }) }));
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.evaluate(async id => {
+      const core = await import('/static/board-core.js');
+      core.state.tickets = [{ id, title: 'unrelated', status: 'in_progress', type: 'task' }];
+      const { openCommitPanel } = await import('/static/board-panels.js');
+      await openCommitPanel('abcdef1234');
+    }, HOSTILE);
+    const tip = page.locator('#co-tickets .commit-section-note');
+    await expect(tip).toContainText(`prefix commits with ${HOSTILE}`);
+    expect(await page.locator('#co-tickets img').count()).toBe(0);
+    expect(await onAttrs(page)).toEqual([]);
+    expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  });
+
   test('t-d2e1: text with quotes still displays the quotes (card title and doc paragraph)', async ({ page }) => {
     const id = `t-q${Date.now().toString(36).slice(-3)}`;
     const dir = path.join(PROJECT_ROOT, '.tickets', id);
@@ -11386,6 +11405,30 @@ test.describe('Canon Cockpit Skill Eval card (t-23d8)', () => {
     await page.locator('#se-card .dirnav-hidden-lbl input').check();
     await expect.poll(() => urls.filter(u => /[?&]hidden=1\b/.test(u)).map(u => new URL(u).searchParams.get('path'))).toEqual(['/tmp/proj-a']);
     await expect(page.locator('#se-card .dirnav-hidden-lbl input')).toBeChecked();
+  });
+
+  test('t-d2e1: a hostile check status stays text in the Skill Eval rows (no tag, no handler)', async ({ page }) => {
+    const HOSTILE = 'x"><img src=x onerror="window.__pwn=1">';
+    await setup(page, { check: { ...GOOD, checks: [...GOOD.checks, chk('x-hostile', 2, HOSTILE, 'evidence', 'fix')] } });
+    await pick(page);
+    await expect(page.locator('#se-card')).toContainText('x-hostile');
+    expect(await page.locator('#se-card img').count()).toBe(0);
+    expect(await onAttrs(page)).toEqual([]);
+    expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
+  });
+
+  test('t-d2e1: hostile case counts in a run summary stay text in the Skill Eval tiles', async ({ page }) => {
+    const done = { ok: true, status: 'done', finished_at: Date.now() / 1000, report_path: '/x/report.html',
+      summary: { casesTotal: '<svg onload="window.__pwn=3">', casesPassed: '<img src=x onerror="window.__pwn=2">', overallScore: 1, meanDelta: 0.5, costUsd: 0.42, cases: [] } };
+    await setup(page, { check: GOOD, statuses: [{ ok: true, status: 'never' }, done] });
+    await pick(page);
+    await page.locator('#se-card button:has-text("Run plugin eval")').click();
+    await page.locator('#cc-ok').click();
+    const tiles = page.locator('#se-card .se-tiles');
+    await expect(tiles).toContainText('<img src=x onerror="window.__pwn=2"> / <svg onload="window.__pwn=3">', { timeout: 10000 });
+    expect(await page.locator('#se-card .se-tiles img, #se-card .se-tiles svg').count()).toBe(0);
+    expect(await onAttrs(page)).toEqual([]);
+    expect(await page.evaluate(() => window.__pwn)).toBeUndefined();
   });
 
   test('browse starts at the project root, cannot go above it, and checks the picked folder with ?project=', async ({ page }) => {
