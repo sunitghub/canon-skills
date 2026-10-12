@@ -3,12 +3,13 @@ import { readiness } from './board-render.js';
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+// t-d2e1: esc() escapes quotes too, so its output is safe in text AND in a quoted attribute (it used to leave
+// `"` alone, and attribute sinks that used it instead of escAttr could be broken out of). escAttr is the same now.
 export function esc(s) {
-  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
-// esc() leaves `"` alone, so text going inside an attribute needs this one (t-6328 lesson).
 export function escAttr(s) {
-  return esc(s).replace(/"/g, '&quot;');
+  return esc(s);
 }
 
 export function displayTicketId(t) {
@@ -275,8 +276,8 @@ export function renderFeatureRefPlaceholder(body) {
   if (!featureRefRe.test(raw) || raw.includes('..')) {
     return `<div class="doc-scenario doc-scenario-ref doc-scenario-error">Invalid feature reference: ${esc(raw)} (expected features/&lt;name&gt;.feature)</div>`;
   }
-  const attr = esc(raw).replace(/"/g, '&quot;');
-  const runnerAttr = esc(runner).replace(/"/g, '&quot;');
+  const attr = esc(raw);
+  const runnerAttr = esc(runner);
   return `<div class="doc-scenario doc-scenario-ref" data-feature-src="${attr}" data-runner="${runnerAttr}">Loading ${esc(raw)}…</div>`;
 }
 
