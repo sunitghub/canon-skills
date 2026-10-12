@@ -471,7 +471,7 @@
         "webkit"
       ],
       "ticket": "t-5989",
-      "reason": "page.goto(BASE) hit the 30s test timeout on its first line in a full webkit run (no assertion reached); passed 3 of 3 alone on the same commit (2026-10-12, t-10dc branch)",
+      "reason": "page.goto(BASE) hit the 30s test timeout on its first line in a full webkit run (no assertion reached); passed 3 of 3 alone on the same commit (2026-10-11, t-10dc branch)",
       "failed_runs": {
         "webkit": "1 of 1 full run (t-10dc); 0 of 3 alone"
       }
