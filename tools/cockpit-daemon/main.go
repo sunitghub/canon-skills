@@ -2542,7 +2542,10 @@ func (s *server) handleEndSession(w http.ResponseWriter, r *http.Request) {
 	if body.Mode == "reap" {
 		why := reapBlockedLocked(se)
 		if state, _, _, _ := sessionStateLocked(se, time.Now()); why == "" && state != "idle" && state != "done" {
-			why = "it is working"
+			why = map[string]string{"needs-you": "it is waiting on you"}[state]
+			if why == "" {
+				why = "it is working"
+			}
 		}
 		if why != "" {
 			se.mu.Unlock()

@@ -8012,3 +8012,29 @@ func TestRelayPageIsGuardedUncachedAndCarriesTheToken(t *testing.T) {
 		t.Fatalf("a foreign Origin: want 403, got %d", r2.StatusCode)
 	}
 }
+
+// The idle reaper and Reap now share reapBlockedLocked: the reaper must never even start on a needs-you session
+// (se.reaping stays false). TestIdleReapSparesNeedsYouSession can't see this: its 300 ms check ends long before the
+// save fallback would kill the session.
+func TestIdleReaperNeverStartsOnANeedsYouSession(t *testing.T) {
+	bin := fakeAgentThatIgnores(t)
+	root := t.TempDir()
+	seedTicketDir(t, root, "t-ab12")
+	s := newServer(config{token: bootTok, sprintBin: bin, projectRoot: root, stateDir: t.TempDir(),
+		idleTimeout: 50 * time.Millisecond, idleTimeoutMain: 50 * time.Millisecond, idleCheckInterval: 20 * time.Millisecond, saveFallback: time.Hour})
+	ts := httptest.NewServer(s.handler())
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { killAllSessions(s) })
+	sid, _ := startTicket(t, ts.URL)
+	s.mu.Lock()
+	se := s.sessions[sid]
+	s.mu.Unlock()
+	se.setStatus("needs-you")
+	time.Sleep(300 * time.Millisecond)
+	se.mu.Lock()
+	reaping := se.reaping
+	se.mu.Unlock()
+	if reaping {
+		t.Fatal("the idle reaper started a save on a session that is waiting on you")
+	}
+}
