@@ -4474,6 +4474,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
       await agentRow(page, 't-bbb2').click({ button: 'right' });
       await expect(page.locator('#tabmenu')).toBeVisible();
+      await expect(page.locator('#tabmenu .head')).toContainText('t-bbb2');                 // the menu names its session
+      await expect(page.locator('#tabmenu .head small')).toHaveText('proj-a \u00b7 claude \u00b7 working');
       await expect(menuItems(page)).toHaveText(['Open', 'Reap nowsave & end', 'Kill…no save']);
       await expect(menuItems(page).nth(1)).toBeDisabled();
       await expect(menuItems(page).nth(1)).toHaveAttribute('title', 'Working — the agent isn’t at its prompt');
@@ -4501,6 +4503,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, endRows());
       await page.evaluate(async () => (await import('/static/cockpit-sessions.js')).pollSessions());
       await agentRow(page, 'Scratch session').click({ button: 'right' });
+      await expect(page.locator('#tabmenu .head')).toContainText('Scratch session \u00b7 s-k2m9');
       await menuItems(page).nth(2).click();
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
       await expect(page.locator('#cc-title')).toHaveText('Kill “Scratch session”?');
@@ -4581,6 +4584,8 @@ test.describe('cockpit in board (t-ddc8)', () => {
       }, id);
       await reply('t-aaa1');
       await expect(page.locator('#tabmenu')).toBeVisible();
+      await expect(page.locator('#tabmenu .head')).toContainText('t-aaa1');                 // named: nothing else on screen says which session
+      await expect(page.locator('#tabmenu .head small')).toHaveText('proj-a \u00b7 claude \u00b7 idle');
       await expect(page.locator('#tabmenu button').nth(1)).toBeEnabled();                  // t-aaa1 is idle: Reap now is on
       const tab = await page.locator('.tab.project[data-tab="proj-a"]').boundingBox(), menu = await page.locator('#tabmenu').boundingBox();
       expect(menu.y).toBeGreaterThanOrEqual(tab.y + tab.height);                           // under the tab

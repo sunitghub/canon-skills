@@ -97,7 +97,11 @@ export async function confirmEnd(v,mode){
 // The Agents row menu (right-click, Shift+F10 or the ContextMenu key).
 export function openSessionMenu(v,x,y){
   const why=reapWhyNot(v);
+  // Name the session the menu acts on (user: from a tab with ctrl+. t, nothing else on screen says which).
+  const head=v.ticket ? sessionName(v) : (v.scrTitle||'Scratch session')+(v.scratch?' \u00b7 '+v.scratch:'');
   openMenu([
+    {head, sub:[v.projName||v.name, v.agent, v.short].filter(Boolean).join(' \u00b7 ')},
+    {sep:true},
     {label:'Open', fn:()=>openSessionInTab(v)},
     {label:'Reap now', hint:'save & end', disabled:!canReap(v), title:why||'Do now what the idle reaper would do', fn:()=>confirmEnd(v,'reap')},
     {sep:true},

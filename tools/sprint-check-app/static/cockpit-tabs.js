@@ -193,13 +193,19 @@ export function closeTabMenu(){
   tabMenu.hidden=true; menuOpener=null;
   if(back&&back.isConnected) back.focus();   // Esc from the keyboard returns to the row or tab it opened from
 }
-// t-3c9a: the one shell menu (tabs, Agents rows). items: {label, fn, disabled, hint, title, danger} or {sep:true}.
+// t-3c9a: the one shell menu (tabs, Agents rows). items: {label, fn, disabled, hint, title, danger}, {sep:true}, or
+// {head, sub}: a non-focusable heading naming what the menu acts on.
 export function openMenu(items,x,y){
   if(!tabMenu) return;
   menuOpener=document.activeElement;
   tabMenu.innerHTML='';
   for(const it of items){
     if(it.sep){ const d=document.createElement('div'); d.className='sep'; tabMenu.appendChild(d); continue; }
+    if(it.head){
+      const d=document.createElement('div'); d.className='head'; d.textContent=it.head; d.title=it.head+(it.sub?'\n'+it.sub:'');
+      if(it.sub){ const s=document.createElement('small'); s.textContent=it.sub; d.appendChild(s); }
+      tabMenu.appendChild(d); continue;
+    }
     const b=document.createElement('button'); b.type='button'; b.setAttribute('role','menuitem'); b.disabled=!!it.disabled;
     if(it.danger) b.classList.add('danger');
     if(it.title) b.title=it.title;
