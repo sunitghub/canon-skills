@@ -50,8 +50,8 @@ async function editDoc(page) {
 // t-67ab: Upkeep lives inside a project tab (opened by its board's Upkeep button); open the
 // first registered project's Upkeep the way that button does.
 async function openUpkeepView(page) {
-  await page.waitForFunction(() => (window._projects || []).length > 0);
-  await page.evaluate(() => openUpkeepFor(window._projects[0].id));
+  await expect.poll(() => page.evaluate(() => getProjects().length)).toBeGreaterThan(0);   // t-565f: no window._projects
+  await page.evaluate(() => openUpkeepFor(getProjects()[0].id));
   await expect(page.locator('#view-upkeep')).toHaveClass(/active/);
 }
 
@@ -3958,7 +3958,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#views')).toHaveClass(/split-v/);
       await pressPrefix(page, 'u');
       await expect(page.locator('#views')).not.toHaveClass(/split-/);
-      await page.evaluate(() => { openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-a'); prevTab = null; });
+      await page.evaluate(() => { openTabs.push({ id: 'proj-y', name: 'proj-y' }); ensureView('proj-y', 'proj-y'); renderTabs(); activateTab('proj-a'); resetPrevTab(); });
       await pressPrefix(page, 'V');                                                  // the NEXT tab in the strip (proj-x), whatever was visited before
       await expect(page.locator('#views')).toHaveClass(/split-h/);
       expect(await page.evaluate(() => [split.a, split.b])).toEqual(['proj-a', 'proj-x']);
@@ -4100,8 +4100,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(() => {
         const orig = HTMLIFrameElement.prototype.focus;                              // a slow machine: the focus lands 800 ms after the call
         HTMLIFrameElement.prototype.focus = function () { setTimeout(() => orig.call(this), 800); };
-        const act = activateTab; window.__log = [];
-        activateTab = function (id) { window.__log.push(id); return act.apply(this, arguments); };
+        // t-565f: activateTab is a module export, so it can't be replaced; watch what each call does instead. Every
+        // activation puts .active on one .view (even the one already active, after clearing all), so log each
+        // not-active → active class change, reading a record's new value from the next record for that element.
+        window.__log = [];
+        new MutationObserver(recs => {
+          recs.forEach((r, i) => {
+            const next = recs.slice(i + 1).find(x => x.target === r.target);
+            const now = next ? next.oldValue || '' : r.target.className;
+            if (!/\bactive\b/.test(r.oldValue || '') && /\bactive\b/.test(now)) window.__log.push(r.target.id.replace(/^view-/, ''));
+          });
+        }).observe(document.getElementById('views'), { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
       });
       await pressPrefix(page, 'o');
       await page.waitForTimeout(2200);                                               // observing the absence of a jump back, so a wait is the check
@@ -4384,7 +4393,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await openShell(page, [mk('s-aaaa', false)]);
       await page.waitForTimeout(400);
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);
-      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
       const warn = page.locator('#view-proj-a .shared-warn');
       await expect(warn).toBeVisible();
       await expect(warn).toContainText('overwrite');
@@ -4392,12 +4401,12 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#view-proj-x .shared-warn')).toHaveCount(0);
       await warn.locator('.sn-x').click();
       await expect(warn).toHaveCount(0);
-      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);            // dismissed stays dismissed
-      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
-      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
+      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
+      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', true), mk('s-bbbb', true)]);
       await expect(page.locator('#view-proj-a .shared-warn')).toBeVisible();              // sharing stopped, then began again
-      await page.evaluate(rows => { lastSessions = rows; renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
+      await page.evaluate(rows => { setLastSessions(rows); renderSessionSurfaces(); }, [mk('s-aaaa', false)]);
       await expect(page.locator('#view-proj-a .shared-warn')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
@@ -11448,7 +11457,7 @@ test.describe('Canon Cockpit "?" info popovers (t-576f)', () => {
     const body = pop(page, 'skill-eval').locator('.rc-pop-body');
     await body.evaluate(el => { el.scrollTop = 120; });
     await expect.poll(() => body.evaluate(el => el.scrollTop)).toBeGreaterThan(50);
-    await page.waitForFunction(() => upHelpScroll > 50);             // the scroll event (async) is what records the position; a real reader's scroll is long done before a re-render
+    await expect.poll(() => page.evaluate(() => upHelpScroll)).toBeGreaterThan(50);   // the scroll event (async) records the position; a real reader's scroll is long done before a re-render (t-565f: evaluate, so it can import the module)
     await page.evaluate(() => seRender());
     await expect.poll(() => pop(page, 'skill-eval').locator('.rc-pop-body').evaluate(el => el.scrollTop)).toBeGreaterThan(50);
     // The Skill Eval popover opens upward over the right-hand cards, so switch via the left column's "?" (not covered).

@@ -462,7 +462,7 @@
     if(!Array.isArray(sessions)) sessions=[];
     const liveRoots=new Set(sessions.map(s=>_normPath(s&&s.project_root)).filter(Boolean));
     const needRoots=new Set(sessions.filter(s=>sessionView(s).state==='needs-you').map(s=>_normPath(s.project_root)).filter(Boolean));
-    const byId=new Map((window._projects||[]).map(p=>[p.id,_normPath(p.path)]));
+    const byId=new Map(getProjects().map(p=>[p.id,_normPath(p.path)]));
     const next=new Set(), nextNeeds=new Set();
     for(const t of openTabs){
       const path=byId.get(t.id);
@@ -515,11 +515,11 @@
     return true;
   }
   async function resumeInterrupted(e){
-    const proj=(window._projects||[]).find(p=>_projKey(p.path)===_projKey(e.project_root));
+    const proj=getProjects().find(p=>_projKey(p.path)===_projKey(e.project_root));
     if(!proj){ toast('Project not registered: '+e.project_root); return; }
     if(await dismissInterrupted(e.id)) openSessionInTab({proot:e.project_root, ticket:e.id});
   }
-  const intrProj=e=>(window._projects||[]).find(p=>_projKey(p.path)===_projKey(e.project_root));
+  const intrProj=e=>getProjects().find(p=>_projKey(p.path)===_projKey(e.project_root));
   const intrSince=e=>{ const d=new Date(e.started); return isNaN(d)?'':d.toLocaleString([],{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); };
   // A stopped session belongs to its project: the banner sits in that project's tab, and the
   // Admin card lists every one (an unregistered project has no tab, so Admin is its only home).
@@ -541,7 +541,7 @@
   function paintStopped(){
     const b=document.getElementById('admin-bubble');
     if(b){ b.hidden=interrupted.length===0; b.textContent=interrupted.length; b.title=interrupted.length+' stopped agent session'+(interrupted.length===1?'':'s')+' waiting for you'; }
-    for(const p of (window._projects||[])){
+    for(const p of getProjects()){
       const sel=window.CSS&&CSS.escape?CSS.escape(p.id):p.id;
       const meta=document.querySelector('.meta[data-stats="'+sel+'"]');
       const row=meta&&meta.querySelector('[data-f="stopped-row"]'); if(!row) continue;
@@ -629,7 +629,7 @@
     if(state==='needs-you') reaper='paused \u00b7 waiting on you';
     else if(reapIn!==null) reaper='auto-save & end in '+(reapIn>0 ? fmtDur(reapIn) : 'under a minute');
     const proot=String(s.project_root||''), ticket=String(s.ticket||'');
-    const proj=(window._projects||[]).find(p=>_projKey(p.path)===_projKey(proot));
+    const proj=getProjects().find(p=>_projKey(p.path)===_projKey(proot));
     return {
       state, label:STATE_LABEL[state], short:STATE_SHORT[state], since, reaper, reapIn, pid:proj?proj.id:'', projName:proj?proj.name:'',
       signal:SIGNAL_LABEL[s.signal]||'',
@@ -645,7 +645,7 @@
   function notStartedScratch(live){
     const out=[];
     for(const [pid,tabs] of boardScratch){
-      const proj=(window._projects||[]).find(p=>p.id===pid);
+      const proj=getProjects().find(p=>p.id===pid);
       if(!proj) continue;
       for(const t of tabs) if(!live.has(t.id)) out.push({
         state:'not-started', label:'not started \u00b7 pick an agent to start it', short:'not started', since:null, reaper:'', reapIn:null,
@@ -685,6 +685,8 @@
       v.classList.add('has-shared'); v.insertBefore(bar,v.firstChild);
     }
   }
+  // t-565f: lastSessions is written from Admin's refresh too; the owner exports this instead of the binding.
+  function setLastSessions(rows){ lastSessions=rows; }
   function renderSessionSurfaces(){
     const views=lastSessions.map(sessionView);
     ensureTicketTitles(views);
@@ -707,7 +709,7 @@
     list.querySelectorAll('.ag-row').forEach(b=>b.addEventListener('click',()=>openSessionInTab(rail[+b.dataset.i])));
     list.querySelectorAll('.ag-plus').forEach(b=>b.addEventListener('click',()=>startScratch(b.dataset.scratch)));
     // Projects cards: counts by state.
-    for(const p of (window._projects||[])){
+    for(const p of getProjects()){
       const sel=window.CSS&&CSS.escape?CSS.escape(p.id):p.id;
       const meta=document.querySelector('.meta[data-stats="'+sel+'"]');
       if(!meta) continue;
@@ -916,7 +918,7 @@
     return 's-'+[...b].map(x=>a[x%36]).join('');
   }
   function startScratch(projectId){
-    const proj=(window._projects||[]).find(p=>p.id===projectId);
+    const proj=getProjects().find(p=>p.id===projectId);
     if(!proj) return;
     // t-e162: always a new session — several per project, each extra one in its own worktree;
     // reopening an existing scratch is the Agents row's job.
@@ -1085,7 +1087,7 @@ function canonPrefixKeys(emit) {
   // Shared by the board's open-session message and the t-824e session surfaces.
   function openSessionInTab(v){
     const want=_projKey(v.proot);
-    const proj=(window._projects||[]).find(p=>_projKey(p.path)===want);
+    const proj=getProjects().find(p=>_projKey(p.path)===want);
     if(!proj){ toast('Project not registered: '+v.proot); return; }
     openProject(proj.id,proj.name,{nudge:true,quiet:true});   // t-5a4b: Scratch / Continue / rail rows nudge too
     let msg=null;
@@ -1113,7 +1115,7 @@ function canonPrefixKeys(emit) {
   function updateActiveCount(){
     const n=openTabs.length;
     const el=document.getElementById('ncount');
-    if(el) el.textContent = (window._projects||[]).length+' registered \u00b7 '+(n===0 ? 'none open' : n+' active');
+    if(el) el.textContent = getProjects().length+' registered \u00b7 '+(n===0 ? 'none open' : n+' active');
   }
 
   // ── Views: Projects vs Admin vs Upkeep (t-5dc2, t-7ae6) ───────────────────
@@ -1149,7 +1151,7 @@ function canonPrefixKeys(emit) {
       return;
     }
     const inSplit=v==='upkeep'&&splitShown();   // t-bcce: with a split on screen, Upkeep opens inside its project's pane and the split stays
-    if(inSplit) upkeepPane=activeTab;   // every other path clears it in applySplit
+    if(inSplit) setUpkeepPane(activeTab);   // every other path clears it in applySplit
     if(!inSplit){
       document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
       document.getElementById('nav-projects').classList.remove('active');
@@ -1301,7 +1303,7 @@ function canonPrefixKeys(emit) {
   }
 
   async function loadUpkeep(){
-    const proj=(window._projects||[]).find(p=>p.id===upProjectId);
+    const proj=getProjects().find(p=>p.id===upProjectId);
     document.getElementById('up-proj').textContent=proj?proj.name:'';
     if(!proj){ document.getElementById('up-grid').innerHTML='<span class="up-empty">Open a project, then its Upkeep button.</span>'; return; }
     await upRenderGrid();
@@ -1311,16 +1313,16 @@ function canonPrefixKeys(emit) {
   // t-67ab: Upkeep belongs to a project tab — opened by that tab's board (or its Projects card),
   // it shows only that project; ← Board returns to the tab.
   function openUpkeepFor(pid){
-    if(!(window._projects||[]).some(p=>p.id===pid)) return;
+    if(!getProjects().some(p=>p.id===pid)) return;
     if(pid!==upProjectId){
       seReset();
       Object.keys(upPollTimers).forEach(k=>{clearInterval(upPollTimers[k]); delete upPollTimers[k];});
       upProjectId=pid;
     }
-    if(activeTab!==pid){ const p=window._projects.find(x=>x.id===pid); openProject(pid,p.name); }
+    if(activeTab!==pid){ const p=getProjects().find(x=>x.id===pid); openProject(pid,p.name); }
     showView('upkeep');
   }
-  document.getElementById('up-back').addEventListener('click',()=>{ upkeepPane=null; if(upProjectId) activateTab(upProjectId); else applySplit(); });
+  document.getElementById('up-back').addEventListener('click',()=>{ setUpkeepPane(null); if(upProjectId) activateTab(upProjectId); else applySplit(); });
 
   async function upFetchState(skill){
     try{
@@ -1395,7 +1397,7 @@ function canonPrefixKeys(emit) {
     const modelEl=document.getElementById('up-model-'+skill);
     const model=modelEl ? modelEl.value : 'claude-haiku-4-5-20251001';
     const modelLabel=UPKEEP_MODEL_LABELS[model]||model;
-    const proj=(window._projects||[]).find(p=>p.id===upProjectId);
+    const proj=getProjects().find(p=>p.id===upProjectId);
     const ok=await cockpitConfirm({
       title:'Run '+skill+'?',
       body:'This dispatches a real LLM call (Claude '+modelLabel+') against '+(proj?proj.name:'this project')+' and will incur API cost. Report-only — nothing is modified.',
@@ -1481,7 +1483,7 @@ function canonPrefixKeys(emit) {
   function seRender(){
     const el=document.getElementById('se-card'); if(!el) return;
     if(se.avail===null) seProbe();
-    const proj=(window._projects||[]).find(p=>p.id===upProjectId);
+    const proj=getProjects().find(p=>p.id===upProjectId);
     const c=se.check, rows=c?c.checks:[];
     const s1=rows.filter(r=>r.stage===1), s2=rows.filter(r=>r.stage===2);
     const w1=seWorst(s1), w2=seWorst(s2), blocked=!c||w1==='fail'||w2==='fail';
@@ -1546,7 +1548,7 @@ function canonPrefixKeys(emit) {
     const list=document.getElementById('se-list'); if(!list) return;
     if(d.error){ list.innerHTML='<div class="dirnav-empty">'+esc(d.error)+'</div>'; return; }
     se.cwd=d.path||'';
-    const proj=(window._projects||[]).find(p=>p.id===upProjectId);
+    const proj=getProjects().find(p=>p.id===upProjectId);
     const atRoot=proj && _normPath(se.cwd)===_normPath(proj.path);
     const pathEl=document.querySelector('#se-card .dirnav-path'); if(pathEl){ pathEl.textContent=se.cwd; pathEl.title=se.cwd; }
     let rows=(d.parent&&!atRoot)?'<div class="dirnav-row up" data-path="'+escAttr(d.parent)+'">↰ ..</div>':'';
@@ -1556,7 +1558,7 @@ function canonPrefixKeys(emit) {
   }
   function seToggleBrowse(){
     se.open=!se.open;
-    if(se.open){ const proj=(window._projects||[]).find(p=>p.id===upProjectId); se.cwd=se.cwd||(proj?proj.path:''); }
+    if(se.open){ const proj=getProjects().find(p=>p.id===upProjectId); se.cwd=se.cwd||(proj?proj.path:''); }
     seRender();
   }
   async function seUse(){
@@ -1697,7 +1699,7 @@ function canonPrefixKeys(emit) {
   }
 
   async function loadAdmin(){
-    const projects=window._projects||[];
+    const projects=getProjects();
     const setTxt=(id,val)=>{const e=document.getElementById(id); if(e) e.textContent=val;};
     setTxt('ad-tile-projects',projects.length);
     // daemon health + version + uptime from /api/cockpit (+ /api/version)
@@ -1724,7 +1726,7 @@ function canonPrefixKeys(emit) {
     // sessions (cross-project) → running agents count + list
     let sessions=[]; try{ const s=await fetch('/api/cockpit-sessions'); if(s.ok) sessions=await s.json(); }catch(e){}
     if(!Array.isArray(sessions)) sessions=[];
-    lastSessions=sessions;
+    setLastSessions(sessions);
     renderSessionSurfaces();
     // Reaper settings, read-only (a daemon older than t-824e doesn't report them).
     const rb=ck.running_build||{}, rp=document.getElementById('ad-reaper');
@@ -2027,6 +2029,9 @@ function canonPrefixKeys(emit) {
   // are shown by CSS classes only (see .pane1/.pane2); nothing is ever moved in the DOM, because that reloads an iframe.
   const LS_SPLIT='canon-cockpit-split';
   let split=null, prevTab=null, lastScriptFocus=0, focusWant=null, upkeepPane=null;   // upkeepPane: the tab whose pane shows Upkeep (t-bcce)
+  // t-565f: Views and Upkeep set upkeepPane, and the spec resets prevTab; the owner exports these instead of the bindings.
+  function setUpkeepPane(id){ upkeepPane=id; }
+  function resetPrevTab(){ prevTab=null; }
   const SPLIT_MIN={h:280,v:220};
   // Each visible board is told whether it is in a split and whether it is the focused pane; `pulse` marks a pane that took
   // focus by a tab click or a key (not by a click inside it), which the board shows as a pulsing header until its first interaction.
@@ -2210,7 +2215,7 @@ function canonPrefixKeys(emit) {
     if(quiet && nudgeDismissed.has(id)) return;
     if(await hasSprintSkill(id)) return;
     if(v.querySelector('.skill-nudge')) return;   // re-check post-await: a concurrent open may have inserted one
-    const proj=(window._projects||[]).find(p=>p.id===id)||{};
+    const proj=getProjects().find(p=>p.id===id)||{};
     const bar=document.createElement('div');
     bar.className='skill-nudge';
     const msg=document.createElement('span'); msg.className='sn-msg';
@@ -2252,7 +2257,7 @@ function canonPrefixKeys(emit) {
     try{saved=JSON.parse(localStorage.getItem(LS_TABS)||'null');}catch(e){}
     if(!saved||!Array.isArray(saved.openIds)) return;
     // drop ids no longer registered (deregistered while closed)
-    const byId=new Map(window._projects.map(p=>[p.id,p]));
+    const byId=new Map(getProjects().map(p=>[p.id,p]));
     for(const id of saved.openIds){
       const p=byId.get(id);
       if(p && !openTabs.some(t=>t.id===id)){ openTabs.push({id:p.id,name:p.name}); ensureView(p.id,p.name); }
@@ -2262,10 +2267,13 @@ function canonPrefixKeys(emit) {
     renderTabs(); activateTab(activeTab);
   }
 
+  // t-565f: the registered projects, owned here (no longer a window property); readers use getProjects().
+  let registeredProjects=[];
+  function getProjects(){ return registeredProjects; }
   async function load(){
     let projects=[];
     try{const r=await fetch('/api/projects');projects=await r.json();}catch(e){}
-    window._projects=projects;
+    registeredProjects=projects;
     knownIds=new Set(projects.map(p=>p.id));
     document.getElementById('pcount').textContent=projects.length;
 
@@ -2504,7 +2512,7 @@ function canonPrefixKeys(emit) {
     const m=/^#open=(.+)$/.exec(location.hash);
     if(!m) return false;
     const id=decodeURIComponent(m[1]);
-    const p=(window._projects||[]).find(p=>p.id===id);
+    const p=getProjects().find(p=>p.id===id);
     if(!p) return false;
     openProject(id,p.name,{nudge:true});
     return true;
