@@ -311,12 +311,13 @@ grep -qF 'title="Not set up in this project yet — click to register the ${sk} 
 
 # ── t-1b88: Add-Project Browse folder picker ─────────────────────────────────
 grep -qF 'class="pathrow"' <<<"$page" || fail "canon: Add modal missing the .pathrow (input + Browse)"
-grep -qF 'onclick="toggleBrowse()"' <<<"$page" || fail "canon: missing the Browse… button"
+# t-783a: controls are wired with addEventListener, not inline on*= attributes.
+grep -qF "getElementById('add-browse').addEventListener('click',()=>toggleBrowse())" <<<"$page" || fail "canon: missing the Browse… button"
 grep -qF 'id="addPath"' <<<"$page" || fail "canon: the text path input must remain (typing still works)"
 grep -qF 'id="dirnav"' <<<"$page" || fail "canon: missing the folder-navigator panel"
 grep -qF "/api/browse-dirs?path=" <<<"$page" || fail "canon: navigator must fetch /api/browse-dirs"
 grep -qF "function loadBrowse" <<<"$page" || fail "canon: missing loadBrowse handler"
-grep -qF 'onclick="useBrowseDir()"' <<<"$page" || fail "canon: missing the 'Use this folder' action"
+grep -qF "getElementById('add-use-dir').addEventListener('click',()=>useBrowseDir())" <<<"$page" || fail "canon: missing the 'Use this folder' action"
 grep -qF "getElementById('addPath').value=_browseCwd" <<<"$page" || fail "canon: 'Use this folder' must fill the path input with the chosen folder"
 # t-340d: Show-hidden toggle hides dotfolders by default, opt-in via &hidden=1
 grep -qF 'id="dirnav-hidden"' <<<"$page" || fail "canon: navigator missing the Show-hidden toggle"

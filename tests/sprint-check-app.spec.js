@@ -4354,7 +4354,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#up-grid .rcard').first()).toBeVisible();
       await page.locator('#up-grid .rc-help').first().click();                          // "?" popover open
       await expect(page.locator('#up-grid .rc-pop')).toHaveCount(1);
-      await page.locator('#se-card .se-browse').click();                                // Skill Eval browse open
+      await page.locator('#se-card button', { hasText: 'Browse' }).click();                                // Skill Eval browse open
       await expect(page.locator('#se-card .dirnav')).toBeVisible();
       seen.upkeep = await inline();
       await page.locator('#nav-projects').click();
@@ -4364,7 +4364,7 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.locator('#keys-btn').click();
       seen.keys = await inline();
       await page.keyboard.press('Escape');
-      await page.locator('#add-open').click();
+      await page.locator('#view-projects .projbar button', { hasText: '+ Add Project' }).click();   // selectors exist on base too
       await page.locator('#addModal .browse-btn').click();
       await expect(page.locator('#dirnav')).toBeVisible();
       seen.add = await inline();
