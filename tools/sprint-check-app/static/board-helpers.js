@@ -11,6 +11,10 @@ export function esc(s) {
 export function escAttr(s) {
   return esc(s);
 }
+// The inverse of esc(), for text md() has already escaped (only the five entities esc() produces).
+function unescapeHtml(s) {
+  return s.replace(/&(amp|lt|gt|quot|#39);/g, (_, e) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" })[e]);
+}
 
 export function displayTicketId(t) {
   return String(t?.id ?? '').replace(/^(['"])(.*)\1$/, '$2');
@@ -354,8 +358,11 @@ export function md(raw, ticketId) {
     .replace(/^## (.+)$/gm, '<strong class="doc-heading-2">$1</strong>')
     .replace(/^### (.+)$/gm,'<strong class="doc-heading-3">$1</strong>')
     .replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_, alt, src) => {
-      const url = (ticketId ? resolveMockupSrc(src, ticketId) : src).replace(/"/g, '&quot;');
-      return `<img class="doc-visual-img" src="${url}" alt="${alt.replace(/"/g, '&quot;')}" loading="lazy">`;
+      // t-d2e1: md() escaped the whole doc above, so the path is decoded back to its real characters before it is
+      // URL-encoded, then escaped once for the attribute (it's.png, a&b.png). alt is already escaped text.
+      const raw = unescapeHtml(src);
+      const url = esc(ticketId ? resolveMockupSrc(raw, ticketId) : raw);
+      return `<img class="doc-visual-img" src="${url}" alt="${alt}" loading="lazy">`;
     })
     .replace(/\*\*(.+?)\*\*/g,'<strong style="color:var(--text)">$1</strong>')
     .replace(/^\*\*([^*\n][^\n]*)$/gm,'<strong style="color:var(--text)">$1</strong>')

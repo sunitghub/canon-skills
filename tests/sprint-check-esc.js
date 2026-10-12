@@ -42,5 +42,13 @@ const ratio = outcomeRatio('bug', [{ type: 'bug', type_outcome: { clean: '"><img
 ok('outcomeRatio keeps a hostile count inside aria-label and data-tooltip', !/<img/.test(ratio) && (ratio.match(/"/g) || []).length % 2 === 0 && /aria-label="&quot;&gt;&lt;img/.test(ratio), ratio);
 ok('outcomeRatio still renders numbers as before', /aria-label="3 of 4 past bug tickets/.test(outcomeRatio('bug', [{ type: 'bug', type_outcome: { clean: 3, closed: 4 } }])));
 
+// t-d2e1 review: md() escapes the whole doc before the image pass, so an image path must be decoded before it is
+// URL-encoded. Expected URLs are written out by hand; the attribute is decoded the way a browser reads it.
+const { md } = loadBoard();
+const srcOf = name => decode((md(`![shot](visuals/${name})`, 't-abcd').match(/src="([^"]*)"/) || [])[1] || '');
+const IMG = [['plain.png', '/api/ticket-image/t-abcd/visuals/plain.png'], ["it's.png", "/api/ticket-image/t-abcd/visuals/it's.png"],
+  ['a&b.png', '/api/ticket-image/t-abcd/visuals/a%26b.png'], ['q"q.png', '/api/ticket-image/t-abcd/visuals/q%22q.png']];
+for (const [name, want] of IMG) ok(`md() image ${JSON.stringify(name)} requests ${want}`, srcOf(name) === want, srcOf(name));
+
 if (fails) { console.log(`sprint-check-esc: ${fails} failing`); process.exit(1); }
 console.log('sprint-check-esc: ok (esc/escAttr attribute-safe; 500-string fuzz)');
