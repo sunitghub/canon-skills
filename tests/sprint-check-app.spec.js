@@ -10820,12 +10820,18 @@ test.describe('cockpit rendered-output preview (t-8f9d)', () => {
     const host = (extra) => `<!doctype html><iframe id="r" src="${base}/relay"></iframe><iframe id="sib" srcdoc="<p>sibling</p>"></iframe><script>
       document.getElementById('r').addEventListener('load', function () { window.__ready = true; });${extra || ''}</script>`;
 
+    const relayLoads = [];
+    page.on('response', rs => { if (rs.url() === `${base}/relay`) relayLoads.push(rs.frame().parentFrame() ? new URL(rs.frame().parentFrame().url()).origin : 'top'); });
     await page.route('http://evil.example/host', r => r.fulfill({ status: 200, contentType: 'text/html', body: host() }));
     await page.goto('http://evil.example/host');
     await expect.poll(() => page.evaluate(() => window.__ready === true)).toBe(true);
     await page.evaluate(m => document.getElementById('r').contentWindow.postMessage(m, '*'), good);   // a valid message, from a foreign origin
     await page.waitForTimeout(800);
     expect(ends, 'a non-loopback parent').toEqual([]);
+    // Chromium never loads a loopback page under a public-origin parent (Local Network Access), so there the browser
+    // refuses first; WebKit loads it, so there it is the relay's own origin check that refuses. Pin which, so neither
+    // half of this case can quietly become vacuous.
+    expect(relayLoads, 'which browser loads /relay under a foreign parent').toEqual(browserName === 'chromium' ? [] : ['http://evil.example']);
 
     await page.route('**/__relay3c9a', r => r.fulfill({ status: 200, contentType: 'text/html', body: host() }));
     await page.goto(BASE + '/__relay3c9a');
