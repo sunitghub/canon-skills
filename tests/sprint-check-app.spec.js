@@ -1935,6 +1935,32 @@ test.describe('board modal', () => {
     }
   });
 
+  test('why alternative path link runs the search for that path (t-10dc)', async ({ page }) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    const requested = [];
+    await page.route('**/api/why?*', route => {
+      const file = new URL(route.request().url()).searchParams.get('file');
+      requested.push(file);
+      const body = file === 'a.js'
+        ? { file, results: [], message: 'No tickets found for this file.', alternatives: ['x/b.js', 'y/b.js'] }
+        : { file, results: [{ id: 't-0001', status: 'closed', title: 'Alt path ticket' }] };
+      route.fulfill({ contentType: 'application/json', body: JSON.stringify(body) });
+    });
+    await page.goto(BASE);
+    await page.locator('#board-search').fill('why:a.js');
+    await expect(page.locator('.why-alt-link')).toHaveCount(2);
+
+    await page.locator('.why-alt-link', { hasText: 'y/b.js' }).click();
+    // The title shows the new path while loading, so wait for the stubbed result row of the second fetch.
+    await expect(page.locator('.why-result')).toContainText('Alt path ticket');
+    await expect(page.locator('#why-results .why-title')).toHaveText('Code archaeology: y/b.js');
+    await expect(page.locator('#board-search')).toHaveValue('y/b.js');
+    expect(await page.evaluate(async () => (await import('/static/board-core.js')).state.queryMode)).toBe('why');
+    await expect.poll(() => requested).toEqual(['a.js', 'y/b.js']);
+    expect(errors).toEqual([]);
+  });
+
   test('model tier control is disabled until Sign-off has a real Tier line', async ({ page }) => {
     const id = `t-model-tier-unfilled-${Date.now()}`;
 

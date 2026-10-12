@@ -466,6 +466,17 @@
       }
     },
     {
+      "title": "board header and card footer (t-7723) > columns have no box: the status colour is the header dot only, + is on Open alone, Discarded is muted (t-9d93)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "page.goto(BASE) hit the 30s test timeout on its first line in a full webkit run (no assertion reached); passed 3 of 3 alone on the same commit (2026-10-11, t-10dc branch)",
+      "failed_runs": {
+        "webkit": "1 of 1 full run (t-10dc); 0 of 3 alone"
+      }
+    },
+    {
       "title": "cockpit leave-session confirm (t-f6b6) > Save & End waits for the ended reply before tearing down",
       "browsers": [
         "chromium"
