@@ -6,11 +6,29 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-12
+
+The Cockpit's agent rows show which project each session is in and how long it has run; the Model Tiers seed adds the 5.5 models; an escaping hole that let a quote in a path or a skill's output break out of an HTML attribute is closed on every page. The Cockpit shell's code is split out of `cockpit.html` the way the board's was, with nothing changing on screen.
+
+**If you edited Admin > Model Tiers:** your saved copy (`~/.canon/cockpit/model-tiers.json`) is read before the new seed, so the 5.5 models don't appear there. To get them, rename or delete that file (under `$CANON_HOME/cockpit/` if you set `CANON_HOME`) and reload the Cockpit; it falls back to the new seed. Then re-apply your own edits in Admin.
+
 ### Added
+- Cockpit sidebar: each Agents row has a third line with the project and the time spent in the session so far (`ToDo · 32m in session`, or `ToDo · 1h 30m` when it would be cut off); the hover tip has everything, including the start time. Admin's session row ends with the same total (`t-aca6`).
+- Admin > Model Tiers seeds Claude Sonnet 5.5, Claude Haiku 5.5 and gpt-6.1-sol; the Light tier now defaults to Haiku 5.5 (`t-99b2`).
 - `sprint check-review-notes <id>` checks a reviewer's `review-notes.md` with the same rule `sprint complete` enforces; the reviewer runs it before returning and the orchestrator right after the dispatch, so a malformed report is rewritten at once instead of refused at close (`t-c38e`).
 
+### Changed
+- The Cockpit shell's CSS and script load from `tools/sprint-check-app/static/` (four `cockpit-*.css` files, and ten ES modules behind `static/cockpit-main.js`), and its inline `onclick` handlers are listeners. Nothing changes on screen (`t-783a`, `t-565f`).
+- Sprint research asks what *reads* a changed file (every reader, sibling, test and fixture), not only what imports it (`t-e17d`).
+
 ### Fixed
+- Cockpit sidebar: the version number sits next to "Canon Cockpit" instead of at the far edge of the row when the sidebar has spare width, as on Windows (`t-9f20`).
 - Cockpit, light theme: the active tab reads as filled, like the dark theme — the light background deepens to `#e8e8f0`, so the tab still merges into the board below it; the Model Tiers tab underline keeps its contrast (`t-83c9`).
+- Board: clicking a "why" alternative-path link runs the search instead of throwing `apply is not defined` (`t-10dc`).
+- Board docs: an image whose file name contains `&` (or a quote) now loads (`t-d2e1`).
+
+### Security
+- Both pages' `esc()` now escape `"` and `'`, so a value with a quote can no longer close an HTML attribute and add an event handler. The exposed values included a skill run's output in the Upkeep tooltip, worktree paths and branch names. Four server values that reached the page with no escaping at all are escaped too: the Skill Eval status and case counts, the commit panel's in-progress ticket id, and the outcome counts on board cards (`t-d2e1`).
 
 ## [0.5.0] - 2026-10-11
 
