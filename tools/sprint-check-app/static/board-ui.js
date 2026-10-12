@@ -13,6 +13,13 @@ export function setText(id, val) {
   if (el) el.textContent = String(val ?? '');
 }
 
+// Board search runner, set by initBoardSearch; other modules call it through applySearch().
+let searchRunner = null;
+
+export function applySearch(value) {
+  searchRunner?.(value);
+}
+
 // t-1543: this file's load-time code; board-main.js runs it after every module has loaded.
 export function initUi() {
   // ── Keyboard ──────────────────────────────────────────────────────────────
@@ -281,6 +288,7 @@ export function initUi() {
       else state.why = null;
       renderBoard();
     }
+    searchRunner = apply;
 
     input.addEventListener('input', () => apply(input.value));
     input.addEventListener('keydown', e => {

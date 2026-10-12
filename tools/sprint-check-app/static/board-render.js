@@ -6,7 +6,7 @@ import { activeTabId, cockpitState, cockpitTabs, unmountTab } from './board-cock
 import { openCockpit, renderSidebarChanges } from './board-cockpit-rail.js';
 import { cockpitForwardSlash, fetchWorktreeLock } from './board-worktree.js';
 import { openCommitPanel } from './board-panels.js';
-import { setText } from './board-ui.js';
+import { applySearch, setText } from './board-ui.js';
 
 // ── Render ────────────────────────────────────────────────────────────────
 
@@ -311,11 +311,7 @@ function renderWhyResults() {
     btn.addEventListener('click', () => openModal(btn.dataset.id));
   });
   el.querySelectorAll('.why-alt-link').forEach(link => {
-    link.addEventListener('click', () => {
-      const input = document.getElementById('board-search');
-      input.value = link.dataset.path;
-      apply(link.dataset.path);
-    });
+    link.addEventListener('click', () => applySearch(link.dataset.path));
   });
 }
 
