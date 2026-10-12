@@ -68,6 +68,9 @@ model runs those two gates is decided by the rules in the README's
 [Which model runs the close gates](how-it-works.md#which-model-runs-the-close-gates) table and
 [`complete.md`](../skills/sprint/reference/complete.md)'s "Model tier for gates."
 
+On the board the table is the **Wrapup Gates** entry under Acceptance on a closed ticket;
+[Sprint and gates](https://getcanon.dev/docs/sprint-and-gates.html#close-the-sprint) on getcanon.dev shows one.
+
 The distinction that matters: the CLI mechanically enforces that the gates ran and that the binding
 `evaluator` verdict is `pass`; the agents and evaluator judge whether the work behind the gates is
 actually true. A gate that only ever passes is theatre; a gate that only ever fails is noise — canon's
