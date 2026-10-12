@@ -11576,13 +11576,36 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
     // default pickers: one row per tier, each offering both providers
     await expect(page.locator('#mt-default-eval .mt-picker')).toHaveCount(2);
     await expect(page.locator('#mt-default-light .mt-picker')).toHaveCount(2);
-    // Anthropic tab active by default with the 4 seeded models
+    // Anthropic tab active by default with the 6 seeded models (t-99b2: the 5.5 models sit before their predecessors)
     await expect(page.locator('.mt-tab.active')).toContainText('Anthropic');
-    await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toContainText(['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5', 'Claude Haiku 4.5']);
-    // switching to OpenAI shows its 3 seeded models
+    await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toHaveText(['Claude Fable 5.1', 'Claude Opus 5.5', 'Claude Sonnet 5.5', 'Claude Sonnet 5', 'Claude Haiku 5.5', 'Claude Haiku 4.5']);
+    const haiku55 = page.locator('.mt-card[data-id="claude-haiku-5-5"]');
+    await expect(haiku55.locator('.mt-card-price')).toHaveText([/\$0\.1$/, /\$0\.5$/]);
+    // t-99b2: Light defaults to Haiku 5.5; the Default badge moves with it, and Haiku 4.5 keeps none.
+    await expect(page.locator('#mt-default-light select[data-prov="anthropic"] option:checked')).toHaveText('Claude Haiku 5.5');
+    await expect(haiku55.locator('.mt-badge')).toHaveText('Default');
+    await expect(page.locator('.mt-card[data-id="claude-haiku-4-5-20251001"] .mt-badge')).toHaveCount(0);
+    // t-99b2: the new entries carry no alias, so they never reach the per-ticket Gate-model dropdown.
+    for (const id of ['claude-sonnet-5-5', 'claude-haiku-5-5']) {
+      await expect(page.locator(`.mt-card[data-id="${id}"] .mt-card-id`).nth(1)).toHaveText(/^Gate-model alias\s*$/);
+    }
+    // switching to OpenAI shows its 4 seeded models
     await page.locator('.mt-tab', { hasText: 'OpenAI' }).click();
-    await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toContainText(['GPT-6 Astra', 'GPT-6 Sol', 'GPT-6 Luna']);
+    await expect(page.locator('.mt-grid .mt-card .mt-card-name')).toHaveText(['GPT-6 Astra', 'GPT-6.1 Sol', 'GPT-6 Sol', 'GPT-6 Luna']);
     await expect(note).toBeVisible();                                          // the note isn't tied to a tab
+  });
+
+  test('Model Tiers seed: the Plan tab Gate-model dropdown gains no alias-less model, only the new OpenAI pick (t-99b2)', async ({ page }) => {
+    await page.goto(BASE);
+    await page.waitForLoadState('networkidle');
+    await page.locator('#board-search').fill('t-7e36');
+    await page.locator('.card[data-id="t-7e36"]').click();
+    await page.locator('.doc-tab', { hasText: 'Plan' }).click();
+    await expect(page.locator('.model-tier-select option')).toHaveCount(9);
+    expect(await page.locator('.model-tier-select option').evaluateAll(os => os.map(o => o.value))).toEqual([
+      'default', 'fable', 'opus', 'sonnet', 'haiku',
+      'openai:gpt-6-astra', 'openai:gpt-6.1-sol', 'openai:gpt-6-sol', 'openai:gpt-6-luna',
+    ]);
   });
 
   test('Review & Eval card states that gate effort comes from the agent definitions (t-c774)', async ({ page }) => {
@@ -11623,8 +11646,9 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.goto(BASE + '/cockpit');
       await page.waitForLoadState('networkidle');
       await page.locator('#nav-admin').click();
+      const seeded = JSON.parse(canonical).models.anthropic.length;
       await page.locator('.mt-add-card').click();
-      await expect(page.locator('.mt-grid .mt-card')).toHaveCount(5); // 4 seeded + 1 new
+      await expect(page.locator('.mt-grid .mt-card')).toHaveCount(seeded + 1);
       let newAlias;
       await expect.poll(async () => {
         const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
@@ -11648,7 +11672,7 @@ test.describe.serial('Canon Cockpit Admin > Model Tiers (t-7e36)', () => {
       await page.locator('.mt-grid .mt-card', { hasText: 'New Model' }).locator('.danger').click();
       await expect(page.locator('#cconfirm')).toHaveClass(/show/);
       await page.locator('#cc-ok').click(); // confirm the Remove dialog
-      await expect(page.locator('.mt-grid .mt-card')).toHaveCount(4);
+      await expect(page.locator('.mt-grid .mt-card')).toHaveCount(seeded);
       await expect.poll(async () => {
         const reg = await (await page.request.get(BASE + '/api/admin/model-tiers')).json();
         return reg.models.anthropic.some(m => m.name === 'New Model');
