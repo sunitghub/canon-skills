@@ -51,6 +51,11 @@ n="$(lsof -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | sort -u | wc -l | tr -d ' 
 
 # ── T5: /cockpit landing serves the Projects page with key elements ───────────
 page="$(curl -s -H 'Host: localhost' "http://127.0.0.1:$PORT/cockpit")"
+# t-783a: the shell's CSS lives under /static/; read every asset the page links through the same server.
+for asset in $(grep -oE '/static/[a-z0-9-]+\.(css|js)' <<<"$page" | sort -u); do
+  asset_body="$(curl -sf -H 'Host: localhost' "http://127.0.0.1:$PORT$asset")" || fail "canon: cockpit asset $asset is not served"
+  page+=$'\n'"$asset_body"
+done
 grep -q "<title>Canon Cockpit</title>" <<<"$page" || fail "canon: /cockpit missing Canon Cockpit title"
 grep -q "Add Project" <<<"$page" || fail "canon: /cockpit missing Add Project"
 grep -q "class=\"projbar\"" <<<"$page" || fail "canon: /cockpit missing the Projects section bar"
@@ -178,9 +183,11 @@ grep -qF "debug_enabled" <<<"$page" || fail "canon: Admin debug toggle should re
 
 # t-5dc2: every --col-* referenced in cockpit.html must be defined (undefined token → unstyled).
 # Note: `grep -- ` so a "--col-*" pattern isn't parsed as options.
-CKHTML="$ROOT/tools/sprint-check-app/cockpit.html"
-for tok in $(grep -oE 'var\(--col-[a-z]+\)' "$CKHTML" | sed 's/var(//;s/)//' | sort -u); do
-  grep -qF -- "${tok}:" "$CKHTML" || fail "canon: cockpit.html uses ${tok} but never defines it"
+# t-783a: the shell's CSS lives in static/cockpit-*.css, so uses and definitions are read from the page and those files.
+CKSRC="$(cat "$ROOT/tools/sprint-check-app/cockpit.html"; for f in "$ROOT"/tools/sprint-check-app/static/cockpit-*.css; do if [[ -f "$f" ]]; then cat "$f"; fi; done)"
+grep -qE 'var\(--col-[a-z]+\)' <<<"$CKSRC" || fail "canon: no --col-* use found in the shell sources (the check would pass vacuously)"
+for tok in $(grep -oE 'var\(--col-[a-z]+\)' <<<"$CKSRC" | sed 's/var(//;s/)//' | sort -u); do
+  grep -qF -- "${tok}:" <<<"$CKSRC" || fail "canon: cockpit.html uses ${tok} but never defines it"
 done
 
 # ── Phase 2b-iv: Upkeep view (t-7ae6) ─────────────────────────────────────────
