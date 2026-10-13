@@ -47,17 +47,21 @@ refusal "the folder is not a git clone" "$CANON" "$PRINT" "isn't a git clone"
 refusal "if canon's daemon is running" "${DOC_UPDATE_PS1:-$ROOT/install.ps1}" 'throw "' "canon's daemon is running"
 grep -qF ".canon-track" "$CANON" || fail "doc-update-behavior: tools/canon no longer uses the .canon-track marker the docs describe"
 grep -qF "(development version, following main)" "$CANON" || fail "doc-update-behavior: tools/canon no longer prints the '(development version, following main)' line the docs describe"
-# t-d744: the main-track notice has three copies (tools/canon, and the two installers, which run standalone and cannot source it); each must print
-# tools/canon's two lines word for word. The lines are read from tools/canon's main_track_note, so a reworded owner moves the check with it.
+# t-d744, t-bb84: the main-track notice has two copies: tools/canon's main_track_note and install.ps1, which downloads the zip itself and never
+# runs canon update, so it prints its own. install.sh runs canon update, which prints the notice, so it must not print it again. The lines are
+# read from main_track_note, so a reworded owner moves the check with it.
 note="$(sed -n '/^main_track_note() {/,/^}/p' "$CANON" | sed -n 's/.*echo "\(You.re on the development version[^"]*\)".*/\1/p')"
 next="$(sed -n '/^main_track_note() {/,/^}/p' "$CANON" | sed -n 's/.*echo "\(For the latest release instead[^"]*\)".*/\1/p')"
 [[ -n "$note" && -n "$next" ]] || fail "doc-update-behavior: could not read the two notice lines from main_track_note in $CANON"
-for f in "${DOC_UPDATE_INSTALL_SH:-$ROOT/install.sh}" "${DOC_UPDATE_PS1:-$ROOT/install.ps1}"; do
+for f in "${DOC_UPDATE_PS1:-$ROOT/install.ps1}"; do
   for line in "$note" "$next"; do
     # a whole statement line, so the words in a comment or another string do not count
     sed 's/^[[:space:]]*//' "$f" | grep -qxF -e "echo \"$line\"" -e "Write-Host \"    $line\"" && continue
     fail "doc-update-behavior: $f does not print tools/canon's main-track line word for word: $line"
   done
 done
+for line in "$note" "$next"; do   # install.sh: any line that prints either notice line, however it is spelled, is the duplicate t-bb84 removed
+  [ "$(grep -cF -- "$line" "${DOC_UPDATE_INSTALL_SH:-$ROOT/install.sh}")" -eq 0 ] || fail "doc-update-behavior: install.sh prints the main-track notice itself, but the canon update it runs already does: $line"
+done
 grep -qF "docs/setup.md#how-canon-update-works" "$README" || fail "doc-update-behavior: the README does not point to the section"
-echo "doc-update-behavior: ok (the section, its install-type table, the marker, the refusals and the README pointer match what tools/canon prints; the installers print its main-track notice word for word)"
+echo "doc-update-behavior: ok (the section, its install-type table, the marker, the refusals and the README pointer match what tools/canon prints; install.ps1 prints its main-track notice word for word and install.sh leaves it to canon update)"

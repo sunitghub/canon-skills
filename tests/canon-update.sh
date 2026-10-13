@@ -20,7 +20,7 @@ REAL_UNAME="$(command -v uname)"; LSTUB="$WORK/linuxstub"; mkdir -p "$LSTUB"
 printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; *) exec "%s" "$@" ;; esac\n' "$REAL_UNAME" > "$LSTUB/uname"; chmod +x "$LSTUB/uname"; export PATH="$LSTUB:$PATH"
 g() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
 ident=(-c user.email=t@example.com -c user.name=test)
-# t-d744: the plain-words main-track notice (tools/canon main_track_note; the installers print the same lines)
+# t-d744: the plain-words main-track notice (tools/canon main_track_note; install.ps1 prints the same lines, install.sh leaves them to canon update)
 DEV_NOTE="You're on the development version (main): the newest changes, before they're released and without a release's verification."
 DEV_NEXT="For the latest release instead, run: canon update --to latest"
 # t-65c9: a plain update follows the latest verified release unless the install chose main. The sections before t-65c9's test the main track (what every

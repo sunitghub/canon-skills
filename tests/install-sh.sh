@@ -66,9 +66,10 @@ git -C "$up" "${ig[@]}" tag -a v0.3.0 -m v0.3.0; echo 5 > "$up/f"; git -C "$up" 
 tip="$(git -C "$up" rev-parse HEAD)"; rel="$(git -C "$up" rev-list -n1 v0.3.0)"
 mf="$W/releases.txt"; printf '# canon releases\nv0.3.0 %s %s\n' "$Z" "$rel" > "$mf"
 env_i() { env HOME="$W/home" CANON_REPO="file://$up" CANON_MANIFEST_URL="file://$mf" "$@"; }
+notices() { { grep -cF "You're on the development version (main):" <<<"$1" || true; } | tr -d ' '; }   # t-bb84: how often an install printed the notice
 out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh could not install the verified release: $out"
 assert_eq "$rel" "$(git -C "$W/rel" rev-parse HEAD)"; [[ -z "$(git -C "$W/rel" symbolic-ref -q HEAD || true)" ]] || fail "install-sh: the release install is on a branch"
-assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "Installed the verified release v0.3.0"; [[ "$out" != *"development version"* ]] || fail "install-sh: the release install printed the unverified note: $out"
+assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "Installed the verified release v0.3.0"; [[ "$out" != *"development version"* ]] || fail "install-sh: the release install printed the unverified note: $out"; assert_eq 0 "$(notices "$out")"
 [[ ! -e "$W/rel/.canon-track" ]] || fail "install-sh: the release install wrote a track marker"
 # an existing release install updates through `canon update` (no marker: the latest release again), and says so when it is already there
 out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh over a release install failed: $out"; assert_contains "$out" "canon is up to date (v0.3.0, verified"
@@ -79,6 +80,9 @@ assert_eq "1" "$code"; [[ ! -e "$W/norel" ]] || fail "install-sh: a failed verif
 # an existing install honours an explicit CANON_REF (here: from the release install to main), and the marker follows
 out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh with CANON_REF=main over a release install failed: $out"
 assert_eq "$tip" "$(git -C "$W/rel" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/rel/.canon-track")"
+assert_eq 1 "$(notices "$out")"; assert_contains "$out" "Installed the development version (main)."   # t-bb84: once, from canon update
+out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh over a main-track install failed: $out"   # a plain re-run keeps following main
+assert_eq 1 "$(notices "$out")"; assert_contains "$out" "Installed the development version (main)."
 # a failed verification into a folder that already existed (empty, or the current folder) empties it and keeps the folder, and says so; nothing unverified is left
 mkdir "$W/emptyA" "$W/emptyB"
 set +e; out="$(env_i bash "$ROOT/install.sh" "$W/emptyA" 2>&1)"; code=$?; set -e
@@ -87,5 +91,6 @@ set +e; out="$(cd "$W/emptyB" && env_i bash "$ROOT/install.sh" . 2>&1)"; code=$?
 assert_eq "1" "$code"; [[ -z "$(ls -A "$W/emptyB")" ]] || fail "install-sh: a failed install into '.' left something behind: $(ls -A "$W/emptyB")"; assert_contains "$out" "nothing was installed"
 # the opt-in: CANON_REF=main installs main, remembers it, and says it is not verified
 out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/devmain" 2>&1)" || fail "install.sh CANON_REF=main failed: $out"
+assert_eq 1 "$(notices "$out")"; assert_contains "$out" "Installed the development version (main)."   # t-bb84: a fresh main install shows the notice once
 assert_eq "$tip" "$(git -C "$W/devmain" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/devmain/.canon-track")"; assert_contains "$out" "You're on the development version (main): the newest changes, before they're released and without a release's verification."$'\n'"For the latest release instead, run: canon update --to latest"
 echo "install-sh: ok (target resolution; depth-1 clone and update; a new install is the latest verified release, installs nothing when it cannot verify, CANON_REF=main opts in)"
