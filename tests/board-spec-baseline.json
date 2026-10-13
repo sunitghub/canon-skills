@@ -552,6 +552,61 @@
       "failed_runs": {
         "webkit": "1/3"
       }
+    },
+    {
+      "title": "board modal > model tier control is disabled for a hand-set value it does not recognize",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "cockpit in board (t-ddc8) > cross-project Sessions row (t-2d2e) > t-d2e1: a quote in a branch name stays inside the New Ticket worktree pill",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "Canon Cockpit Upkeep (t-7ae6) > a run in flight blocks a second one for the same project even after the cards re-render (t-7d8d)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "Canon Cockpit Projects card: Git status icon (t-8d72) > clicking Off confirms first; Cancel sends nothing, Turn on sends one {confirm:true} POST with a busy spinner, then the card turns On",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
+    },
+    {
+      "title": "ticket modal polish (t-612f) > the Demo/UX switch lives in the header chips row, not the Plan sign-off bar, and still toggles the ticket (t-bb97)",
+      "browsers": [
+        "webkit"
+      ],
+      "ticket": "t-5989",
+      "reason": "30 s webkit load timeout in a full run (t-2758, 2026-10-13); passed alone 2/2 on the branch and 2/2 on main 2718ef2c",
+      "failed_runs": {
+        "webkit": "1/1"
+      }
     }
   ],
   "skipped": []
