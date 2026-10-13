@@ -760,12 +760,17 @@ func handlePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if path == "/api/tickets" {
+		typ := stringValue(payload, "type", "task")
+		body := stringValue(payload, "body", "")
+		if v, ok := payload["body"]; !ok || v == nil { // absent or null: the skeleton (t-b0c9); an empty body stays empty
+			body = ticketSkeleton(typ)
+		}
 		sendJSON(w, createTicket(
 			stringValue(payload, "title", "Untitled"),
-			stringValue(payload, "type", "task"),
+			typ,
 			stringValue(payload, "status", "open"),
 			intValue(payload["priority"], 2),
-			stringValue(payload, "body", ""),
+			body,
 			boolValue(payload["ci"]),
 			stringValue(payload, "gate", "full"),
 			boolValue(payload["demo"]),
@@ -1372,6 +1377,20 @@ func writeVisual(ticketID, filename, dataB64 string, root string) map[string]any
 		return map[string]any{"ok": false}
 	}
 	return map[string]any{"ok": true, "filename": name}
+}
+
+// t-b0c9: the intent skeleton a ticket starts with when a create request carries no body. Same text as tools/tkt
+// ticket_skeleton, the board's TYPE_TEMPLATES and server.py; tests/ticket-skeleton.sh keeps the four identical.
+const skeletonRest = "## Outcome\n<!-- What is true when this is done? -->\n\n" +
+	"## Constraints\n<!-- Limits the solution must respect. -->\n\n" +
+	"## Open questions\n<!-- Anything to decide before planning. The plan answers or carries forward each one. -->\n"
+
+func ticketSkeleton(typ string) string {
+	if typ == "bug" {
+		return "## Problem\n<!-- What is broken, and for whom? -->\n\n## Expected\n<!-- What should happen. -->\n\n" +
+			"## Actual\n<!-- What happens instead, and the steps to see it. -->\n\n" + skeletonRest
+	}
+	return "## Problem\n<!-- What is wrong or missing, and for whom? -->\n\n" + skeletonRest
 }
 
 func createTicket(title, typ, status string, priority int, body string, ci bool, gate string, demo bool, skills string, worktreePreference string, root string) ticket {

@@ -194,14 +194,28 @@ current_id() {
   esac
 }
 
+# t-b0c9: the body a new ticket starts with when no description is given. The same text lives in the board's
+# TYPE_TEMPLATES (static/board-core.js), server.py and sprint-check-go (they run where this script cannot be called);
+# tests/ticket-skeleton.sh keeps the four identical. The hints are HTML comments, which the board does not render.
+ticket_skeleton() {
+  if [[ "$1" == bug ]]; then
+    printf '%s\n' "## Problem" "<!-- What is broken, and for whom? -->" "" "## Expected" "<!-- What should happen. -->" "" \
+      "## Actual" "<!-- What happens instead, and the steps to see it. -->" ""
+  else
+    printf '%s\n' "## Problem" "<!-- What is wrong or missing, and for whom? -->" ""
+  fi
+  printf '%s\n' "## Outcome" "<!-- What is true when this is done? -->" "" "## Constraints" "<!-- Limits the solution must respect. -->" "" \
+    "## Open questions" "<!-- Anything to decide before planning. The plan answers or carries forward each one. -->"
+}
+
 cmd_create() {
-  local title="" type="task" priority="2" description="" skills=""
+  local title="" type="task" priority="2" description="" skills="" described=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -t|--type)        type="$2";        shift 2 ;;
       -p|--priority)    priority="$2";    shift 2 ;;
-      -d|--description) description="$2"; shift 2 ;;
+      -d|--description) description="$2"; described=1; shift 2 ;;
       -s|--skills)      skills="$2";      shift 2 ;;
       -*) echo "Unknown option: $1" >&2; exit 1 ;;
       *)  [[ -z "$title" ]] && title="$1"; shift ;;
@@ -253,6 +267,8 @@ cmd_create() {
     printf "eval_fail_count: 0\n"
     printf -- "---\n"
     printf "# %s\n" "$title"
+    # -d is kept exactly as given (even empty); without it the ticket starts from the skeleton (t-b0c9)
+    [[ -z "$described" ]] && description="$(ticket_skeleton "$type")"
     [[ -n "$description" ]] && printf "\n%s\n" "$description"
   } > "$file"
 

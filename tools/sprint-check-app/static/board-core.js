@@ -74,12 +74,18 @@ function debugLog(...args) {
 
 export const TICKET_TYPES = ['feature', 'task', 'bug', 'chore', 'epic'];
 
+// t-b0c9: the intent skeleton a new ticket starts with. The same text lives in tools/tkt (ticket_skeleton), server.py and
+// sprint-check-go; tests/ticket-skeleton.sh keeps the four identical. Hints are HTML comments, which the board does not render.
+const SKELETON_REST = `## Outcome\n<!-- What is true when this is done? -->\n\n## Constraints\n<!-- Limits the solution must respect. -->\n\n## Open questions\n<!-- Anything to decide before planning. The plan answers or carries forward each one. -->\n`;
+const SKELETON = `## Problem\n<!-- What is wrong or missing, and for whom? -->\n\n` + SKELETON_REST;
+const BUG_SKELETON = `## Problem\n<!-- What is broken, and for whom? -->\n\n## Expected\n<!-- What should happen. -->\n\n## Actual\n<!-- What happens instead, and the steps to see it. -->\n\n` + SKELETON_REST;
+
 export const TYPE_TEMPLATES = {
-  feature: `## Description\nWhat should be built?\n`,
-  task:    `## Description\nWhat should be done?\n`,
-  bug:     `## Description\nWhat is broken?\n\n## Expected\n\n## Actual\n`,
-  chore:   `## Description\nWhat maintenance work is needed?\n`,
-  epic:    `## Description\nWhat larger outcome should this track?\n`,
+  feature: SKELETON,
+  task:    SKELETON,
+  bug:     BUG_SKELETON,
+  chore:   SKELETON,
+  epic:    SKELETON,
 };
 
 export function detectTicketType(title) {
@@ -138,23 +144,18 @@ Ticket: \`<id>\`
 
 ## Sign-off
 <!-- Fill in: Tier: <tier> | Risk: <blast radius / key risks, one line> -->
+<!-- Optional, append: | Gate model: <value> -- forces the sprint-close reviewer/evaluator onto that model, overriding the automatic Admin Review & Eval default. Valid values (case-insensitive): a model id (e.g. haiku, sonnet, opus), or the literal "session" to force full session-model review. Omit entirely for automatic behavior -- there is no separate "auto" value; absence already means automatic. -->
 
 - [ ] Plan approved — proceed to implementation
 
 ## Approach
-How will we implement it?
-<!-- Add or edit approach notes below. Keep this heading unchanged. -->
+<!-- Describe how you will implement this. Keep this heading unchanged. -->
 
 ## Files
 <!-- List files to create or modify. -->
 
 ## Decisions
-<!-- Record choices made during the sprint. Keep this heading unchanged. -->
-
-### [Decision title]
-- **Choice**:
-- **Why**:
-- **Alternatives considered**:
+<!-- Record non-obvious tradeoffs and why. Answer each item under the ticket's ## Open questions here, or write "carried forward: <question>". Keep this heading unchanged. -->
 `,
   },
   {

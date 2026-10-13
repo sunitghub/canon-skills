@@ -15,7 +15,7 @@ Legacy flat `.tickets/<id>.md` tickets remain readable.
 ## Key Commands
 
 ```bash
-tkt create "title" [-t bug|feature|task|epic|chore] [-p 0-4] [-d "desc"]
+tkt create "title" [-t bug|feature|task|epic|chore] [-p 0-4] [-d "desc"]   # no -d: the body is the intent skeleton (Problem, Outcome, Constraints, Open questions; a bug adds Expected, Actual)
 tkt ls                        # list all tickets
 tkt ls --status=in_progress   # filter by status
 tkt ls --json                 # machine-readable (see "Machine-readable output")
