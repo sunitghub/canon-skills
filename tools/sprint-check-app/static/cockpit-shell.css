@@ -49,10 +49,12 @@
   .nav a .ic{width:28px;height:28px;display:grid;place-items:center;border-radius:8px;border:1px solid var(--border);background:var(--panel);font-size:15px;color:var(--text-muted);flex-shrink:0;transition:.12s}
   .nav a .badge{margin-left:auto;font-size:10px;background:var(--accent-dim);color:var(--accent);border-radius:9px;padding:1px 7px}
   .spacer{flex:1}
-  .foot{padding:6px 12px 0;display:flex;gap:8px}
-  .foot button{flex:1 1 0;min-width:0;white-space:nowrap;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px 4px;font-size:12px;cursor:pointer}
+  .foot{padding:6px 12px 0;display:flex;justify-content:center;gap:8px}
+  .foot button{flex:1 1 0;min-width:0;max-width:120px;white-space:nowrap;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px 4px;font-size:12px;cursor:pointer}
   .foot button:hover{color:var(--text);border-color:var(--border-hover)}
-  .foot button.icon{flex:0 0 32px;padding:8px 0;display:flex;align-items:center;justify-content:center}
+  .foot button.icon{flex:0 0 36px;padding:8px 0;display:flex;align-items:center;justify-content:center}
+  /* t-2758: on a wide sidebar Theme and Help stop growing and the group stays centred; the keyboard icon reads at 18px */
+  .foot button.icon svg{width:18px;height:18px}
   /* t-2758: the ◐ Theme popover, above the footer; theme colours only, so it follows every mode */
   .foot{position:relative}
   .theme-pop{position:absolute;left:12px;bottom:calc(100% + 8px);width:300px;max-height:calc(100vh - 120px);overflow:auto;z-index:60;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px;box-shadow:0 12px 32px rgba(0,0,0,.35);font-size:12px;color:var(--text)}

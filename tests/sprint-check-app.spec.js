@@ -4475,6 +4475,23 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 
+    test('shell (t-2758): footer buttons stop growing on a wide sidebar and stay centred, and the keyboard button is 36px with an 18px icon', async ({ page }) => {
+      await openShell(page, []);
+      const boxes = async () => page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.foot button')].map(b => [b.id, b.getBoundingClientRect().toJSON()])));
+      for (const w of [230, 420]) {   // the default and the widest the divider allows
+        await page.evaluate(async w => { const { setSideWidth } = await import('/static/cockpit-sidebar.js'); setSideWidth(w, false); }, w);
+        const b = await boxes(), foot = await page.locator('.foot').boundingBox();
+        expect(Math.round(b['keys-btn'].width), `keyboard button at ${w}px`).toBe(36);
+        expect(Math.abs(b['theme-btn'].width - b['help-btn'].width), `Theme and Help match at ${w}px`).toBeLessThanOrEqual(1);
+        expect(b['theme-btn'].width, `Theme is capped at ${w}px`).toBeLessThanOrEqual(120.5);
+        const left = b['theme-btn'].x - foot.x, right = foot.x + foot.width - (b['keys-btn'].x + b['keys-btn'].width);
+        expect(Math.abs(left - right), `the group is centred at ${w}px (left ${left}, right ${right})`).toBeLessThanOrEqual(1);
+      }
+      const icon = await page.locator('#keys-btn svg').boundingBox();
+      expect(Math.round(icon.width)).toBe(18);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
     // break-it (t-2758): each of these failed against the first build; the fix is named on each line
     test('board (t-2758): a board that reloads, or loads while the theme changes, shows the current theme, not the one its tab opened with', async ({ page }) => {
       await page.emulateMedia({ colorScheme: 'dark' });
