@@ -53,6 +53,22 @@
   .foot button{flex:1 1 0;min-width:0;white-space:nowrap;background:transparent;border:1px solid var(--border);border-radius:8px;color:var(--text-muted);padding:8px 4px;font-size:12px;cursor:pointer}
   .foot button:hover{color:var(--text);border-color:var(--border-hover)}
   .foot button.icon{flex:0 0 32px;padding:8px 0;display:flex;align-items:center;justify-content:center}
+  /* t-2758: the ◐ Theme popover, above the footer; theme colours only, so it follows every mode */
+  .foot{position:relative}
+  .theme-pop{position:absolute;left:12px;bottom:calc(100% + 8px);width:300px;max-height:calc(100vh - 120px);overflow:auto;z-index:60;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px;box-shadow:0 12px 32px rgba(0,0,0,.35);font-size:12px;color:var(--text)}
+  .theme-pop[hidden]{display:none}
+  .theme-pop h4{margin:0 0 6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-muted);font-weight:600}
+  .theme-pop .thm-seg{display:flex;gap:4px;margin-bottom:12px}
+  .theme-pop .thm-seg button,.theme-pop .thm-card{flex:1 1 0;min-width:0;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--text);font:inherit;cursor:pointer}
+  .theme-pop .thm-seg button{padding:5px 0}
+  .theme-pop .thm-seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+  .theme-pop .thm-cards{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .theme-pop .thm-card{padding:8px;text-align:left;border-radius:8px}
+  .theme-pop .thm-card:hover,.theme-pop .thm-seg button:hover{border-color:var(--border-hover)}
+  .theme-pop .thm-card[aria-pressed="true"]{outline:2px solid var(--accent);outline-offset:1px}
+  .theme-pop .thm-strip{display:flex;height:16px;border-radius:4px;overflow:hidden;margin-bottom:6px;border:1px solid var(--border)}
+  .theme-pop .thm-strip i{flex:1}
+  .theme-pop .thm-sub{font-size:11px;color:var(--text-muted);margin:10px 0 6px}
   .main{overflow:hidden;display:flex;flex-direction:column}
   /* Tab bar: pinned Projects + closable project tabs */
   .tabstrip{display:flex;align-items:center;gap:4px;height:var(--strip-h);padding:var(--strip-pad) 14px 0;border-bottom:1px solid var(--border);background:var(--panel);flex-shrink:0;overflow-x:auto}

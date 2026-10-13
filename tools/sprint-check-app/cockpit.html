@@ -14,6 +14,7 @@
 <link rel="stylesheet" href="/static/cockpit-admin.css">
 <link rel="stylesheet" href="/static/cockpit-upkeep.css">
 <link rel="stylesheet" href="/static/cockpit-projects.css">
+<script src="/static/theme-boot.js" data-page="shell"></script>
 </head>
 <body>
 <div class="app">
@@ -35,8 +36,9 @@
       <div class="agents" id="ag-list"></div>
       <div class="spacer"></div>
       <div class="foot">
-        <button id="theme-btn">&#127769; Dark</button>
+        <button id="theme-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="theme-pop">&#9680; Theme</button>
         <button id="help-btn">? Help</button>
+        <div id="theme-pop" class="theme-pop" role="dialog" aria-label="Theme" hidden></div>
         <button id="keys-btn" class="icon" type="button" aria-label="Keyboard shortcuts" title="Keyboard shortcuts"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9.5 14h5"/></svg></button>
       </div>
       <button class="side-collapse" id="side-collapse" type="button" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar (ctrl+. then w)">
@@ -302,7 +304,7 @@
       <p>In a terminal run <code>canon update</code>. It brings canon up to date and refreshes your registered projects (about 20 seconds each on Windows). On Windows the daemon has to be stopped first: if <code>canon update</code> says it is still running, use <b>Admin &#8250; Stop Daemon</b> (or run <code>canon stop</code>), then run <code>canon update</code> again. When it finishes, run <code>canon</code> to start the Cockpit.</p>
 
       <div class="help-sect">Theme</div>
-      <p>The footer toggle flips dark / light and applies to the shell and every open board.</p>
+      <p><b>&#9680; Theme</b> in the footer: Mode (System, Light or Dark; System follows your computer's setting) and the theme for it (under System, one for light and one for dark). Hover the button to see the theme in use. It applies to the shell and every open board, and is remembered.</p>
 
       <hr class="help-divider">
       <div class="help-sect">Versions</div>

@@ -456,14 +456,12 @@ export function initUi() {
   (function initTheme() {
     const btn  = document.getElementById('theme-toggle');
     const html = document.documentElement;
-    const stored = localStorage.getItem('sprint-check-theme');
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    // t-a55a: when embedded in a Cockpit tab, honor the shell-passed ?theme so the
-    // board matches the Cockpit's theme (the shell uses its own key/param).
-    const urlTheme = new URLSearchParams(location.search).get('theme');
-    const isDark = urlTheme ? (urlTheme !== 'light') : (stored ? stored === 'dark' : prefersDark);
+    // t-2758: theme-boot.js already set the theme before the first paint (?theme, then 'sprint-check-theme', then the
+    // OS); this keeps the button and the live changes in step. An embedded board follows the Cockpit shell and never
+    // saves, so it cannot overwrite the standalone board's own choice (both share one origin, so one localStorage).
+    const embedded = html.classList.contains('canon-proj-embed');
 
-    function apply(dark) {
+    function apply(dark, save) {
       if (dark) {
         html.removeAttribute('data-theme');
         btn.textContent = '🌙';
@@ -471,15 +469,17 @@ export function initUi() {
         html.setAttribute('data-theme', 'light');
         btn.textContent = '☀️';
       }
-      localStorage.setItem('sprint-check-theme', dark ? 'dark' : 'light');
+      if (save && !embedded) { try { localStorage.setItem('sprint-check-theme', dark ? 'dark' : 'light'); } catch (e) {} }
     }
 
-    apply(isDark);
-    btn.addEventListener('click', () => apply(html.getAttribute('data-theme') === 'light'));
-    // Let the Cockpit shell push live theme changes into this iframe.
+    apply(html.getAttribute('data-theme') !== 'light', false);
+    btn.addEventListener('click', () => apply(html.getAttribute('data-theme') === 'light', true));
+    // The Cockpit shell pushes live changes (t-a55a). Only the parent window on this origin is believed (t-2758): any
+    // other page or frame posting a canon-theme message is ignored.
     window.addEventListener('message', (e) => {
+      if (window.parent === window || e.source !== window.parent || e.origin !== location.origin) return;
       if (e.data && e.data.type === 'canon-theme' && (e.data.theme === 'dark' || e.data.theme === 'light')) {
-        apply(e.data.theme === 'dark');
+        apply(e.data.theme === 'dark', false);
       }
     });
   })();

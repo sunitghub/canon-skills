@@ -6,6 +6,13 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- Cockpit: **◐ Theme** replaces the sidebar's Dark/Light button. It opens a small panel with Mode (System, Light or Dark; System follows your computer) and the theme for that mode, one pick for light and one for dark under System; hover the button to see the theme in use. Canon Dark and Canon Light look as before; more themes come in later releases (`t-2758`).
+
+### Fixed
+- A light-theme user no longer sees a dark first frame when the Cockpit or a board loads (`t-3735`).
+- A board in a Cockpit tab no longer overwrites the standalone board's own saved theme, and a board now accepts a theme change only from the Cockpit window that holds it (`t-2758`).
+
 ## [0.8.0] - 2026-10-13
 
 New tickets start from a short intent skeleton, and a development-version install no longer prints its notice twice.
