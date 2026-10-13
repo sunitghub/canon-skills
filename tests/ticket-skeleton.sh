@@ -38,7 +38,9 @@ done
 [[ "$(board "TYPE_TEMPLATES['bug']")" == *"## Expected"*"## Actual"*"## Outcome"* ]] || fail "ticket-skeleton: a bug keeps Expected and Actual before Outcome"
 [[ "$(board "TYPE_TEMPLATES['task']")" != *"## Expected"* ]] || fail "ticket-skeleton: only a bug has Expected"
 # every hint is a comment, so an untouched skeleton renders as headings only
-[ "$(board "TYPE_TEMPLATES['bug']" | grep -Ev '^(## .*|<!-- .* -->)?$' | grep -c .)" -eq 0 ] || fail "ticket-skeleton: the skeleton has text outside headings and comments"
+for ty in "${TYPES[@]}"; do
+  [ "$(board "TYPE_TEMPLATES['$ty']" | grep -Ev '^(## .*|<!-- .* -->)?$' | grep -c .)" -eq 0 ] || fail "ticket-skeleton: the $ty skeleton has text outside headings and comments"
+done
 # -d is kept exactly, even empty
 id="$(cd "$proj" && "$TKT" create "given" -d "just this")"; assert_eq "just this" "$(body_of "$proj/.tickets/$id/ticket.md")"
 id="$(cd "$proj" && "$TKT" create "empty" -d "")"; assert_eq "" "$(body_of "$proj/.tickets/$id/ticket.md")"
