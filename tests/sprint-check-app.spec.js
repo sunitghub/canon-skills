@@ -809,6 +809,38 @@ test.describe('board modal', () => {
     }
   });
 
+  test('New ticket starts from the intent skeleton; a bug adds Expected/Actual; hints never render (t-b0c9)', async ({ page }) => {
+    const title = `Skeleton check ${Date.now()}`;
+    let createdId = '';
+    try {
+      await page.goto(BASE);
+      await page.waitForLoadState('networkidle');
+      await page.locator('#btn-create').click();
+      await page.waitForSelector('#create-modal', { timeout: 3000 });
+      const body = page.locator('#c-body');
+      await expect(body).toHaveValue(/^## Problem\n<!-- [^\n]+ -->\n\n## Outcome\n[\s\S]*## Constraints\n[\s\S]*## Open questions\n<!-- [^\n]+ -->\n$/);
+      await expect(body).not.toHaveValue(/## Expected/);
+      // untouched, so switching type swaps the skeleton: a bug gets Expected and Actual before Outcome
+      await page.locator('#c-types .create-pill[data-type="bug"]').click();
+      await expect(body).toHaveValue(/^## Problem\n[\s\S]*## Expected\n[\s\S]*## Actual\n[\s\S]*## Outcome\n[\s\S]*## Open questions\n/);
+      await page.locator('#c-title').fill(title);
+      await page.locator('#c-submit').click();
+
+      const card = page.locator('.card', { hasText: title });
+      await expect(card).toBeVisible();
+      createdId = await card.getAttribute('data-id') || '';
+      expect(fs.readFileSync(path.join(PROJECT_ROOT, '.tickets', createdId, 'ticket.md'), 'utf8')).toContain('## Open questions\n<!-- ');
+      await card.click();
+      await expect(page.locator('#m-docs .doc-child')).toHaveText(['Problem', 'Expected', 'Actual', 'Outcome', 'Constraints', 'Open questions']);
+      await expect(page.locator('#m-body .doc-heading-2', { hasText: 'Open questions' })).toBeVisible();
+      await expect(page.locator('#m-body')).not.toContainText('<!--');
+      await expect(page.locator('#m-body')).not.toContainText('What is broken');
+      await expect(page.locator('#m-body')).not.toContainText('Anything to decide before planning');
+    } finally {
+      if (createdId) fs.rmSync(path.join(PROJECT_ROOT, '.tickets', createdId), { recursive: true, force: true });
+    }
+  });
+
   test('Create button stays clickable across successive creates in one session', async ({ page }) => {
     // Regression: submit() disabled #c-submit but only re-enabled it in catch,
     // so after the first successful create the button stayed disabled and a

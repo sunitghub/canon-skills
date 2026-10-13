@@ -13,6 +13,7 @@ export SKILLS_SH_NO_TTY=1
 
 tests=(
   "$ROOT/tests/tkt.sh"
+  "$ROOT/tests/ticket-skeleton.sh"
   "$ROOT/tests/sprint.sh"
   "$ROOT/tests/ticket-root-worktree.sh"
   "$ROOT/tests/frontmatter-lib.sh"

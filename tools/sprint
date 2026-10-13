@@ -134,7 +134,7 @@ Ticket: \`$id\`
 <!-- List files to create or modify. -->
 
 ## Decisions
-<!-- Record non-obvious tradeoffs and why. Keep this heading unchanged. -->
+<!-- Record non-obvious tradeoffs and why. Answer each item under the ticket's ## Open questions here, or write "carried forward: <question>". Keep this heading unchanged. -->
 EOF
 
   ensure_context_files "$root"

@@ -1968,7 +1968,20 @@ def read_doc_with_etag(doc_file: str, root: Path = None):
     raw = p.read_bytes()
     return raw.decode('utf-8', errors='replace'), (etag if live else doc_etag(raw))
 
-def create_ticket(title: str, type_: str, status: str, priority: int, body: str, ci: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', worktree_preference: str = '', root: Path = None) -> dict:
+# t-b0c9: the intent skeleton a ticket starts with when a create request carries no body at all (an empty body stays
+# empty: the user cleared it). Same text as tools/tkt ticket_skeleton, the board's TYPE_TEMPLATES and sprint-check-go;
+# tests/ticket-skeleton.sh keeps the four identical.
+_SKELETON_REST = ('## Outcome\n<!-- What is true when this is done? -->\n\n'
+                  '## Constraints\n<!-- Limits the solution must respect. -->\n\n'
+                  '## Open questions\n<!-- Anything to decide before planning. The plan answers or carries forward each one. -->\n')
+
+def ticket_skeleton(type_: str) -> str:
+    if type_ == 'bug':
+        return ('## Problem\n<!-- What is broken, and for whom? -->\n\n## Expected\n<!-- What should happen. -->\n\n'
+                '## Actual\n<!-- What happens instead, and the steps to see it. -->\n\n' + _SKELETON_REST)
+    return '## Problem\n<!-- What is wrong or missing, and for whom? -->\n\n' + _SKELETON_REST
+
+def create_ticket(title: str, type_: str, status: str, priority: int, body, ci: bool = False, gate: str = 'full', demo: bool = False, skills: str = '', worktree_preference: str = '', root: Path = None) -> dict:
     """Create a new canonical ticket folder and return its parsed data."""
     tdir = tickets_dir_for(root) if root is not None else TICKETS_DIR
     tdir.mkdir(exist_ok=True)
@@ -2018,6 +2031,8 @@ def create_ticket(title: str, type_: str, status: str, priority: int, body: str,
     fm_lines.append('eval_override: false')
     fm_lines.append('---\n')
     fm = '\n'.join(fm_lines)
+    if body is None:
+        body = ticket_skeleton(type_)
     full = fm + '\n' + body.strip() + '\n' if body.strip() else fm
     ticket_dir = tdir / ticket_id
     ticket_dir.mkdir()
@@ -3590,7 +3605,7 @@ class Handler(BaseHTTPRequestHandler):
                 type_    = str(payload.get('type', 'task')),
                 status   = str(payload.get('status', 'open')),
                 priority = int(payload.get('priority', 2)),
-                body     = str(payload.get('body', '')),
+                body     = None if payload.get('body') is None else str(payload.get('body')),   # absent or null: the skeleton (t-b0c9)
                 ci       = bool(payload.get('ci', False)),
                 gate     = 'eval' if str(payload.get('gate', '')).lower() == 'eval' else 'full',
                 demo     = bool(payload.get('demo', False)),

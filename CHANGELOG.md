@@ -6,6 +6,9 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 
 ## [Unreleased]
 
+### Changed
+- A new ticket starts from an intent skeleton: `## Problem`, `## Outcome`, `## Constraints` and `## Open questions` (a bug also gets `## Expected` and `## Actual`), each with a hint the board does not show. The board's New ticket form, `tkt create` without `-d`, and a create request to either board with no body all give the same text; `-d` text and a body you cleared are kept as given. At sprint start the plan answers each open question or carries it forward by name, and the board's Plan template now matches the one `sprint start` writes (`t-b0c9`).
+
 ## [0.7.0] - 2026-10-13
 
 You can now end a Cockpit session you aren't attached to, a new project's first sprint closes without tripping over canon's own setup, and installs that follow `main` say so in plain words.
