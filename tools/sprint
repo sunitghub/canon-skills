@@ -604,7 +604,7 @@ _canon_setup_edit_only() (   # a subshell, so its EXIT trap removes the scratch 
     *) exit 1 ;;
   esac
   [[ -f "$wroot/$path" && ! -L "$wroot/$path" ]] || exit 1
-  tmp="$(mktemp -d)" || exit 1
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/canon-gate.XXXXXX")" || exit 1   # a template: macOS mktemp -d alone ignores TMPDIR
   trap 'rm -rf "$tmp"' EXIT
   git -C "$tmp" init -q >/dev/null 2>&1 || exit 1
   git -C "$wroot" cat-file --filters "$graded:$path" > "$tmp/prior" 2>/dev/null || exit 1
