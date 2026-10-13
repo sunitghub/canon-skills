@@ -1718,7 +1718,9 @@ cg_project="$(make_project)"
   cg_refused .gitattributes "canon block inserted above the project's rules"
   printf 'a\nfoo' > .gitignore; git add .gitignore; git commit -qm "no final newline"
   fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
-  printf 'a\nfoo\r\r\n' > .gitignore; cg_refused .gitignore "extra CRs on the last line"
+  canon_setup "$PWD"; git checkout -q -- .gitattributes; perl -pi -e 's/^foo$/foo\r\r/' .gitignore   # canon's edit, plus two CRs
+  [[ "$(od -c .gitignore)" == *'f   o   o  \r  \r  \n'* ]] || fail "fixture: expected foo<CR><CR> in .gitignore: $(od -c .gitignore)"
+  cg_refused .gitignore "extra CRs on a line beside canon's edit"
   canon_setup "$PWD"; git checkout -q -- .gitattributes; mv .gitignore sneaky; ln -s sneaky .gitignore   # canon's exact bytes, behind a link
   cg_refuses .gitignore "symlinked .gitignore"; rm .gitignore sneaky; git checkout -q -- .gitignore
   cg_closes "pass 2 refusals restored"
