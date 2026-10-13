@@ -20,6 +20,9 @@ REAL_UNAME="$(command -v uname)"; LSTUB="$WORK/linuxstub"; mkdir -p "$LSTUB"
 printf '#!/bin/sh\ncase "$1" in -s) echo Linux ;; *) exec "%s" "$@" ;; esac\n' "$REAL_UNAME" > "$LSTUB/uname"; chmod +x "$LSTUB/uname"; export PATH="$LSTUB:$PATH"
 g() { git -C "$1" "${@:2}" >/dev/null 2>&1; }
 ident=(-c user.email=t@example.com -c user.name=test)
+# t-d744: the plain-words main-track notice (tools/canon main_track_note; the installers print the same lines)
+DEV_NOTE="You're on the development version (main): the newest changes, before they're released and without a release's verification."
+DEV_NEXT="For the latest release instead, run: canon update --to latest"
 # t-65c9: a plain update follows the latest verified release unless the install chose main. The sections before t-65c9's test the main track (what every
 # install did before), so those installs say so; t-65c9's own section starts from installs with no marker.
 maintrack() { printf 'main\n' > "$1/.canon-track"; echo '/.canon-track' >> "$1/.git/info/exclude"; }
@@ -337,7 +340,7 @@ set +e; out="$("$C3" update --to v0.3.0 2>&1)"; code=$?; set -e
 assert_contains "$out" "published manifest says"; assert_eq "$tip3" "$(h3)"; assert_eq "v0.3.0" "$(git -C "$I3" tag)"
 git -C "$I3" tag -d v0.3.0 >/dev/null
 # main and a plain update need no manifest (--to main from main is an ordinary update).
-out="$("$C3" update --to main 2>&1)"; assert_contains "$out" "canon is up to date"; assert_contains "$out" "not checksum-verified"
+out="$("$C3" update --to main 2>&1)"; assert_contains "$out" "canon is up to date"; assert_contains "$out" "$DEV_NOTE"
 out="$("$C3" update 2>&1)"; assert_contains "$out" "canon is up to date"; assert_eq "$tip3" "$(h3)"; assert_eq "" "$(git -C "$I3" status --porcelain)"
 # (an ordinary pull may bring tags along; a local tag is still checked against the manifest below before it is used)
 good3
@@ -353,7 +356,7 @@ g "$I3" checkout -q main
 : > "$REFRESH_LOG"; rm -f "$REFRESH_LOG.fetch"
 out="$("$C3" update --to v0.3.0 2>&1)"
 assert_eq "$(sha3 v0.3.0)" "$(h3)"; assert_eq "0.3.0" "$(cat "$I3/VERSION")"
-assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "verified against the published manifest"; refute_contains "$out" "not checksum-verified"
+assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "verified against the published manifest"; refute_contains "$out" "$DEV_NOTE"
 assert_contains "$out" "refreshed: $WORK/p1"
 assert_eq "fetch --quiet" "$(cat "$REFRESH_LOG.fetch")"
 [[ -z "$(git -C "$I3" symbolic-ref -q HEAD || true)" ]] || fail "canon-update: --to a tag left a branch checked out"
@@ -361,7 +364,7 @@ assert_eq "fetch --quiet" "$(cat "$REFRESH_LOG.fetch")"
 printf '# canon releases\nv0.3.1 %s %s\nv0.3.0 %s %s\n' "$Z3" "$(sha3 v0.3.1)" "$Z3" "$(sha3 v0.3.0)" > "$M3"
 : > "$REFRESH_LOG"
 out="$("$C3" update 2>&1)"
-assert_eq "$(sha3 v0.3.1)" "$(h3)"; assert_contains "$out" "canon is now on v0.3.1"; assert_contains "$out" "verified against the published manifest"; refute_contains "$out" "not checksum-verified"
+assert_eq "$(sha3 v0.3.1)" "$(h3)"; assert_contains "$out" "canon is now on v0.3.1"; assert_contains "$out" "verified against the published manifest"; refute_contains "$out" "$DEV_NOTE"
 assert_contains "$out" "refreshed: $WORK/p1"
 out="$("$C3" update 2>&1)"; assert_contains "$out" "canon is up to date (v0.3.1, verified"; assert_eq "$(sha3 v0.3.1)" "$(h3)"
 good3
@@ -395,20 +398,20 @@ assert_eq "main" "$(git -C "$A" symbolic-ref --short HEAD)"; [[ ! -e "$A/.canon-
 out="$("$CA" update 2>&1)"
 assert_eq "$(sha3 v0.3.1)" "$(ha)"; [[ -z "$(git -C "$A" symbolic-ref -q HEAD || true)" ]] || fail "canon-update: the migration left a branch checked out"
 assert_contains "$out" "canon is now on v0.3.1"; assert_contains "$out" "verified against the published manifest"
-assert_contains "$out" "This install was following main"; assert_contains "$out" "canon update --to main"; refute_contains "$out" "not checksum-verified"
+assert_contains "$out" "This install was following main"; assert_contains "$out" "canon update --to main"; refute_contains "$out" "$DEV_NOTE"
 assert_eq "" "$(git -C "$A" status --porcelain)"; [[ ! -e "$A/.canon-track" ]] || fail "canon-update: the release track wrote a marker"
-out="$("$CA" update 2>&1)"; assert_contains "$out" "canon is up to date (v0.3.1, verified"; refute_contains "$out" "was following main"; refute_contains "$out" "not checksum-verified"
+out="$("$CA" update 2>&1)"; assert_contains "$out" "canon is up to date (v0.3.1, verified"; refute_contains "$out" "was following main"; refute_contains "$out" "$DEV_NOTE"
 assert_eq "canon 0.3.1" "$("$CA" version)"
 # --to main is the opt-in: remembered (an ignored file), followed by a plain update, and the only place the unverified note appears
 out="$("$CA" update --to main 2>&1)"
 assert_eq "$tip3" "$(ha)"; assert_eq "main" "$(git -C "$A" symbolic-ref --short HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$A/.canon-track")"; assert_eq "" "$(git -C "$A" status --porcelain)"
-assert_contains "$out" "following main"; assert_contains "$out" "not checksum-verified"; assert_contains "$out" "canon update --to latest"
-assert_contains "$("$CA" version)" "Following main"
+assert_contains "$out" "$DEV_NOTE"$'\n'"$DEV_NEXT"; refute_contains "$out" "checksum-verified"; refute_contains "$out" "returns to verified releases"
+assert_eq "canon $(tr -d '[:space:]' < "$A/VERSION") (development version, following main)"$'\n'"$DEV_NEXT" "$("$CA" version)"
 echo extra-main > "$WORK/seed3/NEWS3"; git -C "$WORK/seed3" "${ident[@]}" add NEWS3; git -C "$WORK/seed3" "${ident[@]}" commit -qm "more main"; git -C "$WORK/seed3" push -q origin main 2>/dev/null
-out="$("$CA" update 2>&1)"; assert_eq "$(git -C "$WORK/seed3" rev-parse HEAD)" "$(ha)"; assert_contains "$out" "canon updated"; assert_contains "$out" "not checksum-verified"
+out="$("$CA" update 2>&1)"; assert_eq "$(git -C "$WORK/seed3" rev-parse HEAD)" "$(ha)"; assert_contains "$out" "canon updated"; assert_contains "$out" "$DEV_NOTE"
 # --to latest returns to the verified releases and forgets the marker; the version command says nothing about main again
 out="$("$CA" update --to latest 2>&1)"
-assert_eq "$(sha3 v0.3.1)" "$(ha)"; [[ ! -e "$A/.canon-track" ]] || fail "canon-update: --to latest kept the marker"; refute_contains "$out" "not checksum-verified"; refute_contains "$("$CA" version)" "Following main"
+assert_eq "$(sha3 v0.3.1)" "$(ha)"; [[ ! -e "$A/.canon-track" ]] || fail "canon-update: --to latest kept the marker"; refute_contains "$out" "$DEV_NOTE"; refute_contains "$("$CA" version)" "development version"
 # a rollback is not sticky: --to v0.3.0 installs it, the next plain update goes forward again
 out="$("$CA" update --to v0.3.0 2>&1)"; assert_eq "$(sha3 v0.3.0)" "$(ha)"; assert_contains "$out" "canon is now on v0.3.0"
 out="$("$CA" update 2>&1)"; assert_eq "$(sha3 v0.3.1)" "$(ha)"; assert_contains "$out" "canon is now on v0.3.1"; refute_contains "$out" "was following main"

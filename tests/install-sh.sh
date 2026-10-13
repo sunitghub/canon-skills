@@ -68,7 +68,7 @@ mf="$W/releases.txt"; printf '# canon releases\nv0.3.0 %s %s\n' "$Z" "$rel" > "$
 env_i() { env HOME="$W/home" CANON_REPO="file://$up" CANON_MANIFEST_URL="file://$mf" "$@"; }
 out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh could not install the verified release: $out"
 assert_eq "$rel" "$(git -C "$W/rel" rev-parse HEAD)"; [[ -z "$(git -C "$W/rel" symbolic-ref -q HEAD || true)" ]] || fail "install-sh: the release install is on a branch"
-assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "Installed the verified release v0.3.0"; [[ "$out" != *"not checksum-verified"* ]] || fail "install-sh: the release install printed the unverified note: $out"
+assert_contains "$out" "canon is now on v0.3.0"; assert_contains "$out" "Installed the verified release v0.3.0"; [[ "$out" != *"development version"* ]] || fail "install-sh: the release install printed the unverified note: $out"
 [[ ! -e "$W/rel/.canon-track" ]] || fail "install-sh: the release install wrote a track marker"
 # an existing release install updates through `canon update` (no marker: the latest release again), and says so when it is already there
 out="$(env_i bash "$ROOT/install.sh" "$W/rel" 2>&1)" || fail "install.sh over a release install failed: $out"; assert_contains "$out" "canon is up to date (v0.3.0, verified"
@@ -87,5 +87,5 @@ set +e; out="$(cd "$W/emptyB" && env_i bash "$ROOT/install.sh" . 2>&1)"; code=$?
 assert_eq "1" "$code"; [[ -z "$(ls -A "$W/emptyB")" ]] || fail "install-sh: a failed install into '.' left something behind: $(ls -A "$W/emptyB")"; assert_contains "$out" "nothing was installed"
 # the opt-in: CANON_REF=main installs main, remembers it, and says it is not verified
 out="$(env_i CANON_REF=main bash "$ROOT/install.sh" "$W/devmain" 2>&1)" || fail "install.sh CANON_REF=main failed: $out"
-assert_eq "$tip" "$(git -C "$W/devmain" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/devmain/.canon-track")"; assert_contains "$out" "not checksum-verified"
+assert_eq "$tip" "$(git -C "$W/devmain" rev-parse HEAD)"; assert_eq "main" "$(tr -d '[:space:]' < "$W/devmain/.canon-track")"; assert_contains "$out" "You're on the development version (main): the newest changes, before they're released and without a release's verification."$'\n'"For the latest release instead, run: canon update --to latest"
 echo "install-sh: ok (target resolution; depth-1 clone and update; a new install is the latest verified release, installs nothing when it cannot verify, CANON_REF=main opts in)"
