@@ -4660,7 +4660,13 @@ test.describe('cockpit in board (t-ddc8)', () => {
       const send = m => board.locator('body').evaluate((_, m) => window.dispatchEvent(new MessageEvent('message', { data: m, origin: location.origin, source: window.parent })), m);
       await page.evaluate(async () => { const { openSessionInTab } = await import('/static/cockpit-tabs.js'); openSessionInTab({ proot: '/tmp/proj-a', scratch: 's-k2m9' }); });
       await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(1);
-      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 't-aaa1' });        // not a scratch id
+      // a ticket chip (this repo's own ticket, which openShell's boards serve) must survive a close-scratch naming it
+      await page.evaluate(async () => { const { openSessionInTab } = await import('/static/cockpit-tabs.js'); openSessionInTab({ proot: '/tmp/proj-a', ticket: 't-3c9a' }); });
+      const ticketPill = board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="t-3c9a"]');
+      await expect(ticketPill).toHaveCount(1);
+      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 't-3c9a' });        // a ticket, not a scratch id
+      await page.waitForTimeout(300);
+      await expect(ticketPill).toHaveCount(1);
       await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 's-zz99' });        // not open here
       await page.waitForTimeout(300);
       await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(1);
