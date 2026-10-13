@@ -76,9 +76,8 @@ RC_FILE="$HOME/.bashrc"
 [[ "${SHELL:-}" == */zsh ]] && RC_FILE="$HOME/.zshrc"
 
 if [[ "$(git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null)" == main ]]; then
-  echo
-  echo "You're on the development version (main): the newest changes, before they're released and without a release's verification."
-  echo "For the latest release instead, run: canon update --to latest"
+  # The development-version notice came from `canon update` above (t-bb84: printing it here too showed it twice)
+  printf '\nInstalled the development version (main).\n'
 else
   printf '\nInstalled the verified release %s. Update any time with: canon update\n' "$(git -C "$TARGET" describe --tags --exact-match 2>/dev/null || echo '')"
 fi
