@@ -589,51 +589,35 @@ _gate_eval_report_consistency() {
   fi
 }
 
-# _canon_setup_edit_only <wroot> <graded> <path> — t-52f0: true when the project-root .gitignore or .gitattributes at <path> differs from
-# <graded> only by what canon's own setup writes there, so _gate_eval_report_fresh (below) can let registration's uncommitted edit through
-# (without this a fresh project's first close was refused). .gitignore: the mirror/agents lines (tools/skills/project.sh
-# _ensure_mirror_gitignored, _ensure_agents_link_gitignored), and the old "…/" lines removed only where the new line is present.
-# .gitattributes: the whole canon:gitattributes block in order, and only where the graded file had no *.sh rule and no block
-# (tools/skills/prompts.sh ensure_gitattributes writes nothing then). Both: the graded last line may come back verbatim right after git's
-# "No newline" marker (the newline canon adds), nothing else may move, since line order decides both files (break-it). Any other line, a
-# mode change, a binary, a delete or a failed git call is false. Context lines never appear: -U0 and --inter-hunk-context=0 beat config.
+# _canon_setup_edit_only <wroot> <graded> <path> — t-52f0: true when the project-root .gitignore or .gitattributes at <path> is exactly
+# what canon's own skill setup makes of the graded file, so _gate_eval_report_fresh (below) can let registration's uncommitted edit
+# through (without it a fresh project's first close was refused). It replays the real writers, never a copy of their lines: the graded
+# file as git checks it out (`cat-file --filters`), in a scratch repo, through _ensure_mirror_gitignored alone (a project's own
+# .claude/agents gets no line), then _ensure_agents_link_gitignored in either order (skills add: mirror first; link_worktree: agents
+# first), or through ensure_gitattributes; the working-tree file must match one result byte for byte. Order, CRs and duplicates therefore count (break-it found a line-set check too loose). A
+# symlink, a deleted file or a failed git call is false.
 _canon_setup_edit_only() {
-  local wroot="$1" graded="$2" path="$3" d prior
-  d="$(git -C "$wroot" -c core.quotepath=off diff --no-color --no-ext-diff --no-textconv --no-renames -U0 --inter-hunk-context=0 "$graded" -- "$path" 2>/dev/null)" || return 1
-  if [[ "${path##*/}" == .gitattributes ]]; then
-    prior="$(git -C "$wroot" show "$graded:$path" 2>/dev/null)" || return 1
-    printf '%s\n' "$prior" | awk '{ sub(/\r+$/, "") } $1 == "*.sh" || $0 == "# canon:gitattributes:BEGIN" { f = 1 } END { exit f }' || return 1
+  local wroot="$1" graded="$2" path="$3" name="${3##*/}" tmp v ok=1
+  [[ -f "$wroot/$path" && ! -L "$wroot/$path" ]] || return 1
+  tmp="$(mktemp -d)" || return 1
+  if git -C "$tmp" init -q >/dev/null 2>&1 && git -C "$wroot" cat-file --filters "$graded:$path" > "$tmp/prior" 2>/dev/null; then
+    for v in m ma am g; do
+      [[ "$name" == .gitattributes ]] && [[ "$v" != g ]] && continue
+      [[ "$name" == .gitignore ]] && [[ "$v" == g ]] && continue
+      cp "$tmp/prior" "$tmp/$name" || break
+      ( SKILLS_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        source "$SCRIPT_DIR/skills/lib.sh" && source "$SCRIPT_DIR/skills/project.sh" && source "$SCRIPT_DIR/skills/prompts.sh" || exit 1
+        case "$v" in
+          m) _ensure_mirror_gitignored "$tmp" ;;
+          ma) _ensure_mirror_gitignored "$tmp" && _ensure_agents_link_gitignored "$tmp" ;;
+          am) _ensure_agents_link_gitignored "$tmp" && _ensure_mirror_gitignored "$tmp" ;;
+          g) ensure_gitattributes "$tmp" ;;
+        esac ) >/dev/null 2>&1
+      if cmp -s "$tmp/$name" "$wroot/$path"; then ok=0; break; fi
+    done
   fi
-  printf '%s\n' "$d" | KIND="${path##*/}" NOW="$wroot/$path" awk '
-    BEGIN {
-      if (ENVIRON["KIND"] == ".gitignore") {
-        add["/.claude/skills"]; add["/.agents/skills"]; add["/.claude/agents"]; del["/.claude/skills/"]; del["/.agents/skills/"]
-      } else {
-        blk[1] = "# canon:gitattributes:BEGIN"; blk[3] = "*.sh text eol=lf"; blk[4] = "# canon:gitattributes:END"
-        blk[2] = "# Shell scripts stay LF: bash can'"'"'t run CRLF, and Git for Windows checks out CRLF by default."
-      }
-    }
-    { sub(/\r+$/, "") }
-    /^diff --git / { hunk = 0; next }
-    !hunk && (/^index / || /^--- / || /^\+\+\+ /) { next }
-    /^@@ / { hunk = 1; next }
-    hunk && /^-/ { r[++nr] = substr($0, 2); prev = "-"; next }
-    hunk && /^\\ / { if (prev == "-") { nonl = nr; want = 1 } prev = "\\"; next }
-    hunk && /^\+/ { a[++na] = substr($0, 2); if (want && a[na] == r[nonl]) { used[na]; paired = nonl } want = 0; prev = "+"; next }
-    { bad = 1 }
-    END {
-      if (bad) exit 1
-      while ((getline l < ENVIRON["NOW"]) > 0) { sub(/\r+$/, "", l); have[l] }
-      for (i = 1; i <= nr; i++) {
-        if (i == paired) continue
-        if ((r[i] in del) && (substr(r[i], 1, length(r[i]) - 1) in have)) continue
-        exit 1
-      }
-      for (j = 1; j <= na; j++) if (!(j in used)) b[++nb] = a[j]
-      if (ENVIRON["KIND"] == ".gitignore") { for (j = 1; j <= nb; j++) if (!(b[j] in add)) exit 1; exit 0 }
-      if (nb != 4) exit 1
-      for (j = 1; j <= 4; j++) if (b[j] != blk[j]) exit 1
-    }'
+  rm -rf "$tmp"
+  return "$ok"
 }
 
 # _gate_eval_report_fresh <id> <tdir> — t-1b74: the report must record the commit the evaluator graded (graded-head:,

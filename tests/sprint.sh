@@ -1606,9 +1606,14 @@ rm -rf "$ng_dir"
 # t-52f0: registering skills edits the project's tracked .gitignore (and .gitattributes) and leaves it uncommitted, so a fresh project's
 # first close was refused as stale. Exactly canon's own setup lines may differ from graded-head; anything else in those files still refuses.
 # The canon edits come from the real writers (tools/skills/project.sh, prompts.sh), never from a copied list.
-canon_setup() { # <project dir>: what skills registration does to the project's .gitignore and .gitattributes
+canon_setup() { # <project dir> [mirror|worktree]: what skills registration (default), a project with its own .claude/agents (mirror),
+  # or a new Cockpit worktree (worktree, the real link_worktree) does to the project's .gitignore and .gitattributes
   ( SKILLS_ROOT="$ROOT"; source "$ROOT/tools/skills/lib.sh"; source "$ROOT/tools/skills/project.sh"; source "$ROOT/tools/skills/prompts.sh"
-    _ensure_mirror_gitignored "$1"; _ensure_agents_link_gitignored "$1"; ensure_gitattributes "$1" ) >/dev/null
+    case "${2:-}" in
+      mirror) _ensure_mirror_gitignored "$1" ;;
+      worktree) link_worktree "$1" ;;
+      *) _ensure_mirror_gitignored "$1"; _ensure_agents_link_gitignored "$1"; ensure_gitattributes "$1" ;;
+    esac ) >/dev/null
 }
 cg_project="$(make_project)"
 (
@@ -1651,12 +1656,12 @@ cg_project="$(make_project)"
   printf 'node_modules/\na\nb\nc\nd\n' > .gitignore; git add .gitignore; git commit -qm "more ignores"
   fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   printf 'node_modules/\nb\na\nd\nc\n/.claude/skills\n' > .gitignore; cg_refused .gitignore "lines moved twice"
-  # a git diff that fails, or answers nothing, refuses rather than passing canon's lines unread
+  # a graded copy git cannot give (cat-file fails, or answers nothing) refuses rather than passing canon's lines unread
   cg_git="$(mktemp -d)"; export REAL_GIT="$(command -v git)"
-  printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -U0 ] && { "$REAL_GIT" "$@"; exit 1; }; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"; chmod +x "$cg_git/git"
-  canon_setup "$PWD"; PATH="$cg_git:$PATH" cg_refuses .gitignore "git diff fails"
-  printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = -U0 ] && exit 0; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"
-  PATH="$cg_git:$PATH" cg_refuses .gitignore "git diff answers nothing"
+  printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = --filters ] && { "$REAL_GIT" "$@"; exit 1; }; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"; chmod +x "$cg_git/git"
+  canon_setup "$PWD"; PATH="$cg_git:$PATH" cg_refuses .gitignore "git cat-file fails"
+  printf '#!/bin/sh\nfor a in "$@"; do [ "$a" = --filters ] && exit 0; done\nexec "$REAL_GIT" "$@"\n' > "$cg_git/git"
+  PATH="$cg_git:$PATH" cg_refuses .gitignore "git cat-file answers nothing"
   git checkout -q -- .gitignore .gitattributes; rm -rf "$cg_git"; unset REAL_GIT
   if [[ "$(git config core.filemode)" == true ]]; then   # Git for Windows sets it false and sees no mode change at all
     chmod +x .gitignore; cg_refuses .gitignore "mode change"; chmod -x .gitignore
@@ -1703,6 +1708,38 @@ cg_project="$(make_project)"
   printf '*.txt text\r' > .gitattributes; git add .gitattributes; git commit -qm "bare CR"
   cg_start barecr; canon_setup "$PWD"
   cg_closes "canon block on attributes ending in a bare CR"
+
+  # break-it pass 2: canon's edit is replayed, so where a line goes and every CR count
+  printf 'a\n/.claude/skills\n!/.claude/skills\n' > .gitignore
+  printf '* -text\n' > .gitattributes; git add .gitignore .gitattributes; git commit -qm "negated mirror, own text rule"
+  cg_start pass2
+  printf 'a\n/.claude/skills\n!/.claude/skills\n/.claude/skills\n' > .gitignore; cg_refused .gitignore "canon line re-added after its negation"
+  printf '# canon:gitattributes:BEGIN\n# Shell scripts stay LF: bash can'"'"'t run CRLF, and Git for Windows checks out CRLF by default.\n*.sh text eol=lf\n# canon:gitattributes:END\n* -text\n' > .gitattributes
+  cg_refused .gitattributes "canon block inserted above the project's rules"
+  printf 'a\nfoo' > .gitignore; git add .gitignore; git commit -qm "no final newline"
+  fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
+  printf 'a\nfoo\r\r\n' > .gitignore; cg_refused .gitignore "extra CRs on the last line"
+  ln -s /dev/null sneaky; rm .gitignore; ln -s sneaky .gitignore; cg_refuses .gitignore "symlinked .gitignore"; rm .gitignore sneaky; git checkout -q -- .gitignore
+  cg_closes "pass 2 refusals restored"
+  # the writers' own CR handling, an attributes rule that makes the diff binary, and a CRLF checkout (core.autocrlf, Git for Windows)
+  printf '*.sh\r\r\n.gitignore -diff\n' > .gitattributes; git add .gitattributes; git commit -qm "odd attributes"
+  cg_start oddattr; canon_setup "$PWD"
+  cg_closes "canon edit beside a '*.sh<CR><CR>' line and a binary-diff .gitignore"
+  git add .gitignore .gitattributes; git commit -qm "canon lines"
+  printf 'node_modules/\n' > .gitignore; git add .gitignore; git commit -qm "plain ignore"
+  git config core.autocrlf true; rm .gitignore; git checkout -q -- .gitignore
+  [[ "$(od -c .gitignore)" == *'\r'* ]] || fail "fixture: core.autocrlf should check .gitignore out CRLF"
+  cg_start autocrlf; canon_setup "$PWD"
+  cg_closes "canon lines appended to a CRLF checkout"
+  git config --unset core.autocrlf; rm .gitignore; git checkout -q -- .gitignore   # back to the LF checkout
+  # a project with its own .claude/agents folder gets only the mirror lines; a new worktree gets the agents line first
+  cg_start mirroronly; canon_setup "$PWD" mirror
+  cg_closes "mirror lines only"
+  git checkout -q -- .gitignore
+  cg_start wtorder; canon_setup "$PWD" worktree
+  [[ "$(cat .gitignore)" == *$'/.claude/agents\n/.claude/skills'* ]] || fail "fixture: link_worktree should add the agents line before the mirror lines: $(cat .gitignore)"
+  cg_closes "worktree order (agents, then mirror)"
+  git checkout -q -- .gitignore
 )
 rm -rf "$cg_project"
 
