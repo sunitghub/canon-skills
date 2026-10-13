@@ -2499,10 +2499,10 @@ func (s *server) noteScratchOnce(se *session, wt *scratchWorktree, total, commit
 	return err
 }
 
-// reapBlockedLocked says why a session can't be reaped, or "" when it can (caller holds se.mu). Shared by
-// the idle reaper and Reap now (t-3c9a), so the two can't drift apart.
 const reapBlockedMenu = "a Copilot menu is waiting"
 
+// reapBlockedLocked says why a session can't be reaped, or "" when it can (caller holds se.mu). Shared by
+// the idle reaper and Reap now (t-3c9a), so the two can't drift apart.
 func reapBlockedLocked(se *session) string {
 	switch {
 	case se.exited || se.killed:
@@ -2564,10 +2564,7 @@ func (s *server) handleEndSession(w http.ResponseWriter, r *http.Request) {
 	if body.Mode == "reap" {
 		why := reapBlockedLocked(se)
 		if state, _, _, _ := sessionStateLocked(se, time.Now()); why == "" && state != "idle" && state != "done" {
-			why = map[string]string{"needs-you": "it is waiting on you"}[state]
-			if why == "" {
-				why = "it is working"
-			}
+			why = "it is working" // needs-you and a Copilot menu were already refused by reapBlockedLocked
 		}
 		if why != "" {
 			se.mu.Unlock()

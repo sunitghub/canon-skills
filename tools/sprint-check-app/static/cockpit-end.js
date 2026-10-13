@@ -7,7 +7,7 @@ import { _projKey, fmtDur, pollSessions, sessionView, ticketTitle } from './cock
 import { getProjects } from './cockpit-projects.js';
 
 let relay=null;          // {frame, origin, ready: Promise}
-const pending=new Map(); // request id \u2192 resolve
+const pending=new Map(); // request id -> resolve
 let seq=0;
 const RELAY_TIMEOUT=10000;
 
@@ -36,7 +36,7 @@ function dropRelay(){ if(relay&&relay.frame) relay.frame.remove(); relay=null; }
 function sendOnce(v,mode){
   const id='e'+(++seq)+'-'+Date.now();
   return new Promise(res=>{
-    const t=setTimeout(()=>{ if(pending.delete(id)) res({status:0, text:'The Cockpit daemon didn\u2019t answer. If it is older than this page, restart it from Admin.'}); },RELAY_TIMEOUT);
+    const t=setTimeout(()=>{ if(pending.delete(id)) res({status:0, timedOut:true, text:'The Cockpit daemon didn\u2019t answer. If it is older than this page, restart it from Admin.'}); },RELAY_TIMEOUT);
     pending.set(id,r=>{ clearTimeout(t); res(r); });
     relay.frame.contentWindow.postMessage({source:'canon-cockpit-shell', type:'end-session', id, session:v.sid, ticket:v.ticket||v.scratch, project_root:v.proot, mode}, relay.origin);
   });
@@ -45,11 +45,21 @@ async function sendEnd(v,mode){
   for(let attempt=0;;attempt++){
     try{ await mountRelay(); }catch(err){ return {status:0, text:err.message||'The Cockpit daemon isn\u2019t reachable.'}; }
     const r=await sendOnce(v,mode);
-    // A relay framed before a daemon restart holds the old boot token (401), or belongs to a daemon that is gone (no
-    // answer): drop it and try once more with a fresh one (break-it).
+    // A relay framed before a daemon restart holds the old boot token (401), or its fetch never reached a daemon
+    // (status 0 from the relay itself): nothing was done, so drop it and try once more with a fresh one (break-it).
+    // No answer at all is different: the daemon may have acted, so don't resend (review) — only re-frame next time.
+    if(r.timedOut){ dropRelay(); return r; }
     if((r.status===401||r.status===0)&&attempt===0){ dropRelay(); continue; }
     return r;
   }
+}
+
+// A scratch session can't be resumed, so once Kill or Reap now has ended it its chip in the project's board closes too
+// (user, t-3c9a). The project tab and any ticket cockpit stay open.
+function closeScratchChip(v){
+  const proj=getProjects().find(p=>_projKey(p.path)===_projKey(v.proot)); if(!proj) return;
+  const f=document.querySelector('#view-'+(window.CSS&&CSS.escape?CSS.escape(proj.id):proj.id)+' iframe');
+  if(f){ try{ f.contentWindow.postMessage({source:'canon-cockpit-shell', type:'close-scratch', id:v.scratch}, location.origin); }catch(e){} }
 }
 
 // What the idle reaper would act on: a live session at its prompt. Never needs-you or working (the daemon says why).
@@ -89,6 +99,7 @@ export async function confirmEnd(v,mode){
     let note='';
     try{ note=JSON.parse(r.text).note_error||''; }catch(e){}
     msg=mode==='kill' ? 'Killed \u201c'+name+'\u201d.'+(note?' '+note:'') : 'Reaping \u201c'+name+'\u201d: saving, then ending.';
+    if(now.scratch) closeScratchChip(now);
   } else msg=r.status===0 ? r.text : 'Didn\u2019t '+(mode==='kill'?'kill':'reap')+' \u201c'+name+'\u201d: '+(r.text.trim()||('error '+r.status));
   toast(msg);
   pollSessions();

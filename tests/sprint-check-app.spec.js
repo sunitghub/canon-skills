@@ -4513,11 +4513,17 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await expect(page.locator('#cconfirm')).not.toHaveClass(/show/);
       await page.waitForTimeout(300);
       expect(calls).toHaveLength(0);
+      // the project's board records what the shell tells it (a killed scratch session's chip closes; user, t-3c9a)
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => {
+        window.__shellMsgs = []; addEventListener('message', e => { if (e.data && e.data.source === 'canon-cockpit-shell') window.__shellMsgs.push(e.data); });
+      });
       await agentRow(page, 'Scratch session').click({ button: 'right' });
       await menuItems(page).nth(2).click();
       await page.locator('#cc-ok').click();
       await expect(page.locator('#toast')).toHaveText('Killed “Scratch session”.');
       expect(calls).toHaveLength(1);
+      await expect.poll(() => page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => window.__shellMsgs.filter(m => m.type === 'close-scratch')))
+        .toEqual([{ source: 'canon-cockpit-shell', type: 'close-scratch', id: 's-k2m9' }]);
       const { id, ...msg } = calls[0];
       expect(id).toBeTruthy();
       expect(msg).toEqual({ source: 'canon-cockpit-shell', type: 'end-session', session: 'e3', ticket: 's-k2m9', project_root: '/tmp/proj-a', mode: 'kill' });
@@ -4605,6 +4611,61 @@ test.describe('cockpit in board (t-ddc8)', () => {
       await page.evaluate(async () => (await import('/static/cockpit-tabs.js')).activateTab('projects'));
       await pressPrefix(page, 't');
       await expect(page.locator('#toast')).toHaveText('Open a project tab first — or right-click a row under Agents');
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    // Review: retry only when the request certainly never reached a daemon. A relay whose own fetch failed (status 0)
+    // gets one retry; a relay that never answers may have acted, so the shell must not send again.
+    const relayAnswering = async (page, answer) => {
+      const calls = [];
+      await page.exposeBinding('__relayCall', (_src, d) => { calls.push(d); return answer(calls.length); });
+      await page.route(`http://${FAKE_DAEMON_ADDR}/relay`, r => r.fulfill({ status: 200, contentType: 'text/html', body:
+        '<!doctype html><script>addEventListener("message",async e=>{if(e.source!==parent)return;const d=e.data;const r=await window.__relayCall(d);' +
+        'if(!r)return;e.source.postMessage({source:"canon-relay",type:"end-session-result",id:d.id,status:r.status,text:r.text},e.origin);});</script>' }));
+      return calls;
+    };
+    const killBbb2 = async page => {
+      await page.locator('#nav-admin').click();
+      await page.locator('#ad-sessions tbody tr', { hasText: 't-bbb2' }).locator('.ad-end', { hasText: 'Kill' }).click();
+      await page.locator('#cc-ok').click();
+    };
+    test('t-3c9a: a relay whose own fetch failed is retried once with a fresh frame', async ({ page }) => {
+      const calls = await relayAnswering(page, n => n === 1 ? { status: 0, text: 'the Cockpit daemon did not answer' } : { status: 200, text: '{"ok":true,"mode":"kill"}' });
+      await openShell(page, endRows());
+      await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => {
+        window.__shellMsgs = []; addEventListener('message', e => { if (e.data && e.data.source === 'canon-cockpit-shell') window.__shellMsgs.push(e.data); });
+      });
+      await killBbb2(page);
+      await expect(page.locator('#toast')).toHaveText('Killed “t-bbb2”.');
+      expect(calls).toHaveLength(2);
+      await page.waitForTimeout(300);
+      expect(await page.frameLocator('#view-proj-a iframe').locator('body').evaluate(() => window.__shellMsgs.filter(m => m.type === 'close-scratch')), 'a ticket session keeps its cockpit').toEqual([]);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+    test('t-3c9a: a relay that never answers is not sent the request again', async ({ page }) => {
+      test.setTimeout(60_000);
+      const calls = await relayAnswering(page, () => null);
+      await openShell(page, endRows());
+      await killBbb2(page);
+      await expect(page.locator('#toast')).toHaveText(/didn’t answer/, { timeout: 15_000 });
+      await page.waitForTimeout(500);
+      expect(calls, 'the daemon may have acted: no second send').toHaveLength(1);
+      await page.unrouteAll({ behavior: 'ignoreErrors' });
+    });
+
+    test('t-3c9a: the board closes a scratch chip on close-scratch, and ignores it for a ticket or an unknown id', async ({ page }) => {
+      await stubRelay(page);
+      await openShell(page, endRows());
+      const board = page.frameLocator('#view-proj-a iframe');
+      const send = m => board.locator('body').evaluate((_, m) => window.dispatchEvent(new MessageEvent('message', { data: m, origin: location.origin, source: window.parent })), m);
+      await page.evaluate(async () => { const { openSessionInTab } = await import('/static/cockpit-tabs.js'); openSessionInTab({ proot: '/tmp/proj-a', scratch: 's-k2m9' }); });
+      await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(1);
+      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 't-aaa1' });        // not a scratch id
+      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 's-zz99' });        // not open here
+      await page.waitForTimeout(300);
+      await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(1);
+      await send({ source: 'canon-cockpit-shell', type: 'close-scratch', id: 's-k2m9' });
+      await expect(board.locator('#ck-tab-strip-topbar .ck-tab-pill[data-tab-id="s-k2m9"]')).toHaveCount(0);
       await page.unrouteAll({ behavior: 'ignoreErrors' });
     });
 

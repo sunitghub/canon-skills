@@ -734,6 +734,10 @@ export function initCockpit() {
       if (s) { s.focus(); s.select(); }
       return;
     }
+    if (d.type === 'close-scratch') {                      // t-3c9a (user): Kill / Reap now ended this scratch session from the shell; close its chip. closeTab never ends or contacts the daemon
+      if (typeof d.id === 'string' && SCRATCH_ID.test(d.id) && cockpitTabs[d.id]) closeTab(d.id);
+      return;
+    }
     if (d.type === 'open-scratch') {                       // t-47f1: shell's "+ Scratch", or a scratch row reopened
       if (typeof d.id === 'string' && SCRATCH_ID.test(d.id)) openScratch(d.id);
       return;
