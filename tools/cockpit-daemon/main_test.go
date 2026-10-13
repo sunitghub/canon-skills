@@ -8082,3 +8082,68 @@ func TestKillNotesAScratchSessionOnce(t *testing.T) {
 		t.Errorf("Reap now then Kill wrote %d notes, want 1", n)
 	}
 }
+
+// Evaluator (t-3c9a): pin the guards no other test covered.
+func TestEndSessionIsHostOriginGuardedAndPostOnly(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	sid, _ := startTicket(t, base)
+	b, _ := json.Marshal(endBody(s, sid, "kill"))
+	do := func(method string, set func(*http.Request)) int {
+		req, _ := http.NewRequest(method, base+"/end-session", strings.NewReader(string(b)))
+		req.Header.Set("Authorization", "Bearer "+bootTok)
+		set(req)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Body.Close()
+		return r.StatusCode
+	}
+	if c := do(http.MethodPost, func(r *http.Request) { r.Header.Set("Origin", "http://evil.example") }); c != http.StatusForbidden {
+		t.Errorf("a foreign Origin with the boot token: want 403, got %d", c)
+	}
+	if c := do(http.MethodPost, func(r *http.Request) { r.Host = "evil.example" }); c != http.StatusForbidden {
+		t.Errorf("a foreign Host with the boot token: want 403, got %d", c)
+	}
+	if c := do(http.MethodGet, func(*http.Request) {}); c != http.StatusMethodNotAllowed {
+		t.Errorf("GET with the boot token: want 405, got %d", c)
+	}
+	if sessionGone(s, sid) {
+		t.Fatal("a refused request ended the session")
+	}
+}
+
+// The /relay page lets project_root be up to 4096 characters; the daemon must read the whole body, not refuse it as
+// malformed (break-it fix 6).
+func TestEndSessionReadsAFullLengthProjectRoot(t *testing.T) {
+	s, base := newEndServer(t, fakeAgentThatIgnores(t), time.Hour)
+	sid, _ := startTicket(t, base)
+	body := endBody(s, sid, "kill")
+	body["project_root"] = "/" + strings.Repeat("x", 4095)
+	if code, text := endSessionReq(t, base, bootTok, body); code != http.StatusConflict {
+		t.Fatalf("a 4096-character project_root: want 409 (read, then not this session's), got %d %s", code, text)
+	}
+}
+
+// A failed note gives its claim back, so a later end (the reaper retrying, or a Kill) still writes it.
+func TestAFailedScratchNoteLeavesTheClaimForALaterEnd(t *testing.T) {
+	root, base, s := endGuardProject(t)
+	st := startScratchSession(t, base, "s-ff06", root)
+	s.mu.Lock()
+	se := s.sessions[st.Session]
+	s.mu.Unlock()
+	hand := filepath.Join(root, "HANDOFF.md")
+	if err := os.Symlink(filepath.Join(t.TempDir(), "elsewhere.md"), hand); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	if err := s.noteScratchOnce(se, nil, 1, 0, "left by Kill"); err == nil {
+		t.Fatal("the note should fail through a link")
+	}
+	os.Remove(hand)
+	if err := s.noteScratchOnce(se, nil, 1, 0, "left by Kill"); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(hand); !strings.Contains(string(b), "s-ff06: ") {
+		t.Fatalf("after a failed note, a later end wrote nothing:\n%s", b)
+	}
+}
