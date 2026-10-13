@@ -10,7 +10,7 @@ All notable changes to canon are listed here, newest first, in [Keep a Changelog
 - `install.sh` with `CANON_REF=main` printed the development-version notice twice (once from the `canon update` it runs, then its own copy); it now prints it once and ends with "Installed the development version (main)." (`t-bb84`).
 
 ### Changed
-- A new ticket starts from an intent skeleton: `## Problem`, `## Outcome`, `## Constraints` and `## Open questions` (a bug also gets `## Expected` and `## Actual`), each with a hint the board does not show. The board's New ticket form, `tkt create` without `-d`, and a create request to either board with no body all give the same text; `-d` text and a body you cleared are kept as given. At sprint start the plan answers each open question or carries it forward by name, and the board's Plan template now matches the one `sprint start` writes (`t-b0c9`).
+- A new ticket starts from an intent skeleton: `## Problem`, `## Outcome`, `## Constraints` and `## Open questions` (a bug also gets `## Expected` and `## Actual`), each followed by a one-line hint in an HTML comment: the New ticket form shows it as a prompt, and the board hides it once the ticket renders. The board's New ticket form, `tkt create` without `-d`, and a create request to either board with no body all give the same text; `-d` text and a body you cleared are kept as given. At sprint start the plan answers each open question or carries it forward by name, and the board's Plan template now matches the one `sprint start` writes (`t-b0c9`).
 
 ## [0.7.0] - 2026-10-13
 
