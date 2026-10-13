@@ -1719,7 +1719,8 @@ cg_project="$(make_project)"
   printf 'a\nfoo' > .gitignore; git add .gitignore; git commit -qm "no final newline"
   fr_gate_docs ".tickets/$cid" ".claude/subagent-runs.jsonl" "$(date +%s)-7000" "$(git rev-parse HEAD)"
   printf 'a\nfoo\r\r\n' > .gitignore; cg_refused .gitignore "extra CRs on the last line"
-  ln -s /dev/null sneaky; rm .gitignore; ln -s sneaky .gitignore; cg_refuses .gitignore "symlinked .gitignore"; rm .gitignore sneaky; git checkout -q -- .gitignore
+  canon_setup "$PWD"; git checkout -q -- .gitattributes; mv .gitignore sneaky; ln -s sneaky .gitignore   # canon's exact bytes, behind a link
+  cg_refuses .gitignore "symlinked .gitignore"; rm .gitignore sneaky; git checkout -q -- .gitignore
   cg_closes "pass 2 refusals restored"
   # the writers' own CR handling, an attributes rule that makes the diff binary, and a CRLF checkout (core.autocrlf, Git for Windows)
   printf '*.sh\r\r\n.gitignore -diff\n' > .gitattributes; git add .gitattributes; git commit -qm "odd attributes"
